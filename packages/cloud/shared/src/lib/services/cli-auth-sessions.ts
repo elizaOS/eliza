@@ -431,14 +431,20 @@ export class CliAuthSessionsService {
     // a session that expired after candidate selection without first revoking
     // and invalidating its credential.
     const cutoff = new Date();
-    const revokedOrphanKeys = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
+    const cleanupCandidates = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
     // This helper attempts every hash before throwing. If any invalidation is
     // unconfirmed, the expired session rows remain as durable retry carriers;
     // the next cron pass re-offers even already-inactive keys.
-    await apiKeysService.confirmRevocationAfterCommit(revokedOrphanKeys.map((key) => key.key_hash));
-    const deletedSessions = await cliAuthSessionsRepository.deleteExpiredSessions(cutoff);
+    const revokedHashes = cleanupCandidates.flatMap((candidate) =>
+      candidate.key_hash ? [candidate.key_hash] : [],
+    );
+    await apiKeysService.confirmRevocationAfterCommit(revokedHashes);
+    const deletedSessions = await cliAuthSessionsRepository.deleteExpiredSessions(
+      cutoff,
+      cleanupCandidates,
+    );
 
-    return { deletedSessions, revokedOrphanKeys: revokedOrphanKeys.length };
+    return { deletedSessions, revokedOrphanKeys: revokedHashes.length };
   }
 }
 

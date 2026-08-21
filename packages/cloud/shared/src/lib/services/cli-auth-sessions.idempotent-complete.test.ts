@@ -319,5 +319,6 @@ describe("cliAuthSessionsService lifecycle", () => {
     });
     expect(prepare).toHaveBeenCalledTimes(1);
     expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove.mock.calls[0]?.[1]).toEqual([]);
   });
 });

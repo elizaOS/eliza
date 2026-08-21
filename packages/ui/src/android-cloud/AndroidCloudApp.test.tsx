@@ -165,6 +165,45 @@ describe("AndroidCloudApp", () => {
     expect(screen.getByText("Never finish")).toBeTruthy();
   });
 
+  it("revokes a revealed credential when post-login restore returns no session", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession")
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "unrestored-token",
+    });
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockResolvedValue(undefined);
+    const acceptLoginAttempt = vi.spyOn(client, "acceptLoginAttempt");
+    accelerateLoginPollTimers();
+
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={vi.fn(async () => undefined)}
+        voice={createVoice()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(discardLoginAttempt).toHaveBeenCalledWith(
+        "10000000-0000-4000-8000-000000000001",
+        "unrestored-token",
+      ),
+    );
+    expect(acceptLoginAttempt).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
   it("cancels an in-flight login poll without restoring its session", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(null);

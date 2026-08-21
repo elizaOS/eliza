@@ -17,12 +17,28 @@ const ACCOUNT_ID = "20000000-0000-4000-8000-000000000002";
 const PERSONAL_ID = "personal:org-1:user-1";
 const RUNTIME_ID = "30000000-0000-4000-8000-000000000003";
 const RUNTIME_BASE = `https://${RUNTIME_ID}.cloud.eliza.app`;
+const JOURNAL_PREFIX = "eliza_login_credential_journal_v2:";
 
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function storedCredentialState(value: string | null): {
+  activeToken: string | null;
+  activeSessionId: string | null;
+  pending: Array<{ sessionId: string; token: string }>;
+} {
+  if (!value?.startsWith(JOURNAL_PREFIX)) {
+    return { activeToken: value, activeSessionId: null, pending: [] };
+  }
+  return JSON.parse(value.slice(JOURNAL_PREFIX.length)) as {
+    activeToken: string | null;
+    activeSessionId: string | null;
+    pending: Array<{ sessionId: string; token: string }>;
+  };
 }
 
 describe("AndroidCloudClient", () => {
@@ -77,7 +93,13 @@ describe("AndroidCloudClient", () => {
       status: "authenticated",
       token: "steward-token",
     });
-    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
+    expect(
+      storedCredentialState(localStorage.getItem(STEWARD_TOKEN_KEY)),
+    ).toEqual({
+      activeToken: "steward-token",
+      activeSessionId: SESSION_ID,
+      pending: [{ sessionId: SESSION_ID, token: "steward-token" }],
+    });
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "https://api.eliza.app/api/auth/cli-session",
@@ -97,6 +119,8 @@ describe("AndroidCloudClient", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+    await client.acceptLoginAttempt(SESSION_ID, "steward-token");
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
   });
 
   it("revokes and removes a reveal whose delivery acknowledgement fails", async () => {
@@ -161,8 +185,11 @@ describe("AndroidCloudClient", () => {
     await expect(firstClient.pollLogin(SESSION_ID)).rejects.toThrow(
       "could not be acknowledged or revoked",
     );
-    expect(storedToken).not.toBe("provisional-token");
-    expect(storedToken).toContain(SESSION_ID);
+    expect(storedCredentialState(storedToken)).toEqual({
+      activeToken: null,
+      activeSessionId: null,
+      pending: [{ sessionId: SESSION_ID, token: "provisional-token" }],
+    });
 
     const restartedFetch = vi
       .fn<typeof fetch>()
@@ -177,6 +204,83 @@ describe("AndroidCloudClient", () => {
       expect.objectContaining({
         method: "DELETE",
         headers: { Authorization: "Bearer provisional-token" },
+      }),
+    );
+    expect(storedToken).toBeNull();
+  });
+
+  it("reconciles every durable cleanup record after a failed A deletion and successful B login", async () => {
+    let storedToken: string | null = null;
+    const firstSession = "10000000-0000-4000-8000-000000000001";
+    const secondSession = "10000000-0000-4000-8000-000000000002";
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const firstFetch = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (init?.method === "PATCH") {
+        return new Response(null, { status: 204 });
+      }
+      if (init?.method === "DELETE") {
+        throw new Error("A deletion unavailable");
+      }
+      if (url.includes(firstSession)) {
+        return json(200, { status: "authenticated", apiKey: "token-a" });
+      }
+      return json(200, { status: "authenticated", apiKey: "token-b" });
+    });
+    const firstClient = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: firstFetch,
+    });
+
+    await firstClient.pollLogin(firstSession);
+    await expect(
+      firstClient.discardLoginAttempt(firstSession, "token-a"),
+    ).rejects.toThrow("could not be revoked");
+    await expect(firstClient.pollLogin(secondSession)).resolves.toMatchObject({
+      status: "authenticated",
+      token: "token-b",
+    });
+    expect(storedCredentialState(storedToken)).toEqual({
+      activeToken: "token-b",
+      activeSessionId: secondSession,
+      pending: [
+        { sessionId: firstSession, token: "token-a" },
+        { sessionId: secondSession, token: "token-b" },
+      ],
+    });
+
+    const restartedFetch = vi.fn<typeof fetch>(async (_input, init) => {
+      if (init?.method === "DELETE") {
+        return new Response(null, { status: 204 });
+      }
+      throw new Error("A recovered bearer must not authenticate.");
+    });
+    const restarted = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: restartedFetch,
+    });
+
+    await expect(restarted.restoreSession()).resolves.toBeNull();
+    expect(restartedFetch).toHaveBeenCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${firstSession}`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bearer token-a" },
+      }),
+    );
+    expect(restartedFetch).toHaveBeenCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${secondSession}`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bearer token-b" },
       }),
     );
     expect(storedToken).toBeNull();
@@ -221,14 +325,10 @@ describe("AndroidCloudClient", () => {
     expect(storedToken).toBeNull();
   });
 
-  it("clears a current attempt without depending on a secure-store read", async () => {
+  it("clears a current attempt from its durable journal", async () => {
     let storedToken: string | null = null;
-    let rejectReads = true;
     const credentialStore = {
-      read: vi.fn(async () => {
-        if (rejectReads) throw new Error("secure read unavailable");
-        return storedToken;
-      }),
+      read: vi.fn(async () => storedToken),
       write: vi.fn(async (token: string) => {
         storedToken = token;
       }),
@@ -249,9 +349,8 @@ describe("AndroidCloudClient", () => {
     await client.pollLogin(SESSION_ID);
     await client.discardLoginAttempt(SESSION_ID, "cancelled-token");
 
-    expect(credentialStore.read).not.toHaveBeenCalled();
+    expect(credentialStore.read).toHaveBeenCalled();
     expect(credentialStore.clear).toHaveBeenCalledOnce();
-    rejectReads = false;
     const restarted = new AndroidCloudClient({
       credentialStore,
       fetchImpl: vi.fn<typeof fetch>(),
@@ -373,6 +472,7 @@ describe("AndroidCloudClient", () => {
         if (
           token !== "cancelled-token" &&
           !token.startsWith("eliza_pending_login_credential_v1:") &&
+          !token.startsWith(JOURNAL_PREFIX) &&
           rejectTombstone
         ) {
           throw new Error("secure tombstone unavailable");
@@ -447,7 +547,7 @@ describe("AndroidCloudClient", () => {
       "shared-token",
     );
 
-    expect(storedToken).toBe("shared-token");
+    expect(storedCredentialState(storedToken).activeToken).toBe("shared-token");
     expect(credentialStore.clear).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(5);
   });
@@ -483,7 +583,7 @@ describe("AndroidCloudClient", () => {
       "stale-token",
     );
 
-    expect(storedToken).toBe("newer-token");
+    expect(storedCredentialState(storedToken).activeToken).toBe("newer-token");
     expect(credentialStore.clear).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenLastCalledWith(
       "https://api.eliza.app/api/auth/cli-session/10000000-0000-4000-8000-000000000001",
@@ -541,10 +641,10 @@ describe("AndroidCloudClient", () => {
       status: "authenticated",
       token: "newer-token",
     });
-    expect(storedToken).toBe("newer-token");
+    expect(storedCredentialState(storedToken).activeToken).toBe("newer-token");
     finishRevocation();
     await staleCleanup;
-    expect(storedToken).toBe("newer-token");
+    expect(storedCredentialState(storedToken).activeToken).toBe("newer-token");
   });
 
   it("restores identity and resolves its managed runtime before chat", async () => {
@@ -607,6 +707,40 @@ describe("AndroidCloudClient", () => {
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
+  it("revokes the exact session-bound credential when post-login restore is unauthorized", async () => {
+    let storedToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "restore-token" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json(401, {}))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+
+    await client.pollLogin(SESSION_ID);
+    await expect(client.restoreSession()).resolves.toBeNull();
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bearer restore-token" },
+      }),
+    );
+    expect(storedToken).toBeNull();
+  });
+
   it("uses an injected secure credential store without touching localStorage", async () => {
     let secureToken: string | null = "secure-token";
     const credentialStore = {
@@ -624,13 +758,13 @@ describe("AndroidCloudClient", () => {
     });
 
     await expect(client.restoreSession()).resolves.toBeNull();
-    expect(credentialStore.read).toHaveBeenCalledTimes(2);
+    expect(credentialStore.read).toHaveBeenCalledTimes(3);
     expect(credentialStore.clear).toHaveBeenCalledOnce();
     expect(secureToken).toBeNull();
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
-  it("never authenticates a malformed pending credential envelope", async () => {
+  it("fails closed without authenticating a malformed legacy pending envelope", async () => {
     const malformedPending =
       'eliza_pending_login_credential_v1:{"sessionId":"not-a-session"}';
     const credentialStore = {
@@ -641,8 +775,55 @@ describe("AndroidCloudClient", () => {
     const fetchImpl = vi.fn<typeof fetch>();
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
-    await expect(client.restoreSession()).resolves.toBeNull();
+    await expect(client.restoreSession()).rejects.toThrow(
+      "stored sign-in credential journal is invalid",
+    );
     expect(fetchImpl).not.toHaveBeenCalled();
+    expect(credentialStore.write).not.toHaveBeenCalled();
+    expect(credentialStore.clear).not.toHaveBeenCalled();
+  });
+
+  it("preserves a malformed v2 journal while revoking a newly revealed credential", async () => {
+    const malformedJournal = `${JOURNAL_PREFIX}${JSON.stringify({
+      activeToken: "existing-token",
+      activeSessionId: "not-a-session",
+      pending: [{ sessionId: SESSION_ID, token: "existing-pending-token" }],
+    })}`;
+    let storedToken = malformedJournal;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = "";
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "new-token" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await expect(client.restoreSession()).rejects.toThrow(
+      "stored sign-in credential journal is invalid",
+    );
+    await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
+      "could not be acknowledged or revoked",
+    );
+
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({
+        method: "DELETE",
+        headers: { Authorization: "Bearer new-token" },
+      }),
+    );
+    expect(storedToken).toBe(malformedJournal);
+    expect(credentialStore.write).not.toHaveBeenCalled();
+    expect(credentialStore.clear).not.toHaveBeenCalled();
   });
 
   it("restores only valid visible user and assistant transcript messages", async () => {

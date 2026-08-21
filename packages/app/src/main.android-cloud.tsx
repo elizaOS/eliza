@@ -284,18 +284,53 @@ function assertCurrentVoiceGeneration(generation: number): void {
   }
 }
 
+async function removeVoiceListenerWithTimeout(listener: {
+  remove: () => Promise<void>;
+}): Promise<void> {
+  let timeout: number | undefined;
+  const removal = Promise.resolve()
+    .then(() => listener.remove())
+    .then(() => {
+      activeVoiceListeners = activeVoiceListeners.filter(
+        (candidate) => candidate !== listener,
+      );
+    });
+  try {
+    await Promise.race([
+      removal,
+      new Promise<never>((_resolve, reject) => {
+        timeout = window.setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Voice listener teardown timed out; cleanup remains retryable.",
+              ),
+            ),
+          VOICE_LISTENER_TEARDOWN_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  }
+}
+
 async function retainVoiceListener(
   generation: number,
   listener: { remove: () => Promise<void> },
-  replace: boolean,
 ): Promise<void> {
   if (voiceGeneration !== generation) {
     const cancellation = new DOMException(
       "Voice dictation start was canceled.",
       "AbortError",
     );
+    // Retain the only removal authority before starting a bounded attempt. A
+    // remover that rejects or never settles must remain available to Stop.
+    if (!activeVoiceListeners.includes(listener)) {
+      activeVoiceListeners.push(listener);
+    }
     try {
-      await listener.remove();
+      await removeVoiceListenerWithTimeout(listener);
     } catch (cleanupError) {
       throw new AggregateError(
         [cancellation, cleanupError],
@@ -304,8 +339,12 @@ async function retainVoiceListener(
     }
     throw cancellation;
   }
-  if (replace) activeVoiceListeners = [listener];
-  else activeVoiceListeners.push(listener);
+  // Teardown may have completed before an older addListener promise yielded
+  // its handle. Never replace the set: a concurrently retained stale handle
+  // must remain available for the next bounded retry.
+  if (!activeVoiceListeners.includes(listener)) {
+    activeVoiceListeners.push(listener);
+  }
 }
 
 interface PlayVoicePlugin {
@@ -364,32 +403,7 @@ async function teardownVoiceResources(): Promise<void> {
     if (nativeTimeout !== undefined) window.clearTimeout(nativeTimeout);
   });
   const removalResults = await Promise.allSettled(
-    listeners.map(async (listener) => {
-      let timeout: number | undefined;
-      const removal = listener.remove().then(() => {
-        activeVoiceListeners = activeVoiceListeners.filter(
-          (candidate) => candidate !== listener,
-        );
-      });
-      try {
-        await Promise.race([
-          removal,
-          new Promise<never>((_resolve, reject) => {
-            timeout = window.setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    "Voice listener teardown timed out; cleanup remains retryable.",
-                  ),
-                ),
-              VOICE_LISTENER_TEARDOWN_TIMEOUT_MS,
-            );
-          }),
-        ]);
-      } finally {
-        if (timeout !== undefined) window.clearTimeout(timeout);
-      }
-    }),
+    listeners.map((listener) => removeVoiceListenerWithTimeout(listener)),
   );
   const nativeStop = await boundedNativeStop;
   const teardownErrors = removalResults.flatMap((result) =>
@@ -433,7 +447,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
           stopVoiceAfterNativeEvent();
         },
       );
-      await retainVoiceListener(generation, transcriptListener, true);
+      await retainVoiceListener(generation, transcriptListener);
       const errorListener = await PlayVoice.addListener("error", (event) => {
         if (voiceGeneration !== generation) return;
         onError(
@@ -443,7 +457,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         );
         stopVoiceAfterNativeEvent();
       });
-      await retainVoiceListener(generation, errorListener, false);
+      await retainVoiceListener(generation, errorListener);
       const nativeStart = PlayVoice.startDictation({
         language: navigator.language || "en-US",
       });

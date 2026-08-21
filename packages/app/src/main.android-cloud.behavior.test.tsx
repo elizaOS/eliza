@@ -24,6 +24,12 @@ const playEntry = vi.hoisted(() => ({
   voiceListeners: new Map<string, (value: unknown) => void>(),
   voiceListenerRemovers: [] as Array<ReturnType<typeof vi.fn>>,
   voiceListenerSetupFailure: null as "transcript" | "error" | null,
+  voiceListenerSetupDeferred: null as
+    | null
+    | ((
+        name: string,
+        listener: (value: unknown) => void,
+      ) => Promise<{ remove: () => Promise<void> }>),
   voicePermission: vi.fn(async () => ({ granted: true })),
   voiceStart: vi.fn(async () => ({ started: true })),
   voiceStop: vi.fn(async () => undefined),
@@ -50,6 +56,9 @@ vi.mock("@capacitor/core", () => ({
       : {
           addListener: vi.fn(
             async (name: string, listener: (value: unknown) => void) => {
+              if (playEntry.voiceListenerSetupDeferred) {
+                return playEntry.voiceListenerSetupDeferred(name, listener);
+              }
               if (playEntry.voiceListenerSetupFailure === name) {
                 throw new Error(`${name} listener setup failed`);
               }
@@ -127,6 +136,7 @@ beforeEach(() => {
   playEntry.voiceListeners.clear();
   playEntry.voiceListenerRemovers.length = 0;
   playEntry.voiceListenerSetupFailure = null;
+  playEntry.voiceListenerSetupDeferred = null;
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -412,5 +422,106 @@ describe("Android Cloud renderer behavior", () => {
     expect(playEntry.voiceListenerRemovers[0]).toHaveBeenCalledOnce();
     expect(playEntry.voiceStop).toHaveBeenCalledTimes(2);
     expect(playEntry.voiceListeners.size).toBe(0);
+  });
+
+  it("retains a late canceled listener whose first removal fails", async () => {
+    let finishListenerSetup:
+      | ((value: { remove: () => Promise<void> }) => void)
+      | undefined;
+    const remove = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new Error("late removal failed"))
+      .mockResolvedValue(undefined);
+    playEntry.voiceListenerSetupDeferred = () =>
+      new Promise((resolve) => {
+        finishListenerSetup = resolve;
+      });
+
+    const starting = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(finishListenerSetup).toBeDefined());
+    await entry.androidCloudVoice.stop();
+    finishListenerSetup?.({ remove });
+
+    await expect(starting).rejects.toThrow("could not be cleaned up");
+    await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
+    expect(remove).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds and retains a late canceled listener whose removal never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      let finishListenerSetup:
+        | ((value: { remove: () => Promise<void> }) => void)
+        | undefined;
+      const remove = vi
+        .fn<() => Promise<void>>()
+        .mockReturnValueOnce(new Promise<never>(() => {}))
+        .mockResolvedValue(undefined);
+      playEntry.voiceListenerSetupDeferred = () =>
+        new Promise((resolve) => {
+          finishListenerSetup = resolve;
+        });
+
+      const starting = entry.androidCloudVoice.requestAndStart(
+        vi.fn(),
+        vi.fn(),
+      );
+      await vi.waitFor(() => expect(finishListenerSetup).toBeDefined());
+      await entry.androidCloudVoice.stop();
+      finishListenerSetup?.({ remove });
+
+      const rejection = expect(starting).rejects.toThrow(
+        "could not be cleaned up",
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+      await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
+      expect(remove).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not drop a failed late A listener when B installs its listeners", async () => {
+    let finishA: ((value: { remove: () => Promise<void> }) => void) | undefined;
+    let markFirstRemoval: (() => void) | undefined;
+    const firstRemoval = new Promise<void>((resolve) => {
+      markFirstRemoval = resolve;
+    });
+    const removeA = vi.fn(async () => {
+      if (removeA.mock.calls.length === 1) {
+        markFirstRemoval?.();
+        throw new Error("late A removal failed");
+      }
+    });
+    const removeBTranscript = vi.fn(async () => undefined);
+    const removeBError = vi.fn(async () => undefined);
+    let setupCall = 0;
+    playEntry.voiceListenerSetupDeferred = async () => {
+      setupCall += 1;
+      if (setupCall === 1) {
+        return new Promise((resolve) => {
+          finishA = resolve;
+        });
+      }
+      if (setupCall === 2) {
+        finishA?.({ remove: removeA });
+        await firstRemoval;
+        return { remove: removeBTranscript };
+      }
+      return { remove: removeBError };
+    };
+
+    const startingA = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(finishA).toBeDefined());
+    await entry.androidCloudVoice.stop();
+    const startingB = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+
+    await expect(startingA).rejects.toThrow("could not be cleaned up");
+    await expect(startingB).resolves.toBeUndefined();
+    await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
+    expect(removeA).toHaveBeenCalledTimes(2);
+    expect(removeBTranscript).toHaveBeenCalledOnce();
+    expect(removeBError).toHaveBeenCalledOnce();
   });
 });

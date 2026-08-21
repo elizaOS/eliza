@@ -92,8 +92,17 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("mainHandler.post(action);");
     expect(source).toContain("new TextToSpeech(getContext()");
     expect(source).toContain("Manifest.permission.RECORD_AUDIO");
-    expect(source).toContain("SpeechRecognizer current = recognizer;");
-    expect(source).toContain("recognizer = null;");
+    expect(source).toContain("long nextEpoch = ++recognizerEpoch;");
+    expect(source).toContain(
+      "return activeRecognizer == nextSession && recognizerEpoch == nextEpoch;",
+    );
+    expect(source).toContain("retryStaleRecognizerCleanup(nextSession);");
+    expect(source).toContain(
+      "private final ArrayList<RecognizerSession> recognizersPendingCleanup",
+    );
+    expect(source).toContain(
+      "private RuntimeException stopRecognizerInstance(RecognizerSession session)",
+    );
     expect(source.indexOf("current.stopListening();")).toBeLessThan(
       source.indexOf("current.cancel();"),
     );
@@ -103,14 +112,49 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("else failure.addSuppressed(error);");
     expect(source).toContain("if (failure != null) throw failure;");
     expect(source).toContain('"SPEECH_RECOGNITION_STOP_FAILED"');
-    expect(source).toContain("private void stopRecognizerAfterCallback()");
+    expect(source).toContain(
+      "private void stopRecognizerAfterCallback(RecognizerSession callbackSession)",
+    );
     expect(source).toContain(
       'android.util.Log.e("ElizaPlayVoice", "Recognizer callback cleanup failed", error);',
     );
     expect(source).toContain('event.put("code", -1);');
+    expect(source).toContain("session.destroyed = true;");
     expect(source).toContain(
-      "@Override public void onResults(Bundle results) {\n        publishTranscript(results, true);\n        stopRecognizerAfterCallback();",
+      "if (!recognizersPendingCleanup.contains(staleSession)) return;",
     );
+    expect(source).toContain(
+      "if (!current.destroyed && !recognizersPendingCleanup.contains(current))",
+    );
+    const listenerStart = source.indexOf("new RecognitionListener()");
+    const callbackError = source.indexOf(
+      "@Override public void onError(int error)",
+      listenerStart,
+    );
+    const callbackResults = source.indexOf(
+      "@Override public void onResults(Bundle results)",
+      callbackError,
+    );
+    const callbackPartial = source.indexOf(
+      "@Override public void onPartialResults(Bundle partialResults)",
+      callbackResults,
+    );
+    const errorBody = source.slice(callbackError, callbackResults);
+    const resultsBody = source.slice(callbackResults, callbackPartial);
+    expect(errorBody.indexOf("if (!ownsCurrentRecognizer())")).toBeLessThan(
+      errorBody.indexOf('notifyListeners("error", event);'),
+    );
+    expect(resultsBody.indexOf("if (!ownsCurrentRecognizer())")).toBeLessThan(
+      resultsBody.indexOf("publishTranscript(results, true);"),
+    );
+    expect(errorBody).toContain("cleanupAfterCallback();");
+    expect(resultsBody).toContain("cleanupAfterCallback();");
+    expect(errorBody).toContain("finally {");
+    expect(resultsBody).toContain("finally {");
+    expect(errorBody).toContain("Recognizer error publication failed");
+    expect(resultsBody).toContain("Recognizer result publication failed");
+    expect(errorBody).not.toContain("stopRecognizer();");
+    expect(resultsBody).not.toContain("stopRecognizer();");
     expect(source).not.toMatch(/LocalSocket|HttpURLConnection|apiKey|bionic/i);
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");

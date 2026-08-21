@@ -213,7 +213,7 @@ export function AndroidCloudApp({
         }
         setError(historyRestoreError);
         setPhase(restored ? "ready" : "signed-out");
-        return true;
+        return restored !== null;
       } catch (restoreError) {
         if (!isCurrent()) {
           try {
@@ -327,7 +327,7 @@ export function AndroidCloudApp({
           await discardPendingLogin(attemptNumber);
           return;
         }
-        client.acceptLoginAttempt(attempt.sessionId);
+        await client.acceptLoginAttempt(attempt.sessionId, result.token);
         pendingLoginCleanupRef.current = null;
         return;
       }

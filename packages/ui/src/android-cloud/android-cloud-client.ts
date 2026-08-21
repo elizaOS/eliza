@@ -23,6 +23,7 @@ const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
 const CANCELLED_CREDENTIAL_TOMBSTONE = "eliza_cancelled_login_credential_v1";
 const PENDING_LOGIN_CREDENTIAL_PREFIX = "eliza_pending_login_credential_v1:";
+const LOGIN_CREDENTIAL_JOURNAL_PREFIX = "eliza_login_credential_journal_v2:";
 const DEFAULT_LOGIN_REVOCATION_TIMEOUT_MS = 5_000;
 
 export interface AndroidCloudIdentity {
@@ -84,6 +85,12 @@ interface PendingLoginCredential {
   token: string;
 }
 
+interface StoredCredentialState {
+  activeToken: string | null;
+  activeSessionId: string | null;
+  pending: PendingLoginCredential[];
+}
+
 function record(value: unknown): JsonRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
@@ -92,12 +99,6 @@ function record(value: unknown): JsonRecord | null {
 
 function stringField(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function encodePendingLoginCredential(
-  credential: PendingLoginCredential,
-): string {
-  return `${PENDING_LOGIN_CREDENTIAL_PREFIX}${JSON.stringify(credential)}`;
 }
 
 function decodePendingLoginCredential(
@@ -117,6 +118,126 @@ function decodePendingLoginCredential(
   } catch {
     return null;
   }
+}
+
+function emptyCredentialState(): StoredCredentialState {
+  return { activeToken: null, activeSessionId: null, pending: [] };
+}
+
+function invalidCredentialState(cause?: unknown): never {
+  // error-policy:J3 an unreadable secure-store envelope must remain untouched;
+  // treating it as empty could overwrite live revocation ownership.
+  throw new Error("The stored sign-in credential journal is invalid.", {
+    cause,
+  });
+}
+
+function decodeCredentialState(value: string | null): StoredCredentialState {
+  const stored = value?.trim() || null;
+  if (!stored || stored === CANCELLED_CREDENTIAL_TOMBSTONE) {
+    return emptyCredentialState();
+  }
+  const legacyPending = decodePendingLoginCredential(stored);
+  if (legacyPending) {
+    return {
+      activeToken: null,
+      activeSessionId: null,
+      pending: [legacyPending],
+    };
+  }
+  if (stored.startsWith(PENDING_LOGIN_CREDENTIAL_PREFIX)) {
+    return invalidCredentialState();
+  }
+  if (!stored.startsWith(LOGIN_CREDENTIAL_JOURNAL_PREFIX)) {
+    return { activeToken: stored, activeSessionId: null, pending: [] };
+  }
+  try {
+    const parsed = record(
+      JSON.parse(stored.slice(LOGIN_CREDENTIAL_JOURNAL_PREFIX.length)),
+    );
+    if (!parsed) return invalidCredentialState();
+    const activeToken =
+      parsed.activeToken === null || parsed.activeToken === undefined
+        ? null
+        : stringField(parsed.activeToken);
+    if (
+      parsed.activeToken !== null &&
+      parsed.activeToken !== undefined &&
+      !activeToken
+    ) {
+      return invalidCredentialState();
+    }
+    const activeSessionId =
+      parsed.activeSessionId === null || parsed.activeSessionId === undefined
+        ? null
+        : stringField(parsed.activeSessionId);
+    const hasActiveSessionId =
+      parsed.activeSessionId !== null && parsed.activeSessionId !== undefined;
+    if (
+      (hasActiveSessionId &&
+        (!activeSessionId || !SESSION_ID_PATTERN.test(activeSessionId))) ||
+      (hasActiveSessionId && activeToken === null)
+    ) {
+      return invalidCredentialState();
+    }
+    if (!Array.isArray(parsed.pending)) return invalidCredentialState();
+    const pending: PendingLoginCredential[] = [];
+    const sessions = new Set<string>();
+    for (const value of parsed.pending) {
+      const item = record(value);
+      const sessionId = stringField(item?.sessionId);
+      const token = stringField(item?.token);
+      if (
+        !sessionId ||
+        !SESSION_ID_PATTERN.test(sessionId) ||
+        !token ||
+        sessions.has(sessionId)
+      ) {
+        return invalidCredentialState();
+      }
+      sessions.add(sessionId);
+      pending.push({ sessionId, token });
+    }
+    if (activeSessionId) {
+      const activeReceipt = pending.find(
+        (credential) => credential.sessionId === activeSessionId,
+      );
+      if (activeReceipt && activeReceipt.token !== activeToken) {
+        return invalidCredentialState();
+      }
+    }
+    return { activeToken, activeSessionId, pending };
+  } catch (error) {
+    return invalidCredentialState(error);
+  }
+}
+
+function encodeCredentialState(state: StoredCredentialState): string | null {
+  if (state.pending.length === 0 && state.activeSessionId === null) {
+    return state.activeToken;
+  }
+  return `${LOGIN_CREDENTIAL_JOURNAL_PREFIX}${JSON.stringify(state)}`;
+}
+
+function hasPendingCredential(
+  state: StoredCredentialState,
+  credential: PendingLoginCredential,
+): boolean {
+  return state.pending.some(
+    (pending) =>
+      pending.sessionId === credential.sessionId &&
+      pending.token === credential.token,
+  );
+}
+
+function hasActiveCredential(
+  state: StoredCredentialState,
+  credential: PendingLoginCredential,
+): boolean {
+  return (
+    state.activeSessionId === credential.sessionId &&
+    state.activeToken === credential.token
+  );
 }
 
 async function responseJson(response: Response): Promise<JsonRecord> {
@@ -197,10 +318,8 @@ export class AndroidCloudClient {
   private readonly loginRevocationTimeoutMs: number;
   private credentialMutation: Promise<void> = Promise.resolve();
   private credentialRevision = 0;
-  private readonly loginCredentials = new Map<
-    string,
-    { revision: number; token: string }
-  >();
+  private readonly loginCredentials = new Map<string, { token: string }>();
+  private readonly locallyDeliveredCredentials = new Map<string, string>();
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
@@ -216,36 +335,49 @@ export class AndroidCloudClient {
 
   private async readTokenSnapshot(): Promise<{
     token: string | null;
+    sessionId: string | null;
     revision: number;
   }> {
     const snapshot = await this.mutateCredential(async () => ({
-      raw: await this.credentialStore.read(),
+      state: decodeCredentialState(await this.credentialStore.read()),
       revision: this.credentialRevision,
     }));
-    const pending = decodePendingLoginCredential(snapshot.raw);
-    if (!pending) {
-      return {
-        token: this.normalizeStoredToken(snapshot.raw),
-        revision: snapshot.revision,
-      };
+    const recoveredPending = snapshot.state.pending.filter(
+      (pending) =>
+        this.locallyDeliveredCredentials.get(pending.sessionId) !==
+        pending.token,
+    );
+    for (const pending of recoveredPending) {
+      this.loginCredentials.set(pending.sessionId, { token: pending.token });
     }
-    this.loginCredentials.set(pending.sessionId, {
-      revision: snapshot.revision,
-      token: pending.token,
+    if (snapshot.state.activeToken && snapshot.state.activeSessionId) {
+      this.loginCredentials.set(snapshot.state.activeSessionId, {
+        token: snapshot.state.activeToken,
+      });
+    }
+    const cleanupResults = await Promise.allSettled(
+      recoveredPending.map((pending) =>
+        this.discardLoginAttempt(pending.sessionId, pending.token),
+      ),
+    );
+    const cleanupErrors = cleanupResults.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (cleanupErrors.length === 1) throw cleanupErrors[0];
+    if (cleanupErrors.length > 1) {
+      throw new AggregateError(
+        cleanupErrors,
+        "Stored sign-in credentials could not be revoked.",
+      );
+    }
+    return this.mutateCredential(async () => {
+      const state = decodeCredentialState(await this.credentialStore.read());
+      return {
+        token: state.activeToken,
+        sessionId: state.activeSessionId,
+        revision: this.credentialRevision,
+      };
     });
-    await this.discardLoginAttempt(pending.sessionId, pending.token);
-    return this.mutateCredential(async () => ({
-      token: this.normalizeStoredToken(await this.credentialStore.read()),
-      revision: this.credentialRevision,
-    }));
-  }
-
-  private normalizeStoredToken(value: string | null): string | null {
-    const token = value?.trim() || null;
-    return token === CANCELLED_CREDENTIAL_TOMBSTONE ||
-      token?.startsWith(PENDING_LOGIN_CREDENTIAL_PREFIX)
-      ? null
-      : token;
   }
 
   private mutateCredential<T>(operation: () => Promise<T>): Promise<T> {
@@ -261,35 +393,51 @@ export class AndroidCloudClient {
     credential: PendingLoginCredential,
   ): Promise<number> {
     return this.mutateCredential(async () => {
-      await this.credentialStore.write(
-        encodePendingLoginCredential(credential),
+      const state = decodeCredentialState(await this.credentialStore.read());
+      const sameSession = state.pending.find(
+        (pending) => pending.sessionId === credential.sessionId,
       );
-      this.credentialRevision += 1;
-      return this.credentialRevision;
+      if (sameSession && sameSession.token !== credential.token) {
+        throw new Error("Sign-in credential ownership changed.");
+      }
+      if (!sameSession) state.pending.push(credential);
+      return this.persistCredentialState(state);
     });
   }
 
   private promotePendingLoginCredential(
     credential: PendingLoginCredential,
-    expectedRevision: number,
   ): Promise<number> {
     return this.mutateCredential(async () => {
-      if (this.credentialRevision !== expectedRevision) {
+      const state = decodeCredentialState(await this.credentialStore.read());
+      if (!hasPendingCredential(state, credential)) {
         throw new DOMException(
           "Sign-in credential ownership changed.",
           "AbortError",
         );
       }
-      await this.credentialStore.write(credential.token);
-      this.credentialRevision += 1;
-      return this.credentialRevision;
+      state.activeToken = credential.token;
+      state.activeSessionId = credential.sessionId;
+      return this.persistCredentialState(state);
     });
+  }
+
+  private async persistCredentialState(
+    state: StoredCredentialState,
+  ): Promise<number> {
+    const encoded = encodeCredentialState(state);
+    if (encoded === null) await this.credentialStore.clear();
+    else await this.credentialStore.write(encoded);
+    this.credentialRevision += 1;
+    return this.credentialRevision;
   }
 
   private clearToken(): Promise<void> {
     return this.mutateCredential(async () => {
-      await this.credentialStore.clear();
-      this.credentialRevision += 1;
+      const state = decodeCredentialState(await this.credentialStore.read());
+      state.activeToken = null;
+      state.activeSessionId = null;
+      await this.persistCredentialState(state);
     });
   }
 
@@ -304,18 +452,17 @@ export class AndroidCloudClient {
       ) {
         return false;
       }
-      const current = this.normalizeStoredToken(
-        await this.credentialStore.read(),
-      );
-      if (current !== expectedToken) return false;
-      await this.credentialStore.clear();
-      this.credentialRevision += 1;
+      const state = decodeCredentialState(await this.credentialStore.read());
+      if (state.activeToken !== expectedToken) return false;
+      state.activeToken = null;
+      state.activeSessionId = null;
+      await this.persistCredentialState(state);
       return true;
     });
   }
 
   async restoreSession(): Promise<AndroidCloudSession | null> {
-    const { token, revision } = await this.readTokenSnapshot();
+    const { token, sessionId, revision } = await this.readTokenSnapshot();
     if (!token) return null;
     const response = await this.fetchImpl(
       `${this.apiBase}/api/v1/eliza/personal`,
@@ -324,7 +471,8 @@ export class AndroidCloudClient {
       },
     );
     if (response.status === 401) {
-      await this.clearTokenIfCurrent(token, revision);
+      if (sessionId) await this.discardLoginAttempt(sessionId, token);
+      else await this.clearTokenIfCurrent(token, revision);
       return null;
     }
     if (!response.ok) {
@@ -425,24 +573,15 @@ export class AndroidCloudClient {
       if (!token) throw new Error("Sign-in completed without a session token.");
       signal?.throwIfAborted();
       const pendingCredential = { sessionId, token };
-      const credentialRevision =
-        await this.writePendingLoginCredential(pendingCredential);
-      this.loginCredentials.set(sessionId, {
-        revision: credentialRevision,
-        token,
-      });
+      this.loginCredentials.set(sessionId, { token });
       try {
+        await this.writePendingLoginCredential(pendingCredential);
         signal?.throwIfAborted();
         await this.acknowledgeLoginCredential(sessionId, token, signal);
         signal?.throwIfAborted();
-        const activeRevision = await this.promotePendingLoginCredential(
-          pendingCredential,
-          credentialRevision,
-        );
-        this.loginCredentials.set(sessionId, {
-          revision: activeRevision,
-          token,
-        });
+        await this.promotePendingLoginCredential(pendingCredential);
+        this.loginCredentials.set(sessionId, { token });
+        this.locallyDeliveredCredentials.set(sessionId, token);
         signal?.throwIfAborted();
       } catch (acknowledgementError) {
         try {
@@ -549,8 +688,36 @@ export class AndroidCloudClient {
     }
   }
 
-  acceptLoginAttempt(sessionId: string): void {
+  async acceptLoginAttempt(sessionId: string, token: string): Promise<void> {
+    const credential = { sessionId, token: token.trim() };
+    if (!credential.token) return;
+    const owned = this.loginCredentials.get(sessionId);
+    if (!owned || owned.token !== credential.token) {
+      throw new Error(
+        "The accepted sign-in credential does not match its attempt.",
+      );
+    }
+    await this.mutateCredential(async () => {
+      const state = decodeCredentialState(await this.credentialStore.read());
+      if (!hasActiveCredential(state, credential)) {
+        throw new Error("The accepted sign-in credential is no longer active.");
+      }
+      if (!hasPendingCredential(state, credential)) {
+        throw new Error(
+          "The accepted sign-in credential has no cleanup receipt.",
+        );
+      }
+      state.pending = state.pending.filter(
+        (pending) => pending.sessionId !== sessionId,
+      );
+      // Once the UI has verified the session, the active bearer can collapse
+      // back to the legacy plain-token representation. Other pending attempts
+      // remain in the journal and cannot be overwritten by this acceptance.
+      state.activeSessionId = null;
+      await this.persistCredentialState(state);
+    });
     this.loginCredentials.delete(sessionId);
+    this.locallyDeliveredCredentials.delete(sessionId);
   }
 
   private async acknowledgeLoginCredential(
@@ -589,6 +756,7 @@ export class AndroidCloudClient {
   async discardLoginAttempt(sessionId: string, token: string): Promise<void> {
     const expectedToken = token.trim();
     if (!expectedToken) return;
+    this.locallyDeliveredCredentials.delete(sessionId);
     const owned = this.loginCredentials.get(sessionId);
     if (!owned) return;
     if (owned.token !== expectedToken) {
@@ -597,22 +765,30 @@ export class AndroidCloudClient {
       );
     }
 
+    const credential = { sessionId, token: expectedToken };
     const neutralizeStoredCredential = () =>
       this.mutateCredential(async () => {
-        let ownsStoredCredential = this.credentialRevision === owned.revision;
-        if (!ownsStoredCredential) {
-          const pending = decodePendingLoginCredential(
-            await this.credentialStore.read(),
-          );
-          ownsStoredCredential =
-            pending?.sessionId === sessionId && pending.token === expectedToken;
-        }
+        const state = decodeCredentialState(await this.credentialStore.read());
+        const ownsStoredCredential =
+          hasActiveCredential(state, credential) ||
+          hasPendingCredential(state, credential);
         if (!ownsStoredCredential) return;
+        if (hasActiveCredential(state, credential)) {
+          state.activeToken = null;
+          state.activeSessionId = null;
+        }
+        state.pending = state.pending.filter(
+          (pending) => pending.sessionId !== sessionId,
+        );
         try {
-          await this.credentialStore.clear();
+          await this.persistCredentialState(state);
         } catch (clearError) {
+          if (state.activeToken !== null || state.pending.length > 0) {
+            throw clearError;
+          }
           try {
             await this.credentialStore.write(CANCELLED_CREDENTIAL_TOMBSTONE);
+            this.credentialRevision += 1;
           } catch (tombstoneError) {
             throw new AggregateError(
               [clearError, tombstoneError],
@@ -620,27 +796,24 @@ export class AndroidCloudClient {
             );
           }
         }
-        this.credentialRevision += 1;
-        owned.revision = this.credentialRevision;
       });
 
     let quarantineError: unknown;
     try {
       await this.mutateCredential(async () => {
-        let ownsStoredCredential = this.credentialRevision === owned.revision;
-        if (!ownsStoredCredential) {
-          const pending = decodePendingLoginCredential(
-            await this.credentialStore.read(),
-          );
-          ownsStoredCredential =
-            pending?.sessionId === sessionId && pending.token === expectedToken;
-        }
+        const state = decodeCredentialState(await this.credentialStore.read());
+        const ownsStoredCredential =
+          hasActiveCredential(state, credential) ||
+          hasPendingCredential(state, credential);
         if (!ownsStoredCredential) return;
-        await this.credentialStore.write(
-          encodePendingLoginCredential({ sessionId, token: expectedToken }),
-        );
-        this.credentialRevision += 1;
-        owned.revision = this.credentialRevision;
+        if (hasActiveCredential(state, credential)) {
+          state.activeToken = null;
+          state.activeSessionId = null;
+        }
+        if (!hasPendingCredential(state, credential)) {
+          state.pending.push(credential);
+        }
+        await this.persistCredentialState(state);
       });
     } catch (error) {
       quarantineError = error;

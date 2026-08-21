@@ -404,6 +404,26 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     await cliAuthSessionsService.cleanupExpiredSessions();
 
     await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
+    await expect(readSession(sessionId)).resolves.toMatchObject({
+      status: "expired",
+      consumed_at: expect.any(String),
+    });
+
+    const responseLostDeleteRetry = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(responseLostDeleteRetry.status).toBe(204);
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
+
+    await dbWrite.execute(
+      `UPDATE api_keys SET expires_at = now() - interval '1 second' WHERE id = '${API_KEY_ID}'`,
+    );
+    await cliAuthSessionsService.cleanupExpiredSessions();
+    await expect(readSession(sessionId)).resolves.toBeUndefined();
   });
 
   test("exact delivery acknowledgement preserves the accepted credential at session expiry", async () => {
@@ -464,6 +484,20 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     await expect(
       apiKeysRepository.findByIdConsistent(API_KEY_ID),
     ).resolves.toMatchObject({ id: API_KEY_ID, is_active: true });
+    await expect(readSession(sessionId)).resolves.toMatchObject({
+      status: "authenticated",
+      consumed_at: expect.any(String),
+    });
+
+    const responseLostDeleteRetry = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(responseLostDeleteRetry.status).toBe(204);
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
   });
 
   test("canceling an unacknowledged delivery terminalizes it so a later acknowledgement cannot reactivate it", async () => {

@@ -20,6 +20,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import crypto from "crypto";
 import { eq } from "drizzle-orm";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
@@ -116,13 +117,17 @@ async function seedKey(
   return key;
 }
 
-async function seedSession(overrides: Partial<typeof cliAuthSessions.$inferInsert>): Promise<void> {
+async function seedSession(
+  overrides: Partial<typeof cliAuthSessions.$inferInsert>,
+): Promise<string> {
+  const sessionId = overrides.session_id ?? uniq("sess");
   await dbWrite.insert(cliAuthSessions).values({
-    session_id: uniq("sess"),
+    session_id: sessionId,
     status: "pending",
     expires_at: new Date(Date.now() - 60_000),
     ...overrides,
   });
+  return sessionId;
 }
 
 async function keyIsActive(id: string): Promise<boolean> {
@@ -134,9 +139,23 @@ async function keyIsActive(id: string): Promise<boolean> {
 }
 
 async function reapExpiredSessionsForRepositoryTest() {
-  const revokedOrphanKeys = await cliAuthSessionsRepository.prepareExpiredSessionsForReap();
-  const deletedSessions = await cliAuthSessionsRepository.deleteExpiredSessions();
+  const cutoff = new Date();
+  const candidates = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
+  const deletedSessions = await cliAuthSessionsRepository.deleteExpiredSessions(cutoff, candidates);
+  const revokedOrphanKeys = candidates.flatMap((candidate) =>
+    candidate.api_key_id && candidate.key_hash
+      ? [{ id: candidate.api_key_id, key_hash: candidate.key_hash }]
+      : [],
+  );
   return { deletedSessions, revokedOrphanKeys };
+}
+
+function deferred(): { promise: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
 }
 
 describe("reapExpiredSessions on primary PGlite", () => {
@@ -159,7 +178,7 @@ describe("reapExpiredSessions on primary PGlite", () => {
     expect(await dbWrite.select().from(cliAuthSessions)).toHaveLength(0);
   });
 
-  test("leaves a consumed session's key active while deleting the session", async () => {
+  test("retains a consumed authenticated receipt while its bound key is live", async () => {
     const ids = await seedIdentity();
     const delivered = await seedKey(ids);
     await seedSession({
@@ -171,9 +190,43 @@ describe("reapExpiredSessions on primary PGlite", () => {
 
     const result = await reapExpiredSessionsForRepositoryTest();
 
-    expect(result.deletedSessions).toBe(1);
+    expect(result.deletedSessions).toBe(0);
     expect(result.revokedOrphanKeys).toEqual([]);
     expect(await keyIsActive(delivered.id)).toBe(true);
+    expect(await dbWrite.select().from(cliAuthSessions)).toHaveLength(1);
+  });
+
+  test("retains an inactive consumed receipt for response-lost DELETE until key expiry", async () => {
+    const ids = await seedIdentity();
+    const delivered = await seedKey(ids, { is_active: false });
+    const sessionId = await seedSession({
+      status: "pending",
+      user_id: ids.userId,
+      api_key_id: delivered.id,
+      consumed_at: new Date(Date.now() - 30_000),
+    });
+
+    const first = await reapExpiredSessionsForRepositoryTest();
+
+    expect(first.deletedSessions).toBe(0);
+    expect(first.revokedOrphanKeys).toEqual([{ id: delivered.id, key_hash: delivered.key_hash }]);
+    await expect(cliAuthSessionsRepository.findApiKeyRevealState(sessionId)).resolves.toMatchObject(
+      {
+        session: { status: "expired", consumed_at: expect.any(Date) },
+        apiKey: { is_active: false },
+      },
+    );
+
+    await dbWrite
+      .update(apiKeys)
+      .set({ expires_at: new Date(Date.now() - 1) })
+      .where(eq(apiKeys.id, delivered.id));
+    const second = await reapExpiredSessionsForRepositoryTest();
+
+    expect(second.deletedSessions).toBe(1);
+    await expect(
+      cliAuthSessionsRepository.findApiKeyRevealState(sessionId),
+    ).resolves.toBeUndefined();
   });
 
   test("ignores live sessions and keyless expired sessions", async () => {
@@ -195,7 +248,7 @@ describe("reapExpiredSessions on primary PGlite", () => {
     expect(await dbWrite.select().from(cliAuthSessions)).toHaveLength(1);
   });
 
-  test("re-reports inactive retry carriers but not soft-deleted keys", async () => {
+  test("re-reports inactive retry carriers and removes receipts whose key was deleted", async () => {
     const ids = await seedIdentity();
     const alreadyRevoked = await seedKey(ids, { is_active: false });
     const canceledDelivery = await seedKey(ids, { is_active: false });
@@ -206,7 +259,7 @@ describe("reapExpiredSessions on primary PGlite", () => {
       api_key_id: alreadyRevoked.id,
     });
     await seedSession({ status: "authenticated", user_id: ids.userId, api_key_id: softDeleted.id });
-    await seedSession({
+    const canceledSessionId = await seedSession({
       status: "expired",
       user_id: ids.userId,
       api_key_id: canceledDelivery.id,
@@ -215,19 +268,149 @@ describe("reapExpiredSessions on primary PGlite", () => {
 
     const result = await reapExpiredSessionsForRepositoryTest();
 
-    expect(result.deletedSessions).toBe(3);
+    expect(result.deletedSessions).toBe(2);
     expect(result.revokedOrphanKeys).toEqual(
       expect.arrayContaining([
         { id: alreadyRevoked.id, key_hash: alreadyRevoked.key_hash },
         { id: canceledDelivery.id, key_hash: canceledDelivery.key_hash },
+        { id: softDeleted.id, key_hash: softDeleted.key_hash },
       ]),
     );
-    expect(result.revokedOrphanKeys).toHaveLength(2);
+    expect(result.revokedOrphanKeys).toHaveLength(3);
+    await expect(
+      cliAuthSessionsRepository.findApiKeyRevealState(canceledSessionId),
+    ).resolves.toMatchObject({
+      session: { status: "expired", consumed_at: expect.any(Date) },
+      apiKey: { is_active: false },
+    });
+  });
+
+  test("ACK committed just before cleanup selection retains its exact receipt and active key", async () => {
+    const ids = await seedIdentity();
+    const token = `eliza_cli_${"a".repeat(64)}`;
+    const keyHash = crypto.createHash("sha256").update(token).digest("hex");
+    const delivered = await seedKey(ids, { is_active: false, key_hash: keyHash });
+    const expiresAt = new Date(Date.now() + 60_000);
+    const sessionId = await seedSession({
+      status: "pending",
+      user_id: ids.userId,
+      api_key_id: delivered.id,
+      consumed_at: new Date(),
+      expires_at: expiresAt,
+    });
+    const cleanupReached = deferred();
+    const allowCleanupSelection = deferred();
+    const cleanup = (async () => {
+      cleanupReached.release();
+      await allowCleanupSelection.promise;
+      return await cliAuthSessionsRepository.prepareExpiredSessionsForReap(
+        new Date(expiresAt.getTime() + 1),
+      );
+    })();
+
+    await cleanupReached.promise;
+    await expect(
+      cliAuthSessionsRepository.acknowledgeConsumed({
+        sessionId,
+        apiKeyId: delivered.id,
+        userId: ids.userId,
+        organizationId: ids.orgId,
+        keyHash,
+      }),
+    ).resolves.toMatchObject({ status: "authenticated" });
+    allowCleanupSelection.release();
+
+    await expect(cleanup).resolves.toEqual([]);
+    expect(await keyIsActive(delivered.id)).toBe(true);
+    await expect(cliAuthSessionsRepository.findApiKeyRevealState(sessionId)).resolves.toMatchObject(
+      { session: { status: "authenticated" } },
+    );
+  });
+
+  test("cleanup committed before a stale ACK prevents credential reactivation", async () => {
+    const ids = await seedIdentity();
+    const token = `eliza_cli_${"b".repeat(64)}`;
+    const keyHash = crypto.createHash("sha256").update(token).digest("hex");
+    const delivered = await seedKey(ids, { is_active: false, key_hash: keyHash });
+    const expiresAt = new Date(Date.now() + 60_000);
+    const sessionId = await seedSession({
+      status: "pending",
+      user_id: ids.userId,
+      api_key_id: delivered.id,
+      consumed_at: new Date(),
+      expires_at: expiresAt,
+    });
+    const activationReached = deferred();
+    const allowActivation = deferred();
+    const activation = (async () => {
+      activationReached.release();
+      await allowActivation.promise;
+      return await cliAuthSessionsRepository.acknowledgeConsumed({
+        sessionId,
+        apiKeyId: delivered.id,
+        userId: ids.userId,
+        organizationId: ids.orgId,
+        keyHash,
+      });
+    })();
+
+    await activationReached.promise;
+    const cutoff = new Date(expiresAt.getTime() + 1);
+    const candidates = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
+    allowActivation.release();
+
+    await expect(activation).resolves.toBeUndefined();
+    expect(candidates).toEqual([
+      { session_id: sessionId, api_key_id: delivered.id, key_hash: keyHash },
+    ]);
+    expect(await keyIsActive(delivered.id)).toBe(false);
+    await expect(cliAuthSessionsRepository.findApiKeyRevealState(sessionId)).resolves.toMatchObject(
+      { session: { status: "expired" } },
+    );
+  });
+
+  test("finalization deletes only exact candidates whose bound key remains denied", async () => {
+    const ids = await seedIdentity();
+    const preserved = await seedKey(ids);
+    const removable = await seedKey(ids);
+    const preservedSessionId = await seedSession({
+      status: "authenticated",
+      user_id: ids.userId,
+      api_key_id: preserved.id,
+    });
+    const removableSessionId = await seedSession({
+      status: "authenticated",
+      user_id: ids.userId,
+      api_key_id: removable.id,
+    });
+    const cutoff = new Date();
+    const candidates = await cliAuthSessionsRepository.prepareExpiredSessionsForReap(cutoff);
+    await dbWrite.update(apiKeys).set({ is_active: true }).where(eq(apiKeys.id, preserved.id));
+    const lateKey = await seedKey(ids);
+    const lateSessionId = await seedSession({
+      status: "authenticated",
+      user_id: ids.userId,
+      api_key_id: lateKey.id,
+      expires_at: new Date(cutoff.getTime() - 1),
+    });
+
+    await expect(cliAuthSessionsRepository.deleteExpiredSessions(cutoff, candidates)).resolves.toBe(
+      1,
+    );
+    await expect(
+      cliAuthSessionsRepository.findApiKeyRevealState(preservedSessionId),
+    ).resolves.toMatchObject({ session: { status: "expired" }, apiKey: { is_active: true } });
+    await expect(
+      cliAuthSessionsRepository.findApiKeyRevealState(removableSessionId),
+    ).resolves.toBeUndefined();
+    await expect(
+      cliAuthSessionsRepository.findApiKeyRevealState(lateSessionId),
+    ).resolves.toMatchObject({ session: { status: "authenticated" } });
   });
 });
 
 describe("cleanupExpiredSessions service boundary", () => {
-  test("retries cache denial for a terminal canceled delivery before deleting its carrier", async () => {
+  test("retries cache denial while retaining a consumed cancellation receipt", async () => {
     const ids = await seedIdentity();
     const canceled = await seedKey(ids, { is_active: false });
     await seedSession({
@@ -239,11 +422,11 @@ describe("cleanupExpiredSessions service boundary", () => {
     const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue(undefined));
 
     await expect(cliAuthSessionsService.cleanupExpiredSessions()).resolves.toEqual({
-      deletedSessions: 1,
+      deletedSessions: 0,
       revokedOrphanKeys: 1,
     });
     expect(invalidate).toHaveBeenCalledWith(canceled.key_hash);
-    expect(await dbWrite.select().from(cliAuthSessions)).toHaveLength(0);
+    expect(await dbWrite.select().from(cliAuthSessions)).toHaveLength(1);
   });
 
   test("invalidates auth caches for each revoked orphan hash after commit", async () => {
@@ -261,6 +444,7 @@ describe("cleanupExpiredSessions service boundary", () => {
 
     expect(result).toEqual({ deletedSessions: 2, revokedOrphanKeys: 2 });
     expect(prepare.mock.calls[0]?.[0]).toBe(remove.mock.calls[0]?.[0]);
+    expect(remove.mock.calls[0]?.[1]).toHaveLength(2);
     const invalidatedHashes = invalidate.mock.calls.map((call) => call[0]).sort();
     expect(invalidatedHashes).toEqual([orphanA.key_hash, orphanB.key_hash].sort());
     // Both keys were already inactive in the database before any invalidation

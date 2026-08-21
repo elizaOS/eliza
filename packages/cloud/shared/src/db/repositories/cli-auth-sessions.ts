@@ -1,6 +1,6 @@
 /** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, exists, gt, inArray, isNotNull, isNull, lt, or } from "drizzle-orm";
+import { and, eq, exists, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys } from "../schemas/api-keys";
 import {
@@ -14,6 +14,12 @@ export type { CliAuthSession, NewCliAuthSession };
 export interface CliAuthApiKeyRevealState {
   session: CliAuthSession;
   apiKey: ApiKey | null;
+}
+
+export interface CliAuthSessionCleanupCandidate {
+  session_id: string;
+  api_key_id: string | null;
+  key_hash: string | null;
 }
 
 function atomicCredentialTransitionError(
@@ -397,59 +403,150 @@ export class CliAuthSessionsRepository {
    * receipt with the exact bearer. Expired unacknowledged reveals are revoked;
    * acknowledged and legacy consumed sessions leave their keys active.
    *
-   * Returns every cleanup candidate, including a key already made inactive by
-   * an earlier failed cleanup pass. The expired session remains as the durable
-   * retry carrier until the service confirms every post-commit cache
-   * invalidation and calls {@link deleteExpiredSessions}.
+   * Session rows are locked before their bound key so acknowledgement and
+   * cleanup serialize in the same order. An acknowledgement that commits first
+   * leaves an authenticated receipt, while cleanup that commits first changes
+   * the pending delivery to `expired` before its key is deactivated. A stale
+   * acknowledgement can therefore never reactivate a cleanup-selected key.
+   *
+   * Consumed authenticated sessions are revocation receipts. They remain until
+   * the bound key itself expires or is deleted so a response-lost DELETE can be
+   * retried with the exact bearer. Every returned candidate is terminalized in
+   * this transaction and remains as a durable cache-invalidation retry carrier
+   * until {@link deleteExpiredSessions} receives that exact candidate set.
    */
   async prepareExpiredSessionsForReap(
     now: Date = new Date(),
-  ): Promise<{ id: string; key_hash: string }[]> {
+  ): Promise<CliAuthSessionCleanupCandidate[]> {
     return await dbWrite.transaction(async (tx) => {
-      const cleanupKeys = await tx
-        .select({ id: apiKeys.id, key_hash: apiKeys.key_hash })
-        .from(apiKeys)
-        .innerJoin(cliAuthSessions, eq(cliAuthSessions.api_key_id, apiKeys.id))
-        .where(
-          and(
-            lt(cliAuthSessions.expires_at, now),
-            or(
-              isNull(cliAuthSessions.consumed_at),
-              eq(cliAuthSessions.status, "pending"),
-              and(eq(cliAuthSessions.status, "expired"), eq(apiKeys.is_active, false)),
-            ),
-            isNull(apiKeys.deleted_at),
-          ),
-        );
+      const expiredSessions = await tx
+        .select()
+        .from(cliAuthSessions)
+        .where(lt(cliAuthSessions.expires_at, now))
+        .orderBy(cliAuthSessions.session_id)
+        .for("update");
+      const candidates: CliAuthSessionCleanupCandidate[] = [];
 
-      if (cleanupKeys.length > 0) {
+      for (const session of expiredSessions) {
+        let apiKey: ApiKey | undefined;
+        if (session.api_key_id) {
+          [apiKey] = await tx
+            .select()
+            .from(apiKeys)
+            .where(eq(apiKeys.id, session.api_key_id))
+            .limit(1)
+            .for("update");
+        }
+
+        const keyStillLive =
+          apiKey && !apiKey.deleted_at && (!apiKey.expires_at || apiKey.expires_at > now);
+        if (session.status === "authenticated" && session.consumed_at && keyStillLive) {
+          continue;
+        }
+
+        if (apiKey?.is_active && !apiKey.deleted_at) {
+          await tx
+            .update(apiKeys)
+            .set({ is_active: false, updated_at: now })
+            .where(
+              and(
+                eq(apiKeys.id, apiKey.id),
+                eq(apiKeys.key_hash, apiKey.key_hash),
+                eq(apiKeys.is_active, true),
+                isNull(apiKeys.deleted_at),
+              ),
+            );
+        }
+
         await tx
-          .update(apiKeys)
-          .set({ is_active: false, updated_at: now })
+          .update(cliAuthSessions)
+          .set({ status: "expired", updated_at: now })
           .where(
             and(
-              inArray(
-                apiKeys.id,
-                cleanupKeys.map((key) => key.id),
-              ),
-              eq(apiKeys.is_active, true),
-              isNull(apiKeys.deleted_at),
+              eq(cliAuthSessions.session_id, session.session_id),
+              session.api_key_id
+                ? eq(cliAuthSessions.api_key_id, session.api_key_id)
+                : isNull(cliAuthSessions.api_key_id),
             ),
           );
+        candidates.push({
+          session_id: session.session_id,
+          api_key_id: session.api_key_id,
+          key_hash: apiKey?.key_hash ?? null,
+        });
       }
 
-      return cleanupKeys;
+      return candidates;
     });
   }
 
-  /** Deletes expired sessions only after their cache denial is confirmed. */
-  async deleteExpiredSessions(now: Date = new Date()): Promise<number> {
-    const deleted = await dbWrite
-      .delete(cliAuthSessions)
-      .where(lt(cliAuthSessions.expires_at, now))
-      .returning({ id: cliAuthSessions.id });
+  /** Deletes only prepared terminal candidates after cache denial is confirmed. */
+  async deleteExpiredSessions(
+    now: Date,
+    candidates: readonly CliAuthSessionCleanupCandidate[],
+  ): Promise<number> {
+    if (candidates.length === 0) return 0;
+    return await dbWrite.transaction(async (tx) => {
+      let deletedCount = 0;
+      for (const candidate of candidates) {
+        const [session] = await tx
+          .select()
+          .from(cliAuthSessions)
+          .where(
+            and(
+              eq(cliAuthSessions.session_id, candidate.session_id),
+              eq(cliAuthSessions.status, "expired"),
+              lt(cliAuthSessions.expires_at, now),
+              candidate.api_key_id
+                ? eq(cliAuthSessions.api_key_id, candidate.api_key_id)
+                : isNull(cliAuthSessions.api_key_id),
+            ),
+          )
+          .limit(1)
+          .for("update");
+        if (!session) continue;
 
-    return deleted.length;
+        if (candidate.api_key_id) {
+          const [apiKey] = await tx
+            .select()
+            .from(apiKeys)
+            .where(eq(apiKeys.id, candidate.api_key_id))
+            .limit(1)
+            .for("update");
+          if (apiKey) {
+            const keyRemainsBound =
+              !apiKey.deleted_at && (!apiKey.expires_at || apiKey.expires_at > now);
+            if (
+              apiKey.key_hash !== candidate.key_hash ||
+              (session.consumed_at && keyRemainsBound) ||
+              (apiKey.is_active && keyRemainsBound)
+            ) {
+              // A consumed session is the exact bearer-authorized revocation
+              // receipt even after its key has been deactivated. Keep that
+              // binding until the key expires or is deleted so a response-lost
+              // client DELETE can still complete idempotently.
+              continue;
+            }
+          }
+        }
+
+        const deleted = await tx
+          .delete(cliAuthSessions)
+          .where(
+            and(
+              eq(cliAuthSessions.id, session.id),
+              eq(cliAuthSessions.status, "expired"),
+              lt(cliAuthSessions.expires_at, now),
+              candidate.api_key_id
+                ? eq(cliAuthSessions.api_key_id, candidate.api_key_id)
+                : isNull(cliAuthSessions.api_key_id),
+            ),
+          )
+          .returning({ id: cliAuthSessions.id });
+        deletedCount += deleted.length;
+      }
+      return deletedCount;
+    });
   }
 }
 

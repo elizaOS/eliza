@@ -6327,9 +6327,22 @@ import java.util.UUID;
     name = "ElizaPlayVoice",
     permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
 )
-public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+public final class ElizaPlayVoicePlugin extends Plugin {
+    private static final class RecognizerSession {
+        final SpeechRecognizer recognizer;
+        final long epoch;
+        boolean destroyed = false;
+
+        RecognizerSession(SpeechRecognizer recognizer, long epoch) {
+            this.recognizer = recognizer;
+            this.epoch = epoch;
+        }
+    }
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private SpeechRecognizer recognizer;
+    private RecognizerSession activeRecognizer;
+    private long recognizerEpoch = 0;
+    private final ArrayList<RecognizerSession> recognizersPendingCleanup = new ArrayList<>();
 
     @PluginMethod
     public void requestPermission(PluginCall call) {
@@ -6367,8 +6380,68 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             return;
         }
         try {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-            recognizer.setRecognitionListener(this);
+            SpeechRecognizer nextRecognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            long nextEpoch = ++recognizerEpoch;
+            RecognizerSession nextSession = new RecognizerSession(nextRecognizer, nextEpoch);
+            activeRecognizer = nextSession;
+            nextRecognizer.setRecognitionListener(new RecognitionListener() {
+                private boolean ownsCurrentRecognizer() {
+                    return activeRecognizer == nextSession && recognizerEpoch == nextEpoch;
+                }
+
+                private void cleanupAfterCallback() {
+                    stopRecognizerAfterCallback(nextSession);
+                }
+
+                @Override public void onReadyForSpeech(Bundle params) {}
+                @Override public void onBeginningOfSpeech() {}
+                @Override public void onRmsChanged(float rmsdB) {}
+                @Override public void onBufferReceived(byte[] buffer) {}
+                @Override public void onEndOfSpeech() {}
+                @Override public void onError(int error) {
+                    if (!ownsCurrentRecognizer()) {
+                        retryStaleRecognizerCleanup(nextSession);
+                        return;
+                    }
+                    try {
+                        JSObject event = new JSObject();
+                        event.put("code", error);
+                        notifyListeners("error", event);
+                    } catch (RuntimeException publicationError) {
+                        // error-policy:J4 Android framework callbacks cannot
+                        // propagate a bridge publication failure.
+                        android.util.Log.e("ElizaPlayVoice", "Recognizer error publication failed", publicationError);
+                    } finally {
+                        cleanupAfterCallback();
+                    }
+                }
+                @Override public void onResults(Bundle results) {
+                    if (!ownsCurrentRecognizer()) {
+                        retryStaleRecognizerCleanup(nextSession);
+                        return;
+                    }
+                    try {
+                        publishTranscript(results, true);
+                    } catch (RuntimeException publicationError) {
+                        // error-policy:J4 Android framework callbacks cannot
+                        // propagate a bridge publication failure.
+                        android.util.Log.e("ElizaPlayVoice", "Recognizer result publication failed", publicationError);
+                    } finally {
+                        cleanupAfterCallback();
+                    }
+                }
+                @Override public void onPartialResults(Bundle partialResults) {
+                    if (!ownsCurrentRecognizer()) return;
+                    try {
+                        publishTranscript(partialResults, false);
+                    } catch (RuntimeException publicationError) {
+                        // error-policy:J4 Partial-result publication failure is
+                        // contained at the Android callback boundary.
+                        android.util.Log.e("ElizaPlayVoice", "Recognizer partial publication failed", publicationError);
+                    }
+                }
+                @Override public void onEvent(int eventType, Bundle params) {}
+            });
             Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
@@ -6377,7 +6450,7 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             if (language != null && !language.trim().isEmpty()) {
                 intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
             }
-            recognizer.startListening(intent);
+            nextRecognizer.startListening(intent);
             JSObject result = new JSObject();
             result.put("started", true);
             call.resolve(result);
@@ -6472,9 +6545,29 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
     }
 
     private void stopRecognizer() {
-        if (recognizer == null) return;
-        SpeechRecognizer current = recognizer;
-        recognizer = null;
+        ArrayList<RecognizerSession> cleanup = new ArrayList<>(recognizersPendingCleanup);
+        recognizersPendingCleanup.clear();
+        if (activeRecognizer != null) {
+            cleanup.add(activeRecognizer);
+            activeRecognizer = null;
+            recognizerEpoch += 1;
+        }
+        RuntimeException failure = null;
+        for (RecognizerSession current : cleanup) {
+            RuntimeException cleanupFailure = stopRecognizerInstance(current);
+            if (cleanupFailure == null) continue;
+            if (!current.destroyed && !recognizersPendingCleanup.contains(current)) {
+                recognizersPendingCleanup.add(current);
+            }
+            if (failure == null) failure = cleanupFailure;
+            else failure.addSuppressed(cleanupFailure);
+        }
+        if (failure != null) throw failure;
+    }
+
+    private RuntimeException stopRecognizerInstance(RecognizerSession session) {
+        if (session.destroyed) return null;
+        SpeechRecognizer current = session.recognizer;
         RuntimeException failure = null;
         try {
             current.stopListening();
@@ -6489,17 +6582,37 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         }
         try {
             current.destroy();
+            session.destroyed = true;
         } catch (RuntimeException error) {
             if (failure == null) failure = error;
             else failure.addSuppressed(error);
         }
-        if (failure != null) throw failure;
+        return failure;
     }
 
-    private void stopRecognizerAfterCallback() {
+    private void retryStaleRecognizerCleanup(RecognizerSession staleSession) {
+        if (!recognizersPendingCleanup.contains(staleSession)) return;
+        RuntimeException failure = stopRecognizerInstance(staleSession);
+        if (staleSession.destroyed) {
+            recognizersPendingCleanup.remove(staleSession);
+        }
+        if (failure == null) {
+            return;
+        }
+        android.util.Log.e("ElizaPlayVoice", "Stale recognizer cleanup failed", failure);
+    }
+
+    private void stopRecognizerAfterCallback(RecognizerSession callbackSession) {
+        if (activeRecognizer == callbackSession && recognizerEpoch == callbackSession.epoch) {
+            activeRecognizer = null;
+            recognizerEpoch += 1;
+        }
         try {
-            stopRecognizer();
-        } catch (RuntimeException error) {
+            RuntimeException error = stopRecognizerInstance(callbackSession);
+            if (error == null) return;
+            if (!callbackSession.destroyed && !recognizersPendingCleanup.contains(callbackSession)) {
+                recognizersPendingCleanup.add(callbackSession);
+            }
             // error-policy:J4 Preserve the callback result and surface cleanup failure to JS.
             // Framework callbacks must not throw onto Android's main thread.
             // Preserve the diagnostic locally and notify the JS owner so its
@@ -6508,6 +6621,10 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             JSObject event = new JSObject();
             event.put("code", -1);
             notifyListeners("error", event);
+        } catch (RuntimeException error) {
+            // error-policy:J4 Even diagnostic bookkeeping must not throw across
+            // an Android framework callback boundary.
+            android.util.Log.e("ElizaPlayVoice", "Recognizer callback containment failed", error);
         }
     }
 
@@ -6524,25 +6641,6 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         notifyListeners("transcript", event);
     }
 
-    @Override public void onReadyForSpeech(Bundle params) {}
-    @Override public void onBeginningOfSpeech() {}
-    @Override public void onRmsChanged(float rmsdB) {}
-    @Override public void onBufferReceived(byte[] buffer) {}
-    @Override public void onEndOfSpeech() {}
-    @Override public void onError(int error) {
-        JSObject event = new JSObject();
-        event.put("code", error);
-        notifyListeners("error", event);
-        stopRecognizerAfterCallback();
-    }
-    @Override public void onResults(Bundle results) {
-        publishTranscript(results, true);
-        stopRecognizerAfterCallback();
-    }
-    @Override public void onPartialResults(Bundle partialResults) {
-        publishTranscript(partialResults, false);
-    }
-    @Override public void onEvent(int eventType, Bundle params) {}
 }
 `;
 }
