@@ -54,6 +54,13 @@ describe("browser bridge enrollment adapter", () => {
         }),
       }),
     );
+    const request = fetchImpl.mock.calls[0]?.[1];
+    expect(JSON.parse(String(request?.body))).toEqual({
+      browser: "chrome",
+      profileId: "Default",
+      extensionVersion: "1.2.3",
+      pairingKind: "native_enrollment",
+    });
   });
 
   it("rejects non-loopback APIs, expired authority, and incomplete responses", async () => {

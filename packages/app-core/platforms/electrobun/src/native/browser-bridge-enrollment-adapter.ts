@@ -130,7 +130,10 @@ export async function pairBrowserBridgeCompanionAsDesktopOwner(options: {
           cookie: `eliza_session=${encodeURIComponent(options.ownerSession.sessionId)}`,
           "x-eliza-csrf": options.ownerSession.csrfToken,
         },
-        body: JSON.stringify(options.payload),
+        body: JSON.stringify({
+          ...options.payload,
+          pairingKind: "native_enrollment",
+        }),
         signal: abortController.signal,
       },
     );
