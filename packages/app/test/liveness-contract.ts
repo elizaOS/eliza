@@ -43,6 +43,7 @@ const ASSISTANT_MESSAGE_SELECTOR =
 
 const DEFAULT_PROMPT = "In one short sentence, say hello.";
 const DEFAULT_REPLY_TIMEOUT_MS = 120_000;
+const REPLY_ROW_READ_TIMEOUT_MS = 1_000;
 
 export interface LivenessChatOptions {
   /** Prompt to send; defaults to a short, tool-free hello. */
@@ -101,7 +102,15 @@ async function acceptedReplyText(
       .count();
     if (replyBodies === 0) return "";
   }
-  const text = (await row.textContent())?.trim() ?? "";
+  // A streaming row can be replaced between count() and textContent(). Keep a
+  // single detached locator from consuming Playwright's 30s action timeout;
+  // the outer expect.poll owns the full reply deadline and will inspect the
+  // replacement row on its next iteration.
+  const text = (
+    await row
+      .textContent({ timeout: REPLY_ROW_READ_TIMEOUT_MS })
+      .catch(() => null)
+  )?.trim();
   if (!text) return "";
   if (challengeToken && !text.toLowerCase().includes(challengeToken)) return "";
   return text;

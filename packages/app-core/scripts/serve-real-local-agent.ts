@@ -13,6 +13,7 @@ import { readFile } from "node:fs/promises";
 import { ModelType, type Plugin, type Route } from "@elizaos/core";
 import { createDeterministicModelPlugin } from "@elizaos/core/testing";
 import { backgroundUploadImageRoute } from "../../agent/src/api/background-routes.ts";
+import { registerPluginViews } from "../../agent/src/api/views-registry.ts";
 import { registerTriggerTaskWorker } from "../../agent/src/triggers/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
@@ -217,6 +218,13 @@ async function main(): Promise<void> {
       rubyHighEvidenceActionRoute,
     ],
   };
+  // Route coverage exercises the real dynamic view registry, so the host must
+  // declare the view-only task-coordinator plugin instead of relying on the
+  // browser smoke suite's synthetic registry fixture. Its Node entrypoint does
+  // not load the UI bundle; app-core serves that bundle only when requested.
+  const { default: taskCoordinatorPlugin } = await import(
+    "../../../plugins/plugin-task-coordinator/src/index.ts"
+  );
   const workflowPlugins: Plugin[] = [];
   if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
     const { default: workflowPlugin } = await import(
@@ -229,8 +237,18 @@ async function main(): Promise<void> {
   }
   const runtimeResult = await createRealTestRuntime({
     characterName: "DeviceE2EHostAgent",
-    plugins: [proxy, mediaRoutesPlugin, ...workflowPlugins],
+    plugins: [
+      proxy,
+      mediaRoutesPlugin,
+      taskCoordinatorPlugin,
+      ...workflowPlugins,
+    ],
   });
+  await registerPluginViews(
+    taskCoordinatorPlugin,
+    undefined,
+    runtimeResult.runtime,
+  );
   if (process.env.ELIZA_UI_SMOKE_WORKFLOW_JOURNEY === "1") {
     registerTriggerTaskWorker(runtimeResult.runtime);
   }

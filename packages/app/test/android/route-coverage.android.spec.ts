@@ -59,6 +59,16 @@ test.describe("android route coverage (real backend)", () => {
     // boot. Exercise the visible Settings control before probing developer-only
     // routes such as Orchestrator; reserved shell storage correctly rejects a
     // raw localStorage write once a view realm has mounted.
+    // Onboarding also leaves the successful conversation expanded. Close it
+    // through the sheet's keyboard-operable product control so it cannot cover
+    // the Settings rows on the compact Android viewport.
+    const openChatGrabber = page.getByLabel("drag down to close chat");
+    if (await openChatGrabber.isVisible().catch(() => false)) {
+      await openChatGrabber.press("ArrowDown");
+      await expect(page.getByLabel("drag up to open chat")).toBeVisible({
+        timeout: 15_000,
+      });
+    }
     await gotoRoute(page, "/settings");
     const backupsSection = page.getByText("Backups", { exact: true }).first();
     await expect(backupsSection).toBeVisible({ timeout: 45_000 });
@@ -85,9 +95,23 @@ test.describe("android route coverage (real backend)", () => {
       // React root stays mounted.
       await expect(page.locator("#root")).toBeVisible({ timeout: 45_000 });
       if (route.readyChecks?.length) {
-        await expectRouteReady(page, route.name, route.readyChecks, {
-          timeoutMs: 45_000,
-        });
+        try {
+          await expectRouteReady(page, route.name, route.readyChecks, {
+            timeoutMs: 45_000,
+          });
+        } catch (error) {
+          const renderedState = await page.evaluate(() => ({
+            text: (document.body?.innerText ?? "").trim().slice(0, 1_000),
+            testIds: Array.from(document.querySelectorAll("[data-testid]"))
+              .map((element) => element.getAttribute("data-testid"))
+              .filter((value): value is string => Boolean(value))
+              .slice(0, 100),
+          }));
+          throw new Error(
+            `${error instanceof Error ? error.message : String(error)}\nRendered state: ${JSON.stringify(renderedState)}`,
+            { cause: error },
+          );
+        }
       }
       // The route paints SOMETHING (not a blank white screen) within the window.
       await expect
