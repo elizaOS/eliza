@@ -49,7 +49,9 @@ export interface ManagedAccountSpec {
  * Derive a manifest entry from the OAuth provider registry so credential sets
  * stay identical to what the OAuth routes read at runtime. Secrets-storage
  * providers contribute their secret patterns; env-var providers contribute
- * their envVars/envVarAlternatives.
+ * their envVars/envVarAlternatives. Secret patterns whose credential field the
+ * registry marks optional (e.g. a webhook secret) are excluded so a
+ * runtime-valid account is never reported partial.
  */
 function fromOAuthRegistry(
   registryId: string,
@@ -64,8 +66,13 @@ function fromOAuthRegistry(
   const registrySets: string[][] =
     provider.envVarAlternatives?.map((set) => [...set]) ??
     (provider.envVars.length > 0 ? [[...provider.envVars]] : []);
+  const optionalFieldKeys = new Set(
+    (provider.credentialFields ?? []).filter((field) => !field.required).map((field) => field.key),
+  );
   const secretSet = provider.secretPatterns
-    ? Object.values(provider.secretPatterns).filter((name): name is string => Boolean(name))
+    ? Object.entries(provider.secretPatterns)
+        .filter(([key, name]) => Boolean(name) && !optionalFieldKeys.has(key))
+        .map(([, name]) => name as string)
     : [];
   const credentialSets =
     registrySets.length > 0 ? registrySets : secretSet.length ? [secretSet] : [];

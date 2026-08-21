@@ -64,6 +64,23 @@ describe("managed-account manifest invariants", () => {
     }
   });
 
+  it("excludes secret patterns whose registry credential field is optional", () => {
+    for (const spec of MANAGED_ACCOUNTS) {
+      const provider = OAUTH_PROVIDERS[spec.id];
+      if (!provider?.credentialFields || !provider.secretPatterns) continue;
+      const patterns = provider.secretPatterns as Record<string, string | undefined>;
+      const optionalNames = provider.credentialFields
+        .filter((field) => !field.required)
+        .map((field) => patterns[field.key])
+        .filter((name): name is string => Boolean(name));
+      for (const set of spec.credentialSets) {
+        for (const optionalName of optionalNames) {
+          expect(set).not.toContain(optionalName);
+        }
+      }
+    }
+  });
+
   it("OAuth-registry-backed entries stay in sync with the registry env vars", () => {
     for (const spec of MANAGED_ACCOUNTS) {
       const provider = OAUTH_PROVIDERS[spec.id];
