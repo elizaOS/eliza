@@ -137,7 +137,7 @@ export function AndroidCloudApp({
         setPhase(restored ? "ready" : "signed-out");
         return true;
       } catch (restoreError) {
-        if (!isCurrent()) return false;
+        if (await abandonStaleLogin()) return false;
         // error-policy:J4 session verification failure becomes an explicit
         // signed-out error state with a retry affordance.
         setSession(null);
