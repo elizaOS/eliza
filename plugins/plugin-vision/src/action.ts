@@ -16,6 +16,8 @@ import {
   type Media,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { normalizeOp, normalizeVisionMode, VISION_OPS } from "./action-params";
 import { buildGetScreen, summarizeGetScreen } from "./get-screen";
@@ -393,7 +395,10 @@ async function runDescribe(
     }
 
     const thought = `Analyzed the visual scene at ${timestamp}.`;
-    const text = description.slice(0, MAX_VISION_TEXT_LENGTH);
+    const text = truncateWellFormed(
+      toWellFormedUnicode(description),
+      MAX_VISION_TEXT_LENGTH,
+    );
 
     await saveExecutionRecord(runtime, message, thought, text, ["VISION"]);
     if (callback) {
@@ -418,7 +423,10 @@ async function runDescribe(
         actionName: "VISION",
         op: "describe",
         sceneTimestamp: scene.timestamp,
-        sceneDescription: scene.description.slice(0, MAX_VISION_TEXT_LENGTH),
+        sceneDescription: truncateWellFormed(
+          toWellFormedUnicode(scene.description),
+          MAX_VISION_TEXT_LENGTH,
+        ),
         sceneChanged: scene.sceneChanged,
         changePercentage: scene.changePercentage,
         audioTranscription: scene.audioTranscription || undefined,
