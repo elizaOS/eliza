@@ -165,7 +165,9 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,|\n/)
+      ? truncateWellFormed(toWellFormedUnicode(value), 10_000).split(
+          /\s{0,256}\|\|\s{0,256}|,|\n/,
+        )
       : [];
   return [
     ...new Set(

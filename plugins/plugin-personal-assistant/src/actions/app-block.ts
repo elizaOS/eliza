@@ -17,6 +17,8 @@ import {
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
@@ -100,11 +102,13 @@ function normalizePackageNames(
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,/)
+      ? truncateWellFormed(toWellFormedUnicode(value), 10_000).split(
+          /\s{0,256}\|\|\s{0,256}|,/,
+        )
       : [];
   const normalized = values
     .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim().toLowerCase())
+    .map((item) => toWellFormedUnicode(item.trim().toLowerCase()))
     .filter((item) => item.length > 0);
   const unique = [...new Set(normalized)];
   if (!allowedPackageNames) return unique;
