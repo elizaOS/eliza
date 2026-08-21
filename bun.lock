@@ -1051,6 +1051,7 @@
         "@elizaos/plugin-video": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/shared": "workspace:*",
         "ws": "^8.21.3",
       },
       "devDependencies": {

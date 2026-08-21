@@ -15,6 +15,7 @@ import {
 import type {
   CapturedAction,
   ScenarioContext,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -111,6 +112,67 @@ const strictCodingToolRoutes = [
     messageToUser: "Exited and removed worktree",
   },
 ];
+
+const plannerToolNames: Record<string, readonly string[]> = {
+  FILE: ["FILE", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+  SHELL: ["SHELL", "WEB_FETCH", "REPLY", "IGNORE", "STOP"],
+  WORKTREE: ["SHELL", "WORKTREE", "REPLY", "IGNORE", "STOP"],
+};
+
+function currentTurnInputPattern(input: string): string {
+  const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return `${escaped}(?![\\s\\S]*message:user:\\n)`;
+}
+
+const codingToolModelFixtures: ScenarioModelFixture[] =
+  strictCodingToolRoutes.flatMap((route) => {
+    const slug = route.actionName.toLowerCase();
+    const replyText = route.messageToUser;
+    return [
+      {
+        name: `route-${slug}-stage1-${route.input}`,
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: { pattern: currentTurnInputPattern(route.input) },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: route.contextIds,
+            intents: [route.input.toLowerCase()],
+            replyText,
+            threadOps: [],
+            candidateActionNames: [route.actionName],
+          },
+        },
+      },
+      {
+        name: `route-${slug}-planner-${route.input}`,
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: { pattern: currentTurnInputPattern(route.input) },
+          toolNames: plannerToolNames[route.actionName],
+        },
+        response: {
+          json: {
+            text: "",
+            thought: `Call ${route.actionName} for ${route.input}.`,
+            messageToUser: replyText,
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: `call-${slug}`,
+                name: route.actionName,
+                type: "function",
+                arguments: route.args,
+              },
+            ],
+          },
+        },
+      },
+    ];
+  });
 
 type JsonRecord = Record<string, unknown>;
 
@@ -385,6 +447,10 @@ async function finalLedgerCheck(
 export default scenario({
   id: "deterministic-coding-tools-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: codingToolModelFixtures,
+  },
   title: "Deterministic coding-tools action execution",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "coding-tools"],
@@ -402,7 +468,7 @@ export default scenario({
         process.env.CODING_TOOLS_BLOCKED_PATHS = blockedRoot;
 
         const runtime = ctx.runtime as
-          | (RuntimeWithScenarioModelFixtures & {
+          | {
               plugins?: Array<{ name?: string }>;
               registerPlugin?: (
                 plugin: typeof codingToolsPlugin,
@@ -412,7 +478,7 @@ export default scenario({
               ensureConnection?: (
                 params: Record<string, unknown>,
               ) => Promise<void>;
-            })
+            }
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
@@ -459,7 +525,6 @@ export default scenario({
             roles: { [userId]: "OWNER" },
           },
         });
-        registerStrictActionRouteFixtures(runtime, strictCodingToolRoutes);
         return undefined;
       },
     },

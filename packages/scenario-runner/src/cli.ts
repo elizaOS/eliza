@@ -23,6 +23,7 @@ import {
   type ScenarioLane,
   scenarioExecutionProfile,
 } from "@elizaos/scenario-runner/schema";
+import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import {
   countScenarioCorpus,
   listScenarioMetadata,
@@ -885,6 +886,7 @@ export async function runCli(
 export function runCliAndExit(
   argv: readonly string[] = process.argv.slice(2),
 ): void {
+  captureHostExecutionBaseline();
   runCli(argv)
     .then((code) => {
       process.exit(code);
