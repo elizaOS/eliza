@@ -155,7 +155,10 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
     });
     if (!res.ok) {
       // error-policy:J3 best-effort read of untrusted error body for context; failure → empty detail, error still thrown below
-      const detail = truncateWellFormed(toWellFormedUnicode(await res.text().catch(() => "")), 200);
+      const detail = truncateWellFormed(
+        toWellFormedUnicode(await res.text().catch(() => "")),
+        200,
+      );
       throw new Error(
         `lease mint failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
       );
@@ -185,7 +188,10 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
     // end state, so treat it as success.
     if (!res.ok && res.status !== 404) {
       // error-policy:J3 best-effort read of untrusted error body for context; failure → empty detail, error still thrown below
-      const detail = truncateWellFormed(toWellFormedUnicode(await res.text().catch(() => "")), 200);
+      const detail = truncateWellFormed(
+        toWellFormedUnicode(await res.text().catch(() => "")),
+        200,
+      );
       throw new Error(
         `lease revoke failed: HTTP ${res.status}${detail ? ` ${detail}` : ""}`,
       );
