@@ -75,6 +75,7 @@ async function harness() {
     );
   `);
   const tasks: Task[] = [];
+  const emittedEvents: Array<{ type: string; payload: unknown }> = [];
   const runtime = {
     agentId: '00000000-0000-4000-8000-000000000001' as UUID,
     db: drizzle(client, { schema }),
@@ -90,13 +91,16 @@ async function harness() {
       const index = tasks.findIndex((task) => task.id === id);
       if (index >= 0) tasks.splice(index, 1);
     },
-    emitEvent: async () => {},
+    emitEvent: async (type: string, payload: unknown) => {
+      emittedEvents.push({ type, payload });
+    },
   } as unknown as IAgentRuntime;
   return {
     service: await EmbeddedWorkflowService.start(runtime),
     tasks,
     client,
     runtime,
+    emittedEvents,
   };
 }
 
@@ -342,7 +346,7 @@ describe('embedded native workflow lifecycle', () => {
   }, 15_000);
 
   test('persists authoritative pending approval details from Smithers events', async () => {
-    const { service, client, runtime } = await harness();
+    const { service, client, runtime, emittedEvents } = await harness();
     const workflow = await service.createWorkflow({
       ...definition('Approval'),
       id: 'approval',
@@ -360,6 +364,7 @@ describe('embedded native workflow lifecycle', () => {
       input: {},
       events: [],
       approvals: [],
+      triggerChainDepth: 3,
     };
     await client.query(
       `INSERT INTO workflow.embedded_executions
@@ -418,5 +423,9 @@ describe('embedded native workflow lifecycle', () => {
         requestedAt: '2026-08-16T00:00:01.000Z',
       },
     ]);
+    expect(emittedEvents.at(-1)).toMatchObject({
+      type: 'workflow_run_event',
+      payload: { triggerChainDepth: 3 },
+    });
   }, 15_000);
 });

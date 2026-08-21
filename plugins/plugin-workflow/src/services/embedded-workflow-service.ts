@@ -61,6 +61,8 @@ export interface ExecuteWorkflowOptions {
   triggerData?: Record<string, unknown>;
   idempotencyKey?: string;
   throwOnError?: boolean;
+  /** Trigger hops inherited by events emitted from this execution. */
+  triggerChainDepth?: number;
 }
 
 type RunListener = (event: WorkflowRunEvent) => void;
@@ -539,6 +541,9 @@ export class EmbeddedWorkflowService extends Service {
       events: [],
       approvals: [],
       ...(options.idempotencyKey ? { idempotencyKey: options.idempotencyKey } : {}),
+      ...(options.triggerChainDepth !== undefined
+        ? { triggerChainDepth: options.triggerChainDepth }
+        : {}),
     };
     await this.saveExecution(pending);
     const controller = new AbortController();
@@ -647,7 +652,13 @@ export class EmbeddedWorkflowService extends Service {
     }
     await this.saveExecution(execution);
     for (const listener of this.listeners.get(execution.id) ?? []) listener(event);
-    await this.runtime.emitEvent(WORKFLOW_RUN_EVENT, { runtime: this.runtime, event } as never);
+    await this.runtime.emitEvent(WORKFLOW_RUN_EVENT, {
+      runtime: this.runtime,
+      event,
+      ...(execution.triggerChainDepth !== undefined
+        ? { triggerChainDepth: execution.triggerChainDepth }
+        : {}),
+    } as never);
   }
 
   subscribe(runId: string, listener: RunListener): () => void {
