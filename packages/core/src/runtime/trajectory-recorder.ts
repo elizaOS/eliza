@@ -985,8 +985,12 @@ function isUtf8ContinuationByte(byte: number): boolean {
 export function resolveTrajectoryFieldCapBytes(): number {
 	const raw = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES?.trim();
 	if (!raw) return DEFAULT_FIELD_CAP_BYTES;
-	const parsed = Number.parseInt(raw, 10);
-	if (!Number.isFinite(parsed) || parsed < 1024) {
+	// `Number.parseInt` stops at the first non-digit, so "8192junk" and "8192.9"
+	// both parsed to a finite 8192 and were accepted — contradicting this
+	// function's own contract that non-integer values are rejected. Require the
+	// whole value to be decimal so malformed input reaches the fallback.
+	const parsed = /^\+?\d+$/.test(raw) ? Number(raw) : Number.NaN;
+	if (!Number.isSafeInteger(parsed) || parsed < 1024) {
 		return DEFAULT_FIELD_CAP_BYTES;
 	}
 	return parsed;

@@ -1112,6 +1112,24 @@ describe("action exec input/output/error capture (M12)", () => {
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
 	});
 
+	it("rejects a prefix-parsed cap rather than honouring its leading digits", () => {
+		// parseInt stops at the first non-digit, so both of these previously
+		// resolved to 8192 — a silently different cap, and in the fractional case
+		// a direct contradiction of the documented "non-integer are rejected".
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "8192junk";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "8192.9";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+	});
+
+	it("keeps accepting a signed cap and rejects one past the safe range", () => {
+		// `Number.parseInt` accepted "+8192"; rejecting it would be a regression.
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "+8192";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(8192);
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "9007199254740993";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+	});
+
 	it("encodes objects to JSON and strings pass through unchanged", () => {
 		expect(encodeTrajectoryFieldValue({ a: 1, b: "two" })).toBe(
 			'{"a":1,"b":"two"}',
