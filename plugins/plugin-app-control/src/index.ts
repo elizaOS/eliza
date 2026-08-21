@@ -24,6 +24,7 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
+import { recentAppFollowupEvaluator } from "./evaluators/recent-app-followup.js";
 import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
@@ -102,6 +103,7 @@ export {
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
+export { recentAppFollowupEvaluator } from "./evaluators/recent-app-followup.js";
 export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
 export {
 	CONTEXT_VIEWS,
@@ -170,7 +172,10 @@ export const appControlPlugin: Plugin = {
 	evaluators: [viewContextEvaluator],
 	// Persisted choice widgets are an explicit continuation protocol. Ordinary
 	// view navigation and follow-up language stays with Stage 1 and the planner.
-	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
+	responseHandlerEvaluators: [
+		recentAppFollowupEvaluator,
+		createChoiceShortcutEvaluator,
+	],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
