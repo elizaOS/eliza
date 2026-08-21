@@ -1,6 +1,7 @@
 /** Hosted-runtime tests for operator-gated DoorDash MCP injection. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { runWithCloudBindings } from "../../runtime/cloud-bindings";
 import type { UserContext } from "../user-context";
 import { buildMcpSettings, getConnectedMcpPlatforms, shouldEnableMcp } from "./mcp-config";
 
@@ -56,5 +57,15 @@ describe("DoorDash MCP cloud configuration", () => {
     process.env.FIRECRAWL_API_KEY = "firecrawl-test-key";
     expect(getConnectedMcpPlatforms(context())).toContain("doordash");
     expect(shouldEnableMcp(context())).toBe(true);
+  });
+
+  test("reads managed provider configuration from request-scoped Worker bindings", () => {
+    delete process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
+    delete process.env.FIRECRAWL_API_KEY;
+
+    runWithCloudBindings({ FIRECRAWL_API_KEY: "worker-binding-key" }, () => {
+      expect(getConnectedMcpPlatforms(context())).toContain("doordash");
+      expect(shouldEnableMcp(context())).toBe(true);
+    });
   });
 });

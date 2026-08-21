@@ -1,5 +1,6 @@
-// Coordinates cloud service browser tools behavior behind route handlers.
+/** Coordinates authenticated Firecrawl browser sessions for Cloud route handlers. */
 import { cache } from "../cache/client";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { isHostedBrowserSessionOwner } from "./browser-session-ownership";
 import { usageService } from "./usage";
@@ -152,7 +153,7 @@ function getHostedBrowserOrganizationSessionsKey(organizationId: string): string
 }
 
 function resolveFirecrawlApiKey(): string {
-  const apiKey = process.env.FIRECRAWL_API_KEY?.trim();
+  const apiKey = getCloudAwareEnv().FIRECRAWL_API_KEY?.trim();
   if (!apiKey) {
     throw new Error("FIRECRAWL_API_KEY is not configured");
   }
@@ -160,7 +161,9 @@ function resolveFirecrawlApiKey(): string {
 }
 
 function resolveFirecrawlBaseUrl(): string {
-  return process.env.FIRECRAWL_API_URL?.trim().replace(/\/+$/, "") || DEFAULT_FIRECRAWL_API_URL;
+  return (
+    getCloudAwareEnv().FIRECRAWL_API_URL?.trim().replace(/\/+$/, "") || DEFAULT_FIRECRAWL_API_URL
+  );
 }
 
 async function firecrawlRequest<T>(pathname: string, init: RequestInit): Promise<T> {

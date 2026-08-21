@@ -3,7 +3,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const values = new Map<string, unknown>();
-const guards = new Set<string>();
+const guards = new Map<string, Record<string, unknown> | null>();
 const deletedSessions: string[] = [];
 const createdSessions: string[] = [];
 const scripts: string[] = [];
@@ -32,11 +32,25 @@ mock.module("../runtime/cloud-bindings", () => ({
   getCloudBinding: () => ({
     getByName: () => ({
       fetch: async (request: Request) => {
-        const body = (await request.json()) as { digest: string };
+        const body = (await request.json()) as {
+          digest: string;
+          receipt?: Record<string, unknown>;
+        };
+        if (new URL(request.url).pathname === "/complete") {
+          if (!guards.has(body.digest) || !body.receipt) {
+            return Response.json({ completed: false }, { status: 409 });
+          }
+          guards.set(body.digest, body.receipt);
+          return Response.json({ completed: true, receipt: body.receipt });
+        }
         if (guards.has(body.digest)) {
+          const receipt = guards.get(body.digest);
+          if (receipt) {
+            return Response.json({ completed: true, receipt });
+          }
           return Response.json({ claimed: false }, { status: 409 });
         }
-        guards.add(body.digest);
+        guards.set(body.digest, null);
         return Response.json({ claimed: true }, { status: 201 });
       },
     }),
@@ -107,7 +121,7 @@ describe("managed DoorDash", () => {
     expect(createdSessions).toEqual(["session-1", "session-2"]);
   });
 
-  test("prevents retrying the same authoritative checkout state", async () => {
+  test("replays the same authoritative receipt without submitting twice", async () => {
     const preview = { success: true, summary: { total: 24.5, deliveryAddress: "1 Main" } };
     executionOutputs = [preview, { success: true, orderId: "abc-123" }, preview];
     const first = await callManagedDoorDashTool(
@@ -116,10 +130,26 @@ describe("managed DoorDash", () => {
       auth("user-1"),
     );
     expect(first).toMatchObject({ success: true, orderId: "abc-123" });
+    values.clear();
+    const replay = await callManagedDoorDashTool(
+      "doordash_checkout",
+      { confirm: true },
+      auth("user-1"),
+    );
+    expect(replay).toEqual(first);
+    expect(createdSessions).toEqual(["session-1", "session-2"]);
+    expect(scripts).toHaveLength(3);
+  });
+
+  test("rejects a synthetic checkout receipt", async () => {
+    executionOutputs = [
+      { success: true, summary: { total: 24.5 } },
+      { success: true, orderId: "order-12345" },
+    ];
+
     await expect(
       callManagedDoorDashTool("doordash_checkout", { confirm: true }, auth("user-1")),
-    ).rejects.toThrow("already attempted");
-    expect(scripts).toHaveLength(3);
+    ).rejects.toThrow("outcome is ambiguous");
   });
 
   test("rejects malformed direct MCP arguments before browser execution", async () => {

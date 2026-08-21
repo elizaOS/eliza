@@ -1,5 +1,6 @@
 /** Derives per-request MCP server configuration for hosted Eliza runtimes. */
 import { elizaLogger } from "@elizaos/core";
+import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { getRequestContext } from "../../services/entity-settings/request-context";
 import type { UserContext } from "../user-context";
 
@@ -89,14 +90,14 @@ export function getConnectedPlatforms(context: UserContext): Set<string> {
 
 export function getConnectedMcpPlatforms(context: UserContext): string[] {
   const connected = getConnectedPlatforms(context);
+  const env = getCloudAwareEnv();
   return Object.keys(MCP_SERVER_CONFIGS).filter(
     (platform) =>
       connected.has(platform) ||
       (platform === "doordash" &&
-        ((typeof process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL === "string" &&
-          process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL.trim().length > 0) ||
-          (typeof process.env.FIRECRAWL_API_KEY === "string" &&
-            process.env.FIRECRAWL_API_KEY.trim().length > 0))),
+        ((typeof env.MCP_DOORDASH_STREAMABLE_HTTP_URL === "string" &&
+          env.MCP_DOORDASH_STREAMABLE_HTTP_URL.trim().length > 0) ||
+          (typeof env.FIRECRAWL_API_KEY === "string" && env.FIRECRAWL_API_KEY.trim().length > 0))),
   );
 }
 

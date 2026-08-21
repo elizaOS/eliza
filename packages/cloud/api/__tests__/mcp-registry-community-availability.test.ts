@@ -68,6 +68,38 @@ test("reports DoorDash live when either managed browser or Cloud upstream is con
   ]);
 });
 
+test("advertises every managed DoorDash tool", async () => {
+  listPublic.mockResolvedValue([]);
+
+  const response = await getRegistry("/?search=DoorDash", {
+    FIRECRAWL_API_KEY: "firecrawl-test-key",
+  });
+  const body = (await response.json()) as {
+    registry: Array<{ id: string; toolCount: number; features: string[] }>;
+  };
+  const doordash = body.registry.find((entry) => entry.id === "doordash");
+
+  expect(doordash).toEqual(
+    expect.objectContaining({
+      id: "doordash",
+      toolCount: 11,
+      features: [
+        "doordash_auth_check",
+        "doordash_auth_clear",
+        "doordash_set_address",
+        "doordash_search",
+        "doordash_menu",
+        "doordash_add_to_cart",
+        "remove_from_cart",
+        "doordash_cart",
+        "order_history",
+        "doordash_checkout",
+        "doordash_track_order",
+      ],
+    }),
+  );
+});
+
 test("marks community registry unavailable when the optional live lookup fails", async () => {
   listPublic.mockRejectedValueOnce(new Error("community registry unavailable"));
 

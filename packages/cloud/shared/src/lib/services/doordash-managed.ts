@@ -125,24 +125,68 @@ export function getManagedDoorDashSessionKey(auth: HostedBrowserAuthContext): st
   return `doordash:user:${identityHash(auth)}:session:v1`;
 }
 
-async function claimCheckout(auth: HostedBrowserAuthContext, digest: string): Promise<void> {
+type CheckoutClaim =
+  | { readonly kind: "claimed" }
+  | { readonly kind: "completed"; readonly receipt: Record<string, unknown> };
+
+async function checkoutGateRequest(
+  auth: HostedBrowserAuthContext,
+  path: "/claim" | "/complete",
+  body: Record<string, unknown>,
+): Promise<Response> {
   const namespace = getCloudBinding<RuntimeDurableObjectNamespace>("DOORDASH_CHECKOUT_GATES");
   if (!namespace) {
     throw new Error("DoorDash atomic checkout protection is unavailable");
   }
-  const response = await namespace.getByName(identityHash(auth)).fetch(
-    new Request("https://doordash-checkout-gate/claim", {
+  return await namespace.getByName(identityHash(auth)).fetch(
+    new Request(`https://doordash-checkout-gate${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ digest }),
+      body: JSON.stringify(body),
     }),
   );
+}
+
+async function claimCheckout(
+  auth: HostedBrowserAuthContext,
+  digest: string,
+): Promise<CheckoutClaim> {
+  const response = await checkoutGateRequest(auth, "/claim", { digest });
   if (response.status === 409) {
     throw new Error("This DoorDash checkout submission was already attempted");
   }
   if (!response.ok) {
     throw new Error("DoorDash atomic checkout protection is unavailable");
   }
+  const payload = (await response.json()) as {
+    completed?: unknown;
+    receipt?: unknown;
+  };
+  if (payload.completed === true) {
+    if (!payload.receipt || typeof payload.receipt !== "object" || Array.isArray(payload.receipt)) {
+      throw new Error("DoorDash checkout receipt storage returned an invalid result");
+    }
+    return { kind: "completed", receipt: payload.receipt as Record<string, unknown> };
+  }
+  return { kind: "claimed" };
+}
+
+async function completeCheckout(
+  auth: HostedBrowserAuthContext,
+  digest: string,
+  receipt: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await checkoutGateRequest(auth, "/complete", { digest, receipt });
+  if (!response.ok) {
+    throw new Error(
+      "DoorDash placed the order but could not persist its receipt; inspect the active session before retrying",
+    );
+  }
+  const payload = (await response.json()) as { receipt?: unknown };
+  if (!payload.receipt || typeof payload.receipt !== "object" || Array.isArray(payload.receipt)) {
+    throw new Error("DoorDash checkout receipt storage returned an invalid result");
+  }
+  return payload.receipt as Record<string, unknown>;
 }
 
 async function storeSession(auth: HostedBrowserAuthContext, sessionId: string): Promise<void> {
@@ -432,6 +476,7 @@ export async function callManagedDoorDashTool(
   const validatedArgs = validateManagedArgs(name, args);
 
   const session = await getOrCreateSession(auth);
+  let checkoutDigest: string | undefined;
   if (name === "doordash_checkout" && validatedArgs.confirm === true) {
     const preview = await executeHostedBrowserCommand(
       session.id,
@@ -442,10 +487,11 @@ export async function callManagedDoorDashTool(
       },
       auth,
     );
-    const guardDigest = createHash("sha256")
-      .update(`${identityHash(auth)}:${session.id}:${JSON.stringify(preview.output)}`)
+    checkoutDigest = createHash("sha256")
+      .update(`${identityHash(auth)}:${JSON.stringify(preview.output)}`)
       .digest("hex");
-    await claimCheckout(auth, guardDigest);
+    const claim = await claimCheckout(auth, checkoutDigest);
+    if (claim.kind === "completed") return claim.receipt;
   }
 
   const executed = await executeHostedBrowserCommand(
@@ -462,6 +508,19 @@ export async function callManagedDoorDashTool(
     throw new Error("DoorDash browser returned an invalid result");
   }
   const result = payload as Record<string, unknown>;
+  if (checkoutDigest) {
+    if (
+      result.success !== true ||
+      typeof result.orderId !== "string" ||
+      result.orderId.trim().length === 0 ||
+      /^order-\d+$/i.test(result.orderId.trim())
+    ) {
+      throw new Error(
+        "DoorDash submission outcome is ambiguous; inspect the active session before retrying",
+      );
+    }
+    return await completeCheckout(auth, checkoutDigest, result);
+  }
   if (name === "doordash_auth_check" && result.loggedIn !== true) {
     return {
       ...result,
