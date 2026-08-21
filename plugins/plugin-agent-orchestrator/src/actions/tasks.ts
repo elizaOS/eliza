@@ -4142,7 +4142,11 @@ async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issue.body.slice(0, ISSUE_BODY_MAX_CHARS)}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
+        const issueBody = truncateWellFormed(
+          toWellFormedUnicode(issue.body),
+          ISSUE_BODY_MAX_CHARS,
+        );
+        const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,
           text: issueText,
@@ -4303,7 +4307,10 @@ async function runManageIssues(
   // Unwrapped: bulk-issue extraction and action/repo inference read this as
   // the user's request; a raw envelope read would mint GitHub issues out of
   // security-notice lines (and the slice could truncate the real payload).
-  const text = requestText(message).slice(0, ISSUE_BODY_MAX_CHARS);
+  const text = truncateWellFormed(
+    toWellFormedUnicode(requestText(message)),
+    ISSUE_BODY_MAX_CHARS,
+  );
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction
