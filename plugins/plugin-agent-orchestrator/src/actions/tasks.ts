@@ -1332,6 +1332,10 @@ async function runCreateLegacy(
             : "coding",
         priority: taskPriority,
         originalRequest: requestText(message),
+        // Internal (redirect-stamped) lineage only — not a planner param.
+        ...(typeof params.parentTaskId === "string" && params.parentTaskId
+          ? { parentTaskId: params.parentTaskId }
+          : {}),
         ...(explicitProjectId ? { projectId: explicitProjectId } : {}),
         ...(boundWorkdir ? { workdir: boundWorkdir } : {}),
         ...((originRoomId ?? taskRoomId)
@@ -3684,6 +3688,10 @@ async function successorInheritance(
     ...(record?.acceptanceCriteria?.length
       ? { acceptanceCriteria: [...record.acceptanceCriteria] }
       : {}),
+    // Lineage: completion evidence observes the predecessor's workdir from
+    // the lineage root's start, so the deliverable the successor builds on
+    // counts as present instead of predating "session start".
+    ...(record?.id ? { parentTaskId: record.id } : {}),
   };
 }
 

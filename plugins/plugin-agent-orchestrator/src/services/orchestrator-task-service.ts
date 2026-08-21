@@ -2705,7 +2705,10 @@ export class OrchestratorTaskService extends Service {
           // the mtime gate below decides what counts (live 2026-08-19 parks).
           ...enumerateWorkdirCandidates(reportingSession.workdir),
         ],
-        sessionStartedAt: reportingSession.registeredAt,
+        sessionStartedAt: await this.fsObservationFloor(
+          doc,
+          reportingSession.registeredAt,
+        ),
       });
       if (fsVerifiedFiles.length > 0 && verifiedUrls.length === 0) {
         const routeMeta = isRecord(reportingSession.metadata)
@@ -3316,6 +3319,32 @@ export class OrchestratorTaskService extends Service {
       createdAt: nowIso(),
     });
     this.emitChange(taskId);
+  }
+
+  /** Floor for mtime-gated fs evidence: the reporting session's start, or —
+   * for a task continuing finished work in the predecessor's workdir
+   * (`parentTaskId` lineage) — the lineage root's earliest session start. The
+   * deliverable a successor builds on predates the successor session by
+   * construction; gating on its own start hid the script it re-ran and the
+   * judge saw only a bare output (live 2026-08-21: "banana" failed for "no
+   * evidence that a script file exists"). */
+  private async fsObservationFloor(
+    doc: OrchestratorTaskDocument,
+    sessionStartedAt: number,
+  ): Promise<number> {
+    let floor = sessionStartedAt;
+    let parentId = doc.task.parentTaskId;
+    for (let depth = 0; parentId && depth < 8; depth++) {
+      const parent = await this.store.getTask(parentId);
+      if (!parent) break;
+      const starts = [
+        new Date(parent.task.createdAt).getTime(),
+        ...parent.sessions.map((session) => session.registeredAt),
+      ].filter((value) => Number.isFinite(value));
+      floor = Math.min(floor, ...starts);
+      parentId = parent.task.parentTaskId;
+    }
+    return floor;
   }
 
   /** Read-only lookup of the durable task record backing a session, for
