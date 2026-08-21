@@ -329,7 +329,7 @@ async function requestIdentity(input: ExecuteNativeStoragePutInput) {
   if (!Number.isSafeInteger(sizeBytes) || !sizeBytes || sizeBytes <= 0) {
     throw new NativeStoragePutError(
       "CONTENT_LENGTH_INVALID",
-      "A positive, safe Content-Length is required",
+      "A positive, safe declared content length is required",
     );
   }
   const computedSha256 = bufferedBody ? await sha256(bufferedBody) : undefined;
@@ -437,6 +437,35 @@ function validateObserved(
   return { etag: observed.etag, uploadedAt: observed.uploaded ?? new Date() };
 }
 
+function enforceDeclaredStreamLength(
+  body: ReadableStream<Uint8Array>,
+  expectedBytes: number,
+): ReadableStream<Uint8Array> {
+  let observedBytes = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        observedBytes += chunk.byteLength;
+        if (observedBytes > expectedBytes) {
+          throw new NativeStoragePutError(
+            "CONTENT_LENGTH_INVALID",
+            "The request body exceeded X-Content-Length",
+          );
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        if (observedBytes !== expectedBytes) {
+          throw new NativeStoragePutError(
+            "CONTENT_LENGTH_INVALID",
+            "The request body did not match X-Content-Length",
+          );
+        }
+      },
+    }),
+  );
+}
+
 async function commitObserved(
   operation: OrgStoragePutOperation,
   logicalKey: string,
@@ -533,7 +562,11 @@ export async function executeNativeStoragePut(
   });
 
   try {
-    await input.bucket.put(operation.target_provider_key, input.body, {
+    const providerBody =
+      input.body instanceof ArrayBuffer
+        ? input.body
+        : enforceDeclaredStreamLength(input.body, identity.sizeBytes);
+    await input.bucket.put(operation.target_provider_key, providerBody, {
       httpMetadata: { contentType: operation.target_content_type },
       customMetadata: {
         requestDigest: operation.request_digest,

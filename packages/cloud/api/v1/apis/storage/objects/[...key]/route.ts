@@ -110,12 +110,19 @@ app.put("/*", async (c) => {
       return c.json({ error: validated.error }, 400);
     }
 
-    const contentLength = c.req.header("content-length");
-    const bytes = contentLength ? Number(contentLength) : Number.NaN;
+    const declaredLength = c.req.header("x-content-length");
+    const bytes = declaredLength ? Number(declaredLength) : Number.NaN;
     if (!Number.isSafeInteger(bytes) || bytes <= 0) {
       return c.json(
-        { error: "A positive Content-Length header is required" },
+        { error: "A positive X-Content-Length header is required" },
         411,
+      );
+    }
+    const transportLength = c.req.header("content-length");
+    if (transportLength !== undefined && Number(transportLength) !== bytes) {
+      return c.json(
+        { error: "Content-Length does not match X-Content-Length" },
+        400,
       );
     }
     const contentSha256 = c.req.header("x-content-sha256")?.toLowerCase();

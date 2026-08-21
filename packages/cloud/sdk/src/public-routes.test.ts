@@ -78,11 +78,13 @@ describe("ElizaCloudPublicRoutesClient path building", () => {
       headers: {
         "X-Storage-Object-Key": "folder/file.txt",
         "Idempotency-Key": "put-1",
+        "X-Content-Length": "7",
         "X-Content-SHA256": "a".repeat(64),
       },
       body: "payload",
     });
     expect(transport.requests[0]?.options?.headers).toMatchObject({
+      "X-Content-Length": "7",
       "X-Content-SHA256": "a".repeat(64),
     });
   });

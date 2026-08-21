@@ -183,6 +183,7 @@ test("PUT uses the authenticated native BLOB path with server-owned pricing", as
       headers: {
         "content-type": "audio/ogg",
         "content-length": String(OBJECT_BYTES.byteLength),
+        "x-content-length": String(OBJECT_BYTES.byteLength),
         "idempotency-key": "logical-upload-1",
         "X-Storage-Object-Key": OBJECT_PATH,
         "X-Content-SHA256": OBJECT_SHA256,
@@ -215,7 +216,7 @@ test("PUT rejects missing integrity metadata before pricing or reading the body"
     {
       method: "PUT",
       headers: {
-        "content-length": "5",
+        "x-content-length": "5",
         "idempotency-key": "missing-digest-1",
         "X-Storage-Object-Key": OBJECT_PATH,
       },
@@ -243,12 +244,17 @@ test("PUT delegates large declared streams instead of imposing a Worker heap cei
       method: "PUT",
       headers: {
         "content-type": "video/mp4",
-        "content-length": String(bytes),
+        "x-content-length": String(bytes),
         "idempotency-key": "large-stream-1",
         "X-Storage-Object-Key": OBJECT_PATH,
         "X-Content-SHA256": "a".repeat(64),
       },
-      body: OBJECT_BYTES,
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(OBJECT_BYTES);
+          controller.close();
+        },
+      }),
     },
     { BLOB: bucket },
   );
@@ -259,6 +265,27 @@ test("PUT delegates large declared streams instead of imposing a Worker heap cei
       body: expect.any(ReadableStream),
     }),
   );
+});
+
+test("PUT rejects conflicting transport and caller-declared lengths", async () => {
+  const response = await app.request(
+    `${ROUTE_PREFIX}/_`,
+    {
+      method: "PUT",
+      headers: {
+        "content-length": "4",
+        "x-content-length": "5",
+        "idempotency-key": "conflicting-length-1",
+        "X-Storage-Object-Key": OBJECT_PATH,
+        "X-Content-SHA256": OBJECT_SHA256,
+      },
+      body: OBJECT_BYTES,
+    },
+    { BLOB: bucket },
+  );
+  expect(response.status).toBe(400);
+  expect(getServiceMethodCost).not.toHaveBeenCalled();
+  expect(executeNativeStoragePut).not.toHaveBeenCalled();
 });
 
 test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", async () => {
@@ -329,6 +356,7 @@ test("routes PUT through GET and HEAD, overwrite, then durable native DELETE", a
       headers: {
         "content-type": "audio/ogg",
         "content-length": String(OBJECT_BYTES.byteLength),
+        "x-content-length": String(OBJECT_BYTES.byteLength),
         "idempotency-key": "overwrite-2",
         "X-Storage-Object-Key": OBJECT_PATH,
         "X-Content-SHA256": OBJECT_SHA256,

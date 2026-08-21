@@ -803,7 +803,9 @@ describe("executeNativeStoragePut", () => {
       get: mock(async () => null),
       head: mock(async () => observed),
       put: mock(async (_key, value, options) => {
-        expect(value).toBe(body);
+        expect(value).toBeInstanceOf(ReadableStream);
+        const received = await new Response(value as BodyInit).arrayBuffer();
+        expect(new TextDecoder().decode(received)).toBe("payload");
         observed = {
           size: 7,
           etag: "etag-1",
@@ -844,6 +846,48 @@ describe("executeNativeStoragePut", () => {
         contentSha256: "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5",
       }),
     );
+  });
+
+  test("rejects a streamed body that does not match its declared length", async () => {
+    let current = operation("prepared", "0.000000");
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("short"));
+        controller.close();
+      },
+    });
+    const bucket: RuntimeR2Bucket = {
+      get: mock(async () => null),
+      head: mock(async () => null),
+      put: mock(async (_key, value) => {
+        await new Response(value as BodyInit).arrayBuffer();
+      }),
+      delete: mock(async () => undefined),
+    };
+    preparePut.mockResolvedValue({ operation: current, replay: false });
+    reservePutCredits.mockImplementation(async () => {
+      current = operation("reserved", "0.000000");
+      return { operation: current, insufficient: false, available: 0 };
+    });
+    claimProviderLease.mockImplementation(async () => {
+      current = operation("provider_started", "0.000000");
+      return current;
+    });
+
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "short.bin",
+        idempotencyKey: "stream-short-1",
+        body,
+        sizeBytes: 7,
+        contentSha256: "f9b0078b5df596d2ea19010c001bbd00e65176fa8a6a8a82e29fc880acf10bce",
+        contentType: "application/octet-stream",
+        priceUsd: 0,
+      }),
+    ).rejects.toMatchObject({ code: "CONTENT_LENGTH_INVALID" });
+    expect(bucket.put).toHaveBeenCalledTimes(1);
   });
 
   test("rejects streams without trustworthy length and digest metadata", async () => {

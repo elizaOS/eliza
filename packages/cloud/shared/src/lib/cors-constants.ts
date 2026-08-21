@@ -41,6 +41,7 @@ export const CORS_ALLOW_HEADER_NAMES = [
   // browser CORS preflight rejects requests that send them.
   "Idempotency-Key",
   "X-Content-SHA256",
+  "X-Content-Length",
   "X-Storage-Object-Key",
   "X-Storage-Prefix",
   "X-Storage-Recursive",

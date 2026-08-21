@@ -6326,6 +6326,7 @@ export interface PublicRouteHeaders {
   "PUT /api/v1/apis/storage/objects/_": {
     "X-Storage-Object-Key": string;
     "Idempotency-Key": string;
+    "X-Content-Length": string;
     "X-Content-SHA256": string;
     "Content-Type"?: string;
   };

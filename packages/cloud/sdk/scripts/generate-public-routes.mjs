@@ -96,7 +96,9 @@ function responseModeFor(method, route, source) {
 function headerTypeLine(endpoint) {
   if (endpoint.route === "/api/v1/apis/storage/objects/_") {
     const integrityHeader =
-      endpoint.method === "PUT" ? ` "X-Content-SHA256": string;` : "";
+      endpoint.method === "PUT"
+        ? ` "X-Content-Length": string; "X-Content-SHA256": string;`
+        : "";
     return `  ${quote(endpoint.key)}: { "X-Storage-Object-Key": string; "Idempotency-Key": string;${integrityHeader} "Content-Type"?: string };`;
   }
   if (endpoint.route === "/api/v1/apis/storage/presign") {

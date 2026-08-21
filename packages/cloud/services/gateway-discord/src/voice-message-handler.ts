@@ -125,6 +125,7 @@ async function uploadVoiceObject(
       ...storageHeaders(config),
       "Content-Type": contentType,
       "Content-Length": String(audioBuffer.byteLength),
+      "X-Content-Length": String(audioBuffer.byteLength),
       "Idempotency-Key": idempotencyKey,
       "X-Content-SHA256": createHash("sha256")
         .update(audioBuffer)
