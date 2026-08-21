@@ -2016,16 +2016,21 @@ async function runCreate(
   // the send-redirect successors stay exempt. Synthetic sub-agent inbounds
   // (respawns, retries) are runtime-driven and stay exempt too.
   {
-    const originMessageId = typeof message.id === "string" ? message.id : "";
+    // Keyed on the stable spawn-root id (connector message id when present):
+    // a completion-relay turn's synthetic memory has a FRESH message id, so
+    // keying on message.id alone let the planner's post-completion create
+    // sail through (live 2026-08-21: three kickoff bubbles for one
+    // "run it again").
+    const originId = spawnRootIdFor(message, content) ?? "";
     const extra = additionalSessionMetadata(params, content);
     if (
-      originMessageId &&
+      originId &&
       content.source !== MESSAGE_SOURCE_SUB_AGENT &&
       extra.subAgent !== true &&
       !DUPLICATE_SPAWN_FORCE_RE.test(
         typeof content.text === "string" ? content.text : "",
       ) &&
-      !claimCreateForMessage(runtime, originMessageId)
+      !claimCreateForMessage(runtime, originId)
     ) {
       return duplicateSpawnGuardResult(runtime, callback, {
         name: "this request",
@@ -3693,11 +3698,20 @@ async function runSend(
           logger(runtime).info(
             `[TASKS:send] target session gone after interrupt; redirecting follow-up to a successor create (predecessor=${predecessor.id})`,
           );
-          // Record the create claim: this redirect IS the launch for the
-          // originating message, so a planner-issued TASKS create later in
-          // the same turn gets deduped instead of double-spawning.
-          if (typeof _message.id === "string") {
-            claimCreateForMessage(runtime, _message.id);
+          // This redirect IS the launch for the originating message: claim
+          // it, and if a redirect already launched for the same origin this
+          // turn, dedupe instead of double-spawning.
+          const interruptOriginId = spawnRootIdFor(_message, content) ?? "";
+          if (
+            interruptOriginId &&
+            !claimCreateForMessage(runtime, interruptOriginId)
+          ) {
+            return {
+              success: true,
+              text: "A successor for this request is already launching; no second lane started.",
+              data: { duplicateSpawnGuard: true },
+              continueChain: false,
+            };
           }
           return runCreateLegacy(
             runtime,
@@ -3765,9 +3779,19 @@ async function runSend(
         `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
       );
       // Same claim as the interrupt redirect: the successor create below is
-      // the launch for this message; a duplicate planner create is deduped.
-      if (typeof _message.id === "string") {
-        claimCreateForMessage(runtime, _message.id);
+      // the launch for this origin; a second redirect or planner create for
+      // the same origin is deduped.
+      const terminalOriginId = spawnRootIdFor(_message, content) ?? "";
+      if (
+        terminalOriginId &&
+        !claimCreateForMessage(runtime, terminalOriginId)
+      ) {
+        return {
+          success: true,
+          text: "A successor for this request is already launching; no second lane started.",
+          data: { duplicateSpawnGuard: true },
+          continueChain: false,
+        };
       }
       return runCreateLegacy(
         runtime,

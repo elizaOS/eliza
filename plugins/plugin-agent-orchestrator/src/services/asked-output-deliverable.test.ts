@@ -32,6 +32,15 @@ describe("extractAskedOutputDeliverable", () => {
     ).toBeUndefined();
   });
 
+  it("treats a run-it-again ask as an output ask", () => {
+    expect(
+      extractAskedOutputDeliverable(
+        { response: "Fun fact: Venus rotates backwards." },
+        "nice, run it again i want another fact",
+      ),
+    ).toBe("Fun fact: Venus rotates backwards.");
+  });
+
   it("matches the what-is-the-output phrasing", () => {
     expect(
       extractAskedOutputDeliverable(
