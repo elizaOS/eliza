@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/browser-extension",
+  "name": "@elizaos/browser-bridge-extension",
   "version": "2.0.3-beta.7",
   "type": "module",
   "scripts": {
@@ -12,7 +12,8 @@
     "package:safari": "bun scripts/package-safari.mjs",
     "package:stores": "bun scripts/package-store-assets.mjs",
     "package:release": "bun scripts/package-release.mjs",
-    "test": "bun run test:unit && bun run test:smoke && bun run test:smoke:firefox",
+    "test": "bun run test:unit",
+    "test:smoke:installed": "bun run test:smoke && bun run test:smoke:firefox",
     "test:unit": "bunx vitest run --config ./vitest.extension.config.ts",
     "test:smoke": "node scripts/extension-smoke.mjs",
     "test:smoke:site-access": "BROWSER_BRIDGE_SMOKE_SITE_ACCESS=1 node scripts/extension-smoke.mjs",

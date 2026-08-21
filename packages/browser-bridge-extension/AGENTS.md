@@ -96,8 +96,9 @@ bun run --cwd packages/browser-bridge-extension package:firefox
 bun run --cwd packages/browser-bridge-extension package:safari
 bun run --cwd packages/browser-bridge-extension package:stores
 bun run --cwd packages/browser-bridge-extension package:release
-bun run --cwd packages/browser-bridge-extension test
+bun run --cwd packages/browser-bridge-extension test               # test:unit only; CI-safe
 bun run --cwd packages/browser-bridge-extension test:unit
+bun run --cwd packages/browser-bridge-extension test:smoke:installed
 bun run --cwd packages/browser-bridge-extension test:smoke
 bun run --cwd packages/browser-bridge-extension test:smoke:site-access
 bun run --cwd packages/browser-bridge-extension test:smoke:firefox
@@ -109,7 +110,7 @@ Output lands in `dist/chrome/`, `dist/firefox/`, or `dist/safari/`. Load the Chr
 
 The extension opens its pairing guide once on a fresh browser profile so the owner can import credentials without relying on a background-page debug target. The Chrome and Firefox smokes install the unpacked build into the system browser and exercise authenticated manual pairing, explicit website access, sync, a real DOM action, progress, completion, and website-block redirect. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
 
-Chrome 137 and later reject `--load-extension` in the branded browser. Chrome smokes therefore require an official Chrome for Testing executable through `CHROME_FOR_TESTING_EXECUTABLE_PATH` (or the standard `/Applications/Google Chrome for Testing.app` path on macOS). `test:smoke` runs the loopback pairing/action contract headlessly. `test:smoke:site-access` runs headed and waits up to two minutes for the browser-managed optional-permission decision before proving the website-block redirect; it is the installed-browser acceptance lane and cannot be replaced by a headless result.
+Chrome 137 and later reject `--load-extension` in the branded browser. Chrome smokes therefore require an official Chrome for Testing executable through `CHROME_FOR_TESTING_EXECUTABLE_PATH` (or the standard `/Applications/Google Chrome for Testing.app` path on macOS). The default `test` script runs `test:unit` only, because the `client` repository test lane must pass on machines without an installed browser; `test:smoke:installed` chains the Chrome and Firefox installed-browser smokes and is an explicit opt-in. `test:smoke` runs the loopback pairing/action contract headlessly. `test:smoke:site-access` runs headed and waits up to two minutes for the browser-managed optional-permission decision before proving the website-block redirect; it is the installed-browser acceptance lane and cannot be replaced by a headless result.
 
 ## Agent API endpoints the extension calls
 
@@ -118,8 +119,10 @@ All calls use `Authorization: Bearer <pairingToken>` and `X-Browser-Bridge-Compa
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/browser-bridge/companions/auto-pair` | Retired compatibility endpoint; returns `410 Gone` without minting credentials |
+| `POST` | `/api/browser-bridge/companions/preflight` | Authenticated companion/settings-version staleness check before a sync heartbeat |
 | `POST` | `/api/browser-bridge/companions/sync` | Heartbeat: posts tab snapshot + page context; receives settings + optional session |
-| `POST` | `/api/browser-bridge/companions/sessions/:id/progress` | Reports completed action step |
+| `POST` | `/api/browser-bridge/companions/sessions/:id/actions/begin` | Claims the durable, exact action-attempt lease that must precede any side effect |
+| `POST` | `/api/browser-bridge/companions/sessions/:id/progress` | Reports completed action step, bound to the claimed attempt |
 | `POST` | `/api/browser-bridge/companions/sessions/:id/complete` | Marks session done or failed |
 | `GET` | `/api/website-blocker` | Fetches active blocked/allowed site lists for declarativeNetRequest rules |
 | `GET` | `/api/status` | Used by auto-discovery to confirm a loopback address is a live agent |

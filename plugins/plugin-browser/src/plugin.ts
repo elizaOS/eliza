@@ -145,6 +145,13 @@ const DYNAMIC_ROUTES: Array<{
   { type: "POST", path: "/api/browser-bridge/companions/:id/revoke" },
   {
     type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/actions/begin",
+    public: true,
+    publicReason: COMPANION_ROUTE_REASON,
+    publicWrite: COMPANION_WRITE_REASON,
+  },
+  {
+    type: "POST",
     path: "/api/browser-bridge/companions/sessions/:id/progress",
     public: true,
     publicReason: COMPANION_ROUTE_REASON,

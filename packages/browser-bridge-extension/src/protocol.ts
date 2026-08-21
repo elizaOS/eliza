@@ -5,7 +5,6 @@
  * Type-only; no runtime code.
  */
 import type {
-  BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionConfig,
   BrowserBridgeCompanionPreflightRequest,
   BrowserBridgeCompanionSessionBeginRequest,
@@ -13,7 +12,6 @@ import type {
   BrowserBridgeCompanionSyncRequest,
   BrowserBridgeSettings,
   CompleteLifeOpsBrowserSessionRequest,
-  CreateBrowserBridgeCompanionAutoPairRequest,
   LifeOpsBrowserSession,
 } from "./browser-bridge-contracts";
 
@@ -27,9 +25,6 @@ export type CompanionSessionProgressRequest =
 export type CompanionSessionCompleteRequest =
   CompleteLifeOpsBrowserSessionRequest;
 export type CompanionConfig = BrowserBridgeCompanionConfig;
-export type CompanionAutoPairRequest =
-  CreateBrowserBridgeCompanionAutoPairRequest;
-export type CompanionAutoPairResponse = BrowserBridgeCompanionAutoPairResponse;
 
 export type BackgroundState = {
   config: CompanionConfig | null;

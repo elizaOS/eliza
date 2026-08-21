@@ -266,28 +266,6 @@ export function normalizeCompanionConfig(
   };
 }
 
-export function normalizeAutoPairCompanionConfig(
-  input: Partial<CompanionConfig> | null | undefined,
-  expected: {
-    apiBaseUrl: string;
-    browser: CompanionConfig["browser"];
-    companionId: string;
-  },
-): CompanionConfig | null {
-  const config = normalizeCompanionConfig(input);
-  const expectedApiBaseUrl = normalizeApiBaseUrl(expected.apiBaseUrl);
-  if (
-    !config ||
-    !expectedApiBaseUrl ||
-    !areEquivalentApiBaseUrls(config.apiBaseUrl, expectedApiBaseUrl) ||
-    config.browser !== expected.browser ||
-    config.companionId !== expected.companionId
-  ) {
-    return null;
-  }
-  return config;
-}
-
 /** Binds a DNR interstitial's request target to the persisted pairing. */
 export function resolveTrustedBlockedPageApiBase(
   requested: unknown,
@@ -296,27 +274,6 @@ export function resolveTrustedBlockedPageApiBase(
   if (!pairedConfig) return null;
   const normalized = normalizeApiBaseUrl(requested);
   return normalized === pairedConfig.apiBaseUrl ? normalized : null;
-}
-
-function areEquivalentApiBaseUrls(left: string, right: string): boolean {
-  if (left === right) return true;
-  try {
-    const leftUrl = new URL(left);
-    const rightUrl = new URL(right);
-    if (
-      !isLoopbackHost(leftUrl.hostname) ||
-      !isLoopbackHost(rightUrl.hostname)
-    ) {
-      return false;
-    }
-    const endpointKey = (url: URL) =>
-      `${url.protocol}//loopback:${url.port || (url.protocol === "https:" ? "443" : "80")}${url.pathname.replace(/\/+$/, "")}`;
-    return endpointKey(leftUrl) === endpointKey(rightUrl);
-  } catch {
-    // error-policy:J3 Config normalization should already have rejected these
-    // values; the comparison still fails closed if that invariant changes.
-    return false;
-  }
 }
 
 export async function loadCompanionConfig(): Promise<CompanionConfig | null> {

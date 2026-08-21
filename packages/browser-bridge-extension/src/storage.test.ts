@@ -8,7 +8,6 @@ import {
   DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
   getOrCreateExtensionProfileId,
   isValidApiBaseUrl,
-  normalizeAutoPairCompanionConfig,
   normalizeCompanionConfig,
   resolveTrustedBlockedPageApiBase,
 } from "./storage";
@@ -109,64 +108,6 @@ describe("normalizeCompanionConfig", () => {
       normalizeCompanionConfig({ ...baseConfig, apiBaseUrl: "   " })
         ?.apiBaseUrl,
     ).toBe(DEFAULT_BROWSER_BRIDGE_API_BASE_URL);
-  });
-});
-
-describe("normalizeAutoPairCompanionConfig", () => {
-  const config = {
-    apiBaseUrl: "https://agent.example.com",
-    companionId: "companion-1",
-    pairingToken: "token-1",
-    browser: "chrome" as const,
-    profileId: "default",
-    profileLabel: "Default",
-  };
-  const expected = {
-    apiBaseUrl: "https://agent.example.com",
-    companionId: "companion-1",
-    browser: "chrome" as const,
-  };
-
-  it("accepts a response bound to the request API, browser, and companion", () => {
-    expect(normalizeAutoPairCompanionConfig(config, expected)).toMatchObject(
-      expected,
-    );
-  });
-
-  it("accepts the server-owned spelling of the same loopback endpoint", () => {
-    expect(
-      normalizeAutoPairCompanionConfig(
-        { ...config, apiBaseUrl: "http://127.0.0.1:31337" },
-        { ...expected, apiBaseUrl: "http://localhost:31337" },
-      ),
-    ).toMatchObject({ apiBaseUrl: "http://127.0.0.1:31337" });
-    expect(
-      normalizeAutoPairCompanionConfig(
-        { ...config, apiBaseUrl: "http://127.0.0.1:31338" },
-        { ...expected, apiBaseUrl: "http://localhost:31337" },
-      ),
-    ).toBeNull();
-  });
-
-  it("rejects a response that redirects credentials across trust boundaries", () => {
-    expect(
-      normalizeAutoPairCompanionConfig(
-        { ...config, apiBaseUrl: "https://attacker.example" },
-        expected,
-      ),
-    ).toBeNull();
-    expect(
-      normalizeAutoPairCompanionConfig(
-        { ...config, browser: "firefox" },
-        expected,
-      ),
-    ).toBeNull();
-    expect(
-      normalizeAutoPairCompanionConfig(
-        { ...config, companionId: "companion-attacker" },
-        expected,
-      ),
-    ).toBeNull();
   });
 });
 

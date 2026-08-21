@@ -30,9 +30,11 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 All under `/api/browser-bridge/` — defined in `src/plugin.ts` and handled by `src/routes/bridge.ts`:
 
-Static: `GET /sessions`, `GET /settings`, `POST /settings`, `POST /companions/pair`, retired `POST /companions/auto-pair` (`410 Gone`), `GET /companions`, `POST /companions/revoke` (public), `GET /packages`, `POST /packages/open-path`, `POST /companions/sync` (public), `GET /tabs`, `GET /current-page`, `POST /sync`, `POST /sessions`.
+Static: `GET /sessions`, `GET /settings`, `POST /settings`, `POST /companions/pair`, retired `POST /companions/auto-pair` (`410 Gone`), `GET /companions`, `POST /companions/revoke` (public), `GET /packages`, `POST /packages/open-path`, `POST /companions/preflight` (public), `POST /companions/sync` (public), `GET /tabs`, `GET /current-page`, `POST /sync`, `POST /sessions`.
 
-Dynamic: `GET /sessions/:id`, `POST /sessions/:id/confirm`, `POST /sessions/:id/progress`, `POST /sessions/:id/complete`, `POST /companions/:id/revoke`, `POST /companions/sessions/:id/progress` (public), `POST /companions/sessions/:id/complete` (public), `GET|POST /packages/:browser/build|open-manager|download`.
+Dynamic: `GET /sessions/:id`, `POST /sessions/:id/confirm`, `POST /sessions/:id/progress`, `POST /sessions/:id/complete`, `POST /companions/:id/revoke`, `POST /companions/sessions/:id/actions/begin` (public), `POST /companions/sessions/:id/progress` (public), `POST /companions/sessions/:id/complete` (public), `GET|POST /packages/:browser/build|open-manager|download`.
+
+The public companion callbacks authenticate on the companion id plus pairing token rather than the local gate. `POST /companions/sessions/:id/actions/begin` claims the durable action-attempt lease that every side effect must hold; `POST /companions/preflight` reports companion and settings-version staleness before a sync heartbeat.
 
 Workspace setup routes: `src/routes/workspace-setup.ts` + `src/routes/workspace.ts`.
 
