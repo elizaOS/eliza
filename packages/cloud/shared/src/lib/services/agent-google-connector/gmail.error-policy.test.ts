@@ -112,7 +112,7 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
 
   test("body normalization strips browser-tokenized script/style end tags", async () => {
     const body =
-      "<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</sCrIpT data-x=1><style>hidden{}</style/ignored><p>safe</p><script>unclosed";
+      "<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>safe</p><script>unclosed";
     fetchImpl = async () =>
       jsonResponse({
         id: "m1",
@@ -140,7 +140,9 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
     expect(result.bodyText).toContain("&lt;kept&gt;");
     expect(result.bodyText).not.toContain("<kept>");
     expect(result.bodyText).not.toContain("credential-stealer");
+    expect(result.bodyText).not.toContain("still-script");
     expect(result.bodyText).not.toContain("hidden");
+    expect(result.bodyText).not.toContain("still-style");
     expect(result.bodyText).not.toContain("unclosed");
     expect(result.bodyText).toContain("safe");
   });
