@@ -60,11 +60,9 @@ jobs:
     name: Android emulator bundle
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
-    # Cold embedded-agent builds compile the mobile Bun runtime after the APK
-    # assemble has completed. Current hosted evidence shows that phase can
-    # legitimately exceed 90 minutes; the former cap cancelled the bundle
-    # before install/drive and left summary.json stuck at `running`.
-    timeout-minutes: 180
+    # The host-backed emulator target omits the unused embedded-agent build;
+    # this cap covers the real renderer build, APK install, and device probes.
+    timeout-minutes: 90
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}
       ELIZA_WEBVIEW_DEBUG: "1"
