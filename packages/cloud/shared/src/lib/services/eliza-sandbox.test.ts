@@ -30,6 +30,7 @@ import type { DockerNode } from "../../db/repositories/docker-nodes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-runtime-history";
 import {
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type StoredAgentSandboxBackup,
   WARM_POOL_ORG_ID,
   WARM_POOL_USER_ID,
@@ -6179,6 +6180,255 @@ describe("buildRuntimeBootstrapAgent persona seed", () => {
     expect(agent.bio).toEqual(seed.bio as string[]);
     expect(agent.style).toEqual(seed.style as { all?: string[] });
     expect(agent.system).not.toBe("You are bnancy, a helpful assistant.");
+  });
+});
+
+/**
+ * Provision admission is a fail-closed service boundary as well as a provider
+ * boundary. These rows carry every early-repair tripwire so a rejected tier
+ * cannot mutate lifecycle, environment, or credentials before provider.create.
+ */
+describe("ElizaSandboxService.provision execution-tier admission", () => {
+  const AGENT = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+  const ORG = "22222222-2222-4222-8222-222222222222";
+
+  type ProvisionAdmissionService = {
+    provision(
+      agentId: string,
+      orgId: string,
+    ): Promise<{ success: boolean; sandboxRecord?: AgentSandbox; error?: string }>;
+    executeResume(
+      agentId: string,
+      orgId: string,
+    ): Promise<{
+      success: boolean;
+      containerStarted: boolean;
+      reprovisioned: boolean;
+      error?: string;
+    }>;
+    retireFailedWarmClaimForRetry(
+      agentId: string,
+      orgId: string,
+    ): Promise<{ success: true } | { success: false; error: string }>;
+    retirePersistedReplacementCleanup(agentId: string, orgId: string): Promise<string>;
+    provisionAgentDatabase(
+      rec: AgentSandbox,
+    ): Promise<{ success: boolean; connectionUri?: string; error?: string }>;
+  };
+
+  function rejectedRow(executionTier: unknown): AgentSandbox {
+    return {
+      ...customSandbox(),
+      id: AGENT,
+      organization_id: ORG,
+      execution_tier: executionTier as AgentSandbox["execution_tier"],
+      status: "error",
+      error_message: "preserve-this-lifecycle-error",
+      database_uri: null,
+      database_status: "provisioning",
+      database_error: "preserve-this-database-error",
+      environment_vars: {
+        ELIZA_API_TOKEN: "preserve-this-token",
+        ELIZAOS_CLOUD_API_KEY: "preserve-this-credential",
+      },
+      environment_revision: 41,
+      lifecycle_revision: 73,
+      claimed_at: new Date("2026-08-20T10:00:00.000Z"),
+      warm_claim_credential_state: "failed",
+      warm_claim_source_pool_id: "77777777-7777-4777-8777-777777777777",
+      warm_claim_key_fingerprint: "preserve-this-fingerprint",
+      warm_claim_cleanup_completed_at: new Date("2026-08-20T10:05:00.000Z"),
+      replacement_cleanup_sandbox_id: "preserve-replacement-sandbox",
+      replacement_cleanup_node_id: "preserve-replacement-node",
+      replacement_cleanup_container_name: "preserve-replacement-container",
+      replacement_cleanup_attempt_id: "88888888-8888-4888-8888-888888888888",
+      replacement_cleanup_allocation_counted: true,
+      replacement_cleanup_created_at: new Date("2026-08-20T10:06:00.000Z"),
+    };
+  }
+
+  function untouchedProvider() {
+    const create = mock(async (): Promise<SandboxHandle> => {
+      throw new Error("execution-tier admission was bypassed");
+    });
+    const stopForDeletion = mock(async () => ({ kind: "not-running-proven" as const }));
+    const stopForReplacement = mock(async () => {});
+    const stopOnSpecificNodeForReplacement = mock(async () => {});
+    const checkHealth = mock(async () => true);
+    const provider: SandboxProvider = {
+      create,
+      stopForDeletion,
+      stopForReplacement,
+      stopOnSpecificNodeForReplacement,
+      checkHealth,
+    };
+    return {
+      provider,
+      create,
+      stopForDeletion,
+      stopForReplacement,
+      stopOnSpecificNodeForReplacement,
+      checkHealth,
+    };
+  }
+
+  for (const [label, executionTier] of [
+    ["shared", "shared"],
+    ["unknown", "future-container-tier"],
+    ["malformed", { tier: "custom" }],
+    ["missing", undefined],
+  ] as const) {
+    test(`rejects ${label} before every observable provision side effect`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const row = rejectedRow(executionTier);
+      const bytesBefore = JSON.stringify(row);
+      const provider = untouchedProvider();
+      const svc = new ElizaSandboxService(
+        provider.provider,
+      ) as unknown as ProvisionAdmissionService;
+      const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+      const retireWarmClaim = spyOn(svc, "retireFailedWarmClaimForRetry").mockResolvedValue({
+        success: true,
+      });
+      const retireReplacement = spyOn(svc, "retirePersistedReplacementCleanup").mockResolvedValue(
+        "retired",
+      );
+      const lock = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue({
+        ...row,
+        status: "provisioning",
+      });
+      const provisionDatabase = spyOn(svc, "provisionAgentDatabase").mockResolvedValue({
+        success: true,
+        connectionUri: "postgres://must-not-be-assigned",
+      });
+      const update = spyOn(agentSandboxesRepository, "update").mockResolvedValue(row);
+      const findById = spyOn(agentSandboxesRepository, "findById").mockResolvedValue(row);
+      const createCredential = spyOn(apiKeysService, "createForAgent").mockResolvedValue({
+        apiKey: {} as never,
+        plainKey: "must-not-be-minted",
+        revokedKeyHashes: [],
+      });
+      const revokeCredential = spyOn(apiKeysService, "revokeForAgent").mockResolvedValue([]);
+      reactivateBillingSpy.mockClear();
+
+      try {
+        const result = await svc.provision(AGENT, ORG);
+        expect(result).toEqual({
+          success: false,
+          sandboxRecord: row,
+          error: "Sandbox provisioning requires an explicit container-backed execution tier",
+        });
+        expect(JSON.stringify(row)).toBe(bytesBefore);
+        expect(find).toHaveBeenCalledTimes(1);
+        expect(retireWarmClaim).not.toHaveBeenCalled();
+        expect(retireReplacement).not.toHaveBeenCalled();
+        expect(lock).not.toHaveBeenCalled();
+        expect(provisionDatabase).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(findById).not.toHaveBeenCalled();
+        expect(createCredential).not.toHaveBeenCalled();
+        expect(revokeCredential).not.toHaveBeenCalled();
+        expect(reactivateBillingSpy).not.toHaveBeenCalled();
+        expect(provider.create).not.toHaveBeenCalled();
+        expect(provider.stopForDeletion).not.toHaveBeenCalled();
+        expect(provider.stopForReplacement).not.toHaveBeenCalled();
+        expect(provider.stopOnSpecificNodeForReplacement).not.toHaveBeenCalled();
+        expect(provider.checkHealth).not.toHaveBeenCalled();
+      } finally {
+        find.mockRestore();
+        retireWarmClaim.mockRestore();
+        retireReplacement.mockRestore();
+        lock.mockRestore();
+        provisionDatabase.mockRestore();
+        update.mockRestore();
+        findById.mockRestore();
+        createCredential.mockRestore();
+        revokeCredential.mockRestore();
+      }
+    });
+  }
+
+  for (const executionTier of CONTAINER_BACKED_EXECUTION_TIERS) {
+    test(`admits canonical ${executionTier} rows to the atomic provisioning lock`, async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const row: AgentSandbox = {
+        ...customSandbox(),
+        id: AGENT,
+        organization_id: ORG,
+        execution_tier: executionTier,
+        status: "stopped",
+        bridge_url: null,
+        health_url: null,
+        claimed_at: null,
+        warm_claim_credential_state: null,
+      };
+      const provider = untouchedProvider();
+      const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+      const lock = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(
+        undefined,
+      );
+      try {
+        const result = await new ElizaSandboxService(provider.provider).provision(AGENT, ORG);
+        expect(result).toEqual({
+          success: false,
+          sandboxRecord: row,
+          error: "Agent is already being provisioned",
+        });
+        expect(lock).toHaveBeenCalledTimes(1);
+        expect(lock).toHaveBeenCalledWith(AGENT);
+        expect(provider.create).not.toHaveBeenCalled();
+      } finally {
+        find.mockRestore();
+        lock.mockRestore();
+      }
+    });
+  }
+
+  test("service-key resume applies the same admission before billing or provision", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const row: AgentSandbox = {
+      ...rejectedRow("shared"),
+      status: "stopped",
+      claimed_at: null,
+      warm_claim_credential_state: null,
+      replacement_cleanup_sandbox_id: null,
+      replacement_cleanup_node_id: null,
+      replacement_cleanup_container_name: null,
+      replacement_cleanup_attempt_id: null,
+      replacement_cleanup_allocation_counted: null,
+      replacement_cleanup_created_at: null,
+    };
+    const bytesBefore = JSON.stringify(row);
+    const provider = untouchedProvider();
+    const svc = new ElizaSandboxService(provider.provider) as unknown as ProvisionAdmissionService;
+    const getForWrite = spyOn(agentSandboxesRepository, "findByIdAndOrgForWrite").mockResolvedValue(
+      row,
+    );
+    const find = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(row);
+    const lock = spyOn(agentSandboxesRepository, "trySetProvisioning").mockResolvedValue(undefined);
+    settleLifecycleBillingSpy.mockClear();
+    try {
+      const result = await svc.executeResume(AGENT, ORG);
+      expect(result).toEqual({
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Sandbox provisioning requires an explicit container-backed execution tier",
+      });
+      expect(JSON.stringify(row)).toBe(bytesBefore);
+      expect(settleLifecycleBillingSpy).not.toHaveBeenCalled();
+      expect(find).not.toHaveBeenCalled();
+      expect(lock).not.toHaveBeenCalled();
+      expect(provider.create).not.toHaveBeenCalled();
+      expect(provider.stopForDeletion).not.toHaveBeenCalled();
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(provider.stopOnSpecificNodeForReplacement).not.toHaveBeenCalled();
+      expect(provider.checkHealth).not.toHaveBeenCalled();
+    } finally {
+      getForWrite.mockRestore();
+      find.mockRestore();
+      lock.mockRestore();
+    }
   });
 });
 

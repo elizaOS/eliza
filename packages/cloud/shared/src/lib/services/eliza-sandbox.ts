@@ -36,6 +36,7 @@ import {
   type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   WARM_POOL_ORG_ID,
@@ -422,6 +423,19 @@ export type ProvisionResult =
        */
       retryable?: boolean;
     };
+
+function rejectNonContainerBackedProvision(
+  rec: AgentSandbox,
+): Extract<ProvisionResult, { success: false }> | undefined {
+  if (CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === rec.execution_tier)) {
+    return undefined;
+  }
+  return {
+    success: false,
+    sandboxRecord: rec,
+    error: "Sandbox provisioning requires an explicit container-backed execution tier",
+  };
+}
 
 /**
  * Restore-source override for `provision()`. `from-backup` restores a specific
@@ -3069,6 +3083,8 @@ export class ElizaSandboxService {
   ): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    const initialTierRejection = rejectNonContainerBackedProvision(rec);
+    if (initialTierRejection) return initialTierRejection;
     if (rec.claimed_at && rec.warm_claim_credential_state === "failed") {
       const retryPreparation = await this.retireFailedWarmClaimForRetry(agentId, orgId);
       if (!retryPreparation.success) {
@@ -3080,6 +3096,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const retryTierRejection = rejectNonContainerBackedProvision(rec);
+      if (retryTierRejection) return retryTierRejection;
     }
     if (this.getReplacementCleanupLocator(rec)) {
       try {
@@ -3098,6 +3116,8 @@ export class ElizaSandboxService {
       }
       rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+      const cleanupTierRejection = rejectNonContainerBackedProvision(rec);
+      if (cleanupTierRejection) return cleanupTierRejection;
     }
 
     const previousStatus = rec.status;
@@ -8743,6 +8763,16 @@ export class ElizaSandboxService {
       };
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
+
+    const tierRejection = rejectNonContainerBackedProvision(rec);
+    if (tierRejection) {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: tierRejection.error,
+      };
+    }
 
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
       agentId,
