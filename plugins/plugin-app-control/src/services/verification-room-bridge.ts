@@ -32,6 +32,7 @@ import { randomUUID } from "node:crypto";
 import type { IAgentRuntime, Memory, SwarmEvent, UUID } from "@elizaos/core";
 import { getSwarmCoordinatorService, logger, Service } from "@elizaos/core";
 import { createViewsRequestHeaders } from "../actions/views-request-auth.js";
+import { createAppControlClient } from "../client/api.js";
 import { getAppControlApiBase } from "../loopback-api.js";
 import { loadAppFromWorkdir } from "./verification-helpers.js";
 
@@ -223,13 +224,24 @@ async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 			return `${payload.targetName} app built and verified at ${payload.workdir}, but installing it failed: ${load.error}. It won't launch until it's registered — reload the agent or check its package.json manifest.`;
 		}
 		const target = payload.targetName.toLowerCase();
-		const launchable = load.items.some(
+		const launchable = load.items.find(
 			(item) =>
 				item.slug.toLowerCase() === target ||
 				item.canonicalName.toLowerCase() === target,
 		);
 		if (launchable) {
-			return `${payload.targetName} app built, verified, and installed — reply 'launch ${payload.targetName}' to open it.`;
+			try {
+				const launched = await createAppControlClient().launchApp(
+					launchable.canonicalName,
+				);
+				if (launched.launchUrl) {
+					return `${payload.targetName} is ready and open: [Open ${launched.displayName}](${launched.launchUrl})`;
+				}
+				return `${payload.targetName} is ready and running.`;
+			} catch (err) {
+				const reason = err instanceof Error ? err.message : String(err);
+				return `${payload.targetName} was built and verified, but I couldn't open it: ${reason}. Reply 'launch ${payload.targetName}' to try again.`;
+			}
 		}
 		// The registry scan succeeded but nothing resolved to the requested name:
 		// the built manifest is missing its `elizaos.app` block or registered

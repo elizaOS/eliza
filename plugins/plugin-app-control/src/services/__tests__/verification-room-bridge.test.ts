@@ -247,18 +247,32 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		};
 	}
 
-	it("registers the built app on pass so 'launch <name>' resolves (#11954)", async () => {
-		vi.mocked(globalThis.fetch).mockResolvedValue({
-			ok: true,
-			status: 200,
-			json: async () => ({
+	it("registers and launches the built app, then posts its clean open link (#11954)", async () => {
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
 				ok: true,
-				directory: "/repo/eliza/apps",
-				registered: 1,
-				items: [{ slug: "notes", canonicalName: "notes" }],
-				rejectedManifests: [],
-			}),
-		} as Response);
+				status: 200,
+				json: async () => ({
+					ok: true,
+					directory: "/repo/eliza/apps",
+					registered: 1,
+					items: [{ slug: "notes", canonicalName: "notes" }],
+					rejectedManifests: [],
+				}),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				text: async () =>
+					JSON.stringify({
+						pluginInstalled: false,
+						needsRestart: false,
+						displayName: "Notes",
+						launchType: "embedded",
+						launchUrl: "/api/apps/local/notes/",
+						run: null,
+					}),
+			} as Response);
 		const coordinator = makeCoordinator();
 		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
 		const service = await VerificationRoomBridgeService.start(runtime);
@@ -267,12 +281,19 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		await flush();
 
 		// It POSTed the app's PARENT dir to the app-register route so a subsequent
-		// listInstalledApps() + launch resolves the freshly built app.
+		// launch resolves the freshly built app.
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			expect.stringContaining("/api/apps/load-from-directory"),
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({ directory: "/repo/eliza/apps" }),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			expect.stringContaining("/api/apps/launch"),
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ name: "notes" }),
 			}),
 		);
 
@@ -282,9 +303,41 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(table).toBe("messages");
 		expect(memory.roomId).toBe("room-99");
 		const text = memory.content.text as string;
-		expect(text).toContain("notes app built, verified, and installed");
-		expect(text).toContain("launch notes");
+		expect(text).toBe(
+			"notes is ready and open: [Open Notes](/api/apps/local/notes/)",
+		);
 		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
+
+		await service.stop();
+	});
+
+	it("reports an honest retry when registration passes but launch fails", async () => {
+		vi.mocked(globalThis.fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				status: 200,
+				json: async () => ({
+					ok: true,
+					items: [{ slug: "notes", canonicalName: "notes" }],
+				}),
+			} as Response)
+			.mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+				text: async () => JSON.stringify({ error: "worker failed to start" }),
+			} as Response);
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const service = await VerificationRoomBridgeService.start(runtime);
+
+		coordinator.__emit(appPassEvent());
+		await flush();
+
+		const [memory] = (runtime.createMemory as ReturnType<typeof vi.fn>).mock
+			.calls[0];
+		expect(memory.content.text).toContain("built and verified");
+		expect(memory.content.text).toContain("couldn't open it");
+		expect(memory.content.text).toContain("launch notes");
 
 		await service.stop();
 	});

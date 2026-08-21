@@ -191,6 +191,27 @@ export const appControlPlugin: Plugin = {
 				applyCurrentViewComposeHook(ctx);
 			},
 		});
+
+		// Services are lazy-started by default. Nothing else asks for the room
+		// bridge until shutdown, so without this eager load a verified asynchronous
+		// app build can finish with the user's initial "I'll post the link" receipt
+		// still hanging forever. Defer one macrotask so all plugin service classes
+		// are registered before resolving the bridge; it then subscribes to the
+		// orchestrator's authoritative post-validation event stream.
+		setTimeout(() => {
+			void runtime
+				.getServiceLoadPromise(VerificationRoomBridgeService.serviceType)
+				.catch((err: unknown) =>
+					runtime.logger?.warn?.(
+						{
+							src: "@elizaos/plugin-app-control",
+							serviceType: VerificationRoomBridgeService.serviceType,
+							err: err instanceof Error ? err.message : String(err),
+						},
+						"Failed to eager-start verification room bridge",
+					),
+				);
+		}, 0);
 	},
 	async dispose(runtime) {
 		await runtime
