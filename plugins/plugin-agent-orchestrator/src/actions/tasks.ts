@@ -263,24 +263,28 @@ function spawnRefusalResult(
  * user deliberately asked for a raw coding worker). This is a fail-closed
  * boundary after planner selection, not a natural-language shortcut: it stops
  * a mistaken TASKS create from inventing a scratch path and declaring a loose
- * file to be a website while still letting the planner invoke APP normally.
+ * file to be a website, then invokes the registered APP action in the same
+ * turn so the user is not left with a redirect sentence and no actual work.
  */
-function guardHostedAppCreate(args: {
+async function handoffHostedAppCreate(args: {
   runtime: IAgentRuntime;
+  message: Memory;
+  state?: State;
+  callback?: HandlerCallback;
   operation: TaskOp;
   params: Record<string, unknown>;
   content: Record<string, unknown>;
   fallbackText: string;
-}): ActionResult | undefined {
+}): Promise<ActionResult | undefined> {
   if (args.operation !== "create") return undefined;
   const registeredActions =
     typeof args.runtime.getAllActions === "function"
       ? args.runtime.getAllActions()
       : (args.runtime.actions ?? []);
-  const appActionAvailable = registeredActions.some(
+  const appAction = registeredActions.find(
     (action) => action.name.toUpperCase() === "APP",
   );
-  if (!appActionAvailable) return undefined;
+  if (!appAction) return undefined;
 
   // A caller that locks an existing workdir, binds a managed project, or names
   // a repository is intentionally operating on code that already exists.
@@ -298,8 +302,37 @@ function guardHostedAppCreate(args: {
   );
   if (detectTaskType(goal) !== "app-build") return undefined;
 
-  const humanText =
-    "I’m switching this to the app builder so it gets a real preview and verification.";
+  if (typeof appAction.handler !== "function") {
+    const humanText =
+      "I couldn’t start the app builder because its action handler is unavailable.";
+    return {
+      success: false,
+      error: "HOSTED_APP_NEEDS_APP_BUILDER",
+      text: humanText,
+      userFacingText: humanText,
+      data: {
+        code: "HOSTED_APP_NEEDS_APP_BUILDER",
+        plannerGuidance:
+          "The registered APP action has no callable handler. Do not retry TASKS and do not invent a workdir.",
+      },
+    };
+  }
+
+  const result = await appAction.handler(
+    args.runtime,
+    args.message,
+    args.state,
+    {
+      parameters: {
+        action: "create",
+        intent: goal,
+      },
+    },
+    args.callback,
+  );
+  if (result) return result;
+
+  const humanText = "The app builder did not return a result.";
   return {
     success: false,
     error: "HOSTED_APP_NEEDS_APP_BUILDER",
@@ -308,7 +341,7 @@ function guardHostedAppCreate(args: {
     data: {
       code: "HOSTED_APP_NEEDS_APP_BUILDER",
       plannerGuidance:
-        "Call APP with action=create and pass the user's website/app request as the intent. APP owns scaffolding, coding-agent dispatch, browser verification, and the live preview/publish result. Do not retry TASKS and do not invent a workdir.",
+        "The registered APP action returned no result. Do not retry TASKS and do not invent a workdir.",
     },
   };
 }
@@ -5785,6 +5818,18 @@ export const tasksAction: Action & {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
     const content = contentRecord(message);
     const action = readOp(params) ?? "create";
+    const hostedAppResult = await handoffHostedAppCreate({
+      runtime,
+      message,
+      state,
+      callback,
+      operation: action,
+      params,
+      content,
+      fallbackText: requestText(message),
+    });
+    if (hostedAppResult) return hostedAppResult;
+
     const capturedCallbacks: CapturedCallback[] = [];
     const captureCallback: HandlerCallback | undefined = callback
       ? async (response, actionName) => {
@@ -5792,23 +5837,15 @@ export const tasksAction: Action & {
           return [];
         }
       : undefined;
-    const result =
-      guardHostedAppCreate({
-        runtime,
-        operation: action,
-        params,
-        content,
-        fallbackText: requestText(message),
-      }) ??
-      (await dispatchTasksOperation(
-        action,
-        runtime,
-        message,
-        state,
-        params,
-        content,
-        captureCallback,
-      ));
+    const result = await dispatchTasksOperation(
+      action,
+      runtime,
+      message,
+      state,
+      params,
+      content,
+      captureCallback,
+    );
     return settleTasksOperation({
       operation: action,
       message,

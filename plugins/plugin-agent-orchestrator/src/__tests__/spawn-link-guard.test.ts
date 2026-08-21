@@ -54,7 +54,7 @@ function makeFakeAcp() {
 
 function makeRuntime(
   acp: ReturnType<typeof makeFakeAcp>["service"],
-  options: { appAction?: boolean } = {},
+  options: { appAction?: boolean; appHandler?: ReturnType<typeof vi.fn> } = {},
 ) {
   return {
     agentId: AGENT_ID,
@@ -70,7 +70,9 @@ function makeRuntime(
     emitEvent: vi.fn(async () => undefined),
     useModel: vi.fn(async () => "{}"),
     getAllActions: () =>
-      options.appAction ? ([{ name: "APP" }] as never[]) : ([] as never[]),
+      options.appAction
+        ? ([{ name: "APP", handler: options.appHandler }] as never[])
+        : ([] as never[]),
   } as unknown as IAgentRuntime;
 }
 
@@ -251,9 +253,17 @@ describe("TASKS spawn gate: empty task prompts refuse pre-spawn", () => {
 });
 
 describe("TASKS create gate: new hosted apps use the owned APP workflow", () => {
-  it("rejects generic create before spawn when APP is registered", async () => {
+  it("hands generic create to APP before spawn when APP is registered", async () => {
     const { service, spawnSession } = makeFakeAcp();
-    const runtime = makeRuntime(service, { appAction: true });
+    const appHandler = vi.fn(async () => ({
+      success: true,
+      text: "Building the app now.",
+      userFacingText: "Building the app now.",
+      verifiedUserFacing: true,
+      turnComplete: true,
+      data: { actionName: "APP" },
+    }));
+    const runtime = makeRuntime(service, { appAction: true, appHandler });
     const result = await runOp(
       runtime,
       messageWithText("make me a personal website for nubs"),
@@ -264,19 +274,23 @@ describe("TASKS create gate: new hosted apps use the owned APP workflow", () => 
       },
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toBe("HOSTED_APP_NEEDS_APP_BUILDER");
-    const data = result.data as Record<string, unknown>;
-    expect(data.code).toBe("HOSTED_APP_NEEDS_APP_BUILDER");
-    expect(String(data.plannerGuidance)).toContain("APP");
-    expect(String(data.plannerGuidance)).not.toContain("/workspaces/nubs-site");
-    expect(result.verifiedUserFacing).not.toBe(true);
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject({ actionName: "APP" });
+    expect(appHandler).toHaveBeenCalledTimes(1);
+    expect(appHandler.mock.calls[0]?.[3]).toEqual({
+      parameters: {
+        action: "create",
+        intent:
+          "Build a personal website for Nubs and give the user a live preview.",
+      },
+    });
     expect(spawnSession).not.toHaveBeenCalled();
   });
 
   it("keeps explicit existing-workdir app work on TASKS", async () => {
     const { service } = makeFakeAcp();
-    const runtime = makeRuntime(service, { appAction: true });
+    const appHandler = vi.fn();
+    const runtime = makeRuntime(service, { appAction: true, appHandler });
     const result = await runOp(
       runtime,
       messageWithText("update the website in my existing repo"),
@@ -294,11 +308,13 @@ describe("TASKS create gate: new hosted apps use the owned APP workflow", () => 
     expect(result.data).not.toMatchObject({
       code: "HOSTED_APP_NEEDS_APP_BUILDER",
     });
+    expect(appHandler).not.toHaveBeenCalled();
   });
 
   it("keeps explicit raw spawn_agent delegation available", async () => {
     const { service, spawnSession } = makeFakeAcp();
-    const runtime = makeRuntime(service, { appAction: true });
+    const appHandler = vi.fn();
+    const runtime = makeRuntime(service, { appAction: true, appHandler });
     const result = await runOp(
       runtime,
       messageWithText("spawn a coding agent to build a local website"),
@@ -309,6 +325,7 @@ describe("TASKS create gate: new hosted apps use the owned APP workflow", () => 
     );
 
     expect(result.success).toBe(true);
+    expect(appHandler).not.toHaveBeenCalled();
     expect(spawnSession).toHaveBeenCalledTimes(1);
   });
 });
