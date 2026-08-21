@@ -9,7 +9,7 @@
 
 const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const LOOPBACK_IP_LITERALS = new Set(["127.0.0.1", "[::1]"]);
 const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
 // restoreConversationsFromDb bypasses the runtime's own
 // evictOldestConversation(..., 500), so a legitimate list can exceed 500 and a
@@ -67,7 +67,7 @@ export function resolveCanonicalLoopbackRuntimeOrigin(raw: string): string {
 
   if (
     parsed.protocol !== "http:" ||
-    !LOOPBACK_HOSTNAMES.has(parsed.hostname) ||
+    !LOOPBACK_IP_LITERALS.has(parsed.hostname) ||
     parsed.username !== "" ||
     parsed.password !== "" ||
     parsed.pathname !== "/" ||

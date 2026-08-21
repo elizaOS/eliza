@@ -10,7 +10,7 @@ import { VOICE_STREAM_PROTOCOL } from "@/lib/voice-session/eliza-sse-bridge";
 
 const CLOUD_CONVERSATION_STREAM_PATH =
   /^\/api\/v1\/eliza\/agents\/([^/]+)\/api\/conversations\/([^/]+)\/messages\/stream$/;
-const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const LOOPBACK_IP_LITERALS = new Set(["127.0.0.1", "[::1]"]);
 const MAX_CLIENT_MESSAGE_ID_LENGTH = 128;
 const FORWARDED_HEADER_NAMES = [
   "X-Eliza-Voice-Trace-Id",
@@ -111,7 +111,7 @@ function resolveLoopbackOrigin(raw: string): URL {
   }
   if (
     url.protocol !== "http:" ||
-    !LOOPBACK_HOSTNAMES.has(url.hostname) ||
+    !LOOPBACK_IP_LITERALS.has(url.hostname) ||
     url.username !== "" ||
     url.password !== "" ||
     url.pathname !== "/" ||

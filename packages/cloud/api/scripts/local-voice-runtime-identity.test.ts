@@ -92,22 +92,19 @@ describe("local voice runtime identity", () => {
         {
           id: NEWER_CONVERSATION_ID,
           updatedAt: "2026-08-19T22:00:00.000Z",
-          // The production ConversationMeta DTO has no agentId. Unknown fields
-          // cannot override the singleton /api/agents authority.
-          agentId: OTHER_AGENT_ID,
         },
         {
           id: CONVERSATION_ID,
           updatedAt: "2026-08-19T20:00:00.000Z",
-          agentId: AGENT_ID,
         },
       ],
     });
 
     const identity = await resolveLocalVoiceRuntimeIdentity({
-      runtimeOrigin: "http://localhost:31337/",
+      runtimeOrigin: "http://[::1]:31337/",
       fetchImpl,
     });
+    expect(identity.runtimeOrigin).toBe("http://[::1]:31337");
     expect(identity.agentId).toBe(AGENT_ID);
     expect(identity.conversationId).toBe(NEWER_CONVERSATION_ID);
   });
@@ -117,6 +114,7 @@ describe("local voice runtime identity", () => {
     "http://127.0.0.1.evil:31337",
     "http://127.0.0.1:31337/path",
     "http://user@127.0.0.1:31337",
+    "http://localhost:31337",
     " http://127.0.0.1:31337",
   ])(
     "rejects a noncanonical or hostile origin before fetching: %s",
@@ -247,6 +245,39 @@ describe("local voice runtime identity", () => {
         fetchImpl,
       }),
     ).rejects.toThrow("response size limit");
+  });
+
+  test("rejects a declared oversized runtime response before reading it", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return new Response('{"ready":true,"canRespond":true}', {
+        headers: { "Content-Length": String(1024 * 1024 + 1) },
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("response size limit");
+    expect(calls).toBe(1);
+  });
+
+  test.each([
+    { ready: false, canRespond: true },
+    { ready: true, canRespond: false },
+    {},
+  ])("rejects a runtime that is not ready to respond", async (health) => {
+    const { fetchImpl, calls } = runtimeFetch({ health });
+    await expect(
+      resolveLocalVoiceRuntimeIdentity({
+        runtimeOrigin: "http://127.0.0.1:31337",
+        fetchImpl,
+      }),
+    ).rejects.toThrow("local runtime is not ready to respond");
+    expect(calls).toEqual(["http://127.0.0.1:31337/api/health"]);
   });
 
   test("rejects runtime record sets above their bounded ceilings", async () => {
