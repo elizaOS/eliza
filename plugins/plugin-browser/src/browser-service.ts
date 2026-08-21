@@ -457,6 +457,28 @@ export class BrowserService extends Service {
       capabilities: InteractionCapabilitySet;
     },
   ): Promise<BrowserAuthorizedUploadExecution> {
+    // `execute()` hard-blocks upload before any target is reached, so this is
+    // the only path a real authorized upload takes — and therefore the only
+    // place the per-domain `upload` policy can apply. Evaluate before the
+    // confirmation grant is consumed or any target work starts, so a blocked
+    // upload burns nothing and leaves no side effect.
+    for (const step of flattenBrowserCommands(command)) {
+      const decision = evaluateBrowserDomainPolicies({
+        ...browserDomainPolicyRequestForCommand(
+          step,
+          authorization.session.adapterId,
+        ),
+      });
+      if (decision.verdict !== "allow") {
+        throw new BrowserDispatchFailure(
+          "POLICY_BLOCKED",
+          decision.verdict === "require_confirmation"
+            ? `Confirmed browser upload "${step.subaction}" requires explicit confirmation by domain policy "${decision.policyId}": ${decision.reason}`
+            : `Confirmed browser upload "${step.subaction}" was blocked by domain policy "${decision.policyId}": ${decision.reason}`,
+          { targetId: authorization.session.adapterId },
+        );
+      }
+    }
     const [target] = await this.resolveTargets(
       authorization.session.adapterId,
       command,

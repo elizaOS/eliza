@@ -173,7 +173,7 @@ export function evaluateBrowserDomainPolicies(
 ): BrowserDomainPolicyDecision {
   const frozen = Object.freeze({ ...request });
   for (const policy of policyRegistry().values()) {
-    let decision: BrowserDomainPolicyDecision;
+    let decision: unknown;
     try {
       decision = policy.evaluate(frozen);
     } catch (error) {
@@ -186,10 +186,21 @@ export function evaluateBrowserDomainPolicies(
         policyId: policy.id,
       };
     }
+    // A hook is untrusted input: a non-object return (null, undefined, a
+    // string) must block rather than throw a TypeError on property access,
+    // which would escape this fail-closed boundary as an opaque crash.
+    if (typeof decision !== "object" || decision === null) {
+      return {
+        verdict: "block",
+        reason: `Domain policy "${policy.id}" returned a non-decision value.`,
+        policyId: policy.id,
+      };
+    }
+    const verdict = (decision as { verdict?: unknown }).verdict;
     if (
-      decision.verdict !== "allow" &&
-      decision.verdict !== "block" &&
-      decision.verdict !== "require_confirmation"
+      verdict !== "allow" &&
+      verdict !== "block" &&
+      verdict !== "require_confirmation"
     ) {
       return {
         verdict: "block",
@@ -197,8 +208,16 @@ export function evaluateBrowserDomainPolicies(
         policyId: policy.id,
       };
     }
-    if (decision.verdict !== "allow") {
-      return { ...decision, policyId: policy.id };
+    if (verdict !== "allow") {
+      const reason = (decision as { reason?: unknown }).reason;
+      return {
+        verdict,
+        reason:
+          typeof reason === "string" && reason.trim().length > 0
+            ? reason
+            : `Domain policy "${policy.id}" returned verdict "${verdict}".`,
+        policyId: policy.id,
+      };
     }
   }
   return {
