@@ -1981,6 +1981,41 @@ describe("runOnboardingChat", () => {
       expect(readManagedElizaAgentConnection).not.toHaveBeenCalled();
     });
 
+    test("clears a mismatched handoff receipt while surfacing a deletion failure", async () => {
+      const sessionId = seedCompletedHandoff("agent-a");
+      const stale = sessionCache.get(cacheKey(sessionId));
+      if (!stale) {
+        throw new Error("expected seeded onboarding session");
+      }
+      sessionCache.set(cacheKey(sessionId), {
+        ...stale,
+        launchUrl: "https://cloud.eliza.app/cloud/agents/another-agent",
+      });
+      getElizaAppProvisioningStatus.mockResolvedValue({
+        status: "deletion_failed",
+        agentId: "agent-b",
+        bridgeUrl: null,
+        sandbox: null,
+      });
+
+      const result = await runOnboardingChat({
+        sessionId,
+        statusOnly: true,
+        authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+      });
+
+      expect(result.provisioning).toMatchObject({
+        status: "deletion_failed",
+        agentId: "agent-b",
+      });
+      expect(result.session.agentId).toBe("agent-b");
+      expect(result.session.handoffCopiedAt).toBeUndefined();
+      expect(result.session.launchUrl).toBeUndefined();
+      expect(result.handoffComplete).toBe(false);
+      expect(result.launchUrl).toBeNull();
+      expect(readManagedElizaAgentConnection).not.toHaveBeenCalled();
+    });
+
     test("self-heals a legacy handoff receipt that points at a different target", async () => {
       const originalFetch = globalThis.fetch;
       const sessionId = seedCompletedHandoff("agent-b");

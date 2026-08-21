@@ -1566,11 +1566,12 @@ export async function runOnboardingChatWithStore(
     const canonicalLaunchUrl = canonicalAgentId ? controlPanelUrl(canonicalAgentId) : undefined;
     const handoffReceiptMatchesCanonicalTarget =
       !session.handoffCopiedAt || session.launchUrl === canonicalLaunchUrl;
-    const retainHealthyHandoffWhileDeletionFailureIsVisible =
-      provisioning.status === "deletion_failed" &&
+    const retainedHandoffMatchesStoredAgent =
       !!session.agentId &&
       !!session.handoffCopiedAt &&
-      !!session.launchUrl;
+      session.launchUrl === controlPanelUrl(session.agentId);
+    const retainHealthyHandoffWhileDeletionFailureIsVisible =
+      provisioning.status === "deletion_failed" && retainedHandoffMatchesStoredAgent;
     if (
       !retainHealthyHandoffWhileDeletionFailureIsVisible &&
       (session.agentId !== canonicalAgentId || !handoffReceiptMatchesCanonicalTarget)
