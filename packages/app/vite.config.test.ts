@@ -8,8 +8,8 @@ import appViteConfig, {
   appDevWsBasePlugin,
   appShellMetadataPlugin,
   resolveAppShellLocalCspSources,
-  selectAndroidCloudRendererEntry,
   scrubAndroidCloudLocalRouting,
+  selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";

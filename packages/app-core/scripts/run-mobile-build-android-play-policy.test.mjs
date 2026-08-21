@@ -14,9 +14,7 @@ import {
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
   androidPlayManifestEvidenceFromAapt,
   createAndroidPlayManifestPolicy,
-  findAndroidCloudPackagedRuntimeOffenders,
   findAndroidPlayIndexHtmlFindings,
-  findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
