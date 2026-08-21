@@ -918,6 +918,68 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
   }, testInfo) => {
     await installCloudVoiceConfig(page);
     await installAudioSourceProbe(page);
+    // Tee the live SSE stream inside the page: CDP's Network.getResponseBody
+    // cannot return a consumed streaming body ("No data found for resource"),
+    // so Playwright's response.body() is structurally unavailable for the
+    // real /messages/stream turn. A fetch wrapper clones matching responses
+    // and buffers their text for the assertions below.
+    await page.addInitScript(() => {
+      const captures: Array<{
+        url: string;
+        status: number;
+        text: string;
+        done: boolean;
+      }> = [];
+      (
+        window as unknown as { __voiceStreamCaptures: typeof captures }
+      ).__voiceStreamCaptures = captures;
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input, init) => {
+        const response = await originalFetch(input, init);
+        try {
+          const rawUrl =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url;
+          const method = (
+            init?.method ??
+            (input instanceof Request ? input.method : "GET")
+          ).toUpperCase();
+          const resolved = new URL(rawUrl, window.location.href);
+          if (
+            method === "POST" &&
+            /\/api\/conversations\/[^/]+\/messages\/stream$/.test(
+              resolved.pathname,
+            )
+          ) {
+            const entry = {
+              url: resolved.href,
+              status: response.status,
+              text: "",
+              done: false,
+            };
+            captures.push(entry);
+            void response
+              .clone()
+              .text()
+              .then((text) => {
+                entry.text = text;
+                entry.done = true;
+              })
+              .catch(() => {
+                entry.done = true;
+              });
+          }
+        } catch {
+          // error-policy:J6 diagnostic tee only — the product fetch result is
+          // returned untouched; a capture failure surfaces as the assertion
+          // below finding no completed stream capture.
+        }
+        return response;
+      };
+    });
 
     // Drop the mocks the shared beforeEach installed so these reach the live
     // stack (which proxies to the real cloud STT/TTS + runs a live agent turn).
@@ -1033,7 +1095,44 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       streamResponse.ok(),
       await describeVoiceRouteFailure(streamResponse),
     ).toBe(true);
-    const streamText = (await streamResponse.body()).toString("utf8");
+    const streamUrl = streamResponse.url();
+    await expect
+      .poll(
+        () =>
+          page.evaluate((url) => {
+            const captures = (
+              window as unknown as {
+                __voiceStreamCaptures?: Array<{
+                  url: string;
+                  done: boolean;
+                }>;
+              }
+            ).__voiceStreamCaptures;
+            return Boolean(
+              captures?.some((entry) => entry.url === url && entry.done),
+            );
+          }, streamUrl),
+        {
+          timeout: 30_000,
+          message:
+            "the in-page tee must finish buffering the live SSE stream body",
+        },
+      )
+      .toBe(true);
+    const streamText = await page.evaluate((url) => {
+      const captures = (
+        window as unknown as {
+          __voiceStreamCaptures?: Array<{
+            url: string;
+            done: boolean;
+            text: string;
+          }>;
+        }
+      ).__voiceStreamCaptures;
+      return (
+        captures?.find((entry) => entry.url === url && entry.done)?.text ?? ""
+      );
+    }, streamUrl);
     const streamDone = streamText
       .split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
