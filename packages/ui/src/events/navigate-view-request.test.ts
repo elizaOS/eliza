@@ -194,6 +194,22 @@ describe("native navigate-view requests", () => {
     expect(received).toEqual(["/wallet", "/connectors"]);
   });
 
+  it("does not let a reentrant dispatch overtake an already-queued cold-boot intent", () => {
+    dispatchNavigateViewRequest({ viewPath: "/wallet" });
+    dispatchNavigateViewRequest({ viewPath: "/settings" });
+    const received: Array<string | null | undefined> = [];
+    cleanups.push(
+      listenForNavigateViewRequests((event) => {
+        received.push(event.detail.viewPath);
+        if (event.detail.viewPath === "/wallet") {
+          dispatchNavigateViewRequest({ viewPath: "/connectors" });
+        }
+      }),
+    );
+
+    expect(received).toEqual(["/wallet", "/settings", "/connectors"]);
+  });
+
   it("overflow: dropping the oldest pending request past the bound is observable and resolves its promise false", async () => {
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     try {

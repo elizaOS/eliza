@@ -101,12 +101,34 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
     }
     const result = ctx.handleDeepLink(trimmed);
     if (result && typeof (result as Promise<boolean>).then === "function") {
-      void (result as Promise<boolean>).then((applied) => {
-        if (!applied) return;
-        const queued = pendingDeepLinkAcknowledgements.get(trimmed);
-        pendingDeepLinkAcknowledgements.delete(trimmed);
-        for (const acknowledge of queued ?? []) acknowledge();
-      });
+      // Record every asynchronous application attempt, including one first
+      // observed through Capacitor getLaunchUrl without an acknowledgement.
+      // A concurrent DeepLinkBuffer peek of the same URL must queue behind this
+      // promise instead of mistaking the missing callback list for completion.
+      if (!pendingDeepLinkAcknowledgements.has(trimmed)) {
+        pendingDeepLinkAcknowledgements.set(trimmed, []);
+      }
+      void (result as Promise<boolean>)
+        .then((applied) => {
+          if (!applied) {
+            pendingDeepLinkAcknowledgements.delete(trimmed);
+            handledDeepLinks.delete(trimmed);
+            return;
+          }
+          const queued = pendingDeepLinkAcknowledgements.get(trimmed);
+          pendingDeepLinkAcknowledgements.delete(trimmed);
+          for (const acknowledge of queued ?? []) acknowledge();
+        })
+        .catch((error) => {
+          // error-policy:J1 the native lifecycle boundary translates a rejected
+          // renderer application into retained-buffer retry authority.
+          pendingDeepLinkAcknowledgements.delete(trimmed);
+          handledDeepLinks.delete(trimmed);
+          console.warn(
+            `${ctx.logPrefix} Deep-link navigation application failed:`,
+            error instanceof Error ? error.message : error,
+          );
+        });
       return;
     }
     const queued = pendingDeepLinkAcknowledgements.get(trimmed);

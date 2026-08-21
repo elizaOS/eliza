@@ -553,6 +553,59 @@ describe("createMobileLifecycle — app lifecycle", () => {
     );
   });
 
+  it("does not ack when getLaunchUrl starts applying before the buffer reports the same URL", async () => {
+    const url = "elizaos://apps/deploy";
+    capacitorAppMock.__setLaunchUrl({ url });
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveApplied = resolve;
+          }),
+      ),
+    });
+
+    createMobileLifecycle(ctx).initializeAppLifecycle();
+    await vi.waitFor(() => expect(ctx.handleDeepLink).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
+  it("retries a buffered URL after an application attempt resolves false", async () => {
+    vi.useFakeTimers();
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi
+        .fn<MobileLifecycleContext["handleDeepLink"]>()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+    });
+
+    createMobileLifecycle(ctx).initializeAppLifecycle();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
   it("acknowledges a native replay duplicate after appUrlOpen already routed it", async () => {
     vi.useFakeTimers();
     const url = "elizaos://chat/replayed";
