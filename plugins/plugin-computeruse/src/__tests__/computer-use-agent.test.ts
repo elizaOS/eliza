@@ -579,4 +579,45 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
     expect(formatted).toContain("inspect�status");
     expect(formatted).toContain(`${"e".repeat(176)}�...`);
   });
+
+  it("normalizes either lone-surrogate half before status retention or clipping", () => {
+    for (const rationale of [
+      "inspect\ud800status",
+      "inspect\udc00status",
+      `${"h".repeat(176)}\ud800tail`,
+      `${"l".repeat(176)}\udc00tail`,
+    ]) {
+      const formatted = formatComputerUseAgentProgress({
+        step: 1,
+        maxSteps: 5,
+        actionKind: "click",
+        rationale,
+        result: { success: true },
+      });
+
+      expect(formatted.isWellFormed()).toBe(true);
+      expect(formatted).toContain("�");
+    }
+  });
+
+  it("reserves the status suffix only after the 180-code-unit boundary", () => {
+    const atLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "m".repeat(180),
+      result: { success: true },
+    });
+    const overLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "n".repeat(181),
+      result: { success: true },
+    });
+
+    expect(atLimit).toContain("m".repeat(180));
+    expect(atLimit).not.toContain("...");
+    expect(overLimit).toContain(`${"n".repeat(177)}...`);
+  });
 });

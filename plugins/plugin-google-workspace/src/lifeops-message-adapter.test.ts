@@ -264,6 +264,55 @@ describe("GoogleGmailAdapter", () => {
     expect(longDraft.preview.length).toBeLessThanOrEqual(240);
   });
 
+  it("normalizes either lone-surrogate half on both sides of the preview limit", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+    const bodies = [
+      "short\ud800preview",
+      "short\udc00preview",
+      `${"h".repeat(236)}\ud800tail`,
+      `${"l".repeat(236)}\udc00tail`,
+    ];
+
+    const previews: string[] = [];
+    for (const body of bodies) {
+      const draft = await adapter.createDraft(runtime, { ...baseRequest, body });
+      previews.push(draft.preview);
+    }
+
+    expect(previews).toEqual([
+      "short�preview",
+      "short�preview",
+      `${"h".repeat(236)}�...`,
+      `${"l".repeat(236)}�...`,
+    ]);
+    expect(previews.every((preview) => preview.isWellFormed())).toBe(true);
+    expect(previews.every((preview) => preview.length <= 240)).toBe(true);
+  });
+
+  it("reserves the suffix only after the 240-code-unit boundary", async () => {
+    const runtime = runtimeWithGoogleService({});
+    const adapter = new GoogleGmailAdapter();
+    const baseRequest = {
+      source: "gmail" as const,
+      to: [{ identifier: "test@example.com" }],
+      subject: "Test Subject",
+      worldId: "acct_google_1",
+    };
+
+    const exact = await adapter.createDraft(runtime, { ...baseRequest, body: "m".repeat(240) });
+    const over = await adapter.createDraft(runtime, { ...baseRequest, body: "n".repeat(241) });
+
+    expect(exact.preview).toBe("m".repeat(240));
+    expect(over.preview).toBe(`${"n".repeat(237)}...`);
+  });
+
   it("refuses a new draft without an email-address recipient", async () => {
     const runtime = runtimeWithGoogleService({});
     await expect(
