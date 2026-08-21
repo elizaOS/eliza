@@ -9,10 +9,10 @@ and pi-agent were not copied into the runtime. They remain useful references or
 explicit optional ACP backends, but neither is required for the owned path.
 
 This is a local candidate, not a flawless or published release. Per the latest
-owner instruction, none of this coding-agent work is pushed. The exact-head
-behavior checkpoint is `c7891c0b767bcbfe55cfc9ddf9f2f63c1f0d098e`; this
-document update is the only newer working-tree change before the final local
-evidence checkpoint.
+owner instruction, none of this coding-agent work is pushed. The final
+exact-output behavior checkpoint is
+`93d8d0a12dfb29f63e34dcc37b7c60c44d1bff32`; this document update is the only
+newer working-tree change before the final local documentation checkpoint.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
 not the current configuration. Interactive browser acceptance uses Cerebras
@@ -161,6 +161,16 @@ verification. This is a generic output-fidelity contract, not a special case for
 greetings or any tested phrase. Normal requests still use the parent's ordinary
 natural-language completion path.
 
+A live regression exposed an evaluator-ordering edge: generic routing could add
+a stale `TASKS` candidate after the completion evaluator had cleared it, forcing
+a second model pass that paraphrased the otherwise-correct child result. The
+completion evaluator now runs after generic routing and authoritatively clears
+candidate actions and parent hints before setting the captured reply. It does
+not invoke `REPLY`: synthetic child-completion messages have the agent role, and
+the existing user-only action gate correctly rejects that action. A focused
+regression executes both evaluators in priority order and proves the final plan
+contains the literal reply with no stale action candidate.
+
 The residual gate now scopes unpushed commits to commits created after the
 session's spawn baseline. A local branch that was already ahead when the child
 started no longer makes every later child look unfinished, while a commit the
@@ -216,7 +226,9 @@ read/edit calls only and produced a clean final response.
   envelope-free chat projection, exact-output delivery, spawn-baseline residual
   attribution, new-untracked capture, and race-safe disk verification. The
   latest narrow orchestrator gate passed 383 tests across the eight directly
-  affected files, plus package typecheck, build, Biome, and `git diff --check`.
+  affected files. The final relay-ordering change additionally passed 177 tests
+  across its six completion/routing files, plus package typecheck, build, Biome,
+  and `git diff --check`.
 
 ### Real parent and concurrent child acceptance
 
@@ -251,14 +263,14 @@ read-only workspace was unchanged, and all three lifecycle sequences reached
 `work/qa-artifacts/owned-parent-final-20260820-cbb6da2/owned-parent-2026-08-20T19-23-40-914Z-51341/report.json`.
 
 The final clean exact-head rerun is retained at
-`work/qa-artifacts/owned-parent-cerebras-c7891c0-20260820/owned-parent-2026-08-20T23-49-46-499Z-8606/report.json`.
+`work/qa-artifacts/owned-parent-cerebras-93d8d0a-20260820/owned-parent-2026-08-21T00-06-25-861Z-20755/report.json`.
 It passed at local behavior checkpoint
-`c7891c0b767bcbfe55cfc9ddf9f2f63c1f0d098e` with the repository clean at both
+`93d8d0a12dfb29f63e34dcc37b7c60c44d1bff32` with the repository clean at both
 start and end. The natural parent selected delegation, both concurrent children
 overlapped while running, all three independent fixture tests exited zero, all
 three workspaces remained unchanged, and every task traversed
 `done -> archived -> active`. The three child trajectory IDs are
-`tj-948910897f1bf5`, `tj-949ce94eb5f364`, and `tj-949ce26af9920c`.
+`tj-a3cad357e3c475`, `tj-a3e00b0de7e4fd`, and `tj-a3e012fa3103da`.
 
 The retained report bundle was scanned against the approved runtime credential
 and contains no copy of it. Provider/model fields identify direct Cerebras
@@ -323,11 +335,13 @@ evidence path against the same protected Cerebras account:
 | Create and run a shopping-total script | Session `ca33a989-c4ed-4861-a391-52cdfa47bfa7`; trajectory `tj-80fddf59d5c682`; exact independent output `Total: $10.00`; two tools, zero failures | Pass |
 | Create and run `visible_exact_result_v2.py`, return exact output | Task `aaec7dea-dfb1-4f7e-8a27-660586749449`; session `ef11f1a3-07b1-4404-bd44-13c706f7ebdd`; visible response exactly `Exact relay works`; clean residuals and passed validation | Pass |
 | Create and run `visible_change_evidence_v3.py`, return exact output | Task `564a90b2-eac5-49e0-9628-15ddde828c7b`; session `036daa7a-6013-4c5c-8121-5e104947e440`; visible response exactly `Evidence path works`; one-file new-file diff and independent SHA-256 `72ea0ee3bb114958a51f6098481ea7011b03f19399251296b10ab4d3d63b7e87` | Pass |
+| Create and run `final_literal_check_v2.py`, return exact output | Task `61e2a621-7a39-4c7d-910f-20db4b3c1859`; session `e67eed84-9482-48ba-a262-a518c68e96ae`; visible response exactly `Final literal relay works`; task `done`, child `stopped`, validation passed, residuals clean, filesystem artifact verified; child trajectory `tj-a1e636b25b9fd1`; parent completion trajectory `step-1787270655838-qllrvt` used direct reply with no planner tool stage; independent SHA-256 `a7fdb4e1b9d22dea30dc41d6293e685333e132959d564f545da4c01a7f1b0d6b` | Pass |
 
-The two `visible_*` scripts were QA artifacts and were removed after their
-content, execution result, hash, task, session, change set, and browser result
-were recorded. The retained chat history still shows older failed probes above
-these clean results; it was deliberately not rewritten.
+The `visible_*` and `final_literal_check_v2.py` scripts were QA artifacts and
+were removed after their content, execution result, hash, task, session, change
+set, and browser result were recorded. The retained chat history still shows
+older failed probes above these clean results; it was deliberately not
+rewritten.
 
 Two failed runs are intentionally retained as regression evidence. The first
 used a stale source-checkout cwd. The second produced a correct child result in
