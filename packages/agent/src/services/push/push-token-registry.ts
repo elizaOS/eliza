@@ -30,9 +30,11 @@
  *   5. `register`/`unregister` are observably atomic w.r.t. `setCache`: the
  *      mutation is staged on a candidate Map that is published to `this.tokens`
  *      only after the durable write succeeds, so `list`/`count` never observe an
- *      uncommitted add/delete. A rejected write leaves the observable registry
- *      unchanged, and the same-process mutation queue keeps processing later
- *      operations after a failure (no wedge).
+ *      uncommitted add/delete. A write that rejects OR resolves a non-`true`
+ *      value (`setCache` returns `Promise<boolean>`; adapters resolve `false`
+ *      when the row did not land) is treated as a failure that leaves the
+ *      observable registry unchanged, and the same-process mutation queue keeps
+ *      processing later operations after a failure (no wedge).
  *
  * Concurrency scope: mutations are serialized and failure-atomic WITHIN a
  * single process. Cross-process compare-and-swap is out of scope because the
@@ -224,16 +226,20 @@ export class PushTokenRegistry {
   }
 
   /**
-   * Persist `candidate` and, only after the durable write succeeds, publish it
-   * as the observable registry. Because `this.tokens` is reassigned solely on
-   * success, `list`/`count` running while the write is pending observe the
-   * still-committed prior state; a rejected write leaves the observable registry
-   * unchanged and rethrows a typed error. Callers run this inside
-   * {@link enqueueMutation}, so the next queued mutation still proceeds.
+   * Persist `candidate` and, only after the durable write reports success,
+   * publish it as the observable registry. Because `this.tokens` is reassigned
+   * solely on a `true` result, `list`/`count` running while the write is pending
+   * observe the still-committed prior state; a write that rejects OR resolves a
+   * non-`true` value leaves the observable registry unchanged and throws a typed
+   * error. Callers run this inside {@link enqueueMutation}, so the next queued
+   * mutation still proceeds.
    */
   private async commit(candidate: Map<string, PushTokenRecord>): Promise<void> {
+    let persisted: boolean;
     try {
-      await this.runtime.setCache(this.cacheKey, [...candidate.values()]);
+      persisted = await this.runtime.setCache(this.cacheKey, [
+        ...candidate.values(),
+      ]);
     } catch (error) {
       // error-policy:J2 context-adding rethrow — surface a typed persistence
       // failure with a redacted count while preserving the underlying cause. The
@@ -243,6 +249,20 @@ export class PushTokenRegistry {
         {
           code: PUSH_TOKEN_PERSIST_FAILED_CODE,
           cause: error,
+          context: { tokenCount: candidate.size },
+          severity: "ephemeral",
+        },
+      );
+    }
+    if (persisted !== true) {
+      // error-policy:J2 context-adding rethrow — `setCache` resolving a
+      // non-`true` value is a durable-write failure (the SQL adapter propagates
+      // `false` when the underlying write did not land). The candidate was never
+      // published, so the observable registry stays on the committed state.
+      throw new ElizaError(
+        "[PushTokenRegistry] durable cache rejected the push-token mutation",
+        {
+          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
           context: { tokenCount: candidate.size },
           severity: "ephemeral",
         },

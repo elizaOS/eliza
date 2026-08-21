@@ -12,8 +12,11 @@
  * fails closed without destroying the durable row), one-time durable repair
  * that never rewrites a clean load, failed-write rollback (in-memory and durable
  * state unchanged, typed error, token redacted), mutation-queue recovery after a
- * failed op, observable atomicity (list/count never see an uncommitted mutation
- * while its write is pending and stay unchanged on rejection), and
+ * failed op, resolved-false persistence failure (register/unregister and a
+ * deferred false-return all leave in-memory and durable state unchanged with the
+ * typed persist-failed error), observable atomicity (list/count never see an
+ * uncommitted mutation while its write is pending and stay unchanged on
+ * rejection), and
  * persistence-boundary validation of direct callers (unsupported platform and
  * non-string token become the typed invalid error). Backed by a Map-backed mock
  * runtime cache — no real storage.
@@ -437,6 +440,130 @@ describe("PushTokenRegistry", () => {
     // In-memory registry unchanged (rejected token absent, prior token intact).
     expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
     // Durable cache never received the rejected token either.
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("treats a resolved false setCache as a persistence failure on register", async () => {
+    let denyNextWrite = false;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        // The SQL adapter resolves `false` when the durable row did not land.
+        if (denyNextWrite) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    denyNextWrite = true;
+    await reg.register("android", "denied").then(
+      () => {
+        throw new Error("expected a false setCache to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+    denyNextWrite = false;
+
+    // Observable registry and durable cache stay on the committed token.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("treats a resolved false setCache as a persistence failure on unregister", async () => {
+    let denyNextWrite = false;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        if (denyNextWrite) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    denyNextWrite = true;
+    await reg.unregister("keep").then(
+      () => {
+        throw new Error("expected a false setCache to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+    denyNextWrite = false;
+
+    // The delete was never published: the token remains in memory and durably.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("never publishes a deferred false setCache while its write is pending", async () => {
+    const cache = new Map<string, unknown>();
+    let gateNextWrite = false;
+    let resolvePendingWrite!: (result: boolean) => void;
+    let pendingWriteStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      pendingWriteStarted = resolve;
+    });
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: <T>(k: string, value: T): Promise<boolean> => {
+        if (!gateNextWrite) {
+          cache.set(k, value);
+          return Promise.resolve(true);
+        }
+        return new Promise<boolean>((resolve) => {
+          resolvePendingWrite = resolve;
+          pendingWriteStarted();
+        });
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    gateNextWrite = true;
+    const pending = reg.register("android", "pending-token");
+    await started;
+    // Staged but not published while the durable write is in flight.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+
+    resolvePendingWrite(false);
+    await pending.then(
+      () => {
+        throw new Error("expected the false write to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+
+    // Observable registry and durable cache are unchanged after the false write.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
     expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
       "keep",
     ]);
