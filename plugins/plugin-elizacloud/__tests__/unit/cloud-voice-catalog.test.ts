@@ -398,20 +398,40 @@ describe("fetchCloudVoiceCatalog", () => {
     warnSpy.mockRestore();
   });
 
-  it("caches a partial success while one endpoint is unavailable", async () => {
-    const { client, calls } = makeFakeClient({
-      premade: [{ voice_id: "available-voice", name: "Available" }],
-      userError: new Error("user endpoint down"),
-    });
-    setCloudVoiceClientFactoryForTesting(() => client);
+  it("keeps a healthy endpoint cached while retrying a failed endpoint after the short backoff", async () => {
+    vi.useFakeTimers();
+    try {
+      const partial = makeFakeClient({
+        premade: [{ voice_id: "available-voice", name: "Available" }],
+        userError: new Error("user endpoint down"),
+      });
+      const recovered = makeFakeClient({
+        premade: [{ voice_id: "should-not-refetch", name: "Unexpected" }],
+        user: [{ voice_id: "new-clone", name: "New Clone" }],
+      });
+      let currentClient = partial.client;
+      setCloudVoiceClientFactoryForTesting(() => currentClient);
 
-    const runtime = makeRuntime();
-    const first = await fetchCloudVoiceCatalog(runtime);
-    const second = await fetchCloudVoiceCatalog(runtime);
+      const runtime = makeRuntime();
+      const first = await fetchCloudVoiceCatalog(runtime);
+      expect(first.map((voice) => voice.id)).toEqual(["available-voice"]);
 
-    expect(first.map((voice) => voice.id)).toEqual(["available-voice"]);
-    expect(second).toBe(first);
-    expect(calls).toEqual({ premade: 1, user: 1 });
+      currentClient = recovered.client;
+      vi.advanceTimersByTime(29_000);
+      const backedOff = await fetchCloudVoiceCatalog(runtime);
+      expect(backedOff.map((voice) => voice.id)).toEqual(["available-voice"]);
+      expect(partial.calls).toEqual({ premade: 1, user: 1 });
+      expect(recovered.calls).toEqual({ premade: 0, user: 0 });
+
+      vi.advanceTimersByTime(2_000);
+      const afterRecovery = await fetchCloudVoiceCatalog(runtime);
+      expect(afterRecovery.map((voice) => voice.id)).toEqual(["new-clone", "available-voice"]);
+      // The healthy premade result keeps its 1h success TTL; only the failed
+      // user endpoint is retried after the 30s backoff.
+      expect(recovered.calls).toEqual({ premade: 0, user: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("caches a genuine empty catalog when both endpoints succeed", async () => {
