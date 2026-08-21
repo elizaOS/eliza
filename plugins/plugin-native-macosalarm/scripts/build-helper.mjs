@@ -33,8 +33,25 @@ if (!existsSync(source)) {
   throw new Error(`macosalarm swift source missing: ${source}`);
 }
 
+// Flags that change the emitted binary. Deliberately excludes the absolute
+// paths in the swiftc argv (module cache, output) — those vary per checkout,
+// and this stamp is tracked, so folding them in would make the file differ on
+// every machine and destroy its value as a drift guard.
+const COMPILE_FLAGS = ["-O"];
+
+const swiftcArgs = [
+  source,
+  ...COMPILE_FLAGS,
+  "-module-cache-path",
+  moduleCacheDir,
+  "-o",
+  outBin,
+];
+
 const sourceHash = createHash("sha256")
   .update(readFileSync(source))
+  .update("\0")
+  .update(COMPILE_FLAGS.join(" "))
   .digest("hex");
 
 // Keyed on the source's content, not on its timestamp. The helper binary and
@@ -56,21 +73,17 @@ if (!forceHelperBuild && existsSync(outBin) && existsSync(outStamp)) {
 mkdirSync(outDir, { recursive: true });
 mkdirSync(tempDir, { recursive: true });
 
-const result = spawnSync(
-  "swiftc",
-  [source, "-O", "-module-cache-path", moduleCacheDir, "-o", outBin],
-  {
-    env: {
-      ...process.env,
-      // Keep compiler caches inside the package so sandboxed/local builds do not
-      // need write access to ~/.cache/clang.
-      CLANG_MODULE_CACHE_PATH:
-        process.env.CLANG_MODULE_CACHE_PATH ?? moduleCacheDir,
-      TMPDIR: process.env.TMPDIR ?? tempDir,
-    },
-    stdio: "inherit",
+const result = spawnSync("swiftc", swiftcArgs, {
+  env: {
+    ...process.env,
+    // Keep compiler caches inside the package so sandboxed/local builds do not
+    // need write access to ~/.cache/clang.
+    CLANG_MODULE_CACHE_PATH:
+      process.env.CLANG_MODULE_CACHE_PATH ?? moduleCacheDir,
+    TMPDIR: process.env.TMPDIR ?? tempDir,
   },
-);
+  stdio: "inherit",
+});
 
 if (result.status !== 0) {
   throw new Error(`swiftc failed with status ${result.status ?? "unknown"}`);
