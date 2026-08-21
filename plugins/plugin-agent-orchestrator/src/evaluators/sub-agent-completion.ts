@@ -579,9 +579,9 @@ function hasVerifiedCompletionReply(
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
 
 const VERIFICATION_PENDING_NOTE =
-  "Note: independent verification of this result is still running — I'll flag it if anything fails.";
+  "I'm checking it once more. If anything's off, I'll fix it.";
 const VERIFICATION_REENGAGED_NOTE =
-  "Note: verification found gaps in this result and the agent is being re-engaged to close them — treat the above as provisional.";
+  "That result needs another pass, so I'm fixing it now.";
 
 interface CompletionVerificationView {
   pendingVerification: boolean;
@@ -649,7 +649,7 @@ function frameReplyWithVerification(
   if (view.pendingVerification) notes.push(VERIFICATION_PENDING_NOTE);
   else if (view.verificationFailed) notes.push(VERIFICATION_REENGAGED_NOTE);
   if (view.disclosedRisks.length > 0) {
-    notes.push(`Note: the worker flagged: ${view.disclosedRisks.join("; ")}.`);
+    notes.push(`One thing to know: ${view.disclosedRisks.join("; ")}.`);
   }
   return notes.length > 0 ? `${reply}\n\n${notes.join("\n")}` : reply;
 }

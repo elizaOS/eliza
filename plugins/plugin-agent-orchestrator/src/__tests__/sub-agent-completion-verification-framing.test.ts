@@ -136,14 +136,18 @@ describe("sub-agent completion: verification-aware framing", () => {
     const world = await makeWorld({ status: "validating" });
     const reply = await relayFor(world);
     expect(reply).toContain("The answer is 42.");
-    expect(reply).toContain("verification of this result is still running");
+    expect(reply).toContain(
+      "I'm checking it once more. If anything's off, I'll fix it.",
+    );
   });
 
   it("frames a relay as provisional after a failed verification (re-engage in flight)", async () => {
     const world = await makeWorld({ status: "active", autoVerifyAttempts: 1 });
     const reply = await relayFor(world);
     expect(reply).toContain("The answer is 42.");
-    expect(reply).toContain("verification found gaps");
+    expect(reply).toContain(
+      "That result needs another pass, so I'm fixing it now.",
+    );
   });
 
   it("frames a relay as provisional when verification exhausted to waiting_on_user", async () => {
@@ -152,7 +156,9 @@ describe("sub-agent completion: verification-aware framing", () => {
       autoVerifyAttempts: 3,
     });
     const reply = await relayFor(world);
-    expect(reply).toContain("verification found gaps");
+    expect(reply).toContain(
+      "That result needs another pass, so I'm fixing it now.",
+    );
   });
 
   it("relays a verified done task with no extra framing", async () => {
@@ -169,7 +175,7 @@ describe("sub-agent completion: verification-aware framing", () => {
     const reply = await relayFor(world);
     expect(reply).toContain("The answer is 42.");
     expect(reply).toContain(
-      "the worker flagged: migration not run on prod; flaky retry loop",
+      "One thing to know: migration not run on prod; flaky retry loop",
     );
   });
 
@@ -179,8 +185,10 @@ describe("sub-agent completion: verification-aware framing", () => {
       disclosedRisks: ["needs a prod smoke test"],
     });
     const reply = await relayFor(world);
-    expect(reply).toContain("verification of this result is still running");
-    expect(reply).toContain("the worker flagged: needs a prod smoke test");
+    expect(reply).toContain(
+      "I'm checking it once more. If anything's off, I'll fix it.",
+    );
+    expect(reply).toContain("One thing to know: needs a prod smoke test");
   });
 
   it("preserves current behavior when no durable record backs the session", async () => {

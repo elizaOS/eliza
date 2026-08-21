@@ -2352,14 +2352,13 @@ async function runSpawnAgent(
 
     // An empty text here left the planner finish with nothing to relay for an
     // async spawn, and it answered the user's question from thin air instead
-    // (observed live: fabricated `bun --version` output). State the pending
-    // contract as a plain status: it grounds the finish pass AND reads
-    // correctly if a transport falls back to this text verbatim (the api
-    // response path does when no callback fired), so no planner-directed
-    // imperatives here.
+    // (observed live: fabricated `bun --version` output). Keep a grounded
+    // pending receipt, but make it read like a normal chat message. Internal
+    // labels, framework names, and transport details belong in structured data
+    // and the task UI, not the user's conversation.
     return {
       success: true,
-      text: `Spawned coding sub-agent "${label}" (${session.agentType}). It is working asynchronously — its result is not available yet and will arrive as a follow-up message.`,
+      text: "I'm on it. I'll share the result here when it's ready.",
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
