@@ -831,8 +831,15 @@ function normalizeNativeToolsForCall(
     }
 
     toolSet[registeredName] = {
-      ...(description ? { description } : {}),
-      inputSchema: jsonSchema(inputSchema as JSONSchema7),
+      // Caller-controlled strings are sanitized HERE, before the AI SDK
+      // jsonSchema() wrapper: the wrapper exposes `jsonSchema` as a lazy
+      // enumerable accessor which the strict deep sanitizer rejects fatally,
+      // so the assembled ToolSet must never be deep-walked afterwards (every
+      // child RESPONSE_HANDLER call died on it, live 2026-08-21).
+      ...(description
+        ? { description: deepToWellFormedUnicode(description) }
+        : {}),
+      inputSchema: jsonSchema(deepToWellFormedUnicode(inputSchema) as JSONSchema7),
       ...(options.cerebrasMode
         ? { strict: cerebrasRequestStrict }
         : strict === undefined
@@ -2373,11 +2380,19 @@ async function generateTextByModelType(
   // on ("lone leading surrogate in hex escape", wrong_api_format — #18025),
   // so EVERY outgoing string — including tool descriptions/schemas, output
   // schemas, and provider options — is forced to well-formed Unicode here.
-  const sanitizedTools = normalizedTools ? deepToWellFormedUnicode(normalizedTools) : undefined;
+  // Already sanitized pre-wrap inside normalizeNativeToolsForCall — the
+  // jsonSchema() wrapper's lazy accessor makes the assembled set unwalkable.
+  const sanitizedTools = normalizedTools;
   const sanitizedToolChoice = normalizedToolChoice
     ? deepToWellFormedUnicode(normalizedToolChoice)
     : undefined;
-  const sanitizedOutput = requestedOutput ? deepToWellFormedUnicode(requestedOutput) : undefined;
+  // NOT deep-sanitized: the AI SDK's Output wrapper exposes `jsonSchema` as a
+  // lazy accessor, which the strict walk rejects fatally — and every child
+  // RESPONSE_HANDLER call with responseFormat json_object died on it (live
+  // 2026-08-21). Caller-controlled strings were already sanitized BEFORE
+  // wrapping (sanitizedResponseSchema above); bare Output.json() carries no
+  // caller data at all, so skipping the walk loses nothing.
+  const sanitizedOutput = requestedOutput;
   const sanitizedProviderOptions = providerOptions
     ? (deepToWellFormedUnicode(providerOptions) as NativeProviderOptions)
     : undefined;
