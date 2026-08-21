@@ -5,7 +5,10 @@ import {
   createAgentBackupCatalogWorkerComposition,
   isAgentBackupCatalogWorkerEnabled,
 } from "./agent-backup-catalog-worker-composition";
-import { createAgentBackupCatalogWorkerEnabledComposition } from "./agent-backup-catalog-worker-enabled-composition";
+import {
+  createAgentBackupCatalogWorkerEnabledComposition,
+  readAgentBackupCatalogWorkerEnabledConfig,
+} from "./agent-backup-catalog-worker-enabled-composition";
 
 function enabledEnv(): NodeJS.ProcessEnv {
   return {
@@ -152,6 +155,18 @@ describe("backup catalogue disabled-first composition", () => {
 });
 
 describe("backup catalogue enabled provider graph", () => {
+  test("sorts plugin ids by manifest code-unit order instead of locale collation", () => {
+    const env = enabledEnv();
+    env.AGENT_BACKUP_RUNTIME_PLUGINS_JSON = JSON.stringify([
+      { id: "a_b", version: "1.0.0" },
+      { id: "a-b", version: "1.0.0" },
+    ]);
+    expect(readAgentBackupCatalogWorkerEnabledConfig(env).runtimeMetadata.plugins).toEqual([
+      { id: "a-b", version: "1.0.0" },
+      { id: "a_b", version: "1.0.0" },
+    ]);
+  });
+
   test("validates the complete config before constructing a provider", async () => {
     const createRegistry = mock(async () => ({}));
     await expect(
@@ -185,6 +200,46 @@ describe("backup catalogue enabled provider graph", () => {
         dependencies: { createRegistry: createRegistry as never },
       }),
     ).rejects.toThrow(/SECRETS_MASTER_KEY/);
+    expect(createRegistry).not.toHaveBeenCalled();
+  });
+
+  test("rejects provider deadlines that can outlive the operation lease fence", async () => {
+    const createRegistry = mock(async () => ({}));
+    for (const deadlineName of [
+      "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
+      "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS",
+    ] as const) {
+      const env = enabledEnv();
+      env.AGENT_BACKUP_OPERATION_LEASE_MS = "240000";
+      env[deadlineName] = "210001";
+      await expect(
+        createAgentBackupCatalogWorkerEnabledComposition({
+          env,
+          dependencies: { createRegistry: createRegistry as never },
+        }),
+      ).rejects.toThrow(/leave 30000ms.*OPERATION_LEASE_MS/);
+    }
+    expect(createRegistry).not.toHaveBeenCalled();
+  });
+
+  test("rejects control characters before constructing provider authorities", async () => {
+    const createRegistry = mock(async () => ({}));
+    for (const [name, value] of [
+      ["AGENT_BACKUP_CATALOG_WORKER_ID", "worker\tshadow"],
+      ["AGENT_BACKUP_R2_ENDPOINT_ALIAS", "r2\tshadow"],
+      ["AGENT_BACKUP_HETZNER_BUCKET", "bucket\nshadow"],
+      ["AGENT_BACKUP_HETZNER_ACCOUNT_ID", "a".repeat(257)],
+      ["AGENT_BACKUP_STEWARD_KMS_TOKEN", "kms-token\nshadow"],
+    ] as const) {
+      const env = enabledEnv();
+      env[name] = value;
+      await expect(
+        createAgentBackupCatalogWorkerEnabledComposition({
+          env,
+          dependencies: { createRegistry: createRegistry as never },
+        }),
+      ).rejects.toThrow(name);
+    }
     expect(createRegistry).not.toHaveBeenCalled();
   });
 
