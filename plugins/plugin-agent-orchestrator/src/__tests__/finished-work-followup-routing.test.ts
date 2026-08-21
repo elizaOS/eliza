@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { hardenIncomingUserMessage } from "@elizaos/core";
 import { finishedWorkFollowUpRoutingEvaluator } from "../evaluators/finished-work-followup-routing.js";
