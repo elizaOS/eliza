@@ -186,6 +186,23 @@ async function within<T>(promise: Promise<T>, label: string): Promise<T> {
 }
 
 describe("CLI session single-use plaintext retrieval with real persistence", () => {
+  test("the native preflight allows exact-key revocation", async () => {
+    const response = await pollApp.request(
+      "/api/auth/cli-session/10101010-1010-4010-8010-101010101010",
+      {
+        method: "OPTIONS",
+        headers: { Origin: "https://localhost" },
+      },
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://localhost",
+    );
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "DELETE",
+    );
+  });
+
   test("the poll route rejects a non-UUID session id before any lookup", async () => {
     const response = await pollApp.request("/api/auth/cli-session/not-a-uuid");
     expect(response.status).toBe(400);

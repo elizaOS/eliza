@@ -15,6 +15,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+function cliSessionCorsHeaders(origin: string | null): Record<string, string> {
+  return {
+    ...getCorsHeaders(origin),
+    "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+  };
+}
+
 function bearerToken(authorization: string | undefined): string | null {
   return authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
 }
@@ -22,12 +29,12 @@ function bearerToken(authorization: string | undefined): string | null {
 app.options("/", (c) => {
   return new Response(null, {
     status: 204,
-    headers: getCorsHeaders(c.req.header("origin") ?? null),
+    headers: cliSessionCorsHeaders(c.req.header("origin") ?? null),
   });
 });
 
 app.get("/", async (c) => {
-  const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
+  const corsHeaders = cliSessionCorsHeaders(c.req.header("origin") ?? null);
   try {
     const sessionId = c.req.param("sessionId");
     if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {
@@ -83,7 +90,7 @@ app.get("/", async (c) => {
 });
 
 app.delete("/", async (c) => {
-  const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
+  const corsHeaders = cliSessionCorsHeaders(c.req.header("origin") ?? null);
   try {
     const sessionId = c.req.param("sessionId");
     if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {
