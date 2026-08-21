@@ -664,8 +664,11 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   name: "agent-orchestrator.sub-agent-completion",
   description:
     "Routes verified sub-agent task_complete messages to direct replies unless Stage 1 requested a concrete follow-up action.",
-  priority: 10,
-  deterministicActions: ["REPLY"],
+  // Completion delivery is authoritative for this synthetic turn. Run after
+  // generic routing evaluators so a stale Stage-1 TASKS candidate cannot be
+  // restored after this evaluator clears it and force a second model pass that
+  // paraphrases an exact child result.
+  priority: 1_000,
   shouldRun: ({ message, messageHandler }) => {
     if (!isSuccessfulSubAgentCompletion(message)) return false;
     if (messageHandler.processMessage === "STOP") return false;
@@ -749,30 +752,18 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     // rather than letting the parent model re-summarize or truncate it.
     const deliverable = deliverableFromMetadata(message);
     if (deliverable !== undefined) {
-      const reply = frameReplyWithVerification(
-        withVerificationCaveat(deliverable),
-        verification,
-      );
       return {
         ...respondIfNeeded(messageHandler),
-        // A Stage-1 model can keep a stale TASKS candidate on this synthetic
-        // turn even after the evaluator clears it. Sending the deliverable as a
-        // deterministic REPLY makes the egress literal and model-free: the
-        // REPLY action echoes an explicit text parameter verbatim and marks it
-        // agent-voiced, so neither the planner nor the voice layer can
-        // paraphrase exact command output.
-        requiresTool: true,
-        setContexts: ["general"],
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
-        addCandidateActions: ["REPLY"],
         clearParentActionHints: true,
-        clearReply: true,
-        deterministicToolCall: {
-          name: "REPLY",
-          params: { text: reply },
-        },
+        reply: frameReplyWithVerification(
+          withVerificationCaveat(deliverable),
+          verification,
+        ),
         debug: [
-          "verified sub-agent completion carries a captured deliverable; routing through deterministic REPLY for literal egress",
+          "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
         ],
       };
     }

@@ -5,7 +5,13 @@
  * knocked back by a failed verification carries a provisional note, and a
  * verified-`done` (or record-less) completion relays exactly as before.
  */
-import type { Memory, MessageHandlerResult, UUID } from "@elizaos/core";
+import {
+  type Memory,
+  type MessageHandlerResult,
+  type ResponseHandlerEvaluator,
+  runResponseHandlerEvaluators,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { subAgentCompletionResponseEvaluator } from "../evaluators/sub-agent-completion.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
@@ -122,10 +128,7 @@ async function relayFor(world: {
   } as unknown as Parameters<
     typeof subAgentCompletionResponseEvaluator.evaluate
   >[0]);
-  const params = result.deterministicToolCall?.params as
-    | { text?: unknown }
-    | undefined;
-  return typeof params?.text === "string" ? params.text : "";
+  return typeof result.reply === "string" ? result.reply : "";
 }
 
 describe("sub-agent completion: verification-aware framing", () => {
@@ -190,15 +193,7 @@ describe("sub-agent completion: verification-aware framing", () => {
     } as unknown as Parameters<
       typeof subAgentCompletionResponseEvaluator.evaluate
     >[0]);
-    expect(result).toMatchObject({
-      requiresTool: true,
-      setContexts: ["general"],
-      clearReply: true,
-      deterministicToolCall: {
-        name: "REPLY",
-        params: { text: "The answer is 42." },
-      },
-    });
+    expect(result.reply).toBe("The answer is 42.");
   });
 
   it("preserves current behavior when the orchestrator service is not registered", async () => {
@@ -211,9 +206,48 @@ describe("sub-agent completion: verification-aware framing", () => {
     } as unknown as Parameters<
       typeof subAgentCompletionResponseEvaluator.evaluate
     >[0]);
-    expect(result.deterministicToolCall).toEqual({
-      name: "REPLY",
-      params: { text: "The answer is 42." },
+    expect(result.reply).toBe("The answer is 42.");
+  });
+
+  it("runs after generic routing and clears a stale TASKS candidate", async () => {
+    const messageHandler = makeHandler();
+    const genericRouting: ResponseHandlerEvaluator = {
+      name: "generic-routing",
+      priority: 100,
+      shouldRun: () => true,
+      evaluate: () => ({
+        requiresTool: true,
+        setContexts: ["tasks"],
+        addCandidateActions: ["TASKS"],
+        addParentActionHints: ["TASKS"],
+        reply: "coding is ready.",
+      }),
+    };
+    const runtime = {
+      reportError: vi.fn(),
+      responseHandlerEvaluators: [subAgentCompletionResponseEvaluator],
+      getService: () => undefined,
+    };
+
+    const result = await runResponseHandlerEvaluators({
+      runtime: runtime as never,
+      message: makeCompletion("done."),
+      state: {} as never,
+      messageHandler,
+      availableContexts: [{ id: "simple" } as never, { id: "tasks" } as never],
+      evaluators: [genericRouting],
     });
+
+    expect(result.activeEvaluators).toEqual([
+      "generic-routing",
+      "agent-orchestrator.sub-agent-completion",
+    ]);
+    expect(messageHandler.plan).toMatchObject({
+      contexts: ["simple"],
+      requiresTool: false,
+      reply: "The answer is 42.",
+    });
+    expect(messageHandler.plan.candidateActions).toBeUndefined();
+    expect(messageHandler.plan.parentActionHints).toBeUndefined();
   });
 });
