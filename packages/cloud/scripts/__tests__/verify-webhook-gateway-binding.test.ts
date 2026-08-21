@@ -3,7 +3,8 @@
  * validation in verify-webhook-gateway-binding.mjs, its canonical
  * per-environment gateway origins staying byte-identical to the protected
  * Railway release workflow, and the cloud-cf-release wiring that runs the
- * check before any Worker mutation. Deterministic — no network, no wrangler.
+ * check before the atomic Worker secrets version is written. Deterministic —
+ * no network, no wrangler.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -98,6 +99,32 @@ describe("verifyWebhookGatewayBinding", () => {
     expect(result.errors.join(" ")).toContain("preview");
   });
 
+  test("an Object.prototype member name is not a canonical environment", () => {
+    for (const deployEnvironment of ["constructor", "toString", "valueOf"]) {
+      const result = verifyWebhookGatewayBinding({
+        deployEnvironment,
+        gatewayUrl: CANONICAL_WEBHOOK_GATEWAY_URLS.staging,
+        availableSecretNames: withSecret(),
+      });
+      expect(result.ok).toBe(false);
+      expect(result.errors.join(" ")).toContain(
+        "has no canonical webhook gateway",
+      );
+    }
+  });
+
+  test("the mismatch error echoes the rejected URL for operator diagnosis", () => {
+    const result = verifyWebhookGatewayBinding({
+      deployEnvironment: "staging",
+      gatewayUrl: `${CANONICAL_WEBHOOK_GATEWAY_URLS.staging}/`,
+      availableSecretNames: withSecret(),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.join(" ")).toContain(
+      `"${CANONICAL_WEBHOOK_GATEWAY_URLS.staging}/"`,
+    );
+  });
+
   test("collects both failures at once", () => {
     const result = verifyWebhookGatewayBinding({
       deployEnvironment: "staging",
@@ -139,16 +166,32 @@ describe("deploy workflow contract", () => {
     "utf8",
   );
 
-  test("canonical URLs match the protected gateway release workflow", () => {
+  // Asserting the whole ternary, not each URL independently: both strings are
+  // always present in that workflow, so a transposed environment-to-URL
+  // mapping — the exact miswire this PR exists to refuse — would slip past a
+  // presence-only assertion.
+  const mappingExpression = (production: string, staging: string) =>
+    `inputs.environment == 'production' && '${production}' || '${staging}'`;
+
+  test("canonical URLs match the protected gateway release workflow mapping", () => {
     expect(gatewayWorkflow).toContain(
-      `'${CANONICAL_WEBHOOK_GATEWAY_URLS.production}'`,
-    );
-    expect(gatewayWorkflow).toContain(
-      `'${CANONICAL_WEBHOOK_GATEWAY_URLS.staging}'`,
+      mappingExpression(
+        CANONICAL_WEBHOOK_GATEWAY_URLS.production,
+        CANONICAL_WEBHOOK_GATEWAY_URLS.staging,
+      ),
     );
   });
 
-  test("cloud-cf-release runs the binding check before Worker mutation", () => {
+  test("a transposed environment-to-URL mapping would fail the sync assertion", () => {
+    expect(gatewayWorkflow).not.toContain(
+      mappingExpression(
+        CANONICAL_WEBHOOK_GATEWAY_URLS.staging,
+        CANONICAL_WEBHOOK_GATEWAY_URLS.production,
+      ),
+    );
+  });
+
+  test("cloud-cf-release runs the binding check before the atomic secrets file", () => {
     expect(releaseWorkflow).toContain(
       "verify_webhook_gateway_binding_candidates() {",
     );

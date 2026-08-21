@@ -3,9 +3,10 @@
  * binding. cloud-cf-release publishes ELIZA_APP_WEBHOOK_GATEWAY_URL as a
  * routing toggle: absent means webhook routes 503 honestly
  * (WEBHOOK_GATEWAY_NOT_CONFIGURED, #18235), but a configured URL silently
- * accepts two miswires this check refuses before any Worker mutation —
- * pointing one environment's Worker at the other environment's gateway, and
- * configuring the URL without the paired ELIZA_APP_WEBHOOK_GATEWAY_SECRET
+ * accepts two miswires this check refuses before the atomic Worker secrets
+ * version is written — pointing one environment's Worker at the other
+ * environment's gateway, and configuring the URL without the paired
+ * ELIZA_APP_WEBHOOK_GATEWAY_SECRET
  * (the gateway's enforceForwarderSecret then 401s every forwarded webhook,
  * which is strictly worse than the honest 503).
  *
@@ -16,14 +17,27 @@
  * inventory arrives on stdin, this deploy's queued binding names as argv, and
  * DEPLOY_ENVIRONMENT / ELIZA_APP_WEBHOOK_GATEWAY_URL from the environment.
  * Secret values are never read or printed.
+ *
+ * Known limitation: this contract is names-only. It proves the URL is this
+ * environment's canonical gateway and that an ELIZA_APP_WEBHOOK_GATEWAY_SECRET
+ * binding exists or is queued; it does NOT prove the Worker-side secret VALUE
+ * matches the gateway's. A stale or half-rotated value passes here and still
+ * 401s at runtime. Closing that half needs a value-safe two-sided contract
+ * (authenticated readiness probe or a shared secret-version fingerprint) plus a
+ * defined rotation ordering, tracked on #18235.
  */
 
 import { pathToFileURL } from "node:url";
 
-export const CANONICAL_WEBHOOK_GATEWAY_URLS = Object.freeze({
-  staging: "https://gateway-webhook-stg-staging.up.railway.app",
-  production: "https://gateway-webhook-production.up.railway.app",
-});
+// Null-prototype so an environment name that collides with an Object.prototype
+// member (constructor, toString, valueOf) resolves to undefined and takes the
+// "no canonical gateway" branch instead of comparing against an inherited value.
+export const CANONICAL_WEBHOOK_GATEWAY_URLS = Object.freeze(
+  Object.assign(Object.create(null), {
+    staging: "https://gateway-webhook-stg-staging.up.railway.app",
+    production: "https://gateway-webhook-production.up.railway.app",
+  }),
+);
 
 const PAIRED_SECRET_NAME = "ELIZA_APP_WEBHOOK_GATEWAY_SECRET";
 
@@ -76,7 +90,10 @@ export function verifyWebhookGatewayBinding({
     );
   } else if (url !== canonical) {
     errors.push(
-      `ELIZA_APP_WEBHOOK_GATEWAY_URL does not match the canonical ${deployEnvironment} gateway origin ${canonical}`,
+      // The URL is a vars. value, never a secret, so echoing the rejected
+      // string is safe and turns "does not match" into a one-glance diagnosis
+      // of a trailing slash, a stale host, or a cross-environment miswire.
+      `ELIZA_APP_WEBHOOK_GATEWAY_URL is "${url}" but the canonical ${deployEnvironment} gateway origin is ${canonical}`,
     );
   }
 

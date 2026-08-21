@@ -1249,7 +1249,9 @@ jobs:
           # on the honest WEBHOOK_GATEWAY_NOT_CONFIGURED 503 (#18235), but a
           # configured URL must point at THIS environment's canonical gateway
           # and carry the paired forwarder secret, or every provider webhook
-          # would fail as a misleading 401/upstream error instead.
+          # would fail as a misleading 401/upstream error instead. This runs
+          # before the atomic Worker secrets version is written; the
+          # unset-toggle deletions in the queue loop above have already run.
           verify_webhook_gateway_binding_candidates || exit 1
 
           # Wrangler deploy accepts this JSON additively: named values are
