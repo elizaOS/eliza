@@ -5,7 +5,7 @@
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/shared";
 import {
   computeValueUsd,
@@ -171,11 +171,17 @@ export const DEFAULT_EVM_CHAINS: readonly EvmChainConfig[] = [
 /** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!res.ok) throw new Error(text.slice(0, 200) || `HTTP ${res.status}`);
+  if (!res.ok)
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) ||
+        `HTTP ${res.status}`,
+    );
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(text.slice(0, 200) || "Invalid JSON");
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON",
+    );
   }
 }
 
@@ -762,7 +768,8 @@ async function fetchEvmChainBalancesViaRpc(
   }
 
   throw new Error(
-    errors.join(" | ").slice(0, 400) || `${chain.name} RPC unavailable`,
+    truncateWellFormed(toWellFormedUnicode(errors.join(" | ")), 400) ||
+      `${chain.name} RPC unavailable`,
   );
 }
 
@@ -801,7 +808,10 @@ async function fetchAlchemyChainNfts(
       contractAddress: nft.contract?.address ?? "",
       tokenId: nft.tokenId ?? "",
       name: nft.name ?? "Untitled",
-      description: (nft.description ?? "").slice(0, 200),
+      description: truncateWellFormed(
+        toWellFormedUnicode(nft.description ?? ""),
+        200,
+      ),
       imageUrl:
         nft.image?.cachedUrl ??
         nft.image?.thumbnailUrl ??
@@ -845,7 +855,10 @@ async function fetchAnkrChainNfts(
       contractAddress: nft.contractAddress ?? "",
       tokenId: String(nft.tokenId ?? ""),
       name: nft.name ?? "Untitled",
-      description: (nft.description ?? "").slice(0, 200),
+      description: truncateWellFormed(
+        toWellFormedUnicode(nft.description ?? ""),
+        200,
+      ),
       imageUrl:
         nft.imageUrl ?? nft.imagePreviewUrl ?? nft.imageOriginalUrl ?? "",
       collectionName: nft.collectionName ?? nft.contractName ?? "",
