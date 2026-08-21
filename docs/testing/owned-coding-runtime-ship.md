@@ -10,8 +10,8 @@ explicit optional ACP backends, but neither is required for the owned path.
 
 This is a local candidate, not a claim of flawless behavior or a published
 release. Per the latest owner instruction, none of this coding-agent work is
-pushed. The latest behavior checkpoint is
-`7ca4a8de1d4569e00d366b80add39bade19b160e`; the final documentation commit and
+pushed. The latest live-tested behavior checkpoint is
+`e39d9ea7567497bc63ade376137898b23be34ce9`; the final documentation commit and
 annotated candidate tag are recorded in the checkpoint ledger.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
@@ -647,6 +647,41 @@ new embedding error. Two superseded prime tasks were archived and their two
 stale notifications were deleted; the final accepted task, its notification,
 and the two real app tasks remain.
 
+### 2026-08-20 last-mile browser and trajectory check
+
+The final normal-person request was “Can you make me a little program that
+doubles the numbers from 1 to 5? Try it too so I know it works.” At exact head
+`e39d9ea7567497bc63ade376137898b23be34ce9`, the browser showed one short
+acknowledgement followed by one clean result containing `[ 2, 4, 6, 8, 10 ]`.
+There was no raw tool payload, absolute path, provisional failure, contradictory
+follow-up, or stale final-check footer.
+
+Durable task `baa1c54a-be4c-4abb-a339-8b343f534786` reached `done`; session
+`529428dc-6c33-49d6-b711-b9f470abf16c` stopped without an error; every retained
+ACP session was stopped. The completion bundle proves a FILE write, a SHELL run
+with exit code 0 in 37 ms, the exact stdout, and all three script-specific
+criteria passing:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/state/trajectories/baa1c54a-be4c-4abb-a339-8b343f534786/completion-evidence.jsonl`
+
+The late-capture investigation produced one safe fix at
+`a68d54f38c6702f8a8ff43eac732fa9286ac9c0e`: exact stable-ID retransmits now
+reach durable idempotency and become quiet no-ops, while genuinely new late
+captures remain rejected and diagnosed. Focused trajectory tests passed 20/20
+and bridge tests passed 29/29. A separate ACP transport-boundary regression at
+`b49a0cdccdcea8631ee213b3119567cc59aec102` prevents child events from inheriting
+a terminal parent turn; its focused test and orchestrator typecheck pass.
+
+One diagnostic-only late LLM capture still occurs in the real child lifecycle.
+Direct PGlite inspection proved it targets the closed `TASKS_SPAWN_AGENT` action
+step and is not an exact retransmit: that action step has zero LLM calls, while
+the parent trajectory has three complete provider records and the child has its
+own complete correlated trajectory and completion bundle. Suppressing it would
+discard a genuinely new capture, so it remains an honest non-user-visible
+observability caveat rather than being hidden. A stream-timing hypothesis was
+tested and forward-reverted at `e39d9ea7567497bc63ade376137898b23be34ce9`
+after live QA disproved it.
+
 ## Reproduce
 
 Install and run the deterministic gates from the repository root:
@@ -702,11 +737,13 @@ for a normal handoff, and it should still be reviewed before publication.
   fallback while serving embeddings. It successfully encodes and persists
   vectors; the visible reset failure above was the deleted-memory race, not a
   degraded provider result.
-- A `TrajectoryStorage.lateCapture` diagnostic can arrive after a child
-  trajectory is sealed. It is marked `diagnosticOnly`; in the final run the
-  correlated trajectory and completion-evidence bundle were already persisted
-  and complete. It remains log noise to tidy later, not missing acceptance
-  evidence or a user-visible failure.
+- A `TrajectoryStorage.lateCapture` diagnostic still arrives for one newly
+  observed LLM capture against the already-closed `TASKS_SPAWN_AGENT` action
+  step. It is marked `diagnosticOnly`; direct database inspection confirms the
+  sealed parent, child trajectory, FILE/SHELL receipts, validation result, and
+  completion bundle are complete. It is unresolved observability debt, not a
+  user-visible task failure; the runtime intentionally does not suppress this
+  non-duplicate capture.
 - Standalone embedding downloads now stream to `<model>.part` and rename only
   after the byte-count gate succeeds. Focused regression tests prove that an
   in-progress or short download is never published as an installed GGUF.
@@ -787,8 +824,8 @@ viewer—not merely a claim that the app is installed.
 ## Deferred VPS handoff
 
 Do not fetch or deploy this branch yet: the latest changes are deliberately
-local and have not been pushed. After the remaining UX issues are accepted and
-a final clean exact-head matrix passes, the handoff should name one reviewed
-commit. A VPS must use a private environment-secret mechanism for a live
+local and have not been pushed. Publication still requires an explicit owner
+decision and one reviewed commit/tag from the checkpoint ledger. A VPS must use
+a private environment-secret mechanism for a live
 Cerebras rerun and must not copy a credential, local state directory, PGlite
 database, or unsanitized trajectory directory from the QA host.
