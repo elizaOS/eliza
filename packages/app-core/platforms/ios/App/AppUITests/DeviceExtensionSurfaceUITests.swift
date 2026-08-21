@@ -72,6 +72,22 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
                 deepLinkOnTap: "javascript:alert(1)"
             ).isEmpty
         )
+        for privilegedTarget in [
+            "elizaos://auth/callback?code=secret",
+            "elizaos://first-run/runtime/remote",
+            "elizaos://connect?url=https://example.test",
+            "elizaos://share?file=/private/note.txt",
+            "elizaos://keyboard-dictation",
+            "elizaos://aec-loop?duration=30",
+            "elizaos://%61uth/callback?code=secret",
+        ] {
+            XCTAssertNil(
+                ElizaNotificationTapPayload.userInfo(
+                    deepLink: nil,
+                    deepLinkOnTap: privilegedTarget
+                )["deepLinkOnTap"]
+            )
+        }
     }
 
     func testControlCenterGalleryListsElizaControls() throws {

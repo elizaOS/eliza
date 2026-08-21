@@ -62,9 +62,26 @@ enum ElizaNotificationTapPayload {
     }
 
     private static func isSafeOpenDestination(_ value: String) -> Bool {
-        guard let scheme = URL(string: value)?.scheme?.lowercased() else {
+        guard let url = URL(string: value),
+              let scheme = url.scheme?.lowercased() else {
             return false
         }
-        return scheme == "elizaos" || scheme == "http" || scheme == "https"
+        if scheme == "http" || scheme == "https" {
+            return true
+        }
+        guard scheme == "elizaos",
+              let destination = url.host?.removingPercentEncoding?.lowercased(),
+              !destination.isEmpty else {
+            return false
+        }
+        let privilegedNativeNamespaces: Set<String> = [
+            "aec-loop",
+            "auth",
+            "connect",
+            "first-run",
+            "keyboard-dictation",
+            "share",
+        ]
+        return !privilegedNativeNamespaces.contains(destination)
     }
 }

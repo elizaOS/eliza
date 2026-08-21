@@ -305,6 +305,38 @@ describe("showNativeNotification (iOS fallback)", () => {
       "deepLinkOnTap",
     );
   });
+
+  it.each([
+    "/auth/callback?state=owner&code=secret",
+    "/first-run/runtime/remote?api=https%3A%2F%2Fexample.test",
+    "/connect?url=https%3A%2F%2Fexample.test",
+    "/share?file=%2Fprivate%2Fnote.txt",
+    "/keyboard-dictation",
+    "/aec-loop?duration=30",
+    "/\\attacker.example/notifications",
+    "/%61uth/callback?code=secret",
+  ])(
+    "does not upgrade the safe renderer route %s into a privileged native URL",
+    async (deepLink) => {
+      platform.value = "ios";
+      const receiveIntent = vi.fn(async (_intent: ElizaIntentArg) => ({
+        accepted: true,
+        reason: "scheduled",
+      }));
+      plugins.ElizaIntent = { receiveIntent };
+
+      await showNativeNotification({
+        id: "ios-privileged-fallback",
+        title: "Reminder",
+        priority: "normal",
+        deepLink,
+      });
+
+      const payload = receiveIntent.mock.calls[0]?.[0]?.payload;
+      expect(payload).toMatchObject({ deepLink });
+      expect(payload).not.toHaveProperty("deepLinkOnTap");
+    },
+  );
 });
 
 describe("initLocalNotificationTapRouting", () => {

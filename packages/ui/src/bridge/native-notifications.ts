@@ -112,6 +112,32 @@ function numericId(id: string): number {
 function iosTapDeepLink(deepLink: string | undefined): string | undefined {
   if (!deepLink || !isSafeDeepLink(deepLink)) return undefined;
   if (/^https?:\/\//i.test(deepLink)) return deepLink;
+
+  // A root-relative view route is normally dispatched on the renderer's
+  // navigation bus. Converting it to a custom URL crosses a different, more
+  // privileged router in the native app, where several namespaces perform
+  // lifecycle actions rather than opening views. Notification producers may
+  // be model-influenced, so never let the fallback path manufacture those
+  // authorities (OAuth callbacks, runtime pairing, local-file sharing, or
+  // capture harnesses). Keep the host segment deliberately unencoded and
+  // reject URL parser ambiguities such as backslashes and control bytes.
+  if (deepLink.includes("\\")) return undefined;
+  for (let index = 0; index < deepLink.length; index += 1) {
+    const codeUnit = deepLink.charCodeAt(index);
+    if (codeUnit <= 0x1f || codeUnit === 0x7f) return undefined;
+  }
+  const path = deepLink.split(/[?#]/, 1)[0] ?? "";
+  const firstSegment = path.slice(1).split("/", 1)[0]?.toLowerCase() ?? "";
+  if (!/^[a-z0-9._~-]+$/.test(firstSegment)) return undefined;
+  const privilegedNativeNamespaces = new Set([
+    "aec-loop",
+    "auth",
+    "connect",
+    "first-run",
+    "keyboard-dictation",
+    "share",
+  ]);
+  if (privilegedNativeNamespaces.has(firstSegment)) return undefined;
   return `elizaos://${deepLink.slice(1)}`;
 }
 
