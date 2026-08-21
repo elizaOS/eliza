@@ -6,6 +6,10 @@
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { expect, ORIGIN, test } from "./android-harness";
+import {
+  ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,
+  resumedAndroidActivityComponent,
+} from "./resumed-android-activity";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -143,10 +147,12 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
     await expect
       .poll(
         async () =>
-          (await device.shell("dumpsys activity activities")).toString(),
+          resumedAndroidActivityComponent(
+            (await device.shell("dumpsys activity activities")).toString(),
+          ),
         { timeout: 15_000 },
       )
-      .toMatch(/com\.android\.chrome|BrowserControllerActivity/);
+      .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
 
     // Leave the custom tab on-screen briefly so the recording captures it.
     await new Promise((resolve) => setTimeout(resolve, 4_000));
