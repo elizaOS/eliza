@@ -53,6 +53,21 @@ describe("normalizeTrajectoryCallText", () => {
     ).toContain('"content": "open notes"');
   });
 
+  it("treats an empty recorded object as absent", () => {
+    expect(normalizeTrajectoryCallText({}, "fallback prompt")).toBe(
+      "fallback prompt",
+    );
+    expect(normalizeTrajectoryCallText({}, {}, undefined)).toBe("");
+    expect(normalizeTrajectoryCallText({}, { tool: "notes.open" })).toContain(
+      '"tool": "notes.open"',
+    );
+  });
+
+  it("keeps falsy scalars, which are real recorded values", () => {
+    expect(normalizeTrajectoryCallText("", 0)).toBe("0");
+    expect(normalizeTrajectoryCallText("   ", false)).toBe("false");
+  });
+
   it("keeps the first populated candidate rather than a later one", () => {
     expect(normalizeTrajectoryCallText("primary", "fallback")).toBe("primary");
   });

@@ -146,14 +146,31 @@ function formatProviderPayload(value: unknown): string {
 }
 
 /**
+ * Recorded trajectory payloads arrive as parsed JSON, so an object candidate is
+ * either an array or a plain record. Anything else (a Date, a class instance a
+ * caller passed directly) keeps its own printable form and is never treated as
+ * an empty record.
+ */
+function isPlainRecord(value: object): value is Record<string, unknown> {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+/**
  * A candidate carries content only when it would render something a reader can
  * inspect. Whitespace-only strings and empty collections are blank in the UI,
- * so they must not shadow a later populated candidate.
+ * so they must not shadow a later populated candidate. Falsy scalars such as
+ * `0` and `false` are real recorded values and stay renderable.
  */
 function hasRenderableContent(candidate: unknown): boolean {
   if (candidate == null) return false;
   if (typeof candidate === "string") return candidate.trim().length > 0;
   if (Array.isArray(candidate)) return candidate.length > 0;
+  if (typeof candidate === "object" && isPlainRecord(candidate)) {
+    // A serialized-but-empty payload renders as the literal `{}`; that is the
+    // same untruthful blank as `""` and must not shadow a populated fallback.
+    return Object.keys(candidate).length > 0;
+  }
   return true;
 }
 

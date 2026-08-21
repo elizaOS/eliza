@@ -6,8 +6,8 @@
  */
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { TrajectoryLlmCallCard } from "../composites/trajectories/trajectory-llm-call-card";
 import {
   buildTrajectoryCallText,
@@ -62,6 +62,12 @@ function renderCall(call: SparseCall) {
 }
 
 describe("sparse trajectory call rendering", () => {
+  // The suite runs with `globals: false`, so RTL never registers its automatic
+  // teardown; without this each render would accumulate in the same document.
+  afterEach(() => {
+    cleanup();
+  });
+
   it("reports zero lines instead of a fabricated single line", () => {
     renderCall(
       sparseCall({
@@ -98,5 +104,22 @@ describe("sparse trajectory call rendering", () => {
     // A whitespace-only system prompt stays absent rather than opening an
     // empty panel behind a truthy toggle.
     expect(screen.queryByText("System prompt")).toBeNull();
+  });
+
+  it("does not let an empty recorded object shadow a populated fallback", () => {
+    renderCall(
+      sparseCall({
+        systemPrompt: null,
+        userPrompt: {},
+        prompt: undefined,
+        messages: [{ role: "user", content: "recovered message" }],
+        response: {},
+        output: "recovered output",
+      }),
+    );
+
+    expect(screen.getByText(/recovered message/)).toBeTruthy();
+    expect(screen.getByText(/recovered output/)).toBeTruthy();
+    expect(screen.queryByText("{}")).toBeNull();
   });
 });
