@@ -13,7 +13,7 @@ function makeClient(baseUrl = "https://agent.example") {
         headers: { "content-type": "application/json" },
       }),
   );
-  const client = new ElizaClient(baseUrl, null);
+  const client = new ElizaClient(baseUrl);
   client.setRequestTransport({ request });
   return { client, request };
 }
