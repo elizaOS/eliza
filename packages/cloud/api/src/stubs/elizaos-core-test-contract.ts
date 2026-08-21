@@ -54,10 +54,24 @@ export const normalizePairingPageOptions = unavailableFunction(
 );
 export const Service = unavailableConstructor("Service");
 export const redactConnectorJsonAudit = <T>(value: T): T => value;
-export const toWellFormedUnicode = (text: string): string =>
-  text.toWellFormed();
-export const truncateWellFormed = (text: string, maxLength: number): string =>
-  text.toWellFormed().slice(0, maxLength);
+export const toWellFormedUnicode = (text: string): string => {
+  const native = (
+    String.prototype as { toWellFormed?: (this: string) => string }
+  ).toWellFormed;
+  return native ? native.call(text) : text;
+};
+export const truncateWellFormed = (text: string, maxLength: number): string => {
+  if (!Number.isFinite(maxLength) || maxLength <= 0) return "";
+  if (text.length <= maxLength) return text;
+  const end =
+    text.charCodeAt(maxLength - 1) >= 0xd800 &&
+    text.charCodeAt(maxLength - 1) <= 0xdbff &&
+    text.charCodeAt(maxLength) >= 0xdc00 &&
+    text.charCodeAt(maxLength) <= 0xdfff
+      ? maxLength - 1
+      : maxLength;
+  return text.slice(0, end);
+};
 export const validateDocumentFragmentQueryParams = unavailableFunction(
   "validateDocumentFragmentQueryParams",
 );
