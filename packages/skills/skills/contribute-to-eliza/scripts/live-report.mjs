@@ -45,7 +45,6 @@ const GENERIC_MODEL_IDS = new Set([
 ]);
 const ISSUE_CLAIM_RE = /^CLAIMING:\s*\S/i;
 const REVIEW_CLAIM_RE = /^CLAIMING\s+REVIEW:\s*\S/i;
-const CONTRIBUTION_CLAIM_RE = /^CLAIMING(?:\s+REVIEW|\s+LEVER)?:\s*\S/i;
 const AI_PROVENANCE_DECLARATION_RE =
   /^(?:AI provider\/model\s*:|AI assistance\s*:\s*yes\b|Models?(?:\s+used)?\s*:|Model\(s\)\s+used\s*:|Client\s*\/\s*agent tooling\s*:|Contribution skill revision\s*:)/i;
 const AI_PROVENANCE_MARKER_LINE_RE =
@@ -515,8 +514,7 @@ export function auditCommentDisclosures(comments) {
         comment.authorKnown &&
         !comment.bot &&
         comment.body.trim().length > 0 &&
-        (hasClaimSignal(comment.body, CONTRIBUTION_CLAIM_RE) ||
-          hasAiProvenanceSignal(comment.body)) &&
+        hasAiProvenanceSignal(comment.body) &&
         !hasHumanOnlyClaimFooter(comment.body) &&
         parseModelDisclosure(comment.body) === null,
     )
@@ -1026,7 +1024,7 @@ export function collectLiveReport(
     );
     const missing = auditCommentDisclosures(comments);
     if (missing.length > 0) {
-      issueCommentAudits.push({ ...summary, missingModelDisclosures: missing });
+      issueCommentAudits.push({ ...summary, invalidModelDisclosures: missing });
     }
 
     const labels = labelNames(item, `issue #${summary.number}`);
@@ -1137,7 +1135,7 @@ export function collectLiveReport(
       ...detailedSummary,
       bodyProviderModel: parseModelDisclosure(body),
       bodyHumanOnly: hasHumanOnlyPullRequestDeclaration(body),
-      missingModelDisclosures: auditCommentDisclosures(allComments),
+      invalidModelDisclosures: auditCommentDisclosures(allComments),
       evidence: auditPrEvidence(body),
     });
 
@@ -1245,7 +1243,7 @@ export function renderMarkdown(report) {
   const gaps = [];
   for (const issue of report.audits.issueComments) {
     gaps.push(
-      `- Issue [#${issue.number}](${issue.url}): ${issue.missingModelDisclosures.length} claim or AI-provenance comment(s) lack exact provider/model disclosure.`,
+      `- Issue [#${issue.number}](${issue.url}): ${issue.invalidModelDisclosures.length} voluntarily attributed comment(s) contain invalid provider/model disclosure.`,
     );
   }
   for (const pull of report.audits.pullRequests) {
@@ -1253,9 +1251,9 @@ export function renderMarkdown(report) {
     if (pull.bodyProviderModel === null && !pull.bodyHumanOnly) {
       details.push("PR body lacks exact provider/model disclosure");
     }
-    if (pull.missingModelDisclosures.length > 0) {
+    if (pull.invalidModelDisclosures.length > 0) {
       details.push(
-        `${pull.missingModelDisclosures.length} claim or AI-provenance comment(s) lack disclosure`,
+        `${pull.invalidModelDisclosures.length} voluntarily attributed comment(s) contain invalid disclosure`,
       );
     }
     const evidenceGaps = pull.evidence.findings
