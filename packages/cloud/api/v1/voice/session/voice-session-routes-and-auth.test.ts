@@ -58,6 +58,7 @@ mock.module("@elizaos/core", () => ({
   ...workerCoreStub,
   canRequesterMutateDocument: coreTestContract.canRequesterMutateDocument,
   ChannelType: coreTestContract.ChannelType,
+  cloneConnectorJsonObject: coreTestContract.cloneConnectorJsonObject,
   DatabaseAdapter: coreTestContract.DatabaseAdapter,
   decryptedCharacter: coreTestContract.decryptedCharacter,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION:
@@ -68,19 +69,27 @@ mock.module("@elizaos/core", () => ({
     coreTestContract.documentRoleHasGlobalVisibility,
   encryptedCharacter: coreTestContract.encryptedCharacter,
   ElizaError: workerCoreStub.ElizaError,
+  IDENTITY_AUTHORITY_CONTRACT_VERSION:
+    coreTestContract.IDENTITY_AUTHORITY_CONTRACT_VERSION,
+  IdentityResolutionService: coreTestContract.IdentityResolutionService,
   isElizaError: workerCoreStub.isElizaError,
   isSensitiveKeyName: () => false,
   logger: coreTestContract.logger,
   normalizePairingPageOptions: coreTestContract.normalizePairingPageOptions,
   redactLogArgs: (a: unknown) => a,
+  redactConnectorJsonAudit: coreTestContract.redactConnectorJsonAudit,
   redactSensitiveText: workerCoreStub.redactSensitiveText,
   Service: coreTestContract.Service,
+  toWellFormedUnicode: coreTestContract.toWellFormedUnicode,
+  truncateWellFormed: coreTestContract.truncateWellFormed,
   validateDocumentFragmentQueryParams:
     coreTestContract.validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams:
     coreTestContract.validateDocumentListQueryParams,
   validateDocumentRequesterContext:
     coreTestContract.validateDocumentRequesterContext,
+  validateDocumentRevisionReplacement:
+    coreTestContract.validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination:
     coreTestContract.validateQueryEntitiesPagination,
   validateUuid: coreTestContract.validateUuid,
