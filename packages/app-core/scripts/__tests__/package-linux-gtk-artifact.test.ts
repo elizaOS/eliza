@@ -314,6 +314,36 @@ describe("produceArtifact", () => {
     ).toThrow(ArtifactContractError);
     expect(() => readFileSync(path.join(outDir, MANIFEST_NAME))).toThrow();
   });
+
+  it("never deletes a replacement installed during a failed publication", () => {
+    const outDir = tempDir();
+    const replacement = Buffer.from("replacement owned by another writer");
+    const archiveName = "eliza-desktop-gtk-1.2.3-x86_64.tar.zst";
+    const signatureName = "eliza-desktop-gtk-1.2.3-x86_64.sig";
+    const { privateKeyPem } = generateSigningKeyPair();
+    expect(() =>
+      produceArtifact({
+        stageDir: stageShell(),
+        outDir,
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+        testHooks: {
+          afterPublishEntry: ({ index, publishedPath }) => {
+            if (index !== 0) return;
+            renameSync(publishedPath, path.join(outDir, "owned-archive"));
+            writeFileSync(publishedPath, replacement, { flag: "wx" });
+            writeFileSync(path.join(outDir, signatureName), "collision", {
+              flag: "wx",
+            });
+          },
+        },
+      }),
+    ).toThrow();
+    expect(readFileSync(path.join(outDir, archiveName))).toEqual(replacement);
+    expect(existsSync(path.join(outDir, MANIFEST_NAME))).toBe(false);
+  });
 });
 
 describe("writeSigningKeyPair", () => {
@@ -337,6 +367,27 @@ describe("writeSigningKeyPair", () => {
       false,
     );
     expect(readFileSync(publicKeyPath, "utf8")).toBe("existing public key");
+  });
+
+  it("never deletes a replacement installed during a keypair collision", () => {
+    const outDir = tempDir();
+    const privateKeyPath = path.join(outDir, "desktop-signing.key.pem");
+    const publicKeyPath = path.join(outDir, "desktop-signing.pub.pem");
+    expect(() =>
+      writeSigningKeyPair(outDir, {
+        beforePublicKeyWrite: () => {
+          renameSync(privateKeyPath, path.join(outDir, "owned-private.pem"));
+          writeFileSync(privateKeyPath, "replacement private key", {
+            flag: "wx",
+          });
+          writeFileSync(publicKeyPath, "collision", { flag: "wx" });
+        },
+      }),
+    ).toThrow();
+    expect(readFileSync(privateKeyPath, "utf8")).toBe(
+      "replacement private key",
+    );
+    expect(readFileSync(publicKeyPath, "utf8")).toBe("collision");
   });
 
   it("rejects a dangling private-key symlink without creating its target", () => {
@@ -400,6 +451,34 @@ describe("verifyArtifactDir", () => {
     expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
       /regular non-symlink file/,
     );
+  });
+
+  it("rejects an archive pathname replacement after cryptographic inspection", () => {
+    const { result, outDir, publicKeyPem } = produce("x86_64");
+    const originalArchive = path.join(tempDir(), "original.tar.zst");
+    expect(() =>
+      verifyArtifactDir(outDir, publicKeyPem, {
+        beforeFinalStableFileCheck: ({ archivePath }) => {
+          renameSync(archivePath, originalArchive);
+          writeFileSync(archivePath, "replacement archive", { flag: "wx" });
+        },
+      }),
+    ).toThrow(/archive .* changed during verification/);
+    expect(readFileSync(result.archivePath, "utf8")).toBe(
+      "replacement archive",
+    );
+  });
+
+  it("rejects in-place contract mutation after archive inspection", () => {
+    const { outDir, publicKeyPem } = produce("x86_64");
+    const manifestPath = path.join(outDir, MANIFEST_NAME);
+    expect(() =>
+      verifyArtifactDir(outDir, publicKeyPem, {
+        beforeFinalStableFileCheck: () => {
+          writeFileSync(manifestPath, "{}\n");
+        },
+      }),
+    ).toThrow(/manifest.*changed during verification/);
   });
 });
 
