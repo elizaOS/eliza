@@ -2983,12 +2983,28 @@ async function main(): Promise<void> {
     if (!surfaceWindowManager) {
       throw new Error("Surface window manager is not ready.");
     }
-    void surfaceWindowManager.openWorkspaceWindow(
-      options?.routePath ?? "/",
-      undefined,
-      options?.maximize === true,
-      options?.presentation ?? "standard",
-    );
+    const manager = surfaceWindowManager;
+    const presentation = options?.presentation ?? "standard";
+    void (async () => {
+      await manager.openWorkspaceWindow(
+        options?.routePath ?? "/",
+        undefined,
+        options?.maximize === true,
+        presentation,
+      );
+      if (presentation !== "content") return;
+      // A view command issued from the detached pill updates Workspace as a
+      // background canvas operation. AppKit necessarily keys a newly-created
+      // or explicitly-focused Workspace briefly; immediately return key/focus
+      // ownership to the canonical pill so typing and an active voice session
+      // continue without a second click.
+      await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
+      await getDesktopManager().focusWindow();
+    })().catch((error: unknown) => {
+      logger.warn(
+        `[surface-windows] Failed to open Workspace: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
   });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);

@@ -10,7 +10,10 @@ import {
 } from "../../app-navigate-view";
 import { openDesktopAppWindow } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
-import { NAVIGATE_VIEW_EVENT } from "../../events";
+import {
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../../events";
 import { openDesktopWorkspaceWindow } from "../../utils/desktop-workspace";
 
 /** Detail shape used by views/launcher whose own window should open. */
@@ -59,6 +62,9 @@ export function useBarSurfaceWindows(options?: {
         return;
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
         event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
         void openWorkspaceRef.current({
           routePath: "/views",
           maximize: true,
@@ -70,6 +76,9 @@ export function useBarSurfaceWindows(options?: {
       if (!path) return;
       if (detail.action !== "open-window") {
         event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
         void openWorkspaceRef.current({
           routePath: path,
           maximize: true,

@@ -53,6 +53,7 @@ import {
   type BackIntentEventDetail,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   type ChatPrefillEventDetail,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
@@ -1712,6 +1713,12 @@ export function ChatOverlay({
   // to the prior resting state (collapsed → input) instead of leaving the sheet
   // hanging open, while a sheet that was ALREADY open before focus stays open.
   const preFocusCollapsedRef = React.useRef(true);
+  // A pill-driven content Workspace briefly makes its native window key while
+  // it is created or routed. That is presentation plumbing, not a user
+  // dismissal: keep the current detent/voice session intact and restore the
+  // composer only when it owned focus before the handoff.
+  const contentWorkspaceHandoffUntilRef = React.useRef(0);
+  const restoreComposerAfterContentHandoffRef = React.useRef(false);
   // Snapshot of "was the composer focused (keyboard up) at the last pointerdown".
   // The browser can auto-blur the input between a scrim pointerdown and its
   // click, so the scrim's click handler can't read live focus — it reads this to
@@ -3904,13 +3911,61 @@ export function ChatOverlay({
   // step an expanded sheet down to the still-visible composer, never all the
   // way to the tiny resting bar.
   React.useEffect(() => {
+    if (!desktopOverlayHost || typeof window === "undefined") return undefined;
+    const beginContentWorkspaceHandoff = () => {
+      contentWorkspaceHandoffUntilRef.current = performance.now() + 2500;
+      restoreComposerAfterContentHandoffRef.current =
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current;
+    };
+    window.addEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      beginContentWorkspaceHandoff,
+    );
+    return () =>
+      window.removeEventListener(
+        DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+        beginContentWorkspaceHandoff,
+      );
+  }, [desktopOverlayHost]);
+
+  React.useEffect(() => {
     if (!desktopOverlayHost || !sheetOpen || pinnedOpen) return undefined;
     return subscribeDesktopBridgeEvent({
       rpcMessage: "desktopWindowBlur",
       ipcChannel: "desktop:windowBlur",
-      listener: () => closeSheet(),
+      listener: () => {
+        if (contentWorkspaceHandoffUntilRef.current >= performance.now()) {
+          return;
+        }
+        closeSheet();
+      },
     });
   }, [closeSheet, desktopOverlayHost, pinnedOpen, sheetOpen]);
+
+  // Content Workspace opens are intentionally background navigation from the
+  // pill's point of view. Once AppKit returns key status to the detached host,
+  // restore only the focus it had before the handoff. Voice-only interaction
+  // therefore keeps listening without unexpectedly focusing the text field.
+  React.useEffect(() => {
+    if (!desktopOverlayHost) return undefined;
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopWindowFocus",
+      ipcChannel: "desktop:windowFocus",
+      listener: () => {
+        const withinHandoff =
+          contentWorkspaceHandoffUntilRef.current >= performance.now();
+        const restoreComposer =
+          withinHandoff && restoreComposerAfterContentHandoffRef.current;
+        contentWorkspaceHandoffUntilRef.current = 0;
+        restoreComposerAfterContentHandoffRef.current = false;
+        if (!restoreComposer) return;
+        window.requestAnimationFrame(() => {
+          inputRef.current?.focus({ preventScroll: true });
+        });
+      },
+    });
+  }, [desktopOverlayHost]);
 
   // Collapse the whole chat to the bottom pill capsule — the shared landing for
   // every "put the chat away" release (flick down from the input, an input drag

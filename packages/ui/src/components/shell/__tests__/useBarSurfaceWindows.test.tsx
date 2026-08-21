@@ -8,6 +8,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { NavigateViewDetail } from "../../../app-navigate-view";
+import { DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT } from "../../../events";
 import { useBarSurfaceWindows } from "../useBarSurfaceWindows";
 
 afterEach(() => cleanup());
@@ -83,6 +84,12 @@ describe("useBarSurfaceWindows", () => {
 
   it("opens a normal view path inside the maximized Workspace", async () => {
     const { openWindow, openWorkspace } = setup();
+    const contentHandoff = vi.fn();
+    window.addEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+      { once: true },
+    );
     const event = await dispatchNavigate({
       viewId: "notes",
       viewPath: "/notes",
@@ -94,6 +101,7 @@ describe("useBarSurfaceWindows", () => {
       presentation: "content",
     });
     expect(event.defaultPrevented).toBe(true);
+    expect(contentHandoff).toHaveBeenCalledTimes(1);
   });
 
   it("ignores close actions and detail-less events", async () => {

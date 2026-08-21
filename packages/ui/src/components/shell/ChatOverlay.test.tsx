@@ -74,6 +74,7 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import {
   CHAT_PREFILL_EVENT,
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
 } from "../../events";
@@ -4516,6 +4517,101 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
 
       expect(sheet.dataset.detent).toBe("collapsed");
       expect(sheet.dataset.chatState).toBe("INPUT");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps the detached composer open and restores focus through a content Workspace handoff", async () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    let nativeFocus: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+        if (name === "desktopWindowFocus") nativeFocus = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      const composer = screen.getByTestId("chat-composer-textarea");
+      composer.focus();
+      expect(sheet.dataset.detent).toBe("half");
+
+      act(() => {
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        composer.blur();
+        nativeBlur?.(undefined);
+        nativeFocus?.(undefined);
+      });
+
+      await waitFor(() => expect(document.activeElement).toBe(composer));
+      expect(sheet.dataset.detent).toBe("half");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
+  it("keeps active talk listening through a content Workspace handoff", () => {
+    let nativeBlur: ((payload: unknown) => void) | undefined;
+    let nativeFocus: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWindowBlur") nativeBlur = listener;
+        if (name === "desktopWindowFocus") nativeFocus = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={
+            makeSwipeController({
+              handsFree: true,
+              phase: "listening",
+              recording: true,
+            }).controller
+          }
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const sheet = screen.getByTestId("chat-sheet");
+      const talk = screen.getByTestId("chat-composer-mic");
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(talk.getAttribute("aria-pressed")).toBe("true");
+      expect(sheet.dataset.detent).toBe("half");
+
+      act(() => {
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
+        nativeBlur?.(undefined);
+        nativeFocus?.(undefined);
+      });
+
+      expect(talk.getAttribute("aria-pressed")).toBe("true");
+      expect(sheet.dataset.detent).toBe("half");
     } finally {
       delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
         .__ELIZA_ELECTROBUN_RPC__;
