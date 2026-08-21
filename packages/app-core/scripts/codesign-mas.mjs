@@ -34,11 +34,15 @@ import {
   closeSync,
   existsSync,
   openSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   readSync,
+  rmSync,
   statSync,
+  writeFileSync,
 } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -55,12 +59,49 @@ const ENTITLEMENTS_DIR = path.resolve(
   __dirname,
   "../platforms/electrobun/entitlements",
 );
-const PARENT_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas.entitlements");
-const CHILD_ENTITLEMENTS = path.join(
+let PARENT_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas.entitlements");
+let CHILD_ENTITLEMENTS = path.join(
   ENTITLEMENTS_DIR,
   "mas-child.entitlements",
 );
-const BUN_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-bun.entitlements");
+let BUN_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-bun.entitlements");
+
+export function resolveAppleSigningTeamId({ args, identity, env = process.env }) {
+  const identityTeam = identity?.match(/\(([A-Z0-9]{10})\)\s*$/)?.[1];
+  const configured = [args["team-id"], env.ELIZA_APPLE_TEAM_ID, identityTeam]
+    .map((value) => value?.trim())
+    .filter(Boolean);
+  const unique = [...new Set(configured)];
+  if (unique.length !== 1 || !/^[A-Z0-9]{10}$/.test(unique[0])) {
+    throw new Error("MAS signing requires one matching 10-character Apple Team ID");
+  }
+  return unique[0];
+}
+
+function materializeConcreteEntitlements(teamId) {
+  const temporaryRoot = mkdtempSync(
+    path.join(os.tmpdir(), "eliza-mas-entitlements-"),
+  );
+  const render = (source) => {
+    const target = path.join(temporaryRoot, path.basename(source));
+    const contents = readFileSync(source, "utf8").replaceAll(
+      "$(AppIdentifierPrefix)",
+      `${teamId}.`,
+    );
+    if (contents.includes("$(AppIdentifierPrefix)")) {
+      throw new Error("unresolved AppIdentifierPrefix in signing entitlements");
+    }
+    writeFileSync(target, contents, { encoding: "utf8", mode: 0o600 });
+    return target;
+  };
+  const rendered = {
+    parent: render(PARENT_ENTITLEMENTS),
+    child: render(CHILD_ENTITLEMENTS),
+    bun: render(BUN_ENTITLEMENTS),
+  };
+  process.once("exit", () => rmSync(temporaryRoot, { force: true, recursive: true }));
+  return rendered;
+}
 
 const MACHO_MAGIC = new Set([
   0xfeedface,
@@ -429,6 +470,7 @@ function main() {
     process.env.ELIZA_MAS_INSTALLER_IDENTITY ??
     null;
 
+  const teamId = resolveAppleSigningTeamId({ args, identity });
   plistLint(PARENT_ENTITLEMENTS);
   plistLint(CHILD_ENTITLEMENTS);
   plistLint(BUN_ENTITLEMENTS);
@@ -437,6 +479,13 @@ function main() {
   assertNoForbiddenMasExceptions(BUN_ENTITLEMENTS);
   const entitlementManifest = loadEntitlementReviewManifest();
   assertSourceEntitlementsReviewed(entitlementManifest);
+  const concreteEntitlements = materializeConcreteEntitlements(teamId);
+  PARENT_ENTITLEMENTS = concreteEntitlements.parent;
+  CHILD_ENTITLEMENTS = concreteEntitlements.child;
+  BUN_ENTITLEMENTS = concreteEntitlements.bun;
+  plistLint(PARENT_ENTITLEMENTS);
+  plistLint(CHILD_ENTITLEMENTS);
+  plistLint(BUN_ENTITLEMENTS);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);
