@@ -116,6 +116,29 @@ describe("evaluateMailSecurity", () => {
     expect(check(baseline({ txt: [] }), "spf").ok).toBe(false);
   });
 
+  it("accepts a case-variant Workspace include", () => {
+    // Mechanism names and domains are case-insensitive (RFC 7208 s4.6.1).
+    expect(
+      check(
+        baseline({ txt: ["v=spf1 Include:_SPF.Google.com ~all"] }),
+        "spf",
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("fails a record whose terminal mechanism is permissive", () => {
+    // Evaluation stops at the first match, so the LAST mechanism decides an
+    // otherwise-unmatched sender: a mid-record ~all must not read as pass.
+    expect(
+      check(
+        baseline({
+          txt: ["v=spf1 include:_spf.google.com ~all include:evil.example +all"],
+        }),
+        "spf",
+      ).ok,
+    ).toBe(false);
+  });
+
   it("treats a revoked DKIM key (empty p=) as a failure", () => {
     expect(
       check(baseline({ dkimTxt: ["v=DKIM1;k=rsa;p="] }), "dkim").detail,
@@ -174,5 +197,36 @@ describe("evaluateMailSecurity", () => {
       dkimTxt: [`v=DKIM1;k=rsa;p=${VALID_DKIM_KEY}`],
     });
     expect(check(records, "dkim").ok).toBe(true);
+  });
+
+  it("fails a rua destination that is not a mailto URI", () => {
+    expect(
+      check(
+        baseline({
+          dmarcTxt: ["v=DMARC1; p=none; rua=notmailto:dmarc@elizaresearch.ai"],
+        }),
+        "dmarc",
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("fails a rua mailto with no address", () => {
+    expect(
+      check(baseline({ dmarcTxt: ["v=DMARC1; p=none; rua=mailto:"] }), "dmarc")
+        .ok,
+    ).toBe(false);
+  });
+
+  it("accepts a rua list whose second entry is a valid mailto", () => {
+    expect(
+      check(
+        baseline({
+          dmarcTxt: [
+            "v=DMARC1; p=none; rua=https://reports.example/ingest,mailto:dmarc@elizaresearch.ai!10m",
+          ],
+        }),
+        "dmarc",
+      ).ok,
+    ).toBe(true);
   });
 });

@@ -72,14 +72,26 @@ function checkSpf(txt) {
     };
   }
   const record = spf[0];
-  if (!record.includes("include:_spf.google.com")) {
+  // Mechanism names and domains are case-insensitive (RFC 7208 s4.6.1), so a
+  // valid "Include:_SPF.Google.com" must not read as unauthorized.
+  const mechanisms = record.trim().split(/\s+/u).slice(1);
+  if (
+    !mechanisms.some(
+      (mechanism) => mechanism.toLowerCase() === "include:_spf.google.com",
+    )
+  ) {
     return {
       id: "spf",
       ok: false,
       detail: "the SPF record does not authorize Google Workspace senders",
     };
   }
-  if (!/\s[~-]all(\s|$)/u.test(record)) {
+  // Evaluation stops at the first matching mechanism, so only the LAST one
+  // decides the fate of an otherwise-unmatched sender. Matching "~all"
+  // anywhere would pass a record like "... ~all include:evil.com +all",
+  // whose real terminal mechanism authorizes the whole internet.
+  const terminal = mechanisms.at(-1)?.toLowerCase() ?? "";
+  if (terminal !== "~all" && terminal !== "-all") {
     return {
       id: "spf",
       ok: false,
@@ -202,8 +214,26 @@ function checkDmarc(txt) {
       detail: `the DMARC p= tag is missing or invalid: "${policy}"`,
     };
   }
+  // rua is a comma-separated URI list (RFC 7489 s6.2). A substring test would
+  // accept "notmailto:x" or a bare "mailto:" with no address, reporting a
+  // destination that can never receive an aggregate report.
   const rua = tags.get("rua") ?? "";
-  if (!rua.includes("mailto:")) {
+  const hasReportDestination = rua
+    .split(",")
+    .map((uri) => uri.trim())
+    .some((uri) => {
+      if (!uri.toLowerCase().startsWith("mailto:")) return false;
+      // Strip the optional "!size" limit suffix before validating the address.
+      const address = uri.slice("mailto:".length).split("!")[0] ?? "";
+      const [local, domain, ...rest] = address.split("@");
+      return (
+        rest.length === 0 &&
+        (local?.length ?? 0) > 0 &&
+        (domain?.length ?? 0) > 0 &&
+        domain.includes(".")
+      );
+    });
+  if (!hasReportDestination) {
     return {
       id: "dmarc",
       ok: false,
