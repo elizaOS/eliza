@@ -1,13 +1,15 @@
 // Coordinates cloud service discord behavior behind route handlers.
+import { DISCORD_API_BASE, discordBotAuthHeader, discordFetch } from "../utils/discord-api";
 import { logger } from "../utils/logger";
 
-const DISCORD_API = "https://discord.com/api/v10";
-
 async function discordPost(token: string, path: string, body: unknown): Promise<Response> {
-  return fetch(`${DISCORD_API}${path}`, {
+  // Routed through the shared bound: a hung Discord API would otherwise pin
+  // every notification path here (payment alerts, signup/error/container
+  // notices) with no timeout at all.
+  return discordFetch(`${DISCORD_API_BASE}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bot ${token}`,
+      Authorization: discordBotAuthHeader(token),
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
