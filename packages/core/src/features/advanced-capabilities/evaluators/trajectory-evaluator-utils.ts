@@ -7,6 +7,10 @@
  * truncated) into the digest fed to the extraction model.
  */
 import type { IAgentRuntime } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 
 export interface SkillTrajectoryLlmCall {
 	systemPrompt?: string;
@@ -111,10 +115,14 @@ export function formatTrajectoryForPrompt(
 			const purpose = call.purpose ?? call.actionType ?? "step";
 			lines.push(`[${purpose}]`);
 			if (call.userPrompt) {
-				lines.push(`USER: ${call.userPrompt.slice(0, 600)}`);
+				lines.push(
+					`USER: ${truncateWellFormed(toWellFormedUnicode(call.userPrompt), 600)}`,
+				);
 			}
 			if (call.response) {
-				lines.push(`AGENT: ${call.response.slice(0, 600)}`);
+				lines.push(
+					`AGENT: ${truncateWellFormed(toWellFormedUnicode(call.response), 600)}`,
+				);
 			}
 		}
 	}
