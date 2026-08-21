@@ -4610,7 +4610,8 @@ export function ChatOverlay({
         (exec.clientAction === "open-command-palette" ||
           exec.clientAction === "show-commands");
       const openPaletteCollapsed = () => {
-        collapse();
+        if (desktopOverlayHost) closeSheet();
+        else collapse();
         slash.openCommandPalette();
       };
       runSlashExecution(exec, {
@@ -5644,14 +5645,6 @@ export function ChatOverlay({
         openFromPill();
         return;
       }
-      // The detached host's handle is also its always-visible put-away action.
-      // Use the staged thread -> composer -> pill close so one tap reaches the
-      // complete compact rest without skipping transition frames. Embedded/browser
-      // surfaces retain their established detent tap behavior.
-      if (desktopOverlayHost) {
-        collapseToPill();
-        return;
-      }
       if (sheetOpen) {
         if (composerFocusedAtPressRef.current) {
           composerFocusedAtPressRef.current = false;
@@ -6187,10 +6180,11 @@ export function ChatOverlay({
             open={sheetOpen}
             visuallyOpen={threadPresented}
             onOpen={openFromGrabber}
-            // The detached Mac grabber is also its complete put-away action;
-            // collapseToPill stages an open thread through the composer before
-            // landing on the exact visible resting pill.
-            onClose={desktopOverlayHost ? collapseToPill : collapse}
+            // A click always advances exactly one disclosure step: composer ->
+            // chat, or chat -> composer. Reaching the tiny resting pill is a
+            // deliberate downward drag only; asking a tap to cross both close
+            // transitions made the renderer and native frame race each other.
+            onClose={desktopOverlayHost ? closeSheet : collapse}
             binding={grabberBinding}
             // The handle stays QUIET while the mic is recording — the composer
             // mic/voice glyphs already carry the "capture is hot" pulse right
