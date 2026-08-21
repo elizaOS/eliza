@@ -1346,9 +1346,85 @@ describe("passthrough streaming — #16079 milestone telemetry", () => {
       (e) => e.path === "passthrough",
     );
     if (!event) throw new Error("no passthrough milestone event recorded");
-    // The errored tee discards buffered chunks, so mid-stream milestones may
-    // legitimately be null here — what MUST hold: the event exists, is marked
-    // aborted, and never claims a completion it did not observe.
+    // An errored source discards queued chunks (whatwg streams), so mid-stream
+    // milestones may legitimately be null here — what MUST hold: the event
+    // exists, is marked aborted, and never claims a completion it did not
+    // observe. The fan-out meter sees exactly the chunks the client saw.
+    expect(event.aborted).toBe(true);
+    expect(event.completionMs).toBeNull();
+  });
+
+  test("clean EOF without [DONE] records aborted=true and no completion (#20032)", async () => {
+    // A truncated OpenAI-compatible stream (connection closed before the
+    // protocol terminal) must be distinguishable from a completed one.
+    fetchImpl = async () =>
+      sseResponse(
+        `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"cut "},"finish_reason":null}],"usage":null}\n\n`,
+      );
+
+    const res = await callStreaming(async () => null, {});
+    expect(await res.text()).toContain("cut ");
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
+    expect(event.firstContentMs).not.toBeNull();
+    expect(event.aborted).toBe(true);
+    expect(event.completionMs).toBeNull();
+  });
+
+  test("upstream pulling is bounded by client backpressure — no tee queue (#20032)", async () => {
+    // With `tee()`, the fast meter branch drove upstream pulls while a slow
+    // client's branch queued every chunk unbounded. The single-reader fan-out
+    // pulls only when the client reads: a stalled client stalls the upstream.
+    const TOTAL_CHUNKS = 200;
+    let pulled = 0;
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (pulled >= TOTAL_CHUNKS) {
+              controller.close();
+              return;
+            }
+            pulled += 1;
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":"x"},"finish_reason":null}],"usage":null}\n\n`,
+              ),
+            );
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      );
+
+    const waitUntilPromises: Array<Promise<unknown>> = [];
+    const res = await callStreaming(async () => null, {
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    // Read one chunk, then stall the client entirely.
+    await reader.read();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    // Bounded: the upstream advanced only by the client's single read plus
+    // small fixed internal queues — never anywhere near the full stream.
+    expect(pulled).toBeLessThan(10);
+    expect(pulled).toBeLessThan(TOTAL_CHUNKS);
+    await reader.cancel(new DOMException("client stalled out", "AbortError"));
+    await Promise.all(waitUntilPromises);
+
+    const snapshot = getCloudTelemetrySnapshot(10);
+    const event = snapshot.streamMilestones.find(
+      (e) => e.path === "passthrough",
+    );
+    if (!event) throw new Error("no passthrough milestone event recorded");
     expect(event.aborted).toBe(true);
     expect(event.completionMs).toBeNull();
   });
