@@ -17,6 +17,12 @@ export function contactSheetSwatchColor(value) {
   return /^#[0-9a-f]{6}$/i.test(String(value)) ? String(value) : "transparent";
 }
 
+function contactSheetCheckClass(value) {
+  return value === "pass" || value === "fail" || value === "skip"
+    ? value
+    : "unknown";
+}
+
 export function renderContactSheet(summary, results) {
   const rows = results
     .map((result) => {
@@ -32,16 +38,16 @@ export function renderContactSheet(summary, results) {
       const checks = result.expectation.checks
         .map(
           (check) =>
-            `<div class="chk ${check.status}">${escapeContactSheetHtml(check.name)}: ${escapeContactSheetHtml(check.detail)}</div>`,
+            `<div class="chk ${contactSheetCheckClass(check.status)}">${escapeContactSheetHtml(check.name)}: ${escapeContactSheetHtml(check.detail)}</div>`,
         )
         .join("");
       const ocrCell = result.ocr.available
-        ? `<div class="ocr">${escapeContactSheetHtml(result.ocr.text || "(no glyphs)")}</div><div class="meta">${result.ocr.words} words</div>`
+        ? `<div class="ocr">${escapeContactSheetHtml(result.ocr.text || "(no glyphs)")}</div><div class="meta">${escapeContactSheetHtml(result.ocr.words)} words</div>`
         : `<div class="na">N/A — ${escapeContactSheetHtml(result.ocr.reason)}</div>`;
       const diffCell =
         result.diff.status === "new"
           ? '<span class="new">NEW baseline</span>'
-          : `${result.diff.changedPercent}% changed${result.diff.resized ? " (resized)" : ""}${result.diff.diffPng ? `<br><img class="thumb" src="${escapeContactSheetHtml(result.diff.diffPng)}">` : ""}`;
+          : `${escapeContactSheetHtml(result.diff.changedPercent)}% changed${result.diff.resized ? " (resized)" : ""}${result.diff.diffPng ? `<br><img class="thumb" src="${escapeContactSheetHtml(result.diff.diffPng)}">` : ""}`;
       return `<tr class="${result.expectation.pass ? "" : "row-fail"}">
         <td class="slug">${escapeContactSheetHtml(result.slug)}<br><span class="meta">${escapeContactSheetHtml(result.viewport)}</span></td>
         <td><img class="thumb" src="${escapeContactSheetHtml(result.screenshot)}" loading="lazy"></td>
@@ -49,7 +55,10 @@ export function renderContactSheet(summary, results) {
         <td class="pal">${swatches}<div class="meta">${Object.entries(
           result.palette.buckets,
         )
-          .map(([key, value]) => `${key} ${(value * 100).toFixed(0)}%`)
+          .map(
+            ([key, value]) =>
+              `${escapeContactSheetHtml(key)} ${escapeContactSheetHtml((value * 100).toFixed(0))}%`,
+          )
           .join(" · ")}</div></td>
         <td class="diff">${diffCell}</td>
         <td>${verdict}<div class="checks">${checks}</div></td>
@@ -73,9 +82,9 @@ export function renderContactSheet(summary, results) {
 </style>
 <h1>mvp visual verify</h1>
 <div class="summary">
-  ${escapeContactSheetHtml(summary.states)} states · OCR: ${escapeContactSheetHtml(summary.ocrEngine)} · expectation failures: <b>${summary.expectationFailures}</b> ·
-  skipped checks: <b>${summary.expectationSkips}</b> · missing required states: <b>${summary.missingRequiredStates.length}</b> · overflow states: <b>${summary.overflowStates}</b> ·
-  new baselines: ${summary.newBaselines} · audit report: ${summary.auditReportPresent ? "loaded" : "ABSENT"} ·
+  ${escapeContactSheetHtml(summary.states)} states · OCR: ${escapeContactSheetHtml(summary.ocrEngine)} · expectation failures: <b>${escapeContactSheetHtml(summary.expectationFailures)}</b> ·
+  skipped checks: <b>${escapeContactSheetHtml(summary.expectationSkips)}</b> · missing required states: <b>${escapeContactSheetHtml(summary.missingRequiredStates.length)}</b> · overflow states: <b>${escapeContactSheetHtml(summary.overflowStates)}</b> ·
+  new baselines: ${escapeContactSheetHtml(summary.newBaselines)} · audit report: ${summary.auditReportPresent ? "loaded" : "ABSENT"} ·
   baseline: ${escapeContactSheetHtml(summary.baselineDir)} · ${escapeContactSheetHtml(summary.generatedAt)}
   ${
     summary.missingRequiredStates.length

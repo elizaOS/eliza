@@ -48,7 +48,7 @@ describe("contact-sheet HTML serialization", () => {
           ocr: { available: true, text: payload, words: 1 },
           palette: {
             swatches: [{ hex: payload, bucket: payload, ratio: 0.5 }],
-            buckets: { orange: 1 },
+            buckets: { [payload]: 1 },
           },
           diff: {
             status: "compared",
@@ -58,7 +58,7 @@ describe("contact-sheet HTML serialization", () => {
           },
           expectation: {
             pass: true,
-            checks: [{ status: "pass", name: payload, detail: payload }],
+            checks: [{ status: payload, name: payload, detail: payload }],
           },
         },
       ],
@@ -66,7 +66,9 @@ describe("contact-sheet HTML serialization", () => {
 
     expect(html).not.toContain("<script data-owned");
     expect(html).not.toContain(' onmouseover="alert(1)');
+    expect(html).not.toContain(`class="chk ${payload}`);
     expect(html).not.toContain("background:&quot;");
+    expect(html).toContain('class="chk unknown"');
     expect(html).toContain('style="background:transparent"');
     expect(html).toContain("&quot; onmouseover=&quot;alert(1) &amp;");
   });
