@@ -24,6 +24,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   type CrossChannelSearchChannel,
@@ -155,7 +156,10 @@ function compactHit(
     speaker: hit.speaker,
     ...(hit.subject ? { subject: hit.subject } : {}),
     text: redactTextForEgress(
-      hit.text.replace(/\s+/g, " ").trim().slice(0, 180),
+      truncateWellFormed(
+        toWellFormedUnicode(hit.text.replace(/\s+/g, " ").trim()),
+        180,
+      ),
       {
         context: egressContext,
         dataClass: "body",
