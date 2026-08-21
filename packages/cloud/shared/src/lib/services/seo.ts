@@ -286,7 +286,12 @@ async function runHealthCheck(pageUrl: string): Promise<{
   robots: boolean;
   canonical?: string;
 }> {
-  const response = await safeFetch(pageUrl, {
+  // `pageUrl` is caller-supplied (`request.page_url`), so this is the one SEO
+  // hop an untrusted input can aim at an arbitrary host. It goes through
+  // `seoFetch` for the same reason every provider hop does: `safeFetch` alone
+  // screens the address but has no deadline, so a host that accepts the
+  // connection and never answers pins the worker forever.
+  const response = await seoFetch(pageUrl, {
     method: "GET",
     redirect: "error",
   });
