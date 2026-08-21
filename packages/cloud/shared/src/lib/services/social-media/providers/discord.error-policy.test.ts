@@ -116,7 +116,7 @@ describe("discordProvider error policy", () => {
 });
 
 describe("discordApiFetch — bounded hops fail closed and keep caller signals", () => {
-  test("aborts a hung Discord API hop at the timeout", async () => {
+  it("aborts a hung Discord API hop at the timeout", async () => {
     globalThis.fetch = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -133,7 +133,7 @@ describe("discordApiFetch — bounded hops fail closed and keep caller signals",
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  it("preserves a caller-provided abort signal", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
