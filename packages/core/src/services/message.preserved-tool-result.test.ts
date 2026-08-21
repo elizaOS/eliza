@@ -309,12 +309,10 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 		expect(subAgentCompletionRelayBody(undefined)).toBeUndefined();
 	});
 
-	it("caps a runaway body", () => {
+	it("preserves a complete long result body", () => {
 		const huge = "x".repeat(5000);
-		const capped = subAgentCompletionRelayBody(`${RELAY_HEADER}\n${huge}`);
-		expect(capped).toBeDefined();
-		expect((capped as string).length).toBeLessThanOrEqual(1501);
-		expect(capped).toMatch(/…$/);
+		const result = subAgentCompletionRelayBody(`${RELAY_HEADER}\n${huge}`);
+		expect(result).toBe(huge);
 	});
 
 	it("a failed relay turn delivers the completed result instead of the canned line", async () => {

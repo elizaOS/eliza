@@ -1,6 +1,7 @@
 /**
- * Pins batch3 suffix-reserve fixes (ship 11): 7 remaining `slice(0, MAX) + suffix`
- * overflows that exceed their stated caps by suffix.length.
+ * Pins batch3 suffix-reserve fixes (ship 11): six remaining `slice(0, MAX) + suffix`
+ * overflows that exceed their stated caps by suffix.length, plus the completed
+ * sub-agent relay exception that deliberately preserves the full result.
  *
  * Sibling correct (reserve proofs): `trajectory-recorder.ts:806` `MAX - suffix.length`,
  * `plugin-embeddings/utils/events.ts:35` `MAX_PROMPT_LENGTH - suffix.length`,
@@ -44,24 +45,12 @@ describe("truncation suffix reserve batch3 (ship 11) — 7 sites", () => {
 		expect(fixedTrunc(s, MAX, suffix).length).toBe(400);
 	});
 
-	it("TR-4 message subAgentCompletionRelayBody 1500+1: caps at 1500", () => {
-		const MAX = 1500;
-		const suffix = "…";
-		const s = "a".repeat(1510);
-		// math proof
-		expect(oldTrunc(s, MAX, suffix).length).toBe(1501);
-		expect(fixedTrunc(s, MAX, suffix).length).toBe(1500);
-		// real function proof: subAgentCompletionRelayBody trims header then caps body at 1500
+	it("TR-4 completed sub-agent relays preserve the full result body", () => {
 		const header = "[sub-agent:task_complete]";
 		const body = "a".repeat(2000);
 		const input = `${header} ${body}`;
 		const out = subAgentCompletionRelayBody(input);
-		expect(out).toBeDefined();
-		expect(out?.length).toBeLessThanOrEqual(1500);
-		expect(out?.length).toBe(1500); // 1499 'a' + '…'
-		// sabotage: old would be 1501
-		const oldBody = `${body.slice(0, MAX).trimEnd()}…`;
-		expect(oldBody.length).toBe(1501);
+		expect(out).toBe(body);
 	});
 
 	it("TR-5 media fetch readErrorBodySnippet 200+1: old 201 vs fixed 200", () => {
