@@ -384,6 +384,85 @@ export function shouldUseObjectStorage(): boolean {
   return storageConfigured();
 }
 
+/**
+ * Hard ceiling on what a single field may persist inline in a SQL text or
+ * jsonb column. Without it the offload helpers degrade into unbounded inline
+ * writes whenever object storage is unconfigured, which is how quarter-gigabyte
+ * failure dumps reached the `jobs.error` column (elizaOS/eliza#22553).
+ */
+const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
+
+function maxInlineBytes(): number {
+  const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES;
+  if (!raw) return DEFAULT_MAX_INLINE_BYTES;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 1024) return DEFAULT_MAX_INLINE_BYTES;
+  return Math.floor(parsed);
+}
+
+/** Raised when a payload exceeds the inline ceiling and cannot be offloaded. */
+export class InlinePayloadTooLargeError extends Error {
+  readonly code = "INLINE_PAYLOAD_TOO_LARGE";
+  readonly field: string;
+  readonly sizeBytes: number;
+  readonly maxInlineBytes: number;
+
+  constructor(input: { field: string; sizeBytes: number; maxBytes: number }) {
+    super(
+      `Inline payload for field "${input.field}" is ${input.sizeBytes} bytes, above the ` +
+        `${input.maxBytes}-byte SQL inline ceiling, and object storage is not configured to ` +
+        `offload it. Set SQL_HEAVY_PAYLOAD_STORAGE with a heavy-payload bucket, or persist a ` +
+        `bounded summary instead of the full payload.`,
+    );
+    this.name = "InlinePayloadTooLargeError";
+    this.field = input.field;
+    this.sizeBytes = input.sizeBytes;
+    this.maxInlineBytes = input.maxBytes;
+  }
+}
+
+function truncateToBytes(value: string, limit: number): string {
+  if (limit <= 0) return "";
+  if (byteLength(value) <= limit) return value;
+  let output = "";
+  let size = 0;
+  for (const char of value) {
+    const charSize = byteLength(char);
+    if (size + charSize > limit) break;
+    output += char;
+    size += charSize;
+  }
+  return output;
+}
+
+/**
+ * Bound a diagnostic string to the inline ceiling with an explicit truncation
+ * marker. Callers use this for reason/log columns, where a bounded string is
+ * the correct persisted shape when the full payload cannot be offloaded.
+ */
+export function clampInlineDiagnosticText(value: string): string {
+  const cap = maxInlineBytes();
+  const size = byteLength(value);
+  if (size <= cap) return value;
+  const marker =
+    `\n…[truncated: ${size}-byte payload exceeded the ${cap}-byte SQL inline ceiling; ` +
+    `configure object storage to retain the full payload]`;
+  return truncateToBytes(value, Math.max(0, cap - byteLength(marker))) + marker;
+}
+
+/** Byte size at which a value is refused inline storage. */
+export function inlinePayloadCeilingBytes(): number {
+  return maxInlineBytes();
+}
+
+function guardInlineSize(field: string, value: string): void {
+  const cap = maxInlineBytes();
+  const size = byteLength(value);
+  if (size > cap) {
+    throw new InlinePayloadTooLargeError({ field, sizeBytes: size, maxBytes: cap });
+  }
+}
+
 function minBytes(): number {
   const raw = getCloudAwareEnv().SQL_HEAVY_PAYLOAD_MIN_BYTES;
   if (!raw) return 0;
@@ -2074,9 +2153,22 @@ export async function offloadTextField(params: {
   value: string | null | undefined;
   keepPreview?: boolean;
   inlineValueWhenOffloaded?: string;
+  /**
+   * How to handle a value above the inline ceiling when object storage is
+   * unavailable: `"clamp"` persists a bounded, explicitly-marked truncation
+   * (correct for diagnostic reason/log columns), `"throw"` (default) refuses
+   * the write so the caller cannot silently bloat a text column.
+   */
+  oversizeInline?: "clamp" | "throw";
 }): Promise<OffloadedField<string>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
-  if (!shouldOffload(params.value)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(params.value)) {
+    if (params.oversizeInline === "clamp") {
+      return { value: clampInlineDiagnosticText(params.value), storage: "inline", key: null };
+    }
+    guardInlineSize(params.field, params.value);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
@@ -2108,7 +2200,12 @@ export async function offloadJsonField<T>(params: {
 }): Promise<OffloadedField<T>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   const body = JSON.stringify(params.value);
-  if (!shouldOffload(body)) return { value: params.value, storage: "inline", key: null };
+  if (!shouldOffload(body)) {
+    // Structured payloads cannot be truncated without becoming invalid, so an
+    // oversize inline JSON write always fails rather than degrading silently.
+    guardInlineSize(params.field, body);
+    return { value: params.value, storage: "inline", key: null };
+  }
 
   const key = await putObjectText({
     namespace: params.namespace,
