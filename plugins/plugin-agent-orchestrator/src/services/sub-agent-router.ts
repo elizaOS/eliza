@@ -29,6 +29,7 @@ import {
   inspectSendHandlerResult,
   MESSAGE_SOURCE_SUB_AGENT,
   requireConfirmedSendHandlerDelivery,
+  runWithTrajectoryContext,
   Service,
   ServiceType,
 } from "@elizaos/core";
@@ -856,17 +857,26 @@ export class SubAgentRouter extends Service {
         this.acp = acp;
         this.unsubscribe = acp.onSessionEvent(
           (sid, event, data, sessionSnapshot, turnId) => {
-            this.handleEvent(sid, event, data, sessionSnapshot, turnId).catch(
-              (err) => {
-                // error-policy:J1 outermost handler for the ACP session-event stream
-                // (a transport boundary); logs the event failure at error level.
-                this.log("error", "router event failed", {
-                  sessionId: sid,
-                  event,
-                  error: err instanceof Error ? err.message : String(err),
-                });
-              },
-            );
+            // ACP callbacks may fire from async resources created inside the
+            // original spawn action. That parent turn is already terminal by
+            // the time child output arrives, so carrying its trajectory step
+            // into verification or synthetic-message work creates a false
+            // late-capture diagnostic. This transport boundary starts detached;
+            // messageService.handleMessage mints the completion turn's own
+            // trajectory context downstream.
+            void Promise.resolve(
+              runWithTrajectoryContext(undefined, () =>
+                this.handleEvent(sid, event, data, sessionSnapshot, turnId),
+              ),
+            ).catch((err: unknown) => {
+              // error-policy:J1 outermost handler for the ACP session-event stream
+              // (a transport boundary); logs the event failure at error level.
+              this.log("error", "router event failed", {
+                sessionId: sid,
+                event,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
           },
         );
       }
