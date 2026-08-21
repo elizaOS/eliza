@@ -1,0 +1,44 @@
+# Performs semantic readback of the canonical repository ruleset. The workflow
+# never applies settings; an owner must authorize and run the separate mutation
+# mode after reviewing the exact manifest.
+name: Repository Ruleset Drift
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+  repository_dispatch:
+    types: [repository_ruleset_drift]
+
+concurrency:
+  group: repository-ruleset-drift
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  readback:
+    name: Ruleset readback
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: develop
+          persist-credentials: false
+          submodules: false
+
+      - name: Require the Administration-read credential
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::REPOSITORY_RULESET_READ_TOKEN is required with repository Administration: read permission"
+            exit 1
+          fi
+
+      - name: Compare live ruleset with the reviewed manifest
+        env:
+          GH_TOKEN: ${{ secrets.REPOSITORY_RULESET_READ_TOKEN }}
+        run: ./scripts/security/apply-branch-protection.sh --check --repo "$GITHUB_REPOSITORY"

@@ -149,6 +149,14 @@ async function orgTransactions(
     .where(and(eq(creditTransactions.organization_id, orgId), eq(creditTransactions.type, type)));
 }
 
+async function orgTransactionCount(orgId: string): Promise<number> {
+  const rows = await dbWrite
+    .select({ id: creditTransactions.id })
+    .from(creditTransactions)
+    .where(eq(creditTransactions.organization_id, orgId));
+  return rows.length;
+}
+
 /**
  * Make the NEXT `reduceEarnings` call throw (the post-refund write blip that
  * strands reconcile mid-flight); later calls run the real implementation.
@@ -353,15 +361,10 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
     expect(refunds[0]?.stripe_payment_intent_id).toBe(`reconcile-refund:${reservationTxId}`);
   });
 
-  test("client-controlled keys (metadata.idempotencyKey / ALS request key) never become the dedup key", async () => {
+  test("serial and concurrent unkeyed refunds reject before any money or creator mutation", async () => {
     if (!pgliteReady) return;
-    const { appId, payerUserId, payerOrgId } = await seed();
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
 
-    // A reconcile that carries ONLY client-controlled identifiers — the
-    // Idempotency-Key echoed into metadata AND the request-ALS key — must not
-    // mint a synthetic stripe_payment_intent_id from either of them: that
-    // unique index is GLOBAL, so a client key would collide across orgs
-    // (see the cross-tenant tests below for the resulting money loss).
     await runWithRequestContext({ idempotencyKey: "client-chosen-key" }, async () => {
       await appCreditsService.deductCredits({
         appId,
@@ -370,20 +373,153 @@ describe("reconcile refund-then-throw + settler re-invoke (#11512)", () => {
         description: "inference (estimate)",
         metadata: { idempotencyKey: "client-chosen-key" },
       });
-      await appCreditsService.reconcileCredits({
-        appId,
-        userId: payerUserId,
-        estimatedBaseCost: 0.03,
-        actualBaseCost: 0.01,
-        description: "inference (reconcile refund)",
-        metadata: { idempotencyKey: "client-chosen-key" },
-      });
     });
 
-    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.98, 6);
-    const refunds = await orgTransactions(payerOrgId, "refund");
-    expect(refunds).toHaveLength(1);
-    expect(refunds[0]?.stripe_payment_intent_id).toBeNull();
+    const balanceBefore = await orgBalance(payerOrgId);
+    const creatorBefore = await creatorBalance(creatorUserId);
+    const transactionsBefore = await orgTransactionCount(payerOrgId);
+    const attempt = () =>
+      runWithRequestContext({ idempotencyKey: "client-chosen-key" }, () =>
+        appCreditsService.reconcileCredits({
+          appId,
+          userId: payerUserId,
+          estimatedBaseCost: 0.03,
+          actualBaseCost: 0.01,
+          description: "unbacked app reconcile refund",
+          metadata: { idempotencyKey: "client-chosen-key" },
+        }),
+      );
+
+    await expect(attempt()).rejects.toMatchObject({
+      code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+    });
+    await expect(attempt()).rejects.toMatchObject({
+      code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+    });
+
+    const concurrent = await Promise.allSettled([attempt(), attempt(), attempt(), attempt()]);
+    expect(concurrent).toHaveLength(4);
+    for (const result of concurrent) {
+      expect(result.status).toBe("rejected");
+      if (result.status === "rejected") {
+        expect(result.reason).toMatchObject({
+          code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+        });
+      }
+    }
+
+    expect(await orgBalance(payerOrgId)).toBe(balanceBefore);
+    expect(await creatorBalance(creatorUserId)).toBe(creatorBefore);
+    expect(await orgTransactionCount(payerOrgId)).toBe(transactionsBefore);
+    expect(await orgTransactions(payerOrgId, "refund")).toHaveLength(0);
+  });
+
+  test("a real app debit cannot back a refund into another organization", async () => {
+    if (!pgliteReady) return;
+    const owner = await seed();
+    const other = await seed();
+    const deduction = await appCreditsService.deductCredits({
+      appId: owner.appId,
+      userId: owner.payerUserId,
+      baseCost: 0.03,
+      description: "authoritative app debit",
+    });
+    expect(deduction.transactionId).toBeTruthy();
+
+    const ownerBalanceBefore = await orgBalance(owner.payerOrgId);
+    const otherBalanceBefore = await orgBalance(other.payerOrgId);
+    const creatorBefore = await creatorBalance(owner.creatorUserId);
+    const ownerTransactionsBefore = await orgTransactionCount(owner.payerOrgId);
+
+    await expect(
+      appCreditsService.reconcileCredits({
+        appId: owner.appId,
+        userId: owner.payerUserId,
+        organizationId: other.payerOrgId,
+        estimatedBaseCost: 0.03,
+        actualBaseCost: 0.01,
+        description: "cross-organization refund attempt",
+        reservationTransactionId: deduction.transactionId,
+      }),
+    ).rejects.toMatchObject({ code: "CREDIT_REFUND_RESERVATION_MISMATCH" });
+
+    expect(await orgBalance(owner.payerOrgId)).toBe(ownerBalanceBefore);
+    expect(await orgBalance(other.payerOrgId)).toBe(otherBalanceBefore);
+    expect(await creatorBalance(owner.creatorUserId)).toBe(creatorBefore);
+    expect(await orgTransactionCount(owner.payerOrgId)).toBe(ownerTransactionsBefore);
+    expect(await orgTransactions(owner.payerOrgId, "refund")).toHaveLength(0);
+    expect(await orgTransactions(other.payerOrgId, "refund")).toHaveLength(0);
+  });
+
+  test("a backed refund exactly at the reconciliation threshold settles", async () => {
+    if (!pgliteReady) return;
+    const { appId, payerUserId, payerOrgId, creatorUserId } = await seed();
+    const deduction = await appCreditsService.deductCredits({
+      appId,
+      userId: payerUserId,
+      baseCost: 0.000001,
+      description: "exact-threshold app debit",
+    });
+    expect(deduction.transactionId).toBeTruthy();
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(99.999998, 6);
+    // Creator earnings persist at four decimal places, so this microscopic
+    // markup remains zero even though it is part of the six-decimal org debit.
+    expect(await creatorBalance(creatorUserId)).toBe(0);
+
+    const result = await appCreditsService.reconcileCredits({
+      appId,
+      userId: payerUserId,
+      organizationId: payerOrgId,
+      estimatedBaseCost: 0.000001,
+      actualBaseCost: 0,
+      description: "exact-threshold backed refund",
+      reservationTransactionId: deduction.transactionId,
+    });
+
+    expect(result.action).toBe("refund");
+    expect(result.adjustedAmount).toBeCloseTo(0.000002, 6);
+    expect(await orgBalance(payerOrgId)).toBeCloseTo(100, 6);
+    expect(await creatorBalance(creatorUserId)).toBe(0);
+    expect(await orgTransactions(payerOrgId, "refund")).toHaveLength(1);
+  });
+
+  test("refund uses the debit's immutable creator and markup despite supplied app drift", async () => {
+    if (!pgliteReady) return;
+    const owner = await seed();
+    const other = await seed();
+    const deduction = await appCreditsService.deductCredits({
+      appId: owner.appId,
+      userId: owner.payerUserId,
+      baseCost: 0.03,
+      description: "immutable accounting debit",
+    });
+    expect(deduction.transactionId).toBeTruthy();
+    expect(await orgBalance(owner.payerOrgId)).toBeCloseTo(99.94, 6);
+    expect(await creatorBalance(owner.creatorUserId)).toBeCloseTo(0.03, 6);
+
+    const result = await appCreditsService.reconcileCredits({
+      appId: owner.appId,
+      userId: owner.payerUserId,
+      organizationId: owner.payerOrgId,
+      estimatedBaseCost: 0.03,
+      actualBaseCost: 0.01,
+      description: "refund against drifted app projection",
+      reservationTransactionId: deduction.transactionId,
+      app: {
+        name: "Drifted App",
+        created_by_user_id: other.creatorUserId,
+        monetization_enabled: false,
+        review_status: "rejected",
+        inference_markup_percentage: 0,
+      },
+    });
+
+    expect(result.action).toBe("refund");
+    expect(result.adjustedAmount).toBeCloseTo(0.04, 6);
+    expect(await orgBalance(owner.payerOrgId)).toBeCloseTo(99.98, 6);
+    expect(await creatorBalance(owner.creatorUserId)).toBeCloseTo(0.01, 6);
+    expect(await creatorBalance(other.creatorUserId)).toBe(0);
+    expect(await orgTransactions(owner.payerOrgId, "refund")).toHaveLength(1);
   });
 
   test("overage-charge replay debits the org exactly once (symmetric key)", async () => {
