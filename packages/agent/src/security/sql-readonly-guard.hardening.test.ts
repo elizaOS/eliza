@@ -18,6 +18,18 @@ describe("checkReadOnly hardening", () => {
     });
   });
 
+  it.each(["\r", "\r\n", "\u2028", "\u2029"])(
+    "rejects mutation SQL after the %j line terminator",
+    (terminator) => {
+      expect(
+        checkReadOnly(`SELECT 1 -- harmless${terminator}DELETE FROM secrets`),
+      ).toMatchObject({
+        ok: false,
+        reason: expect.stringContaining("DELETE"),
+      });
+    },
+  );
+
   it('rejects unicode-escaped identifiers (U&"...") that can hide dangerous functions', () => {
     expect(
       checkReadOnly("SELECT U&\"\\0070g_read_file\"('/etc/passwd')"),

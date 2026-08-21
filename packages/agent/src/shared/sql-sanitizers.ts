@@ -30,6 +30,13 @@ export function stripSqlBlockComments(sql: string): string {
   return result;
 }
 
+function sqlLineTerminatorLength(sql: string, index: number): number {
+  const char = sql.charCodeAt(index);
+  if (char === 0x0a || char === 0x2028 || char === 0x2029) return 1;
+  if (char === 0x0d) return sql.charCodeAt(index + 1) === 0x0a ? 2 : 1;
+  return 0;
+}
+
 /** Strip double-dash comments through the next line ending in one forward pass. */
 export function stripSqlLineComments(sql: string): string {
   const chunks: string[] = [];
@@ -41,10 +48,16 @@ export function stripSqlLineComments(sql: string): string {
       break;
     }
     chunks.push(sql.slice(cursor, open));
-    const newline = sql.indexOf("\n", open + 2);
-    if (newline < 0) break;
-    chunks.push("\n");
-    cursor = newline + 1;
+    let terminator = open + 2;
+    let terminatorLength = 0;
+    while (terminator < sql.length) {
+      terminatorLength = sqlLineTerminatorLength(sql, terminator);
+      if (terminatorLength > 0) break;
+      terminator += 1;
+    }
+    if (terminatorLength === 0) break;
+    chunks.push(sql.slice(terminator, terminator + terminatorLength));
+    cursor = terminator + terminatorLength;
   }
   return chunks.join("");
 }
