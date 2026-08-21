@@ -707,9 +707,15 @@ describe("DesktopManager main window controls", () => {
 
   it("suppresses the pill only while focused Workspace owns the shared ChatOverlay", async () => {
     const { manager, window } = createManagerWithWindow();
+    const sendToWebview = vi.fn();
+    manager.setSendToWebview(sendToWebview);
     Object.assign(window, { ptr: { id: "pill-window" } });
 
     await manager.setMainWindowSuppressedByWorkspace(true);
+    expect(sendToWebview).toHaveBeenCalledWith(
+      "desktopWorkspaceHandoff",
+      undefined,
+    );
     expect(orderOut).toHaveBeenCalledTimes(1);
     await expect(manager.isWindowVisible()).resolves.toEqual({
       visible: false,

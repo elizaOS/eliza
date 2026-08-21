@@ -4493,6 +4493,38 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     }
   });
 
+  it("rests the detached assistant before Workspace takes visual ownership", () => {
+    let workspaceHandoff: ((payload: unknown) => void) | undefined;
+    const rpc = {
+      request: {},
+      onMessage: vi.fn((name: string, listener: (payload: unknown) => void) => {
+        if (name === "desktopWorkspaceHandoff") workspaceHandoff = listener;
+      }),
+      offMessage: vi.fn(),
+    };
+    (
+      window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown }
+    ).__ELIZA_ELECTROBUN_RPC__ = rpc;
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("half");
+
+      act(() => workspaceHandoff?.(undefined));
+
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+    } finally {
+      delete (window as typeof window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+        .__ELIZA_ELECTROBUN_RPC__;
+    }
+  });
+
   it("keeps detached Mac glass translucent at every open detent", () => {
     render(
       <ChatOverlay

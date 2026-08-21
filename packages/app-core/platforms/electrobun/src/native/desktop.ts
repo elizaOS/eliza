@@ -400,7 +400,7 @@ export class DesktopManager {
 
   // Callback to open the settings window (set by index.ts)
   private openWorkspaceCallback:
-    | ((options?: { routePath?: string; maximize?: boolean }) => void)
+    | ((options?: { routePath?: string; fullScreen?: boolean }) => void)
     | null = null;
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
   private openSurfaceWindowCallback:
@@ -516,7 +516,9 @@ export class DesktopManager {
    * Set the callback used to open the complete workstation window.
    */
   setOpenWorkspaceCallback(
-    cb: ((options?: { routePath?: string; maximize?: boolean }) => void) | null,
+    cb:
+      | ((options?: { routePath?: string; fullScreen?: boolean }) => void)
+      | null,
   ): void {
     this.openWorkspaceCallback = cb;
   }
@@ -598,7 +600,7 @@ export class DesktopManager {
   /**
    * Open the complete workstation window via the registered callback.
    */
-  openWorkspace(options?: { routePath?: string; maximize?: boolean }): void {
+  openWorkspace(options?: { routePath?: string; fullScreen?: boolean }): void {
     this.openWorkspaceCallback?.(options);
   }
 
@@ -1507,6 +1509,7 @@ X-GNOME-Autostart-enabled=true
     if (this.mainWindowSuppressedByWorkspace === suppressed) return;
     this.mainWindowSuppressedByWorkspace = suppressed;
     if (suppressed) {
+      this.send("desktopWorkspaceHandoff");
       this.hideMainWindowNow();
       return;
     }

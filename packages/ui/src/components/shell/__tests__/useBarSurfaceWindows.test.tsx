@@ -30,7 +30,7 @@ function setup(isDesktop = true) {
     (opts: OpenWindowArg) => Promise<{ id: string } | null>
   >(async () => ({ id: "w1" }));
   const openWorkspace = vi.fn<
-    (options?: { routePath?: string; maximize?: boolean }) => Promise<void>
+    (options?: { routePath?: string; fullScreen?: boolean }) => Promise<void>
   >(async () => undefined);
   renderHook(() =>
     useBarSurfaceWindows({
@@ -59,7 +59,7 @@ describe("useBarSurfaceWindows", () => {
     });
   });
 
-  it("opens launcher/views ids inside the maximized Workspace", async () => {
+  it("opens launcher/views ids inside the fullscreen Workspace", async () => {
     const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({ viewId: "launcher" });
     await dispatchNavigate({ viewId: "views-manager" });
@@ -67,11 +67,11 @@ describe("useBarSurfaceWindows", () => {
     expect(openWorkspace).toHaveBeenCalledTimes(2);
     expect(openWorkspace).toHaveBeenLastCalledWith({
       routePath: "/views",
-      maximize: true,
+      fullScreen: true,
     });
   });
 
-  it("opens a normal view path inside the maximized Workspace", async () => {
+  it("opens a normal view path inside the fullscreen Workspace", async () => {
     const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({
       viewId: "notes",
@@ -80,7 +80,7 @@ describe("useBarSurfaceWindows", () => {
     expect(openWindow).not.toHaveBeenCalled();
     expect(openWorkspace).toHaveBeenCalledWith({
       routePath: "/notes",
-      maximize: true,
+      fullScreen: true,
     });
   });
 

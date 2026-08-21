@@ -1636,7 +1636,7 @@ export type ElizaDesktopRPCSchema = {
         response: DesktopReleaseNotesWindowInfo;
       };
       desktopOpenWorkspaceWindow: {
-        params: { routePath?: string; maximize?: boolean } | undefined;
+        params: { routePath?: string; fullScreen?: boolean } | undefined;
         response: undefined;
       };
       desktopOpenSettingsWindow: {
@@ -2301,6 +2301,9 @@ export type ElizaDesktopRPCSchema = {
       desktopWindowMaximize: undefined;
       desktopWindowUnmaximize: undefined;
       desktopWindowClose: undefined;
+      /** Workspace took visual ownership; reset the hidden detached assistant
+       * to its resting pill before it can be restored over another app. */
+      desktopWorkspaceHandoff: undefined;
       desktopShutdownStarted: { reason: string };
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];

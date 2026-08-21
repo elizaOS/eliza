@@ -3888,6 +3888,19 @@ export function ChatOverlay({
     detentHaptic();
   }, [desktopOverlayHost, reduce, setDragPreviewMounted, threadHeight]);
 
+  // A focused Workspace temporarily owns the canonical ChatOverlay. Reset the
+  // hidden detached renderer to its true resting pill before native suppression
+  // so a later Workspace blur cannot resurrect a stale full chat over another
+  // app. Preserve the draft; this changes presentation ownership only.
+  React.useEffect(() => {
+    if (!desktopOverlayHost) return undefined;
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopWorkspaceHandoff",
+      ipcChannel: "desktop:workspaceHandoff",
+      listener: collapseToPill,
+    });
+  }, [collapseToPill, desktopOverlayHost]);
+
   // Landing for a drag released AT THE BOTTOM (thread height within the detent
   // magnet of 0): PILL when the gesture carried past the bottom into the
   // input→pill morph, OR when it started at/above the half detent (one big yank

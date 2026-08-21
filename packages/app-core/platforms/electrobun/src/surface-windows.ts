@@ -28,7 +28,7 @@ export interface ManagedWindowFrame {
 
 export interface ManagedWindowLike {
   focus(): void;
-  maximize?: () => void;
+  setFullScreen?: (fullScreen: boolean) => void;
   setAlwaysOnTop(flag: boolean): void;
   on(
     event: "close" | "focus" | "blur" | "resize" | "move",
@@ -298,7 +298,7 @@ export class SurfaceWindowManager {
   async openWorkspaceWindow(
     routePath = "/",
     section?: string,
-    maximize = false,
+    fullScreen = false,
   ): Promise<ManagedWindowSnapshot> {
     const existing = Array.from(this.windows.values()).find(
       (entry) => entry.surface === "workspace",
@@ -310,7 +310,7 @@ export class SurfaceWindowManager {
           buildWorkspaceWindowRendererUrl(rendererUrl, routePath, section),
         );
       }
-      if (maximize) existing.window.maximize?.();
+      if (fullScreen) existing.window.setFullScreen?.(true);
       existing.window.focus();
       return this.toSnapshot(existing);
     }
@@ -325,11 +325,11 @@ export class SurfaceWindowManager {
       undefined,
       section,
     );
-    if (maximize) {
+    if (fullScreen) {
       const created = Array.from(this.windows.values()).find(
         (entry) => entry.id === snapshot.id,
       );
-      created?.window.maximize?.();
+      created?.window.setFullScreen?.(true);
       created?.window.focus();
     }
     return snapshot;

@@ -25,7 +25,7 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly focus = vi.fn(() => {
     this.emit("focus");
   });
-  readonly maximize = vi.fn();
+  readonly setFullScreen = vi.fn();
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
   });
@@ -204,7 +204,7 @@ describe("SurfaceWindowManager app windows", () => {
     );
   });
 
-  it("navigates and maximizes the singleton workspace for pill view intents", async () => {
+  it("navigates and fullscreens the singleton workspace for pill view intents", async () => {
     const fixture = createFixture();
 
     await fixture.manager.openWorkspaceWindow();
@@ -214,7 +214,7 @@ describe("SurfaceWindowManager app windows", () => {
     expect(window?.webview.loadURL).toHaveBeenCalledWith(
       "http://127.0.0.1:5173/notes?desktopSurface=workspace",
     );
-    expect(window?.maximize).toHaveBeenCalledTimes(1);
+    expect(window?.setFullScreen).toHaveBeenCalledWith(true);
     expect(window?.focus).toHaveBeenCalledTimes(1);
   });
 

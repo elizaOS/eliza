@@ -29,8 +29,8 @@ const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
  * Phase 3). The bar renders only the chat overlay — it has no full-app tab
  * system — so a "show a view" / "show the launcher" intent (the
  * `eliza:navigate:view` bus the agent + slash commands already drive) must open
- * the singleton full Workspace at the requested route instead of switching an
- * inline tab. An explicit `open-window` action retains the utility-window
+ * the singleton fullscreen Workspace at the requested route instead of
+ * switching an inline tab. An explicit `open-window` action retains the utility-window
  * escape hatch.
  *
  * No-op off desktop (the bar shell only runs on the Electrobun desktop).
@@ -58,13 +58,16 @@ export function useBarSurfaceWindows(options?: {
       if (!detail || detail.action === "close" || detail.action === "close-all")
         return;
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
-        void openWorkspaceRef.current({ routePath: "/views", maximize: true });
+        void openWorkspaceRef.current({
+          routePath: "/views",
+          fullScreen: true,
+        });
         return;
       }
       const path = pathForNavigateViewDetail(detail);
       if (!path) return;
       if (detail.action !== "open-window") {
-        void openWorkspaceRef.current({ routePath: path, maximize: true });
+        void openWorkspaceRef.current({ routePath: path, fullScreen: true });
         return;
       }
       void openWindowRef.current({

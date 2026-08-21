@@ -2973,7 +2973,7 @@ async function main(): Promise<void> {
     void surfaceWindowManager.openWorkspaceWindow(
       options?.routePath ?? "/",
       undefined,
-      options?.maximize === true,
+      options?.fullScreen === true,
     );
   });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
