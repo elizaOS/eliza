@@ -1,8 +1,9 @@
 /**
  * Removes HTML script and style elements with a bounded tokenizer pass.
  *
- * HTML end tags accept whitespace, a slash, or attributes after the tag name.
- * Regex-based filters routinely miss those parser-accepted forms and expose
+ * An appropriate HTML raw-text end-tag name transitions only on ASCII
+ * whitespace, a slash, or `>`. Regex-based filters routinely accept broader
+ * punctuation lookalikes or miss parser-accepted trailing material, exposing
  * raw script/style bodies as visible text after a later generic tag strip.
  */
 
@@ -34,10 +35,9 @@ function matchesAsciiCaseInsensitive(
 
 function isTagNameDelimiter(character: string | undefined): boolean {
 	return (
-		character === undefined ||
 		character === ">" ||
 		character === "/" ||
-		isAsciiWhitespace(character)
+		(character !== undefined && isAsciiWhitespace(character))
 	);
 }
 
