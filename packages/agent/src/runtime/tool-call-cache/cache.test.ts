@@ -649,8 +649,13 @@ describe("ToolCallCache", () => {
     expect(getterCalls).toBe(0);
   });
 
-  it("returns a reflection-hostile proxy uncached without running its get trap", async () => {
-    let getTrapCalls = 0;
+  it("returns a proxy uncached without running any reflection trap", async () => {
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
     // Wrapped in a plain object: a bare proxy as a resolved promise value
     // would trip the runtime's own `then` lookup before the cache sees it.
     const makeHostile = (): unknown => ({
@@ -658,11 +663,20 @@ describe("ToolCallCache", () => {
       nested: new Proxy(
         { payload: "value" },
         {
-          get(target, property, receiver) {
-            getTrapCalls += 1;
-            return Reflect.get(target, property, receiver);
+          get() {
+            trapCalls.get += 1;
+            throw new TypeError("hostile get trap");
+          },
+          getOwnPropertyDescriptor() {
+            trapCalls.getOwnPropertyDescriptor += 1;
+            throw new TypeError("hostile descriptor trap");
+          },
+          getPrototypeOf() {
+            trapCalls.getPrototypeOf += 1;
+            throw new TypeError("hostile prototype trap");
           },
           ownKeys() {
+            trapCalls.ownKeys += 1;
             throw new TypeError("hostile ownKeys trap");
           },
         },
@@ -670,7 +684,12 @@ describe("ToolCallCache", () => {
     });
     expect(isCacheableToolOutput(makeHostile())).toBe(false);
     await expectUncacheableOnEveryRoute("hostile-proxy", makeHostile);
-    expect(getTrapCalls).toBe(0);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
   });
 
   it("returns a revoked proxy uncached instead of leaking a raw TypeError", async () => {

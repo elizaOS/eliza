@@ -179,6 +179,49 @@ describe("defaultPrivacyRedactor", () => {
     expect(isRedactionDegraded(out)).toBe(true);
   });
 
+  it("marks a proxy degraded without running any reflection trap", () => {
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const hostile = new Proxy(
+      { payload: "value" },
+      {
+        get() {
+          trapCalls.get += 1;
+          throw new TypeError("hostile get trap");
+        },
+        getOwnPropertyDescriptor() {
+          trapCalls.getOwnPropertyDescriptor += 1;
+          throw new TypeError("hostile descriptor trap");
+        },
+        getPrototypeOf() {
+          trapCalls.getPrototypeOf += 1;
+          throw new TypeError("hostile prototype trap");
+        },
+        ownKeys() {
+          trapCalls.ownKeys += 1;
+          throw new TypeError("hostile ownKeys trap");
+        },
+      },
+    );
+
+    const out = defaultPrivacyRedactor({ nested: hostile });
+
+    expect((out as Record<string, unknown>).nested).toBe(
+      REDACT_BUDGET_SENTINEL,
+    );
+    expect(isRedactionDegraded(out)).toBe(true);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
+  });
+
   it("bounds an oversize string leaf", () => {
     const huge = "a".repeat(4_000_001);
     expect(defaultPrivacyRedactor({ blob: huge })).toEqual({
