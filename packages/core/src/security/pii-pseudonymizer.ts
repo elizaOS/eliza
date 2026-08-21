@@ -41,8 +41,18 @@
  * recognizer via {@link PseudonymSession.learn}.
  */
 
+import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
 import type { EntitySpan, PiiEntityRecognizer } from "./entity-recognizer";
+
+/**
+ * Honest model-param graphs are a handful of objects deep. JSON.parse still
+ * admits a 40k-deep nest that then RangeError'd `substituteInValue` on
+ * origin develop; a cyclic graph RangeError'd immediately.
+ */
+export const MAX_PII_PSEUDONYM_WALK_DEPTH = 64;
+export const MAX_PII_PSEUDONYM_WALK_NODES = 100_000;
+export const PII_PSEUDONYM_UNBOUNDED = "PII_PSEUDONYM_UNBOUNDED";
 
 /** A learned mapping between a real value and its session surrogate. */
 export interface PseudonymEntry {
@@ -349,6 +359,144 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	);
 }
 
+type PiiPseudonymWalkContext = {
+	visits: number;
+	visiting: WeakSet<object>;
+};
+
+function failPiiPseudonymUnbounded(
+	context: Record<string, unknown>,
+	cause?: unknown,
+): never {
+	throw new ElizaError("PII-pseudonym value exceeds the walk budget", {
+		code: PII_PSEUDONYM_UNBOUNDED,
+		cause,
+		context,
+		severity: "fatal",
+	});
+}
+
+export function isPiiPseudonymUnbounded(error: unknown): boolean {
+	return error instanceof ElizaError && error.code === PII_PSEUDONYM_UNBOUNDED;
+}
+
+function inspectPiiWalk<T>(operation: string, inspect: () => T): T {
+	try {
+		return inspect();
+	} catch (cause) {
+		// error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+		failPiiPseudonymUnbounded({ inspection: operation }, cause);
+	}
+}
+
+function createPiiPseudonymWalkContext(): PiiPseudonymWalkContext {
+	return { visits: 0, visiting: new WeakSet<object>() };
+}
+
+function reservePiiPseudonymVisit(ctx: PiiPseudonymWalkContext): void {
+	if (ctx.visits >= MAX_PII_PSEUDONYM_WALK_NODES) {
+		failPiiPseudonymUnbounded({
+			visits: ctx.visits + 1,
+			maxNodes: MAX_PII_PSEUDONYM_WALK_NODES,
+		});
+	}
+	ctx.visits += 1;
+}
+
+function ownValueDescriptor(
+	value: object,
+	key: string | number,
+): PropertyDescriptor | undefined {
+	const descriptor = inspectPiiWalk("getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, key),
+	);
+	if (!descriptor) return undefined;
+	if (!("value" in descriptor)) {
+		failPiiPseudonymUnbounded({ accessor: true, key: String(key) });
+	}
+	return descriptor;
+}
+
+function walkPiiPseudonymValue(
+	value: unknown,
+	depth: number,
+	ctx: PiiPseudonymWalkContext,
+	mapString: (text: string) => string,
+): unknown {
+	if (typeof value === "string") {
+		return mapString(value);
+	}
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (depth > MAX_PII_PSEUDONYM_WALK_DEPTH) {
+		failPiiPseudonymUnbounded({
+			depth,
+			maxDepth: MAX_PII_PSEUDONYM_WALK_DEPTH,
+		});
+	}
+	if (ctx.visiting.has(value)) {
+		failPiiPseudonymUnbounded({ cycle: true });
+	}
+	reservePiiPseudonymVisit(ctx);
+	ctx.visiting.add(value);
+	try {
+		if (Array.isArray(value)) {
+			const lengthDescriptor = inspectPiiWalk("getOwnPropertyDescriptor", () =>
+				Object.getOwnPropertyDescriptor(value, "length"),
+			);
+			const length =
+				lengthDescriptor && "value" in lengthDescriptor
+					? lengthDescriptor.value
+					: value.length;
+			if (
+				typeof length !== "number" ||
+				!Number.isFinite(length) ||
+				length < 0
+			) {
+				failPiiPseudonymUnbounded({ arrayLength: length });
+			}
+			const size = Math.trunc(length);
+			const next: unknown[] = [];
+			for (let index = 0; index < size; index += 1) {
+				const descriptor = ownValueDescriptor(value, index);
+				next.push(
+					walkPiiPseudonymValue(
+						descriptor ? descriptor.value : undefined,
+						depth + 1,
+						ctx,
+						mapString,
+					),
+				);
+			}
+			return next;
+		}
+		if (!isPlainObject(value)) {
+			return value;
+		}
+		const next: Record<string, unknown> = {};
+		for (const key of inspectPiiWalk("ownKeys", () => Reflect.ownKeys(value))) {
+			if (typeof key !== "string") continue;
+			const descriptor = inspectPiiWalk("getOwnPropertyDescriptor", () =>
+				Object.getOwnPropertyDescriptor(value, key),
+			);
+			if (!descriptor?.enumerable) continue;
+			if (!("value" in descriptor)) {
+				failPiiPseudonymUnbounded({ accessor: true, key });
+			}
+			next[key] = walkPiiPseudonymValue(
+				descriptor.value,
+				depth + 1,
+				ctx,
+				mapString,
+			);
+		}
+		return next;
+	} finally {
+		ctx.visiting.delete(value);
+	}
+}
+
 function escapeRegExp(input: string): string {
 	return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -626,27 +774,22 @@ export class PseudonymSession {
 
 	/** Recursively substitute across strings/arrays/plain objects. */
 	substituteInValue<T>(value: T): T {
-		return this.walk(value, (s) => this.substituteText(s));
+		return walkPiiPseudonymValue(
+			value,
+			0,
+			createPiiPseudonymWalkContext(),
+			(text) => this.substituteText(text),
+		) as T;
 	}
 
 	/** Recursively restore across strings/arrays/plain objects. */
 	restoreInValue<T>(value: T): T {
-		return this.walk(value, (s) => this.restoreText(s));
-	}
-
-	private walk<T>(value: T, transform: (s: string) => string): T {
-		if (typeof value === "string") return transform(value) as T;
-		if (Array.isArray(value)) {
-			return value.map((item) => this.walk(item, transform)) as T;
-		}
-		if (isPlainObject(value)) {
-			const next: Record<string, unknown> = {};
-			for (const [key, child] of Object.entries(value)) {
-				next[key] = this.walk(child, transform);
-			}
-			return next as T;
-		}
-		return value;
+		return walkPiiPseudonymValue(
+			value,
+			0,
+			createPiiPseudonymWalkContext(),
+			(text) => this.restoreText(text),
+		) as T;
 	}
 
 	private entryForValue(value: string, kind: string): PseudonymEntry {
