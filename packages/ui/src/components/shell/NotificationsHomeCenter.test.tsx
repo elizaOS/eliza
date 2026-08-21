@@ -1779,6 +1779,47 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByText("Hydrated alert")).toBeTruthy();
   });
 
+  it("opens an empty shade once for each new shell request id", () => {
+    __setHydratedForTests(true);
+    const onOpenRequestHandled = vi.fn();
+    const { rerender } = render(
+      <NotificationsHomeCenter
+        openRequestId={1}
+        onOpenRequestHandled={onOpenRequestHandled}
+      />,
+    );
+    const list = screen.getByTestId("home-notification-list");
+    const empty = screen.getByTestId("notifications-empty");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+    expect(onOpenRequestHandled).toHaveBeenCalledExactlyOnceWith(1);
+
+    collapseShade();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    rerender(
+      <NotificationsHomeCenter
+        openRequestId={1}
+        onOpenRequestHandled={onOpenRequestHandled}
+      />,
+    );
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(onOpenRequestHandled).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <NotificationsHomeCenter
+        openRequestId={2}
+        onOpenRequestHandled={onOpenRequestHandled}
+      />,
+    );
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+    expect(onOpenRequestHandled).toHaveBeenLastCalledWith(2);
+    expect(onOpenRequestHandled).toHaveBeenCalledTimes(2);
+  });
+
   it("ignores a chat pull release over the notification area", () => {
     seedTriage();
     render(

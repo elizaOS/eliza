@@ -15,9 +15,14 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigateDeepLink = vi.hoisted(() => vi.fn());
+const appState = vi.hoisted(() => ({ tab: "chat" }));
 vi.mock("../../state/notifications/navigate-deep-link", async (orig) => ({
   ...(await orig()),
   navigateDeepLink,
+}));
+vi.mock("../../state", () => ({
+  useAppSelector: (selector: (state: typeof appState) => unknown) =>
+    selector(appState),
 }));
 
 // Stub the live activity stream so the home renders deterministically.
@@ -52,12 +57,25 @@ import {
   __resetNotificationStoreForTests,
   __setHydratedForTests,
 } from "../../state/notifications/notification-store";
+import {
+  goHome,
+  resetShellSurfaceForTests,
+  setShellSurfacePage,
+} from "../../state/shell-surface-store";
 import { __resetHomeDismissalsForTests } from "../../widgets/home-dismissal-store";
+import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 import { PULL_COMMIT_PX } from "./NotificationsHomeCenter";
+import {
+  acknowledgeNotificationCenterOpenRequest,
+  peekNotificationCenterOpenRequest,
+  requestNotificationCenterOpen,
+} from "./notification-center-open-request";
 
 beforeEach(() => {
   vi.useFakeTimers();
+  appState.tab = "chat";
+  resetShellSurfaceForTests();
 });
 
 afterEach(() => {
@@ -66,6 +84,11 @@ afterEach(() => {
   vi.useRealTimers();
   __resetNotificationStoreForTests();
   __resetHomeDismissalsForTests();
+  resetShellSurfaceForTests();
+  const pendingRequestId = peekNotificationCenterOpenRequest();
+  if (pendingRequestId !== null) {
+    acknowledgeNotificationCenterOpenRequest(pendingRequestId);
+  }
   navigateDeepLink.mockClear();
 });
 
@@ -153,6 +176,19 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("home-notification-center")).toBeNull();
     expect(screen.queryByTestId("home-notifications-hint")).toBeNull();
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
+  });
+
+  it("retains a notification-center request until hydration makes the destination visible", () => {
+    const requestId = requestNotificationCenterOpen();
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+
+    expect(screen.queryByTestId("home-notification-center")).toBeNull();
+    expect(peekNotificationCenterOpenRequest()).toBe(requestId);
+
+    act(() => __setHydratedForTests(true));
+
+    expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    expect(peekNotificationCenterOpenRequest()).toBeNull();
   });
 
   it("keeps rested notifications compact, then displaces and restores focused secondary content", () => {
@@ -318,6 +354,137 @@ describe("HomeScreen", () => {
     const apps = screen.getByTestId("home-apps-scroll");
     expect(apps.parentElement?.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
+  });
+
+  it("opens the empty notification center from a warm shell request", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const list = screen.getByTestId("home-notification-list");
+    const empty = screen.getByTestId("notifications-empty");
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(empty.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => {
+      requestNotificationCenterOpen();
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(empty.getAttribute("aria-hidden")).toBeNull();
+    expect(empty.style.opacity).toBe("1");
+  });
+
+  it("consumes a retained cold-launch request after Home mounts without replaying it", () => {
+    __setHydratedForTests(true);
+    requestNotificationCenterOpen();
+
+    const firstMount = render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBeNull();
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
+
+    firstMount.unmount();
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBe("true");
+  });
+
+  it("retains a same-tab request on the inert Launcher half until Home is visible", () => {
+    __setHydratedForTests(true);
+    setShellSurfacePage("launcher");
+    render(
+      <HomeLauncherSurface
+        initialPage="launcher"
+        home={<HomeScreen onOpenTile={vi.fn()} />}
+        launcher={<div>Launcher</div>}
+      />,
+    );
+
+    let requestId = 0;
+    act(() => {
+      requestId = requestNotificationCenterOpen();
+    });
+    expect(peekNotificationCenterOpenRequest()).toBe(requestId);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+
+    act(() => goHome());
+
+    expect(screen.getByTestId("home-launcher-surface").dataset.page).toBe(
+      "home",
+    );
+    expect(peekNotificationCenterOpenRequest()).toBeNull();
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBeNull();
+  });
+
+  it("does not let the old Apps Home acknowledge before Chat replaces it", () => {
+    __setHydratedForTests(true);
+    appState.tab = "apps";
+    setShellSurfacePage("launcher");
+    const view = render(
+      <HomeLauncherSurface
+        key="apps-route"
+        initialPage="launcher"
+        home={<HomeScreen onOpenTile={vi.fn()} />}
+        launcher={<div>Apps launcher</div>}
+      />,
+    );
+
+    let requestId = 0;
+    act(() => {
+      requestId = requestNotificationCenterOpen();
+    });
+    act(() => goHome());
+    expect(peekNotificationCenterOpenRequest()).toBe(requestId);
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("rested");
+
+    appState.tab = "chat";
+    view.rerender(
+      <HomeLauncherSurface
+        key="chat-route"
+        initialPage="home"
+        home={<HomeScreen onOpenTile={vi.fn()} />}
+        launcher={<div>Chat launcher</div>}
+      />,
+    );
+
+    expect(peekNotificationCenterOpenRequest()).toBeNull();
+    expect(screen.getByTestId("home-launcher-surface").dataset.page).toBe(
+      "home",
+    );
+    expect(
+      screen
+        .getByTestId("home-notification-list")
+        .getAttribute("data-shade-mode"),
+    ).toBe("expanded");
+    expect(
+      screen.getByTestId("notifications-empty").getAttribute("aria-hidden"),
+    ).toBeNull();
   });
 
   it("keeps apps available when the empty notification band is expanded", () => {
