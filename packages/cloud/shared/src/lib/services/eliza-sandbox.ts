@@ -5596,11 +5596,11 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: { code: -32601, message: `Method not found: ${rpc.method}` },
       };
-    } catch (error) {
+    } catch {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
         method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
+        failureClass: "sandbox_bridge_failed",
       });
       return {
         jsonrpc: "2.0",
@@ -5634,11 +5634,11 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: { code: -32601, message: `Method not found: ${rpc.method}` },
       };
-    } catch (error) {
+    } catch {
       logger.warn("[agent-sandbox] Bootstrap bridge request failed", {
         agentId: rec.id,
         method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
+        failureClass: "sandbox_bridge_failed",
       });
       return {
         jsonrpc: "2.0",

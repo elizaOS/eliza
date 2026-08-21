@@ -16,6 +16,11 @@ import {
 import { runOnboardingChat } from "./eliza-app/onboarding-chat";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
+import {
+  isPhoneSchemaMigrationRequired,
+  isPostgresUndefinedTableError,
+  phoneErrorDiagnostic,
+} from "./phone-error-diagnostics";
 
 export type AgentGatewayRouteReason =
   | "not_linked"
@@ -72,19 +77,15 @@ type PhoneTargetResolution = {
 const PHONE_TARGET_CACHE_TTL_MS = 5_000;
 
 function isUndefinedAgentPhoneContactsTableError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
-    return true;
-  }
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && cause !== error) {
-    return isUndefinedAgentPhoneContactsTableError(cause);
-  }
-  const message = (error as { message?: unknown }).message;
-  return (
-    typeof message === "string" &&
-    message.includes('relation "agent_phone_contacts" does not exist')
-  );
+  return isPostgresUndefinedTableError(error);
+}
+
+function phoneContactsMigrationRequired(error: unknown): ElizaError {
+  return new ElizaError("Phone contact schema migration is required", {
+    code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+    context: { table: "agent_phone_contacts" },
+    cause: error,
+  });
 }
 
 function asConfigRecord(
@@ -387,11 +388,13 @@ export class AgentGatewayRouterService {
     try {
       owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
     } catch (error) {
+      // error-policy:J2 schema failures cannot degrade into a fabricated routing miss.
+      if (isPhoneSchemaMigrationRequired(error)) throw error;
       logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
         provider: args.provider,
         userId: owner.id,
         organizationId: owner.organization_id,
-        error: error instanceof Error ? error.message : String(error),
+        ...phoneErrorDiagnostic(error),
       });
       owned = {
         reason: "owner_agent_not_running",
@@ -462,7 +465,9 @@ export class AgentGatewayRouterService {
       if (!isUndefinedAgentPhoneContactsTableError(error)) {
         throw error;
       }
-      logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+      // error-policy:J2 the canonical contact table is required; the legacy
+      // message-log lookup must never become authoritative after schema drift.
+      throw phoneContactsMigrationRequired(error);
     }
 
     const [latestOutbound] = await dbWrite
@@ -476,6 +481,7 @@ export class AgentGatewayRouterService {
         and(
           eq(phoneMessageLog.direction, "outbound"),
           eq(phoneMessageLog.to_number, normalizedPhone),
+          eq(phoneMessageLog.organization_id, agentPhoneNumbers.organization_id),
           eq(agentPhoneNumbers.is_active, true),
         ),
       )
@@ -515,13 +521,14 @@ export class AgentGatewayRouterService {
         );
     } catch (error) {
       if (isUndefinedAgentPhoneContactsTableError(error)) {
-        logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
-        return;
+        // error-policy:J2 a missing canonical contact table is retryable schema drift.
+        throw phoneContactsMigrationRequired(error);
       }
+      // error-policy:J6 a non-schema timestamp audit failure is best-effort.
       logger.warn("[AgentGatewayRouter] failed to update phone contact inbound timestamp", {
         provider: args.provider,
         agentId: args.agentId,
-        error: error instanceof Error ? error.message : String(error),
+        ...phoneErrorDiagnostic(error),
       });
     }
   }
@@ -579,7 +586,7 @@ export class AgentGatewayRouterService {
           agentId: entry.session.runtimeAgentId,
           organizationId: entry.session.organizationId,
           method: rpc.method,
-          error: entry.response.error.message,
+          ...phoneErrorDiagnostic(entry.response.error),
         });
       }
 
@@ -624,7 +631,7 @@ export class AgentGatewayRouterService {
         agentId: target.sandbox.id,
         organizationId: target.sandbox.organization_id,
         method: rpc.method,
-        error: response.error.message,
+        ...phoneErrorDiagnostic(response.error),
       });
       return {
         handled: false,
@@ -669,7 +676,7 @@ export class AgentGatewayRouterService {
         channelId: args.channelId,
         messageId: args.messageId,
         senderDiscordUserId: args.sender.id,
-        error: error instanceof Error ? error.message : String(error),
+        ...phoneErrorDiagnostic(error),
       });
 
       if (args.guildId?.trim()) {
@@ -843,11 +850,14 @@ export class AgentGatewayRouterService {
         senderId: args.from,
       });
     } catch (error) {
+      // error-policy:J2 missing canonical phone schema is a retryable deployment
+      // failure and must not enter onboarding or legacy routing.
+      if (isPhoneSchemaMigrationRequired(error)) throw error;
+      // error-policy:J4 other resolver outages retain the existing onboarding path.
       logger.error("[AgentGatewayRouter] Failed to resolve phone target", {
         provider: args.provider,
-        from: args.from,
-        to: args.to,
-        error: error instanceof Error ? error.message : String(error),
+        organizationId: args.organizationId,
+        ...phoneErrorDiagnostic(error),
       });
       const onboarding = await this.runOnboardingChat({
         message: args.body,
@@ -982,15 +992,14 @@ export class AgentGatewayRouterService {
     try {
       routed = await this.routeToTarget(resolved.target, rpcRequest);
     } catch (error) {
+      // error-policy:J4 a target transport exception becomes bridge_failed.
       logger.error("[AgentGatewayRouter] Phone target route threw", {
         provider: args.provider,
-        from: normalizedFrom,
-        to: normalizedTo,
         agentId: resolved.agentId,
         userId: resolved.userId,
         organizationId: resolved.organizationId,
         source: resolved.source,
-        error: error instanceof Error ? error.message : String(error),
+        ...phoneErrorDiagnostic(error),
       });
       routed = {
         handled: false,
@@ -1124,7 +1133,7 @@ export class AgentGatewayRouterService {
       logger.error("[AgentGatewayRouter] Registered BlueBubbles route failed", {
         gatewayAgentId: args.agentId,
         organizationId: args.organizationId,
-        error: error instanceof Error ? error.message : String(error),
+        ...phoneErrorDiagnostic(error),
       });
       throw new ElizaError("Registered BlueBubbles agent bridge failed", {
         code: "BLUEBUBBLES_REGISTERED_BRIDGE_FAILED",
@@ -1134,7 +1143,7 @@ export class AgentGatewayRouterService {
           organizationId: args.organizationId,
           roomId: extractRoomId(rpcRequest),
         },
-        cause: error instanceof Error ? error : new Error(String(error)),
+        cause: error,
       });
     }
   }
