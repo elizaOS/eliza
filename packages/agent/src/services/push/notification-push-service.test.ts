@@ -232,6 +232,54 @@ describe("NotificationPushService", () => {
     expect(ios.sent).toHaveLength(0);
   });
 
+  it("logs and drops fan-out failures from registry list()", async () => {
+    const ios = new FakeProvider("apns", true);
+    const android = new FakeProvider("fcm", true);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    const listSpy = vi.spyOn(h.registry, "list").mockRejectedValueOnce(
+      new Error("db down"),
+    );
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(listSpy).toHaveBeenCalledTimes(1);
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+    expect(ios.sent).toHaveLength(0);
+  });
+
+  it("logs and drops fan-out failures from dead-token unregister()", async () => {
+    const ios = new FakeProvider("apns", true, new Set(["dead-token"]));
+    const android = new FakeProvider("fcm", false);
+    const service = new NotificationPushService(h.runtime, {
+      registry: h.registry,
+      providers: { ios, android },
+    });
+    await service.attach();
+    await h.registry.register("ios", "dead-token");
+    const unregisterSpy = vi
+      .spyOn(h.registry, "unregister")
+      .mockRejectedValueOnce(new Error("durable write rejected"));
+    const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    h.emit(notification());
+    await flush();
+
+    expect(unregisterSpy).toHaveBeenCalledWith("dead-token");
+    expect(loggerSpy).toHaveBeenCalledWith(
+      { src: "service:notification_push", error: expect.any(Error) },
+      "[NotificationPushService] fan-out failed",
+    );
+  });
+
   it("unsubscribes on stop", async () => {
     const ios = new FakeProvider("apns", true);
     const android = new FakeProvider("fcm", true);

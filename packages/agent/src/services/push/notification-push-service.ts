@@ -127,7 +127,16 @@ export class NotificationPushService extends Service {
 
     this.unsubscribe = bus.subscribe((event) => {
       if (event.stream !== NOTIFICATION_STREAM) return;
-      void this.onNotification(event);
+      void (async () => {
+        try {
+          await this.onNotification(event);
+        } catch (error) {
+          logger.error(
+            { src: "service:notification_push", error },
+            "[NotificationPushService] fan-out failed",
+          );
+        }
+      })();
     });
   }
 
