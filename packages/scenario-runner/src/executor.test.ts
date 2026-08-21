@@ -12,6 +12,7 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import { trackPostDeliveryTask } from "@elizaos/core";
 import {
   createDeterministicModelFixtureRegistry,
   type DeterministicModelFixtureRegistry,
@@ -25,10 +26,12 @@ function createRuntime(
 ): AgentRuntime {
   return {
     actions,
+    agentId: "00000000-0000-4000-8000-000000000001",
     plugins: [],
     routes: [],
     ensureConnection: vi.fn(async () => undefined),
     getService: vi.fn(() => null),
+    reportError: vi.fn(),
     setSetting: vi.fn(),
     logger: {
       debug: vi.fn(),
@@ -64,17 +67,25 @@ describe("scenario executor wait turns", () => {
             name: "background boundary catches mismatch",
             durationMs: 0,
             assertTurn() {
-              try {
-                registry.resolve({
-                  modelType: "TEXT_SMALL",
-                  latestUserText: "private user message",
-                  toolNames: [],
-                  params: { prompt: "private rendered prompt" },
-                });
-              } catch {
-                // error-policy:J7 Simulates a production diagnostic boundary
-                // retaining the failure without killing its background loop.
-              }
+              void trackPostDeliveryTask(
+                runtime,
+                "late-strict-model-mismatch",
+                async () => {
+                  await new Promise((resolve) => setTimeout(resolve, 550));
+                  try {
+                    registry.resolve({
+                      modelType: "TEXT_SMALL",
+                      latestUserText: "private user message",
+                      toolNames: [],
+                      params: { prompt: "private rendered prompt" },
+                    });
+                  } catch {
+                    // error-policy:J7 Simulates a production diagnostic boundary
+                    // retaining the failure without killing its background loop.
+                  }
+                },
+                { kind: "diagnostic" },
+              );
             },
           },
         ],
