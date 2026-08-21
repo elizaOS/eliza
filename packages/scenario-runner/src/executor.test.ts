@@ -12,6 +12,10 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import {
+  createDeterministicModelFixtureRegistry,
+  type DeterministicModelFixtureRegistry,
+} from "@elizaos/core/testing";
 import { describe, expect, it, vi } from "vitest";
 import { runScenario } from "./executor";
 
@@ -37,6 +41,72 @@ function createRuntime(
 }
 
 describe("scenario executor wait turns", () => {
+  it("fails strict final validation when a caught model mismatch remains", async () => {
+    const registry = createDeterministicModelFixtureRegistry();
+    const runtime = {
+      ...createRuntime([]),
+      scenarioModelFixtures: registry,
+      assertScenarioModelFixturesConsumed: () => registry.assertConsumed(),
+      getScenarioModelFixtureDiagnostics: () => registry.diagnostics(),
+    } as unknown as AgentRuntime & {
+      scenarioModelFixtures: DeterministicModelFixtureRegistry;
+    };
+
+    const report = await runScenario(
+      {
+        id: "strict-caught-model-mismatch",
+        title: "Caught strict model mismatch",
+        domain: "executor",
+        modelFixtures: { mode: "fixtures", fixtures: [] },
+        turns: [
+          {
+            kind: "wait",
+            name: "background boundary catches mismatch",
+            durationMs: 0,
+            assertTurn() {
+              try {
+                registry.resolve({
+                  modelType: "TEXT_SMALL",
+                  latestUserText: "private user message",
+                  toolNames: [],
+                  params: { prompt: "private rendered prompt" },
+                });
+              } catch {
+                // error-policy:J7 Simulates a production diagnostic boundary
+                // retaining the failure without killing its background loop.
+              }
+            },
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "deterministic-fixture-model",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "modelFixtures",
+          detail: expect.stringContaining(
+            "deterministic model calls were unexpected",
+          ),
+        }),
+      ]),
+    );
+    expect(report.modelFixtureDiagnostics?.unexpectedCalls).toHaveLength(1);
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private user message",
+    );
+    expect(JSON.stringify(report.modelFixtureDiagnostics)).not.toContain(
+      "private rendered prompt",
+    );
+  });
+
   it("waits for the requested duration without sending a message", async () => {
     const handleMessage = vi.fn();
     const runtime = {
