@@ -26,6 +26,7 @@ import {
 	readStringOption,
 	userRequestMessageText,
 } from "../params.js";
+import { VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE } from "../services/verification-room-bridge.js";
 import type { InstalledAppInfo } from "../types.js";
 import {
 	findAsyncCodingDelegationActionName,
@@ -411,6 +412,20 @@ async function dispatchCodingAgent({
 	callback,
 	verifyProfile,
 }: DispatchInput): Promise<DispatchResult> {
+	// This action returns before the child finishes, so its verdict bridge is a
+	// required part of the operation rather than an optional background service.
+	// Eager-start it at the dispatch boundary as well as plugin init: that makes
+	// dynamically registered/lazy plugin runtimes deterministic and guarantees
+	// the listener exists before a fast child can emit its terminal verdict.
+	try {
+		await runtime.getServiceLoadPromise(VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE);
+	} catch (err) {
+		return {
+			dispatched: false,
+			reason: `Verification result delivery is unavailable: ${err instanceof Error ? err.message : String(err)}`,
+		};
+	}
+
 	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {

@@ -59,6 +59,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	return {
 		...coreMock,
 		ElizaError: actual.ElizaError,
+		Service: actual.Service,
 		findCodingDelegationActionName: actual.findCodingDelegationActionName,
 		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
@@ -117,6 +118,7 @@ function createRuntime({
 	tasks?: RuntimeTask[];
 	modelText?: string;
 } = {}) {
+	const getServiceLoadPromise = vi.fn(async () => undefined);
 	const codingHandler = vi.fn(async () => ({
 		success: true,
 		text: "started",
@@ -135,6 +137,7 @@ function createRuntime({
 	const runtime = {
 		agentId: "agent-1",
 		actions: [{ name: "START_CODING_TASK", handler: codingHandler }],
+		getServiceLoadPromise,
 		// Declare a configured coding backend so the create-flow dispatch
 		// preflight stays deterministic on hosts without a coding CLI on PATH.
 		getSetting: vi.fn((key: string) =>
@@ -156,7 +159,7 @@ function createRuntime({
 			if (index >= 0) tasks.splice(index, 1);
 		}),
 	};
-	return { runtime, codingHandler, tasks };
+	return { runtime, codingHandler, getServiceLoadPromise, tasks };
 }
 
 function evaluatorContext(
@@ -4738,7 +4741,7 @@ describe("view management actions", () => {
 		try {
 			const pluginDir = path.join(repo.pluginsDir, "plugin-proof-app");
 			mkdirSync(pluginDir, { recursive: true });
-			const { runtime, codingHandler } = createRuntime();
+			const { runtime, codingHandler, getServiceLoadPromise } = createRuntime();
 			const appClient = {
 				listInstalledApps: vi.fn(async () => [
 					{
@@ -4772,6 +4775,12 @@ describe("view management actions", () => {
 				workdir: pluginDir,
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
+			expect(getServiceLoadPromise).toHaveBeenCalledWith(
+				"verification-room-bridge",
+			);
+			expect(getServiceLoadPromise.mock.invocationCallOrder[0]).toBeLessThan(
+				codingHandler.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+			);
 			expect(codingHandler.mock.calls[0][1]).toMatchObject({
 				roomId: "origin-app-room",
 			});
