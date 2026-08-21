@@ -7,6 +7,7 @@
  * Depth/node/cycle fail-closed replaces that with AgentExportError
  * AGENT_EXPORT_CANONICALIZE_UNBOUNDED.
  */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
@@ -25,17 +26,23 @@ function nest(depth: number): unknown {
   return value;
 }
 
-function expectUnbounded(fn: () => unknown): void {
+function expectUnbounded(fn: () => unknown): AgentExportError {
+  let threw = false;
+  let caught: unknown;
   try {
     fn();
-    throw new Error("expected AGENT_EXPORT_CANONICALIZE_UNBOUNDED");
   } catch (error) {
-    expect(error).toBeInstanceOf(AgentExportError);
-    expect((error as AgentExportError).code).toBe(
-      AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
-    );
-    expect(error).not.toBeInstanceOf(RangeError);
+    threw = true;
+    caught = error;
   }
+  expect(threw).toBe(true);
+  expect(caught).toBeInstanceOf(AgentExportError);
+  expect(caught).toBeInstanceOf(ElizaError);
+  expect(caught).not.toBeInstanceOf(RangeError);
+  expect((caught as AgentExportError).code).toBe(
+    AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+  );
+  return caught as AgentExportError;
 }
 
 function emptyPayload(overrides: Record<string, unknown> = {}) {
@@ -61,9 +68,7 @@ function manifestFor(payload: Record<string, unknown>) {
   const components: Record<string, ReturnType<typeof digestCollection>> = {};
   for (const name of MANIFEST_COLLECTIONS) {
     const items = payload[name];
-    components[name] = digestCollection(
-      Array.isArray(items) ? items : [],
-    );
+    components[name] = digestCollection(Array.isArray(items) ? items : []);
   }
   return { algorithm: "sha256" as const, components };
 }
@@ -135,13 +140,70 @@ describe("canonicalize fail-closed walk", () => {
     expect(canonicalize(new Proxy([2, 1], {}))).toBe("[2,1]");
   });
 
-  it("revoked object and array Proxies fail closed instead of TypeError", () => {
+  it("revoked object and array Proxies fail closed, preserving the native TypeError cause", () => {
     const objectPair = Proxy.revocable({ a: 1 }, {});
     objectPair.revoke();
-    expectUnbounded(() => canonicalize(objectPair.proxy));
+    const objectError = expectUnbounded(() => canonicalize(objectPair.proxy));
+    expect(objectError.cause).toBeInstanceOf(TypeError);
+    expect(objectError.context).toEqual({ inspection: "isArray" });
+    expect(objectError.severity).toBe("fatal");
+
     const arrayPair = Proxy.revocable([1, 2], {});
     arrayPair.revoke();
-    expectUnbounded(() => canonicalize(arrayPair.proxy));
+    const arrayError = expectUnbounded(() => canonicalize(arrayPair.proxy));
+    expect(arrayError.cause).toBeInstanceOf(TypeError);
+    expect(arrayError.context).toEqual({ inspection: "isArray" });
+    expect(arrayError.severity).toBe("fatal");
+  });
+
+  it("never echoes an attacker-controlled property name in public error context", () => {
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, "AWS_SECRET_ACCESS_KEY", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        return "leaked";
+      },
+    });
+    const error = expectUnbounded(() => canonicalize(hostile));
+    expect(error.context).toEqual({ accessor: true, container: "object" });
+    expect(JSON.stringify(error.context ?? {})).not.toContain(
+      "AWS_SECRET_ACCESS_KEY",
+    );
+    expect(error.message).not.toContain("AWS_SECRET_ACCESS_KEY");
+  });
+
+  it("rejects a wide object on its key list, before any descriptor read or sort", () => {
+    const keys = Array.from(
+      { length: MAX_AGENT_EXPORT_CANONICALIZE_NODES + 1 },
+      (_value, index) => `k${index}`,
+    );
+    let descriptorReads = 0;
+    const wide = new Proxy(
+      {},
+      {
+        ownKeys() {
+          return keys;
+        },
+        getOwnPropertyDescriptor() {
+          descriptorReads += 1;
+          return {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: 1,
+          };
+        },
+      },
+    );
+    const error = expectUnbounded(() => canonicalize(wide));
+    // Breadth is charged off Reflect.ownKeys alone: no trap descriptor scan,
+    // no snapshot allocation, no O(n log n) sort before the rejection.
+    expect(descriptorReads).toBe(0);
+    expect(error.context).toEqual({
+      visits: MAX_AGENT_EXPORT_CANONICALIZE_NODES + 2,
+      maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+    });
   });
 
   it("does not invoke own or inherited array accessors", () => {
@@ -164,8 +226,12 @@ describe("canonicalize fail-closed walk", () => {
       expect(String(error)).not.toContain("ARRAY_OWN_ACCESSOR");
     }
 
+    // A local prototype chained to Array.prototype, never Array.prototype
+    // itself: mutating the global would be observable by every other test in
+    // this concurrently executed suite, finally-block or not.
     let inheritedInvoked = false;
-    Object.defineProperty(Array.prototype, "1", {
+    const hostileProto: unknown[] = Object.create(Array.prototype);
+    Object.defineProperty(hostileProto, "1", {
       configurable: true,
       enumerable: false,
       get() {
@@ -173,15 +239,14 @@ describe("canonicalize fail-closed walk", () => {
         return "PWN";
       },
     });
-    try {
-      const sparse = [0];
-      sparse.length = 3;
-      sparse[2] = 2;
-      expect(canonicalize(sparse)).toBe("[0,,2]");
-      expect(inheritedInvoked).toBe(false);
-    } finally {
-      Reflect.deleteProperty(Array.prototype, "1");
-    }
+    const sparse = [0];
+    sparse.length = 3;
+    sparse[2] = 2;
+    Object.setPrototypeOf(sparse, hostileProto);
+    expect(sparse[1]).toBe("PWN");
+    inheritedInvoked = false;
+    expect(canonicalize(sparse)).toBe("[0,,2]");
+    expect(inheritedInvoked).toBe(false);
   });
 
   it("fail-closed on a huge sparse length before allocating the join", () => {
@@ -259,31 +324,28 @@ describe("canonicalize fail-closed walk", () => {
     );
 
     let reads = 0;
-    const drifted = new Proxy(
-      [{ id: "mem-1" }],
-      {
-        getOwnPropertyDescriptor(target, key) {
-          if (key === "length") {
-            return {
-              configurable: false,
-              enumerable: false,
-              writable: true,
-              value: 1,
-            };
-          }
-          reads += 1;
-          if (reads === 1) {
-            return {
-              configurable: true,
-              enumerable: true,
-              writable: true,
-              value: { id: "mem-1" },
-            };
-          }
-          throw new Error("DESCRIPTOR_DRIFT");
-        },
+    const drifted = new Proxy([{ id: "mem-1" }], {
+      getOwnPropertyDescriptor(_target, key) {
+        if (key === "length") {
+          return {
+            configurable: false,
+            enumerable: false,
+            writable: true,
+            value: 1,
+          };
+        }
+        reads += 1;
+        if (reads === 1) {
+          return {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: { id: "mem-1" },
+          };
+        }
+        throw new Error("DESCRIPTOR_DRIFT");
       },
-    );
+    });
     const driftedPayload = emptyPayload({ memories: drifted });
     const driftedResult = verifyExportManifest({
       ...driftedPayload,
@@ -296,5 +358,56 @@ describe("canonicalize fail-closed walk", () => {
       },
     } as never);
     expect(driftedResult.ok).toBe(true);
+  });
+
+  it("reads the root array length exactly once per digest, through verifyExportManifest", () => {
+    const items = [{ id: "mem-1", text: "hi" }];
+    let lengthReads = 0;
+    const counted = new Proxy(items, {
+      getOwnPropertyDescriptor(target, key) {
+        if (key === "length") lengthReads += 1;
+        return Object.getOwnPropertyDescriptor(target, key);
+      },
+    });
+
+    const digest = digestCollection(counted as unknown as unknown[]);
+    expect(lengthReads).toBe(1);
+    expect(digest).toEqual(digestCollection(items));
+
+    lengthReads = 0;
+    const honest = emptyPayload({ memories: items });
+    const result = verifyExportManifest({
+      ...emptyPayload({ memories: counted }),
+      manifest: manifestFor(honest),
+    } as never);
+    expect(result.present).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.mismatches).toEqual([]);
+    expect(lengthReads).toBe(1);
+  });
+
+  it("cannot publish a digest and a count from different length snapshots", () => {
+    const items = [{ id: "mem-1" }, { id: "mem-2" }];
+    let lengthReads = 0;
+    // Second and later `length` reads would report a shorter array. With one
+    // capture the drift is unreachable; two reads published count=1 alongside
+    // two-item canonical bytes (and a Proxy invariant TypeError besides).
+    const drifting = new Proxy(items, {
+      getOwnPropertyDescriptor(target, key) {
+        if (key === "length") {
+          lengthReads += 1;
+          return {
+            configurable: false,
+            enumerable: false,
+            writable: true,
+            value: lengthReads === 1 ? 2 : 1,
+          };
+        }
+        return Object.getOwnPropertyDescriptor(target, key);
+      },
+    });
+    const digest = digestCollection(drifting as unknown as unknown[]);
+    expect(lengthReads).toBe(1);
+    expect(digest).toEqual(digestCollection(items));
   });
 });

@@ -35,7 +35,7 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,
@@ -211,12 +211,22 @@ export const MAX_AGENT_EXPORT_CANONICALIZE_NODES = 100_000;
 export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
   "AGENT_EXPORT_CANONICALIZE_UNBOUNDED";
 
-export class AgentExportError extends Error {
-  readonly code?: string;
-  constructor(message: string, code?: string) {
-    super(message);
-    this.name = "AgentExportError";
-    if (code) this.code = code;
+/** Default classification for export/import failures without a finer code. */
+export const AGENT_EXPORT_FAILED = "AGENT_EXPORT_FAILED";
+
+/**
+ * Export/import domain failure. Extends {@link ElizaError} so every throw site
+ * carries a machine-classifiable `code`, structured `context`, and a preserved
+ * `cause` chain (error policy #12263) instead of casting fields onto a bare
+ * `Error`. `instanceof AgentExportError` keeps working for existing callers.
+ */
+export class AgentExportError extends ElizaError {
+  override readonly name: string = "AgentExportError";
+  constructor(
+    message: string,
+    options: Omit<ElizaErrorOptions, "code"> & { code?: string } = {},
+  ) {
+    super(message, { ...options, code: options.code ?? AGENT_EXPORT_FAILED });
   }
 }
 
@@ -229,15 +239,18 @@ function failCanonicalizeUnbounded(
   context: Record<string, unknown>,
   cause?: unknown,
 ): never {
-  const error = new AgentExportError(
+  // Context is deliberately structural only (never a reflected property name):
+  // the walk runs on attacker-supplied import payloads and the error surfaces
+  // in API responses and logs.
+  throw new AgentExportError(
     "Export payload exceeds the canonicalize walk budget",
-    AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+    {
+      code: AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+      cause,
+      context,
+      severity: "fatal",
+    },
   );
-  if (cause !== undefined) {
-    (error as Error & { cause?: unknown }).cause = cause;
-  }
-  (error as Error & { context?: Record<string, unknown> }).context = context;
-  throw error;
 }
 
 function reserveCanonicalizeVisits(
@@ -276,22 +289,19 @@ function isCanonicalizeArray(value: object): boolean {
   return inspectCanonicalize("isArray", () => Array.isArray(value));
 }
 
-function ownValueDescriptor(
-  value: object,
-  key: string,
-): PropertyDescriptor | undefined {
-  const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
-    Object.getOwnPropertyDescriptor(value, key),
-  );
-  if (!descriptor) return undefined;
-  if (!("value" in descriptor)) {
-    failCanonicalizeUnbounded({ accessor: true, key });
-  }
-  return descriptor;
-}
-
+/**
+ * Reads `length` off an array exactly once, as an own data descriptor, so a
+ * Proxy cannot serve a different value to a second reader. Callers that also
+ * need the length (e.g. a manifest `count`) must reuse the returned number
+ * rather than calling this again.
+ */
 function ownArrayLength(value: object): number {
-  const descriptor = ownValueDescriptor(value, "length");
+  const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+    Object.getOwnPropertyDescriptor(value, "length"),
+  );
+  if (descriptor && !("value" in descriptor)) {
+    failCanonicalizeUnbounded({ accessor: true, property: "length" });
+  }
   if (
     !descriptor ||
     typeof descriptor.value !== "number" ||
@@ -308,19 +318,29 @@ type CanonicalizeDataSnapshot = {
   value: unknown;
 };
 
-/** One getOwnPropertyDescriptor per key. Prevents Proxy descriptor drift. */
-function ownEnumerableDataSnapshot(value: object): CanonicalizeDataSnapshot[] {
+/**
+ * One getOwnPropertyDescriptor per key (prevents Proxy descriptor drift), with
+ * the object's breadth charged to the node budget BEFORE any descriptor trap
+ * runs, before the snapshot array is allocated and before the O(n log n) sort.
+ * A hostile wide object or `ownKeys` Proxy is rejected on the key list alone.
+ * The reservation covers every child, so the walks below run with
+ * `visitAlreadyReserved`.
+ */
+function ownEnumerableDataSnapshot(
+  value: object,
+  ctx: CanonicalizeWalkContext,
+): CanonicalizeDataSnapshot[] {
+  const keys = inspectCanonicalize("ownKeys", () => Reflect.ownKeys(value));
+  reserveCanonicalizeVisits(ctx, keys.length);
   const snapshot: CanonicalizeDataSnapshot[] = [];
-  for (const key of inspectCanonicalize("ownKeys", () =>
-    Reflect.ownKeys(value),
-  )) {
+  for (const key of keys) {
     if (typeof key !== "string") continue;
     const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
       Object.getOwnPropertyDescriptor(value, key),
     );
     if (!descriptor?.enumerable) continue;
     if (!("value" in descriptor)) {
-      failCanonicalizeUnbounded({ accessor: true, key });
+      failCanonicalizeUnbounded({ accessor: true, container: "object" });
     }
     if (descriptor.value === undefined) continue;
     snapshot.push({ key, value: descriptor.value });
@@ -336,6 +356,11 @@ function canonicalizeWalk(
   depth: number,
   ctx: CanonicalizeWalkContext,
   visitAlreadyReserved = false,
+  /**
+   * Array length already read by the caller (root only). Reusing it keeps the
+   * digest and the manifest `count` on one immutable snapshot.
+   */
+  knownArrayLength?: number,
 ): string {
   if (depth > MAX_AGENT_EXPORT_CANONICALIZE_DEPTH) {
     failCanonicalizeUnbounded({
@@ -351,34 +376,37 @@ function canonicalizeWalk(
   enterCanonicalizeContainer(value, ctx);
   try {
     if (isCanonicalizeArray(value)) {
-      const length = ownArrayLength(value);
+      const length = knownArrayLength ?? ownArrayLength(value);
       reserveCanonicalizeVisits(ctx, length);
       // String-build so inherited Array.prototype index accessors cannot
       // trap assignment into a preallocated parts array.
       let body = "";
       for (let index = 0; index < length; index += 1) {
         if (index > 0) body += ",";
-        const descriptor = inspectCanonicalize(
-          "getOwnPropertyDescriptor",
-          () => Object.getOwnPropertyDescriptor(value, String(index)),
+        const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+          Object.getOwnPropertyDescriptor(value, String(index)),
         );
         if (!descriptor) {
           // Sparse hole: keep the prior map()+join() empty-slot string.
           continue;
         }
         if (!("value" in descriptor)) {
-          failCanonicalizeUnbounded({ accessor: true, key: String(index) });
+          failCanonicalizeUnbounded({
+            accessor: true,
+            container: "array",
+            index,
+          });
         }
         body += canonicalizeWalk(descriptor.value, depth + 1, ctx, true);
       }
       return `[${body}]`;
     }
 
-    const snapshot = ownEnumerableDataSnapshot(value);
+    const snapshot = ownEnumerableDataSnapshot(value, ctx);
     return `{${snapshot
       .map(
         (entry) =>
-          `${JSON.stringify(entry.key)}:${canonicalizeWalk(entry.value, depth + 1, ctx)}`,
+          `${JSON.stringify(entry.key)}:${canonicalizeWalk(entry.value, depth + 1, ctx, true)}`,
       )
       .join(",")}}`;
   } finally {
@@ -386,11 +414,18 @@ function canonicalizeWalk(
   }
 }
 
+function canonicalizeRoot(value: unknown, knownArrayLength?: number): string {
+  return canonicalizeWalk(
+    value,
+    0,
+    { visits: 0, visiting: new WeakSet<object>() },
+    false,
+    knownArrayLength,
+  );
+}
+
 export function canonicalize(value: unknown): string {
-  return canonicalizeWalk(value, 0, {
-    visits: 0,
-    visiting: new WeakSet<object>(),
-  });
+  return canonicalizeRoot(value);
 }
 
 function sha256Hex(input: string): string {
@@ -406,9 +441,13 @@ export function digestCollection(items: unknown[]): AgentExportComponentDigest {
     typeof items === "object" &&
     isCanonicalizeArray(items)
   ) {
+    // One `length` descriptor read feeds BOTH the canonical bytes and `count`.
+    // Reading it twice let a legal Array Proxy drift (or throw) between the two
+    // reads and publish a digest and a count taken from different snapshots.
+    const length = ownArrayLength(items);
     return {
-      sha256: sha256Hex(canonicalize(items)),
-      count: ownArrayLength(items),
+      sha256: sha256Hex(canonicalizeRoot(items, length)),
+      count: length,
     };
   }
   return {
