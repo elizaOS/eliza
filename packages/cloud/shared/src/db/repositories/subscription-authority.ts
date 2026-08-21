@@ -116,7 +116,7 @@ function hasExactLifecycleValues(
 }
 
 function isExactProviderReplay(row: BillingSubscription, values: SubscriptionRevisionValues) {
-  return values.provider_event_id != null && hasExactLifecycleValues(row, values);
+  return hasExactLifecycleValues(row, values);
 }
 
 function isExactCreateReplay(row: BillingSubscription, values: SubscriptionCreateValues) {

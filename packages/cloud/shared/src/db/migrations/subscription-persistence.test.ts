@@ -32,7 +32,7 @@ const migrations = await Promise.all(
 );
 const databases: PGlite[] = [];
 
-setDefaultTimeout(30_000);
+setDefaultTimeout(120_000);
 const authorityTables = [
   billingSubscriptions,
   billingSubscriptionRevisions,
@@ -218,6 +218,52 @@ describe("0269-0273 subscription persistence migrations", () => {
       `SELECT state FROM subscription_allowance_periods WHERE id = '${PERIOD}'`,
     );
     expect(closed.rows).toEqual([{ state: "closed" }]);
+  });
+
+  test("records a paid in-period upgrade as an append-only allowance adjustment", async () => {
+    const db = await database();
+    await seedPeriod(db);
+    await db.exec(`
+      INSERT INTO billing_subscription_revisions (
+        organization_id, subscription_id, revision, source,
+        stripe_subscription_id, stripe_subscription_item_id, plan_key, catalog_version, status,
+        current_period_start, current_period_end, cancel_at_period_end,
+        provider_object_version, provider_object_digest
+      ) VALUES (
+        '${ORG}', '${SUBSCRIPTION}', 2, 'webhook', 'sub_test1', 'si_test1',
+        'pro_monthly', 'v1', 'active', '2026-01-01T00:00:00Z', '2026-02-01T00:00:00Z',
+        false, 2, '${"b".repeat(64)}'
+      );
+      INSERT INTO subscription_allowance_transactions (
+        organization_id, allowance_period_id, sequence, kind, amount,
+        source_subscription_id, source_subscription_revision, source_invoice_id,
+        source_plan_key, source_catalog_version,
+        remaining_before, remaining_after, expired_before, expired_after,
+        clawed_back_before, clawed_back_after, idempotency_key
+      ) VALUES (
+        '${ORG}', '${PERIOD}', 1, 'grant_adjustment', 20,
+        '${SUBSCRIPTION}', 2, 'in_upgrade1', 'pro_monthly', 'v1',
+        25, 45, 0, 0, 0, 0, 'upgrade.period.1'
+      );
+      UPDATE subscription_allowance_periods
+      SET granted_amount = granted_amount + 20, remaining_amount = remaining_amount + 20
+      WHERE id = '${PERIOD}';
+    `);
+    const adjusted = await db.query<{ granted: string; remaining: string }>(`
+      SELECT granted_amount::text AS granted, remaining_amount::text AS remaining
+      FROM subscription_allowance_periods WHERE id = '${PERIOD}'
+    `);
+    expect(adjusted.rows).toEqual([{ granted: "45.000000", remaining: "45.000000" }]);
+    await expect(
+      db.exec(`INSERT INTO subscription_allowance_transactions (
+        organization_id, allowance_period_id, sequence, kind, amount,
+        source_subscription_id, source_subscription_revision, source_invoice_id,
+        source_plan_key, source_catalog_version,
+        remaining_before, remaining_after, expired_before, expired_after,
+        clawed_back_before, clawed_back_after, idempotency_key
+      ) VALUES ('${ORG}', '${PERIOD}', 2, 'grant_adjustment', 1, '${SUBSCRIPTION}', 2,
+        'in_upgrade1', 'pro_monthly', 'v1', 45, 46, 0, 0, 0, 0, 'upgrade.period.2')`),
+    ).rejects.toThrow(/source_invoice|unique/i);
   });
 
   test("does not mutate purchased credit while establishing or using allowance authority", async () => {

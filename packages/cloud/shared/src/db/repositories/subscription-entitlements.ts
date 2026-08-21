@@ -48,6 +48,13 @@ function entitlementConflict(message: string, context: Record<string, unknown>):
   });
 }
 
+function sameEntitlementValue(stored: unknown, requested: unknown): boolean {
+  if (stored instanceof Date && requested instanceof Date) {
+    return stored.getTime() === requested.getTime();
+  }
+  return stored === (requested ?? null);
+}
+
 export class SubscriptionEntitlementsRepository {
   async find(organizationId: string): Promise<OrganizationEntitlement | undefined> {
     const [row] = await dbWrite
@@ -126,10 +133,9 @@ export class SubscriptionEntitlementsRepository {
         .for("update");
       if (
         current &&
-        current.source_digest === input.values.source_digest &&
-        current.catalog_version === input.values.catalog_version &&
-        current.source_subscription_id === (input.values.source_subscription_id ?? null) &&
-        current.source_subscription_revision === (input.values.source_subscription_revision ?? null)
+        Object.entries(input.values).every(([key, requested]) =>
+          sameEntitlementValue(current[key as keyof OrganizationEntitlement], requested),
+        )
       ) {
         return { entitlement: current, replayed: true };
       }
