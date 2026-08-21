@@ -3,16 +3,17 @@
  * order, idempotent replace, fail-closed resolution, and admin/route-scope
  * authorization.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+
 import type http from "node:http";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  registerTokenRoleResolver,
+  type BoundaryRoleAccess,
   clearTokenRoleResolvers,
   hasTokenRoleResolver,
-  resolveRegisteredTokenRoleAccess,
   isRegisteredTokenRoleAuthorized,
-  TokenRoleResolver,
-  BoundaryRoleAccess,
+  registerTokenRoleResolver,
+  resolveRegisteredTokenRoleAccess,
+  type TokenRoleResolver,
 } from "./boundary-role-resolver.ts";
 
 function makeResolver(
@@ -59,8 +60,14 @@ describe("boundary-role resolver registry", () => {
 
   it("returns the first non-null resolver in registration order", () => {
     const first = makeResolver("first", null);
-    const second = makeResolver("second", makeAccess("second", { principal: "p2" }));
-    const third = makeResolver("third", makeAccess("third", { principal: "p3" }));
+    const second = makeResolver(
+      "second",
+      makeAccess("second", { principal: "p2" }),
+    );
+    const third = makeResolver(
+      "third",
+      makeAccess("third", { principal: "p3" }),
+    );
     registerTokenRoleResolver(first);
     registerTokenRoleResolver(second);
     registerTokenRoleResolver(third);
@@ -71,20 +78,28 @@ describe("boundary-role resolver registry", () => {
 
   it("skips resolvers that return null and continues", () => {
     registerTokenRoleResolver(makeResolver("a", null));
-    registerTokenRoleResolver(makeResolver("b", makeAccess("b", { principal: "found" })));
+    registerTokenRoleResolver(
+      makeResolver("b", makeAccess("b", { principal: "found" })),
+    );
     expect(resolveRegisteredTokenRoleAccess(req)?.principal).toBe("found");
   });
 
   it("treats a throwing resolver as a non-match (fail-closed) and continues", () => {
     registerTokenRoleResolver(makeResolver("thrower", null, true));
-    registerTokenRoleResolver(makeResolver("ok", makeAccess("ok", { principal: "ok" })));
+    registerTokenRoleResolver(
+      makeResolver("ok", makeAccess("ok", { principal: "ok" })),
+    );
     const access = resolveRegisteredTokenRoleAccess(req);
     expect(access?.providerId).toBe("ok");
   });
 
   it("stops at the first match even if later resolvers would match", () => {
-    registerTokenRoleResolver(makeResolver("a", makeAccess("a", { principal: "a" })));
-    registerTokenRoleResolver(makeResolver("b", makeAccess("b2", { principal: "b" })));
+    registerTokenRoleResolver(
+      makeResolver("a", makeAccess("a", { principal: "a" })),
+    );
+    registerTokenRoleResolver(
+      makeResolver("b", makeAccess("b2", { principal: "b" })),
+    );
     expect(resolveRegisteredTokenRoleAccess(req)?.principal).toBe("a");
   });
 
@@ -121,9 +136,14 @@ describe("isRegisteredTokenRoleAuthorized", () => {
 
   it("authorizes admins unconditionally", () => {
     registerTokenRoleResolver(
-      makeResolver("admin", makeAccess({ isAdmin: true, isRouteInScope: () => false })),
+      makeResolver(
+        "admin",
+        makeAccess("admin", { isAdmin: true, isRouteInScope: () => false }),
+      ),
     );
-    expect(isRegisteredTokenRoleAuthorized(req, "DELETE", "/api/anything")).toBe(true);
+    expect(
+      isRegisteredTokenRoleAuthorized(req, "DELETE", "/api/anything"),
+    ).toBe(true);
   });
 
   it("authorizes non-admins only for in-scope routes", () => {
@@ -134,7 +154,9 @@ describe("isRegisteredTokenRoleAuthorized", () => {
     });
     registerTokenRoleResolver(makeResolver("user", access));
     expect(isRegisteredTokenRoleAuthorized(req, "GET", "/api/me")).toBe(true);
-    expect(isRegisteredTokenRoleAuthorized(req, "GET", "/api/other")).toBe(false);
+    expect(isRegisteredTokenRoleAuthorized(req, "GET", "/api/other")).toBe(
+      false,
+    );
     expect(isRegisteredTokenRoleAuthorized(req, "POST", "/api/me")).toBe(false);
   });
 
