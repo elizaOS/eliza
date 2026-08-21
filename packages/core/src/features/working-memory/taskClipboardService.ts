@@ -129,6 +129,41 @@ function normalizeContent(content: string): string {
 	return content.replace(/\r\n/g, "\n").trim();
 }
 
+/**
+ * Serializes the read-modify-write cycle for one clipboard file.
+ *
+ * `readStore` → mutate → `writeStore` rewrites the WHOLE store from a snapshot
+ * taken two awaits earlier, so two overlapping mutations of one entity's
+ * clipboard both report success while the later write silently drops the
+ * earlier one's item. The store is keyed by entity under the shared process
+ * state dir, not by room or agent, so the overlapping callers are ordinary
+ * ones: one person read an attachment in two rooms, or two agent runtimes in a
+ * single process served the same person.
+ */
+const storeMutations = new Map<string, Promise<void>>();
+
+function withStoreMutation<T>(
+	storePath: string,
+	mutate: () => Promise<T>,
+): Promise<T> {
+	const predecessor = storeMutations.get(storePath) ?? Promise.resolve();
+	const operation = predecessor.then(() => mutate());
+	const tail = operation.then(
+		() => undefined,
+		() => undefined,
+	);
+	storeMutations.set(storePath, tail);
+	// A late tail retires only its own entry: a newer caller may already have
+	// installed its replacement, and deleting that would unserialize the very
+	// writers this map exists to order — and leak the key when it does not.
+	void tail.then(() => {
+		if (storeMutations.get(storePath) === tail) {
+			storeMutations.delete(storePath);
+		}
+	});
+	return operation;
+}
+
 export class TaskClipboardService {
 	private readonly config: WorkingMemoryConfig;
 
@@ -249,57 +284,59 @@ export class TaskClipboardService {
 		if (!content) {
 			throw new Error("Clipboard items require non-empty content.");
 		}
-		const store = await this.readStore(entityId);
-		const now = new Date().toISOString();
+		return withStoreMutation(this.getStorePath(entityId), async () => {
+			const store = await this.readStore(entityId);
+			const now = new Date().toISOString();
 
-		const replacementIndex =
-			input.sourceType && input.sourceId
-				? store.items.findIndex(
-						(item) =>
-							item.sourceType === input.sourceType &&
-							item.sourceId === input.sourceId,
-					)
-				: -1;
+			const replacementIndex =
+				input.sourceType && input.sourceId
+					? store.items.findIndex(
+							(item) =>
+								item.sourceType === input.sourceType &&
+								item.sourceId === input.sourceId,
+						)
+					: -1;
 
-		if (replacementIndex === -1 && store.items.length >= store.maxItems) {
-			throw new Error(
-				`Clipboard is full (${store.items.length}/${store.maxItems}). Remove an unused item before adding another.`,
+			if (replacementIndex === -1 && store.items.length >= store.maxItems) {
+				throw new Error(
+					`Clipboard is full (${store.items.length}/${store.maxItems}). Remove an unused item before adding another.`,
+				);
+			}
+
+			const existing =
+				replacementIndex >= 0 ? store.items[replacementIndex] : null;
+			const item: TaskClipboardItem = {
+				id: existing?.id ?? `cb-${crypto.randomUUID().slice(0, 8)}`,
+				title: defaultTitleForInput(input),
+				content,
+				sourceType: input.sourceType ?? "manual",
+				...(input.sourceId ? { sourceId: input.sourceId } : {}),
+				...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
+				...(input.mimeType ? { mimeType: input.mimeType } : {}),
+				createdAt: existing?.createdAt ?? now,
+				updatedAt: now,
+			};
+
+			if (replacementIndex >= 0) {
+				store.items[replacementIndex] = item;
+			} else {
+				store.items.unshift(item);
+			}
+
+			store.items.sort((left, right) =>
+				right.updatedAt.localeCompare(left.updatedAt),
 			);
-		}
+			await this.writeStore(store, entityId);
 
-		const existing =
-			replacementIndex >= 0 ? store.items[replacementIndex] : null;
-		const item: TaskClipboardItem = {
-			id: existing?.id ?? `cb-${crypto.randomUUID().slice(0, 8)}`,
-			title: defaultTitleForInput(input),
-			content,
-			sourceType: input.sourceType ?? "manual",
-			...(input.sourceId ? { sourceId: input.sourceId } : {}),
-			...(input.sourceLabel ? { sourceLabel: input.sourceLabel } : {}),
-			...(input.mimeType ? { mimeType: input.mimeType } : {}),
-			createdAt: existing?.createdAt ?? now,
-			updatedAt: now,
-		};
-
-		if (replacementIndex >= 0) {
-			store.items[replacementIndex] = item;
-		} else {
-			store.items.unshift(item);
-		}
-
-		store.items.sort((left, right) =>
-			right.updatedAt.localeCompare(left.updatedAt),
-		);
-		await this.writeStore(store, entityId);
-
-		return {
-			item,
-			replaced: replacementIndex >= 0,
-			snapshot: {
-				maxItems: store.maxItems,
-				items: [...store.items],
-			},
-		};
+			return {
+				item,
+				replaced: replacementIndex >= 0,
+				snapshot: {
+					maxItems: store.maxItems,
+					items: [...store.items],
+				},
+			};
+		});
 	}
 
 	async removeItem(
@@ -309,20 +346,22 @@ export class TaskClipboardService {
 		removed: boolean;
 		snapshot: TaskClipboardSnapshot;
 	}> {
-		const store = await this.readStore(entityId);
-		const nextItems = store.items.filter((item) => item.id !== id);
-		if (nextItems.length === store.items.length) {
+		return withStoreMutation(this.getStorePath(entityId), async () => {
+			const store = await this.readStore(entityId);
+			const nextItems = store.items.filter((item) => item.id !== id);
+			if (nextItems.length === store.items.length) {
+				return {
+					removed: false,
+					snapshot: { maxItems: store.maxItems, items: [...store.items] },
+				};
+			}
+			store.items = nextItems;
+			await this.writeStore(store, entityId);
 			return {
-				removed: false,
+				removed: true,
 				snapshot: { maxItems: store.maxItems, items: [...store.items] },
 			};
-		}
-		store.items = nextItems;
-		await this.writeStore(store, entityId);
-		return {
-			removed: true,
-			snapshot: { maxItems: store.maxItems, items: [...store.items] },
-		};
+		});
 	}
 }
 
