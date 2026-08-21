@@ -6,9 +6,11 @@
  * serialization. The installed-browser smoke supplies an exact Apple
  * Development identity and team for a trusted local build.
  */
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { createDeterministicDirectoryArchive } from "./package-webextension.mjs";
 import {
   buildBrowserBridgeReleaseMetadata,
@@ -19,6 +21,7 @@ import {
 import {
   patchGeneratedSafariProject,
   resolveSafariNativeConfiguration,
+  validateSafariSignedBundleContracts,
 } from "./safari-project.mjs";
 import { findFileWithExtension, run } from "./script-utils.mjs";
 
@@ -50,6 +53,37 @@ const handlerTemplatePath = path.join(
   "native",
   "SafariWebExtensionHandler.swift",
 );
+const execFileAsync = promisify(execFile);
+
+async function readPlist(pathname) {
+  const { stdout } = await execFileAsync(
+    "plutil",
+    ["-convert", "json", "-o", "-", pathname],
+    { encoding: "utf8", maxBuffer: 2 * 1024 * 1024 },
+  );
+  return JSON.parse(stdout);
+}
+
+async function readCodeSignatureEntitlements(bundlePath, temporaryPath) {
+  const { stdout } = await execFileAsync(
+    "codesign",
+    ["-d", "--entitlements", ":-", bundlePath],
+    { encoding: "buffer", maxBuffer: 2 * 1024 * 1024 },
+  );
+  await fs.writeFile(temporaryPath, stdout);
+  return readPlist(temporaryPath);
+}
+
+async function readEmbeddedProvisioningProfile(profilePath, temporaryPath) {
+  await execFileAsync(
+    "security",
+    ["cms", "-D", "-i", profilePath, "-o", temporaryPath],
+    {
+      maxBuffer: 2 * 1024 * 1024,
+    },
+  );
+  return readPlist(temporaryPath);
+}
 
 await run("bun", [path.join(scriptDir, "build.mjs"), "safari"], {
   cwd: extensionRoot,
@@ -135,6 +169,47 @@ if (!builtAppPath) {
 }
 if (signingTeam && signingIdentity) {
   await run("codesign", ["--verify", "--deep", "--strict", builtAppPath]);
+}
+if (nativeConfiguration.release) {
+  const extensionBundlePath = await findFileWithExtension(
+    path.join(builtAppPath, "Contents", "PlugIns"),
+    ".appex",
+  );
+  if (!extensionBundlePath) {
+    throw new Error("Signed Safari app is missing its extension bundle.");
+  }
+  const verificationDirectory = path.join(
+    distDir,
+    "safari-signing-verification",
+  );
+  await run("node", [cleanupHelper, verificationDirectory], {
+    cwd: extensionRoot,
+  });
+  await fs.mkdir(verificationDirectory, { recursive: true });
+  const appEntitlements = await readCodeSignatureEntitlements(
+    builtAppPath,
+    path.join(verificationDirectory, "app-entitlements.plist"),
+  );
+  const extensionEntitlements = await readCodeSignatureEntitlements(
+    extensionBundlePath,
+    path.join(verificationDirectory, "extension-entitlements.plist"),
+  );
+  const appProfile = await readEmbeddedProvisioningProfile(
+    path.join(builtAppPath, "Contents", "embedded.provisionprofile"),
+    path.join(verificationDirectory, "app-profile.plist"),
+  );
+  const extensionProfile = await readEmbeddedProvisioningProfile(
+    path.join(extensionBundlePath, "Contents", "embedded.provisionprofile"),
+    path.join(verificationDirectory, "extension-profile.plist"),
+  );
+  validateSafariSignedBundleContracts({
+    configuration: nativeConfiguration,
+    appEntitlements,
+    extensionEntitlements,
+    appProfile,
+    extensionProfile,
+    bundleIdentifier,
+  });
 }
 
 const artifactAppPath = path.join(artifactsDir, `${appName}.app`);
