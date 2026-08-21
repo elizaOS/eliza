@@ -369,6 +369,17 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     expect(tenantDbInit).toContain(
       "openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt",
     );
+    const sourceAt = tenantDbInit.indexOf('. "$ENV_FILE"');
+    const stopExportAt = tenantDbInit.indexOf("set +a", sourceAt);
+    const decodeAt = tenantDbInit.indexOf("base64 --decode", sourceAt);
+    expect(stopExportAt).toBeGreaterThan(sourceAt);
+    expect(stopExportAt).toBeLessThan(decodeAt);
+    expect(tenantDbInit).toContain(
+      'BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE"',
+    );
+    expect(
+      tenantDbInit.indexOf("unset BACKUP_ENCRYPTION_PASSPHRASE"),
+    ).toBeLessThan(tenantDbInit.indexOf("export RCLONE_S3_PROVIDER"));
     expect(tenantDbInit).toContain("rclone copyto backup.tar.gz.enc");
   });
 
@@ -402,6 +413,12 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     expect(tenantDbInit).toContain("rclone purge");
     expect(tenantDbInit).toContain(
       'RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")',
+    );
+    expect(tenantDbInit).toContain(
+      '[[ "$listed_dir" =~ ^[0-9]{8}T[0-9]{6}Z/$ ]]',
+    );
+    expect(tenantDbInit.indexOf('[[ "$listed_dir" =~')).toBeLessThan(
+      tenantDbInit.indexOf("rclone purge"),
     );
     expect(tenantDbInit).not.toContain(
       'rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true',
