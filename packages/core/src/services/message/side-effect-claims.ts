@@ -63,6 +63,13 @@ function sentenceContaining(text: string, index: number): string {
 	return text.slice(start, end);
 }
 
+function sideEffectClaimSentenceHasTrackedSubject(
+	text: string,
+	index: number,
+): boolean {
+	return SIDE_EFFECT_SUBJECT_NOUN_PATTERN.test(sentenceContaining(text, index));
+}
+
 // A generic "done" sentence is exempt only when its complete grammar is a
 // read/navigation acknowledgement. Keeping this full-sentence match narrow is
 // important: a loose "contains a read verb and no known write verb" test lets
@@ -172,15 +179,20 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 		SUBJECTLESS_PAST_SIDE_EFFECT_CLAIM_PATTERN,
 	)) {
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		if (!sideEffectClaimSentenceHasTrackedSubject(text, match.index)) continue;
 		return true;
 	}
 	for (const match of text.matchAll(NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN)) {
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		if (!sideEffectClaimSentenceHasTrackedSubject(text, match.index)) continue;
 		return true;
 	}
 	for (const match of text.matchAll(PERFECTIVE_SIDE_EFFECT_CLAIM_PATTERN)) {
 		if (
-			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(text.slice(0, match.index))
+			!NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(
+				text.slice(0, match.index),
+			) &&
+			sideEffectClaimSentenceHasTrackedSubject(text, match.index)
 		) {
 			return true;
 		}
@@ -189,6 +201,7 @@ export function replyClaimsCompletedSideEffect(reply: string): boolean {
 		const prefix = text.slice(0, match.index);
 		if (NON_ASSERTIVE_SIDE_EFFECT_LEAD_PATTERN.test(prefix)) continue;
 		if (sideEffectClaimSentenceIsQuestion(text, match.index)) continue;
+		if (!sideEffectClaimSentenceHasTrackedSubject(text, match.index)) continue;
 		return true;
 	}
 	return false;

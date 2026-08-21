@@ -317,6 +317,19 @@ describe("replyClaimsCompletedSideEffect", () => {
 			expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
 		}
 	});
+
+	it("does not borrow a tracked-work noun from a separate verification note", () => {
+		expect(
+			replyClaimsCompletedSideEffect(
+				"I created the script and ran it. Note: independent verification of this task is still running.",
+			),
+		).toBe(false);
+		expect(
+			replyClaimsCompletedSideEffect(
+				"I created the reminder. Note: independent verification of this task is still running.",
+			),
+		).toBe(true);
+	});
 });
 
 describe(CLAIM_EVALUATOR_NAME, () => {
