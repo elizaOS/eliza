@@ -13,9 +13,9 @@
  * Consumers wire this module through `globalSetup`, which runs once per Vitest
  * process before collection. Generation failure throws so the lane fails loudly
  * rather than reporting unresolved-import suites. The generator writes every
- * keyword output it owns, so this setup never removes or rewrites existing
- * output — a checkout that already has the module is left untouched, which keeps
- * concurrent lanes in a shared worktree safe.
+ * keyword output through process-unique temporary files and atomic renames, so
+ * running it for every lane setup is concurrency-safe and prevents a surviving
+ * generated module from becoming stale after an input or branch change.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -43,14 +43,12 @@ export const coreGeneratedKeywordDataPath = path.join(
 );
 
 /**
- * Run the keyword generator unless its core output already exists. Returns
- * `true` when the generator ran, `false` when the output was already present.
- * `root` exists so tests can drive a throwaway checkout instead of this one.
+ * Run the keyword generator and verify its core output. `root` exists so tests
+ * can drive a throwaway checkout instead of this one.
  */
 export function materializeGeneratedSources(root: string = repoRoot): boolean {
   const generator = path.join(root, KEYWORD_GENERATOR_RELATIVE_PATH);
   const generated = path.join(root, CORE_GENERATED_KEYWORD_DATA_RELATIVE_PATH);
-  if (existsSync(generated)) return false;
   const result = spawnSync(process.execPath, [generator], {
     cwd: root,
     stdio: "inherit",

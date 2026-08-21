@@ -5,7 +5,7 @@
  * the setup.
  */
 import { existsSync, rmSync } from "node:fs";
-import { cp, mkdtemp, readFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -69,11 +69,44 @@ describe("generated-source vitest setup", () => {
     );
   });
 
-  it("is a no-op once the module exists", async () => {
+  it("regenerates when keyword inputs change after an earlier run", async () => {
     const root = await fixtureRoot();
     expect(materializeGeneratedSources(root)).toBe(true);
+    const generated = path.join(
+      root,
+      CORE_GENERATED_KEYWORD_DATA_RELATIVE_PATH,
+    );
+    const before = await readFile(generated, "utf8");
+    const input = path.join(
+      root,
+      "packages/shared/src/i18n/keywords/validate.keywords.json",
+    );
+    const originalInput = await readFile(input, "utf8");
+    const changedInput = originalInput.replace(
+      '        "build an app",',
+      '        "build an app",\n        "__generated_refresh_probe__",',
+    );
+    expect(changedInput).not.toBe(originalInput);
+    await writeFile(input, changedInput);
 
-    expect(materializeGeneratedSources(root)).toBe(false);
+    expect(materializeGeneratedSources(root)).toBe(true);
+    const after = await readFile(generated, "utf8");
+    expect(after).not.toBe(before);
+    expect(after).toContain("__generated_refresh_probe__");
+  });
+
+  it("repairs a partial generated-output set", async () => {
+    const root = await fixtureRoot();
+    expect(materializeGeneratedSources(root)).toBe(true);
+    const sharedJavaScriptOutput = path.join(
+      root,
+      "packages/shared/src/i18n/generated/validation-keyword-data.js",
+    );
+    rmSync(sharedJavaScriptOutput);
+    expect(existsSync(sharedJavaScriptOutput)).toBe(false);
+
+    expect(materializeGeneratedSources(root)).toBe(true);
+    expect(existsSync(sharedJavaScriptOutput)).toBe(true);
   });
 
   it("fails loudly when the generator is missing instead of leaving suites unresolved", async () => {
