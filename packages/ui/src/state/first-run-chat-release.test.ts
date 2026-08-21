@@ -7,12 +7,20 @@ import { describe, expect, it } from "vitest";
 import {
   acknowledgeFirstRunChatRelease,
   createFirstRunChatReleaseState,
+  isAuthoritativeFirstRunOpen,
   observeFirstRunCompletion,
   recordMountedFirstRunOverlay,
   recordMountedFirstRunTranscript,
 } from "./first-run-chat-release";
 
 describe("first-run chat release tracking", () => {
+  it("opens onboarding only for an authoritative first-run phase", () => {
+    expect(isAuthoritativeFirstRunOpen(false, "first-run-required")).toBe(true);
+    expect(isAuthoritativeFirstRunOpen(false, "ready")).toBe(false);
+    expect(isAuthoritativeFirstRunOpen(true, "first-run-required")).toBe(false);
+    expect(isAuthoritativeFirstRunOpen(null, "first-run-required")).toBe(false);
+  });
+
   it("ignores a completed-user startup probe transition without a mounted chat", () => {
     let state = createFirstRunChatReleaseState(false, "ready");
     state = recordMountedFirstRunOverlay(state, state.incompleteEpoch);

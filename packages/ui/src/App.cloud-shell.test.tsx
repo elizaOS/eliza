@@ -93,7 +93,7 @@ describe("App standalone chat-overlay wiring", () => {
     expect(foundation).toContain("keepChatOpenAfterFirstRun");
     expect(foundation).toContain("const shouldMountWebChatPanel =");
     expect(foundation).toContain(
-      "const firstRunPinnedOpen = firstRunComplete === false;",
+      "const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(",
     );
     expect(foundation).toContain("shouldMountWebChatPanel");
     expect(foundation).toContain("<ChatOverlayMount");

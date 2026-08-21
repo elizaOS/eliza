@@ -186,6 +186,7 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
+import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
@@ -1870,8 +1871,14 @@ function ShellFoundationMount({
   const hasController = controller !== null;
   const shellIsOpen = controller?.isOpen ?? false;
   const shellPhase = controller?.phase;
-  const firstRunComplete = useAppSelector((state) => state.firstRunComplete);
-  const firstRunPinnedOpen = firstRunComplete === false;
+  const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
+    firstRunComplete: state.firstRunComplete,
+    startupPhase: state.startupCoordinator.phase,
+  }));
+  const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   // Completion updates the store before the half-height overlay can release
   // its first-run pin. Keep that mounted instance through the edge so its
   // shared transcript stays visible until the user deliberately folds to the
@@ -2186,12 +2193,17 @@ function ChatOverlayMount({
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus, firstRunComplete } =
+  const { characterData, agentStatus, firstRunComplete, startupPhase } =
     useAppSelectorShallow((s) => ({
       characterData: s.characterData,
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
+      startupPhase: s.startupCoordinator.phase,
     }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -2202,14 +2214,10 @@ function ChatOverlayMount({
     isAuthorized: atLeast("USER"),
   });
   useLayoutEffect(() => {
-    if (
-      controller &&
-      firstRunComplete === false &&
-      firstRunMountEpoch !== null
-    ) {
+    if (controller && firstRunOpen && firstRunMountEpoch !== null) {
       onFirstRunChatMounted?.(firstRunMountEpoch);
     }
-  }, [controller, firstRunComplete, firstRunMountEpoch, onFirstRunChatMounted]);
+  }, [controller, firstRunMountEpoch, firstRunOpen, onFirstRunChatMounted]);
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
@@ -2223,7 +2231,7 @@ function ChatOverlayMount({
       slash={slash}
       initialMode={initialMode}
       fillHostAtHalf={fillHostAtHalf}
-      firstRunOpen={firstRunComplete === false}
+      firstRunOpen={firstRunOpen}
       releaseFirstRunToFull={releaseFirstRunToFull}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
@@ -2244,7 +2252,14 @@ function HomeScreenMount({
   initialSection?: "home" | "apps";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
-  const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
+  const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
+    firstRunComplete: state.firstRunComplete,
+    startupPhase: state.startupCoordinator.phase,
+  }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.

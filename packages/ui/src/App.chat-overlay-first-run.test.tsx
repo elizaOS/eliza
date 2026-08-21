@@ -94,6 +94,7 @@ vi.mock("@capacitor/keyboard", () => ({
 vi.mock("./bridge/electrobun-rpc", () => ({
   getElectrobunRendererRpc: vi.fn(() => undefined),
   invokeDesktopBridgeRequest: vi.fn(async () => ({ id: "window-1" })),
+  invokeDesktopBridgeRequestWithTimeout: vi.fn(async () => undefined),
   subscribeDesktopBridgeEvent: vi.fn(() => vi.fn()),
   openDesktopAppWindow: vi.fn(async () => ({ id: "window-1" })),
   openDesktopLauncherWindow: vi.fn(async () => ({ id: "launcher-1" })),
@@ -233,9 +234,11 @@ vi.mock("./components/shell/ShellControllerContext.hooks", () => ({
 
 vi.mock("./components/shell/ChatOverlay", () => ({
   ChatOverlay: ({
+    firstRunOpen,
     releaseFirstRunToFull,
     onFirstRunReleaseHandled,
   }: {
+    firstRunOpen: boolean;
     releaseFirstRunToFull: boolean;
     onFirstRunReleaseHandled: () => void;
   }) => {
@@ -247,6 +250,7 @@ vi.mock("./components/shell/ChatOverlay", () => ({
     return (
       <div
         data-testid="chat-overlay"
+        data-first-run-open={String(firstRunOpen)}
         data-release-first-run={String(releaseFirstRunToFull)}
       />
     );
@@ -500,6 +504,12 @@ describe("App chat-overlay first-run composition", () => {
     expect(shell.getByTestId("chat-overlay").dataset.releaseFirstRun).toBe(
       "false",
     );
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe(
+      "false",
+    );
+    expect(
+      shell.container.querySelector('[data-onboarding-hidden="true"]'),
+    ).toBeNull();
 
     appState.firstRunComplete = true;
     shell.rerender(<App />);
@@ -508,6 +518,21 @@ describe("App chat-overlay first-run composition", () => {
       "false",
     );
     expect(overlayMock.handledReleases).toBe(0);
+  });
+
+  it("keeps HALF authority for a genuine first-run-required shell", () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+
+    expect(shell.getByTestId("chat-overlay").dataset.firstRunOpen).toBe("true");
+    expect(
+      shell.container.querySelector('[data-onboarding-hidden="true"]'),
+    ).not.toBeNull();
   });
 
   it("does not release FULL for a stale transcript from a prior first-run epoch", () => {
