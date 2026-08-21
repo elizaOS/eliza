@@ -88,7 +88,19 @@ function fakeProvider(over: Partial<Record<keyof AppContainerProvider, unknown>>
   return { calls, provider };
 }
 
-const job = (data: unknown) => ({ id: "job-1", data });
+const job = (data: unknown, organizationId?: string) => {
+  const payloadOrganizationId =
+    typeof data === "object" &&
+    data !== null &&
+    typeof Reflect.get(data, "organizationId") === "string"
+      ? (Reflect.get(data, "organizationId") as string)
+      : "org-1";
+  return {
+    id: "job-1",
+    data,
+    organization_id: organizationId ?? payloadOrganizationId,
+  };
+};
 
 describe("executeContainerProvision", () => {
   test("builds input from the row, provisions, and marks running", async () => {
@@ -506,6 +518,48 @@ describe("executeContainerDelete / restart / logs", () => {
       }),
     ).rejects.toThrow("does not own");
     expect(calls).toEqual([]);
+  });
+
+  test("rejects an organization-only payload before a foreign tenant lookup", async () => {
+    const { events, store } = fakeStore();
+    const lookedUpOrganizations: string[] = [];
+    store.findDeletingByOrganization = async (organizationId) => {
+      lookedUpOrganizations.push(organizationId);
+      return [ROW];
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerDelete(job({ organizationId: "org-foreign" }, "org-owner"), {
+        provider,
+        store,
+      }),
+    ).rejects.toMatchObject({ code: "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH" });
+
+    expect(lookedUpOrganizations).toEqual([]);
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  test("rejects a codec-valid payload when its tenant differs from the job row", async () => {
+    const { events, store } = fakeStore();
+    let containerRead = false;
+    store.getById = async () => {
+      containerRead = true;
+      return ROW;
+    };
+    const { calls, provider } = fakeProvider();
+
+    await expect(
+      executeContainerDelete(
+        job({ containerId: "container-1", organizationId: "org-foreign" }, "org-owner"),
+        { provider, store },
+      ),
+    ).rejects.toMatchObject({ code: "CONTAINER_DELETE_PAYLOAD_ORGANIZATION_MISMATCH" });
+
+    expect(containerRead).toBe(false);
+    expect(calls).toEqual([]);
+    expect(events).toEqual([]);
   });
 
   test("restart restarts by container name", async () => {
