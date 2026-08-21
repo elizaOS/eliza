@@ -1,0 +1,44 @@
+[Unit]
+Description=Eliza Manifest-v3 Backup Catalogue Worker (disabled at merge)
+Documentation=https://github.com/elizaOS/eliza
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+Group=deploy
+WorkingDirectory=/opt/eliza
+EnvironmentFile=/opt/eliza/cloud/.env.local
+Environment=NODE_OPTIONS=--max-old-space-size=1024
+Environment=PATH=/home/deploy/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+StateDirectory=eliza-backup-catalog
+StateDirectoryMode=0700
+RuntimeDirectory=eliza-backup-catalog
+RuntimeDirectoryMode=0700
+UMask=0077
+ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh
+# Both commands pin the dormant gates independently of a stale EnvironmentFile.
+ExecStartPre=/usr/bin/env AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0 AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0 AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE=/run/eliza-backup-catalog/health.json /opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/backup-catalog-worker-preflight.ts
+ExecStart=/usr/bin/env AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0 AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0 AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE=/run/eliza-backup-catalog/health.json /opt/eliza/node_modules/.bin/tsx --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json /opt/eliza/packages/cloud/scripts/admin/daemons/backup-catalog-worker.ts
+
+Restart=always
+RestartSec=5
+MemoryHigh=1024M
+MemoryMax=1280M
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eliza-backup-catalog-worker
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+PrivateTmp=true
+ReadWritePaths=/var/lib/eliza-backup-catalog /run/eliza-backup-catalog
+
+# Internal shutdown is bounded at 25s; systemd retains a final 5s fence.
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
