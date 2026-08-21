@@ -87,6 +87,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/api-keys/[id]/route.ts",
   },
+  "DELETE /api/v1/api-keys/current": {
+    method: "DELETE",
+    path: "/api/v1/api-keys/current",
+    methodName: "deleteApiV1ApiKeysCurrent",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/api-keys/current/route.ts",
+  },
   "DELETE /api/v1/apis/storage/objects/_": {
     method: "DELETE",
     path: "/api/v1/apis/storage/objects/_",
@@ -95,6 +104,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+  },
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": {
+    method: "DELETE",
+    path: "/api/v1/app-auth/mobile/credentials/{id}",
+    methodName: "deleteApiV1AppAuthMobileCredentialsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/[id]/route.ts",
   },
   "DELETE /api/v1/apps/{id}": {
     method: "DELETE",
@@ -735,6 +753,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
+  },
+  "GET /api/v1/app-auth/mobile/config": {
+    method: "GET",
+    path: "/api/v1/app-auth/mobile/config",
+    methodName: "getApiV1AppAuthMobileConfig",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/config/route.ts",
+  },
+  "GET /api/v1/app-auth/mobile/credentials": {
+    method: "GET",
+    path: "/api/v1/app-auth/mobile/credentials",
+    methodName: "getApiV1AppAuthMobileCredentials",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/route.ts",
   },
   "GET /api/v1/app-auth/session": {
     method: "GET",
@@ -2953,6 +2989,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/app-auth/connect/route.ts",
   },
+  "POST /api/v1/app-auth/mobile/ack": {
+    method: "POST",
+    path: "/api/v1/app-auth/mobile/ack",
+    methodName: "postApiV1AppAuthMobileAck",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/ack/route.ts",
+  },
+  "POST /api/v1/app-auth/mobile/token": {
+    method: "POST",
+    path: "/api/v1/app-auth/mobile/token",
+    methodName: "postApiV1AppAuthMobileToken",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/token/route.ts",
+  },
   "POST /api/v1/app-credits/checkout": {
     method: "POST",
     path: "/api/v1/app-credits/checkout",
@@ -4904,7 +4958,9 @@ export interface PublicRoutePathParams {
     workflowId: string | number;
   };
   "DELETE /api/v1/api-keys/{id}": { id: string | number };
+  "DELETE /api/v1/api-keys/current": Record<never, never>;
   "DELETE /api/v1/apis/storage/objects/_": Record<never, never>;
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}/discord-automation": { id: string | number };
   "DELETE /api/v1/apps/{id}/domains": { id: string | number };
@@ -5005,6 +5061,8 @@ export interface PublicRoutePathParams {
   };
   "GET /api/v1/apis/storage/list": Record<never, never>;
   "GET /api/v1/apis/storage/objects/_": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/config": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
   "GET /api/v1/app-credits/verify": Record<never, never>;
@@ -5363,6 +5421,8 @@ export interface PublicRoutePathParams {
   "POST /api/v1/apis/storage/presign": Record<never, never>;
   "POST /api/v1/apis/tunnels/tailscale/auth-key": Record<never, never>;
   "POST /api/v1/app-auth/connect": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/ack": Record<never, never>;
+  "POST /api/v1/app-auth/mobile/token": Record<never, never>;
   "POST /api/v1/app-credits/checkout": Record<never, never>;
   "POST /api/v1/app/agents": Record<never, never>;
   "POST /api/v1/approval-requests": Record<never, never>;
@@ -5664,11 +5724,13 @@ export interface PublicRouteHeaders {
   "DELETE /api/v1/agents/{agentId}/publish": never;
   "DELETE /api/v1/agents/{agentId}/workflows/{workflowId}": never;
   "DELETE /api/v1/api-keys/{id}": never;
+  "DELETE /api/v1/api-keys/current": never;
   "DELETE /api/v1/apis/storage/objects/_": {
     "X-Storage-Object-Key": string;
     "Idempotency-Key": string;
     "Content-Type"?: string;
   };
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": never;
   "DELETE /api/v1/apps/{id}": never;
   "DELETE /api/v1/apps/{id}/discord-automation": never;
   "DELETE /api/v1/apps/{id}/domains": never;
@@ -5748,6 +5810,8 @@ export interface PublicRouteHeaders {
     "Idempotency-Key": string;
     "Content-Type"?: string;
   };
+  "GET /api/v1/app-auth/mobile/config": never;
+  "GET /api/v1/app-auth/mobile/credentials": never;
   "GET /api/v1/app-auth/session": never;
   "GET /api/v1/app-credits/balance": never;
   "GET /api/v1/app-credits/verify": never;
@@ -6002,6 +6066,8 @@ export interface PublicRouteHeaders {
   };
   "POST /api/v1/apis/tunnels/tailscale/auth-key": never;
   "POST /api/v1/app-auth/connect": never;
+  "POST /api/v1/app-auth/mobile/ack": never;
+  "POST /api/v1/app-auth/mobile/token": never;
   "POST /api/v1/app-credits/checkout": never;
   "POST /api/v1/app/agents": never;
   "POST /api/v1/approval-requests": never;
@@ -6444,6 +6510,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  deleteApiV1ApiKeysCurrent<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/current"> = {},
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/api-keys/current", TResponse>(
+      "DELETE /api/v1/api-keys/current",
+      options,
+    );
+  }
+
   deleteApiV1ApisStorageObjects<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/_">,
   ): Promise<TResponse> {
@@ -6451,6 +6526,15 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/apis/storage/objects/_",
       options,
     );
+  }
+
+  deleteApiV1AppAuthMobileCredentialsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      TResponse
+    >("DELETE /api/v1/app-auth/mobile/credentials/{id}", options);
   }
 
   deleteApiV1AppsById<TResponse = unknown>(
@@ -7095,6 +7179,24 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/_">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
+  }
+
+  getApiV1AppAuthMobileConfig<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/app-auth/mobile/config", TResponse>(
+      "GET /api/v1/app-auth/mobile/config",
+      options,
+    );
+  }
+
+  getApiV1AppAuthMobileCredentials<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/app-auth/mobile/credentials", TResponse>(
+      "GET /api/v1/app-auth/mobile/credentials",
+      options,
+    );
   }
 
   getApiV1AppAuthSession<TResponse = unknown>(
@@ -9315,6 +9417,24 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1AppAuthMobileAck<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/mobile/ack", TResponse>(
+      "POST /api/v1/app-auth/mobile/ack",
+      options,
+    );
+  }
+
+  postApiV1AppAuthMobileToken<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/token"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/app-auth/mobile/token", TResponse>(
+      "POST /api/v1/app-auth/mobile/token",
+      options,
+    );
+  }
+
   postApiV1AppCreditsCheckout<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/app-credits/checkout"> = {},
   ): Promise<TResponse> {
@@ -11311,10 +11431,25 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/api-keys/{id}", options);
   }
 
+  deleteApiV1ApiKeysCurrentRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/api-keys/current"> = {},
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/api-keys/current", options);
+  }
+
   deleteApiV1ApisStorageObjectsRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/apis/storage/objects/_">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/apis/storage/objects/_", options);
+  }
+
+  deleteApiV1AppAuthMobileCredentialsByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      options,
+    );
   }
 
   deleteApiV1AppsByIdRaw(
@@ -11795,6 +11930,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/apis/storage/objects/_">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/apis/storage/objects/_", options);
+  }
+
+  getApiV1AppAuthMobileConfigRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/mobile/config", options);
+  }
+
+  getApiV1AppAuthMobileCredentialsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/mobile/credentials", options);
   }
 
   getApiV1AppAuthSessionRaw(
@@ -13397,6 +13544,18 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/app-auth/connect"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/app-auth/connect", options);
+  }
+
+  postApiV1AppAuthMobileAckRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/ack"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/mobile/ack", options);
+  }
+
+  postApiV1AppAuthMobileTokenRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/app-auth/mobile/token"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/app-auth/mobile/token", options);
   }
 
   postApiV1AppCreditsCheckoutRaw(

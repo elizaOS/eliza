@@ -16,7 +16,8 @@
  * here (the repo cannot be driven against a real DB) — it never silently passes.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 // This suite drives an ISOLATED in-process PGlite (see docstring). When the
 // ambient DATABASE_URL is a real shared Postgres (e.g. CI's
@@ -38,9 +39,11 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
+import { buildMobileAppAuthCredentialProvenance } from "../../mobile-app-auth-credential-policy";
 import { apiKeys } from "../../schemas/api-keys";
 import { appConfig } from "../../schemas/app-config";
 import { appDomains } from "../../schemas/app-domains";
+import type { AppFrontendDeployment } from "../../schemas/app-frontend-deployments";
 import {
   appAnalytics,
   appDeploymentStatusEnum,
@@ -50,6 +53,7 @@ import {
   appUsers,
   userDatabaseStatusEnum,
 } from "../../schemas/apps";
+import { mobileAppAuthGrants } from "../../schemas/mobile-app-auth-grants";
 import { organizations } from "../../schemas/organizations";
 import { users } from "../../schemas/users";
 import { apiKeysRepository } from "../api-keys";
@@ -64,6 +68,7 @@ let getMaxAppsPerOrg: typeof import("../../../lib/services/apps").getMaxAppsPerO
 let appAnalyticsService: typeof import("../../../lib/services/app-analytics").appAnalyticsService;
 let cache: typeof import("../../../lib/cache/client").cache;
 let CacheKeys: typeof import("../../../lib/cache/keys").CacheKeys;
+let apiKeysService: typeof import("../../../lib/services/api-keys").apiKeysService;
 let pgliteReady = true;
 
 // Monotonic counter keeps seeded slugs/identities unique across tests without
@@ -112,6 +117,7 @@ beforeAll(async () => {
     ({ appAnalyticsService } = await import("../../../lib/services/app-analytics"));
     ({ cache } = await import("../../../lib/cache/client"));
     ({ CacheKeys } = await import("../../../lib/cache/keys"));
+    ({ apiKeysService } = await import("../../../lib/services/api-keys"));
 
     // Generate DDL from the real schema objects and apply it to the same
     // PGlite connection the repository queries through (`dbWrite`). Enums must
@@ -129,6 +135,7 @@ beforeAll(async () => {
       appDeploymentStatusEnum,
       appReviewStatusEnum,
       userDatabaseStatusEnum,
+      mobileAppAuthGrants,
     };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
@@ -417,8 +424,29 @@ describe("AppsRepository.claimDeploymentStart", () => {
   });
 });
 
-describe("AppsRepository.delete", () => {
-  test("delete removes the row (findById -> undefined) and evicts the cache", async () => {
+describe("AppsRepository staged deletion", () => {
+  test("repository direct update refuses deactivation without credential revocation", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Direct Deactivate Guard",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+
+    await expect(appsRepository.update(created.id, { is_active: false })).rejects.toThrow(
+      "deactivation must use updateWithMobileAuthRevocation",
+    );
+    await expect(appsRepository.prepareDeleteWithMobileAuthRevocation(FRESH_UUID)).resolves.toEqual(
+      {
+        app: undefined,
+        revokedKeyHashes: [],
+      },
+    );
+    await expect(appsRepository.finalizeDelete(FRESH_UUID)).resolves.toBeUndefined();
+  });
+
+  test("revocation tombstone then finalization removes the row and evicts the cache", async () => {
     expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
     const created = await createApp({
@@ -430,11 +458,510 @@ describe("AppsRepository.delete", () => {
     // Warm cache via the service so we can prove the delete evicts it.
     await appsService.getById(created.id);
 
-    await appsRepository.delete(created.id);
+    await expect(appsRepository.finalizeDelete(created.id)).rejects.toThrow(
+      "requires completed mobile credential revocation",
+    );
+    await appsRepository.prepareDeleteWithMobileAuthRevocation(created.id);
+    await appsRepository.finalizeDelete(created.id);
 
     expect(await appsRepository.findById(created.id)).toBeUndefined();
     // Service read goes back to the DB (cache evicted) and finds nothing.
     expect(await appsService.getById(created.id)).toBeUndefined();
+  });
+
+  test("service deletion uses the primary tombstone row when the read replica misses", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const generated = apiKeysService.generateApiKey();
+    const apiKeyId = crypto.randomUUID();
+    await apiKeysRepository.create({
+      id: apiKeyId,
+      name: "Replica-lag app key",
+      key_hash: generated.hash,
+      key_prefix: generated.prefix,
+      organization_id: organizationId,
+      user_id: userId,
+      is_active: true,
+    });
+    const created = await createApp({
+      name: "Replica Lag Delete",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+      api_key_id: apiKeyId,
+    });
+    const now = new Date();
+    const deployment: AppFrontendDeployment = {
+      id: crypto.randomUUID(),
+      app_id: created.id,
+      version: 1,
+      status: "active",
+      r2_prefix: `apps/${created.id}/v1/`,
+      manifest: null,
+      content_hash: null,
+      file_count: 0,
+      total_bytes: 0,
+      build_meta: {},
+      error: null,
+      created_by_user_id: userId,
+      created_at: now,
+      updated_at: now,
+      finalized_at: now,
+      activated_at: now,
+    };
+    const { userDatabaseService } = await import("../../../lib/services/user-database");
+    const { appFrontendDeploymentsRepository } = await import("../app-frontend-deployments");
+    const { appFrontendHostingService } = await import(
+      "../../../lib/services/app-frontend-hosting"
+    );
+    const events: string[] = [];
+    const originalPrepare = appsRepository.prepareDeleteWithMobileAuthRevocation;
+    const originalFinalize = appsRepository.finalizeDelete;
+    const originalDeleteKey = apiKeysService.delete;
+    const replicaRead = spyOn(appsRepository, "findById").mockResolvedValue(undefined);
+    const prepare = spyOn(
+      appsRepository,
+      "prepareDeleteWithMobileAuthRevocation",
+    ).mockImplementation(async (id, deletedAt) => {
+      events.push("prepare-primary");
+      return await originalPrepare.call(appsRepository, id, deletedAt);
+    });
+    const cleanupDatabase = spyOn(userDatabaseService, "cleanupDatabase").mockImplementation(
+      async () => {
+        events.push("cleanup-database");
+      },
+    );
+    const listDeployments = spyOn(appFrontendDeploymentsRepository, "listByApp").mockImplementation(
+      async () => {
+        events.push("list-deployments");
+        return [deployment];
+      },
+    );
+    const deleteArtifacts = spyOn(appFrontendHostingService, "deleteArtifacts").mockImplementation(
+      async () => {
+        events.push("delete-artifacts");
+      },
+    );
+    const deleteKey = spyOn(apiKeysService, "delete").mockImplementation(async (id) => {
+      events.push("delete-ordinary-key");
+      await originalDeleteKey.call(apiKeysService, id);
+    });
+    const finalize = spyOn(appsRepository, "finalizeDelete").mockImplementation(async (id) => {
+      events.push("finalize-primary");
+      return await originalFinalize.call(appsRepository, id);
+    });
+
+    try {
+      await appsService.delete(created.id);
+      expect(replicaRead).not.toHaveBeenCalled();
+      expect(cleanupDatabase).toHaveBeenCalledWith(created.id, {
+        organizationId,
+        userId,
+      });
+      expect(listDeployments).toHaveBeenCalledWith(created.id, 1000);
+      expect(deleteArtifacts).toHaveBeenCalledWith(deployment);
+      expect(deleteKey).toHaveBeenCalledWith(apiKeyId);
+      expect(events).toEqual([
+        "prepare-primary",
+        "cleanup-database",
+        "list-deployments",
+        "delete-artifacts",
+        "delete-ordinary-key",
+        "finalize-primary",
+      ]);
+    } finally {
+      finalize.mockRestore();
+      deleteKey.mockRestore();
+      deleteArtifacts.mockRestore();
+      listDeployments.mockRestore();
+      cleanupDatabase.mockRestore();
+      prepare.mockRestore();
+      replicaRead.mockRestore();
+    }
+
+    expect(await appsRepository.findById(created.id)).toBeUndefined();
+    expect(await apiKeysRepository.findByIdConsistent(apiKeyId)).toBeUndefined();
+  });
+});
+
+describe("AppsService usage and management wrappers", () => {
+  test("usage tracking logs request, app usage, and per-user usage when an API key resolves", async () => {
+    expect(pgliteReady).toBe(true);
+    const app = {
+      id: "11111111-1111-4111-8111-111111111111",
+      slug: "usage-wrapper",
+    } as App;
+    const getByApiKeyId = spyOn(appsService, "getByApiKeyId").mockResolvedValue(app);
+    const incrementUsage = spyOn(appsService, "incrementUsage").mockResolvedValue(undefined);
+    const trackUsage = spyOn(appsService, "trackUsage").mockResolvedValue(undefined);
+    const logRequest = spyOn(appsRepository, "logRequest").mockResolvedValue(undefined as never);
+
+    try {
+      await appsService.trackUsageByApiKey("apikey-123456789", "1.25", {
+        userId: "22222222-2222-4222-8222-222222222222",
+        requestType: "chat",
+      });
+      await appsService.trackDetailedRequest("apikey-123456789", {
+        requestType: "chat",
+        source: "ios",
+        userId: "22222222-2222-4222-8222-222222222222",
+        inputTokens: 10,
+        outputTokens: 20,
+        creditsUsed: "2.50",
+        metadata: { platform: "ios" },
+      });
+
+      expect(getByApiKeyId).toHaveBeenCalledTimes(2);
+      expect(incrementUsage).toHaveBeenCalledWith(app.id, "1.25");
+      expect(incrementUsage).toHaveBeenCalledWith(app.id, "2.50");
+      expect(trackUsage).toHaveBeenCalledWith(
+        app.id,
+        "22222222-2222-4222-8222-222222222222",
+        "2.50",
+        { requestType: "chat" },
+      );
+      expect(logRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: app.id,
+          request_type: "chat",
+          source: "ios",
+          credits_used: "2.50",
+        }),
+      );
+    } finally {
+      logRequest.mockRestore();
+      trackUsage.mockRestore();
+      incrementUsage.mockRestore();
+      getByApiKeyId.mockRestore();
+    }
+  });
+
+  test("page views, analytics wrappers, origins, and API-key regeneration delegate cleanly", async () => {
+    expect(pgliteReady).toBe(true);
+    const app = {
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "Delegated App",
+      slug: "delegated-app",
+      app_url: "https://delegated.example",
+      allowed_origins: ["https://extra.example"],
+      api_key_id: "old-key",
+      organization_id: "44444444-4444-4444-8444-444444444444",
+      created_by_user_id: "55555555-5555-4555-8555-555555555555",
+      is_active: true,
+    } as App;
+    const logRequest = spyOn(appsRepository, "logRequest").mockResolvedValue(undefined as never);
+    const incrementUsage = spyOn(appsService, "incrementUsage").mockResolvedValue(undefined);
+    const findById = spyOn(appsRepository, "findById").mockResolvedValue(app);
+    const emptyRequestStats = {
+      totalRequests: 0,
+      uniqueIps: 0,
+      uniqueUsers: 0,
+      byType: {},
+      bySource: {},
+      byStatus: {},
+      totalCredits: "0",
+      avgResponseTime: null,
+    };
+    const getRequestStats = spyOn(appsRepository, "getRequestStats").mockResolvedValue(
+      emptyRequestStats,
+    );
+    const getRecentRequests = spyOn(appsRepository, "getRecentRequests").mockResolvedValue({
+      requests: [],
+      total: 0,
+    });
+    const getTopVisitors = spyOn(appsRepository, "getTopVisitors").mockResolvedValue([] as never);
+    const getRequestsOverTime = spyOn(appsRepository, "getRequestsOverTime").mockResolvedValue(
+      [] as never,
+    );
+    const listAppUsers = spyOn(appsRepository, "listAppUsers").mockResolvedValue([] as never);
+    const getAnalytics = spyOn(appsRepository, "getAnalytics").mockResolvedValue([]);
+    const getTotalStats = spyOn(appsRepository, "getTotalStats").mockResolvedValue({
+      totalRequests: 0,
+      totalUsers: 0,
+      totalCreditsUsed: "0.00",
+    });
+    const managedDomains = await import("../../../lib/services/managed-domains");
+    const listVerifiedOrigins = spyOn(
+      managedDomains.managedDomainsService,
+      "listVerifiedAppOrigins",
+    ).mockResolvedValue(["https://custom.example"]);
+    const deleteKey = spyOn(apiKeysService, "delete").mockResolvedValue(undefined);
+    const createKey = spyOn(apiKeysService, "create").mockResolvedValue({
+      apiKey: { id: "new-key" },
+      plainKey: "eliza_new_plain",
+    } as never);
+    const updateApp = spyOn(appsRepository, "update").mockResolvedValue(app);
+
+    try {
+      await appsService.trackPageView(app.id, {
+        pageUrl: "https://delegated.example/page",
+        referrer: "https://referrer.example",
+        source: "ios",
+        metadata: { variant: "cloud" },
+      });
+      expect(logRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: app.id,
+          request_type: "pageview",
+          metadata: expect.objectContaining({ variant: "cloud" }),
+        }),
+      );
+
+      await expect(appsService.getRequestStats(app.id)).resolves.toEqual(emptyRequestStats);
+      await expect(appsService.getRecentRequests(app.id)).resolves.toEqual({
+        requests: [],
+        total: 0,
+      });
+      await expect(appsService.getTopVisitors(app.id)).resolves.toEqual([]);
+      await expect(
+        appsService.getRequestsOverTime(app.id, "daily", new Date(), new Date()),
+      ).resolves.toEqual([]);
+      await expect(appsService.getAppUsers(app.id)).resolves.toEqual([]);
+      await expect(
+        appsService.getAnalytics(app.id, "daily", new Date(), new Date()),
+      ).resolves.toEqual([]);
+      await expect(appsService.getTotalStats(app.id)).resolves.toEqual({
+        totalRequests: 0,
+        totalUsers: 0,
+        totalCreditsUsed: "0.00",
+      });
+      await expect(appsService.getAllowedOrigins(app)).resolves.toEqual([
+        "https://delegated.example",
+        "https://extra.example",
+        "https://custom.example",
+      ]);
+      await expect(appsService.validateOrigin(app.id, "https://custom.example")).resolves.toBe(
+        true,
+      );
+      await expect(appsService.regenerateApiKey(app.id)).resolves.toBe("eliza_new_plain");
+      expect(deleteKey).toHaveBeenCalledWith("old-key");
+      expect(createKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization_id: app.organization_id,
+          user_id: app.created_by_user_id,
+        }),
+      );
+      expect(updateApp).toHaveBeenCalledWith(app.id, { api_key_id: "new-key" });
+    } finally {
+      updateApp.mockRestore();
+      createKey.mockRestore();
+      deleteKey.mockRestore();
+      listVerifiedOrigins.mockRestore();
+      getTotalStats.mockRestore();
+      getAnalytics.mockRestore();
+      listAppUsers.mockRestore();
+      getRequestsOverTime.mockRestore();
+      getTopVisitors.mockRestore();
+      getRecentRequests.mockRestore();
+      getRequestStats.mockRestore();
+      findById.mockRestore();
+      incrementUsage.mockRestore();
+      logRequest.mockRestore();
+    }
+  });
+});
+
+describe("mobile credential app lifecycle", () => {
+  async function seedMobileCredential(input: {
+    appId: string;
+    organizationId: string;
+    userId: string;
+  }): Promise<{ credentialId: string; keyHash: string; secret: string }> {
+    const secret = `eliza_mobile_${crypto.randomUUID().replaceAll("-", "")}${crypto
+      .randomUUID()
+      .replaceAll("-", "")}`;
+    const keyHash = createHash("sha256").update(secret).digest("hex");
+    const credentialId = crypto.randomUUID();
+    const grantId = crypto.randomUUID();
+    const provenance = buildMobileAppAuthCredentialProvenance({
+      grantId,
+      environment: "staging",
+      clientId: "ai.elizaos.app",
+      scopes: ["cloud:user"],
+    });
+    await dbWrite.insert(apiKeys).values({
+      id: credentialId,
+      name: provenance.name,
+      description: provenance.description,
+      key_hash: keyHash,
+      key_prefix: secret.slice(0, 12),
+      key_ciphertext: `ciphertext-${credentialId}`,
+      key_nonce: `nonce-${credentialId}`,
+      key_auth_tag: `auth-tag-${credentialId}`,
+      key_kms_key_id: `kms-key-${credentialId}`,
+      key_kms_key_version: 7,
+      organization_id: input.organizationId,
+      user_id: input.userId,
+      source_app_id: input.appId,
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+    await dbWrite.insert(mobileAppAuthGrants).values({
+      id: grantId,
+      code_hash: createHash("sha256").update(crypto.randomUUID()).digest("hex"),
+      app_id: input.appId,
+      client_id: "ai.elizaos.app",
+      user_id: input.userId,
+      organization_id: input.organizationId,
+      environment: "staging",
+      redirect_uri: "https://eliza.app/auth/callback",
+      state_hash: createHash("sha256").update(crypto.randomUUID()).digest("hex"),
+      code_challenge: "c".repeat(43),
+      code_challenge_method: "S256",
+      scopes: ["cloud:user"],
+      status: "acknowledged",
+      credential_id: credentialId,
+      expires_at: new Date(Date.now() + 60_000),
+      exchanged_at: new Date(),
+      acknowledged_at: new Date(),
+    });
+    return { credentialId, keyHash, secret };
+  }
+
+  async function expectCredentialTombstone(input: {
+    appId: string;
+    credentialId: string;
+    keyHash: string;
+  }): Promise<void> {
+    const credential = await apiKeysRepository.findById(input.credentialId);
+    expect(credential).toMatchObject({
+      id: input.credentialId,
+      is_active: false,
+      key_hash: input.keyHash,
+      source_app_id: input.appId,
+      key_ciphertext: null,
+      key_nonce: null,
+      key_auth_tag: null,
+      key_kms_key_id: null,
+      key_kms_key_version: null,
+    });
+    expect(credential?.deleted_at).toBeInstanceOf(Date);
+  }
+
+  test("deactivation atomically removes grants and revokes the key during cache brownout", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createApp({
+      name: "Mobile Source Deactivate",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+    const credential = await seedMobileCredential({
+      appId: app.id,
+      organizationId,
+      userId,
+    });
+    expect(await apiKeysService.validateApiKey(credential.secret)).toMatchObject({
+      id: credential.credentialId,
+    });
+
+    const invalidate = spyOn(apiKeysService, "invalidateCache").mockRejectedValue(
+      new Error("configured cache backend is unavailable"),
+    );
+    let updated: App | undefined;
+    try {
+      updated = await appsService.update(app.id, { is_active: false });
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      invalidate.mockRestore();
+    }
+    expect(updated?.is_active).toBe(false);
+    expect(await apiKeysService.validateApiKey(credential.secret)).toBeNull();
+    expect(
+      await dbWrite.query.mobileAppAuthGrants.findFirst({
+        where: eq(mobileAppAuthGrants.credential_id, credential.credentialId),
+      }),
+    ).toBeUndefined();
+    await expectCredentialTombstone({
+      appId: app.id,
+      credentialId: credential.credentialId,
+      keyHash: credential.keyHash,
+    });
+  });
+
+  test("deactivation scrubs stale ciphertext without replacing an existing revocation receipt", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createApp({
+      name: "Mobile Source Existing Tombstone",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+    const credentialId = crypto.randomUUID();
+    const secret = `eliza_mobile_${crypto.randomUUID().replaceAll("-", "")}${crypto
+      .randomUUID()
+      .replaceAll("-", "")}`;
+    const keyHash = createHash("sha256").update(secret).digest("hex");
+    const originalRevokedAt = new Date("2026-01-02T03:04:05.000Z");
+    const provenance = buildMobileAppAuthCredentialProvenance({
+      grantId: credentialId,
+      environment: "staging",
+      clientId: "ai.elizaos.app",
+      scopes: ["cloud:user"],
+    });
+    await dbWrite.insert(apiKeys).values({
+      id: credentialId,
+      name: provenance.name,
+      description: provenance.description,
+      key_hash: keyHash,
+      key_prefix: secret.slice(0, 12),
+      key_ciphertext: `stale-ciphertext-${credentialId}`,
+      key_nonce: `stale-nonce-${credentialId}`,
+      key_auth_tag: `stale-auth-tag-${credentialId}`,
+      key_kms_key_id: `stale-kms-key-${credentialId}`,
+      key_kms_key_version: 3,
+      organization_id: organizationId,
+      user_id: userId,
+      source_app_id: app.id,
+      is_active: false,
+      deleted_at: originalRevokedAt,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+
+    const mutation = await appsRepository.updateWithMobileAuthRevocation(
+      app.id,
+      { is_active: false },
+      new Date("2026-07-15T12:00:00.000Z"),
+    );
+
+    expect(mutation.revokedKeyHashes).toContain(keyHash);
+    await expectCredentialTombstone({ appId: app.id, credentialId, keyHash });
+    expect((await apiKeysRepository.findById(credentialId))?.deleted_at?.getTime()).toBe(
+      originalRevokedAt.getTime(),
+    );
+  });
+
+  test("deletion keeps durable source attribution and revokes the active key during cache brownout", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const app = await createApp({
+      name: "Mobile Source Delete",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+    const credential = await seedMobileCredential({
+      appId: app.id,
+      organizationId,
+      userId,
+    });
+    expect(await apiKeysService.validateApiKey(credential.secret)).toBeDefined();
+
+    const invalidate = spyOn(apiKeysService, "invalidateCache").mockRejectedValue(
+      new Error("configured cache backend is unavailable"),
+    );
+    try {
+      await appsService.delete(app.id);
+      expect(invalidate).not.toHaveBeenCalled();
+    } finally {
+      invalidate.mockRestore();
+    }
+
+    expect(await appsRepository.findById(app.id)).toBeUndefined();
+    expect(await apiKeysService.validateApiKey(credential.secret)).toBeNull();
+    await expectCredentialTombstone({
+      appId: app.id,
+      credentialId: credential.credentialId,
+      keyHash: credential.keyHash,
+    });
   });
 });
 
@@ -1010,5 +1537,82 @@ describe("AppAnalyticsService session analytics from app_requests", () => {
     ]);
     expect(analytics.funnel.steps.map((step) => step.sessions)).toEqual([2, 1]);
     expect(analytics.funnel.steps[1]?.conversionFromStartPercent).toBe(50);
+  });
+});
+
+describe("AppsRepository request analytics", () => {
+  test("reads app identity, request filters, aggregates, and visitors from real rows", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const apiKeyId = crypto.randomUUID();
+    const app = await createApp({
+      name: "Request Analytics",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+      api_key_id: apiKeyId,
+      app_url: "https://request-analytics.example",
+      website_url: "https://request-analytics.example/site",
+      logo_url: "https://request-analytics.example/logo.png",
+      allowed_origins: ["https://request-analytics.example"],
+    });
+
+    await expect(appsRepository.findByApiKeyId(apiKeyId)).resolves.toMatchObject({ id: app.id });
+    await expect(appsRepository.findActiveApprovedById(app.id)).resolves.toEqual({
+      id: app.id,
+      name: app.name,
+    });
+    await expect(appsRepository.findPublicInfoById(app.id)).resolves.toMatchObject({
+      id: app.id,
+      app_url: "https://request-analytics.example",
+      is_active: true,
+      is_approved: true,
+    });
+    await expect(appsRepository.isSlugAvailable(app.slug)).resolves.toBe(false);
+
+    const start = new Date("2026-07-18T00:00:00.000Z");
+    const end = new Date("2026-07-19T00:00:00.000Z");
+    await appsRepository.logRequest({
+      app_id: app.id,
+      request_type: "chat",
+      source: "ios",
+      ip_address: "203.0.113.10",
+      user_id: userId,
+      credits_used: "1.25",
+      response_time_ms: 42,
+      status: "success",
+      created_at: new Date("2026-07-18T12:00:00.000Z"),
+    });
+    await appsRepository.logRequest({
+      app_id: app.id,
+      request_type: "chat",
+      source: "ios",
+      ip_address: null,
+      user_id: null,
+      credits_used: "0.75",
+      response_time_ms: 20,
+      status: "error",
+      created_at: new Date("2026-07-18T13:00:00.000Z"),
+    });
+
+    await expect(
+      appsRepository.getRecentRequests(app.id, {
+        requestType: "chat",
+        source: "ios",
+        startDate: start,
+        endDate: end,
+      }),
+    ).resolves.toMatchObject({ total: 2 });
+    await expect(appsRepository.getRequestStats(app.id, start, end)).resolves.toMatchObject({
+      totalRequests: 2,
+      uniqueIps: 1,
+      uniqueUsers: 1,
+      byType: { chat: 2 },
+      bySource: { ios: 2 },
+      byStatus: { success: 1, error: 1 },
+    });
+    await expect(appsRepository.getTopVisitors(app.id, 2, start, end)).resolves.toEqual([
+      expect.objectContaining({ ip: "203.0.113.10", requestCount: 1 }),
+      expect.objectContaining({ ip: "unknown", requestCount: 1 }),
+    ]);
   });
 });
