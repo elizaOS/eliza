@@ -76,12 +76,58 @@ describe("AndroidCloudClient", () => {
       status: "authenticated",
       token: "steward-token",
     });
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    await client.persistLogin("steward-token");
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("steward-token");
     expect(fetchImpl).toHaveBeenNthCalledWith(
       1,
       "https://api.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("removes an aborted credential commit before a newer login can persist", async () => {
+    let releaseWrite: (() => void) | undefined;
+    let secureToken: string | null = null;
+    let writeCount = 0;
+    const mutationOrder: string[] = [];
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        writeCount += 1;
+        mutationOrder.push(`write:${token}`);
+        if (writeCount === 1) {
+          await new Promise<void>((resolve) => {
+            releaseWrite = resolve;
+          });
+        }
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        mutationOrder.push("clear");
+        secureToken = null;
+      }),
+    };
+    const client = new AndroidCloudClient({ credentialStore });
+    const controller = new AbortController();
+    const staleCommit = client.persistLogin("stale-token", controller.signal);
+
+    await vi.waitFor(() =>
+      expect(credentialStore.write).toHaveBeenCalledOnce(),
+    );
+    controller.abort();
+    const freshCommit = client.persistLogin("fresh-token");
+    releaseWrite?.();
+
+    await expect(staleCommit).rejects.toMatchObject({ name: "AbortError" });
+    await expect(freshCommit).resolves.toBeUndefined();
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(mutationOrder).toEqual([
+      "write:stale-token",
+      "clear",
+      "write:fresh-token",
+    ]);
+    expect(secureToken).toBe("fresh-token");
   });
 
   it("restores identity and resolves its managed runtime before chat", async () => {

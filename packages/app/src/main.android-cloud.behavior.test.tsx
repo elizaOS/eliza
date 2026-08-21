@@ -10,6 +10,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const playEntry = vi.hoisted(() => ({
   appListeners: new Map<string, (value: unknown) => void>(),
+  voiceListeners: new Map<string, (value: never) => void>(),
+  voiceListenerRemovals: new Map<string, ReturnType<typeof vi.fn>>(),
+  voiceStart: vi.fn(async () => ({ started: true })),
+  voiceStop: vi.fn(async () => undefined),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
   preferenceGet: vi.fn(async (_options: { key: string }) => ({
     value: null as string | null,
@@ -42,11 +46,22 @@ vi.mock("@capacitor/core", () => ({
           remove: playEntry.secureClear,
         }
       : {
-          addListener: vi.fn(async () => ({ remove: vi.fn() })),
+          addListener: vi.fn(
+            async (eventName: string, listener: (value: never) => void) => {
+              playEntry.voiceListeners.set(eventName, listener);
+              const remove = vi.fn(async () => {
+                if (playEntry.voiceListeners.get(eventName) === listener) {
+                  playEntry.voiceListeners.delete(eventName);
+                }
+              });
+              playEntry.voiceListenerRemovals.set(eventName, remove);
+              return { remove };
+            },
+          ),
           requestPermission: vi.fn(async () => ({ granted: true })),
           speak: vi.fn(async () => undefined),
-          startDictation: vi.fn(async () => ({ started: true })),
-          stopDictation: vi.fn(async () => undefined),
+          startDictation: playEntry.voiceStart,
+          stopDictation: playEntry.voiceStop,
         },
 }));
 vi.mock("@capacitor/preferences", () => ({
@@ -103,9 +118,14 @@ beforeAll(async () => {
   await vi.waitFor(() => expect(playEntry.createRoot).toHaveBeenCalledOnce());
 });
 
-beforeEach(() => {
+beforeEach(async () => {
+  await entry.androidCloudVoice.stop();
   vi.clearAllMocks();
   playEntry.appListeners.clear();
+  playEntry.voiceListeners.clear();
+  playEntry.voiceListenerRemovals.clear();
+  playEntry.voiceStart.mockResolvedValue({ started: true });
+  playEntry.voiceStop.mockResolvedValue(undefined);
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -113,6 +133,44 @@ beforeEach(() => {
 });
 
 describe("Android Cloud renderer behavior", () => {
+  it("surfaces native voice errors and removes both terminal listeners", async () => {
+    const onTranscript = vi.fn();
+    const onError = vi.fn();
+
+    await entry.androidCloudVoice.requestAndStart(onTranscript, onError);
+    expect([...playEntry.voiceListeners.keys()].sort()).toEqual([
+      "error",
+      "transcript",
+    ]);
+
+    playEntry.voiceListeners.get("error")?.({ code: 7 } as never);
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "No speech was recognized. Try again.",
+      }),
+    );
+    await vi.waitFor(() => expect(playEntry.voiceListeners.size).toBe(0));
+    expect(
+      playEntry.voiceListenerRemovals.get("transcript"),
+    ).toHaveBeenCalledOnce();
+    expect(playEntry.voiceListenerRemovals.get("error")).toHaveBeenCalledOnce();
+  });
+
+  it("removes both native listeners when dictation fails to start", async () => {
+    playEntry.voiceStart.mockRejectedValueOnce(new Error("recognizer failed"));
+
+    await expect(
+      entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn()),
+    ).rejects.toThrow("Voice dictation could not start.");
+
+    expect(playEntry.voiceListeners.size).toBe(0);
+    expect(
+      playEntry.voiceListenerRemovals.get("transcript"),
+    ).toHaveBeenCalledOnce();
+    expect(playEntry.voiceListenerRemovals.get("error")).toHaveBeenCalledOnce();
+  });
+
   it("migrates a legacy bearer into the secure plugin before deleting plaintext", async () => {
     const order: string[] = [];
     playEntry.preferenceGet.mockImplementation(async ({ key }) => ({

@@ -269,7 +269,16 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
     .catch((error) => logOptionalPluginFailure("Network", error));
 }
 
-let activeTranscriptListener: { remove: () => Promise<void> } | null = null;
+interface PlayVoiceListener {
+  remove(): Promise<void>;
+}
+
+interface ActivePlayVoiceListeners {
+  transcript: PlayVoiceListener;
+  error: PlayVoiceListener;
+}
+
+let activeVoiceListeners: ActivePlayVoiceListeners | null = null;
 
 interface PlayVoicePlugin {
   requestPermission(): Promise<{ granted: boolean }>;
@@ -281,47 +290,124 @@ interface PlayVoicePlugin {
   addListener(
     eventName: "transcript",
     listener: (event: { text: string; isFinal: boolean }) => void,
-  ): Promise<{ remove: () => Promise<void> }>;
+  ): Promise<PlayVoiceListener>;
+  addListener(
+    eventName: "error",
+    listener: (event: { code: number }) => void,
+  ): Promise<PlayVoiceListener>;
 }
 
 const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
 
-const androidCloudVoice: AndroidCloudVoiceAdapter = {
-  async requestAndStart(onFinalTranscript) {
-    await activeTranscriptListener?.remove();
-    activeTranscriptListener = null;
+function playVoiceError(code: number): Error {
+  const message =
+    code === 1
+      ? "Voice recognition timed out. Check your connection and try again."
+      : code === 2
+        ? "Voice recognition lost its network connection. Try again."
+        : code === 3
+          ? "The microphone audio could not be recorded. Try again."
+          : code === 6
+            ? "No speech was heard. Try speaking again."
+            : code === 7
+              ? "No speech was recognized. Try again."
+              : code === 8
+                ? "Voice recognition is busy. Wait a moment and try again."
+                : code === 9
+                  ? "Microphone permission is required for voice dictation."
+                  : code === 10
+                    ? "Voice recognition received too many requests. Wait and try again."
+                    : code === 12 || code === 13
+                      ? "Voice recognition does not support this language on this device."
+                      : "Voice recognition failed. Try again.";
+  return new Error(message);
+}
+
+export const androidCloudVoice: AndroidCloudVoiceAdapter = {
+  async requestAndStart(onFinalTranscript, onError) {
+    await androidCloudVoice.stop();
     const permissions = await PlayVoice.requestPermission();
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
     }
-    const transcriptListener = await PlayVoice.addListener(
-      "transcript",
-      (event) => {
-        if (!event.isFinal) return;
+    let listeners: ActivePlayVoiceListeners | null = null;
+    const listenerResults = await Promise.allSettled([
+      PlayVoice.addListener("transcript", (event) => {
+        if (activeVoiceListeners !== listeners || !event.isFinal) return;
         const transcript = event.text.trim();
         if (transcript) onFinalTranscript(transcript);
-        void androidCloudVoice.stop();
-      },
+        void androidCloudVoice
+          .stop()
+          // error-policy:J6 listener teardown is best effort after a terminal event.
+          .catch((error) => logOptionalPluginFailure("PlayVoice", error));
+      }),
+      PlayVoice.addListener("error", (event) => {
+        if (activeVoiceListeners !== listeners) return;
+        onError(playVoiceError(event.code));
+        void androidCloudVoice
+          .stop()
+          // error-policy:J6 listener teardown is best effort after a terminal event.
+          .catch((error) => logOptionalPluginFailure("PlayVoice", error));
+      }),
+    ]);
+    const rejected = listenerResults.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
     );
-    activeTranscriptListener = transcriptListener;
-    const result = await PlayVoice.startDictation({
-      language: navigator.language || "en-US",
-    });
-    if (!result.started) {
-      await transcriptListener.remove();
-      if (activeTranscriptListener === transcriptListener) {
-        activeTranscriptListener = null;
+    if (rejected) {
+      await Promise.all(
+        listenerResults.flatMap((result) =>
+          result.status === "fulfilled" ? [result.value.remove()] : [],
+        ),
+      );
+      throw new Error("Voice dictation listeners could not be registered.", {
+        cause: rejected.reason,
+      });
+    }
+    const [transcriptResult, errorResult] = listenerResults;
+    if (
+      transcriptResult.status !== "fulfilled" ||
+      errorResult.status !== "fulfilled"
+    ) {
+      throw new Error("Voice dictation listeners could not be registered.");
+    }
+    listeners = {
+      transcript: transcriptResult.value,
+      error: errorResult.value,
+    };
+    activeVoiceListeners = listeners;
+    const [startResult] = await Promise.allSettled([
+      PlayVoice.startDictation({
+        language: navigator.language || "en-US",
+      }),
+    ]);
+    if (startResult.status === "rejected" || !startResult.value.started) {
+      if (activeVoiceListeners === listeners) activeVoiceListeners = null;
+      await Promise.all([
+        listeners.transcript.remove(),
+        listeners.error.remove(),
+      ]);
+      if (startResult.status === "rejected") {
+        throw new Error("Voice dictation could not start.", {
+          cause: startResult.reason,
+        });
       }
-      throw new Error(result.error || "Voice dictation could not start.");
+      throw new Error(
+        startResult.value.error || "Voice dictation could not start.",
+      );
     }
   },
   async stop() {
-    const listener = activeTranscriptListener;
-    activeTranscriptListener = null;
+    const listeners = activeVoiceListeners;
+    activeVoiceListeners = null;
     try {
       await PlayVoice.stopDictation();
     } finally {
-      await listener?.remove();
+      if (listeners) {
+        await Promise.all([
+          listeners.transcript.remove(),
+          listeners.error.remove(),
+        ]);
+      }
     }
   },
   async speak(text) {

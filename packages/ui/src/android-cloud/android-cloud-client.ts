@@ -160,6 +160,7 @@ export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
+  private loginCredentialMutation: Promise<void> = Promise.resolve();
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
@@ -251,12 +252,16 @@ export class AndroidCloudClient {
     return { sessionId, browserUrl: url.toString() };
   }
 
-  async pollLogin(sessionId: string): Promise<AndroidCloudLoginPoll> {
+  async pollLogin(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<AndroidCloudLoginPoll> {
     if (!SESSION_ID_PATTERN.test(sessionId)) {
       throw new Error("The sign-in session is invalid.");
     }
     const response = await this.fetchImpl(
       `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      { signal },
     );
     if (response.status === 404) {
       return { status: "expired", error: "Sign-in expired. Please try again." };
@@ -276,7 +281,6 @@ export class AndroidCloudClient {
         stringField(data.accessToken) ??
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
-      await this.credentialStore.write(token);
       return { status: "authenticated", token };
     }
     if (status === "expired" || status === "error") {
@@ -286,6 +290,37 @@ export class AndroidCloudClient {
       };
     }
     return { status: "pending" };
+  }
+
+  /**
+   * Persists a completed login only while its owning attempt remains active.
+   * Login writes are serialized so an aborted attempt finishes its cleanup
+   * before a newer attempt can commit a replacement credential.
+   */
+  async persistLogin(token: string, signal?: AbortSignal): Promise<void> {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
+      throw new Error("Sign-in completed without a session token.");
+    }
+
+    const commit = async () => {
+      if (signal?.aborted) {
+        throw new DOMException("Sign-in was cancelled.", "AbortError");
+      }
+      await this.credentialStore.write(normalizedToken);
+      if (signal?.aborted) {
+        await this.credentialStore.clear();
+        throw new DOMException("Sign-in was cancelled.", "AbortError");
+      }
+    };
+    const mutation = this.loginCredentialMutation.then(commit, commit);
+    // error-policy:J5 the caller awaits `mutation`; this tail only keeps the
+    // next credential commit from inheriting the already-observed rejection.
+    this.loginCredentialMutation = mutation.then(
+      () => undefined,
+      () => undefined,
+    );
+    await mutation;
   }
 
   async sendChat(
