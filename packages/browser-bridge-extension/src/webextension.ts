@@ -12,7 +12,11 @@ type Callback<T> = (value: T) => void;
 type RawRuntime = {
   id?: string;
   lastError?: { message?: string };
-  getManifest?: () => { version?: string; permissions?: string[] };
+  getManifest?: () => {
+    version?: string;
+    version_name?: string;
+    permissions?: string[];
+  };
   onInstalled?: {
     addListener: (listener: (details: { reason?: string }) => void) => void;
   };
@@ -27,6 +31,11 @@ type RawRuntime = {
     ) => void;
   };
   sendMessage?: (
+    message: unknown,
+    callback?: Callback<unknown>,
+  ) => Promise<unknown> | undefined;
+  sendNativeMessage?: (
+    application: string,
     message: unknown,
     callback?: Callback<unknown>,
   ) => Promise<unknown> | undefined;
@@ -276,7 +285,21 @@ function invokeAsync<T>(
 }
 
 export function getManifestVersion(): string {
-  return getRawApi().runtime?.getManifest?.().version ?? "0.0.0";
+  const manifest = getRawApi().runtime?.getManifest?.();
+  const semverPattern =
+    /^\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/;
+  const versionName = manifest?.version_name?.trim() ?? "";
+  if (semverPattern.test(versionName)) return versionName;
+  const version = manifest?.version?.trim() ?? "";
+  return semverPattern.test(version) ? version : "0.0.0";
+}
+
+export function getExtensionId(): string {
+  const extensionId = getRawApi().runtime?.id?.trim();
+  if (!extensionId) {
+    throw new Error("runtime.id is unavailable");
+  }
+  return extensionId;
 }
 
 export function hasManifestPermission(permission: string): boolean {
@@ -402,6 +425,26 @@ export async function sendRuntimeMessage<T>(message: unknown): Promise<T> {
     runtime.sendMessage?.(message, callback),
   );
   return result as T;
+}
+
+/**
+ * Sends one bounded request to a registered browser native-messaging host.
+ * Protocol validation remains with the caller because the browser API treats
+ * host responses as untrusted JSON.
+ */
+export async function sendNativeMessage<TRequest extends object, TResponse>(
+  application: string,
+  message: TRequest,
+): Promise<TResponse> {
+  const runtime = getRawApi().runtime;
+  if (!runtime?.sendNativeMessage) {
+    throw new Error("runtime.sendNativeMessage is unavailable");
+  }
+  const result = await invokeAsync<unknown>(
+    "runtime.sendNativeMessage",
+    (callback) => runtime.sendNativeMessage?.(application, message, callback),
+  );
+  return result as TResponse;
 }
 
 export async function executeScriptInMainWorld<T>(

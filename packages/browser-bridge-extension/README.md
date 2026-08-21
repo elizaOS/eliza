@@ -59,7 +59,33 @@ scripts are forbidden; only first-party bundle code may execute. No
 
 The extension connects to a running Eliza agent API server (default `http://127.0.0.1:31337`).
 
-**Authenticated pair:** On a fresh profile the extension opens its pairing guide once. Create a browser companion pairing from authenticated Eliza Browser settings, copy the resulting pairing JSON, paste it into **Pairing and Advanced Tools**, and click **Import Pairing JSON**.
+On startup and before sync, the extension asks the registered
+`ai.elizaos.browserbridge` native-messaging host for a short-lived companion
+credential. The desktop broker authenticates the current OS user and is the
+authority for the API origin and credential. A loopback page or server cannot
+enroll an extension. Explicit disconnects and server revocations suppress
+automatic enrollment until the owner imports a new authenticated pairing.
+
+Manual recovery remains available: create a browser companion pairing from
+authenticated Eliza Browser settings, copy its pairing JSON, paste it into
+**Pairing and Advanced Tools**, and click **Import Pairing JSON**.
+
+### Stable extension IDs
+
+Native-host installers must allow only the exact released extension identity;
+wildcard origins and development IDs are forbidden.
+
+- Chrome-family releases must retain the same Web Store identity (or the same
+  committed manifest public key) and register only its exact
+  `chrome-extension://<id>/` origin. Never distribute the private signing key.
+- Firefox uses the manifest ID `browser-bridge@elizaos.ai`; its native-host
+  manifest must list only that exact extension ID.
+- Safari native messaging is supplied by the signed containing app. Its bundle
+  and app-group identities must match the release signing configuration.
+
+Unpacked Chrome builds without the release public key have profile-local IDs
+and intentionally cannot use a production native-host registration. Register a
+separate exact development ID when testing locally.
 
 The retired `/api/browser-bridge/companions/auto-pair` compatibility endpoint returns `410 Gone` and never mints credentials. Loopback reachability and an extension `Origin` are not proof of owner authorization.
 
