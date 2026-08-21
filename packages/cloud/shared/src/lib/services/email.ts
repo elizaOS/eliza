@@ -20,9 +20,51 @@ import type {
 import { logger } from "../utils/logger";
 
 /**
+ * Typed configuration error for an invalid SMTP port.
+ * Thrown at the initialization boundary when SMTP_PORT is present but malformed,
+ * so operator misconfiguration is not masked as healthy SMTP setup.
+ */
+export class SmtpPortConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SmtpPortConfigError";
+  }
+}
+
+/**
+ * Canonical decimal-integer grammar: "0" or a non-zero-leading digit string.
+ * Rejects sign, decimals, exponent, hex, or trailing junk.
+ */
+const CANONICAL_DECIMAL_INTEGER_GRAMMAR = /^(?:0|[1-9][0-9]*)$/;
+
+/**
+ * Strictly resolves an SMTP port string.
+ *
+ * Validates the complete trimmed string against the canonical decimal-integer
+ * grammar before conversion, then enforces the TCP port range 1..65535.
+ * Throws {@link SmtpPortConfigError} for any present invalid value.
+ *
+ * @param raw - Raw SMTP_PORT value (trimmed before validation).
+ * @returns Parsed port number in 1..65535.
+ */
+export function resolveSmtpPort(raw: string): number {
+  const trimmed = raw.trim();
+  if (!CANONICAL_DECIMAL_INTEGER_GRAMMAR.test(trimmed)) {
+    throw new SmtpPortConfigError(
+      `Invalid SMTP_PORT "${raw}": must be a canonical decimal integer`,
+    );
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 65535) {
+    throw new SmtpPortConfigError(`Invalid SMTP_PORT "${raw}": must be in range 1..65535`);
+  }
+  return parsed;
+}
+
+/**
  * Email service supporting SendGrid API and SMTP.
  */
-class EmailService {
+export class EmailService {
   private initialized = false;
   private fromEmail: string | null = null;
   private smtpTransporter: Transporter<SMTPTransport.SentMessageInfo> | null = null;
@@ -36,9 +78,10 @@ class EmailService {
 
     if (process.env.SMTP_HOST && process.env.SMTP_PORT && process.env.SMTP_PASSWORD) {
       logger.info("[EmailService] Using SMTP configuration");
+      const port = resolveSmtpPort(process.env.SMTP_PORT);
       this.smtpTransporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: parseInt(process.env.SMTP_PORT),
+        port,
         secure: false,
         auth: {
           user: process.env.SMTP_USERNAME || "apikey",
