@@ -69,6 +69,7 @@ const POSIX_COMMAND_PREFIXES = new Set([
   "until",
   "while",
 ]);
+const ASSIGNMENT_WORD = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?=/;
 const DROP_SQL =
   /\bdrop\s+(database|table|schema)\s+(?:if\s+exists\s+)?([^\s;]+)/i;
 
@@ -83,6 +84,89 @@ function binName(value: string): string {
   return (value.split(/[\\/]/).pop() ?? "")
     .toLowerCase()
     .replace(/\.(?:exe|cmd|bat)$/i, "");
+}
+
+function endsWithLineContinuation(line: string): boolean {
+  let count = 0;
+  for (let index = line.length - 1; index >= 0; index -= 1) {
+    if (line[index] !== "\\") break;
+    count += 1;
+  }
+  return count % 2 === 1;
+}
+
+/**
+ * Scans a balanced arithmetic construct whose body is data for
+ * classification. Quoting, command substitution, and statement separators
+ * inside the body defeat static proof (the shell may backtrack to a command
+ * reading), so they refuse the arithmetic reading instead of guessing.
+ */
+function arithmeticSpan(
+  source: string,
+  start: number,
+  open: string,
+  close: string,
+  initialDepth: number,
+): { end: number } | undefined {
+  let depth = initialDepth;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index] as string;
+    if (
+      char === "'" ||
+      char === '"' ||
+      char === "`" ||
+      char === ";" ||
+      char === "\\" ||
+      (char === "$" && source[index + 1] === "(")
+    ) {
+      return undefined;
+    }
+    if (char === open) depth += 1;
+    else if (char === close) {
+      depth -= 1;
+      if (depth === 0) return { end: index };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Accepts only token sequences that a shell must evaluate as arithmetic.
+ * Adjacent operands are rejected because they are the signature of a body
+ * the shell would refuse as arithmetic and re-read as executable commands.
+ */
+function isStaticArithmetic(body: string): boolean {
+  const pattern =
+    /\s+|[0-9]+|\$?[A-Za-z_][A-Za-z0-9_]*|\*\*|<<=?|>>=?|<=|>=|==|!=|&&|\|\||[-+*/%<>=!&|^~?:,()]=?/y;
+  let depth = 0;
+  let previousOperand = false;
+  let index = 0;
+  while (index < body.length) {
+    pattern.lastIndex = index;
+    const match = pattern.exec(body);
+    if (!match || match.index !== index || match[0].length === 0) return false;
+    const token = match[0];
+    index += token.length;
+    if (/^\s+$/.test(token)) continue;
+    if (token === "(") {
+      if (previousOperand) return false;
+      depth += 1;
+      continue;
+    }
+    if (token === ")") {
+      if (depth === 0) return false;
+      depth -= 1;
+      previousOperand = true;
+      continue;
+    }
+    if (/^[0-9$A-Za-z_]/.test(token)) {
+      if (previousOperand) return false;
+      previousOperand = true;
+    } else {
+      previousOperand = false;
+    }
+  }
+  return depth === 0;
 }
 
 function addToken(result: Lexed, budget: Budget, token: Token): boolean {
@@ -194,7 +278,10 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
       result.error = "NUL byte";
       break;
     }
-    if (char === "\n" || (dialect === "powershell" && char === "\r")) {
+    // A bare carriage return is treated as a command separator in both
+    // dialects: real shells differ, but a CR must never hide a later
+    // executable segment from classification.
+    if (char === "\n" || char === "\r") {
       if (char === "\r" && source[index + 1] === "\n") index += 1;
       addToken(result, budget, { kind: "operator", value: "\n" });
       index += 1;
@@ -205,14 +292,28 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
         const bodyStart = index;
         let terminatorStart = -1;
         while (index <= source.length) {
-          const newline = source.indexOf("\n", index);
-          const lineEnd = newline < 0 ? source.length : newline;
-          const line = source.slice(index, lineEnd);
+          const lineStart = index;
+          let newline = source.indexOf("\n", index);
+          let line = source.slice(index, newline < 0 ? source.length : newline);
+          // An expanding heredoc folds backslash-newline before comparing
+          // against the delimiter, so a folded terminator ends the body here
+          // instead of smuggling the following lines into data.
+          while (
+            heredoc.expand &&
+            newline >= 0 &&
+            endsWithLineContinuation(line)
+          ) {
+            const next = source.indexOf("\n", newline + 1);
+            line =
+              line.slice(0, -1) +
+              source.slice(newline + 1, next < 0 ? source.length : next);
+            newline = next;
+          }
           const comparable = heredoc.stripTabs
             ? line.replace(/^\t+/, "")
             : line;
           if (comparable === heredoc.delimiter) {
-            terminatorStart = index;
+            terminatorStart = lineStart;
             index = newline < 0 ? source.length : newline + 1;
             break;
           }
@@ -260,6 +361,25 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
       break;
     }
     const pair = source.slice(index, index + 2);
+    // A POSIX arithmetic command's body is data; its `<<` is a shift, not a
+    // heredoc. The reading is only accepted when the construct closes with an
+    // adjacent `))` and the body holds no quoting, substitution, or statement
+    // separator — anything else may make the shell backtrack to executable
+    // subshells and must fail closed.
+    if (dialect === "posix" && boundary && pair === "((") {
+      const span = arithmeticSpan(source, index + 2, "(", ")", 2);
+      if (
+        !span ||
+        source[span.end - 1] !== ")" ||
+        !isStaticArithmetic(source.slice(index + 2, span.end - 1))
+      ) {
+        result.error = "arithmetic command is not statically supported";
+        break;
+      }
+      index = span.end + 1;
+      boundary = true;
+      continue;
+    }
     if (["&&", "||"].includes(pair) || (dialect === "posix" && pair === "|&")) {
       addToken(result, budget, { kind: "operator", value: pair });
       index += 2;
@@ -308,6 +428,13 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
           continue;
         }
         if (delimiterChar === "\\" && index + 1 < source.length) {
+          // Backslash-newline inside the delimiter word is line
+          // continuation, not quoting: the folded delimiter still expands
+          // its body.
+          if (source[index + 1] === "\n") {
+            index += 2;
+            continue;
+          }
           wordStarted = true;
           quoted = true;
           delimiter += source[index + 1] as string;
@@ -394,15 +521,98 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
         const end = source.indexOf("}", index + 1);
         const parameter = end < 0 ? "" : source.slice(index + 1, end);
         if (end < 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(parameter)) {
-          result.error =
-            "complex parameter expansion is not statically supported";
-          valid = false;
-          break;
+          // A complex expansion is dynamic data when it provably holds no
+          // quoting, substitution, or line break; a `<<` inside it is data,
+          // never a heredoc. Anything richer stays fail-closed.
+          const span = ((): { end: number } | undefined => {
+            let depth = 1;
+            for (let scan = index + 1; scan < source.length; scan += 1) {
+              const braceChar = source[scan] as string;
+              if ("'\"`\\\n\r".includes(braceChar)) return undefined;
+              if (braceChar === "$" && source[scan + 1] === "(")
+                return undefined;
+              if (braceChar === "{") depth += 1;
+              else if (braceChar === "}") {
+                depth -= 1;
+                if (depth === 0) return { end: scan };
+              }
+            }
+            return undefined;
+          })();
+          if (!span) {
+            result.error =
+              "complex parameter expansion is not statically supported";
+            valid = false;
+            break;
+          }
+          value += `{${source.slice(index + 1, span.end)}}`;
+          dynamic = true;
+          index = span.end + 1;
+          continue;
         }
         value += `{${parameter}}`;
         dynamic = true;
         index = end + 1;
         continue;
+      }
+      // `$((...))` is arithmetic when it closes with an adjacent `))` and the
+      // body proves arithmetic-only; otherwise it falls through to the
+      // command-substitution reading the shell would back off to.
+      if (
+        dialect === "posix" &&
+        wordChar === "$" &&
+        source.slice(index + 1, index + 3) === "(("
+      ) {
+        const span = arithmeticSpan(source, index + 3, "(", ")", 2);
+        if (
+          span &&
+          source[span.end - 1] === ")" &&
+          isStaticArithmetic(source.slice(index + 3, span.end - 1))
+        ) {
+          value += "__arithmetic__";
+          dynamic = true;
+          index = span.end + 1;
+          continue;
+        }
+      }
+      if (
+        dialect === "posix" &&
+        wordChar === "$" &&
+        source[index + 1] === "["
+      ) {
+        const span = arithmeticSpan(source, index + 2, "[", "]", 1);
+        if (!span || !isStaticArithmetic(source.slice(index + 2, span.end))) {
+          result.error =
+            "legacy arithmetic expansion is not statically supported";
+          valid = false;
+          break;
+        }
+        value += "__arithmetic__";
+        dynamic = true;
+        index = span.end + 1;
+        continue;
+      }
+      // `name[arithmetic]=value` is an assignment whose subscript is
+      // arithmetic context: its `<<` is a shift. Anything unprovable falls
+      // through to the ordinary glob reading.
+      if (
+        dialect === "posix" &&
+        wordChar === "[" &&
+        /^[A-Za-z_][A-Za-z0-9_]*$/.test(value)
+      ) {
+        const span = arithmeticSpan(source, index + 1, "[", "]", 1);
+        const subscript = span ? source.slice(index + 1, span.end) : "";
+        if (
+          span &&
+          source[span.end + 1] === "=" &&
+          !/\s/.test(subscript) &&
+          isStaticArithmetic(subscript)
+        ) {
+          value += `[${subscript}]`;
+          dynamic = true;
+          index = span.end + 1;
+          continue;
+        }
       }
       const terminators = dialect === "powershell" ? ";|&(){}>" : ";|&(){}<>";
       if (/\s/.test(wordChar) || terminators.includes(wordChar)) break;
@@ -703,8 +913,7 @@ function classifyArgv(
   budget: Budget,
 ): DestructiveVerdict {
   let offset = 0;
-  while (/^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[offset]?.value ?? ""))
-    offset += 1;
+  while (ASSIGNMENT_WORD.test(argv[offset]?.value ?? "")) offset += 1;
   if (!argv[offset]) return safe();
   if (
     argv[offset]?.dynamic ||
@@ -1642,7 +1851,7 @@ function classifyTokens(
   let pipedInput = false;
   const flush = (): DestructiveVerdict => {
     const executableIndex = command.findIndex(
-      (word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word.value),
+      (word) => !ASSIGNMENT_WORD.test(word.value),
     );
     const executable = binName(command[executableIndex]?.value ?? "");
     const executableRest = command.slice(executableIndex + 1);
