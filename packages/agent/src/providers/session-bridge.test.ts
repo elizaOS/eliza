@@ -2,14 +2,19 @@
  * Unit coverage for session-bridge — Eliza session-key resolution from
  * elizaOS rooms (DM/group/channel/thread) and the provider wrapper.
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Mock @elizaos/core primitives used by session-bridge
 vi.mock("@elizaos/core", () => {
-  const ChannelType = { DM: "dm", SELF: "self", GROUP: "group", CHANNEL: "channel" };
+  const ChannelType = {
+    DM: "dm",
+    SELF: "self",
+    GROUP: "group",
+    CHANNEL: "channel",
+  };
   return {
     ChannelType,
-    buildAgentMainSessionKey: ({ agentId, mainKey }: { agentId: string; mainKey: string }) =>
+    buildAgentMainSessionKey: ({ agentId }: { agentId: string }) =>
       `agent:${agentId}:main`,
     parseAgentSessionKey: (key: string) => {
       // agent:{agentId}:main
@@ -19,11 +24,11 @@ vi.mock("@elizaos/core", () => {
   };
 });
 
-import {
-  resolveSessionKeyFromRoom,
-  createSessionKeyProvider,
-} from "./session-bridge.ts";
 import { ChannelType } from "@elizaos/core";
+import {
+  createSessionKeyProvider,
+  resolveSessionKeyFromRoom,
+} from "./session-bridge.ts";
 
 function makeRoom(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -143,7 +148,11 @@ describe("createSessionKeyProvider", () => {
     const provider = createSessionKeyProvider({ defaultAgentId: "a1" });
     const runtime = {
       getRoom: vi.fn(async () =>
-        makeRoom({ type: ChannelType.GROUP, source: "telegram", channelId: "g-5" }),
+        makeRoom({
+          type: ChannelType.GROUP,
+          source: "telegram",
+          channelId: "g-5",
+        }),
       ),
     };
     const result = await provider.get(
