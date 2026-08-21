@@ -49,6 +49,12 @@ export interface SubactionPromotionOverrides {
 	similes?: readonly string[];
 	/** Filter / replace examples used for the virtual. */
 	examples?: ActionExample[][];
+	/**
+	 * Explicit parent-parameter names exposed by this virtual action. The
+	 * discriminator is always retained. Use this for wide legacy umbrellas that
+	 * cannot yet annotate every parent parameter with `subactions`.
+	 */
+	parameterNames?: readonly string[];
 }
 
 export interface PromoteSubactionsOptions {
@@ -195,6 +201,7 @@ function parameterAppliesToSubaction(
 function pinDiscriminatorForVirtual(
 	parameters: readonly ActionParameter[] | undefined,
 	subaction: string,
+	parameterNames?: readonly string[],
 ): ActionParameter[] | undefined {
 	if (!parameters) return undefined;
 	const discriminator = findDiscriminatorParameter(parameters);
@@ -221,6 +228,7 @@ function pinDiscriminatorForVirtual(
 			continue;
 		}
 		if (!parameterAppliesToSubaction(parameter, subaction)) continue;
+		if (parameterNames && !parameterNames.includes(parameter.name)) continue;
 		const { subactions: _applicability, ...rest } = parameter;
 		sliced.push(rest);
 	}
@@ -405,7 +413,11 @@ export function promoteSubactionsToActions(
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
 			validate: buildVirtualValidator(parent, subKey),
-			parameters: pinDiscriminatorForVirtual(parent.parameters, subKey),
+			parameters: pinDiscriminatorForVirtual(
+				parent.parameters,
+				subKey,
+				override.parameterNames,
+			),
 			contexts: parent.contexts,
 			contextGate: parent.contextGate,
 			roleGate: parent.roleGate,

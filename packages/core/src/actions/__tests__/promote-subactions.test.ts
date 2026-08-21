@@ -202,6 +202,19 @@ describe("promoteSubactionsToActions parameter slicing", () => {
 		expect(bad.errors.join(" ")).toContain("widgetId");
 	});
 
+	it("lets a virtual override prune legacy shared parameters", () => {
+		const [, ...virtuals] = promoteSubactionsToActions(makeUmbrella(), {
+			overrides: {
+				create: { parameterNames: ["title"] },
+			},
+		});
+		const create = findVirtual(virtuals, "WIDGET_CREATE");
+
+		expect(paramNames(create)).toEqual(["action", "title"]);
+		expect(validateToolArgs(create, { title: "hello" }).valid).toBe(true);
+		expect(validateToolArgs(create, { shared: "noise" }).valid).toBe(false);
+	});
+
 	it("dispatch still injects the discriminator for sliced virtuals", async () => {
 		const handler = vi.fn(async () => undefined);
 		const [, ...virtuals] = promoteSubactionsToActions(

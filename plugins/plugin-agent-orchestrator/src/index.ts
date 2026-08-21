@@ -185,6 +185,28 @@ export function createAgentOrchestratorPlugin(): Plugin {
               // delegation requests. See the parent comment above.
               descriptionCompressed:
                 "default ordinary coding work; delegate ACP sub-agent claude|codex|opencode; prefer TASKS_SEND if active session exists on same workdir",
+              // TASKS is a deliberately broad compatibility umbrella. Exposing
+              // every create/history/control/issue parameter on this virtual
+              // made the live Gemma planner invent unrelated fields (observed:
+              // `ratio`) and strict validation rejected an otherwise-correct
+              // spawn. Keep the virtual contract limited to fields the spawn
+              // handler actually reads; the umbrella retains its full schema.
+              parameterNames: [
+                "task",
+                "agentType",
+                "appMonetized",
+                "requestedBackend",
+                "taskComplexity",
+                "workdir",
+                "lockWorkdir",
+                "memoryContent",
+                "label",
+                "approvalPreset",
+                "deferUserReply",
+                "metadata",
+                "taskRoomId",
+                "worktreeRoomId",
+              ],
             },
           },
         }),
