@@ -25,7 +25,7 @@ Adds filesystem operations, shell command execution, and git worktree management
 |---|---|---|
 | `ShellService` | `"shell"` | Core shell executor (formerly @elizaos/plugin-shell): `executeCommand()` (simple), `exec()` (PTY, background, yield, session tracking), `processAction()` session management. Lives in `src/shell/`. |
 | `ExecApprovalService` | `"exec_approval"` | Command approval gating: file-backed allowlist, routes unapproved commands through the elizaOS `ApprovalService` UI. Lives in `src/shell/approvals/`. |
-| `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy. Validates every path before read/write. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`. |
+| `SandboxService` | `CODING_TOOLS_SANDBOX` | Path-blocklist policy for FILE, WORKTREE, and the SHELL working directory. Defaults block `~/pvt`, `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`, `~/Library`, plus per-OS system paths. Optional allow-roots via `CODING_TOOLS_WORKSPACE_ROOTS`; these do not confine paths referenced by a shell command. |
 | `FileStateService` | `CODING_TOOLS_FILE_STATE` | Per-(conversation, file) mtime tracking. Write/Edit check that the file was not externally modified since the last Read. |
 | `SessionCwdService` | `CODING_TOOLS_SESSION_CWD` | Per-conversation working directory. Defaults to `process.cwd()`. Read/Write/Edit resolve relative paths against it; Glob/Grep/LS/Shell use it when no explicit `path`/`cwd` is given. Worktree push/pop mutates it. |
 | `BackgroundShellService` | `CODING_TOOLS_BACKGROUND_SHELL` | Per-conversation background shell process manager. Owns stable handles, stdin writes, bounded stdout/stderr rings, SIGTERM→SIGKILL termination, and teardown reaping. |
@@ -95,7 +95,7 @@ All settings are read via `runtime.getSetting(key)` or `process.env`. None are r
 
 | Env var | Default | Description |
 |---|---|---|
-| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. When set, paths outside these roots are rejected. |
+| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. This does not restrict paths that a SHELL command reads or writes. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in list) | Comma-separated absolute paths — **replaces** the configurable default blocklist; unconditional device and `/proc/<pid>/fd` exclusions remain enforced. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Comma-separated paths to **add** to the default blocklist. |
 | `CODING_TOOLS_SHELL` | (auto-detected) | Override the shell binary used by SHELL action. Takes priority over `SHELL`. Useful on Android/AOSP where the default shell path may not be executable. |
@@ -159,6 +159,7 @@ Runtime gating env vars (read by `auto-enable.ts` and `index.ts`):
 
 - **READ/WRITE/EDIT paths may be absolute or relative.** Relative paths resolve against `SessionCwdService.getCwd(message.roomId)`; the resolved absolute path must still pass `SandboxService.validatePath`. A missing session-cwd service is an explicit failure.
 - **Always validate paths through `SandboxService.validatePath`** before any filesystem access. Never bypass this.
+- **SHELL is trusted host execution, not filesystem confinement.** `CODING_TOOLS_WORKSPACE_ROOTS` validates SHELL's `cwd` only. Commands may address paths outside those roots, so the OWNER role and deployment host/container boundary must be trusted.
 - **Read before write**: `FileStateService.assertWritable` will reject a write if the file was modified externally since the last read. The agent must re-read first.
 - **`conversationId` = `message.roomId`** (string-coerced). Missing `roomId` is a hard failure.
 - **Never throw from a handler** — return `failureToActionResult({ reason, message })` instead.
