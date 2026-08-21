@@ -51,27 +51,11 @@ const PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES = 32 * MIB;
  * reports as still available to this process. This is cgroup-aware in supported
  * runtimes and does not incorrectly charge the already-resident PGlite WASM
  * heap a second time. The archive estimate charges 4 KiB per entry plus 1 MiB
- * fixed tar/gzip overhead.
+ * fixed tar/gzip overhead. There is deliberately no independent directory-size
+ * ceiling: the archive estimate is the quantity materialization consumes, and
+ * the available-memory gate below bounds it against the current runtime.
  */
 export const AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS = Object.freeze({
-  /**
-   * Terminal ceiling: a directory this large can never pass the available-memory
-   * gate below, so failing fast is honest rather than making the caller retry.
-   *
-   * It has to sit between two measured bounds, and at 40 MiB it sat effectively
-   * on the lower one. A freshly initialised PGlite cluster measures 38.0 MiB
-   * with zero user data, so the old ceiling left 2 MiB for everything an agent
-   * ever writes and tipped over once pgvector and fuzzystrmatch loaded. Because
-   * this failure is `fatal`, that did not merely block a backup — it made the
-   * agent permanently undeletable (#23116). The upper bound is where the memory gate
-   * becomes unsatisfiable: a default 3072 MiB container boots at ~2.1 GiB RSS,
-   * leaving ~950 MiB, and the gate needs `archive * 8 + 32 MiB`, so anything
-   * past roughly 115 MiB of archive can never succeed anywhere on the fleet.
-   *
-   * 128 MiB is inside that window with room on both sides. Real capacity
-   * pressure is the memory gate's job, and it fails `ephemeral` so it retries.
-   */
-  maxPhysicalBytes: 128 * MIB,
   availableMemoryHeadroomBytes: PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES,
   archiveCopyFactor: 8,
   archiveEntryOverheadBytes: 4 * 1024,
@@ -479,18 +463,6 @@ export async function preflightPglitePhysicalDirectory(
         }
 
         physicalBytes += stats.size;
-        if (physicalBytes > BigInt(limits.maxPhysicalBytes)) {
-          captureError(
-            "PGlite exceeds the bounded materializing-export size limit",
-            "AGENT_BACKUP_V2_PGLITE_PHYSICAL_BYTES_LIMIT",
-            {
-              agentId,
-              maxPhysicalBytes: limits.maxPhysicalBytes,
-              observedPhysicalBytes: physicalBytes.toString(),
-            },
-            { severity: "fatal" },
-          );
-        }
         estimatedArchiveBytes += roundUpTarBlock(stats.size);
       }
 

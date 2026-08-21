@@ -29,6 +29,7 @@ import {
   type AgentBackupV2CaptureComponentSource,
   type AgentBackupV2CaptureSourceChunk,
   createDefaultAgentBackupV2CaptureSources,
+  preflightPglitePhysicalDirectory,
   streamAgentBackupV2Capture,
 } from "./agent-backup-v2-capture.ts";
 
@@ -505,7 +506,7 @@ describe("streamAgentBackupV2Capture", () => {
     }
   });
 
-  it("rejects an over-limit physical PGlite directory before materialization", async () => {
+  it("admits a directory above the retired physical ceiling when its archive fits memory", async () => {
     const root = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "eliza-backup-over-limit-pglite-"),
     );
@@ -515,14 +516,12 @@ describe("streamAgentBackupV2Capture", () => {
     const previousPgliteDir = process.env.PGLITE_DATA_DIR;
     const previousPostgresUrl = process.env.POSTGRES_URL;
     const previousDatabaseUrl = process.env.DATABASE_URL;
-    const materialize = vi.fn(async () => new Blob(["must-not-run"]));
+    const materialize = vi.fn(async () => new Blob(["bounded-dump"]));
     try {
+      mockCaptureAvailableMemory(512 * MIB);
       await fs.promises.mkdir(pgliteDir, { recursive: true });
-      await fs.promises.writeFile(path.join(pgliteDir, "oversized.dat"), "");
-      await fs.promises.truncate(
-        path.join(pgliteDir, "oversized.dat"),
-        AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.maxPhysicalBytes + 1,
-      );
+      await fs.promises.writeFile(path.join(pgliteDir, "cluster.dat"), "");
+      await fs.promises.truncate(path.join(pgliteDir, "cluster.dat"), 48 * MIB);
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.PGLITE_DATA_DIR = pgliteDir;
       delete process.env.POSTGRES_URL;
@@ -550,15 +549,15 @@ describe("streamAgentBackupV2Capture", () => {
       ).find((source) => source.descriptor.name === "database");
       if (!database) throw new Error("database capture source missing");
 
-      await expect(
-        database
-          .open(new AbortController().signal)
-          [Symbol.asyncIterator]()
-          .next(),
-      ).rejects.toMatchObject({
-        code: "AGENT_BACKUP_V2_PGLITE_PHYSICAL_BYTES_LIMIT",
-      });
-      expect(materialize).not.toHaveBeenCalled();
+      const iterator = database
+        .open(new AbortController().signal)
+        [Symbol.asyncIterator]();
+      try {
+        await expect(iterator.next()).resolves.toMatchObject({ done: false });
+        expect(materialize).toHaveBeenCalledOnce();
+      } finally {
+        await iterator.return?.();
+      }
     } finally {
       restoreEnvironmentValue("ELIZA_STATE_DIR", previousStateDir);
       restoreEnvironmentValue("PGLITE_DATA_DIR", previousPgliteDir);
@@ -1327,13 +1326,10 @@ describe("streamAgentBackupV2Capture", () => {
   });
 
   it("admits a real PGlite cluster that holds no user data", async () => {
-    // The ceiling used to be 40 MiB, measured against the whole data directory,
-    // and a cluster with zero user data measures 38.0 MiB — 2 MiB of headroom,
-    // gone as soon as pgvector and fuzzystrmatch load. Being `fatal`, that made
-    // agents undeletable (#23116). The existing over-limit test could not catch
-    // it: a synthetic sparse file proves the comparison fires without ever
-    // saying where the threshold sits. This one measures a real cluster, which
-    // is the only shape that surfaces the inversion.
+    // The retired 40 MiB ceiling was measured against the whole data directory,
+    // and a cluster with zero user data already consumes about 38 MiB. Exercise
+    // the actual preflight path so restoring that ceiling makes this regression
+    // fail before the managed exporter can run (#23116).
     const root = await fs.promises.mkdtemp(
       path.join(os.tmpdir(), "eliza-backup-empty-pglite-"),
     );
@@ -1345,27 +1341,15 @@ describe("streamAgentBackupV2Capture", () => {
       await db.close();
       db = undefined;
 
-      let physicalBytes = 0;
-      const walk = async (dir: string): Promise<void> => {
-        for (const entry of await fs.promises.readdir(dir, {
-          withFileTypes: true,
-        })) {
-          const full = path.join(dir, entry.name);
-          if (entry.isDirectory()) await walk(full);
-          else if (entry.isFile())
-            physicalBytes += (await fs.promises.stat(full)).size;
-        }
-      };
-      await walk(dataDir);
-
-      // Fitting is not the bar — the old 40 MiB ceiling technically "fit" a
-      // 38.0 MiB empty cluster, with 2 MiB left for everything the agent ever
-      // writes, and tipped over as soon as pgvector and fuzzystrmatch loaded.
-      // A ceiling meant to bound USER data must leave at least as much room as
-      // the catalogs already occupy; otherwise it is a gate on initdb.
-      expect(physicalBytes).toBeGreaterThan(0);
-      expect(AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.maxPhysicalBytes).toBeGreaterThan(
-        physicalBytes * 2,
+      mockCaptureAvailableMemory(512 * MIB);
+      const preflight = await preflightPglitePhysicalDirectory(
+        dataDir,
+        new AbortController().signal,
+        ids.agent,
+      );
+      expect(preflight.physicalBytes).toBeGreaterThan(32 * MIB);
+      expect(preflight.estimatedArchiveBytes).toBeGreaterThan(
+        preflight.physicalBytes,
       );
     } finally {
       await db?.close();
