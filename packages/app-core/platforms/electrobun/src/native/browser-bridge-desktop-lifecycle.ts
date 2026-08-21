@@ -57,7 +57,7 @@ export function isBrowserBridgeLoopbackApiBase(apiBase: string): boolean {
 interface DesktopCookieAuthority {
   name: string;
   value: string;
-  domain: string;
+  domain?: string;
   path: string;
   expirationDate?: number;
 }
@@ -70,6 +70,7 @@ export function desktopOwnerSessionFromCookies(
   const hostname = new URL(apiBase).hostname.toLowerCase();
   const eligible = cookies.filter(
     (cookie) =>
+      typeof cookie.domain === "string" &&
       cookie.domain.replace(/^\./, "").toLowerCase() === hostname &&
       cookie.path === "/" &&
       (!cookie.expirationDate || cookie.expirationDate * 1_000 > nowMs),
