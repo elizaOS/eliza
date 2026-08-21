@@ -119,7 +119,9 @@ function parseBrokerToken(value: unknown): BrokerToken | null {
     if (!accessToken) return null;
     if (
       expiresAt !== undefined &&
-      (!Number.isSafeInteger(expiresAt) || (expiresAt as number) <= 0)
+      (!Number.isSafeInteger(expiresAt) ||
+        (expiresAt as number) <= 0 ||
+        (expiresAt as number) * 1000 <= Date.now() + OAUTH2_REFRESH_MARGIN_MS)
     ) {
       return null;
     }
@@ -261,6 +263,16 @@ async function readBoundedJson(
       }
       chunks.push(value);
     }
+  } catch (error) {
+    if (signal.aborted) {
+      try {
+        await reader.cancel(abortReason(signal));
+      } catch {
+        // error-policy:J6 The authoritative timeout/invalidation error remains
+        // unchanged while the guarded transport release still runs.
+      }
+    }
+    throw error;
   } finally {
     reader.releaseLock();
   }
@@ -351,13 +363,13 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
 
   private brokerToken(baseUrl: string): string {
     const explicit = getSetting(this.runtime, "TWITTER_BROKER_TOKEN");
-    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    const origin = new URL(baseUrl).origin.toLowerCase();
     const trustedCloudOrigin = new Set([
-      "api.eliza.app",
-      "api-staging.eliza.app",
-      "cloud.eliza.app",
-      "cloud-staging.eliza.app",
-    ]).has(hostname);
+      "https://api.eliza.app",
+      "https://api-staging.eliza.app",
+      "https://cloud.eliza.app",
+      "https://cloud-staging.eliza.app",
+    ]).has(origin);
     const token =
       explicit ??
       (trustedCloudOrigin

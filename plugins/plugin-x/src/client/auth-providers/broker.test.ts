@@ -36,6 +36,7 @@ function newTestProvider(runtimeValue: IAgentRuntime): BrokerAuthProvider {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -53,7 +54,7 @@ describe("BrokerAuthProvider", () => {
     const provider = newTestProvider(
       runtime({
         ELIZAOS_CLOUD_API_KEY: "agent-cloud-key",
-        TWITTER_BROKER_URL: "https://cloud.eliza.app/api/v1/twitter/",
+        TWITTER_BROKER_URL: "https://cloud.eliza.app:443/api/v1/twitter/",
       }),
     );
 
@@ -326,6 +327,7 @@ describe("BrokerAuthProvider", () => {
     const timeout = new DOMException("body deadline", "TimeoutError");
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
     let markPullStarted!: () => void;
+    const cancel = vi.fn();
     const pullStarted = new Promise<void>((resolve) => {
       markPullStarted = resolve;
     });
@@ -339,6 +341,7 @@ describe("BrokerAuthProvider", () => {
                 markPullStarted();
                 return new Promise<void>(() => undefined);
               },
+              cancel,
             }),
           ),
       ),
@@ -350,6 +353,7 @@ describe("BrokerAuthProvider", () => {
     await pullStarted;
     controller.abort(timeout);
     await expect(pending).rejects.toBe(timeout);
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it("rejects overlong secrets and invalid expiry timestamps", async () => {
@@ -380,6 +384,54 @@ describe("BrokerAuthProvider", () => {
     await expect(provider.getAccessToken()).rejects.toThrow(
       "invalid credential response",
     );
+  });
+
+  it("rejects expired and refresh-margin OAuth2 tokens but accepts one beyond the margin", async () => {
+    vi.useFakeTimers();
+    const nowSeconds = 2_000_000_000;
+    vi.setSystemTime(nowSeconds * 1000);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          auth_mode: "oauth2",
+          access_token: "past",
+          expires_at: nowSeconds - 1,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          auth_mode: "oauth2",
+          access_token: "inside-margin",
+          expires_at: nowSeconds + 59,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          auth_mode: "oauth2",
+          access_token: "at-margin",
+          expires_at: nowSeconds + 60,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          auth_mode: "oauth2",
+          access_token: "beyond-margin",
+          expires_at: nowSeconds + 61,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = newTestProvider(
+      runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+    );
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(provider.getAccessToken()).rejects.toMatchObject({
+        code: "X_BROKER_RESPONSE_INVALID",
+      });
+    }
+    await expect(provider.getAccessToken()).resolves.toBe("beyond-margin");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("coalesces concurrent fetches and retries after a shared failure", async () => {
@@ -495,6 +547,29 @@ describe("BrokerAuthProvider", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    "https://api.eliza.app:4444/api/v1/twitter",
+    "https://api-staging.eliza.app:8443/api/v1/twitter",
+    "https://cloud.eliza.app:9443/api/v1/twitter",
+  ])(
+    "does not delegate the privileged Cloud key to non-canonical port %s",
+    async (url) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const provider = newTestProvider(
+        runtime({
+          ELIZAOS_CLOUD_API_KEY: "privileged-cloud-key",
+          TWITTER_BROKER_URL: url,
+        }),
+      );
+
+      await expect(provider.getAccessToken()).rejects.toMatchObject({
+        code: "X_BROKER_CREDENTIAL_MISSING",
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("routes production requests through the SSRF guard with redirects disabled", async () => {
     const release = vi.fn(async () => undefined);
     const guardedFetch = vi.fn(
@@ -583,15 +658,24 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("rejects an invalidated flight and admits later callers only to a new generation", async () => {
+    let markPullStarted!: () => void;
+    const pullStarted = new Promise<void>((resolve) => {
+      markPullStarted = resolve;
+    });
+    const cancel = vi.fn();
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(
-        (_url: string, init?: RequestInit) =>
-          new Promise<Response>((_resolve, reject) => {
-            init?.signal?.addEventListener("abort", () =>
-              reject(init.signal?.reason),
-            );
-          }),
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull() {
+                markPullStarted();
+                return new Promise<void>(() => undefined);
+              },
+              cancel,
+            }),
+          ),
       )
       .mockResolvedValueOnce(
         Response.json({ auth_mode: "oauth2", access_token: "fresh-token" }),
@@ -602,10 +686,12 @@ describe("BrokerAuthProvider", () => {
     );
 
     const staleRequest = provider.getAccessToken();
+    await pullStarted;
     provider.invalidate();
     const freshRequest = provider.getAccessToken();
     await expect(staleRequest).rejects.toMatchObject({ name: "AbortError" });
     await expect(freshRequest).resolves.toBe("fresh-token");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(cancel).toHaveBeenCalledOnce();
   });
 });
