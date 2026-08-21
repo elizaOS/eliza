@@ -94,6 +94,7 @@ packages/cloud/infra/
     docker-compose.test.ts         # Static coverage for local docker-compose.yml (env placeholders, service shape)
     terraform-static.test.ts       # Lightweight Terraform file invariants (no provider init required)
     runner-farm-static.test.ts     # Static invariants for cloud/runners systemd unit + repair script
+    runner-farm-repair.test.ts     # Behavioral repair-script regression against a fake systemd host
 ```
 
 ## Key subsystems

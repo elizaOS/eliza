@@ -26,11 +26,17 @@ case "$slot" in
 esac
 
 unit="actions-runner@${slot}.service"
-install_root="/opt/actions-runners/runner-${slot}"
+# The two host paths are overridable so the repair flow itself can be
+# regression-tested against a fake systemd host. Production runs must leave
+# both unset; the defaults are the real Hetzner robot-host layout.
+runners_root="${ELIZA_RUNNERS_ROOT:-/opt/actions-runners}"
+install_root="${runners_root}/runner-${slot}"
 pages_dir="${install_root}/_diag/pages"
 canonical_unit_src="$(cd "$(dirname "$0")" && pwd)/actions-runner@.service"
-unit_dst="/etc/systemd/system/actions-runner@.service"
+unit_dst="${ELIZA_RUNNER_UNIT_PATH:-/etc/systemd/system/actions-runner@.service}"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+# Seconds to wait for processes to exit / the new listener to appear.
+settle_secs="${ELIZA_RUNNER_SETTLE_SECS:-30}"
 
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 [ -d "$install_root" ] || { echo "missing install root: $install_root" >&2; exit 1; }
@@ -68,7 +74,7 @@ if $apply; then
     echo "+ kill -TERM ${pid} (abandoned by KillMode=process)"
     kill -TERM "$pid" || true
   done
-  for _ in $(seq 1 30); do
+  for _ in $(seq 1 "$settle_secs"); do
     [ -z "$(slot_pids)" ] && break
     sleep 1
   done
@@ -87,10 +93,21 @@ fi
 run install -d -o github-runner -g github-runner -m 0755 "${install_root}/_diag" "$pages_dir"
 
 echo "== install canonical template unit =="
-if [ -f "$unit_dst" ] && grep -q '^KillMode=control-group$' "$unit_dst"; then
-  echo "installed unit already uses KillMode=control-group"
+# Compare the COMPLETE normalized unit, not just the stop policy: a host can
+# carry a stale fragment that already says KillMode=control-group while its
+# User, WorkingDirectory, or ExecStart still point at the wrong slot layout.
+normalize_unit() {
+  sed -e 's/[[:space:]]*$//' -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' "$1"
+}
+if [ -f "$unit_dst" ] && \
+   [ "$(normalize_unit "$unit_dst")" = "$(normalize_unit "$canonical_unit_src")" ]; then
+  echo "installed unit already matches the canonical template"
 else
-  [ -f "$unit_dst" ] && run cp "$unit_dst" "${unit_dst}.issue-19708-${stamp}.bak"
+  if [ -f "$unit_dst" ]; then
+    echo "installed unit differs from the canonical template; replacing"
+    diff -u <(normalize_unit "$unit_dst") <(normalize_unit "$canonical_unit_src") || true
+    run cp "$unit_dst" "${unit_dst}.issue-19708-${stamp}.bak"
+  fi
   run install -o root -g root -m 0644 "$canonical_unit_src" "$unit_dst"
   run systemctl daemon-reload
 fi
@@ -98,10 +115,16 @@ fi
 echo "== restart only this slot and verify single ownership =="
 run systemctl start "$unit"
 if $apply; then
-  sleep 5
-  listeners="$(slot_pids | while read -r pid; do
-    grep -lq 'Runner\.Listener' "/proc/${pid}/cmdline" 2>/dev/null && echo "$pid" || true
-  done | tr '\n' ' ')"
+  # Poll rather than assume a fixed startup latency: a slow listener boot must
+  # not be reported as a failed repair.
+  listeners=""
+  for _ in $(seq 1 "$settle_secs"); do
+    sleep 1
+    listeners="$(slot_pids | while read -r pid; do
+      grep -q 'Runner\.Listener' "/proc/${pid}/cmdline" 2>/dev/null && echo "$pid" || true
+    done | tr '\n' ' ')"
+    [ -n "${listeners// /}" ] && break
+  done
   count="$(echo "$listeners" | wc -w | tr -d ' ')"
   echo "post-repair Runner.Listener pids: ${listeners:-none} (count=${count})"
   [ "$count" -eq 1 ] || { echo "expected exactly one listener for slot ${slot}" >&2; exit 1; }

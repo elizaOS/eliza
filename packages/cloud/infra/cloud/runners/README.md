@@ -31,5 +31,15 @@ longer improvised per host.
 4. Only then restore `hetzner-robot`. `HETZNER_FLEET_ONLINE` is owned
    separately and is never changed by this flow.
 
+The script installs the canonical unit whenever the deployed fragment
+differs from it in any normalized line — not just on the stop policy — so a
+stale fragment with the right `KillMode` but a wrong `User` or
+`WorkingDirectory` is still replaced and `daemon-reload`ed.
+
 Static invariants for these files are enforced by
-`../../tests/runner-farm-static.test.ts`.
+`../../tests/runner-farm-static.test.ts`; the repair flow itself (dry-run
+inertness, stale-unit replacement, diagnostic preservation, sibling-slot
+isolation) is exercised against a fake systemd host by
+`../../tests/runner-farm-repair.test.ts`. That harness is the only supported
+use of the `ELIZA_RUNNERS_ROOT`, `ELIZA_RUNNER_UNIT_PATH`, and
+`ELIZA_RUNNER_SETTLE_SECS` overrides; leave them unset on a real host.
