@@ -153,6 +153,7 @@ describe("restore target authority", () => {
       assertDirectTarget("not-a-dsn-with-supersecret");
       throw new Error("expected refusal");
     } catch (error) {
+      // error-policy:J3 The harness inspects the explicit invalid-input boundary.
       expect((error as Error).message).not.toContain("supersecret");
     }
   });

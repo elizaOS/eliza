@@ -391,6 +391,12 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     );
     expect(tenantDbInit).toContain("rclone purge");
     expect(tenantDbInit).toContain(
+      'RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")',
+    );
+    expect(tenantDbInit).not.toContain(
+      'rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true',
+    );
+    expect(tenantDbInit).toContain(
       'log "off-host backup not configured; skipping."',
     );
   });

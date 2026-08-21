@@ -399,6 +399,7 @@ write_files:
       # than the cutoff stamp. Never touches other prefixes in the bucket.
       CUTOFF=$(date -u -d "-$BACKUP_RETENTION_DAYS days" +%Y%m%dT%H%M%SZ)
       PRUNED=0
+      RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")
       while IFS= read -r dir; do
         dir=$(printf '%s' "$dir" | tr -d '/')
         [ -n "$dir" ] || continue
@@ -406,7 +407,8 @@ write_files:
           rclone purge ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$dir"
           PRUNED=$((PRUNED+1))
         fi
-      done < <(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true)
+      done <<< "$RETENTION_DIRS"
+      unset RETENTION_DIRS
 
       ELAPSED=$(( $(date -u +%s) - START_EPOCH ))
       log "uploaded set $STAMP: $COUNT databases, $ENC_BYTES encrypted bytes, pruned $PRUNED expired sets, took $ELAPSED""s."

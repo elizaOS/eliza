@@ -125,6 +125,7 @@ export function parseBackupSidecar(json: string): BackupSidecar {
   try {
     raw = JSON.parse(json);
   } catch (cause) {
+    // error-policy:J3 untrusted sidecar JSON becomes an explicit invalid result.
     throw new RecoveryDrillError(
       "INVALID_METADATA",
       `sidecar is not valid JSON: ${(cause as Error).message}`,
@@ -176,6 +177,7 @@ export function parseBackupManifest(json: string): BackupManifest {
   try {
     raw = JSON.parse(json);
   } catch (cause) {
+    // error-policy:J3 untrusted manifest JSON becomes an explicit invalid result.
     throw new RecoveryDrillError(
       "INVALID_METADATA",
       `manifest is not valid JSON: ${(cause as Error).message}`,
@@ -208,6 +210,7 @@ export function assertDirectTarget(targetDsn: string): URL {
   try {
     url = new URL(targetDsn);
   } catch {
+    // error-policy:J3 untrusted DSN syntax becomes an explicit invalid target.
     throw new RecoveryDrillError(
       "INVALID_TARGET",
       "target DSN is not a parseable URL",
@@ -264,6 +267,7 @@ export function parsePoolerEndpoint(value: string): PgEndpoint {
   try {
     url = new URL(`postgresql://probe@${value}/postgres`);
   } catch {
+    // error-policy:J3 untrusted endpoint syntax becomes an explicit invalid argument.
     throw new RecoveryDrillError(
       "INVALID_ARGS",
       "--pooler-endpoint must be host:6432",
@@ -330,6 +334,7 @@ export function verifyChecksums(
     try {
       bytes = readFileSync(join(workDir, entry.file));
     } catch (cause) {
+      // error-policy:J3 untrusted archive metadata cannot fabricate a missing file.
       throw new RecoveryDrillError(
         "CHECKSUM_MISSING_FILE",
         `checksummed file missing from archive: ${entry.file} (${(cause as Error).message})`,
@@ -396,6 +401,7 @@ export function parseTenantProbes(
   try {
     raw = JSON.parse(json);
   } catch {
+    // error-policy:J3 untrusted probe JSON becomes an explicit invalid result.
     throw new RecoveryDrillError(
       "INVALID_PROBE_METADATA",
       "tenant probe file is not valid JSON",
