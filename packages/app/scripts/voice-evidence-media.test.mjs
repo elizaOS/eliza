@@ -128,6 +128,18 @@ test("media tool resolution fails closed and matches the skip probe", () => {
   expect(() => resolveMediaTools()).toThrow(/evidence:install-tools/);
 });
 
+// A lane that claims to produce media evidence must not be allowed to degrade
+// to a skip: a present-but-broken ffmpeg (wrong arch, missing shared library,
+// nonzero `-version` exit) probes exactly like an absent one. Provisioned
+// lanes export ELIZA_REQUIRE_MEDIA_TOOLS=1 so a lost or corrupted install
+// fails loudly instead of turning nine media contracts into silent skips.
+test.skipIf(process.env.ELIZA_REQUIRE_MEDIA_TOOLS !== "1")(
+  "this lane provisioned working ffmpeg/ffprobe",
+  () => {
+    expect(mediaTools).toBeTruthy();
+  },
+);
+
 function run(bin, args) {
   const result = spawnSync(bin, args, { encoding: "utf8" });
   expect(result.error).toBeUndefined();
