@@ -68,9 +68,231 @@ const POWERSHELL_REMOVE_ITEM_BINS = new Set([
 const DESTRUCTIVE_BINS = new Set(["mkfs", "shred", "wipefs"]);
 const DROP_SQL = /\bdrop\s+(database|table|schema)\s+(\S+)/i;
 
+interface HeredocDeclaration {
+  delimiter: string;
+  quoted: boolean;
+  stripTabs: boolean;
+}
+
+interface ParsedHeredocDelimiter {
+  delimiter: string;
+  quoted: boolean;
+}
+
+function hasTrailingLineContinuation(line: string): boolean {
+  let backslashes = 0;
+  for (let i = line.length - 1; i >= 0 && line[i] === "\\"; i -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+function parseHeredocDelimiter(
+  line: string,
+  start: number,
+): ParsedHeredocDelimiter | null {
+  let cursor = start;
+  let delimiter = "";
+  let quote: string | null = null;
+  let quoted = false;
+
+  while (cursor < line.length) {
+    const ch = line[cursor] as string;
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+        cursor += 1;
+        continue;
+      }
+      if (
+        quote === '"' &&
+        ch === "\\" &&
+        cursor + 1 < line.length &&
+        /[$`"\\]/.test(line[cursor + 1] as string)
+      ) {
+        cursor += 1;
+      }
+      delimiter += line[cursor] as string;
+      cursor += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quoted = true;
+      quote = ch;
+      cursor += 1;
+      continue;
+    }
+    if (ch === "\\" && cursor + 1 < line.length) {
+      quoted = true;
+      cursor += 1;
+      delimiter += line[cursor] as string;
+      cursor += 1;
+      continue;
+    }
+    if (/[\s|;&<>()]/.test(ch)) break;
+    delimiter += ch;
+    cursor += 1;
+  }
+
+  return quote === null && delimiter ? { delimiter, quoted } : null;
+}
+
+function isInsideArrayAssignmentSubscript(
+  line: string,
+  operatorIndex: number,
+): boolean {
+  // Bash evaluates a balanced `name[...]` assignment as arithmetic before it
+  // considers redirections. Be conservative about command position: declining
+  // to mask a lookalike can only add confirmation, while masking one can hide
+  // an executable line.
+  let tokenStart = operatorIndex;
+  while (tokenStart > 0 && !/[\s;|&()]/.test(line[tokenStart - 1] as string)) {
+    tokenStart -= 1;
+  }
+
+  const prefix = line.slice(tokenStart, operatorIndex);
+  const openingBracket = prefix.indexOf("[");
+  if (
+    openingBracket < 1 ||
+    !/^[A-Za-z_][A-Za-z0-9_]*$/.test(prefix.slice(0, openingBracket))
+  ) {
+    return false;
+  }
+
+  let bracketDepth = 0;
+  for (
+    let cursor = tokenStart + openingBracket;
+    cursor < line.length;
+    cursor += 1
+  ) {
+    const ch = line[cursor] as string;
+    if (ch === "[") bracketDepth += 1;
+    else if (ch === "]") {
+      bracketDepth -= 1;
+      if (bracketDepth === 0) {
+        return /^(?:\+?=)/.test(line.slice(cursor + 1));
+      }
+    }
+  }
+  return false;
+}
+
+function heredocDeclarations(line: string): HeredocDeclaration[] {
+  const declarations: HeredocDeclaration[] = [];
+  let arithmeticDepth = 0;
+  let legacyArithmeticDepth = 0;
+  let parameterExpansionDepth = 0;
+  let quote: string | null = null;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i] as string;
+    if (quote) {
+      if (quote === '"' && ch === "\\" && i + 1 < line.length) i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < line.length) {
+      i += 1;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === "(" && line[i + 1] === "(") {
+      arithmeticDepth += 1;
+      i += 1;
+      continue;
+    }
+    if (arithmeticDepth > 0 && ch === ")" && line[i + 1] === ")") {
+      arithmeticDepth -= 1;
+      i += 1;
+      continue;
+    }
+    if (arithmeticDepth > 0) continue;
+    if (ch === "$" && line[i + 1] === "[") {
+      legacyArithmeticDepth += 1;
+      i += 1;
+      continue;
+    }
+    if (legacyArithmeticDepth > 0) {
+      if (ch === "[") legacyArithmeticDepth += 1;
+      else if (ch === "]") legacyArithmeticDepth -= 1;
+      continue;
+    }
+    if (ch === "$" && line[i + 1] === "{") {
+      parameterExpansionDepth += 1;
+      i += 1;
+      continue;
+    }
+    if (parameterExpansionDepth > 0) {
+      if (ch === "}") parameterExpansionDepth -= 1;
+      continue;
+    }
+    if (ch === "#" && (i === 0 || /[\s;|&()]/.test(line[i - 1] as string)))
+      break;
+    if (ch !== "<" || line[i + 1] !== "<" || line[i + 2] === "<") continue;
+    if (isInsideArrayAssignmentSubscript(line, i)) continue;
+
+    let cursor = i + 2;
+    const stripTabs = line[cursor] === "-";
+    if (stripTabs) cursor += 1;
+    while (line[cursor] === " " || line[cursor] === "\t") cursor += 1;
+
+    const parsed = parseHeredocDelimiter(line, cursor);
+    if (parsed !== null) declarations.push({ ...parsed, stripTabs });
+  }
+  return declarations;
+}
+
+// Heredoc bodies are shell input, not commands. Preserve their newlines so
+// later executable lines remain segment boundaries, but hide payload bytes
+// from both the command and SQL classifiers.
+function maskHeredocBodies(command: string): string {
+  const lines = command.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g) ?? [];
+  const pending: HeredocDeclaration[] = [];
+  let continuedBodyLine = "";
+
+  return lines
+    .map((line) => {
+      const newline = line.endsWith("\r\n")
+        ? "\r\n"
+        : line.endsWith("\n")
+          ? "\n"
+          : line.endsWith("\r")
+            ? "\r"
+            : "";
+      const content = newline ? line.slice(0, -newline.length) : line;
+      const active = pending[0];
+      if (active) {
+        const comparable = active.stripTabs
+          ? content.replace(/^\t+/, "")
+          : content;
+        const joinsNextLine =
+          !active.quoted && hasTrailingLineContinuation(comparable);
+        continuedBodyLine += joinsNextLine
+          ? comparable.slice(0, -1)
+          : comparable;
+        if (!joinsNextLine) {
+          if (continuedBodyLine === active.delimiter) pending.shift();
+          continuedBodyLine = "";
+        }
+        return `${" ".repeat(content.length)}${newline}`;
+      }
+      // A physical newline escaped with a trailing backslash is part of the
+      // declaration's logical command line, not the start of heredoc data.
+      // Decline to mask this uncommon form rather than hide executable text.
+      if (!hasTrailingLineContinuation(content)) {
+        pending.push(...heredocDeclarations(content));
+      }
+      return line;
+    })
+    .join("");
+}
+
 function splitSegments(command: string): string[] {
-  // Chain + pipeline split; quotes are respected coarsely — a metacharacter
-  // inside quotes stays put because we only split on unquoted operators.
+  // Split shell list/pipeline operators while retaining quoted or backslash-
+  // escaped characters in their current segment.
   const segments: string[] = [];
   let current = "";
   let quote: string | null = null;
@@ -78,7 +300,18 @@ function splitSegments(command: string): string[] {
     const ch = command[i] as string;
     if (quote) {
       current += ch;
+      if (quote === '"' && ch === "\\" && i + 1 < command.length) {
+        current += command[i + 1] as string;
+        i += 1;
+        continue;
+      }
       if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === "\\" && i + 1 < command.length) {
+      current += ch;
+      current += command[i + 1] as string;
+      i += 1;
       continue;
     }
     if (ch === '"' || ch === "'") {
@@ -86,10 +319,10 @@ function splitSegments(command: string): string[] {
       current += ch;
       continue;
     }
-    if (ch === "|" || ch === ";" || (ch === "&" && command[i + 1] === "&")) {
+    if (ch === "|" || ch === ";" || ch === "&" || ch === "\n" || ch === "\r") {
       segments.push(current);
       current = "";
-      if (ch === "&") i += 1;
+      if (ch === "&" && command[i + 1] === "&") i += 1;
       continue;
     }
     current += ch;
@@ -105,7 +338,8 @@ function tokens(segment: string): string[] {
 export function classifyDestructiveCommand(
   command: string,
 ): DestructiveVerdict {
-  const sql = DROP_SQL.exec(command);
+  const executableCommand = maskHeredocBodies(command);
+  const sql = DROP_SQL.exec(executableCommand);
   if (sql) {
     return {
       destructive: true,
@@ -113,7 +347,7 @@ export function classifyDestructiveCommand(
       targets: [sql[2] ?? ""],
     };
   }
-  for (const segment of splitSegments(command)) {
+  for (const segment of splitSegments(executableCommand)) {
     const argv = tokens(segment);
     // env-var prefixes (FOO=bar cmd …) precede the executable
     let i = 0;
