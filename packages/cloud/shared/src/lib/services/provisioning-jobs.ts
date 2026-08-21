@@ -107,7 +107,11 @@ import {
   JOB_TYPES,
   type ProvisioningJobType,
 } from "./provisioning-job-types";
-import { jobErrorText } from "./job-error-text";
+import {
+  finalizeJobErrorText,
+  jobErrorSummary,
+  jobErrorText,
+} from "./job-error-text";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import {
   isWaifuWebhookTargetUrl,
@@ -3506,7 +3510,7 @@ export class ProvisioningJobService {
     // that has to carry a stack — the 16 conversions below it are log lines.
     const errorMsg =
       err instanceof AppCacheInvalidationRetryError
-        ? formatAppCacheInvalidationError(err)
+        ? finalizeJobErrorText(formatAppCacheInvalidationError(err))
         : jobErrorText(err);
     result?.errors.push({ jobId: job.id, error: errorMsg });
 
@@ -4746,9 +4750,11 @@ export class ProvisioningJobService {
         // error-policy:J2 context-adding rethrow — the queue needs a typed
         // retryable failure while preserving the cleanup cause.
         throw new RetryableReplacementCleanupError(
-          `Admin canary cleanup remains pending: ${
-            jobErrorText(error)
-          }`,
+          // Summary only: the full error travels as `cause` below, and
+          // interpolating its stack here would fill the 4,000-char job budget
+          // with the inner frames, truncating away both the outer frames and
+          // the cause chain at exactly the site #23117 needs them.
+          `Admin canary cleanup remains pending: ${jobErrorSummary(error)}`,
           job,
           { cause: error },
         );
