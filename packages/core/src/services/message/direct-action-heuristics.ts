@@ -264,20 +264,26 @@ function quotedSpanContains(
 	while (cursor < text.length) {
 		const start = text.indexOf("'", cursor);
 		if (start < 0) break;
-		const end = text.indexOf("'", start + 1);
-		if (end < 0) break;
 		const before = text[start - 1];
-		const after = text[end + 1];
-		if (
-			(!before || !/[\p{L}\p{N}]/u.test(before)) &&
-			(!after || !/[\p{L}\p{N}]/u.test(after)) &&
-			predicate(text.slice(start + 1, end))
-		) {
-			return true;
+		if (before && /[\p{L}\p{N}]/u.test(before)) {
+			cursor = start + 1;
+			continue;
 		}
-		// An apostrophe inside a contraction is not an opening quote. Advance one
-		// delimiter so a later real opening quote is still considered.
-		cursor = start + 1;
+		let endCursor = start + 1;
+		let end = -1;
+		while (endCursor < text.length) {
+			const candidate = text.indexOf("'", endCursor);
+			if (candidate < 0) return false;
+			const after = text[candidate + 1];
+			if (!after || !/[\p{L}\p{N}]/u.test(after)) {
+				end = candidate;
+				break;
+			}
+			endCursor = candidate + 1;
+		}
+		if (end < 0) return false;
+		if (predicate(text.slice(start + 1, end))) return true;
+		cursor = end + 1;
 	}
 	return false;
 }

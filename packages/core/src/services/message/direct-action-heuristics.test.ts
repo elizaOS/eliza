@@ -854,6 +854,17 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			),
 		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
 		for (const message of [
+			"'hello!' then list my todos '...world'",
+			"'okay.' now show my todos '  thanks'",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
+		for (const message of [
 			"search the web for ways to organize my finances",
 			"look up advice about my finances",
 			"google tips to manage my spending",
