@@ -1,5 +1,6 @@
 /**
- * API-key revocation cache-invalidation fails closed (#13417).
+ * API-key revocation cache-invalidation and primary-read ordering fail closed
+ * across the established lifecycle paths (#13417, #22920).
  *
  * `apiKeysService.invalidateCache()` is on every revoke / delete / deactivate
  * path. It clears BOTH the validation cache (16-char prefix) and the #9899
@@ -9,12 +10,11 @@
  * a REVOKED key authenticating from cache until its TTL lapsed, while the
  * revoke path reported success.
  *
- * These tests pin the corrected contract: an unconfirmed delete of either cache
- * surfaces as a throw, so the caller (route) can fail closed and retry rather
- * than believe the key is gone. Ordering matters too: `delete()` invalidates
- * BEFORE the DB delete, so a failed invalidation aborts before the row is
- * removed — the key stays consistently active-and-cached, never
- * DB-revoked-but-cache-live.
+ * These tests pin the corrected contract: lifecycle mutations commit the
+ * database denial before invalidating caches, and a cache miss confirms a
+ * positive key on the primary before caching it. This removes the window in
+ * which a request can repopulate a warm positive entry from a still-active or
+ * replica-stale row.
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
@@ -80,18 +80,118 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     await expect(apiKeysService.invalidateCache(KEY_HASH)).rejects.toThrow(/not confirmed/i);
   });
 
-  test("delete(): failed invalidation aborts BEFORE the DB row is removed", async () => {
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
-    const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
-    track(spyOn(cache, "delConfirmed").mockResolvedValue(false));
+  test("delete(): database denial commits before failed cache invalidation surfaces", async () => {
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
+    const events: string[] = [];
+    const repoDelete = track(
+      spyOn(apiKeysRepository, "delete").mockImplementation(async () => {
+        events.push("database-delete");
+      }),
+    );
+    track(
+      spyOn(cache, "delConfirmed").mockImplementation(async () => {
+        events.push("cache-delete");
+        return false;
+      }),
+    );
 
     await expect(apiKeysService.delete("key-1")).rejects.toThrow(/not confirmed/i);
-    // fail-closed ordering: the DB delete must NOT run once invalidation failed
-    expect(repoDelete).not.toHaveBeenCalled();
+    expect(repoDelete).toHaveBeenCalledWith("key-1");
+    expect(events[0]).toBe("database-delete");
+  });
+
+  test("update commits the primary row before invalidating its positive caches", async () => {
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
+    const events: string[] = [];
+    track(
+      spyOn(apiKeysRepository, "update").mockImplementation(async () => {
+        events.push("database-update");
+        return { ...fakeKey(), description: "updated" } as ApiKey;
+      }),
+    );
+    track(
+      spyOn(cache, "delConfirmed").mockImplementation(async () => {
+        events.push("cache-delete");
+        return true;
+      }),
+    );
+
+    await apiKeysService.update("key-1", { description: "updated" });
+    expect(events[0]).toBe("database-update");
+    expect(events.filter((event) => event === "cache-delete")).toHaveLength(2);
+  });
+
+  test("cache miss never trusts a replica-only active key", async () => {
+    track(spyOn(cache, "get").mockResolvedValue(null));
+    track(spyOn(cache, "set").mockResolvedValue(undefined));
+    const replica = track(
+      spyOn(apiKeysRepository, "findActiveByHash").mockResolvedValue(fakeKey()),
+    );
+    const primary = track(
+      spyOn(apiKeysRepository, "findActiveByHashConsistent").mockResolvedValue(undefined),
+    );
+
+    await expect(apiKeysService.validateApiKey("revoked-secret")).resolves.toBeNull();
+    expect(replica).not.toHaveBeenCalled();
+    expect(primary).toHaveBeenCalledTimes(1);
+  });
+
+  test("bulk deactivation commits before attempting every cache invalidation", async () => {
+    const keys = [fakeKey(), { ...fakeKey(), id: "key-2", key_hash: "b".repeat(64) } as ApiKey];
+    const primaryKeys = track(
+      spyOn(apiKeysRepository, "findActiveByUserAndNameConsistent").mockResolvedValue(keys),
+    );
+    const replicaKeys = track(spyOn(apiKeysRepository, "findByUserAndName").mockResolvedValue([]));
+    const events: string[] = [];
+    track(
+      spyOn(apiKeysRepository, "deactivateUserKeysByName").mockImplementation(async () => {
+        events.push("database-deactivate");
+      }),
+    );
+    track(
+      spyOn(cache, "delConfirmed").mockImplementation(async () => {
+        events.push("cache-delete");
+        return true;
+      }),
+    );
+
+    await apiKeysService.deactivateUserKeysByName("user-1", "Default API Key");
+    expect(primaryKeys).toHaveBeenCalledTimes(1);
+    expect(replicaKeys).not.toHaveBeenCalled();
+    expect(events[0]).toBe("database-deactivate");
+    expect(events.filter((event) => event === "cache-delete")).toHaveLength(4);
+  });
+
+  test("organization deactivation enumerates active keys on the primary", async () => {
+    const key = fakeKey();
+    const primaryKeys = track(
+      spyOn(apiKeysRepository, "listActiveByUserAndOrganizationConsistent").mockResolvedValue([
+        key,
+      ]),
+    );
+    const replicaKeys = track(spyOn(apiKeysRepository, "listByUser").mockResolvedValue([]));
+    const events: string[] = [];
+    track(
+      spyOn(apiKeysRepository, "deactivateByUserAndOrganization").mockImplementation(async () => {
+        events.push("database-deactivate");
+      }),
+    );
+    track(
+      spyOn(cache, "delConfirmed").mockImplementation(async () => {
+        events.push("cache-delete");
+        return true;
+      }),
+    );
+
+    await apiKeysService.deactivateByUserAndOrganization("user-1", "org-1");
+    expect(primaryKeys).toHaveBeenCalledTimes(1);
+    expect(replicaKeys).not.toHaveBeenCalled();
+    expect(events[0]).toBe("database-deactivate");
+    expect(events.filter((event) => event === "cache-delete")).toHaveLength(2);
   });
 
   test("delete(): confirmed invalidation lets the DB delete proceed", async () => {
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
     const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
 
@@ -100,7 +200,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
   });
 
   test("delete(): strong revocation must commit before cache or database mutation", async () => {
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
     const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     const cacheDelete = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
     const namespace = {
@@ -124,7 +224,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
 
   test("an inactive immutable key identity cannot be reactivated", async () => {
     track(
-      spyOn(apiKeysRepository, "findById").mockResolvedValue({
+      spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue({
         ...fakeKey(),
         is_active: false,
       }),
@@ -145,7 +245,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
       rate_limit: 1000,
       expires_at: null,
     } as ApiKey;
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(existing));
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(existing));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
     track(
       spyOn(apiKeyCrypto, "encryptApiKey").mockResolvedValue({
