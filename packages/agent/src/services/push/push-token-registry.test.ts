@@ -10,7 +10,10 @@
  * /unsafe-integer/non-number), dedup-before-cap so duplicate-heavy dumps do not
  * underfill, the persisted-record ceiling (exact boundary hydrates, one above
  * fails closed without destroying the durable row), one-time durable repair
- * that never rewrites a clean load, failed-write rollback (in-memory and durable
+ * that never rewrites a clean load (including a resolved-false repair write that
+ * leaves the dirty row intact, reports a redacted diagnostic without failing the
+ * read, retries on the next cold start, and stops rewriting once it lands),
+ * failed-write rollback (in-memory and durable
  * state unchanged, typed error, token redacted), mutation-queue recovery after a
  * failed op, resolved-false persistence failure (register/unregister and a
  * deferred false-return all leave in-memory and durable state unchanged with the
@@ -401,6 +404,77 @@ describe("PushTokenRegistry", () => {
     const second = new PushTokenRegistry(runtime);
     await second.list();
     expect(setCalls).toHaveLength(1);
+  });
+
+  it("leaves the dirty row intact and reports when a repair write resolves false, then a later true repair stops rewriting", async () => {
+    const setCalls: PushTokenRecord[][] = [];
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const cache = new Map<string, unknown>();
+    // A bounded-but-dirty dump (unsorted extra field + dupe) that normalizes.
+    const dirty = [
+      { token: "  spaced  ", platform: "ios", createdAt: 2, extra: "junk" },
+      { token: "dupe", platform: "android", createdAt: 1 },
+      { token: "dupe", platform: "android", createdAt: 9 },
+    ];
+    cache.set(KEY, dirty);
+    let repairSucceeds = false;
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        setCalls.push(value as PushTokenRecord[]);
+        // The adapter reports `false` when the durable row did not land.
+        if (!repairSucceeds) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    runtime.reportError = ((scope: string, error: unknown) => {
+      reported.push({ scope, error });
+    }) as IAgentRuntime["reportError"];
+
+    // Cold start #1: repair write resolves false. The read still succeeds with
+    // the normalized in-memory view, the diagnostic is reported (redacted), and
+    // the original dirty durable row is left intact for a later retry.
+    const first = new PushTokenRegistry(runtime);
+    expect((await first.list()).map((r) => r.token).sort()).toEqual([
+      "dupe",
+      "spaced",
+    ]);
+    expect(setCalls).toHaveLength(1);
+    expect(reported).toHaveLength(1);
+    expect(reported[0].scope).toBe("push.registry.repair");
+    expect((reported[0].error as ElizaError).code).toBe(
+      PUSH_TOKEN_PERSIST_FAILED_CODE,
+    );
+    // No token leaks into the reported error surface.
+    expect(JSON.stringify(reported[0].error)).not.toContain("spaced");
+    // Durable row is still the original dirty dump (repair did not land).
+    expect(cache.get(KEY)).toBe(dirty);
+
+    // Cold start #2: the dirty row is still present, so the registry scans and
+    // re-normalizes again — but now the repair write lands.
+    repairSucceeds = true;
+    const second = new PushTokenRegistry(runtime);
+    expect((await second.list()).map((r) => r.token).sort()).toEqual([
+      "dupe",
+      "spaced",
+    ]);
+    expect(setCalls).toHaveLength(2);
+    const repaired = cache.get(KEY) as PushTokenRecord[];
+    for (const record of repaired) {
+      expect(Object.keys(record).sort()).toEqual([
+        "createdAt",
+        "platform",
+        "token",
+      ]);
+    }
+
+    // Cold start #3: the durable row is now canonical, so no rewrite occurs.
+    const third = new PushTokenRegistry(runtime);
+    await third.list();
+    expect(setCalls).toHaveLength(2);
   });
 
   it("rolls the in-memory registry back when a durable write is rejected", async () => {

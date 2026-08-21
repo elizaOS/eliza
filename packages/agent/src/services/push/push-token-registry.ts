@@ -26,7 +26,10 @@
  *      duplicate-heavy data cannot underfill the registry.
  *   4. When a bounded-but-dirty legacy dump is normalized, the repaired form is
  *      persisted once (guarded so a clean load never rewrites), so later
- *      restarts do not repeatedly re-scan and re-normalize the same dump.
+ *      restarts do not repeatedly re-scan and re-normalize the same dump. The
+ *      repair write must resolve exactly `true`; a rejected OR resolved-`false`
+ *      write is reported (best-effort, never failing the read) and the dirty
+ *      row is left intact so a later restart retries the repair.
  *   5. `register`/`unregister` are observably atomic w.r.t. `setCache`: the
  *      mutation is staged on a candidate Map that is published to `this.tokens`
  *      only after the durable write succeeds, so `list`/`count` never observe an
@@ -210,8 +213,28 @@ export class PushTokenRegistry {
     }
   }
 
+  /**
+   * Durably rewrite the current in-memory tokens (repair path only). Requires
+   * `setCache` to resolve exactly `true`; a rejected write OR a resolved
+   * non-`true` value (an adapter reports `false` when the row did not land) is a
+   * failed durable repair and throws {@link PUSH_TOKEN_PERSIST_FAILED_CODE}, so
+   * the caller degrades to re-normalizing on the next start instead of treating
+   * an unpersisted repair as durable.
+   */
   private async persist(): Promise<void> {
-    await this.runtime.setCache(this.cacheKey, [...this.tokens.values()]);
+    const persisted = await this.runtime.setCache(this.cacheKey, [
+      ...this.tokens.values(),
+    ]);
+    if (persisted !== true) {
+      throw new ElizaError(
+        "[PushTokenRegistry] durable cache rejected the push-token repair write",
+        {
+          code: PUSH_TOKEN_PERSIST_FAILED_CODE,
+          context: { tokenCount: this.tokens.size },
+          severity: "ephemeral",
+        },
+      );
+    }
   }
 
   private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
