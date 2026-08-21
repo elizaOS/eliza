@@ -418,6 +418,30 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		await service.stop();
 	});
 
+	it("delivers through the originating chat transport so the verdict appears live", async () => {
+		const coordinator = makeCoordinator();
+		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });
+		const sendMessageToTarget = vi.fn(async () => []);
+		Object.assign(runtime, { sendMessageToTarget });
+		const service = await VerificationRoomBridgeService.start(runtime);
+		const event = pluginEvent("fail");
+		event.data.originSource = "client_chat";
+
+		coordinator.__emit(event);
+		await flush();
+
+		expect(sendMessageToTarget).toHaveBeenCalledWith(
+			{ source: "client_chat", roomId: "room-42" },
+			expect.objectContaining({
+				text: expect.stringContaining("tsc error in src/index.ts"),
+				metadata: { verdict: "fail" },
+			}),
+		);
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+
+		await service.stop();
+	});
+
 	it("offers a rollback in the verifyPlugin fail verdict (#8915)", async () => {
 		const coordinator = makeCoordinator();
 		const { runtime } = makeRuntime({ SWARM_COORDINATOR: coordinator });

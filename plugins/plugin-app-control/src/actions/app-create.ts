@@ -301,6 +301,8 @@ interface DispatchInput {
 	 * bridge service when it filters task_complete / escalation broadcasts.
 	 */
 	originRoomId: string;
+	/** Connector/dashboard source used to broadcast the asynchronous verdict. */
+	originSource?: string;
 	callback?: HandlerCallback;
 }
 
@@ -409,6 +411,7 @@ async function dispatchCodingAgent({
 	appName,
 	acceptanceCriteria,
 	originRoomId,
+	originSource,
 	callback,
 	verifyProfile,
 }: DispatchInput): Promise<DispatchResult> {
@@ -439,7 +442,10 @@ async function dispatchCodingAgent({
 		entityId: runtime.agentId,
 		roomId: originRoomId,
 		agentId: runtime.agentId,
-		content: { text: prompt },
+		content: {
+			text: prompt,
+			...(originSource ? { source: originSource } : {}),
+		},
 	} as Memory;
 
 	const handlerOptions: HandlerOptions = {
@@ -463,6 +469,7 @@ async function dispatchCodingAgent({
 				// verification-room-bridge can post the verdict back to the
 				// originating chat room.
 				originRoomId,
+				...(originSource ? { originSource } : {}),
 			},
 		},
 	};
@@ -764,12 +771,14 @@ async function createNewApp({
 	intent,
 	repoRoot,
 	originRoomId,
+	originSource,
 	callback,
 }: {
 	runtime: IAgentRuntime;
 	intent: string;
 	repoRoot: string;
 	originRoomId: string;
+	originSource?: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	// Preflight orchestrator + coding-CLI availability BEFORE scaffolding so a
@@ -834,6 +843,7 @@ async function createNewApp({
 		appName: name,
 		acceptanceCriteria: appAcceptanceCriteria(name, publish),
 		originRoomId,
+		originSource,
 		callback,
 	});
 
@@ -892,6 +902,7 @@ async function editExistingApp({
 	app,
 	repoRoot,
 	originRoomId,
+	originSource,
 	callback,
 }: {
 	runtime: IAgentRuntime;
@@ -899,6 +910,7 @@ async function editExistingApp({
 	app: InstalledAppInfo;
 	repoRoot: string;
 	originRoomId: string;
+	originSource?: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	// Same preflight as the create path: surface missing orchestrator/CLI as
@@ -938,6 +950,7 @@ async function editExistingApp({
 		appName: app.name,
 		acceptanceCriteria: appAcceptanceCriteria(app.name, null),
 		originRoomId,
+		originSource,
 		callback,
 	});
 
@@ -1007,6 +1020,24 @@ export async function runCreate({
 }: AppCreateInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+	const messageMetadata =
+		message.content?.metadata &&
+		typeof message.content.metadata === "object" &&
+		!Array.isArray(message.content.metadata)
+			? (message.content.metadata as Record<string, unknown>)
+			: {};
+	const directSource =
+		typeof message.content?.source === "string"
+			? message.content.source.trim()
+			: "";
+	const relayedSource =
+		typeof messageMetadata.originSource === "string"
+			? messageMetadata.originSource.trim()
+			: "";
+	const originSource =
+		directSource.toLowerCase() === "sub_agent" && relayedSource
+			? relayedSource
+			: directSource || undefined;
 	const userText = userRequestMessageText(message).trim();
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
@@ -1047,6 +1078,7 @@ export async function runCreate({
 				intent: existing.metadata.intent,
 				repoRoot,
 				originRoomId: roomId,
+				originSource,
 				callback,
 			});
 		}
@@ -1075,6 +1107,7 @@ export async function runCreate({
 			app: target,
 			repoRoot,
 			originRoomId: roomId,
+			originSource,
 			callback,
 		});
 	}
@@ -1123,6 +1156,7 @@ export async function runCreate({
 			app: target,
 			repoRoot,
 			originRoomId: roomId,
+			originSource,
 			callback,
 		});
 	}
@@ -1152,6 +1186,7 @@ export async function runCreate({
 			intent,
 			repoRoot,
 			originRoomId: roomId,
+			originSource,
 			callback,
 		});
 	}

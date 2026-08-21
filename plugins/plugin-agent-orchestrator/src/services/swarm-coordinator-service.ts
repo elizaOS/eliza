@@ -1443,6 +1443,7 @@ export class SwarmCoordinatorService
       const meta = sessionMeta.metadata;
       for (const key of [
         "originRoomId",
+        "originSource",
         "originConnectorMessageId",
         "replyToExternalMessageId",
         "messageId",

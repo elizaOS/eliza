@@ -72,6 +72,7 @@ const ATTACH_MAX_RETRY_INTERVAL_MS = 5_000;
 
 interface BridgeEventPayload {
 	originRoomId: string;
+	originSource: string | undefined;
 	verdict: "pass" | "fail";
 	method: typeof VERIFY_APP_METHOD | typeof VERIFY_PLUGIN_METHOD;
 	targetName: string;
@@ -154,6 +155,7 @@ function decodeEvent(event: SwarmEvent): BridgeEventPayload | null {
 
 	return {
 		originRoomId,
+		originSource: readString(event.data, "originSource"),
 		verdict,
 		method,
 		targetName,
@@ -438,6 +440,30 @@ export class VerificationRoomBridgeService extends Service {
 				metadata: { verdict: payload.verdict },
 			},
 		};
+
+		// Dashboard and connector sends must go through the registered transport:
+		// it persists AND broadcasts the proactive message. A raw createMemory is
+		// durable but invisible until refresh, which left the live chat hanging on
+		// "I'll post the link" even though the link was already in the database.
+		if (payload.originSource) {
+			try {
+				await this.runtime.sendMessageToTarget(
+					{
+						source: payload.originSource,
+						roomId: payload.originRoomId as UUID,
+					},
+					memory.content,
+				);
+				logger.info(
+					`[VerificationRoomBridge] delivered ${payload.verdict} verdict for ${payload.targetName} through source=${payload.originSource} room=${payload.originRoomId}`,
+				);
+				return;
+			} catch (err) {
+				logger.warn(
+					`[VerificationRoomBridge] transport delivery failed for source=${payload.originSource}; persisting for refresh fallback: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
 
 		await this.runtime.createMemory(memory, "messages");
 		logger.info(

@@ -4757,7 +4757,13 @@ describe("view management actions", () => {
 			const result = await runCreate({
 				runtime: runtime as never,
 				client: appClient as never,
-				message: message("Update the proof app", "origin-app-room") as never,
+				message: {
+					...message("Update the proof app", "origin-app-room"),
+					content: {
+						text: "Update the proof app",
+						source: "client_chat",
+					},
+				} as never,
 				options: {
 					action: "create",
 					editTarget: "proof-app",
@@ -4789,6 +4795,7 @@ describe("view management actions", () => {
 			};
 			expect(handlerOptions.parameters.metadata).toMatchObject({
 				originRoomId: "origin-app-room",
+				originSource: "client_chat",
 				parentTrajectoryStepId: "parent-step-1",
 				trajectoryLinkSource: "plugin-app-control:app-create",
 			});
