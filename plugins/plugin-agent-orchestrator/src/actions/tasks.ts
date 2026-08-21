@@ -1228,6 +1228,17 @@ async function runCreateLegacy(
     return errorResult("SMITHERS_DURABLE_TASK_UNAVAILABLE", textOut);
   }
 
+  // `create` waits for its workers, but the user should see the progress
+  // receipt when the task STARTS, not after its completion has already been
+  // relayed. The task record exists at this point, so the UI can render its
+  // card immediately. The final worker result arrives through SubAgentRouter;
+  // a successful create must not append a second, late "created" message.
+  const widgetBlock = threadId
+    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
+    : "";
+  const pendingText = `I'm on it. I'll share the result here when it's ready.${widgetBlock}`;
+  await callbackText(callback, pendingText);
+
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -1494,19 +1505,13 @@ async function runCreateLegacy(
     };
   }
 
-  const widgetBlock = threadId
-    ? `\n\n[TASK:${threadId}]${taskTitle}[/TASK]`
-    : "";
-  const proseText = `Created task agent${results.length > 1 ? "s" : ""}.${widgetBlock}`;
-  await callbackText(callback, proseText);
-
-  // The creation ack is the complete answer to a single-operation turn:
-  // verified + turnComplete make the callback the sole delivery instead of
-  // double-messaging with the evaluator's paraphrase.
+  // The callback above already delivered the progress receipt before work
+  // began. Return the same grounded text for the action ledger without posting
+  // a late duplicate after the child result.
   return {
     success: true,
-    text: proseText,
-    userFacingText: proseText,
+    text: pendingText,
+    userFacingText: pendingText,
     verifiedUserFacing: true,
     turnComplete: true,
     data: {

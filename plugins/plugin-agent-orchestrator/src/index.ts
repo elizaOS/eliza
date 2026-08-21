@@ -169,16 +169,22 @@ export function createAgentOrchestratorPlugin(): Plugin {
           // anchors `TASKS_SPAWN_AGENT` as the canonical sub-agent
           // delegation surface.
           overrides: {
+            create: {
+              description:
+                "Create a durable coding task with one or more explicitly requested parallel workers, wait for those workers, and return the task card. Use this for explicit multi-agent fan-out, durable task setup, or callers that specifically ask to create/manage a task. For an ordinary single coding request such as making a small program, editing a file, fixing a bug, or building a site, prefer TASKS_SPAWN_AGENT so the user immediately gets a normal progress reply and the finished result arrives as a follow-up.",
+              descriptionCompressed:
+                "durable coding task or explicit multi-agent fan-out; ordinary single coding work uses TASKS_SPAWN_AGENT",
+            },
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). This is the DEFAULT for an ordinary user asking Eliza to make a program, edit a file, fix a bug, run or test code, or build a site, including small single-file requests phrased in everyday language. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Also use this when the user explicitly asks to delegate coding work or names a coding adapter. Use TASKS_CREATE instead only for explicit durable-task setup or multi-agent fan-out. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; multi-step; prefer TASKS_SEND if active session exists on same workdir",
+                "default ordinary coding work; delegate ACP sub-agent claude|codex|opencode; prefer TASKS_SEND if active session exists on same workdir",
             },
           },
         }),

@@ -174,7 +174,7 @@ describe("TASKS:create durable-task widget emission", () => {
 
     expect(result?.success).toBe(true);
     expect(result?.text).not.toContain("[TASK:");
-    expect(result?.text).toContain("Created task agent");
+    expect(result?.text).toContain("I'm on it");
     expect(result?.data?.taskId).toBeNull();
     expect(cb).toHaveBeenCalledTimes(1);
     const cbArg = cb.mock.calls[0]?.[0] as { text?: string };
