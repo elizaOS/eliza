@@ -5,15 +5,12 @@
  * and fail-closed TEE attestation before releasing sealed-volume keys.
  */
 
-import { execFile, execFileSync, spawn } from "node:child_process";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
 
-const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 
 /**
@@ -302,82 +299,6 @@ function keychainUnsafeMessage(prefix: string): string {
   return `${prefix}OS keychain is unsafe on this host (headless Linux with no reachable D-Bus session, or ELIZA_VAULT_DISABLE_KEYCHAIN=1). Set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) to enable a passphrase-derived master key, or pass an inMemoryMasterKey.`;
 }
 
-async function readMacOSKeychainPassword(
-  service: string,
-  account: string,
-): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "/usr/bin/security",
-      ["find-generic-password", "-s", service, "-a", account, "-w"],
-      { encoding: "utf8" },
-    );
-    const value = stdout.trim();
-    return value.length > 0 ? value : null;
-  } catch (err) {
-    // error-policy:J3 untrusted-input sanitizing — "item not found" is the
-    // expected first-run state (return null → caller generates + stores a key);
-    // ANY other keychain failure is rethrown as MasterKeyUnavailableError. We
-    // never silently proceed without a real key.
-    const stderr = String((err as { stderr?: string }).stderr ?? err);
-    if (
-      stderr.includes("could not be found") ||
-      stderr.includes("The specified item could not be found")
-    ) {
-      return null;
-    }
-    throw new MasterKeyUnavailableError(
-      `macOS keychain read failed (${service}/${account}): ${stderr.trim()}`,
-    );
-  }
-}
-
-function writeMacOSKeychainPassword(
-  service: string,
-  account: string,
-  password: string,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Use the system `security` tool instead of @napi-rs/keyring on macOS.
-    // Keychain ACLs are tied to the requesting binary; dev Bun paths change
-    // often enough that the native binding can trigger a GUI prompt on every
-    // boot. `/usr/bin/security` is stable and commonly already trusted by the
-    // item ACL. Password data goes through stdin, not argv.
-    const child = spawn(
-      "/usr/bin/security",
-      ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
-      { stdio: ["pipe", "ignore", "pipe"] },
-    );
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new MasterKeyUnavailableError(
-          `macOS keychain write failed (${service}/${account}): ${
-            stderr.trim() || `security exited ${code}`
-          }`,
-        ),
-      );
-    });
-    // error-policy:J5 unhandled-rejection suppression — a stdin write EPIPE (child
-    // exited early) is observed via the `close` handler above, which rejects
-    // with the security stderr/exit code; this listener only prevents an
-    // unhandled 'error' event from crashing the process.
-    child.stdin.on("error", () => {});
-    child.stdin.write(`${password}\n${password}\n`, () => {
-      child.stdin.end();
-    });
-  });
-}
-
 /**
  * Default resolver: try the OS keychain first, then a passphrase-derived
  * key from `ELIZA_VAULT_PASSPHRASE`. If both fail, throws a single
@@ -486,40 +407,6 @@ export function loadDefaultMasterKeySync(opts: OsKeychainOptions = {}): Buffer {
   }
 
   try {
-    if (process.platform === "darwin") {
-      let existing: string | null = null;
-      try {
-        existing = execFileSync(
-          "/usr/bin/security",
-          ["find-generic-password", "-s", service, "-a", account, "-w"],
-          { encoding: "utf8" },
-        ).trim();
-      } catch (error) {
-        const stderr = String((error as { stderr?: string }).stderr ?? error);
-        if (!stderr.includes("could not be found")) throw error;
-      }
-      if (existing) {
-        const key = Buffer.from(existing, "base64");
-        if (key.length !== KEY_BYTES) {
-          throw new MasterKeyUnavailableError(
-            `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
-          );
-        }
-        return key;
-      }
-      const created = generateMasterKey();
-      const encoded = created.toString("base64");
-      execFileSync(
-        "/usr/bin/security",
-        ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
-        {
-          input: `${encoded}\n${encoded}\n`,
-          stdio: ["pipe", "ignore", "pipe"],
-        },
-      );
-      return created;
-    }
-
     const { Entry } =
       require("@napi-rs/keyring") as typeof import("@napi-rs/keyring");
     const entry = new Entry(service, account);
@@ -571,25 +458,6 @@ export function osKeychainMasterKey(
         throw new MasterKeyUnavailableError(
           keychainUnsafeMessage(`OS keychain (${service}/${account}): `),
         );
-      }
-      if (process.platform === "darwin") {
-        const existing = await readMacOSKeychainPassword(service, account);
-        if (existing && existing.length > 0) {
-          const buf = Buffer.from(existing, "base64");
-          if (buf.length !== KEY_BYTES) {
-            throw new MasterKeyUnavailableError(
-              `OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
-            );
-          }
-          return buf;
-        }
-        const created = generateMasterKey();
-        await writeMacOSKeychainPassword(
-          service,
-          account,
-          created.toString("base64"),
-        );
-        return created;
       }
       let Entry: typeof import("@napi-rs/keyring").Entry;
       try {

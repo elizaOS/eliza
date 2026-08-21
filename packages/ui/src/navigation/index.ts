@@ -80,6 +80,7 @@ export type BuiltinTab =
   | "database"
   | "desktop"
   | "settings"
+  | "vault"
   | "logs"
   | "background";
 
@@ -387,6 +388,7 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   database: "/apps/database",
   desktop: "/desktop",
   settings: "/settings",
+  vault: "/vault",
   logs: "/apps/logs",
   background: "/background",
 };
@@ -657,6 +659,8 @@ export function titleForTab(tab: Tab): string {
       return "Databases";
     case "settings":
       return "Settings";
+    case "vault":
+      return "Vault";
     case "logs":
       return "Logs";
     case "background":

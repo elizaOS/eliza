@@ -39,6 +39,7 @@ dependencies {
     implementation project(':elizaos-capacitor-mobile-signals')
     implementation project(':elizaos-capacitor-phone')
     implementation project(':elizaos-capacitor-screencapture')
+    implementation project(':elizaos-capacitor-secure-store')
     implementation project(':elizaos-capacitor-swabble')
     implementation project(':elizaos-capacitor-system')
     implementation project(':elizaos-capacitor-talkmode')

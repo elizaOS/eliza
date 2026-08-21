@@ -1604,7 +1604,19 @@ export function useFirstRunConductor(): void {
           if (refreshTimeout) clearTimeout(refreshTimeout);
           if (cancelled) return;
           if (refreshed?.token) {
-            writeStoredStewardToken(refreshed.token);
+            try {
+              await writeStoredStewardToken(refreshed.token);
+            } catch (error) {
+              // error-policy:J4 a rejected protected-store write keeps the
+              // user visibly signed out instead of claiming a volatile login.
+              logger.error(
+                { error },
+                "[first-run-conductor] could not persist recovered Steward session",
+              );
+              silentCloudEntryRef.current = false;
+              seedSignInGreetingAndPoll();
+              return;
+            }
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
             } catch (error) {

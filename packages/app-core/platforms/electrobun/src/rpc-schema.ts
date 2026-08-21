@@ -490,6 +490,33 @@ export interface DetectedProvider {
   statusDetail?: string;
 }
 
+export type RendererSecureStoreKind =
+  | "session.device_auth"
+  | "session.steward_token"
+  | "runtime.active_server"
+  | "runtime.agent_profiles";
+
+export type RendererSecureStoreResult =
+  | { ok: true; value?: string; deleted?: boolean }
+  | {
+      ok: false;
+      reason: "not_found" | "denied" | "unavailable" | "error";
+      message?: string;
+    };
+
+export interface RendererSecureStoreStatus {
+  backend:
+    | "macos_keychain"
+    | "windows_credential_manager"
+    | "linux_secret_service"
+    | "file_encrypted_fallback"
+    | "none";
+  available: boolean;
+  synchronized: false;
+  scope: "device" | "host" | "unavailable";
+  access: "app_only" | "user_session" | "unavailable";
+}
+
 // -- Screencapture --
 export interface ScreenSource {
   id: string;
@@ -2069,6 +2096,22 @@ export type ElizaDesktopRPCSchema = {
         params: { context: "first-run" | "tray-refresh" };
         response: { providers: DetectedProvider[] };
       };
+      secureStoreGet: {
+        params: { kind: RendererSecureStoreKind };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreSet: {
+        params: { kind: RendererSecureStoreKind; value: string };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreDelete: {
+        params: { kind: RendererSecureStoreKind };
+        response: RendererSecureStoreResult;
+      };
+      secureStoreStatus: {
+        params: undefined;
+        response: RendererSecureStoreStatus;
+      };
 
       // ---- GPU Window ----
       gpuWindowCreate: {
@@ -2700,6 +2743,10 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   // Credentials
   "credentials:scanProviders": "credentialsScanProviders",
   "credentials:scanAndValidate": "credentialsScanAndValidate",
+  "secureStore:get": "secureStoreGet",
+  "secureStore:set": "secureStoreSet",
+  "secureStore:delete": "secureStoreDelete",
+  "secureStore:status": "secureStoreStatus",
 
   // GPU Window
   "gpuWindow:create": "gpuWindowCreate",

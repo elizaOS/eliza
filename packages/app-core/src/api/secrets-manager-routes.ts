@@ -25,6 +25,10 @@ import {
   setSavedLogin,
 } from "@elizaos/vault";
 import {
+  createNodePlatformSecureStore,
+  describeNodePlatformSecureStore,
+} from "../security/platform-secure-store-node";
+import {
   _resetSecretsManagerInstallerForTesting,
   getSecretsManagerInstaller,
   type InstallableBackendId,
@@ -85,6 +89,7 @@ type LoginReveal = Awaited<ReturnType<SecretsManager["revealSavedLogin"]>>;
  * `_resetSecretsManagerForTesting()` between cases.
  */
 let _manager: SecretsManager | null = null;
+const platformSecureStore = createNodePlatformSecureStore();
 
 function getManager(): SecretsManager {
   if (!_manager) {
@@ -158,6 +163,31 @@ export async function handleSecretsManagerRoute(
   if (method === "GET" && pathname === "/api/secrets/manager/backends") {
     const statuses = await manager.detectBackends();
     sendJson(res, 200, { ok: true, backends: statuses as BackendStatus[] });
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/manager/protection") {
+    const keyProtection =
+      await describeNodePlatformSecureStore(platformSecureStore);
+    sendJson(res, 200, {
+      ok: true,
+      protection: {
+        localVault: {
+          encryptedAtRest: true,
+          cipher: "AES-256-GCM",
+          masterKey: keyProtection,
+        },
+        nativeSessionState: {
+          policy: "platform-protected-store",
+          synchronized: false,
+          plaintextFallback: false,
+        },
+        connectorSessions: {
+          telegramPersonal: "vault-master-key-encrypted",
+        },
+        cloudTrustDomain: "separate-organization-kms",
+      },
+    });
     return true;
   }
 

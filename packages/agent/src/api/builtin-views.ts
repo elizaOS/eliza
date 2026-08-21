@@ -342,6 +342,32 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     visibleInManager: true,
   },
   {
+    id: "vault",
+    viewKind: "system",
+    label: "Vault",
+    description:
+      "Owner-only encrypted credentials, connected accounts, saved logins, and secret routing",
+    icon: "KeyRound",
+    heroImagePath: "assets/view-heroes/settings.png",
+    path: "/vault",
+    order: 89,
+    tags: [
+      "vault",
+      "secrets",
+      "credentials",
+      "keys",
+      "connected accounts",
+      "password manager",
+    ],
+    relatedActions: ["SECRETS"],
+    anticipatoryIntent:
+      "Offer to inventory or safely configure the exact credential the user needs without exposing secret values, and distinguish local Vault entries from Eliza Cloud organization credentials.",
+    roleGate: { minRole: "OWNER" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
     id: "settings",
     viewKind: "system",
     label: "Settings",

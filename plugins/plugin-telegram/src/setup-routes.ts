@@ -73,6 +73,14 @@ interface ConnectorSetupService {
   getConfig(): Record<string, unknown>;
   persistConfig(config: Record<string, unknown>): void;
   updateConfig(updater: (config: Record<string, unknown>) => void): void;
+  persistConnectorCredential?: (input: {
+    provider: string;
+    accountId: string;
+    credentialType: string;
+    value: string;
+    caller?: string;
+  }) => Promise<string | null>;
+  removeConnectorCredentialReference?: (reference: string) => Promise<boolean>;
   registerEscalationChannel(channelName: string): boolean;
   setOwnerContact(update: {
     source: string;
@@ -229,6 +237,15 @@ async function handleStart(
   const setupService = getSetupService(runtime);
 
   if (setupService) {
+    const storedToken = setupService.persistConnectorCredential
+      ? ((await setupService.persistConnectorCredential({
+          provider: "telegram",
+          accountId: String(bot.id),
+          credentialType: "bot-token",
+          value: token,
+          caller: "telegram-setup",
+        })) ?? token)
+      : token;
     setupService.updateConfig((config) => {
       if (!config.connectors) {
         config.connectors = {};
@@ -240,7 +257,7 @@ async function handleStart(
       if (!connectors.telegram || typeof connectors.telegram !== "object") {
         connectors.telegram = {};
       }
-      connectors.telegram.botToken = token;
+      connectors.telegram.botToken = storedToken;
     });
 
     // Auto-populate owner contact so LifeOps can deliver reminders
@@ -280,6 +297,7 @@ async function handleCancel(
   const setupService = getSetupService(runtime);
 
   if (setupService) {
+    let storedToken: string | null = null;
     setupService.updateConfig((config) => {
       const connectors = (config.connectors ?? {}) as Record<
         string,
@@ -287,9 +305,14 @@ async function handleCancel(
       >;
       const tgConfig = connectors.telegram;
       if (tgConfig) {
+        storedToken =
+          typeof tgConfig.botToken === "string" ? tgConfig.botToken : null;
         delete tgConfig.botToken;
       }
     });
+    if (storedToken && setupService.removeConnectorCredentialReference) {
+      await setupService.removeConnectorCredentialReference(storedToken);
+    }
   }
 
   sendStatus(res, currentStatus(setupService, runtime));

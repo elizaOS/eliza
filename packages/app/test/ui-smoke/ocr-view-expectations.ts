@@ -226,6 +226,12 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
   }),
+  "builtin-vault": expected({
+    // The audit intentionally captures routed views with the chat sheet open.
+    // Vault's non-interactive identity stays visible for orientation while its
+    // subtitle and every sensitive control are occluded in short landscapes.
+    requireAll: ["Vault"],
+  }),
   "builtin-logs": expected({
     requireAll: ["Logs"],
     requireAny: ["INFO", "smoke", "All levels", "Search logs", "All tags"],
