@@ -530,6 +530,10 @@ jobs:
             --no-banner \
             --log-opts "$range"
 
+  browser_bridge_windows_security:
+    name: Browser bridge Windows security
+    uses: ./.github/workflows/browser-bridge-windows-security.yml
+
   required:
     name: All Tests Passed
     if: always()
@@ -545,6 +549,7 @@ jobs:
         smoke_lanes,
         android_aab,
         secrets,
+        browser_bridge_windows_security,
       ]
     runs-on: ubuntu-24.04
     steps:
@@ -561,12 +566,13 @@ jobs:
             smoke-lanes=${{ needs.smoke_lanes.result }}
             android-aab=${{ needs.android_aab.result }}
             secrets=${{ needs.secrets.result }}
+            browser-bridge-windows-security=${{ needs.browser_bridge_windows_security.result }}
         run: |
           set -euo pipefail
           for pair in $RESULTS; do
             result="${pair#*=}"
             if [ "$result" != "success" ]; then
-              echo "::error::$pair"
+              echo "::error title=CI aggregate::$name finished with $result"
               exit 1
             fi
           done
