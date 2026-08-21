@@ -10,6 +10,7 @@ import { useAppSelector } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { GroupChatReadinessGuide } from "./GroupChatReadinessGuide";
 
 type TelegramSetupStatus = "idle" | "validating" | "connected" | "error";
 
@@ -65,6 +66,7 @@ export function TelegramBotSetupPanel() {
         setStatus("error");
       }
     } catch (nextError) {
+      // error-policy:J4 Connector validation failures stay visible in the setup panel.
       setError(
         nextError instanceof Error ? nextError.message : String(nextError),
       );
@@ -73,126 +75,139 @@ export function TelegramBotSetupPanel() {
   }, [token]);
 
   const disconnect = useCallback(async () => {
+    setError(null);
     try {
       await client.fetch("/api/setup/telegram/cancel", { method: "POST" });
       setBotInfo(null);
       setStatus("idle");
-    } catch {
-      // ignore
+    } catch (nextError) {
+      // error-policy:J4 A failed disconnect remains visibly connected and exposes a retryable error.
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "Telegram disconnect failed. Please retry.",
+      );
     }
   }, []);
 
   if (status === "connected" && botInfo) {
     return (
-      <PagePanel.Notice
-        tone="accent"
-        className="mt-4"
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
-            onClick={() => {
-              void disconnect();
-            }}
-          >
-            {t("common.disconnect", { defaultValue: "Disconnect" })}
-          </Button>
-        }
-      >
-        <div className="space-y-1 text-xs">
-          <div className="font-semibold text-txt">
-            {t("pluginsview.TelegramConnected", {
-              defaultValue: "Telegram bot connected",
-            })}
-            {" \u2014 "}
-            <span className="text-muted-strong">@{botInfo.username}</span>
+      <div>
+        <PagePanel.Notice
+          tone="accent"
+          className="mt-4"
+          actions={
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+              onClick={() => {
+                void disconnect();
+              }}
+            >
+              {t("common.disconnect", { defaultValue: "Disconnect" })}
+            </Button>
+          }
+        >
+          <div className="space-y-1 text-xs">
+            <div className="font-semibold text-txt">
+              {t("pluginsview.TelegramConnected", {
+                defaultValue: "Telegram bot connected",
+              })}
+              {" \u2014 "}
+              <span className="text-muted-strong">@{botInfo.username}</span>
+            </div>
+            <div className="text-muted">
+              {t("pluginsview.TelegramConnectedHint", {
+                defaultValue:
+                  "Your bot is saved and will auto-connect on next start. Enable the Telegram plugin above if it isn't already active.",
+              })}
+            </div>
+            {error ? <div className="text-danger">{error}</div> : null}
           </div>
-          <div className="text-muted">
-            {t("pluginsview.TelegramConnectedHint", {
-              defaultValue:
-                "Your bot is saved and will auto-connect on next start. Enable the Telegram plugin above if it isn't already active.",
-            })}
-          </div>
-        </div>
-      </PagePanel.Notice>
+        </PagePanel.Notice>
+        <GroupChatReadinessGuide connector="telegram" />
+      </div>
     );
   }
 
   return (
-    <PagePanel.Notice
-      tone={status === "error" ? "danger" : "default"}
-      className="mt-4"
-      actions={
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
-          onClick={() => {
-            void validateAndSave();
-          }}
-          disabled={status === "validating" || !token.trim()}
-        >
-          {status === "validating"
-            ? t("common.validating", { defaultValue: "Validating\u2026" })
-            : t("common.connect", { defaultValue: "Connect" })}
-        </Button>
-      }
-    >
-      <div className="space-y-3 text-xs">
-        <div className="space-y-1">
-          <div className="font-semibold text-txt">
-            {t("pluginsview.TelegramSetupTitle", {
-              defaultValue: "Connect a Telegram Bot",
-            })}
+    <div>
+      <PagePanel.Notice
+        tone={status === "error" ? "danger" : "default"}
+        className="mt-4"
+        actions={
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
+            onClick={() => {
+              void validateAndSave();
+            }}
+            disabled={status === "validating" || !token.trim()}
+          >
+            {status === "validating"
+              ? t("common.validating", { defaultValue: "Validating\u2026" })
+              : t("common.connect", { defaultValue: "Connect" })}
+          </Button>
+        }
+      >
+        <div className="space-y-3 text-xs">
+          <div className="space-y-1">
+            <div className="font-semibold text-txt">
+              {t("pluginsview.TelegramSetupTitle", {
+                defaultValue: "Connect a Telegram Bot",
+              })}
+            </div>
+            <ol className="list-inside list-decimal space-y-1 text-muted">
+              <li>
+                {t("common.open", {
+                  defaultValue: "Open ",
+                })}
+                <a
+                  href="https://t.me/BotFather"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium text-accent underline"
+                >
+                  @BotFather
+                </a>
+                {t("pluginsview.TelegramStep1b", {
+                  defaultValue: " on Telegram",
+                })}
+              </li>
+              <li>
+                {t("pluginsview.TelegramStep2", {
+                  defaultValue:
+                    "Send /newbot and follow the prompts to create your bot",
+                })}
+              </li>
+              <li>
+                {t("pluginsview.TelegramStep3", {
+                  defaultValue: "Copy the bot token and paste it below",
+                })}
+              </li>
+            </ol>
           </div>
-          <ol className="list-inside list-decimal space-y-1 text-muted">
-            <li>
-              {t("common.open", {
-                defaultValue: "Open ",
-              })}
-              <a
-                href="https://t.me/BotFather"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-accent underline"
-              >
-                @BotFather
-              </a>
-              {t("pluginsview.TelegramStep1b", {
-                defaultValue: " on Telegram",
-              })}
-            </li>
-            <li>
-              {t("pluginsview.TelegramStep2", {
-                defaultValue:
-                  "Send /newbot and follow the prompts to create your bot",
-              })}
-            </li>
-            <li>
-              {t("pluginsview.TelegramStep3", {
-                defaultValue: "Copy the bot token and paste it below",
-              })}
-            </li>
-          </ol>
+
+          <Input
+            type="password"
+            value={token}
+            onChange={(e) => {
+              setToken(e.target.value);
+              if (status === "error") setStatus("idle");
+            }}
+            placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+            className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void validateAndSave();
+            }}
+          />
+
+          {error ? <div className="text-danger">{error}</div> : null}
         </div>
-
-        <Input
-          type="password"
-          value={token}
-          onChange={(e) => {
-            setToken(e.target.value);
-            if (status === "error") setStatus("idle");
-          }}
-          placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
-          className="h-8 w-full rounded-sm border border-border/50 bg-bg/70 px-3 text-xs-tight text-txt placeholder:text-muted/50"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void validateAndSave();
-          }}
-        />
-
-        {error ? <div className="text-danger">{error}</div> : null}
-      </div>
-    </PagePanel.Notice>
+      </PagePanel.Notice>
+      <GroupChatReadinessGuide connector="telegram" />
+    </div>
   );
 }

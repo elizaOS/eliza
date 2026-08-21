@@ -26,6 +26,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ApiError, api } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
+import { ConnectorFirstInteractionGuide } from "./SharedAgentFirstFiveMinutes";
 import { useConnectionStatus } from "./use-connection-status";
 
 interface BlooioStatus {
@@ -369,6 +370,8 @@ export function BlooioConnection() {
             />
           )}
 
+          <ConnectorFirstInteractionGuide connector="blooio" />
+
           <ConnectionFooterActions
             note={t("cloud.blooio.realtimeNote", {
               defaultValue: "Messages are processed in real-time",
@@ -390,6 +393,8 @@ export function BlooioConnection() {
       }
       setupContent={
         <div className="space-y-4">
+          <ConnectorFirstInteractionGuide connector="blooio" />
+
           <ConnectionInstructions
             title={t("cloud.blooio.instructionsTitle", {
               defaultValue: "How to get Blooio credentials",
