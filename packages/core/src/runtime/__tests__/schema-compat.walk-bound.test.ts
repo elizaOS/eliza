@@ -18,7 +18,6 @@ import {
 	CEREBRAS_SCHEMA_UNBOUNDED,
 	cloneSchemaForBoundedTransport,
 	isCerebrasSchemaUnbounded,
-	MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
 	MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
 	MAX_CEREBRAS_SCHEMA_WALK_NODES,
 	normalizeSchemaForCerebras,
@@ -490,18 +489,103 @@ describe("cloneSchemaForBoundedTransport", () => {
 		}
 	});
 
-	it("accepts every schema the walk accepts and fails closed past its own budget", () => {
-		// `deepProperties(n)` is n schema levels = 2n raw levels, so the exact
-		// walk budget sits exactly on the clone budget. Nothing the normalizer
-		// accepts is rejected by the pre-pass.
+	it("accepts and rejects exactly what normalizeSchemaForCerebras does", () => {
+		// Shaw's exact-head repro on fb67e329: the pre-pass counted RAW object
+		// nesting, so a legal `default` annotation nested past its budget was
+		// rejected while the normalizer accepted it. The clone now walks the
+		// same schema-bearing keywords with the same depth accounting, so the
+		// two must agree on every case below.
+		let annotation: Record<string, unknown> = { leaf: true };
+		for (let i = 0; i < MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2 + 1; i += 1) {
+			annotation = { nested: annotation };
+		}
+		let deepAnnotation: Record<string, unknown> = { leaf: true };
+		for (let i = 0; i < 20_000; i += 1) {
+			deepAnnotation = { nested: deepAnnotation };
+		}
+		const cyclicAnnotation: Record<string, unknown> = {
+			type: "object",
+			properties: {},
+		};
+		cyclicAnnotation.default = cyclicAnnotation;
+		const cyclicKeyword: Record<string, unknown> = {
+			type: "object",
+			properties: {},
+		};
+		cyclicKeyword.not = cyclicKeyword;
+
+		const cases: Array<[string, unknown]> = [
+			[
+				"shaw repro default",
+				{ type: "object", properties: {}, default: annotation },
+			],
+			[
+				"20k default",
+				{ type: "object", properties: {}, default: deepAnnotation },
+			],
+			[
+				"20k examples",
+				{ type: "object", properties: {}, examples: [deepAnnotation] },
+			],
+			[
+				"20k extension",
+				{ type: "object", properties: {}, "x-vendor": deepAnnotation },
+			],
+			["20k const", { type: "object", properties: {}, const: deepAnnotation }],
+			["cyclic annotation", cyclicAnnotation],
+			["cyclic keyword", cyclicKeyword],
+			["properties at budget", deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH)],
+			[
+				"properties past budget",
+				deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH + 1),
+			],
+		];
+
+		const outcome = (run: () => unknown): string => {
+			try {
+				run();
+				return "accepted";
+			} catch (error) {
+				return `${expectUnbounded(error).context?.max ?? "cycle"}`;
+			}
+		};
+
+		for (const [label, schema] of cases) {
+			expect([
+				label,
+				outcome(() => cloneSchemaForBoundedTransport(schema)),
+			]).toEqual([
+				label,
+				outcome(() =>
+					normalizeSchemaForCerebras(schema, true, { strict: true }),
+				),
+			]);
+		}
+	});
+
+	it("carries annotation data across verbatim without walking it", () => {
+		const deep: Record<string, unknown> = { a: { b: { c: 1 } } };
+		const cloned = cloneSchemaForBoundedTransport({
+			type: "object",
+			properties: {},
+			default: deep,
+			enum: [1, 2],
+			"x-vendor": { deep },
+		}) as Record<string, unknown>;
+		expect(cloned.default).toEqual({ a: { b: { c: 1 } } });
+		expect(cloned.enum).toEqual([1, 2]);
+		expect(cloned["x-vendor"]).toEqual({ deep: { a: { b: { c: 1 } } } });
+		// Annotation values are the immutable descriptor snapshot, carried across
+		// rather than re-walked — exactly what cloneOwnData does in the normalizer.
+		expect(cloned.default).toBe(deep);
+	});
+
+	it("fails closed past the schema depth budget", () => {
 		expect(() =>
 			cloneSchemaForBoundedTransport(
 				deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH),
 			),
 		).not.toThrow();
-		expect(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH).toBe(
-			MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2,
-		);
 		try {
 			cloneSchemaForBoundedTransport(
 				deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH + 1),
@@ -509,7 +593,7 @@ describe("cloneSchemaForBoundedTransport", () => {
 			throw new Error("expected unbounded throw");
 		} catch (error) {
 			const typed = expectUnbounded(error);
-			expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+			expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
 			expect(typed.context?.clone).toBe(true);
 		}
 	});

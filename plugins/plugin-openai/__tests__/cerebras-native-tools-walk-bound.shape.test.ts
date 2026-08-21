@@ -12,9 +12,9 @@ import {
   ElizaError,
   type IAgentRuntime,
   isCerebrasSchemaUnbounded,
-  MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_NODES,
+  MAX_WELL_FORMED_DEPTH,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -146,9 +146,9 @@ describe("normalizeNativeToolsForCall Cerebras walk bound (real caller)", () => 
     } catch (error) {
       expect(Date.now() - started).toBeLessThan(250);
       const typed = expectUnbounded(error);
-      // The bounded transport clone runs first, so the raw-object budget
-      // (two raw levels per schema level) is what rejects this input.
-      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+      // The bounded transport clone runs first and uses the same schema-level
+      // depth accounting as the normalizer, so the budget reported is the same.
+      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
       expect(typed.context?.clone).toBe(true);
       expect(aiMocks.generateText).not.toHaveBeenCalled();
     }
@@ -268,9 +268,9 @@ describe("normalizeNativeToolsForCall Cerebras walk bound (real caller)", () => 
       throw new Error("expected unbounded throw");
     } catch (error) {
       const typed = expectUnbounded(error);
-      // The bounded transport clone runs first, so the raw-object budget
-      // (two raw levels per schema level) is what rejects this input.
-      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+      // The bounded transport clone runs first and uses the same schema-level
+      // depth accounting as the normalizer, so the budget reported is the same.
+      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
       expect(typed.context?.clone).toBe(true);
       expect(aiMocks.generateText).not.toHaveBeenCalled();
     }
@@ -477,5 +477,112 @@ describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
     expect(
       (customFields.properties as Record<string, unknown>).__eliza_record_entries
     ).toBeDefined();
+  });
+});
+
+/**
+ * Shaw CR at fb67e329: the pre-pass counted raw object nesting, so a legal
+ * `default`/`examples`/extension annotation nested past that raw budget was
+ * rejected even though `normalizeSchemaForCerebras` and `sanitizeJsonSchema`
+ * never descend into annotation data and accept it. The provider path must
+ * keep accepting those schemas.
+ */
+describe("Cerebras mode accepts deep legal annotation data (real caller)", () => {
+  function deepAnnotation(depth: number): Record<string, unknown> {
+    let node: Record<string, unknown> = { leaf: true };
+    for (let i = 0; i < depth; i++) {
+      node = { nested: node };
+    }
+    return node;
+  }
+
+  it("accepts a default annotation nested far past the schema depth budget", () => {
+    const annotation = deepAnnotation(MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2 + 1);
+    const result = callStrictCerebras({
+      type: "object",
+      properties: { x: { type: "string" } },
+      default: annotation,
+    });
+    const tool = (
+      result.tools as Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>
+    ).probe;
+    const schema = tool.inputSchema.jsonSchema;
+    expect(schema.type).toBe("object");
+    // Annotation data survives to the wire unchanged (it is not a stripped
+    // strict-unsupported constraint keyword).
+    expect(schema.default).toEqual(annotation);
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("accepts 20k-deep examples and x- extension annotations", () => {
+    const annotation = deepAnnotation(20_000);
+    const result = callStrictCerebras({
+      type: "object",
+      properties: { x: { type: "string" } },
+      examples: [annotation],
+      "x-vendor": annotation,
+    });
+    const tool = (
+      result.tools as Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>
+    ).probe;
+    expect(tool.inputSchema.jsonSchema["x-vendor"]).toBe(annotation);
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("keeps a deep annotation on a nested property and still dispatches", async () => {
+    // `handleTextSmall` runs the params through `deepToWellFormedUnicode`,
+    // whose own independent MAX_WELL_FORMED_DEPTH cap governs the whole
+    // payload. Stay inside it so this test measures the schema pre-pass.
+    const annotation = deepAnnotation(MAX_WELL_FORMED_DEPTH - 8);
+    await handleTextSmall(createRuntime(), {
+      prompt: "probe",
+      tools: [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              x: { type: "string", default: annotation },
+            },
+            required: ["x"],
+            additionalProperties: false,
+          },
+        },
+      ],
+    } as never);
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
+    const call = aiMocks.generateText.mock.calls[0][0] as {
+      tools: Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>;
+    };
+    const x = (
+      call.tools.probe.inputSchema.jsonSchema.properties as Record<string, Record<string, unknown>>
+    ).x;
+    expect(x.default).toEqual(annotation);
+  });
+
+  it("leaves the deeper handler ceiling to the pre-existing well-formed cap", async () => {
+    // Past MAX_WELL_FORMED_DEPTH the request is rejected by the payload
+    // unicode walk that already existed on origin develop, NOT by the Cerebras
+    // schema pre-pass. Asserting the code proves the pre-pass is not the party
+    // narrowing annotation depth.
+    const annotation = deepAnnotation(MAX_WELL_FORMED_DEPTH * 4);
+    await expect(
+      handleTextSmall(createRuntime(), {
+        prompt: "probe",
+        tools: [
+          {
+            name: "probe",
+            strict: true,
+            parameters: { type: "object", properties: {}, default: annotation },
+          },
+        ],
+      } as never)
+    ).rejects.toSatisfy((error) => {
+      expect(isCerebrasSchemaUnbounded(error)).toBe(false);
+      expect((error as ElizaError).code).not.toBe(CEREBRAS_SCHEMA_UNBOUNDED);
+      return true;
+    });
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
   });
 });

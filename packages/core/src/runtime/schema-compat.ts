@@ -29,17 +29,6 @@ export function sanitizeFunctionNameForCerebras(name: string): string {
  */
 export const MAX_CEREBRAS_SCHEMA_WALK_DEPTH = 64;
 export const MAX_CEREBRAS_SCHEMA_WALK_NODES = 100_000;
-/**
- * Raw-object budget for the transport clone. The schema walk counts SCHEMA
- * levels: a keyword container (`properties`, `anyOf`, ...) shares its parent's
- * depth and only its entries cost a level. A structural clone cannot know
- * which keys are keywords, so it counts raw object nesting, where one schema
- * level costs at most two raw levels. Twice the schema budget is therefore the
- * exact equivalent bound: no schema `normalizeSchemaForCerebras` accepts is
- * rejected by the pre-pass, and recursion stays bounded either way.
- */
-export const MAX_CEREBRAS_SCHEMA_CLONE_DEPTH =
-	MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2;
 export const CEREBRAS_SCHEMA_UNBOUNDED = "CEREBRAS_SCHEMA_UNBOUNDED";
 
 type SchemaWalkContext = {
@@ -158,16 +147,21 @@ function hasNonEmptyOwnArray(value: unknown): boolean {
 	return isArrayRecord(value) && ownArrayLength(value) > 0;
 }
 
-function cloneOwnData(
-	value: object,
-	ctx: SchemaWalkContext,
-): Record<string, unknown> {
-	// Reserve the raw own-key width BEFORE allocating the clone. A node
-	// with >100k irrelevant keys must trip MAX_CEREBRAS_SCHEMA_WALK_NODES
-	// instead of copying every enumerable value first.
+type OwnDataEntry = { key: string; value: unknown };
+
+/**
+ * Single-pass immutable snapshot of the own enumerable string-keyed DATA
+ * properties. Every descriptor trap runs exactly once and the captured value
+ * is the one every later step consumes, so a Proxy cannot present a benign
+ * data descriptor during filtering and a different value (or an accessor) on a
+ * second read. The raw own-key width is reserved BEFORE anything is captured,
+ * so a node with >100k irrelevant keys trips MAX_CEREBRAS_SCHEMA_WALK_NODES
+ * instead of allocating first.
+ */
+function ownDataEntries(value: object, ctx: SchemaWalkContext): OwnDataEntry[] {
 	const keys = inspectSchema("ownKeys", () => Reflect.ownKeys(value));
 	reserveSchemaVisits(ctx, keys.length);
-	const entries: Array<{ key: string; value: unknown }> = [];
+	const entries: OwnDataEntry[] = [];
 	for (const key of keys) {
 		if (typeof key !== "string") continue;
 		const descriptor = inspectSchema("getOwnPropertyDescriptor", () =>
@@ -179,14 +173,29 @@ function cloneOwnData(
 		}
 		entries.push({ key, value: descriptor.value });
 	}
+	return entries;
+}
+
+function defineOwnData(
+	target: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): void {
+	Object.defineProperty(target, key, {
+		value,
+		enumerable: true,
+		writable: true,
+		configurable: true,
+	});
+}
+
+function cloneOwnData(
+	value: object,
+	ctx: SchemaWalkContext,
+): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	for (const entry of entries) {
-		Object.defineProperty(out, entry.key, {
-			value: entry.value,
-			enumerable: true,
-			writable: true,
-			configurable: true,
-		});
+	for (const entry of ownDataEntries(value, ctx)) {
+		defineOwnData(out, entry.key, entry.value);
 	}
 	return out;
 }
@@ -195,63 +204,141 @@ function createSchemaWalkContext(): SchemaWalkContext {
 	return { visits: 0, visiting: new WeakSet<object>() };
 }
 
+function cloneSchemaTransportMap(
+	value: object,
+	depth: number,
+	ctx: SchemaWalkContext,
+): Record<string, unknown> {
+	const mapped: Record<string, unknown> = {};
+	for (const entry of ownDataEntries(value, ctx)) {
+		defineOwnData(
+			mapped,
+			entry.key,
+			cloneSchemaTransportWalk(entry.value, depth + 1, ctx),
+		);
+	}
+	return mapped;
+}
+
+function cloneSchemaTransportArray(
+	value: unknown[],
+	depth: number,
+	ctx: SchemaWalkContext,
+): unknown[] {
+	// Reserve the validated own length BEFORE allocating or scanning, so a huge
+	// sparse array trips the aggregate budget instead of driving descriptor
+	// calls and allocation first.
+	const length = ownArrayLength(value);
+	reserveSchemaVisits(ctx, length);
+	const mapped = new Array(length);
+	for (let index = 0; index < length; index += 1) {
+		const key = String(index);
+		const descriptor = ownValueDescriptor(value, key);
+		// A missing own index is a hole. Leave it a hole: tuple keywords
+		// (`prefixItems`, tuple `items`) distinguish an absent element from an
+		// explicit `undefined`, and the origin `value.map(...)` preserved holes.
+		if (!descriptor) continue;
+		defineOwnData(
+			mapped as unknown as Record<string, unknown>,
+			key,
+			cloneSchemaTransportWalk(descriptor.value, depth + 1, ctx),
+		);
+	}
+	return mapped;
+}
+
+/**
+ * Clone the schema-bearing children of an already-snapshotted node, using the
+ * SAME keyword tables, the same guards, and the same depth accounting as
+ * `walkSchemaChildren`. Keys that are not schema-bearing (`default`,
+ * `examples`, `const`, `enum`, `required`, `x-*` extensions, ...) hold
+ * arbitrary JSON data, not sub-schemas: the normalizer and `sanitizeJsonSchema`
+ * both leave them alone, so the pre-pass leaves them alone too. Their values
+ * are already captured in the immutable descriptor snapshot, so they are
+ * carried across without executing a single accessor.
+ */
+function cloneSchemaTransportChildren(
+	node: Record<string, unknown>,
+	depth: number,
+	ctx: SchemaWalkContext,
+): void {
+	for (const key of SCHEMA_MAP_KEYS) {
+		const value = node[key];
+		if (!isSchemaRecord(value)) continue;
+		node[key] = cloneSchemaTransportMap(value, depth, ctx);
+	}
+
+	for (const key of SCHEMA_ARRAY_KEYS) {
+		const value = node[key];
+		if (!isArrayRecord(value)) continue;
+		node[key] = cloneSchemaTransportArray(value, depth, ctx);
+	}
+
+	const items = node.items;
+	if (isArrayRecord(items)) {
+		node.items = cloneSchemaTransportArray(items, depth, ctx);
+	} else if (items !== undefined) {
+		node.items = cloneSchemaTransportWalk(items, depth + 1, ctx);
+	}
+
+	for (const key of SCHEMA_SINGLE_KEYS) {
+		const value = node[key];
+		if (!isSchemaRecord(value)) continue;
+		node[key] = cloneSchemaTransportWalk(value, depth + 1, ctx);
+	}
+
+	const dependencies = node.dependencies;
+	if (isSchemaRecord(dependencies)) {
+		const mapped: Record<string, unknown> = {};
+		for (const entry of ownDataEntries(dependencies, ctx)) {
+			defineOwnData(
+				mapped,
+				entry.key,
+				isArrayRecord(entry.value)
+					? cloneSchemaTransportArray(entry.value, depth, ctx)
+					: cloneSchemaTransportWalk(entry.value, depth + 1, ctx),
+			);
+		}
+		node.dependencies = mapped;
+	}
+}
+
 function cloneSchemaTransportWalk(
-	value: unknown,
+	schema: unknown,
 	depth: number,
 	ctx: SchemaWalkContext,
 ): unknown {
-	if (!value || typeof value !== "object") return value;
+	// Mirrors normalizeSchemaForCerebrasWalk: a non-object (or an array reached
+	// outside an array-valued keyword) is data, not a schema node, and passes
+	// through untouched.
+	if (!schema || typeof schema !== "object" || safeIsArray(schema)) {
+		return schema;
+	}
 
-	if (depth > MAX_CEREBRAS_SCHEMA_CLONE_DEPTH) {
+	if (depth > MAX_CEREBRAS_SCHEMA_WALK_DEPTH) {
 		failCerebrasSchemaUnbounded({
 			depth,
-			max: MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
+			max: MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
 			clone: true,
 		});
 	}
-	if (ctx.visiting.has(value)) {
+	if (ctx.visiting.has(schema)) {
 		failCerebrasSchemaUnbounded({ cycle: true, depth, clone: true });
 	}
-	ctx.visiting.add(value);
+	ctx.visiting.add(schema);
 	reserveSchemaVisits(ctx, 1);
 
 	try {
-		if (safeIsArray(value)) {
-			// Reserve the declared width BEFORE allocating or scanning, so a
-			// huge sparse array trips the aggregate budget instead of driving
-			// `length` descriptor calls and allocation first.
-			const length = ownArrayLength(value as unknown[]);
-			reserveSchemaVisits(ctx, length);
-			const out = new Array(length);
-			for (let index = 0; index < length; index += 1) {
-				const key = String(index);
-				const descriptor = ownValueDescriptor(value, key);
-				// A missing own index is a hole. Leave it a hole: JSON Schema
-				// tuple keywords (`prefixItems`, tuple `items`) distinguish an
-				// absent element from an explicit `undefined`.
-				if (!descriptor) continue;
-				Object.defineProperty(out, key, {
-					value: cloneSchemaTransportWalk(descriptor.value, depth + 1, ctx),
-					enumerable: true,
-					writable: true,
-					configurable: true,
-				});
-			}
-			return out;
-		}
-
-		const snapshot = cloneOwnData(value, ctx);
-		for (const key of Object.keys(snapshot)) {
-			snapshot[key] = cloneSchemaTransportWalk(snapshot[key], depth + 1, ctx);
-		}
-		return snapshot;
+		const node = cloneOwnData(schema, ctx);
+		cloneSchemaTransportChildren(node, depth, ctx);
+		return node;
 	} finally {
-		ctx.visiting.delete(value);
+		ctx.visiting.delete(schema);
 	}
 }
 
 /**
- * Bounded, descriptor-only structural clone that applies NO Cerebras
+ * Bounded, descriptor-only clone of a tool schema that applies NO Cerebras
  * semantics.
  *
  * The strict Cerebras tool path is
@@ -264,11 +351,20 @@ function cloneSchemaTransportWalk(
  * `sanitizeJsonSchema` needs to build the `__eliza_record_entries` reverse
  * transform (#11249).
  *
- * This clone is the safe pre-pass: same depth / node / path-local-cycle /
- * accessor budgets and the same descriptor-only reflection, but it copies
- * declared shape verbatim (holes included). Sanitization then runs on a plain,
- * budgeted graph with declared semantics intact, and
- * `normalizeSchemaForCerebras` applies provider semantics afterwards.
+ * This clone is the safe pre-pass. It walks EXACTLY the schema-bearing
+ * keywords `normalizeSchemaForCerebras` walks (a superset of the ones
+ * `sanitizeJsonSchema` recurses into), with the same depth accounting, the
+ * same aggregate node budget, the same path-local cycle detection, and the
+ * same descriptor-only reflection — but it copies declared shape verbatim
+ * (holes included) and never descends into annotation/extension data such as
+ * `default`, `examples`, `const`, or `x-*`, which are legal arbitrary JSON and
+ * which the normalizer and the sanitizer both leave untouched. Accepting
+ * exactly what the normalizer accepts is the compatibility contract; the
+ * budgets exist to stop unbounded SCHEMA recursion, not to cap user data.
+ *
+ * Sanitization then runs on a plain, budgeted graph with declared semantics
+ * intact, and `normalizeSchemaForCerebras` applies provider semantics
+ * afterwards.
  */
 export function cloneSchemaForBoundedTransport(schema: unknown): unknown {
 	return cloneSchemaTransportWalk(schema, 0, createSchemaWalkContext());
@@ -399,23 +495,22 @@ function mapSchemaRecord(
 	depth: number,
 	ctx: SchemaWalkContext,
 ): Record<string, unknown> {
-	const keys = ownEnumerableStringKeys(value);
-	reserveSchemaVisits(ctx, keys.length);
+	// One descriptor pass, one immutable snapshot: a Proxy must not be able to
+	// present a data descriptor during filtering and something else on a
+	// second read.
 	const mapped: Record<string, unknown> = {};
-	for (const name of keys) {
-		const descriptor = ownValueDescriptor(value, name);
-		Object.defineProperty(mapped, name, {
-			value: normalizeSchemaForCerebrasWalk(
-				descriptor ? descriptor.value : undefined,
+	for (const entry of ownDataEntries(value, ctx)) {
+		defineOwnData(
+			mapped,
+			entry.key,
+			normalizeSchemaForCerebrasWalk(
+				entry.value,
 				false,
 				options,
 				depth + 1,
 				ctx,
 			),
-			enumerable: true,
-			writable: true,
-			configurable: true,
-		});
+		);
 	}
 	return mapped;
 }
@@ -465,26 +560,21 @@ function walkSchemaChildren(
 
 	const dependencies = node.dependencies;
 	if (isSchemaRecord(dependencies)) {
-		const keys = ownEnumerableStringKeys(dependencies);
-		reserveSchemaVisits(ctx, keys.length);
 		const mapped: Record<string, unknown> = {};
-		for (const name of keys) {
-			const descriptor = ownValueDescriptor(dependencies, name);
-			const dependency = descriptor ? descriptor.value : undefined;
-			Object.defineProperty(mapped, name, {
-				value: isArrayRecord(dependency)
-					? mapSchemaArray(dependency, options, depth, ctx)
+		for (const entry of ownDataEntries(dependencies, ctx)) {
+			defineOwnData(
+				mapped,
+				entry.key,
+				isArrayRecord(entry.value)
+					? mapSchemaArray(entry.value, options, depth, ctx)
 					: normalizeSchemaForCerebrasWalk(
-							dependency,
+							entry.value,
 							false,
 							options,
 							depth + 1,
 							ctx,
 						),
-				enumerable: true,
-				writable: true,
-				configurable: true,
-			});
+			);
 		}
 		node.dependencies = mapped;
 	}
