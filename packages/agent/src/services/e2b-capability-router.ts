@@ -1234,7 +1234,7 @@ async function fetchBounded(
         declaredBytes > options.maxResponseBytes
       ) {
         const error = responseTooLargeError(options.maxResponseBytes);
-        await cancelResponseBody(response, error);
+        cancelResponseBody(response, error);
         throw error;
       }
     }
@@ -1284,7 +1284,7 @@ async function readBoundedBody(
       if (totalBytes > maxBytes) {
         const error = responseTooLargeError(maxBytes);
         controller.abort(error);
-        await cancelReader(reader, error);
+        cancelReader(reader, error);
         throw error;
       }
       chunks.push(value);
@@ -1301,13 +1301,18 @@ async function readBoundedBody(
   return body;
 }
 
-async function cancelResponseBody(
-  response: Response,
-  reason: Error,
-): Promise<void> {
+function cancelResponseBody(response: Response, reason: Error): void {
   if (!response.body) return;
   try {
-    await response.body.cancel(reason);
+    // error-policy:J6 cancellation is teardown after a rejected response; its
+    // rejection is logged by the attached diagnostic handler, while a
+    // hostile stream cannot delay the primary size-limit failure.
+    void response.body.cancel(reason).catch((error: unknown) => {
+      logger.debug(
+        { ...LOG_CONTEXT, error },
+        "[E2BRemoteCapabilityRouter] Failed to cancel rejected response body",
+      );
+    });
   } catch (error) {
     // error-policy:J6 cancellation is teardown after a rejected response.
     logger.debug(
@@ -1317,12 +1322,20 @@ async function cancelResponseBody(
   }
 }
 
-async function cancelReader(
+function cancelReader(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   reason: Error,
-): Promise<void> {
+): void {
   try {
-    await reader.cancel(reason);
+    // error-policy:J6 cancellation is teardown after a rejected response; its
+    // rejection is logged by the attached diagnostic handler, while a
+    // hostile stream cannot delay the primary size-limit failure.
+    void reader.cancel(reason).catch((error: unknown) => {
+      logger.debug(
+        { ...LOG_CONTEXT, error },
+        "[E2BRemoteCapabilityRouter] Failed to cancel oversized response stream",
+      );
+    });
   } catch (error) {
     // error-policy:J6 cancellation is teardown after the response exceeded its cap.
     logger.debug(
@@ -1789,11 +1802,28 @@ function positiveIntSetting(
 ): number {
   const value = readSetting(runtime, key);
   if (value === undefined) return fallback;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new ElizaError(
+      `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
+      {
+        code: "REMOTE_RUNNER_CONFIG_INVALID",
+        context: { key },
+        severity: "fatal",
+      },
+    );
+  }
   const parsed = Number(value);
-  if (Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_TIMER_DELAY_MS) {
+  if (Number.isSafeInteger(parsed) && parsed <= MAX_TIMER_DELAY_MS) {
     return parsed;
   }
-  throw new Error(`${key} must be an integer from 1 to ${MAX_TIMER_DELAY_MS}.`);
+  throw new ElizaError(
+    `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
+    {
+      code: "REMOTE_RUNNER_CONFIG_INVALID",
+      context: { key },
+      severity: "fatal",
+    },
+  );
 }
 
 function agentRunnersSetting(

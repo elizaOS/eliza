@@ -132,6 +132,26 @@ function replaceGlobalFetch(fetchImpl: typeof fetch): void {
   });
 }
 
+async function settleWithin<T>(
+  promise: Promise<T>,
+  timeoutMs = 250,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Operation did not settle after teardown.")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 function makeRuntime(
   settings: Record<string, string> = {},
   services: Record<string, unknown> = {},
@@ -624,8 +644,8 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.agentRunners).toEqual(["claude-code", "codex"]);
   });
 
-  it("rejects request timeouts outside the platform timer range", () => {
-    for (const value of ["0", "1.5", "2147483648"]) {
+  it("rejects non-canonical request timeouts and values outside the platform timer range", () => {
+    for (const value of ["0", "01", "+1", "1.0", "1e3", "2147483648"]) {
       expect(() =>
         resolveE2BRemoteRunnerConfig(
           makeRuntime({
@@ -635,7 +655,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           }),
         ),
       ).toThrow(
-        "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be an integer from 1 to 2147483647.",
+        "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be a canonical integer from 1 to 2147483647.",
       );
     }
   });
@@ -921,6 +941,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
             },
             cancel() {
               bodyWasCancelled = true;
+              return new Promise<void>(() => undefined);
             },
           }),
           { headers: { "content-length": "16385" } },
@@ -938,7 +959,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
         }),
       );
 
-      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
+      await expect(
+        settleWithin(service.fs.list({ path: "/repo" })),
+      ).rejects.toMatchObject({
         name: "RemoteResponseTooLargeError",
         code: "REMOTE_RESPONSE_TOO_LARGE",
       });
@@ -1009,14 +1032,17 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
   it("aborts a streamed response when its actual bytes exceed the cap", async () => {
     const originalFetch = globalThis.fetch;
+    let bodyWasCancelled = false;
     const fetchMock: typeof fetch = Object.assign(
       async (): Promise<Response> =>
         new Response(
           new ReadableStream<Uint8Array>({
-            start(controller) {
+            pull(controller) {
               controller.enqueue(new Uint8Array(10_000));
-              controller.enqueue(new Uint8Array(10_000));
-              controller.close();
+            },
+            cancel() {
+              bodyWasCancelled = true;
+              return new Promise<void>(() => undefined);
             },
           }),
         ),
@@ -1033,9 +1059,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
         }),
       );
 
-      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
-        name: "RemoteResponseTooLargeError",
-      });
+      await expect(
+        settleWithin(service.fs.list({ path: "/repo" })),
+      ).rejects.toMatchObject({ name: "RemoteResponseTooLargeError" });
+      expect(bodyWasCancelled).toBe(true);
     } finally {
       replaceGlobalFetch(originalFetch);
     }
