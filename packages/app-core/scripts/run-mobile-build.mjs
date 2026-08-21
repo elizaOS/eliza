@@ -77,6 +77,7 @@ import {
   ANDROID_LP3_POLICY_CLASSES,
   ANDROID_LP3_POLICY_MARKERS,
   ANDROID_LP3_PRIVATE_ACTIONS,
+  assertAndroidPlayManifestPolicyEvidence,
   ensureAndroidBundletoolJar,
   inspectAndroidAppBundle,
   resolveAndroidArtifactKind,
@@ -5452,6 +5453,7 @@ export const ANDROID_LP3_COLOR_POLICY_ACTIONS = [
 ];
 
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
+  "GatewayConnectionService",
   "ElizaAgentService",
   "ElizaDialActivity",
   "ElizaAssistActivity",
@@ -5465,6 +5467,8 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaInCallService",
   "ElizaNotificationListenerService",
   "ElizaVoiceCaptureService",
+  "ElizaVoiceTileService",
+  "ElizaQuickActionsWidgetProvider",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
   "ElizaSmsGatewayService",
@@ -5482,13 +5486,25 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // Permissions removed from the manifest. Anything that triggers a Play
 // Store policy review (sensitive runtime perms, system-only signature
 // perms, default-role / call / SMS perms, background location) gets
-// dropped. The remainder — INTERNET, POST_NOTIFICATIONS, FOREGROUND_SERVICE
-// + FOREGROUND_SERVICE_DATA_SYNC for the Gateway sync service, WAKE_LOCK,
-// scoped storage SDK fallbacks, RECORD_AUDIO/CAMERA/LOCATION needed for
-// Capacitor plugins the cloud renderer still uses — stays in place. Screen
-// capture is AOSP/direct-only, so MediaProjection FGS and the native
-// screencapture plugin are stripped here.
+// dropped. The Play client retains only ordinary HTTPS networking and
+// user-triggered microphone voice; it has no background service, notification,
+// camera, location, Bluetooth, health, telephony, or shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
+  "CAMERA",
+  "ACCESS_FINE_LOCATION",
+  "ACCESS_COARSE_LOCATION",
+  "BLUETOOTH_SCAN",
+  "BLUETOOTH_CONNECT",
+  "BLUETOOTH",
+  "BLUETOOTH_ADMIN",
+  "FOREGROUND_SERVICE",
+  "FOREGROUND_SERVICE_DATA_SYNC",
+  "POST_NOTIFICATIONS",
+  "WRITE_EXTERNAL_STORAGE",
+  "READ_EXTERNAL_STORAGE",
+  "WAKE_LOCK",
+  "SCHEDULE_EXACT_ALARM",
+  "VIBRATE",
   "READ_CONTACTS",
   "WRITE_CONTACTS",
   "CALL_PHONE",
@@ -5532,6 +5548,21 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+  "BatteryOptimizationPlugin.java",
+  "BionicDecodeLoop.java",
+  "DeviceRamTierPolicy.java",
+  "ElizaQuickActionsWidgetProvider.java",
+  "ElizaTasksWorker.java",
+  "ElizaVoiceNative.java",
+  "ElizaVoicePlugin.java",
+  "ElizaVoiceTileService.java",
+  "GatewayConnectionService.java",
+  "GlassBridgePlugin.java",
+  "InferenceMemoryPolicy.java",
+  "NativeTranscriptPlugin.java",
+  "NativeTranscriptReducer.java",
+  "ResourceProbePlugin.java",
+  "SafePushNotificationsPlugin.java",
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAgentWatchdogPolicy.java",
@@ -5567,6 +5598,20 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
   ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
+];
+
+// Host-side JVM tests for source-stripped on-device runtime code must not be
+// compiled in the generated Play tree. Keep them in the canonical Android
+// source tree so direct/local targets retain their coverage, but remove them
+// alongside the production classes they exercise for cloud builds.
+export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
+  "BionicDecodeLoopTest.java",
+  "DeviceRamTierPolicyTest.java",
+  "ElizaAgentAutostartPolicyTest.java",
+  "ElizaAssetExtractionPolicyTest.java",
+  "ElizaWorkSchedulerPolicyTest.java",
+  "InferenceMemoryPolicyTest.java",
+  "NativeTranscriptReducerTest.java",
 ];
 
 export function isAndroidLp3ColorPolicyEnabled(env = process.env) {
@@ -5624,11 +5669,14 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
       mergerRemovedPermissions:
         ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS,
       javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES,
+      testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
     };
   }
 
   const allowedComponents = new Set(ANDROID_LP3_COLOR_POLICY_COMPONENTS);
-  const allowedPermissions = new Set(ANDROID_LP3_COLOR_POLICY_PERMISSIONS);
+  const allowedPermissions = new Set(
+    ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
+  );
   const allowedJavaFiles = new Set(ANDROID_LP3_COLOR_POLICY_JAVA_FILES);
   return {
     components: ANDROID_CLOUD_STRIPPED_COMPONENTS.filter(
@@ -5644,6 +5692,7 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
     javaFiles: ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
       (file) => !allowedJavaFiles.has(file),
     ),
+    testJavaFiles: ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES,
   };
 }
 
@@ -5654,7 +5703,6 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
 export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
   "MainActivity.java",
   "AgentPlugin.java",
-  "ElizaTasksWorker.java",
   "ElizaNativeBridge.java",
 ];
 
@@ -5663,15 +5711,65 @@ export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
 ]);
 
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
+  path.join("drawable", "eliza_ime_mic_bg.xml"),
+  path.join("drawable", "eliza_voice_bar_bg.xml"),
+  path.join("drawable", "eliza_voice_bar_dot.xml"),
+  path.join("drawable", "eliza_widget_background.xml"),
+  path.join("drawable", "eliza_widget_button_background.xml"),
+  path.join("drawable", "ic_eliza_ime_keyboard.xml"),
+  path.join("drawable", "ic_eliza_ime_mic.xml"),
+  path.join("drawable", "ic_eliza_ime_open.xml"),
+  path.join("layout", "eliza_quick_actions_widget.xml"),
+  path.join("layout", "eliza_voice_ime.xml"),
+  path.join("layout", "eliza_voice_interaction_bar.xml"),
   path.join("xml", "eliza_accessibility_service.xml"),
+  path.join("xml", "eliza_quick_actions_widget.xml"),
+  path.join("xml", "eliza_recognition_service.xml"),
+  path.join("xml", "eliza_voice_interaction_service.xml"),
+  path.join("xml", "method.xml"),
 ];
 
+export const ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES = Object.freeze({
+  [path.join("values", "android_app_actions.xml")]: Object.freeze([
+    "app_widget_quick_actions_description",
+    "app_widget_quick_actions_title",
+  ]),
+  [path.join("values", "strings.xml")]: Object.freeze([
+    "assistant_session_prompt",
+    "eliza_ime_engine_off",
+    "eliza_ime_error_mic",
+    "eliza_ime_error_transcribe",
+    "eliza_ime_hint",
+    "eliza_ime_label",
+    "eliza_ime_listening",
+    "eliza_ime_model_not_ready",
+    "eliza_ime_no_speech",
+    "eliza_ime_permission_needed",
+    "eliza_ime_prompt",
+    "eliza_ime_subtype_voice",
+    "eliza_ime_switch_back",
+    "eliza_ime_transcribing",
+  ]),
+});
+
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
+  ["@capacitor-community/bluetooth-le", "capacitor-community-bluetooth-le"],
+  ["@capacitor/background-runner", "capacitor-background-runner"],
+  ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
+  ["@capacitor/haptics", "capacitor-haptics"],
+  ["@capacitor/local-notifications", "capacitor-local-notifications"],
+  ["@capacitor/push-notifications", "capacitor-push-notifications"],
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
+  ["@elizaos/capacitor-browser-surface", "elizaos-capacitor-browser-surface"],
+  ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
+  ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
+  ["@elizaos/capacitor-gateway", "elizaos-capacitor-gateway"],
+  ["@elizaos/capacitor-location", "elizaos-capacitor-location"],
   ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
+  ["@elizaos/capacitor-mlkit-text", "elizaos-capacitor-mlkit-text"],
   [
     "@elizaos/capacitor-mobile-agent-bridge",
     "elizaos-capacitor-mobile-agent-bridge",
@@ -5679,11 +5777,170 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
+  ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
+  ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],
   ["@elizaos/capacitor-websiteblocker", "elizaos-capacitor-websiteblocker"],
   ["@elizaos/capacitor-wifi", "elizaos-capacitor-wifi"],
   ["llama-cpp-capacitor", "llama-cpp-capacitor"],
 ];
+
+export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
+  "@capacitor/app",
+  "@capacitor/browser",
+  "@capacitor/device",
+  "@capacitor/filesystem",
+  "@capacitor/keyboard",
+  "@capacitor/network",
+  "@capacitor/preferences",
+  "@capacitor/share",
+  "@capacitor/status-bar",
+]);
+
+export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
+  "android.permission.ACCESS_NETWORK_STATE",
+  "android.permission.INTERNET",
+  "android.permission.RECORD_AUDIO",
+  `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
+]);
+
+export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
+  `activity:${APP.appId}.ElizaShareActivity`,
+  `activity:${APP.appId}.MainActivity`,
+  "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
+  "provider:androidx.core.content.FileProvider",
+  "provider:androidx.startup.InitializationProvider",
+  "receiver:androidx.profileinstaller.ProfileInstallReceiver",
+]);
+
+export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
+  "android.intent.action.MAIN",
+  "android.intent.action.PROCESS_TEXT",
+  "android.intent.action.SEND",
+  "android.intent.action.VIEW",
+  "android.speech.RecognitionService",
+  "android.support.customtabs.action.CustomTabsService",
+  "androidx.profileinstaller.action.BENCHMARK_OPERATION",
+  "androidx.profileinstaller.action.INSTALL_PROFILE",
+  "androidx.profileinstaller.action.SAVE_PROFILE",
+  "androidx.profileinstaller.action.SKIP_FILE",
+]);
+
+export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
+  "android.app.shortcuts",
+  "android.support.FILE_PROVIDER_PATHS",
+  "androidx.emoji2.text.EmojiCompatInitializer",
+  "androidx.lifecycle.ProcessLifecycleInitializer",
+  "androidx.profileinstaller.ProfileInstallerInitializer",
+]);
+
+export const ANDROID_PLAY_ALLOWED_QUERY_ACTIONS = Object.freeze([
+  "android.speech.RecognitionService",
+  "android.support.customtabs.action.CustomTabsService",
+]);
+
+export const ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES = Object.freeze([]);
+
+export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "10.0.2.2",
+  "adb reverse",
+  "eliza-local-agent:",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "remote-mac",
+]);
+
+export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "eliza-local-agent:",
+  "127.0.0.1",
+  "localhost",
+  "remote-mac",
+]);
+
+const ANDROID_PLAY_SECRET_PATTERNS = Object.freeze([
+  ["Google API key", /AIza[0-9A-Za-z_-]{30,}/],
+  ["provider secret", /sk-(?:proj-)?[A-Za-z0-9]{20,}/],
+  ["private key", /BEGIN (?:RSA |OPENSSH )?PRIVATE KEY/],
+  [
+    "Cerebras/Cartesia credential",
+    /(?:CEREBRAS|CARTESIA)_API_KEY.{0,12}[=:].{0,12}["'][A-Za-z0-9_-]{20,}["']/i,
+  ],
+]);
+
+export function findAndroidPlayTextAssetFindings(entries, buffers) {
+  if (!Array.isArray(entries) || !Array.isArray(buffers)) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play text asset evidence must use arrays.",
+    );
+  }
+  if (entries.length !== buffers.length) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play text asset evidence length mismatch.",
+    );
+  }
+  const findings = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const content = Buffer.from(buffers[index]).toString("utf8");
+    for (const marker of ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS) {
+      if (content.toLowerCase().includes(marker.toLowerCase())) {
+        findings.push(`${entries[index]}: local routing marker ${marker}`);
+      }
+    }
+    for (const [label, pattern] of ANDROID_PLAY_SECRET_PATTERNS) {
+      if (pattern.test(content)) findings.push(`${entries[index]}: ${label}`);
+    }
+  }
+  return [...new Set(findings)].sort();
+}
+
+export function findAndroidPlayIndexHtmlFindings(entries, buffers) {
+  if (!Array.isArray(entries) || !Array.isArray(buffers)) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play index HTML evidence must use arrays.",
+    );
+  }
+  if (entries.length !== buffers.length) {
+    throw mobileBuildError(
+      "[mobile-build] Android Play index HTML evidence length mismatch.",
+    );
+  }
+  const findings = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    if (!/(?:^|\/)assets\/public\/index\.html$/i.test(entries[index])) {
+      continue;
+    }
+    const content = Buffer.from(buffers[index]).toString("utf8").toLowerCase();
+    for (const marker of ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS) {
+      if (content.includes(marker.toLowerCase())) {
+        findings.push(
+          `${entries[index]}: active local bootstrap marker ${marker}`,
+        );
+      }
+    }
+  }
+  return [...new Set(findings)].sort();
+}
+
+export function createAndroidPlayManifestPolicy({ debug = false } = {}) {
+  return {
+    actions: [...ANDROID_PLAY_ALLOWED_ACTIONS],
+    application: {
+      allowBackup: "false",
+      debuggable: debug ? "true" : "false",
+      usesCleartextTraffic: "false",
+    },
+    components: [...ANDROID_PLAY_ALLOWED_COMPONENTS],
+    metadataNames: [...ANDROID_PLAY_ALLOWED_METADATA_NAMES],
+    permissions: [...ANDROID_PLAY_ALLOWED_PERMISSIONS],
+    queryActions: [...ANDROID_PLAY_ALLOWED_QUERY_ACTIONS],
+    queryPackages: [],
+    targetSdkVersion: "36",
+  };
+}
 
 const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaSmsReceiver",
@@ -5847,16 +6104,10 @@ ${cloudBrandUserAgentMarkerLines()}
 
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
-
-        // Cloud builds keep the native glass tier: GlassBridgePlugin has no
-        // local-agent dependencies (android.* + Capacitor only).
-        registerPlugin(GlassBridgePlugin.class);
+        registerPlugin(ElizaSecureCredentialsPlugin.class);
+        registerPlugin(ElizaPlayVoicePlugin.class);
 
         super.onCreate(savedInstanceState);
-
-        if (getBridge() != null) {
-            getBridge().registerPlugin(SafePushNotificationsPlugin.class);
-        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
@@ -5869,22 +6120,6 @@ ${cloudBrandUserAgentMarkerLines()}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
-    }
-
-    @Override
-    public void onStop() {
-        super.onStop();
-        if (!isFinishing()) {
-            GatewayConnectionService.start(this);
-        }
-    }
-
-    @Override
-    public void onDestroy() {
-        if (isFinishing()) {
-            GatewayConnectionService.stop(this);
-        }
-        super.onDestroy();
     }
 
     private void applyBrandUserAgentMarkers(WebSettings settings) {
@@ -5926,6 +6161,316 @@ ${cloudBrandUserAgentMarkerLines()}
             return "";
         }
     }
+}
+`;
+}
+
+/** Android Keystore-backed bearer storage for the minimal Play Cloud shell. */
+export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import android.util.Base64;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+
+import org.json.JSONObject;
+
+@CapacitorPlugin(name = "ElizaSecureCredentials")
+public final class ElizaSecureCredentialsPlugin extends Plugin {
+    private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
+    private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
+    private static final String PREFERENCES = "eliza_secure_credentials_v1";
+    private static final String CIPHERTEXT = "steward_token_ciphertext";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_BITS = 128;
+    private static final int MAX_TOKEN_BYTES = 16 * 1024;
+
+    @PluginMethod
+    public synchronized void get(PluginCall call) {
+        String encoded = preferences().getString(CIPHERTEXT, null);
+        if (encoded == null) {
+            JSObject result = new JSObject();
+            result.put("value", JSONObject.NULL);
+            call.resolve(result);
+            return;
+        }
+        try {
+            String[] parts = encoded.split(":", -1);
+            if (parts.length != 2) throw new GeneralSecurityException("invalid ciphertext envelope");
+            byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+            byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, loadOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            String value = new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+            JSObject result = new JSObject();
+            result.put("value", value);
+            call.resolve(result);
+        } catch (GeneralSecurityException | IllegalArgumentException error) {
+            preferences().edit().remove(CIPHERTEXT).apply();
+            call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void set(PluginCall call) {
+        String value = call.getString("value");
+        if (value == null || value.trim().isEmpty()) {
+            call.reject("A non-empty credential is required.", "SECURE_CREDENTIAL_INVALID");
+            return;
+        }
+        byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
+        if (plaintext.length > MAX_TOKEN_BYTES) {
+            call.reject("The credential is too large.", "SECURE_CREDENTIAL_INVALID");
+            return;
+        }
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, loadOrCreateKey());
+            String encoded = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
+                    + ":"
+                    + Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP);
+            if (!preferences().edit().putString(CIPHERTEXT, encoded).commit()) {
+                call.reject("Secure credential storage could not be committed.", "SECURE_CREDENTIAL_UNAVAILABLE");
+                return;
+            }
+            call.resolve();
+        } catch (GeneralSecurityException error) {
+            call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void remove(PluginCall call) {
+        if (!preferences().edit().remove(CIPHERTEXT).commit()) {
+            call.reject("Secure credential storage could not be cleared.", "SECURE_CREDENTIAL_UNAVAILABLE");
+            return;
+        }
+        call.resolve();
+    }
+
+    private SharedPreferences preferences() {
+        return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private SecretKey loadOrCreateKey() throws GeneralSecurityException {
+        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+        try {
+            keyStore.load(null);
+        } catch (IOException error) {
+            throw new GeneralSecurityException("Android Keystore could not be loaded", error);
+        }
+        java.security.Key existing = keyStore.getKey(KEY_ALIAS, null);
+        if (existing instanceof SecretKey) return (SecretKey) existing;
+
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
+        generator.init(new KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build());
+        return generator.generateKey();
+    }
+}
+`;
+}
+
+/** Standard Android SpeechRecognizer + system TextToSpeech for Play builds. */
+export function cloudSafePlayVoicePluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.Manifest;
+import android.content.Intent;
+import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.UUID;
+
+@CapacitorPlugin(
+    name = "ElizaPlayVoice",
+    permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
+)
+public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+    private SpeechRecognizer recognizer;
+
+    @PluginMethod
+    public void requestPermission(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            resolvePermission(call, true);
+            return;
+        }
+        requestPermissionForAlias("microphone", call, "microphonePermissionCallback");
+    }
+
+    @PermissionCallback
+    private void microphonePermissionCallback(PluginCall call) {
+        resolvePermission(call, getPermissionState("microphone") == PermissionState.GRANTED);
+    }
+
+    @PluginMethod
+    public void startDictation(PluginCall call) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            call.reject("Microphone permission is required.", "MICROPHONE_PERMISSION_REQUIRED");
+            return;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
+            call.reject("Speech recognition is unavailable.", "SPEECH_RECOGNITION_UNAVAILABLE");
+            return;
+        }
+        stopRecognizer();
+        recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+        recognizer.setRecognitionListener(this);
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+        String language = call.getString("language");
+        if (language != null && !language.trim().isEmpty()) {
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
+        }
+        try {
+            recognizer.startListening(intent);
+            JSObject result = new JSObject();
+            result.put("started", true);
+            call.resolve(result);
+        } catch (RuntimeException error) {
+            stopRecognizer();
+            call.reject("Voice dictation could not start.", "SPEECH_RECOGNITION_START_FAILED", error);
+        }
+    }
+
+    @PluginMethod
+    public void stopDictation(PluginCall call) {
+        stopRecognizer();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void speak(PluginCall call) {
+        String text = call.getString("text");
+        if (text == null || text.trim().isEmpty()) {
+            call.reject("Speech text is required.", "TTS_TEXT_REQUIRED");
+            return;
+        }
+        String language = call.getString("language", Locale.getDefault().toLanguageTag());
+        final TextToSpeech[] holder = new TextToSpeech[1];
+        holder[0] = new TextToSpeech(getContext(), status -> {
+            TextToSpeech tts = holder[0];
+            if (status != TextToSpeech.SUCCESS || tts == null) {
+                if (tts != null) tts.shutdown();
+                call.reject("System text to speech is unavailable.", "TTS_UNAVAILABLE");
+                return;
+            }
+            Locale locale = Locale.forLanguageTag(language == null ? "" : language);
+            if (tts.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
+                tts.shutdown();
+                call.reject("The selected speech language is unavailable.", "TTS_LANGUAGE_UNAVAILABLE");
+                return;
+            }
+            String utteranceId = UUID.randomUUID().toString();
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {}
+                @Override public void onDone(String id) { tts.shutdown(); }
+                @Override public void onError(String id) { tts.shutdown(); }
+            });
+            int accepted = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
+            if (accepted != TextToSpeech.SUCCESS) {
+                tts.shutdown();
+                call.reject("System text to speech could not start.", "TTS_START_FAILED");
+                return;
+            }
+            call.resolve();
+        });
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        stopRecognizer();
+        super.handleOnDestroy();
+    }
+
+    private void resolvePermission(PluginCall call, boolean granted) {
+        JSObject result = new JSObject();
+        result.put("granted", granted);
+        call.resolve(result);
+    }
+
+    private void stopRecognizer() {
+        if (recognizer == null) return;
+        try { recognizer.stopListening(); } catch (RuntimeException ignored) {}
+        recognizer.cancel();
+        recognizer.destroy();
+        recognizer = null;
+    }
+
+    private void publishTranscript(Bundle results, boolean isFinal) {
+        ArrayList<String> values = results == null
+                ? null
+                : results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (values == null || values.isEmpty()) return;
+        String text = values.get(0) == null ? "" : values.get(0).trim();
+        if (text.isEmpty()) return;
+        JSObject event = new JSObject();
+        event.put("text", text);
+        event.put("isFinal", isFinal);
+        notifyListeners("transcript", event);
+    }
+
+    @Override public void onReadyForSpeech(Bundle params) {}
+    @Override public void onBeginningOfSpeech() {}
+    @Override public void onRmsChanged(float rmsdB) {}
+    @Override public void onBufferReceived(byte[] buffer) {}
+    @Override public void onEndOfSpeech() {}
+    @Override public void onError(int error) {
+        JSObject event = new JSObject();
+        event.put("code", error);
+        notifyListeners("error", event);
+        stopRecognizer();
+    }
+    @Override public void onResults(Bundle results) {
+        publishTranscript(results, true);
+        stopRecognizer();
+    }
+    @Override public void onPartialResults(Bundle partialResults) {
+        publishTranscript(partialResults, false);
+    }
+    @Override public void onEvent(int eventType, Bundle params) {}
 }
 `;
 }
@@ -6130,6 +6675,18 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
       );
       touched += 1;
     }
+    fs.writeFileSync(
+      path.join(root, "ElizaSecureCredentialsPlugin.java"),
+      cloudSafeSecureCredentialsPluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
+    fs.writeFileSync(
+      path.join(root, "ElizaPlayVoicePlugin.java"),
+      cloudSafePlayVoicePluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
     const tasksWorker = path.join(root, "ElizaTasksWorker.java");
     if (fs.existsSync(tasksWorker)) {
       fs.writeFileSync(
@@ -6339,6 +6896,19 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
         "AndroidManifest.xml still allows global cleartext traffic",
       );
     }
+    if (!/android:allowBackup="false"/.test(xml)) {
+      failures.push("AndroidManifest.xml does not disable application backup");
+    }
+    for (const forbidden of [
+      "android.intent.category.HOME",
+      "com.google.android.apps.healthdata",
+      "android.hardware.telephony",
+      "android.hardware.bluetooth_le",
+    ]) {
+      if (xml.includes(forbidden)) {
+        failures.push(`AndroidManifest.xml still contains ${forbidden}`);
+      }
+    }
     if (!xml.includes('android:name="android.app.shortcuts"')) {
       failures.push("AndroidManifest.xml does not register @xml/shortcuts");
     }
@@ -6410,6 +6980,20 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       failures.push(`app/src/main/res/${relPath} still exists`);
     }
   }
+  for (const [relPath, names] of Object.entries(
+    ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  )) {
+    const target = path.join(resRoot, relPath);
+    if (!fs.existsSync(target)) continue;
+    const xml = fs.readFileSync(target, "utf8");
+    for (const name of names) {
+      if (
+        new RegExp(`<string\\s+name=["']${escapeRegExp(name)}["']`).test(xml)
+      ) {
+        failures.push(`app/src/main/res/${relPath} still defines ${name}`);
+      }
+    }
+  }
 
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
   const forbiddenJavaFiles = new Set(stripPolicy.javaFiles);
@@ -6466,6 +7050,42 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }
+    }
+  }
+
+  const capacitorPluginManifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.plugins.json",
+  );
+  if (!fs.existsSync(capacitorPluginManifestPath)) {
+    failures.push("app/src/main/assets/capacitor.plugins.json is missing");
+  } else {
+    try {
+      const plugins = JSON.parse(
+        fs.readFileSync(capacitorPluginManifestPath, "utf8"),
+      );
+      const actualPackages = Array.isArray(plugins)
+        ? plugins
+            .map((plugin) => plugin?.pkg)
+            .filter(Boolean)
+            .sort()
+        : [];
+      const allowedPackages = [
+        ...ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
+      ].sort();
+      if (JSON.stringify(actualPackages) !== JSON.stringify(allowedPackages)) {
+        failures.push(
+          `capacitor.plugins.json packages differ from the Play allowlist: ${JSON.stringify(actualPackages)}`,
+        );
+      }
+    } catch (error) {
+      failures.push(
+        `capacitor.plugins.json is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -6649,6 +7269,32 @@ function auditAndroidSystemSource(
  *
  * Idempotent: safe to re-run on an already-stripped tree.
  */
+function stripAndroidCloudResourceValues(resRoot) {
+  let removed = 0;
+  for (const [relPath, names] of Object.entries(
+    ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
+  )) {
+    const target = path.join(resRoot, relPath);
+    if (!fs.existsSync(target)) continue;
+    let xml = fs.readFileSync(target, "utf8");
+    const original = xml;
+    for (const name of names) {
+      const resource = new RegExp(
+        `\\s*<string\\s+name=["']${escapeRegExp(name)}["'][^>]*>[\\s\\S]*?<\\/string>`,
+        "g",
+      );
+      xml = xml.replace(resource, () => {
+        removed += 1;
+        return "";
+      });
+    }
+    if (xml !== original) {
+      fs.writeFileSync(target, xml, "utf8");
+    }
+  }
+  return removed;
+}
+
 function stripAndroidForCloud({ env = process.env } = {}) {
   const androidPackage = APP.appId;
   const stripPolicy = resolveAndroidCloudStripPolicy(env);
@@ -6681,6 +7327,19 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       stripPolicy.mergerRemovedPermissions,
     );
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
+    xml = xml
+      .replace(
+        /\s*<package\s+android:name="com\.google\.android\.apps\.healthdata"\s*\/>/g,
+        "",
+      )
+      .replace(
+        /\s*<uses-feature\b(?=[^>]*android:name="android\.hardware\.(?:telephony|bluetooth_le)")[^>]*\/>/g,
+        "",
+      )
+      .replace(/android:allowBackup="[^"]*"/, 'android:allowBackup="false"');
+    xml = xml
+      .replace(/(<\/provider>)\n[ \t]*(<activity\b)/g, "$1\n\n        $2")
+      .replace(/\n[ \t]*<\/(application)>/g, "\n    </$1>");
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -6734,6 +7393,34 @@ function stripAndroidForCloud({ env = process.env } = {}) {
   }
   rewriteCloudJavaSources(javaRoots, androidPackage);
 
+  const testJavaRoots = [
+    path.join(
+      androidDir,
+      "app",
+      "src",
+      "test",
+      "java",
+      packageNameToPath(androidPackage),
+    ),
+    path.join(androidDir, "app", "src", "test", "java", "ai", "elizaos", "app"),
+  ];
+  let removedTestJavaCount = 0;
+  for (const root of testJavaRoots) {
+    if (!fs.existsSync(root)) continue;
+    for (const file of stripPolicy.testJavaFiles) {
+      const target = path.join(root, file);
+      if (fs.existsSync(target)) {
+        fs.rmSync(target);
+        removedTestJavaCount += 1;
+      }
+    }
+  }
+  if (removedTestJavaCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedTestJavaCount} JVM test source(s) for source-stripped Android runtime code.`,
+    );
+  }
+
   const resRoot = path.join(androidDir, "app", "src", "main", "res");
   let removedResourceCount = 0;
   for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
@@ -6743,6 +7430,7 @@ function stripAndroidForCloud({ env = process.env } = {}) {
       removedResourceCount += 1;
     }
   }
+  removedResourceCount += stripAndroidCloudResourceValues(resRoot);
   if (removedResourceCount > 0) {
     console.log(
       `[mobile-build] Removed ${removedResourceCount} Play-Store-noncompliant Android resource(s).`,
@@ -8081,6 +8769,62 @@ export function auditAndroidCloudArtifact(
       },
     );
   }
+  if (!lp3ColorPolicyEnabled) {
+    const nativeLibraries = entries
+      .filter((entry) => /(?:^|\/)lib\/[^/]+\/[^/]+\.so$/i.test(entry))
+      .sort();
+    if (
+      JSON.stringify(nativeLibraries) !==
+      JSON.stringify([...ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES].sort())
+    ) {
+      throw mobileBuildError(
+        `[mobile-build] android-cloud native libraries differ from the Play allowlist:\n${nativeLibraries
+          .map((entry) => `  - ${entry}`)
+          .join("\n")}`,
+        {
+          code: "ANDROID_PLAY_NATIVE_LIBRARY_ALLOWLIST_FAILED",
+          context: { artifact, nativeLibraries },
+        },
+      );
+    }
+    const textAssetEntries = entries.filter(
+      (entry) =>
+        /(?:^|\/)assets\//.test(entry) &&
+        /\.(?:css|html|js|json|svg|txt|webmanifest|xml)$/i.test(entry),
+    );
+    const textAssetBuffers = readAndroidArtifactEntryBuffers(
+      artifact,
+      textAssetEntries,
+      javaHome,
+      {
+        artifactBytes: initialSnapshot.bytes,
+        label: "android-cloud Play text asset audit",
+      },
+    );
+    const textAssetFindings = findAndroidPlayTextAssetFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const indexHtmlFindings = findAndroidPlayIndexHtmlFindings(
+      textAssetEntries,
+      textAssetBuffers,
+    );
+    const playTextFindings = [
+      ...textAssetFindings,
+      ...indexHtmlFindings,
+    ].sort();
+    if (playTextFindings.length > 0) {
+      throw mobileBuildError(
+        `[mobile-build] android-cloud text asset policy failed:\n${playTextFindings
+          .map((finding) => `  - ${finding}`)
+          .join("\n")}`,
+        {
+          code: "ANDROID_PLAY_TEXT_ASSET_POLICY_FAILED",
+          context: { artifact, findings: playTextFindings },
+        },
+      );
+    }
+  }
   const integrityEntries = entries.filter((entry) =>
     artifactKind === "aab"
       ? /^[^/]+\/manifest\/AndroidManifest\.xml$/.test(entry) ||
@@ -8167,6 +8911,10 @@ export function auditAndroidCloudArtifact(
           appId: APP.appId,
           label: "normal Cloud",
         });
+        assertAndroidPlayManifestPolicyEvidence(
+          androidPlayManifestEvidenceFromAapt(manifestText),
+          createAndroidPlayManifestPolicy({ debug: true }),
+        );
       }
       auditAndroidArtifactDexLp3Policy(
         inspectedArtifact,
@@ -8201,6 +8949,7 @@ export function auditAndroidCloudArtifact(
         entries,
         env,
         javaHome,
+        playPolicy: createAndroidPlayManifestPolicy({ debug: false }),
         readDexEntries: (dexEntries) =>
           readAndroidArtifactEntryBuffers(
             inspectedArtifact,
@@ -8352,6 +9101,113 @@ export function dumpAndroidArtifactManifest(
     );
   }
   return manifest.stdout;
+}
+
+function parseAaptAttributeValue(encodedValue) {
+  const rawValue = encodedValue.match(/\(Raw: "([^"]*)"\)\s*$/)?.[1];
+  if (rawValue !== undefined) return rawValue;
+  const quotedValue = encodedValue.match(/^"([^"]*)"/)?.[1];
+  if (quotedValue !== undefined) return quotedValue;
+  const typedValue = encodedValue.match(
+    /^\(type (0x[0-9a-f]+)\)(0x[0-9a-f]+)$/i,
+  );
+  if (!typedValue) return encodedValue.trim();
+  if (typedValue[1].toLowerCase() === "0x12") {
+    return typedValue[2].toLowerCase() === "0x0" ? "false" : "true";
+  }
+  return String(Number.parseInt(typedValue[2], 16));
+}
+
+/** Converts AAPT's indented xmltree output into the policy evidence shape. */
+export function androidPlayManifestEvidenceFromAapt(manifestText) {
+  const tags = [];
+  const stack = [];
+  for (const line of String(manifestText).split(/\r?\n/)) {
+    const element = line.match(/^(\s*)E: ([^\s(]+)(?:\s|$)/);
+    if (element) {
+      const indent = element[1].length;
+      while (stack.length > 0 && stack.at(-1).indent >= indent) stack.pop();
+      const tag = {
+        ancestors: stack.map((ancestor) => ancestor.name),
+        attributes: new Map(),
+        indent,
+        name: element[2],
+      };
+      tags.push(tag);
+      stack.push(tag);
+      continue;
+    }
+    const attribute = line.match(
+      /^(\s*)A: ([^=(]+?)(?:\(0x[0-9a-f]+\))?=(.*)$/i,
+    );
+    if (!attribute || stack.length === 0) continue;
+    const qualifiedName = attribute[2].trim();
+    stack
+      .at(-1)
+      .attributes.set(
+        qualifiedName.split(":").at(-1),
+        parseAaptAttributeValue(attribute[3]),
+      );
+  }
+
+  const values = (names, attributeName = "name") =>
+    [
+      ...new Set(
+        tags
+          .filter((tag) => names.includes(tag.name))
+          .map((tag) => tag.attributes.get(attributeName))
+          .filter(Boolean),
+      ),
+    ].sort();
+  const componentNames = new Set([
+    "activity",
+    "activity-alias",
+    "provider",
+    "receiver",
+    "service",
+  ]);
+  const application = tags.find((tag) => tag.name === "application");
+  const usesSdk = tags.find((tag) => tag.name === "uses-sdk");
+  const isInsideQueries = (tag) => tag.ancestors.includes("queries");
+  return {
+    actions: values(["action"]),
+    application: {
+      allowBackup: application?.attributes.get("allowBackup") ?? null,
+      debuggable: application?.attributes.get("debuggable") ?? "false",
+      usesCleartextTraffic:
+        application?.attributes.get("usesCleartextTraffic") ?? null,
+    },
+    components: [
+      ...new Set(
+        tags
+          .filter((tag) => componentNames.has(tag.name))
+          .map((tag) => {
+            const componentName = tag.attributes.get("name");
+            return componentName ? `${tag.name}:${componentName}` : null;
+          })
+          .filter(Boolean),
+      ),
+    ].sort(),
+    metadataNames: values(["meta-data"]),
+    permissions: values(["uses-permission", "uses-permission-sdk-23"]),
+    queryActions: [
+      ...new Set(
+        tags
+          .filter((tag) => tag.name === "action" && isInsideQueries(tag))
+          .map((tag) => tag.attributes.get("name"))
+          .filter(Boolean),
+      ),
+    ].sort(),
+    queryPackages: [
+      ...new Set(
+        tags
+          .filter((tag) => tag.name === "package" && isInsideQueries(tag))
+          .map((tag) => tag.attributes.get("name"))
+          .filter(Boolean),
+      ),
+    ].sort(),
+    targetSdkVersion: usesSdk?.attributes.get("targetSdkVersion") ?? null,
+  };
 }
 
 function assertAndroidSmsGatewayArtifactManifest(manifestText) {
