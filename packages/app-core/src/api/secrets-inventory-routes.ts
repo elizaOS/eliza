@@ -197,6 +197,10 @@ export async function handleSecretsInventoryRoute(
       ? all.filter((e) => e.category === categoryParam)
       : all;
     let securityFindings: ReturnType<typeof listConnectorSecretFindings> = [];
+    // A scan that failed is not a scan that found nothing. Without this the
+    // response is indistinguishable from a clean bill of health, which is the
+    // worst possible default for a security surface.
+    let securityFindingsAvailable = true;
     if (!categoryParam) {
       try {
         securityFindings = listConnectorSecretFindings(
@@ -204,18 +208,22 @@ export async function handleSecretsInventoryRoute(
           resolveStateDir(),
         );
       } catch {
-        // Inventory remains usable if the compatibility config is malformed or
-        // disappears during a concurrent write. Do not attach the thrown value:
+        // error-policy:J4 the inventory stays usable when the compatibility
+        // config is malformed or disappears during a concurrent write, but the
+        // caller is told the scan did not run rather than being handed an empty
+        // finding list. Do not attach the thrown value:
         // parser errors can echo credential-bearing source text.
         logger.warn(
           "[secrets-inventory] connector fallback findings unavailable",
         );
+        securityFindingsAvailable = false;
       }
     }
     sendJson(res, 200, {
       ok: true,
       entries: entries as VaultEntryMeta[],
       securityFindings,
+      securityFindingsAvailable,
     });
     return true;
   }
