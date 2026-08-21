@@ -164,10 +164,11 @@ function resolveCommit() {
 
 const COMMIT = resolveCommit();
 
-class HttpError extends Error {
+export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    this.publicMessage = message;
   }
 }
 
@@ -272,7 +273,7 @@ function persistEnvVar(key, value, target) {
   if (typeof key !== "string" || !CONNECTOR_PATH_ENV_NAMES.has(key)) {
     throw new HttpError(
       400,
-      `unknown env name${typeof key === "string" ? `: ${key}` : ""} — only credential names from the CONNECTOR_PATHS registry are writable`,
+      "unknown env name — only credential names from the CONNECTOR_PATHS registry are writable",
     );
   }
   if (typeof value !== "string")
@@ -441,7 +442,7 @@ function buildStatusPayload() {
 
 function pathById(pathId) {
   const row = CONNECTOR_PATHS.find((path) => path.id === pathId);
-  if (!row) throw new HttpError(404, `unknown auth path: ${pathId}`);
+  if (!row) throw new HttpError(404, "unknown auth path");
   return row;
 }
 
@@ -803,6 +804,46 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload, null, 2));
 }
 
+/** Maps request failures to the dashboard's non-diagnostic HTTP envelope. */
+export function dashboardErrorResponse(error) {
+  let status = 500;
+  let publicMessage = "Credential dashboard request failed";
+  try {
+    if (error instanceof HttpError) {
+      status =
+        Number.isInteger(error.status) &&
+        error.status >= 400 &&
+        error.status <= 599
+          ? error.status
+          : 500;
+      if (status < 500) {
+        const redacted = redactSecrets(error.publicMessage);
+        const clipped =
+          redacted.length > 512
+            ? `${redacted.slice(0, 512)}…[truncated]`
+            : redacted;
+        publicMessage = Array.from(clipped, (character) => {
+          const code = character.codePointAt(0) ?? 0;
+          return code <= 0x1f ||
+            (code >= 0x7f && code <= 0x9f) ||
+            (code >= 0x2028 && code <= 0x202e) ||
+            (code >= 0x2066 && code <= 0x2069)
+            ? `\\u{${code.toString(16)}}`
+            : character;
+        }).join("");
+      }
+    }
+  } catch {
+    // error-policy:J1 hostile thrown values remain a generic 500 response.
+    status = 500;
+    publicMessage = "Credential dashboard request failed";
+  }
+  return {
+    status,
+    body: { error: publicMessage },
+  };
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   let size = 0;
@@ -902,7 +943,7 @@ async function handle(req, res) {
     sendJson(res, 200, await handleSignalLink());
     return;
   }
-  throw new HttpError(404, `no route: ${req.method} ${url.pathname}`);
+  throw new HttpError(404, "route not found");
 }
 
 // --- inline page -----------------------------------------------------------------------
@@ -1376,11 +1417,11 @@ const IS_MAIN =
 if (IS_MAIN) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
-      // error-policy:J1 transport boundary — every route failure becomes a structured JSON error response.
-      const status = error instanceof HttpError ? error.status : 500;
-      sendJson(res, status, {
-        error: redactSecrets(String(error?.message ?? error)),
-      });
+      // error-policy:J1 transport boundary: retain full diagnostics locally,
+      // but never serialize an unexpected exception into the browser response.
+      console.error("[hitl-dashboard] request failed", error);
+      const response = dashboardErrorResponse(error);
+      sendJson(res, response.status, response.body);
     });
   });
   const port = await listenOnFreePort(server);
