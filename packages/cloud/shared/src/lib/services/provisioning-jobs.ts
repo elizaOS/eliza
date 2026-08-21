@@ -310,6 +310,8 @@ export interface AgentDeleteJobResult {
 export interface AgentSuspendJobResult {
   cloudAgentId: string;
   containerStopped: boolean;
+  /** Backup proven or captured by the pre-suspend gate before the stop. */
+  backupId?: string;
   error?: string;
 }
 
@@ -4170,6 +4172,7 @@ export class ProvisioningJobService {
     const jobResult: AgentSuspendJobResult = {
       cloudAgentId: data.agentId,
       containerStopped: result.containerStopped,
+      backupId: result.backupId,
     };
 
     await this.settleClaimedExecution(job, "completed", {
@@ -4185,6 +4188,7 @@ export class ProvisioningJobService {
       jobId: job.id,
       agentId: data.agentId,
       containerStopped: result.containerStopped,
+      backupId: result.backupId,
     });
   }
 

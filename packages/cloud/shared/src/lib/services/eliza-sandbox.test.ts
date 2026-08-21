@@ -3680,8 +3680,17 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       ): Promise<{
         success: boolean;
         containerStopped: boolean;
+        backupId?: string;
         error?: string;
       }>;
+      getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+      prepareSuspendBackupGate(
+        rec: AgentSandbox,
+      ): Promise<
+        | { outcome: "skip" }
+        | { outcome: "proceed"; backupId?: string; capturedFresh: boolean }
+        | { outcome: "refuse"; error: string }
+      >;
       lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
       getAgentForLifecycleMutation(
         tx: unknown,
@@ -3691,6 +3700,11 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
     };
     const svc = new ElizaSandboxService(provider) as unknown as SuspendSvc;
+    const getForWriteSpy = spyOn(svc, "getAgentForWrite").mockResolvedValue(rec);
+    const gateSpy = spyOn(svc, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      capturedFresh: false,
+    });
     const lockLifecycleSpy = spyOn(svc, "lockLifecycle").mockResolvedValue(undefined);
     const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec);
     const activeJob = spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false);
@@ -3743,9 +3757,290 @@ describe("replacement lifecycle teardown is absence-proof", () => {
       expect(writes).toHaveLength(0);
     } finally {
       upgradeTransactionImpl = null;
+      getForWriteSpy.mockRestore();
+      gateSpy.mockRestore();
       lockLifecycleSpy.mockRestore();
       getForMutation.mockRestore();
       activeJob.mockRestore();
+    }
+  });
+
+  // Pre-suspend backup gate (#20726 item 6): the provider stop drops the
+  // container, so suspend must prove a durable backup first, exactly like
+  // sleep and delete. These tests drive the real gate with a mocked bridge
+  // capture and repository fixtures.
+  type SuspendGateSvc = {
+    executeSuspend(
+      agentId: string,
+      orgId: string,
+      jobId: string,
+    ): Promise<{
+      success: boolean;
+      containerStopped: boolean;
+      backupId?: string;
+      error?: string;
+    }>;
+    prepareSuspendBackupGate(
+      rec: AgentSandbox,
+    ): Promise<
+      | { outcome: "skip" }
+      | { outcome: "proceed"; backupId?: string; capturedFresh: boolean }
+      | { outcome: "refuse"; error: string }
+    >;
+    getAgentForWrite(agentId: string, orgId: string): Promise<AgentSandbox | undefined>;
+    fetchSnapshotState(
+      rec: AgentSandbox,
+    ): Promise<{ stateData: unknown; sizeBytes: number; bridgeUrl: string }>;
+    lockLifecycle(tx: unknown, agentId: string, orgId: string): Promise<void>;
+    getAgentForLifecycleMutation(
+      tx: unknown,
+      agentId: string,
+      orgId: string,
+    ): Promise<AgentSandbox | undefined>;
+    hasActiveProvisionJobTx(tx: unknown, agentId: string, orgId: string): Promise<boolean>;
+  };
+
+  function bridgedRunningRow(): AgentSandbox {
+    return {
+      ...claimedPendingRow(),
+      bridge_url: "https://bridge.example",
+      health_url: "https://bridge.example/api",
+    };
+  }
+
+  async function suspendSvc(rec: AgentSandbox, provider: SandboxProvider) {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const svc = new ElizaSandboxService(provider) as unknown as SuspendGateSvc;
+    const spies = [
+      spyOn(svc, "getAgentForWrite").mockResolvedValue(rec),
+      spyOn(svc, "lockLifecycle").mockResolvedValue(undefined),
+      spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue(rec),
+      spyOn(svc, "hasActiveProvisionJobTx").mockResolvedValue(false),
+    ];
+    return { svc, restore: () => spies.forEach((s) => s.mockRestore()) };
+  }
+
+  function stoppableProvider(): SandboxProvider {
+    return {
+      create: mock(async () => {
+        throw new Error("must not create");
+      }),
+      stopForDeletion: mock(async () => ({ kind: "not-running-proven" as const })),
+      stopForReplacement: mock(async () => {}),
+      checkHealth: mock(async () => true),
+    };
+  }
+
+  const SUSPEND_JOB = "00000000-0000-0000-0000-000000000099";
+
+  test("suspend captures and records a fresh pre-shutdown backup before stopping", async () => {
+    const rec = bridgedRunningRow();
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const fetchSpy = spyOn(svc, "fetchSnapshotState").mockResolvedValue({
+      stateData: { memories: [] },
+      sizeBytes: 42,
+      bridgeUrl: rec.bridge_url as string,
+    });
+    const createSpy = spyOn(agentSandboxesRepository, "createBackup").mockResolvedValue({
+      id: "backup-fresh",
+    } as AgentSandboxBackup);
+    const pruneSpy = spyOn(agentSandboxesRepository, "pruneBackups").mockResolvedValue(undefined);
+    const writes: SQL[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query as SQL);
+          return { rows: [] };
+        },
+      });
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({ success: true, containerStopped: true, backupId: "backup-fresh" });
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      expect(createSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ sandbox_record_id: rec.id, snapshot_type: "pre-shutdown" }),
+      );
+      expect(pruneSpy).toHaveBeenCalledWith(AGENT, 10);
+      expect(writes).toHaveLength(1);
+      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
+      expect(rendered).toContain("last_backup_at = NOW()");
+    } finally {
+      upgradeTransactionImpl = null;
+      fetchSpy.mockRestore();
+      createSpy.mockRestore();
+      pruneSpy.mockRestore();
+      restore();
+    }
+  });
+
+  test("suspend defers on a transient capture signal without touching compute", async () => {
+    const { SNAPSHOT_CAPTURE_TRANSIENT } = await import("./eliza-sandbox.ts?actual");
+    const rec = bridgedRunningRow();
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const fetchSpy = spyOn(svc, "fetchSnapshotState").mockRejectedValue(
+      new Error(SNAPSHOT_CAPTURE_TRANSIENT),
+    );
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({
+        success: false,
+        containerStopped: false,
+        error: `Refusing to stop without a current backup: ${SNAPSHOT_CAPTURE_TRANSIENT}`,
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+      restore();
+    }
+  });
+
+  test("suspend proceeds without capture for a no-snapshot-endpoint image", async () => {
+    const { SNAPSHOT_ENDPOINT_UNSUPPORTED } = await import("./eliza-sandbox.ts?actual");
+    const rec = bridgedRunningRow();
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const fetchSpy = spyOn(svc, "fetchSnapshotState").mockRejectedValue(
+      new Error(SNAPSHOT_ENDPOINT_UNSUPPORTED),
+    );
+    const writes: SQL[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query as SQL);
+          return { rows: [] };
+        },
+      });
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({
+        success: true,
+        containerStopped: true,
+        backupId: undefined,
+      });
+      expect(provider.stopForReplacement).toHaveBeenCalledWith(rec.sandbox_id);
+      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
+      expect(rendered).not.toContain("last_backup_at");
+    } finally {
+      upgradeTransactionImpl = null;
+      fetchSpy.mockRestore();
+      restore();
+    }
+  });
+
+  test("capture failure falls back to a proven restorable existing backup", async () => {
+    const rec = bridgedRunningRow();
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const fetchSpy = spyOn(svc, "fetchSnapshotState").mockRejectedValue(
+      new Error("bridge reset mid-stream"),
+    );
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue({
+      id: "backup-proven",
+      sandbox_record_id: rec.id,
+      snapshot_type: "scheduled",
+      created_at: new Date(),
+      verification_status: "verified",
+      verified_at: new Date(),
+      verification_error: null,
+    } as StoredAgentSandboxBackup);
+    const writes: SQL[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query as SQL);
+          return { rows: [] };
+        },
+      });
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({
+        success: true,
+        containerStopped: true,
+        backupId: "backup-proven",
+      });
+      const rendered = new PgDialect().sqlToQuery(writes[0]).sql;
+      expect(rendered).not.toContain("last_backup_at");
+    } finally {
+      upgradeTransactionImpl = null;
+      fetchSpy.mockRestore();
+      latestSpy.mockRestore();
+      restore();
+    }
+  });
+
+  test("suspend refuses when no durable backup exists and none can be captured", async () => {
+    const rec = claimedPendingRow(); // running, no bridge to capture from
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const latestSpy = spyOn(agentSandboxesRepository, "getLatestStoredBackup").mockResolvedValue(
+      undefined,
+    );
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({
+        success: false,
+        containerStopped: false,
+        error: "Unable to create or find a durable backup before stopping; agent was left running.",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+    } finally {
+      latestSpy.mockRestore();
+      restore();
+    }
+  });
+
+  test("suspend refuses when the lifecycle moved between capture and lock", async () => {
+    const rec = bridgedRunningRow();
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(rec, provider);
+    const gateSpy = spyOn(svc, "prepareSuspendBackupGate").mockResolvedValue({
+      outcome: "proceed",
+      backupId: "backup-fresh",
+      capturedFresh: true,
+    });
+    const getForMutation = spyOn(svc, "getAgentForLifecycleMutation").mockResolvedValue({
+      ...rec,
+      lifecycle_revision: rec.lifecycle_revision + 1,
+    });
+    const writes: SQL[] = [];
+    upgradeTransactionImpl = async (fn) =>
+      fn({
+        execute: async (query) => {
+          writes.push(query as SQL);
+          return { rows: [] };
+        },
+      });
+    try {
+      const result = await svc.executeSuspend(AGENT, ORG, SUSPEND_JOB);
+      expect(result).toEqual({
+        success: false,
+        containerStopped: false,
+        error: "Agent lifecycle changed while the suspend backup was prepared",
+      });
+      expect(provider.stopForReplacement).not.toHaveBeenCalled();
+      expect(writes).toHaveLength(0);
+    } finally {
+      upgradeTransactionImpl = null;
+      gateSpy.mockRestore();
+      getForMutation.mockRestore();
+      restore();
+    }
+  });
+
+  test("suspend gate skips shared-tier and container-less rows", async () => {
+    const provider = stoppableProvider();
+    const { svc, restore } = await suspendSvc(claimedPendingRow(), provider);
+    try {
+      expect(
+        await svc.prepareSuspendBackupGate({ ...claimedPendingRow(), execution_tier: "shared" }),
+      ).toEqual({ outcome: "skip" });
+      expect(
+        await svc.prepareSuspendBackupGate({ ...claimedPendingRow(), sandbox_id: null }),
+      ).toEqual({ outcome: "skip" });
+    } finally {
+      restore();
     }
   });
 
