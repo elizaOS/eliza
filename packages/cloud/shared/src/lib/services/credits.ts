@@ -922,10 +922,12 @@ export class CreditsService {
     const rows = db ? await applyMutation(db) : await writeTransaction(applyMutation);
 
     const row = rows[0];
-    if (!row?.id && stripePaymentIntentId) {
+    if (!row?.id && stripePaymentIntentId && !db) {
       // A concurrent winner can be invisible to this statement's MVCC
       // snapshot even though ON CONFLICT observed it. The next statement sees
-      // the committed row and returns the same logical result.
+      // the committed row and returns the same logical result. An owning
+      // transaction already holds the organization lock and must not escape
+      // to the global pool here (single-connection runtimes would deadlock).
       const replay = await committedKeyedDeduction();
       if (replay) return replay;
     }
