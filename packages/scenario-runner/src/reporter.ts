@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isScenarioExecutionProfile,
   type ScenarioExecutionProfile,
@@ -1085,14 +1085,16 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function truncateText(value: unknown, maxLength = 420): string {
+export function truncateText(value: unknown, maxLength = 420): string {
   const text =
     typeof value === "string"
       ? value
       : value == null
         ? ""
         : JSON.stringify(value);
-  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= maxLength) return wellFormed;
+  return `${truncateWellFormed(wellFormed, maxLength - 1)}…`;
 }
 
 function summarizeTrajectoryFile(
