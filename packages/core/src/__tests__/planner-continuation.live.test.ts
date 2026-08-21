@@ -18,7 +18,10 @@ import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
 } from "../testing/index.ts";
-import { readCompletedPlannerContinuationTrajectory } from "./planner-continuation-trajectory.ts";
+import {
+	readCompletedPlannerContinuationTrajectory,
+	serializePlannerContinuationEvidence,
+} from "./planner-continuation-trajectory.ts";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };
@@ -103,17 +106,7 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 		if (evidencePath) {
 			await writeFile(
 				evidencePath,
-				`${JSON.stringify(
-					{
-						provider: harness.providerName,
-						baseUrl: harness.providerConfig?.baseUrl,
-						smallModel: harness.providerConfig?.smallModel,
-						largeModel: harness.providerConfig?.largeModel,
-						evidence,
-					},
-					null,
-					2,
-				)}\n`,
+				serializePlannerContinuationEvidence(harness, evidence),
 			);
 		}
 		await harness?.cleanup();

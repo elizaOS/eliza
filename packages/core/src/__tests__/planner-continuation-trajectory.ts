@@ -1,6 +1,10 @@
 /**
  * Provides the causal persistence barrier used by planner-continuation
- * evidence after visible message delivery has completed.
+ * evidence after visible message delivery has completed, plus the serializer
+ * that turns a completed live run into its reviewable artifact. A run whose
+ * live harness never constructed still emits an artifact, marked unavailable,
+ * so a stale file from an earlier run can never be mistaken for this run's
+ * receipt.
  */
 
 import { drainPostDeliveryTasks } from "../services/post-delivery-task-tracker.ts";
@@ -75,4 +79,41 @@ export async function readCompletedPlannerContinuationTrajectory<
 		);
 	}
 	return detail;
+}
+
+export interface PlannerContinuationEvidenceHarness {
+	providerName: string | null;
+	providerConfig: {
+		baseUrl?: string;
+		smallModel?: string;
+		largeModel?: string;
+	} | null;
+}
+
+/**
+ * Render the live evidence artifact. `harness` is absent when live setup threw
+ * before the runtime existed; that run observed no provider attribution, so the
+ * artifact says so explicitly rather than omitting the fields or leaving an
+ * earlier run's file in place to be read as this run's receipt.
+ */
+export function serializePlannerContinuationEvidence(
+	harness: PlannerContinuationEvidenceHarness | undefined,
+	evidence: ReadonlyArray<Record<string, unknown>>,
+): string {
+	const body = harness
+		? {
+				status: "captured" as const,
+				provider: harness.providerName,
+				baseUrl: harness.providerConfig?.baseUrl,
+				smallModel: harness.providerConfig?.smallModel,
+				largeModel: harness.providerConfig?.largeModel,
+				evidence,
+			}
+		: {
+				status: "harness-unavailable" as const,
+				reason:
+					"live continuation harness did not initialize; no provider attribution was observed",
+				evidence,
+			};
+	return `${JSON.stringify(body, null, 2)}\n`;
 }

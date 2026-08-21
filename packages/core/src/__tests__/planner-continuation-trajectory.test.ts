@@ -12,6 +12,7 @@ import type { IAgentRuntime } from "../types/runtime.ts";
 import {
 	type PlannerContinuationTrajectoryDetail,
 	readCompletedPlannerContinuationTrajectory,
+	serializePlannerContinuationEvidence,
 } from "./planner-continuation-trajectory.ts";
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -179,5 +180,49 @@ describe("planner continuation trajectory persistence barrier", () => {
 		).rejects.toThrow("requires getTrajectoryDetail");
 		expect(completeService.flushWriteQueue).not.toHaveBeenCalled();
 		expect(completeService.getTrajectoryDetail).not.toHaveBeenCalled();
+	});
+});
+
+describe("planner continuation evidence artifact", () => {
+	it("records provider attribution for a run whose harness initialized", () => {
+		const artifact = JSON.parse(
+			serializePlannerContinuationEvidence(
+				{
+					providerName: "openai",
+					providerConfig: {
+						baseUrl: "https://api.cerebras.ai/v1",
+						smallModel: "small-model",
+						largeModel: "large-model",
+					},
+				},
+				[{ caseName: "directive", executed: true }],
+			),
+		);
+
+		expect(artifact).toEqual({
+			status: "captured",
+			provider: "openai",
+			baseUrl: "https://api.cerebras.ai/v1",
+			smallModel: "small-model",
+			largeModel: "large-model",
+			evidence: [{ caseName: "directive", executed: true }],
+		});
+	});
+
+	it("marks the artifact unavailable when the harness never initialized", () => {
+		const artifact = JSON.parse(
+			serializePlannerContinuationEvidence(undefined, []),
+		);
+
+		expect(artifact.status).toBe("harness-unavailable");
+		expect(artifact.provider).toBeUndefined();
+		expect(artifact.evidence).toEqual([]);
+		expect(String(artifact.reason)).toContain("did not initialize");
+	});
+
+	it("never throws on an uninitialized harness, so setup failure stays the only failure", () => {
+		expect(() =>
+			serializePlannerContinuationEvidence(undefined, []),
+		).not.toThrow();
 	});
 });
