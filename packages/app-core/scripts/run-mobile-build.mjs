@@ -5806,6 +5806,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
   "android.permission.INTERNET",
+  "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.RECORD_AUDIO",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);

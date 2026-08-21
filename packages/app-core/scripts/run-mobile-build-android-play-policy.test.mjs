@@ -13,6 +13,7 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
+  ANDROID_PLAY_ALLOWED_PERMISSIONS,
   androidPlayManifestEvidenceFromAapt,
   createAndroidPlayManifestPolicy,
   findAndroidPlayIndexHtmlFindings,
@@ -135,6 +136,9 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+    );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
       "runners",
