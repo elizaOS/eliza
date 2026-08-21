@@ -22,6 +22,7 @@
 
 import {
   type ActionResult,
+  type Media,
   type MediaGenerationRequest,
   type MediaGenerationResponse,
   type MessageExampleGroup,
@@ -95,6 +96,8 @@ export interface RunSharedAgentTurnInput {
   history: SharedTurnMessage[];
   /** The incoming user message or event text. */
   message: string;
+  /** Request-scoped uploaded media; inline byte fields are never persisted. */
+  attachments?: Media[];
   /** Authenticated raw utterance used for capability checks when `message` includes server context. */
   capabilityText?: string;
   /** Trusted lifecycle callers may add a system event instead of impersonating the user. */
