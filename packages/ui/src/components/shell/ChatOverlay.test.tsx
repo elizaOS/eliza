@@ -954,6 +954,35 @@ describe("ChatOverlay", () => {
     expect(document.activeElement).not.toBe(composer);
   });
 
+  it("does not preserve composer focus after a desktop Workspace consumes navigation", () => {
+    const { rerender } = render(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "chat",
+        } as Partial<ShellController>)}
+      />,
+    );
+    const composer = screen.getByLabelText("message");
+    act(() => {
+      composer.focus();
+      const event = new CustomEvent(NAVIGATE_VIEW_EVENT, {
+        cancelable: true,
+        detail: { viewId: "notes", viewPath: "/notes", source: "agent" },
+      });
+      event.preventDefault();
+      window.dispatchEvent(event);
+    });
+
+    rerender(
+      <ChatOverlay
+        controller={makeController({
+          currentTab: "notes",
+        } as Partial<ShellController>)}
+      />,
+    );
+    expect(document.activeElement).not.toBe(composer);
+  });
+
   it("keeps composer focus when the active view stays on chat (no spurious blur)", () => {
     const { rerender } = render(
       <ChatOverlay

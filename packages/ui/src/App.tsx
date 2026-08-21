@@ -414,9 +414,7 @@ function ChatOverlayShell() {
       // measurements; writing those measurements back into NSWindow recreated
       // the WebKit resize race this split API exists to prevent.
     },
-    [
-      reportNativeInteractiveSize,
-    ],
+    [reportNativeInteractiveSize],
   );
   const handleWindowSizeClassChange = useCallback(
     (sizeClass: ChatOverlayWindowSizeClass): void => {
@@ -2853,6 +2851,7 @@ function AppContent() {
     // slash-command path uses (initialSection + #hash) instead of the generic
     // path nav, which would drop the requested section.
     const handleNavigateView = (event: Event) => {
+      if (event.defaultPrevented) return;
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       if (
         detail?.subview &&

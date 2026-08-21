@@ -4273,6 +4273,7 @@ export function ChatOverlay({
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       const action = detail?.action;
       const staysInShell =
+        !event.defaultPrevented &&
         action !== "close" &&
         action !== "close-all" &&
         action !== "open-window";

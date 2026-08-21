@@ -58,6 +58,7 @@ export function useBarSurfaceWindows(options?: {
       if (!detail || detail.action === "close" || detail.action === "close-all")
         return;
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
+        event.preventDefault();
         void openWorkspaceRef.current({
           routePath: "/views",
           maximize: true,
@@ -67,6 +68,7 @@ export function useBarSurfaceWindows(options?: {
       const path = pathForNavigateViewDetail(detail);
       if (!path) return;
       if (detail.action !== "open-window") {
+        event.preventDefault();
         void openWorkspaceRef.current({ routePath: path, maximize: true });
         return;
       }
@@ -77,7 +79,11 @@ export function useBarSurfaceWindows(options?: {
         alwaysOnTop: detail.alwaysOnTop === true,
       });
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
-    return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    // Capture before App's ordinary in-shell navigation listener. Consuming a
+    // Workspace handoff keeps the detached host parked on /chat instead of
+    // navigating both WebViews and re-focusing the hidden pill composer.
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate, true);
+    return () =>
+      window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate, true);
   }, [isDesktop]);
 }

@@ -13,9 +13,14 @@ import { useBarSurfaceWindows } from "../useBarSurfaceWindows";
 afterEach(() => cleanup());
 
 function dispatchNavigate(detail?: NavigateViewDetail) {
-  return act(() => {
-    window.dispatchEvent(new CustomEvent("eliza:navigate:view", { detail }));
+  const event = new CustomEvent("eliza:navigate:view", {
+    detail,
+    cancelable: true,
   });
+  act(() => {
+    window.dispatchEvent(event);
+  });
+  return event;
 }
 
 type OpenWindowArg = {
@@ -73,7 +78,7 @@ describe("useBarSurfaceWindows", () => {
 
   it("opens a normal view path inside the maximized Workspace", async () => {
     const { openWindow, openWorkspace } = setup();
-    await dispatchNavigate({
+    const event = await dispatchNavigate({
       viewId: "notes",
       viewPath: "/notes",
     });
@@ -82,6 +87,7 @@ describe("useBarSurfaceWindows", () => {
       routePath: "/notes",
       maximize: true,
     });
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("ignores close actions and detail-less events", async () => {
