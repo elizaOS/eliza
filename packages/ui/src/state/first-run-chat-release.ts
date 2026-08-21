@@ -15,16 +15,26 @@ export interface FirstRunChatReleaseState {
   releasePending: boolean;
 }
 
+/** True only while the startup coordinator has committed to real onboarding. */
+export function isAuthoritativeFirstRunOpen(
+  firstRunComplete: boolean | null,
+  startupPhase: StartupPhaseValue,
+): boolean {
+  return firstRunComplete === false && startupPhase === "first-run-required";
+}
+
 export function createFirstRunChatReleaseState(
   firstRunComplete: boolean | null,
   startupPhase: StartupPhaseValue,
 ): FirstRunChatReleaseState {
   const incompleteActive = firstRunComplete === false;
   const incompleteEpoch = incompleteActive ? 1 : 0;
-  const authoritativeEpoch =
-    incompleteActive && startupPhase === "first-run-required"
-      ? incompleteEpoch
-      : null;
+  const authoritativeEpoch = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  )
+    ? incompleteEpoch
+    : null;
   return {
     incompleteActive,
     incompleteEpoch,
