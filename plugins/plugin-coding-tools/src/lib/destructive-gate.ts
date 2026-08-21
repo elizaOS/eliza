@@ -95,6 +95,7 @@ function parseHeredocDelimiter(
   let delimiter = "";
   let quote: string | null = null;
   let quoted = false;
+  let wordStarted = false;
 
   while (cursor < line.length) {
     const ch = line[cursor] as string;
@@ -117,12 +118,14 @@ function parseHeredocDelimiter(
       continue;
     }
     if (ch === '"' || ch === "'") {
+      wordStarted = true;
       quoted = true;
       quote = ch;
       cursor += 1;
       continue;
     }
     if (ch === "\\" && cursor + 1 < line.length) {
+      wordStarted = true;
       quoted = true;
       cursor += 1;
       delimiter += line[cursor] as string;
@@ -130,11 +133,12 @@ function parseHeredocDelimiter(
       continue;
     }
     if (/[\s|;&<>()]/.test(ch)) break;
+    wordStarted = true;
     delimiter += ch;
     cursor += 1;
   }
 
-  return quote === null && delimiter ? { delimiter, quoted } : null;
+  return quote === null && wordStarted ? { delimiter, quoted } : null;
 }
 
 function isInsideArrayAssignmentSubscript(
@@ -245,9 +249,12 @@ function heredocDeclarations(line: string): HeredocDeclaration[] {
   return declarations;
 }
 
-// Heredoc bodies are shell input, not commands. Preserve their newlines so
-// later executable lines remain segment boundaries, but hide payload bytes
-// from both the command and SQL classifiers.
+// Literal heredoc payload tokens are shell input rather than command
+// positions. Preserve newlines so later executable lines remain segment
+// boundaries, but hide literal payload bytes from the command and SQL
+// classifiers. Unquoted bodies can evaluate nested expansions; those require
+// their own recursive inspection rather than treating the whole body as a
+// command list.
 function maskHeredocBodies(command: string): string {
   const lines = command.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g) ?? [];
   const pending: HeredocDeclaration[] = [];
