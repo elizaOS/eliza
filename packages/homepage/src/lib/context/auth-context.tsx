@@ -8,6 +8,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
@@ -187,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const siwsAttemptRef = useRef(0);
 
   const setSessionToken = useCallback((token: string | null) => {
     if (typeof window === "undefined") return;
@@ -459,6 +461,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithSolana = useCallback(async (): Promise<SolanaLoginResult> => {
+    const attempt = ++siwsAttemptRef.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -468,26 +471,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         validateCanonicalUser: (canonicalUser) => {
           assertCanonicalSiwsIdentity(result, canonicalUser);
         },
-        commitSession: (token, canonicalUser) => {
-          commitUserInfo(canonicalUser);
-          setSessionToken(token);
-        },
+        isCurrentAttempt: () => attempt === siwsAttemptRef.current,
+        storeToken: setSessionToken,
+        publishCanonicalUser: commitUserInfo,
       });
       return { success: true, address: result.address };
     } catch (err) {
       const result = parseAuthError(err);
-      setError(result.error ?? "Solana sign-in failed");
+      if (attempt === siwsAttemptRef.current) {
+        setError(result.error ?? "Solana sign-in failed");
+      }
       return result;
     } finally {
-      setIsLoading(false);
+      if (attempt === siwsAttemptRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [setSessionToken, loadUserInfo, commitUserInfo]);
 
   const logout = useCallback(() => {
+    siwsAttemptRef.current += 1;
     setSessionToken(null);
     setUser(null);
     setOrganization(null);
     setError(null);
+    setIsLoading(false);
   }, [setSessionToken]);
 
   const refreshUser = useCallback(async () => {

@@ -54,10 +54,19 @@ export async function confirmSiwsSession<T>(
   dependencies: {
     loadCanonicalUser: (token: string) => Promise<T>;
     validateCanonicalUser: (value: T) => void;
-    commitSession: (token: string, value: T) => void;
+    isCurrentAttempt: () => boolean;
+    storeToken: (token: string) => void;
+    publishCanonicalUser: (value: T) => void;
   },
 ): Promise<void> {
   const canonicalUser = await dependencies.loadCanonicalUser(apiKey);
   dependencies.validateCanonicalUser(canonicalUser);
-  dependencies.commitSession(apiKey, canonicalUser);
+  if (!dependencies.isCurrentAttempt()) {
+    throw new Error("SIWS session attempt was superseded");
+  }
+
+  // Persist first so a storage failure cannot publish identity for a bearer
+  // that no observer can subsequently load.
+  dependencies.storeToken(apiKey);
+  dependencies.publishCanonicalUser(canonicalUser);
 }
