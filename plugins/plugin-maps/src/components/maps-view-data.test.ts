@@ -27,6 +27,52 @@ function response(body: unknown, status = 200): Response {
 describe("mapsViewTransport", () => {
   beforeEach(() => fetchWithCsrf.mockReset());
 
+  it("validates adapter-owned provider attribution metadata", async () => {
+    fetchWithCsrf.mockResolvedValueOnce(
+      response({
+        requestId: "maps-provider-request",
+        success: true,
+        result: {
+          success: true,
+          data: {
+            providers: [
+              {
+                id: "fixture_maps",
+                attribution: "Map data © Fixture Maps",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await expect(mapsViewTransport.describeProviders?.()).resolves.toEqual([
+      {
+        id: "fixture_maps",
+        attribution: "Map data © Fixture Maps",
+      },
+    ]);
+
+    fetchWithCsrf.mockResolvedValueOnce(
+      response({
+        requestId: "maps-bad-provider-request",
+        success: true,
+        result: {
+          success: true,
+          data: {
+            providers: [
+              {
+                id: "fixture_maps",
+                attribution: "x".repeat(501),
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await expect(mapsViewTransport.describeProviders?.()).rejects.toThrow();
+  });
+
   it("validates a successful search broker envelope", async () => {
     fetchWithCsrf.mockResolvedValue(
       response({
