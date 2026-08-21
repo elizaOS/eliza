@@ -2283,6 +2283,11 @@ async function runSpawnAgent(
     if (userOriginatedSpawn) {
       if (spawnDurableService && hasDurableOwner) {
         try {
+          const requestedAcceptanceCriteria = pickStringArrayFromInputs(
+            params,
+            content,
+            "acceptanceCriteria",
+          );
           const detail = await spawnDurableService.createTask({
             title: label,
             goal: task,
@@ -2291,7 +2296,10 @@ async function runSpawnAgent(
             // The child is already live at this point. Supply the deterministic
             // contract so createTask cannot block durable ownership on an
             // optional model refinement before attachSession runs.
-            acceptanceCriteria: staticAcceptanceCriteria(task),
+            acceptanceCriteria:
+              requestedAcceptanceCriteria.length > 0
+                ? requestedAcceptanceCriteria
+                : staticAcceptanceCriteria(task),
             originalRequest: requestText(message),
             ...(session.workdir ? { workdir: session.workdir } : {}),
             ...(message.roomId ? { roomId: message.roomId } : {}),

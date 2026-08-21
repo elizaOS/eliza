@@ -96,6 +96,10 @@ describe("TASKS top-level child trajectory bridge", () => {
           workdir: process.cwd(),
           lockWorkdir: true,
           approvalPreset: "readonly",
+          acceptanceCriteria: [
+            "the requested file is read",
+            "the requested test exits successfully",
+          ],
         },
       },
       undefined,
@@ -116,6 +120,14 @@ describe("TASKS top-level child trajectory bridge", () => {
       }),
     );
     expect(taskService.createTask).toHaveBeenCalledTimes(1);
+    expect(taskService.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acceptanceCriteria: [
+          "the requested file is read",
+          "the requested test exits successfully",
+        ],
+      }),
+    );
     expect(taskService.attachSession).toHaveBeenCalledWith(
       "task-1",
       expect.objectContaining({
