@@ -2317,7 +2317,10 @@ export class DocumentService extends Service {
 			200,
 			{
 				roomId: existingDocument.roomId,
-				worldId: existingDocument.worldId,
+				// Original ingestion coerces fragment worldId to the agent id when the
+				// parent document has none; replacement fragments must match or they
+				// fall out of worldId-scoped retrieval that still sees the old ones.
+				worldId: existingDocument.worldId ?? this.runtime.agentId,
 				entityId: existingDocument.entityId,
 			},
 		);

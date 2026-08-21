@@ -148,7 +148,8 @@ async function ensureNamespace(runtime: IAgentRuntime): Promise<void> {
 
 function assertCasStorage(runtime: IAgentRuntime): void {
   if (
-    runtime.adapter.documentListQueryCapability !== 2 ||
+    !Number.isInteger(runtime.adapter.documentListQueryCapability) ||
+    runtime.adapter.documentListQueryCapability < 2 ||
     typeof runtime.adapter.getDocument !== "function" ||
     typeof runtime.adapter.compareAndSwapDocument !== "function"
   ) {
