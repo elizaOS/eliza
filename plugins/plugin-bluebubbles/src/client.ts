@@ -8,6 +8,7 @@
 import { API_ENDPOINTS } from "./constants";
 import type {
 	BlueBubblesChat,
+	BlueBubblesClientOptions,
 	BlueBubblesConfig,
 	BlueBubblesMessage,
 	BlueBubblesProbeResult,
@@ -22,9 +23,78 @@ const BLUEBUBBLES_REQUEST_TIMEOUT_MS = 15_000;
 /** Binary attachment POSTs share the documented 30s blob-upload sibling budget. */
 const BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS = 30_000;
 
+function redactPassword(value: string, password: string): string {
+	if (!password) return value;
+	const representations = new Set([password]);
+	let encoded = password;
+	for (let depth = 0; depth < 2; depth += 1) {
+		encoded = encodeURIComponent(encoded);
+		representations.add(encoded);
+	}
+	return [...representations]
+		.sort((left, right) => right.length - left.length)
+		.reduce(
+			(redacted, secret) => redacted.split(secret).join("<redacted>"),
+			value,
+		);
+}
+
+function transportError(
+	error: unknown,
+	callerCancelled: boolean,
+	password: string,
+): BlueBubblesTransportError {
+	const candidate = error instanceof Error ? error : new Error(String(error));
+	const timedOut =
+		candidate.name === "TimeoutError" || /timeout/i.test(candidate.message);
+	const sanitizedCause = new Error(redactPassword(candidate.message, password));
+	sanitizedCause.name = candidate.name;
+	return new BlueBubblesTransportError(
+		`BlueBubbles ${callerCancelled ? "request cancelled" : timedOut ? "request timed out" : "transport failed"}`,
+		callerCancelled ? "cancelled" : timedOut ? "timeout" : "transport",
+		{ cause: sanitizedCause },
+	);
+}
+
+function retryAfterSeconds(headers: Headers | undefined): number | null {
+	const raw = headers?.get("retry-after");
+	if (raw === null || raw === undefined || raw.trim() === "") return null;
+	const seconds = Number(raw);
+	return Number.isFinite(seconds) && seconds >= 0 ? seconds : null;
+}
+
+export type BlueBubblesDeliveryAcceptance = "rejected" | "ambiguous";
+
+/** Preserves retry and provider-acceptance evidence at the HTTP boundary. */
+export class BlueBubblesHttpError extends Error {
+	constructor(
+		message: string,
+		public readonly statusCode: number,
+		public readonly retryAfterSeconds: number | null,
+		public readonly acceptance: BlueBubblesDeliveryAcceptance,
+	) {
+		super(message);
+		this.name = "BlueBubblesHttpError";
+	}
+}
+
+export class BlueBubblesTransportError extends Error {
+	public readonly acceptance = "ambiguous" as const;
+
+	constructor(
+		message: string,
+		public readonly kind: "cancelled" | "timeout" | "transport",
+		options: { cause: unknown },
+	) {
+		super(message, options);
+		this.name = "BlueBubblesTransportError";
+	}
+}
+
 interface BlueBubblesFetchResponse {
 	ok: boolean;
 	status: number;
+	headers?: Headers;
 	text(): Promise<string>;
 	json(): Promise<unknown>;
 }
@@ -32,53 +102,111 @@ interface BlueBubblesFetchResponse {
 async function blueBubblesRequest<T>(
 	urlWithPassword: string,
 	options: RequestInit = {},
+	requestTimeoutMs = BLUEBUBBLES_REQUEST_TIMEOUT_MS,
+	password = "",
 ): Promise<T> {
-	const timeoutSignal = AbortSignal.timeout(BLUEBUBBLES_REQUEST_TIMEOUT_MS);
+	const timeoutSignal = AbortSignal.timeout(requestTimeoutMs);
 	const signal = options.signal
 		? AbortSignal.any([options.signal, timeoutSignal])
 		: timeoutSignal;
-	const response = (await fetch(urlWithPassword, {
-		...options,
-		headers: {
-			"Content-Type": "application/json",
-			...options.headers,
-		},
-		signal,
-	})) as BlueBubblesFetchResponse;
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`BlueBubbles API error (${response.status}): ${errorText}`);
+	let response: BlueBubblesFetchResponse;
+	try {
+		response = (await fetch(urlWithPassword, {
+			...options,
+			headers: {
+				"Content-Type": "application/json",
+				...options.headers,
+			},
+			signal,
+		})) as BlueBubblesFetchResponse;
+	} catch (error) {
+		throw transportError(error, options.signal?.aborted ?? false, password);
 	}
 
-	return response.json() as Promise<T>;
+	if (!response.ok) {
+		let responseText: string;
+		try {
+			responseText = await response.text();
+		} catch (error) {
+			throw transportError(error, options.signal?.aborted ?? false, password);
+		}
+		const errorText = redactPassword(responseText, password);
+		throw new BlueBubblesHttpError(
+			`BlueBubbles API error (${response.status}): ${errorText}`,
+			response.status,
+			retryAfterSeconds(response.headers),
+			response.status < 500 ? "rejected" : "ambiguous",
+		);
+	}
+
+	try {
+		return (await response.json()) as T;
+	} catch (error) {
+		throw transportError(error, options.signal?.aborted ?? false, password);
+	}
 }
 
 async function blueBubblesSendAttachment(
 	url: string,
 	formData: FormData,
+	timeoutMs = BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS,
+	signal?: AbortSignal,
+	password = "",
 ): Promise<{ data: BlueBubblesMessage }> {
-	const response = (await fetch(url, {
-		method: "POST",
-		body: formData,
-		signal: AbortSignal.timeout(BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS),
-	})) as BlueBubblesFetchResponse;
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Failed to send attachment: ${errorText}`);
+	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	const composedSignal = signal
+		? AbortSignal.any([signal, timeoutSignal])
+		: timeoutSignal;
+	let response: BlueBubblesFetchResponse;
+	try {
+		response = (await fetch(url, {
+			method: "POST",
+			body: formData,
+			signal: composedSignal,
+		})) as BlueBubblesFetchResponse;
+	} catch (error) {
+		throw transportError(error, signal?.aborted ?? false, password);
 	}
 
-	return (await response.json()) as { data: BlueBubblesMessage };
+	if (!response.ok) {
+		let responseText: string;
+		try {
+			responseText = await response.text();
+		} catch (error) {
+			throw transportError(error, signal?.aborted ?? false, password);
+		}
+		const errorText = redactPassword(responseText, password);
+		throw new BlueBubblesHttpError(
+			`Failed to send attachment (${response.status}): ${errorText}`,
+			response.status,
+			retryAfterSeconds(response.headers),
+			response.status < 500 ? "rejected" : "ambiguous",
+		);
+	}
+
+	try {
+		return (await response.json()) as { data: BlueBubblesMessage };
+	} catch (error) {
+		throw transportError(error, signal?.aborted ?? false, password);
+	}
 }
 
 export class BlueBubblesClient {
 	private baseUrl: string;
 	private password: string;
+	private requestTimeoutMs: number;
+	private attachmentTimeoutMs: number;
 
-	constructor(config: BlueBubblesConfig) {
+	constructor(
+		config: BlueBubblesConfig,
+		options: BlueBubblesClientOptions = {},
+	) {
 		this.baseUrl = config.serverUrl.replace(/\/$/, "");
 		this.password = config.password;
+		this.requestTimeoutMs =
+			options.requestTimeoutMs ?? BLUEBUBBLES_REQUEST_TIMEOUT_MS;
+		this.attachmentTimeoutMs =
+			options.attachmentTimeoutMs ?? BLUEBUBBLES_ATTACHMENT_TIMEOUT_MS;
 	}
 
 	private async request<T>(
@@ -89,7 +217,12 @@ export class BlueBubblesClient {
 		const separator = endpoint.includes("?") ? "&" : "?";
 		const urlWithPassword = `${url}${separator}password=${encodeURIComponent(this.password)}`;
 
-		return blueBubblesRequest<T>(urlWithPassword, options);
+		return blueBubblesRequest<T>(
+			urlWithPassword,
+			options,
+			this.requestTimeoutMs,
+			this.password,
+		);
 	}
 
 	/**
@@ -141,27 +274,29 @@ export class BlueBubblesClient {
 		text: string,
 		options: SendMessageOptions = {},
 	): Promise<SendMessageResult> {
+		const { signal, ...providerOptions } = options;
 		const response = await this.request<{ data: BlueBubblesMessage }>(
 			API_ENDPOINTS.MESSAGE_TEXT,
 			{
 				method: "POST",
+				signal,
 				body: JSON.stringify({
 					chatGuid,
 					message: text,
-					tempGuid: options.tempGuid,
-					method: options.method ?? "apple-script",
-					subject: options.subject,
-					effectId: options.effectId,
-					selectedMessageGuid: options.selectedMessageGuid,
-					partIndex: options.partIndex,
-					ddScan: options.ddScan,
+					tempGuid: providerOptions.tempGuid,
+					method: providerOptions.method ?? "apple-script",
+					subject: providerOptions.subject,
+					effectId: providerOptions.effectId,
+					selectedMessageGuid: providerOptions.selectedMessageGuid,
+					partIndex: providerOptions.partIndex,
+					ddScan: providerOptions.ddScan,
 				}),
 			},
 		);
 
 		return {
 			guid: response.data.guid,
-			tempGuid: options.tempGuid,
+			tempGuid: providerOptions.tempGuid,
 			status: "sent",
 			dateCreated: response.data.dateCreated,
 			text: response.data.text ?? text,
@@ -176,26 +311,33 @@ export class BlueBubblesClient {
 		attachmentPath: string,
 		options: SendAttachmentOptions = {},
 	): Promise<SendMessageResult> {
+		const { signal, ...providerOptions } = options;
 		const formData = new FormData();
 		formData.append("chatGuid", chatGuid);
 		formData.append("attachment", attachmentPath);
 
-		if (options.tempGuid) {
-			formData.append("tempGuid", options.tempGuid);
+		if (providerOptions.tempGuid) {
+			formData.append("tempGuid", providerOptions.tempGuid);
 		}
-		if (options.name) {
-			formData.append("name", options.name);
+		if (providerOptions.name) {
+			formData.append("name", providerOptions.name);
 		}
-		if (options.isAudioMessage !== undefined) {
-			formData.append("isAudioMessage", String(options.isAudioMessage));
+		if (providerOptions.isAudioMessage !== undefined) {
+			formData.append("isAudioMessage", String(providerOptions.isAudioMessage));
 		}
 
 		const url = `${this.baseUrl}${API_ENDPOINTS.SEND_ATTACHMENT}?password=${encodeURIComponent(this.password)}`;
-		const result = await blueBubblesSendAttachment(url, formData);
+		const result = await blueBubblesSendAttachment(
+			url,
+			formData,
+			this.attachmentTimeoutMs,
+			signal,
+			this.password,
+		);
 
 		return {
 			guid: result.data.guid,
-			tempGuid: options.tempGuid,
+			tempGuid: providerOptions.tempGuid,
 			status: "sent",
 			dateCreated: result.data.dateCreated,
 			text: result.data.text ?? "",
@@ -225,7 +367,13 @@ export class BlueBubblesClient {
 		}
 
 		const url = `${this.baseUrl}${API_ENDPOINTS.SEND_ATTACHMENT}?password=${encodeURIComponent(this.password)}`;
-		const result = await blueBubblesSendAttachment(url, formData);
+		const result = await blueBubblesSendAttachment(
+			url,
+			formData,
+			this.attachmentTimeoutMs,
+			undefined,
+			this.password,
+		);
 
 		return {
 			guid: result.data.guid,

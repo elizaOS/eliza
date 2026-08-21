@@ -11,7 +11,9 @@
     "format:check": "bunx @biomejs/biome format package.json scenarios"
   },
   "devDependencies": {
+    "@elizaos/cloud-test-mocks": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bluebubbles": "workspace:*",
     "@elizaos/scenario-runner": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2"
   },

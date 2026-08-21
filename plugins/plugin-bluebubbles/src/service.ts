@@ -785,7 +785,7 @@ export class BlueBubblesService extends Service {
 						...(memory.metadata ?? {}),
 						type: MemoryType.MESSAGE,
 						accountId: service.accountId,
-						bluebubblesChatGuid: chatGuid,
+						bluebubblesChatGuid: result.chatGuid ?? chatGuid,
 						bluebubblesMessageGuid: result.guid,
 						messageIdFull: result.guid,
 					};
@@ -1159,6 +1159,17 @@ export class BlueBubblesService extends Service {
 		if (!config) {
 			return;
 		}
+		const memoryId = createUniqueUuid(
+			this.runtime,
+			`bluebubbles:${message.guid}`,
+		) as UUID;
+		if (
+			typeof this.runtime.getMemoryById === "function" &&
+			(await this.runtime.getMemoryById(memoryId))
+		) {
+			logger.debug(`Ignoring duplicate BlueBubbles message ${message.guid}`);
+			return;
+		}
 
 		const chat = message.chats[0];
 		if (!chat) {
@@ -1261,7 +1272,7 @@ export class BlueBubblesService extends Service {
 		});
 
 		const memory = createMessageMemory({
-			id: createUniqueUuid(this.runtime, `bluebubbles:${message.guid}`) as UUID,
+			id: memoryId,
 			agentId: this.runtime.agentId,
 			entityId,
 			roomId,
@@ -1366,10 +1377,33 @@ export class BlueBubblesService extends Service {
 	private async handleMessageUpdate(
 		message: BlueBubblesMessage,
 	): Promise<void> {
-		// Handle edited or unsent messages
-		if (message.dateEdited) {
-			logger.debug(`Message ${message.guid} was edited`);
+		if (
+			!message.dateEdited ||
+			typeof this.runtime.getMemoryById !== "function"
+		) {
+			return;
 		}
+		const memoryId = createUniqueUuid(
+			this.runtime,
+			`bluebubbles:${message.guid}`,
+		) as UUID;
+		const existing = await this.runtime.getMemoryById(memoryId);
+		if (!existing) return;
+		const metadata = existing.metadata as Record<string, unknown> | undefined;
+		const priorEditedAt = Number(metadata?.bluebubblesDateEdited ?? 0);
+		if (message.dateEdited <= priorEditedAt) {
+			logger.debug(`Ignoring stale BlueBubbles update ${message.guid}`);
+			return;
+		}
+		await this.runtime.updateMemory({
+			...existing,
+			id: existing.id ?? memoryId,
+			content: { ...existing.content, text: message.text ?? "" },
+			metadata: {
+				...(existing.metadata ?? {}),
+				bluebubblesDateEdited: message.dateEdited,
+			} as Memory["metadata"],
+		});
 	}
 
 	/**
@@ -1446,7 +1480,7 @@ export class BlueBubblesService extends Service {
 		target: string,
 		text: string,
 		replyToMessageGuid?: string,
-	): Promise<{ guid: string; dateCreated: number }> {
+	): Promise<{ guid: string; dateCreated: number; chatGuid: string }> {
 		if (!this.client) {
 			throw new Error("BlueBubbles client not initialized");
 		}
@@ -1461,6 +1495,7 @@ export class BlueBubblesService extends Service {
 		return {
 			guid: result.guid,
 			dateCreated: result.dateCreated,
+			chatGuid,
 		};
 	}
 

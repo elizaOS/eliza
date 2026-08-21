@@ -6,6 +6,7 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./bluebubbles": "./src/bluebubbles/index.ts",
     "./hetzner": "./src/hetzner/index.ts",
     "./control-plane": "./src/control-plane/index.ts",
     "./provider-contract": "./src/provider-contract/index.ts",
@@ -33,6 +34,7 @@
   },
   "devDependencies": {
     "@elizaos/cloud-sdk": "workspace:*",
+    "@elizaos/plugin-bluebubbles": "workspace:*",
     "@elizaos/plugin-github": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",

@@ -16,7 +16,7 @@
     "@elizaos/plugin-agent-orchestrator": "framework-provider-family",
     "@elizaos/plugin-agent-skills": "framework-provider-family",
     "@elizaos/plugin-anthropic": "anthropic",
-    "@elizaos/plugin-bluebubbles": "messaging-webhook-family",
+    "@elizaos/plugin-bluebubbles": "bluebubbles",
     "@elizaos/plugin-app-control": "framework-provider-family",
     "@elizaos/plugin-blocker": "framework-provider-family",
     "@elizaos/plugin-browser": "framework-provider-family",
@@ -73,8 +73,8 @@
     "cloud-managed": "eliza-cloud-managed",
     "signal": "messaging-webhook-family",
     "browser-workspace": "messaging-webhook-family",
-    "bluebubbles": "messaging-webhook-family",
-    "imessage": "messaging-webhook-family",
+    "bluebubbles": "bluebubbles",
+    "imessage": "bluebubbles",
     "github": "github",
     "discord": "messaging-webhook-family",
     "slack": "messaging-webhook-family",
@@ -89,7 +89,7 @@
   "mockoonOwners": {
     "anthropic": "anthropic",
     "apple-reminders": "legacy-readonly-mockoon-family",
-    "bluebubbles": "messaging-webhook-family",
+    "bluebubbles": "bluebubbles",
     "calendar": "google-workspace",
     "cerebras": "openai",
     "discord": "messaging-webhook-family",
@@ -155,6 +155,9 @@
     ],
     "messaging-webhook-family": [
       "packages/cloud/test-mocks/test/provider-contract/whatsapp-cloud-webhook.contract.test.ts#WhatsApp production webhook contract"
+    ],
+    "bluebubbles": [
+      "packages/cloud/test-mocks/test/provider-contract/bluebubbles-connector.contract.test.ts#BlueBubbles production connector and service contract"
     ],
     "model-runtime-family": [
       "packages/scripts/e2e-coverage/runtime-surface-inventory.test.ts#runtime-surface production inventory"
@@ -683,6 +686,49 @@
       "certification": "mock-only"
     },
     {
+      "id": "bluebubbles",
+      "family": "messaging-webhook",
+      "ownerShard": "messaging-webhook-bluebubbles",
+      "productionClients": [
+        "BlueBubblesClient and BlueBubblesService from @elizaos/plugin-bluebubbles"
+      ],
+      "apiVersions": ["BlueBubbles Server REST API v1 and webhook events"],
+      "endpoints": [
+        "GET /api/v1/server/info",
+        "POST /api/v1/chat/query",
+        "GET /api/v1/chat/:guid",
+        "GET /api/v1/chat/:guid/message",
+        "POST /api/v1/chat/:guid/read",
+        "POST /api/v1/message/text",
+        "POST /api/v1/message/attachment",
+        "POST /api/v1/message/react",
+        "POST /api/v1/message/:guid/edit",
+        "POST /api/v1/message/:guid/unsend"
+      ],
+      "events": ["new-message", "updated-message", "chat-updated"],
+      "fidelity": "Real production client and service over authenticated loopback HTTP with protocol envelopes, multi-account state, tempGuid replay, delivery ambiguity, webhook retry/order/duplicate behavior, cancellation, virtual delay, and authoritative ledger readback.",
+      "gaps": [
+        "macOS Messages database and Private API behavior require the separately authorized provider canary",
+        "Cloud-owned setup and data HTTP routes are outside this connector/service shard"
+      ],
+      "control": "provider-mock-control-v1",
+      "scenarios": [
+        "service-start",
+        "connector-ingress",
+        "connector-egress",
+        "multi-account-isolation",
+        "tempGuid-idempotency",
+        "4xx-rejection",
+        "5xx-ambiguous-commit",
+        "timeout-cancellation",
+        "webhook-signature-retry-order-duplicate",
+        "reset-fault-ledger-readback"
+      ],
+      "canary": "PR #22359 BlueBubbles operator/controller remains the fail-closed live qualification authority; mock evidence never promotes provider certification.",
+      "mockSource": "packages/cloud/test-mocks/src/bluebubbles/index.ts",
+      "certification": "mock-only"
+    },
+    {
       "id": "messaging-webhook-family",
       "family": "messaging-webhook",
       "ownerShard": "reserved-later-messaging-webhook-shard",
@@ -692,7 +738,6 @@
         "Slack Web API",
         "Discord REST",
         "Signal HTTP",
-        "BlueBubbles",
         "Twilio"
       ],
       "apiVersions": [

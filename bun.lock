@@ -778,6 +778,7 @@
       },
       "devDependencies": {
         "@elizaos/cloud-sdk": "workspace:*",
+        "@elizaos/plugin-bluebubbles": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
@@ -1092,7 +1093,9 @@
       "name": "@elizaos/test-corpus",
       "version": "0.0.0",
       "devDependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-bluebubbles": "workspace:*",
         "@elizaos/scenario-runner": "workspace:*",
         "@typescript/native": "npm:typescript@^7.0.2",
       },
