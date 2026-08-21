@@ -7,7 +7,8 @@ Intended for tests, stateless deployments, prototyping, and scenarios where zero
 Custom `IStorage` implementations must provide `applyBatch` to support document
 updates. The adapter fails closed when that primitive is absent because a
 parent document and all fragments of its new revision must become visible
-together.
+together. Replacement fragment IDs must be fresh and cannot reuse IDs from the
+committed generation.
 
 ## Installation
 

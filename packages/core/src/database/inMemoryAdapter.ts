@@ -902,12 +902,9 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 				.map((memory) => String(memory.id)),
 		);
 		for (const fragment of params.fragments) {
-			if (
-				this.memoriesById.has(String(fragment.id)) &&
-				!oldFragmentIds.has(String(fragment.id))
-			) {
+			if (this.memoriesById.has(String(fragment.id))) {
 				throw new ElizaError("Atomic document fragment id already exists", {
-					code: "DOCUMENT_FRAGMENT_ID_CONFLICT",
+					code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
 					context: { documentId: params.documentId, fragmentId: fragment.id },
 				});
 			}

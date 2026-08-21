@@ -135,7 +135,12 @@ export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
 	replacement: Memory;
 }
 
-/** Atomic replacement of a document parent and its complete fragment revision. */
+/**
+ * Atomic replacement of a document parent and its complete fragment revision.
+ * Replacement fragment IDs must be fresh; adapters reject IDs from the
+ * committed generation so secondary indexes and asynchronous replicas can
+ * preserve the old revision until the parent commit point advances.
+ */
 export interface DocumentRevisionReplaceParams
 	extends DocumentCompareAndSwapParams {
 	fragments: Memory[];

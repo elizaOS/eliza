@@ -747,6 +747,60 @@ describe("document list query (real SQL parity)", () => {
     });
   });
 
+  it("rejects replacement fragment ids from the committed generation", async () => {
+    const original = document(10, { metadata: { documentRevision: 0 } });
+    const oldFragment = {
+      ...document(11),
+      id: v4() as UUID,
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+    };
+    const snapshot = readDocumentMutationSnapshot(original)!;
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const reusedFragment = {
+      ...oldFragment,
+      content: { text: "new fragment with reused id" },
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    await expect(
+      adapter.replaceDocumentRevision({
+        ...context,
+        documentId: original.id!,
+        expected: snapshot,
+        replacement,
+        fragments: [reusedFragment],
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
+    await expect(adapter.getMemoryById(original.id!)).resolves.toMatchObject({
+      content: { text: "Document body 10" },
+      metadata: { documentRevision: 0 },
+    });
+    await expect(adapter.getMemoryById(oldFragment.id!)).resolves.toMatchObject({
+      content: { text: "old fragment" },
+      metadata: { documentRevision: 0 },
+    });
+  });
+
   it("serializes competing revisions and exposes one complete winning generation", async () => {
     const original = document(1, { metadata: { documentRevision: 0 } });
     const oldFragment = {

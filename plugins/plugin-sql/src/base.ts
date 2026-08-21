@@ -2303,6 +2303,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
           )
         );
+      const oldFragmentIds = new Set(oldFragments.map(({ id }) => String(id)));
+      const reusedFragment = params.fragments.find(({ id }) => oldFragmentIds.has(String(id)));
+      if (reusedFragment) {
+        throw new ElizaError("Atomic document fragment id already exists", {
+          code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+          context: { documentId: params.documentId, fragmentId: reusedFragment.id },
+        });
+      }
       if (oldFragments.length > 0) {
         const deleted = await tx
           .delete(memoryTable)

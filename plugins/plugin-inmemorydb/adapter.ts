@@ -782,13 +782,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const oldIds = oldFragments
         .map(({ id }) => id)
         .filter((id): id is string => typeof id === "string");
-      const oldIdSet = new Set(oldIds);
       for (const fragment of params.fragments) {
         const collision = await this.storage.get<StoredMemory>(
           COLLECTIONS.MEMORIES,
           fragment.id as UUID
         );
-        if (collision && !oldIdSet.has(fragment.id as UUID)) {
+        if (collision) {
           throw new ElizaError("Atomic document fragment id already exists", {
             code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
             context: { documentId: params.documentId, fragmentId: fragment.id },

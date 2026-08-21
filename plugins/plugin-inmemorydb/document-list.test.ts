@@ -388,6 +388,74 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     );
   });
 
+  it("rejects reused fragment ids without corrupting the committed vector", async () => {
+    const storage = new MemoryStorage();
+    const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
+    await adapter.initialize();
+    const original = memory(20, ROOM_A, { documentRevision: 0 });
+    const oldEmbedding = [1, ...Array.from({ length: 383 }, () => 0)];
+    const oldFragment = {
+      ...memory(21, ROOM_A),
+      content: { text: "old searchable fragment" },
+      embedding: oldEmbedding,
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const expected = readDocumentMutationSnapshot(original);
+    if (!expected) throw new Error("Expected a valid document mutation snapshot");
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const reusedFragment = {
+      ...oldFragment,
+      content: { text: "new fragment with reused id" },
+      embedding: [0, 1, ...Array.from({ length: 382 }, () => 0)],
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    await expect(
+      adapter.replaceDocumentRevision({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole: "OWNER",
+        documentId: original.id,
+        expected,
+        replacement,
+        fragments: [reusedFragment],
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
+    await expect(
+      adapter.searchMemories({
+        tableName: "document_fragments",
+        embedding: oldEmbedding,
+        match_threshold: 0.99,
+        limit: 1,
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: oldFragment.id,
+        content: { text: "old searchable fragment" },
+      }),
+    ]);
+    await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toEqual([
+      expect.objectContaining({
+        content: { text: original.content.text },
+        metadata: expect.objectContaining({ documentRevision: 0 }),
+      }),
+    ]);
+  });
+
   it("does not expose staged revision vectors before the storage swap", async () => {
     const storage = new BlockingBatchStorage();
     const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
