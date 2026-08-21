@@ -12,7 +12,7 @@
  * running.
  */
 import type { Memory, ResponseHandlerEvaluator } from "@elizaos/core";
-import { extractWrappedExternalContent } from "@elizaos/core";
+import { unwrapUserMessageText } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 
@@ -23,17 +23,19 @@ const RUN_FOLLOWUP_RE =
 
 const RECENT_TERMINAL_WINDOW_MS = 30 * 60_000;
 
+/** Connector-rendered mention of the agent that leads an addressed message
+ *  ("Name (@123) ", "<@123> ", "@name "). It is not part of the ask; left in,
+ *  it became the successor task's title and the kickoff ack named it. */
+const LEADING_MENTION_RE = /^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u;
+
 function messageText(message: Memory): string {
-  const content = message.content;
-  const raw =
-    content && typeof content === "object" && "text" in content
-      ? String((content as { text?: unknown }).text ?? "")
-      : "";
-  // API/webhook messages arrive wrapped in the untrusted-content envelope;
-  // forwarding the wrapped text as a child task embedded the whole SECURITY
-  // NOTICE banner, the child echoed it, and the outbound envelope guard then
-  // blocked the completion (live 2026-08-21). Route on the verbatim payload.
-  return (extractWrappedExternalContent(raw) ?? raw).trim();
+  // The user's words only: no untrusted-content envelope (API/webhook
+  // messages arrive wrapped; forwarding the wrapped text as a child task
+  // embedded the whole SECURITY NOTICE banner and the outbound envelope guard
+  // then blocked the completion) and no connector context header ("[Discord
+  // #general | server] @e2e (ts):" became a successor's title and was quoted
+  // back in its park notice) — both live 2026-08-21.
+  return unwrapUserMessageText(message).replace(LEADING_MENTION_RE, "").trim();
 }
 
 export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
