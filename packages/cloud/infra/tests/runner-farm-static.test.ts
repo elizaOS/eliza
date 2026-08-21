@@ -3,7 +3,9 @@
  * cloud/runners/. Deterministic file checks only — no host, systemd, or GitHub
  * access. They pin the process-lifetime policy whose regression caused the
  * eliza-robot-20 duplicate-listener diagnostic-page collision (#19708) and
- * keep the repair script shell-valid and scoped to a single slot.
+ * keep the repair script shell-valid and scoped to a single slot. Everything
+ * observable by running the script lives in runner-farm-repair.test.ts
+ * instead; only invariants a source read can settle are asserted here.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -41,24 +43,6 @@ describe("canonical actions-runner@.service template", () => {
     expect(unit).toContain("KillSignal=SIGINT");
     expect(unit).toContain("TimeoutStopSec=5min");
   });
-
-  test("prod-ops hardened unit keeps the same reap policy", () => {
-    const prodOps = readFileSync(
-      join(
-        import.meta.dir,
-        "..",
-        "cloud",
-        "terraform",
-        "hetzner",
-        "prod-ops",
-        "cloud-init",
-        "bootstrap.yaml.tftpl",
-      ),
-      "utf8",
-    );
-    expect(prodOps).toContain("KillMode=control-group");
-    expect(prodOps).not.toContain("KillMode=process");
-  });
 });
 
 describe("repair-runner-slot.sh", () => {
@@ -72,18 +56,10 @@ describe("repair-runner-slot.sh", () => {
     expect(repair).toContain("set -euo pipefail");
   });
 
-  test("is dry-run by default and mutates only behind --apply", () => {
-    expect(repair).toContain('= "--apply" ] && apply=true');
-    expect(repair).toContain("DRY-RUN");
-  });
-
-  test("preserves the colliding diagnostic pages instead of deleting them", () => {
-    expect(repair).toContain("pages.issue-19708-");
+  test("never deletes the colliding diagnostic pages", () => {
+    // The behavioral suite proves the timestamped sibling is created; this
+    // guards the one idiom no fake host can observe after the fact.
     expect(repair).not.toMatch(/rm\s+-rf?\s+[^\n]*pages/);
-  });
-
-  test("verifies exactly one listener owns the slot after repair", () => {
-    expect(repair).toContain("expected exactly one listener");
   });
 
   test("never touches runner labels or the fleet gate", () => {

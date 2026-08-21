@@ -9,6 +9,16 @@
 # before checkout. KillMode=control-group is the load-bearing line here: a
 # stop/restart must reap the whole listener/worker/helper cgroup so exactly one
 # listener ever owns the slot's registration and diagnostics.
+#
+# Deliberately unsandboxed, unlike the prod-ops runner in
+# cloud/terraform/hetzner/prod-ops/cloud-init/bootstrap.yaml.tftpl: that host
+# runs one pinned ephemeral job with a known command set, so it can afford
+# ProtectSystem=strict / ReadOnlyPaths / NoNewPrivileges and Restart=no. The
+# general farm runs arbitrary repository CI (toolchain installs, container and
+# sudo steps, writes across the whole workspace), where those directives break
+# ordinary jobs. Restart=on-failure is safe beside the single-listener
+# invariant precisely because KillMode=control-group reaps the previous
+# listener before systemd starts the replacement. See runners/README.md.
 
 [Unit]
 Description=elizaOS GitHub Actions runner slot %i
