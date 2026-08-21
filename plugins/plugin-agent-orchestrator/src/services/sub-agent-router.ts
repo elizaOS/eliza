@@ -1723,7 +1723,24 @@ export class SubAgentRouter extends Service {
         ) {
           deliverable = trimmed;
         } else if (trimmed) {
-          deliverable = lastProofBlockOutput(trimmed);
+          // Answer-then-proofs shape: the verify lap's completion leads with
+          // the user's answer and follows with criteria-proof checklists —
+          // relaying the whole thing dumped ls/diff blocks into chat after a
+          // one-line answer (live 2026-08-21). Keep the pre-proof head when
+          // it is a clean short answer; else fall back to the last proof
+          // block's stdout.
+          const proofAt = trimmed.search(/\n- \[x\] /);
+          const head = proofAt > 0 ? trimmed.slice(0, proofAt).trim() : "";
+          if (
+            head &&
+            Buffer.byteLength(head, "utf8") <= 400 &&
+            !head.includes("[tool output") &&
+            !/https?:\/\//.test(head)
+          ) {
+            deliverable = head;
+          } else {
+            deliverable = lastProofBlockOutput(trimmed);
+          }
         }
       }
       this.log("warn", "completion deliverable capture", {
