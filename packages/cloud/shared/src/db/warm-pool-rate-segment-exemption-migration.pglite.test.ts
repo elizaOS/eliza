@@ -123,6 +123,8 @@ describe("warm-pool rate-segment exemption migration", () => {
   test("is limited to append-only rate classification", () => {
     expect(migration).toContain("NEW.pool_status IS NOT NULL OR NEW.execution_tier = 'shared'");
     expect(migration).toContain("UPDATE OF status, execution_tier, last_backup_at, pool_status");
+    expect(migration).toContain("MAX(segment.effective_at) + interval '1 microsecond'");
+    expect(migration).toContain("latest.effective_at + interval '1 microsecond'");
     expect(migration).not.toContain("UPDATE compute_billing_rate_segments");
     expect(migration).not.toContain("DELETE FROM compute_billing_rate_segments");
     expect(migration).not.toContain("agent_compute_stop_intents");
@@ -180,6 +182,11 @@ describe("warm-pool rate-segment exemption migration", () => {
     expect(afterUnrelated.rows).toEqual(beforeUnrelated.rows);
 
     await database.exec(`
+      INSERT INTO compute_billing_rate_segments
+        (organization_id, workload_kind, workload_id, lifecycle_revision,
+         billing_state, rate_per_hour, effective_at)
+      VALUES ('${ORG}', 'agent', '${DEDICATED}', 30,
+        'running', 0.010000, clock_timestamp() + interval '1 hour');
       UPDATE agent_sandboxes SET status = 'stopped', last_backup_at = now()
         WHERE id IN ('${POOL_LEGACY}', '${DEDICATED}');
       UPDATE agent_sandboxes SET pool_status = 'unclaimed'
@@ -199,6 +206,18 @@ describe("warm-pool rate-segment exemption migration", () => {
       { workload_id: POOL_LEGACY, billing_state: "exempt", rate_per_hour: "0.000000" },
       { workload_id: DEDICATED, billing_state: "exempt", rate_per_hour: "0.000000" },
     ]);
+
+    const monotone = await database.query<{ strictly_increasing: boolean }>(`
+      SELECT bool_and(effective_at > previous_effective_at) AS strictly_increasing
+      FROM (
+        SELECT effective_at,
+          lag(effective_at) OVER (ORDER BY effective_at, id) AS previous_effective_at
+        FROM compute_billing_rate_segments
+        WHERE workload_id = '${DEDICATED}'
+      ) ordered
+      WHERE previous_effective_at IS NOT NULL
+    `);
+    expect(monotone.rows).toEqual([{ strictly_increasing: true }]);
 
     await database.exec(`
       UPDATE agent_sandboxes SET pool_status = NULL WHERE id = '${DEDICATED}';

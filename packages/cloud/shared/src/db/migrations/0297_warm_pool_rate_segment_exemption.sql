@@ -4,6 +4,7 @@
 CREATE OR REPLACE FUNCTION append_agent_compute_billing_rate_segment() RETURNS trigger AS $$
 DECLARE next_state text;
 DECLARE next_rate numeric(16,6);
+DECLARE next_effective_at timestamptz;
 BEGIN
   next_state := CASE
     WHEN NEW.pool_status IS NOT NULL OR NEW.execution_tier = 'shared' THEN 'exempt'
@@ -15,11 +16,22 @@ BEGIN
     WHEN 'backup' THEN 0.002500 ELSE 0.000000 END;
   IF TG_OP = 'INSERT' OR ROW(NEW.status, NEW.execution_tier, NEW.last_backup_at, NEW.pool_status)
       IS DISTINCT FROM ROW(OLD.status, OLD.execution_tier, OLD.last_backup_at, OLD.pool_status) THEN
+    -- The workload row lock serializes these trigger calls. Advance beyond its
+    -- durable cursor so equal clock readings cannot let a random UUID reorder state.
+    next_effective_at := clock_timestamp();
+    SELECT GREATEST(
+      next_effective_at,
+      COALESCE(MAX(segment.effective_at) + interval '1 microsecond', next_effective_at)
+    ) INTO next_effective_at
+    FROM compute_billing_rate_segments segment
+    WHERE segment.organization_id = NEW.organization_id
+      AND segment.workload_kind = 'agent'
+      AND segment.workload_id = NEW.id;
     INSERT INTO compute_billing_rate_segments
       (organization_id, workload_kind, workload_id, lifecycle_revision,
        billing_state, rate_per_hour, effective_at)
     VALUES (NEW.organization_id, 'agent', NEW.id, NEW.lifecycle_revision,
-      next_state, next_rate, clock_timestamp());
+      next_state, next_rate, next_effective_at);
   END IF;
   RETURN NEW;
 END $$ LANGUAGE plpgsql;
@@ -31,16 +43,18 @@ CREATE TRIGGER agent_compute_billing_rate_segment_append
   ON agent_sandboxes FOR EACH ROW
   EXECUTE FUNCTION append_agent_compute_billing_rate_segment();
 
--- Append one cutover segment only when the latest durable classification is
--- not already exempt/zero. Immutable historical segments are never rewritten.
+-- Append one cutover segment after the latest durable cursor only when its
+-- classification is not already exempt/zero. History is never rewritten.
 INSERT INTO compute_billing_rate_segments
   (organization_id, workload_kind, workload_id, lifecycle_revision,
    billing_state, rate_per_hour, effective_at)
 SELECT sandbox.organization_id, 'agent', sandbox.id, sandbox.lifecycle_revision,
-       'exempt', 0.000000, clock_timestamp()
+       'exempt', 0.000000,
+       CASE WHEN latest.effective_at IS NULL THEN clock_timestamp()
+         ELSE GREATEST(clock_timestamp(), latest.effective_at + interval '1 microsecond') END
 FROM agent_sandboxes sandbox
 LEFT JOIN LATERAL (
-  SELECT segment.billing_state, segment.rate_per_hour
+  SELECT segment.billing_state, segment.rate_per_hour, segment.effective_at
   FROM compute_billing_rate_segments segment
   WHERE segment.organization_id = sandbox.organization_id
     AND segment.workload_kind = 'agent'
