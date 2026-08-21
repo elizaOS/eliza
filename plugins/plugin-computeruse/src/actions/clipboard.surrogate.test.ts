@@ -96,6 +96,35 @@ describe("clipboard action Unicode-safe read projection", () => {
     expect(payload.message).toBe(result.text);
   });
 
+  it.each([
+    ["high", "\uD800"],
+    ["low", "\uDC00"],
+  ])(
+    "normalizes a long lone-%s surrogate before applying the preview cap",
+    async (_, lone) => {
+      const normalizedText = `${"a".repeat(PREVIEW_CAP - 2)}�zz`;
+      const { result, payload } = await readClipboardThroughAction(
+        `${"a".repeat(PREVIEW_CAP - 2)}${lone}zz`,
+      );
+
+      expect(payload.text).toBe(normalizedText);
+      expect(payload.text).toHaveLength(PREVIEW_CAP + 1);
+      expect(result.text).toBe(`${"a".repeat(PREVIEW_CAP - 2)}�…`);
+      expect(result.text).toHaveLength(PREVIEW_CAP);
+      expect(isWellFormed(result.text ?? "")).toBe(true);
+    },
+  );
+
+  it("preserves an exact-cap preview, including a valid astral pair", async () => {
+    const exactText = `${"a".repeat(PREVIEW_CAP - 2)}🦊`;
+    const { result, payload } = await readClipboardThroughAction(exactText);
+
+    expect(exactText).toHaveLength(PREVIEW_CAP);
+    expect(result.text).toBe(exactText);
+    expect(payload).toEqual({ message: exactText, text: exactText });
+    expect(isWellFormed(result.text ?? "")).toBe(true);
+  });
+
   it("caps an over-limit preview at exactly 4096 code units including ellipsis", async () => {
     const fullText = "a".repeat(PREVIEW_CAP + 1);
     const { result, payload } = await readClipboardThroughAction(fullText);
