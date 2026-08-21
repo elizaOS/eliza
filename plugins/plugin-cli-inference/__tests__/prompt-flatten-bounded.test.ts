@@ -265,6 +265,29 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     expect(out.length).toBeLessThan(9 * MiB);
   });
 
+  it("pins the depth ceiling at its documented boundary", () => {
+    // Without a boundary case the constant is free to drift: raising
+    // MAX_TOOL_PAYLOAD_DEPTH from 64 to 1024 left the whole suite green.
+    const nest = (levels: number): unknown => {
+      let value: unknown = "leaf";
+      for (let index = 0; index < levels; index += 1) value = [value];
+      return value;
+    };
+    expect(contentToText([toolResult(nest(64))])).not.toContain(TOOL_PAYLOAD_DEPTH_MARKER);
+    expect(contentToText([toolResult(nest(65))])).toContain(TOOL_PAYLOAD_DEPTH_MARKER);
+  });
+
+  it("pins the character ceiling on a payload only chargeChars can bound", () => {
+    // Array elements carry no property names, so chargeKeyChars cannot mark
+    // this one - only the chargeChars check can. Deleting that check used to
+    // leave the whole suite green.
+    const out = contentToText([
+      toolResult(["a".repeat(3 * MiB), "b".repeat(3 * MiB), "c".repeat(3 * MiB)]),
+    ]);
+    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(out.length).toBeLessThan(9 * MiB);
+  });
+
   it("charges property names, so sibling objects with huge keys are bounded", () => {
     // #23891 charged nested values and dropped the terminal charge that used to
     // account for keys and serialization syntax, which made property names free

@@ -38,23 +38,44 @@ export interface FlattenedPrompt {
  * re-walks the same part and throws again — one poisoned tool result is a
  * persistent failure, not a single failed call.
  *
- * The contract mirrors core's own bounded flatten (`flattenTextValues` in
- * `packages/core/src/utils/text-normalize.ts`):
- *  - a depth ceiling far above any honest payload;
- *  - node and character ceilings, so a wide graph is bounded too, not just a
- *    deep one, with container width charged BEFORE any element is allocated;
+ * The shape is *related* to core's bounded flatten (`flattenTextValues` in
+ * `packages/core/src/utils/text-normalize.ts`) but deliberately differs, and
+ * the differences are the load-bearing part:
+ *  - a depth ceiling far above any honest payload (core: same idea, same 64);
+ *  - node AND character ceilings, with container width charged BEFORE any
+ *    element is allocated. Core has no character axis at all, and caps nodes at
+ *    2048 against this file's 100k, because core walks agent-authored state
+ *    while this walks raw remote payloads;
  *  - a PATH-LOCAL ancestor set (added on descent, removed in `finally`), so a
  *    real back-edge is cut while an honest DAG — the same cached object
- *    referenced twice in one result — still flattens in full;
- *  - descriptor-only reflection, so no attacker-supplied getter or `toJSON`
- *    ever executes while we render a prompt;
- *  - an explicit in-band marker rather than a throw. Throwing would preserve
- *    the exact failure this guards against: one bad part bricking every later
- *    replay of the turn. The marker is visible to the model and in the
- *    transcript, so nothing is silently dropped.
+ *    referenced twice in one result — still flattens in full. Core instead
+ *    counts visits globally, which would reject that DAG;
+ *  - payload traversal that never invokes payload-supplied code. Direct and
+ *    prototype-chain Proxies become an explicit marker before reflection;
+ *    ordinary object and array members are read from own data descriptors
+ *    (array accessors and holes become `null`). Date and URL use intrinsic slot
+ *    probes, while Buffer width and bytes come from the intrinsic typed-array
+ *    length getter and fixed numeric reads — never payload `length`,
+ *    `@@iterator`, `toJSON`, `@@toStringTag`, or overridable Date methods;
+ *  - an explicit in-band marker rather than core's typed throw. Throwing would
+ *    preserve the exact failure this guards against: one bad part bricking
+ *    every later replay of the turn. The marker is visible to the model and in
+ *    the transcript, so nothing is silently dropped.
  *
- * Nothing inside the budget changes shape: every payload the old walk accepted
- * still flattens to byte-identical text.
+ * Fidelity is for ordinary data-only payloads, not executable or reflective
+ * shapes. Inside the budget those ordinary values remain byte-identical to
+ * `JSON.stringify`, including sparse arrays, `undefined` members,
+ * Map/Set/RegExp and symbol-keyed objects. Deliberate safety differences are:
+ * accessors are ignored (with array positions preserved as `null`), `toJSON`
+ * is not called, Proxies become a marker, and Buffer overrides are bypassed.
+ * Honest Date, URL and Buffer values retain their prior serialized shape.
+ *
+ * Over-budget payloads necessarily differ — that is the point — and a sparse
+ * array is charged its logical length, holes included, so a
+ * `new Array(200_000_000)` carrying one element becomes a marker rather than
+ * being walked. Fail-closed is intentional there: `JSON.parse` cannot produce
+ * that shape, so only an in-process caller can, and the memory it would cost
+ * to honour it is the thing the node ceiling exists to refuse.
  */
 const MAX_TOOL_PAYLOAD_DEPTH = 64;
 const MAX_TOOL_PAYLOAD_NODES = 100_000;
