@@ -3,8 +3,8 @@
  * Isolated logic test to avoid scheduler graph import.
  */
 
-import { describe, expect, it } from "vitest";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 const GOAL_TITLE_MAX_LENGTH = 80;
 
