@@ -3,11 +3,16 @@
  * verifier. The harness is real: it stages fake shell binaries on disk,
  * produces genuine tar.zst archives via the system tar, signs with real
  * Ed25519 keys, and asserts that tampering with any byte of the archive or
- * manifest is rejected. It also pins the vendored manifest schema to the
- * fields the validator enforces so cross-repository drift is caught here.
+ * manifest is rejected. Archive-side regressions re-sign deliberately
+ * wrong-type, wrong-mode, and symlinked entrypoints with the genuine key, so a
+ * verifier that trusted digests and member names alone would fail here. The
+ * vendored manifest schema is pinned by digest and the validator is generated
+ * from those bytes, so cross-repository drift is caught here rather than in
+ * the OS image.
  */
 
-import { generateKeyPairSync } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, generateKeyPairSync } from "node:crypto";
 import {
   chmodSync,
   existsSync,
@@ -18,6 +23,7 @@ import {
   rmSync,
   statSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -34,6 +40,8 @@ import {
   manifestViolations,
   produceArtifact,
   SCHEMA_PATH,
+  signBytes,
+  VENDORED_SCHEMA_SHA256,
   verifyArtifactDir,
   writeSigningKeyPair,
 } from "../package-linux-gtk-artifact.mjs";
@@ -423,16 +431,16 @@ describe("manifest schema contract", () => {
     const problems = manifestViolations(bad);
     expect(problems).toEqual(
       expect.arrayContaining([
-        "schemaVersion must be 1",
+        "schemaVersion must equal 1",
         'unknown field "unexpected"',
-        'shell must be "gtk-webkit"',
+        'shell must equal "gtk-webkit"',
         "architecture must be one of x86_64, arm64, riscv64",
-        "archive must be a bare *.tar.zst filename",
-        "entrypoints.desktop must match bin/<name>",
-        "entrypoints.doctor must match bin/<name>",
-        'unknown entrypoint "extra"',
-        "capabilities.tray must be true",
-        "capabilities.overlay must be true",
+        "archive must match /^[A-Za-z0-9._-]+\\.tar\\.zst$/",
+        "entrypoints.desktop must match /^bin/[A-Za-z0-9._-]+$/",
+        'missing required field "entrypoints.doctor"',
+        'unknown field "entrypoints.extra"',
+        "capabilities.tray must equal true",
+        'missing required field "capabilities.overlay"',
       ]),
     );
   });
@@ -440,30 +448,137 @@ describe("manifest schema contract", () => {
   it("keeps the vendored schema aligned with the validator", () => {
     const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
     expect(schema.properties.architecture.enum).toEqual(ARCHITECTURES);
-    expect(schema.properties.shell.const).toBe("gtk-webkit");
     expect(schema.properties.manifestSignature.const).toBe(
       MANIFEST_SIGNATURE_NAME,
     );
-    expect(schema.required).toEqual([
-      "schemaVersion",
-      "sourceCommit",
-      "version",
-      "architecture",
-      "shell",
-      "archive",
-      "sha256",
-      "signature",
-      "manifestSignature",
-      "entrypoints",
-      "capabilities",
-    ]);
-    expect(Object.keys(schema.properties.capabilities.properties)).toEqual([
-      "tray",
-      "overlay",
-      "wayland",
-      "cloudAuth",
-      "computerUse",
-      "remoteControl",
-    ]);
+  });
+
+  it("validates every schema-declared field, not a hand-picked subset", () => {
+    const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8"));
+    const walk = (node: Record<string, unknown>, prefix: string): string[] =>
+      ((node.required as string[]) ?? []).flatMap((key) => {
+        const child = (node.properties as Record<string, never>)[key] as
+          | Record<string, unknown>
+          | undefined;
+        const here = prefix ? `${prefix}.${key}` : key;
+        return [here, ...(child?.type === "object" ? walk(child, here) : [])];
+      });
+    const allRequired = walk(schema, "");
+    expect(allRequired.length).toBe(20);
+    const { outDir } = produce("x86_64");
+    const pristine = readFileSync(path.join(outDir, MANIFEST_NAME), "utf8");
+    for (const dotted of allRequired) {
+      const manifest = JSON.parse(pristine);
+      const parts = dotted.split(".");
+      let cursor = manifest;
+      for (const part of parts.slice(0, -1)) cursor = cursor[part];
+      delete cursor[parts[parts.length - 1]];
+      expect(manifestViolations(manifest)).toContain(
+        `missing required field "${dotted}"`,
+      );
+    }
+  });
+
+  it("pins the vendored OS schema bytes and fails on any drift", () => {
+    const bytes = readFileSync(SCHEMA_PATH);
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(
+      VENDORED_SCHEMA_SHA256,
+    );
+    // Even a semantically neutral edit is drift the pin must reject.
+    const drifted = Buffer.concat([bytes, Buffer.from("\n")]);
+    expect(createHash("sha256").update(drifted).digest("hex")).not.toBe(
+      VENDORED_SCHEMA_SHA256,
+    );
+  });
+});
+
+/** Replaces the archive in `outDir` and re-signs everything with the real key. */
+function resignWithArchiveFrom(
+  outDir: string,
+  stage: string,
+  privateKeyPem: string,
+): void {
+  const manifestPath = path.join(outDir, MANIFEST_NAME);
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const archivePath = path.join(outDir, manifest.archive);
+  unlinkSync(archivePath);
+  execFileSync("tar", ["--zstd", "-cf", archivePath, "-C", stage, "."]);
+  const archiveBytes = readFileSync(archivePath);
+  manifest.sha256 = createHash("sha256").update(archiveBytes).digest("hex");
+  writeFileSync(
+    path.join(outDir, manifest.signature),
+    signBytes(privateKeyPem, archiveBytes),
+  );
+  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(manifestPath, manifestBytes);
+  writeFileSync(
+    path.join(outDir, MANIFEST_SIGNATURE_NAME),
+    signBytes(privateKeyPem, manifestBytes),
+  );
+}
+
+describe("signed archives with an off-contract entrypoint", () => {
+  it("rejects an entrypoint that is not executable in the archive", () => {
+    const { outDir, publicKeyPem, privateKeyPem } = produce("x86_64");
+    const rogue = stageShell();
+    chmodSync(path.join(rogue, "bin", "eliza-agent"), 0o644);
+    resignWithArchiveFrom(outDir, rogue, privateKeyPem);
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      /not executable in the archive/,
+    );
+  });
+
+  it("rejects an entrypoint that is a directory in the archive", () => {
+    const { outDir, publicKeyPem, privateKeyPem } = produce("arm64");
+    const rogue = stageShell();
+    const entry = path.join(rogue, "bin", "eliza-desktop");
+    unlinkSync(entry);
+    mkdirSync(entry);
+    resignWithArchiveFrom(outDir, rogue, privateKeyPem);
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      /is not a regular archive file/,
+    );
+  });
+
+  it("rejects an entrypoint that is an absolute symlink in the archive", () => {
+    const { outDir, publicKeyPem, privateKeyPem } = produce("riscv64");
+    const rogue = stageShell();
+    const entry = path.join(rogue, "bin", "eliza-desktop");
+    unlinkSync(entry);
+    symlinkSync("/bin/true", entry);
+    resignWithArchiveFrom(outDir, rogue, privateKeyPem);
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      ArtifactContractError,
+    );
+  });
+
+  it("rejects an entrypoint that is a relative in-tree symlink", () => {
+    const { outDir, publicKeyPem, privateKeyPem } = produce("x86_64");
+    const rogue = stageShell();
+    mkdirSync(path.join(rogue, "libexec"), { recursive: true });
+    const real = path.join(rogue, "libexec", "eliza-desktop.real");
+    writeFileSync(real, "#!/bin/sh\necho real\n");
+    chmodSync(real, 0o755);
+    const entry = path.join(rogue, "bin", "eliza-desktop");
+    unlinkSync(entry);
+    symlinkSync("../libexec/eliza-desktop.real", entry);
+    resignWithArchiveFrom(outDir, rogue, privateKeyPem);
+    // Rejected as an unsafe traversing link target before the entrypoint
+    // check; either refusal is the contract, a verified symlink is not.
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      ArtifactContractError,
+    );
+  });
+
+  it("rejects an entrypoint whose archive symlink dangles", () => {
+    const { outDir, publicKeyPem, privateKeyPem } = produce("arm64");
+    const rogue = stageShell();
+    const entry = path.join(rogue, "bin", "eliza-desktop");
+    unlinkSync(entry);
+    symlinkSync("./gone", entry);
+    resignWithArchiveFrom(outDir, rogue, privateKeyPem);
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      /is not a regular archive file/,
+    );
   });
 });

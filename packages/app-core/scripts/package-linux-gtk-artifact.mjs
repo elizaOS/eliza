@@ -46,31 +46,18 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 
 export const MANIFEST_NAME = "desktop-artifact-manifest.json";
-export const MANIFEST_SIGNATURE_NAME = "desktop-artifact-manifest.json.sig";
 export const SCHEMA_PATH = path.join(
   scriptDir,
   "schemas",
   "desktop-artifact-manifest.schema.json",
 );
 
-export const ARCHITECTURES = ["x86_64", "arm64", "riscv64"];
-
-const VERSION_RE = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/;
-const COMMIT_RE = /^[a-f0-9]{40}$/;
-const SHA256_RE = /^[a-f0-9]{64}$/;
-const ARCHIVE_RE = /^[A-Za-z0-9._-]+\.tar\.zst$/;
-const SIGNATURE_RE = /^[A-Za-z0-9._-]+\.sig$/;
-const ENTRYPOINT_RE = /^bin\/[A-Za-z0-9._-]+$/;
-
-const REQUIRED_ENTRYPOINTS = ["desktop", "agent", "doctor"];
-const REQUIRED_CAPABILITIES = [
-  "tray",
-  "overlay",
-  "wayland",
-  "cloudAuth",
-  "computerUse",
-  "remoteControl",
-];
+/**
+ * SHA-256 of the authoritative OS-owned schema bytes. Re-pin this only when
+ * the vendored copy is deliberately resynchronised with `elizaOS/os`.
+ */
+export const VENDORED_SCHEMA_SHA256 =
+  "4e0051f4918f4c37b604727b46693c1ffedd0b29a380366b0f9897a061f84203";
 
 /** Error type for every contract violation this module detects. */
 export class ArtifactContractError extends Error {
@@ -83,6 +70,36 @@ export class ArtifactContractError extends Error {
 function fail(message) {
   throw new ArtifactContractError(message);
 }
+
+/**
+ * Reads the vendored schema, refusing any drift from the pinned OS-owned
+ * bytes. Producer and verifier entry points call this first, so the validator
+ * generated from it can never come from an unreviewed contract.
+ */
+export function readVendoredSchema() {
+  assertRegularFile(SCHEMA_PATH, "vendored manifest schema");
+  const bytes = readFileSync(SCHEMA_PATH);
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  if (digest !== VENDORED_SCHEMA_SHA256) {
+    fail(
+      `vendored manifest schema drifted from the pinned elizaOS/os bytes: expected sha256 ${VENDORED_SCHEMA_SHA256}, found ${digest}. Resynchronise with elizaOS/os and re-pin VENDORED_SCHEMA_SHA256.`,
+    );
+  }
+  return JSON.parse(bytes.toString("utf8"));
+}
+
+const SCHEMA = readVendoredSchema();
+
+export const ARCHITECTURES = SCHEMA.properties.architecture.enum;
+export const MANIFEST_SIGNATURE_NAME =
+  SCHEMA.properties.manifestSignature.const;
+const REQUIRED_ENTRYPOINTS = SCHEMA.properties.entrypoints.required;
+const VERSION_RE = new RegExp(SCHEMA.properties.version.pattern);
+const COMMIT_RE = new RegExp(SCHEMA.properties.sourceCommit.pattern);
+const ARCHIVE_RE = new RegExp(SCHEMA.properties.archive.pattern);
+const ENTRYPOINT_RE = new RegExp(
+  SCHEMA.properties.entrypoints.properties[REQUIRED_ENTRYPOINTS[0]].pattern,
+);
 
 function pathEntryExists(filePath) {
   try {
@@ -268,89 +285,66 @@ export function writeSigningKeyPair(outDir) {
 }
 
 /**
+ * Applies the subset of JSON-Schema keywords the vendored contract uses
+ * (`type`, `const`, `enum`, `pattern`, `required`, `properties`, and
+ * `additionalProperties: false`) to `value`, appending one message per
+ * violation. Generating validation from the schema document is what keeps the
+ * validator and the cross-repository contract from diverging field by field.
+ */
+function collectViolations(schema, value, label, problems) {
+  const qualify = (key) => (label ? `${label}.${key}` : key);
+  const name = label || "manifest";
+
+  if (schema.type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      problems.push(`${name} must be an object`);
+      return;
+    }
+    for (const key of schema.required ?? []) {
+      if (!(key in value)) {
+        problems.push(`missing required field "${qualify(key)}"`);
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        if (!(key in (schema.properties ?? {}))) {
+          problems.push(`unknown field "${qualify(key)}"`);
+        }
+      }
+    }
+    for (const [key, childSchema] of Object.entries(schema.properties ?? {})) {
+      if (key in value) {
+        collectViolations(childSchema, value[key], qualify(key), problems);
+      }
+    }
+    return;
+  }
+
+  if ("const" in schema && value !== schema.const) {
+    problems.push(`${name} must equal ${JSON.stringify(schema.const)}`);
+    return;
+  }
+  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
+    problems.push(`${name} must be one of ${schema.enum.join(", ")}`);
+    return;
+  }
+  if (schema.type === "string" && typeof value !== "string") {
+    problems.push(`${name} must be a string`);
+    return;
+  }
+  if (schema.pattern && !new RegExp(schema.pattern).test(String(value))) {
+    problems.push(`${name} must match /${schema.pattern}/`);
+  }
+}
+
+/**
  * Validates a parsed manifest object against the vendored schema contract.
  * Returns the list of violations (empty when valid); `assertValidManifest`
  * throws instead.
  */
 export function manifestViolations(manifest) {
   const problems = [];
-  if (typeof manifest !== "object" || manifest === null) {
-    return ["manifest is not an object"];
-  }
-  const allowedTop = [
-    "schemaVersion",
-    "sourceCommit",
-    "version",
-    "architecture",
-    "shell",
-    "archive",
-    "sha256",
-    "signature",
-    "manifestSignature",
-    "entrypoints",
-    "capabilities",
-  ];
-  for (const key of allowedTop) {
-    if (!(key in manifest)) problems.push(`missing required field "${key}"`);
-  }
-  for (const key of Object.keys(manifest)) {
-    if (!allowedTop.includes(key)) problems.push(`unknown field "${key}"`);
-  }
-  if (manifest.schemaVersion !== 1) problems.push("schemaVersion must be 1");
-  if (!COMMIT_RE.test(String(manifest.sourceCommit ?? ""))) {
-    problems.push("sourceCommit must be a 40-char lowercase hex commit");
-  }
-  if (!VERSION_RE.test(String(manifest.version ?? ""))) {
-    problems.push("version must be semver (x.y.z with optional prerelease)");
-  }
-  if (!ARCHITECTURES.includes(manifest.architecture)) {
-    problems.push(`architecture must be one of ${ARCHITECTURES.join(", ")}`);
-  }
-  if (manifest.shell !== "gtk-webkit") {
-    problems.push('shell must be "gtk-webkit"');
-  }
-  if (!ARCHIVE_RE.test(String(manifest.archive ?? ""))) {
-    problems.push("archive must be a bare *.tar.zst filename");
-  }
-  if (!SHA256_RE.test(String(manifest.sha256 ?? ""))) {
-    problems.push("sha256 must be a 64-char lowercase hex digest");
-  }
-  if (!SIGNATURE_RE.test(String(manifest.signature ?? ""))) {
-    problems.push("signature must be a bare *.sig filename");
-  }
-  if (manifest.manifestSignature !== MANIFEST_SIGNATURE_NAME) {
-    problems.push(`manifestSignature must be "${MANIFEST_SIGNATURE_NAME}"`);
-  }
-  const entrypoints = manifest.entrypoints;
-  if (typeof entrypoints !== "object" || entrypoints === null) {
-    problems.push("entrypoints must be an object");
-  } else {
-    for (const key of REQUIRED_ENTRYPOINTS) {
-      if (!ENTRYPOINT_RE.test(String(entrypoints[key] ?? ""))) {
-        problems.push(`entrypoints.${key} must match bin/<name>`);
-      }
-    }
-    for (const key of Object.keys(entrypoints)) {
-      if (!REQUIRED_ENTRYPOINTS.includes(key)) {
-        problems.push(`unknown entrypoint "${key}"`);
-      }
-    }
-  }
-  const capabilities = manifest.capabilities;
-  if (typeof capabilities !== "object" || capabilities === null) {
-    problems.push("capabilities must be an object");
-  } else {
-    for (const key of REQUIRED_CAPABILITIES) {
-      if (capabilities[key] !== true) {
-        problems.push(`capabilities.${key} must be true`);
-      }
-    }
-    for (const key of Object.keys(capabilities)) {
-      if (!REQUIRED_CAPABILITIES.includes(key)) {
-        problems.push(`unknown capability "${key}"`);
-      }
-    }
-  }
+  collectViolations(SCHEMA, manifest, "", problems);
   return problems;
 }
 
@@ -482,6 +476,7 @@ export function produceArtifact({
     doctor: "bin/eliza-desktop-doctor",
   },
 }) {
+  readVendoredSchema();
   if (!ARCHITECTURES.includes(architecture)) {
     fail(`unsupported architecture "${architecture}"`);
   }
@@ -619,6 +614,7 @@ export function produceArtifact({
  * Throws ArtifactContractError on the first failure; returns the manifest.
  */
 export function verifyArtifactDir(outDir, publicKeyPem) {
+  readVendoredSchema();
   const manifestPath = path.join(outDir, MANIFEST_NAME);
   assertRegularFile(manifestPath, MANIFEST_NAME);
   const manifestBytes = readFileSync(manifestPath);
