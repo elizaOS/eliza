@@ -160,6 +160,7 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ["single-quoted", "cat <<'EOF'\nrm -rf ./data\nEOF"],
     ["double-quoted", 'cat <<"EOF"\nDROP DATABASE production\nEOF'],
     ["concatenated quoted word", "cat <<'E'OF\nrm -rf ./data\nEOF"],
+    ["empty quoted delimiter", "cat <<''\nrm -rf ./data\n\n"],
     ["tab-stripped", "cat <<-EOF\n\trm -rf ./data\n\tEOF"],
   ])(
     "%s heredoc payload is data, not an executable segment",
