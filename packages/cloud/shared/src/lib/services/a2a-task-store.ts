@@ -50,7 +50,12 @@ const TASK_LOCK_KEY_PREFIX = `${ENV_PREFIX}:a2a:task-lock:`;
 // be an in-process mutex: this store's whole point is coordinating across
 // serverless instances, where an in-process lock coordinates nothing.
 const LOCK_TTL_MS = 5000;
-const LOCK_MAX_ATTEMPTS = 10;
+// The retry window must outlive the lease it is waiting on. At 10 attempts the
+// backoff sums to 1425ms worst case (~1.07s after jitter) — under a third of
+// LOCK_TTL_MS — so a holder that legitimately took longer than that turned
+// every concurrent mutator into a hard timeout on calls that succeed today.
+// 40 attempts sums to 7425ms, which clears the 5s lease with margin.
+const LOCK_MAX_ATTEMPTS = 40;
 const LOCK_RETRY_BASE_MS = 15;
 const LOCK_RETRY_MAX_MS = 200;
 
