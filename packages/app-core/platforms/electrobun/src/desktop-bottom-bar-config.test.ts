@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   AUTH_GATE_BOTTOM_BAR_HEIGHT,
   AUTH_GATE_BOTTOM_BAR_WIDTH,
+  anchorBottomBarFrame,
   appendChatOverlayShellModeParam,
   BOTTOM_BAR_BOTTOM_INSET,
   computeBottomBarFrame,
@@ -208,6 +209,37 @@ describe("desktop bottom-bar config", () => {
         width: 600,
         height: 820,
       });
+    });
+  });
+
+  describe("anchorBottomBarFrame", () => {
+    const workArea = { x: 100, y: 24, width: 1200, height: 800 };
+
+    it("keeps different detent sizes on the user's bottom-center anchor", () => {
+      expect(
+        anchorBottomBarFrame(
+          workArea,
+          { x: 0, y: 0, width: 600, height: 64 },
+          { centerX: 900, bottomY: 700 },
+        ),
+      ).toEqual({ x: 600, y: 636, width: 600, height: 64 });
+      expect(
+        anchorBottomBarFrame(
+          workArea,
+          { x: 0, y: 0, width: 640, height: 420 },
+          { centerX: 900, bottomY: 700 },
+        ),
+      ).toEqual({ x: 580, y: 280, width: 640, height: 420 });
+    });
+
+    it("clamps a retained anchor into a replacement display work area", () => {
+      expect(
+        anchorBottomBarFrame(
+          workArea,
+          { x: 0, y: 0, width: 600, height: 420 },
+          { centerX: -400, bottomY: 2_000 },
+        ),
+      ).toEqual({ x: 100, y: 404, width: 600, height: 420 });
     });
   });
 

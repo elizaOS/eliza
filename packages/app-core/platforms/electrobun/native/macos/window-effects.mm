@@ -30,6 +30,10 @@ static NSString *const kElectrobunNativeDragRightGapViewIdentifier =
 	@"ElectrobunNativeDragRightGapView";
 static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
+static NSString *const kElizaBottomBarDragLeftIdentifier =
+	@"ElizaBottomBarDragLeft";
+static NSString *const kElizaBottomBarDragRightIdentifier =
+	@"ElizaBottomBarDragRight";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
 
@@ -406,6 +410,11 @@ static NSString *elizaErrorMessage(NSError *error, NSString *fallback) {
 @implementation ElectrobunNativeDragView
 - (BOOL)isOpaque {
 	return NO;
+}
+
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+	(void)event;
+	return YES;
 }
 
 - (void)drawRect:(NSRect)dirtyRect {
@@ -892,6 +901,74 @@ static void removeNativeDragView(NSView *contentView, NSString *identifier) {
 	ElectrobunNativeDragView *view = findNativeDragView(contentView, identifier);
 	if (view != nil) {
 		[view removeFromSuperview];
+	}
+}
+
+/**
+ * Install two narrow AppKit-owned movement strips in the empty top chrome of
+ * the detached composer/panel. The center remains WebKit-owned because its
+ * visible grabber changes chat detents; rounded corners and all controls remain
+ * outside these native hit targets. The tiny 48x6 resting pill deliberately has
+ * no movement overlay so its whole visible bar continues to open on click.
+ */
+static void elizaLayoutBottomBarDragViews(NSWindow *window,
+									  NSView *contentView,
+									  CGFloat materialWidth,
+									  CGFloat materialHeight,
+									  CGFloat cornerRadius) {
+	NSArray<NSString *> *identifiers = @[
+		kElizaBottomBarDragLeftIdentifier,
+		kElizaBottomBarDragRightIdentifier,
+	];
+	if (window == nil || contentView == nil || materialWidth < 240.0 ||
+		materialWidth > 700.0 || materialHeight > 900.0) {
+		for (NSString *identifier in identifiers) {
+			removeNativeDragView(contentView, identifier);
+		}
+		return;
+	}
+
+	NSRect bounds = [contentView bounds];
+	CGFloat width = MIN(materialWidth, bounds.size.width);
+	CGFloat height = MIN(materialHeight, bounds.size.height);
+	CGFloat stripHeight = MIN(12.0, height);
+	CGFloat sideInset = MIN(MAX(24.0, cornerRadius), width / 4.0);
+	CGFloat centerGap = MIN(104.0, width / 3.0);
+	CGFloat sideWidth = (width - sideInset * 2.0 - centerGap) / 2.0;
+	if (sideWidth < 56.0 || stripHeight <= 0.0) {
+		for (NSString *identifier in identifiers) {
+			removeNativeDragView(contentView, identifier);
+		}
+		return;
+	}
+
+	CGFloat materialX = NSMidX(bounds) - width / 2.0;
+	CGFloat materialY = [contentView isFlipped]
+		? NSMaxY(bounds) - height
+		: NSMinY(bounds);
+	CGFloat topY = [contentView isFlipped]
+		? materialY
+		: NSMaxY(NSMakeRect(materialX, materialY, width, height)) - stripHeight;
+	NSArray<NSValue *> *frames = @[
+		[NSValue valueWithRect:NSMakeRect(materialX + sideInset,
+										topY,
+										sideWidth,
+										stripHeight)],
+		[NSValue valueWithRect:NSMakeRect(materialX + sideInset + sideWidth +
+											centerGap,
+										topY,
+										sideWidth,
+										stripHeight)],
+	];
+	[window setMovable:YES];
+	for (NSUInteger index = 0; index < [identifiers count]; index++) {
+		ElectrobunNativeDragView *dragView =
+			ensureNativeDragView(contentView, identifiers[index]);
+		[dragView setFrame:[frames[index] rectValue]];
+		[dragView setAutoresizingMask:NSViewNotSizable];
+		[contentView addSubview:dragView
+					 positioned:NSWindowAbove
+					 relativeTo:nil];
 	}
 }
 
@@ -2695,7 +2772,10 @@ extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
 		elizaInstallFirstMouseAcceptance([window contentView]);
 		[controller setMaterialWidth:(CGFloat)width
 							height:(CGFloat)height
-					  cornerRadius:(CGFloat)cornerRadius];
+						  cornerRadius:(CGFloat)cornerRadius];
+		elizaLayoutBottomBarDragViews(window, [window contentView],
+									  (CGFloat)width, (CGFloat)height,
+									  (CGFloat)cornerRadius);
 		success = YES;
 	});
 	return success;

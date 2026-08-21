@@ -45,6 +45,8 @@ import Electrobun, {
 import { getBrandConfig } from "../brand-config";
 import type { DatabaseSnapshot } from "../database";
 import {
+  anchorBottomBarFrame,
+  type BottomBarAnchor,
   type BottomBarSurfaceState,
   computeBottomBarFrame,
   computeBottomBarSurfaceFrame,
@@ -387,6 +389,9 @@ export class DesktopManager {
     expanded: false,
   });
   private bottomBarFrameDirty = false;
+  private bottomBarUserAnchor: BottomBarAnchor | null = null;
+  private bottomBarLastProgrammaticPosition: { x: number; y: number } | null =
+    null;
 
   // Callback to open the settings window (set by index.ts)
   private openWorkspaceCallback: (() => void) | null = null;
@@ -1573,6 +1578,17 @@ X-GNOME-Autostart-enabled=true
         this.send("desktopWindowUnmaximize");
       }
       wasMaximized = isMaximized;
+      if (this.bottomBarReanchorEnabled) {
+        const { x, y } = win.getPosition();
+        const programmed = this.bottomBarLastProgrammaticPosition;
+        if (!programmed || x !== programmed.x || y !== programmed.y) {
+          const { width, height } = win.getSize();
+          this.bottomBarUserAnchor = {
+            centerX: x + width / 2,
+            bottomY: y + height,
+          };
+        }
+      }
     };
     this.windowEventHandlers.move = moveHandler;
     win.on("move", moveHandler);
@@ -1608,6 +1624,10 @@ X-GNOME-Autostart-enabled=true
   enableBottomBarReanchor(): void {
     this.bottomBarReanchorEnabled = true;
     this.bottomBarWorkArea = this.readPrimaryWorkArea();
+    const position = this.mainWindow?.getPosition();
+    this.bottomBarLastProgrammaticPosition = position
+      ? { x: position.x, y: position.y }
+      : null;
     if (this.bottomBarPoller) return;
     this.bottomBarPoller = setInterval(() => {
       if (this._windowHidden) return;
@@ -1630,8 +1650,11 @@ X-GNOME-Autostart-enabled=true
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    const frame = this.resolveBottomBarFrame(
+      workArea,
+      computeBottomBarFrame(workArea, this.bottomBarSize),
+    );
+    this.applyBottomBarFrame(win, frame);
     this.applyBottomBarTransparentHost();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
@@ -1649,8 +1672,11 @@ X-GNOME-Autostart-enabled=true
     const win = this.mainWindow;
     const workArea = this.readPrimaryWorkArea();
     if (!win || !workArea) return;
-    const frame = computeBottomBarFrame(workArea, this.bottomBarSize);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    const frame = this.resolveBottomBarFrame(
+      workArea,
+      computeBottomBarFrame(workArea, this.bottomBarSize),
+    );
+    this.applyBottomBarFrame(win, frame);
     this.applyBottomBarTransparentHost();
     this.applyBottomBarInteractiveMaterial();
     this.bottomBarWorkArea = workArea;
@@ -1720,8 +1746,12 @@ X-GNOME-Autostart-enabled=true
     // sign-in and permission windows come in front; restore the floating level
     // as soon as the sheet returns to half/input/pill mode.
     win.setAlwaysOnTop(options.state !== "MAXIMIZED");
-    const frame = computeBottomBarSurfaceFrame(workArea, options.state);
-    win.setFrame(frame.x, frame.y, frame.width, frame.height);
+    const baseFrame = computeBottomBarSurfaceFrame(workArea, options.state);
+    const frame =
+      options.state === "MAXIMIZED"
+        ? baseFrame
+        : this.resolveBottomBarFrame(workArea, baseFrame);
+    this.applyBottomBarFrame(win, frame);
     this.applyBottomBarTransparentHost();
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
@@ -1737,6 +1767,31 @@ X-GNOME-Autostart-enabled=true
       );
       return null;
     }
+  }
+
+  private resolveBottomBarFrame(
+    workArea: ScreenWorkArea,
+    frame: { x: number; y: number; width: number; height: number },
+  ): { x: number; y: number; width: number; height: number } {
+    if (!this.bottomBarUserAnchor) return frame;
+    const anchored = anchorBottomBarFrame(
+      workArea,
+      frame,
+      this.bottomBarUserAnchor,
+    );
+    this.bottomBarUserAnchor = {
+      centerX: anchored.x + anchored.width / 2,
+      bottomY: anchored.y + anchored.height,
+    };
+    return anchored;
+  }
+
+  private applyBottomBarFrame(
+    win: BrowserWindow,
+    frame: { x: number; y: number; width: number; height: number },
+  ): void {
+    this.bottomBarLastProgrammaticPosition = { x: frame.x, y: frame.y };
+    win.setFrame(frame.x, frame.y, frame.width, frame.height);
   }
 
   /**
@@ -1757,11 +1812,15 @@ X-GNOME-Autostart-enabled=true
     ) {
       return;
     }
-    const frame = this.bottomBarSurfaceState
+    const baseFrame = this.bottomBarSurfaceState
       ? computeBottomBarSurfaceFrame(nextWorkArea, this.bottomBarSurfaceState)
       : computeBottomBarFrame(nextWorkArea, this.bottomBarSize);
+    const frame =
+      this.bottomBarSurfaceState === "MAXIMIZED"
+        ? baseFrame
+        : this.resolveBottomBarFrame(nextWorkArea, baseFrame);
     try {
-      win.setFrame(frame.x, frame.y, frame.width, frame.height);
+      this.applyBottomBarFrame(win, frame);
       this.applyBottomBarTransparentHost();
       this.applyBottomBarInteractiveMaterial();
       this.bottomBarWorkArea = nextWorkArea;

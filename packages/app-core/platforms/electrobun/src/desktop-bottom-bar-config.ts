@@ -69,6 +69,12 @@ export interface BottomBarFrame {
   height: number;
 }
 
+/** Bottom-center point retained when the user repositions the detached host. */
+export interface BottomBarAnchor {
+  centerX: number;
+  bottomY: number;
+}
+
 export type BottomBarSurfaceState =
   | "CLOSED"
   | "INPUT"
@@ -267,6 +273,39 @@ export function computeBottomBarFrame(
     margin -
     BOTTOM_BAR_BOTTOM_INSET;
   return { x, y, width, height };
+}
+
+/**
+ * Resize a detached surface around its user-selected bottom-center anchor.
+ * The result is clamped to the active work area so a display change cannot
+ * strand the pill offscreen.
+ */
+export function anchorBottomBarFrame(
+  workArea: ScreenWorkArea,
+  frame: BottomBarFrame,
+  anchor: BottomBarAnchor,
+): BottomBarFrame {
+  const minX = Math.round(workArea.x);
+  const minY = Math.round(workArea.y);
+  const maxX = Math.max(
+    minX,
+    Math.round(workArea.x + workArea.width - frame.width),
+  );
+  const maxY = Math.max(
+    minY,
+    Math.round(workArea.y + workArea.height - frame.height),
+  );
+  return {
+    ...frame,
+    x: Math.min(
+      maxX,
+      Math.max(minX, Math.round(anchor.centerX - frame.width / 2)),
+    ),
+    y: Math.min(
+      maxY,
+      Math.max(minY, Math.round(anchor.bottomY - frame.height)),
+    ),
+  };
 }
 
 /**
