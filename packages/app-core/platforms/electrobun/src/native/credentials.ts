@@ -288,15 +288,26 @@ const CHROMIUM_BROWSERS: ChromiumBrowserDef[] = [
   },
 ];
 
-async function readChromiumSafeStoragePassword(
+interface ChromiumSafeStorageProcess {
+  exited: Promise<number>;
+  stdout: ReadableStream<Uint8Array>;
+}
+
+interface ChromiumSafeStorageDependencies {
+  platform?: NodeJS.Platform;
+  spawn?: (command: string[]) => ChromiumSafeStorageProcess;
+}
+
+export async function readChromiumSafeStoragePassword(
   service: string,
+  dependencies: ChromiumSafeStorageDependencies = {},
 ): Promise<string | null> {
-  if (process.platform !== "darwin") return null;
+  if ((dependencies.platform ?? process.platform) !== "darwin") return null;
   try {
-    const proc = Bun.spawn(
-      ["security", "find-generic-password", "-s", service, "-w"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const command = ["security", "find-generic-password", "-s", service, "-w"];
+    const proc = dependencies.spawn
+      ? dependencies.spawn(command)
+      : Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
     const exitCode = await proc.exited;
     if (exitCode !== 0) return null;
     const output = await new Response(proc.stdout).text();
@@ -398,6 +409,11 @@ function resolveCookieDbOpener(): CookieDbOpener | null {
  * Read specific cookies from Chromium-based browsers on macOS.
  * Decrypts using the Safe Storage key from Keychain.
  * Falls back through installed browsers until one succeeds.
+ *
+ * This is the narrow exception to the provider-credential Keychain policy:
+ * the browser session importer reads only the Safe Storage password for an
+ * installed browser whose cookie database already exists. It does not scan
+ * arbitrary provider credentials or enumerate Keychain items.
  */
 export async function readChromiumCookies(
   host: string,
@@ -659,10 +675,14 @@ async function scanProviderCredentialsRaw(): Promise<DetectedProvider[]> {
  * Checks files → browser session → env vars, deduplicating by provider ID
  * (first match wins per provider).
  *
- * It deliberately does not scrape third-party macOS Keychain items. Those
- * reads can trigger consent/default-keychain dialogs and are not an
- * App-Sandbox-safe credential integration. Providers that need Keychain-backed
- * sign-in must expose an explicit OAuth or native integration instead.
+ * It deliberately does not scrape provider credentials from the macOS
+ * Keychain. Those reads can trigger consent/default-keychain dialogs and are
+ * not an App-Sandbox-safe credential integration. Providers that need
+ * Keychain-backed sign-in must expose an explicit OAuth or native integration
+ * instead. The Eliza Cloud browser-session importer has one constrained
+ * exception: after finding a supported browser cookie database, it reads that
+ * browser's named Safe Storage password to decrypt the requested session
+ * cookie.
  *
  * API keys are masked in the returned results (last 4 chars only) to
  * prevent accidental exposure via IPC or logging.
