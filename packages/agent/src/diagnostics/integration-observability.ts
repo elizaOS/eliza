@@ -5,7 +5,7 @@
  * failure, and emits a single `[integration]` JSON line to the logger — at info
  * level for successes and known-transient failures, at warn level otherwise.
  */
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export type IntegrationBoundary =
   | "cloud"
@@ -79,7 +79,7 @@ function inferErrorKind(error: unknown): string | undefined {
 
 function sanitizeToken(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const safe = value.length > 1024 ? value.slice(0, 1024) : value;
+  const safe = truncateWellFormed(toWellFormedUnicode(value), 1024);
   const token = safe.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
   const normalized = token
     .replace(/_{1,1024}/g, "_")
