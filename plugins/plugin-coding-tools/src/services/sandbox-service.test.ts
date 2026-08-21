@@ -212,6 +212,7 @@ describe("SandboxService default blocklist", () => {
         "/dev/urandom",
         alias,
         "/dev/stdin",
+        "/dev/fd/0",
         stdinAlias,
         chainedAlias,
       ]) {
@@ -281,6 +282,12 @@ describe("SandboxService default blocklist", () => {
           for (const candidate of [
             path.join(fdDirectory, "0"),
             `/proc/self/fd/0`,
+            `/proc/${process.pid}/task/${process.pid}/fd/0`,
+            `/proc/self/task/${process.pid}/fd/0`,
+            "/proc/thread-self/fd/0",
+            "/proc/self/cwd",
+            `/proc/${process.pid}/root/etc/hostname`,
+            "/proc/self/exe",
             path.join(alias, "0"),
             entryAlias,
             directoryEntryAlias,
