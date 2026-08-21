@@ -10,8 +10,11 @@ const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
-const MAX_RUNTIME_AGENT_RECORDS = 1;
-const MAX_RUNTIME_CONVERSATION_RECORDS = 500;
+// restoreConversationsFromDb bypasses the runtime's own
+// evictOldestConversation(..., 500), so a legitimate list can exceed 500 and a
+// cap at that number would refuse startup on a healthy host. This bound exists
+// only to stop an unbounded response, not to express a product limit.
+const MAX_RUNTIME_CONVERSATION_RECORDS = 2000;
 
 type FetchLike = (
   input: RequestInfo | URL,
@@ -233,11 +236,6 @@ function readAgents(value: unknown): RuntimeAgent[] {
       "local agents response must include an agents array",
     );
   }
-  if (body.agents.length > MAX_RUNTIME_AGENT_RECORDS) {
-    throw new LocalVoiceRuntimeIdentityError(
-      "local agents response exceeds the record limit",
-    );
-  }
   return body.agents.map((value, index) => {
     const record = readRecord(`local agent ${index}`, value);
     return {
@@ -259,8 +257,23 @@ function readConversations(value: unknown): RuntimeConversation[] {
       "local conversations response exceeds the record limit",
     );
   }
-  return body.conversations.map((value, index) => {
-    const record = readRecord(`local conversation ${index}`, value);
+  // Conversation ids are not UUIDs in general: restoreConversationsFromDb
+  // derives one by stripping the "web-conv-" prefix off a channel id, and the
+  // create path accepts one from a client payload. Rejecting the whole listing
+  // because a single record has an unexpected id would refuse startup on an
+  // ordinary host, so unreadable records are skipped and the selected one is
+  // still validated strictly below.
+  const parsed: RuntimeConversation[] = [];
+  body.conversations.forEach((value, index) => {
+    let record: Record<string, unknown>;
+    try {
+      record = readRecord(`local conversation ${index}`, value);
+    } catch {
+      // error-policy:J3 an unreadable record yields an explicit skip rather
+      // than a fabricated conversation; the selection below fails closed if
+      // nothing usable survives.
+      return;
+    }
     const agentId =
       record.agentId === undefined
         ? undefined
@@ -268,15 +281,16 @@ function readConversations(value: unknown): RuntimeConversation[] {
             `local conversation ${index} agent id`,
             record.agentId,
           );
-    return {
-      id: readCanonicalUuid(`local conversation ${index} id`, record.id),
+    parsed.push({
+      id: readRequiredString(`local conversation ${index} id`, record.id),
       updatedAtEpochMs: readCanonicalTimestamp(
         `local conversation ${index} updatedAt`,
         record.updatedAt,
       ),
       ...(agentId === undefined ? {} : { agentId }),
-    };
+    });
   });
+  return parsed;
 }
 
 function selectAgentId(

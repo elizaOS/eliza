@@ -273,10 +273,12 @@ describe("local voice runtime identity", () => {
         runtimeOrigin: "http://127.0.0.1:31337",
         fetchImpl: tooManyAgents.fetchImpl,
       }),
-    ).rejects.toThrow("agents response exceeds the record limit");
+      // Two agents is not a "record limit" condition — selectAgentId owns the
+      // exactly-one rule and says so in words an operator can act on.
+    ).rejects.toThrow("local runtime must expose exactly one agent");
 
     const tooManyConversations = runtimeFetch({
-      conversations: Array.from({ length: 501 }, (_, index) => ({
+      conversations: Array.from({ length: 2001 }, (_, index) => ({
         id: `${index.toString(16).padStart(8, "0")}-c333-4333-8333-c33333333333`,
         updatedAt: "2026-08-19T20:00:00.000Z",
       })),
@@ -318,4 +320,42 @@ describe("local voice runtime identity", () => {
       target.stop(true);
     }
   });
+});
+
+// restoreConversationsFromDb derives a conversation id by stripping the
+// "web-conv-" prefix off a channel id, and the create path accepts one from a
+// client payload — so a non-UUID id is ordinary, not corruption. Rejecting the
+// whole listing over one such record refused startup on healthy hosts.
+test("selects a conversation whose id is not a UUID", async () => {
+  const runtime = runtimeFetch({
+    conversations: [
+      {
+        id: "web-conv-legacy-channel",
+        updatedAt: "2026-08-19T20:00:00.000Z",
+      },
+    ],
+  });
+
+  const identity = await resolveLocalVoiceRuntimeIdentity({
+    runtimeOrigin: "http://127.0.0.1:31337",
+    fetchImpl: runtime.fetchImpl,
+  });
+
+  expect(identity.conversationId).toBe("web-conv-legacy-channel");
+});
+
+test("skips an unreadable conversation record instead of refusing startup", async () => {
+  const runtime = runtimeFetch({
+    conversations: [
+      "not-an-object",
+      { id: "usable-conversation", updatedAt: "2026-08-19T20:00:00.000Z" },
+    ],
+  });
+
+  const identity = await resolveLocalVoiceRuntimeIdentity({
+    runtimeOrigin: "http://127.0.0.1:31337",
+    fetchImpl: runtime.fetchImpl,
+  });
+
+  expect(identity.conversationId).toBe("usable-conversation");
 });
