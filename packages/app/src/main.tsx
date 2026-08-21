@@ -2811,11 +2811,11 @@ function mountReactApp(): void {
         {phoneCompanion ? (
           <PhoneCompanionApp />
         ) : detachedShell ? (
-          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-bg">
             <DetachedShellRoot route={windowShellRoute} />
           </div>
         ) : appWindowSlug ? (
-          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+          <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden bg-bg">
             <AppWindowRenderer slug={appWindowSlug} />
           </div>
         ) : (

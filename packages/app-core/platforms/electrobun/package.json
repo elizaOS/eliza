@@ -36,7 +36,8 @@
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "bonjour-service": "1.4.2",
-    "electrobun": "^1.18.1"
+    "electrobun": "^1.18.1",
+    "electrobun-controls": "0.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",

@@ -1341,7 +1341,7 @@ function buildStaticTabRenderers(): Record<
       settingsNavigatePayload,
       settingsNavigateSequence,
     }) => (
-      <TabContentView surface="transparent">
+      <TabContentView surface="opaque" reserveChatClearance={false}>
         <LazySettingsView
           key="settings-root"
           initialSection={settingsInitialSection ?? undefined}

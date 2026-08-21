@@ -60,7 +60,7 @@ export interface CreateManagedWindowOptions {
   url: string;
   preload: string;
   frame: ManagedWindowFrame;
-  titleBarStyle: "default";
+  titleBarStyle: "default" | "hidden" | "hiddenInset";
   transparent: boolean;
 }
 
@@ -105,7 +105,7 @@ const SURFACE_FRAMES: Record<ManagedSurface, ManagedWindowFrame> = {
   plugins: { x: 180, y: 160, width: 1180, height: 860 },
   connectors: { x: 200, y: 180, width: 1180, height: 860 },
   cloud: { x: 220, y: 140, width: 1280, height: 900 },
-  settings: { x: 180, y: 120, width: 1240, height: 900 },
+  settings: { x: 220, y: 160, width: 760, height: 560 },
   app: { x: 180, y: 120, width: 1280, height: 900 },
 };
 
@@ -421,7 +421,10 @@ export class SurfaceWindowManager {
       url,
       preload,
       frame,
-      titleBarStyle: "default",
+      // hiddenInset: no titlebar text, but macOS still renders the native
+      // traffic lights (close/minimize/zoom) inset from the top-left corner.
+      // The webview adds top padding (pt-8) so content doesn't sit under them.
+      titleBarStyle: "hiddenInset",
       transparent: false,
     });
     if (alwaysOnTop) {
