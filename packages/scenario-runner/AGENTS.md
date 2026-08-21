@@ -25,6 +25,7 @@ packages/scenario-runner/
     cerebras-judge.ts        # CerebrasJudge class — low-level Cerebras API transport + verdict parsing
     reporter.ts              # buildAggregate / writeReport / writeScenarioRunViewer
     stability.ts             # strict three-attempt plans, aggregation, tiers, and focus lists
+    stability-executor.ts    # unconditional programmatic attempts through an injected isolated-runtime boundary
     native-export.ts         # exportScenarioNativeJsonl — converts trajectories to training corpus rows
     seeds.ts                 # applyScenarioSeedStep — seed dispatch (todo / contact / memory / gmailInbox)
     action-families.ts       # actionsAreScenarioEquivalent — fuzzy action-name matching
@@ -59,6 +60,7 @@ import {
 import {
   buildAggregate, writeReport, printStdoutSummary, writeScenarioRunViewer,
   createScenarioStabilityPlan, buildScenarioStabilityReport,
+  executeScenarioStability,
 } from "@elizaos/scenario-runner";
 
 // Native (training corpus) export
@@ -108,6 +110,15 @@ that authority. Reports must be regular files at its exact paths and are bounded
 to 64 MiB, 10,000 scenarios, 1,000 failed assertions per scenario, and bounded
 identifier/detail strings. Conflicting plans and contradictory statuses fail as
 CLI usage errors before an aggregate is written.
+
+Programmatic callers use `executeScenarioStability()` with an adapter that
+constructs and tears down the current scenario runtime boundary for each
+attempt. The executor always runs all three attempts, assigns unique run/output
+identities, compares runtime-produced initial-state hashes, retains evidence,
+enforces time and usage budgets, and fails every cell below `3/3`. An earlier
+failure never suppresses a later attempt. The adapter remains responsible for
+actually creating a fresh process, database, mock-service world, and model
+conversation for each supplied attempt identity.
 
 ### Lanes
 

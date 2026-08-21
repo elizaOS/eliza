@@ -650,6 +650,7 @@ export async function runCli(
         rawReport = readScenarioStabilityJsonArtifact(
           resolvedReportPath,
           `attempt report '${resolvedReportPath}'`,
+          plan.outputRoot,
         );
       } catch (error) {
         // error-policy:J1 CLI boundary translates malformed or unbounded report artifacts into usage errors.
