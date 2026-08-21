@@ -449,7 +449,7 @@ export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
     mode: "fixtures",
-    fixtures: codingToolModelFixtures,
+    fixtures: [...codingToolModelFixtures],
   },
   title: "Deterministic coding-tools action execution",
   domain: "scenario-runner",
