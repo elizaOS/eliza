@@ -9,7 +9,12 @@
  * carry `telegram-file:<file_id>`, the token-bearing Bot API URL stays inside
  * the fetch path, and model handlers receive bytes, never the URL.
  */
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  type Content,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { MediaType, MessageManager } from "./messageManager";
 
@@ -86,7 +91,7 @@ async function captureReactionCallback() {
 
   expect(emitEvent).toHaveBeenCalledTimes(2);
   const payload = emitEvent.mock.calls[0]?.[1] as
-    | { callback?: (content: { text?: string }) => Promise<unknown> }
+    | { callback?: (content: Content) => Promise<Memory[]> }
     | undefined;
   expect(payload?.callback).toBeTypeOf("function");
   if (!payload?.callback) {
@@ -541,11 +546,15 @@ describe("MessageManager malformed payload handling", () => {
       "a".repeat(4095),
     ],
   ])(
-    "normalizes the reaction callback wire reply for %s",
+    "keeps the reaction callback wire reply and returned memory aligned for %s",
     async (_label, input, expected) => {
       const { callback, reply } = await captureReactionCallback();
 
-      await callback({ text: input });
+      const memories = await callback({
+        text: input,
+        action: "REPLY",
+        data: { marker: "preserved" },
+      });
 
       expect(reply).toHaveBeenCalledTimes(1);
       const wireText = reply.mock.calls[0]?.[0];
@@ -554,6 +563,16 @@ describe("MessageManager malformed payload handling", () => {
       expect(wireText).toBe(expected);
       expect(wireText?.length).toBeLessThanOrEqual(4096);
       expect(wireText?.isWellFormed()).toBe(true);
+
+      expect(memories).toHaveLength(1);
+      const memoryContent = memories[0]?.content;
+      expect(memoryContent?.text).toBe(wireText);
+      expect(memoryContent?.text?.length).toBeLessThanOrEqual(4096);
+      expect(memoryContent?.text?.isWellFormed()).toBe(true);
+      expect(memoryContent?.action).toBe("REPLY");
+      expect(memoryContent?.data).toEqual({ marker: "preserved" });
+      expect(memoryContent?.inReplyTo).toBeDefined();
+      expect(memoryContent?.metadata).toEqual({ accountId: "default" });
     },
   );
 
