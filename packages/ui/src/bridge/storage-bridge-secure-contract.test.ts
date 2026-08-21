@@ -3,6 +3,7 @@
 /** Exercises native credential migration and fail-closed storage behavior. */
 import {
   clearStoredStewardToken,
+  replaceStoredStewardTokenIfCurrent,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
   writeStoredStewardToken,
@@ -230,6 +231,42 @@ describe("native protected-storage bridge contract", () => {
         "second-durable-token",
       );
       expect(transitions).toEqual(["present", "present"]);
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
+  it("does not resurrect a Steward token when a deferred refresh loses to logout", async () => {
+    await import("./storage-bridge");
+    await writeStoredStewardToken("refresh-source-token");
+    const transitions: string[] = [];
+    const listener = (event: Event) => {
+      transitions.push((event as CustomEvent<{ state: string }>).detail.state);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    let releaseDelete: () => void = () => {};
+    nativeStores.secureDeleteWait = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+
+    try {
+      const clear = clearStoredStewardToken();
+      await vi.waitFor(() => {
+        expect(nativeStores.operations).toContain(
+          "delete:start:session.steward_token",
+        );
+      });
+      const staleRefresh = replaceStoredStewardTokenIfCurrent(
+        "refresh-source-token",
+        "stale-refreshed-token",
+      );
+
+      releaseDelete();
+      await clear;
+      await expect(staleRefresh).resolves.toBe(false);
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+      expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+      expect(transitions).toEqual(["cleared"]);
     } finally {
       window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
     }

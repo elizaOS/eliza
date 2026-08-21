@@ -9,6 +9,7 @@ import {
   readStoredStewardToken,
   registerStewardTokenPersistence,
   registerStewardTokenRemoval,
+  replaceStoredStewardTokenIfCurrent,
   STEWARD_CSRF_HEADER,
   STEWARD_CSRF_HEADER_VALUE,
   STEWARD_REFRESH_TOKEN_KEY,
@@ -151,6 +152,19 @@ describe("Steward session storage transitions", () => {
     }
 
     expect(transitions.map(({ state }) => state)).toEqual(["present"]);
+  });
+
+  it("rejects a stale refresh replacement after canonical logout", async () => {
+    await writeStoredStewardToken("refresh-source-token");
+    await clearStoredStewardToken();
+
+    await expect(
+      replaceStoredStewardTokenIfCurrent(
+        "refresh-source-token",
+        "stale-refreshed-token",
+      ),
+    ).resolves.toBe(false);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
   it("revalidates a cached token through the registered durable host", async () => {

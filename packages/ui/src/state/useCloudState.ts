@@ -19,6 +19,7 @@ import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
+  replaceStoredStewardTokenIfCurrent,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -1587,8 +1588,10 @@ export function useCloudState({
 
     let disposed = false;
     const checkAndRefresh = async () => {
-      const token = readStoredStewardToken()?.trim();
-      if (!token) return;
+      const storedToken = readStoredStewardToken();
+      if (!storedToken) return;
+      const token = storedToken.trim();
+      if (token.length === 0) return;
       const secs = cloudTokenSecsRemaining(token);
       // No `exp` (opaque token / device-code session) → nothing to refresh.
       if (secs === null) return;
@@ -1600,7 +1603,7 @@ export function useCloudState({
         });
         if (disposed) return;
         if (result?.token) {
-          await writeStoredStewardToken(result.token);
+          await replaceStoredStewardTokenIfCurrent(storedToken, result.token);
         }
       } catch (err: unknown) {
         // error-policy:J4 a pre-emptive refresh or protected persistence
