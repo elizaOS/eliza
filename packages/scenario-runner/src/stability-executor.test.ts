@@ -163,8 +163,15 @@ describe("scenario stability executor", () => {
         }
         return passingExecution();
       },
-      async terminate({ attemptNumber }) {
+      async terminate({ attemptNumber, signal }) {
         terminated.push(attemptNumber);
+        if (attemptNumber === 1) {
+          await new Promise<void>((_, reject) =>
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            }),
+          );
+        }
         if (attemptNumber === 3) throw new Error("cleanup failed");
       },
     };
@@ -188,6 +195,9 @@ describe("scenario stability executor", () => {
     expect(calls).toEqual([1, 2, 3]);
     expect(terminated).toEqual([1, 2, 3]);
     expect(report.cells[0]).toMatchObject({ tier: "0/3", strictPassed: false });
+    expect(report.cells[0]?.attempts[0]?.error).toContain(
+      "attempt teardown exceeded 10ms",
+    );
     expect(
       report.cells[0]?.attempts.every(
         (attempt) => attempt.failureClassification === "harness-failure",
