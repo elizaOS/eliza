@@ -8,7 +8,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 73;
+const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 72;
 
 type ScenarioSourceClassification = {
   deterministic: boolean;
