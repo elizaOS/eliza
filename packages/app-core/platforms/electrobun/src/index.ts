@@ -103,7 +103,6 @@ import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
   ensureWindowTransparentBackground,
-  refreshWindowContentLayout,
   refreshWindowInteractiveMaterial,
   setNativeDragRegion,
   setWindowShadow,
@@ -780,24 +779,6 @@ const cleanupFns: Array<() => void | Promise<void>> = [];
 let shutdownCleanupPromise: Promise<void> | null = null;
 let lastFocusedWindow: ManagedWindowLike | null = null;
 const macOpenedDevtoolsWindowIds = new Set<number>();
-
-function refreshDevtoolsLayout(
-  window: ManagedWindowLike | BrowserWindow | null,
-): void {
-  if (!window) return;
-  const windowPtr = (window as { ptr?: unknown }).ptr;
-  scheduleDevtoolsLayoutRefresh(
-    window as Parameters<typeof scheduleDevtoolsLayoutRefresh>[0],
-    undefined,
-    () => {
-      if (process.platform === "darwin" && windowPtr) {
-        refreshWindowContentLayout(
-          windowPtr as Parameters<typeof refreshWindowContentLayout>[0],
-        );
-      }
-    },
-  );
-}
 
 async function openBrowserDevtoolsFallback(
   targetWindow: ManagedWindowLike | BrowserWindow | null,
@@ -1728,7 +1709,9 @@ function trackFocusedWindow(window: ManagedWindowLike): void {
       typeof windowId === "number" &&
       macOpenedDevtoolsWindowIds.has(windowId)
     ) {
-      refreshDevtoolsLayout(window);
+      scheduleDevtoolsLayoutRefresh(
+        window as Parameters<typeof scheduleDevtoolsLayoutRefresh>[0],
+      );
     }
   });
   window.on("close", () => {
@@ -1741,7 +1724,6 @@ function trackFocusedWindow(window: ManagedWindowLike): void {
 
 function toggleFocusedWindowDevTools(): void {
   const targetWindow = lastFocusedWindow ?? currentWindow;
-  const targetWindowId = (targetWindow as { id?: number } | null)?.id;
   const webview = targetWindow?.webview as
     | {
         toggleDevTools?: () => void;
@@ -1755,20 +1737,18 @@ function toggleFocusedWindowDevTools(): void {
   }
 
   if (typeof webview?.toggleDevTools === "function") {
-    if (process.platform === "darwin" && typeof targetWindowId === "number") {
-      macOpenedDevtoolsWindowIds.add(targetWindowId);
-    }
     webview.toggleDevTools();
-    refreshDevtoolsLayout(targetWindow);
+    scheduleDevtoolsLayoutRefresh(
+      targetWindow as Parameters<typeof scheduleDevtoolsLayoutRefresh>[0],
+    );
     return;
   }
 
   if (typeof webview?.openDevTools === "function") {
-    if (process.platform === "darwin" && typeof targetWindowId === "number") {
-      macOpenedDevtoolsWindowIds.add(targetWindowId);
-    }
     webview.openDevTools();
-    refreshDevtoolsLayout(targetWindow);
+    scheduleDevtoolsLayoutRefresh(
+      targetWindow as Parameters<typeof scheduleDevtoolsLayoutRefresh>[0],
+    );
     return;
   }
 

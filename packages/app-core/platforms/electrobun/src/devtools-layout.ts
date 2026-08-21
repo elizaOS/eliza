@@ -12,7 +12,6 @@ export type DevtoolsRefreshWindow = {
 };
 
 export type ScheduleFn = (callback: () => void, delayMs: number) => unknown;
-export type RefreshNativeLayoutFn = () => void;
 
 const DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS = [0, 32, 96, 220, 900] as const;
 
@@ -24,7 +23,6 @@ const DEVTOOLS_LAYOUT_REFRESH_DELAYS_MS = [0, 32, 96, 220, 900] as const;
 export function scheduleDevtoolsLayoutRefresh(
   window: DevtoolsRefreshWindow | null | undefined,
   schedule: ScheduleFn = (callback, delayMs) => setTimeout(callback, delayMs),
-  refreshNativeLayout: RefreshNativeLayoutFn = () => {},
 ): void {
   if (
     !window ||
@@ -56,7 +54,6 @@ export function scheduleDevtoolsLayoutRefresh(
           originalFrame.width,
           nextHeight,
         );
-        refreshNativeLayout();
       } catch {
         // Devtools/layout refresh is best-effort only.
       }

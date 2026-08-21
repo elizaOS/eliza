@@ -2865,31 +2865,6 @@ extern "C" bool refreshWindowInteractiveMaterial(void *windowPtr) {
 	return success;
 }
 
-/**
- * Force AppKit to lay out the complete content tree after WKWebView docks or
- * undocks its inspector. Resizing only the NSWindow is not sufficient on some
- * WebKit builds: the inspector split view updates while the inspected WKWebView
- * keeps a stale/empty frame until its native ancestors are explicitly laid out.
- */
-extern "C" bool refreshWindowContentLayout(void *windowPtr) {
-	if (windowPtr == nullptr) return false;
-
-	__block BOOL success = NO;
-	dispatch_sync(dispatch_get_main_queue(), ^{
-		NSWindow *window = (__bridge NSWindow *)windowPtr;
-		if (![window isKindOfClass:[NSWindow class]]) return;
-		NSView *contentView = [window contentView];
-		if (contentView == nil) return;
-
-		[contentView setNeedsLayout:YES];
-		[contentView layoutSubtreeIfNeeded];
-		[contentView setNeedsDisplay:YES];
-		[window displayIfNeeded];
-		success = YES;
-	});
-	return success;
-}
-
 /** Consume one click that landed outside the painted interactive material. */
 extern "C" bool pollWindowOutsideClick(void *windowPtr) {
 	if (windowPtr == nullptr) return false;

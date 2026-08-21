@@ -24,7 +24,6 @@ type MacEffectsSymbols = {
     cornerRadius: number,
   ): boolean;
   refreshWindowInteractiveMaterial(ptr: Pointer): boolean;
-  refreshWindowContentLayout(ptr: Pointer): boolean;
   pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
@@ -97,10 +96,6 @@ function loadLib(): MacEffectsLib {
         returns: FFIType.bool,
       },
       refreshWindowInteractiveMaterial: {
-        args: [FFIType.ptr],
-        returns: FFIType.bool,
-      },
-      refreshWindowContentLayout: {
         args: [FFIType.ptr],
         returns: FFIType.bool,
       },
@@ -231,11 +226,6 @@ export function setWindowInteractiveMaterialSize(
 /** Re-stack saved detached-host drag strips after WKWebView native layout. */
 export function refreshWindowInteractiveMaterial(ptr: Pointer): boolean {
   return getLib()?.symbols.refreshWindowInteractiveMaterial(ptr) ?? false;
-}
-
-/** Force the WKWebView/inspector native subtree to consume its current bounds. */
-export function refreshWindowContentLayout(ptr: Pointer): boolean {
-  return getLib()?.symbols.refreshWindowContentLayout(ptr) ?? false;
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {
