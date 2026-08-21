@@ -13,9 +13,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // Captured once, before any test installs the storage-bridge proxy, so every
 // test can read/write "the raw disk" (bypassing whatever proxy state a prior
 // test in this file left behind) instead of accidentally re-capturing an
-// already-patched `Storage.prototype` method.
-const rawGetItem = Storage.prototype.getItem;
-const rawSetItem = Storage.prototype.setItem;
+// already-patched method. Bind the functions `localStorage` itself resolves:
+// jsdom exposes Storage through a proxy whose branded internal-slot check
+// rejects `Storage.prototype.getItem.call(localStorage)`.
+const rawStorage = window.localStorage;
+const rawGetItem = rawStorage.getItem.bind(rawStorage) as (
+  key: string,
+) => string | null;
+const rawSetItem = rawStorage.setItem.bind(rawStorage) as (
+  key: string,
+  value: string,
+) => void;
 
 const nativeStores = vi.hoisted(() => ({
   preferences: new Map<string, string>(),
@@ -139,7 +147,7 @@ describe("native protected-storage bridge contract", () => {
       // The raw Storage prototype (bypassing the secure-store cache) must
       // never see the plaintext value — only the protected native store and
       // the in-memory cache may hold it.
-      expect(rawGetItem.call(window.localStorage, key)).toBeNull();
+      expect(rawGetItem(key)).toBeNull();
       expect(window.localStorage.getItem(key)).toBeNull();
       expect(await bridge.getStorageValue(key)).toBe(value);
     }
@@ -153,7 +161,7 @@ describe("native protected-storage bridge contract", () => {
       bridge.setStorageValue(STEWARD_TOKEN_KEY, "attempted-plaintext-fallback"),
     ).rejects.toThrow();
 
-    expect(rawGetItem.call(window.localStorage, STEWARD_TOKEN_KEY)).toBeNull();
+    expect(rawGetItem(STEWARD_TOKEN_KEY)).toBeNull();
     expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     expect(nativeStores.secure.has("session.steward_token")).toBe(false);
   });
@@ -274,14 +282,10 @@ describe("native protected-storage bridge contract", () => {
 
   it("installs the storage proxy before the native secure store responds, so a concurrent write during migration never touches plaintext", async () => {
     nativeStores.preferences.set("eliza.device.auth", "legacy-device-secret");
-    // Seed through the raw prototype: this must be a genuine pre-migration
+    // Seed through the raw handle: this must be a genuine pre-migration
     // plaintext value on disk, not a write that a proxy from an earlier test
     // in this file might already intercept.
-    rawSetItem.call(
-      window.localStorage,
-      "eliza.device.auth",
-      "legacy-device-secret",
-    );
+    rawSetItem("eliza.device.auth", "legacy-device-secret");
     let releaseGet: () => void = () => {};
     nativeStores.secureGetWait = new Promise<void>((resolve) => {
       releaseGet = resolve;
@@ -303,9 +307,7 @@ describe("native protected-storage bridge contract", () => {
       "eliza.device.auth",
       "concurrent-write-during-migration",
     );
-    expect(
-      rawGetItem.call(window.localStorage, "eliza.device.auth"),
-    ).toBeNull();
+    expect(rawGetItem("eliza.device.auth")).toBeNull();
 
     // Fail the rest of this migration pass so `initialized` stays false —
     // this file's other tests import the same module singleton and the next
@@ -322,9 +324,7 @@ describe("native protected-storage bridge contract", () => {
         "set:start:session.device_auth",
       );
     });
-    expect(
-      rawGetItem.call(window.localStorage, "eliza.device.auth"),
-    ).toBeNull();
+    expect(rawGetItem("eliza.device.auth")).toBeNull();
     nativeStores.secureAvailable = true;
   });
 
@@ -371,22 +371,19 @@ describe("native protected-storage bridge contract", () => {
   });
 
   it("migrates an Android plaintext session only after exact secure read-back", async () => {
-    const rawStorage = window.localStorage;
     nativeStores.preferences.set("eliza.device.auth", "legacy-device-secret");
-    // Seed through the raw prototype, not `window.localStorage` — an earlier
+    // Seed through the raw handle, not `window.localStorage` — an earlier
     // test in this file may have already installed the storage proxy (it is
     // a one-time, idempotent install on the shared module), and a proxied
     // write to a protected key would route into the secure-store path instead
     // of leaving a genuine pre-migration plaintext value on raw disk.
-    rawSetItem.call(rawStorage, "eliza.device.auth", "legacy-device-secret");
+    rawSetItem("eliza.device.auth", "legacy-device-secret");
 
     const bridge = await import("./storage-bridge");
     nativeStores.secureAvailable = false;
     await bridge.initializeStorageBridge();
     expect(bridge.isStorageBridgeInitialized()).toBe(false);
-    expect(rawGetItem.call(rawStorage, "eliza.device.auth")).toBe(
-      "legacy-device-secret",
-    );
+    expect(rawGetItem("eliza.device.auth")).toBe("legacy-device-secret");
 
     nativeStores.secureAvailable = true;
     await bridge.initializeStorageBridge();
@@ -401,7 +398,7 @@ describe("native protected-storage bridge contract", () => {
     expect(window.localStorage.getItem("eliza.device.auth")).toBe(
       "legacy-device-secret",
     );
-    expect(rawGetItem.call(rawStorage, "eliza.device.auth")).toBeNull();
+    expect(rawGetItem("eliza.device.auth")).toBeNull();
     window.sessionStorage.setItem("storage-bridge-probe", "unchanged");
     expect(window.sessionStorage.getItem("storage-bridge-probe")).toBe(
       "unchanged",
