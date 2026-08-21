@@ -1,9 +1,10 @@
 /** Supports Electrobun packaging and signing workflow for app-core desktop builds. */
 import fs from "node:fs";
 import path from "node:path";
+import { resolveChromeExtensionIdentity } from "../../../../browser-bridge-extension/scripts/chrome-identity.mjs";
 import {
-  browserBridgeKeychainAccessGroup,
   resolveAppleTeamId,
+  validateBrowserBridgeMacProvisioningProfile,
 } from "../src/native/browser-bridge-mac-signing";
 
 const platformNames: Record<string, string> = {
@@ -35,13 +36,26 @@ fs.mkdirSync(path.join("build", `${envName}-${osName}-${archName}`), {
 const extensionIdentity = JSON.parse(
   fs.readFileSync("../../../browser-bridge-extension/identity.json", "utf8"),
 ) as {
-  chromeExtensionId: string;
+  chromeDevManifestKey: string;
+  chromeDevExtensionId: string;
   firefoxExtensionId: string;
   safariExtensionId: string;
 };
+const chromeIdentity = resolveChromeExtensionIdentity({
+  identity: extensionIdentity,
+  release:
+    envName !== "dev" ||
+    process.env.ELIZA_BROWSER_BRIDGE_RELEASE_PACKAGING === "1",
+  env: process.env,
+});
 fs.writeFileSync(
   path.join("build", "browser-bridge-release.json"),
-  `${JSON.stringify(extensionIdentity)}\n`,
+  `${JSON.stringify({
+    chromeExtensionId: chromeIdentity.extensionId,
+    chromeIdentityAuthority: chromeIdentity.authority,
+    firefoxExtensionId: extensionIdentity.firefoxExtensionId,
+    safariExtensionId: extensionIdentity.safariExtensionId,
+  })}\n`,
   { encoding: "utf8", mode: 0o600 },
 );
 
@@ -80,32 +94,47 @@ if (compile.exitCode !== 0) {
 const signingMetadataPath = path.join("build", "browser-bridge-signing.json");
 const appleTeamId = resolveAppleTeamId(process.env);
 if (osName === "macos" && appleTeamId) {
-  const macTarget = `${archName === "arm64" ? "arm64" : "x86_64"}-apple-macosx13.0`;
-  const keychainHelper = Bun.spawnSync([
-    "xcrun",
-    "swiftc",
-    "-O",
-    "-target",
-    macTarget,
-    "-framework",
-    "Security",
-    "src/native/macos-browser-bridge-keychain-helper.swift",
-    "-o",
-    path.join("build", "browser-bridge-keychain-helper"),
-  ]);
-  if (keychainHelper.exitCode !== 0) {
+  const profilePath = process.env.ELIZA_BROWSER_BRIDGE_MAC_PROFILE?.trim();
+  if (
+    !profilePath ||
+    !path.isAbsolute(profilePath) ||
+    !fs.existsSync(profilePath)
+  ) {
     throw new Error(
-      `Failed to compile shared-Keychain helper: ${keychainHelper.stderr.toString("utf8")}`,
+      "A browser-bridge provisioning profile is required for signed macOS packaging",
     );
   }
+  const decoded = Bun.spawnSync(["security", "cms", "-D", "-i", profilePath]);
+  if (decoded.exitCode !== 0) {
+    throw new Error("Failed to decode browser-bridge provisioning profile");
+  }
+  const json = Bun.spawnSync(["plutil", "-convert", "json", "-o", "-", "-"], {
+    stdin: decoded.stdout,
+  });
+  if (json.exitCode !== 0) {
+    throw new Error("Failed to parse browser-bridge provisioning profile");
+  }
+  const appId = process.env.ELIZA_APP_ID?.trim() || "ai.elizaos.app";
+  const contract = validateBrowserBridgeMacProvisioningProfile(
+    JSON.parse(json.stdout.toString("utf8")),
+    {
+      teamId: appleTeamId,
+      appId,
+      channel: process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
+    },
+  );
+  fs.copyFileSync(
+    profilePath,
+    path.join("build", "browser-bridge.provisionprofile"),
+  );
   fs.writeFileSync(
     signingMetadataPath,
-    `${JSON.stringify({
-      teamId: appleTeamId,
-      accessGroup: browserBridgeKeychainAccessGroup(appleTeamId),
-    })}\n`,
+    `${JSON.stringify({ ...contract, appId })}\n`,
     { encoding: "utf8", mode: 0o600 },
   );
 } else {
   fs.rmSync(signingMetadataPath, { force: true });
+  fs.rmSync(path.join("build", "browser-bridge.provisionprofile"), {
+    force: true,
+  });
 }

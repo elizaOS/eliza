@@ -38,9 +38,8 @@ describe("browser bridge desktop lifecycle", () => {
         env,
         registrationPlan: { platform: process.platform, manifests: [] },
         installRegistration,
-        macSafariKeychainHelperPath: "/Applications/Eliza.app/keychain-helper",
         macSafariAppGroupContainerPath: stateDir,
-        macSafariAccessGroup: "ABCDEFGHIJ.ai.elizaos.browserbridge.shared",
+        macSafariProvisionedAppGroup: "group.ai.elizaos.browserbridge",
         loadMacSafariSecret: () => Buffer.alloc(32, 7),
       }),
     ).resolves.toBe(true);
