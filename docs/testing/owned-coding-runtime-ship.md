@@ -568,6 +568,39 @@ exact output `relay guard ok`. It stopped normally while the active
 conversation remained at 23 messages before and after; browser DOM contained
 neither the relay-guard text nor the earlier prime comparison payload.
 
+### Final visible completion and cleanup repair
+
+The user-visible `manual_nubs_proof_v2.py` run exposed two separate defects even
+though the child had actually created and run the file successfully. First, the
+generic side-effect guard interpreted the child's `I created the script`
+sentence together with a separate `verification of this task is still running`
+note as one unsupported completion claim, then replaced the real result with
+`I didn't see the change go through`. Side-effect subjects are now required in
+the same sentence as the claimed mutation. The focused core suite passes 63 of
+63 cases, including the coding completion plus verification-note regression.
+
+Second, a task session could already be marked `completed` while its native ACP
+session remained `ready` because `keepAliveAfterComplete` was enabled. Archiving
+filtered only the task-session status and therefore skipped the still-live ACP
+child. Archive cleanup now reconciles keep-alive candidates against the ACP
+service, stops any nonterminal native session, and records the task session as
+stopped. The focused lifecycle regression passes and both changed packages pass
+typecheck, build, Biome, and `git diff --check`.
+
+Exact-head visible acceptance at behavior commit
+`868ae21f0674f162ec324fa2820ad73c5aa98b69` used Cerebras
+`gemma-4-31b` through the protected local provider account. Task
+`e62923bb-aee0-40ca-9193-5b6bda33f2f8` and child session
+`777ba8d0-c595-441e-b84c-f0c1fa70837c` created and ran
+`nubs_final_prime_test.py`. Independent execution printed exactly
+`NUBS FINAL TEST: 29 is prime`; the visible completion preserved that exact
+result, validation passed, the child stopped, archive cleanup kept it stopped,
+and no stale 60-file notification repeated. The disposable script was removed
+after proof and the worktree returned clean. Parent spawn, completion relay, and
+child trajectories are `tj-a40d3eec2cae55`, `tj-a4412f0a21f4bd`, and
+`tj-a42e8e66496df0`. The secret-free evidence package is
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/final-live-repair-acceptance-20260820.json`.
+
 ## Reproduce
 
 Install and run the deterministic gates from the repository root:
