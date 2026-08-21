@@ -8,6 +8,8 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { CallToolResult, Tool } from "@modelcontextprotocol/sdk/types.js";
 import { MCP_SERVICE_NAME } from "../types";
@@ -52,9 +54,10 @@ function extractParams(message: Memory, state?: State): Record<string, unknown> 
 const MCP_ACTION_CONTEXTS = ["connectors", "automation", "documents"];
 const MCP_TOOL_OUTPUT_MAX_CHARS = 8_000;
 
-function truncateMcpToolOutput(output: string): string {
-  if (output.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return output;
-  return `${output.slice(0, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
+export function truncateMcpToolOutput(output: string): string {
+  const wellFormed = toWellFormedUnicode(output);
+  if (wellFormed.length <= MCP_TOOL_OUTPUT_MAX_CHARS) return wellFormed;
+  return `${truncateWellFormed(wellFormed, MCP_TOOL_OUTPUT_MAX_CHARS)}\n\n[truncated MCP tool output at ${MCP_TOOL_OUTPUT_MAX_CHARS} chars]`;
 }
 
 function hasSelectedContext(state: State | undefined): boolean {
