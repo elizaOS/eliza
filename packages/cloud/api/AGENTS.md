@@ -11,9 +11,11 @@ src/
   index.ts                 Worker entrypoint: { fetch, scheduled }. Thin — fast-paths
                            /api/health, then lazy-imports bootstrap-app on first request
                            to stay under Cloudflare's startup CPU budget (error 10021).
-  bootstrap-app.ts         createApp(): builds the full Hono<AppEnv> stack — global
+  bootstrap-app.ts         createApp(): builds the Hono<AppEnv> stack — global
                            middleware (cors, secureHeaders, requestId, logger,
-                           observability, auth), special-case routes, then mountRoutes().
+                           observability, auth), special-case routes, then mounts
+                           either one route shard (createApp({requestPath})) or the
+                           whole tree (createApp()). Async — it awaits route imports.
   dedicated-agent-proxy.ts Unified cloud-token auth + proxy for DEDICATED (container)
                            agents reachable at <agentId>.cloud.eliza.app/*. Validates the
                            cloud session, confirms org ownership, then swaps the cloud
@@ -24,8 +26,14 @@ src/
   _generate-router.mjs     Codegen: walks the package for route.ts/route.tsx leaves and
                            emits _router.generated.ts. Next.js App-Router path mapping
                            ([id] -> :id, [...slug] -> splat, (group) dropped).
-  _router.generated.ts     GENERATED — do not hand-edit. mountRoutes(app) wires every
-                           route. Re-run `bun run codegen` after adding/removing a route.
+  _router.generated.ts     GENERATED — do not hand-edit. ROUTE_MOUNTS lists every
+                           route as a lazy dynamic import tagged with its shard;
+                           mountShardRoutes(app, shard) mounts one family and
+                           mountRoutes(app) mounts all. Both are async. Re-run
+                           `bun run codegen` after adding/removing a route.
+  router-shards.ts         routeShardKey(path): the shard a mount pattern or request
+                           path belongs to. Runtime twin of the codegen copy in
+                           _generate-router.mjs; kept in lockstep by its test.
   middleware/              auth.ts (global auth gate + public-path allowlist),
                            cookie-mutation-guard.ts (CSRF origin+marker gate for
                            cookie-authenticated mutations, mounted right after
@@ -61,8 +69,8 @@ Path-alias note: `@/lib/*`, `@/db/*`, `@/types/*`, `@/billing/*` resolve into `.
 ## Key surface
 
 - `index.ts` default export `{ fetch, scheduled }` — the Worker contract Cloudflare invokes.
-- `bootstrap-app.ts` `createApp(): Hono<AppEnv>` — called by `index.ts`; the e2e harness boots through `src/index.ts`.
-- `src/_router.generated.ts` `mountRoutes(app)` — generated; mounts all 580 route apps.
+- `bootstrap-app.ts` `createApp(options?): Promise<Hono<AppEnv>>` — called by `index.ts`; the e2e harness boots through `src/index.ts`. Pass `{ requestPath }` to mount only that path's route shard, or omit it to mount every route.
+- `src/_router.generated.ts` `mountShardRoutes(app, shard)` / `mountRoutes(app)` — generated; 677 route apps behind lazy dynamic imports, grouped into shards so a request evaluates only its own family (#22550).
 - `AppEnv` / `Bindings` / `Variables` types come from `@/types/cloud-worker-env` (in cloud-shared) — `Bindings` enumerates every env var/binding the Worker reads.
 - Each `route.ts` default-exports a `new Hono<AppEnv>()` instance.
 
