@@ -1,6 +1,6 @@
 /**
  * Keyless coverage of per-view voice-transcript navigation. Runs on the
- * pr-deterministic lane under the model provider.
+ * model-free on the pr-deterministic lane.
  */
 import type {
   CapturedAction,
@@ -13,6 +13,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { expectAcceptedViewNavigationEffect } from "./_helpers/view-navigation-effect";
 
 /**
  * Per-view voice-transcript coverage (#8797, acceptance criterion 5).
@@ -108,10 +109,12 @@ function expectVoiceTurn(
   execution: ScenarioTurnExecution,
   view: VoiceView,
 ): string | undefined {
-  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
-  if (execution.responseText !== expectedText) {
-    return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
-  }
+  const effectFailure = expectAcceptedViewNavigationEffect(execution, {
+    viewId: view.id,
+    label: view.navigationLabel ?? view.label,
+    path: view.path,
+  });
+  if (effectFailure) return effectFailure;
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === "VIEWS",
   ) as CapturedAction | undefined;
@@ -154,6 +157,11 @@ function expectVoiceTurn(
 export default scenario({
   id: "deterministic-view-voice",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic per-view voice-transcript navigation",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "views", "voice"],
@@ -202,7 +210,6 @@ export default scenario({
     text: view.noun,
     actionName: "VIEWS",
     options: { action: "show", viewType: "gui" },
-    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectVoiceTurn(execution, view),
   })),

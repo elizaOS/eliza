@@ -668,10 +668,12 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result).not.toHaveProperty("userFacingText");
 			expect(result).not.toHaveProperty("verifiedUserFacing");
 			expect(result).not.toHaveProperty("turnComplete");
-			expect(JSON.parse(result?.text ?? "{}")).toMatchObject({
+			expect(JSON.parse(result?.text ?? "{}")).toEqual({
 				effect: "view_navigation",
 				status: "accepted",
 				viewId: "calendar",
+				label: "Calendar",
+				path: "/calendar",
 			});
 		});
 

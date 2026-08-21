@@ -1,6 +1,6 @@
 /**
  * Keyless coverage that view switching resolves across the navigable views in
- * every supported language. Runs on the pr-deterministic lane under the model provider.
+ * every supported language. Runs model-free on the pr-deterministic lane.
  */
 import type {
   CapturedAction,
@@ -17,6 +17,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { expectAcceptedViewNavigationEffect } from "./_helpers/view-navigation-effect";
 
 /**
  * Exhaustive deterministic scenario matrix (#8797, acceptance criterion 4).
@@ -42,8 +43,8 @@ type CoveredView = {
 
 // The curated domain views covered by CURATED_MULTILINGUAL (calendar, wallet,
 // inbox, settings), with the label + path the loopback registry serves. The
-// VIEWS show handler echoes `label` back ("Opened <label>.") and
-// surfaces `data.view.path`, so these must match what the registry returns.
+// VIEWS show returns an internal structured navigation effect and surfaces
+// `data.view.path`, so these must match what the registry returns.
 const COVERED_VIEWS: CoveredView[] = [
   { id: "calendar", label: "Calendar", path: "/apps/calendar" },
   { id: "wallet", label: "Wallet", path: "/apps/wallet" },
@@ -84,10 +85,12 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: CoveredView,
 ): string | undefined {
-  const expectedText = `Opened ${view.label}.`;
-  if (execution.responseText !== expectedText) {
-    return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
-  }
+  const effectFailure = expectAcceptedViewNavigationEffect(execution, {
+    viewId: view.id,
+    label: view.label,
+    path: view.path,
+  });
+  if (effectFailure) return effectFailure;
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === "VIEWS",
   ) as CapturedAction | undefined;
@@ -128,6 +131,11 @@ function expectShowTurn(
 export default scenario({
   id: "deterministic-view-switching-multilingual",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Deterministic view switching across navigable views in every language",
   domain: "scenario-runner",
@@ -186,7 +194,6 @@ export default scenario({
       text: entry.phrase,
       actionName: "VIEWS",
       options: { action: "show", viewType: "gui" },
-      responseIncludesAny: [`Opened ${view.label}`],
       assertTurn: (execution: ScenarioTurnExecution) =>
         expectShowTurn(execution, view),
     };

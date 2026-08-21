@@ -1,6 +1,6 @@
 /**
  * Keyless catalog coverage for the plugin-app-control action surface against a
- * seeded set of scenario views. Runs on the pr-deterministic lane under the model provider.
+ * seeded set of scenario views. Runs model-free on the pr-deterministic lane.
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -16,6 +16,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { expectAcceptedViewNavigationEffect } from "./_helpers/view-navigation-effect";
 
 function toRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -83,6 +84,34 @@ function expectActionTurn(
   }
 
   return undefined;
+}
+
+function expectNavigationActionTurn(
+  execution: ScenarioTurnExecution,
+  expected: {
+    parameters: Record<string, unknown>;
+    viewId: string;
+    label: string;
+    path: string;
+  },
+): string | undefined {
+  const effectFailure = expectAcceptedViewNavigationEffect(execution, {
+    viewId: expected.viewId,
+    label: expected.label,
+    path: expected.path,
+  });
+  if (effectFailure) return effectFailure;
+  return expectActionTurn(execution, {
+    actionName: "VIEWS",
+    parameters: expected.parameters,
+    responseText: execution.responseText,
+    resultFields: {
+      "values.mode": "show",
+      "values.viewId": expected.viewId,
+      "values.label": expected.label,
+      "data.view.path": expected.path,
+    },
+  });
 }
 
 const appLoadDirectory = "/tmp/eliza-app-control-scenario-load/apps";
@@ -628,18 +657,12 @@ export default scenario({
       text: "Open the settings view",
       actionName: "VIEWS",
       options: { action: "show", view: "settings", viewType: "gui" },
-      responseIncludesAny: ["Opened Settings"],
       assertTurn: (execution) =>
-        expectActionTurn(execution, {
-          actionName: "VIEWS",
+        expectNavigationActionTurn(execution, {
           parameters: { action: "show", view: "settings", viewType: "gui" },
-          responseText: "Opened Settings.",
-          resultFields: {
-            "values.mode": "show",
-            "values.viewId": "settings",
-            "values.label": "Settings",
-            "data.view.path": "/settings",
-          },
+          viewId: "settings",
+          label: "Settings",
+          path: "/settings",
         }),
     },
     {
@@ -648,22 +671,16 @@ export default scenario({
       text: "Open the remote ledger view",
       actionName: "VIEWS",
       options: { action: "open", view: "remote-ledger", viewType: "gui" },
-      responseIncludesAny: ["Opened Remote Ledger"],
       assertTurn: (execution) =>
-        expectActionTurn(execution, {
-          actionName: "VIEWS",
+        expectNavigationActionTurn(execution, {
           parameters: {
             action: "open",
             view: "remote-ledger",
             viewType: "gui",
           },
-          responseText: "Opened Remote Ledger.",
-          resultFields: {
-            "values.mode": "show",
-            "values.viewId": "remote-ledger",
-            "values.label": "Remote Ledger",
-            "data.view.path": "/remote-ledger",
-          },
+          viewId: "remote-ledger",
+          label: "Remote Ledger",
+          path: "/remote-ledger",
         }),
     },
     {

@@ -1,6 +1,6 @@
 /**
  * Keyless coverage that view switching resolves across every built-in view. Runs
- * on the pr-deterministic lane under the model provider.
+ * model-free on the pr-deterministic lane.
  */
 import type {
   CapturedAction,
@@ -13,6 +13,7 @@ import {
   registerAppControlHttpHandler,
   resetAppControlHttpLoopback,
 } from "./_helpers/app-control-http-loopback";
+import { expectAcceptedViewNavigationEffect } from "./_helpers/view-navigation-effect";
 
 /**
  * End-to-end view-switching coverage for every built-in (first-party) view.
@@ -73,10 +74,12 @@ function expectShowTurn(
   execution: ScenarioTurnExecution,
   view: BuiltinView,
 ): string | undefined {
-  const expectedText = `Opened ${view.navigationLabel ?? view.label}.`;
-  if (execution.responseText !== expectedText) {
-    return `expected responseText=${JSON.stringify(expectedText)}, saw ${JSON.stringify(execution.responseText)}`;
-  }
+  const effectFailure = expectAcceptedViewNavigationEffect(execution, {
+    viewId: view.id,
+    label: view.navigationLabel ?? view.label,
+    path: view.path,
+  });
+  if (effectFailure) return effectFailure;
   const action = execution.actionsCalled.find(
     (candidate) => candidate.actionName === "VIEWS",
   ) as CapturedAction | undefined;
@@ -115,6 +118,11 @@ function expectShowTurn(
 export default scenario({
   id: "deterministic-view-switching",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic view switching across every built-in view",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "views"],
@@ -159,7 +167,6 @@ export default scenario({
     text: `Open the ${view.label} view`,
     actionName: "VIEWS",
     options: { action: "show", view: view.id, viewType: "gui" },
-    responseIncludesAny: [`Opened ${view.navigationLabel ?? view.label}`],
     assertTurn: (execution: ScenarioTurnExecution) =>
       expectShowTurn(execution, view),
   })),

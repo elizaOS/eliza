@@ -5,10 +5,9 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { ModelType } from "@elizaos/core";
-import { matchesScenarioInput } from "@elizaos/core/testing";
 import type {
   CapturedAction,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -30,9 +29,6 @@ type RuntimeWithScenarioModelFixtures = {
   deleteTask?: (taskId: string) => Promise<void>;
   getService?: (serviceType: string) => unknown;
   getTasks?: (query?: Record<string, unknown>) => Promise<unknown[]>;
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
 };
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -60,6 +56,17 @@ function readPath(value: unknown, path: string): unknown {
 
 function valuesEqual(actual: unknown, expected: unknown): boolean {
   return JSON.stringify(actual) === JSON.stringify(expected);
+}
+
+function currentUserInputMatcher(input: string): {
+  pattern: string;
+  flags: string;
+} {
+  const escaped = input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return {
+    pattern: `(?:^|\\n)message:user:\\n${escaped}(?:\\n\\n|$)`,
+    flags: "u",
+  };
 }
 
 function expectRoutedAction(
@@ -98,7 +105,10 @@ function expectRoutedAction(
   return undefined;
 }
 
-function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
+function handleResponseFixture(
+  input: string,
+  actionName: "APP" | "VIEWS",
+): ScenarioModelFixture {
   const args = {
     contexts: ["settings"],
     intents: [input.toLowerCase()],
@@ -110,12 +120,11 @@ function handleResponseFixture(input: string, actionName: "APP" | "VIEWS") {
   return {
     name: `route-${actionName.toLowerCase()}-stage1-${input}`,
     match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesScenarioInput(input),
-      toolName: "HANDLE_RESPONSE",
+      modelType: "RESPONSE_HANDLER",
+      input: currentUserInputMatcher(input),
+      toolNames: ["HANDLE_RESPONSE"],
     },
-    response: args,
-    times: 1,
+    response: { json: args },
   };
 }
 
@@ -124,30 +133,54 @@ function plannerFixture(
   actionName: "APP" | "VIEWS",
   args: Record<string, unknown>,
   messageToUser: string,
-) {
+  toolNames: string[] = [actionName, "REPLY", "IGNORE", "STOP"],
+): ScenarioModelFixture {
   return {
     name: `route-${actionName.toLowerCase()}-planner-${input}`,
     match: {
-      modelType: ModelType.ACTION_PLANNER,
-      input: matchesScenarioInput(input),
-      toolName: actionName,
+      modelType: "ACTION_PLANNER",
+      input: currentUserInputMatcher(input),
+      toolNames,
     },
     response: {
-      text: "",
-      thought: `Call ${actionName} for ${input}.`,
-      messageToUser,
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
-          name: actionName,
-          type: "function",
-          arguments: args,
-        },
-      ],
+      json: {
+        text: "",
+        thought: `Call ${actionName} for ${input}.`,
+        messageToUser,
+        completed: true,
+        finishReason: "tool-calls",
+        toolCalls: [
+          {
+            id: `call-${actionName.toLowerCase()}-${String(args.action)}`,
+            name: actionName,
+            type: "function",
+            arguments: args,
+          },
+        ],
+      },
     },
-    times: 1,
+  };
+}
+
+function postToolReplyFixture(
+  input: string,
+  text: string,
+): ScenarioModelFixture {
+  return {
+    name: `post-tool-reply-${input}`,
+    match: {
+      modelType: "ACTION_PLANNER",
+      input: currentUserInputMatcher(input),
+      toolNames: [],
+    },
+    response: {
+      json: {
+        thought: "Acknowledge the completed navigation once.",
+        messageToUser: text,
+        completed: true,
+        toolCalls: [],
+      },
+    },
   };
 }
 
@@ -275,9 +308,128 @@ function normalizedRequests() {
   }));
 }
 
+function appControlModelFixtures(): ScenarioModelFixture[] {
+  return [
+    handleResponseFixture("Open the settings view", "VIEWS"),
+    plannerFixture(
+      "Open the settings view",
+      "VIEWS",
+      { action: "show", view: "settings", viewType: "gui" },
+      "Opened Settings.",
+    ),
+    postToolReplyFixture("Open the settings view", "Opened Settings."),
+    handleResponseFixture("Search views for finance", "VIEWS"),
+    plannerFixture(
+      "Search views for finance",
+      "VIEWS",
+      { action: "search", query: "finance", viewType: "gui" },
+      'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.',
+    ),
+    handleResponseFixture("Launch the feed app", "APP"),
+    plannerFixture(
+      "Launch the feed app",
+      "APP",
+      { action: "launch", app: "feed" },
+      "Launched Feed. Run ID: run-feed-nl-1.",
+      ["APP", "VIEWS", "REPLY", "IGNORE", "STOP"],
+    ),
+    postToolReplyFixture(
+      "Launch the feed app",
+      "Launched Feed. Run ID: run-feed-nl-1.",
+    ),
+    handleResponseFixture("Relaunch the feed app", "APP"),
+    plannerFixture(
+      "Relaunch the feed app",
+      "APP",
+      { action: "relaunch", app: "feed" },
+      "Relaunched Feed. New run ID: run-feed-nl-2.",
+      ["APP", "VIEWS", "REPLY", "IGNORE", "STOP"],
+    ),
+    postToolReplyFixture(
+      "Relaunch the feed app",
+      "Relaunched Feed. New run ID: run-feed-nl-2.",
+    ),
+    handleResponseFixture("Stop the feed app", "APP"),
+    plannerFixture(
+      "Stop the feed app",
+      "APP",
+      { action: "stop", app: "feed" },
+      "Feed stopped.",
+      ["APP", "VIEWS", "REPLY", "IGNORE", "STOP"],
+    ),
+    handleResponseFixture(loadAppsInput, "APP"),
+    plannerFixture(
+      loadAppsInput,
+      "APP",
+      { action: "load_from_directory", directory: appLoadDirectory },
+      `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
+    ),
+    postToolReplyFixture(
+      loadAppsInput,
+      `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
+    ),
+    handleResponseFixture("Create a feed dashboard app", "APP"),
+    plannerFixture(
+      "Create a feed dashboard app",
+      "APP",
+      { action: "create", intent: "Create a feed dashboard app" },
+      "Picking next step...",
+      ["APP", "VIEWS", "START_CODING_TASK", "REPLY", "IGNORE", "STOP"],
+    ),
+    handleResponseFixture("Cancel the app create flow", "APP"),
+    plannerFixture(
+      "Cancel the app create flow",
+      "APP",
+      { action: "create", choice: "cancel" },
+      "Canceled. No app changes made.",
+      ["APP", "START_CODING_TASK", "REPLY", "IGNORE", "STOP"],
+    ),
+    postToolReplyFixture(
+      "Cancel the app create flow",
+      "Canceled. No app changes made.",
+    ),
+    handleResponseFixture(editFeedBoardInput, "VIEWS"),
+    plannerFixture(
+      editFeedBoardInput,
+      "VIEWS",
+      {
+        action: "edit",
+        view: "feed-board",
+        intent: "Make feed board show denser queue rows",
+      },
+      `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
+    ),
+    handleResponseFixture("Edit the feed app", "APP"),
+    plannerFixture(
+      "Edit the feed app",
+      "APP",
+      {
+        action: "create",
+        editTarget: "feed",
+        intent: "Tighten the feed app table density",
+      },
+      // This must remain distinct from the callback text. APP edit owns the
+      // visible single-delivery response, so planner prose must not escape.
+      "Planner re-render that must not be delivered for the APP edit turn.",
+      ["APP", "VIEWS", "START_CODING_TASK", "REPLY", "IGNORE", "STOP"],
+    ),
+    handleResponseFixture("Delete the remote ledger view", "VIEWS"),
+    plannerFixture(
+      "Delete the remote ledger view",
+      "VIEWS",
+      { action: "delete", view: "remote-ledger", confirm: true },
+      "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
+    ),
+  ];
+}
+
 export default scenario({
   id: "deterministic-app-control-nl-routing",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: appControlModelFixtures(),
+  },
   title: "Deterministic app-control natural-language routing",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control", "nl-routing"],
@@ -445,129 +597,6 @@ export default scenario({
         };
 
         let launchCount = 0;
-        runtime.scenarioModelFixtures?.register(
-          handleResponseFixture("Open the settings view", "VIEWS"),
-          plannerFixture(
-            "Open the settings view",
-            "VIEWS",
-            {
-              action: "show",
-              view: "settings",
-              viewType: "gui",
-            },
-            "Opened Settings.",
-          ),
-          handleResponseFixture("Search views for finance", "VIEWS"),
-          plannerFixture(
-            "Search views for finance",
-            "VIEWS",
-            {
-              action: "search",
-              query: "finance",
-              viewType: "gui",
-            },
-            'Views matching "finance" (1):\n  [91] Remote Ledger (remote-ledger) — /remote-ledger — Track finance balances and remote ledger entries.',
-          ),
-          handleResponseFixture("Launch the feed app", "APP"),
-          plannerFixture(
-            "Launch the feed app",
-            "APP",
-            {
-              action: "launch",
-              app: "feed",
-            },
-            "Launched Feed. Run ID: run-feed-nl-1.",
-          ),
-          handleResponseFixture("Relaunch the feed app", "APP"),
-          plannerFixture(
-            "Relaunch the feed app",
-            "APP",
-            {
-              action: "relaunch",
-              app: "feed",
-            },
-            "Relaunched Feed. New run ID: run-feed-nl-2.",
-          ),
-          handleResponseFixture("Stop the feed app", "APP"),
-          plannerFixture(
-            "Stop the feed app",
-            "APP",
-            {
-              action: "stop",
-              app: "feed",
-            },
-            "Feed stopped.",
-          ),
-          handleResponseFixture(loadAppsInput, "APP"),
-          plannerFixture(
-            loadAppsInput,
-            "APP",
-            {
-              action: "load_from_directory",
-              directory: appLoadDirectory,
-            },
-            `Registered 1 app from ${appLoadDirectory}:\n  - Loaded Console (@scenario/app-loaded-console)\n\nApps are registered only — none were launched.`,
-          ),
-          handleResponseFixture("Create a feed dashboard app", "APP"),
-          plannerFixture(
-            "Create a feed dashboard app",
-            "APP",
-            {
-              action: "create",
-              intent: "Create a feed dashboard app",
-            },
-            "Picking next step...",
-          ),
-          handleResponseFixture("Cancel the app create flow", "APP"),
-          plannerFixture(
-            "Cancel the app create flow",
-            "APP",
-            {
-              action: "create",
-              choice: "cancel",
-            },
-            "Canceled. No app changes made.",
-          ),
-          handleResponseFixture(editFeedBoardInput, "VIEWS"),
-          plannerFixture(
-            editFeedBoardInput,
-            "VIEWS",
-            {
-              action: "edit",
-              view: "feed-board",
-              intent: "Make feed board show denser queue rows",
-            },
-            `Started view edit task for Feed Board at ${feedPluginDir}. Task session scenario-edit-view-feed-board is running.`,
-          ),
-          handleResponseFixture("Edit the feed app", "APP"),
-          plannerFixture(
-            "Edit the feed app",
-            "APP",
-            {
-              action: "create",
-              editTarget: "feed",
-              intent: "Tighten the feed app table density",
-            },
-            // Deliberately distinct from the action's own callback text: the APP
-            // edit path opts into single delivery, so this planner bubble must
-            // never reach chat. The turn asserts the callback sentence instead.
-            "Planner re-render that must not be delivered for the APP edit turn.",
-          ),
-          handleResponseFixture("Delete the remote ledger view", "VIEWS"),
-          plannerFixture(
-            "Delete the remote ledger view",
-            "VIEWS",
-            {
-              action: "delete",
-              view: "remote-ledger",
-              // The VIEWS action declares `confirm` as schema type boolean; the
-              // strict model provider validates fixture toolCalls against that
-              // schema, so a string "true" is rejected before the handler runs.
-              confirm: true,
-            },
-            "Deleted Remote Ledger (@elizaos/plugin-remote-ledger). Plugin @elizaos/plugin-remote-ledger unloaded.",
-          ),
-        );
 
         registerAppControlHttpHandler((request) => {
           if (request.method === "GET" && request.pathname === "/api/views") {
