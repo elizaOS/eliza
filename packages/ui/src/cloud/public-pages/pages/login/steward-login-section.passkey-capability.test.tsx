@@ -161,6 +161,7 @@ describe("StewardLoginSection passkey capability gating", () => {
       expiresAt: "2026-07-17T12:10:00.000Z",
       challengeId: "challenge-1",
       pollSecret: "poll-secret",
+      emailCodeDelivered: true,
     });
     emailLoginSpies.verify.mockResolvedValue({
       token: "email-token",
