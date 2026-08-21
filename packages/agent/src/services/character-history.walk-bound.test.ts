@@ -1,12 +1,8 @@
 /**
- * Fail-closed character-history walk for Zod-accepted messageExamples.
+ * Exercises bounded character-history snapshot construction and persisted-entry parsing.
  *
- * Origin develop JSON.parse + validateCharacter accepted content.passthrough
- * extra keys, including a 20k-deep nest (~40 KiB) and cyclic in-memory
- * graphs, then RangeError'd in toCharacterHistoryValue during
- * buildCharacterHistorySnapshot. Depth/node/cycle fail-closed replaces
- * that with a typed ElizaError CHARACTER_HISTORY_UNBOUNDED, and every array
- * reserves its whole logical length in the shared aggregate walk budget.
+ * The deterministic harness covers depth, node, descriptor, accessor, proxy,
+ * cycle, and sparse-array limits without external services.
  */
 import { ElizaError, isElizaError, MemoryType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
