@@ -9,10 +9,11 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { ElizaError } from "../errors";
 import { checkSenderRole } from "../roles";
+import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
 	projectToolDiagnosticArgs,
-	projectToolDiagnosticValue,
+	TOOL_DIAGNOSTIC_MASK,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import {
@@ -88,51 +89,267 @@ function isContentRecord(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function toContentValue(value: unknown): ContentValue {
-	if (
-		value === undefined ||
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
+const MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH = 8;
+const MAX_ACTION_RESULT_DIAGNOSTIC_NODES = 1_024;
+const MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES = 8 * 1_024;
+const MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES = 16 * 1_024;
+
+interface ActionResultDiagnosticBudget {
+	nodes: number;
+	stringBytes: number;
+}
+
+function utf8ByteLength(value: string): number {
+	return new TextEncoder().encode(value).byteLength;
+}
+
+function truncateUtf8(value: string, maxBytes: number): string {
+	if (maxBytes <= 0) return TOOL_DIAGNOSTIC_MASK;
+	const suffix = "…";
+	const suffixBytes = utf8ByteLength(suffix);
+	if (maxBytes < suffixBytes) return "";
+	const characters: Array<{ bytes: number; value: string }> = [];
+	let bytes = 0;
+	for (const character of value) {
+		const characterBytes = utf8ByteLength(character);
+		if (bytes + characterBytes > maxBytes) {
+			while (characters.length > 0 && bytes + suffixBytes > maxBytes) {
+				bytes -= characters.pop()?.bytes ?? 0;
+			}
+			return `${characters.map((entry) => entry.value).join("")}${suffix}`;
+		}
+		characters.push({ bytes: characterBytes, value: character });
+		bytes += characterBytes;
+	}
+	return characters.map((entry) => entry.value).join("");
+}
+
+function boundedDiagnosticString(
+	value: string,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+	budget: ActionResultDiagnosticBudget,
+): ContentValue {
+	if (value.length > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	const remaining =
+		MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES - budget.stringBytes;
+	let redacted: string;
+	try {
+		redacted = redactDiagnosticText(value);
+	} catch {
+		// error-policy:J4 A broken redactor becomes an explicit diagnostic mask.
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	const bounded = truncateUtf8(
+		redacted,
+		Math.min(MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES, remaining),
+	);
+	budget.stringBytes += utf8ByteLength(bounded);
+	return bounded;
+}
+
+function defineDiagnosticProperty(
+	record: Record<string, ContentValue>,
+	key: string,
+	value: ContentValue,
+): void {
+	Object.defineProperty(record, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
+function projectActionResultDiagnosticValue(
+	value: unknown,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
+	seen: WeakSet<object>,
+	depth: number,
+	budget: ActionResultDiagnosticBudget,
+	suppressKeys?: ReadonlySet<string>,
+): ContentValue {
+	budget.nodes += 1;
+	if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (value === undefined || value === null || typeof value === "boolean") {
 		return value as ContentValue;
 	}
-	if (Array.isArray(value)) {
-		return value.map(toContentValue);
+	if (typeof value === "number") {
+		return Number.isFinite(value) ? value : TOOL_DIAGNOSTIC_MASK;
 	}
-	if (isContentRecord(value)) {
+	if (typeof value === "string") {
+		return boundedDiagnosticString(value, redactDiagnosticText, budget);
+	}
+	if (typeof value !== "object" || value === null) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	if (depth >= MAX_ACTION_RESULT_DIAGNOSTIC_DEPTH || seen.has(value)) {
+		return TOOL_DIAGNOSTIC_MASK;
+	}
+	seen.add(value);
+	try {
+		let isArray: boolean;
+		try {
+			isArray = Array.isArray(value);
+		} catch {
+			// error-policy:J4 Revoked proxies degrade to an explicit diagnostic mask.
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		if (isArray) {
+			let lengthDescriptor: PropertyDescriptor | undefined;
+			try {
+				lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+			} catch {
+				// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const length = lengthDescriptor?.value;
+			if (
+				typeof length !== "number" ||
+				!Number.isSafeInteger(length) ||
+				length < 0 ||
+				length > MAX_ACTION_RESULT_DIAGNOSTIC_NODES - budget.nodes
+			) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const projected: ContentValue[] = new Array(length);
+			for (let index = 0; index < length; index += 1) {
+				let descriptor: PropertyDescriptor | undefined;
+				try {
+					descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+				} catch {
+					// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+					return TOOL_DIAGNOSTIC_MASK;
+				}
+				budget.nodes += 1;
+				if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+					return TOOL_DIAGNOSTIC_MASK;
+				}
+				if (!descriptor) continue;
+				projected[index] =
+					"value" in descriptor
+						? projectActionResultDiagnosticValue(
+								descriptor.value,
+								redactDiagnosticText,
+								seen,
+								depth + 1,
+								budget,
+							)
+						: TOOL_DIAGNOSTIC_MASK;
+			}
+			return projected;
+		}
+
+		let keys: PropertyKey[];
+		try {
+			keys = Reflect.ownKeys(value);
+		} catch {
+			// error-policy:J4 Revoked or hostile proxies degrade to a diagnostic mask.
+			return TOOL_DIAGNOSTIC_MASK;
+		}
+		if (keys.length > MAX_ACTION_RESULT_DIAGNOSTIC_NODES - budget.nodes) {
+			return TOOL_DIAGNOSTIC_MASK;
+		}
 		const record: Record<string, ContentValue> = {};
-		for (const [key, entry] of Object.entries(value)) {
-			record[key] = toContentValue(entry);
+		for (const key of keys) {
+			if (typeof key !== "string") continue;
+			let descriptor: PropertyDescriptor | undefined;
+			try {
+				descriptor = Object.getOwnPropertyDescriptor(value, key);
+			} catch {
+				// error-policy:J4 Hostile proxy traps degrade to a diagnostic mask.
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			if (!descriptor?.enumerable) continue;
+			budget.nodes += 1;
+			if (budget.nodes > MAX_ACTION_RESULT_DIAGNOSTIC_NODES) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			if (key.length > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			const keyBytes = utf8ByteLength(key);
+			if (
+				keyBytes > MAX_ACTION_RESULT_DIAGNOSTIC_STRING_BYTES ||
+				keyBytes >
+					MAX_ACTION_RESULT_DIAGNOSTIC_TOTAL_STRING_BYTES - budget.stringBytes
+			) {
+				return TOOL_DIAGNOSTIC_MASK;
+			}
+			budget.stringBytes += keyBytes;
+			let projected: ContentValue;
+			if (suppressKeys?.has(key)) {
+				projected = sensitiveActionResultMarker(
+					"value" in descriptor ? descriptor.value : undefined,
+					redactDiagnosticText,
+					budget,
+				);
+			} else if (isSensitiveKeyName(key) || !("value" in descriptor)) {
+				projected = TOOL_DIAGNOSTIC_MASK;
+			} else {
+				projected = projectActionResultDiagnosticValue(
+					descriptor.value,
+					redactDiagnosticText,
+					seen,
+					depth + 1,
+					budget,
+				);
+			}
+			defineDiagnosticProperty(record, key, projected);
 		}
 		return record;
+	} finally {
+		seen.delete(value);
 	}
-	return String(value);
 }
 
 function actionResultToContentRecord(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): Record<string, ContentValue> {
-	const record: Record<string, ContentValue> = {};
-	for (const [key, value] of Object.entries(result)) {
-		if (options.suppressData && (key === "data" || key === "values")) {
-			record[key] = sensitiveActionResultMarker(value);
-			continue;
-		}
-		record[key] = toContentValue(value);
-	}
-	return record;
+	const projectedResult = projectActionResultDiagnosticValue(
+		result,
+		redactDiagnosticText,
+		new WeakSet<object>(),
+		0,
+		{ nodes: 0, stringBytes: 0 },
+		options.suppressData ? new Set(["data", "values"]) : undefined,
+	);
+	return isContentRecord(projectedResult) ? projectedResult : {};
 }
 
 function sensitiveActionResultMarker(
 	value: unknown,
+	redactDiagnosticText?: ToolDiagnosticTextRedactor,
+	budget?: ActionResultDiagnosticBudget,
 ): Record<string, ContentValue> {
-	const actionName =
-		isContentRecord(value) && typeof value.actionName === "string"
-			? value.actionName
-			: undefined;
+	let actionName: string | undefined;
+	if (value !== null && typeof value === "object") {
+		try {
+			const descriptor = Object.getOwnPropertyDescriptor(value, "actionName");
+			if (
+				descriptor &&
+				"value" in descriptor &&
+				typeof descriptor.value === "string"
+			) {
+				actionName =
+					redactDiagnosticText && budget
+						? (boundedDiagnosticString(
+								descriptor.value,
+								redactDiagnosticText,
+								budget,
+							) as string)
+						: descriptor.value;
+			}
+		} catch {
+			// error-policy:J4 A hostile result degrades to the privacy marker without
+			// allowing diagnostics to fail the settled action.
+		}
+	}
 	return {
 		...(actionName ? { actionName } : {}),
 		suppressed: true,
@@ -758,12 +975,13 @@ export async function executePlannedToolCall(
 					),
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
-					actionResult: projectToolDiagnosticValue(
-						actionResultToContentRecord(resultForEvent, {
-							suppressData: suppressActionResult,
-						}),
+					actionResult: actionResultToContentRecord(
+						resultForEvent,
 						redactDiagnosticText,
-					) as Record<string, ContentValue>,
+						{
+							suppressData: suppressActionResult,
+						},
+					),
 					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
@@ -819,10 +1037,11 @@ async function emitToolResult(
 		status,
 		redactDiagnosticText,
 	);
-	streamingToolCall.result = projectToolDiagnosticValue(
-		actionResultToStreamingResult(result, options),
+	streamingToolCall.result = actionResultToStreamingResult(
+		result,
 		redactDiagnosticText,
-	) as ToolCall["result"];
+		options,
+	);
 	await emitStreamingHook(streamingContext, "onToolResult", {
 		toolCall: streamingToolCall,
 		toolCallId: streamingToolCall.id,
@@ -904,6 +1123,7 @@ function plannedToolCallToStreamingToolCall(
 
 function actionResultToStreamingResult(
 	result: ActionResult,
+	redactDiagnosticText: ToolDiagnosticTextRedactor,
 	options: { suppressData?: boolean } = {},
 ): ToolCall["result"] {
 	const streamingResult: ActionResult = {
@@ -925,7 +1145,7 @@ function actionResultToStreamingResult(
 		modelReplyRequired: result.modelReplyRequired,
 		continueChain: result.continueChain,
 	};
-	return actionResultToContentRecord(streamingResult);
+	return actionResultToContentRecord(streamingResult, redactDiagnosticText);
 }
 
 export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;

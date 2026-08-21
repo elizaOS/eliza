@@ -378,8 +378,14 @@ test("landing leads with iMessage and keeps secondary channels available", async
     .toBe("+18087881821");
   const channels = page.locator(".landing-secondary-channels");
   await expect(channels.locator(".landing-channel")).toHaveCount(2);
-  await expect(channels.getByText("Telegram", { exact: true })).toBeVisible();
-  await expect(channels.getByText("Discord", { exact: true })).toBeVisible();
+  await expect(channels.getByText("Telegram", { exact: true })).toHaveCSS(
+    "clip-path",
+    "inset(50%)",
+  );
+  await expect(channels.getByText("Discord", { exact: true })).toHaveCSS(
+    "clip-path",
+    "inset(50%)",
+  );
   await expect(
     channels.getByRole("link", { name: /Telegram/ }),
   ).toHaveAttribute("href", /^https:\/\/t\.me\//);
@@ -387,6 +393,10 @@ test("landing leads with iMessage and keeps secondary channels available", async
     "href",
     /^https:\/\/discord\.com\//,
   );
+  for (const channel of await channels.locator(".landing-channel").all()) {
+    await expect(channel).toHaveCSS("width", "44px");
+    await expect(channel).toHaveCSS("height", "44px");
+  }
   await expect(channels.getByRole("link", { name: /WhatsApp/ })).toHaveCount(0);
 
   const keyboard = page.locator(".landing-keyboard");
