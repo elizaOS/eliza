@@ -56,4 +56,13 @@ export class FaultController {
   public reset(): void {
     this.attempts.clear();
   }
+
+  public snapshot(): readonly {
+    readonly boundary: string;
+    readonly attempts: number;
+  }[] {
+    return [...this.attempts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([boundary, attempts]) => ({ boundary, attempts }));
+  }
 }
