@@ -176,6 +176,29 @@ type TelegramAccountRuntime = {
   account: ResolvedTelegramAccount;
   bot: Telegraf<Context>;
   messageManager: MessageManager;
+  /**
+   * One-shot wiring record for this account's Telegraf instance. `start()`
+   * retries the whole init sequence on a transient failure, but neither
+   * Telegraf registration nor `launch()` is idempotent: `bot.use()`/`bot.on()`/
+   * `bot.command()` APPEND to the middleware chain, and `startPolling()`
+   * overwrites `bot.polling` — so a second `launch()` on the same instance
+   * strands the previous long-poll loop, which `bot.stop()` can then never
+   * abort and which keeps calling `getUpdates` for the life of the process.
+   * Each step is recorded once it succeeds so a retry re-runs only what
+   * actually failed.
+   */
+  wiring: TelegramAccountWiring;
+};
+
+type TelegramAccountWiring = {
+  /** `bot.start()` + slash-command/task-board handlers are registered. */
+  commands: boolean;
+  /** The supervised long-poll loop is running on this bot instance. */
+  poller: boolean;
+  /** Middleware chain and message/reaction/callback handlers are registered. */
+  handlers: boolean;
+  /** SIGINT/SIGTERM teardown hooks for this bot are installed. */
+  shutdownHooks: boolean;
 };
 
 function getCanonicalOwnerId(runtime: IAgentRuntime): UUID | null {
@@ -394,6 +417,12 @@ export class TelegramService extends Service {
       account,
       bot,
       messageManager,
+      wiring: {
+        commands: false,
+        poller: false,
+        handlers: false,
+        shutdownHooks: false,
+      },
     };
   }
 
@@ -622,8 +651,11 @@ export class TelegramService extends Service {
             "Starting Telegram bot",
           );
           await service.initializeBot(state);
-          service.setupMiddlewares(state);
-          service.setupMessageHandlers(state);
+          if (!state.wiring.handlers) {
+            service.setupMiddlewares(state);
+            service.setupMessageHandlers(state);
+            state.wiring.handlers = true;
+          }
           await state.bot.telegram.getMe();
 
           logger.success(
@@ -812,6 +844,49 @@ export class TelegramService extends Service {
       }
     }
 
+    // Registration is one-shot per Telegraf instance: `start()` retries this
+    // whole method after a transient failure, and Telegraf's registration APIs
+    // append rather than replace, so an unguarded retry duplicates every
+    // handler on the same bot.
+    if (!activeState?.wiring.commands) {
+      this.registerBotCommands(bot, activeState, accountId);
+      if (activeState) {
+        activeState.wiring.commands = true;
+      }
+    }
+
+    // Telegraf v4's `bot.launch()` resolves only when polling STOPS — it awaits
+    // the long-poll loop internally — so it must not be awaited for completion.
+    // launchPollerSupervised awaits just the connect signal and then supervises
+    // the loop (with bounded self-healing relaunch) in the background.
+    //
+    // It is also one-shot: `startPolling()` assigns `bot.polling`, so launching
+    // twice on the same instance leaves the first `Polling` unreachable —
+    // `bot.stop()` only aborts the newest one, and the stranded loop keeps
+    // long-polling `getUpdates` against the same token forever (a guaranteed
+    // 409 "terminated by other getUpdates request" against whichever poller
+    // Telegram picks, and a process that can no longer be shut down cleanly).
+    // A pre-connect launch failure never reaches `startPolling`, so the flag is
+    // set only after a successful connect and a retry can still relaunch.
+    if (!activeState?.wiring.poller) {
+      await this.launchPollerSupervised(bot, botToken, accountId);
+      if (activeState) {
+        activeState.wiring.poller = true;
+      }
+    }
+    await this.finishBotStartup(bot, activeState, accountId);
+  }
+
+  /**
+   * Registers the `/start` handler, the universal slash-command handlers, and
+   * the task-board command on a freshly created Telegraf instance. Called
+   * exactly once per bot (see {@link TelegramAccountRuntime.wiring}).
+   */
+  private registerBotCommands(
+    bot: Telegraf<Context>,
+    activeState: TelegramAccountRuntime | null,
+    accountId: string,
+  ): void {
     bot.start((ctx) => {
       const slashStartPayload = {
         ctx,
@@ -857,13 +932,17 @@ export class TelegramService extends Service {
         accountId,
       );
     }
+  }
 
-    // Telegraf v4's `bot.launch()` resolves only when polling STOPS — it awaits
-    // the long-poll loop internally — so it must not be awaited for completion.
-    // launchPollerSupervised awaits just the connect signal and then supervises
-    // the loop (with bounded self-healing relaunch) in the background.
-    await this.launchPollerSupervised(bot, botToken, accountId);
-
+  /**
+   * Post-launch startup steps: publish the slash-command menu, log bot info,
+   * and install the process shutdown hooks (once per bot instance).
+   */
+  private async finishBotStartup(
+    bot: Telegraf<Context>,
+    activeState: TelegramAccountRuntime | null,
+    accountId: string,
+  ): Promise<void> {
     // Publish the slash-command menu to Telegram so commands appear in the `/`
     // menu. setMyCommands failure is logged + swallowed (network) and must not
     // crash boot.
@@ -893,8 +972,14 @@ export class TelegramService extends Service {
         // error-policy:J6 best-effort teardown — bot already stopped.
       }
     };
+    if (activeState?.wiring.shutdownHooks) {
+      return;
+    }
     process.once("SIGINT", () => stopBot("SIGINT"));
     process.once("SIGTERM", () => stopBot("SIGTERM"));
+    if (activeState) {
+      activeState.wiring.shutdownHooks = true;
+    }
   }
 
   /**
