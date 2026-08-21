@@ -477,7 +477,7 @@ export async function startRealVoiceServer(
       // The force-armed browser sends a recognizable sentinel. Identity never
       // comes from that debug affordance: this loopback server binds the real
       // local agent in its config and scopes only the active conversation here.
-      const conversationId = readRequiredUuid(body, "conversationId");
+      const conversationId = readCanonicalConversationId(body);
       const consentNonce = readRequiredString(body, "consentNonce");
       if (conversationId !== config.conversationId) {
         writeJson(res, 403, { code: "conversation_scope_mismatch" });
@@ -644,8 +644,7 @@ export async function startRealVoiceServer(
 }
 
 const MAX_LOCAL_HTTP_BODY_BYTES = 16 * 1024;
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_LOCAL_CONVERSATION_ID_LENGTH = 128;
 
 class LocalVoiceRequestError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -701,10 +700,17 @@ function readRequiredString(
   return value.trim();
 }
 
-function readRequiredUuid(body: Record<string, unknown>, key: string): string {
-  const value = readRequiredString(body, key);
-  if (!UUID_PATTERN.test(value)) {
-    throw new LocalVoiceRequestError(`${key} must be a UUID`);
+function readCanonicalConversationId(body: Record<string, unknown>): string {
+  const value = body.conversationId;
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > MAX_LOCAL_CONVERSATION_ID_LENGTH ||
+    value.trim() !== value
+  ) {
+    throw new LocalVoiceRequestError(
+      "conversationId must be canonical and at most 128 characters",
+    );
   }
   return value;
 }

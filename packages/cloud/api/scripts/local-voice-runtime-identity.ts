@@ -9,8 +9,11 @@
 
 const CANONICAL_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID_SHAPE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LOOPBACK_IP_LITERALS = new Set(["127.0.0.1", "[::1]"]);
 const MAX_RUNTIME_RESPONSE_BYTES = 1024 * 1024;
+const MAX_RUNTIME_CONVERSATION_ID_LENGTH = 128;
 // restoreConversationsFromDb bypasses the runtime's own
 // evictOldestConversation(..., 500), so a legitimate list can exceed 500 and a
 // cap at that number would refuse startup on a healthy host. This bound exists
@@ -97,7 +100,7 @@ export async function resolveLocalVoiceRuntimeIdentity(
     "configured local agent id",
     options.configuredAgentId,
   );
-  const configuredConversationId = readOptionalCanonicalUuid(
+  const configuredConversationId = readOptionalConversationId(
     "configured local conversation id",
     options.configuredConversationId,
   );
@@ -257,11 +260,10 @@ function readConversations(value: unknown): RuntimeConversation[] {
     );
   }
   // Conversation ids are not UUIDs in general: restoreConversationsFromDb
-  // derives one by stripping the "web-conv-" prefix off a channel id, and the
-  // create path accepts one from a client payload. Rejecting the whole listing
-  // because a single record has an unexpected id would refuse startup on an
-  // ordinary host, so unreadable records are skipped and the selected one is
-  // still validated strictly below.
+  // derives one by stripping the "web-conv-" prefix off a persisted channel
+  // id. Rejecting the whole listing because a single record has an unexpected
+  // id would refuse startup on an ordinary host, so unreadable records are
+  // skipped and the selected one is still validated strictly below.
   const parsed: RuntimeConversation[] = [];
   body.conversations.forEach((value, index) => {
     let record: Record<string, unknown>;
@@ -274,7 +276,10 @@ function readConversations(value: unknown): RuntimeConversation[] {
       return;
     }
     parsed.push({
-      id: readRequiredString(`local conversation ${index} id`, record.id),
+      id: readCanonicalConversationId(
+        `local conversation ${index} id`,
+        record.id,
+      ),
       updatedAtEpochMs: readCanonicalTimestamp(
         `local conversation ${index} updatedAt`,
         record.updatedAt,
@@ -338,6 +343,28 @@ function readOptionalCanonicalUuid(
 ): string | undefined {
   if (value === undefined || value === "") return undefined;
   return readCanonicalUuid(label, value);
+}
+
+function readOptionalConversationId(
+  label: string,
+  value: string | undefined,
+): string | undefined {
+  if (value === undefined || value === "") return undefined;
+  return readCanonicalConversationId(label, value);
+}
+
+function readCanonicalConversationId(label: string, value: unknown): string {
+  const id = readRequiredString(label, value);
+  if (
+    id.length > MAX_RUNTIME_CONVERSATION_ID_LENGTH ||
+    id.trim() !== id ||
+    (UUID_SHAPE_PATTERN.test(id) && !CANONICAL_UUID_PATTERN.test(id))
+  ) {
+    throw new LocalVoiceRuntimeIdentityError(
+      `${label} must be canonical and at most 128 characters`,
+    );
+  }
+  return id;
 }
 
 function readCanonicalUuid(label: string, value: unknown): string {

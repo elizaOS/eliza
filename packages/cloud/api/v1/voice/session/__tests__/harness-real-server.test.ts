@@ -10,7 +10,7 @@ import { connect } from "node:net";
 import { fileURLToPath } from "node:url";
 
 const calls: string[] = [];
-const CONVERSATION_ID = "11111111-1111-4111-8111-111111111111";
+const CONVERSATION_ID = "legacy-channel";
 
 class FakeSocket {
   addEventListener() {}
@@ -97,7 +97,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           organizationId: "org",
           userId: "user",
           agentId: "agent",
-          conversationId: "conversation",
+          conversationId: CONVERSATION_ID,
         },
         jti: "jti",
         tokenExpSeconds: 123,
@@ -193,7 +193,7 @@ if (process.env.ELIZA_PROCESS_ISOLATED_TEST === "1") {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            conversationId: "22222222-2222-4222-8222-222222222222",
+            conversationId: "other-legacy-channel",
             consentNonce: consentBody.consentNonce,
             transport: "websocket",
           }),

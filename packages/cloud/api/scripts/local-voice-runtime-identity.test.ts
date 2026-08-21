@@ -342,14 +342,13 @@ describe("local voice runtime identity", () => {
 });
 
 // restoreConversationsFromDb derives a conversation id by stripping the
-// "web-conv-" prefix off a channel id, and the create path accepts one from a
-// client payload — so a non-UUID id is ordinary, not corruption. Rejecting the
-// whole listing over one such record refused startup on healthy hosts.
+// "web-conv-" prefix off a persisted channel id, so legacy non-UUID ids are
+// ordinary runtime data rather than corruption.
 test("selects a conversation whose id is not a UUID", async () => {
   const runtime = runtimeFetch({
     conversations: [
       {
-        id: "web-conv-legacy-channel",
+        id: "legacy-channel",
         updatedAt: "2026-08-19T20:00:00.000Z",
       },
     ],
@@ -357,10 +356,11 @@ test("selects a conversation whose id is not a UUID", async () => {
 
   const identity = await resolveLocalVoiceRuntimeIdentity({
     runtimeOrigin: "http://127.0.0.1:31337",
+    configuredConversationId: "legacy-channel",
     fetchImpl: runtime.fetchImpl,
   });
 
-  expect(identity.conversationId).toBe("web-conv-legacy-channel");
+  expect(identity.conversationId).toBe("legacy-channel");
 });
 
 test("skips an unreadable conversation record instead of refusing startup", async () => {
