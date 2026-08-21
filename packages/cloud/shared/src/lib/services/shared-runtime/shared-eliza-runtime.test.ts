@@ -9,6 +9,10 @@ import { NotificationService } from "@elizaos/core/services/notification";
 import type { ScheduledTask, ScheduledTaskRunner } from "@elizaos/plugin-scheduling/edge";
 import type { CreateTodoInput, TodoMutationRecord, TodoStore } from "@elizaos/plugin-todos/edge";
 import type { RunSharedAgentTurnResult } from "./run-shared-agent-turn";
+import {
+  sharedRuntimeConversationRoomId,
+  sharedRuntimeWorldId,
+} from "./shared-runtime-storage-identity";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 
 const scheduledInputs: Array<Record<string, unknown>> = [];
@@ -232,6 +236,7 @@ async function runTeardownTestTurn(): Promise<RunSharedAgentTurnResult> {
     execution: {
       channel: { type: ChannelType.DM, source: "shared-runtime" },
       agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+      roomKey: "teardown-test-room",
     },
   });
 }
@@ -331,6 +336,34 @@ describe("Shared Eliza Workerd runtime", () => {
       stopSpy.mockRestore();
       closeSpy.mockRestore();
     }
+  });
+
+  test("fails closed before inference when explicit execution omits a trusted room key", async () => {
+    const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
+    let providerCalls = 0;
+    globalThis.fetch = (async () => {
+      providerCalls += 1;
+      throw new Error("A roomless turn must not dispatch inference");
+    }) as typeof fetch;
+    const execute = (execution: unknown) =>
+      runSharedElizaRuntimeTurn({
+        character: { name: "Shared Eliza", system: "Be useful." },
+        history: [],
+        message: "hello",
+        execution: execution as never,
+        agentKey: "personal:room-boundary",
+        model: "gemma-4-31b",
+      });
+    const authority = {
+      agentKey: "personal:room-boundary",
+      channel: { type: ChannelType.DM, source: "shared-runtime" },
+    };
+
+    await expect(execute(authority)).rejects.toThrow("requires a trusted room key");
+    await expect(execute({ ...authority, roomKey: " " })).rejects.toThrow(
+      "requires a trusted room key",
+    );
+    expect(providerCalls).toBe(0);
   });
 
   test("routes ordinary focus language through HANDLE_RESPONSE in the genuine runtime", async () => {
@@ -436,6 +469,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
     const parts = [];
@@ -498,6 +532,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
     const iterator = result.parts?.[Symbol.asyncIterator]();
@@ -587,6 +622,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
 
@@ -674,6 +710,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.GROUP, source: "discord" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
 
@@ -710,6 +747,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
         agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+        roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
       },
     });
 
@@ -805,6 +843,7 @@ describe("Shared Eliza Workerd runtime", () => {
         execution: {
           channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
+          roomKey: "personal:39e40424-28eb-41fc-8844-63d16e84e14f",
           mobilePush: {
             dispatch: async (message) => {
               mobilePushDispatches.push(message);
@@ -908,6 +947,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:d6b81293-6440-4ec1-ae46-8fed715c1570",
+        roomKey: "personal:d6b81293-6440-4ec1-ae46-8fed715c1570",
       },
     });
 
@@ -1061,6 +1101,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
+        roomKey: "personal:b55d99d0-ae38-4c7c-8791-7443e5de8ebc",
       },
     });
 
@@ -1179,6 +1220,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:2d88dfa1-7687-4285-a423-f51883f2aa66",
+        roomKey: "personal:2d88dfa1-7687-4285-a423-f51883f2aa66",
         authenticatedPersonalSharedUser: true,
         media: {
           canGenerateMedia: ({ mediaType }) => mediaType === "image",
@@ -1324,6 +1366,7 @@ describe("Shared Eliza Workerd runtime", () => {
         execution: {
           channel: { type: ChannelType.VOICE_DM, source: "shared-runtime" },
           agentKey: "personal:4fa13137-cb01-43a9-948c-76d162be13af",
+          roomKey: "trusted-voice-room",
           authenticatedPersonalSharedUser: true,
           media: {
             canGenerateMedia: () => true,
@@ -1363,6 +1406,8 @@ describe("Shared Eliza Workerd runtime", () => {
 
       const lifecycleConnection = connectionSpy.mock.calls.at(-1)?.[0];
       expect(lifecycleConnection).toMatchObject({
+        roomId: sharedRuntimeConversationRoomId("trusted-voice-room"),
+        worldId: sharedRuntimeWorldId("trusted-voice-room"),
         userName: "Shared lifecycle",
         source: "shared-runtime-system",
         type: ChannelType.VOICE_DM,
@@ -1490,6 +1535,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:f5f2c7dd-cec2-432f-8882-9b43c84ecbcf",
+        roomKey: "personal:f5f2c7dd-cec2-432f-8882-9b43c84ecbcf",
         authenticatedPersonalSharedUser: true,
         media: {
           canGenerateMedia: ({ mediaType }) => mediaType === "image",
@@ -1598,6 +1644,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:dd283829-b3d2-4ae1-a788-15ca74a9aa04",
+        roomKey: "personal:dd283829-b3d2-4ae1-a788-15ca74a9aa04",
       },
     });
 
@@ -1727,6 +1774,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+        roomKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
         reminders: {
           runner: reminderRunner,
           delivery: {
@@ -2009,6 +2057,7 @@ describe("Shared Eliza Workerd runtime", () => {
         execution: {
           channel: { type: ChannelType.DM, source: "shared-runtime" },
           agentKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
+          roomKey: "personal:a26524f1-c4f1-493b-a97e-8be161284a10",
           reminders: {
             runner: lifecycleRunner,
             delivery: {
@@ -2197,6 +2246,7 @@ describe("Shared Eliza Workerd runtime", () => {
       execution: {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
         agentKey: "personal:70000000-0000-5000-8000-000000000005",
+        roomKey: "personal:70000000-0000-5000-8000-000000000005",
         todos: { scope, store: todoStore },
       },
     });

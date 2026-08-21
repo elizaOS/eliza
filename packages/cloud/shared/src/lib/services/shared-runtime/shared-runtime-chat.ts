@@ -87,6 +87,7 @@ import {
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import { MAX_HISTORY_MESSAGES } from "./shared-runtime-history-policy";
+import { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
 import type { SharedRuntimeTimingReceipt } from "./shared-runtime-timing";
 import { createSharedScheduledTaskRunner } from "./shared-scheduling";
 import { createSharedTodoStore, sharedTodoStorageScope } from "./shared-todos";
@@ -471,6 +472,7 @@ function sharedElizaRuntimeExecution(
     : undefined;
   return {
     agentKey: agent.id,
+    roomKey: roomId,
     channel: runtimeChannel,
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
@@ -508,7 +510,7 @@ function sharedElizaRuntimeExecution(
  * uuids reuse the Todo scope so memory rows line up with the runtime's
  * projected identities.
  */
-function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
+function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
   const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
   const embed =
     sharedRecallEnabled() && embedBase
@@ -523,6 +525,7 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent) {
       organizationId: agent.organization_id,
       userId: agent.user_id,
       agentKey: agent.id,
+      roomKey: roomId,
       storage: sharedTodoStorageScope({
         sourceAgentId: agent.id,
         ownerId: agent.user_id,
@@ -740,8 +743,11 @@ export function sharedRuntimeChannelId(agentId: string, roomId: string): string 
   return stableUuid(`cloud-bridge-channel:${agentId}:${room}`);
 }
 
-function channelId(agentId: string, params: Record<string, unknown>): string {
-  const room = stringValue(params.roomId) ?? stringValue(params.userId) ?? "default";
+export { normalizeSharedRuntimeRoom } from "./shared-runtime-room-identity";
+
+/** Storage-safe runtime room key derived from the coordinator's canonical room label. */
+export function sharedRuntimeRoomKey(agentId: string, roomId?: unknown, userId?: unknown): string {
+  const room = normalizeSharedRuntimeRoom(roomId, userId);
   return sharedRuntimeChannelId(agentId, room);
 }
 
@@ -1181,7 +1187,7 @@ export class SharedRuntimeChatService {
     event: SharedTurnMessage,
     store: SharedRuntimeHistoryStore,
   ): Promise<void> {
-    await mergeHistory(agentId, channelId(agentId, { roomId }), [event], store);
+    await mergeHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), [event], store);
   }
 
   async getHistory(
@@ -1189,7 +1195,7 @@ export class SharedRuntimeChatService {
     roomId = agentId,
     store?: SharedRuntimeHistoryStore,
   ): Promise<SharedTurnMessage[]> {
-    return await loadHistory(agentId, channelId(agentId, { roomId }), store);
+    return await loadHistory(agentId, sharedRuntimeRoomKey(agentId, roomId), store);
   }
 
   async getCharacter(
@@ -1233,7 +1239,7 @@ export class SharedRuntimeChatService {
         error: { code: -32602, message: "message.send requires params.text" },
       };
     }
-    const roomId = channelId(agent.id, params);
+    const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
@@ -1281,7 +1287,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = sharedTurnMemoryStore(agent);
+    const memoryStore = sharedTurnMemoryStore(agent, roomId);
     const [factsContext, recallBlock] = await Promise.all([
       sharedTurnFactsContext(memoryStore),
       sharedTurnRecallContext(memoryStore, text, history),
@@ -1428,7 +1434,7 @@ export class SharedRuntimeChatService {
     const params = record(rpc.params) ?? {};
     const text = stringValue(params.text);
     if (!text) return sseError("message.send requires params.text");
-    const roomId = channelId(agent.id, params);
+    const roomId = sharedRuntimeRoomKey(agent.id, params.roomId, params.userId);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
@@ -1506,7 +1512,7 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = sharedTurnMemoryStore(agent);
+    const streamMemoryStore = sharedTurnMemoryStore(agent, roomId);
     const [streamFactsContext, streamRecallBlock] = await Promise.all([
       sharedTurnFactsContext(streamMemoryStore),
       sharedTurnRecallContext(streamMemoryStore, text, history),

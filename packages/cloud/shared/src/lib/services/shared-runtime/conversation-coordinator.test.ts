@@ -39,8 +39,20 @@ const {
   preparePersonalProvisionalHistoryConvergence,
   purgeSharedConversationRooms,
 } = await import("./conversation-coordinator");
+const { normalizeSharedRuntimeRoom, sharedRuntimeChannelId, sharedRuntimeRoomKey } = await import(
+  "./shared-runtime-chat"
+);
 
 describe("shared conversation coordinator", () => {
+  test("uses one exact room normalization for coordinator and runtime identities", () => {
+    expect(normalizeSharedRuntimeRoom("  room-1  ", "fallback-user")).toBe("room-1");
+    expect(normalizeSharedRuntimeRoom(" ", "  fallback-user  ")).toBe("fallback-user");
+    expect(normalizeSharedRuntimeRoom(undefined, " ")).toBe("default");
+    expect(sharedRuntimeRoomKey("agent-1", "  room-1  ", "fallback-user")).toBe(
+      sharedRuntimeChannelId("agent-1", "room-1"),
+    );
+  });
+
   test("routes bridge, stream, prewarm, and history through one room object", async () => {
     const names: string[] = [];
     const envelopes: unknown[] = [];

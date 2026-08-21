@@ -137,6 +137,8 @@ export interface RunSharedAgentTurnInput {
   /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
     agentKey: string;
+    /** Trusted canonical conversation identity used for runtime room/world projection. */
+    roomKey: string;
     /** Trusted transport semantics projected into the runtime connection and memories. */
     channel: SharedRuntimeChannel;
     /**
@@ -167,6 +169,7 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
   return (
     input.execution ?? {
       agentKey: `shared:${input.character.name}`,
+      roomKey: `shared:${input.character.name}`,
       channel: { type: "DM", source: "shared-runtime" },
     }
   );
