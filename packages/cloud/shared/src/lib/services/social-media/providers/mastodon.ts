@@ -17,6 +17,32 @@ import {
 } from "../media-download";
 import { withRetry } from "../rate-limit";
 
+const MASTODON_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Mastodon REST hop so a hung instance cannot pin the publishing
+ * worker indefinitely. A caller-provided abort signal wins.
+ *
+ * Mastodon is the one provider here whose destination host is not a module
+ * constant: `getInstanceUrl` below resolves it from tenant-supplied credentials
+ * (`MASTODON_INSTANCE_URL` / the OAuth connect-session `instanceUrl`), so the
+ * peer on the other end of these hops is chosen by configuration rather than by
+ * this file. `mastodonApiRequest` also runs inside `withRetry(..., { maxRetries: 3 })`,
+ * which replays the hop up to four times, so an unbounded wait is charged four
+ * times over on a peer that stalls before failing.
+ */
+export function mastodonFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MASTODON_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 interface MastodonStatus {
   id: string;
   uri: string;
@@ -73,7 +99,7 @@ async function mastodonApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
-      fetch(`${instanceUrl}/api/v1${endpoint}`, {
+      mastodonFetch(`${instanceUrl}/api/v1${endpoint}`, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -119,7 +145,7 @@ async function uploadMedia(
     formData.append("description", media.altText);
   }
 
-  const response = await fetch(`${instanceUrl}/api/v2/media`, {
+  const response = await mastodonFetch(`${instanceUrl}/api/v2/media`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
     body: formData,

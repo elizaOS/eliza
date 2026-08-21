@@ -23,6 +23,29 @@ import { withRetry } from "../rate-limit";
 
 const LINKEDIN_API_BASE = "https://api.linkedin.com/v2";
 
+const LINKEDIN_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every LinkedIn REST hop so a hung API cannot pin the publishing worker
+ * indefinitely. A caller-provided abort signal wins.
+ *
+ * The two asset-upload hops do not target `LINKEDIN_API_BASE` at all: they PUT
+ * to the `uploadUrl` LinkedIn hands back from `registerUpload`, so their peer is
+ * named by a remote response body. `linkedinApiRequest` additionally runs inside
+ * `withRetry(..., { maxRetries: 3 })`, which replays the hop up to four times.
+ */
+export function linkedinFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = LINKEDIN_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 interface LinkedInProfile {
   id: string;
   localizedFirstName?: string;
@@ -56,7 +79,7 @@ async function linkedinApiRequest<T>(
 
   const { data } = await withRetry<T | { id: string }>(
     () =>
-      fetch(url, {
+      linkedinFetch(url, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -226,7 +249,7 @@ export const linkedinProvider: SocialMediaProvider = {
                 `LinkedIn image download failed for ${media.url}: ${status}`,
             });
 
-            const uploadResponse = await fetch(uploadUrl, {
+            const uploadResponse = await linkedinFetch(uploadUrl, {
               method: "PUT",
               headers: {
                 Authorization: `Bearer ${credentials.accessToken}`,
@@ -409,7 +432,7 @@ export const linkedinProvider: SocialMediaProvider = {
 
     // A non-OK upload must surface: returning the asset URN as if it succeeded
     // would hand callers a media handle LinkedIn never actually stored.
-    const uploadResponse = await fetch(uploadUrl, {
+    const uploadResponse = await linkedinFetch(uploadUrl, {
       method: "PUT",
       headers: {
         Authorization: `Bearer ${credentials.accessToken}`,
