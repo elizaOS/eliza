@@ -186,6 +186,7 @@ export async function startChunkedAndroidScreenRecord({
   filename = "screenrecord.mp4",
   segmentSeconds = 170,
   bitRate = "4000000",
+  requireComplete = false,
   log = () => {},
 }) {
   if (!serial) throw new Error("serial is required for Android screenrecord");
@@ -270,6 +271,11 @@ export async function startChunkedAndroidScreenRecord({
       if (segments.length === 1) {
         fs.copyFileSync(segments[0], localPath);
       } else if (!concatSegments(segments, localPath, log)) {
+        if (requireComplete) {
+          for (const segment of segments) fs.rmSync(segment, { force: true });
+          log("ffmpeg concat unavailable; complete recording is required");
+          return null;
+        }
         // ffmpeg unavailable/failed: keep the longest single segment so the run
         // still has watchable video rather than nothing.
         const longest = segments
@@ -280,6 +286,11 @@ export async function startChunkedAndroidScreenRecord({
       }
       for (const segment of segments) fs.rmSync(segment, { force: true });
       if (!isNonEmptyFile(localPath)) return null;
+      if (!isFinalizedMp4(localPath)) {
+        fs.rmSync(localPath, { force: true });
+        log("chunked Android screenrecord did not finalize");
+        return null;
+      }
       log(`wrote chunked Android screenrecord: ${localPath}`);
       return localPath;
     },
