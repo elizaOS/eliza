@@ -23,6 +23,12 @@ import {
 
 export const MAPS_SERVICE_TYPE = "maps";
 
+export interface MapsProviderDescription {
+  id: string;
+  /** Provider-mandated attribution text, or null when the adapter has none. */
+  attribution: string | null;
+}
+
 export interface MapsHandoff {
   kind: "share" | "navigate";
   uri: string;
@@ -149,6 +155,14 @@ export class MapsService extends Service {
         code: "MAPS_INVALID_INPUT",
       });
     }
+    if (
+      adapter.attribution !== undefined &&
+      (!adapter.attribution.trim() || adapter.attribution.length > 500)
+    ) {
+      throw new MapsError("Maps adapter attribution is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+      });
+    }
     this.adapters.set(adapter.id, adapter);
     if (makeDefault || this.defaultAdapterId === null)
       this.defaultAdapterId = adapter.id;
@@ -163,6 +177,14 @@ export class MapsService extends Service {
 
   listAdapters(): readonly string[] {
     return [...this.adapters.keys()];
+  }
+
+  /** Describes registered providers without exposing credentials or endpoints. */
+  describeProviders(): readonly MapsProviderDescription[] {
+    return [...this.adapters.values()].map((adapter) => ({
+      id: adapter.id,
+      attribution: adapter.attribution?.trim() || null,
+    }));
   }
 
   async searchPlaces(

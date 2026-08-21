@@ -68,6 +68,16 @@ function isArrayRecord(value: unknown): value is unknown[] {
   return inspectRecord("isArray", () => Array.isArray(value));
 }
 
+function assertPlainRecord(value: object): void {
+  const prototype = inspectRecord("getPrototypeOf", () => Object.getPrototypeOf(value));
+  // Null-prototype records are an explicitly supported JSON-record shape. The
+  // copier still returns an ordinary inert data record, so neither input shape
+  // can carry custom prototype behavior across the provider boundary.
+  if (prototype !== Object.prototype && prototype !== null) {
+    failUnbounded({ invalidRecordPrototype: true });
+  }
+}
+
 function newWalkContext(): WalkContext {
   return {
     visits: 0,
@@ -143,6 +153,7 @@ function readProviderOptionValue(
       return out;
     }
 
+    assertPlainRecord(value);
     const keys = inspectRecord("ownKeys", () => Reflect.ownKeys(value));
     reserve(ctx, keys.length);
     const record: { [key: string]: ProviderOptionValue | undefined } = {};

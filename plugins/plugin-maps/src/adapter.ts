@@ -30,6 +30,8 @@ export interface MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
   readonly supportsCrossProviderRoutes?: boolean;
+  /** Provider-mandated attribution text, or absent when none is available. */
+  readonly attribution?: string;
   searchPlaces(request: PlaceSearchRequest): Promise<PlacePage>;
   getPlace(providerPlaceId: string): Promise<PlaceRef | null>;
   planRoute(request: RoutePlanRequest): Promise<RoutePlan>;
@@ -42,6 +44,8 @@ export interface JsonMapsHttpAdapterOptions {
   credential?: string;
   timeoutMs?: number;
   responseByteLimit?: number;
+  /** Provider-mandated attribution text rendered by first-party Maps views. */
+  attribution?: string;
   /** Explicit transport seam for deterministic SSRF/adversarial tests only. */
   testTransport?: Pick<
     GuardedFetchOptions,
@@ -156,6 +160,7 @@ function providerError(response: Response, body: unknown): MapsError {
 export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
+  readonly attribution?: string;
   private readonly baseOrigin: string;
   private readonly credential?: string;
   private readonly timeoutMs: number;
@@ -171,6 +176,14 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     }
     if (!/^conn_[A-Za-z0-9_-]{16,}$/.test(options.connectionId)) {
       throw new MapsError("Maps adapter connection id must be opaque.", {
+        code: "MAPS_INVALID_INPUT",
+      });
+    }
+    if (
+      options.attribution !== undefined &&
+      (!options.attribution.trim() || options.attribution.length > 500)
+    ) {
+      throw new MapsError("Maps adapter attribution is invalid.", {
         code: "MAPS_INVALID_INPUT",
       });
     }
@@ -249,6 +262,7 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
     }
     this.id = options.id;
     this.connectionId = options.connectionId;
+    this.attribution = options.attribution?.trim();
     this.baseOrigin = baseUrl.origin;
     this.credential = options.credential;
     this.timeoutMs = timeoutMs;

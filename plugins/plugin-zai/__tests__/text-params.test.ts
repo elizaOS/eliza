@@ -277,13 +277,20 @@ describe("z.ai text parameter resolution", () => {
       const handlers = await import("../models/text");
       const handler = handlers[handlerName];
 
-      await expect(
-        handler(runtime as never, {
-          prompt: "hello",
-          providerOptions: { agentName: "keep", bad: 1n } as never,
-        })
-      ).rejects.toMatchObject({ code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED" });
+      for (const providerOptions of [
+        { agentName: "keep", bad: 1n },
+        new Date(0),
+        { nested: new Map([["enabled", true]]) },
+      ]) {
+        await expect(
+          handler(runtime as never, {
+            prompt: "hello",
+            providerOptions: providerOptions as never,
+          })
+        ).rejects.toMatchObject({ code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED" });
+      }
 
+      expect(createOpenAICompatibleMock).not.toHaveBeenCalled();
       expect(generateTextMock).not.toHaveBeenCalled();
     }
   );
