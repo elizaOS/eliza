@@ -284,6 +284,79 @@ describe("character-history fail-closed walk", () => {
     expect(parsed).toBeNull();
   });
 
+  it.each([
+    ["over-depth", nestArr(MAX_CHARACTER_HISTORY_WALK_DEPTH + 1)],
+    [
+      "over-node",
+      (() => {
+        const sparse: unknown[] = [];
+        sparse.length = MAX_CHARACTER_HISTORY_WALK_NODES + 1;
+        return sparse;
+      })(),
+    ],
+  ])("skips a %s stored snapshot before emission", (_label, poisoned) => {
+    const parsed = parseCharacterHistoryEntry({
+      content: { text: "change" },
+      metadata: {
+        type: MemoryType.CUSTOM,
+        service: "character_history",
+        action: "character_updated",
+        timestamp: 1,
+        historySource: "manual",
+        changes: [{ field: "name", before: "a", after: "b" }],
+        before: poisoned,
+        after: { name: "b" },
+      },
+    } as never);
+    expect(parsed).toBeNull();
+  });
+
+  it("preserves an honest empty stored snapshot", () => {
+    const parsed = parseCharacterHistoryEntry({
+      content: { text: "change" },
+      metadata: {
+        type: MemoryType.CUSTOM,
+        service: "character_history",
+        action: "character_updated",
+        timestamp: 1,
+        historySource: "manual",
+        changes: [{ field: "name", before: "a", after: "b" }],
+        before: {},
+        after: {},
+      },
+    } as never);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.before).toEqual({});
+    expect(parsed?.after).toEqual({});
+  });
+
+  it("skips a stored snapshot accessor without invoking it", () => {
+    let calls = 0;
+    const poisoned: Record<string, unknown> = {};
+    Object.defineProperty(poisoned, "name", {
+      enumerable: true,
+      get() {
+        calls += 1;
+        return "poisoned";
+      },
+    });
+    const parsed = parseCharacterHistoryEntry({
+      content: { text: "change" },
+      metadata: {
+        type: MemoryType.CUSTOM,
+        service: "character_history",
+        action: "character_updated",
+        timestamp: 1,
+        historySource: "manual",
+        changes: [{ field: "name", before: "a", after: "b" }],
+        before: poisoned,
+        after: { name: "b" },
+      },
+    } as never);
+    expect(parsed).toBeNull();
+    expect(calls).toBe(0);
+  });
+
   it("wraps a revoked Array Proxy instead of leaking TypeError", () => {
     const { proxy, revoke } = Proxy.revocable(["leaf"], {});
     revoke();

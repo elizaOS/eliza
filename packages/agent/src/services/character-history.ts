@@ -639,10 +639,19 @@ export async function recordCharacterHistory(
 }
 
 function cloneSnapshotOrNull(
-  value: Record<string, unknown>,
+  value: unknown,
+  ctx: HistoryWalkContext,
 ): CharacterHistorySnapshot | null {
   try {
-    return cloneJson(value) as CharacterHistorySnapshot;
+    const cloned = toCharacterHistoryValue(value, 0, ctx);
+    if (
+      cloned === null ||
+      typeof cloned !== "object" ||
+      Array.isArray(cloned)
+    ) {
+      return null;
+    }
+    return cloned as CharacterHistorySnapshot;
   } catch (error) {
     // error-policy:J3 omit a poisoned stored row instead of fabricating a snapshot.
     if (isCharacterHistoryUnbounded(error)) {
@@ -655,6 +664,7 @@ function cloneSnapshotOrNull(
 export function parseCharacterHistoryEntry(
   memory: Memory,
 ): CharacterHistoryEntry | null {
+  const walkContext = createHistoryWalkContext();
   const metadata = isRecord(memory.metadata) ? memory.metadata : null;
   if (!metadata) {
     return null;
@@ -686,10 +696,10 @@ export function parseCharacterHistoryEntry(
     let after: CharacterHistoryValue | undefined;
     try {
       before = Object.hasOwn(rawChange, "before")
-        ? toCharacterHistoryValue(rawChange.before)
+        ? toCharacterHistoryValue(rawChange.before, 0, walkContext)
         : undefined;
       after = Object.hasOwn(rawChange, "after")
-        ? toCharacterHistoryValue(rawChange.after)
+        ? toCharacterHistoryValue(rawChange.after, 0, walkContext)
         : undefined;
     } catch (error) {
       // error-policy:J3 a poisoned stored change is not a live input 500.
@@ -714,14 +724,14 @@ export function parseCharacterHistoryEntry(
         ? memory.createdAt
         : 0;
 
-  const before = isRecord(metadata.before)
-    ? cloneSnapshotOrNull(metadata.before)
+  const before = Object.hasOwn(metadata, "before")
+    ? cloneSnapshotOrNull(metadata.before, walkContext)
     : {};
   if (before === null) {
     return null;
   }
-  const after = isRecord(metadata.after)
-    ? cloneSnapshotOrNull(metadata.after)
+  const after = Object.hasOwn(metadata, "after")
+    ? cloneSnapshotOrNull(metadata.after, walkContext)
     : {};
   if (after === null) {
     return null;
