@@ -911,16 +911,18 @@ function buildHtml(manifest) {
 </html>`;
 }
 
-function openFile(filePath) {
+export function openFile(filePath) {
   const opener =
     process.platform === "darwin"
       ? "open"
       : process.platform === "win32"
-        ? "cmd"
+        ? "explorer.exe"
         : "xdg-open";
-  const args =
-    process.platform === "win32" ? ["/c", "start", "", filePath] : [filePath];
-  spawnSync(opener, args, { stdio: "ignore", detached: true });
+  spawnSync(opener, [filePath], {
+    shell: false,
+    stdio: "ignore",
+    detached: true,
+  });
 }
 
 async function main() {

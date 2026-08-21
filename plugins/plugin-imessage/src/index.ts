@@ -1,8 +1,9 @@
 /**
  * iMessage Plugin for elizaOS
  *
- * Provides iMessage integration for Eliza agents on macOS.
- * Uses AppleScript and/or CLI tools to send and receive messages.
+ * Provides iMessage integration for Eliza agents on macOS. Inbound messages
+ * come from the local Messages database and outbound messages use Messages.app
+ * automation, without an auxiliary CLI, relay, or network service.
  */
 
 import { platform } from "node:os";
@@ -66,28 +67,6 @@ export {
   type ResolvedContact,
   updateContact,
 } from "./contacts-reader.js";
-// RPC client exports
-export {
-  createIMessageRpcClient,
-  DEFAULT_PROBE_TIMEOUT_MS,
-  DEFAULT_REQUEST_TIMEOUT_MS,
-  getChatInfo,
-  getContactInfo,
-  getMessages,
-  type IMessageAttachment,
-  type IMessageChat,
-  type IMessageContact,
-  type IMessageMessage,
-  IMessageRpcClient,
-  type IMessageRpcClientOptions,
-  type IMessageRpcError,
-  type IMessageRpcNotification,
-  type IMessageRpcResponse,
-  listChats,
-  listContacts,
-  probeIMessageRpc,
-  sendIMessageRpc,
-} from "./rpc.js";
 export {
   imessageDmSensitiveRequestAdapter,
   registerIMessageDmSensitiveRequestAdapter,
@@ -110,7 +89,7 @@ const imessagePlugin: Plugin = {
   connectorSources: [
     {
       source: "imessage",
-      aliases: ["imessage", "bluebubbles"],
+      aliases: ["imessage", "messages"],
       sourceKind: "passive",
       isPassive: true,
     },
@@ -157,9 +136,7 @@ const imessagePlugin: Plugin = {
     logger.info("iMessage plugin configuration:");
     logger.info(`  - Platform: ${platform()}`);
     logger.info(`  - macOS: ${isMacOS ? "Yes" : "No"}`);
-    logger.info(
-      `  - CLI path: ${config.IMESSAGE_CLI_PATH || process.env.IMESSAGE_CLI_PATH || "imsg (default)"}`
-    );
+    logger.info("  - Bridge: native macOS Messages (chat.db + Apple Automation)");
     logger.info(
       `  - DM policy: ${config.IMESSAGE_DM_POLICY || process.env.IMESSAGE_DM_POLICY || "pairing"}`
     );
@@ -184,15 +161,9 @@ export type {
   RouteHelpers as IMessageRouteHelpers,
   RouteRequestMeta as IMessageRouteRequestMeta,
 } from "@elizaos/core";
-export {
-  type BlueBubblesRouteState,
-  handleBlueBubblesRoute,
-  resolveBlueBubblesWebhookPath,
-} from "./api/bluebubbles-routes.js";
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
-// These are the moved counterparts of the agent's old api/imessage-routes.ts
-// and api/bluebubbles-routes.ts files. Per the audit, BlueBubbles is treated
-// as part of iMessage, so both live here.
+// BlueBubbles is deliberately not aliased or re-exported here; its separate
+// plugin owns that legacy/remote transport.
 export {
   handleIMessageRoute,
   type IMessageRouteState,

@@ -14,6 +14,7 @@ import {
   assertExpectedCleanupIdentity,
   bindReviewedCleanupCandidates,
   normalizeAgentRow,
+  remainingJobBudget,
   resolveE2eWalletPrivateKey,
   selectAgentsForCleanup,
 } from "../e2e-agent-cleanup-lib.mjs";
@@ -198,6 +199,15 @@ describe("destructive binding", () => {
   });
 });
 
+describe("job deadline", () => {
+  test("caps both requests and sleeps to the remaining overall budget", () => {
+    expect(remainingJobBudget(150, Number.POSITIVE_INFINITY, 100)).toBe(50);
+    expect(remainingJobBudget(150, 1_000, 100)).toBe(50);
+    expect(remainingJobBudget(150, 20, 100)).toBe(20);
+    expect(remainingJobBudget(150, 20, 151)).toBe(0);
+  });
+});
+
 describe("cli", () => {
   test("--help exits 0 without touching the network", () => {
     const script = path.join(
@@ -217,6 +227,34 @@ describe("cli", () => {
     const malformedNumber = await runCli(["--keep", "1x"]);
     expect(malformedNumber.exitCode).toBe(1);
     expect(malformedNumber.stderr).toContain("--keep must be");
+    let requests = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests += 1;
+        return new Response("unexpected request", { status: 500 });
+      },
+    });
+    try {
+      const unknownFlag = await runCli([
+        "--base",
+        server.url.toString(),
+        "--keeep",
+        "1",
+      ]);
+      expect(unknownFlag.exitCode).toBe(1);
+      expect(unknownFlag.stderr).toContain(
+        "unknown or positional argument: --keeep",
+      );
+      expect(requests).toBe(0);
+    } finally {
+      server.stop(true);
+    }
+    const positional = await runCli(["reviewed-agent-id"]);
+    expect(positional.exitCode).toBe(1);
+    expect(positional.stderr).toContain(
+      "unknown or positional argument: reviewed-agent-id",
+    );
 
     const receipt = temporaryReport();
     try {
@@ -237,6 +275,19 @@ describe("cli", () => {
     } finally {
       receipt.cleanup();
     }
+  });
+
+  test("rejects credential-bearing and ambiguous base URLs before network", async () => {
+    const credentials = await runCli([
+      "--base",
+      "https://operator:secret@api.eliza.app",
+    ]);
+    expect(credentials.exitCode).toBe(1);
+    expect(credentials.stderr).toContain("must not contain credentials");
+
+    const query = await runCli(["--base", "https://api.eliza.app?target=dev"]);
+    expect(query.exitCode).toBe(1);
+    expect(query.stderr).toContain("must not contain a query or fragment");
   });
 
   test("loopback apply binds conditional identity, waits, verifies absence, and resumes as a no-op", async () => {
@@ -282,6 +333,9 @@ describe("cli", () => {
       },
     });
     const receipt = temporaryReport();
+    const sentinelPath = path.join(receipt.directory, "sentinel.txt");
+    fs.writeFileSync(sentinelPath, "untouched\n");
+    fs.symlinkSync(sentinelPath, `${receipt.reportPath}.tmp`);
     try {
       const args = applyArgs(server, receipt.reportPath, ["old-dedicated"]);
       const result = await runCli(args);
@@ -302,6 +356,8 @@ describe("cli", () => {
         verifiedAbsent: ["old-dedicated"],
         attempts: [{ agentId: "old-dedicated", status: "completed" }],
       });
+      expect(fs.readFileSync(sentinelPath, "utf8")).toBe("untouched\n");
+      expect(fs.statSync(receipt.reportPath).mode & 0o777).toBe(0o600);
 
       const second = await runCli(args);
       expect(second.exitCode).toBe(0);
@@ -313,6 +369,140 @@ describe("cli", () => {
         attempts: [],
         verifiedAbsent: ["old-dedicated"],
       });
+    } finally {
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
+
+  test("rejects a concurrent apply before network and preserves the active receipt", async () => {
+    let agents = [oldAgentRow("first"), oldAgentRow("second")];
+    const requests = [];
+    let markDeleteEntered;
+    let releaseDelete;
+    const deleteEntered = new Promise((resolve) => {
+      markDeleteEntered = resolve;
+    });
+    const deleteReleased = new Promise((resolve) => {
+      releaseDelete = resolve;
+    });
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        requests.push(`${request.method} ${url.pathname}`);
+        if (url.pathname === "/api/v1/credits/balance") {
+          return Response.json({ balance: 10 });
+        }
+        if (url.pathname === "/api/v1/eliza/agents") {
+          return Response.json({ data: agents });
+        }
+        if (url.pathname === "/api/v1/eliza/agents/first") {
+          markDeleteEntered();
+          await deleteReleased;
+          agents = agents.filter(({ id }) => id !== "first");
+          return Response.json({ success: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const receipt = temporaryReport();
+    let firstRun;
+    try {
+      firstRun = runCli(applyArgs(server, receipt.reportPath, ["first"]));
+      await deleteEntered;
+      const requestsBeforeSecondRun = requests.length;
+      const secondRun = await runCli(
+        applyArgs(server, receipt.reportPath, ["second"]),
+      );
+      expect(secondRun.exitCode).toBe(1);
+      expect(secondRun.stderr).toContain("locked by active pid");
+      expect(requests).toHaveLength(requestsBeforeSecondRun);
+
+      releaseDelete();
+      const firstResult = await firstRun;
+      expect(firstResult.exitCode).toBe(0);
+      expect(
+        JSON.parse(fs.readFileSync(receipt.reportPath, "utf8")),
+      ).toMatchObject({
+        apply: true,
+        failure: null,
+        attempts: [{ agentId: "first", status: "completed" }],
+        verifiedAbsent: ["first"],
+      });
+      expect(fs.statSync(receipt.reportPath).mode & 0o777).toBe(0o600);
+      expect(fs.readdirSync(receipt.directory)).toEqual(["receipt.json"]);
+    } finally {
+      releaseDelete();
+      await firstRun?.catch(() => {});
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
+
+  test("reclaims only a verifiably stale same-host report lock", async () => {
+    const exited = Bun.spawn(["bun", "-e", ""], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await exited.exited;
+    const receipt = temporaryReport();
+    fs.writeFileSync(
+      `${receipt.reportPath}.lock`,
+      `${JSON.stringify({ pid: exited.pid, hostname: os.hostname(), startedAt: new Date().toISOString() })}\n`,
+      { mode: 0o600 },
+    );
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/api/v1/credits/balance") {
+          return Response.json({ balance: 10 });
+        }
+        if (url.pathname === "/api/v1/eliza/agents") {
+          return Response.json({ data: [] });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    try {
+      const result = await runCli([
+        "--base",
+        server.url.toString(),
+        "--report",
+        receipt.reportPath,
+      ]);
+      expect(result.exitCode).toBe(0);
+      expect(fs.existsSync(`${receipt.reportPath}.lock`)).toBe(false);
+    } finally {
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
+
+  test("fails closed on a symlinked report lock before network", async () => {
+    let requests = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        requests += 1;
+        return new Response("unexpected", { status: 500 });
+      },
+    });
+    const receipt = temporaryReport();
+    const sentinel = path.join(receipt.directory, "sentinel.txt");
+    fs.writeFileSync(sentinel, "untouched\n");
+    fs.symlinkSync(sentinel, `${receipt.reportPath}.lock`);
+    try {
+      const result = await runCli([
+        "--base",
+        server.url.toString(),
+        "--report",
+        receipt.reportPath,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(requests).toBe(0);
+      expect(fs.readFileSync(sentinel, "utf8")).toBe("untouched\n");
     } finally {
       server.stop(true);
       receipt.cleanup();
@@ -402,11 +592,11 @@ describe("cli", () => {
   });
 
   test.each([
-    ["failed", "delete job delete-job for old failed"],
-    ["running", "delete job delete-job for old timed out"],
+    ["failed", "delete job delete-job for old failed", "2000"],
+    ["running", "delete job delete-job for old timed out", "50"],
   ])(
     "fails closed on a %s delete job and writes the failure receipt",
-    async (jobStatus, expectedError) => {
+    async (jobStatus, expectedError, timeoutMs) => {
       const server = Bun.serve({
         port: 0,
         fetch(request) {
@@ -433,7 +623,7 @@ describe("cli", () => {
         const result = await runCli([
           ...applyArgs(server, receipt.reportPath, ["old"]),
           "--job-timeout-ms",
-          "20",
+          timeoutMs,
           "--poll-interval-ms",
           "1",
         ]);
@@ -482,6 +672,101 @@ describe("cli", () => {
       receipt.cleanup();
     }
   });
+
+  test.each(["headers", "body"])(
+    "bounds a provider request that stalls before %s completion",
+    async (stallKind) => {
+      const server = Bun.serve({
+        port: 0,
+        async fetch(request) {
+          const url = new URL(request.url);
+          if (url.pathname === "/api/v1/credits/balance") {
+            return Response.json({ balance: 10 });
+          }
+          if (url.pathname === "/api/v1/eliza/agents") {
+            if (stallKind === "headers") {
+              return await new Promise(() => {});
+            }
+            return new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('{"data":['));
+                },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return new Response("not found", { status: 404 });
+        },
+      });
+      try {
+        const result = await runCli([
+          "--base",
+          server.url.toString(),
+          "--job-timeout-ms",
+          "30",
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toMatch(/aborted|timed out|timeout/i);
+      } finally {
+        server.stop(true);
+      }
+    },
+  );
+
+  test("caps a stalled job response at the remaining job deadline", async () => {
+    let jobPolls = 0;
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/api/v1/credits/balance") {
+          return Response.json({ balance: 10 });
+        }
+        if (url.pathname === "/api/v1/eliza/agents") {
+          return Response.json({ data: [oldAgentRow("old")] });
+        }
+        if (url.pathname === "/api/v1/eliza/agents/old") {
+          return Response.json(
+            { data: { jobId: "delete-job" } },
+            { status: 202 },
+          );
+        }
+        if (url.pathname === "/api/v1/jobs/delete-job") {
+          jobPolls += 1;
+          if (jobPolls === 1) {
+            await Bun.sleep(50);
+            return Response.json({ data: { status: "running" } });
+          }
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode('{"data":'));
+              },
+            }),
+            { headers: { "Content-Type": "application/json" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const receipt = temporaryReport();
+    try {
+      const result = await runCli([
+        ...applyArgs(server, receipt.reportPath, ["old"]),
+        "--job-timeout-ms",
+        "200",
+        "--poll-interval-ms",
+        "0",
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toMatch(/aborted|timed out|timeout/i);
+      expect(jobPolls).toBe(2);
+    } finally {
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
 });
 
 const TEST_ADDRESS = "0x1111111111111111111111111111111111111111";
@@ -501,6 +786,7 @@ function temporaryReport() {
     path.join(os.tmpdir(), "eliza-e2e-cleanup-"),
   );
   return {
+    directory,
     reportPath: path.join(directory, "receipt.json"),
     cleanup: () => fs.rmSync(directory, { recursive: true, force: true }),
   };

@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * voice-models-publish-all.mjs
- *
- * Publishes all 10 eliza-1 voice sub-model payloads to HuggingFace.
+ * Publishes all eliza-1 voice sub-model payloads to their canonical
+ * Hugging Face repository using argument-vector process boundaries.
  *
  * Usage:
  *   bun run voice-models:publish-all              # publish all
@@ -23,9 +22,9 @@
  *     2026-05-15; the unified `elizaos/eliza-1` repo is the only target.
  */
 
-import { execSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -104,10 +103,16 @@ const modelFilter = (() => {
  * Run a command, logging it first.
  * In dry-run mode, only logs the command.
  */
-function run(cmd, opts = {}) {
-  console.log(`  $ ${cmd}`);
+function run(command, commandArgs, opts = {}) {
+  console.log(
+    `  $ ${[command, ...commandArgs].map((part) => JSON.stringify(part)).join(" ")}`,
+  );
   if (isDryRun) return { status: 0 };
-  const result = spawnSync(cmd, { shell: true, stdio: "inherit", ...opts });
+  const result = spawnSync(command, commandArgs, {
+    shell: false,
+    stdio: "inherit",
+    ...opts,
+  });
   return result;
 }
 
@@ -118,7 +123,7 @@ function checkPrerequisites() {
   const errors = [];
 
   const hfWhoami = spawnSync("hf", ["auth", "whoami"], {
-    shell: true,
+    shell: false,
     encoding: "utf-8",
   });
   if (!process.env.HF_TOKEN && hfWhoami.status !== 0) {
@@ -128,7 +133,7 @@ function checkPrerequisites() {
   }
 
   const hfCli = spawnSync("hf", ["version"], {
-    shell: true,
+    shell: false,
     encoding: "utf-8",
   });
   if (hfCli.status !== 0) {
@@ -180,9 +185,14 @@ function publishModel(model) {
 
   // Step 1: Create the repo (idempotent — fails silently if exists)
   console.log("\n  [1/2] Create HF repo (idempotent)");
-  const createResult = run(
-    `hf repos create ${TARGET_REPO} --type model --exist-ok`,
-  );
+  const createResult = run("hf", [
+    "repos",
+    "create",
+    TARGET_REPO,
+    "--type",
+    "model",
+    "--exist-ok",
+  ]);
   if (!isDryRun && createResult.status !== 0) {
     // Repo may already exist — not fatal. Log and continue.
     console.log(
@@ -192,10 +202,16 @@ function publishModel(model) {
 
   // Step 2: Upload staging dir contents
   console.log("\n  [2/2] Upload staging dir");
-  const uploadResult = run(
-    `hf upload ${TARGET_REPO} ${stagingDir} ${model.path} --type model ` +
-      `--commit-message "Hydrate Eliza-1 voice binary payloads"`,
-  );
+  const uploadResult = run("hf", [
+    "upload",
+    TARGET_REPO,
+    stagingDir,
+    model.path,
+    "--type",
+    "model",
+    "--commit-message",
+    "Hydrate Eliza-1 voice binary payloads",
+  ]);
 
   if (!isDryRun && uploadResult.status !== 0) {
     return {
@@ -208,16 +224,27 @@ function publishModel(model) {
   return { success: true, skipped: false };
 }
 
-function stagingDirHasBinary(stagingDir) {
+export function stagingDirHasBinary(stagingDir) {
+  const pending = [stagingDir];
   try {
-    const out = execSync(
-      `find ${JSON.stringify(stagingDir)} -type f \\( -name '*.gguf' -o -name '*.onnx' -o -name '*.bin' \\) -print -quit`,
-      { encoding: "utf-8" },
-    );
-    return out.trim().length > 0;
+    while (pending.length > 0) {
+      const directory = pending.pop();
+      if (!directory) continue;
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          pending.push(join(directory, entry.name));
+        } else if (
+          entry.isFile() &&
+          /\.(?:gguf|onnx|bin)$/iu.test(entry.name)
+        ) {
+          return true;
+        }
+      }
+    }
   } catch {
     return false;
   }
+  return false;
 }
 
 // Main
@@ -284,7 +311,12 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolve(process.argv[1])
+) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

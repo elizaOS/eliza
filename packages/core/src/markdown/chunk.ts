@@ -46,6 +46,8 @@ export function chunkText(text: string, limit: number): string[] {
 			breakIdx = limit;
 		}
 
+		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+
 		const rawChunk = remaining.slice(0, breakIdx);
 		const chunk = rawChunk.trimEnd();
 		if (chunk.length > 0) {
@@ -242,6 +244,8 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					: undefined;
 		}
 
+		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+
 		let rawChunk = remaining.slice(0, breakIdx);
 		if (!rawChunk) {
 			break;
@@ -273,6 +277,29 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 		chunks.push(remaining);
 	}
 	return chunks;
+}
+
+/**
+ * A hard break at an arbitrary UTF-16 index can land between the two halves of
+ * a surrogate pair (any non-BMP character: emoji, symbols, rare CJK), leaving a
+ * lone surrogate that renders as U+FFFD in the emitted chunk. Back the break
+ * off by one code unit so the pair stays whole. When backing off would yield an
+ * empty chunk (index 1, i.e. `limit === 1` on an astral-first run), advance
+ * past the pair instead: a one-unit cap cannot represent any astral scalar, so
+ * emitting one whole pair — exceeding the cap by a single code unit — is the
+ * contract, chosen over corrupting output or stalling the loop. Pre-existing
+ * lone surrogates in the input are passed through untouched.
+ */
+function avoidSurrogateSplit(text: string, index: number): number {
+	if (index <= 0 || index >= text.length) {
+		return index;
+	}
+	const high = text.charCodeAt(index - 1);
+	const low = text.charCodeAt(index);
+	if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
+		return index > 1 ? index - 1 : index + 1;
+	}
+	return index;
 }
 
 function stripLeadingNewlines(value: string): string {
