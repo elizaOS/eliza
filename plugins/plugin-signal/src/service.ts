@@ -46,6 +46,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
@@ -247,7 +248,7 @@ function signalRecentToConnectorTarget(
     },
     label: recent.roomName,
     kind: recent.isGroup ? "group" : "contact",
-    description: `${recent.speakerName}: ${recent.text.slice(0, 120)}`,
+    description: `${recent.speakerName}: ${truncateWellFormed(toWellFormedUnicode(recent.text), 120)}`,
     score,
     contexts: ["social", "connectors"],
     metadata: {
