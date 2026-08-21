@@ -5328,6 +5328,10 @@ function canonicalOwnDescriptor(
 	try {
 		return Object.getOwnPropertyDescriptor(value, key);
 	} catch (error) {
+		// error-policy:J2 a hostile or revoked Proxy can make
+		// getOwnPropertyDescriptor throw; rethrow as the typed unbounded
+		// failure with the original preserved as `cause`, so the caller sees
+		// one failure shape rather than a raw reflection error.
 		failCanonicalJsonUnbounded("reflection", { key: String(key) }, error);
 	}
 }
@@ -5347,6 +5351,9 @@ function canonicalOwnEntries(
 	try {
 		keys = Reflect.ownKeys(value);
 	} catch (error) {
+		// error-policy:J2 same shape as the descriptor read above — a revoked
+		// Proxy makes Reflect.ownKeys throw, and it is rethrown as the typed
+		// unbounded failure with the original as `cause`.
 		failCanonicalJsonUnbounded("reflection", {}, error);
 	}
 	// Width is charged before the entry array is allocated.
