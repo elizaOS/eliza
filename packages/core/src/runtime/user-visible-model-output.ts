@@ -5,6 +5,7 @@
  * ordinary JSON requested by a user remains visible.
  */
 import { isPlainObject } from "../utils/type-guards";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 
 const MAX_REPLY_ENVELOPE_DEPTH = 8;
 const TOOL_ACTION_NAME = /^(?:functions\.)?[A-Z][A-Z0-9_.:-]*$/;
@@ -351,7 +352,7 @@ function classifyMalformedControl(
 	text: string,
 ): UserVisibleControlEnvelope | undefined {
 	if (!text.startsWith("{")) return undefined;
-	const candidate = text.slice(0, 20_000);
+	const candidate = truncateWellFormed(toWellFormedUnicode(text), 20_000);
 	const action = candidate.match(
 		/"action"\s*:\s*"((?:functions\.)?[A-Z][A-Z0-9_.:-]*)"/,
 	)?.[1];
@@ -378,7 +379,7 @@ function classifyMalformedControl(
 
 function looksLikeMalformedReplyEnvelope(text: string): boolean {
 	if (!text.startsWith("{")) return false;
-	const candidate = text.slice(0, 20_000);
+	const candidate = truncateWellFormed(toWellFormedUnicode(text), 20_000);
 	return (
 		/"(?:messageToUser|replyText)"\s*:/.test(candidate) ||
 		(/"(?:response|text)"\s*:/.test(candidate) &&
