@@ -6,7 +6,14 @@
  * Birdeye + on-chain lookup when available, falling back to a hardcoded
  * symbol-to-CoinGecko-id table for a short list of major tokens.
  */
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
 interface CoinGeckoDefiData {
@@ -79,6 +86,20 @@ interface SolanaTokenInfoService {
   getTokenSymbol(publicKey: object): Promise<string | null | undefined>;
 }
 const DEFI_NEWS_TEXT_LIMIT = 4000;
+
+export function formatDefiNewsText(defiNewsInfo: string): string {
+  return truncateWellFormed(
+    toWellFormedUnicode(`${defiNewsInfo}\n`),
+    DEFI_NEWS_TEXT_LIMIT,
+  );
+}
+
+export function formatArticleDescription(description: string): string {
+  const wellFormed = toWellFormedUnicode(description);
+  return wellFormed.length > 100
+    ? `${truncateWellFormed(wellFormed, 97)}...`
+    : wellFormed;
+}
 
 export const defiNewsProvider: Provider = {
   name: "DEFI_NEWS",
@@ -204,7 +225,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = `${defiNewsInfo}\n`.slice(0, DEFI_NEWS_TEXT_LIMIT);
+    const text = formatDefiNewsText(defiNewsInfo);
 
     return {
       data,
@@ -434,8 +455,8 @@ async function getLatestCryptoNews(
       newsInfo += `${index + 1}. ${article.title}\n`;
 
       if (article.description) {
-        const shortDesc = article.description.substring(0, 100);
-        newsInfo += `   ${shortDesc}${article.description.length > 100 ? "..." : ""}\n`;
+        const shortDesc = formatArticleDescription(article.description);
+        newsInfo += `   ${shortDesc}\n`;
       }
 
       if (article.pubDate) {

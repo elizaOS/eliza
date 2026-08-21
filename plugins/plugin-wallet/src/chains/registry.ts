@@ -25,6 +25,8 @@ import {
   ElizaError,
   type IAgentRuntime,
   type ITokenDataService,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   createAssociatedTokenAccountInstruction,
@@ -645,6 +647,12 @@ function resolvePumpFunTradeLocalSettings(
  * `simulate` so both build the exact same unsigned transaction from the same
  * inputs — simulate never sees a different route than execute would submit.
  */
+export function formatPumpPortalErrorDetail(detail: string): string {
+  return detail
+    ? `: ${truncateWellFormed(toWellFormedUnicode(detail), 240)}`
+    : "";
+}
+
 async function fetchPumpFunTransaction(
   publicKey: PublicKey,
   mint: string,
@@ -668,8 +676,9 @@ async function fetchPumpFunTransaction(
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    const safeDetail = formatPumpPortalErrorDetail(detail);
     throw new Error(
-      `PumpPortal trade-local failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ""}`,
+      `PumpPortal trade-local failed (${response.status})${safeDetail}`,
     );
   }
 
