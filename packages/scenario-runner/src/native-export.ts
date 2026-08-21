@@ -455,35 +455,48 @@ function scanPrivacyIdentifierKey(input: string, start: number): number | null {
   return null;
 }
 
-function scanCoordsPrivacyBlock(input: string, start: number): number | null {
+type CoordsPrivacyScan =
+  | { matched: true; end: number }
+  | { matched: false; resumeAt: number };
+
+// On failure the scan reports how far it walked so the caller never rescans a
+// rejected span. Skipping it is provably safe: the sub-scans (whitespace,
+// number, identifier key) can never contain `"` or `}`, and value scans stop
+// at — never consume — `}`, so any complete coords block inside the span would
+// have terminated this scan successfully instead of letting it fail.
+function scanCoordsPrivacyBlock(
+  input: string,
+  start: number,
+): CoordsPrivacyScan {
   let cursor = skipPrivacyWhitespace(input, start + COORDS_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  const fail = (): CoordsPrivacyScan => ({ matched: false, resumeAt: cursor });
+  if (input[cursor] !== ":") return fail();
   cursor = skipPrivacyWhitespace(input, cursor + 1);
-  if (input[cursor] !== "{") return null;
+  if (input[cursor] !== "{") return fail();
   cursor = skipPrivacyWhitespace(input, cursor + 1);
-  if (!input.startsWith(LATITUDE_MARKER, cursor)) return null;
+  if (!input.startsWith(LATITUDE_MARKER, cursor)) return fail();
   cursor = skipPrivacyWhitespace(input, cursor + LATITUDE_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  if (input[cursor] !== ":") return fail();
   cursor = skipPrivacyWhitespace(input, cursor + 1);
   const latitudeEnd = scanPrivacyNumber(input, cursor);
-  if (latitudeEnd === null) return null;
+  if (latitudeEnd === null) return fail();
   cursor = skipPrivacyWhitespace(input, latitudeEnd);
-  if (input[cursor] !== ",") return null;
+  if (input[cursor] !== ",") return fail();
   cursor = skipPrivacyWhitespace(input, cursor + 1);
-  if (!input.startsWith(LONGITUDE_MARKER, cursor)) return null;
+  if (!input.startsWith(LONGITUDE_MARKER, cursor)) return fail();
   cursor = skipPrivacyWhitespace(input, cursor + LONGITUDE_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  if (input[cursor] !== ":") return fail();
   cursor = skipPrivacyWhitespace(input, cursor + 1);
   const longitudeEnd = scanPrivacyNumber(input, cursor);
-  if (longitudeEnd === null) return null;
+  if (longitudeEnd === null) return fail();
   cursor = skipPrivacyWhitespace(input, longitudeEnd);
 
   while (input[cursor] === ",") {
     cursor = skipPrivacyWhitespace(input, cursor + 1);
     const keyEnd = scanPrivacyIdentifierKey(input, cursor);
-    if (keyEnd === null) return null;
+    if (keyEnd === null) return fail();
     cursor = skipPrivacyWhitespace(input, keyEnd);
-    if (input[cursor] !== ":") return null;
+    if (input[cursor] !== ":") return fail();
     cursor = skipPrivacyWhitespace(input, cursor + 1);
     const valueStart = cursor;
     while (
@@ -493,10 +506,10 @@ function scanCoordsPrivacyBlock(input: string, start: number): number | null {
     ) {
       cursor += 1;
     }
-    if (cursor === valueStart) return null;
+    if (cursor === valueStart) return fail();
     cursor = skipPrivacyWhitespace(input, cursor);
   }
-  return input[cursor] === "}" ? cursor + 1 : null;
+  return input[cursor] === "}" ? { matched: true, end: cursor + 1 } : fail();
 }
 
 function redactCoordsPrivacyBlocks(
@@ -506,20 +519,24 @@ function redactCoordsPrivacyBlocks(
   let searchFrom = 0;
   let copiedThrough = 0;
   let output = "";
+  let matchedAny = false;
   while (searchFrom < input.length) {
     const start = input.indexOf(COORDS_MARKER, searchFrom);
     if (start === -1) break;
-    const end = scanCoordsPrivacyBlock(input, start);
-    if (end === null) {
-      searchFrom = start + COORDS_MARKER.length;
+    const scan = scanCoordsPrivacyBlock(input, start);
+    if (!scan.matched) {
+      // Monotonic cursor: never re-walk a failed candidate span, so total
+      // work stays linear even with many overlapping malformed candidates.
+      searchFrom = Math.max(start + COORDS_MARKER.length, scan.resumeAt);
       continue;
     }
+    matchedAny = true;
     output += `${input.slice(copiedThrough, start)}${GEO_REPLACEMENT}`;
-    copiedThrough = end;
-    searchFrom = end;
+    copiedThrough = scan.end;
+    searchFrom = scan.end;
     noteRedaction(stats, "geo", "coords-json-block");
   }
-  return copiedThrough === 0 ? input : output + input.slice(copiedThrough);
+  return matchedAny ? output + input.slice(copiedThrough) : input;
 }
 
 function noteResidual(stats: PrivacyFilterStats, label: string): void {

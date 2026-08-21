@@ -69,4 +69,12 @@ describe("deriveSessionName command tokenization", () => {
     const name = deriveSessionName(`run '${escaped}`);
     expect(name?.startsWith("run \\&\\&")).toBe(true);
   });
+
+  it("handles many unmatched quote delimiters in linear time", () => {
+    // Each quote's escape (\") consumes the next delimiter, so every
+    // unmatched-quote fallback used to rescan the remaining suffix and go
+    // quadratic; the bounded tokenization prefix caps that work.
+    const name = deriveSessionName(`run ${'"\\'.repeat(100_000)}`);
+    expect(name).toBe("run \\");
+  });
 });

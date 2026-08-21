@@ -541,6 +541,47 @@ describe("exportScenarioNativeJsonl", () => {
     }
   });
 
+  it("redacts across many overlapping malformed coordinate candidates in linear time", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-coords2-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      const trajectory = syntheticTrajectory() as ReturnType<
+        typeof syntheticTrajectory
+      >;
+      const planner = trajectory.stages[1];
+      if (!planner || !("model" in planner) || !planner.model) {
+        throw new Error("synthetic planner stage missing");
+      }
+      // Every "coords" marker starts a candidate whose scan runs to the end of
+      // the unterminated tail; a non-monotonic cursor would rescan each
+      // remaining suffix and go quadratic. The valid block at the front must
+      // still be redacted, and the pair pattern catches the malformed tail.
+      planner.model.response = `{"coords":{"latitude":3.25,"longitude":4.5}}${'"coords":{"latitude":0,"longitude":0,'.repeat(50_000)}`;
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(trajectory),
+        "utf-8",
+      );
+
+      const outPath = path.join(runDir, "native.jsonl");
+      expect(exportScenarioNativeJsonl(runDir, outPath)).toBe(1);
+      const body = readFileSync(outPath, "utf-8");
+      expect(body).toContain("[REDACTED_GEO]");
+      expect(body).not.toContain("3.25");
+      expect(body).not.toContain('latitude\\":0');
+      const attestation = JSON.parse(
+        readFileSync(
+          path.join(runDir, "native.privacy-attestation.json"),
+          "utf-8",
+        ),
+      );
+      expect(attestation.categories.geo).toBeGreaterThanOrEqual(2);
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
   it("labels scenario native exports as synthetic, not a reviewed real-user export (#13623)", () => {
     const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-src-"));
     try {

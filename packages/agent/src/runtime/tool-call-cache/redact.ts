@@ -105,35 +105,45 @@ function scanIdentifierKey(input: string, start: number): number | null {
   return null;
 }
 
-function scanCoordsBlock(input: string, start: number): number | null {
+type CoordsScan =
+  | { matched: true; end: number }
+  | { matched: false; resumeAt: number };
+
+// On failure the scan reports how far it walked so the caller never rescans a
+// rejected span. Skipping it is provably safe: the sub-scans (whitespace,
+// number, identifier key) can never contain `"` or `}`, and value scans stop
+// at — never consume — `}`, so any complete coords block inside the span would
+// have terminated this scan successfully instead of letting it fail.
+function scanCoordsBlock(input: string, start: number): CoordsScan {
   let cursor = skipWhitespace(input, start + COORDS_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  const fail = (): CoordsScan => ({ matched: false, resumeAt: cursor });
+  if (input[cursor] !== ":") return fail();
   cursor = skipWhitespace(input, cursor + 1);
-  if (input[cursor] !== "{") return null;
+  if (input[cursor] !== "{") return fail();
   cursor = skipWhitespace(input, cursor + 1);
-  if (!input.startsWith(LATITUDE_MARKER, cursor)) return null;
+  if (!input.startsWith(LATITUDE_MARKER, cursor)) return fail();
   cursor = skipWhitespace(input, cursor + LATITUDE_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  if (input[cursor] !== ":") return fail();
   cursor = skipWhitespace(input, cursor + 1);
   const latitudeEnd = scanNumber(input, cursor);
-  if (latitudeEnd === null) return null;
+  if (latitudeEnd === null) return fail();
   cursor = skipWhitespace(input, latitudeEnd);
-  if (input[cursor] !== ",") return null;
+  if (input[cursor] !== ",") return fail();
   cursor = skipWhitespace(input, cursor + 1);
-  if (!input.startsWith(LONGITUDE_MARKER, cursor)) return null;
+  if (!input.startsWith(LONGITUDE_MARKER, cursor)) return fail();
   cursor = skipWhitespace(input, cursor + LONGITUDE_MARKER.length);
-  if (input[cursor] !== ":") return null;
+  if (input[cursor] !== ":") return fail();
   cursor = skipWhitespace(input, cursor + 1);
   const longitudeEnd = scanNumber(input, cursor);
-  if (longitudeEnd === null) return null;
+  if (longitudeEnd === null) return fail();
   cursor = skipWhitespace(input, longitudeEnd);
 
   while (input[cursor] === ",") {
     cursor = skipWhitespace(input, cursor + 1);
     const keyEnd = scanIdentifierKey(input, cursor);
-    if (keyEnd === null) return null;
+    if (keyEnd === null) return fail();
     cursor = skipWhitespace(input, keyEnd);
-    if (input[cursor] !== ":") return null;
+    if (input[cursor] !== ":") return fail();
     cursor = skipWhitespace(input, cursor + 1);
     const valueStart = cursor;
     while (
@@ -143,30 +153,34 @@ function scanCoordsBlock(input: string, start: number): number | null {
     ) {
       cursor += 1;
     }
-    if (cursor === valueStart) return null;
+    if (cursor === valueStart) return fail();
     cursor = skipWhitespace(input, cursor);
   }
 
-  return input[cursor] === "}" ? cursor + 1 : null;
+  return input[cursor] === "}" ? { matched: true, end: cursor + 1 } : fail();
 }
 
 function redactCoordsBlocks(input: string): string {
   let searchFrom = 0;
   let copiedThrough = 0;
   let output = "";
+  let matchedAny = false;
   while (searchFrom < input.length) {
     const start = input.indexOf(COORDS_MARKER, searchFrom);
     if (start === -1) break;
-    const end = scanCoordsBlock(input, start);
-    if (end === null) {
-      searchFrom = start + COORDS_MARKER.length;
+    const scan = scanCoordsBlock(input, start);
+    if (!scan.matched) {
+      // Monotonic cursor: never re-walk a failed candidate span, so total
+      // work stays linear even with many overlapping malformed candidates.
+      searchFrom = Math.max(start + COORDS_MARKER.length, scan.resumeAt);
       continue;
     }
+    matchedAny = true;
     output += `${input.slice(copiedThrough, start)}[REDACTED_GEO]`;
-    copiedThrough = end;
-    searchFrom = end;
+    copiedThrough = scan.end;
+    searchFrom = scan.end;
   }
-  return copiedThrough === 0 ? input : output + input.slice(copiedThrough);
+  return matchedAny ? output + input.slice(copiedThrough) : input;
 }
 
 function snapshotEnvCredentials(): string[] {

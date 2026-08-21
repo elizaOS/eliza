@@ -286,7 +286,15 @@ export function deriveSessionName(command: string): string | undefined {
   return `${stripQuotes(verb)} ${cleaned}`;
 }
 
-function tokenizeCommand(command: string): string[] {
+// The derived session name only ever surfaces the leading verb and one
+// truncated target token, so tokenization never needs to look past a short
+// prefix. Bounding the input also bounds the unmatched-quote fallback below:
+// without it, many unmatched quote delimiters (each escaping the next quote)
+// would make every fallback rescan the remaining suffix, going quadratic.
+const TOKENIZE_LIMIT = 2048;
+
+function tokenizeCommand(rawCommand: string): string[] {
+  const command = rawCommand.slice(0, TOKENIZE_LIMIT);
   const tokens: string[] = [];
   let token = "";
   let cursor = 0;
