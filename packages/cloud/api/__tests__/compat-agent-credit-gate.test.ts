@@ -1,4 +1,5 @@
-// Exercises cloud API tests compat agent credit gate.test behavior with deterministic Worker route fixtures.
+/** Exercises compat agent credit and placement gates with deterministic Worker fixtures. */
+
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
@@ -95,6 +96,7 @@ const createAgent = mock(
     organizationId: string;
     userId: string;
     agentName: string;
+    executionTier: "shared" | "dedicated-always";
     maxNonTerminalAgents?: number;
   }) => ({
     agent: createdSandboxRow,
@@ -450,6 +452,7 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
       organizationId: "org-1",
       userId: "user-1",
       agentName: "Agent One",
+      executionTier: "shared",
       maxNonTerminalAgents: 20,
     });
     // Compat stays multi-agent-per-org: the reuse guard must remain OFF.
@@ -462,6 +465,24 @@ describe("compat agent create credit + quota gate (elizaOS/eliza#11678)", () => 
       (standardCreateCall[0] as Record<string, unknown>)
         .reuseExistingNonTerminal,
     ).toBeUndefined();
+  });
+
+  test("uses an explicit Dedicated tier before compat auto-provision enqueues compute", async () => {
+    checkAgentCreditGate.mockResolvedValue({
+      allowed: true,
+      balance: 5,
+      error: "",
+    });
+
+    const response = await app.fetch(createRequest(), {
+      WAIFU_AUTO_PROVISION: "true",
+    });
+
+    expect(response.status).toBe(202);
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    expect(createAgent.mock.calls[0]?.[0]).toMatchObject({
+      executionTier: "dedicated-always",
+    });
   });
 
   test("maps AgentQuotaExceededError from a standard-auth create to 429", async () => {
