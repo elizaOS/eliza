@@ -93,6 +93,14 @@ export interface LoggerBindings extends Record<string, unknown> {
   level?: string;
   namespace?: string;
   namespaces?: string[];
+  /**
+   * Retention cap for the process-wide in-memory ring buffer backing
+   * `recentLogs()` and WebSocket log streaming. A positive value resizes the
+   * shared buffer in place, preserving already-captured history; raising the
+   * cap keeps prior entries and lowering it trims the oldest. Non-positive or
+   * non-finite values are ignored, leaving the current cap (default 100)
+   * unchanged. Constructing a logger never clears the shared buffer.
+   */
   maxMemoryLogs?: number;
   __forceType?: "browser" | "node"; // For testing - forces specific environment behavior
 }
@@ -146,6 +154,14 @@ interface InMemoryDestination {
   write: (entry: LogEntry) => void;
   clear: () => void;
   recentLogs: () => string;
+  /**
+   * Resize the ring buffer's retention cap in place. Raising the cap keeps
+   * existing entries; lowering it trims the oldest entries from the front so
+   * at most `maxLogs` remain. Non-positive or non-finite values are ignored so
+   * a bad binding cannot silently disable retention. Never clears the buffer —
+   * the buffer is shared process-wide, so prior history is preserved.
+   */
+  setMaxLogs: (maxLogs: number) => void;
 }
 
 // ============================================================================
@@ -1147,13 +1163,14 @@ export function logChatOut(params: ChatOutLogParams): string {
 /**
  * Creates an in-memory destination for storing recent logs
  */
-function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
+function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
   const logs: LogEntry[] = [];
+  let maxLogs = initialMaxLogs;
 
   return {
     write(entry: LogEntry): void {
       logs.push(entry);
-      if (logs.length > maxLogs) {
+      while (logs.length > maxLogs) {
         logs.shift();
       }
       if (logListeners.size === 0) return;
@@ -1184,6 +1201,16 @@ function createInMemoryDestination(maxLogs = 100): InMemoryDestination {
     },
     clear(): void {
       logs.length = 0;
+    },
+    setMaxLogs(nextMaxLogs: number): void {
+      // Ignore non-positive or non-finite caps: a bad binding must not disable
+      // retention or wipe the shared buffer. Only trim when the cap shrinks
+      // below the current fill so existing history is preserved.
+      if (!Number.isFinite(nextMaxLogs) || nextMaxLogs <= 0) return;
+      maxLogs = Math.floor(nextMaxLogs);
+      while (logs.length > maxLogs) {
+        logs.shift();
+      }
     },
     recentLogs(): string {
       return logs
@@ -1455,9 +1482,12 @@ function extractBindingsConfig(bindings: LoggerBindings | boolean): {
 function createLogger(bindings: LoggerBindings | boolean = false): Logger {
   const { level, base, maxMemoryLogs } = extractBindingsConfig(bindings);
 
-  // Reset memory buffer if custom limit requested
-  if (typeof maxMemoryLogs === "number" && maxMemoryLogs > 0) {
-    globalInMemoryDestination.clear();
+  // Apply the requested retention cap in place. Resizing preserves the shared
+  // buffer's existing history instead of destroying every other logger's
+  // recent-logs/streaming window; non-positive or NaN values are ignored by
+  // setMaxLogs so the prior cap stands.
+  if (typeof maxMemoryLogs === "number") {
+    globalInMemoryDestination.setMaxLogs(maxMemoryLogs);
   }
 
   // Check if we should force browser behavior (for testing)
