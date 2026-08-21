@@ -42,6 +42,17 @@ export function desktopPillTravelerOpacity(
   return (1 - grabberHandoff) * (1 - clamp01(fullBleedProgress));
 }
 
+/** Bottom-anchored travel from the resting host to the input's top edge. */
+export function desktopPillTravelerOffset(
+  openProgress: number,
+  inputHeight: number,
+  restingHeight: number,
+): number {
+  const progress = clamp01(openProgress);
+  if (progress === 0) return 0;
+  return -Math.max(0, inputHeight - restingHeight) * progress;
+}
+
 /**
  * How far the sheet fill has blended from the resting translucent glass to the
  * opaque panel `--bg`. Rides the live drag: 0 with the thread closed (the

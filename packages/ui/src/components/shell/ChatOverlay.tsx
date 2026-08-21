@@ -138,6 +138,7 @@ import {
 import { Textarea } from "../ui/textarea";
 import {
   clamp01,
+  desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
   grabberBarOpacity,
   pillHandleCounterScale,
@@ -153,6 +154,7 @@ import {
   shellToChatMessageData,
 } from "./chat-overlay-transcript";
 import {
+  CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
   CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
   CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
   type ChatOverlayMaterialSize,
@@ -455,6 +457,7 @@ const FULLSCREEN_SNAP_VH = 0.9;
 const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
+  desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
@@ -3601,12 +3604,14 @@ export function ChatOverlay({
   // grabber. At the endpoint it hands off at the exact same pixels to the real
   // SheetGrabber, which retains all open-state interaction semantics. Embedded
   // and browser surfaces keep their established capsule/grabber treatment.
-  const desktopPillTravelerTop = useTransform(openProgress, (progress) =>
-    `${(1 - clamp01(progress)) * 100}%`,
-  );
   const desktopPillTravelerY = useTransform(
     openProgress,
-    (progress) => -CHAT_OVERLAY_RESTING_WINDOW_HEIGHT * (1 - clamp01(progress)),
+    (progress) =>
+      desktopPillTravelerOffset(
+        progress,
+        CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
+        CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+      ),
   );
   const desktopPillTravelerScaleX = useTransform(
     openProgress,
@@ -7461,9 +7466,8 @@ export function ChatOverlay({
           // composer: bottom 64x12 at rest, top 48x6 at the handoff. The real
           // SheetGrabber takes over at those exact pixels once fully formed.
           <motion.div
-            className="pointer-events-none absolute inset-x-0 z-30 flex justify-center"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
             style={{
-              top: desktopPillTravelerTop,
               y: desktopPillTravelerY,
               opacity: desktopPillTravelerAlpha,
             }}
