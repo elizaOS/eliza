@@ -40,7 +40,10 @@ import {
 import { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 import { RecursiveCharacterTextSplitter } from "./utils/recursive-character-text-splitter";
 import { formatTimestamp as formatTimestampBase } from "./utils/time-format";
-import { truncateWellFormed } from "./utils/well-formed";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "./utils/well-formed.js";
 
 // Token / embedding budget constants
 export const DEFAULT_MAX_CONVERSATION_TOKENS = 50_000;
@@ -769,7 +772,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
-		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+		const safeText = truncateWellFormed(toWellFormedUnicode(text), 100_000);
 		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
 		if (!looksLikeXml) {
 			return null;
