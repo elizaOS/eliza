@@ -13,6 +13,7 @@
  *   4. Experimental TOS-unsafe Claude / Codex (gated)
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import type {
   CodingAgentCreateTaskInput,
@@ -247,7 +248,9 @@ export function normalizeCockpitSpawnTarget(
 function deriveTitle(text: string, max = 80): string {
   const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";
   const trimmed = firstLine.trim();
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+  const wellFormed = toWellFormedUnicode(trimmed);
+  if (wellFormed.length <= max) return wellFormed;
+  return `${truncateWellFormed(wellFormed, max - 1)}…`;
 }
 
 /**
