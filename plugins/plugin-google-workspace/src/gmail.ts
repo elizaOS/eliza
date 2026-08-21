@@ -746,6 +746,7 @@ function splitAddressList(value: string): string[] {
   let inDomainLiteral = false;
   let escaped = false;
   let inGroup = false;
+  let needsGroupSeparator = false;
 
   const pushCurrent = (): boolean => {
     const token = current.trim();
@@ -794,6 +795,23 @@ function splitAddressList(value: string): string[] {
       current += char;
       continue;
     }
+    if (needsGroupSeparator) {
+      if (/\s/.test(char)) {
+        current += char;
+        continue;
+      }
+      if (char === "(") {
+        commentDepth += 1;
+        current += char;
+        continue;
+      }
+      if (char === ",") {
+        current = "";
+        needsGroupSeparator = false;
+        continue;
+      }
+      return [];
+    }
     if (char === '"') {
       inQuote = true;
       current += char;
@@ -826,7 +844,7 @@ function splitAddressList(value: string): string[] {
       continue;
     }
     if (char === ":" && !inAngle) {
-      if (inGroup || !current.trim()) {
+      if (inGroup || !isPlausibleGroupLabel(current)) {
         return [];
       }
       inGroup = true;
@@ -838,6 +856,7 @@ function splitAddressList(value: string): string[] {
         return [];
       }
       inGroup = false;
+      needsGroupSeparator = true;
       continue;
     }
     if (char === "," && !inAngle) {
@@ -852,7 +871,42 @@ function splitAddressList(value: string): string[] {
   if (inQuote || commentDepth > 0 || inAngle || inDomainLiteral || escaped || inGroup) {
     return [];
   }
+  if (needsGroupSeparator) {
+    return tokens;
+  }
   return pushCurrent() ? tokens : [];
+}
+
+function isPlausibleGroupLabel(value: string): boolean {
+  const label = stripMailboxComments(value).trim();
+  if (!label) {
+    return false;
+  }
+  let inQuote = false;
+  let escaped = false;
+  let hasContent = false;
+  for (const char of label) {
+    if (escaped) {
+      escaped = false;
+      hasContent = true;
+      continue;
+    }
+    if (inQuote && char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (!inQuote && /[()<>@,;:\\[\]]/.test(char)) {
+      return false;
+    }
+    if (!/\s/.test(char)) {
+      hasContent = true;
+    }
+  }
+  return hasContent && !inQuote && !escaped;
 }
 
 // Remove RFC 5322 comments (`(...)`, nestable, with quoted-pair escapes) from a

@@ -248,7 +248,8 @@ describe("parseEmailAddresses top-level comma splitting", () => {
         { name: "From", value: "sender@corp.com" },
         {
           name: "To",
-          value: 'Project Team: "Doe, Jane" <jane@corp.com>, bob@x.com;, outside@example.com',
+          value:
+            'Project Team: "Doe, Jane" <jane@corp.com>, bob@x.com; (group end), outside@example.com',
         },
       ])
     );
@@ -258,6 +259,28 @@ describe("parseEmailAddresses top-level comma splitting", () => {
       { email: "bob@x.com" },
       { email: "outside@example.com" },
     ]);
+  });
+
+  it("fails closed when a group is not comma-separated from the next address", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: "Project Team: jane@corp.com; bob@x.com" },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to).toEqual([]);
+  });
+
+  it("fails closed rather than treating a mailbox as a group label", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: "jane@corp.com: bob@x.com;" },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to).toEqual([]);
   });
 
   it("keeps valid quoted local-parts and dotless domains compatible", async () => {
