@@ -23,12 +23,13 @@ export function truncateDocumentLabel(value: string): string {
 }
 
 export function stripDocumentFilenameExtension(filename: string): string {
-	const trimmed = filename.trim();
+	const wellFormed = toWellFormedUnicode(filename);
+	const trimmed = wellFormed.trim();
 	if (!trimmed) return "";
 
 	const lastDot = trimmed.lastIndexOf(".");
 	if (lastDot <= 0) return trimmed;
-	return trimmed.slice(0, lastDot);
+	return truncateWellFormed(trimmed, lastDot);
 }
 
 export function deriveDocumentTitle(
