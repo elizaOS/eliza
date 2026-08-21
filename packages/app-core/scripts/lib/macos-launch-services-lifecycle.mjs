@@ -6,12 +6,34 @@
 
 import { spawn } from "node:child_process";
 
-const COMMAND_TIMEOUT_MS = 2_000;
+// JXA has a cold-start cost that can exceed two seconds on a loaded macOS host.
+// Keep the command bounded, but leave enough room for AppKit to initialize so
+// shutdown does not abandon the exact app merely because osascript was cold.
+const COMMAND_TIMEOUT_MS = 30_000;
 const FORCE_DELAY_MS = 750;
+
+function isValidApplicationIdentity(value) {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    Number.isInteger(value.pid) &&
+    value.pid > 0 &&
+    Number.isFinite(value.launchTime)
+  );
+}
+
+function authorityIsPresent(authority, applications) {
+  return applications.some(
+    (application) =>
+      application.pid === authority.pid &&
+      application.launchTime === authority.launchTime,
+  );
+}
 
 function macApplicationSelectorScript(canonicalAppPath) {
   return `ObjC.import("AppKit");
 const targetPath = ${JSON.stringify(canonicalAppPath)};
+const targetName = ObjC.unwrap($(targetPath).lastPathComponent);
 const apps = $.NSWorkspace.sharedWorkspace.runningApplications;
 const matches = [];
 for (let index = 0; index < Number(apps.count); index += 1) {
@@ -19,6 +41,10 @@ for (let index = 0; index < Number(apps.count); index += 1) {
   const bundleURL = app.bundleURL;
   const bundlePath = bundleURL ? ObjC.unwrap(bundleURL.path) : null;
   if (typeof bundlePath !== "string") continue;
+  // Canonicalization crosses the ObjC bridge and can be expensive on a loaded
+  // host. A different bundle basename cannot resolve to the exact target path,
+  // so reject it before asking Foundation to resolve symlinks.
+  if (ObjC.unwrap($(bundlePath).lastPathComponent) !== targetName) continue;
   const canonicalBundlePath = ObjC.unwrap(
     $(bundlePath).stringByResolvingSymlinksInPath,
   );
@@ -38,6 +64,13 @@ JSON.stringify(matches);`;
 
 /** Build a JXA termination command bound to one previously claimed instance. */
 export function buildMacApplicationTerminationScript(authority, force) {
+  if (
+    typeof authority?.canonicalAppPath !== "string" ||
+    authority.canonicalAppPath.length === 0 ||
+    !isValidApplicationIdentity(authority)
+  ) {
+    throw new TypeError("invalid macOS application authority");
+  }
   const selector = force ? "forceTerminate" : "terminate";
   return `${macApplicationSelectorScript(authority.canonicalAppPath)}
 let matched = 0;
@@ -113,6 +146,15 @@ export async function inspectMacApplicationsAtPath(
     const parsed = JSON.parse(result.stdout);
     if (!Array.isArray(parsed))
       throw new Error("inspection result is not an array");
+    if (!parsed.every(isValidApplicationIdentity)) {
+      throw new Error("inspection result contains an invalid app identity");
+    }
+    const uniqueIdentities = new Set(
+      parsed.map(({ pid, launchTime }) => `${pid}:${launchTime}`),
+    );
+    if (uniqueIdentities.size !== parsed.length) {
+      throw new Error("inspection result contains duplicate app identities");
+    }
     return { ok: true, applications: parsed, error: null };
   } catch (error) {
     return { ok: false, applications: [], error: String(error) };
@@ -170,11 +212,30 @@ export async function requestMacApplicationTermination(
   force,
   spawnCommand = spawn,
 ) {
-  const result = await runJxa(
-    buildMacApplicationTerminationScript(authority, force),
-    spawnCommand,
-  );
-  return { ok: result.ok, error: result.error };
+  let script;
+  try {
+    script = buildMacApplicationTerminationScript(authority, force);
+  } catch (error) {
+    return { ok: false, matched: null, error: String(error) };
+  }
+  const result = await runJxa(script, spawnCommand);
+  if (!result.ok) return { ok: false, matched: null, error: result.error };
+  try {
+    const parsed = JSON.parse(result.stdout);
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      !Number.isInteger(parsed.matched) ||
+      parsed.matched < 0 ||
+      parsed.matched > 1 ||
+      parsed.force !== force
+    ) {
+      throw new Error("invalid termination result");
+    }
+    return { ok: true, matched: parsed.matched, error: null };
+  } catch (error) {
+    return { ok: false, matched: null, error: String(error) };
+  }
 }
 
 /** Ask the exact claimed app to quit, then force only that same instance. */
@@ -188,10 +249,58 @@ export async function stopMacApplication(
     spawnCommand,
   );
   await new Promise((resolve) => delay(resolve, FORCE_DELAY_MS));
+  const afterGrace = await inspectMacApplicationsAtPath(
+    authority.canonicalAppPath,
+    spawnCommand,
+  );
+  if (!afterGrace.ok) {
+    return {
+      graceful,
+      forced: { ok: false, matched: null, error: afterGrace.error },
+    };
+  }
+  if (!authorityIsPresent(authority, afterGrace.applications)) {
+    return {
+      graceful,
+      forced: { ok: true, matched: 0, error: null },
+    };
+  }
   const forced = await requestMacApplicationTermination(
     authority,
     true,
     spawnCommand,
   );
+  if (!forced.ok) return { graceful, forced };
+  if (forced.matched !== 1) {
+    return {
+      graceful,
+      forced: {
+        ok: false,
+        matched: forced.matched,
+        error: "exact app disappeared before forceTerminate matched it",
+      },
+    };
+  }
+  await new Promise((resolve) => delay(resolve, FORCE_DELAY_MS));
+  const afterForce = await inspectMacApplicationsAtPath(
+    authority.canonicalAppPath,
+    spawnCommand,
+  );
+  if (!afterForce.ok) {
+    return {
+      graceful,
+      forced: { ok: false, matched: forced.matched, error: afterForce.error },
+    };
+  }
+  if (authorityIsPresent(authority, afterForce.applications)) {
+    return {
+      graceful,
+      forced: {
+        ok: false,
+        matched: forced.matched,
+        error: "exact app remained after forceTerminate",
+      },
+    };
+  }
   return { graceful, forced };
 }

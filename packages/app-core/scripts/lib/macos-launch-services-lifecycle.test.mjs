@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildMacApplicationTerminationScript,
   claimMacApplicationAtPath,
+  inspectMacApplicationsAtPath,
   requestMacApplicationTermination,
   stopMacApplication,
 } from "./macos-launch-services-lifecycle.mjs";
@@ -40,6 +41,40 @@ describe("macOS LaunchServices lifecycle", () => {
     expect(script).toContain("candidate.launchTime !== 1786000000.25");
     expect(script).toContain("app.terminate");
     expect(script).not.toContain("bundleIdentifier");
+  });
+
+  it("rejects malformed authority before executing JXA", async () => {
+    const spawnCommand = vi.fn();
+    await expect(
+      requestMacApplicationTermination(
+        { ...AUTHORITY, pid: Number.NaN },
+        false,
+        spawnCommand,
+      ),
+    ).resolves.toMatchObject({ ok: false, matched: null });
+    expect(spawnCommand).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and duplicate inspection identities", async () => {
+    const malformed = await inspectMacApplicationsAtPath(
+      "/tmp/Eliza Dev.app",
+      successfulSpawn([], [JSON.stringify([{ pid: "10", launchTime: 100 }])]),
+    );
+    expect(malformed).toMatchObject({ ok: false, applications: [] });
+
+    const duplicate = await inspectMacApplicationsAtPath(
+      "/tmp/Eliza Dev.app",
+      successfulSpawn(
+        [],
+        [
+          JSON.stringify([
+            { pid: 10, launchTime: 100 },
+            { pid: 10, launchTime: 100 },
+          ]),
+        ],
+      ),
+    );
+    expect(duplicate).toMatchObject({ ok: false, applications: [] });
   });
 
   it("claims only one identity absent from the pre-open baseline", async () => {
@@ -88,15 +123,46 @@ describe("macOS LaunchServices lifecycle", () => {
   it("requests graceful termination before an exact-instance forced fallback", async () => {
     const commands = [];
     const result = await stopMacApplication(AUTHORITY, {
-      spawnCommand: successfulSpawn(commands),
+      spawnCommand: successfulSpawn(commands, [
+        JSON.stringify({ matched: 1, force: false }),
+        JSON.stringify([
+          { pid: AUTHORITY.pid, launchTime: AUTHORITY.launchTime },
+        ]),
+        JSON.stringify({ matched: 1, force: true }),
+        JSON.stringify([]),
+      ]),
       delay: (resolve) => resolve(),
     });
     expect(result).toEqual({
-      graceful: { ok: true, error: null },
-      forced: { ok: true, error: null },
+      graceful: { ok: true, matched: 1, error: null },
+      forced: { ok: true, matched: 1, error: null },
     });
     expect(commands[0].at(-1)).toContain("app.terminate");
-    expect(commands[1].at(-1)).toContain("app.forceTerminate");
+    expect(commands[2].at(-1)).toContain("app.forceTerminate");
+  });
+
+  it("reports an exact instance that survives force termination", async () => {
+    const result = await stopMacApplication(AUTHORITY, {
+      spawnCommand: successfulSpawn(
+        [],
+        [
+          JSON.stringify({ matched: 1, force: false }),
+          JSON.stringify([
+            { pid: AUTHORITY.pid, launchTime: AUTHORITY.launchTime },
+          ]),
+          JSON.stringify({ matched: 1, force: true }),
+          JSON.stringify([
+            { pid: AUTHORITY.pid, launchTime: AUTHORITY.launchTime },
+          ]),
+        ],
+      ),
+      delay: (resolve) => resolve(),
+    });
+    expect(result.forced).toEqual({
+      ok: false,
+      matched: 1,
+      error: "exact app remained after forceTerminate",
+    });
   });
 
   it.skipIf(process.platform !== "darwin")(
@@ -112,7 +178,7 @@ describe("macOS LaunchServices lifecycle", () => {
           },
           false,
         ),
-      ).resolves.toEqual({ ok: true, error: null });
+      ).resolves.toEqual({ ok: true, matched: 0, error: null });
     },
   );
 });
