@@ -90,6 +90,7 @@ export const LIFEOPS_WORKFLOW_RUN_STATUSES = [
   "running",
   "success",
   "failed",
+  "failed_uncompensated",
   "cancelled",
 ] as const;
 export type LifeOpsWorkflowRunStatus =
@@ -820,6 +821,7 @@ export interface LifeOpsWorkflowRun {
   id: string;
   agentId: string;
   workflowId: string;
+  idempotencyKey: string | null;
   startedAt: string;
   finishedAt: string | null;
   status: LifeOpsWorkflowRunStatus;
@@ -3625,6 +3627,7 @@ export interface UpdateLifeOpsWorkflowRequest {
 }
 
 export interface RunLifeOpsWorkflowRequest {
+  idempotencyKey?: string;
   now?: string;
   confirmBrowserActions?: boolean;
 }

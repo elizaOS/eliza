@@ -878,6 +878,7 @@ export const lifeWorkflowRuns = appLifeopsPgSchema.table(
     id: text("id").primaryKey(),
     agentId: text("agent_id").notNull(),
     workflowId: text("workflow_id").notNull(),
+    idempotencyKey: text("idempotency_key"),
     startedAt: text("started_at").notNull(),
     finishedAt: text("finished_at"),
     status: text("status").notNull().default("running"),
