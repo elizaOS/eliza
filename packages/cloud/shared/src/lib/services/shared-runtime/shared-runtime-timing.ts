@@ -47,6 +47,17 @@ function isSharedModelCallProvider(value: unknown): value is SharedModelCallProv
   return value === "unobserved" || isSharedModelProvider(value);
 }
 
+function summarizeSelectedProviders(
+  providers: ReadonlySet<SharedModelProvider>,
+): SharedModelProvider | "mixed" | "none" {
+  let selected: SharedModelProvider | "none" = "none";
+  for (const provider of providers) {
+    if (selected !== "none") return "mixed";
+    selected = provider;
+  }
+  return selected;
+}
+
 /** Provider attribution supplied by the AI SDK wrapper once a call succeeds. */
 export interface SharedModelCallSelection {
   provider: SharedModelProvider;
@@ -449,12 +460,7 @@ export class SharedRuntimeTimingCollector {
         clamped: this.#modelClamped,
         callCount: this.#modelCallCount,
         fallbackCount: this.#modelFallbackCount,
-        selectedProvider:
-          this.#modelProviders.size === 0
-            ? "none"
-            : this.#modelProviders.size === 1
-              ? (this.#modelProviders.values().next().value ?? "none")
-              : "mixed",
+        selectedProvider: summarizeSelectedProviders(this.#modelProviders),
         callsTruncated: this.#modelCallCount > this.#modelCalls.length,
         calls: this.#modelCalls.map((call) => ({ ...call })),
       },

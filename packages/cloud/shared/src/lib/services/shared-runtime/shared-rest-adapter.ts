@@ -20,6 +20,7 @@ import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
+import { logger } from "../../utils/logger";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
@@ -592,6 +593,12 @@ export async function sharedRestMessageSend(
   const result = (response.result ?? {}) as { text?: unknown; timing?: unknown };
   const replyText = typeof result.text === "string" ? result.text : "";
   const timing = parseSharedProviderTimingReceipt(result.timing);
+  if (result.timing !== undefined && timing === undefined) {
+    logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
+      agentId: agent.id,
+      conversationId,
+    });
+  }
   return {
     text: replyText,
     agentName: agentName || "Eliza",

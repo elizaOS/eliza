@@ -14,8 +14,9 @@
  * from this adapter would be a production database-path regression.
  */
 
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
+import { logger } from "../../utils/logger";
 
 class InsufficientCreditsError extends Error {}
 
@@ -362,6 +363,7 @@ describe("shared-rest-adapter — messages", () => {
   });
 
   test("POST rejects impossible provider timing from the untrusted bridge", async () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
     const impossibleReceipts = [
       {
         replayed: false,
@@ -436,6 +438,12 @@ describe("shared-rest-adapter — messages", () => {
         await sharedRestMessageSend(SHARED_AGENT, AGENT, "2+2?", "Eliza", EXECUTION_CTX, NAMESPACE),
       ).toEqual({ text: "four", agentName: "Eliza" });
     }
+    expect(warn).toHaveBeenCalledTimes(impossibleReceipts.length);
+    expect(warn).toHaveBeenLastCalledWith(
+      "[shared-runtime REST] message.send returned an invalid timing receipt",
+      { agentId: AGENT, conversationId: AGENT },
+    );
+    warn.mockRestore();
   });
 
   test("POST accepts the explicit first-16 call truncation contract", async () => {
