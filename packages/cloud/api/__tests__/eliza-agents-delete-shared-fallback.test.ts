@@ -32,10 +32,20 @@ type CancelAgentDeletionResult =
 const cancelAgentDeletion = mock(
   async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
 );
-const enqueueAgentDeleteOnce = mock(async () => ({
-  created: true,
-  job: { id: "delete-job-1", status: "pending" },
-}));
+type EnqueueAgentDeleteOnceResult = {
+  created: boolean;
+  job: {
+    id: string;
+    status: string;
+    data?: Record<string, unknown>;
+  };
+};
+const enqueueAgentDeleteOnce = mock(
+  async (): Promise<EnqueueAgentDeleteOnceResult> => ({
+    created: true,
+    job: { id: "delete-job-1", status: "pending" },
+  }),
+);
 const triggerImmediate = mock(async () => undefined);
 
 const loggerInfo = mock(() => undefined);
