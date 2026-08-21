@@ -271,6 +271,28 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     );
   });
 
+  it("never consults an attacker-controlled Symbol.toStringTag", () => {
+    // `Object.prototype.toString` performs Get(value, @@toStringTag), so brand
+    // sniffing on untrusted input could run an attacker getter, or let a plain
+    // object claim to be a Date/URL and make the builtin call throw. Reported
+    // by @lalalune on #23925; detection now probes the internal slot instead.
+    const throwingTag = {};
+    Object.defineProperty(throwingTag, Symbol.toStringTag, {
+      get() {
+        throw new Error("tag getter ran");
+      },
+    });
+    expect(() => contentToText([toolResult({ x: throwingTag })])).not.toThrow();
+    expect(() =>
+      contentToText([toolResult({ x: { [Symbol.toStringTag]: "Date" } })])
+    ).not.toThrow();
+    expect(() => contentToText([toolResult({ x: { [Symbol.toStringTag]: "URL" } })])).not.toThrow();
+    // An impostor is just a plain object, so it renders as one.
+    expect(contentToText([toolResult({ x: { [Symbol.toStringTag]: "Date" } })])).toBe(
+      '[tool_result WEB_FETCH: {"x":{}}]'
+    );
+  });
+
   it("renders a cross-realm Date rather than an empty object", () => {
     const CrossRealmDate = runInNewContext("Date") as DateConstructor;
     const value = new CrossRealmDate(0);

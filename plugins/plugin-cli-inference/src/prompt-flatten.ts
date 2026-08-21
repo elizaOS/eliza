@@ -109,9 +109,32 @@ function chargeWidth(budget: PayloadBudget, width: number): boolean {
   return budget.nodes <= MAX_TOOL_PAYLOAD_NODES;
 }
 
-/** Realm-independent brand, read without invoking anything on the value. */
-function brandOf(value: object): string {
-  return Object.prototype.toString.call(value);
+/**
+ * Realm-independent Date probe that never consults `@@toStringTag`.
+ * `Object.prototype.toString` performs `Get(value, Symbol.toStringTag)`, so on
+ * untrusted input it can run an attacker getter — or let a plain object claim
+ * to be a Date and make the builtin call throw. `Date.prototype.getTime` reads
+ * the internal slot instead: it succeeds for a Date from any realm and throws
+ * for everything else, including an impostor.
+ */
+function dateTimeValueOrNull(value: object): number | null {
+  try {
+    return Date.prototype.getTime.call(value as Date);
+  } catch {
+    // error-policy:J3 untrusted tool payload; "not a Date" is an explicit
+    // negative result, never a fabricated timestamp.
+    return null;
+  }
+}
+
+/** Same internal-slot probe for URL, for the same reason. */
+function urlHrefOrNull(value: object): string | null {
+  try {
+    return URL.prototype.toString.call(value as URL);
+  } catch {
+    // error-policy:J3 a non-URL is reported absent rather than guessed.
+    return null;
+  }
 }
 
 /** Buffer/Uint8Array brand check that does not depend on a `Buffer` global. */
@@ -167,9 +190,9 @@ function toBoundedJsonValue(
   // attacker-supplied `getTime` / `toISOString` override on a Date-shaped
   // payload can neither run nor throw out of prompt flattening — the same
   // reason core's `flattenTextValues` uses `Date.prototype.getTime.call`.
-  if (brandOf(object) === "[object Date]") {
-    const time = Date.prototype.getTime.call(object as Date);
-    return Number.isNaN(time) ? null : Date.prototype.toISOString.call(object as Date);
+  const dateTime = dateTimeValueOrNull(object);
+  if (dateTime !== null) {
+    return Number.isNaN(dateTime) ? null : Date.prototype.toISOString.call(object as Date);
   }
   // Buffer and URL both serialize to `{}` or an index map through the generic
   // object branch, dropping the bytes / the href. Reproduce what the
@@ -182,9 +205,8 @@ function toBoundedJsonValue(
     if (!chargeWidth(budget, bytes.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
     return { type: "Buffer", data: Array.from(bytes) };
   }
-  if (brandOf(object) === "[object URL]" || object instanceof URL) {
-    return String(URL.prototype.toString.call(object as URL));
-  }
+  const href = urlHrefOrNull(object);
+  if (href !== null) return href;
   if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return TOOL_PAYLOAD_DEPTH_MARKER;
   if (budget.ancestors.has(object)) return TOOL_PAYLOAD_CYCLE_MARKER;
   if (Array.isArray(object)) {
