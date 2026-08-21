@@ -1696,6 +1696,7 @@ export class SubAgentRouter extends Service {
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
     if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
+      // (trimmed of trailing proof checklists below, whatever branch set it)
       if (deliverable === undefined) {
         const ask = userTaskFromInitialTask(
           pickPlainString(
@@ -1741,6 +1742,16 @@ export class SubAgentRouter extends Service {
           } else {
             deliverable = lastProofBlockOutput(trimmed);
           }
+        }
+      }
+      if (deliverable !== undefined) {
+        // Whatever branch produced it: a verify-lap deliverable may carry the
+        // criteria-proof checklist after the answer — chat gets the answer,
+        // not the ls/diff evidence (live 2026-08-21).
+        const proofAt = deliverable.search(/\n(?:Evidence:\s*\n)?- \[x\] /);
+        if (proofAt > 0) {
+          const head = deliverable.slice(0, proofAt).trim();
+          if (head) deliverable = head;
         }
       }
       this.log("warn", "completion deliverable capture", {
