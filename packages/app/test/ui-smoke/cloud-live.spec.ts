@@ -54,14 +54,26 @@ test.use({
   serviceWorkers: "block",
 });
 
+// Click an optional onboarding affordance. Absence is a legitimate product
+// state: the runtime chooser and the OAuth authorize block only render under
+// some first-run configurations, so a visibility timeout is reported as an
+// explicit "not offered". A click that fails on a control that IS visible is a
+// real defect and must fail the lane rather than be swallowed.
 async function clickIfVisible(
   locator: Locator,
   timeout = 10_000,
-): Promise<void> {
-  await locator
-    .first()
-    .click({ timeout })
-    .catch(() => {});
+): Promise<boolean> {
+  const target = locator.first();
+  const offered = await target.waitFor({ state: "visible", timeout }).then(
+    () => true,
+    // error-policy:J4 the only expected failure of this wait is "the optional
+    // affordance never appeared", which becomes a distinct absent state; the
+    // click below still surfaces any genuine interaction failure.
+    () => false,
+  );
+  if (!offered) return false;
+  await target.click();
+  return true;
 }
 
 // Drive the cloud entry point of first-run: the transcript's Eliza Cloud option,

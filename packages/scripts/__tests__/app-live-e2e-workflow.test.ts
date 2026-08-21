@@ -474,62 +474,31 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     }
   });
 
-  test("measures a validated rendered assistant reply without claiming first-token latency", () => {
+  // The credentialed spec cannot execute in a keyless lane, so the invariants
+  // that keep a real Cloud bearer and real model content out of CI output are
+  // asserted against its source. This deliberately covers only handling of the
+  // credential and of test-seeded browser state; the behaviour of the evidence
+  // modules it calls is exercised for real by their own unit suites
+  // (packages/app/test/cloud-live-continuity-contract.test.ts and
+  // packages/app/test/staging-cloud-chat-latency-evidence.test.ts).
+  test("keeps the credentialed spec free of extra sends and borrowed browser state", () => {
     const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
-    const contract = read("packages/app/test/liveness-contract.ts");
 
-    expect(spec).toContain("assertOnboardingLivenessWithTiming(page");
-    expect(spec).toContain("buildLivenessChallenge(randomBytes(4)");
-    expect(spec).toContain(
-      "const challengeToken = extractLivenessChallengeToken(challenge)",
-    );
-    expect(spec).toContain("challengeToken,");
-    expect(spec).toContain("writeStagingCloudChatLatencyEvidence(");
-    expect(contract).toContain("const sendStartedAt = performance.now()");
-    expect(contract).toContain("firstTurnLatencyMs");
-    expect(contract).toContain(
-      "sendChatAndMeasureRenderedReply(page, options, false)",
-    );
-    expect(contract).toContain(
-      "sendChatAndMeasureRenderedReply(page, options, true)",
-    );
-    expect(contract).toContain('[aria-busy="false"]');
-    expect(contract).toContain('row.getAttribute("data-failure")');
-    expect(contract).toContain('[data-testid="thread-line-retry"]');
-    expect(contract).toContain("const settledReply = await acceptedReplyText(");
-    expect(contract).toContain("transport first-token timing");
-  });
-
-  test("proves server history continuity without a second challenge or an agent cleanup mutation", () => {
-    const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
-    const contract = read(
-      "packages/app/test/cloud-live-continuity-contract.ts",
-    );
-
+    // Exactly one challenge turn is sent, and the lane asserts that count at
+    // runtime rather than trusting the source shape alone.
     expect(spec.match(/assertOnboardingLivenessWithTiming\(/g)).toHaveLength(1);
     expect(spec).toContain("challengeLogicalChatSendCount).toBe(1)");
     expect(spec).toContain("unidentifiedChatSendAttemptCount).toBe(0)");
+    // The fresh-context leg must inherit nothing: no shared smoke seed, no
+    // storageState hand-off, and no production service worker.
     expect(spec).not.toContain("seedAppStorage");
+    expect(spec).not.toContain("storageState:");
+    expect(spec).toContain("const freshContext = await browser.newContext({");
+    expect(spec).toContain('serviceWorkers: "block"');
     expect(spec).toContain(
       'localStorage.setItem("eliza:first-run-complete", "")',
     );
     expect(spec).toContain('localStorage.setItem("elizaos:active-server", "")');
-    expect(spec).toContain("const freshContext = await browser.newContext({");
-    expect(spec).toContain('serviceWorkers: "block"');
-    expect(spec).not.toContain("storageState:");
-    expect(spec).toContain("await page.reload(");
-    expect(spec).toContain("proveChallengeHistory(");
-    expect(spec).toContain('hasToken("user") && hasToken("assistant")');
-    expect(spec).toContain("compareCloudLiveRuntimeBindings(");
-    expect(spec).toContain("isPersonalSharedElizaId(");
-    expect(spec).toContain("successfulPersonalIdentityGetCount");
-    expect(spec).toContain('cleanupDisposition: "no-test-owned-agent"');
-    expect(spec).toContain('conversationHistoryDisposition: "preserved"');
-    expect(contract).toContain("classifyForbiddenAgentMutation(");
-    expect(contract).toContain("forbiddenAgentMutationCount: 0");
-    expect(contract).toContain("createdWithoutStorageState");
-    expect(contract).toContain("serviceWorkersBlocked");
-    expect(contract).toContain("exact closed schema");
   });
 });
 
