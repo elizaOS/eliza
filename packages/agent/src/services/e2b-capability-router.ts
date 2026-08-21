@@ -182,7 +182,12 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
     } finally {
       timeout.dispose();
     }
-    return new RemoteRunnerHttpClient(config.provider, apiBase, headers);
+    return new RemoteRunnerHttpClient(
+      config.provider,
+      apiBase,
+      headers,
+      config.requestTimeoutMs,
+    );
   }
 }
 
@@ -209,6 +214,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     readonly sandboxId: string,
     private readonly apiBase: string,
     private readonly headers: Record<string, string>,
+    private readonly requestTimeoutMs: number,
   ) {}
 
   async kill(): Promise<void> {}
@@ -219,7 +225,9 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   ): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
-    const timeout = timeoutSignal(opts?.requestTimeoutMs);
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
     try {
       const response = await fetch(url, {
         headers: this.headers,
@@ -266,7 +274,9 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     path: string,
     opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
   ): Promise<string | Uint8Array> {
-    const timeout = timeoutSignal(opts?.requestTimeoutMs);
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
     try {
       const url = new URL(`${this.apiBase}/v1/fs/file`);
       url.searchParams.set("path", path);
@@ -296,7 +306,9 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
-    const timeout = timeoutSignal(opts?.requestTimeoutMs);
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
     try {
       const response = await fetch(url, {
         method: "PUT",
