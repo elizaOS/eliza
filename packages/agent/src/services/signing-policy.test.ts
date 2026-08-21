@@ -5,10 +5,9 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import {
-  SigningPolicyEvaluator,
-  SigningPolicy,
-  SigningRequest,
   createDefaultPolicy,
+  SigningPolicyEvaluator,
+  type SigningRequest,
 } from "./signing-policy.ts";
 
 function makeRequest(overrides: Partial<SigningRequest> = {}): SigningRequest {
@@ -86,9 +85,7 @@ describe("SigningPolicyEvaluator", () => {
     const policy = createDefaultPolicy();
     policy.maxTransactionValueWei = "1000000000000000";
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "1000000000000001" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "1000000000000001" }));
     expect(d.allowed).toBe(false);
     expect(d.matchedRule).toBe("value_cap");
   });
@@ -100,12 +97,21 @@ describe("SigningPolicyEvaluator", () => {
     expect(d.matchedRule).toBe("value_parse_error");
   });
 
+  it("rejects a negative value before signing", () => {
+    const ev = new SigningPolicyEvaluator();
+    const d = ev.evaluate(makeRequest({ value: "-1" }));
+    expect(d.allowed).toBe(false);
+    expect(d.matchedRule).toBe("value_parse_error");
+  });
+
   it("rejects a method selector not in the allowlist", () => {
     const policy = createDefaultPolicy();
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
     const d = ev.evaluate(
-      makeRequest({ data: "0xdeadbeef00000000000000000000000000000000000000000000000000000000" }),
+      makeRequest({
+        data: "0xdeadbeef00000000000000000000000000000000000000000000000000000000",
+      }),
     );
     expect(d.allowed).toBe(false);
     expect(d.matchedRule).toBe("method_selector_allowlist");
@@ -116,16 +122,27 @@ describe("SigningPolicyEvaluator", () => {
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
     const d = ev.evaluate(
-      makeRequest({ data: "0x12345678deadbeef0000000000000000000000000000000000000000000000" }),
+      makeRequest({
+        data: "0x12345678deadbeef0000000000000000000000000000000000000000000000",
+      }),
     );
     expect(d.allowed).toBe(true);
   });
 
-  it("skips selector check when data is too short", () => {
+  it("rejects partial calldata that cannot contain an allowed selector", () => {
     const policy = createDefaultPolicy();
     policy.allowedMethodSelectors = ["0x12345678"];
     const ev = new SigningPolicyEvaluator(policy);
-    expect(ev.evaluate(makeRequest({ data: "0x1234" })).allowed).toBe(true);
+    const d = ev.evaluate(makeRequest({ data: "0x1234" }));
+    expect(d.allowed).toBe(false);
+    expect(d.matchedRule).toBe("method_selector_allowlist");
+  });
+
+  it("allows empty calldata for a native transfer", () => {
+    const policy = createDefaultPolicy();
+    policy.allowedMethodSelectors = ["0x12345678"];
+    const ev = new SigningPolicyEvaluator(policy);
+    expect(ev.evaluate(makeRequest({ data: "0x" })).allowed).toBe(true);
   });
 
   it("enforces the hourly rate limit", () => {
@@ -133,18 +150,17 @@ describe("SigningPolicyEvaluator", () => {
     policy.maxTransactionsPerHour = 2;
     policy.maxTransactionsPerDay = 100;
     const ev = new SigningPolicyEvaluator(policy);
-    const now = Date.now();
-    // Seed the log with 2 requests in the last hour
-    ev.recordRequest("a");
-    ev.recordRequest("b");
-    // Overwrite timestamps to be recent
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
-      { requestId: "a", timestamp: now - 1000 },
-      { requestId: "b", timestamp: now - 2000 },
-    ];
-    const d = ev.evaluate(makeRequest({ requestId: "c" }));
-    expect(d.allowed).toBe(false);
-    expect(d.matchedRule).toBe("rate_limit_hourly");
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-20T12:00:00Z"));
+      ev.recordRequest("a");
+      ev.recordRequest("b");
+      const d = ev.evaluate(makeRequest({ requestId: "c" }));
+      expect(d.allowed).toBe(false);
+      expect(d.matchedRule).toBe("rate_limit_hourly");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("enforces the daily rate limit", () => {
@@ -152,14 +168,20 @@ describe("SigningPolicyEvaluator", () => {
     policy.maxTransactionsPerHour = 100;
     policy.maxTransactionsPerDay = 2;
     const ev = new SigningPolicyEvaluator(policy);
-    const now = Date.now();
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
-      { requestId: "a", timestamp: now - 2 * 3600 * 1000 }, // 2h ago (within a day, outside hour)
-      { requestId: "b", timestamp: now - 3 * 3600 * 1000 },
-    ];
-    const d = ev.evaluate(makeRequest({ requestId: "c" }));
-    expect(d.allowed).toBe(false);
-    expect(d.matchedRule).toBe("rate_limit_daily");
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-08-20T12:00:00Z").getTime();
+      vi.setSystemTime(now - 3 * 3600 * 1000);
+      ev.recordRequest("a");
+      vi.setSystemTime(now - 2 * 3600 * 1000);
+      ev.recordRequest("b");
+      vi.setSystemTime(now);
+      const d = ev.evaluate(makeRequest({ requestId: "c" }));
+      expect(d.allowed).toBe(false);
+      expect(d.matchedRule).toBe("rate_limit_daily");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("requires human confirmation above the threshold", () => {
@@ -167,9 +189,7 @@ describe("SigningPolicyEvaluator", () => {
     policy.humanConfirmationThresholdWei = "1000000000000000";
     policy.requireHumanConfirmation = false;
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "2000000000000000" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "2000000000000000" }));
     expect(d.allowed).toBe(true);
     expect(d.requiresHumanConfirmation).toBe(true);
   });
@@ -178,9 +198,7 @@ describe("SigningPolicyEvaluator", () => {
     const policy = createDefaultPolicy();
     policy.humanConfirmationThresholdWei = "1000000000000000";
     const ev = new SigningPolicyEvaluator(policy);
-    const d = ev.evaluate(
-      makeRequest({ value: "500000000000000" }),
-    );
+    const d = ev.evaluate(makeRequest({ value: "500000000000000" }));
     expect(d.allowed).toBe(true);
     expect(d.requiresHumanConfirmation).toBe(false);
   });
@@ -194,13 +212,18 @@ describe("SigningPolicyEvaluator", () => {
   });
 
   it("prunes expired entries from the request log", () => {
-    const ev = new SigningPolicyEvaluator();
-    const now = Date.now();
-    (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog = [
-      { requestId: "old", timestamp: now - 48 * 3600 * 1000 }, // 2 days ago
-    ];
-    ev.evaluate(makeRequest({ requestId: "new" }));
-    const log = (ev as unknown as { requestLog: Array<{ requestId: string; timestamp: number }> }).requestLog;
-    expect(log.some((r) => r.requestId === "old")).toBe(false);
+    const policy = createDefaultPolicy();
+    policy.maxTransactionsPerDay = 1;
+    const ev = new SigningPolicyEvaluator(policy);
+    vi.useFakeTimers();
+    try {
+      const now = new Date("2026-08-20T12:00:00Z").getTime();
+      vi.setSystemTime(now - 48 * 3600 * 1000);
+      ev.recordRequest("old");
+      vi.setSystemTime(now);
+      expect(ev.evaluate(makeRequest({ requestId: "new" })).allowed).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -9,7 +9,7 @@ import {
   createTeeGatedRemoteSigningService,
   type SignerBackend,
 } from "./remote-signing-service.ts";
-import type { SigningRequest } from "./signing-policy.ts";
+import { createDefaultPolicy, type SigningRequest } from "./signing-policy.ts";
 import type { TeeBootGate } from "./tee-boot-gate.ts";
 import {
   clearTeeBootGateState,
@@ -88,6 +88,36 @@ describe("createTeeGatedRemoteSigningService", () => {
     expect(result.success).toBe(true);
     expect(result.signature).toBe("signed-tx");
     expect(signer.signTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a negative value before the signer boundary", async () => {
+    const signer = signerBackend();
+    const service = createTeeGatedRemoteSigningService({ signer });
+
+    const result = await service.submitSigningRequest({
+      ...request,
+      value: "-1",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.policyDecision.matchedRule).toBe("value_parse_error");
+    expect(signer.signTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects partial calldata before the signer boundary", async () => {
+    const signer = signerBackend();
+    const policy = createDefaultPolicy();
+    policy.allowedMethodSelectors = ["0x12345678"];
+    const service = createTeeGatedRemoteSigningService({ signer, policy });
+
+    const result = await service.submitSigningRequest({
+      ...request,
+      data: "0x1234",
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.policyDecision.matchedRule).toBe("method_selector_allowlist");
+    expect(signer.signTransaction).not.toHaveBeenCalled();
   });
 
   it("re-attests on every sign when the policy requires TEE evidence", async () => {
