@@ -70,6 +70,14 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/TOOL_PAYLOAD_.*MARKER/,
 		/payload budget/i,
 	],
+	"plugins/plugin-dropbox/src/client.ts": [/bodyText\.slice\(/],
+	"plugins/plugin-dropbox/src/connector-account-provider.ts": [/body\.slice\(/],
+	"plugins/plugin-elizacloud/src/cloud/managed-payment-clients.ts": [
+		/text\.slice\(/,
+	],
+	"plugins/plugin-elizacloud/src/cloud/bridge-client.ts": [
+		/(?:text|errorText)\.slice\(/,
+	],
 	"packages/core/src/runtime/limits.ts": [
 		/compactionEnabled/,
 		/compactionKeepSteps/,
