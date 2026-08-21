@@ -641,7 +641,7 @@ function mapRichMessage(
   }
   const headers = message.payload?.headers ?? [];
   const subject = decodeHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
-  const from = parseMailbox(headerValue(headers, "From") || "Unknown sender");
+  const fromMailbox = parseMailbox(headerValue(headers, "From") || "");
   const replyTo = headerValue(headers, "Reply-To");
   const replyToMailbox = replyTo ? parseMailbox(replyTo) : null;
   const to = parseEmailAddresses(headerValue(headers, "To")).map(formatAddressValue);
@@ -653,7 +653,7 @@ function mapRichMessage(
   const autoSubmitted = headerValue(headers, "Auto-Submitted");
   const triage = classifyReplyNeed({
     labels,
-    fromEmail: from.email,
+    fromEmail: fromMailbox?.email,
     to,
     cc,
     selfEmail,
@@ -666,8 +666,8 @@ function mapRichMessage(
     externalId,
     threadId,
     subject,
-    from: from.name || from.email || "Unknown sender",
-    fromEmail: from.email ? from.email.toLowerCase() : null,
+    from: fromMailbox?.name || fromMailbox?.email || "Unknown sender",
+    fromEmail: fromMailbox?.email ? fromMailbox.email.toLowerCase() : null,
     replyTo: replyToMailbox?.email ?? replyToMailbox?.name ?? null,
     to,
     cc,
@@ -709,37 +709,81 @@ function parseEmailAddresses(value: string | undefined): GoogleEmailAddress[] {
     return [];
   }
 
-  return splitAddressList(value).map((token) => parseMailbox(token));
+  const addresses: GoogleEmailAddress[] = [];
+  for (const token of splitAddressList(value)) {
+    const mailbox = parseMailbox(token);
+    if (mailbox) {
+      addresses.push(mailbox);
+    }
+  }
+  return addresses;
 }
 
-// RFC 5322 address lists are comma-separated, but a comma inside a quoted
-// display name (`"Smith, Jane"`) or inside an angle-bracket route
-// (`<a,b@x>`) is not a separator. A naive `value.split(",")` cuts the common
-// corporate "Last, First" mailbox in half and yields a phantom `"Smith`
-// address, so split on top-level commas only and let `parseMailbox` strip the
-// quotes — unifying this list path with the single-mailbox path.
+// RFC 5322 address lists separate mailboxes with commas, but a comma is only a
+// separator in the base list state. Inside a quoted string, an RFC comment, or
+// an angle-addr route it is ordinary text, and a quoted-pair (`\x`) escapes the
+// next character inside quoted strings and comments. A naive `value.split(",")`
+// — or a scanner that toggles quote state on an escaped quote — cuts the common
+// corporate "Last, First" mailbox in half and manufactures a phantom `"Smith`
+// recipient. This bounded scanner tracks quoted strings, nested comments,
+// quoted-pairs, and angle addresses, splits only in the base state, and fails
+// closed to a single opaque token when a context is left unterminated so
+// malformed input can never inflate the recipient count.
 function splitAddressList(value: string): string[] {
   const tokens: string[] = [];
   let current = "";
-  let inQuotes = false;
-  let angleDepth = 0;
+  let inQuote = false;
+  let commentDepth = 0;
+  let inAngle = false;
+  let escaped = false;
   for (const char of value) {
-    if (char === '"' && angleDepth === 0) {
-      inQuotes = !inQuotes;
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if ((inQuote || commentDepth > 0) && char === "\\") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (inQuote) {
+      if (char === '"') {
+        inQuote = false;
+      }
       current += char;
       continue;
     }
-    if (!inQuotes && char === "<") {
-      angleDepth += 1;
+    if (commentDepth > 0) {
+      if (char === "(") {
+        commentDepth += 1;
+      } else if (char === ")") {
+        commentDepth -= 1;
+      }
       current += char;
       continue;
     }
-    if (!inQuotes && char === ">" && angleDepth > 0) {
-      angleDepth -= 1;
+    if (char === '"') {
+      inQuote = true;
       current += char;
       continue;
     }
-    if (char === "," && !inQuotes && angleDepth === 0) {
+    if (char === "(") {
+      commentDepth += 1;
+      current += char;
+      continue;
+    }
+    if (char === "<") {
+      inAngle = true;
+      current += char;
+      continue;
+    }
+    if (char === ">") {
+      inAngle = false;
+      current += char;
+      continue;
+    }
+    if (char === "," && !inAngle) {
       tokens.push(current);
       current = "";
       continue;
@@ -747,7 +791,98 @@ function splitAddressList(value: string): string[] {
     current += char;
   }
   tokens.push(current);
+
+  if (inQuote || commentDepth > 0 || inAngle || escaped) {
+    // Unterminated quote/comment/angle context: the comma boundaries we scanned
+    // are no longer trustworthy, so preserve one opaque token rather than
+    // emitting several half-parsed recipients.
+    const opaque = value.trim();
+    return opaque ? [opaque] : [];
+  }
+
   return tokens.map((token) => token.trim()).filter(Boolean);
+}
+
+// Remove RFC 5322 comments (`(...)`, nestable, with quoted-pair escapes) from a
+// mailbox token without disturbing text inside a quoted string. Comments are
+// structural whitespace and never part of the display name or addr-spec, so a
+// comma-bearing comment like `(Team, West)` must not survive into the parsed
+// address.
+function stripMailboxComments(value: string): string {
+  let result = "";
+  let inQuote = false;
+  let commentDepth = 0;
+  let escaped = false;
+  for (const char of value) {
+    if (escaped) {
+      if (commentDepth === 0) {
+        result += char;
+      }
+      escaped = false;
+      continue;
+    }
+    if ((inQuote || commentDepth > 0) && char === "\\") {
+      if (commentDepth === 0) {
+        result += char;
+      }
+      escaped = true;
+      continue;
+    }
+    if (inQuote) {
+      if (char === '"') {
+        inQuote = false;
+      }
+      result += char;
+      continue;
+    }
+    if (commentDepth > 0) {
+      if (char === "(") {
+        commentDepth += 1;
+      } else if (char === ")") {
+        commentDepth -= 1;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inQuote = true;
+      result += char;
+      continue;
+    }
+    if (char === "(") {
+      commentDepth += 1;
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
+// A conservative addr-spec check so an arbitrary fragment (a truncated `"Smith`,
+// a bare display name) is never presented as an email. Requires a single `@`
+// with a non-empty local part and a dotted or bracketed-literal domain, and no
+// structural characters that only belong to display names or comments.
+function isPlausibleEmailAddress(value: string): boolean {
+  if (!value || /[\s",()<>]/.test(value)) {
+    return false;
+  }
+  const at = value.indexOf("@");
+  if (at <= 0 || at !== value.lastIndexOf("@") || at === value.length - 1) {
+    return false;
+  }
+  const domain = value.slice(at + 1);
+  if (/^\[[^\]]+\]$/.test(domain)) {
+    return true;
+  }
+  return domain.includes(".") && !domain.startsWith(".") && !domain.endsWith(".");
+}
+
+// Unquote and unescape an RFC 5322 quoted-string display name, preserving any
+// commas or quotes that the quoted-pair rules protected.
+function unquoteDisplayName(name: string): string {
+  if (name.length >= 2 && name.startsWith('"') && name.endsWith('"')) {
+    return name.slice(1, -1).replace(/\\(.)/g, "$1").trim();
+  }
+  return name.replace(/^"|"$/g, "").trim();
 }
 
 function collectMessageBody(
@@ -852,15 +987,30 @@ function sortGmailMessages(messages: GoogleGmailMessageSummary[]): GoogleGmailMe
   });
 }
 
-function parseMailbox(value: string): GoogleEmailAddress {
-  const trimmed = value.trim();
-  const match = trimmed.match(/^(.*?)(?:<([^>]+)>)$/);
-  if (match) {
-    const name = (match[1] ?? "").trim().replace(/^"|"$/g, "");
-    const email = (match[2] ?? "").trim();
-    return { name: name || undefined, email };
+// Parse a single RFC 5322 mailbox token into a validated address. An angle-addr
+// (`Display Name <local@domain>`) yields the name and the bracketed addr-spec;
+// a bare token is accepted only when it is itself a plausible addr-spec. RFC
+// comments are stripped and quoted display names unquoted. A token with no
+// plausible email resolves to `null` so callers never present an arbitrary
+// fragment as an email address.
+function parseMailbox(value: string): GoogleEmailAddress | null {
+  const withoutComments = stripMailboxComments(value).trim();
+  if (!withoutComments) {
+    return null;
   }
-  return { email: trimmed };
+  const match = withoutComments.match(/^(.*?)<([^<>]+)>\s*$/);
+  if (match) {
+    const name = unquoteDisplayName((match[1] ?? "").trim());
+    const email = (match[2] ?? "").trim();
+    if (!isPlausibleEmailAddress(email)) {
+      return null;
+    }
+    return name ? { email, name } : { email };
+  }
+  if (isPlausibleEmailAddress(withoutComments)) {
+    return { email: withoutComments };
+  }
+  return null;
 }
 
 function formatAddressValue(address: GoogleEmailAddress): string {
