@@ -285,12 +285,14 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
       }
       let delimiter = "";
       let quoted = false;
+      let wordStarted = false;
       while (index < source.length) {
         const delimiterChar = source[index] as string;
         if (/\s/.test(delimiterChar) || ";|&(){}<>".includes(delimiterChar)) {
           break;
         }
         if (delimiterChar === "'" || delimiterChar === '"') {
+          wordStarted = true;
           quoted = true;
           const quote = delimiterChar;
           index += 1;
@@ -306,16 +308,18 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
           continue;
         }
         if (delimiterChar === "\\" && index + 1 < source.length) {
+          wordStarted = true;
           quoted = true;
           delimiter += source[index + 1] as string;
           index += 2;
           continue;
         }
+        wordStarted = true;
         delimiter += delimiterChar;
         index += 1;
       }
       if (result.error) break;
-      if (!delimiter) {
+      if (!wordStarted) {
         result.error = "missing heredoc delimiter";
         break;
       }
