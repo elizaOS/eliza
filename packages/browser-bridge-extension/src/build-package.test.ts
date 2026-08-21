@@ -98,6 +98,7 @@ describe("cross-browser extension build", () => {
       expect(manifest.permissions).toContain(
         "declarativeNetRequestWithHostAccess",
       );
+      expect(manifest.permissions).toContain("nativeMessaging");
       expect(manifest.permissions).not.toContain("declarativeNetRequest");
       expect(manifest.content_security_policy.extension_pages).toBe(
         "script-src 'self'; object-src 'self'",
@@ -127,6 +128,29 @@ describe("cross-browser extension build", () => {
     expect(firefox.browser_specific_settings?.gecko?.id).toBe(
       "browser-bridge@elizaos.ai",
     );
+
+    const chromeBackground = await fs.readFile(
+      path.join(packageRoot, "dist", "chrome", "background.js"),
+      "utf8",
+    );
+    expect(chromeBackground).not.toContain("browserBridgePairingGuideSeen");
+    expect(chromeBackground).not.toContain('getExtensionUrl("popup.html")');
+    expect(chromeBackground).toContain("browser-bridge:owner-reconnect");
+    expect(chromeBackground).not.toContain("forceNativeEnrollment");
+    expect(chromeBackground).toContain("app_not_authenticated");
+    const [popupHtml, popupScript] = await Promise.all([
+      fs.readFile(
+        path.join(packageRoot, "dist", "chrome", "popup.html"),
+        "utf8",
+      ),
+      fs.readFile(path.join(packageRoot, "dist", "chrome", "popup.js"), "utf8"),
+    ]);
+    expect(popupHtml).not.toContain("<dl");
+    expect(popupHtml).not.toContain('id="appValue"');
+    expect(popupScript).not.toContain("discoverAgentApiBaseUrl");
+    expect(popupScript).not.toContain("/api/status");
+    expect(popupScript).toContain("browser-bridge:owner-reconnect");
+    expect(popupScript).toContain("Sign in to Eliza");
   }, 30_000);
 
   it("creates byte-identical root-layout archives on repeated packaging", async () => {

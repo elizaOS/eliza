@@ -581,12 +581,10 @@ async function runManualPairAndSyncScenario(chromium) {
 
   try {
     await waitForPopupSettled(popupPage);
-    await popupPage.click("#primaryAction");
-    await popupPage.waitForFunction(
-      () =>
-        document.querySelector("#details")?.open === true &&
-        document.querySelector("#recovery")?.open === true,
-    );
+    await popupPage.evaluate(() => {
+      document.querySelector("#details").open = true;
+      document.querySelector("#recovery").open = true;
+    });
     await popupPage.fill(
       "#pairingJson",
       JSON.stringify({
@@ -617,7 +615,18 @@ async function runManualPairAndSyncScenario(chromium) {
       );
       await saveScreenshot(popupPage, "chrome-website-access-granted");
     }
-    await waitForPopupText(popupPage, "#appValue", mockServer.origin, 10_000);
+    const compactPopup = await popupPage.evaluate(
+      (apiOrigin) => ({
+        hasDiagnostics: document.querySelector("dl") !== null,
+        exposesApiOrigin:
+          document.body.textContent?.includes(apiOrigin) ?? false,
+      }),
+      mockServer.origin,
+    );
+    if (compactPopup.hasDiagnostics || compactPopup.exposesApiOrigin) {
+      throw new Error("Chrome popup exposed removed connection diagnostics.");
+    }
+    await saveScreenshot(popupPage, "chrome-manual-pair-and-sync-success");
 
     const syncRequests = mockServer.requests.filter(
       (request) =>

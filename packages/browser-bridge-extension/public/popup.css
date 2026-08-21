@@ -138,37 +138,6 @@ summary:focus-visible {
   font: 11px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-dl {
-  display: grid;
-  gap: 10px;
-  margin: 8px 0 0;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, CanvasText 14%, transparent);
-  border-radius: 10px;
-}
-
-dl div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: 8px;
-}
-
-dt,
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-dt {
-  color: color-mix(in srgb, CanvasText 66%, transparent);
-}
-
-dd {
-  text-align: right;
-}
-
 @media (prefers-color-scheme: dark) {
   .status[data-kind="connected"] {
     color: #65d69e;
@@ -187,7 +156,6 @@ dd {
 
 @media (forced-colors: active) {
   .connection,
-  dl,
   button {
     border-color: ButtonText;
   }
@@ -213,11 +181,4 @@ dd {
     padding: 12px;
   }
 
-  dl div {
-    grid-template-columns: 1fr;
-  }
-
-  dd {
-    text-align: left;
-  }
 }
