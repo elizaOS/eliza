@@ -2,7 +2,7 @@
  * Unit coverage for defaultPrivacyRedactor — credential, geo, and env-secret
  * redaction over the tool-call cache write path.
  */
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultPrivacyRedactor } from "./redact.ts";
 
 const ORIG_ENV = { ...process.env };
@@ -32,7 +32,7 @@ describe("defaultPrivacyRedactor", () => {
       "auth sk-ant-api03-abcdefghijklmnopqrstuvwxyz123456",
     ) as string;
     expect(out).not.toContain("sk-ant-api03");
-    expect(out).toMatch(/<REDACTED:[a-z-]+>/);
+    expect(out).toContain("<REDACTED:anthropic-key>");
   });
 
   it("redacts a Bearer token", () => {
@@ -70,6 +70,8 @@ describe("defaultPrivacyRedactor", () => {
       '{"latitude": 48.8566, "longitude": 2.3522}',
     ) as string;
     expect(out).toContain("[REDACTED_GEO]");
+    expect(out).not.toContain("48.8566");
+    expect(out).not.toContain("2.3522");
   });
 
   it("redacts env secret values by name", () => {
