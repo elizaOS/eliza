@@ -923,23 +923,64 @@ function inferSourceFromTarget(
 	connectors: ConnectorWithHooks[],
 ): { target?: string; source?: string } {
 	if (!target) return {};
-	const prefixMatch = target.match(
-		/^([a-z0-9_-][a-z0-9 _-]{1,40})\s*[:/]\s*(.+)$/i,
-	);
-	if (prefixMatch?.[1] && prefixMatch[2]) {
-		const connector = findConnectorBySource(connectors, prefixMatch[1]);
-		if (connector)
-			return { source: connector.source, target: prefixMatch[2].trim() };
+	const prefix = splitConnectorPrefix(target);
+	if (prefix) {
+		const connector = findConnectorBySource(connectors, prefix.source);
+		if (connector) return { source: connector.source, target: prefix.target };
 	}
-	const onMatch = target.match(
-		/^(.+?)\s+(?:on|via|through)\s+([a-z0-9 _-]{2,40})$/i,
-	);
-	if (onMatch?.[1] && onMatch[2]) {
-		const connector = findConnectorBySource(connectors, onMatch[2]);
-		if (connector)
-			return { source: connector.source, target: onMatch[1].trim() };
+	const suffix = splitConnectorSuffix(target);
+	if (suffix) {
+		const connector = findConnectorBySource(connectors, suffix.source);
+		if (connector) return { source: connector.source, target: suffix.target };
 	}
 	return { target };
+}
+
+function isConnectorName(value: string, min: number, max: number): boolean {
+	if (value.length < min || value.length > max) return false;
+	for (const char of value) {
+		if (!/[A-Za-z0-9 _-]/.test(char)) return false;
+	}
+	return true;
+}
+
+function splitConnectorPrefix(
+	target: string,
+): { source: string; target: string } | null {
+	for (let cursor = 1; cursor < target.length && cursor <= 42; cursor += 1) {
+		if (target[cursor] !== ":" && target[cursor] !== "/") continue;
+		const source = target.slice(0, cursor).trimEnd();
+		const remainder = target.slice(cursor + 1).trim();
+		if (
+			remainder &&
+			isConnectorName(source, 2, 41) &&
+			/[A-Za-z0-9_-]/.test(source[0])
+		) {
+			return { source, target: remainder };
+		}
+	}
+	return null;
+}
+
+function splitConnectorSuffix(
+	target: string,
+): { source: string; target: string } | null {
+	const lower = target.toLowerCase();
+	for (let cursor = 1; cursor < target.length; cursor += 1) {
+		if (!/\s/u.test(target[cursor - 1])) continue;
+		for (const keyword of ["on", "via", "through"]) {
+			if (
+				!lower.startsWith(keyword, cursor) ||
+				!/(?:\s)/u.test(target[cursor + keyword.length] ?? "")
+			)
+				continue;
+			const left = target.slice(0, cursor).trim();
+			const source = target.slice(cursor + keyword.length).trim();
+			if (left && isConnectorName(source, 2, 40))
+				return { source, target: left };
+		}
+	}
+	return null;
 }
 
 function inferSourceFromText(

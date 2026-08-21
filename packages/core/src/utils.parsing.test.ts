@@ -68,6 +68,10 @@ describe("parseJSONObjectFromText", () => {
 });
 
 describe("parseToonKeyValue", () => {
+	it("parses a compact unlabeled whole-value code fence", () => {
+		expect(parseToonKeyValue("```name: eliza```")).toEqual({ name: "eliza" });
+	});
+
 	it("parses indexed and scalar keys around adversarial delimiter whitespace", () => {
 		const spacing = " ".repeat(100_000);
 		expect(

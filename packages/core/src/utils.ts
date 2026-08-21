@@ -32,6 +32,7 @@ import { ModelType } from "./types/model";
 import { type Content, ContentType, type UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
+import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import {
 	buildDeterministicSeed,
 	getDeterministicNames,
@@ -659,8 +660,7 @@ export const formatTimestamp = formatTimestampBase;
 
 function parseStructuredResponseFence(text: string): string {
 	const trimmed = text.trim();
-	const match = /^```(?:toon|text)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-	return match?.[1]?.trim() ?? trimmed;
+	return (unwrapWholeCodeFence(trimmed, ["toon", "text"]) ?? trimmed).trim();
 }
 
 function parseToonScalar(value: string): unknown {
