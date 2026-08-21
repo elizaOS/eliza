@@ -1,8 +1,11 @@
 /** Date ISO serialization safety for scheduleDraftSend.ts — fail-fast on invalid times. */
 import { describe, expect, test, vi } from "vitest";
 import { ElizaError } from "../../../../errors.ts";
-import { formatSendAtIso, scheduleDraftSendAction } from "./scheduleDraftSend.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
+import {
+	formatSendAtIso,
+	scheduleDraftSendAction,
+} from "./scheduleDraftSend.ts";
 
 describe("scheduleDraftSend date safety", () => {
 	test("valid timestamp formats to valid ISO-8601 string", () => {
@@ -16,7 +19,9 @@ describe("scheduleDraftSend date safety", () => {
 		try {
 			formatSendAtIso(Number.NaN);
 		} catch (e) {
-			expect((e as ElizaError).code).toBe("MESSAGE_DRAFT_SCHEDULE_INVALID_TIME");
+			expect((e as ElizaError).code).toBe(
+				"MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+			);
 			expect(String((e as ElizaError).message)).toMatch(/not finite/i);
 		}
 	});
@@ -32,7 +37,9 @@ describe("scheduleDraftSend date safety", () => {
 		try {
 			formatSendAtIso(outOfRange);
 		} catch (e) {
-			expect((e as ElizaError).code).toBe("MESSAGE_DRAFT_SCHEDULE_INVALID_TIME");
+			expect((e as ElizaError).code).toBe(
+				"MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+			);
 		}
 		// Also prove handler does not return success for out-of-range time
 	});
@@ -41,7 +48,9 @@ describe("scheduleDraftSend date safety", () => {
 		const draftId = "draft-123";
 		const outOfRange = 8640000000000001;
 		// Mock triage service to have draft and to succeed scheduling before format step
-		const mockStore = { getDraft: vi.fn().mockReturnValue({ id: draftId }) } as never;
+		const mockStore = {
+			getDraft: vi.fn().mockReturnValue({ id: draftId }),
+		} as never;
 		const mockService = {
 			getStore: () => mockStore,
 			scheduleDraftSend: vi.fn().mockResolvedValue({
@@ -49,23 +58,38 @@ describe("scheduleDraftSend date safety", () => {
 				scheduledForMs: outOfRange,
 				scheduledId: "sched-1",
 				source: "test",
-				scheduleCommit: { kind: "task", id: "task-1", committedAt: new Date().toISOString(), idempotencyKey: "k", replayed: false },
+				scheduleCommit: {
+					kind: "task",
+					id: "task-1",
+					committedAt: new Date().toISOString(),
+					idempotencyKey: "k",
+					replayed: false,
+				},
 			}),
 		} as never;
-		vi.spyOn({ getDefaultTriageService: getDefaultTriageService } as never, "getDefaultTriageService" as never);
+		vi.spyOn(
+			{ getDefaultTriageService: getDefaultTriageService } as never,
+			"getDefaultTriageService" as never,
+		);
 		// Directly mock the module's getDefaultTriageService by spying on import
 		const mod = await import("../triage-service.ts");
 		vi.spyOn(mod, "getDefaultTriageService").mockReturnValue(mockService);
 		const runtime = { agentId: "agent-1" } as never;
 		const message = { entityId: "e1", roomId: "r1", content: {} } as never;
 		await expect(
-			scheduleDraftSendAction.handler(runtime, message, undefined, { parameters: { draftId, sendAtMs: outOfRange } } as never),
+			scheduleDraftSendAction.handler(runtime, message, undefined, {
+				parameters: { draftId, sendAtMs: outOfRange },
+			} as never),
 		).rejects.toThrow(ElizaError);
 		// Ensure the thrown error is the validation error, not a success path
 		try {
-			await scheduleDraftSendAction.handler(runtime, message, undefined, { parameters: { draftId, sendAtMs: outOfRange } } as never);
+			await scheduleDraftSendAction.handler(runtime, message, undefined, {
+				parameters: { draftId, sendAtMs: outOfRange },
+			} as never);
 		} catch (e) {
-			expect((e as ElizaError).code).toBe("MESSAGE_DRAFT_SCHEDULE_INVALID_TIME");
+			expect((e as ElizaError).code).toBe(
+				"MESSAGE_DRAFT_SCHEDULE_INVALID_TIME",
+			);
 		}
 		vi.restoreAllMocks();
 	});
