@@ -660,6 +660,8 @@ export type UpdateConfig = {
   checkOnStart?: boolean;
   lastCheckAt?: string;
   lastCheckVersion?: string;
+  /** Channel that produced the cached version. */
+  lastCheckChannel?: ReleaseChannel;
   /** Seconds between automatic checks. Default: 14400 (4 hours). */
   checkIntervalSeconds?: number;
 };
