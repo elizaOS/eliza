@@ -381,6 +381,14 @@ declare module "./client-base" {
     pair(code: string): Promise<{ token: string }>;
     getFirstRunOptions(): Promise<FirstRunOptions>;
     submitFirstRun(data: Record<string, unknown>): Promise<void>;
+    activateOwnerFirstRun(roomId: string): Promise<{
+      outcome: "activated" | "already_complete" | "exempt";
+      entry: {
+        status: "complete" | "exempt";
+        roomId?: string;
+        exemptReason?: string;
+      };
+    }>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
     exchangeAnthropicCode(code: string): Promise<{
       success: boolean;
@@ -1496,6 +1504,16 @@ ElizaClient.prototype.submitFirstRun = async function (
   await this.fetch("/api/first-run", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.activateOwnerFirstRun = async function (
+  this: ElizaClient,
+  roomId,
+) {
+  return this.fetch("/api/lifeops/first-run/activate", {
+    method: "POST",
+    body: JSON.stringify({ roomId }),
   });
 };
 

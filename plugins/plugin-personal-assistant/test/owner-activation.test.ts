@@ -6,7 +6,12 @@
  * with a real in-memory message store standing in for the adapter.
  */
 
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  ChannelType,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   activationMemoryId,
@@ -43,10 +48,25 @@ function createActivationRuntime(): MessageStoreHarness {
         failNextCreate.value = false;
         throw new Error("simulated adapter outage");
       }
+      if (messages.some((item) => item.id === memory.id)) {
+        throw new Error("duplicate memory id");
+      }
       messages.push(memory);
       return memory.id;
     }) as never,
-    ensureRoomExists: (async () => undefined) as never,
+    getRoom: (async (roomId: UUID) =>
+      roomId === ROOM_ID
+        ? {
+            id: ROOM_ID,
+            agentId: runtime?.agentId,
+            source: "client_chat",
+            type: ChannelType.DM,
+          }
+        : null) as never,
+    getParticipantsForRoom: (async (roomId: UUID) =>
+      roomId === ROOM_ID ? [OWNER_ID, runtime?.agentId] : []) as never,
+    getRoomsForParticipant: (async (entityId: UUID) =>
+      entityId === OWNER_ID ? [ROOM_ID] : []) as never,
   });
   return { runtime, messages, failNextCreate };
 }
@@ -72,6 +92,14 @@ describe("OwnerActivationService", () => {
     expect(messages).toHaveLength(1);
     expect(messages[0].content.text).toBe(OWNER_ACTIVATION_MESSAGE);
     expect(messages[0].roomId).toBe(ROOM_ID);
+    expect(messages[0].metadata).toMatchObject({
+      scope: "owner-private",
+      scopedToEntityId: OWNER_ID,
+    });
+    expect(await runtime.getCache("eliza:lifeops:first-run:v1")).toMatchObject({
+      status: "complete",
+      completionCount: 1,
+    });
 
     const second = await service.ensureActivated({
       ownerEntityId: OWNER_ID,
@@ -142,6 +170,30 @@ describe("OwnerActivationService", () => {
     expect(messages).toHaveLength(1);
   });
 
+  it("checks the owner's other private rooms before activating a new empty room", async () => {
+    const { runtime, messages } = createActivationRuntime();
+    const OTHER_ROOM = "44444444-4444-4444-8444-444444444444" as UUID;
+    messages.push({
+      id: "55555555-5555-4555-8555-555555555555" as UUID,
+      entityId: OWNER_ID,
+      agentId: runtime.agentId,
+      roomId: OTHER_ROOM,
+      content: { text: "existing owner turn", source: "client_chat" },
+      createdAt: Date.now(),
+    });
+    runtime.getRoomsForParticipant = (async () => [
+      ROOM_ID,
+      OTHER_ROOM,
+    ]) as never;
+    const result = await new OwnerActivationService(runtime).ensureActivated({
+      ownerEntityId: OWNER_ID,
+      roomId: ROOM_ID,
+    });
+    expect(result.outcome).toBe("exempt");
+    expect(result.entry.exemptReason).toBe("existing_history");
+    expect(messages).toHaveLength(1);
+  });
+
   it("does not mark activation complete when the durable write fails, and retries succeed", async () => {
     const { runtime, messages, failNextCreate } = createActivationRuntime();
     const service = new OwnerActivationService(runtime);
@@ -176,6 +228,16 @@ describe("OwnerActivationService", () => {
     expect(
       new Set([a.entry.memoryId, b.entry.memoryId, c.entry.memoryId]).size,
     ).toBe(1);
+  });
+
+  it("shares the route service across concurrent HTTP callbacks", async () => {
+    const { runtime, messages } = createActivationRuntime();
+    const posts = Array.from({ length: 3 }, () =>
+      makeRouteContextForConcurrency(runtime),
+    );
+    await Promise.all(posts.map(({ ctx }) => handleOwnerActivationRoutes(ctx)));
+    expect(messages).toHaveLength(1);
+    expect(posts.every(({ sent }) => sent[0]?.status === 200)).toBe(true);
   });
 
   it("requires an explicit reactivate opt-in after a contract-version bump", async () => {
@@ -222,6 +284,29 @@ describe("OwnerActivationService", () => {
     expect(messages).toHaveLength(1);
   });
 });
+
+function makeRouteContextForConcurrency(runtime: IAgentRuntime): {
+  ctx: LifeOpsRouteContext;
+  sent: Array<{ data: unknown; status: number }>;
+} {
+  const sent: Array<{ data: unknown; status: number }> = [];
+  return {
+    sent,
+    ctx: {
+      req: {},
+      res: {},
+      method: "POST",
+      pathname: "/api/lifeops/first-run/activate",
+      url: new URL("http://localhost/api/lifeops/first-run/activate"),
+      state: { runtime, adminEntityId: OWNER_ID },
+      json: (_res: unknown, data: unknown, status = 200) =>
+        sent.push({ data, status }),
+      error: () => undefined,
+      readJsonBody: async () => ({ roomId: ROOM_ID }),
+      decodePathComponent: (value: string) => value,
+    } as unknown as LifeOpsRouteContext,
+  };
+}
 
 describe("handleOwnerActivationRoutes", () => {
   function makeCtx(args: {
@@ -300,6 +385,27 @@ describe("handleOwnerActivationRoutes", () => {
       pathname: "/api/lifeops/goals",
     });
     expect(await handleOwnerActivationRoutes(other.ctx)).toBe(false);
+  });
+
+  it("rejects a group or non-owner target without retrying", async () => {
+    const { runtime } = createActivationRuntime();
+    runtime.getRoom = (async () => ({
+      id: ROOM_ID,
+      agentId: runtime.agentId,
+      source: "discord",
+      type: ChannelType.GROUP,
+    })) as never;
+    const { ctx, sent } = makeCtx({
+      runtime,
+      method: "POST",
+      pathname: "/api/lifeops/first-run/activate",
+      body: { roomId: ROOM_ID },
+    });
+    expect(await handleOwnerActivationRoutes(ctx)).toBe(true);
+    expect(sent[0]).toMatchObject({
+      status: 400,
+      data: { code: "OWNER_ACTIVATION_PRIVATE_ROOM_REQUIRED" },
+    });
   });
 
   it("translates a failed durable write into a retryable 503", async () => {

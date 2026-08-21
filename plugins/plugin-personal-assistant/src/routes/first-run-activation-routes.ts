@@ -13,7 +13,7 @@
  */
 
 import { ElizaError, logger, type UUID } from "@elizaos/core";
-import { OwnerActivationService } from "../lifeops/first-run/activation.js";
+import { getOwnerActivationService } from "../lifeops/first-run/activation.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 const ACTIVATE_PATH = "/api/lifeops/first-run/activate";
@@ -48,7 +48,7 @@ export async function handleOwnerActivationRoutes(
     return true;
   }
 
-  const service = new OwnerActivationService(runtime);
+  const service = getOwnerActivationService(runtime);
 
   if (isStatus) {
     ctx.json(res, { entry: await service.readEntry(ownerEntityId) });
@@ -75,6 +75,22 @@ export async function handleOwnerActivationRoutes(
     // a retryable 503 so the onboarding caller retries observably; the service
     // guarantees activation was not marked complete.
     const code = err instanceof ElizaError ? err.code : "UNCLASSIFIED";
+    if (code === "OWNER_ACTIVATION_PRIVATE_ROOM_REQUIRED") {
+      ctx.json(
+        res,
+        { error: "Activation requires a private owner conversation", code },
+        400,
+      );
+      return true;
+    }
+    if (code === "OWNER_ACTIVATION_MEMORY_COLLISION") {
+      ctx.json(
+        res,
+        { error: "Owner activation state is inconsistent", code },
+        409,
+      );
+      return true;
+    }
     logger.error(
       { src: "lifeops:owner-activation:route", code, err },
       "[OwnerActivationRoutes] Activation failed; returning retryable 503.",

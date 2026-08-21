@@ -54,6 +54,24 @@ const mocks = vi.hoisted(() => ({
       }),
     ),
     submitFirstRun: vi.fn(async () => undefined),
+    listConversations: vi.fn(async () => ({
+      conversations: [
+        {
+          id: "first-run-conversation",
+          roomId: "22222222-2222-4222-8222-222222222222",
+          title: "New Chat",
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+    })),
+    createConversation: vi.fn(async () => {
+      throw new Error("the fixture always has a conversation");
+    }),
+    activateOwnerFirstRun: vi.fn(async (roomId: string) => ({
+      outcome: "activated" as const,
+      entry: { status: "complete" as const, roomId },
+    })),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     getBaseUrl: vi.fn(() => ""),
     setBaseUrl: vi.fn(),
@@ -374,6 +392,19 @@ function writeTestCookie(value: string): void {
 }
 
 describe("useFirstRunConductor", () => {
+  it("reconciles owner activation on a completed cold launch once the selected agent is ready", async () => {
+    seedAppStore({
+      firstRunComplete: true,
+      startupCoordinator: { phase: "ready" },
+    });
+    const { transcript, unmount } = renderConductor();
+    await waitFor(() =>
+      expect(mocks.client.activateOwnerFirstRun).toHaveBeenCalledTimes(1),
+    );
+    expect(transcript.current).toEqual([]);
+    unmount();
+  });
+
   it("keeps cloud-only onboarding locked when a stale developer override enables the chooser", async () => {
     localStorage.removeItem("steward_session_token");
     localStorage.setItem("eliza:enable-runtime-chooser", "1");
@@ -438,7 +469,9 @@ describe("useFirstRunConductor", () => {
 
     // Tutorial skip: the SINGLE real completion; no tour is launched.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1),
+    );
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
     expect(readTutorialState().active).toBe(false);
 
@@ -479,7 +512,9 @@ describe("useFirstRunConductor", () => {
 
     // The tutorial pick is still the single real completion — accent skippable.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1),
+    );
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
 
     unmount();
@@ -531,7 +566,9 @@ describe("useFirstRunConductor", () => {
 
     // The tutorial pick is the single real completion, into chat.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1),
+    );
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
     expect(transcript.current.some((m) => m.id === "first-run:greeting")).toBe(
       true,
@@ -690,7 +727,9 @@ describe("useFirstRunConductor", () => {
 
     // "Take the tutorial" completes AND launches the interactive tour.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
     expect(readTutorialState().active).toBe(true);
     unmount();
   });
@@ -761,7 +800,9 @@ describe("useFirstRunConductor", () => {
 
     // "Take the tutorial" completes onboarding into chat.
     expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat"),
+    );
     unmount();
   });
 
@@ -890,8 +931,10 @@ describe("useFirstRunConductor", () => {
     // The guaranteed escape: "Configure in Settings" opens Settings and exits
     // first-run even though finish never succeeded.
     expect(tryHandleFirstRunAction("__first_run__:error:settings")).toBe(true);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1),
+    );
     expect(spies.setTab).toHaveBeenCalledWith("settings");
-    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
     expect(spies.completeFirstRun).toHaveBeenCalledWith("settings");
     unmount();
   });
@@ -1019,7 +1062,9 @@ describe("useFirstRunConductor", () => {
     expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
     expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
     expect(tryHandleFirstRunAction("__first_run__:tutorial:start")).toBe(true);
-    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1),
+    );
     // The late "start" tap after the skip must not launch the tour.
     expect(readTutorialState().active).toBe(false);
     unmount();

@@ -93,8 +93,8 @@ export interface FirstRunFinishPorts {
     value: string | boolean,
   ) => void;
   setTab: (tab: string) => void;
-  /** Injected client-side finalizer (flips firstRunComplete; never POSTs). */
-  completeFirstRun: (landingTab?: string) => void;
+  /** Injected finalizer; resolves only after owner activation is durable. */
+  completeFirstRun: (landingTab?: string) => Promise<void> | void;
   /**
    * Status text (e.g. "Starting local agent") surfaced into the chat
    * transcript. `code` is the machine-readable phase behind the text: this
@@ -488,7 +488,7 @@ async function finishLocal(
   }
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
+  await ports.completeFirstRun("chat");
   return { kind: "done" };
 }
 
@@ -559,7 +559,7 @@ export async function bindCloudAgent(
         // same reason as the main bind path below (#15903).
         savePersistedFirstRunComplete(true);
         ports.onStatus?.(null);
-        ports.completeFirstRun("chat");
+        await ports.completeFirstRun("chat");
         return { kind: "done" };
       }
       // `navigate` hands the window to the agent's /pair relay — this JS
@@ -643,7 +643,7 @@ export async function bindCloudAgent(
   ports.signal?.throwIfAborted();
   savePersistedFirstRunComplete(true);
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
+  await ports.completeFirstRun("chat");
 
   // Marker hygiene (#15902): a pending-handoff marker is only meaningful for
   // the shared agent it was minted for. A leftover marker from a different
@@ -837,7 +837,7 @@ export async function listOrAutoProvisionCloudAgent(
   clearForceFreshFirstRun();
   clearPersistedFirstRunState();
   ports.onStatus?.(null);
-  ports.completeFirstRun("chat");
+  await ports.completeFirstRun("chat");
   return { kind: "done" };
 }
 

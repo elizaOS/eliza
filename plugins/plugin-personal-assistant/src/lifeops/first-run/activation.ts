@@ -32,7 +32,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { asCacheRuntime } from "../runtime-cache.js";
-import { createOwnerFactStore, type OwnerFactStore } from "./state.js";
+import {
+  createFirstRunStateStore,
+  createOwnerFactStore,
+  type FirstRunStateStore,
+  type OwnerFactStore,
+} from "./state.js";
 
 /**
  * Version of the activation contract. Bumping it does NOT silently re-run
@@ -50,7 +55,7 @@ const ACTIVATION_MESSAGE_SOURCE = "owner_activation";
  * persists the owner's first goal into `OwnerFactStore.primaryGoal`.
  */
 export const OWNER_ACTIVATION_MESSAGE =
-  "You're all set up. I'm your assistant from here on — before anything else, what's the one thing you most want my help with?";
+  "You’re signed in — I’m ready. What would you like to work on first? If you’ve got a problem you want to solve, tell me what’s going on.";
 
 export type OwnerActivationStatus = "complete" | "exempt";
 
@@ -147,17 +152,25 @@ function normalizeRecord(value: unknown): OwnerActivationRecord {
 
 export class OwnerActivationService {
   private readonly factStore: OwnerFactStore;
+  private readonly firstRunStore: FirstRunStateStore;
   /** Per-key in-flight dedup so concurrent calls in one process share a write. */
   private readonly inFlight = new Map<
     string,
     Promise<EnsureActivationResult>
   >();
+  /** Serializes read-modify-write updates to the shared activation record. */
+  private recordWriteTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly runtime: IAgentRuntime,
-    options?: { factStore?: OwnerFactStore },
+    options?: {
+      factStore?: OwnerFactStore;
+      firstRunStore?: FirstRunStateStore;
+    },
   ) {
     this.factStore = options?.factStore ?? createOwnerFactStore(runtime);
+    this.firstRunStore =
+      options?.firstRunStore ?? createFirstRunStateStore(runtime);
   }
 
   async readEntry(ownerEntityId: UUID): Promise<OwnerActivationEntry | null> {
@@ -199,6 +212,7 @@ export class OwnerActivationService {
     const record = await this.readRecord();
     const existing = record.entries[key];
     if (existing) {
+      await this.reconcileFirstRunComplete();
       return {
         outcome: existing.status === "exempt" ? "exempt" : "already_complete",
         entry: existing,
@@ -216,37 +230,56 @@ export class OwnerActivationService {
     // exactly-once across restarts.
     const persisted = await this.runtime.getMemoryById(memoryId);
     if (persisted) {
+      if (
+        persisted.agentId !== this.runtime.agentId ||
+        persisted.entityId !== this.runtime.agentId ||
+        persisted.content?.source !== ACTIVATION_MESSAGE_SOURCE
+      ) {
+        throw new ElizaError(
+          "OwnerActivationService: deterministic activation memory id is occupied by another record",
+          {
+            code: "OWNER_ACTIVATION_MEMORY_COLLISION",
+            context: { memoryId, ownerEntityId: input.ownerEntityId },
+          },
+        );
+      }
+      const entry = await this.writeEntry(key, {
+        status: "complete",
+        ownerEntityId: input.ownerEntityId,
+        agentId: this.runtime.agentId,
+        contractVersion: OWNER_ACTIVATION_CONTRACT_VERSION,
+        recordedAt: new Date().toISOString(),
+        memoryId,
+        roomId: persisted.roomId,
+      });
+      await this.reconcileFirstRunComplete();
       return {
         outcome: "already_complete",
-        entry: await this.writeEntry(record, key, {
-          status: "complete",
-          ownerEntityId: input.ownerEntityId,
-          agentId: this.runtime.agentId,
-          contractVersion: OWNER_ACTIVATION_CONTRACT_VERSION,
-          recordedAt: new Date().toISOString(),
-          memoryId,
-          roomId: persisted.roomId,
-        }),
+        entry,
       };
     }
+
+    await this.assertPrivateOwnerRoom(input);
 
     const exemptReason = await this.resolveExemptReason(record, input);
     if (exemptReason) {
+      const entry = await this.writeEntry(key, {
+        status: "exempt",
+        ownerEntityId: input.ownerEntityId,
+        agentId: this.runtime.agentId,
+        contractVersion: OWNER_ACTIVATION_CONTRACT_VERSION,
+        recordedAt: new Date().toISOString(),
+        exemptReason,
+      });
+      await this.reconcileFirstRunComplete();
       return {
         outcome: "exempt",
-        entry: await this.writeEntry(record, key, {
-          status: "exempt",
-          ownerEntityId: input.ownerEntityId,
-          agentId: this.runtime.agentId,
-          contractVersion: OWNER_ACTIVATION_CONTRACT_VERSION,
-          recordedAt: new Date().toISOString(),
-          exemptReason,
-        }),
+        entry,
       };
     }
 
-    await this.persistActivationTurn(memoryId, input);
-    const entry = await this.writeEntry(record, key, {
+    const created = await this.persistActivationTurn(memoryId, input);
+    const entry = await this.writeEntry(key, {
       status: "complete",
       ownerEntityId: input.ownerEntityId,
       agentId: this.runtime.agentId,
@@ -255,6 +288,7 @@ export class OwnerActivationService {
       memoryId,
       roomId: input.roomId,
     });
+    await this.reconcileFirstRunComplete();
     logger.info(
       {
         src: "lifeops:owner-activation",
@@ -265,7 +299,40 @@ export class OwnerActivationService {
       },
       "[OwnerActivationService] Persisted the owner activation turn.",
     );
-    return { outcome: "activated", entry };
+    return { outcome: created ? "activated" : "already_complete", entry };
+  }
+
+  private async assertPrivateOwnerRoom(
+    input: EnsureActivationInput,
+  ): Promise<void> {
+    const [room, participants] = await Promise.all([
+      this.runtime.getRoom(input.roomId),
+      this.runtime.getParticipantsForRoom(input.roomId),
+    ]);
+    const participantSet = new Set(participants);
+    const privateOwnerRoom =
+      room?.type === ChannelType.DM &&
+      (room.agentId === undefined || room.agentId === this.runtime.agentId) &&
+      participantSet.has(input.ownerEntityId) &&
+      participantSet.has(this.runtime.agentId) &&
+      [...participantSet].every(
+        (entityId) =>
+          entityId === input.ownerEntityId || entityId === this.runtime.agentId,
+      );
+    if (privateOwnerRoom) return;
+    throw new ElizaError(
+      "OwnerActivationService: activation requires the selected agent's private owner room",
+      {
+        code: "OWNER_ACTIVATION_PRIVATE_ROOM_REQUIRED",
+        context: {
+          ownerEntityId: input.ownerEntityId,
+          agentId: this.runtime.agentId,
+          roomId: input.roomId,
+          roomType: room?.type ?? null,
+          participantCount: participants.length,
+        },
+      },
+    );
   }
 
   private async resolveExemptReason(
@@ -284,29 +351,26 @@ export class OwnerActivationService {
     const facts = await this.factStore.read();
     if (facts.primaryGoal?.value) return "existing_primary_goal";
 
-    const history = await this.runtime.getMemories({
-      roomId: input.roomId,
-      tableName: "messages",
-      count: 3,
-    });
-    const realTurns = history.filter(
-      (memory) => memory.content?.source !== ACTIVATION_MESSAGE_SOURCE,
+    const ownerRooms = await this.runtime.getRoomsForParticipant(
+      input.ownerEntityId,
     );
-    if (realTurns.length > 0) return "existing_history";
+    for (const roomId of ownerRooms) {
+      const history = await this.runtime.getMemories({
+        entityId: input.ownerEntityId,
+        roomId,
+        tableName: "messages",
+        count: 1,
+      });
+      if (history.length > 0) return "existing_history";
+    }
     return null;
   }
 
   private async persistActivationTurn(
     memoryId: UUID,
     input: EnsureActivationInput,
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
-      await this.runtime.ensureRoomExists({
-        id: input.roomId,
-        agentId: this.runtime.agentId,
-        source: ACTIVATION_MESSAGE_SOURCE,
-        type: ChannelType.DM,
-      });
       const memory: Memory = {
         id: memoryId,
         entityId: this.runtime.agentId,
@@ -315,15 +379,29 @@ export class OwnerActivationService {
         content: {
           text: OWNER_ACTIVATION_MESSAGE,
           source: ACTIVATION_MESSAGE_SOURCE,
+          channelType: ChannelType.DM,
         },
         metadata: {
           type: MemoryType.MESSAGE,
           source: ACTIVATION_MESSAGE_SOURCE,
+          scope: "owner-private",
+          scopedToEntityId: input.ownerEntityId,
         },
         createdAt: Date.now(),
       };
       await this.runtime.createMemory(memory, "messages");
+      return true;
     } catch (cause) {
+      // A second process can win the deterministic-id insert. Re-read before
+      // classifying the error: the durable row is the exactly-once anchor.
+      const persisted = await this.runtime.getMemoryById(memoryId);
+      if (
+        persisted?.agentId === this.runtime.agentId &&
+        persisted.entityId === this.runtime.agentId &&
+        persisted.content?.source === ACTIVATION_MESSAGE_SOURCE
+      ) {
+        return false;
+      }
       // error-policy:J2 wrap the failed durable write with the activation key
       // so the boundary can retry; activation is NEVER marked complete here.
       throw new ElizaError(
@@ -341,20 +419,50 @@ export class OwnerActivationService {
     }
   }
 
+  private async reconcileFirstRunComplete(): Promise<void> {
+    const firstRun = await this.firstRunStore.read();
+    if (firstRun.status !== "complete") {
+      await this.firstRunStore.complete();
+    }
+  }
+
   private async readRecord(): Promise<OwnerActivationRecord> {
     const cache = asCacheRuntime(this.runtime);
     return normalizeRecord(await cache.getCache(ACTIVATION_CACHE_KEY));
   }
 
   private async writeEntry(
-    record: OwnerActivationRecord,
     key: string,
     entry: OwnerActivationEntry,
   ): Promise<OwnerActivationEntry> {
-    const next: OwnerActivationRecord = {
-      entries: { ...record.entries, [key]: entry },
-    };
-    await asCacheRuntime(this.runtime).setCache(ACTIVATION_CACHE_KEY, next);
-    return entry;
+    const write = this.recordWriteTail.then(async () => {
+      const current = await this.readRecord();
+      const next: OwnerActivationRecord = {
+        entries: { ...current.entries, [key]: entry },
+      };
+      await asCacheRuntime(this.runtime).setCache(ACTIVATION_CACHE_KEY, next);
+      return entry;
+    });
+    this.recordWriteTail = write.then(
+      () => undefined,
+      () => undefined,
+    );
+    return await write;
   }
+}
+
+const ownerActivationServices = new WeakMap<
+  IAgentRuntime,
+  OwnerActivationService
+>();
+
+/** Runtime-scoped service so concurrent HTTP callbacks share one write lock. */
+export function getOwnerActivationService(
+  runtime: IAgentRuntime,
+): OwnerActivationService {
+  const existing = ownerActivationServices.get(runtime);
+  if (existing) return existing;
+  const service = new OwnerActivationService(runtime);
+  ownerActivationServices.set(runtime, service);
+  return service;
 }

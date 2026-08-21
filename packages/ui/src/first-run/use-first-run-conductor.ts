@@ -123,6 +123,7 @@ import {
   FIRST_RUN_SIGN_IN_PROMPT,
 } from "./first-run-greeting";
 import { isRuntimeChooserEnabled } from "./first-run-runtime-flag";
+import { activateOwnerAfterFirstRun } from "./owner-activation";
 import { revertLocalRuntimeCommitment } from "./revert-local-runtime-commitment";
 
 const GREETING = `${FIRST_RUN_GREETING} First, where should your agent run?`;
@@ -437,6 +438,8 @@ export function useFirstRunConductor(): void {
   const {
     firstRunComplete,
     firstRunName,
+    activeConversationId,
+    startupPhase,
     completeFirstRun,
     elizaCloudConnected,
     handleInteractiveCloudLogin,
@@ -447,6 +450,8 @@ export function useFirstRunConductor(): void {
   } = useAppSelectorShallow((s) => ({
     firstRunComplete: s.firstRunComplete,
     firstRunName: s.firstRunName,
+    activeConversationId: s.activeConversationId,
+    startupPhase: s.startupCoordinator.phase,
     completeFirstRun: s.completeFirstRun,
     elizaCloudConnected: s.elizaCloudConnected,
     handleInteractiveCloudLogin: s.handleInteractiveCloudLogin,
@@ -492,6 +497,9 @@ export function useFirstRunConductor(): void {
   // only on the next commit, so a double-tap could otherwise re-fire
   // completeFirstRun/startTutorial in the gap.
   const completedRef = React.useRef(false);
+  // Exact selected-agent base already activated in this renderer generation.
+  // A cold relaunch starts empty and lets the recovery effect below reconcile.
+  const activatedBaseRef = React.useRef<string | null>(null);
   // True while a finish error's recovery choice is on screen; steers the
   // free-text reply persona (below). Cleared when the next pick supersedes it.
   const erroredRef = React.useRef(false);
@@ -576,10 +584,53 @@ export function useFirstRunConductor(): void {
   // provisioning succeeds we flip the real gate — no tutorial/accent pick gates
   // completion in this mode (the chat-native tutorial remains command-driven).
   // Latched by completedRef so a double-fired finish can't flip the gate twice.
-  const completeCloudOnly = React.useCallback(() => {
+  const activateAndComplete = React.useCallback(
+    async (landingTab: "chat" | "settings" = "chat") => {
+      await activateOwnerAfterFirstRun(client, activeConversationId);
+      activatedBaseRef.current = client.getBaseUrl() || "app-shell";
+      completeFirstRun(landingTab);
+    },
+    [activeConversationId, completeFirstRun],
+  );
+
+  // Pair-relay navigation can end the JS session after persisting app first-run
+  // completion but before the selected agent is callable. On the returning
+  // ready launch, reconcile through the same idempotent boundary. This also
+  // repairs older completed installs that predate the activation contract.
+  React.useEffect(() => {
+    if (firstRunComplete !== true || startupPhase !== "ready") return;
+    const selectedBase = client.getBaseUrl() || "app-shell";
+    if (activatedBaseRef.current === selectedBase) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+    const run = async (): Promise<void> => {
+      attempt += 1;
+      try {
+        await activateOwnerAfterFirstRun(client, activeConversationId);
+        if (!cancelled) activatedBaseRef.current = selectedBase;
+      } catch (err) {
+        if (cancelled) return;
+        if (attempt >= 5) {
+          logger.warn(
+            { err, selectedBase, attempts: attempt },
+            "[useFirstRunConductor] owner activation reconciliation failed",
+          );
+          return;
+        }
+        timer = setTimeout(() => void run(), 250 * 2 ** (attempt - 1));
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeConversationId, firstRunComplete, startupPhase]);
+
+  const completeCloudOnly = React.useCallback(async () => {
     if (completedRef.current) return;
     provisionedRef.current = true;
-    completedRef.current = true;
     // A silent entry that STAYED silent was a pure reuse (#15133): the user is
     // already signed in and their agent already exists — land straight in chat
     // with no wrap-up turn. A create/wake path cleared the ref on its first
@@ -587,8 +638,9 @@ export function useFirstRunConductor(): void {
     if (!silentCloudEntryRef.current) {
       seedTurn(makeTurn("first-run:cloud-done", CLOUD_ONLY_DONE));
     }
-    completeFirstRun("chat");
-  }, [seedTurn, completeFirstRun]);
+    await activateAndComplete("chat");
+    completedRef.current = true;
+  }, [seedTurn, activateAndComplete]);
 
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
@@ -633,12 +685,12 @@ export function useFirstRunConductor(): void {
         setState(key, value as never);
       },
       setTab,
-      completeFirstRun: () => {
+      completeFirstRun: async () => {
         if (runtimeChooserEnabled) {
           seedTutorial();
           return;
         }
-        completeCloudOnly();
+        await completeCloudOnly();
       },
       onStatus: (text, code) => {
         if (!text) return;
@@ -700,10 +752,19 @@ export function useFirstRunConductor(): void {
   // double-tap can't flip the gate twice.
   const exitToSettings = React.useCallback(() => {
     if (completedRef.current) return;
-    completedRef.current = true;
-    setTab("settings");
-    completeFirstRun("settings");
-  }, [setTab, completeFirstRun]);
+    busyRef.current = true;
+    void activateAndComplete("settings")
+      .then(() => {
+        completedRef.current = true;
+        setTab("settings");
+      })
+      .catch((error) => {
+        seedError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        busyRef.current = false;
+      });
+  }, [activateAndComplete, seedError, setTab]);
 
   const seedCloudAgentChoice = React.useCallback(
     (agents: { id?: string; name?: string }[]) => {
@@ -1386,11 +1447,18 @@ export function useFirstRunConductor(): void {
 
       if (group === "tutorial") {
         if (id !== "start" && id !== "skip") return true;
-        completedRef.current = true;
-        // The single real completion: flip the gate (deactivates the conductor),
-        // then optionally launch the interactive tutorial.
-        completeFirstRun("chat");
-        if (id === "start") startTutorial();
+        busyRef.current = true;
+        void activateAndComplete("chat")
+          .then(() => {
+            completedRef.current = true;
+            if (id === "start") startTutorial();
+          })
+          .catch((error) => {
+            seedError(error instanceof Error ? error.message : String(error));
+          })
+          .finally(() => {
+            busyRef.current = false;
+          });
         return true;
       }
 
@@ -1403,7 +1471,8 @@ export function useFirstRunConductor(): void {
       seedFreshChoiceTurn,
       seedRuntimeChoice,
       replaceTurn,
-      completeFirstRun,
+      activateAndComplete,
+      seedError,
       exitToSettings,
       startCloudProvisionFlow,
       startProviderFinish,

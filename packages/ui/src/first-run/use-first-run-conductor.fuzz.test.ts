@@ -46,6 +46,24 @@ const mocks = vi.hoisted(() => ({
       }),
     ),
     submitFirstRun: vi.fn(async () => undefined),
+    listConversations: vi.fn(async () => ({
+      conversations: [
+        {
+          id: "first-run-conversation",
+          roomId: "22222222-2222-4222-8222-222222222222",
+          title: "New Chat",
+          createdAt: "2026-08-20T00:00:00.000Z",
+          updatedAt: "2026-08-20T00:00:00.000Z",
+        },
+      ],
+    })),
+    createConversation: vi.fn(async () => {
+      throw new Error("the fixture always has a conversation");
+    }),
+    activateOwnerFirstRun: vi.fn(async (roomId: string) => ({
+      outcome: "activated" as const,
+      entry: { status: "complete" as const, roomId },
+    })),
     getFirstRunStatus: vi.fn(async () => ({ complete: false })),
     getBaseUrl: vi.fn(() => ""),
     setBaseUrl: vi.fn(),

@@ -1316,6 +1316,7 @@ export {
   activationMemoryId,
   type EnsureActivationInput,
   type EnsureActivationResult,
+  getOwnerActivationService,
   OWNER_ACTIVATION_CONTRACT_VERSION,
   OWNER_ACTIVATION_MESSAGE,
   type OwnerActivationEntry,
