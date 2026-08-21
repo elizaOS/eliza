@@ -2385,54 +2385,44 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: #fff;
 }
 
-.landing-handoff-head {
-  display: grid;
-  grid-template-columns: 2.35rem minmax(0, 1fr);
+.landing-calendar-head {
+  display: flex;
   align-items: center;
-  gap: 0.62rem;
-  padding: 0.68rem 0.75rem;
+  min-height: 2.55rem;
+  padding: 0 0.78rem;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
 }
 
-.landing-handoff-date {
-  display: grid;
-  justify-items: center;
-  overflow: hidden;
-  border: 1px solid rgb(255 59 48 / 24%);
-  border-radius: 0.58rem;
+.landing-calendar-head strong {
+  color: #ff3b30;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing-calendar-day-view {
+  position: relative;
+  height: 7.6rem;
   background: #fff;
 }
 
-.landing-handoff-date small {
-  width: 100%;
-  padding: 0.12rem 0;
-  background: #ff3b30;
-  color: #fff;
-  font-size: 0.48rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
+.landing-calendar-hour {
+  position: absolute;
+  left: 0.68rem;
+  width: 2.1rem;
+  color: #8e8e93;
+  font-size: 0.57rem;
   line-height: 1;
-  text-align: center;
-  text-transform: uppercase;
+  text-align: right;
+  transform: translateY(-50%);
 }
 
-.landing-handoff-date strong {
-  padding: 0.28rem 0.1rem 0.3rem;
-  color: #1c1c1e;
-  font-size: 0.75rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1;
+.landing-calendar-hour--four {
+  top: 1.15rem;
 }
 
-.landing-handoff-title {
-  display: grid;
-  min-width: 0;
-}
-
-.landing-handoff-title strong {
-  font-size: 0.88rem;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
+.landing-calendar-hour--five {
+  top: 6.15rem;
 }
 
 .landing-itinerary-stops,
@@ -2442,10 +2432,62 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   list-style: none;
 }
 
-.landing-handoff-title span {
-  margin-top: 0.12rem;
-  color: #6e6e73;
-  font-size: 0.67rem;
+.landing-calendar-line {
+  position: absolute;
+  right: 0;
+  left: 3.25rem;
+  height: 1px;
+  background: rgb(0 0 0 / 8%);
+}
+
+.landing-calendar-line--four {
+  top: 1.15rem;
+}
+
+.landing-calendar-line--half {
+  top: 3.65rem;
+}
+
+.landing-calendar-line--five {
+  top: 6.15rem;
+}
+
+.landing-calendar-event {
+  position: absolute;
+  top: 2rem;
+  right: 0.7rem;
+  left: 3.5rem;
+  display: grid;
+  min-height: 3.55rem;
+  padding: 0.52rem 0.58rem 0.48rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #ffe9e7;
+  color: #6c1712;
+}
+
+.landing-calendar-event::before {
+  position: absolute;
+  top: 0.38rem;
+  bottom: 0.38rem;
+  left: 0.28rem;
+  width: 0.16rem;
+  border-radius: 999px;
+  background: #ff3b30;
+  content: "";
+}
+
+.landing-calendar-event strong {
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.12;
+}
+
+.landing-calendar-event span,
+.landing-calendar-event small {
+  margin-top: 0.05rem;
+  color: #8a302a;
+  font-size: 0.6rem;
+  line-height: 1.15;
 }
 
 .landing-itinerary-attachment {

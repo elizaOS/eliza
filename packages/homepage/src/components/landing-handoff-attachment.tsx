@@ -10,16 +10,25 @@ export function LandingHandoffAttachment({
       className="landing-handoff-attachment"
       aria-label={`${handoff.child}'s ${handoff.title}, ${handoff.day} at ${handoff.time}, ${handoff.location}`}
     >
-      <header className="landing-handoff-head">
-        <span className="landing-handoff-date" aria-hidden="true">
-          <small>{handoff.day.slice(0, 3)}</small>
-          <strong>{handoff.time.replace(" PM", "")}</strong>
-        </span>
-        <span className="landing-handoff-title">
-          <strong>{`${handoff.child}'s ${handoff.title.toLowerCase()}`}</strong>
-          <span>{handoff.location}</span>
-        </span>
+      <header className="landing-calendar-head">
+        <strong>{handoff.day}</strong>
       </header>
+      <div className="landing-calendar-day-view" aria-hidden="true">
+        <span className="landing-calendar-hour landing-calendar-hour--four">
+          4 PM
+        </span>
+        <span className="landing-calendar-hour landing-calendar-hour--five">
+          5 PM
+        </span>
+        <span className="landing-calendar-line landing-calendar-line--four" />
+        <span className="landing-calendar-line landing-calendar-line--half" />
+        <span className="landing-calendar-line landing-calendar-line--five" />
+        <div className="landing-calendar-event">
+          <strong>{`${handoff.child}'s ${handoff.title.toLowerCase()}`}</strong>
+          <span>{handoff.time}</span>
+          <small>{handoff.location}</small>
+        </div>
+      </div>
     </article>
   );
 }
