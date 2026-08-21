@@ -179,11 +179,26 @@ SIGTERM reaches capture and publication before systemd's bounded shutdown
 fence. Health is published without locators or credentials at
 `/run/eliza-backup-catalog/health.json`.
 
+The runtime configuration exposes bounded schedule, operation, garbage-
+collection, and deletion batch/lease/retry controls in
+`packages/cloud/shared/.env.example`. Operation admission is deliberately
+fixed to one claim per cycle until a durable cross-cycle tenant cursor proves
+starvation freedom. Capture and object-transfer deadlines must each leave at
+least 30 seconds inside `AGENT_BACKUP_OPERATION_LEASE_MS` for fenced catalogue
+settlement. Operation and GC retry bases must not exceed their corresponding
+retry maxima; invalid combinations fail before provider authority is built.
+
 Both `AGENT_BACKUP_CATALOG_RUNTIME_ENABLED` and
 `AGENT_BACKUP_RPO_SCHEDULER_ENABLED` are forced to `0` in the merge-time
-systemd/deploy path. The disabled entrypoint reads only those gates and returns
-before importing or constructing database, provider, KMS, executor, or spool
-authority. Enabled configuration is fail-closed: storage identities and
+systemd/deploy path. The disabled authority composition reads only those gates
+and returns before importing or constructing database, provider, KMS, executor,
+or spool authority. The outer daemon may additionally read non-secret cadence
+and health controls needed to publish its dormant status; the dedicated dormant
+file also pins an inert spool path. Before either gate can be activated, backup
+authority must leave the shared host's provisioning-account sudo/docker trust
+domain (or move to a dedicated host) and execute an integrity-protected
+artifact; a root-owned copy on the current shared host alone is not an isolation
+boundary. Enabled configuration is fail-closed: storage identities and
 credentials, Steward KMS bearer, persistent spool bounds, legacy-writer drain
 receipt, and deployment-pinned agent/database/plugin versions must all be
 present before any provider is built. These static runtime metadata values are
