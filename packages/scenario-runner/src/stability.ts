@@ -4,18 +4,21 @@
  * module only plans isolated artifact paths and combines completed run reports.
  */
 
+import type { Stats } from "node:fs";
 import {
   closeSync,
+  constants,
   existsSync,
   fstatSync,
+  fsyncSync,
   lstatSync,
   mkdirSync,
   openSync,
   readSync,
-  writeFileSync,
+  unlinkSync,
+  writeSync,
 } from "node:fs";
 import path from "node:path";
-import type { ScenarioReport } from "./types.ts";
 import { toRecord } from "./utils.ts";
 
 export const SCENARIO_STABILITY_ATTEMPT_COUNT = 3 as const;
@@ -31,6 +34,7 @@ export type ScenarioStabilityTier = "3/3" | "2/3" | "1/3" | "0/3";
 export type ScenarioStabilityFailureClassification =
   | "scenario-failure"
   | "harness-failure";
+export type ScenarioStabilityScenarioStatus = "passed" | "failed" | "skipped";
 
 export interface ScenarioStabilityAttemptPlan {
   attemptNumber: ScenarioStabilityAttemptNumber;
@@ -56,7 +60,7 @@ export interface ScenarioStabilityPlan {
 
 export interface ScenarioStabilityAttemptScenarioReport {
   id: string;
-  status: ScenarioReport["status"];
+  status: ScenarioStabilityScenarioStatus;
   skipReason?: string;
   error?: string;
   failedAssertions: readonly { detail?: string }[];
@@ -70,7 +74,7 @@ export interface ScenarioStabilityAttemptReport {
 export interface ScenarioStabilityAttemptResult {
   attemptNumber: ScenarioStabilityAttemptNumber;
   attemptId: string;
-  status: ScenarioReport["status"] | "missing";
+  status: ScenarioStabilityScenarioStatus | "missing";
   passed: boolean;
   failureClassification: ScenarioStabilityFailureClassification | null;
   detail: string | null;
@@ -183,22 +187,109 @@ function requireRecord(
   return record;
 }
 
+interface ScenarioStabilityPathIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+  kind: "directory" | "file";
+}
+
+function pathEntries(
+  authorityRoot: string,
+  targetPath: string,
+  source: string,
+): string[] {
+  const root = path.resolve(authorityRoot);
+  const target = path.resolve(targetPath);
+  if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+    throw new Error(`${source} is outside its authority root`);
+  }
+  const relativeParts = path
+    .relative(root, target)
+    .split(path.sep)
+    .filter(Boolean);
+  return [
+    root,
+    ...relativeParts.map((_, index) =>
+      path.join(root, ...relativeParts.slice(0, index + 1)),
+    ),
+  ];
+}
+
+function pathKind(stat: Stats): ScenarioStabilityPathIdentity["kind"] | null {
+  if (stat.isDirectory()) return "directory";
+  if (stat.isFile()) return "file";
+  return null;
+}
+
+function snapshotPathChain(
+  authorityRoot: string,
+  targetPath: string,
+  source: string,
+): ScenarioStabilityPathIdentity[] {
+  return pathEntries(authorityRoot, targetPath, source).map(
+    (entry, index, entries) => {
+      const stat = lstatSync(entry);
+      const kind = pathKind(stat);
+      const isLeaf = index === entries.length - 1;
+      if (stat.isSymbolicLink() || !kind || (!isLeaf && kind !== "directory")) {
+        throw new Error(
+          `${source} path component must be a direct ${isLeaf ? "file or directory" : "directory"}: ${entry}`,
+        );
+      }
+      return { path: entry, dev: stat.dev, ino: stat.ino, kind };
+    },
+  );
+}
+
+function verifyPathChain(
+  identities: readonly ScenarioStabilityPathIdentity[],
+  source: string,
+): void {
+  for (const identity of identities) {
+    const stat = lstatSync(identity.path);
+    if (
+      stat.isSymbolicLink() ||
+      pathKind(stat) !== identity.kind ||
+      stat.dev !== identity.dev ||
+      stat.ino !== identity.ino
+    ) {
+      throw new Error(`${source} path changed while the artifact was accessed`);
+    }
+  }
+}
+
+function descriptorMatchesPath(
+  stat: Stats,
+  identity: ScenarioStabilityPathIdentity,
+): boolean {
+  return (
+    identity.kind === "file" &&
+    stat.isFile() &&
+    stat.dev === identity.dev &&
+    stat.ino === identity.ino
+  );
+}
+
 /** Reads one regular JSON artifact without permitting symlinks or unbounded allocation. */
 export function readScenarioStabilityJsonArtifact(
   filePath: string,
   source: string,
+  authorityRoot = path.dirname(filePath),
 ): unknown {
-  const descriptor = openSync(filePath, "r");
+  const chain = snapshotPathChain(authorityRoot, filePath, source);
+  const leaf = chain.at(-1);
+  if (leaf?.kind !== "file") {
+    throw new Error(`${source} must be a regular file`);
+  }
+  const descriptor = openSync(
+    filePath,
+    constants.O_RDONLY | constants.O_NOFOLLOW,
+  );
   try {
     const fileStat = fstatSync(descriptor);
-    const pathStat = lstatSync(filePath);
-    if (
-      pathStat.isSymbolicLink() ||
-      !pathStat.isFile() ||
-      !fileStat.isFile() ||
-      pathStat.dev !== fileStat.dev ||
-      pathStat.ino !== fileStat.ino
-    ) {
+    verifyPathChain(chain, source);
+    if (!descriptorMatchesPath(fileStat, leaf)) {
       throw new Error(
         `${source} must resolve directly to the opened regular file, not a symlink or replaced path`,
       );
@@ -236,9 +327,69 @@ export function readScenarioStabilityJsonArtifact(
     ) {
       throw new Error(`${source} changed while it was being read`);
     }
+    verifyPathChain(chain, source);
     return JSON.parse(bytes.subarray(0, offset).toString("utf8"));
   } finally {
     closeSync(descriptor);
+  }
+}
+
+function writeExclusiveScenarioStabilityJsonArtifact(
+  filePath: string,
+  value: unknown,
+  authorityRoot: string,
+  source: string,
+): void {
+  const parentPath = path.dirname(filePath);
+  const parentChain = snapshotPathChain(authorityRoot, parentPath, source);
+  const bytes = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+  if (bytes.byteLength > SCENARIO_STABILITY_MAX_REPORT_BYTES) {
+    throw new Error(
+      `${source} exceeds the ${SCENARIO_STABILITY_MAX_REPORT_BYTES}-byte limit`,
+    );
+  }
+  const descriptor = openSync(
+    filePath,
+    constants.O_WRONLY |
+      constants.O_CREAT |
+      constants.O_EXCL |
+      constants.O_NOFOLLOW,
+    0o600,
+  );
+  let removeEmptyArtifact = true;
+  try {
+    verifyPathChain(parentChain, source);
+    const fileIdentity = snapshotPathChain(authorityRoot, filePath, source).at(
+      -1,
+    );
+    const fileStat = fstatSync(descriptor);
+    if (!fileIdentity || !descriptorMatchesPath(fileStat, fileIdentity)) {
+      throw new Error(`${source} path changed while the artifact was created`);
+    }
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      offset += writeSync(descriptor, bytes, offset, bytes.byteLength - offset);
+    }
+    fsyncSync(descriptor);
+    verifyPathChain(parentChain, source);
+    const finalIdentity = snapshotPathChain(authorityRoot, filePath, source).at(
+      -1,
+    );
+    const finalStat = fstatSync(descriptor);
+    if (!finalIdentity || !descriptorMatchesPath(finalStat, finalIdentity)) {
+      throw new Error(`${source} path changed while the artifact was written`);
+    }
+    removeEmptyArtifact = false;
+  } finally {
+    closeSync(descriptor);
+    if (removeEmptyArtifact) {
+      try {
+        verifyPathChain(parentChain, source);
+        unlinkSync(filePath);
+      } catch {
+        // error-policy:J6 best-effort cleanup cannot safely remove an artifact after its parent identity changed.
+      }
+    }
   }
 }
 
@@ -290,7 +441,11 @@ export function readScenarioStabilityPlan(params: {
   const expected = createScenarioStabilityPlan(params);
   const source = `scenario stability plan '${expected.planPath}'`;
   return parseScenarioStabilityPlan(
-    readScenarioStabilityJsonArtifact(expected.planPath, source),
+    readScenarioStabilityJsonArtifact(
+      expected.planPath,
+      source,
+      expected.outputRoot,
+    ),
     params,
     source,
   );
@@ -603,24 +758,41 @@ export function writeScenarioStabilityPlan(plan: ScenarioStabilityPlan): void {
       readScenarioStabilityJsonArtifact(
         canonical.planPath,
         `scenario stability plan '${canonical.planPath}'`,
+        canonical.outputRoot,
       ),
       { runId: canonical.runId, outputRoot: canonical.outputRoot },
       `scenario stability plan '${canonical.planPath}'`,
     );
-    mkdirSync(canonical.outputRoot, { recursive: true });
     for (const attempt of canonical.attempts) {
       mkdirSync(attempt.outputDir, { recursive: true });
+      snapshotPathChain(
+        canonical.outputRoot,
+        attempt.outputDir,
+        "scenario stability attempt output",
+      );
     }
     return;
   }
   mkdirSync(canonical.outputRoot, { recursive: true });
+  snapshotPathChain(
+    canonical.outputRoot,
+    canonical.outputRoot,
+    "scenario stability plan output",
+  );
   for (const attempt of canonical.attempts) {
     mkdirSync(attempt.outputDir, { recursive: true });
+    snapshotPathChain(
+      canonical.outputRoot,
+      attempt.outputDir,
+      "scenario stability attempt output",
+    );
   }
-  writeFileSync(canonical.planPath, `${JSON.stringify(canonical, null, 2)}\n`, {
-    encoding: "utf8",
-    flag: "wx",
-  });
+  writeExclusiveScenarioStabilityJsonArtifact(
+    canonical.planPath,
+    canonical,
+    canonical.outputRoot,
+    "scenario stability plan output",
+  );
 }
 
 /** Writes the deterministic aggregate at the path declared by its plan. */
@@ -634,8 +806,10 @@ export function writeScenarioStabilityReport(
     );
   }
   mkdirSync(plan.outputRoot, { recursive: true });
-  writeFileSync(plan.reportPath, `${JSON.stringify(report, null, 2)}\n`, {
-    encoding: "utf8",
-    flag: "wx",
-  });
+  writeExclusiveScenarioStabilityJsonArtifact(
+    plan.reportPath,
+    report,
+    plan.outputRoot,
+    "scenario stability report output",
+  );
 }

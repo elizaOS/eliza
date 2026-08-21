@@ -40,6 +40,7 @@ export {
 } from "./required-services.ts";
 export * from "./synthetic-control.ts";
 export * from "./stability.ts";
+export * from "./stability-executor.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

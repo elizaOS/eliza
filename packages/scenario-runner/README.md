@@ -102,6 +102,16 @@ the consumed report subset is also bounded to 10,000 scenarios, 1,000 failed
 assertions per scenario, and bounded identifier/detail strings. Invalid or
 contradictory reports exit as configuration errors without writing an aggregate.
 
+Programmatic stability execution is available through
+`executeScenarioStability()`. It drives an injected current-runtime adapter for
+all three attempts unconditionally, even after failures; gives each attempt a
+unique run ID and output directory; compares runtime-produced initial-state
+hashes; preserves trajectory, tool, state, provider, and judge evidence; and
+requires `3/3`. The adapter owns the actual fresh process/runtime, database,
+mock-service world, model conversation, and teardown for each attempt. This
+package deliberately does not introduce or depend on a synthetic-world service
+implementation.
+
 ## Provider-qualified release evidence
 
 The ordinary executor is an in-process diagnostic harness. It can exercise a
