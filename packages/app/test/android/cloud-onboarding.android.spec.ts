@@ -8,6 +8,10 @@
 
 import path from "node:path";
 import { expect, ORIGIN, test } from "./android-harness";
+import {
+  ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,
+  resumedAndroidActivityComponent,
+} from "./resumed-android-activity";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -18,14 +22,37 @@ const ARTIFACT_DIR = path.join(
 async function clearBrowserState(page: import("@playwright/test").Page) {
   await page.evaluate(async () => {
     localStorage.clear();
-    const preferences = (
+    const plugins = (
       window as Window & {
         Capacitor?: {
-          Plugins?: { Preferences?: { clear(): Promise<void> } };
+          Plugins?: {
+            Preferences?: { clear(): Promise<void> };
+          };
         };
       }
-    ).Capacitor?.Plugins?.Preferences;
-    await preferences?.clear();
+    ).Capacitor?.Plugins;
+    if (!plugins?.Preferences) {
+      throw new Error("Android Cloud Preferences plugin is unavailable");
+    }
+    await plugins.Preferences.clear();
+  });
+}
+
+async function seedStaleBrowserState(page: import("@playwright/test").Page) {
+  // Reserved shell keys are realm-guarded after the renderer boots. Seed the
+  // adversarial legacy state at document start so this exercises hydration
+  // instead of being rejected by the view-storage facade before navigation.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:android",
+        kind: "remote",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+    );
+    localStorage.setItem("eliza:e2e-wallet:autologin", "1");
+    localStorage.setItem("eliza:e2e-wallet:pk", "legacy-test-wallet-key");
   });
 }
 
@@ -52,19 +79,7 @@ test.describe
       device,
     }, testInfo) => {
       await clearBrowserState(page);
-      await page.evaluate(() => {
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: "local:android",
-            kind: "remote",
-            apiBase: "eliza-local-agent://ipc",
-          }),
-        );
-        localStorage.setItem("steward_session_token", "stale-browser-token");
-        localStorage.setItem("eliza:e2e-wallet:autologin", "1");
-        localStorage.setItem("eliza:e2e-wallet:pk", "legacy-test-wallet-key");
-      });
+      await seedStaleBrowserState(page);
 
       await loadSignedOutShell(page);
       await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0);
@@ -112,10 +127,12 @@ test.describe
       await expect
         .poll(
           async () =>
-            (await device.shell("dumpsys activity activities")).toString(),
+            resumedAndroidActivityComponent(
+              (await device.shell("dumpsys activity activities")).toString(),
+            ),
           { timeout: 15_000 },
         )
-        .toMatch(/com\.android\.chrome|BrowserControllerActivity/);
+        .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
 
       await device.shell("input keyevent BACK");
       await page.getByRole("button", { name: "Cancel sign-in" }).click();
