@@ -93,18 +93,55 @@ function errorStatus(error: unknown): number {
   return 500;
 }
 
-function errorBody(error: unknown) {
+export function containerControlPlaneErrorBody(error: unknown) {
   if (error instanceof ApiError) {
-    return error.toJSON();
+    const publicMessage = (() => {
+      switch (error.code) {
+        case "authentication_required":
+          return "Authentication required";
+        case "insufficient_credits":
+          return "Insufficient credits";
+        case "access_denied":
+          return "Access denied";
+        case "resource_not_found":
+          return "Resource not found";
+        case "rate_limit_exceeded":
+          return "Rate limit exceeded";
+        case "session_not_ready":
+          return "Session is not ready";
+        case "validation_error":
+          return "Invalid request";
+        default:
+          return "Request failed";
+      }
+    })();
+    return { success: false, code: error.code, error: publicMessage };
   }
+  const code =
+    error instanceof HetznerClientError
+      ? error.code
+      : "container_control_plane_error";
   return {
     success: false,
-    code:
-      error instanceof HetznerClientError
-        ? error.code
-        : "container_control_plane_error",
-    error: error instanceof Error ? error.message : String(error),
+    code,
+    error:
+      code === "container_not_found"
+        ? "Container not found"
+        : code === "invalid_input"
+          ? "Invalid container request"
+          : code === "no_capacity"
+            ? "Container capacity unavailable"
+            : code === "container_control_plane_error"
+              ? "Container control-plane request failed"
+              : "Container operation failed",
   };
+}
+
+function logBoundaryError(error: unknown): void {
+  logger.error("[container-control-plane] request failed", {
+    error: error instanceof Error ? error.message : String(error),
+    ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
+  });
 }
 
 function requireForwardedAuth(c: Context): ForwardedAuth {
@@ -580,7 +617,10 @@ async function handle(
     return await fn(auth);
   } catch (error) {
     if (error instanceof Response) return error;
-    return new Response(JSON.stringify(errorBody(error)), {
+    // error-policy:J1 privileged transport boundary logs diagnostics internally
+    // and returns only the typed, stable public error envelope.
+    logBoundaryError(error);
+    return new Response(JSON.stringify(containerControlPlaneErrorBody(error)), {
       status: errorStatus(error),
       headers: { "content-type": "application/json" },
     });
@@ -604,7 +644,10 @@ async function handleInternal(c: Context, fn: () => Promise<Response>) {
     return await fn();
   } catch (error) {
     if (error instanceof Response) return error;
-    return new Response(JSON.stringify(errorBody(error)), {
+    // error-policy:J1 privileged transport boundary logs diagnostics internally
+    // and returns only the typed, stable public error envelope.
+    logBoundaryError(error);
+    return new Response(JSON.stringify(containerControlPlaneErrorBody(error)), {
       status: errorStatus(error),
       headers: { "content-type": "application/json" },
     });

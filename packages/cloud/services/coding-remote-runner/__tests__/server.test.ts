@@ -273,6 +273,28 @@ describe("coding remote runner HTTP runner", () => {
     expect(ran).toBe(false);
   });
 
+  it("logs but does not return unexpected command-runner exception text", async () => {
+    const marker = "<script>secret /workspace/private.ts:17</script>";
+    const run = handler(async () => {
+      const error = new Error(marker);
+      error.stack = `Error: ${marker}\n    at /workspace/private.ts:17:3`;
+      throw error;
+    });
+
+    const response = await run(
+      request("/v1/processes/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "/bin/true", timeoutMs: 5000 }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "remote runner request failed",
+    });
+  });
+
   it("blocks unauthenticated workspace writes even with the escape hatch on", async () => {
     const config = loadConfig({
       ELIZA_CODING_WORKSPACE: workspaceRoot,

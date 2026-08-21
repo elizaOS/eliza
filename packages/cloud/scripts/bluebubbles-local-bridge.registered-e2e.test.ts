@@ -237,6 +237,16 @@ describe("registered BlueBubbles local bridge E2E", () => {
     const relayUrl = `http://127.0.0.1:${relayPort}`;
     await waitForRelay(`${relayUrl}/not-found`, child, relayOutput);
 
+    const malformed = await fetch(`${relayUrl}/outbound/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"message":"<script>private/path.ts:42</script>",',
+    });
+    expect(malformed.status).toBe(500);
+    await expect(malformed.json()).resolves.toEqual({
+      error: "BlueBubbles bridge request failed",
+    });
+
     const personalIdentityResponse = await fetch(
       `${relayUrl}/webhooks/bluebubbles`,
       {
@@ -459,7 +469,7 @@ describe("registered BlueBubbles local bridge E2E", () => {
     );
     expect(selfValidationResponse.status).toBe(500);
     await expect(selfValidationResponse.json()).resolves.toMatchObject({
-      error: "Refusing to send a BlueBubbles reply to the gateway itself",
+      error: "BlueBubbles bridge request failed",
     });
     expect(blueBubblesSends).toHaveLength(2);
 

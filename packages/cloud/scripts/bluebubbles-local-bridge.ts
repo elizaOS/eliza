@@ -1629,7 +1629,9 @@ async function handleWebhook(
     try {
       await sendBlueBubblesReply(chatGuid, replyText);
     } catch (error) {
-      sendError = error instanceof Error ? error.message : String(error);
+      const internalError =
+        error instanceof Error ? error.message : String(error);
+      sendError = "BlueBubbles reply delivery failed";
       const pending = await enqueuePendingReply({
         chatGuid,
         text: replyText,
@@ -1643,7 +1645,7 @@ async function handleWebhook(
           queuedReplyId,
           chatGuid,
           sourceMessageId: messageId,
-          error: sendError,
+          error: internalError,
         },
       );
     }
@@ -1883,10 +1885,10 @@ async function handleRequest(
 
 const server = createServer((req, res) => {
   handleRequest(req, res).catch((error) => {
+    // error-policy:J1 request failures are logged locally while the remote
+    // caller receives a stable response that cannot disclose exception text.
     console.error("[bluebubbles-local-bridge]", error);
-    json(res, 500, {
-      error: error instanceof Error ? error.message : String(error),
-    });
+    json(res, 500, { error: "BlueBubbles bridge request failed" });
   });
 });
 

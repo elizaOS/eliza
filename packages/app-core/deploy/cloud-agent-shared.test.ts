@@ -10,6 +10,7 @@ import {
   type BridgeMessageResult,
   bridgeResultText,
   checkRuntimeDatabaseLiveness,
+  publicDatabaseLiveness,
 } from "./cloud-agent-shared";
 
 describe("cloud-agent bridge callback results", () => {
@@ -43,6 +44,23 @@ describe("cloud-agent bridge callback results", () => {
 });
 
 describe("cloud-agent database liveness", () => {
+  it("omits exception detail from the public health projection", () => {
+    const marker = "password=secret at /srv/database.ts:42";
+
+    expect(
+      publicDatabaseLiveness({
+        ok: false,
+        status: "terminal_error",
+        terminal: true,
+        message: marker,
+      }),
+    ).toEqual({
+      ok: false,
+      status: "terminal_error",
+      terminal: true,
+    });
+  });
+
   it("classifies a real queryable closed-PGlite error as terminal", async () => {
     await expect(
       checkRuntimeDatabaseLiveness({

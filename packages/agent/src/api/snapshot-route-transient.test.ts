@@ -185,9 +185,10 @@ describe("POST /api/snapshot transient/terminal mapping", () => {
         const body = (await res.json()) as Record<string, unknown>;
         expect(body).toEqual(
           expect.objectContaining({
-            error: "tar write failed: disk I/O error",
+            error: "Snapshot failed",
           }),
         );
+        expect(JSON.stringify(body)).not.toContain("disk I/O error");
         expect(body.code).toBeUndefined();
       },
     );

@@ -334,6 +334,7 @@ describe("iOS local-agent local inference flow", () => {
     ).catch(() => undefined);
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("answers with local model download status while queueing the recommended target", async () => {
@@ -488,6 +489,45 @@ describe("iOS local-agent local inference flow", () => {
       }),
     );
     expect(load.mock.calls[0]?.[0]).not.toHaveProperty("draftModelPath");
+  });
+
+  it("persists a generic activation failure instead of native exception text", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const marker = "secret /private/native/model.mm:42";
+    const kernel = await loadKernel({
+      load: vi.fn(async () => {
+        const error = new Error(marker);
+        error.stack = `Error: ${marker}\n    at /private/native/model.mm:42:1`;
+        throw error;
+      }),
+      availableModels: [
+        {
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
+          size: 1_200_000_000,
+        },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
+      ],
+    });
+
+    const response = (await jsonRequest(
+      kernel,
+      "POST",
+      "/api/local-inference/active",
+      { modelId: "eliza-1-2b" },
+    )) as { status: string; error?: string };
+
+    expect(response).toMatchObject({
+      status: "error",
+      error: "Local model could not be loaded",
+    });
+    expect(response.error).not.toContain(marker);
   });
 
   it("reports bundled voice assets separately from TTS engine readiness", async () => {

@@ -15,8 +15,20 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { dashboardErrorResponse } from "./hitl-credential-dashboard.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
+
+test("credential dashboard does not serialize unexpected exception details", () => {
+  const marker = "<script>internal/path/database.sql</script>";
+  const error = new Error(marker);
+  error.stack = `Error: ${marker}\n    at /private/service.ts:42:7`;
+
+  assert.deepEqual(dashboardErrorResponse(error), {
+    status: 500,
+    body: { error: "Credential dashboard request failed" },
+  });
+});
 
 function tempDir(prefix) {
   return realpathSync(mkdtempSync(join(tmpdir(), prefix)));

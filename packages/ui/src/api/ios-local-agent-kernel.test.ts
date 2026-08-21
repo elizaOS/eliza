@@ -59,6 +59,7 @@ function stubLocalStorage(): Storage {
 describe("handleIosLocalAgentRequest", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("matches app catalog response contracts", async () => {
@@ -194,6 +195,39 @@ describe("handleIosLocalAgentRequest", () => {
       jsonrpc: "2.0",
       method: "message.send",
       params: { text: "hello" },
+    });
+  });
+
+  it("does not return Cloud bridge exception text to the renderer", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const localStorage = stubLocalStorage();
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "cloud:agent-1",
+        kind: "cloud",
+        label: "Cloud Agent",
+        apiBase: "eliza-local-agent://ipc",
+        accessToken: "cloud-token",
+      }),
+    );
+    vi.stubGlobal("window", { localStorage });
+    const marker = "<script>secret /srv/cloud.ts:9</script>";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const error = new Error(marker);
+        error.stack = `Error: ${marker}\n    at /srv/cloud.ts:9:1`;
+        throw error;
+      }),
+    );
+
+    const response = await post("/api/cloud/chat", { prompt: "hello" });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toEqual({
+      error: "Cloud chat is unavailable",
     });
   });
 

@@ -272,15 +272,20 @@ function privateHealthResponse(config: RunnerConfig): Response {
 
 function errorResponse(error: unknown, url: URL): Response {
   const status = error instanceof HttpError ? error.status : 500;
-  const message = error instanceof Error ? error.message : String(error);
+  const diagnostic = error instanceof Error ? error.message : String(error);
   if (status >= 500) {
     log("error", "[CodingRemoteRunner] request failed", {
       path: url.pathname,
       status,
-      error: message,
+      error: diagnostic,
     });
   }
-  return jsonResponse(status, { error: message });
+  return jsonResponse(status, {
+    error:
+      status < 500 && error instanceof HttpError
+        ? error.publicMessage
+        : "remote runner request failed",
+  });
 }
 
 async function listEntries(url: URL, config: RunnerConfig): Promise<Response> {
@@ -744,9 +749,9 @@ function log(level: LogLevel, message: string, meta: JsonRecord = {}): void {
 class HttpError extends Error {
   constructor(
     readonly status: number,
-    message: string,
+    readonly publicMessage: string,
   ) {
-    super(message);
+    super(publicMessage);
   }
 }
 

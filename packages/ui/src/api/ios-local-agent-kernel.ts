@@ -3,6 +3,8 @@
  * (market data, steward session) directly in the webview when the full-bun agent
  * is not reachable, using the shared market-provider helpers.
  */
+
+import { logger } from "@elizaos/logger";
 import {
   asRecord,
   buildCoinGeckoMarketsUrl,
@@ -2403,7 +2405,21 @@ async function handleIosCloudChat(request: Request): Promise<Response> {
     return json(await sendPromptToIosCloud(prompt));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return json({ error: message }, message.includes("not paired") ? 409 : 502);
+    const notPaired = message.includes("not paired");
+    // error-policy:J1 the WebView transport logs the provider detail locally
+    // and returns a stable typed failure to the renderer.
+    logger.error(
+      { error: message },
+      "[ios-local-agent] cloud chat request failed",
+    );
+    return json(
+      {
+        error: notPaired
+          ? "Cloud agent is not paired"
+          : "Cloud chat is unavailable",
+      },
+      notPaired ? 409 : 502,
+    );
   }
 }
 
@@ -3079,11 +3095,14 @@ async function activateModel(
     });
     return state;
   } catch (error) {
+    // error-policy:J4 model activation remains a visible error state without
+    // persisting native exception text into renderer-readable storage.
+    logger.error({ error }, "[ios-local-agent] local model activation failed");
     const state: ActiveModelState = {
       modelId,
       loadedAt: null,
       status: "error",
-      error: error instanceof Error ? error.message : String(error),
+      error: "Local model could not be loaded",
     };
     writeActiveModelState(state);
     return state;

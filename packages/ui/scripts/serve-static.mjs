@@ -55,8 +55,11 @@ const server = createServer(async (req, res) => {
     });
     res.end(buf);
   } catch (e) {
-    res.writeHead(500);
-    res.end(String(e?.message || e));
+    // error-policy:J1 keep filesystem/parser diagnostics local and make the
+    // HTTP failure body inert even when the requested path is interpreted as HTML.
+    console.error("[storybook-static] request failed", e);
+    res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Internal Server Error");
   }
 });
 

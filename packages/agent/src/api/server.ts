@@ -1911,7 +1911,7 @@ async function handleRequest(
         json(
           res,
           {
-            error: message,
+            error: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
             code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
           },
           503,
@@ -1925,7 +1925,9 @@ async function handleRequest(
         res.destroy(err instanceof Error ? err : new Error(message));
         return;
       }
-      error(res, message, 500);
+      // error-policy:J1 the snapshot boundary preserves diagnostics in the
+      // server log while exposing only a stable failure to the API caller.
+      error(res, "Snapshot failed", 500);
     }
     return;
   }
@@ -2503,11 +2505,10 @@ async function handleRequest(
       });
       json(res, { ok: result.unloaded, ...result });
     } catch (err) {
-      json(
-        res,
-        { ok: false, error: err instanceof Error ? err.message : String(err) },
-        422,
-      );
+      // error-policy:J1 plugin-loader diagnostics stay in structured logs;
+      // callers receive a stable boundary error rather than exception text.
+      logger.error({ err }, "[eliza-api] Plugin unload failed");
+      json(res, { ok: false, error: "Plugin could not be unloaded" }, 422);
     }
     return;
   }

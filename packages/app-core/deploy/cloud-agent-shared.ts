@@ -115,6 +115,17 @@ export interface RuntimeWithDatabaseLiveness {
   checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
 
+/** Projects internal probe diagnostics into the public health-check contract. */
+export function publicDatabaseLiveness(
+  payload: DatabaseLivenessPayload,
+): Omit<DatabaseLivenessPayload, "message"> {
+  return {
+    ok: payload.ok,
+    status: payload.status,
+    terminal: payload.terminal,
+  };
+}
+
 const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /pglite is closed/i,
   /database is shutting down/i,
@@ -209,6 +220,10 @@ export async function checkRuntimeDatabaseLiveness(
   } catch (error) {
     // error-policy:J4 health probe translates database failure into liveness state
     const terminal = isTerminalDatabaseProbeError(error);
+    logger.error("database liveness probe failed", {
+      error: describeDatabaseProbeError(error),
+      terminal,
+    });
     return {
       status: terminal ? "terminal_error" : "transient_error",
       ok: false,
@@ -775,7 +790,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           memoryUsage: process.memoryUsage().rss,
           runtimeReady: agentRuntime !== null,
           database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-          databaseLiveness,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
         }),
       );
       return;

@@ -168,6 +168,7 @@ class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
+    this.publicMessage = message;
   }
 }
 
@@ -786,6 +787,20 @@ function sendJson(res, status, payload) {
   res.end(JSON.stringify(payload, null, 2));
 }
 
+/** Maps request failures to the dashboard's non-diagnostic HTTP envelope. */
+export function dashboardErrorResponse(error) {
+  const status = error instanceof HttpError ? error.status : 500;
+  return {
+    status,
+    body: {
+      error:
+        status < 500 && error instanceof HttpError
+          ? redactSecrets(error.publicMessage)
+          : "Credential dashboard request failed",
+    },
+  };
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   let size = 0;
@@ -1359,11 +1374,11 @@ const IS_MAIN =
 if (IS_MAIN) {
   const server = createServer((req, res) => {
     handle(req, res).catch((error) => {
-      // error-policy:J1 transport boundary — every route failure becomes a structured JSON error response.
-      const status = error instanceof HttpError ? error.status : 500;
-      sendJson(res, status, {
-        error: redactSecrets(String(error?.message ?? error)),
-      });
+      // error-policy:J1 transport boundary: retain full diagnostics locally,
+      // but never serialize an unexpected exception into the browser response.
+      console.error("[hitl-dashboard] request failed", error);
+      const response = dashboardErrorResponse(error);
+      sendJson(res, response.status, response.body);
     });
   });
   const port = await listenOnFreePort(server);
