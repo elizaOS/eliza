@@ -106,7 +106,16 @@ Behavior contract:
   alias-aware (`From` versus the account plus `aliasEmails`) or `SENT`
   label; text prefers `text/plain` and falls back to stripped `text/html`;
   attachment bytes are fetched only to compute SHA-256 and size, and
-  attachment-only messages are counted, never given fabricated text.
+  attachment-only messages are counted, never given fabricated text — the
+  empty-text verdict is reached before the attachment fetch, so a dropped
+  message spends no quota and `attachmentsHashed` counts only attachments that
+  reached the corpus.
+- Shards no longer named by a run are swept, but a run that emitted **no**
+  messages refuses to sweep and fails with
+  `GMAIL_COLLECT_EMPTY_SWEEP_REFUSED`. An expired history id forces a full
+  rescan, and a transiently empty listing on that path would otherwise unlink
+  the only local copy of the owner's mail. Pass `allowEmptySweep: true` to
+  delete once the empty result has been confirmed.
 - Output is private (0600 files, 0700 directories) and account-isolated under
   `gmail/<segment>/`, where `<segment>` is the sanitized, collision-free
   account segment (`corpusAccountSegment`) rather than the raw address, so an
@@ -117,7 +126,9 @@ Behavior contract:
   hostname and process start time. A live owner fails the second run closed
   with `GMAIL_COLLECT_OUTPUT_BUSY`; a lease abandoned by SIGKILL/OOM is
   detected as dead and recovered on the next run, so crash resume never needs
-  manual filesystem repair.
+  manual filesystem repair. Recovery displaces the dead record with an atomic
+  `rename` rather than an unlink, so two runs racing to recover the same
+  abandoned lease cannot both end up holding the account.
 
 Live-run acceptance evidence (two owner-authorized accounts, refresh-token
 exercise, interruption/resume, quota behavior, manual shard inspection) is

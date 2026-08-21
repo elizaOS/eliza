@@ -394,6 +394,17 @@ async function collect(
   });
 }
 
+/**
+ * A pid that is provably gone: a real child is started and awaited to exit, so
+ * the planted lease names a dead owner rather than a guessed number that could
+ * belong to a live process on the runner.
+ */
+async function deadPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  return child.pid as number;
+}
+
 function lockPathFor(outDir: string): string {
   return path.join(outDir, ".state", `gmail-${ACCOUNT_SEGMENT}.lock`);
 }
@@ -432,10 +443,32 @@ function spawnLockHolder(outDir: string, readyPath: string): ChildProcess {
     ].join("\n"),
     "utf8",
   );
-  return spawn("bun", [script], { stdio: "ignore" });
+  // `--conditions=eliza-source` is how this repository resolves `@elizaos/*`
+  // to TypeScript sources without a prior build; vitest applies it to the
+  // parent, and without it the child resolves the unbuilt `dist` entry and
+  // dies before it can take the lease.
+  const child = spawn("bun", ["--conditions=eliza-source", script], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  // Without this the child's own failures (a missing `bun`, an unresolvable
+  // import) surface only as an opaque 30s readiness timeout, so its stderr is
+  // buffered and reported by `waitForFile`.
+  childStderr.set(child, "");
+  child.stderr?.on("data", (chunk: Buffer) => {
+    childStderr.set(child, `${childStderr.get(child) ?? ""}${chunk}`);
+  });
+  child.on("error", (error) => {
+    childStderr.set(child, `${childStderr.get(child) ?? ""}${error.message}\n`);
+  });
+  return child;
 }
 
-async function waitForFile(filePath: string): Promise<void> {
+const childStderr = new WeakMap<ChildProcess, string>();
+
+async function waitForFile(
+  filePath: string,
+  child?: ChildProcess,
+): Promise<void> {
   for (let attempt = 0; attempt < 600; attempt += 1) {
     try {
       await fs.stat(filePath);
@@ -444,7 +477,12 @@ async function waitForFile(filePath: string): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
-  throw new Error(`child process never reported ready at ${filePath}`);
+  const stderr = child ? childStderr.get(child) : undefined;
+  throw new Error(
+    `child process never reported ready at ${filePath}${
+      stderr ? `\nchild stderr:\n${stderr}` : ""
+    }`,
+  );
 }
 
 describe("collectGmail", () => {
@@ -458,7 +496,13 @@ describe("collectGmail", () => {
     expect(result.summary.skippedOutsideWindow).toBe(1);
     expect(result.summary.skippedDrafts).toBe(1);
     expect(result.summary.skippedNoText).toBe(1);
-    expect(result.summary.attachmentsHashed).toBe(2);
+    // Only attachments on messages that reached the corpus are fetched and
+    // counted: the attachment-only message is dropped for empty text before
+    // its bytes are downloaded, so the counter describes the emitted shards.
+    expect(result.summary.attachmentsHashed).toBe(1);
+    expect(
+      transport.calls.filter((call) => call.startsWith("attachment:")),
+    ).toHaveLength(1);
     expect(result.manifest.totals.messages).toBe(3);
     expect(result.shardPaths).toHaveLength(2);
     // Exhaustive pagination: 6 ids at page size 2 needs 3 list pages.
@@ -816,7 +860,7 @@ describe("collectGmail", () => {
     const readyPath = path.join(outDir, "child-ready");
     const child = spawnLockHolder(outDir, readyPath);
     try {
-      await waitForFile(readyPath);
+      await waitForFile(readyPath, child);
 
       // A live competing owner still blocks this account.
       const blocked = new FakeGmailTransport(ACCOUNT, baseSpecs());
@@ -847,6 +891,83 @@ describe("collectGmail", () => {
       code: "ENOENT",
     });
   }, 60_000);
+
+  it("refuses to sweep existing shards when a rescan lists nothing", async () => {
+    const outDir = await makeTempDir();
+    const good = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const first = await collect(good, outDir);
+    expect(first.shardPaths.length).toBeGreaterThan(0);
+    const shardDir = path.join(outDir, "gmail", ACCOUNT_SEGMENT);
+    const before = (await fs.readdir(shardDir)).sort();
+
+    // No historyDelta means users.history.list reports the checkpoint expired,
+    // which forces a full rescan; this mailbox then lists zero messages.
+    const empty = new FakeGmailTransport(ACCOUNT, []);
+    await expect(collect(empty, outDir)).rejects.toMatchObject({
+      code: "GMAIL_COLLECT_EMPTY_SWEEP_REFUSED",
+    });
+
+    // The refusal must be fail-closed: the shards are still on disk.
+    expect((await fs.readdir(shardDir)).sort()).toEqual(before);
+    expect(before.some((entry) => entry.endsWith(".jsonl"))).toBe(true);
+  });
+
+  it("sweeps shards on an empty run only when the caller opts in", async () => {
+    const outDir = await makeTempDir();
+    await collect(new FakeGmailTransport(ACCOUNT, baseSpecs()), outDir);
+    const shardDir = path.join(outDir, "gmail", ACCOUNT_SEGMENT);
+
+    const empty = new FakeGmailTransport(ACCOUNT, []);
+    const result = await collect(empty, outDir, { allowEmptySweep: true });
+    expect(result.summary.mode).toBe("rescan");
+    expect(result.summary.listedIds).toBe(0);
+    expect(
+      (await fs.readdir(shardDir)).filter((entry) => entry.endsWith(".jsonl")),
+    ).toEqual([]);
+  });
+
+  it("never lets two concurrent runs recover the same abandoned lease", async () => {
+    // The stale-recovery branch is the one place the lease can be displaced,
+    // so it is exercised repeatedly: a single interleaving in which both runs
+    // judge the same dead record and then both take the account is a defect.
+    for (let trial = 0; trial < 30; trial += 1) {
+      const outDir = await makeTempDir();
+      await fs.mkdir(path.join(outDir, ".state"), { recursive: true });
+      await fs.writeFile(
+        lockPathFor(outDir),
+        `${JSON.stringify({
+          pid: await deadPid(),
+          hostname: os.hostname(),
+          startTimeMs: null,
+          acquiredAtMs: Date.now(),
+        })}\n`,
+        "utf8",
+      );
+
+      const settled = await Promise.allSettled([
+        collect(new FakeGmailTransport(ACCOUNT, baseSpecs()), outDir),
+        collect(new FakeGmailTransport(ACCOUNT, baseSpecs()), outDir),
+      ]);
+      const fulfilled = settled.filter((entry) => entry.status === "fulfilled");
+      expect(fulfilled).toHaveLength(1);
+      for (const entry of settled) {
+        if (entry.status === "rejected") {
+          expect(entry.reason).toMatchObject({
+            code: "GMAIL_COLLECT_OUTPUT_BUSY",
+          });
+        }
+      }
+      // The winner releases cleanly and leaves no takeover residue behind.
+      await expect(fs.stat(lockPathFor(outDir))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      expect(
+        (await fs.readdir(path.join(outDir, ".state"))).filter((entry) =>
+          entry.includes(".stale-"),
+        ),
+      ).toEqual([]);
+    }
+  }, 120_000);
 
   it("writes private modes on shards, checkpoints, and state directories", async () => {
     const outDir = await makeTempDir();

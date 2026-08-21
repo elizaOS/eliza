@@ -61,10 +61,15 @@ function sha256(bytes: string): string {
  * Filesystem-safe, collision-free directory segment for an account id. Account
  * ids are source-controlled strings (an email address, a handle) and must never
  * reach `path.join` unsanitized; the digest suffix keeps distinct accounts that
- * sanitize to the same characters in distinct directories.
+ * sanitize to the same characters in distinct directories. The readable prefix
+ * is truncated so a long address cannot push the segment past the 255-byte
+ * filename limit; collision-freedom rests on the digest, not the prefix.
  */
 export function corpusAccountSegment(accountId: string): string {
-  const sanitized = accountId.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  const sanitized = accountId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .slice(0, 100);
   return `${sanitized}-${sha256(accountId).slice(0, 12)}`;
 }
 
@@ -193,7 +198,10 @@ export function parseCorpusShard(
     if (
       message.platform !== pathInfo.platform ||
       // Collectors whose account id is not filesystem-safe write the sanitized
-      // segment instead of the raw id; both spellings identify the account.
+      // segment instead of the raw id, so both spellings are accepted for every
+      // platform. `corpusAccountSegment` is deterministic and collision-free,
+      // so accepting it does not let a shard claim another account's id; the
+      // collectors that still write raw ids simply never match that branch.
       (message.accountId !== pathInfo.accountId &&
         corpusAccountSegment(message.accountId) !== pathInfo.accountId) ||
       new Date(message.ts).toISOString().slice(0, 7) !== pathInfo.month

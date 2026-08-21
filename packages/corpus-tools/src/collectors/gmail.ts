@@ -108,6 +108,13 @@ export interface GmailCollectorOptions {
   backoffBaseMs?: number;
   /** Injectable delay, defaulting to a real timer. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Permits the stale-shard sweep to delete existing shards on a run that
+   * emitted no messages. Off by default: an empty listing is far more often a
+   * transient Gmail condition than a genuinely emptied mailbox, and the shards
+   * are the only local copy of the owner's mail.
+   */
+  allowEmptySweep?: boolean;
 }
 
 export interface GmailCollectSummary {
@@ -573,7 +580,42 @@ async function acquireAccountLock(lockPath: string): Promise<LockLease> {
         { lockPath, holder: parsed?.success ? parsed.data : "unidentified" },
       );
     }
-    await fs.rm(lockPath, { force: true });
+    // Unlinking `lockPath` directly would be a TOCTOU hole: between the read
+    // above and the removal, another recoverer can have swept the same dead
+    // record and installed its own live lease, which the removal would then
+    // destroy, leaving two collectors on one account. `rename` is atomic, so
+    // exactly one recoverer wins the right to displace a record; the loser's
+    // rename fails and it falls through to the `wx` open, where it sees the
+    // winner's lease. The renamed body is compared against the record this
+    // process judged dead, and a record that changed underneath is put back
+    // rather than discarded.
+    const takeoverPath = `${lockPath}.stale-${process.pid}-${now}`;
+    try {
+      await fs.rename(lockPath, takeoverPath);
+    } catch (error) {
+      // error-policy:J3 losing the takeover race is an expected outcome; the
+      // next `wx` attempt observes whichever lease actually won.
+      if (!isRecord(error) || error.code !== "ENOENT") {
+        throw collectError(
+          "GMAIL_COLLECT_STATE_WRITE_FAILED",
+          "Gmail collector stale lease could not be displaced",
+          { lockPath },
+          error,
+        );
+      }
+      continue;
+    }
+    const takenOver = await readOptionalFile(takeoverPath);
+    if (takenOver !== raw) {
+      try {
+        await fs.rename(takeoverPath, lockPath);
+      } catch {
+        // error-policy:J6 the restore is best effort; if it fails the record is
+        // gone and the next `wx` attempt re-establishes a single owner.
+      }
+      continue;
+    }
+    await fs.rm(takeoverPath, { force: true });
   }
 
   throw collectError(
@@ -785,6 +827,15 @@ async function fetchAndNormalize(
   );
   if (!result) return undefined;
 
+  if (result.normalized.text.trim().length === 0) {
+    // Attachment-only or bodyless mail is counted, never given fabricated text.
+    // Decided before the attachment loop below so a message that will be
+    // dropped neither spends quota on its attachment bytes nor inflates
+    // `attachmentsHashed` past the attachments actually present in the corpus.
+    ctx.summary.skippedNoText += 1;
+    return undefined;
+  }
+
   for (const part of result.parts) {
     if (!part.filename || !part.body?.attachmentId) continue;
     const bytes = await withRetry(ctx, `attachments.get(${messageId})`, () =>
@@ -802,11 +853,6 @@ async function fetchAndNormalize(
     });
   }
 
-  if (result.normalized.text.trim().length === 0) {
-    // Attachment-only or bodyless mail is counted, never given fabricated text.
-    ctx.summary.skippedNoText += 1;
-    return undefined;
-  }
   return corpusMessageSchema.parse(result.normalized);
 }
 
@@ -965,6 +1011,7 @@ async function writeShards(
   messages: CorpusMessage[],
   outDir: string,
   accountSlug: string,
+  allowEmptySweep: boolean,
 ): Promise<{ paths: string[]; written: number; reused: number }> {
   // The path segment is the sanitized slug, never the raw address: an address
   // is untrusted input and a raw join would let it escape `outDir` and let the
@@ -1001,10 +1048,24 @@ async function writeShards(
     paths.push(shardPath);
   }
 
-  for (const entry of await fs.readdir(shardDir)) {
-    if (/^\d{4}-\d{2}\.jsonl$/.test(entry) && !wanted.has(entry)) {
-      await fs.unlink(path.join(shardDir, entry));
-    }
+  const stale = (await fs.readdir(shardDir)).filter(
+    (entry) => /^\d{4}-\d{2}\.jsonl$/.test(entry) && !wanted.has(entry),
+  );
+  // A run that emitted nothing has no evidence that the mailbox is empty: a
+  // transient backend condition, a momentarily non-matching query, or an
+  // adapter returning an empty page all reach here after an expired history id
+  // forces a full rescan. Sweeping on that signal would unlink the only local
+  // copy of the owner's mail, so an emptying run fails closed and the operator
+  // opts in explicitly once the emptiness is confirmed.
+  if (messages.length === 0 && stale.length > 0 && !allowEmptySweep) {
+    throw collectError(
+      "GMAIL_COLLECT_EMPTY_SWEEP_REFUSED",
+      "Gmail run produced no messages but existing shards would be deleted; rerun with allowEmptySweep once the empty result is confirmed",
+      { shardDir, staleShards: stale.sort() },
+    );
+  }
+  for (const entry of stale) {
+    await fs.unlink(path.join(shardDir, entry));
   }
   return { paths, written, reused };
 }
@@ -1234,7 +1295,12 @@ export async function collectGmail(
       await writePrivateAtomic(stagingPath, body.length > 0 ? `${body}\n` : "");
     }
 
-    const shardResult = await writeShards(collected, options.outDir, slug);
+    const shardResult = await writeShards(
+      collected,
+      options.outDir,
+      slug,
+      options.allowEmptySweep ?? false,
+    );
     ctx.summary.shardCount = shardResult.paths.length;
 
     const { manifest, issues } = await buildCorpusManifest(
