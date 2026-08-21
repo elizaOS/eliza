@@ -1,5 +1,13 @@
 // Exercises cloud API tests agent bridge runtime routing.test behavior with deterministic Worker route fixtures.
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import {
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 
 const requireAuthOrApiKeyWithOrg =
   mock<
@@ -30,6 +38,7 @@ mock.module("@/lib/services/proxy/cors", () => ({
 
 let bridgeRoute: typeof import("../v1/eliza/agents/[agentId]/bridge/route");
 let streamRoute: typeof import("../v1/eliza/agents/[agentId]/stream/route");
+let canonicalStreamRoute: typeof import("../v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route");
 
 const originalFetch = globalThis.fetch;
 const deadControlPlaneFetch = mock(async (input: RequestInfo | URL) => {
@@ -39,6 +48,9 @@ const deadControlPlaneFetch = mock(async (input: RequestInfo | URL) => {
 beforeAll(async () => {
   bridgeRoute = await import("../v1/eliza/agents/[agentId]/bridge/route");
   streamRoute = await import("../v1/eliza/agents/[agentId]/stream/route");
+  canonicalStreamRoute = await import(
+    "../v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route"
+  );
 });
 
 afterEach(() => {
@@ -81,8 +93,103 @@ const sharedAgent = {
 const executionCtx = {
   waitUntil() {},
 };
+const TRACE_ID = "11111111-1111-4111-8111-111111111111";
 
 describe("agent bridge runtime routing", () => {
+  test("records an allow-listed bridge method and first logical attempt on early warming", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const response = await bridgeRoute.default.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-ElizaOS-Turn-Correlation":
+              "123e4567-e89b-42d3-a456-426614174000",
+            "X-ElizaOS-Turn-Attempt": "1",
+            "X-Eliza-Trace-Id": TRACE_ID,
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "rpc-1",
+            method: "message.send",
+            params: { text: "not logged" },
+          }),
+        },
+        staleControlPlaneContext().env,
+        executionCtx as never,
+      );
+
+      expect(response.status).toBe(503);
+      expect(warn).toHaveBeenCalledWith(
+        "[shared-turn baseline] request completed",
+        expect.objectContaining({
+          traceId: TRACE_ID,
+          durationMs: expect.any(Number),
+          surface: "bridge",
+          rpcMethod: "message.send",
+          runtimeKind: "unresolved",
+          status: 503,
+          outcome: "other_error",
+          logicalTurn: "123e4567-e89b-42d3-a456-426614174000",
+          attempt: 1,
+          attemptKind: "first",
+        }),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("not logged");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("records a joinable stream trace and bounded retry attempt on early warming", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const response = await canonicalStreamRoute.default.request(
+        "/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Eliza-Trace-Id": TRACE_ID,
+            "X-ElizaOS-Turn-Correlation":
+              "123e4567-e89b-42d3-a456-426614174000",
+            "X-ElizaOS-Turn-Attempt": "2",
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "rpc-stream-1",
+            method: "message.send",
+            params: { text: "not logged", roomId: "room-1" },
+          }),
+        },
+        staleControlPlaneContext().env,
+        executionCtx as never,
+      );
+
+      expect(response.status).toBe(503);
+      expect(warn).toHaveBeenCalledWith(
+        "[shared-turn baseline] request completed",
+        expect.objectContaining({
+          traceId: TRACE_ID,
+          durationMs: expect.any(Number),
+          surface: "stream",
+          rpcMethod: "message.send",
+          runtimeKind: "unresolved",
+          status: 503,
+          outcome: "other_error",
+          logicalTurn: "123e4567-e89b-42d3-a456-426614174000",
+          attempt: 2,
+          attemptKind: "retry",
+        }),
+      );
+      expect(JSON.stringify(warn.mock.calls)).not.toContain("not logged");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   test("bridge fails closed without the conversation coordinator", async () => {
     globalThis.fetch = deadControlPlaneFetch as unknown as typeof fetch;
 
