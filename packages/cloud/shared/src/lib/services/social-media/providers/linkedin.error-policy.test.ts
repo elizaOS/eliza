@@ -21,7 +21,10 @@ const downloadSocialMediaBytes = mock(
     _options?: { httpErrorMessage?: (status: number) => string },
   ): Promise<Buffer> => Buffer.from([1, 2, 3]),
 );
-mock.module("../media-download", () => ({ downloadSocialMediaBytes }));
+mock.module("../media-download", () => ({
+  ...realMediaDownload,
+  downloadSocialMediaBytes,
+}));
 
 mock.module("../../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
