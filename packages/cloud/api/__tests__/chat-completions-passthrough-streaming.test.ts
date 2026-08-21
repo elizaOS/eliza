@@ -850,6 +850,57 @@ describe("passthrough streaming — client abort cancels upstream and settles th
     expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
   });
 
+  test("registers deferred settlement before a stalled upstream cancel resolves", async () => {
+    const ledger = makeLedgerReservation(100, 0.9);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const waitUntilPromises: Promise<unknown>[] = [];
+    let releaseUpstreamCancel: (() => void) | undefined;
+
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                'data: {"id":"c1","choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}],"usage":null}\n\n',
+              ),
+            );
+          },
+          cancel() {
+            return new Promise<void>((resolve) => {
+              releaseUpstreamCancel = resolve;
+            });
+          },
+        }),
+        { status: 200 },
+      );
+
+    const res = await callStreaming(settle, {
+      estimatedInputTokens: 9,
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    await reader.read();
+
+    const cancellation = reader.cancel(
+      new DOMException("client disconnected", "AbortError"),
+    );
+    await Promise.resolve();
+
+    expect(releaseUpstreamCancel).toBeDefined();
+    expect(waitUntilPromises).toHaveLength(1);
+
+    releaseUpstreamCancel?.();
+    await cancellation;
+    await Promise.all(waitUntilPromises);
+    expect(ledger.reconcileCalls).toBe(1);
+  });
+
   test("abort mid-stream: upstream signal aborted, estimate-based partial settle", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);

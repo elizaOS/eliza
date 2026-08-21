@@ -2773,12 +2773,18 @@ async function tryPassthroughStreamingRequest(params: {
             "AbortError",
           ),
       );
-      // error-policy:J6 best-effort teardown — the upstream connection may
-      // already be errored/closed; settlement proceeds from the observed tail.
-      await upstreamReader.cancel(reason).catch(() => undefined);
-      await settleOffResponsePath(params.executionCtx, () =>
+      // Register/run settlement before teardown: an upstream implementation
+      // may never resolve cancel(), but billing must still enter waitUntil (or
+      // start inline for non-Worker callers) as soon as the client disconnects.
+      const settlement = settleOffResponsePath(params.executionCtx, () =>
         settleFromTail(tail),
       );
+      // error-policy:J6 best-effort teardown — the upstream connection may
+      // already be errored/closed; settlement proceeds from the observed tail.
+      await Promise.all([
+        upstreamReader.cancel(reason).catch(() => undefined),
+        settlement,
+      ]);
     },
   });
 
