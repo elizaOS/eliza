@@ -403,6 +403,27 @@ async function rejectMissingExplicitWorkdir(
   };
 }
 
+/**
+ * Guided planners sometimes fill the optional workdir with a label-like guess
+ * (for example `primes_task` or `/workspaces/nubs-site`). Treat a nonexistent
+ * value as authoritative only when the user actually named it or the caller
+ * explicitly locked it. Existing paths and operator routes remain untouched.
+ */
+function workdirFromInputs(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  originatingText: string,
+): string | undefined {
+  const candidate = pickString(params, content, "workdir");
+  if (!candidate) return undefined;
+  if (pickBoolean(params, content, "lockWorkdir") === true) return candidate;
+  if (fs.existsSync(candidate)) return candidate;
+  if (originatingText.toLowerCase().includes(candidate.toLowerCase())) {
+    return candidate;
+  }
+  return undefined;
+}
+
 function taskParts(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1000,7 +1021,11 @@ async function runCreateLegacy(
         subtaskCount: tasks.length,
       })) ?? "codex",
     );
-  const explicitWorkdir = pickString(params, content, "workdir");
+  const explicitWorkdir = workdirFromInputs(
+    params,
+    content,
+    routingRequest || text,
+  );
   const fallbackWorkdir = explicitWorkdir ?? process.cwd();
   const model = pickString(params, content, "model");
   const memoryContent = pickString(params, content, "memoryContent");
@@ -1558,7 +1583,9 @@ async function runCreate(
     const text = requestText(message);
     const tasks = taskParts(params, content, text);
     const waveId = randomUUID();
-    const explicitWorkdir = pickString(params, content, "workdir");
+    const originatingText =
+      (await resolveOriginatingRequestText(runtime, message, state)) || text;
+    const explicitWorkdir = workdirFromInputs(params, content, originatingText);
     const planner = new LanePlannerService(
       runtime,
       collisionProviderFromWorkspaceService(getCodingWorkspaceService(runtime)),
@@ -2014,7 +2041,11 @@ async function runSpawnAgent(
       pickString(params, content, "taskId") ??
         pickString(params, content, "threadId"),
     );
-    const explicitWorkdir = pickString(params, content, "workdir");
+    const explicitWorkdir = workdirFromInputs(
+      params,
+      content,
+      routingRequest || text,
+    );
     const resolvedTaskWorkdir = resolveTaskSpawnWorkdir({
       projectId: boundProjectId,
       explicitWorkdir,

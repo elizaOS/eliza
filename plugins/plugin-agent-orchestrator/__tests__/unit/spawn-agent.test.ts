@@ -179,12 +179,15 @@ describe("TASKS:spawn_agent", () => {
 
     const result = await spawnAgentAction.handler(
       runtimeWith(svc),
-      memory({ task: "create a personal website" }),
+      memory({
+        text: `create a personal website in ${missing}`,
+        task: `create a personal website in ${missing}`,
+      }),
       state,
       {
         parameters: {
           action: "spawn_agent",
-          task: "create a personal website",
+          task: `create a personal website in ${missing}`,
           workdir: missing,
         },
       },
@@ -197,6 +200,26 @@ describe("TASKS:spawn_agent", () => {
       data: { rejectedWorkdir: missing },
     });
     expect(svc.spawnSession).not.toHaveBeenCalled();
+  });
+
+  it("ignores a nonexistent workdir invented by guided planning", async () => {
+    const svc = serviceMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({
+        text: "Can you make me a small prime-number program?",
+        task: "Create a Python script that prints primes and run it",
+        workdir: "primes_task",
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    expect(svc.spawnSession).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: process.cwd() }),
+    );
   });
 
   it("carries the connector message id for platform-threaded final replies", async () => {
