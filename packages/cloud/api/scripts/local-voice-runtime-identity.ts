@@ -2,8 +2,9 @@
  * Binds the local voice gateway to one live loopback runtime, running agent,
  * and conversation before the gateway can create a realtime session. Runtime
  * responses and operator-provided identifiers are validated as untrusted
- * boundary data; a conversation without an explicit agent field is scoped by
- * the standalone runtime's singleton `/api/agents` authority.
+ * boundary data; conversations are scoped by the standalone runtime's
+ * singleton `/api/agents` authority because the runtime conversation DTO does
+ * not carry an agent identifier.
  */
 
 const CANONICAL_UUID_PATTERN =
@@ -29,7 +30,6 @@ interface RuntimeAgent {
 interface RuntimeConversation {
   id: string;
   updatedAtEpochMs: number;
-  agentId?: string;
 }
 
 export interface LocalVoiceRuntimeIdentity {
@@ -135,7 +135,6 @@ export async function resolveLocalVoiceRuntimeIdentity(
   );
   const conversationId = selectConversationId(
     conversations,
-    agentId,
     configuredConversationId,
   );
 
@@ -274,20 +273,12 @@ function readConversations(value: unknown): RuntimeConversation[] {
       // nothing usable survives.
       return;
     }
-    const agentId =
-      record.agentId === undefined
-        ? undefined
-        : readCanonicalUuid(
-            `local conversation ${index} agent id`,
-            record.agentId,
-          );
     parsed.push({
       id: readRequiredString(`local conversation ${index} id`, record.id),
       updatedAtEpochMs: readCanonicalTimestamp(
         `local conversation ${index} updatedAt`,
         record.updatedAt,
       ),
-      ...(agentId === undefined ? {} : { agentId }),
     });
   });
   return parsed;
@@ -316,7 +307,6 @@ function selectAgentId(
 
 function selectConversationId(
   conversations: RuntimeConversation[],
-  agentId: string,
   configuredConversationId: string | undefined,
 ): string {
   if (configuredConversationId !== undefined) {
@@ -328,20 +318,12 @@ function selectConversationId(
         "configured local conversation does not exist in the runtime",
       );
     }
-    if (configured.agentId !== undefined && configured.agentId !== agentId) {
-      throw new LocalVoiceRuntimeIdentityError(
-        "configured local conversation belongs to a different agent",
-      );
-    }
     return configured.id;
   }
 
-  const candidates = conversations
-    .filter(
-      (conversation) =>
-        conversation.agentId === undefined || conversation.agentId === agentId,
-    )
-    .toSorted((left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs);
+  const candidates = conversations.toSorted(
+    (left, right) => right.updatedAtEpochMs - left.updatedAtEpochMs,
+  );
   if (candidates.length === 0) {
     throw new LocalVoiceRuntimeIdentityError(
       "local runtime has no conversation for the running agent",

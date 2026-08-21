@@ -62,7 +62,6 @@ describe("local voice runtime identity", () => {
         {
           id: CONVERSATION_ID,
           updatedAt: "2026-08-19T20:00:00.000Z",
-          agentId: AGENT_ID,
         },
       ],
     });
@@ -87,12 +86,14 @@ describe("local voice runtime identity", () => {
     expect(redirects).toEqual(["error", "error", "error"]);
   });
 
-  test("discovers the newest conversation belonging to the singleton running agent", async () => {
+  test("discovers the newest conversation under the singleton running agent", async () => {
     const { fetchImpl } = runtimeFetch({
       conversations: [
         {
           id: NEWER_CONVERSATION_ID,
           updatedAt: "2026-08-19T22:00:00.000Z",
+          // The production ConversationMeta DTO has no agentId. Unknown fields
+          // cannot override the singleton /api/agents authority.
           agentId: OTHER_AGENT_ID,
         },
         {
@@ -108,7 +109,7 @@ describe("local voice runtime identity", () => {
       fetchImpl,
     });
     expect(identity.agentId).toBe(AGENT_ID);
-    expect(identity.conversationId).toBe(CONVERSATION_ID);
+    expect(identity.conversationId).toBe(NEWER_CONVERSATION_ID);
   });
 
   test.each([
@@ -177,19 +178,6 @@ describe("local voice runtime identity", () => {
       configuredAgentId: AGENT_ID,
       agents: [{ id: AGENT_ID, status: "running" }],
       conversations: [],
-      configuredConversationId: CONVERSATION_ID,
-    },
-    {
-      name: "conversation owned by another agent",
-      configuredAgentId: AGENT_ID,
-      agents: [{ id: AGENT_ID, status: "running" }],
-      conversations: [
-        {
-          id: CONVERSATION_ID,
-          updatedAt: "2026-08-19T20:00:00.000Z",
-          agentId: OTHER_AGENT_ID,
-        },
-      ],
       configuredConversationId: CONVERSATION_ID,
     },
     {
