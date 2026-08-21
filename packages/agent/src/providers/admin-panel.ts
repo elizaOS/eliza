@@ -16,17 +16,43 @@ import type {
 import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   resolveCanonicalOwnerIdForMessage,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.ts";
 
 /** Maximum total characters for the provider text output. */
-const MAX_TEXT_LENGTH = 2000;
+export const MAX_TEXT_LENGTH = 2000;
+
+/** Per-line truncation cap for owner/agent message text. */
+export const ADMIN_PANEL_LINE_LIMIT = 200;
 
 /** Maximum messages to fetch per client_chat room. */
 const MESSAGES_PER_ROOM = 10;
 
 /** Maximum client_chat rooms to scan (most recent activity wins). */
 const MAX_ROOMS = 3;
+
+/**
+ * Surrogate-safe formatting of a single admin-panel conversation line.
+ * Exported as a test seam — truncates owner text without splitting surrogate pairs.
+ * Reverting to `substring` must make the surrogate suite fail.
+ */
+export function formatAdminPanelLine(sender: string, text: string): string {
+  return `[${sender}] ${truncateWellFormed(toWellFormedUnicode(text), ADMIN_PANEL_LINE_LIMIT)}`;
+}
+
+/**
+ * Surrogate-safe clamp for the full admin-panel result.
+ * Exported as a test seam — caps aggregate output at MAX_TEXT_LENGTH without lone surrogates.
+ * Reverting to `substring` must make the surrogate suite fail.
+ */
+export function clampAdminPanelResult(result: string): string {
+  if (result.length > MAX_TEXT_LENGTH) {
+    return `${truncateWellFormed(toWellFormedUnicode(result), MAX_TEXT_LENGTH - 3)}...`;
+  }
+  return result;
+}
 
 function memoryCreatedAt(memory: Memory): number {
   return typeof memory.createdAt === "number" ? memory.createdAt : 0;
@@ -86,14 +112,11 @@ function formatMessages(messages: Memory[], agentId: string): string {
   const lines = ordered.map((m) => {
     const sender = m.entityId === agentId ? "Agent" : "Owner";
     const text = memoryText(m);
-    return `[${sender}] ${text.substring(0, 200)}`;
+    return formatAdminPanelLine(sender, text);
   });
 
-  let result = `# Recent Owner Conversation (Eliza App)\n${lines.join("\n")}`;
-  if (result.length > MAX_TEXT_LENGTH) {
-    result = `${result.substring(0, MAX_TEXT_LENGTH - 3)}...`;
-  }
-  return result;
+  const result = `# Recent Owner Conversation (Eliza App)\n${lines.join("\n")}`;
+  return clampAdminPanelResult(result);
 }
 
 export const adminPanelProvider: Provider = createAdminPanelProvider();
