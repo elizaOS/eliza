@@ -21,4 +21,35 @@ describe("linear inbox token scanners", () => {
       ),
     ).toBe("hello");
   });
+
+  it("prefers the RFC 5322 angle-addr over email-like display-name tokens", () => {
+    expect(
+      extractAsciiEmailAddress("displayed@wrong.example <real@sender.example>"),
+    ).toBe("real@sender.example");
+    expect(
+      extractLooseEmailAddress("displayed@wrong.example <real@sender.example>"),
+    ).toBe("real@sender.example");
+    expect(
+      extractAsciiEmailAddress(
+        '"quoted display displayed@wrong.example" <real@sender.example>',
+      ),
+    ).toBe("real@sender.example");
+    expect(
+      extractLooseEmailAddress(
+        '"quoted display displayed@wrong.example" <real@sender.example>',
+      ),
+    ).toBe("real@sender.example");
+  });
+
+  it("falls back to the leftmost token when no angle-addr is present", () => {
+    expect(extractAsciiEmailAddress("plain@sender.example rest")).toBe(
+      "plain@sender.example",
+    );
+    expect(extractAsciiEmailAddress("Name <not-an-address> a@b.example")).toBe(
+      "a@b.example",
+    );
+    expect(extractLooseEmailAddress("plain@sender.example rest")).toBe(
+      "plain@sender.example",
+    );
+  });
 });

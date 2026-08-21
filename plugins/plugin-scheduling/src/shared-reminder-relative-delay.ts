@@ -100,8 +100,10 @@ function maskQuotedText(text: string): string {
       cursor = end + 1;
       continue;
     }
-    out.push(text.slice(cursor, end));
-    cursor = end;
+    // Unmatched opener (e.g. a contraction apostrophe): emit just the opener
+    // and rescan from the next char so a later quoted span is still masked.
+    out.push(text[cursor] ?? "");
+    cursor += 1;
   }
   return out.join("");
 }

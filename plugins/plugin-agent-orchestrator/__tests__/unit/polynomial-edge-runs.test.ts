@@ -13,7 +13,7 @@ describe("polynomial edge-run regressions", () => {
       normalizeRepositoryInput(
         `https://github.com/elizaOS/eliza${"/".repeat(100_000)}`,
       ),
-    ).toBe("https://github.com/elizaOS/eliza");
+    ).toBe("https://github.com/elizaOS/eliza.git");
     expect(
       stripToolTranscript(`[tool output:${"[tool output:".repeat(10_000)}`),
     ).toBe("");

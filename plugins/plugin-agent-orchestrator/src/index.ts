@@ -581,6 +581,8 @@ function isForbiddenCleanupSentence(sentence: string): boolean {
     containsWord(lower, "reboot") ||
     containsWord(lower, "bounce") ||
     containsWord(lower, "kick") ||
+    containsWord(lower, "kickoff") ||
+    containsWord(lower, "kick-off") ||
     lower.includes("not accepting") ||
     lower.includes("isn't accepting") ||
     lower.includes("isnt accepting");
@@ -591,7 +593,10 @@ function isForbiddenCleanupSentence(sentence: string): boolean {
     containsWord(lower, "clean") ||
     containsWord(lower, "wipe");
   if (clears && lower.includes("stale session")) return true;
-  return lower.includes("manually clear") && containsWord(lower, "session");
+  return (
+    lower.includes("manually clear") &&
+    (containsWord(lower, "session") || containsWord(lower, "sessions"))
+  );
 }
 
 function stripForbiddenCleanupSentences(text: string): string {

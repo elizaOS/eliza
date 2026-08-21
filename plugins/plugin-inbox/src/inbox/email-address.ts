@@ -27,7 +27,37 @@ function isAsciiDomainCharacter(character: string): boolean {
   );
 }
 
+/**
+ * RFC 5322 puts the authoritative address in the angle-addr (`<...>`), while
+ * the display name before it is attacker-controlled free text. Scanning
+ * angle spans first keeps `displayed@wrong.example <real@sender.example>`
+ * resolving to the real sender instead of the spoofed display token.
+ */
+function extractFromAngleSpans(
+  value: string,
+  extractToken: (span: string) => string | null,
+): string | null {
+  let searchFrom = 0;
+  while (searchFrom < value.length) {
+    const open = value.indexOf("<", searchFrom);
+    if (open < 0) return null;
+    const close = value.indexOf(">", open + 1);
+    if (close < 0) return null;
+    const address = extractToken(value.slice(open + 1, close));
+    if (address) return address;
+    searchFrom = close + 1;
+  }
+  return null;
+}
+
 export function extractAsciiEmailAddress(value: string): string | null {
+  return (
+    extractFromAngleSpans(value, extractAsciiEmailToken) ??
+    extractAsciiEmailToken(value)
+  );
+}
+
+function extractAsciiEmailToken(value: string): string | null {
   let searchFrom = 0;
   while (searchFrom < value.length) {
     const at = value.indexOf("@", searchFrom);
@@ -62,6 +92,13 @@ function isLooseAddressCharacter(character: string): boolean {
 }
 
 export function extractLooseEmailAddress(value: string): string | null {
+  return (
+    extractFromAngleSpans(value, extractLooseEmailToken) ??
+    extractLooseEmailToken(value)
+  );
+}
+
+function extractLooseEmailToken(value: string): string | null {
   let searchFrom = 0;
   while (searchFrom < value.length) {
     const at = value.indexOf("@", searchFrom);

@@ -183,7 +183,8 @@ const DEFAULT_POLICY: Required<CalendarAvailabilityPolicy> = {
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function hasExplicitOffset(value: string): boolean {
-  const timeSeparator = value.indexOf("T");
+  // RFC 3339 permits a lowercase time separator (`2026-01-01t10:00:00z`).
+  const timeSeparator = value.toUpperCase().indexOf("T");
   if (timeSeparator < 0 || timeSeparator >= value.length - 1) return false;
   if (value.endsWith("Z") || value.endsWith("z")) {
     return value.length - 1 > timeSeparator + 1;
