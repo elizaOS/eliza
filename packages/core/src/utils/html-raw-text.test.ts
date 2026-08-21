@@ -25,6 +25,36 @@ describe("stripHtmlRawTextElements", () => {
 		).toBe("before after");
 	});
 
+	it.each(["!", "?", "=", "-", "_", "\u00a0"])(
+		"keeps raw text past the invalid %j end-tag delimiter",
+		(delimiter) => {
+			for (const tag of ["script", "style"] as const) {
+				expect(
+					stripHtmlRawTextElements(
+						`before<${tag}>first</${tag}${delimiter}fake>second</${tag}>after`,
+					),
+				).toBe("before after");
+			}
+		},
+	);
+
+	it.each([" ", "\t", "\n", "\f", "\r"])(
+		"accepts the ASCII-whitespace %j end-tag delimiter",
+		(delimiter) => {
+			expect(
+				stripHtmlRawTextElements(
+					`before<style>hidden</style${delimiter}data-x=1>after`,
+				),
+			).toBe("before after");
+		},
+	);
+
+	it("accepts an end-tag name followed by EOF", () => {
+		expect(stripHtmlRawTextElements("before<script>hidden</script")).toBe(
+			"before ",
+		);
+	});
+
 	it.each(["<script>hidden", "<style data-x='>' hidden"])(
 		"removes an unclosed raw-text element through EOF",
 		(markup) => {
