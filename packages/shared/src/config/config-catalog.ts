@@ -20,9 +20,9 @@
  *
  * `evaluateLogicExpression` is depth-, visit-, and cycle-bounded so a
  * hostile plugin-config `visible` tree cannot stack-overflow the form
- * renderer. Plugin `pattern` validators fail closed on nested-quantifier
- * / quantified-alternation regex so a hostile UI spec cannot hang the
- * form renderer (JS regex is synchronous and cannot be timed out).
+ * renderer. Plugin `pattern` validators use a deliberately constrained regex
+ * dialect so a hostile UI spec cannot hang the form renderer (JS regex is
+ * synchronous and cannot be timed out).
  *
  * @module config-catalog
  */
@@ -58,16 +58,13 @@ export const MAX_UNTRUSTED_REGEX_PATTERN_LENGTH = 200;
 export const MAX_UNTRUSTED_REGEX_INPUT_LENGTH = 4_096;
 
 /**
- * Nested-quantifier and quantified-alternation shapes that backtrack
- * catastrophically on origin (`^(a+)+$` / 28 `a`s → 14s on Node).
- * Matches `(a+)+`, `(a+){2,}`, `(a|a)+`.
- */
-const UNSAFE_UNTRUSTED_REGEX = /([+*?])\)?[+*?{]|(\([^)]*\|[^)]*\))[+*?{]/;
-
-/**
- * True when `pattern` is short, compiles, and is not a nested-quantifier
- * ReDoS shape. Used by catalog and UiRenderer validators so both copies
- * fail closed on the same untrusted compile.
+ * Accept a linear-time subset of JavaScript regex syntax for agent-authored
+ * config validators. Groups, alternation, backreferences, and more than one
+ * variable repetition are excluded; fixed repetitions are bounded by the
+ * subject ceiling. That policy is intentionally stricter than a blacklist:
+ * every accepted expression is a flat sequence with at most one backtracking
+ * choice, so nested or overlapping repetition cannot be smuggled through an
+ * extra grouping layer.
  */
 export function isSafeUntrustedRegexPattern(pattern: string): boolean {
   if (
@@ -76,16 +73,106 @@ export function isSafeUntrustedRegexPattern(pattern: string): boolean {
   ) {
     return false;
   }
-  if (UNSAFE_UNTRUSTED_REGEX.test(pattern)) {
-    return false;
-  }
   try {
     new RegExp(pattern);
-    return true;
   } catch {
     // error-policy:J3 invalid user-supplied regex is not a validator
     return false;
   }
+
+  let hasAtom = false;
+  let variableRepetitions = 0;
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+
+    if (char === "\\") {
+      const escaped = pattern[index + 1];
+      if (!escaped || /[1-9k]/.test(escaped)) return false;
+      index += 1;
+      hasAtom = true;
+      continue;
+    }
+
+    if (char === "[") {
+      let closed = false;
+      for (index += 1; index < pattern.length; index += 1) {
+        if (pattern[index] === "\\") {
+          index += 1;
+        } else if (pattern[index] === "]") {
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) return false;
+      hasAtom = true;
+      continue;
+    }
+
+    if (char === "(" || char === ")" || char === "|") return false;
+
+    if (char === "^" || char === "$") {
+      if (
+        (char === "^" && index !== 0) ||
+        (char === "$" && index !== pattern.length - 1)
+      ) {
+        return false;
+      }
+      hasAtom = false;
+      continue;
+    }
+
+    if (char === "*" || char === "+" || char === "?") {
+      if (!hasAtom) return false;
+      variableRepetitions += 1;
+      if (variableRepetitions > 1) return false;
+      hasAtom = false;
+      continue;
+    }
+
+    if (char === "{") {
+      if (!hasAtom) return false;
+      const quantifier = /^\{(\d+)(?:,(\d*))?\}/.exec(pattern.slice(index));
+      if (!quantifier) return false;
+      const minimum = Number(quantifier[1]);
+      const hasComma = quantifier[0].includes(",");
+      const maximum = hasComma
+        ? quantifier[2] === ""
+          ? undefined
+          : Number(quantifier[2])
+        : minimum;
+      if (
+        minimum > MAX_UNTRUSTED_REGEX_INPUT_LENGTH ||
+        (maximum !== undefined && maximum > MAX_UNTRUSTED_REGEX_INPUT_LENGTH)
+      ) {
+        return false;
+      }
+      if (maximum === undefined || maximum !== minimum) {
+        variableRepetitions += 1;
+        if (variableRepetitions > 1) return false;
+      }
+      index += quantifier[0].length - 1;
+      hasAtom = false;
+      continue;
+    }
+
+    if (char === "}") return false;
+    hasAtom = true;
+  }
+  return true;
+}
+
+/** Test an untrusted config value only after applying the shared safe dialect. */
+export function matchesSafeUntrustedRegexPattern(
+  pattern: string,
+  value: string,
+): boolean {
+  if (
+    value.length > MAX_UNTRUSTED_REGEX_INPUT_LENGTH ||
+    !isSafeUntrustedRegexPattern(pattern)
+  ) {
+    return false;
+  }
+  return new RegExp(pattern).test(value);
 }
 
 // ── JSON Schema types (subset we consume) ──────────────────────────────
@@ -740,14 +827,7 @@ export const builtInValidators: Record<string, ValidationFunction> = {
   pattern: (value, args) => {
     if (typeof value !== "string" || typeof args?.pattern !== "string")
       return false;
-    if (value.length > MAX_UNTRUSTED_REGEX_INPUT_LENGTH) return false;
-    if (!isSafeUntrustedRegexPattern(args.pattern)) return false;
-    try {
-      return new RegExp(args.pattern).test(value);
-    } catch {
-      // error-policy:J3 invalid user-supplied regex -> validation fails
-      return false;
-    }
+    return matchesSafeUntrustedRegexPattern(args.pattern, value);
   },
   min: (value, args) =>
     typeof value === "number" &&

@@ -7,8 +7,7 @@
  */
 import {
   getByPath,
-  isSafeUntrustedRegexPattern,
-  MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
+  matchesSafeUntrustedRegexPattern,
 } from "../../config/config-catalog";
 import type {
   AuthState,
@@ -129,15 +128,7 @@ const BUILTIN_VALIDATORS: Record<
     typeof v === "string" && v.length <= Number(args?.length ?? Infinity),
   pattern: (v, args) => {
     if (typeof v !== "string" || !args?.pattern) return true;
-    const pat = String(args.pattern);
-    if (v.length > MAX_UNTRUSTED_REGEX_INPUT_LENGTH) return false;
-    if (!isSafeUntrustedRegexPattern(pat)) return false;
-    try {
-      return new RegExp(pat).test(v);
-    } catch {
-      // error-policy:J3 invalid agent-authored regex -> check fails closed
-      return false;
-    }
+    return matchesSafeUntrustedRegexPattern(String(args.pattern), v);
   },
   min: (v, args) => Number(v) >= Number(args?.value ?? -Infinity),
   max: (v, args) => Number(v) <= Number(args?.value ?? Infinity),
