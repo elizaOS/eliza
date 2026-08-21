@@ -27,6 +27,33 @@ import type {
 const execFileAsync = promisify(execFile);
 const LINUX_SECRET_WIRE_PREFIX = "eliza-v1:";
 
+type NativeKeyringLoader = () => Promise<typeof import("@napi-rs/keyring")>;
+type SecretToolCommandRunner = (
+  executable: string,
+  args: string[],
+) => Promise<{ stdout: string; stderr?: string }>;
+type SecretToolStoreRunner = (
+  args: string[],
+  secretLine: string,
+) => Promise<void>;
+
+interface NodePlatformSecureStoreOptions {
+  platform?: NodeJS.Platform;
+  loadNativeKeyring?: NativeKeyringLoader;
+  runSecretTool?: SecretToolCommandRunner;
+  storeSecretTool?: SecretToolStoreRunner;
+  secretToolAvailable?: () => Promise<boolean>;
+  secretServiceReachable?: () => boolean;
+}
+
+async function runSecretTool(
+  executable: string,
+  args: string[],
+): Promise<{ stdout: string; stderr?: string }> {
+  const result = await execFileAsync(executable, args, { encoding: "utf8" });
+  return { stdout: String(result.stdout), stderr: String(result.stderr) };
+}
+
 function encodeLinuxSecret(value: string): string {
   return `${LINUX_SECRET_WIRE_PREFIX}${Buffer.from(value, "utf8").toString("base64url")}`;
 }
@@ -264,11 +291,14 @@ function loadNativeKeyring(): Promise<NativeKeyringModule> {
 }
 
 class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
-  constructor(readonly backend: PlatformSecureStoreBackend) {}
+  constructor(
+    readonly backend: PlatformSecureStoreBackend,
+    private readonly keyringLoader: NativeKeyringLoader = loadNativeKeyring,
+  ) {}
 
   async isAvailable(): Promise<boolean> {
     try {
-      await loadNativeKeyring();
+      await this.keyringLoader();
       return true;
     } catch {
       // error-policy:J4 native Keychain binding unavailable (probe)
@@ -282,7 +312,7 @@ class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreGetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadNativeKeyring();
+      const { AsyncEntry } = await this.keyringLoader();
       const value = await new AsyncEntry(
         ELIZA_AGENT_VAULT_SERVICE,
         account,
@@ -303,10 +333,17 @@ class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreSetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadNativeKeyring();
-      await new AsyncEntry(ELIZA_AGENT_VAULT_SERVICE, account).setPassword(
-        value,
-      );
+      const { AsyncEntry } = await this.keyringLoader();
+      const entry = new AsyncEntry(ELIZA_AGENT_VAULT_SERVICE, account);
+      await entry.setPassword(value);
+      const verified = await entry.getPassword();
+      if (verified !== value) {
+        return {
+          ok: false,
+          reason: "error",
+          message: "Native credential store write could not be verified.",
+        };
+      }
       return { ok: true };
     } catch (err: unknown) {
       return nativeStoreReason(err);
@@ -319,7 +356,7 @@ class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreDeleteResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadNativeKeyring();
+      const { AsyncEntry } = await this.keyringLoader();
       await new AsyncEntry(
         ELIZA_AGENT_VAULT_SERVICE,
         account,
@@ -362,8 +399,15 @@ class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
 class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
   readonly backend: PlatformSecureStoreBackend = "linux_secret_service";
 
+  constructor(
+    private readonly commandRunner: SecretToolCommandRunner = runSecretTool,
+    private readonly storeRunner: SecretToolStoreRunner = secretToolStoreWithStdin,
+    private readonly available: () => Promise<boolean> = secretToolOnPath,
+    private readonly sessionReachable: () => boolean = linuxSecretServiceSessionReachable,
+  ) {}
+
   async isAvailable(): Promise<boolean> {
-    return (await secretToolOnPath()) && linuxSecretServiceSessionReachable();
+    return (await this.available()) && this.sessionReachable();
   }
 
   private account(vaultId: string, kind: SecureStoreSecretKind): string {
@@ -376,11 +420,13 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreGetResult> {
     const account = this.account(vaultId, kind);
     try {
-      const { stdout } = await execFileAsync(
-        "secret-tool",
-        ["lookup", "service", ELIZA_AGENT_VAULT_SERVICE, "account", account],
-        { encoding: "utf8" },
-      );
+      const { stdout } = await this.commandRunner("secret-tool", [
+        "lookup",
+        "service",
+        ELIZA_AGENT_VAULT_SERVICE,
+        "account",
+        account,
+      ]);
       const value = stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout;
       return decodeLinuxSecret(value);
     } catch (err: unknown) {
@@ -404,7 +450,7 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreSetResult> {
     const account = this.account(vaultId, kind);
     try {
-      await secretToolStoreWithStdin(
+      await this.storeRunner(
         [
           "store",
           "--label=Eliza agent wallet",
@@ -415,6 +461,14 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
         ],
         encodeLinuxSecret(value),
       );
+      const verified = await this.get(vaultId, kind);
+      if (!verified.ok || verified.value !== value) {
+        return {
+          ok: false,
+          reason: "error",
+          message: "Native credential store write could not be verified.",
+        };
+      }
       return { ok: true };
     } catch (err: unknown) {
       return nativeStoreReason(err);
@@ -427,7 +481,7 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreDeleteResult> {
     const account = this.account(vaultId, kind);
     try {
-      await execFileAsync("secret-tool", [
+      await this.commandRunner("secret-tool", [
         "clear",
         "service",
         ELIZA_AGENT_VAULT_SERVICE,
@@ -481,15 +535,29 @@ class NonePlatformSecureStore implements PlatformSecureStore {
  * Node-side factory: macOS Keychain, Linux `secret-tool`, or the explicit
  * unavailable backend on platforms without an OS credential-store adapter.
  */
-export function createNodePlatformSecureStore(): PlatformSecureStore {
-  if (isDarwin()) {
-    return new NativeKeyringPlatformSecureStore("macos_keychain");
+export function createNodePlatformSecureStore(
+  options: NodePlatformSecureStoreOptions = {},
+): PlatformSecureStore {
+  const platform = options.platform ?? process.platform;
+  if (platform === "darwin") {
+    return new NativeKeyringPlatformSecureStore(
+      "macos_keychain",
+      options.loadNativeKeyring,
+    );
   }
-  if (isWindows()) {
-    return new NativeKeyringPlatformSecureStore("windows_credential_manager");
+  if (platform === "win32") {
+    return new NativeKeyringPlatformSecureStore(
+      "windows_credential_manager",
+      options.loadNativeKeyring,
+    );
   }
-  if (isLinux()) {
-    return new LinuxSecretToolPlatformSecureStore();
+  if (platform === "linux") {
+    return new LinuxSecretToolPlatformSecureStore(
+      options.runSecretTool,
+      options.storeSecretTool,
+      options.secretToolAvailable,
+      options.secretServiceReachable,
+    );
   }
   return new NonePlatformSecureStore();
 }

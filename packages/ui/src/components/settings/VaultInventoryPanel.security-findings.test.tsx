@@ -4,9 +4,23 @@
  * @vitest-environment jsdom
  */
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VaultInventoryPanel } from "./VaultInventoryPanel";
+
+const clientMocks = vi.hoisted(() => ({
+  rawRequest: vi.fn(),
+}));
+
+vi.mock("../../api/client", () => ({
+  client: clientMocks,
+}));
 
 vi.mock("../../agent-surface", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
@@ -19,7 +33,14 @@ vi.mock("../../state/TranslationContext.hooks", () => ({
   }),
 }));
 
-afterEach(cleanup);
+beforeEach(() => {
+  clientMocks.rawRequest.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("VaultInventoryPanel connector security findings", () => {
   it("shows non-revealing credential locations outside encrypted Vault storage", () => {
@@ -45,6 +66,73 @@ describe("VaultInventoryPanel connector security findings", () => {
     expect(screen.getByText("Telegram Personal session")).toBeTruthy();
     expect(screen.getByText(/outside encrypted Vault storage/)).toBeTruthy();
     expect(screen.queryByText(/session-secret/)).toBeNull();
+  });
+
+  it("reveals only on demand and hides on focus loss without exposing values in errors", async () => {
+    clientMocks.rawRequest.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        value: "opaque-test-value",
+        source: "vault",
+      }),
+    });
+    render(
+      <VaultInventoryPanel
+        entries={[
+          {
+            key: "TEST_API_KEY",
+            category: "provider",
+            label: "Test provider",
+            hasProfiles: false,
+            kind: "secret",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByText("opaque-test-value")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Reveal Test provider"));
+    expect(await screen.findByText("opaque-test-value")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Temporarily revealed value for Test provider"),
+    ).toBeTruthy();
+
+    fireEvent(window, new Event("blur"));
+    await waitFor(() => {
+      expect(screen.queryByText("opaque-test-value")).toBeNull();
+    });
+
+    clientMocks.rawRequest.mockResolvedValueOnce({ ok: false, status: 423 });
+    fireEvent.click(screen.getByLabelText("Reveal Test provider"));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/unlock the system credential store/i);
+    expect(alert.textContent).not.toContain("opaque-test-value");
+  });
+
+  it("retains the row and reports recovery when secure deletion is rejected", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    clientMocks.rawRequest.mockResolvedValueOnce({ ok: false, status: 503 });
+    const onChanged = vi.fn();
+    render(
+      <VaultInventoryPanel
+        entries={[
+          {
+            key: "TEST_API_KEY",
+            category: "provider",
+            label: "Test provider",
+            hasProfiles: false,
+            kind: "secret",
+          },
+        ]}
+        onChanged={onChanged}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Delete Test provider"));
+    expect(await screen.findByText(/credential was retained/i)).toBeTruthy();
+    expect(screen.getByTestId("vault-entry-row-TEST_API_KEY")).toBeTruthy();
+    expect(onChanged).not.toHaveBeenCalled();
   });
 });
 

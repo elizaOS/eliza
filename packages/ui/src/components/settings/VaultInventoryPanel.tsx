@@ -19,7 +19,7 @@
  * the Vault modal via `onJumpToRouting`.
  *
  * Hard rule: revealed values never persist in component state past the
- * 10-second auto-hide window.
+ * 10-second auto-hide window or while the app is backgrounded.
  */
 
 import {
@@ -442,6 +442,7 @@ const EntryRow = memo(function EntryRow({
   } | null>(null);
   const [revealError, setRevealError] = useState<string | null>(null);
   const [revealing, setRevealing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const rowRef = useRef<HTMLDivElement | null>(null);
   const { ref: revealRef, agentProps: revealAgentProps } =
@@ -482,38 +483,65 @@ const EntryRow = memo(function EntryRow({
   // Auto-hide the revealed value after 10 seconds.
   useEffect(() => {
     if (!revealed) return;
-    const id = setTimeout(() => setRevealed(null), 10_000);
-    return () => clearTimeout(id);
+    const hideRevealedValue = () => setRevealed(null);
+    const hideWhenBackgrounded = () => {
+      if (document.visibilityState === "hidden") hideRevealedValue();
+    };
+    const id = setTimeout(hideRevealedValue, 10_000);
+    window.addEventListener("blur", hideRevealedValue);
+    document.addEventListener("visibilitychange", hideWhenBackgrounded);
+    return () => {
+      clearTimeout(id);
+      window.removeEventListener("blur", hideRevealedValue);
+      document.removeEventListener("visibilitychange", hideWhenBackgrounded);
+    };
   }, [revealed]);
 
   const reveal = useCallback(async () => {
     setRevealing(true);
     setRevealError(null);
-    const res = await client.rawRequest(
-      `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
-      undefined,
-      { allowNonOk: true },
-    );
-    if (!res.ok) {
-      setRevealError(`HTTP ${res.status}`);
+    try {
+      const res = await client.rawRequest(
+        `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+        undefined,
+        { allowNonOk: true },
+      );
+      if (!res.ok) {
+        setRevealError(
+          `Reveal failed (HTTP ${res.status}). Unlock the system credential store and try again.`,
+        );
+        return;
+      }
+      const body = (await res.json()) as {
+        value: string;
+        source: string;
+        profileId?: string;
+      };
+      setRevealed(body);
+    } catch {
+      // error-policy:J1 the row exposes a redacted recovery message; transport
+      // and native errors can contain sensitive identifiers and stay out of UI.
+      setRevealError(
+        "Reveal failed. Unlock the system credential store and try again.",
+      );
+    } finally {
       setRevealing(false);
-      return;
     }
-    const body = (await res.json()) as {
-      value: string;
-      source: string;
-      profileId?: string;
-    };
-    setRevealed(body);
-    setRevealing(false);
   }, [entry.key]);
 
   const hide = useCallback(() => setRevealed(null), []);
 
   const copy = useCallback(async () => {
     if (!revealed) return;
-    if (typeof navigator !== "undefined" && navigator.clipboard) {
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        throw new Error("clipboard unavailable");
+      }
       await navigator.clipboard.writeText(revealed.value);
+    } catch {
+      // error-policy:J1 clipboard failures are recoverable and the message is
+      // deliberately value-free; the user can retry while reveal is active.
+      setRevealError("Copy failed. Check clipboard permission and try again.");
     }
   }, [revealed]);
 
@@ -522,12 +550,31 @@ const EntryRow = memo(function EntryRow({
       `Delete "${entry.label}"? This drops the value, every profile, and the metadata.`,
     );
     if (!confirmed) return;
-    const res = await client.rawRequest(
-      `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
-      { method: "DELETE" },
-      { allowNonOk: true },
-    );
-    if (res.ok) onChanged();
+    setDeleting(true);
+    setRevealError(null);
+    try {
+      const res = await client.rawRequest(
+        `/api/secrets/inventory/${encodeURIComponent(entry.key)}`,
+        { method: "DELETE" },
+        { allowNonOk: true },
+      );
+      if (!res.ok) {
+        setRevealError(
+          `Delete failed (HTTP ${res.status}). The credential was retained; unlock the system credential store and retry.`,
+        );
+        return;
+      }
+      setRevealed(null);
+      onChanged();
+    } catch {
+      // error-policy:J1 deletion failures retain the row and surface a
+      // redacted, retryable state instead of claiming the credential is gone.
+      setRevealError(
+        "Delete failed. The credential was retained; unlock the system credential store and retry.",
+      );
+    } finally {
+      setDeleting(false);
+    }
   }, [entry.key, entry.label, onChanged]);
 
   const profileCount = entry.profiles?.length ?? 0;
@@ -538,7 +585,7 @@ const EntryRow = memo(function EntryRow({
       data-testid={`vault-entry-row-${entry.key}`}
       className="rounded-sm px-2 py-1.5 hover:bg-bg-muted/30"
     >
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
         <Button
           variant="ghost"
           size="sm"
@@ -580,7 +627,7 @@ const EntryRow = memo(function EntryRow({
             ) : (
               <Eye className="h-3.5 w-3.5" aria-hidden />
             )}
-            Reveal
+            <span className="hidden sm:inline">Reveal</span>
           </Button>
         ) : (
           <Button
@@ -593,7 +640,7 @@ const EntryRow = memo(function EntryRow({
             aria-label={`Hide ${entry.label}`}
           >
             <EyeOff className="h-3.5 w-3.5" aria-hidden />
-            Hide
+            <span className="hidden sm:inline">Hide</span>
           </Button>
         )}
         <Button
@@ -603,15 +650,21 @@ const EntryRow = memo(function EntryRow({
           size="sm"
           className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted hover:text-danger"
           onClick={() => void onDelete()}
+          disabled={deleting}
           aria-label={`Delete ${entry.label}`}
         >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          {deleting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Trash2 className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       </div>
 
       {revealed && (
-        <div
+        <fieldset
           data-testid={`vault-revealed-${entry.key}`}
+          aria-label={`Temporarily revealed value for ${entry.label}`}
           className="mt-1.5 flex items-center gap-2 rounded-sm border border-border/50 bg-bg/40 p-2"
         >
           <code className="flex-1 truncate font-mono text-2xs text-txt">
@@ -632,11 +685,16 @@ const EntryRow = memo(function EntryRow({
             <Copy className="h-3 w-3" aria-hidden />{" "}
             {t("vaultinventory.copy", { defaultValue: "Copy" })}
           </Button>
-        </div>
+          <span className="sr-only">
+            This value hides after ten seconds or when the app loses focus.
+          </span>
+        </fieldset>
       )}
 
       {revealError && (
-        <p className="mt-1 text-2xs text-danger">{revealError}</p>
+        <p className="mt-1 text-2xs text-danger" role="alert">
+          {revealError}
+        </p>
       )}
 
       {expanded && (
@@ -1203,26 +1261,33 @@ function AddSecretForm({
       if (!key.trim() || !value) return;
       setSubmitting(true);
       setErr(null);
-      const res = await client.rawRequest(
-        `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
-        {
-          method: "PUT",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            value,
-            ...(label.trim() ? { label: label.trim() } : {}),
-            ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
-            category,
-          }),
-        },
-        { allowNonOk: true },
-      );
-      setSubmitting(false);
-      if (!res.ok) {
-        setErr(`HTTP ${res.status}`);
-        return;
+      try {
+        const res = await client.rawRequest(
+          `/api/secrets/inventory/${encodeURIComponent(key.trim())}`,
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              value,
+              ...(label.trim() ? { label: label.trim() } : {}),
+              ...(providerId.trim() ? { providerId: providerId.trim() } : {}),
+              category,
+            }),
+          },
+          { allowNonOk: true },
+        );
+        if (!res.ok) {
+          setErr(`Secret save failed (HTTP ${res.status}).`);
+          return;
+        }
+        onSaved();
+      } catch {
+        // error-policy:J1 retain the entered value only inside this password
+        // field for retry; native/transport details remain redacted.
+        setErr("Secret save failed. Unlock secure storage and try again.");
+      } finally {
+        setSubmitting(false);
       }
-      onSaved();
     },
     [category, key, label, providerId, value, onSaved],
   );

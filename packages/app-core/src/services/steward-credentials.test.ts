@@ -2,8 +2,9 @@
  * Unit tests for `saveStewardCredentials` / `loadStewardCredentials`: verifies
  * steward secrets (apiKey, agentToken) land in the PlatformSecureStore rather
  * than the plaintext metadata file, that legacy plaintext secrets are migrated
- * and scrubbed on load, and that scrubbing still happens when the secure store
- * is unavailable. Uses an in-memory secure store and a temp `ELIZA_STATE_DIR`.
+ * and scrubbed only after exact read-back, and that plaintext is retained for
+ * recovery when secure storage is unavailable. Uses an in-memory secure store
+ * and a temp `ELIZA_STATE_DIR`.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -143,7 +144,7 @@ describe("steward credentials", () => {
     expect(raw).not.toContain("legacy-agent-token");
   });
 
-  it("scrubs legacy plaintext secrets even when secure store is unavailable", async () => {
+  it("retains legacy plaintext for recovery when secure store is unavailable", async () => {
     const secureStore = new MemorySecureStore(false);
     fs.writeFileSync(
       credentialsPath(stateDir),
@@ -161,17 +162,56 @@ describe("steward credentials", () => {
       { mode: 0o600 },
     );
 
-    const loaded = await loadStewardCredentials({ secureStore });
-
-    expect(loaded).toMatchObject({
-      apiUrl: "https://legacy.local",
-      tenantId: "tenant-legacy",
-      agentId: "agent-legacy",
-      apiKey: "",
-      agentToken: "",
-    });
+    await expect(loadStewardCredentials({ secureStore })).rejects.toThrow(
+      /retained for recovery/,
+    );
     const raw = fs.readFileSync(credentialsPath(stateDir), "utf8");
-    expect(raw).not.toContain("legacy-api-key");
-    expect(raw).not.toContain("legacy-agent-token");
+    expect(raw).toContain("legacy-api-key");
+    expect(raw).toContain("legacy-agent-token");
+  });
+
+  it("retains legacy plaintext when native success cannot be read back", async () => {
+    const secureStore = new MemorySecureStore();
+    secureStore.set = async () => ({ ok: true });
+    fs.writeFileSync(
+      credentialsPath(stateDir),
+      JSON.stringify(
+        {
+          apiUrl: "https://legacy.local",
+          tenantId: "tenant-legacy",
+          agentId: "agent-legacy",
+          apiKey: "legacy-api-key",
+          agentToken: "legacy-agent-token",
+        },
+        null,
+        2,
+      ),
+      { mode: 0o600 },
+    );
+
+    await expect(loadStewardCredentials({ secureStore })).rejects.toThrow(
+      /could not verify/,
+    );
+    const raw = fs.readFileSync(credentialsPath(stateDir), "utf8");
+    expect(raw).toContain("legacy-api-key");
+    expect(raw).toContain("legacy-agent-token");
+  });
+
+  it("rejects a new save when secure storage is unavailable", async () => {
+    const secureStore = new MemorySecureStore(false);
+
+    await expect(
+      saveStewardCredentials(
+        {
+          apiUrl: "https://steward.local",
+          tenantId: "tenant-1",
+          agentId: "agent-1",
+          apiKey: "tenant-api-key",
+          agentToken: "agent-token",
+        },
+        { secureStore },
+      ),
+    ).rejects.toThrow(/were not persisted/);
+    expect(fs.existsSync(credentialsPath(stateDir))).toBe(false);
   });
 });

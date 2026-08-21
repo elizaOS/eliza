@@ -152,6 +152,12 @@ async function writeStewardSecret(
       `secure store rejected ${field}: ${result.message ?? result.reason}`,
     );
   }
+  const verified = await store.get(vaultId, STEWARD_SECRET_KINDS[field]);
+  if (!verified.ok || verified.value.trim() !== trimmed) {
+    throw new Error(
+      `secure store could not verify ${field}; plaintext credentials were retained for recovery`,
+    );
+  }
 }
 
 async function migrateLegacyFileSecrets(
@@ -227,7 +233,9 @@ export async function loadStewardCredentials(
   }
 
   if (hasLegacySecrets) {
-    writeCredentialsMetadata(parsed);
+    throw new Error(
+      "platform secure store is unavailable; plaintext Steward credentials were retained for recovery",
+    );
   }
 
   const apiUrl = parsed.apiUrl || null;
@@ -254,15 +262,17 @@ export async function saveStewardCredentials(
   options: StewardCredentialPersistenceOptions = {},
 ): Promise<void> {
   const store = createStewardSecureStore(options);
-  if (await store.isAvailable()) {
-    const vaultId = deriveStewardVaultId();
-    await Promise.all(
-      (Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]).map(
-        (field) =>
-          writeStewardSecret(store, vaultId, field, credentials[field]),
-      ),
+  if (!(await store.isAvailable())) {
+    throw new Error(
+      "platform secure store is unavailable; Steward credentials were not persisted",
     );
   }
+  const vaultId = deriveStewardVaultId();
+  await Promise.all(
+    (Object.keys(STEWARD_SECRET_KINDS) as StewardCredentialSecretField[]).map(
+      (field) => writeStewardSecret(store, vaultId, field, credentials[field]),
+    ),
+  );
 
   writeCredentialsMetadata(credentials);
 }
