@@ -362,6 +362,76 @@ describe("unified host migration", () => {
     expect(response.status).toBe(503);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
   });
+
+  it("serves static robots.txt with no-store cache and text/plain type", async () => {
+    const publicDir = join(import.meta.dirname, "..", "public");
+    writeFileSync(
+      join(publicDir, "robots.txt"),
+      "User-agent: *\nDisallow: /api/\nSitemap: https://eliza.app/sitemap.xml\n",
+      "utf8",
+    );
+
+    const response = await run(
+      new Request(`${ORIGIN}/robots.txt`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    expect(await response.text()).toContain("Sitemap:");
+  });
+
+  it("serves static sitemap.xml with no-store cache and application/xml type", async () => {
+    const publicDir = join(import.meta.dirname, "..", "public");
+    writeFileSync(
+      join(publicDir, "sitemap.xml"),
+      '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
+      "utf8",
+    );
+
+    const response = await run(
+      new Request(`${ORIGIN}/sitemap.xml`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/xml; charset=utf-8",
+    );
+    expect(response.headers.get("Cache-Control")).toBe("no-cache");
+    expect(await response.text()).toContain("<urlset");
+  });
+
+  it("returns 404 for unknown crawl endpoints instead of SPA HTML", async () => {
+    const response = await run(
+      new Request(`${ORIGIN}/bogus-crawl-endpoint.xml`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await response.text()).toBe("Not Found");
+  });
+
+  it("returns 404 for unknown crawl .txt endpoints instead of SPA HTML", async () => {
+    const response = await run(
+      new Request(`${ORIGIN}/random-note.txt`),
+      async () => spaFallback(),
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await response.text()).toBe("Not Found");
+  });
 });
 
 describe("pages config files stay within Cloudflare Pages semantics", () => {

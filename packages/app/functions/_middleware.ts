@@ -30,6 +30,9 @@
 //   an edge-cached .js response has its browser TTL rewritten to the zone
 //   default (max-age=14400), which would delay SW update propagation by hours.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   canonicalCloudPathForLegacyDashboard,
   LANDING_AB_HOSTNAMES,
@@ -230,6 +233,48 @@ export const onRequest = async (
 
   if (url.pathname.startsWith(ASSETS_PREFIX)) {
     return serveAsset(context);
+  }
+
+  if (url.pathname === "/sitemap.xml" || url.pathname === "/robots.txt") {
+    const publicDir = join(
+      import.meta.dirname,
+      "..",
+      "public",
+    );
+    const fileName = url.pathname === "/sitemap.xml"
+      ? "sitemap.xml"
+      : "robots.txt";
+    try {
+      const body = readFileSync(join(publicDir, fileName), "utf8");
+      const contentType = fileName === "sitemap.xml"
+        ? "application/xml; charset=utf-8"
+        : "text/plain; charset=utf-8";
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "no-cache",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    } catch {
+      // Fall through to SPA if the file is missing
+    }
+  }
+
+  if (
+    !isProtocolPath(url.pathname) &&
+    !url.pathname.startsWith(ASSETS_PREFIX) &&
+    (url.pathname.endsWith(".xml") || url.pathname.endsWith(".txt"))
+  ) {
+    return new Response("Not Found", {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   }
 
   const response = await context.next();
