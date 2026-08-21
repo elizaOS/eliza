@@ -57,31 +57,50 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("shouldStartBottomBar", () => {
-    it("is OFF by default so the normal full app is the desktop surface", () => {
-      expect(shouldStartBottomBar({}, [])).toBe(false);
+    it("defaults macOS to the assistant pill and other platforms to Workspace", () => {
+      expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
+      expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
+      expect(shouldStartBottomBar({}, [], "linux")).toBe(false);
+      expect(
+        shouldStartBottomBar(
+          { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+          [],
+          "darwin",
+        ),
+      ).toBe(false);
     });
 
     it("opts in through explicit truthy values", () => {
       for (const value of ["1", "true", "yes", "on", " TRUE "]) {
         expect(
-          shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
+          shouldStartBottomBar(
+            { ELIZA_DESKTOP_BOTTOM_BAR: value },
+            [],
+            "linux",
+          ),
         ).toBe(true);
       }
     });
 
-    it("keeps the full app for unset, empty, and falsy values", () => {
-      for (const value of [undefined, "", "0", "false", "no", "off", " OFF "]) {
+    it("honors explicit empty and falsy legacy values", () => {
+      for (const value of ["", "0", "false", "no", "off", " OFF "]) {
         expect(
-          shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: value }, []),
+          shouldStartBottomBar(
+            { ELIZA_DESKTOP_BOTTOM_BAR: value },
+            [],
+            "darwin",
+          ),
         ).toBe(false);
       }
     });
 
     it("never starts in kiosk shell mode (env or argv), even unset", () => {
-      expect(shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [])).toBe(
+      expect(
+        shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [], "darwin"),
+      ).toBe(false);
+      expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"], "darwin")).toBe(
         false,
       );
-      expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"])).toBe(false);
     });
   });
 
@@ -304,7 +323,7 @@ describe("desktop bottom-bar config", () => {
   });
 
   describe("resolveDesktopShellWindowPresentation", () => {
-    it("defaults every desktop platform to an opaque full application window", () => {
+    it("defaults macOS to the assistant pill and other platforms to an opaque Workspace", () => {
       expect(resolveDesktopShellWindowPresentation({}, [], "win32")).toEqual({
         mode: "default",
         titleBarStyle: "default",
@@ -313,15 +332,31 @@ describe("desktop bottom-bar config", () => {
         nativeChromeInteractive: true,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "darwin")).toEqual({
-        mode: "default",
-        titleBarStyle: "hiddenInset",
-        transparent: false,
-        nativeShadow: true,
-        nativeChromeInteractive: true,
+        mode: "bottom-bar",
+        titleBarStyle: "hidden",
+        transparent: true,
+        nativeShadow: false,
+        nativeChromeInteractive: false,
       });
       expect(resolveDesktopShellWindowPresentation({}, [], "linux")).toEqual({
         mode: "default",
         titleBarStyle: "default",
+        transparent: false,
+        nativeShadow: true,
+        nativeChromeInteractive: true,
+      });
+    });
+
+    it("keeps an explicit macOS Workspace experience opaque", () => {
+      expect(
+        resolveDesktopShellWindowPresentation(
+          { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+          [],
+          "darwin",
+        ),
+      ).toEqual({
+        mode: "default",
+        titleBarStyle: "hiddenInset",
         transparent: false,
         nativeShadow: true,
         nativeChromeInteractive: true,

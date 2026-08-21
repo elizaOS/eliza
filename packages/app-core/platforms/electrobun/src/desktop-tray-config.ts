@@ -1,4 +1,5 @@
 /** Implements Electrobun desktop desktop tray config ts behavior for app-core shell integration. */
+import { isMacosAssistantExperience } from "./desktop-experience-config";
 import { isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {
@@ -26,9 +27,9 @@ export function shouldCreateDesktopTray(
 }
 
 /**
- * Whether an explicitly configured macOS build should launch dockless with the
- * menu-bar item as its resting surface. The normal app keeps its full window
- * and Dock presence. Windows and Linux never use this accessory policy.
+ * Whether macOS should launch dockless with the menu-bar item as its recovery
+ * surface. The assistant experience defaults on; Workspace and legacy flags
+ * can explicitly opt out. Windows and Linux never use this accessory policy.
  */
 export function shouldStartTrayFirst(
   env: NodeJS.ProcessEnv = process.env,
@@ -38,7 +39,11 @@ export function shouldStartTrayFirst(
   if (platform !== "darwin") {
     return false;
   }
-  if (!parseTruthy(env.ELIZA_DESKTOP_TRAY_FIRST)) {
+  const trayFirst =
+    env.ELIZA_DESKTOP_TRAY_FIRST !== undefined
+      ? parseTruthy(env.ELIZA_DESKTOP_TRAY_FIRST)
+      : isMacosAssistantExperience(env, platform);
+  if (!trayFirst) {
     return false;
   }
   if (!shouldCreateDesktopTray(env)) {

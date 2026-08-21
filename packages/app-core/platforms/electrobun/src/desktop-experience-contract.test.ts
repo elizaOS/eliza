@@ -5,6 +5,7 @@ import {
   resolveDesktopShellWindowPresentation,
   shouldStartBottomBar,
 } from "./desktop-bottom-bar-config";
+import { resolveDesktopExperience } from "./desktop-experience-config";
 import {
   shouldCreateDesktopTray,
   shouldEnableTrayPopover,
@@ -12,47 +13,61 @@ import {
 } from "./desktop-tray-config";
 
 /**
- * Pins the normal desktop application as the default while preserving explicit
- * appliance opt-ins and kiosk precedence.
+ * Pins the macOS assistant and cross-platform Workspace startup contracts while
+ * preserving explicit legacy overrides and kiosk precedence.
  */
-describe("desktop experience contract — full-app launch", () => {
-  it("launches into the normal full-window application by default", () => {
-    expect(shouldStartBottomBar({}, [])).toBe(false);
+describe("desktop experience contract — startup", () => {
+  it("defaults macOS to assistant and other platforms to Workspace", () => {
+    expect(resolveDesktopExperience({}, "darwin")).toBe("macos-assistant");
+    expect(resolveDesktopExperience({}, "win32")).toBe("workspace");
+    expect(resolveDesktopExperience({}, "linux")).toBe("workspace");
+    expect(shouldStartBottomBar({}, [], "darwin")).toBe(true);
+    expect(shouldStartBottomBar({}, [], "win32")).toBe(false);
   });
 
-  it("requires an explicit bottom-bar opt-in", () => {
-    for (const on of ["1", "true", "yes", "on"]) {
-      expect(shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: on }, [])).toBe(
-        true,
-      );
-    }
-    for (const off of [undefined, "", "0", "false", "no", "off"]) {
-      expect(shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: off }, [])).toBe(
-        false,
-      );
-    }
-  });
-
-  it("keeps Cloud-only installs in the normal app unless the bottom bar is explicitly enabled", () => {
-    expect(shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [])).toBe(
-      false,
-    );
+  it("supports an explicit macOS Workspace experience", () => {
     expect(
       shouldStartBottomBar(
-        {
-          ELIZA_DESKTOP_CLOUD_ONLY: "1",
-          ELIZA_DESKTOP_BOTTOM_BAR: "1",
-        },
+        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
         [],
+        "darwin",
       ),
+    ).toBe(false);
+    expect(
+      resolveDesktopShellWindowPresentation(
+        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        [],
+        "darwin",
+      ).mode,
+    ).toBe("default");
+  });
+
+  it("honors explicit legacy bottom-bar overrides", () => {
+    for (const on of ["1", "true", "yes", "on"]) {
+      expect(
+        shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: on }, [], "linux"),
+      ).toBe(true);
+    }
+    for (const off of ["", "0", "false", "no", "off"]) {
+      expect(
+        shouldStartBottomBar({ ELIZA_DESKTOP_BOTTOM_BAR: off }, [], "darwin"),
+      ).toBe(false);
+    }
+  });
+
+  it("keeps Cloud-only macOS installs on the same assistant contract", () => {
+    expect(
+      shouldStartBottomBar({ ELIZA_DESKTOP_CLOUD_ONLY: "1" }, [], "darwin"),
     ).toBe(true);
   });
 
   it("kiosk mode overrides the bottom bar (env and argv)", () => {
-    expect(shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [])).toBe(
+    expect(
+      shouldStartBottomBar({ ELIZAOS_SHELL_MODE: "kiosk" }, [], "darwin"),
+    ).toBe(false);
+    expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"], "darwin")).toBe(
       false,
     );
-    expect(shouldStartBottomBar({}, ["--shell-mode=kiosk"])).toBe(false);
   });
 
   it("tags the renderer URL so the chat-overlay shell renders", () => {
@@ -60,20 +75,30 @@ describe("desktop experience contract — full-app launch", () => {
     expect(tagged).toContain("shellMode=chat-overlay");
   });
 
-  it("presents the default window as an opaque normal application", () => {
-    for (const platform of ["darwin", "win32", "linux"] as const) {
+  it("presents non-macOS defaults as an opaque normal application", () => {
+    for (const platform of ["win32", "linux"] as const) {
       const presentation = resolveDesktopShellWindowPresentation(
         {},
         [],
         platform,
       );
       expect(presentation.mode).toBe("default");
-      expect(presentation.titleBarStyle).toBe(
-        platform === "darwin" ? "hiddenInset" : "default",
-      );
+      expect(presentation.titleBarStyle).toBe("default");
       expect(presentation.transparent).toBe(false);
       expect(presentation.nativeShadow).toBe(true);
     }
+  });
+
+  it("presents the macOS default as the transparent assistant pill", () => {
+    const presentation = resolveDesktopShellWindowPresentation(
+      {},
+      [],
+      "darwin",
+    );
+    expect(presentation.mode).toBe("bottom-bar");
+    expect(presentation.titleBarStyle).toBe("hidden");
+    expect(presentation.transparent).toBe(true);
+    expect(presentation.nativeShadow).toBe(false);
   });
 
   it("keeps the optional bottom bar transparent", () => {
@@ -122,11 +147,18 @@ describe("desktop experience contract — tray", () => {
     expect(shouldCreateDesktopTray({ ELIZA_DESKTOP_TRAY: "0" })).toBe(false);
   });
 
-  it("defaults to a Dock-visible full app with optional tray-first mode", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
+  it("defaults macOS assistant to tray-first with an explicit Workspace opt-out", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
+    expect(
+      shouldStartTrayFirst(
+        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        "darwin",
+        [],
+      ),
+    ).toBe(false);
     expect(shouldEnableTrayPopover({}, "darwin", [])).toBe(false);
     expect(
       shouldEnableTrayPopover(

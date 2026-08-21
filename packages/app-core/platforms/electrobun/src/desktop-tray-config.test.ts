@@ -53,15 +53,22 @@ describe("desktop tray config", () => {
 });
 
 describe("shouldStartTrayFirst", () => {
-  it("defaults OFF so the normal macOS application keeps its Dock presence", () => {
-    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(false);
+  it("defaults the macOS assistant to tray-first", () => {
+    expect(shouldStartTrayFirst({}, "darwin", [])).toBe(true);
     expect(
       shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: "1" }, "darwin", []),
     ).toBe(true);
+    expect(
+      shouldStartTrayFirst(
+        { ELIZA_DESKTOP_EXPERIENCE: "workspace" },
+        "darwin",
+        [],
+      ),
+    ).toBe(false);
   });
 
-  it("requires an explicit truthy tray-first value on macOS", () => {
-    for (const off of [undefined, "", "0", "false", "no"]) {
+  it("honors explicit legacy tray-first overrides on macOS", () => {
+    for (const off of ["", "0", "false", "no"]) {
       expect(
         shouldStartTrayFirst({ ELIZA_DESKTOP_TRAY_FIRST: off }, "darwin", []),
       ).toBe(false);

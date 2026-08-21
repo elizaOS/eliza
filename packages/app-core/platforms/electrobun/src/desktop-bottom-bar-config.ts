@@ -1,12 +1,13 @@
 /**
  * Chromeless bottom-bar desktop shell (#9953).
  *
- * The normal desktop product opens the full application window. Appliances or
- * focused assistant builds can opt into a minimal chromeless chat bar pinned to
- * the bottom of the screen. This module owns that optional shell's launch
- * decision, renderer route, and screen geometry. Kiosk mode always wins.
+ * The macOS assistant product opens as a minimal chromeless chat bar pinned to
+ * the bottom of the screen. The cross-platform Workspace experience and legacy
+ * flags can explicitly override that default. This module owns the shell's
+ * launch decision, renderer route, and screen geometry. Kiosk mode always wins.
  */
 
+import { isMacosAssistantExperience } from "./desktop-experience-config";
 import { appendShellModeParam, isKioskShellMode } from "./kiosk-mode";
 
 function parseTruthy(value: string | undefined): boolean {
@@ -21,17 +22,21 @@ function parseTruthy(value: string | undefined): boolean {
 }
 
 /**
- * Whether an explicitly configured desktop build should launch as a chromeless
- * bottom chat bar instead of the normal full-window application.
+ * Whether this desktop runtime should launch as a chromeless bottom chat bar
+ * instead of the normal full-window Workspace.
  */
 export function shouldStartBottomBar(
   env: Record<string, string | undefined> = process.env,
   argv: readonly string[] = process.argv,
+  platform: NodeJS.Platform = process.platform,
 ): boolean {
   if (isKioskShellMode(env, argv)) {
     return false;
   }
-  return parseTruthy(env.ELIZA_DESKTOP_BOTTOM_BAR);
+  if (env.ELIZA_DESKTOP_BOTTOM_BAR !== undefined) {
+    return parseTruthy(env.ELIZA_DESKTOP_BOTTOM_BAR);
+  }
+  return isMacosAssistantExperience(env, platform);
 }
 
 /**
@@ -125,7 +130,7 @@ export function resolveDesktopShellWindowPresentation(
   platform: typeof process.platform = process.platform,
 ): DesktopShellWindowPresentation {
   const kiosk = isKioskShellMode(env, argv);
-  const bottomBar = !kiosk && shouldStartBottomBar(env, argv);
+  const bottomBar = !kiosk && shouldStartBottomBar(env, argv, platform);
   return {
     mode: kiosk ? "kiosk" : bottomBar ? "bottom-bar" : "default",
     titleBarStyle:
