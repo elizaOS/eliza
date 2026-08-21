@@ -146,6 +146,7 @@ const admitInferenceChargeViaLedger = mock(async () => ({ admitted: true }));
 let gateBalance = 50;
 let eligible = true;
 let orgRefused = false;
+let subscriptionFunded = false;
 const isOptimisticEligible = mock(() => eligible);
 const acquireInferenceAdmissionLease = mock(
   async (params: { organizationId: string; requestId: string; estimatedCostUsd: number }) => ({
@@ -161,6 +162,7 @@ const settleInferenceAdmissionLease = mock(async () => undefined);
 mock.module("./ai-billing", () => ({
   reserveCredits,
   reserveFlatUsageCredits,
+  isSubscriptionFundedOrganization: async () => subscriptionFunded,
   getAffiliatePayoutSourceId: (context: { requestId?: string | null }) =>
     `ai_billing:affiliate:${context.requestId}`,
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
@@ -291,6 +293,7 @@ beforeEach(() => {
   gateBalance = 50;
   eligible = true;
   orgRefused = false;
+  subscriptionFunded = false;
   repositoryBlock = null;
   affiliateRepositoryBlock = null;
   affiliateDebitError = null;
@@ -350,6 +353,21 @@ test("cold pricing rejects immediately and owns authoritative hydration under wa
   expect(pairReads).toBe(2);
   expect(fallbackReads).toBe(0);
   expect(catalogReads).toBe(0);
+});
+
+test("subscriber inference bypasses every optimistic purchased-only lane", async () => {
+  subscriptionFunded = true;
+  const model = nextModel();
+
+  const admission = await admitOrganizationInference(admissionParams(model, []));
+
+  expect(admission.mode).toBe("synchronous_reservation");
+  expect(reserveCredits).toHaveBeenCalledTimes(1);
+  expect(reserveCredits.mock.calls[0]?.[3]).toEqual({ subscriptionFunded: true });
+  expect(acquireInferenceAdmissionLease).not.toHaveBeenCalled();
+  expect(writePendingInferenceCharge).not.toHaveBeenCalled();
+  expect(admitInferenceChargeViaLedger).not.toHaveBeenCalled();
+  expect(pairReads).toBe(0);
 });
 
 test("warm Worker admission writes only the Durable Object lease before provider dispatch", async () => {

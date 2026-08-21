@@ -199,6 +199,14 @@ beforeAll(async () => {
         created_at timestamptz NOT NULL DEFAULT now(), UNIQUE (organization_id, idempotency_key),
         UNIQUE (allowance_period_id, sequence)
       );
+      CREATE TABLE affiliate_payout_outbox (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(), source_id text NOT NULL UNIQUE,
+        affiliate_code_id uuid NOT NULL, affiliate_user_id uuid NOT NULL,
+        amount numeric(16,4) NOT NULL, description text NOT NULL,
+        metadata jsonb NOT NULL DEFAULT '{}', attempts integer NOT NULL DEFAULT 0,
+        processed_at timestamptz, ledger_entry_id uuid,
+        created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+      );
     `);
   } catch (error) {
     // error-policy:J4 Test setup failure stays visibly distinct from passing coverage.
@@ -210,6 +218,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   expect(schemaFailure).toBe("");
   expect(pgliteReady).toBe(true);
+  await getPgliteClientForTests().exec("DELETE FROM affiliate_payout_outbox");
   await dbWrite.delete(subscriptionAllowanceTransactions);
   await dbWrite.delete(billingFundingReservations);
   await dbWrite.delete(subscriptionAllowancePeriods);
@@ -274,6 +283,26 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
     expect(reservations).toHaveLength(1);
     expect(reserveLedger).toHaveLength(1);
     expect(reserveLedger[0]?.funding_reservation_id).toBe(first.reservation.id);
+  });
+
+  test("database-clock TTL reservations replay with their original expiry", async () => {
+    const input = {
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId: "inference-gate:req-ttl-0001",
+      operation: "ai_inference" as const,
+      amount: "1.000000",
+      description: "retry-stable inference hold",
+      reservationTtlMs: 7_200_000,
+    };
+
+    const first = await subscriptionFundingService.reserve(input);
+    const replay = await subscriptionFundingService.reserve(input);
+
+    expect(replay.replayed).toBe(true);
+    expect(replay.reservation.id).toBe(first.reservation.id);
+    expect(first.reservation.expires_at.getTime() - first.reservation.created_at.getTime()).toBe(
+      7_200_000,
+    );
   });
 
   test("cash-only ignores available allowance", async () => {
@@ -381,6 +410,54 @@ describe("SubscriptionFundingService.reserve (real PGlite)", () => {
     expect(organization?.balance).toBe("10.000000");
     expect(period?.remaining).toBe("3.000000");
     expect(ledger.map((row) => row.kind)).toEqual(["reserve", "settle", "refund"]);
+  });
+
+  test("settlement atomically enqueues one exact affiliate payout", async () => {
+    const logicalOperationId = "inference-gate:req-affiliate-0001";
+    const metadata = {
+      affiliatePayout: {
+        version: 1 as const,
+        sourceId: "ai_billing:affiliate:req-affiliate-0001",
+        attribution: {
+          affiliateCodeId: "40000000-0000-4000-8000-000000000004",
+          affiliateUserId: "50000000-0000-4000-8000-000000000005",
+          affiliateCode: "PARTNER",
+          markupPercent: 0.2,
+        },
+        model: "test-model",
+      },
+    };
+    const reserved = await subscriptionFundingService.reserve({
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId,
+      operation: "ai_inference",
+      amount: "1.500000",
+      description: "affiliate inference",
+      reservationTtlMs: 7_200_000,
+      metadata,
+    });
+    const settlement = {
+      organizationId: ORGANIZATION_ID,
+      logicalOperationId,
+      operation: "ai_inference" as const,
+      actualAmount: "1.200000",
+      occurredAt: reserved.reservation.created_at,
+      metadata,
+    };
+
+    await subscriptionFundingService.settle(settlement);
+    await subscriptionFundingService.settle(settlement);
+
+    const rows = await getPgliteClientForTests().query<{
+      source_id: string;
+      amount: string;
+    }>("SELECT source_id, amount::text AS amount FROM affiliate_payout_outbox");
+    expect(rows.rows).toEqual([
+      {
+        source_id: "ai_billing:affiliate:req-affiliate-0001",
+        amount: "0.2000",
+      },
+    ]);
   });
 
   test("reserves and settles an allowance-first linked overage leg exactly once", async () => {

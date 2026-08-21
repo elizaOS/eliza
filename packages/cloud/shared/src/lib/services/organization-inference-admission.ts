@@ -15,6 +15,7 @@ import type { BillingContext, FlatBillingCost } from "./ai-billing";
 import {
   getAffiliatePayoutSourceId,
   InsufficientCreditsError,
+  isSubscriptionFundedOrganization,
   reserveCredits,
   reserveFlatUsageCredits,
 } from "./ai-billing";
@@ -144,6 +145,7 @@ export class InferenceAdmissionUnavailableError extends InferenceBalanceCacheWar
 
 async function reserveSynchronously(
   params: OrganizationInferenceAdmissionParams,
+  subscriptionFunded?: boolean,
 ): Promise<OrganizationInferenceAdmission> {
   const context = {
     ...params.context,
@@ -152,8 +154,11 @@ async function reserveSynchronously(
   const reservation = params.flatCost
     ? await reserveFlatUsageCredits(context, params.flatCost, {
         idempotencyKey: params.context.requestId,
+        subscriptionFunded,
       })
-    : await reserveCredits(context, params.estimatedInputTokens, params.estimatedOutputTokens);
+    : await reserveCredits(context, params.estimatedInputTokens, params.estimatedOutputTokens, {
+        subscriptionFunded,
+      });
   const settle = createCreditReservationSettler(reservation);
   return {
     mode: "synchronous_reservation",
@@ -240,6 +245,10 @@ export async function admitOrganizationInference(
   const executionCtx = params.executionCtx;
   const workerHotPath = typeof executionCtx?.waitUntil === "function";
   const affiliateMarked = Boolean(params.affiliateCode?.trim());
+  const subscriptionFunded = await isSubscriptionFundedOrganization(params.context.organizationId);
+  if (subscriptionFunded) {
+    return await reserveSynchronously(params, true);
+  }
   if (workerHotPath && executionCtx && isOrgAdmissionRefused(params.context.organizationId)) {
     // A prior deferred write or fallback charge was refused. Its settler
     // invalidated the balance hint, so a later retry will hydrate authoritative
@@ -249,11 +258,11 @@ export async function admitOrganizationInference(
     throw new InferenceAdmissionUnavailableError();
   }
   if (!workerHotPath && affiliateMarked) {
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
   if (!isOptimisticBillingEnabled()) {
     if (workerHotPath) throw new InferenceAdmissionUnavailableError();
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
 
   const thresholdUsd = resolveSafeBalanceThresholdUsd();
@@ -343,7 +352,7 @@ export async function admitOrganizationInference(
       estimatedCostUsd,
     })
   ) {
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
 
   let inferenceLease: InferenceAdmissionLease | undefined;
@@ -506,7 +515,7 @@ export async function admitOrganizationInference(
         settleUnknown: () => settle(estimatedCostUsd),
       };
     }
-    return await reserveSynchronously(params);
+    return await reserveSynchronously(params, false);
   }
 
   if (isOptimisticBackstopAvailable()) {
@@ -521,5 +530,5 @@ export async function admitOrganizationInference(
     }
   }
 
-  return await reserveSynchronously(params);
+  return await reserveSynchronously(params, false);
 }
