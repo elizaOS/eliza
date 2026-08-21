@@ -85,8 +85,28 @@ describe("cloudSafeMainActivityJava", () => {
 
   it("generates standard speech recognition and system TTS without local transports", () => {
     const source = cloudSafePlayVoicePluginJava("ai.elizaos.app");
+    const pluginThreadEntry = source.slice(
+      source.indexOf("public void startDictation"),
+      source.indexOf("private void startDictationOnMainThread"),
+    );
 
     expect(source).toContain('@CapacitorPlugin(\n    name = "ElizaPlayVoice"');
+    expect(source).toContain(
+      "private final Handler mainHandler = new Handler(Looper.getMainLooper());",
+    );
+    expect(source).toContain(
+      "runOnMainThread(() -> startDictationOnMainThread(call, language));",
+    );
+    expect(source).toContain(
+      "runOnMainThread(this::stopRecognizerOnMainThread);",
+    );
+    expect(source).toContain(
+      "runOnMainThread(() -> speakOnMainThread(call, text, language));",
+    );
+    expect(pluginThreadEntry).not.toContain(
+      "SpeechRecognizer.createSpeechRecognizer",
+    );
+    expect(pluginThreadEntry).not.toContain("recognizer.startListening");
     expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
     expect(source).toContain("new TextToSpeech(getContext()");
     expect(source).toContain("Manifest.permission.RECORD_AUDIO");
