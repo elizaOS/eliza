@@ -125,6 +125,7 @@ jobs:
     timeout-minutes: 95
     env:
       SYSTEMD_UNIT: eliza-provisioning-worker.service
+      BACKUP_SYSTEMD_UNIT: eliza-backup-catalog-worker.service
       DEPLOY_BRANCH: ${{ needs.determine-env.outputs.branch }}
       DEPLOY_SHA: ${{ needs.determine-env.outputs.deployment_sha }}
       # Headscale wiring for the provisioning worker (the CONSUMER of the
@@ -186,6 +187,35 @@ jobs:
       # compatibility window.
       AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.eliza.app' || 'eliza-staging-1.eliza.app' }}
       LEGACY_AGENT_ROUTER_PUBLIC_HOST: ${{ needs.determine-env.outputs.environment == 'production' && 'eliza-production-1.elizacloud.ai' || 'eliza-staging-1.elizacloud.ai' }}
+      # Backup catalogue values are optional while both merge-time gates remain
+      # forced off. They are reconciled by name now so later activation cannot
+      # depend on undocumented host-only configuration.
+      AGENT_BACKUP_CATALOG_WORKER_ID: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_ID }}
+      AGENT_BACKUP_R2_ENDPOINT_ALIAS: ${{ vars.AGENT_BACKUP_R2_ENDPOINT_ALIAS }}
+      AGENT_BACKUP_R2_ACCOUNT_ID: ${{ vars.AGENT_BACKUP_R2_ACCOUNT_ID }}
+      AGENT_BACKUP_R2_ENDPOINT: ${{ vars.AGENT_BACKUP_R2_ENDPOINT }}
+      AGENT_BACKUP_R2_BUCKET: ${{ vars.AGENT_BACKUP_R2_BUCKET }}
+      AGENT_BACKUP_R2_REGION: ${{ vars.AGENT_BACKUP_R2_REGION }}
+      AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS: ${{ vars.AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS }}
+      AGENT_BACKUP_HETZNER_ACCOUNT_ID: ${{ vars.AGENT_BACKUP_HETZNER_ACCOUNT_ID }}
+      AGENT_BACKUP_HETZNER_ENDPOINT: ${{ vars.AGENT_BACKUP_HETZNER_ENDPOINT }}
+      AGENT_BACKUP_HETZNER_BUCKET: ${{ vars.AGENT_BACKUP_HETZNER_BUCKET }}
+      AGENT_BACKUP_HETZNER_REGION: ${{ vars.AGENT_BACKUP_HETZNER_REGION }}
+      AGENT_BACKUP_STEWARD_KMS_BASE_URL: ${{ vars.AGENT_BACKUP_STEWARD_KMS_BASE_URL }}
+      AGENT_BACKUP_AGENT_SCHEMA_VERSION: ${{ vars.AGENT_BACKUP_AGENT_SCHEMA_VERSION }}
+      AGENT_BACKUP_DATABASE_SCHEMA_VERSION: ${{ vars.AGENT_BACKUP_DATABASE_SCHEMA_VERSION }}
+      AGENT_BACKUP_RUNTIME_PLUGINS_JSON: ${{ vars.AGENT_BACKUP_RUNTIME_PLUGINS_JSON }}
+      AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID: ${{ vars.AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID }}
+      AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT: ${{ vars.AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT }}
+      AGENT_BACKUP_STORAGE_SCOPE: ${{ vars.AGENT_BACKUP_STORAGE_SCOPE }}
+      AGENT_BACKUP_SPOOL_MAX_BYTES: ${{ vars.AGENT_BACKUP_SPOOL_MAX_BYTES }}
+      AGENT_BACKUP_SPOOL_MIN_FREE_BYTES: ${{ vars.AGENT_BACKUP_SPOOL_MIN_FREE_BYTES }}
+      AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE: ${{ vars.AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE }}
+      AGENT_BACKUP_CAPTURE_DEADLINE_MS: ${{ vars.AGENT_BACKUP_CAPTURE_DEADLINE_MS }}
+      AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS: ${{ vars.AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS }}
+      AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS }}
+      AGENT_BACKUP_CATALOG_WORKER_RETRY_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_RETRY_MS }}
+      AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS: ${{ vars.AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS }}
     steps:
       - name: Validate canonical deploy configuration and shared secrets
         id: deploy_config
@@ -411,6 +441,11 @@ jobs:
           SANDBOX_REGISTRY_REDIS_URL: ${{ secrets.SANDBOX_REGISTRY_REDIS_URL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           SECRETS_MASTER_KEY: ${{ secrets.SECRETS_MASTER_KEY }}
+          AGENT_BACKUP_R2_ACCESS_KEY_ID: ${{ secrets.AGENT_BACKUP_R2_ACCESS_KEY_ID }}
+          AGENT_BACKUP_R2_SECRET_ACCESS_KEY: ${{ secrets.AGENT_BACKUP_R2_SECRET_ACCESS_KEY }}
+          AGENT_BACKUP_HETZNER_ACCESS_KEY_ID: ${{ secrets.AGENT_BACKUP_HETZNER_ACCESS_KEY_ID }}
+          AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY: ${{ secrets.AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY }}
+          AGENT_BACKUP_STEWARD_KMS_TOKEN: ${{ secrets.AGENT_BACKUP_STEWARD_KMS_TOKEN }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2
         with:
           host: ${{ secrets.ELIZA_PROVISIONING_HOST }}
@@ -420,7 +455,7 @@ jobs:
           # wait without weakening the preflight's own eight-minute fail-closed
           # fence near the end of this remote script.
           command_timeout: 40m
-          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST
+          envs: DEPLOY_BRANCH,DEPLOY_SHA,SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,HEADSCALE_API_URL,HEADSCALE_PUBLIC_URL,HEADSCALE_API_KEY,CONTAINERS_SSH_KEY,SANDBOX_REGISTRY_REDIS_URL,DATABASE_URL,SECRETS_MASTER_KEY,ELIZA_AGENT_IMAGE,WARM_POOL_ENABLED,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST,LEGACY_AGENT_ROUTER_PUBLIC_HOST,AGENT_BACKUP_CATALOG_WORKER_ID,AGENT_BACKUP_R2_ENDPOINT_ALIAS,AGENT_BACKUP_R2_ACCOUNT_ID,AGENT_BACKUP_R2_ENDPOINT,AGENT_BACKUP_R2_BUCKET,AGENT_BACKUP_R2_REGION,AGENT_BACKUP_R2_ACCESS_KEY_ID,AGENT_BACKUP_R2_SECRET_ACCESS_KEY,AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS,AGENT_BACKUP_HETZNER_ACCOUNT_ID,AGENT_BACKUP_HETZNER_ENDPOINT,AGENT_BACKUP_HETZNER_BUCKET,AGENT_BACKUP_HETZNER_REGION,AGENT_BACKUP_HETZNER_ACCESS_KEY_ID,AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY,AGENT_BACKUP_STEWARD_KMS_BASE_URL,AGENT_BACKUP_STEWARD_KMS_TOKEN,AGENT_BACKUP_AGENT_SCHEMA_VERSION,AGENT_BACKUP_DATABASE_SCHEMA_VERSION,AGENT_BACKUP_RUNTIME_PLUGINS_JSON,AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID,AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT,AGENT_BACKUP_STORAGE_SCOPE,AGENT_BACKUP_SPOOL_MAX_BYTES,AGENT_BACKUP_SPOOL_MIN_FREE_BYTES,AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE,AGENT_BACKUP_CAPTURE_DEADLINE_MS,AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS,AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS,AGENT_BACKUP_CATALOG_WORKER_RETRY_MS,AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS
           script: |
             set -euo pipefail
 
@@ -554,15 +589,18 @@ jobs:
             mkdir -p node_modules/@elizaos
             ln -sfn ../../packages/cloud/shared node_modules/@elizaos/cloud-shared
 
-            # Install/refresh both systemd units (provisioning worker + agent router).
+            # Install/refresh the provisioning, router, and dormant backup units.
             sudo install -m 0644 \
               packages/cloud/scripts/admin/eliza-provisioning-worker.service \
               "/etc/systemd/system/$SYSTEMD_UNIT"
             sudo install -m 0644 \
               packages/cloud/scripts/admin/eliza-agent-router.service \
               /etc/systemd/system/eliza-agent-router.service
+            sudo install -m 0644 \
+              packages/cloud/scripts/admin/eliza-backup-catalog-worker.service \
+              "/etc/systemd/system/$BACKUP_SYSTEMD_UNIT"
             sudo systemctl daemon-reload
-            sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service
+            sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service "$BACKUP_SYSTEMD_UNIT"
 
             # Reconcile control-plane secrets (HEADSCALE_API_URL /
             # HEADSCALE_PUBLIC_URL / HEADSCALE_API_KEY /
@@ -602,6 +640,17 @@ jobs:
             # box, docker-sandbox-provider deliberately disables VPN injection
             # and fresh staging agents never receive a headscale_ip (#15347).
             sudo sed -i "/^AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK=/d" "$ENV_FILE"
+            # The manifest-v3 catalogue ships dormant. Remove stale host edits
+            # and append the two gates exactly once; values are also pinned on
+            # the systemd command line as a second independent fence.
+            sudo sed -i "/^AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=/d" "$ENV_FILE"
+            sudo sed -i "/^AGENT_BACKUP_RPO_SCHEDULER_ENABLED=/d" "$ENV_FILE"
+            sudo sed -i "/^AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/d" "$ENV_FILE"
+            sudo sed -i "/^AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE=/d" "$ENV_FILE"
+            printf '%s=%s\n' AGENT_BACKUP_CATALOG_RUNTIME_ENABLED 0 | sudo tee -a "$ENV_FILE" >/dev/null
+            printf '%s=%s\n' AGENT_BACKUP_RPO_SCHEDULER_ENABLED 0 | sudo tee -a "$ENV_FILE" >/dev/null
+            printf '%s=%s\n' AGENT_BACKUP_SPOOL_STATE_DIRECTORY /var/lib/eliza-backup-catalog/spool | sudo tee -a "$ENV_FILE" >/dev/null
+            printf '%s=%s\n' AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE /run/eliza-backup-catalog/health.json | sudo tee -a "$ENV_FILE" >/dev/null
             for kv in \
               "HEADSCALE_API_URL=$HEADSCALE_API_URL" \
               "HEADSCALE_PUBLIC_URL=$HEADSCALE_PUBLIC_URL" \
@@ -612,10 +661,47 @@ jobs:
               "SECRETS_MASTER_KEY=$SECRETS_MASTER_KEY" \
               "ELIZA_AGENT_IMAGE=$ELIZA_AGENT_IMAGE" \
               "WARM_POOL_ENABLED=$WARM_POOL_ENABLED" \
-              "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN"; do
+              "ELIZA_CLOUD_AGENT_BASE_DOMAIN=$ELIZA_CLOUD_AGENT_BASE_DOMAIN" \
+              "AGENT_BACKUP_CATALOG_WORKER_ID=$AGENT_BACKUP_CATALOG_WORKER_ID" \
+              "AGENT_BACKUP_R2_ENDPOINT_ALIAS=$AGENT_BACKUP_R2_ENDPOINT_ALIAS" \
+              "AGENT_BACKUP_R2_ACCOUNT_ID=$AGENT_BACKUP_R2_ACCOUNT_ID" \
+              "AGENT_BACKUP_R2_ENDPOINT=$AGENT_BACKUP_R2_ENDPOINT" \
+              "AGENT_BACKUP_R2_BUCKET=$AGENT_BACKUP_R2_BUCKET" \
+              "AGENT_BACKUP_R2_REGION=$AGENT_BACKUP_R2_REGION" \
+              "AGENT_BACKUP_R2_ACCESS_KEY_ID=$AGENT_BACKUP_R2_ACCESS_KEY_ID" \
+              "AGENT_BACKUP_R2_SECRET_ACCESS_KEY=$AGENT_BACKUP_R2_SECRET_ACCESS_KEY" \
+              "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS=$AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS" \
+              "AGENT_BACKUP_HETZNER_ACCOUNT_ID=$AGENT_BACKUP_HETZNER_ACCOUNT_ID" \
+              "AGENT_BACKUP_HETZNER_ENDPOINT=$AGENT_BACKUP_HETZNER_ENDPOINT" \
+              "AGENT_BACKUP_HETZNER_BUCKET=$AGENT_BACKUP_HETZNER_BUCKET" \
+              "AGENT_BACKUP_HETZNER_REGION=$AGENT_BACKUP_HETZNER_REGION" \
+              "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID=$AGENT_BACKUP_HETZNER_ACCESS_KEY_ID" \
+              "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY=$AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY" \
+              "AGENT_BACKUP_STEWARD_KMS_BASE_URL=$AGENT_BACKUP_STEWARD_KMS_BASE_URL" \
+              "AGENT_BACKUP_STEWARD_KMS_TOKEN=$AGENT_BACKUP_STEWARD_KMS_TOKEN" \
+              "AGENT_BACKUP_AGENT_SCHEMA_VERSION=$AGENT_BACKUP_AGENT_SCHEMA_VERSION" \
+              "AGENT_BACKUP_DATABASE_SCHEMA_VERSION=$AGENT_BACKUP_DATABASE_SCHEMA_VERSION" \
+              "AGENT_BACKUP_RUNTIME_PLUGINS_JSON=$AGENT_BACKUP_RUNTIME_PLUGINS_JSON" \
+              "AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID=$AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID" \
+              "AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT=$AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT" \
+              "AGENT_BACKUP_STORAGE_SCOPE=$AGENT_BACKUP_STORAGE_SCOPE" \
+              "AGENT_BACKUP_SPOOL_MAX_BYTES=$AGENT_BACKUP_SPOOL_MAX_BYTES" \
+              "AGENT_BACKUP_SPOOL_MIN_FREE_BYTES=$AGENT_BACKUP_SPOOL_MIN_FREE_BYTES" \
+              "AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE=$AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE" \
+              "AGENT_BACKUP_CAPTURE_DEADLINE_MS=$AGENT_BACKUP_CAPTURE_DEADLINE_MS" \
+              "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS=$AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS" \
+              "AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS=$AGENT_BACKUP_CATALOG_WORKER_INTERVAL_MS" \
+              "AGENT_BACKUP_CATALOG_WORKER_RETRY_MS=$AGENT_BACKUP_CATALOG_WORKER_RETRY_MS" \
+              "AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS=$AGENT_BACKUP_CATALOG_WORKER_SHUTDOWN_TIMEOUT_MS"; do
               key="${kv%%=*}"
               val="${kv#*=}"
               [ -n "$val" ] || continue
+              case "$val" in
+                *$'\n'*|*$'\r'*)
+                  echo "::error::Refusing multiline setting for $key"
+                  exit 1
+                  ;;
+              esac
               sudo sed -i "/^${key}=/d" "$ENV_FILE"
               printf '%s=%s\n' "$key" "$val" | sudo tee -a "$ENV_FILE" >/dev/null
             done
@@ -654,6 +740,82 @@ jobs:
             fi
             echo "Verified required provisioning-host setting names; values were not printed."
 
+            # Verify the dormant gate contract without disclosing the file. If
+            # a future reviewed change enables the runtime, this same block
+            # immediately promotes every production-composition name to a
+            # required preflight input.
+            for gate_name in AGENT_BACKUP_CATALOG_RUNTIME_ENABLED AGENT_BACKUP_RPO_SCHEDULER_ENABLED; do
+              gate_count=$(sudo awk -F= -v required_name="$gate_name" '$1 == required_name { count += 1 } END { print count + 0 }' "$ENV_FILE")
+              gate_value=$(sudo awk -F= -v required_name="$gate_name" '$1 == required_name { value=$2 } END { print value }' "$ENV_FILE")
+              if [ "$gate_count" -ne 1 ] || [ "$gate_value" != "0" ]; then
+                echo "::error::Backup catalogue merge-time gate contract is invalid for $gate_name"
+                exit 1
+              fi
+            done
+            BACKUP_GATE=0
+            if [ "$BACKUP_GATE" = "1" ]; then
+              required_backup_settings=(
+                DATABASE_URL
+                SECRETS_MASTER_KEY
+                AGENT_BACKUP_CATALOG_WORKER_ID
+                AGENT_BACKUP_R2_ENDPOINT_ALIAS
+                AGENT_BACKUP_R2_ACCOUNT_ID
+                AGENT_BACKUP_R2_ENDPOINT
+                AGENT_BACKUP_R2_BUCKET
+                AGENT_BACKUP_R2_REGION
+                AGENT_BACKUP_R2_ACCESS_KEY_ID
+                AGENT_BACKUP_R2_SECRET_ACCESS_KEY
+                AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS
+                AGENT_BACKUP_HETZNER_ACCOUNT_ID
+                AGENT_BACKUP_HETZNER_ENDPOINT
+                AGENT_BACKUP_HETZNER_BUCKET
+                AGENT_BACKUP_HETZNER_REGION
+                AGENT_BACKUP_HETZNER_ACCESS_KEY_ID
+                AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY
+                AGENT_BACKUP_STEWARD_KMS_BASE_URL
+                AGENT_BACKUP_STEWARD_KMS_TOKEN
+                AGENT_BACKUP_AGENT_SCHEMA_VERSION
+                AGENT_BACKUP_DATABASE_SCHEMA_VERSION
+                AGENT_BACKUP_RUNTIME_PLUGINS_JSON
+                AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID
+                AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT
+                AGENT_BACKUP_STORAGE_SCOPE
+                AGENT_BACKUP_SPOOL_STATE_DIRECTORY
+                AGENT_BACKUP_SPOOL_MAX_BYTES
+                AGENT_BACKUP_SPOOL_MIN_FREE_BYTES
+                AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE
+                AGENT_BACKUP_CAPTURE_DEADLINE_MS
+                AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS
+              )
+              missing_backup_settings=()
+              for name in "${required_backup_settings[@]}"; do
+                if ! sudo awk -F= -v required_name="$name" '
+                  $1 == required_name {
+                    sub(/^[^=]*=/, "")
+                    value = $0
+                    gsub(/[[:space:]]/, "", value)
+                    if (length(value) > 0) found = 1
+                  }
+                  END { exit found ? 0 : 1 }
+                ' "$ENV_FILE"; then
+                  missing_backup_settings+=("$name")
+                fi
+              done
+              if [ "${#missing_backup_settings[@]}" -gt 0 ]; then
+                echo "::error::Backup catalogue host is missing required setting name(s): ${missing_backup_settings[*]}"
+                exit 1
+              fi
+            fi
+            echo "Verified disabled backup-catalogue gate and configuration names; values were not printed."
+
+            AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0 \
+              AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0 \
+              AGENT_BACKUP_SPOOL_STATE_DIRECTORY=/var/lib/eliza-backup-catalog/spool \
+              AGENT_BACKUP_CATALOG_WORKER_HEALTH_FILE=/run/eliza-backup-catalog/health.json \
+              /opt/eliza/node_modules/.bin/tsx \
+              --tsconfig /opt/eliza/packages/cloud/shared/tsconfig.json \
+              packages/cloud/scripts/admin/daemons/backup-catalog-worker-preflight.ts
+
             # This workflow can reach the restart independently of the cloud
             # deploy workflow's migrate-db job. Bind activation to the exact
             # catalog and migration hash instead of assuming another workflow
@@ -681,7 +843,8 @@ jobs:
 
             sudo systemctl restart "$SYSTEMD_UNIT"
             sudo systemctl restart eliza-agent-router.service
-            echo "=== Restart issued for both daemons ==="
+            sudo systemctl restart "$BACKUP_SYSTEMD_UNIT"
+            echo "=== Restart issued for provisioning, router, and dormant backup daemons ==="
 
             # The canonical edge origin must terminate in the nginx vhost that
             # proxies the agent-router daemon. Without this alias, nginx
@@ -719,7 +882,7 @@ jobs:
           username: deploy
           key: ${{ secrets.ELIZA_PROVISIONING_SSH_KEY }}
           command_timeout: 5m
-          envs: SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
+          envs: SYSTEMD_UNIT,BACKUP_SYSTEMD_UNIT,ELIZA_CLOUD_AGENT_BASE_DOMAIN,AGENT_ROUTER_PUBLIC_HOST
           script: |
             set -euo pipefail
             ENV_FILE=/opt/eliza/cloud/.env.local
@@ -734,13 +897,32 @@ jobs:
             # error / restart-loop in the journal since deploy.
             HEALTH_SINCE_TS="$(date -u '+%Y-%m-%d %H:%M:%S')"
             STABLE_THRESHOLD_SEC=20
-            FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
+            FATAL_LOG_PATTERN="\[(provisioning-worker|agent-router|backup-catalog-worker)\] (fatal|unhandled rejection)|node:internal/.*Error:|Error \[ERR_|^[A-Za-z]+Error:"
             report_public_route_failure() {
               sudo nginx -t || true
               sudo systemctl status nginx --no-pager || true
               sudo journalctl -u nginx --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
               sudo systemctl status eliza-agent-router.service --no-pager || true
               sudo journalctl -u eliza-agent-router.service --since "$HEALTH_SINCE_TS" -n 200 --no-pager || true
+            }
+            validate_disabled_backup_health() {
+              node -e '
+                let raw = "";
+                process.stdin.on("data", (chunk) => { raw += chunk; });
+                process.stdin.on("end", () => {
+                  try {
+                    const parsed = JSON.parse(raw);
+                    const valid =
+                      parsed &&
+                      parsed.format === "elizaos.agent-backup.catalog-worker-health.v1" &&
+                      parsed.state === "disabled" &&
+                      parsed.enabled === false;
+                    process.exit(valid ? 0 : 1);
+                  } catch {
+                    process.exit(1);
+                  }
+                });
+              '
             }
             # The router's health contract is a JSON object with boolean
             # ok === true. A substring grep would also accept HTML error
@@ -766,6 +948,27 @@ jobs:
               '
             }
             for attempt in $(seq 1 18); do
+              if ! sudo systemctl is-active --quiet "$BACKUP_SYSTEMD_UNIT"; then
+                echo "Health check attempt $attempt/18: dormant backup worker not active yet."
+                sleep 5
+                continue
+              fi
+              BACKUP_JOURNAL=$(sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
+              if echo "$BACKUP_JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
+                echo "::error::Backup catalogue worker logged a fatal error since deploy."
+                echo "$BACKUP_JOURNAL" | tail -n 50
+                exit 1
+              fi
+              if ! test -s /run/eliza-backup-catalog/health.json; then
+                echo "Health check attempt $attempt/18: backup health has not reported disabled yet."
+                sleep 5
+                continue
+              fi
+              if ! validate_disabled_backup_health < /run/eliza-backup-catalog/health.json; then
+                echo "Health check attempt $attempt/18: backup health has not reported disabled yet."
+                sleep 5
+                continue
+              fi
               if sudo systemctl is-active --quiet "$SYSTEMD_UNIT"; then
                 JOURNAL=$(sudo journalctl -u "$SYSTEMD_UNIT" --since "$HEALTH_SINCE_TS" --no-pager 2>/dev/null || true)
                 if echo "$JOURNAL" | grep -qE "$FATAL_LOG_PATTERN"; then
@@ -829,7 +1032,7 @@ jobs:
                       report_public_route_failure
                       exit 1
                     fi
-                    echo "Both daemons active and stable (worker ${AGE}s, router ${ROUTER_AGE}s, local and canonical health/readiness OK) on attempt $attempt."
+                    echo "Provisioning/router stable and backup worker disabled/healthy (worker ${AGE}s, router ${ROUTER_AGE}s) on attempt $attempt."
                     exit 0
                   fi
                   echo "Health check attempt $attempt/18: worker stable (${AGE}s), router ${ROUTER_AGE}s but health/readiness not ready on port ${ROUTER_PORT}."
@@ -848,6 +1051,8 @@ jobs:
             sudo journalctl -u "$SYSTEMD_UNIT" -n 200 --no-pager || true
             sudo systemctl status eliza-agent-router.service --no-pager || true
             sudo journalctl -u eliza-agent-router.service -n 200 --no-pager || true
+            sudo systemctl status "$BACKUP_SYSTEMD_UNIT" --no-pager || true
+            sudo journalctl -u "$BACKUP_SYSTEMD_UNIT" -n 200 --no-pager || true
             exit 1
 
       - name: Notify Discord (Success)

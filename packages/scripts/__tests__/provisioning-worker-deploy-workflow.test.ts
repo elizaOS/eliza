@@ -19,12 +19,24 @@ const provisioningService = readFileSync(
   join(root, "packages/cloud/scripts/admin/eliza-provisioning-worker.service"),
   "utf8",
 );
+const backupService = readFileSync(
+  join(
+    root,
+    "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
+  ),
+  "utf8",
+);
+const backupEnvExample = readFileSync(
+  join(root, "packages/cloud/shared/.env.example"),
+  "utf8",
+);
 const services = [
   provisioningService,
   readFileSync(
     join(root, "packages/cloud/scripts/admin/eliza-agent-router.service"),
     "utf8",
   ),
+  backupService,
 ];
 
 interface WorkflowStep {
@@ -154,6 +166,11 @@ describe("provisioning worker deployment contract", () => {
       "SANDBOX_REGISTRY_REDIS_URL",
       "DATABASE_URL",
       "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
     ];
     const deployJob = parsedWorkflow.jobs?.deploy;
     expect(deployJob).toBeDefined();
@@ -218,6 +235,11 @@ describe("provisioning worker deployment contract", () => {
       "SANDBOX_REGISTRY_REDIS_URL",
       "DATABASE_URL",
       "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
     ]) {
       expect(remoteDeploy.env?.[name]).toContain("secrets.");
     }
@@ -282,7 +304,7 @@ describe("provisioning worker deployment contract", () => {
     expect(workflow).toContain("timeout-minutes: 95");
   });
 
-  it("regenerates before deploy and self-heals both services", () => {
+  it("regenerates before deploy and self-heals every service", () => {
     expect(workflow).toContain(
       "bash packages/cloud/scripts/admin/ensure-generated-keywords.sh",
     );
@@ -291,6 +313,89 @@ describe("provisioning worker deployment contract", () => {
         "ExecStartPre=/opt/eliza/packages/cloud/scripts/admin/ensure-generated-keywords.sh",
       );
     }
+  });
+
+  it("installs the dormant backup worker with persistent spool and exact disabled health", () => {
+    expect(workflow).toContain(
+      "packages/cloud/scripts/admin/eliza-backup-catalog-worker.service",
+    );
+    expect(workflow).toContain(
+      'sudo systemctl enable "$SYSTEMD_UNIT" eliza-agent-router.service "$BACKUP_SYSTEMD_UNIT"',
+    );
+    expect(workflow).toContain('sudo systemctl restart "$BACKUP_SYSTEMD_UNIT"');
+    expect(workflow).toContain(
+      'parsed.format === "elizaos.agent-backup.catalog-worker-health.v1"',
+    );
+    expect(workflow).toContain('parsed.state === "disabled"');
+    expect(workflow).toContain("parsed.enabled === false");
+
+    expect(backupService).toContain("StateDirectory=eliza-backup-catalog");
+    expect(backupService).toContain("RuntimeDirectory=eliza-backup-catalog");
+    expect(backupService).toContain("TimeoutStopSec=30");
+    expect(backupService).toContain("KillSignal=SIGTERM");
+    expect(backupService).toContain("backup-catalog-worker-preflight.ts");
+    expect(
+      backupService.match(/AGENT_BACKUP_CATALOG_RUNTIME_ENABLED=0/g),
+    ).toHaveLength(2);
+    expect(
+      backupService.match(/AGENT_BACKUP_RPO_SCHEDULER_ENABLED=0/g),
+    ).toHaveLength(2);
+  });
+
+  it("documents and reconciles every enabled backup authority name", () => {
+    for (const name of [
+      "DATABASE_URL",
+      "SECRETS_MASTER_KEY",
+      "AGENT_BACKUP_CATALOG_WORKER_ID",
+      "AGENT_BACKUP_R2_ENDPOINT_ALIAS",
+      "AGENT_BACKUP_R2_ACCOUNT_ID",
+      "AGENT_BACKUP_R2_ENDPOINT",
+      "AGENT_BACKUP_R2_BUCKET",
+      "AGENT_BACKUP_R2_REGION",
+      "AGENT_BACKUP_R2_ACCESS_KEY_ID",
+      "AGENT_BACKUP_R2_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_HETZNER_ENDPOINT_ALIAS",
+      "AGENT_BACKUP_HETZNER_ACCOUNT_ID",
+      "AGENT_BACKUP_HETZNER_ENDPOINT",
+      "AGENT_BACKUP_HETZNER_BUCKET",
+      "AGENT_BACKUP_HETZNER_REGION",
+      "AGENT_BACKUP_HETZNER_ACCESS_KEY_ID",
+      "AGENT_BACKUP_HETZNER_SECRET_ACCESS_KEY",
+      "AGENT_BACKUP_STEWARD_KMS_BASE_URL",
+      "AGENT_BACKUP_STEWARD_KMS_TOKEN",
+      "AGENT_BACKUP_AGENT_SCHEMA_VERSION",
+      "AGENT_BACKUP_DATABASE_SCHEMA_VERSION",
+      "AGENT_BACKUP_RUNTIME_PLUGINS_JSON",
+      "AGENT_BACKUP_LEGACY_WRITER_DRAIN_DEPLOYMENT_ID",
+      "AGENT_BACKUP_LEGACY_WRITER_DRAINED_AT",
+      "AGENT_BACKUP_STORAGE_SCOPE",
+      "AGENT_BACKUP_SPOOL_STATE_DIRECTORY",
+      "AGENT_BACKUP_SPOOL_MAX_BYTES",
+      "AGENT_BACKUP_SPOOL_MIN_FREE_BYTES",
+      "AGENT_BACKUP_SPOOL_CLEANUP_BATCH_SIZE",
+      "AGENT_BACKUP_CAPTURE_DEADLINE_MS",
+      "AGENT_BACKUP_OBJECT_TRANSFER_DEADLINE_MS",
+    ]) {
+      expect(workflow).toContain(name);
+      expect(backupEnvExample).toContain(name);
+    }
+  });
+
+  it("keeps both backup gates uniquely off while treating enabled authority as optional", () => {
+    for (const gate of [
+      "AGENT_BACKUP_CATALOG_RUNTIME_ENABLED",
+      "AGENT_BACKUP_RPO_SCHEDULER_ENABLED",
+    ]) {
+      expect(workflow).toContain(`sudo sed -i "/^${gate}=/d" "$ENV_FILE"`);
+      expect(workflow).toContain(
+        `printf '%s=%s\\n' ${gate} 0 | sudo tee -a "$ENV_FILE" >/dev/null`,
+      );
+    }
+    expect(workflow).toContain("BACKUP_GATE=0");
+    expect(workflow).toContain('if [ "$BACKUP_GATE" = "1" ]; then');
+    expect(workflow).toContain(
+      "Verified disabled backup-catalogue gate and configuration names; values were not printed.",
+    );
   });
 
   it("reconciles WARM_POOL_ENABLED from the protected environment so re-arms cannot drop it (#16961)", () => {
