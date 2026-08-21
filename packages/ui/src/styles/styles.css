@@ -4,6 +4,12 @@
 @import "@fontsource/poppins/700.css";
 @import "@fontsource/poppins/800.css";
 @import "tailwindcss";
+/* NuPhy UI — only the @theme inline block for Tailwind utility class
+   generation. The :root/.dark variable values from tokens.css are NOT
+   imported globally (they would override Eliza's theme). Instead, NuPhy
+   token values are scoped to .nuphy-scope in nuphy-scope.css. */
+@import "./nuphy-tailwind-theme.css";
+@import "./nuphy-scope.css";
 @import "./shadcn-utilities.css";
 @import "./base.css";
 @import "./tailwind-theme.css";
@@ -36,6 +42,10 @@ electrobun-wgpu {
 @source "../../../ui/src";
 @source "../../../../plugins/app-lifeops/src";
 @source "../../../../plugins/plugin-maps/src";
+/* Scan NuPhy UI component dist files so Tailwind v4 generates the utility
+   classes used by @extrastu/nuphy-ui components (bg-fill, bg-fill-strong,
+   ring-ring, text-popover-foreground, etc.). */
+@source "../../../ui/node_modules/@extrastu/nuphy-ui/dist";
 
 /* Memories sits beside a persistent filter rail in short landscape, where the
    default feature-empty stack falls behind the assistant overlay. Compact only

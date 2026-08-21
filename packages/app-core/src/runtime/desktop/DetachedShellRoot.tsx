@@ -242,7 +242,7 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       return (
         <DetachedWorkspaceView chatScope="page-settings">
           <DetachedLazyBoundary>
-            <section className="w-full overflow-y-auto px-4 py-4 lg:px-6">
+            <section className="w-full flex-1 min-h-0 overflow-hidden">
               <DetachedSettingsSectionView section={target.settingsSection} />
             </section>
           </DetachedLazyBoundary>

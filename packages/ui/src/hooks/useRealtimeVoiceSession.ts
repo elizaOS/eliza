@@ -825,16 +825,26 @@ export function useRealtimeVoiceSession(
 /**
  * Read the VITE-side realtime-voice flag. Vite statically replaces
  * `import.meta.env.VITE_*` at build time, so this MUST be a literal member read
- * (not a dynamic key). Absent/blank/anything-but-truthy ⇒ off, so the realtime
- * path never arms unless a build explicitly opts in — the batch path stays the
- * default everywhere.
+ * (not a dynamic key).
+ *
+ * Default ON for cloud-only builds (where the cloud realtime WS endpoint is
+ * available); OFF for local/embedded builds unless explicitly opted in.
+ * An explicit `VITE_VOICE_REALTIME_WS=0|false|no|off` always wins.
  */
 export function isRealtimeVoiceFlagEnabled(): boolean {
   try {
     const raw = import.meta.env?.VITE_VOICE_REALTIME_WS as unknown;
-    if (typeof raw !== "string") return false;
-    const v = raw.trim().toLowerCase();
-    return v === "1" || v === "true" || v === "yes" || v === "on";
+    if (typeof raw === "string") {
+      const v = raw.trim().toLowerCase();
+      // Explicit opt-out always wins.
+      if (v === "0" || v === "false" || v === "no" || v === "off" || v === "") {
+        return false;
+      }
+      return true;
+    }
+    // Unset flag: default ON for cloud-only builds, OFF otherwise.
+    const runtimeMode = import.meta.env?.VITE_ELIZA_DESKTOP_RUNTIME_MODE as unknown;
+    return typeof runtimeMode === "string" && runtimeMode.trim().toLowerCase() === "cloud";
   } catch {
     // error-policy:J4 An unreadable build flag explicitly leaves realtime unavailable.
     return false;

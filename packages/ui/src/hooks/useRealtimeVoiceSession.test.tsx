@@ -866,9 +866,9 @@ describe("useRealtimeVoiceSession", () => {
 });
 
 describe("isRealtimeVoiceFlagEnabled", () => {
-  it("defaults to off (batch path is the default everywhere)", () => {
-    // In the test env VITE_VOICE_REALTIME_WS is unset → the flag reads false, so
-    // the realtime path is off unless a build explicitly opts in.
+  it("defaults to off in non-cloud builds (batch path is the default)", () => {
+    // In the test env both VITE_VOICE_REALTIME_WS and
+    // VITE_ELIZA_DESKTOP_RUNTIME_MODE are unset → the flag reads false.
     expect(isRealtimeVoiceFlagEnabled()).toBe(false);
   });
 });
