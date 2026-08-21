@@ -62,6 +62,9 @@ mock.module("../../db/repositories/users", () => ({
 mock.module("./steward-platform-users", () => ({
   deactivateStewardPlatformUser: deactivateSteward,
   deleteStewardPlatformUser: deleteSteward,
+  getStewardApiUrl: () => "https://steward.test",
+  getStewardPlatformKey: () => "test-platform-key",
+  isStewardPlatformConfigured: () => true,
 }));
 mock.module("./user-sessions", () => ({
   userSessionsService: { endAllUserSessions: mock(async () => undefined) },
