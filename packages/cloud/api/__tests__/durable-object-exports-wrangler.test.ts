@@ -3,10 +3,11 @@ import { describe, expect, test } from "bun:test";
 type DurableObjectExport = {
   type?: string;
   storage?: string;
+  state?: string;
 };
 
 describe("Durable Object deployment contract", () => {
-  test("declares every live class without replaying legacy migrations", async () => {
+  test("declares every live class and retired namespace without replaying legacy migrations", async () => {
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
@@ -17,6 +18,7 @@ describe("Durable Object deployment contract", () => {
     expect(config.migrations).toBeUndefined();
     expect(config.exports).toEqual({
       AnonymousChatGate: { type: "durable-object", storage: "sqlite" },
+      DoorDashCheckoutGate: { type: "durable-object", state: "deleted" },
       InferenceAdmissionGate: { type: "durable-object", storage: "sqlite" },
       InferenceRateLimitV2RollbackFloor: {
         type: "durable-object",
