@@ -416,9 +416,9 @@ describe("formatLocalModelLifecycleMatrixMarkdown", () => {
 		expect(markdown).toContain("## Blockers");
 	});
 
-	it("escapes backslashes before markdown table delimiters", () => {
+	it("escapes delimiters and normalizes every line separator in markdown cells", () => {
 		const matrix = buildLocalModelLifecycleMatrix({
-			catalog: [catalogModel({ id: String.raw`model\|spoof` })],
+			catalog: [catalogModel({ id: "model\\|spoof\rnext\u2028tail" })],
 			installed: [],
 			assignments: {},
 			hardware: hardware(),
@@ -426,7 +426,7 @@ describe("formatLocalModelLifecycleMatrixMarkdown", () => {
 		});
 
 		expect(formatLocalModelLifecycleMatrixMarkdown(matrix)).toContain(
-			String.raw`model\\\|spoof`,
+			String.raw`model\\\|spoof next tail`,
 		);
 	});
 });

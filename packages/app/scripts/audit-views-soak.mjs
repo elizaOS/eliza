@@ -28,6 +28,7 @@ import path, { join } from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { encodeMarkdownTableCell } from "../../scripts/markdown-table-cell.mjs";
 import {
   finalizeSoakEvidence,
   waitForOnboardingClearance,
@@ -247,10 +248,7 @@ function maxNumber(values) {
 }
 
 function escapeCell(value) {
-  return String(value ?? "")
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/\r?\n/g, " ");
+  return encodeMarkdownTableCell(value);
 }
 
 function buildScorecard({

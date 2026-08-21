@@ -18,6 +18,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { encodeMarkdownTableCell } from "../../scripts/markdown-table-cell.mjs";
 import { compressPromptDescription } from "../src/prompt-compression.ts";
 import { ensureDirectory, readJson } from "./file-utils.js";
 import { collectRegisteredActionInventory } from "./registered-action-inventory.js";
@@ -470,10 +471,7 @@ function markdownText(value) {
  * @returns {string}
  */
 function markdownCell(value) {
-  return markdownText(value)
-    .replace(/\\/g, "\\\\")
-    .replace(/\|/g, "\\|")
-    .replace(/\r?\n/g, "<br />");
+  return encodeMarkdownTableCell(markdownText(value), "<br />");
 }
 
 /**

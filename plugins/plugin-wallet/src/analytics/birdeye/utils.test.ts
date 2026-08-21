@@ -72,5 +72,8 @@ describe("formatJsonScalar", () => {
   it("emits a JSON-decodable quoted scalar", () => {
     const input = String.raw`wallet "label" \ path`;
     expect(JSON.parse(formatJsonScalar(input))).toBe(input);
+    for (const scalar of ["true", "null", "123", "wallet-address"]) {
+      expect(JSON.parse(formatJsonScalar(scalar))).toBe(scalar);
+    }
   });
 });

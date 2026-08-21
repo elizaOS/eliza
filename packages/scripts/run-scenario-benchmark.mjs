@@ -24,6 +24,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { encodeMarkdownTableCell } from "./markdown-table-cell.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -168,10 +169,7 @@ function renderMarkdown() {
     const result = byId.get(entry.id);
     const status = result?.status ?? "not-run";
     const duration = result?.durationMs ?? "-";
-    const error = (result?.error ?? "")
-      .replace(/\\/g, "\\\\")
-      .replace(/\|/g, "\\|")
-      .replace(/\r?\n/g, " ");
+    const error = encodeMarkdownTableCell(result?.error);
     const domain = entry.file.startsWith("connector.")
       ? "connector"
       : "executive-assistant";

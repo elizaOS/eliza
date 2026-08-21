@@ -360,7 +360,7 @@ export function generateOpenAPIYAML(baseUrl?: string): string {
 
 /** Serialize arbitrary OpenAPI-compatible data without hand-built YAML escaping. */
 export function serializeOpenAPIYAML(value: unknown): string {
-  return stringifyYAML(value);
+  return stringifyYAML(value, { aliasDuplicateObjects: false });
 }
 
 export function downloadOpenAPISpec(format: "json" | "yaml", baseUrl?: string) {

@@ -25,6 +25,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { encodeMarkdownTableCell } from "../../packages/scripts/markdown-table-cell.mjs";
 import {
   aggregateVerdicts,
   buildReviewPrompt,
@@ -244,7 +245,7 @@ async function mapPool(items, n, fn) {
   return out;
 }
 
-function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
+export function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
   const lines = [];
   lines.push("# Full Walkthrough — Vision Verdicts");
   lines.push("");
@@ -282,7 +283,7 @@ function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
           .join("; ")
           .slice(0, 200) || "—";
     lines.push(
-      `| ${r.stepN} ${r.stepId} | ${r.viewport} | ${badge} | ${notes.replace(/\\/g, "\\\\").replace(/\|/g, "\\|")} |`,
+      `| ${r.stepN} ${r.stepId} | ${r.viewport} | ${badge} | ${encodeMarkdownTableCell(notes)} |`,
     );
   }
   lines.push("");
@@ -393,7 +394,9 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error("[walkthrough-vision] fatal", err);
-  process.exit(1);
-});
+if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    console.error("[walkthrough-vision] fatal", err);
+    process.exit(1);
+  });
+}
