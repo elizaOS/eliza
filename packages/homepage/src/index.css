@@ -1441,10 +1441,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-hero-heading {
   margin: 0;
-  max-width: 14ch;
-  font-size: clamp(2.25rem, 4.2vw, 4.15rem);
+  max-width: 18ch;
+  font-size: clamp(2.5rem, 3.45vw, 3.25rem);
   font-weight: 720;
-  line-height: 0.98;
+  line-height: 1.03;
   letter-spacing: -0.035em;
   text-wrap: balance;
   color: var(--brand-black);
@@ -1525,16 +1525,12 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  min-height: 2.55rem;
-  padding: 0 0.8rem;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
   border-radius: 999px;
   background: rgb(255 255 255 / 82%);
-  color: rgb(17 17 17 / 72%);
   box-shadow: 0 6px 18px rgb(0 0 0 / 8%);
-  font-size: 0.82rem;
-  font-weight: 620;
-  line-height: 1;
   text-decoration: none;
   cursor: pointer;
   transition:
@@ -1553,6 +1549,16 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 .landing-channel:focus-visible {
   outline: 3px solid #111;
   outline-offset: 2px;
+}
+
+.landing-channel span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .landing-cta {
@@ -1581,15 +1587,15 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-cta--black {
-  background: var(--landing-orange);
+  background: #000000;
   color: var(--brand-white);
-  box-shadow: 0 12px 28px rgb(255 88 0 / 24%);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
 }
 
 .landing-cta--black:hover {
-  background: #d94b00;
+  background: #171717;
   color: var(--brand-white);
-  box-shadow: 0 14px 32px rgb(217 75 0 / 30%);
+  box-shadow: 0 14px 32px rgb(0 0 0 / 24%);
   transform: translateY(-1px);
 }
 
