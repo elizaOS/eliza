@@ -155,6 +155,7 @@ interface ScenarioRecord {
   file: string;
   source: string;
   plugins: string[];
+  runtimeSurfaceIds: string[];
   lane: "deterministic" | "live";
 }
 
@@ -273,6 +274,19 @@ function stableToken(value: string): string {
     .slice(0, 180);
 }
 
+/** Builds the canonical identity without coupling it to a movable source file. */
+export function runtimeSurfaceId(surface: {
+  kind: RuntimeSurfaceKind;
+  name: string;
+  package: { packageName: string };
+}): string {
+  return [
+    surface.package.packageName,
+    surface.kind,
+    stableToken(surface.name),
+  ].join(":");
+}
+
 function readJson(file: string): Record<string, unknown> {
   return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>;
 }
@@ -375,6 +389,18 @@ export function packageEntryPoints(packageDir: string): string[] {
     if (typeof value === "string") {
       const normalized = value.replace(/^\.\//, "");
       if (
+        /^dist\/.*\.(?:m?js|cjs)$/.test(normalized) &&
+        !normalized.includes("*")
+      ) {
+        const stem = normalized
+          .replace(/^dist\//, "src/")
+          .replace(/\.(?:m?js|cjs)$/, "");
+        for (const extension of [".ts", ".tsx", ".mts", ".cts"]) {
+          const sourceFile = path.join(packageDir, `${stem}${extension}`);
+          if (existsSync(sourceFile)) candidates.add(sourceFile);
+        }
+      }
+      if (
         /\.(?:ts|tsx|mts|cts)$/.test(normalized) &&
         !/(?:^|\/)dist\//.test(normalized) &&
         !/\.d\.(?:ts|mts|cts)$/.test(normalized)
@@ -390,6 +416,7 @@ export function packageEntryPoints(packageDir: string): string[] {
     }
   };
   visit(manifest.exports);
+  visit(manifest.bin);
   for (const field of ["main", "module", "source"]) {
     const value = manifest[field];
     if (typeof value !== "string") continue;
@@ -519,6 +546,17 @@ function propertyName(node: ts.PropertyName | undefined): string | null {
     return literalText(expression);
   }
   return null;
+}
+
+function resolvedPropertyName(
+  node: ts.PropertyName | undefined,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): string | null {
+  if (node && ts.isComputedPropertyName(node)) {
+    return resolvedScalar(node.expression, unit, context);
+  }
+  return propertyName(node);
 }
 
 function literalText(node: ts.Node): string | null {
@@ -925,7 +963,10 @@ function modelFactoryEntries(
       return;
     }
     if (ts.isIdentifier(current)) {
-      const declaration = resolveIdentifier(current.text, sourceUnit, context);
+      const local = nearestLocalDeclaration(current.text, current, sourceUnit);
+      const declaration = local
+        ? { node: local, unit: sourceUnit }
+        : resolveIdentifier(current.text, sourceUnit, context);
       if (declaration) collect(declaration.node, declaration.unit, seen);
       return;
     }
@@ -1124,7 +1165,7 @@ function extractEntries(
         return current.properties.flatMap((property) => {
           if (ts.isSpreadAssignment(property))
             return extractEntries(property.expression, unit, kind, context);
-          const name = propertyName(property.name);
+          const name = resolvedPropertyName(property.name, unit, context);
           return name ? [{ name, sourceFile: unit.file, object: current }] : [];
         });
       }
@@ -1542,7 +1583,22 @@ function workspacePackageDirs(): string[] {
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/core"),
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/agent"),
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/app-core"),
+    path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/api"),
   );
+  const cloudServicesRoot = path.join(
+    RUNTIME_SURFACE_REPO_ROOT,
+    "packages/cloud/services",
+  );
+  for (const entry of readdirSync(cloudServicesRoot).sort()) {
+    const dir = path.join(cloudServicesRoot, entry);
+    if (
+      !entry.startsWith("_") &&
+      statSync(dir).isDirectory() &&
+      existsSync(path.join(dir, "package.json"))
+    ) {
+      dirs.push(dir);
+    }
+  }
   return [...new Set(dirs)].sort();
 }
 
@@ -1552,20 +1608,190 @@ function hostAssemblySurfaces(): RawSurface[] {
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/agent"),
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/app-core"),
   ].flatMap(reachableProductionFiles);
-  const hostSources = hostFiles.map((file) => ({
-    file,
-    source: readFileSync(file, "utf8"),
-  }));
+  const hostSources = hostFiles.map((file) => {
+    const source = readFileSync(file, "utf8");
+    return {
+      file,
+      source,
+      ast: ts.createSourceFile(
+        file,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      ),
+    };
+  });
+  const hostUseCache = new Map<string, Set<string>>();
+  const hostUsedExports = (
+    host: (typeof hostSources)[number],
+    packageName: string,
+  ): Set<string> => {
+    const cacheKey = `${host.file}:${packageName}`;
+    const cached = hostUseCache.get(cacheKey);
+    if (cached) return cached;
+    const localExports = new Map<string, string>();
+    const namespaces = new Set<string>();
+    const ownsSpecifier = (specifier: string): boolean =>
+      specifier === packageName || specifier.startsWith(`${packageName}/`);
+    const importCall = (
+      node: ts.Node | undefined,
+    ): ts.CallExpression | null => {
+      if (!node) return null;
+      let current = unwrap(node);
+      if (ts.isAwaitExpression(current)) current = unwrap(current.expression);
+      return ts.isCallExpression(current) &&
+        current.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        current.arguments[0] &&
+        ts.isStringLiteral(current.arguments[0]) &&
+        ownsSpecifier(current.arguments[0].text)
+        ? current
+        : null;
+    };
+    for (const statement of host.ast.statements) {
+      if (
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier) &&
+        ownsSpecifier(statement.moduleSpecifier.text) &&
+        statement.importClause
+      ) {
+        const bindings = statement.importClause.namedBindings;
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            localExports.set(
+              element.name.text,
+              element.propertyName?.text ?? element.name.text,
+            );
+          }
+        } else if (bindings && ts.isNamespaceImport(bindings)) {
+          namespaces.add(bindings.name.text);
+        }
+      }
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (!importCall(declaration.initializer)) continue;
+          if (ts.isObjectBindingPattern(declaration.name)) {
+            for (const element of declaration.name.elements) {
+              if (!element.dotDotDotToken && ts.isIdentifier(element.name)) {
+                localExports.set(
+                  element.name.text,
+                  element.propertyName?.getText(host.ast) ?? element.name.text,
+                );
+              }
+            }
+          } else if (ts.isIdentifier(declaration.name)) {
+            namespaces.add(declaration.name.text);
+          }
+        }
+      }
+    }
+    const loaderFunctions = new Set<string>();
+    const containsPackageImport = (node: ts.Node): boolean => {
+      let found = false;
+      const inspect = (candidate: ts.Node): void => {
+        if (found) return;
+        if (importCall(candidate)) {
+          found = true;
+          return;
+        }
+        ts.forEachChild(candidate, inspect);
+      };
+      inspect(node);
+      return found;
+    };
+    const indexLoaders = (node: ts.Node): void => {
+      if (
+        ts.isFunctionDeclaration(node) &&
+        node.name &&
+        node.body &&
+        containsPackageImport(node.body)
+      ) {
+        loaderFunctions.add(node.name.text);
+      }
+      ts.forEachChild(node, indexLoaders);
+    };
+    indexLoaders(host.ast);
+    const containsLoaderCall = (node: ts.Node | undefined): boolean => {
+      if (!node) return false;
+      let found = false;
+      const inspect = (candidate: ts.Node): void => {
+        if (found) return;
+        if (
+          ts.isCallExpression(candidate) &&
+          ts.isIdentifier(candidate.expression) &&
+          loaderFunctions.has(candidate.expression.text)
+        ) {
+          found = true;
+          return;
+        }
+        ts.forEachChild(candidate, inspect);
+      };
+      inspect(node);
+      return found;
+    };
+    const indexDynamicImports = (node: ts.Node): void => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        (importCall(node.initializer) || containsLoaderCall(node.initializer))
+      ) {
+        if (ts.isObjectBindingPattern(node.name)) {
+          for (const element of node.name.elements) {
+            if (!element.dotDotDotToken && ts.isIdentifier(element.name)) {
+              localExports.set(
+                element.name.text,
+                element.propertyName?.getText(host.ast) ?? element.name.text,
+              );
+            }
+          }
+        } else if (ts.isIdentifier(node.name)) {
+          namespaces.add(node.name.text);
+        }
+      }
+      ts.forEachChild(node, indexDynamicImports);
+    };
+    indexDynamicImports(host.ast);
+    const used = new Set<string>();
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+        const expression = node.expression;
+        if (ts.isIdentifier(expression)) {
+          const imported = localExports.get(expression.text);
+          if (imported) used.add(imported);
+        }
+        if (
+          ts.isPropertyAccessExpression(expression) &&
+          ts.isIdentifier(expression.expression) &&
+          namespaces.has(expression.expression.text)
+        ) {
+          used.add(expression.name.text);
+        }
+        if (
+          ts.isCallExpression(node) &&
+          ts.isPropertyAccessExpression(node.expression) &&
+          /^registerService$/.test(node.expression.name.text)
+        ) {
+          for (const argument of node.arguments) {
+            const current = unwrap(argument);
+            if (!ts.isIdentifier(current)) continue;
+            const imported = localExports.get(current.text);
+            if (imported) used.add(imported);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(host.ast);
+    hostUseCache.set(cacheKey, used);
+    return used;
+  };
   const pluginRoot = path.join(RUNTIME_SURFACE_REPO_ROOT, "plugins");
   const rows: RawSurface[] = [];
   for (const entry of readdirSync(pluginRoot).sort()) {
     const packageDir = path.join(pluginRoot, entry);
     const info = packageContext(packageDir);
     if (!info) continue;
-    const consumers = hostSources.filter((host) =>
-      host.source.includes(info.packageName),
-    );
-    if (consumers.length === 0) continue;
+    if (!hostSources.some((host) => host.source.includes(info.packageName)))
+      continue;
     for (const entrypoint of packageEntryPoints(packageDir)) {
       const ast = ts.createSourceFile(
         entrypoint,
@@ -1593,7 +1819,12 @@ function hostAssemblySurfaces(): RawSurface[] {
                   ))
               ? "service"
               : null;
-          if (!kind || !consumers.some((host) => host.source.includes(name)))
+          if (
+            !kind ||
+            !hostSources.some((host) =>
+              hostUsedExports(host, info.packageName).has(name),
+            )
+          )
             continue;
           rows.push({
             kind,
@@ -1720,6 +1951,74 @@ function cloudServiceSurfaces(): RawSurface[] {
   return rows;
 }
 
+export function workerBindingsFromSource(
+  file: string,
+  source: string,
+): Array<{ kind: "queue" | "scheduled-worker"; name: string }> {
+  const rows: Array<{ kind: "queue" | "scheduled-worker"; name: string }> = [];
+  if (/\.jsonc?$/.test(file)) {
+    const parsed = ts.parseConfigFileTextToJson(file, source);
+    if (parsed.error || !parsed.config || typeof parsed.config !== "object") {
+      return rows;
+    }
+    const config = parsed.config as Record<string, unknown>;
+    const queues = config.queues;
+    if (queues && typeof queues === "object" && !Array.isArray(queues)) {
+      for (const field of ["producers", "consumers"] as const) {
+        const entries = (queues as Record<string, unknown>)[field];
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry))
+            continue;
+          const record = entry as Record<string, unknown>;
+          const name =
+            field === "producers" && typeof record.binding === "string"
+              ? record.binding
+              : typeof record.queue === "string"
+                ? record.queue
+                : typeof record.binding === "string"
+                  ? record.binding
+                  : null;
+          if (name) rows.push({ kind: "queue", name });
+        }
+      }
+    }
+    const triggers = config.triggers;
+    if (triggers && typeof triggers === "object" && !Array.isArray(triggers)) {
+      const crons = (triggers as Record<string, unknown>).crons;
+      if (Array.isArray(crons)) {
+        for (const cron of crons) {
+          if (typeof cron === "string")
+            rows.push({ kind: "scheduled-worker", name: cron });
+        }
+      }
+    }
+    return rows;
+  }
+  for (const block of source.split(/^\s*\[\[/m)) {
+    if (!/^queues\.(?:producers|consumers)\]\]/.test(block)) continue;
+    const producer = /^queues\.producers\]\]/.test(block);
+    const queue = producer
+      ? (block.match(/^\s*binding\s*=\s*["']([^"']+)["']/m) ??
+        block.match(/^\s*queue\s*=\s*["']([^"']+)["']/m))
+      : (block.match(/^\s*queue\s*=\s*["']([^"']+)["']/m) ??
+        block.match(/^\s*binding\s*=\s*["']([^"']+)["']/m));
+    if (queue) rows.push({ kind: "queue", name: queue[1] });
+  }
+  const triggerSection = source.match(
+    /^\s*\[triggers\]\s*$([\s\S]*?)(?=^\s*\[|(?![\s\S]))/m,
+  )?.[1];
+  if (triggerSection) {
+    const crons = triggerSection.match(/\bcrons?\s*=\s*\[([\s\S]*?)\]/)?.[1];
+    if (crons) {
+      for (const cron of crons.matchAll(/["']([^"']+)["']/g)) {
+        rows.push({ kind: "scheduled-worker", name: cron[1] });
+      }
+    }
+  }
+  return rows;
+}
+
 function workerBindingSurfaces(): RawSurface[] {
   const files = walkFiles(
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud"),
@@ -1730,33 +2029,17 @@ function workerBindingSurfaces(): RawSurface[] {
     const info = packageContext(path.dirname(file));
     if (!info) continue;
     const source = readFileSync(file, "utf8");
-    for (const match of source.matchAll(
-      /(?:queue|binding|name)\s*=\s*["']([^"']+)["']/g,
-    )) {
-      if (
-        !/queue|producer|consumer/i.test(
-          source.slice(Math.max(0, match.index - 200), match.index + 200),
-        )
-      )
-        continue;
+    for (const binding of workerBindingsFromSource(file, source)) {
       rows.push({
-        kind: "queue",
-        name: match[1],
+        kind: binding.kind,
+        name: binding.name,
         sourcePath: toRepoPath(file),
-        registrationField: "wrangler queue binding",
+        registrationField:
+          binding.kind === "queue"
+            ? "wrangler queue binding"
+            : "wrangler triggers.crons",
         package: info,
       });
-    }
-    for (const match of source.matchAll(/crons?\s*=\s*\[([^\]]+)\]/g)) {
-      for (const cron of match[1].matchAll(/["']([^"']+)["']/g)) {
-        rows.push({
-          kind: "scheduled-worker",
-          name: cron[1],
-          sourcePath: toRepoPath(file),
-          registrationField: "wrangler triggers.crons",
-          package: info,
-        });
-      }
     }
   }
   return rows;
@@ -1770,6 +2053,7 @@ export function isDeterministicScenarioSource(source: string): boolean {
 export function scenarioMetadataFromSource(source: string): {
   id: string | null;
   plugins: string[];
+  runtimeSurfaceIds: string[];
   lane: string | null;
 } {
   const ast = ts.createSourceFile(
@@ -1830,7 +2114,8 @@ export function scenarioMetadataFromSource(source: string): {
         }
       }
     }
-  if (!scenarioObject) return { id: null, plugins: [], lane: null };
+  if (!scenarioObject)
+    return { id: null, plugins: [], runtimeSurfaceIds: [], lane: null };
   const idProperty = scenarioObject.properties.find(
     (property): property is ts.PropertyAssignment =>
       ts.isPropertyAssignment(property) && propertyName(property.name) === "id",
@@ -1845,6 +2130,7 @@ export function scenarioMetadataFromSource(source: string): {
     ? literalText(unwrap(laneProperty.initializer))
     : null;
   const plugins = new Set<string>();
+  const runtimeSurfaceIds = new Set<string>();
   const requiresProperty = scenarioObject.properties.find(
     (property): property is ts.PropertyAssignment =>
       ts.isPropertyAssignment(property) &&
@@ -1870,7 +2156,26 @@ export function scenarioMetadataFromSource(source: string): {
       }
     }
   }
-  return { id, plugins: [...plugins].sort(), lane };
+  const runtimeSurfaceIdsProperty = scenarioObject.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      propertyName(property.name) === "runtimeSurfaceIds" &&
+      ts.isArrayLiteralExpression(unwrap(property.initializer)),
+  );
+  if (runtimeSurfaceIdsProperty) {
+    for (const element of (
+      unwrap(runtimeSurfaceIdsProperty.initializer) as ts.ArrayLiteralExpression
+    ).elements) {
+      const value = literalText(unwrap(element));
+      if (value) runtimeSurfaceIds.add(value);
+    }
+  }
+  return {
+    id,
+    plugins: [...plugins].sort(),
+    runtimeSurfaceIds: [...runtimeSurfaceIds].sort(),
+    lane,
+  };
 }
 
 function scenarioRecords(): ScenarioRecord[] {
@@ -1898,6 +2203,7 @@ function scenarioRecords(): ScenarioRecord[] {
         file: toRepoPath(file),
         source,
         plugins: metadata.plugins,
+        runtimeSurfaceIds: metadata.runtimeSurfaceIds,
         lane,
       });
     }
@@ -1905,17 +2211,35 @@ function scenarioRecords(): ScenarioRecord[] {
   return records;
 }
 
-function cloudE2eFiles(): Array<{ file: string; source: string }> {
+function explicitTestRuntimeSurfaceIds(source: string): string[] {
+  const ids = new Set<string>();
+  for (const match of source.matchAll(
+    /\b(?:test|it)(?:\.[A-Za-z]+)?\s*\(\s*["'`]runtime-surface:([^"'`]+)["'`]/g,
+  )) {
+    ids.add(match[1]);
+  }
+  return [...ids].sort();
+}
+
+function cloudE2eFiles(): Array<{
+  file: string;
+  source: string;
+  runtimeSurfaceIds: string[];
+}> {
   const roots = [
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/e2e"),
     path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/api/test/e2e"),
   ];
   return roots.flatMap((root) =>
     walkFiles(root, (file) => /\.(?:test|spec)\.(?:ts|tsx)$/.test(file)).map(
-      (file) => ({
-        file: toRepoPath(file),
-        source: readFileSync(file, "utf8"),
-      }),
+      (file) => {
+        const source = readFileSync(file, "utf8");
+        return {
+          file: toRepoPath(file),
+          source,
+          runtimeSurfaceIds: explicitTestRuntimeSurfaceIds(source),
+        };
+      },
     ),
   );
 }
@@ -1937,6 +2261,7 @@ export function scenarioOwnsSurface(
 export function isExecutableBoundaryEvidence(
   surface: Pick<RawSurface, "kind" | "name">,
   source: string,
+  fullSurfaceId?: string,
 ): boolean {
   let ast = EVIDENCE_AST_CACHE.get(source);
   if (!ast) {
@@ -1953,25 +2278,70 @@ export function isExecutableBoundaryEvidence(
     surface.kind === "route"
       ? surface.name.slice(surface.name.indexOf(" ") + 1)
       : surface.name;
-  const name =
-    surface.kind === "subaction"
-      ? (rawName.split(/[_/]/).at(-1) ?? rawName)
-      : rawName;
-  const signal = surface.kind === "route" ? rawName : name;
+  const signal = rawName;
+  if (!fullSurfaceId) return false;
+  const metadata = scenarioMetadataFromSource(source);
+  const scenarioDeclaresId = metadata.runtimeSurfaceIds.includes(fullSurfaceId);
+  let testDeclaresId = false;
+  const findTestDeclaration = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      /^(?:test|it)(?:\.|$)/.test(node.expression.getText(ast)) &&
+      node.arguments[0] &&
+      literalText(unwrap(node.arguments[0])) ===
+        `runtime-surface:${fullSurfaceId}`
+    ) {
+      testDeclaresId = true;
+    }
+    if (!testDeclaresId) ts.forEachChild(node, findTestDeclaration);
+  };
+  findTestDeclaration(ast);
+  if (!scenarioDeclaresId && !testDeclaresId) return false;
   const isTestCallback = (fn: ts.Node): boolean => {
     const parent = fn.parent;
     return (
       ts.isCallExpression(parent) &&
-      /^(?:test|it)(?:\.|$)/.test(parent.expression.getText(ast))
+      /^(?:test|it)(?:\.|$)/.test(parent.expression.getText(ast)) &&
+      Boolean(
+        parent.arguments[0] &&
+          literalText(unwrap(parent.arguments[0])) ===
+            `runtime-surface:${fullSurfaceId}`,
+      )
+    );
+  };
+  const isScenarioCallback = (fn: ts.Node): boolean => {
+    if (!scenarioDeclaresId) return false;
+    if (
+      ts.isMethodDeclaration(fn) &&
+      /^(?:setup|run|execute|steps|finalChecks|checks|assertions)$/.test(
+        propertyName(fn.name) ?? "",
+      )
+    ) {
+      return true;
+    }
+    return (
+      ts.isPropertyAssignment(fn.parent) &&
+      /^(?:setup|run|execute|steps|finalChecks|checks|assertions)$/.test(
+        propertyName(fn.parent.name) ?? "",
+      )
     );
   };
   const executable = (node: ts.Node): boolean => {
     let parent: ts.Node | undefined = node.parent;
     while (parent) {
-      if (ts.isFunctionLike(parent)) return isTestCallback(parent);
+      if (ts.isFunctionLike(parent))
+        return isTestCallback(parent) || isScenarioCallback(parent);
       parent = parent.parent;
     }
-    return true;
+    return scenarioDeclaresId;
+  };
+  const containsExactLiteral = (node: ts.Node, value: string): boolean => {
+    if (literalText(unwrap(node)) === value) return true;
+    let found = false;
+    ts.forEachChild(node, (child) => {
+      if (!found && containsExactLiteral(child, value)) found = true;
+    });
+    return found;
   };
   if (surface.kind === "route") {
     let routeProved = false;
@@ -1993,8 +2363,7 @@ export function isExecutableBoundaryEvidence(
             const pathArgument = candidate.arguments[0]
               ? literalText(unwrap(candidate.arguments[0]))
               : null;
-            if (pathArgument === signal || pathArgument?.includes(signal))
-              routeProved = true;
+            if (pathArgument === signal) routeProved = true;
           }
           if (!routeProved) ts.forEachChild(candidate, inspectAssertion);
         };
@@ -2013,7 +2382,7 @@ export function isExecutableBoundaryEvidence(
     }
     const callee = node.expression.getText(ast);
     const callText = node.getText(ast);
-    if (!callText.includes(signal)) {
+    if (!containsExactLiteral(node, signal)) {
       ts.forEachChild(node, visit);
       return;
     }
@@ -2057,7 +2426,7 @@ export function isExecutableBoundaryEvidence(
           ts.isCallExpression(candidate) &&
           boundaryCall &&
           candidate.arguments.some((argument) =>
-            argument.getText(ast).includes(signal),
+            containsExactLiteral(argument, signal),
           )
         )
           proved = true;
@@ -2110,13 +2479,11 @@ function uniqueRawSurfaces(rows: RawSurface[]): RawSurface[] {
       )
     )
       continue;
-    const id = [
-      row.package.packageName,
-      row.kind,
-      stableToken(row.name),
-      row.sourcePath,
-    ].join(":");
-    byId.set(id, row);
+    const id = runtimeSurfaceId(row);
+    const existing = byId.get(id);
+    if (!existing || row.sourcePath.localeCompare(existing.sourcePath) < 0) {
+      byId.set(id, row);
+    }
   }
   return [...byId.values()].sort((a, b) => {
     const left = `${a.package.packageName}:${a.kind}:${a.name}:${a.sourcePath}`;
@@ -2171,20 +2538,18 @@ export function buildRuntimeSurfaceInventory(
   const cloudCells = cloudE2eFiles();
   const raw = discoverRuntimeSurfaces();
   const rows = raw.map((surface): RuntimeSurfaceRow => {
-    const id = [
-      surface.package.packageName,
-      surface.kind,
-      stableToken(surface.name),
-      stableToken(surface.sourcePath),
-    ].join(":");
+    const id = runtimeSurfaceId(surface);
     const aliases = pluginAliases(surface);
     const matchingScenarios = scenarios.filter(
       (scenario) =>
         scenarioOwnsSurface(surface.package.dir, aliases, scenario.plugins) &&
-        isExecutableBoundaryEvidence(surface, scenario.source),
+        scenario.runtimeSurfaceIds.includes(id) &&
+        isExecutableBoundaryEvidence(surface, scenario.source, id),
     );
-    const matchingCells = cloudCells.filter((cell) =>
-      isExecutableBoundaryEvidence(surface, cell.source),
+    const matchingCells = cloudCells.filter(
+      (cell) =>
+        cell.runtimeSurfaceIds.includes(id) &&
+        isExecutableBoundaryEvidence(surface, cell.source, id),
     );
     const deterministic = matchingScenarios.filter(
       (scenario) => scenario.lane === "deterministic",
@@ -2244,7 +2609,7 @@ export function buildRuntimeSurfaceInventory(
           ? "provider-qualified"
           : "none",
       boundaryArtifacts,
-      boundarySignals: covered ? [normalizeName(surface.name)] : [],
+      boundarySignals: covered ? [id, normalizeName(surface.name)] : [],
       workstream: defaultWorkstream(surface.kind),
       status,
       reason,
@@ -2317,7 +2682,7 @@ export function buildRuntimeSurfaceInventory(
     });
   return {
     schema: RUNTIME_SURFACE_SCHEMA,
-    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    generatedAt: options.generatedAt ?? "1970-01-01T00:00:00.000Z",
     sourceRevision: options.sourceRevision ?? baseline.generatedFrom,
     packages,
     rows,
