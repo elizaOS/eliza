@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_deployed_renderer_staging:
+        description: Run the credentialed deployed-Pages renderer proof for this staging release
+        required: false
+        type: boolean
+        default: false
     outputs:
       superseded:
         description: >-
@@ -2527,7 +2532,7 @@ jobs:
   deployed-renderer-staging:
     name: Verify deployed staging renderer (Pages alias)
     needs: [deploy-app, verify-routing]
-    if: ${{ !cancelled() && inputs.target_environment == 'staging' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success' }}
+    if: ${{ !cancelled() && inputs.target_environment == 'staging' && (vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)) && needs.deploy-app.result == 'success' && needs.deploy-app.outputs.pages_deployed == 'true' && needs.verify-routing.result == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
     timeout-minutes: 45

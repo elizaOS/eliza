@@ -67,6 +67,11 @@ on:
         required: false
         default: ""
         type: string
+      run_deployed_renderer_staging:
+        description: Run the credentialed deployed-Pages renderer proof once after a staging release (uses real staging model credits)
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # #18092: non-PR admission is unique per run so two dispatches/reruns of
@@ -149,6 +154,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           TARGET_ENVIRONMENT: ${{ inputs.environment }}
           FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+          RUN_DEPLOYED_RENDERER_STAGING: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
         run: |
           set -euo pipefail
 
@@ -156,7 +162,8 @@ jobs:
           if [ "$EVENT_NAME" = "push" ] \
             && [ "$TARGET_ENVIRONMENT" != "production" ] \
             && [ "$GITHUB_REF" != "refs/heads/main" ] \
-            && [ "$FORCE" != "true" ]; then
+            && [ "$FORCE" != "true" ] \
+            && [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]; then
             latest_eligible_run_id="$(
               gh api \
                 "repos/${GITHUB_REPOSITORY}/actions/workflows/cloud-cf-deploy.yml/runs?branch=develop&event=push&per_page=1" \
@@ -169,6 +176,7 @@ jobs:
             "--environment=$TARGET_ENVIRONMENT" \
             "--ref=$GITHUB_REF" \
             "--force=$FORCE" \
+            "--run-deployed-renderer-staging=$RUN_DEPLOYED_RENDERER_STAGING" \
             "--run-id=$GITHUB_RUN_ID" \
             "--latest-eligible-run-id=$latest_eligible_run_id"
 
@@ -361,6 +369,7 @@ jobs:
     with:
       target_environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       force: ${{ github.event_name == 'workflow_dispatch' && inputs.force == true }}
+      run_deployed_renderer_staging: ${{ github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true }}
 
   certify-staging-release:
     name: Certify successful staging Cloud tree
