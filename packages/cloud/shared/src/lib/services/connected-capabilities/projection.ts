@@ -24,10 +24,53 @@ import type { phoneGatewayDevices } from "../../../db/schemas/phone-gateway-devi
 import type { platformCredentials } from "../../../db/schemas/platform-credentials";
 import type { vendorConnections } from "../../../db/schemas/vendor-connections";
 
-export type PlatformCredentialRow = typeof platformCredentials.$inferSelect;
-export type VendorConnectionRow = typeof vendorConnections.$inferSelect;
-export type DiscordConnectionRow = typeof discordConnections.$inferSelect;
-export type PhoneGatewayDeviceRow = typeof phoneGatewayDevices.$inferSelect;
+/**
+ * Row shapes are `Pick`s of the Drizzle select model, not the full inferred
+ * row: they are the contract the DB loader's explicit column list (`./index.ts`)
+ * must satisfy, so a column can never rejoin this read path by falling out of
+ * sync with what the query actually selects (#19883 follow-up). No
+ * token/ciphertext/DEK/nonce column appears in any of them.
+ */
+export type PlatformCredentialRow = Pick<
+  typeof platformCredentials.$inferSelect,
+  | "id"
+  | "platform"
+  | "platform_display_name"
+  | "platform_username"
+  | "status"
+  | "scopes"
+  | "last_used_at"
+  | "deleted_at"
+>;
+
+/**
+ * `hasRefreshToken` replaces the raw `refresh_token_encrypted` column: the
+ * loader computes the null-check in SQL (`col IS NOT NULL`) so the ciphertext
+ * itself never crosses into Worker memory, only whether a refresh token row
+ * exists.
+ */
+export type VendorConnectionRow = Pick<
+  typeof vendorConnections.$inferSelect,
+  "id" | "vendor" | "label" | "expires_at" | "scopes" | "deleted_at"
+> & { hasRefreshToken: boolean };
+
+export type DiscordConnectionRow = Pick<
+  typeof discordConnections.$inferSelect,
+  "id" | "is_active" | "status" | "last_heartbeat"
+>;
+
+export type PhoneGatewayDeviceRow = Pick<
+  typeof phoneGatewayDevices.$inferSelect,
+  | "id"
+  | "is_active"
+  | "can_send_sms"
+  | "can_receive_sms"
+  | "can_send_imessage"
+  | "can_receive_imessage"
+  | "friendly_name"
+  | "phone_account_label"
+  | "last_seen_at"
+>;
 
 /** One organization's raw connection rows across every projected source table. */
 export interface ConnectedCapabilitySourceRows {
@@ -39,8 +82,17 @@ export interface ConnectedCapabilitySourceRows {
 
 const ACCOUNT_ID_PREFIX = "ca_";
 
-/** Scopes that can mutate remote state carry elevated (R2) risk. */
-const WRITE_SCOPE_PATTERN = /write|send|manage|admin|modify|compose|delete|post|publish|full|all/i;
+/**
+ * Only scopes affirmatively recognized as read-only carry the low (R1) risk
+ * classification; every other scope string — including one this pattern has
+ * never seen — defaults to elevated (R2). This is deliberately the inverse of
+ * a "flag known-dangerous verbs" pattern: a provider scope vocabulary this
+ * code doesn't recognize must fail closed to the higher-risk class rather
+ * than silently under-classify it (the earlier write-verb allowlist let scopes
+ * like `issues:create` — a mutating verb absent from its word list — default
+ * to R1).
+ */
+const READ_ONLY_SCOPE_PATTERN = /read|view|list|get|fetch/i;
 
 async function deriveAccountId(source: string, rowId: string): Promise<string> {
   const bytes = new TextEncoder().encode(`eliza-cloud/connected-capability\n${source}\n${rowId}`);
@@ -70,15 +122,34 @@ function unavailableCodeFor(
 
 /**
  * Project granted OAuth scopes into capability entries. Scope strings are
- * provider data, so risk is classified structurally: mutating verbs map to R2,
- * everything else to R1. A connection with no recorded scopes still exposes a
- * single base connection capability so it remains addressable.
+ * provider data, so risk is classified structurally: only scopes recognized
+ * as read-only map to R1, everything else fails closed to R2. A connection
+ * with no recorded scopes still exposes a single base connection capability
+ * so it remains addressable.
+ *
+ * `scopes === null`/`undefined` is a distinct, narrower case than `[]`: it
+ * means the grant set was never recorded (e.g. rows written before scope
+ * tracking existed), not that the connection was verified to hold zero
+ * scopes. Projecting that as a live `available` base capability would be an
+ * unknown-reads-as-healthy over-grant — the same failure mode
+ * `projectPhoneGatewayDevice` avoids for ungranted device permissions below —
+ * so an unrecorded scope set always projects as `unsupported`, never as a
+ * status derived from the (possibly "connected") account state.
  */
 function scopeCapabilities(
   providerId: string,
-  scopes: readonly string[],
+  scopes: readonly string[] | null | undefined,
   accountStatus: ConnectedAccountStatus,
 ): ConnectedAccountCapability[] {
+  if (scopes == null) {
+    return [
+      {
+        capabilityId: `${providerId}/connection`,
+        riskLevel: "R1",
+        status: "unsupported",
+      },
+    ];
+  }
   const status = unavailableCodeFor(accountStatus);
   const entries = new Map<string, ConnectedAccountCapability>();
   for (const scope of scopes) {
@@ -90,7 +161,7 @@ function scopeCapabilities(
     if (!entries.has(capabilityId)) {
       entries.set(capabilityId, {
         capabilityId,
-        riskLevel: WRITE_SCOPE_PATTERN.test(trimmed) ? "R2" : "R1",
+        riskLevel: READ_ONLY_SCOPE_PATTERN.test(trimmed) ? "R1" : "R2",
         status,
       });
     }
@@ -134,7 +205,7 @@ async function projectPlatformCredential(row: PlatformCredentialRow): Promise<Co
     mode: "cloud",
     status,
     displayName,
-    capabilities: scopeCapabilities(row.platform, row.scopes ?? [], status),
+    capabilities: scopeCapabilities(row.platform, row.scopes, status),
     lastUsedAt: isoOrNull(row.last_used_at),
   });
 }
@@ -144,7 +215,7 @@ function vendorConnectionStatus(row: VendorConnectionRow, now: Date): ConnectedA
     return "revoked";
   }
   const expired = row.expires_at !== null && row.expires_at.getTime() <= now.getTime();
-  if (expired && row.refresh_token_encrypted === null) {
+  if (expired && !row.hasRefreshToken) {
     return "reauth_required";
   }
   return "connected";
@@ -162,7 +233,7 @@ async function projectVendorConnection(
     mode: "cloud",
     status,
     displayName: row.label?.trim() || null,
-    capabilities: scopeCapabilities(row.vendor, row.scopes ?? [], status),
+    capabilities: scopeCapabilities(row.vendor, row.scopes, status),
     lastUsedAt: null,
   });
 }
