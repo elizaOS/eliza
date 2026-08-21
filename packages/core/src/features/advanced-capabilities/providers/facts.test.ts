@@ -784,6 +784,9 @@ describe("factsProvider out-of-range timestamps", () => {
 
 		expect(result.text).toContain("the user is running the beta setup");
 		expect(result.text).toContain("since unknown");
+	});
+});
+
 /**
  * The factlink gap (2026-08-21): the fact "Connor (c-node) is a Zcash core
  * dev" shares ZERO non-stopword tokens with a "convent / season 3 / grove"

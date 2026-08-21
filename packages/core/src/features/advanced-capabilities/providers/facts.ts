@@ -357,9 +357,15 @@ function collectTurnEvidenceText(
 			for (const result of runtime.getActionResults(message.id)) {
 				pushResultText(result);
 			}
-		} catch {
-			// Scratch-state read is best-effort; evidence enrichment must never
-			// fail the provider.
+		} catch (error) {
+			// error-policy:J7 the scratch-state read is a diagnostics-grade
+			// enrichment; losing it degrades recall for one turn but must not
+			// fail the provider. Reported rather than swallowed so a
+			// consistently broken accessor surfaces instead of looking like a
+			// turn that simply had no prior action results.
+			runtime.reportError?.("FactsProvider.turnEvidence", error, {
+				messageId: message.id,
+			});
 		}
 	}
 	const joined = parts.filter((part) => part.trim().length > 0).join("\n");
