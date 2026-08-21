@@ -23,10 +23,15 @@ function completed(
 
 describe("ACP tool ledger bridge", () => {
   it("turns a SHELL run into an execute tool call with the command and transcript", () => {
-    const text = "$ python3 /ws/pick.py\n[exit 0] (cwd=/ws, took=35ms)\n--- stdout ---\nApple\n";
+    const text =
+      "$ python3 /ws/pick.py\n[exit 0] (cwd=/ws, took=35ms)\n--- stdout ---\nApple\n";
     const update = toolCallUpdateFromAction(
       "s1",
-      completed("SHELL", text, { command: "python3 /ws/pick.py", exit_code: 0, cwd: "/ws" }),
+      completed("SHELL", text, {
+        command: "python3 /ws/pick.py",
+        exit_code: 0,
+        cwd: "/ws",
+      }),
       "call-1",
     );
     expect(update).toEqual({
@@ -65,25 +70,41 @@ describe("ACP tool ledger bridge", () => {
 
   it("marks a failed action failed", () => {
     const content = {
-      ...completed("SHELL", "$ false\n[exit 1]", { command: "false", exit_code: 1 }),
+      ...completed("SHELL", "$ false\n[exit 1]", {
+        command: "false",
+        exit_code: 1,
+      }),
       actionStatus: "failed",
     } as unknown as Content;
-    expect(toolCallUpdateFromAction("s1", content, "c")?.update.status).toBe("failed");
+    expect(toolCallUpdateFromAction("s1", content, "c")?.update.status).toBe(
+      "failed",
+    );
   });
 
   it("ignores reads, listings, and non-coding actions", () => {
     expect(
       toolCallUpdateFromAction(
         "s1",
-        completed("FILE", "contents", { operation: "read", path: "/ws/pick.py" }),
+        completed("FILE", "contents", {
+          operation: "read",
+          path: "/ws/pick.py",
+        }),
         "c",
       ),
     ).toBeUndefined();
     expect(
-      toolCallUpdateFromAction("s1", completed("WEB_FETCH", "page", { url: "x" }), "c"),
+      toolCallUpdateFromAction(
+        "s1",
+        completed("WEB_FETCH", "page", { url: "x" }),
+        "c",
+      ),
     ).toBeUndefined();
     expect(
-      toolCallUpdateFromAction("s1", completed("SHELL", "poll", { handle: "bg-1" }), "c"),
+      toolCallUpdateFromAction(
+        "s1",
+        completed("SHELL", "poll", { handle: "bg-1" }),
+        "c",
+      ),
     ).toBeUndefined();
   });
 });

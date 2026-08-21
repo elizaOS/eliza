@@ -12,9 +12,7 @@ import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 const SESSION_ID = "session-without-provider-receipt";
 
-function runtimeWithVoidSend(
-  sendResult: unknown = undefined,
-): {
+function runtimeWithVoidSend(sendResult: unknown = undefined): {
   runtime: IAgentRuntime;
   sendToSession: ReturnType<typeof vi.fn>;
 } {

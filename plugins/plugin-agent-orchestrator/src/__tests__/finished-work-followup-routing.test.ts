@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { hardenIncomingUserMessage } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { finishedWorkFollowUpRoutingEvaluator } from "../evaluators/finished-work-followup-routing.js";
 
 const ROOM = "room-1";
@@ -50,7 +50,9 @@ async function route(message: Memory, sessions: unknown[]) {
 describe("finished-work follow-up routing", () => {
   it("forwards only the user's words — no connector header, envelope, or agent mention", async () => {
     const message = discordMessage("run it again, i want another card");
-    expect(finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never)).toBe(true);
+    expect(
+      finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never),
+    ).toBe(true);
     const result = await route(message, [finishedLane("lane-1")]);
     expect(result?.deterministicToolCall).toEqual({
       name: "TASKS",
@@ -72,7 +74,11 @@ describe("finished-work follow-up routing", () => {
   });
 
   it("does not fire for a fresh coding ask", () => {
-    const message = discordMessage("write me a python script that picks a card");
-    expect(finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never)).toBe(false);
+    const message = discordMessage(
+      "write me a python script that picks a card",
+    );
+    expect(
+      finishedWorkFollowUpRoutingEvaluator.shouldRun?.({ message } as never),
+    ).toBe(false);
   });
 });

@@ -77,7 +77,8 @@ export function toolCallUpdateFromAction(
     if (!path || (operation && FILE_READ_OPERATIONS.has(operation))) {
       return undefined;
     }
-    const kind = operation === "delete" || operation === "rm" ? "delete" : "edit";
+    const kind =
+      operation === "delete" || operation === "rm" ? "delete" : "edit";
     return {
       sessionId,
       update: {

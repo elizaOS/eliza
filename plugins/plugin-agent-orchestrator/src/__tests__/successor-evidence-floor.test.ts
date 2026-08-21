@@ -56,7 +56,10 @@ describe("fs evidence floor follows task lineage", () => {
     };
     const service = new OrchestratorTaskService(runtime as never, { store });
     const rootStart = Date.parse("2026-08-21T21:44:00Z");
-    const root = await store.createTask({ title: "Fruit Picker Script", goal: "write it" });
+    const root = await store.createTask({
+      title: "Fruit Picker Script",
+      goal: "write it",
+    });
     await addSession(store, root.task.id, "root-sess", rootStart);
     const middle = await store.createTask({
       title: "Fruit Picker Script",

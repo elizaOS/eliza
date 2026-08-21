@@ -26,7 +26,8 @@ const RECENT_TERMINAL_WINDOW_MS = 30 * 60_000;
 /** Connector-rendered mention of the agent that leads an addressed message
  *  ("Name (@123) ", "<@123> ", "@name "). It is not part of the ask; left in,
  *  it became the successor task's title and the kickoff ack named it. */
-const LEADING_MENTION_RE = /^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u;
+const LEADING_MENTION_RE =
+  /^\s*(?:<@!?\d+>\s*|@\S+\s+|[^()\n]{0,80}\(@\d+\)\s*)/u;
 
 function messageText(message: Memory): string {
   // The user's words only: no untrusted-content envelope (API/webhook

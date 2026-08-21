@@ -3869,7 +3869,9 @@ async function runSend(
         state,
         {
           ...params,
-          ...(priorTask ? await successorInheritance(runtime, target.session) : {}),
+          ...(priorTask
+            ? await successorInheritance(runtime, target.session)
+            : {}),
           action: "create",
           goal: textInput,
           // Follow-up FIRST: leading with the original task made the child

@@ -4071,7 +4071,8 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
     // the user asked for; the deliverable is an earlier run's output.
     if (!inner || WRITE_CONFIRMATION_RE.test(inner)) continue;
     const deliverable = shellTranscriptStdout(inner) ?? inner;
-    return Buffer.byteLength(deliverable, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+    return Buffer.byteLength(deliverable, "utf8") >
+      MAX_VERBATIM_DELIVERABLE_BYTES
       ? undefined
       : deliverable;
   }
