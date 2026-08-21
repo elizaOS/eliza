@@ -13,15 +13,15 @@ test("uses an explicit ElizaOS ACP command unchanged", () => {
   );
 });
 
-test("resolves the built first-party ACP adapter in an Eliza source checkout", () => {
-  const expected = "/repo/packages/examples/code/dist/acp.js";
+test("resolves the exact-source first-party ACP adapter in an Eliza checkout", () => {
+  const expected = "/repo/packages/examples/code/src/acp.ts";
   assert.equal(
     resolveDevOwnedCodeAgentCommand({
       cwd: "/repo",
       bunCommand: "/opt tools/bun",
       exists: (candidate) => candidate === expected,
     }),
-    '"/opt tools/bun" "/repo/packages/examples/code/dist/acp.js"',
+    '"/opt tools/bun" --conditions eliza-source "/repo/packages/examples/code/src/acp.ts"',
   );
 });
 
