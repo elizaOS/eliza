@@ -61,6 +61,18 @@ function addPlugin(
   return source;
 }
 
+function addPluginSource(root: string, name: string, contents: string) {
+  const directory = `plugins/${name}`;
+  write(
+    root,
+    `${directory}/package.json`,
+    `${JSON.stringify({ name: `@fixture/${name}` })}\n`,
+  );
+  const source = `${directory}/src/plugin.ts`;
+  write(root, source, contents);
+  return source;
+}
+
 function view(id: string, route = `/${id}`, modalities = '["gui"]') {
   return `{
     id: "${id}",
@@ -201,6 +213,52 @@ describe("first-party runtime view inventory", () => {
     );
     expect(() => discover(root, [source])).toThrow(
       /Plugin\.views must resolve to an array literal/,
+    );
+  });
+
+  test("resolves shorthand and statically composed Plugin.views", () => {
+    const shorthandRoot = makeRoot();
+    const shorthand = addPluginSource(
+      shorthandRoot,
+      "plugin-shorthand",
+      `const views = [${view("shorthand")}];
+export const plugin: Plugin = { name: "shorthand", description: "fixture", views };\n`,
+    );
+    expect(discover(shorthandRoot, [shorthand]).views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "shorthand",
+          owner: "@fixture/plugin-shorthand",
+        }),
+      ]),
+    );
+
+    const spreadRoot = makeRoot();
+    const spread = addPluginSource(
+      spreadRoot,
+      "plugin-spread",
+      `const base = { views: [${view("spread")}] };
+export default { name: "spread", description: "fixture", ...base } satisfies Plugin;\n`,
+    );
+    expect(discover(spreadRoot, [spread]).views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "spread",
+          owner: "@fixture/plugin-spread",
+        }),
+      ]),
+    );
+  });
+
+  test("rejects plugin composition that could hide runtime views", () => {
+    const root = makeRoot();
+    const source = addPluginSource(
+      root,
+      "plugin-composed",
+      'export const plugin: Plugin = { name: "composed", description: "fixture", ...createPlugin() };\n',
+    );
+    expect(() => discover(root, [source])).toThrow(
+      /Plugin composition must resolve statically so views cannot evade inventory/,
     );
   });
 

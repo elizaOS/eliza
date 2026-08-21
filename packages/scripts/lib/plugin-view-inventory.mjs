@@ -66,6 +66,7 @@ function unwrap(expression) {
 }
 
 function propertyName(property) {
+  if (!("name" in property) || !property.name) return null;
   const name = property.name;
   if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
   if (
@@ -305,26 +306,95 @@ function capabilityIds(object, context) {
 }
 
 function isPluginObject(object) {
-  if (objectProperty(object, "name") && objectProperty(object, "description")) {
+  const isPluginType = (type) =>
+    /(?:^|\W)Plugin(?:<.*>)?(?:$|\W)/.test(type?.getText() ?? "");
+  const declaresViews = object.properties.some(
+    (property) => propertyName(property) === "views",
+  );
+  if (
+    declaresViews &&
+    objectProperty(object, "name") &&
+    objectProperty(object, "description")
+  ) {
     return true;
   }
   let current = object;
+  let typedAsPlugin = false;
   while (
     ts.isAsExpression(current.parent) ||
     ts.isSatisfiesExpression(current.parent) ||
     ts.isParenthesizedExpression(current.parent)
   ) {
     current = current.parent;
+    if (
+      (ts.isAsExpression(current) || ts.isSatisfiesExpression(current)) &&
+      isPluginType(current.type)
+    ) {
+      typedAsPlugin = true;
+    }
   }
+  if (typedAsPlugin) return true;
   if (!ts.isVariableDeclaration(current.parent)) return false;
   const declaration = current.parent;
-  const typeText = declaration.type?.getText() ?? "";
   const nameText = ts.isIdentifier(declaration.name)
     ? declaration.name.text
     : "";
-  return (
-    /(?:^|\W)Plugin(?:<.*>)?(?:$|\W)/.test(typeText) || /plugin/i.test(nameText)
-  );
+  return isPluginType(declaration.type) || /plugin$/i.test(nameText);
+}
+
+function resolvePluginViews(object, context, resolving = new Set()) {
+  const key = `${context.source}:${object.pos}`;
+  if (resolving.has(key)) {
+    throw new Error(`[plugin-view-inventory] cyclic plugin composition ${key}`);
+  }
+  const nextResolving = new Set(resolving).add(key);
+  let result = { kind: "absent" };
+
+  for (const member of object.properties) {
+    const name = propertyName(member);
+    if (name === "views") {
+      if (ts.isPropertyAssignment(member)) {
+        result = {
+          kind: "resolved",
+          expression: member.initializer,
+          context,
+          node: member,
+        };
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(member)) {
+        result = {
+          kind: "resolved",
+          expression: member.name,
+          context,
+          node: member,
+        };
+        continue;
+      }
+      throw new Error(
+        `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, member)} Plugin.views must be a static property or shorthand declaration`,
+      );
+    }
+
+    if (!ts.isSpreadAssignment(member)) continue;
+    const spread = resolveStaticExpression(member.expression, context);
+    if (!ts.isObjectLiteralExpression(spread.value)) {
+      result = {
+        kind: "unsupported",
+        context,
+        node: member,
+      };
+      continue;
+    }
+    const spreadViews = resolvePluginViews(
+      spread.value,
+      spread.context,
+      nextResolving,
+    );
+    if (spreadViews.kind !== "absent") result = spreadViews;
+  }
+
+  return result;
 }
 
 function pluginOwner(repoRoot, source) {
@@ -477,13 +547,22 @@ function parsePlugin(context, owner) {
   const views = [];
   const sources = [];
   const visit = (node) => {
-    if (
-      ts.isPropertyAssignment(node) &&
-      propertyName(node) === "views" &&
-      ts.isObjectLiteralExpression(node.parent) &&
-      isPluginObject(node.parent)
-    ) {
-      const resolved = resolvedArray(node.initializer, context, "Plugin.views");
+    if (ts.isObjectLiteralExpression(node) && isPluginObject(node)) {
+      const declaration = resolvePluginViews(node, context);
+      if (declaration.kind === "unsupported") {
+        throw new Error(
+          `[plugin-view-inventory] ${declaration.context.source}:${sourceLine(declaration.context.sourceFile, declaration.node)} Plugin composition must resolve statically so views cannot evade inventory`,
+        );
+      }
+      if (declaration.kind === "absent") {
+        ts.forEachChild(node, visit);
+        return;
+      }
+      const resolved = resolvedArray(
+        declaration.expression,
+        declaration.context,
+        "Plugin.views",
+      );
       const sourceViews = resolved.value.elements.map((element) => {
         const item = resolveStaticExpression(element, resolved.context);
         if (!ts.isObjectLiteralExpression(item.value)) {
@@ -496,8 +575,8 @@ function parsePlugin(context, owner) {
       views.push(...sourceViews);
       sources.push({
         owner,
-        source: context.source,
-        line: sourceLine(context.sourceFile, node),
+        source: declaration.context.source,
+        line: sourceLine(declaration.context.sourceFile, declaration.node),
         kind: "plugin-manifest",
         viewCount: sourceViews.length,
       });
