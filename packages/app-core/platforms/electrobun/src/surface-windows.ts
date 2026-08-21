@@ -614,7 +614,11 @@ export class SurfaceWindowManager {
         surface === "workspace" || surface === "settings"
           ? "hiddenInset"
           : "default",
-      transparent: false,
+      // Keep the native Workspace backing store clear until the routed shell
+      // paints its own opaque surface. WKWebView can present one empty frame
+      // when a newly attached view is ordered on-screen; a clear backing store
+      // prevents that frame from becoming a black rectangle.
+      transparent: surface === "workspace",
       // Keep the Workspace webview active but off-screen until the renderer
       // reports ready. A truly hidden WKWebView can be timer-throttled before
       // startup completes on macOS, while an on-screen one exposes its empty

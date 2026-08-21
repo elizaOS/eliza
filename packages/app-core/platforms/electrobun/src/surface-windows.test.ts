@@ -202,7 +202,7 @@ describe("SurfaceWindowManager app windows", () => {
       title: "elizaOS Workspace",
       url: "http://127.0.0.1:5173/?desktopSurface=workspace",
       titleBarStyle: "hiddenInset",
-      transparent: false,
+      transparent: true,
       hidden: false,
       frame: { x: -20_000, y: -20_000, width: 1440, height: 960 },
     });
