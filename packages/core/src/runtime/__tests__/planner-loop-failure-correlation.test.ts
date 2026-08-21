@@ -813,6 +813,70 @@ describe("planner-loop failed-operation correlation", () => {
 		});
 	});
 
+	it("preserves a structured app proof for independent verification after an unrelated coding probe fails", async () => {
+		await withCodingFullSurface(async () => {
+			const proof =
+				'APP_CREATE_DONE {"appName":"garden","files":["src/index.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}';
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce(
+						plannerToolCall("bad-glob", "FILE", {
+							action: "glob",
+							path: "/workspace",
+						}),
+					)
+					.mockResolvedValueOnce(
+						plannerToolCall("verify", "SHELL", {
+							action: "run",
+							command: "bun run test",
+							cwd: "/workspace",
+						}),
+					)
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{ id: "reply", name: "REPLY", arguments: { text: proof } },
+						],
+					}),
+			};
+			const result = await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				executeToolCall: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						error: "pattern is required",
+						text: "The file search could not run.",
+						userFacingText: "The file search could not run.",
+					})
+					.mockResolvedValueOnce({
+						success: true,
+						text: "1 test passed.",
+						userFacingText: "1 test passed.",
+					}),
+				evaluate: vi
+					.fn()
+					.mockResolvedValueOnce({
+						success: false,
+						decision: "CONTINUE",
+						thought: "Use a direct verification command.",
+					})
+					.mockResolvedValueOnce({
+						success: false,
+						decision: "CONTINUE",
+						thought: "Submit the proof.",
+					}),
+			});
+
+			expect(result.status).toBe("finished");
+			expect(result.finalMessage).toContain("The file search could not run.");
+			expect(result.finalMessage).toContain("1 test passed.");
+			expect(result.finalMessage).toContain(proof);
+		});
+	});
+
 	it("keeps failed entity A authoritative when a terminal REPLY follows successful entity B", async () => {
 		const runtime = runtimeForFailureThenSuccessThenReply();
 		const result = await runPlannerLoop({

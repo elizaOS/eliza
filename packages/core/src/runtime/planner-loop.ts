@@ -3944,7 +3944,23 @@ function terminalMessageWithFailureAuthority(
 		unresolvedFailure,
 	);
 	if (successEvidence.length === 0) return failureNote;
-	return `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+	const grounded = `${failureNote}\n\nWork that did complete: ${successEvidence.join(" ")}`;
+	// App/plugin builders are independently verified after the child finishes.
+	// Dropping their machine completion line here makes that verifier report
+	// "missing proof" even when the trajectory contains the exact proof and all
+	// checks pass. Keep failure authority first, but forward a narrowly-recognized
+	// proof line so the verifier can accept or reject its claims against disk.
+	// Ordinary prose (and action-envelope JSON) remains excluded.
+	if (isStructuredCodingCompletionProof(candidate)) {
+		return `${grounded}\n\nCompletion proof submitted for independent verification:\n${candidate}`;
+	}
+	return grounded;
+}
+
+function isStructuredCodingCompletionProof(value: string | undefined): boolean {
+	return /(?:^|\n)\s*(?:APP_CREATE_DONE|PLUGIN_CREATE_DONE)\s+\{[^\n]+\}\s*(?:\n|$)/u.test(
+		value ?? "",
+	);
 }
 
 /**
