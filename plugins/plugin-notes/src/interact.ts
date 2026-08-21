@@ -10,6 +10,8 @@ import {
   type IAgentRuntime,
   isElizaError,
   toElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { getNotesService, type NotesService } from "./service.js";
 import type { NotesSnapshot, StickyNote } from "./types.js";
@@ -50,9 +52,9 @@ function sentence(value: string): string {
 }
 
 function humanDetails(value: string): string {
-  const details = value.trim();
+  const details = toWellFormedUnicode(value.trim());
   return details.length > 0
-    ? ` — ${details.slice(0, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
+    ? ` — ${truncateWellFormed(details, PLANNER_SUMMARY_EXCERPT_LENGTH)}`
     : "";
 }
 
