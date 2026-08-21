@@ -1931,6 +1931,24 @@ export class JobsRepository {
       .limit(1);
     return rows[0]?.created_at ?? null;
   }
+
+  /**
+   * Outcome census of jobs of `type` created since `since`, grouped by
+   * status. Powers the fleet-liveness monitor's provisioning success rate
+   * (#22548): provisioning health is measured on the `jobs` ledger itself
+   * (`type='agent_provision'`), not on sandbox `status`, which is written at
+   * INSERT and therefore cannot testify to provisioning success.
+   */
+  async summarizeOutcomesByTypeSince(
+    type: string,
+    since: Date,
+  ): Promise<Array<{ status: string; count: number }>> {
+    return dbRead
+      .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.created_at} >= ${since}`))
+      .groupBy(jobs.status);
+  }
 }
 
 // Singleton instance

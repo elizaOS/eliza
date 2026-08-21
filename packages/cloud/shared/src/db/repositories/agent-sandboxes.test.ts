@@ -37,14 +37,17 @@ let selectRowBatches: unknown[][] = [];
 function chainableRows(): unknown[] & {
   limit: () => unknown[];
   orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+  groupBy: () => unknown[];
 } {
   const sourceRows = selectRowBatches.length > 0 ? selectRowBatches.shift() : selectRows;
   const rows = [...(sourceRows ?? [])] as unknown[] & {
     limit: () => unknown[];
     orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+    groupBy: () => unknown[];
   };
   rows.limit = () => rows;
   rows.orderBy = () => rows;
+  rows.groupBy = () => rows;
   return rows;
 }
 
@@ -280,6 +283,35 @@ describe("AgentSandboxesRepository", () => {
     // eq/ne bind their operands, so the values land in `params`, not the SQL.
     expect(query.params).toContain("running");
     expect(query.params).toContain("shared");
+    // #22548: soft-deleted rows and unclaimed warm-pool rows must never be
+    // dialed — both guards are present, matching the sibling predicates.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("dedicated fleet census covers every status of the non-deleted dedicated fleet (#22548)", async () => {
+    capturedWhere = undefined;
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().summarizeDedicatedFleet();
+
+    if (!capturedWhere) throw new Error("summarizeDedicatedFleet did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+    // The census must NOT filter on status: the whole point is to see a fleet
+    // whose every row sits in `error`, which the heartbeat sweep cannot.
+    expect(sql).not.toContain('"status"');
+    expect(query.params).not.toContain("running");
+    // Shared-tier rows are container-free by design and excluded.
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain("<>");
+    expect(query.params).toContain("shared");
+    // Deleted and warm-pool rows are not tenant-serving fleet.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
   });
 
   test("heartbeat writeback is fenced to the exact running generation and loses to deletion", async () => {

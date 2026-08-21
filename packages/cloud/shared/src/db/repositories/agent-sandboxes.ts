@@ -499,6 +499,11 @@ export class AgentSandboxesRepository {
    * (node_id / container_name are NULL by design), so there is nothing to
    * dial over the Headscale tunnel — heartbeating them only ever fails and
    * spams the logs. Only dedicated/custom tiers have a real container.
+   *
+   * Soft-deleted rows and unclaimed warm-pool rows are excluded like the
+   * sibling predicates in this file: neither belongs to a tenant-serving
+   * agent, so dialing them wastes cycles and pollutes heartbeat telemetry
+   * (#22548).
    */
   async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
     return dbRead
@@ -508,8 +513,40 @@ export class AgentSandboxesRepository {
       })
       .from(agentSandboxes)
       .where(
-        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+        and(
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
       );
+  }
+
+  /**
+   * Status census of the dedicated (non-shared) tenant fleet, for the
+   * fleet-liveness monitor (#22548). Counts every non-deleted, non-warm-pool
+   * dedicated row grouped by status so a caller can answer "do dedicated
+   * agents exist that should be reachable and are not?" — a question the
+   * heartbeat sweep structurally cannot ask, because a fleet whose every row
+   * sits in `error` gives it nothing to iterate and it reports healthy by
+   * having nothing to say.
+   */
+  async summarizeDedicatedFleet(): Promise<Array<{ status: string; count: number }>> {
+    await ensureAgentSandboxSchema();
+    return dbRead
+      .select({
+        status: agentSandboxes.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          ne(agentSandboxes.execution_tier, "shared"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
+      )
+      .groupBy(agentSandboxes.status);
   }
 
   /**
