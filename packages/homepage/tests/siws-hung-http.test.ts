@@ -107,9 +107,11 @@ describe("SIWS HTTP boundary", () => {
       validateCanonicalUser: (value) => {
         expect(value.user.id).toBe("user-1");
       },
-      commitSession: (token) => {
+      isCurrentAttempt: () => true,
+      storeToken: (token) => {
         visibleToken = token;
       },
+      publishCanonicalUser: () => {},
     });
 
     await Promise.resolve();
@@ -132,10 +134,12 @@ describe("SIWS HTTP boundary", () => {
         validateCanonicalUser: () => {
           throw new Error("validation must not run");
         },
-        commitSession: (token) => {
+        isCurrentAttempt: () => true,
+        storeToken: (token) => {
           visibleToken = token;
           commits += 1;
         },
+        publishCanonicalUser: () => {},
       }),
     ).rejects.toBe(failure);
     expect(visibleToken).toBe("prior-token");
@@ -156,14 +160,127 @@ describe("SIWS HTTP boundary", () => {
         validateCanonicalUser: (value) => {
           assertCanonicalSiwsIdentity(verified, value);
         },
-        commitSession: (token) => {
+        isCurrentAttempt: () => true,
+        storeToken: (token) => {
           visibleToken = token;
           commits += 1;
         },
+        publishCanonicalUser: () => {},
       }),
     ).rejects.toThrow("Canonical SIWS identity does not match verification");
     expect(visibleToken).toBe("prior-token");
     expect(commits).toBe(0);
+  });
+
+  test("preserves prior identity when candidate token storage fails", async () => {
+    const priorIdentity = { user: "prior-user", organization: "prior-org" };
+    const visibleToken = "prior-token";
+    let visibleIdentity = priorIdentity;
+    const failure = new Error("storage unavailable");
+
+    await expect(
+      confirmSiwsSession("issued-token", {
+        loadCanonicalUser: async () => verified,
+        validateCanonicalUser: (value) => {
+          assertCanonicalSiwsIdentity(verified, value);
+        },
+        isCurrentAttempt: () => true,
+        storeToken: () => {
+          throw failure;
+        },
+        publishCanonicalUser: () => {
+          visibleIdentity = {
+            user: verified.user.id,
+            organization: verified.organization.id,
+          };
+        },
+      }),
+    ).rejects.toBe(failure);
+    expect(visibleToken).toBe("prior-token");
+    expect(visibleIdentity).toBe(priorIdentity);
+  });
+
+  test("stores the accepted bearer before publishing its canonical identity", async () => {
+    let visibleToken = "prior-token";
+    let visibleIdentity = { user: "prior-user", organization: "prior-org" };
+    const order: string[] = [];
+
+    await confirmSiwsSession("issued-token", {
+      loadCanonicalUser: async () => verified,
+      validateCanonicalUser: (value) => {
+        assertCanonicalSiwsIdentity(verified, value);
+      },
+      isCurrentAttempt: () => true,
+      storeToken: (token) => {
+        order.push("token");
+        visibleToken = token;
+      },
+      publishCanonicalUser: (value) => {
+        order.push("identity");
+        expect(visibleToken).toBe("issued-token");
+        visibleIdentity = {
+          user: value.user.id,
+          organization: value.organization.id,
+        };
+      },
+    });
+
+    expect(order).toEqual(["token", "identity"]);
+    expect(visibleIdentity).toEqual({ user: "user-1", organization: "org-1" });
+  });
+
+  test("a superseded load cannot mix an older token with the current identity", async () => {
+    type Session = { token: string; user: string; organization: string };
+    let currentAttempt = 1;
+    let visible: Session = {
+      token: "prior-token",
+      user: "prior-user",
+      organization: "prior-org",
+    };
+    let resolveOlder!: (value: typeof verified) => void;
+    const olderCanonical = new Promise<typeof verified>((resolve) => {
+      resolveOlder = resolve;
+    });
+
+    const confirm = (
+      attempt: number,
+      token: string,
+      load: () => Promise<typeof verified>,
+    ) =>
+      confirmSiwsSession(token, {
+        loadCanonicalUser: load,
+        validateCanonicalUser: (value) => {
+          assertCanonicalSiwsIdentity(verified, value);
+        },
+        isCurrentAttempt: () => attempt === currentAttempt,
+        storeToken: (nextToken) => {
+          visible = { ...visible, token: nextToken };
+        },
+        publishCanonicalUser: (value) => {
+          visible = {
+            ...visible,
+            user: value.user.id,
+            organization: value.organization.id,
+          };
+        },
+      });
+
+    const older = confirm(1, "older-token", async () => olderCanonical);
+    currentAttempt = 2;
+    await confirm(2, "current-token", async () => verified);
+    expect(visible).toEqual({
+      token: "current-token",
+      user: "user-1",
+      organization: "org-1",
+    });
+
+    resolveOlder(verified);
+    await expect(older).rejects.toThrow("SIWS session attempt was superseded");
+    expect(visible).toEqual({
+      token: "current-token",
+      user: "user-1",
+      organization: "org-1",
+    });
   });
 
   test("times out while consuming the nonce response body", async () => {
