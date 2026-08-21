@@ -30,6 +30,10 @@ function numberRoundTripsExactly(source: string, value: number): boolean {
   try {
     return new Decimal(source).equals(new Decimal(serialized));
   } catch {
+    // error-policy:J3 a source token Decimal cannot parse is not an exact
+    // round-trip. This is a classification answer, not a swallowed failure —
+    // the caller's only question is whether the number survives, and it does
+    // not.
     return false;
   }
 }
@@ -46,6 +50,12 @@ export function parsePhoneJsonLosslessly(raw: string): unknown {
     if (typeof value !== "number") return value;
     const source = context?.source;
     if (!source) {
+      // A safe integer is exactly representable, so no precision can have been
+      // lost and the source text is not needed to prove it. Failing here for
+      // EVERY number would mean a runtime without reviver source access
+      // rejects every phone payload containing so much as a count — this
+      // narrows the hard failure to values that might genuinely be lossy.
+      if (Number.isSafeInteger(value)) return value;
       throw new TypeError("Runtime cannot inspect the source of a JSON number");
     }
     if (numberRoundTripsExactly(source, value)) return value;
@@ -66,6 +76,10 @@ export function parsePhoneLosslessJsonObject(raw: string): Record<string, unknow
   try {
     value = parsePhoneJsonLosslessly(raw);
   } catch {
+    // error-policy:J2 context-adding rethrow. `cause` is deliberately NOT
+    // attached: the parse error embeds the offending source text, and this
+    // payload can carry credentials and provider details, so propagating it
+    // would put them into every log that renders the error chain.
     throw new TypeError("Persisted phone metadata is not valid lossless JSON");
   }
 
