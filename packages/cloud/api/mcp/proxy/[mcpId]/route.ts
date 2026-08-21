@@ -26,6 +26,7 @@ import { creditsService } from "@/lib/services/credits";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { readBodyTextWithinBudget } from "./proxy-body-budget";
 
 /** JSON subset for proxied MCP-RPC bodies (avoid `unknown`; values are forwarded as JSON). */
 export type McpProxyJson =
@@ -123,12 +124,47 @@ export function resolveMcpProxyView(params: {
   return { allowed: isOwner || params.mcpIsPublic, isOwner };
 }
 
-export async function parseJsonBody(request: Request): Promise<McpProxyJson> {
+/**
+ * Byte budgets for the two bodies this route buffers into the isolate.
+ *
+ * The numbers are not new: `@/lib/services/oauth/credential-broker.ts` — the
+ * platform's other "proxy one call to a caller-supplied host" service — caps
+ * the request body it accepts at 1 MB and derives its response budget from that
+ * cap so the two halves cannot drift (#23900). Same shape of hop, same numbers,
+ * derived the same way rather than written as a second pair of literals.
+ */
+const MAX_PROXY_REQUEST_BODY_BYTES = 1_000_000;
+const PROXY_RESPONSE_BODY_BUDGET_MULTIPLIER = 5;
+const MAX_PROXY_RESPONSE_BODY_BYTES =
+  MAX_PROXY_REQUEST_BODY_BYTES * PROXY_RESPONSE_BODY_BUDGET_MULTIPLIER;
+
+/** Raised by `parseJsonBody` when the caller's body is over budget. */
+export class McpProxyBodyTooLargeError extends Error {
+  readonly bytes: number;
+  readonly maxBytes: number;
+  constructor(bytes: number, maxBytes: number) {
+    super(`MCP proxy body exceeds the ${maxBytes}-byte limit (${bytes})`);
+    this.name = "McpProxyBodyTooLargeError";
+    this.bytes = bytes;
+    this.maxBytes = maxBytes;
+  }
+}
+
+export async function parseJsonBody(
+  request: Request,
+  maxBytes: number = MAX_PROXY_REQUEST_BODY_BYTES,
+): Promise<McpProxyJson> {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("application/json")) {
     return {};
   }
-  const text = await request.text();
+  // Charge the budget before the bytes are retained: reading the whole body and
+  // measuring it afterwards spends the memory the measurement exists to refuse.
+  const budgeted = await readBodyTextWithinBudget(request, maxBytes);
+  if (!budgeted.ok) {
+    throw new McpProxyBodyTooLargeError(budgeted.bytes, maxBytes);
+  }
+  const text = budgeted.text;
   if (!text.trim()) {
     return {};
   }
@@ -394,6 +430,17 @@ app.post("/", async (c) => {
   try {
     proxyBody = await parseJsonBody(c.req.raw);
   } catch (error) {
+    if (error instanceof McpProxyBodyTooLargeError) {
+      logger.warn("[MCP Proxy] Request body exceeded the proxy byte budget", {
+        mcpId,
+        bytes: error.bytes,
+        maxBytes: error.maxBytes,
+      });
+      await refundPrecharge("request_body_too_large", {
+        maxBytes: error.maxBytes,
+      });
+      return c.json({ error: "MCP request body is too large" }, 413);
+    }
     logger.warn("[MCP Proxy] Invalid JSON request body", {
       mcpId,
       error: error instanceof Error ? error.message : String(error),
@@ -447,7 +494,36 @@ app.post("/", async (c) => {
 
   let responseBody: string;
   try {
-    responseBody = await mcpResponse.text();
+    // The far end of this read is a URL the MCP's owner chose. Charge the
+    // budget before the bytes are retained — a catch below can report a read
+    // failure but cannot give back memory the isolate has already spent.
+    const budgeted = await readBodyTextWithinBudget(
+      mcpResponse,
+      MAX_PROXY_RESPONSE_BODY_BYTES,
+      (label, cancelError) => {
+        // error-policy:J6 best-effort teardown for a body already rejected.
+        logger.warn("[MCP Proxy] Failed to cancel oversized MCP response", {
+          mcpId,
+          label,
+          errorType:
+            cancelError instanceof Error ? cancelError.name : "unknown",
+        });
+      },
+    );
+    if (!budgeted.ok) {
+      logger.warn("[MCP Proxy] MCP response exceeded the proxy byte budget", {
+        mcpId,
+        status: mcpResponse.status,
+        receivedBytes: budgeted.bytes,
+        maxBytes: MAX_PROXY_RESPONSE_BODY_BYTES,
+      });
+      await refundPrecharge("mcp_response_too_large", {
+        status: mcpResponse.status,
+        maxBytes: MAX_PROXY_RESPONSE_BODY_BYTES,
+      });
+      return c.json({ error: "MCP response is too large" }, 502);
+    }
+    responseBody = budgeted.text;
   } catch (error) {
     logger.error("[MCP Proxy] Failed to read MCP response body", {
       mcpId,
