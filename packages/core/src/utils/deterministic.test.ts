@@ -104,3 +104,12 @@ describe("stableStringify", () => {
 		expect(stableStringify([3, 1, 2])).toBe("[3,1,2]");
 	});
 });
+
+describe("stableStringify locale-independent ordering", () => {
+  it("sorts object keys by UTF-16 code unit order, not localeCompare", () => {
+    const input = { "Z": 1, "ä": 2, "a": 3 };
+    expect(stableStringify(input)).toBe(
+      stableStringify({ a: 3, "Z": 1, "ä": 2 }),
+    );
+  });
+});
