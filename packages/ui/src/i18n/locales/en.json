@@ -8438,7 +8438,6 @@
   "cloud.login.passkeyRecovery.setup": "Set up passkey",
   "cloud.login.passkeyRecovery.title": "Passkey not completed",
   "cloud.login.passkeyUnavailable": "Passkey sign-in is not available here. Use Google, Discord, or Magic Link, or open this sign-in link on another device.",
-  "cloud.login.signupHint": "New here? Passkey sets up your account in seconds.",
   "cloud.login.callbackStateMismatch": "This sign-in link is invalid or has expired. Please start sign-in again.",
   "cloud.login.callbackVerifierMissing": "This sign-in was started in another tab or has expired. Please start sign-in again.",
   "cloud.mcps.cancel": "Cancel",

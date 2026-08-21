@@ -2063,13 +2063,9 @@ export default function StewardLoginSection() {
         )}
       </div>
 
-      {showPasskey ? (
-        <p className="text-center text-xs text-muted">
-          {t("cloud.login.signupHint", {
-            defaultValue: "New here? Passkey sets up your account in seconds.",
-          })}
-        </p>
-      ) : providers.passkey !== false && passkeyCapability === null ? (
+      {!showPasskey &&
+      providers.passkey !== false &&
+      passkeyCapability === null ? (
         <p className="text-center text-xs text-muted" role="status">
           {t("cloud.login.checkingPasskey", {
             defaultValue:
