@@ -120,6 +120,7 @@ beforeAll(async () => {
       pairing_token_hash text,
       ingress_url text,
       ingress_reason text,
+      expires_at timestamp with time zone,
       created_at timestamp with time zone NOT NULL DEFAULT now(),
       updated_at timestamp with time zone NOT NULL DEFAULT now(),
       ended_at timestamp with time zone
@@ -159,6 +160,7 @@ describe("remote pairing real persistence boundary", () => {
     };
     const [row] = await dbWrite.select().from(remoteSessions);
     expect(row?.requester_identity).toBe(ownerId);
+    expect(row?.expires_at?.getTime()).toBe(Date.parse(body.data.expiresAt));
     expect(row?.pairing_token_hash).toMatch(
       /^hmac-sha256-v2:\d{13}:[0-9a-f]{64}$/,
     );
@@ -295,5 +297,123 @@ describe("remote pairing real persistence boundary", () => {
     const [stored] = await dbWrite.select().from(remoteSessions);
     expect(stored?.status).toBe("revoked");
     expect(stored?.ended_at).not.toBeNull();
+  });
+
+  test("rejects JSON null and non-object bodies as strict client errors", async () => {
+    await seedAgent();
+    for (const payload of ["null", "[]", '"agent"', "42"]) {
+      const response = await app.fetch(
+        new Request("https://api.example.test/api/v1/remote/pair", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: payload,
+        }),
+        { REMOTE_PAIRING_HMAC_SECRET: secret } as AppEnv["Bindings"],
+      );
+      expect(response.status).toBe(400);
+    }
+    expect(await dbWrite.select().from(remoteSessions)).toHaveLength(0);
+  });
+
+  test("rejects malformed UUID input on list and revoke before touching the database", async () => {
+    const listResponse = await app.request(
+      "https://api.example.test/api/v1/remote/sessions?agentId=not-a-uuid",
+    );
+    expect(listResponse.status).toBe(400);
+    const revokeResponse = await app.request(
+      "https://api.example.test/api/v1/remote/sessions/not-a-uuid/revoke",
+      { method: "POST" },
+    );
+    expect(revokeResponse.status).toBe(400);
+  });
+
+  test("expired pending grants transition to a terminal state and leave active listings", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 minute'
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+
+    const listResponse = await app.request(
+      `https://api.example.test/api/v1/remote/sessions?agentId=${agentId}`,
+    );
+    expect(listResponse.status).toBe(200);
+    const listBody = (await listResponse.json()) as {
+      data: { sessions: unknown[] };
+    };
+    expect(listBody.data.sessions).toHaveLength(0);
+
+    const [stored] = await dbWrite.select().from(remoteSessions);
+    expect(stored?.status).toBe("expired");
+    expect(stored?.ended_at).not.toBeNull();
+
+    const revokeResponse = await app.request(
+      `https://api.example.test/api/v1/remote/sessions/${pairBody.data.sessionId}/revoke`,
+      { method: "POST" },
+    );
+    expect(revokeResponse.status).toBe(200);
+    const revokeBody = (await revokeResponse.json()) as {
+      data: { alreadyEnded: boolean; status: string };
+    };
+    expect(revokeBody.data.alreadyEnded).toBe(true);
+    expect(revokeBody.data.status).toBe("expired");
+  });
+
+  test("a legacy pending row without first-class expiry falls back to the verifier's signed expiry", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions SET expires_at = NULL
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+    const currentList = (await (
+      await app.request(
+        `https://api.example.test/api/v1/remote/sessions?agentId=${agentId}`,
+      )
+    ).json()) as { data: { sessions: { id: string }[] } };
+    expect(currentList.data.sessions.map((s) => s.id)).toEqual([
+      pairBody.data.sessionId,
+    ]);
+
+    // A legacy row whose signed verifier expiry is in the past stays hidden.
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET pairing_token_hash = ${`hmac-sha256-v2:1000000000000:${"a".repeat(64)}`}
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+    const staleList = (await (
+      await app.request(
+        `https://api.example.test/api/v1/remote/sessions?agentId=${agentId}`,
+      )
+    ).json()) as { data: { sessions: unknown[] } };
+    expect(staleList.data.sessions).toHaveLength(0);
+  });
+
+  test("issuance replaces run-out grants terminally instead of denying them", async () => {
+    await seedAgent();
+    const firstBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 minute'
+      WHERE id = ${firstBody.data.sessionId}
+    `);
+
+    const secondResponse = await pair();
+    expect(secondResponse.status).toBe(200);
+    const rows = await dbWrite.select().from(remoteSessions);
+    expect(rows).toHaveLength(2);
+    const first = rows.find((row) => row.id === firstBody.data.sessionId);
+    expect(first?.status).toBe("expired");
+    expect(rows.filter((row) => row.status === "pending")).toHaveLength(1);
   });
 });
