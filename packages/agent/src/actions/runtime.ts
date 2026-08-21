@@ -24,7 +24,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AwarenessRegistry,
   createSelfApiRequestHeaders,
@@ -226,12 +226,14 @@ async function selfStatusOp(
       ? MAX_SELF_STATUS_FULL_CHARS
       : MAX_SELF_STATUS_BRIEF_CHARS;
   const suffix = "\n…[self-status truncated]";
+  const wellFormedSuffix = toWellFormedUnicode(suffix);
+  const wellFormedRaw = toWellFormedUnicode(rawText);
   const text =
-    rawText.length <= maxChars
-      ? rawText
-      : maxChars <= suffix.length
-        ? suffix.slice(0, maxChars)
-        : `${rawText.slice(0, maxChars - suffix.length)}${suffix}`;
+    wellFormedRaw.length <= maxChars
+      ? wellFormedRaw
+      : maxChars <= wellFormedSuffix.length
+        ? truncateWellFormed(wellFormedSuffix, maxChars)
+        : `${truncateWellFormed(wellFormedRaw, maxChars - wellFormedSuffix.length)}${wellFormedSuffix}`;
   return {
     success: true,
     text,
@@ -348,7 +350,10 @@ async function restartOp(
 ): Promise<ActionResult> {
   const reason =
     typeof params.reason === "string"
-      ? params.reason.slice(0, MAX_RESTART_REASON_CHARS)
+      ? truncateWellFormed(
+          toWellFormedUnicode(params.reason),
+          MAX_RESTART_REASON_CHARS,
+        )
       : undefined;
   const source = isRestartSource(params.source) ? params.source : undefined;
 
