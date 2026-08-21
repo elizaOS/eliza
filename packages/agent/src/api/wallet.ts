@@ -460,8 +460,22 @@ export function validatePrivateKey(key: string): KeyValidationResult {
 
 /** Mask a secret string for safe display (e.g. logs, UI). */
 export function maskSecret(value: string): string {
-  if (!value || value.length <= 8) return "****";
-  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+  if (!value) return "****";
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= 8) return "****";
+  const head = truncateWellFormed(wellFormed, 4);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
 }
 
 // ── Key generation ────────────────────────────────────────────────────
@@ -849,8 +863,21 @@ interface SolanaDexMeta {
 }
 
 function shortenMint(mint: string): string {
-  if (mint.length <= 10) return mint;
-  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+  const wellFormed = toWellFormedUnicode(mint);
+  if (wellFormed.length <= 10) return wellFormed;
+  const head = truncateWellFormed(wellFormed, 4);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
 }
 
 async function fetchSolanaDexMeta(
@@ -957,11 +984,17 @@ function describeRpcEndpoint(url: string): string {
 /** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!res.ok) throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || `HTTP ${res.status}`);
+  if (!res.ok)
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) ||
+        `HTTP ${res.status}`,
+    );
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON");
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON",
+    );
   }
 }
 
