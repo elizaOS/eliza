@@ -2919,6 +2919,15 @@ async function main(): Promise<void> {
     onRegistryChanged: () => {
       sendManagedWindowsChanged();
       setupApplicationMenu();
+      const workspacePresent =
+        (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
+      void getDesktopManager()
+        .setMainWindowSuppressedByWorkspace(workspacePresent)
+        .catch((error: unknown) => {
+          logger.warn(
+            `[surface-windows] Failed to synchronize pill visibility with Workspace: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       // Dockless mode: any open managed window (dashboard/surface/settings/app)
       // reveals the Dock icon; closing the last one hides it again.
       getDesktopManager().setManagedWindowsPresent(

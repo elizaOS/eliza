@@ -375,6 +375,10 @@ export class DesktopManager {
   private sendToWebview: SendToWebview | null = null;
   private _windowFocused = true;
   private _windowHidden = false;
+  /** Workspace owns the shared ChatOverlay while open, so the pill stays out. */
+  private mainWindowSuppressedByWorkspace = false;
+  /** User/tray/shortcut intent retained while Workspace suppresses rendering. */
+  private mainWindowVisibilityRequested = true;
   private _focusPoller: ReturnType<typeof setInterval> | null = null;
   private _appActive = false;
   // Bottom-bar (pill) re-anchoring: the bar frame is derived from the primary
@@ -468,6 +472,9 @@ export class DesktopManager {
     this.teardownWindowEvents(this.mainWindow);
     this.mainWindow = window;
     this.setupWindowEvents();
+    if (this.mainWindowSuppressedByWorkspace) {
+      this.hideMainWindowNow();
+    }
   }
 
   async getShellDiagnosticsState(): Promise<{
@@ -1134,6 +1141,14 @@ export class DesktopManager {
           );
           return;
         }
+        if (this.mainWindowSuppressedByWorkspace) {
+          if (this.mainWindowVisibilityRequested) {
+            await this.hideWindow();
+          } else {
+            await this.showWindow();
+          }
+          return;
+        }
         const visible = (await this.isWindowVisible()).visible;
         const focused = (await this.isWindowFocused()).focused;
         if (focused && visible) {
@@ -1450,6 +1465,8 @@ X-GNOME-Autostart-enabled=true
   }
 
   async showWindow(): Promise<void> {
+    this.mainWindowVisibilityRequested = true;
+    if (this.mainWindowSuppressedByWorkspace) return;
     let win = this.mainWindow;
     if (!win) {
       await this.restoreMainWindowCallback?.();
@@ -1471,6 +1488,31 @@ X-GNOME-Autostart-enabled=true
   }
 
   async hideWindow(): Promise<void> {
+    this.mainWindowVisibilityRequested = false;
+    this.hideMainWindowNow();
+  }
+
+  /**
+   * Suppress the detached pill while Workspace renders the same ChatOverlay.
+   * This is native window ownership—not renderer hiding—so there is never a
+   * second visible/click-blocking surface over the workstation. Visibility
+   * intent is preserved and applied when the last Workspace window closes.
+   */
+  async setMainWindowSuppressedByWorkspace(
+    suppressed: boolean,
+  ): Promise<void> {
+    if (this.mainWindowSuppressedByWorkspace === suppressed) return;
+    this.mainWindowSuppressedByWorkspace = suppressed;
+    if (suppressed) {
+      this.hideMainWindowNow();
+      return;
+    }
+    if (this.mainWindowVisibilityRequested) {
+      await this.showWindow();
+    }
+  }
+
+  private hideMainWindowNow(): void {
     const win = this.mainWindow;
     if (!win) return;
     const ptr = (win as { ptr?: unknown }).ptr;

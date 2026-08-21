@@ -6,6 +6,8 @@ import {
   ensureWindowTransparentBackground,
   isAppActive,
   isKeyWindow,
+  makeKeyAndOrderFront,
+  orderOut,
   pollWindowOutsideClick,
   setWindowInteractiveMaterialSize,
   setWindowNonactivatingPanel,
@@ -701,6 +703,28 @@ describe("DesktopManager main window controls", () => {
     await expect(manager.isWindowVisible()).resolves.toEqual({
       visible: true,
     });
+  });
+
+  it("suppresses the pill while Workspace owns the shared ChatOverlay", async () => {
+    const { manager, window } = createManagerWithWindow();
+    Object.assign(window, { ptr: { id: "pill-window" } });
+
+    await manager.setMainWindowSuppressedByWorkspace(true);
+    expect(orderOut).toHaveBeenCalledTimes(1);
+    await expect(manager.isWindowVisible()).resolves.toEqual({
+      visible: false,
+    });
+
+    await manager.showWindow();
+    expect(makeKeyAndOrderFront).not.toHaveBeenCalled();
+
+    await manager.setMainWindowSuppressedByWorkspace(false);
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
+
+    await manager.setMainWindowSuppressedByWorkspace(true);
+    await manager.hideWindow();
+    await manager.setMainWindowSuppressedByWorkspace(false);
+    expect(makeKeyAndOrderFront).toHaveBeenCalledTimes(1);
   });
 
   it("tears down old window event handlers when replacing the main window", () => {
