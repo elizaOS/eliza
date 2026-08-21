@@ -545,6 +545,12 @@ export class DockerEngine implements ISandboxEngine {
   }
 }
 
+/**
+ * Upper bound on the start-check stderr buffer. The spawned container outlives
+ * runContainer, so this buffer must not grow for the container's whole life.
+ */
+const MAX_START_STDERR_CHARS = 64 * 1024;
+
 export class AppleContainerEngine implements ISandboxEngine {
   readonly engineType: SandboxEngineType = "apple-container";
 
@@ -631,16 +637,27 @@ export class AppleContainerEngine implements ISandboxEngine {
         reject(new Error("Apple Container executable unavailable"));
         return;
       }
+      // stdout is discarded rather than piped: nothing here ever reads it, and
+      // this child outlives the promise, so a piped stdout nobody drains fills
+      // the OS pipe buffer and blocks the container in write(2) forever.
       const proc = spawn(binary, args, {
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["pipe", "ignore", "pipe"],
         detached: true,
         env: hostEngineEnv(),
       });
 
-      // Collect initial output for error detection
+      // Collect initial output for error detection. The listener stays attached
+      // for the child's whole life so stderr keeps draining, but the buffer is
+      // only needed for the start check, so it is bounded and then released.
       let stderr = "";
+      let collectStderr = true;
       proc.stderr.on("data", (chunk: Buffer) => {
+        if (!collectStderr) return;
         stderr += chunk.toString();
+        if (stderr.length >= MAX_START_STDERR_CHARS) {
+          stderr = `${stderr.slice(0, MAX_START_STDERR_CHARS)}\n[truncated]`;
+          collectStderr = false;
+        }
       });
 
       // Give it a moment to start, then check if it's still running
@@ -649,6 +666,7 @@ export class AppleContainerEngine implements ISandboxEngine {
           reject(new Error(`Apple Container exited immediately: ${stderr}`));
         } else {
           // Container is running in background
+          collectStderr = false;
           proc.unref(); // Allow Node process to exit independently
           resolve(opts.name);
         }
