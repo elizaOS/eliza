@@ -149,6 +149,9 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     });
     const { session } = await createBrowserSession(harness.store, {
       identityId: identity.id,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
     });
     const cookie = `${SESSION_COOKIE_NAME}=${session.id}`;
 
@@ -192,6 +195,9 @@ describe("installed host bridge binds cookie auth to credentialed CORS trust", (
     });
     const { session, csrfToken } = await createBrowserSession(harness.store, {
       identityId: identity.id,
+      ip: null,
+      userAgent: null,
+      rememberDevice: false,
     });
     const cookie = `${SESSION_COOKIE_NAME}=${session.id}`;
 
