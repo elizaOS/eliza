@@ -63,6 +63,20 @@ import { getApiBase, getBaseURL } from "./utils/config";
 export const OLLAMA_INIT_PROBE_TIMEOUT_MS = 5_000;
 const OLLAMA_PREWARM_TIMEOUT_MS = 120_000;
 
+async function fetchOllamaTagsWithTimeout(apiBase: string, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => {
+    controller.abort(
+      new DOMException(`Ollama probe timed out after ${timeoutMs}ms`, "TimeoutError")
+    );
+  }, timeoutMs);
+  try {
+    return await fetch(`${apiBase}/api/tags`, { signal: controller.signal });
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
 function readTruthyEnv(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
@@ -303,9 +317,10 @@ export const ollamaPlugin: Plugin = {
           fn: async (runtime: IAgentRuntime) => {
             try {
               const apiBase = getApiBase(runtime);
-              const response = await fetch(`${apiBase}/api/tags`, {
-                signal: AbortSignal.timeout(OLLAMA_INIT_PROBE_TIMEOUT_MS),
-              });
+              const response = await fetchOllamaTagsWithTimeout(
+                apiBase,
+                OLLAMA_INIT_PROBE_TIMEOUT_MS
+              );
               if (!response.ok) {
                 logger.error(`Failed to validate Ollama API: ${response.statusText}`);
               }

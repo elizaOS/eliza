@@ -142,10 +142,15 @@ describe("Ollama config and init plumbing", () => {
       reportError: reportErrorMock,
     } as unknown as IAgentRuntime;
 
-    const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
+    const originalSetTimeout = globalThis.setTimeout;
     const timeoutSpy = vi
-      .spyOn(AbortSignal, "timeout")
-      .mockImplementation(() => originalTimeout(50));
+      .spyOn(globalThis, "setTimeout")
+      .mockImplementation(((handler, timeout, ...args) =>
+        originalSetTimeout(
+          handler,
+          timeout === OLLAMA_INIT_PROBE_TIMEOUT_MS ? 50 : timeout,
+          ...args
+        )) as typeof globalThis.setTimeout);
 
     try {
       const urlTest = ollamaPlugin.tests?.[0]?.tests?.find(
@@ -158,7 +163,7 @@ describe("Ollama config and init plumbing", () => {
       const elapsed = Date.now() - start;
 
       expect(elapsed).toBeLessThan(4_000);
-      expect(timeoutSpy).toHaveBeenCalledWith(OLLAMA_INIT_PROBE_TIMEOUT_MS);
+      expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), OLLAMA_INIT_PROBE_TIMEOUT_MS);
       expect(reportErrorMock).toHaveBeenCalledTimes(1);
       expect(reportErrorMock).toHaveBeenCalledWith(
         "plugin-zerollama.test.url-validation",
