@@ -921,3 +921,8 @@ available local Documents trees. To audit the personal VPS implementation
 without guessing, obtain its repository URL or a secret-free archive plus the
 deployed path and nonsecret runtime/config manifest from the VPS agent. Do not
 copy its credentials, database, or live state into this worktree.
+
+The guarded local-to-staging operator handoff, including the latest mock-stack
+evidence and the separate approval boundaries for credits, containers,
+databases, and payouts, is in
+[`cloud-app-staging-acceptance.md`](cloud-app-staging-acceptance.md).
