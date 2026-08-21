@@ -36,6 +36,7 @@ import { dbRead } from "@/db/helpers";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { usersRepository } from "@/db/repositories/users";
 import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import type { DrainResult } from "@/lib/queue/redis-queue";
 import { safeFetch } from "@/lib/security/safe-fetch";
 import { appChargeCallbacksService } from "@/lib/services/app-charge-callbacks";
@@ -46,7 +47,11 @@ import { creditsService } from "@/lib/services/credits";
 import { discordService } from "@/lib/services/discord";
 import { invoicesService } from "@/lib/services/invoices";
 import { invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
-import { provisioningJobService } from "@/lib/services/provisioning-jobs";
+import { JOB_TYPES } from "@/lib/services/provisioning-job-types";
+import {
+  CONTAINER_BACKED_TARGET_REJECTION_REASON,
+  provisioningJobService,
+} from "@/lib/services/provisioning-jobs";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { referralsService } from "@/lib/services/referrals";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
@@ -592,12 +597,40 @@ async function enqueueAgentRestartAfterTopUp(params: {
     return;
   }
 
-  await provisioningJobService.enqueueAgentRestartOnce({
-    agentId: params.agentId,
-    organizationId: params.organizationId,
-    userId: params.userId,
-  });
+  try {
+    await provisioningJobService.enqueueAgentRestartOnce({
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+  } catch (error) {
+    // error-policy:J1 the payment boundary translates only the authoritative,
+    // locked non-container target rejection into the designed no-restart outcome.
+    if (
+      !(
+        error instanceof ApiError &&
+        error.status === 409 &&
+        error.code === "session_not_ready" &&
+        error.details?.reason === CONTAINER_BACKED_TARGET_REJECTION_REASON &&
+        error.details.jobType === JOB_TYPES.AGENT_RESTART
+      )
+    ) {
+      throw error;
+    }
+    logger.info(
+      "[Stripe Queue] Agent top-up targets a non-container-backed tier; restart skipped",
+      {
+        agentId: params.agentId,
+        organizationId: params.organizationId,
+        paymentIntentId: params.paymentIntentId,
+        sessionId: params.sessionId,
+      },
+    );
+    return;
+  }
   void provisioningJobService.triggerImmediate().catch((err) =>
+    // error-policy:J5 The durable restart job remains observable by the scheduled poller;
+    // this handler observes and reports only the failed best-effort immediate nudge.
     logger.warn(
       "[Stripe Queue] provisioning triggerImmediate nudge failed after agent top-up",
       {
