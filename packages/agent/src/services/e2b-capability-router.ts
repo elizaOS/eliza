@@ -61,6 +61,7 @@ const DEFAULT_E2B_WORKDIR = "/home/user";
 const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
 
@@ -370,6 +371,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
         exitCode,
         stdout,
         stderr: typeof payload.stderr === "string" ? payload.stderr : "",
+        ...(payload.timedOut === true ? { timedOut: true } : {}),
       };
     } catch (error) {
       if (timeout.timedOut()) {
@@ -1151,12 +1153,17 @@ function timeoutSignal(ms: number | undefined): {
   dispose(): void;
   timedOut(): boolean;
 } {
-  if (!ms) {
+  if (ms === undefined) {
     return {
       signal: undefined,
       dispose: () => {},
       timedOut: () => false,
     };
+  }
+  if (!Number.isSafeInteger(ms) || ms <= 0 || ms > MAX_TIMER_TIMEOUT_MS) {
+    throw new RangeError(
+      `Timeout must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}ms.`,
+    );
   }
   const controller = new AbortController();
   const reason = createTimeoutError(ms);
@@ -1428,8 +1435,16 @@ function positiveIntSetting(
   const value = readSetting(runtime, key);
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  throw new Error(`${key} must be a positive integer.`);
+  if (
+    Number.isSafeInteger(parsed) &&
+    parsed > 0 &&
+    parsed <= MAX_TIMER_TIMEOUT_MS
+  ) {
+    return parsed;
+  }
+  throw new Error(
+    `${key} must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}.`,
+  );
 }
 
 function agentRunnersSetting(
@@ -1485,7 +1500,10 @@ function commandRunResult(
   return {
     output: `${result.stdout}${stderr}`,
     exitCode: result.exitCode,
-    timedOut,
+    timedOut:
+      timedOut ||
+      (result as SandboxCommandResult & { timedOut?: unknown }).timedOut ===
+        true,
   };
 }
 
