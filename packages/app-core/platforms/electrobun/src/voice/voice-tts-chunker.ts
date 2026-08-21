@@ -31,10 +31,13 @@ function readPositiveInt(
   key: string,
   fallback: number,
 ): number {
-  const raw = env[key];
+  const raw = env[key]?.trim();
   if (!raw) return fallback;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  // parseInt stops at the first non-digit, so "12junk" would yield 12 and
+  // silently replace the default. Require the whole value to be decimal.
+  if (!/^\d+$/.test(raw)) return fallback;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function readBoolean(
