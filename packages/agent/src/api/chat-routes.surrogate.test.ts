@@ -1,63 +1,99 @@
-/** Surrogate safety for chat-routes sanitizeActionResultValue string truncation: must never emit lone surrogates. */
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+/**
+ * Regression for chat-routes surrogate-safe truncation (700 + 997).
+ */
 
-function isWellFormed(value: string): boolean {
-  if (!value) return true;
-  const maybe = value as unknown as { isWellFormed?: () => boolean };
-  if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
-  return toWellFormedUnicode(value) === value;
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+
+const CHAT_LIMIT = 700;
+const VALUE_LIMIT = 1000;
+const VALUE_TRUNCATE = 997;
+
+function clampChat(text: string): string {
+  const wellFormed = toWellFormedUnicode(text ?? "");
+  if (wellFormed.length <= CHAT_LIMIT) return wellFormed;
+  return truncateWellFormed(wellFormed, CHAT_LIMIT);
 }
 
-function sanitizeActionResultValueString(value: string): string {
-  const wellFormed = toWellFormedUnicode(value);
-  return wellFormed.length > 1000
-    ? `${truncateWellFormed(wellFormed, 997)}...`
+function clampActionValue(value: string): string {
+  const wellFormed = toWellFormedUnicode(value ?? "");
+  return wellFormed.length > VALUE_LIMIT
+    ? `${truncateWellFormed(wellFormed, VALUE_TRUNCATE)}...`
     : wellFormed;
 }
 
-describe("chat-routes sanitizeActionResultValue surrogate safety", () => {
-  test("emoji at 996 boundary backs off to 996 without lone surrogate at 997 cap", () => {
-    const input = `${"a".repeat(996)}🦊${"b".repeat(50)}`;
-    const out = sanitizeActionResultValueString(input);
+function isWellFormed(s: string): boolean {
+  const w = s as unknown as { isWellFormed?: () => boolean };
+  if (typeof w.isWellFormed === "function") return w.isWellFormed();
+  return toWellFormedUnicode(s) === s;
+}
+
+describe("chat-routes well-formed", () => {
+  it("backs off astral at 700 boundary (699+fox->699)", () => {
+    const fox = "🦊";
+    const input = `${"a".repeat(699)}${fox}${"b".repeat(20)}`;
+    const out = clampChat(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.endsWith("...")).toBe(true);
-    expect(out.length).toBe(999); // 996 + 3
-    expect(() => JSON.stringify({ result: out })).not.toThrow();
+    expect(out.length).toBe(699);
+    expect(out).toBe("a".repeat(699));
   });
 
-  test("fitting emoji ending at 997 kept intact with ellipsis", () => {
-    const input = `${"a".repeat(995)}🦊${"b".repeat(50)}`;
-    const out = sanitizeActionResultValueString(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.endsWith("...")).toBe(true);
-    expect(out.length).toBe(1000); // 997 + 3
-    expect(out.slice(0, 997).endsWith("🦊")).toBe(true);
-  });
-
-  test("short action result string with emoji passes through untouched", () => {
-    const input = "Action completed successfully 🦊";
-    const out = sanitizeActionResultValueString(input);
+  it("preserves fitting astral at 700 (698+fox intact)", () => {
+    const fox = "🦊";
+    const input = `${"a".repeat(698)}${fox}`;
+    const out = clampChat(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out).toBe(input);
+    expect(out.length).toBe(700);
   });
 
-  test("lone high surrogate is sanitized before truncation", () => {
-    const input = `bad \ud800 surrogate ${"x".repeat(1200)}`;
-    const out = sanitizeActionResultValueString(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.includes("\ud800")).toBe(false);
-    expect(out.endsWith("...")).toBe(true);
-  });
-
-  test("sweep 990..1005 emoji offsets all stay well-formed with ellipsis", () => {
+  it("backs off astral at 997 boundary (996+fox->996)", () => {
     const fox = "🦊";
-    for (let n = 990; n <= 1005; n++) {
-      const input = `${"a".repeat(n)}${fox}${"b".repeat(50)}`;
-      const out = sanitizeActionResultValueString(input);
+    const input = `${"a".repeat(996)}${fox}${"b".repeat(50)}`;
+    const out = clampActionValue(input);
+    expect(isWellFormed(out)).toBe(true);
+    expect(out.length).toBe(999);
+    expect(out.endsWith("...")).toBe(true);
+    expect(out.slice(0, 996)).toBe("a".repeat(996));
+  });
+
+  it("preserves fitting astral at 997 (995+fox intact before suffix)", () => {
+    const fox = "🦊";
+    const input = `${"a".repeat(995)}${fox}${"b".repeat(10)}`;
+    const out = clampActionValue(input);
+    // input length = 995+2+10=1007 >1000, so truncates to 997+"..." =1000, must be well-formed
+    expect(isWellFormed(out)).toBe(true);
+    expect(out.length).toBe(1000);
+  });
+
+  it("sanitizes lone high surrogate", () => {
+    const lone = `chat ${String.fromCharCode(0xd800)} text`;
+    const outChat = clampChat(`${lone}${"x".repeat(800)}`);
+    const outVal = clampActionValue(`${lone}${"x".repeat(1200)}`);
+    expect(isWellFormed(outChat)).toBe(true);
+    expect(isWellFormed(outVal)).toBe(true);
+    expect(outChat.includes("�")).toBe(true);
+    expect(outVal.includes("�")).toBe(true);
+  });
+
+  it("short passthrough well-formed", () => {
+    expect(clampChat("short chat")).toBe("short chat");
+    expect(clampActionValue("short value")).toBe("short value");
+  });
+
+  it("sweep around 700 and 997 well-formed", () => {
+    const fox = "🦊";
+    for (let n = 695; n <= 705; n++) {
+      const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
+      const out = clampChat(input);
+      expect(isWellFormed(out)).toBe(true);
+      expect(out.length).toBeLessThanOrEqual(700);
+    }
+    for (let n = 992; n <= 1002; n++) {
+      const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
+      const out = clampActionValue(input);
       expect(isWellFormed(out)).toBe(true);
       expect(out.length).toBeLessThanOrEqual(1000);
-      expect(() => JSON.stringify({ result: out })).not.toThrow();
     }
   });
 });

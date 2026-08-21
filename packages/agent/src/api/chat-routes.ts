@@ -59,6 +59,7 @@ import {
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   ChatFailureKind,
   ChatToolCallEvent,
@@ -710,10 +711,11 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = text.replace(/\s+/g, " ").trim();
-  if (text.length <= 700) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= 700) {
+    return wellFormed;
   }
-  const truncated = text.slice(0, 700);
+  const truncated = truncateWellFormed(wellFormed, 700);
   const sentenceEnd = Math.max(
     truncated.lastIndexOf("."),
     truncated.lastIndexOf("!"),
