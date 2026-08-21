@@ -309,11 +309,13 @@ function findSetupAction(
 function restrictedReasonForScreenTime(
   screenTime: MobileSignalsScreenTimeStatus,
 ): PermissionState["restrictedReason"] {
-  const reason = screenTime.reason ?? screenTime.provisioning.reason ?? "";
-  if (reason.toLowerCase().includes("entitlement")) {
+  if (!screenTime.supported) return "platform_unsupported";
+  // Classify from the typed provisioning verdict, never from host prose: a
+  // reason that merely mentions entitlement inspection is not a missing
+  // entitlement.
+  if (screenTime.provisioning.status === "missing") {
     return "entitlement_required";
   }
-  if (!screenTime.supported) return "platform_unsupported";
   return "os_policy";
 }
 
@@ -350,20 +352,6 @@ function stateFromScreenTime(
       canRequest: screenTime.authorization.canRequest,
       reason: screenTime.reason ?? action?.reason ?? undefined,
     });
-  }
-
-  if (!screenTime.android && !hasUsableCapability) {
-    return defaultMobileState(
-      "screentime",
-      screenTime.supported ? "restricted" : "not-applicable",
-      {
-        canRequest: false,
-        restrictedReason: screenTime.supported
-          ? "os_policy"
-          : "platform_unsupported",
-        reason: screenTime.reason ?? action?.reason ?? undefined,
-      },
-    );
   }
 
   return defaultMobileState(

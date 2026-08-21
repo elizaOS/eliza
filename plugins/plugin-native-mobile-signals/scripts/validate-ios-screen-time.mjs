@@ -335,6 +335,7 @@ export function validateIosScreenTimeBuildWiring(options = {}) {
           )}.`,
     );
   } catch (error) {
+    // error-policy:J1 validator boundary converts an inspection failure into a structured failed check.
     addCheck(
       checks,
       "deviceactivity-extension-entitlements",
@@ -375,6 +376,7 @@ export function validateIosScreenTimeBuildWiring(options = {}) {
           )}.`,
     );
   } catch (error) {
+    // error-policy:J1 validator boundary converts an inspection failure into a structured failed check.
     addCheck(
       checks,
       "xcode-deviceactivity-extension-entitlements-build-settings",

@@ -284,6 +284,41 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     });
   });
 
+  it("classifies a missing Family Controls entitlement as entitlement_required", async () => {
+    const native = plugin(
+      permissions({
+        screenTime: {
+          ...permissions().screenTime,
+          availability: "provisioning-missing",
+          entitlements: { familyControls: false },
+          provisioning: {
+            satisfied: false,
+            status: "missing",
+            inspected: "code-signature",
+            reason:
+              "Family Controls entitlement is missing from the app bundle.",
+          },
+          authorization: {
+            status: "approved",
+            canRequest: false,
+          },
+          reason: "Family Controls entitlement is missing from the app bundle.",
+        },
+      }),
+    );
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    const state = await registry.check("screentime");
+
+    expect(state).toMatchObject({
+      id: "screentime",
+      status: "restricted",
+      canRequest: false,
+      restrictedReason: "entitlement_required",
+    });
+    expect(state.restrictedReason).not.toBe("os_policy");
+  });
+
   it("does not open settings for unavailable iOS Screen Time", async () => {
     const native = plugin(
       permissions({
