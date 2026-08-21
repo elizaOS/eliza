@@ -670,7 +670,22 @@ function isoTimestamp(
 			{ ...context, field },
 		);
 	}
-	return new Date(parsed).toISOString();
+	const date = new Date(parsed);
+	if (Number.isNaN(date.getTime())) {
+		return invalid(
+			`Interaction field '${field}' must be a valid ISO timestamp.`,
+			{ ...context, field },
+		);
+	}
+	try {
+		return date.toISOString();
+	} catch {
+		// error-policy:J3 untrusted-input sanitizing: non-representable date fails validation
+		return invalid(
+			`Interaction field '${field}' must be a valid ISO timestamp.`,
+			{ ...context, field },
+		);
+	}
 }
 
 function enumValue<T extends string>(
