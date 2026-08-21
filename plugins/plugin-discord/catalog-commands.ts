@@ -45,6 +45,8 @@ import {
 	createUniqueUuid,
 	hasRoleAccess,
 	type IAgentRuntime,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	type ConnectorCommand,
@@ -281,7 +283,7 @@ async function routeCommandToAgent(
 
 	const content =
 		replied.trim().length > 0
-			? replied.slice(0, 1900)
+			? truncateWellFormed(toWellFormedUnicode(replied), 1900)
 			: `Ran \`${commandText}\`.`;
 	await safeInteractionCall(() => interaction.editReply({ content }));
 }
@@ -309,7 +311,9 @@ async function dispatchAgentCommand(
 	if (resolved.handled && resolved.reply !== undefined) {
 		await safeInteractionCall(() =>
 			interaction.reply({
-				content: resolved.reply?.slice(0, 1900) ?? "",
+				content:
+					truncateWellFormed(toWellFormedUnicode(resolved.reply ?? ""), 1900) ??
+					"",
 				ephemeral: true,
 			}),
 		);
@@ -407,7 +411,10 @@ function mapOption(
 		option.choices.length > 0
 			? option.choices
 					.slice(0, 25)
-					.map((value) => ({ name: value.slice(0, 100), value }))
+					.map((value) => ({
+						name: truncateWellFormed(toWellFormedUnicode(value), 100),
+						value,
+					}))
 			: undefined;
 	return {
 		name: option.name,
