@@ -225,9 +225,10 @@ export function coordinatorFetch(
   timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const callerSignal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
   return stub.fetch(input, {
     ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
+    signal: callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal,
   });
 }
 
