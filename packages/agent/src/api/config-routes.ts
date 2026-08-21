@@ -25,6 +25,11 @@ import {
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
+import {
+  hasBlockedObjectKeyDeep,
+  MAX_BLOCKED_OBJECT_DEPTH,
+  MAX_BLOCKED_OBJECT_NODES,
+} from "./blocked-object-keys.ts";
 import { applyCanonicalFirstRunConfig } from "./provider-switch-config.ts";
 
 // ---------------------------------------------------------------------------
@@ -244,6 +249,19 @@ async function applyReloadedConfig(params: {
   }
 }
 
+/** Honest config patches share the canonical blocked-object-key budget. */
+export const MAX_CONFIG_PATCH_DEPTH = MAX_BLOCKED_OBJECT_DEPTH;
+export const MAX_CONFIG_PATCH_NODES = MAX_BLOCKED_OBJECT_NODES;
+
+/**
+ * Reuse the hardened walker in blocked-object-keys.ts (depth 32 / 100k nodes,
+ * descriptor-only reads, path-scoped cycle detect, typed unbounded error).
+ * Over-budget graphs and nested blocked keys fail closed together.
+ */
+export function configPatchExceedsBound(value: unknown): boolean {
+  return hasBlockedObjectKeyDeep(value);
+}
+
 /**
  * Handle configuration routes (GET/PUT /api/config, GET /api/config/schema,
  * POST /api/config/reload). Returns `true` if the request was handled.
@@ -390,6 +408,10 @@ export async function handleConfigRoutes(
       if (CONFIG_WRITE_ALLOWED_TOP_KEYS.has(key) && !isBlockedObjectKey(key)) {
         filtered[key] = (body as Record<string, unknown>)[key];
       }
+    }
+    if (configPatchExceedsBound(filtered)) {
+      error(res, "config patch exceeds the nesting-depth limit", 400);
+      return true;
     }
 
     // Security: keep auth/step-up secrets out of API-driven config writes so
