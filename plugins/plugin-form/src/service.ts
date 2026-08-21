@@ -524,8 +524,7 @@ export class FormService extends Service {
    * Save a session
    */
   async saveSession(session: FormSession): Promise<void> {
-    session.updatedAt = Date.now();
-    await storageSaveSession(this.runtime, session);
+    await storageSaveSession(this.runtime, session, true);
   }
 
   // ============================================================================

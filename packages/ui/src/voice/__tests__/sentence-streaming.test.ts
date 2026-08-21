@@ -67,13 +67,13 @@ describe("shouldCacheGeneratedSpeech", () => {
     ).toBe(true);
   });
 
-  it("does not cache longer or remainder clips", () => {
+  it("caches complete long responses but not streaming remainders", () => {
     expect(
       shouldCacheGeneratedSpeech(
         "This sentence is deliberately longer than ten speech tokens for cache discipline.",
         "full",
       ),
-    ).toBe(false);
+    ).toBe(true);
     expect(shouldCacheGeneratedSpeech("short follow up", "remainder")).toBe(
       false,
     );

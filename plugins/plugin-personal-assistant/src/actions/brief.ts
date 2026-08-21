@@ -1036,7 +1036,7 @@ async function handleRecalibration(args: {
     }
     const lines = candidates.map(
       (candidate) =>
-        `- ${candidate.itemClass} (surfaced ${candidate.renderedCount + candidate.ignoredCount} times, acted on ${candidate.actedOnCount})`,
+        `- ${candidate.itemClass} (surfaced ${candidate.renderedCount} times, acted on ${candidate.actedOnCount})`,
     );
     return {
       text: [

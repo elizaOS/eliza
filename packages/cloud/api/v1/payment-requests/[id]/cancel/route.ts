@@ -9,8 +9,8 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
@@ -22,7 +22,7 @@ const CancelSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
+app.use("*", moneyRateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
   try {

@@ -127,6 +127,8 @@ export async function scanSkillDirectory(
 	const maxFiles = options.maxFiles ?? DEFAULT_MAX_FILES;
 	const maxFileBytes = options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES;
 	const safeDomains = options.additionalSafeDomains ?? [];
+	const signal = options.signal;
+	signal?.throwIfAborted();
 
 	const fs = await import("node:fs/promises");
 	const path = await import("node:path");
@@ -135,13 +137,16 @@ export async function scanSkillDirectory(
 	// symlink targets before comparing them. This avoids false escapes through
 	// aliases such as macOS `/tmp` -> `/private/tmp`.
 	const canonicalDirPath = await fs.realpath(dirPath);
+	signal?.throwIfAborted();
 	const manifestEntries = await buildManifestEntriesFromDisk(canonicalDirPath);
+	signal?.throwIfAborted();
 	const manifestFindings = scanManifest(manifestEntries, canonicalDirPath);
 
 	const allFindings: SkillScanFinding[] = [];
 	let scannedCount = 0;
 
 	for (const entry of manifestEntries) {
+		signal?.throwIfAborted();
 		if (scannedCount >= maxFiles) break;
 		if (entry.isSymlink || entry.sizeBytes > maxFileBytes) continue;
 
@@ -156,8 +161,10 @@ export async function scanSkillDirectory(
 				"utf-8",
 			);
 		} catch {
+			signal?.throwIfAborted();
 			continue;
 		}
+		signal?.throwIfAborted();
 
 		scannedCount++;
 		if (isCode)

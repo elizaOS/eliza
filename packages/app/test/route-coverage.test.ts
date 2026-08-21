@@ -51,6 +51,10 @@ const INTERNAL_TOOL_APPS_SOURCE = path.resolve(
   "../../ui/src/components/apps/internal-tool-apps.ts",
 );
 const APP_MAIN_SOURCE = path.resolve(HERE, "../src/main.tsx");
+const UI_STYLES_SOURCE = path.resolve(
+  REPO_ROOT,
+  "packages/ui/src/styles/styles.css",
+);
 
 type PluginViewCase = {
   manifestPath: string;
@@ -83,6 +87,7 @@ const PLUGIN_VIEW_MANIFESTS = [
   "plugins/plugin-goals/src/plugin.ts",
   "plugins/plugin-health/src/index.ts",
   "plugins/plugin-inbox/src/plugin.ts",
+  "plugins/plugin-maps/src/plugin.ts",
   "plugins/plugin-relationships/src/plugin.ts",
   "plugins/plugin-todos/src/index.ts",
   "plugins/plugin-phone/src/plugin.ts",
@@ -96,6 +101,7 @@ const PLUGIN_VIEW_MANIFESTS = [
 
 const APP_SHELL_REGISTRATION_SOURCES = [
   "plugins/plugin-phone/src/register-companion-page.ts",
+  "plugins/plugin-maps/src/register.ts",
   "plugins/plugin-notes/src/register.ts",
   "plugins/plugin-task-coordinator/src/register.ts",
   "plugins/plugin-wallet/src/ui/register-routes.ts",
@@ -133,6 +139,7 @@ const NOT_APP_BOOT_LOADED_VIEW_MANIFESTS: Readonly<Record<string, string>> = {
 const BOOT_PLUGIN_VIEW_MANIFEST_BY_MODULE: Record<string, string | null> = {
   "@elizaos/plugin-calendar": "plugins/plugin-calendar/src/plugin.ts",
   "@elizaos/plugin-contacts": "plugins/plugin-contacts/src/plugin.ts",
+  "@elizaos/plugin-maps": "plugins/plugin-maps/src/plugin.ts",
   "@elizaos/plugin-native-settings": null,
   // PA no longer declares a view (the LifeOps overview was removed); it is a
   // boot plugin with no renderer module.
@@ -153,6 +160,13 @@ const SHIPPED_MODALITIES: ReadonlyArray<"gui" | "tui" | "xr"> = ["gui"];
 
 const OPERATOR_VIEW_MANIFEST_CONTRACTS: readonly PluginViewManifestContract[] =
   [
+    {
+      manifestPath: "plugins/plugin-maps/src/plugin.ts",
+      id: "maps",
+      modalities: SHIPPED_MODALITIES,
+      path: "/maps",
+      componentExport: "MapsView",
+    },
     {
       manifestPath: "plugins/plugin-notes/src/plugin.ts",
       id: "notes",
@@ -432,6 +446,11 @@ function managerVisibleGuiViewPaths(): Map<string, string> {
 }
 
 describe("app route coverage gate", () => {
+  it("includes the routed Maps view in the shared responsive utility scan", () => {
+    const styles = readFileSync(UI_STYLES_SOURCE, "utf8");
+    expect(styles).toContain('@source "../../../../plugins/plugin-maps/src";');
+  });
+
   it("route smoke matrix covers catalog and app-window routes", () => {
     const smokePaths = new Set([
       ...pathsFromSource(ALL_PAGES_SPEC),

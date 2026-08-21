@@ -890,8 +890,13 @@ export class CanvasWeb extends WebPlugin {
     }
 
     const navigation = this.resolveWebViewNavigation(options.url);
-    if (navigation.protocol === "javascript:") {
-      throw new Error("javascript: web view URLs are not allowed");
+    if (
+      navigation.protocol !== "http:" &&
+      navigation.protocol !== "https:" &&
+      navigation.protocol !== "blob:" &&
+      navigation.protocol !== "about:"
+    ) {
+      throw new Error("Web view URL must use an allowed navigation scheme");
     }
 
     this.destroyWebView();
@@ -1224,10 +1229,10 @@ export class CanvasWeb extends WebPlugin {
         }
       }
 
-      return { origin: null, protocol: parsed.protocol };
+      return { origin: null, protocol: null };
     } catch {
-      // error-policy:J3 malformed URLs remain displayable only if the browser
-      // accepts them, but all messaging fails closed because no origin is set.
+      // error-policy:J3 malformed and non-allowlisted schemes are rejected by
+      // navigate before browser-controlled iframe or popup state is created.
       return { origin: null, protocol: null };
     }
   }

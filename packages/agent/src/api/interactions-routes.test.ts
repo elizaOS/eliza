@@ -19,6 +19,22 @@ import {
   parseShortcutBody,
 } from "./interactions-routes.ts";
 
+function isWellFormed(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) {
+        return false;
+      }
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function makeCtx(
   body: unknown,
   method = "POST",
@@ -378,5 +394,125 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
         },
       ),
     );
+  });
+});
+
+describe("parseShortcutBody surrogate handling", () => {
+  it("keeps surrogate pairs intact at the truncation boundary", () => {
+    const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+    const ctx2 = `${"a".repeat(119)}${emoji}${"b".repeat(10)}`;
+    const parsed = parseShortcutBody(
+      JSON.stringify({ shortcutId: "open-command-palette", context: ctx2 }),
+    );
+    expect(parsed?.context).toBeDefined();
+    expect(parsed!.context!.length).toBeLessThanOrEqual(120);
+    expect(parsed!.context!.length).toBe(119);
+    expect(parsed!.context!.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed!.context!)).toBe(true);
+    expect(parsed!.context).not.toContain(emoji);
+  });
+
+  it("preserves a fitting emoji under the cap", () => {
+    const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+    const context = `${"a".repeat(118)}${emoji}`;
+    const parsed = parseShortcutBody(
+      JSON.stringify({ shortcutId: "open-command-palette", context }),
+    );
+    expect(parsed?.context).toBe(context);
+    expect(parsed!.context!.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed!.context!)).toBe(true);
+  });
+
+  it("sanitizes lone surrogates before truncation", () => {
+    const lone = `a${String.fromCharCode(0xd800)}${"b".repeat(200)}`;
+    const parsed = parseShortcutBody(
+      JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
+    );
+    expect(parsed?.context).toContain("�");
+    expect(parsed!.context!.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed!.context!)).toBe(true);
+  });
+
+  it("sanitizes lone surrogates without truncation when under limit", () => {
+    const lone = `ok ${String.fromCharCode(0xd800)} end`;
+    const parsed = parseShortcutBody(
+      JSON.stringify({ shortcutId: "open-command-palette", context: lone }),
+    );
+    expect(parsed?.context).toBe(`ok � end`);
+    expect(isWellFormed(parsed!.context!)).toBe(true);
+  });
+});
+
+describe("parseComposerBody surrogate handling", () => {
+  it("keeps surrogate pairs intact at conversationId truncation boundary", () => {
+    const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+    const conversationId = `${"a".repeat(127)}${emoji}${"b".repeat(10)}`;
+    const parsed = parseComposerBody(
+      JSON.stringify({
+        activity: "typing_started",
+        surface: "chat_overlay",
+        conversationId,
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      }),
+    );
+    expect(parsed?.conversationId).toBeDefined();
+    expect(parsed!.conversationId!.length).toBeLessThanOrEqual(128);
+    expect(parsed!.conversationId!.length).toBe(127);
+    expect(parsed!.conversationId!.isWellFormed()).toBe(true);
+    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+    expect(parsed!.conversationId).not.toContain(emoji);
+  });
+
+  it("preserves a fitting emoji in conversationId under cap", () => {
+    const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+    const conversationId = `${"a".repeat(126)}${emoji}`;
+    const parsed = parseComposerBody(
+      JSON.stringify({
+        activity: "typing_started",
+        surface: "chat_overlay",
+        conversationId,
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      }),
+    );
+    expect(parsed?.conversationId).toBe(conversationId);
+    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+  });
+
+  it("sanitizes lone surrogates in conversationId", () => {
+    const conversationId = `ok ${String.fromCharCode(0xd800)} end`;
+    const parsed = parseComposerBody(
+      JSON.stringify({
+        activity: "typing_started",
+        surface: "chat_overlay",
+        conversationId,
+        draftLength: 5,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      }),
+    );
+    expect(parsed?.conversationId).toBe(`ok � end`);
+    expect(isWellFormed(parsed!.conversationId!)).toBe(true);
+  });
+
+  it("never emits lone surrogates at every boundary around 128", () => {
+    const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+    for (let n = 0; n <= 133; n++) {
+      const conversationId = `${"x".repeat(n)}${emoji}`;
+      const parsed = parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "chat_overlay",
+          conversationId,
+          draftLength: 5,
+          occurredAt: "2026-06-01T12:00:00.000Z",
+        }),
+      );
+      if (parsed?.conversationId) {
+        expect(isWellFormed(parsed.conversationId)).toBe(true);
+        expect(parsed.conversationId.isWellFormed()).toBe(true);
+        expect(parsed.conversationId.length).toBeLessThanOrEqual(128);
+      }
+    }
   });
 });

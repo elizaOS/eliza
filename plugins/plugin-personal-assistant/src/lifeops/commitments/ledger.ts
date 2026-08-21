@@ -195,7 +195,9 @@ function firstCommitmentSentence(text: string): string | null {
     if (!sentence) continue;
     if (!COMMITMENT_RE.test(sentence)) continue;
     if (SPECULATIVE_RE.test(sentence)) continue;
-    return sentence.replace(/[.!?]+$/, "");
+    let end = sentence.length;
+    while (end > 0 && ".!?".includes(sentence[end - 1] ?? "")) end -= 1;
+    return sentence.slice(0, end);
   }
   return null;
 }

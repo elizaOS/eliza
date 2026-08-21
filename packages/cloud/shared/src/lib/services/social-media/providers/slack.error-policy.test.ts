@@ -57,7 +57,7 @@ mock.module("../rate-limit", () => ({
   isRateLimitResponse: (r: Response) => r.status === 429,
 }));
 
-const { slackProvider } = await import("./slack");
+const { slackProvider, slackFetch } = await import("./slack");
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
@@ -176,5 +176,38 @@ describe("slackProvider.createPost — designed failure vs success stay distingu
     expect(result.error).toContain("Channel ID required");
     // No outbound call happened — the queue was never touched.
     expect(fetchQueue.length).toBe(0);
+  });
+});
+
+describe("slackFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Slack API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      slackFetch("https://slack.com/api/chat.postMessage", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await slackFetch("https://slack.com/api/chat.postMessage", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

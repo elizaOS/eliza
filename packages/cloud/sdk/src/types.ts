@@ -520,59 +520,12 @@ export interface SettleX402PaymentRequestResponse
   paymentRequest: X402PaymentRequestView;
 }
 
-export type RedemptionNetwork = "ethereum" | "base" | "bnb" | "bsc" | "solana";
-
-export interface CreateRedemptionRequest {
-  appId?: string;
-  pointsAmount: number;
-  network: RedemptionNetwork;
-  payoutAddress: string;
-  signature?: string;
-  idempotencyKey?: string;
-}
-
-export interface CreateRedemptionResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptionId?: string;
-  quote?: Record<string, unknown>;
-  warnings?: string[];
-  message?: string;
-  error?: string;
-}
-
-export interface ListRedemptionsResponse extends Record<string, unknown> {
-  success: boolean;
-  redemptions: Array<Record<string, unknown>>;
-  paused?: boolean;
-}
-
 export interface RedemptionBalanceResponse extends Record<string, unknown> {
   success: boolean;
   balance?: Record<string, unknown>;
   earningsBySource?: Array<Record<string, unknown>>;
   recentEarnings?: Array<Record<string, unknown>>;
   error?: string;
-}
-
-export interface RedemptionQuoteResponse extends Record<string, unknown> {
-  success: boolean;
-  quote?: Record<string, unknown>;
-  canRedeem?: boolean;
-  availableNetworks?: string[];
-  error?: string;
-}
-
-export interface RedemptionStatusResponse extends Record<string, unknown> {
-  success: boolean;
-  operational?: boolean;
-  canRedeem?: boolean;
-  message?: string;
-  availableNetworks?: string[];
-  unavailableNetworks?: string[];
-  wallets?: Record<string, unknown>;
-  networks?: Array<Record<string, unknown>>;
-  warnings?: string[];
-  lastChecked?: string;
 }
 
 export interface AppEarningsResponse extends Record<string, unknown> {

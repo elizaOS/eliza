@@ -101,16 +101,22 @@ export class SandboxRegistry {
     const { serverName, serverUrl, agentId } = this.config;
     const serverUrlKey = `server:${serverName}:url`;
     const agentServerKey = `agent:${agentId}:server`;
-    const [registeredUrl, registeredServer] = await Promise.all([
-      this.get(serverUrlKey),
-      this.get(agentServerKey),
+    // Compare-and-delete inside a single Lua script so the ownership check and
+    // the delete are one atomic Redis operation. A read-then-delete over two
+    // round-trips leaves a window where another sandbox's register()/refresh()
+    // can write a new owner's value in between, and this call would then
+    // delete that fresh registration instead of its own stale one.
+    await this.command([
+      "EVAL",
+      "if redis.call('GET',KEYS[1])==ARGV[1] then redis.call('DEL',KEYS[1]) end " +
+        "if redis.call('GET',KEYS[2])==ARGV[2] then redis.call('DEL',KEYS[2]) end " +
+        "return 1",
+      "2",
+      serverUrlKey,
+      agentServerKey,
+      serverUrl,
+      serverName,
     ]);
-    const keysToDelete: string[] = [];
-    if (registeredUrl === serverUrl) keysToDelete.push(serverUrlKey);
-    if (registeredServer === serverName) keysToDelete.push(agentServerKey);
-    if (keysToDelete.length > 0) {
-      await this.command(["DEL", ...keysToDelete]);
-    }
     logger.info(
       `[sandbox-registry] Unregistered ${serverName} (agent ${agentId})`,
     );
@@ -155,11 +161,6 @@ export class SandboxRegistry {
       ["SET", `server:${serverName}:url`, serverUrl, "EX", ttl],
       ["SET", `agent:${agentId}:server`, serverName, "EX", ttl],
     ]);
-  }
-
-  private async get(key: string): Promise<string | null> {
-    const result = await this.command(["GET", key]);
-    return typeof result === "string" ? result : null;
   }
 
   private async command(args: string[]): Promise<unknown> {

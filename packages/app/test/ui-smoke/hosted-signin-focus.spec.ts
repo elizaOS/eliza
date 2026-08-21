@@ -55,7 +55,7 @@ async function installProviderFixture(page: Page): Promise<void> {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`all nine hosted sign-in targets render a focus delta at ${viewport.name}`, async ({
+  test(`all hosted sign-in targets render a focus delta at ${viewport.name}`, async ({
     page,
   }, testInfo) => {
     await page.setViewportSize(viewport);
@@ -81,25 +81,36 @@ for (const viewport of VIEWPORTS) {
       page.getByRole("heading", { name: "Sign in to Eliza" }),
     ).toBeVisible();
 
-    const targets = [
-      page.getByRole("textbox", { name: "Email" }),
-      page.getByRole("button", { name: "Magic Link" }),
-      page.getByRole("button", { name: "Google" }),
-      page.getByRole("button", { name: "Discord" }),
-      page.getByRole("button", { name: "GitHub" }),
-      page.getByRole("button", { name: "EVM", exact: true }),
-      page.getByRole("button", { name: "Solana", exact: true }),
-      page.getByRole("link", { name: "Terms", exact: true }),
-      page.getByRole("link", { name: "Privacy Policy" }),
-    ];
+    // Wallet methods are collapsed behind the single "Continue with a wallet"
+    // toggle (#19217): the EVM/Solana peer buttons only join the tab order once
+    // the toggle expands. The walk stays purely keyboard-driven — clicking the
+    // toggle would move the sequential-focus start point past the top of the
+    // form — so the toggle entry expands itself with Space AFTER its own focus
+    // delta is asserted, and the walk continues into the revealed buttons.
+    const walletToggle = page.getByRole("button", {
+      name: "Continue with a wallet",
+    });
+    const targets: Array<{ locator: Locator; expandsWalletOptions?: boolean }> =
+      [
+        { locator: page.getByRole("textbox", { name: "Email" }) },
+        { locator: page.getByRole("button", { name: "Magic Link" }) },
+        { locator: page.getByRole("button", { name: "Google" }) },
+        { locator: page.getByRole("button", { name: "Discord" }) },
+        { locator: page.getByRole("button", { name: "GitHub" }) },
+        { locator: walletToggle, expandsWalletOptions: true },
+        { locator: page.getByRole("button", { name: "EVM", exact: true }) },
+        { locator: page.getByRole("button", { name: "Solana", exact: true }) },
+        { locator: page.getByRole("link", { name: "Terms", exact: true }) },
+        { locator: page.getByRole("link", { name: "Privacy Policy" }) },
+      ];
 
-    await expect(targets[8]).toBeVisible();
+    await expect(targets[targets.length - 1].locator).toBeVisible();
     await page.screenshot({
       path: testInfo.outputPath(`${viewport.name}-rest.png`),
       fullPage: true,
     });
 
-    for (const target of targets) {
+    for (const { locator: target, expandsWalletOptions } of targets) {
       const resting = await readFocusStyle(target);
       await page.keyboard.press("Tab");
       await expect(target).toBeFocused();
@@ -118,6 +129,15 @@ for (const viewport of VIEWPORTS) {
         focused.backgroundColor,
         "focus must change the rendered background",
       ).not.toBe(resting.backgroundColor);
+
+      if (expandsWalletOptions) {
+        // Keyboard activation keeps focus on the toggle, so the next Tab lands
+        // on the first revealed wallet button.
+        await page.keyboard.press("Space");
+        await page
+          .getByRole("button", { name: "EVM", exact: true })
+          .waitFor({ timeout: 15_000 });
+      }
     }
 
     await page.screenshot({

@@ -15,8 +15,17 @@ class MemoryStorage {
     return this.values.get(key) as T | undefined;
   }
 
-  async put(key: string, value: unknown): Promise<void> {
-    this.values.set(key, structuredClone(value));
+  async put(
+    key: string | Record<string, unknown>,
+    value?: unknown,
+  ): Promise<void> {
+    if (typeof key === "string") {
+      this.values.set(key, structuredClone(value));
+      return;
+    }
+    for (const [entryKey, entryValue] of Object.entries(key)) {
+      this.values.set(entryKey, structuredClone(entryValue));
+    }
   }
 
   async delete(key: string | string[]): Promise<boolean | number> {
@@ -152,6 +161,42 @@ describe("PersonalTelegramDelivery", () => {
     });
     expect((await object.fetch(operation("../secret", "read"))).status).toBe(
       400,
+    );
+  });
+
+  test("persists provider receipts for reminder idempotency keys", async () => {
+    const object = new PersonalTelegramDelivery(
+      durableState(),
+      {} as AppEnv["Bindings"],
+    );
+    const messageId = "reminder-1:2026-08-20T19:30:00.000Z";
+    const chunkDigest = "b".repeat(64);
+    await object.fetch(
+      operation(messageId, "prepare_plan", { chunkDigests: [chunkDigest] }),
+    );
+    await object.fetch(
+      operation(messageId, "claim_chunk", { chunkIndex: 0, chunkDigest }),
+    );
+    const marked = await object.fetch(
+      operation(messageId, "mark_chunk_delivered", {
+        chunkIndex: 0,
+        chunkDigest,
+        providerMessageId: "9004",
+      }),
+    );
+
+    expect(marked.status).toBe(200);
+    expect(
+      await json(object.fetch(operation(messageId, "read_receipt"))),
+    ).toMatchObject({ providerMessageIds: ["9004"] });
+    expect(
+      (await json(object.fetch(operation(messageId, "read_receipt")))) as {
+        acceptedAt: string;
+      },
+    ).toEqual(
+      expect.objectContaining({
+        acceptedAt: expect.stringMatching(/^2026-|^2027-/),
+      }),
     );
   });
 

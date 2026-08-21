@@ -35,7 +35,7 @@ import type {
   UUID,
   World,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,
@@ -196,21 +196,236 @@ export interface ExportSizeEstimate {
  * collection's digest reproducible across the export → gzip → encrypt → decrypt
  * → gunzip → `JSON.parse` round-trip, regardless of in-memory key ordering, so
  * the digest computed at export equals the one recomputed at import.
+ *
+ * Honest export collections are a handful of objects deep. A decrypted import
+ * can still be legal JSON that `JSON.parse` accepts (depth 20k in ~120 KiB,
+ * well under the 16 MiB gunzip cap) and then stack-overflow the digest walk.
  */
-export function canonicalize(value: unknown): string {
+export const MAX_AGENT_EXPORT_CANONICALIZE_DEPTH = 64;
+/**
+ * Node ceiling across the whole canonicalize walk, including array slots.
+ * Bounds cyclic or accessor-bearing graphs that would otherwise RangeError
+ * `exportAgent` / `verifyExportManifest` on import.
+ */
+export const MAX_AGENT_EXPORT_CANONICALIZE_NODES = 100_000;
+export const AGENT_EXPORT_CANONICALIZE_UNBOUNDED =
+  "AGENT_EXPORT_CANONICALIZE_UNBOUNDED";
+
+/** Default classification for export/import failures without a finer code. */
+export const AGENT_EXPORT_FAILED = "AGENT_EXPORT_FAILED";
+
+/**
+ * Export/import domain failure. Extends {@link ElizaError} so every throw site
+ * carries a machine-classifiable `code`, structured `context`, and a preserved
+ * `cause` chain (error policy #12263) instead of casting fields onto a bare
+ * `Error`. `instanceof AgentExportError` keeps working for existing callers.
+ */
+export class AgentExportError extends ElizaError {
+  override readonly name: string = "AgentExportError";
+  constructor(
+    message: string,
+    options: Omit<ElizaErrorOptions, "code"> & { code?: string } = {},
+  ) {
+    super(message, { ...options, code: options.code ?? AGENT_EXPORT_FAILED });
+  }
+}
+
+type CanonicalizeWalkContext = {
+  visits: number;
+  visiting: WeakSet<object>;
+};
+
+function failCanonicalizeUnbounded(
+  context: Record<string, unknown>,
+  cause?: unknown,
+): never {
+  // Context is deliberately structural only (never a reflected property name):
+  // the walk runs on attacker-supplied import payloads and the error surfaces
+  // in API responses and logs.
+  throw new AgentExportError(
+    "Export payload exceeds the canonicalize walk budget",
+    {
+      code: AGENT_EXPORT_CANONICALIZE_UNBOUNDED,
+      cause,
+      context,
+      severity: "fatal",
+    },
+  );
+}
+
+function reserveCanonicalizeVisits(
+  ctx: CanonicalizeWalkContext,
+  count: number,
+): void {
+  if (count > MAX_AGENT_EXPORT_CANONICALIZE_NODES - ctx.visits) {
+    failCanonicalizeUnbounded({
+      visits: ctx.visits + count,
+      maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+    });
+  }
+  ctx.visits += count;
+}
+
+function enterCanonicalizeContainer(
+  value: object,
+  ctx: CanonicalizeWalkContext,
+): void {
+  if (ctx.visiting.has(value)) {
+    failCanonicalizeUnbounded({ cycle: true });
+  }
+  ctx.visiting.add(value);
+}
+
+function inspectCanonicalize<T>(operation: string, inspect: () => T): T {
+  try {
+    return inspect();
+  } catch (cause) {
+    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+    failCanonicalizeUnbounded({ inspection: operation }, cause);
+  }
+}
+
+function isCanonicalizeArray(value: object): boolean {
+  return inspectCanonicalize("isArray", () => Array.isArray(value));
+}
+
+/**
+ * Reads `length` off an array exactly once, as an own data descriptor, so a
+ * Proxy cannot serve a different value to a second reader. Callers that also
+ * need the length (e.g. a manifest `count`) must reuse the returned number
+ * rather than calling this again.
+ */
+function ownArrayLength(value: object): number {
+  const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+    Object.getOwnPropertyDescriptor(value, "length"),
+  );
+  if (descriptor && !("value" in descriptor)) {
+    failCanonicalizeUnbounded({ accessor: true, property: "length" });
+  }
+  if (
+    !descriptor ||
+    typeof descriptor.value !== "number" ||
+    !Number.isSafeInteger(descriptor.value) ||
+    descriptor.value < 0
+  ) {
+    failCanonicalizeUnbounded({ invalidArrayLength: true });
+  }
+  return descriptor.value as number;
+}
+
+type CanonicalizeDataSnapshot = {
+  key: string;
+  value: unknown;
+};
+
+/**
+ * One getOwnPropertyDescriptor per key (prevents Proxy descriptor drift), with
+ * the object's breadth charged to the node budget BEFORE any descriptor trap
+ * runs, before the snapshot array is allocated and before the O(n log n) sort.
+ * A hostile wide object or `ownKeys` Proxy is rejected on the key list alone.
+ * The reservation covers every child, so the walks below run with
+ * `visitAlreadyReserved`.
+ */
+function ownEnumerableDataSnapshot(
+  value: object,
+  ctx: CanonicalizeWalkContext,
+): CanonicalizeDataSnapshot[] {
+  const keys = inspectCanonicalize("ownKeys", () => Reflect.ownKeys(value));
+  reserveCanonicalizeVisits(ctx, keys.length);
+  const snapshot: CanonicalizeDataSnapshot[] = [];
+  for (const key of keys) {
+    if (typeof key !== "string") continue;
+    const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (!descriptor?.enumerable) continue;
+    if (!("value" in descriptor)) {
+      failCanonicalizeUnbounded({ accessor: true, container: "object" });
+    }
+    if (descriptor.value === undefined) continue;
+    snapshot.push({ key, value: descriptor.value });
+  }
+  snapshot.sort((left, right) =>
+    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+  );
+  return snapshot;
+}
+
+function canonicalizeWalk(
+  value: unknown,
+  depth: number,
+  ctx: CanonicalizeWalkContext,
+  visitAlreadyReserved = false,
+  /**
+   * Array length already read by the caller (root only). Reusing it keeps the
+   * digest and the manifest `count` on one immutable snapshot.
+   */
+  knownArrayLength?: number,
+): string {
+  if (depth > MAX_AGENT_EXPORT_CANONICALIZE_DEPTH) {
+    failCanonicalizeUnbounded({
+      depth,
+      max: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
+    });
+  }
+  if (!visitAlreadyReserved) reserveCanonicalizeVisits(ctx, 1);
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value ?? null);
   }
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => canonicalize(v)).join(",")}]`;
+
+  enterCanonicalizeContainer(value, ctx);
+  try {
+    if (isCanonicalizeArray(value)) {
+      const length = knownArrayLength ?? ownArrayLength(value);
+      reserveCanonicalizeVisits(ctx, length);
+      // String-build so inherited Array.prototype index accessors cannot
+      // trap assignment into a preallocated parts array.
+      let body = "";
+      for (let index = 0; index < length; index += 1) {
+        if (index > 0) body += ",";
+        const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+          Object.getOwnPropertyDescriptor(value, String(index)),
+        );
+        if (!descriptor) {
+          // Sparse hole: keep the prior map()+join() empty-slot string.
+          continue;
+        }
+        if (!("value" in descriptor)) {
+          failCanonicalizeUnbounded({
+            accessor: true,
+            container: "array",
+            index,
+          });
+        }
+        body += canonicalizeWalk(descriptor.value, depth + 1, ctx, true);
+      }
+      return `[${body}]`;
+    }
+
+    const snapshot = ownEnumerableDataSnapshot(value, ctx);
+    return `{${snapshot
+      .map(
+        (entry) =>
+          `${JSON.stringify(entry.key)}:${canonicalizeWalk(entry.value, depth + 1, ctx, true)}`,
+      )
+      .join(",")}}`;
+  } finally {
+    ctx.visiting.delete(value);
   }
-  const obj = value as Record<string, unknown>;
-  const keys = Object.keys(obj)
-    .filter((k) => obj[k] !== undefined)
-    .sort();
-  return `{${keys
-    .map((k) => `${JSON.stringify(k)}:${canonicalize(obj[k])}`)
-    .join(",")}}`;
+}
+
+function canonicalizeRoot(value: unknown, knownArrayLength?: number): string {
+  return canonicalizeWalk(
+    value,
+    0,
+    { visits: 0, visiting: new WeakSet<object>() },
+    false,
+    knownArrayLength,
+  );
+}
+
+export function canonicalize(value: unknown): string {
+  return canonicalizeRoot(value);
 }
 
 function sha256Hex(input: string): string {
@@ -218,12 +433,28 @@ function sha256Hex(input: string): string {
 }
 
 /** sha256 of a collection's canonical JSON, plus its length. */
-export function digestCollection(items: unknown[]): AgentExportComponentDigest {
-  const list = Array.isArray(items) ? items : [];
-  return { sha256: sha256Hex(canonicalize(list)), count: list.length };
-}
-
 const EMPTY_MANIFEST_COLLECTION: unknown[] = [];
+
+export function digestCollection(items: unknown[]): AgentExportComponentDigest {
+  if (
+    items != null &&
+    typeof items === "object" &&
+    isCanonicalizeArray(items)
+  ) {
+    // One `length` descriptor read feeds BOTH the canonical bytes and `count`.
+    // Reading it twice let a legal Array Proxy drift (or throw) between the two
+    // reads and publish a digest and a count taken from different snapshots.
+    const length = ownArrayLength(items);
+    return {
+      sha256: sha256Hex(canonicalizeRoot(items, length)),
+      count: length,
+    };
+  }
+  return {
+    sha256: sha256Hex(canonicalize(EMPTY_MANIFEST_COLLECTION)),
+    count: 0,
+  };
+}
 
 /** The collection arrays the manifest covers, read off a payload-like object. */
 function manifestCollectionsOf(
@@ -606,17 +837,6 @@ function unpackFile(fileBuffer: Buffer): {
   }
 
   return { salt, iv, tag, ciphertext, iterations };
-}
-
-// ---------------------------------------------------------------------------
-// Custom error class
-// ---------------------------------------------------------------------------
-
-export class AgentExportError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AgentExportError";
-  }
 }
 
 async function gunzipWithSizeLimit(

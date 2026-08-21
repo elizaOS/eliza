@@ -4,6 +4,9 @@
  * `TELEGRAM_BOT_TOKEN`/env fallbacks and resolves each enabled account to a
  * `ResolvedTelegramAccount` the service launches a bot for. `default` is the
  * synthetic id for the single-account configuration.
+ * Named or unrecognized accountIds fail closed: they cannot inherit the
+ * owner's character-level `settings.telegram.botToken` or env
+ * `TELEGRAM_BOT_TOKEN`.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 
@@ -119,9 +122,13 @@ export function resolveTelegramAccount(
   const normalizedAccountId = normalizeTelegramAccountId(accountId);
   const multi = getTelegramMultiAccountConfig(runtime);
   const accountConfig = getAccountConfig(runtime, normalizedAccountId) ?? {};
+  // Only the implicit default account may inherit owner env / top-level
+  // character botToken. A ghost or named accountId must not launch against
+  // the owner's Telegram bot.
+  const allowOwnerBind = normalizedAccountId === DEFAULT_ACCOUNT_ID;
   const merged: TelegramAccountConfig = {
     enabled: multi.enabled,
-    botToken: multi.botToken,
+    botToken: allowOwnerBind ? multi.botToken : undefined,
     apiRoot: multi.apiRoot,
     ...accountConfig,
   };

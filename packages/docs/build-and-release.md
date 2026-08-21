@@ -8,7 +8,7 @@ description: "How the monorepo validates builds and publishes an explicit npm re
 The repository has one pull-request workflow and one release workflow:
 
 - `.github/workflows/ci.yml` validates every pull request and protected-branch
-  push. Its stable `CI / Required` job is the only required status.
+  push. Its stable `All Tests Passed` aggregate is the only required status.
 - `.github/workflows/release.yaml` is manually dispatched from the exact tip of
   `develop`. It builds one immutable package cohort, publishes those tarballs to
   npm, verifies the registry, and only then creates the exact Git tag and GitHub

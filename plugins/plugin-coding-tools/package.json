@@ -98,7 +98,7 @@
     "pluginParameters": {
       "CODING_TOOLS_WORKSPACE_ROOTS": {
         "type": "string",
-        "description": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's process.cwd() when unset.",
+        "description": "Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. Does not restrict paths referenced by a SHELL command. Defaults to the runtime's process.cwd() when unset.",
         "required": false,
         "sensitive": false
       },

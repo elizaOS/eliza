@@ -90,6 +90,26 @@ function speechEvent(transcript: string, isFinal = true, confidence = 0.8) {
   };
 }
 
+// Builds an onresult event whose `results` list accumulates every result of a
+// continuous session (as the real Web Speech API does), with `resultIndex`
+// marking the first result that changed since the previous dispatch.
+function accumulatedEvent(
+  entries: Array<{
+    transcript: string;
+    isFinal?: boolean;
+    confidence?: number;
+  }>,
+  resultIndex: number,
+) {
+  return {
+    results: entries.map((entry) => ({
+      isFinal: entry.isFinal ?? true,
+      0: { transcript: entry.transcript, confidence: entry.confidence ?? 0.8 },
+    })),
+    resultIndex,
+  };
+}
+
 describe("SwabbleWeb fallback", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -167,6 +187,159 @@ describe("SwabbleWeb fallback", () => {
         command: "open calendar",
         postGap: -1,
       }),
+    );
+  });
+
+  it("processes only newly changed results across a continuous session", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const transcripts = vi.fn();
+    const wakeWords = vi.fn();
+    await plugin.addListener("transcript", transcripts);
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // Utterance 1 finalizes at index 0.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza open calendar" }], 0),
+    );
+    // Utterance 2 finalizes at index 1; the results list still carries the
+    // already-finalized utterance 1, exactly as a real continuous session does.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [
+          { transcript: "eliza open calendar" },
+          { transcript: "eliza close calendar" },
+        ],
+        1,
+      ),
+    );
+
+    // Each utterance yields exactly one wake-word fire with its own command;
+    // the second must not re-include the first (no "open calendareliza close").
+    const commands = wakeWords.mock.calls.map((call) => call[0].command);
+    expect(commands).toEqual(["open calendar", "close calendar"]);
+    const emittedTranscripts = transcripts.mock.calls.map(
+      (call) => call[0].transcript,
+    );
+    expect(emittedTranscripts).toEqual([
+      "eliza open calendar",
+      "eliza close calendar",
+    ]);
+  });
+
+  it("does not re-fire a finalized wake word from a later interim result", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // A finalized utterance fires once.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza open calendar" }], 0),
+    );
+    // A subsequent interim result for the next utterance must not resurface the
+    // earlier finalized command, and interim text is never a wake match.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [
+          { transcript: "eliza open calendar" },
+          { transcript: "eliza clo", isFinal: false },
+        ],
+        1,
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar" }),
+    );
+  });
+
+  it("wakes when the trigger and command finalize in separate results", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // The user says the wake word, pauses (so it finalizes alone at index 0),
+    // then speaks the command, which finalizes as a separate result at index 1.
+    // The changed window for the second event carries only "open calendar", so
+    // a window-only match would never see the trigger — this is the regression
+    // guarded here: the carry-over buffer bridges the two final results.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza" }], 0),
+    );
+    expect(wakeWords).not.toHaveBeenCalled();
+
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [{ transcript: "eliza" }, { transcript: "open calendar" }],
+        1,
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ wakeWord: "eliza", command: "open calendar" }),
+    );
+  });
+
+  it("does not re-fire the pause-split command on a later unrelated utterance", async () => {
+    setWindow({ SpeechRecognition: FakeRecognition });
+    setNavigator({
+      mediaDevices: {
+        getUserMedia: vi.fn(async () => null),
+      } as unknown as MediaDevices,
+    });
+    const plugin = new SwabbleWeb();
+    const wakeWords = vi.fn();
+    await plugin.addListener("wakeWord", wakeWords);
+    await plugin.start({ config: { triggers: ["eliza"] } });
+
+    // Trigger then command across two finals fires exactly once.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent([{ transcript: "eliza" }], 0),
+    );
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [{ transcript: "eliza" }, { transcript: "open calendar" }],
+        1,
+      ),
+    );
+    // A later triggerless final (idle chatter) must neither re-fire the
+    // consumed command nor accumulate unbounded carry-over.
+    FakeRecognition.latest?.onresult?.(
+      accumulatedEvent(
+        [
+          { transcript: "eliza" },
+          { transcript: "open calendar" },
+          { transcript: "just talking" },
+        ],
+        2,
+      ),
+    );
+
+    expect(wakeWords).toHaveBeenCalledTimes(1);
+    expect(wakeWords).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "open calendar" }),
     );
   });
 

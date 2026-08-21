@@ -139,6 +139,22 @@ describe("cloud routing helpers", () => {
     });
   });
 
+  it("normalizes 100k boundary slashes in linear time", () => {
+    const slashes = "/".repeat(100_000);
+    const settings = runtime({
+      ELIZAOS_CLOUD_API_KEY: "cloud-secret",
+      ELIZAOS_CLOUD_ENABLED: true,
+      ELIZAOS_CLOUD_BASE_URL: `https://cloud.example.com/api/v1${slashes}`,
+    });
+
+    expect(
+      cloudServiceApisBaseUrl(settings, `${slashes}media${slashes}`),
+    ).toEqual({
+      baseUrl: "https://cloud.example.com/api/v1/apis/media",
+      headers: { Authorization: "Bearer cloud-secret" },
+    });
+  });
+
   it.each([
     "../admin",
     "media/../../billing",

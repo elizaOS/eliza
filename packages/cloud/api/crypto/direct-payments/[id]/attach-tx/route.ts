@@ -16,8 +16,8 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { directWalletPaymentsService } from "@/lib/services/direct-wallet-payments";
 import { logger, redact } from "@/lib/utils/logger";
@@ -39,7 +39,7 @@ const bodySchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";

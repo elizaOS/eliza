@@ -1953,3 +1953,212 @@ export function truncateWellFormed(text: string, maxLength: number): string {
       : maxLength;
   return text.slice(0, end);
 }
+
+// Worker-safe mirrors of core's pure text helpers. The bundle aliases the
+// entire package to this stub, so cloud-shared consumers cannot import the
+// canonical modules through @elizaos/core at runtime.
+const WORKER_RAW_TEXT_TAGS = ["script", "style"] as const;
+
+function isWorkerAsciiWhitespace(character: string): boolean {
+  return (
+    character === "\t" ||
+    character === "\n" ||
+    character === "\f" ||
+    character === "\r" ||
+    character === " "
+  );
+}
+
+function matchesWorkerAsciiCaseInsensitive(
+  value: string,
+  index: number,
+  expected: string,
+): boolean {
+  if (index + expected.length > value.length) return false;
+  for (let offset = 0; offset < expected.length; offset += 1) {
+    const code = value.charCodeAt(index + offset);
+    const normalized = code >= 65 && code <= 90 ? code + 32 : code;
+    if (normalized !== expected.charCodeAt(offset)) return false;
+  }
+  return true;
+}
+
+function isWorkerTagNameDelimiter(character: string | undefined): boolean {
+  return (
+    character === ">" ||
+    character === "/" ||
+    (character !== undefined && isWorkerAsciiWhitespace(character))
+  );
+}
+
+function findWorkerTagEnd(value: string, index: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let cursor = index; cursor < value.length; cursor += 1) {
+    const character = value[cursor];
+    if (quote !== null) {
+      if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return cursor + 1;
+    }
+  }
+  return value.length;
+}
+
+type WorkerRawTextTag = (typeof WORKER_RAW_TEXT_TAGS)[number];
+
+function matchWorkerRawTextTag(
+  value: string,
+  index: number,
+  tagName: WorkerRawTextTag,
+  closing: boolean,
+): number | null {
+  if (value[index] !== "<") return null;
+  const nameIndex = index + (closing ? 2 : 1);
+  if (closing && value[index + 1] !== "/") return null;
+  if (!matchesWorkerAsciiCaseInsensitive(value, nameIndex, tagName)) {
+    return null;
+  }
+  const afterName = nameIndex + tagName.length;
+  if (!isWorkerTagNameDelimiter(value[afterName])) return null;
+  return findWorkerTagEnd(value, afterName);
+}
+
+function hasWorkerDelimitedTagName(
+  value: string,
+  nameIndex: number,
+  tagName: WorkerRawTextTag,
+): boolean {
+  return (
+    matchesWorkerAsciiCaseInsensitive(value, nameIndex, tagName) &&
+    isWorkerTagNameDelimiter(value[nameIndex + tagName.length])
+  );
+}
+
+function findWorkerRawTextClosingEnd(
+  value: string,
+  index: number,
+  tagName: WorkerRawTextTag,
+): number | null {
+  for (let cursor = index; cursor < value.length; cursor += 1) {
+    if (value[cursor] !== "<" || value[cursor + 1] !== "/") continue;
+    const closingEnd = matchWorkerRawTextTag(value, cursor, tagName, true);
+    if (closingEnd !== null) return closingEnd;
+  }
+  return null;
+}
+
+type WorkerScriptTextState = "data" | "escaped" | "double-escaped";
+
+function findWorkerScriptClosingEnd(
+  value: string,
+  index: number,
+): number | null {
+  let state: WorkerScriptTextState = "data";
+  let cursor = index;
+  while (cursor < value.length) {
+    if (value.startsWith("-->", cursor)) {
+      state = "data";
+      cursor += 3;
+      continue;
+    }
+    if (state === "data" && value.startsWith("<!--", cursor)) {
+      state = "escaped";
+      cursor += 4;
+      continue;
+    }
+    if (value[cursor] === "<" && value[cursor + 1] === "/") {
+      const nameIndex = cursor + 2;
+      if (hasWorkerDelimitedTagName(value, nameIndex, "script")) {
+        if (state === "double-escaped") {
+          state = "escaped";
+          cursor = nameIndex + "script".length;
+          continue;
+        }
+        return findWorkerTagEnd(value, nameIndex + "script".length);
+      }
+    }
+    if (
+      state === "escaped" &&
+      value[cursor] === "<" &&
+      hasWorkerDelimitedTagName(value, cursor + 1, "script")
+    ) {
+      state = "double-escaped";
+      cursor += 1 + "script".length;
+      continue;
+    }
+    cursor += 1;
+  }
+  return null;
+}
+
+/** Remove HTML script/style elements using core's bounded tokenizer rules. */
+export function stripHtmlRawTextElements(value: string): string {
+  const output: string[] = [];
+  let copiedThrough = 0;
+  let cursor = 0;
+  while (cursor < value.length) {
+    if (value[cursor] !== "<") {
+      cursor += 1;
+      continue;
+    }
+    let matchedTag: WorkerRawTextTag | null = null;
+    let openingEnd = 0;
+    for (const tagName of WORKER_RAW_TEXT_TAGS) {
+      const end = matchWorkerRawTextTag(value, cursor, tagName, false);
+      if (end !== null) {
+        matchedTag = tagName;
+        openingEnd = end;
+        break;
+      }
+    }
+    if (matchedTag === null) {
+      cursor += 1;
+      continue;
+    }
+    output.push(value.slice(copiedThrough, cursor), " ");
+    cursor = openingEnd;
+    const closingEnd =
+      matchedTag === "script"
+        ? findWorkerScriptClosingEnd(value, cursor)
+        : findWorkerRawTextClosingEnd(value, cursor, matchedTag);
+    if (closingEnd === null) {
+      copiedThrough = value.length;
+      cursor = value.length;
+    } else {
+      copiedThrough = closingEnd;
+      cursor = closingEnd;
+    }
+  }
+  output.push(value.slice(copiedThrough));
+  return output.join("");
+}
+
+/** Replace lone UTF-16 surrogates while preserving valid surrogate pairs. */
+export function toWellFormedUnicode(text: string): string {
+  const native = (
+    String.prototype as { toWellFormed?: (this: string) => string }
+  ).toWellFormed;
+  if (native) return native.call(text);
+  let output = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const trailing = text.charCodeAt(index + 1);
+      if (trailing >= 0xdc00 && trailing <= 0xdfff) {
+        output += text[index] + text[index + 1];
+        index += 1;
+      } else {
+        output += "�";
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      output += "�";
+    } else {
+      output += text[index];
+    }
+  }
+  return output;
+}

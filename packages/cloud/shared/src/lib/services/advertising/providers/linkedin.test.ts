@@ -528,6 +528,37 @@ describe("linkedinAdsProvider", () => {
     expect(result.error).toContain("invalid analytics metric");
   });
 
+  test("fails closed on alternate numeric syntax and cumulative metric overflow", async () => {
+    enqueue({
+      elements: [{ ...ANALYTICS_FIXTURE.elements[0], costInLocalCurrency: "0x10" }],
+    });
+    const alternateSyntax = await linkedinAdsProvider.getCampaignMetrics(
+      credentials,
+      "507404993/603407684/145282384",
+    );
+    expect(alternateSyntax.success).toBe(false);
+    expect(alternateSyntax.metrics).toBeUndefined();
+    expect(alternateSyntax.error).toContain("invalid analytics metric");
+
+    const overflowCases = [
+      [{ costInLocalCurrency: Number.MAX_VALUE }, { costInLocalCurrency: Number.MAX_VALUE }],
+      [{ impressions: Number.MAX_VALUE }, { impressions: Number.MAX_VALUE }],
+      [{ clicks: Number.MAX_VALUE }, { clicks: Number.MAX_VALUE }],
+      [{ externalWebsiteConversions: Number.MAX_VALUE, oneClickLeads: Number.MAX_VALUE }],
+      [{ costInLocalCurrency: Number.MAX_VALUE, impressions: Number.MIN_VALUE }],
+    ];
+    for (const elements of overflowCases) {
+      enqueue({ elements });
+      const result = await linkedinAdsProvider.getCampaignMetrics(
+        credentials,
+        "507404993/603407684/145282384",
+      );
+      expect(result.success).toBe(false);
+      expect(result.metrics).toBeUndefined();
+      expect(result.error).toContain("invalid analytics metric");
+    }
+  });
+
   test("propagates LinkedIn API errors as failed results without partial success", async () => {
     enqueue(
       { message: "Not enough permissions to access: adCampaignGroups.CREATE", status: 403 },

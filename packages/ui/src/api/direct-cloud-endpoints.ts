@@ -103,8 +103,15 @@ const DIRECT_ELIZA_CLOUD_APP_BY_HOST = new Map([
   ),
 ]);
 
+/** Removes one trailing slash run with a single scan and allocation. */
+export function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 export function resolveDirectCloudWebBase(cloudBase: string): string {
-  const normalized = cloudBase.replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(cloudBase);
   try {
     const host = new URL(normalized).hostname.toLowerCase();
     return DIRECT_ELIZA_CLOUD_WEB_BY_HOST.get(host) ?? normalized;
@@ -117,7 +124,7 @@ export function resolveDirectCloudWebBase(cloudBase: string): string {
 
 /** Resolve the browser origin that owns authenticated Cloud management. */
 export function resolveDirectCloudAppBase(cloudBase: string): string {
-  const normalized = cloudBase.replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(cloudBase);
   try {
     const host = new URL(normalized).hostname.toLowerCase();
     return DIRECT_ELIZA_CLOUD_APP_BY_HOST.get(host) ?? normalized;
@@ -129,7 +136,7 @@ export function resolveDirectCloudAppBase(cloudBase: string): string {
 }
 
 export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
-  const normalized = cloudBase.replace(/\/+$/, "");
+  const normalized = stripTrailingSlashes(cloudBase);
   try {
     const host = new URL(normalized).hostname.toLowerCase();
     return DIRECT_ELIZA_CLOUD_API_BY_HOST.get(host) ?? normalized;

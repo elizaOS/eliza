@@ -657,9 +657,39 @@ export class AccountPool {
       return;
     }
 
+    // The usage probe above is a real suspension point: a concurrent health
+    // transition (markRateLimited's 429 cooldown, markNeedsReauth, markInvalid)
+    // may have committed while it was in flight. Writing the PRE-AWAIT snapshot
+    // back would silently clobber it — persistAccount replaces the whole
+    // metadata bucket, so it is last-writer-wins with stale data — re-admitting
+    // a rate-limited/revoked account and defeating the backoff clock. Re-read
+    // the account now and merge: `readAccounts` is synchronous and the write's
+    // persist body runs to completion before this frame yields, so the
+    // read-merge-write is atomic on the event loop against every other mutator
+    // (which are all likewise read-then-write with no await between).
+    const baseline = healthSignature(account);
+    const fresh = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
+    if (!fresh) return;
+    if (healthSignature(fresh) !== baseline) {
+      // A newer, authoritative health verdict landed during the probe. Keep it
+      // verbatim; only layer on the freshly fetched usage/email.
+      await this.deps.writeAccount({
+        ...fresh,
+        usage,
+        ...(email ? { email } : {}),
+      });
+      return;
+    }
+    // No concurrent transition: a successful usage read proves the account
+    // works, so (re-)admit it as OK and drop any now-stale health detail.
     await this.deps.writeAccount({
-      ...account,
+      ...fresh,
       health: "ok",
+      healthDetail: undefined,
       usage,
       ...(email ? { email } : {}),
     });
@@ -882,6 +912,21 @@ export function isAccountSelectableNow(
 
 function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
   return `${providerId}:${accountId}`;
+}
+
+/**
+ * A stable fingerprint of an account's health verdict (`health` plus its
+ * `healthDetail`). `refreshUsage` snapshots this before its network probe and
+ * re-checks it after, so any change committed by a concurrent mutator during
+ * the await — a new rate-limit cooldown, a re-auth/invalid flag, or even a
+ * re-probed `lastChecked` — is detected and its verdict is preserved instead of
+ * being overwritten by the probe's stale "ok" assumption.
+ */
+function healthSignature(account: LinkedAccountConfig): string {
+  return JSON.stringify({
+    health: account.health,
+    healthDetail: account.healthDetail ?? null,
+  });
 }
 
 function findAccountById(

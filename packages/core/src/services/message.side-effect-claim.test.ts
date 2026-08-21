@@ -1261,3 +1261,350 @@ describe("subjectless past-participle openers (Discord group-surface fabrication
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 });
+
+describe("multilingual completed-side-effect claim tiers (#17027 AC7)", () => {
+	// Fabricated confirmations per locale MUST fire: a reply asserting a
+	// finished save/schedule with zero tool calls is the exact invariant the
+	// receipt gate protects, regardless of language.
+	it.each([
+		// es — perfective, preterite, state, opener
+		"He guardado tu recordatorio para mañana a las 9.",
+		"Ya he creado la tarea de entrenamiento.",
+		"Acabo de programar el recordatorio.",
+		"Guardé la nota en tu calendario.",
+		"Tu recordatorio está programado para las 9.",
+		"Listo — tu recordatorio queda guardado.",
+		// pt — preterite, acabei de, state, opener
+		"Criei o lembrete para amanhã às 9.",
+		"Já salvei a sua tarefa.",
+		"Acabei de agendar o lembrete.",
+		"Seu lembrete está salvo.",
+		"Pronto — o lembrete foi criado.",
+		// ko — past, passive, headline
+		"알림을 설정했어요.",
+		"리마인더를 저장했습니다.",
+		"일정이 등록되었습니다.",
+		"메모 저장 완료!",
+		"알림을 예약해 뒀어요.",
+		// tl — completed aspect
+		"Naitakda ko na ang paalala mo para bukas.",
+		"Nai-save ko na ang tala.",
+		"Nakatakda na ang paalala mo.",
+		"Idinagdag ko na sa iskedyul mo.",
+		// vi — perfective đã / xong, incl. the "nhắc nhở" noun the ASCII \b
+		// boundary silently killed in the first attempt (#19824)
+		"Mình đã đặt lời nhắc lúc 9 giờ sáng.",
+		"Đã lưu nhắc nhở của bạn.",
+		"Nhắc nhở đã được lưu.",
+		"Mình đã giúp bạn tạo nhắc nhở tập luyện.",
+		"Lưu xong rồi, ghi chú của bạn đã có trong lịch.",
+		// zh-CN — 了 perfective, 已 perfective, passive
+		"我已经把提醒设置好了。",
+		"提醒已保存。",
+		"我帮你把任务添加了。",
+		"好了，提醒已经安排在明天早上九点。",
+	])("flags %p as a fabricated completion claim", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// Denials, negations, and not-yet statements must NOT fire.
+	it.each([
+		"No he guardado el recordatorio todavía.",
+		"Todavía no lo he programado.",
+		"Não salvei o lembrete ainda.",
+		"Ainda não criei a tarefa.",
+		"알림을 저장 안 했어요.",
+		"알림을 설정하지 않았어요.",
+		"Hindi ko pa nai-save ang paalala.",
+		"Mình chưa đặt lời nhắc.",
+		"Mình chưa lưu xong ghi chú.",
+		"我还没设置提醒。",
+		"我没有把任务保存下来。",
+	])("passes denial/negation %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Offers and questions — including full-width terminators and
+	// particle-final questions with no question mark — must NOT fire.
+	it.each([
+		"¿Quieres que guarde el recordatorio?",
+		"¿Guardé bien tu recordatorio?",
+		"Quer que eu salve o lembrete?",
+		"알림을 설정했어요?",
+		"알림을 저장할까요?",
+		"Gusto mo bang i-save ko ang paalala?",
+		"Naitakda ko ba ang paalala?",
+		"Bạn có muốn mình đặt lời nhắc không?",
+		"Bạn đã lưu lời nhắc chưa?",
+		// zh noun-plus-question-particle offers, the second #19824 killer:
+		// no ？ at all, question is carried by the particle alone
+		"要我把提醒设置好吗",
+		"需要我帮你把任务添加了吗",
+		"我把提醒设置好了吗？",
+		"提醒设置好了吧？",
+	])("passes offer/question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Future intent, conditionals, and instructions are plans, not reports.
+	it.each([
+		"Cuando haya guardado el recordatorio te aviso.",
+		"Si guardo la nota, te lo confirmo.",
+		"Se você quiser, eu salvo o lembrete.",
+		"알림을 저장할게요.",
+		"지금 알림을 설정하겠습니다.",
+		"Ise-save ko ang paalala mamaya.",
+		"Kung gusto mo, itatakda ko ang paalala.",
+		"Mình sẽ đặt lời nhắc ngay bây giờ.",
+		"Nếu bạn muốn, mình đặt lời nhắc lúc 9 giờ.",
+		"如果你想，我可以把提醒设置好。",
+		"我会帮你把任务安排好的。",
+	])("passes future/conditional %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Descriptions of the USER's own actions or of existing state are not
+	// agent completion claims.
+	it.each([
+		"Bạn đã đặt lời nhắc lúc 9 giờ rồi mà.",
+		"你已经把提醒设置好了，不用再设一次。",
+		"Na-save mo na ang paalala kahapon.",
+		"Tus recordatorios están en la aplicación.",
+		"Os lembretes ficam na agenda do aplicativo.",
+		"알림은 설정에서 변경할 수 있어요.",
+		"你可以在日历里保存任务。",
+	])("passes second-person/state description %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Ordinary uses of save/set vocabulary with no tracked-work noun in the
+	// claiming sentence must pass (noun gate).
+	it.each([
+		"He guardado un buen recuerdo de ese viaje.",
+		"Salvei o melhor para o final.",
+		"저는 그 말을 기억했어요.",
+		"我把话说完了。",
+		"Đã lưu ý đến điều đó.",
+	])("passes tracked-noun-free sentence %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+});
+
+describe("locale claim tiers: clause-scoped interrogativity and subordinate tails", () => {
+	// A fabricated completion followed by a courtesy tag question is still a
+	// fabricated completion. The English tier fires on this shape by design
+	// ("I've set your reminders — anything else?"); before clause scoping the
+	// locale tiers let any later `?`/`？`/`¿` in the clause chain suppress the
+	// whole claim, so a tag question laundered the fabrication.
+	it.each([
+		"He creado tus recordatorios — ¿algo más?",
+		"Ya he guardado el recordatorio, ¿necesitas algo más?",
+		"Criei o lembrete — mais alguma coisa?",
+		"提醒设置好了，还需要别的吗？",
+		"我已经把提醒设置好了，还要别的吗",
+		"알림을 설정했어요, 더 필요한 거 있나요?",
+		"Mình đã đặt lời nhắc, bạn cần gì nữa không?",
+	])("flags claim-plus-tag-question %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// The separator between claim and courtesy tag is not always a comma or an
+	// em dash: colons, fullwidth colons, ASCII hyphens, and ellipses all appear
+	// in shipped assistant copy and must not launder the fabrication.
+	it.each([
+		"He creado tus recordatorios: ¿algo más?",
+		"He creado tus recordatorios - ¿algo más?",
+		"He creado tus recordatorios… ¿algo más?",
+		"Criei o lembrete: mais alguma coisa?",
+		"提醒设置好了：还需要别的吗？",
+		"提醒设置好了……还需要别的吗？",
+		"알림을 설정했어요: 더 필요한 거 있나요?",
+	])("flags claim-plus-tag across separator %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// The mirror must keep holding: when the question governs the claim's own
+	// clause it is an offer or a clarification, not a report.
+	it.each([
+		"¿He creado el recordatorio para las 9 a.m.?",
+		"¿Guardé bien tu recordatorio?",
+		"He guardado, por error, el recordatorio?",
+		"Criei, por acaso, o lembrete?",
+		"我把提醒设置好了吗？",
+		"提醒设置好了吧？",
+		"提醒设置好了吗",
+		"알림을 설정했어요?",
+		"알림 설정했나요",
+	])("passes claim-scoped question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Punctuation alone must never sever the clause. A coordinated alternative
+	// or a parenthetical uses the same marks a courtesy tag does, and reading
+	// those as tags turns a genuine question into a fabricated-completion
+	// finding — the unwanted-planner-run harm the module header forbids.
+	it.each([
+		"我把提醒设置好了吗，还是没有？",
+		"提醒设置好了吗，对不对？",
+		"我已经设置、保存提醒了吗？",
+		"알림을 설정했나요, 아니면 아직인가요?",
+		"Mình đã đặt lời nhắc chưa, hay là quên rồi?",
+		"Criei, salvei e agendei o lembrete?",
+		"He creado, guardado y programado el recordatorio?",
+	])("passes coordinated/parenthetical question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// The maintainer's exact counter-example: a single coordinated question
+	// ("Did I create, save, AND schedule the reminder?") must stay one claim
+	// and pass through untouched, not get split into a false "Criei" report
+	// followed by an unrelated question. Covered with the base comma
+	// coordination plus each newly recognized separator standing in for it,
+	// so the clause-span fix (not just the comma case) is exercised.
+	it.each([
+		"Criei, salvei e agendei o lembrete?",
+		"Criei: salvei e agendei o lembrete?",
+		"Criei - salvei e agendei o lembrete?",
+		"Criei… salvei e agendei o lembrete?",
+	])(
+		"keeps the Portuguese coordinated question %p as a single non-claim",
+		(reply) => {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		},
+	);
+
+	// Korean attaches conditional, embedded-question, and quotative endings to
+	// the same completed stem the claim shape matches, so `설정했` alone cannot
+	// distinguish a report from a hypothesis.
+	it.each([
+		"알림을 설정했으면 자동으로 알림이 올 거예요.",
+		"리마인더를 저장했다면 목록에 보일 거예요.",
+		"알림을 설정했는지 확인해 볼게요.",
+		"일정을 등록했는지 다시 봐야 해요.",
+		"알림을 저장했다고 가정해 볼게요.",
+		"알림을 설정했을 경우 자동으로 알림이 옵니다.",
+		"알림을 설정했을 때 소리가 나요.",
+		"알림을 설정했는가 다시 확인해 주세요.",
+		"알림을 설정했을까 다시 한번 확인해 주세요.",
+		"리마인더를 저장했다고 치고 다음으로 넘어갈게요.",
+	])("passes Korean subordinate-tail %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Factive subordination still asserts the save and must keep firing. A bare
+	// quotative is assertive too: only an explicitly suppositional matrix verb
+	// ("가정해", "치고") makes -다고/-라고 non-factive, so the denylist must not
+	// swallow reported fact.
+	it.each([
+		"알림을 설정했지만 소리는 껐어요.",
+		"메모를 저장했으니까 걱정 마세요.",
+		"알림을 설정했다고 말씀드렸어요.",
+		"알림을 설정했다고 이미 말씀드렸습니다.",
+	])("still flags factive Korean subordination %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// The locale scan runs on every model reply from the Stage-1 evaluator, the
+	// planner REPLY guard, and the egress guard, so a per-match rescan of the
+	// remaining text is a live latency regression, not a micro-optimization. A
+	// single fixed-size timing assertion cannot distinguish linear from
+	// quadratic — it only proves one input finishes inside a budget, which a
+	// generous budget satisfies either way. This measures the SAME input
+	// shape at two sizes an order of magnitude apart and asserts the growth
+	// ratio stays close to the size ratio; a quadratic scan would show a
+	// ~100x time increase for a 10x size increase, not ~10x.
+	//
+	// The input shape matters: repeated claim tokens with NO sentence
+	// terminator (so the whole string is one sentence the courtesy-tag/
+	// question-tail scan must walk) and a questionTail-matching ending on
+	// every repetition (so every match falls through to the clause-cut and
+	// courtesy-tag lookups instead of short-circuiting on the subordinate-tail
+	// check first). This is the shape that regressed to ~0.86s at 3.5k chars
+	// and ~10.1s at 28k chars before the clause-boundary lookups were
+	// rewritten from a per-match `RegExp.exec` rescan (and per-match clause
+	// re-slicing) to a single precomputed, binary-searched offset table.
+	it("scans near-linearly, not quadratically, as input size grows 10x", () => {
+		const unit = "알림을 설정했나요 ";
+		const small = unit.repeat(Math.round(2_800 / unit.length));
+		const large = unit.repeat(Math.round(28_000 / unit.length));
+		expect(large.length).toBeGreaterThan(small.length * 9);
+
+		// Warm up the JIT on both shapes before timing either — otherwise the
+		// first call absorbs one-time compilation cost unrelated to input size.
+		replyClaimsCompletedSideEffect(small);
+		replyClaimsCompletedSideEffect(large);
+
+		const smallStart = performance.now();
+		expect(replyClaimsCompletedSideEffect(small)).toBe(false);
+		const smallElapsed = Math.max(performance.now() - smallStart, 0.001);
+
+		const largeStart = performance.now();
+		expect(replyClaimsCompletedSideEffect(large)).toBe(false);
+		const largeElapsed = performance.now() - largeStart;
+
+		// A 10x input should cost on the order of 10x, not the ~100x a
+		// quadratic scan would produce. Allow generous headroom (linear scans
+		// still carry constant-factor timer/GC noise at these tiny absolute
+		// durations) while still failing hard on quadratic-or-worse growth.
+		expect(largeElapsed / smallElapsed).toBeLessThan(30);
+		expect(largeElapsed).toBeLessThan(200);
+	});
+});
+
+// The shape detector is not the product surface: the Stage-1 response-handler
+// evaluator and the planned-reply egress guard are what actually reroute or
+// block a reply. These exercise both consumers with one new must-flag and one
+// new must-pass so a regression in clause scoping cannot hide behind the
+// unit matrix.
+describe("locale clause scoping through the real consumer paths", () => {
+	const scheduledItemSurface: Action = {
+		name: "OWNER_REMINDERS",
+		description: "OWNER_REMINDERS",
+		tags: [
+			"resource:scheduled-item",
+			"capability:read",
+			"capability:write",
+			"capability:schedule",
+		],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+
+	it("reroutes a Chinese claim-plus-courtesy-tag reply at Stage 1", async () => {
+		const evaluator = getClaimEvaluator();
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("提醒设置好了，还需要别的吗？")),
+			),
+		).toBe(true);
+	});
+
+	it("leaves a Chinese coordinated question alone at Stage 1", async () => {
+		const evaluator = getClaimEvaluator();
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("我把提醒设置好了吗，还是没有？")),
+			),
+		).toBe(false);
+	});
+
+	it("blocks a Spanish claim-plus-courtesy-tag reply at planned-reply egress", () => {
+		const decision = evaluatePlannedReplyEgress({
+			reply: "He creado tus recordatorios: ¿algo más?",
+			actionResults: [],
+			actions: [scheduledItemSurface],
+		});
+		expect(decision.verdict).toBe("reject");
+		if (decision.verdict !== "reject") throw new Error("expected rejection");
+		expect(decision.kind).toBe("completed_side_effect");
+	});
+
+	it("lets a Korean hypothetical quotative through planned-reply egress", () => {
+		const decision = evaluatePlannedReplyEgress({
+			reply: "알림을 저장했다고 가정해 볼게요.",
+			actionResults: [],
+			actions: [scheduledItemSurface],
+		});
+		expect(decision.verdict).not.toBe("reject");
+	});
+});

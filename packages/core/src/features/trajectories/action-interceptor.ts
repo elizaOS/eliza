@@ -2,6 +2,7 @@
 
 import { ElizaError } from "../../errors";
 import { logger } from "../../logger";
+import { sanitizeTrajectoryJsonValue } from "../../services/trajectory-json";
 import type {
 	Action,
 	ActionResult,
@@ -23,6 +24,29 @@ interface TrajectoryContext {
 }
 
 const trajectoryContexts = new WeakMap<IAgentRuntime, TrajectoryContext>();
+
+/**
+ * Origin snapshotted action/provider `state` with JSON.parse(JSON.stringify).
+ * StateValue allows arbitrary objects, so a cyclic or over-deep provider
+ * value RangeError/TypeError'd *after* the action already succeeded.
+ * Use the persistence sanitizer so the live snapshot matches the SQL walk
+ * (path-scoped cycles, Dates, bigint/function, item/key/byte caps).
+ * A poisoned getter still throws inside that walk — catch it so diagnostics
+ * cannot fail the turn (J7).
+ */
+export function snapshotStateForTrajectory(state: unknown): JsonValue | null {
+	if (state === undefined || state === null) return null;
+	try {
+		return sanitizeTrajectoryJsonValue(state) ?? null;
+	} catch (error) {
+		// error-policy:J7 snapshot diagnostics must never fail the turn; a
+		// poisoned getter degrades the snapshot to null but is surfaced.
+		logger.warn(
+			`[TrajectoryInterceptor] state snapshot degraded to null: ${error instanceof Error ? error.message : String(error)}`,
+		);
+		return null;
+	}
+}
 
 export function setTrajectoryContext(
 	runtime: IAgentRuntime,
@@ -130,9 +154,7 @@ export function wrapActionWithLogging(
 			}
 
 			const successHandler = (): void => {
-				const stateSnapshot = state
-					? (JSON.parse(JSON.stringify(state)) as JsonValue)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -165,9 +187,7 @@ export function wrapActionWithLogging(
 					"Action execution failed",
 				);
 
-				const stateSnapshot = state
-					? (JSON.parse(JSON.stringify(state)) as JsonValue)
-					: null;
+				const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 				loggerService.completeStep(
 					trajectoryId,
@@ -339,9 +359,7 @@ export function wrapProviderWithLogging(
 				text: "",
 			};
 
-			const stateSnapshot = state
-				? (JSON.parse(JSON.stringify(state)) as JsonValue)
-				: null;
+			const stateSnapshot = state ? snapshotStateForTrajectory(state) : null;
 
 			loggerService.logProviderAccess(stepId, {
 				providerName: provider.name,

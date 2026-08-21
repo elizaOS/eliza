@@ -14,6 +14,11 @@ handoffs without selecting a commercial maps provider.
 - `PlaceRef`, `RoutePlan`, `SavedPlace` — validated public DTOs.
 - `MAPS` plus promoted `MAPS_PLACE`, `MAPS_ROUTE`, `MAPS_SAVE`, `MAPS_SHARE`,
   and `MAPS_NAVIGATE` actions.
+- Plugin-local `/maps` routed view with responsive search, filtering, result
+  list, provider-neutral coordinate schematic, place details, and
+  provider-returned route choices.
+- Authenticated view capabilities for place search, detail, and route reads.
+  Persistent saves remain exclusive to receipt-enforced `MAPS_SAVE`.
 
 ## Persistence and privacy
 
@@ -58,7 +63,10 @@ The generic HTTP protocol is:
 - `GET /places/:providerPlaceId`
 - `POST /routes`
 
-No Google adapter or rendered map UI is included here.
+No Google adapter, external tile request, or provider credential is included.
+The view identifies the provider IDs present in normalized DTOs and explicitly
+degrades when route geometry or provider legal-attribution metadata is absent;
+it does not fabricate either.
 
 ## Commands
 

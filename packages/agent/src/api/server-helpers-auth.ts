@@ -31,6 +31,8 @@ const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
 const APP_ORIGIN_RE =
   /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+const CREDENTIALED_APP_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|electrobun):\/\/.*$/i;
 
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
@@ -143,6 +145,28 @@ export function resolveCorsOrigin(origin?: string): string | null {
   return null;
 }
 
+/**
+ * Browser credentials are narrower than CORS reachability. Cloud and wildcard
+ * binds may reflect an origin for explicit bearer-token clients, but ambient
+ * cookies are enabled only for configured or app-owned origin classes.
+ */
+export function isCredentialedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return false;
+  const trimmed = origin.trim();
+  if (!trimmed || trimmed === "null" || trimmed.startsWith("file:")) {
+    return false;
+  }
+
+  const configuredOrigin = resolveAllowedOrigins(process.env).find(
+    (allowedOrigin) => allowedOrigin === trimmed,
+  );
+  if (configuredOrigin) return true;
+
+  return (
+    LOCAL_ORIGIN_RE.test(trimmed) || CREDENTIALED_APP_ORIGIN_RE.test(trimmed)
+  );
+}
+
 function isBrowserCompanionExtensionOrigin(
   origin: string | undefined,
 ): boolean {
@@ -202,7 +226,9 @@ export function applyCors(
       "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     );
     res.setHeader("Access-Control-Allow-Headers", CORS_ALLOWED_HEADERS);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
+    if (!allowBrowserCompanionOrigin && isCredentialedCorsOrigin(origin)) {
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+    }
   }
 
   // Security headers
@@ -439,7 +465,7 @@ export function ensureApiTokenForBindHost(host: string): void {
 
   // M7 (#12228): a wildcard bind (0.0.0.0 / ::) relaxes both the DNS-rebind
   // Host check (`hostAllowed`) and the CORS origin check (`resolveCorsOrigin`
-  // reflects any origin with credentials). With ELIZA_DISABLE_AUTO_API_TOKEN=1
+  // reflects any origin). With ELIZA_DISABLE_AUTO_API_TOKEN=1
   // and no explicit ELIZA_API_TOKEN that leaves the server listening on every
   // interface with *no* authenticated boundary and both browser-origin
   // protections off — silently wide open. Refuse to honor the disable flag in

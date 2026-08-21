@@ -7,6 +7,14 @@ import { describe, expect, it } from "vitest";
 import { sanitizeReplyTextAfterMediaDelivery } from "../services/message.ts";
 
 describe("sanitizeReplyTextAfterMediaDelivery", () => {
+	it("scans a 100k-character failed URL candidate without backtracking", () => {
+		const text = `http://${"http://".repeat(14_285)} tail`;
+		expect(sanitizeReplyTextAfterMediaDelivery(text, [])).toBe(text);
+		const manyCandidates = "http ".repeat(20_000);
+		expect(sanitizeReplyTextAfterMediaDelivery(manyCandidates, [])).toBe(
+			manyCandidates.trim(),
+		);
+	});
 	const url = "http://192.168.255.164:8080/v1/videos/50a2f4c2/content";
 
 	it("strips known media URLs and zerollama content paths", () => {
@@ -15,6 +23,23 @@ describe("sanitizeReplyTextAfterMediaDelivery", () => {
 		).toBe("");
 		expect(
 			sanitizeReplyTextAfterMediaDelivery(`Done. Video's up: ${url}`, [url]),
+		).toBe("");
+	});
+
+	it("strips embedded endpoints wrapped in punctuation or carrying a query", () => {
+		expect(sanitizeReplyTextAfterMediaDelivery(`Saved (${url}).`, [])).toBe(
+			"Saved .",
+		);
+		expect(
+			sanitizeReplyTextAfterMediaDelivery(`Download: ${url}?download=1`, []),
+		).toBe("Download:?download=1");
+	});
+
+	it("finds the endpoint after an earlier /v1/ segment", () => {
+		const nested =
+			"http://192.168.255.164:8080/v1/proxy/v1/videos/50a2f4c2/content";
+		expect(
+			sanitizeReplyTextAfterMediaDelivery(`Here you go ${nested}`, []),
 		).toBe("");
 	});
 

@@ -36,6 +36,7 @@ import { getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,
   getViewsBroadcastWs,
+  getViewsBroadcastWsToClientId,
 } from "../api/views-routes.ts";
 import { getActiveViewContext } from "./view-action-affinity.ts";
 
@@ -206,6 +207,7 @@ export function buildViewScopedAction(
       }
 
       const broadcastWs = getViewsBroadcastWs();
+      const broadcastWsToClientId = getViewsBroadcastWsToClientId();
       const entry = getView(viewId, { viewType: active.viewType });
       // A scoped action drives a MOUNTED view surface. With no way to reach a
       // shell (no server-side handler and no WS broadcaster), the dispatch would
@@ -251,6 +253,8 @@ export function buildViewScopedAction(
           stepParams,
           {
             ...(broadcastWs ? { broadcastWs } : {}),
+            ...(broadcastWsToClientId ? { broadcastWsToClientId } : {}),
+            ...(active.clientId ? { clientId: active.clientId } : {}),
             runtime,
             ...(userRoles ? { userRoles } : {}),
           },

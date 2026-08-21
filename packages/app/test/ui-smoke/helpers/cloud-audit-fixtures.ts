@@ -195,6 +195,16 @@ const STUB_RULES: StubRule[] = [
     body: { text: "Hello from Eliza" },
   },
   {
+    // Chat history hydration/pagination for the conversation created above —
+    // the shell requests /messages (optionally with ?before=) once the
+    // conversation mounts; an unmatched fall-through 404s and trips the
+    // zero-diagnostics guard in specs that assert a clean console.
+    match: prefix(
+      "/api/conversations/cloud-management-smoke-conversation/messages",
+    ),
+    body: { messages: [], hasMore: false },
+  },
+  {
     match: path_("/api/agent/events"),
     body: {
       events: [],
@@ -378,7 +388,6 @@ const STUB_RULES: StubRule[] = [
   },
   {
     // auto-top-up-card.tsx reads settings.autoTopUp.* + settings.limits.*;
-    // pay-as-you-go-card.tsx reads settings.payAsYouGoFromEarnings.
     match: path_("/api/v1/billing/settings"),
     body: {
       settings: {
@@ -431,6 +440,7 @@ const STUB_RULES: StubRule[] = [
   {
     match: path_("/api/v1/redemptions/balance"),
     body: {
+      success: true,
       balance: {
         totalEarned: 12.5,
         availableBalance: 10,
@@ -456,21 +466,39 @@ const STUB_RULES: StubRule[] = [
         userDailyLimitUsd: 1000,
         userHourlyLimitUsd: 250,
       },
-      eligibility: { canRedeem: true },
+      eligibility: { canRedeem: true, dailyLimitRemaining: 1_000 },
     },
   },
   {
     match: path_("/api/v1/redemptions/status"),
     body: {
+      success: true,
       operational: true,
-      networks: { base: { available: true } },
+      canRedeem: true,
+      message: "All payout networks are operational.",
+      availableNetworks: ["base"],
+      unavailableNetworks: [],
+      networks: [
+        {
+          network: "base",
+          available: true,
+          status: "operational",
+          balance: 100,
+          balanceAvailable: true,
+        },
+      ],
       wallets: {
         evm: { configured: false },
         solana: { configured: false },
       },
+      warnings: [],
+      lastChecked: NOW_ISO,
     },
   },
-  { match: path_("/api/v1/redemptions"), body: { redemptions: [] } },
+  {
+    match: path_("/api/v1/redemptions"),
+    body: { success: true, redemptions: [], paused: false },
+  },
   {
     match: path_("/api/v1/affiliates"),
     body: {

@@ -33,6 +33,8 @@ import {
   Service,
   type TargetInfo,
   type ThreadHandle,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
   type World,
   type WorldPayload,
@@ -284,6 +286,14 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
 }
 
 /**
+ * Caps a forum-topic name at Telegram's 128-code-unit limit without splitting a
+ * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
+ */
+export function truncateForumTopicName(name?: string): string {
+  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
+}
+
+/**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
  * This service handles all Telegram-specific functionality including:
  * - Initializing and managing the Telegram bot
@@ -506,7 +516,23 @@ export class TelegramService extends Service {
       (target as AccountScopedTargetInfo | null | undefined)?.accountId ??
       fallback?.accountId;
     if (direct) {
-      return normalizeTelegramAccountId(direct);
+      const normalized = normalizeTelegramAccountId(direct);
+      // Only enforce this in real multi-account mode. In legacy single-bot
+      // mode accountStates is empty and getAccountState() always falls back
+      // to the one configured bot regardless of accountId -- there is no
+      // second account an unrecognized id could be confused with, so an
+      // explicit id that isn't the exact defaultAccountId string is not an
+      // error there (existing single-bot callers may pass any identifier).
+      if (
+        this.accountStates instanceof Map &&
+        this.accountStates.size > 0 &&
+        this.getAccountState(normalized) === null
+      ) {
+        throw new Error(
+          `Telegram account ${normalized} is not configured or active`,
+        );
+      }
+      return normalized;
     }
     const roomId = target?.roomId ?? fallback?.roomId;
     if (roomId && typeof runtime.getRoom === "function") {
@@ -2344,7 +2370,7 @@ export class TelegramService extends Service {
     // create the new topic on the parent chat (the pattern preserves negative ids).
     const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
     const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
-    const name = (params.name ?? "thread").slice(0, 128);
+    const name = truncateForumTopicName(params.name ?? "thread");
     const topic = await bot.telegram.createForumTopic(parentChatId, name);
     return {
       threadId: String(topic.message_thread_id),

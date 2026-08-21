@@ -99,7 +99,11 @@ const HANDED_OFF_SUCCESSOR_META_KEY = "handedOffToSuccessorSessionId";
 // the handoff's generation token, honored only while handoff-pending.ts
 // still registers it in-flight; a stale marker is ignored AND cleared so the
 // stop synthesizes exactly as if the marker had never leaked.
-import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
+import {
+  ADMIN_STOP_META_KEY,
+  ADMIN_STOP_STAMPED_AT_META_KEY,
+  isAdminStopMarkerCurrent,
+} from "./admin-stop-marker.js";
 
 const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 
@@ -1008,12 +1012,31 @@ export class SwarmCoordinatorService
       // later genuine lineage completion still posts. An UNMARKED stop
       // (crash, subprocess death) still synthesizes — the #11689
       // never-silent-terminal invariant is the regression line.
+      //
+      // The stamp only authorizes suppression while fresh (#22981): a stamped
+      // stopSession that THREW leaves a surviving session wearing the marker,
+      // and honoring it later would silence that survivor's genuine crash —
+      // forever, since nothing clears it. Freshness keeps every duplicate
+      // teardown `stopped` from one admin action suppressed (they land within
+      // seconds) while a marker past the TTL — or one without a timestamp —
+      // is cleared and the stop synthesizes.
       const adminStop = readString(fresh, ADMIN_STOP_META_KEY);
       if (adminStop) {
-        logger.debug(
-          `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+        if (
+          isAdminStopMarkerCurrent(
+            readString(fresh, ADMIN_STOP_STAMPED_AT_META_KEY),
+            Date.now(),
+          )
+        ) {
+          logger.debug(
+            `[SwarmCoordinatorService] suppressed administrative stop (sessionId=${sessionId}, reason=${adminStop})`,
+          );
+          return;
+        }
+        logger.warn(
+          `[SwarmCoordinatorService] stale administrative-stop marker cleared; synthesizing stop (sessionId=${sessionId}, reason=${adminStop})`,
         );
-        return;
+        await this.clearStaleAdminStopMarker(sessionId);
       }
       // Handoff decided but successor spawn not yet settled: the stop is
       // teardown plumbing racing ahead of the successor stamp. Same semantics
@@ -1397,6 +1420,23 @@ export class SwarmCoordinatorService
    * future terminal for this session; the calling stop still synthesizes this
    * turn regardless of whether the clear lands.
    */
+  private async clearStaleAdminStopMarker(sessionId: string): Promise<void> {
+    const acp = this.acp();
+    if (typeof acp?.updateSessionMetadata !== "function") return;
+    try {
+      await acp.updateSessionMetadata(sessionId, {
+        [ADMIN_STOP_META_KEY]: null,
+        [ADMIN_STOP_STAMPED_AT_META_KEY]: null,
+      });
+      this.enrichmentMetadataCache.delete(sessionId);
+    } catch {
+      // error-policy:J6 best-effort marker cleanup while the stop already
+      // synthesizes; a missed clear re-runs on the session's next stopped and
+      // never suppresses a terminal (staleness is decided by the timestamp,
+      // not the marker's presence).
+    }
+  }
+
   private async clearStalePendingHandoffMarker(
     sessionId: string,
   ): Promise<void> {

@@ -35,7 +35,7 @@ function run(command, commandArgs, options = {}) {
   return spawnSync(command, commandArgs, {
     cwd: options.cwd ?? appRoot,
     encoding: "utf8",
-    shell: process.platform === "win32",
+    shell: false,
     stdio: options.stdio ?? "pipe",
   });
 }

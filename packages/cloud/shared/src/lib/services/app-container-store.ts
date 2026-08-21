@@ -19,6 +19,7 @@ import {
   type ProjectableContainerRow,
   rollbackAppContainerNodeSlotClaim,
 } from "./app-container-store-queries";
+import { deploymentGenerationFromMetadata } from "./app-deployment-generation";
 import { deriveAppPublicUrl } from "./app-url";
 import type { AppContainerRow, AppContainerStore } from "./container-job-executors";
 
@@ -59,11 +60,13 @@ export function mapContainerRowToAppContainerRow(row: ProjectableContainerRow): 
     typeof row.metadata?.appId === "string" ? (row.metadata.appId as string) : undefined;
   const hostContainerId =
     typeof row.metadata?.hostContainerId === "string" ? row.metadata.hostContainerId : undefined;
+  const deploymentGeneration = deploymentGenerationFromMetadata(row.metadata);
   return {
     id: row.id,
     // project_name is set to the appId by the deploy orchestrator's
     // createContainerRow; metadata.appId is a belt-and-suspenders fallback.
     appId: metaAppId ?? row.project_name,
+    ...(deploymentGeneration ? { deploymentGeneration } : {}),
     containerName: row.name,
     image: row.image_tag ?? "",
     port: row.port,

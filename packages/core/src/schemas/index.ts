@@ -36,6 +36,13 @@ export type {
 	FactCandidateStatus,
 } from "./entity-identity.ts";
 
+import {
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
+} from "./identity-authority.ts";
 import { logSchema } from "./log.ts";
 import { memorySchema } from "./memory.ts";
 import { messageSchema } from "./message.ts";
@@ -62,6 +69,11 @@ export {
 	entityMergeCandidateSchema,
 	entitySchema,
 	factCandidateSchema,
+	identityAuthorityStateSchema,
+	identityCanonicalRedirectSchema,
+	identityClaimSchema,
+	identityMergeConfirmationSchema,
+	identityMergeJournalSchema,
 	logSchema,
 	// Advanced memory schemas
 	longTermMemories,
@@ -83,7 +95,7 @@ export {
 
 /**
  * Type for the object returned by buildBaseTables().
- * Represents all 20 core database tables as ORM table objects.
+ * Represents all 20 portable core database tables as ORM table objects.
  */
 export interface BaseTables {
 	agent: unknown;
