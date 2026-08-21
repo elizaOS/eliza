@@ -29,7 +29,7 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
-        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
         <!-- Launch status bar matches the splash + home background (#ef5a1f),
              not the brand accent, so there is no orange→orange flash before the
              ambient home renders (issue #9565). -->
