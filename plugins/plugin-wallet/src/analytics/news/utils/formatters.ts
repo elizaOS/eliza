@@ -1,3 +1,5 @@
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 /**
  * Utility functions for formatting DeFi news data
  */
@@ -64,10 +66,14 @@ export function formatRelativeTime(timestamp: number | string): string {
  * Truncate text to a maximum length
  */
 export function truncateText(text: string, maxLength: number = 200): string {
-  if (text.length <= maxLength) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return `${text.substring(0, maxLength)}...`;
+  if (maxLength <= 3) {
+    return "...".slice(0, maxLength);
+  }
+  return `${truncateWellFormed(wellFormed, maxLength - 3)}...`;
 }
 
 /**
