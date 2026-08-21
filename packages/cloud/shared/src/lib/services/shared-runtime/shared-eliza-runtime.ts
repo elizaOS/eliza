@@ -68,6 +68,11 @@ import {
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
 import {
+  insertSharedRuntimeGroundingMessages,
+  sharedPublicWebGrounding,
+  sharedRuntimeGroundingProjectionMessages,
+} from "./shared-runtime-history-policy";
+import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
 } from "./shared-runtime-storage-identity";
@@ -567,6 +572,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
+  const groundingObservedAt = Date.now();
+  // The native tool-call projection may only reference a tool the current
+  // request actually declares; otherwise the evidence is carried as data-only
+  // transcript content so a strict provider cannot reject the whole request.
+  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] =>
+    sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
+      nativeToolProjection: declaresWebSearch,
+    });
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
@@ -584,7 +597,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       maxRetries: SHARED_TURN_MAX_RETRIES,
       allowSystemInMessages: true,
       ...(params.messages
-        ? { messages: params.messages as ModelMessage[] }
+        ? {
+            messages: insertSharedRuntimeGroundingMessages(
+              params.messages as ModelMessage[],
+              persistedGroundingMessages(
+                params.tools?.some((tool) => tool.name === "WEB_SEARCH") === true,
+              ),
+            ),
+          }
         : { prompt: params.prompt ?? "" }),
       ...(params.tools ? { tools: modelTools(params.tools) } : {}),
       ...(params.toolChoice ? { toolChoice: modelToolChoice(params.toolChoice) } : {}),
@@ -954,6 +974,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
+        sharedPublicWebGrounding(result.actionResults),
       ),
       model: input.model,
       degraded: false,
