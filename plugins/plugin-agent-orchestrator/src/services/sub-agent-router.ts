@@ -1684,7 +1684,7 @@ export class SubAgentRouter extends Service {
       void getNotifier(this.runtime)
         ?.notify({
           title: `${origin.label || "Agent task"} ${
-            awaitsDurableValidation ? "ready for validation" : "finished"
+            awaitsDurableValidation ? "has an update" : "finished"
           }`,
           ...(preview ? { body: preview } : {}),
           category: "agent",

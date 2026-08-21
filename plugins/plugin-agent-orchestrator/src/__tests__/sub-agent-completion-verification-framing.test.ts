@@ -136,9 +136,7 @@ describe("sub-agent completion: verification-aware framing", () => {
     const world = await makeWorld({ status: "validating" });
     const reply = await relayFor(world);
     expect(reply).toContain("The answer is 42.");
-    expect(reply).toContain(
-      "I'm checking it once more. If anything's off, I'll fix it.",
-    );
+    expect(reply).toContain("I'm doing one final check now.");
   });
 
   it("frames a relay as provisional after a failed verification (re-engage in flight)", async () => {
@@ -185,9 +183,7 @@ describe("sub-agent completion: verification-aware framing", () => {
       disclosedRisks: ["needs a prod smoke test"],
     });
     const reply = await relayFor(world);
-    expect(reply).toContain(
-      "I'm checking it once more. If anything's off, I'll fix it.",
-    );
+    expect(reply).toContain("I'm doing one final check now.");
     expect(reply).toContain("One thing to know: needs a prod smoke test");
   });
 

@@ -231,7 +231,7 @@ describe("SubAgentRouter notification emission", () => {
     await router.stop();
   });
 
-  it("labels a kept-alive durable completion as ready for validation, not finished", async () => {
+  it("labels a kept-alive durable completion as an update, not a validation detail", async () => {
     session = makeSession({
       metadata: {
         label: "build-personal-site",
@@ -259,10 +259,9 @@ describe("SubAgentRouter notification emission", () => {
     const notification = notify.mock.calls[0]?.[0] as
       | Record<string, unknown>
       | undefined;
-    expect(notification?.title).toBe(
-      "build-personal-site ready for validation",
-    );
+    expect(notification?.title).toBe("build-personal-site has an update");
     expect(String(notification?.title)).not.toContain("finished");
+    expect(String(notification?.title)).not.toContain("validation");
 
     const synthetic = handleMessage.mock.calls[0]?.[1] as Memory | undefined;
     expect(synthetic?.content.text).toContain(

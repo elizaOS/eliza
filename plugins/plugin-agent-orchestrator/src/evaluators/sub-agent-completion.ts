@@ -578,8 +578,7 @@ function hasVerifiedCompletionReply(
  * planner-path module does not pull the whole task-service dependency tree. */
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
 
-const VERIFICATION_PENDING_NOTE =
-  "I'm checking it once more. If anything's off, I'll fix it.";
+const VERIFICATION_PENDING_NOTE = "I'm doing one final check now.";
 const VERIFICATION_REENGAGED_NOTE =
   "That result needs another pass, so I'm fixing it now.";
 
