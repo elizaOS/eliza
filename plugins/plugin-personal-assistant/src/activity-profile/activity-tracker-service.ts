@@ -13,10 +13,9 @@
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { isSystemInactivityApp } from "@elizaos/plugin-health";
 import {
-  createLifeOpsActivitySignal,
-  LifeOpsRepository,
-} from "../lifeops/repository.js";
-import { insertActivityEvent } from "./activity-tracker-repo.js";
+  bootstrapActivityEventSchema,
+  insertActivityEvent,
+} from "./activity-tracker-repo.js";
 
 export type ActivityTrackerMode =
   | "running"
@@ -43,7 +42,7 @@ interface ActivityCollectorHandle {
   stop: () => Promise<void> | void;
 }
 
-type ActivityTrackerModule = {
+export type ActivityTrackerModule = {
   isSupportedPlatform: () => boolean;
   startActivityCollector: (opts: {
     onEvent: (event: ActivityCollectorEvent) => void;
@@ -53,7 +52,30 @@ type ActivityTrackerModule = {
   }) => ActivityCollectorHandle;
 };
 
-async function loadActivityTrackerModule(): Promise<ActivityTrackerModule | null> {
+const activityTrackerAdapters = new WeakMap<
+  IAgentRuntime,
+  ActivityTrackerModule
+>();
+
+/** Bind a platform or synthetic collector adapter to one runtime instance. */
+export function registerActivityTrackerAdapter(
+  runtime: IAgentRuntime,
+  adapter: ActivityTrackerModule,
+): () => void {
+  if (activityTrackerAdapters.has(runtime)) {
+    throw new Error(
+      "[activity-tracker] runtime already has a collector adapter",
+    );
+  }
+  activityTrackerAdapters.set(runtime, adapter);
+  return () => activityTrackerAdapters.delete(runtime);
+}
+
+async function loadActivityTrackerModule(
+  runtime: IAgentRuntime,
+): Promise<ActivityTrackerModule | null> {
+  const registered = activityTrackerAdapters.get(runtime);
+  if (registered) return registered;
   try {
     return (await import(
       "@elizaos/native-activity-tracker"
@@ -105,7 +127,7 @@ export class ActivityTrackerService extends Service {
       return;
     }
 
-    const tracker = await loadActivityTrackerModule();
+    const tracker = await loadActivityTrackerModule(this.runtime);
     if (!tracker) {
       this.mode = "disabled-config";
       logger.info(
@@ -124,7 +146,7 @@ export class ActivityTrackerService extends Service {
     }
 
     try {
-      await LifeOpsRepository.bootstrapSchema(this.runtime);
+      await bootstrapActivityEventSchema(this.runtime);
       this.handle = tracker.startActivityCollector({
         onEvent: (event) => {
           this.enqueueEvent(event);
@@ -226,6 +248,10 @@ export class ActivityTrackerService extends Service {
     const observedAt = new Date(sample.ts).toISOString();
     const idleSeconds = Math.max(0, Math.round(sample.idleSeconds));
     try {
+      const repositoryModulePath = "../lifeops/repository.js";
+      const { createLifeOpsActivitySignal, LifeOpsRepository } = (await import(
+        /* @vite-ignore */ repositoryModulePath
+      )) as typeof import("../lifeops/repository.js");
       const repository = new LifeOpsRepository(runtime);
       await repository.createActivitySignal(
         createLifeOpsActivitySignal({
