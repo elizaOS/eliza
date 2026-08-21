@@ -12,6 +12,7 @@
  * running.
  */
 import type { Memory, ResponseHandlerEvaluator } from "@elizaos/core";
+import { extractWrappedExternalContent } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 
@@ -24,9 +25,15 @@ const RECENT_TERMINAL_WINDOW_MS = 30 * 60_000;
 
 function messageText(message: Memory): string {
   const content = message.content;
-  return content && typeof content === "object" && "text" in content
-    ? String((content as { text?: unknown }).text ?? "")
-    : "";
+  const raw =
+    content && typeof content === "object" && "text" in content
+      ? String((content as { text?: unknown }).text ?? "")
+      : "";
+  // API/webhook messages arrive wrapped in the untrusted-content envelope;
+  // forwarding the wrapped text as a child task embedded the whole SECURITY
+  // NOTICE banner, the child echoed it, and the outbound envelope guard then
+  // blocked the completion (live 2026-08-21). Route on the verbatim payload.
+  return (extractWrappedExternalContent(raw) ?? raw).trim();
 }
 
 export const finishedWorkFollowUpRoutingEvaluator: ResponseHandlerEvaluator = {
