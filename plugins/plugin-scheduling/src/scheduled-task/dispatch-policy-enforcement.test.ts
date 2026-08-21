@@ -92,6 +92,13 @@ function makeHarness(
       });
       return inner.upsert(task, options);
     },
+    async upsertIfStatus(task, options) {
+      upserts.push({
+        taskId: task.taskId,
+        nextFireAtIso: options.nextFireAtIso ?? null,
+      });
+      return inner.upsertIfStatus(task, options);
+    },
   };
 
   const logStore = createInMemoryScheduledTaskLogStore();

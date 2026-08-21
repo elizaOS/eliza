@@ -117,21 +117,3 @@ export function toRetentionRates(cohorts: RetentionCohortInput[]): RetentionRate
     d30: toRetentionPercent(c.d30_retained, c.cohort_size),
   }));
 }
-
-export interface QuotaUsageDerived {
-  /** Used / limit as 0..100 percent rounded to one decimal, null if no limit. */
-  usedPercent: number | null;
-  /** Same value clamped to 100 for progress-bar widths. */
-  usedPercentClamped: number;
-}
-
-export function deriveQuotaUsage(used: number, limit: number | null): QuotaUsageDerived {
-  if (limit === null || limit <= 0) {
-    return { usedPercent: null, usedPercentClamped: 0 };
-  }
-  const raw = (used / limit) * 100;
-  return {
-    usedPercent: round1dp(raw),
-    usedPercentClamped: round1dp(Math.min(100, raw)),
-  };
-}

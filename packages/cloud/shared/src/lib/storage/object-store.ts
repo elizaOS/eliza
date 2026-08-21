@@ -263,14 +263,17 @@ export type ObjectStorageLifecycleErrorCode =
   | "OBJECT_STORAGE_READ_TRUNCATED"
   | "OBJECT_STORAGE_READ_OVERFLOW"
   | "OBJECT_STORAGE_READ_HASH_MISMATCH"
-  | "OBJECT_STORAGE_READ_FAILED";
+  | "OBJECT_STORAGE_READ_FAILED"
+  | "OBJECT_STORAGE_FIELD_POINTER_INVALID"
+  | "OBJECT_STORAGE_FIELD_UNAVAILABLE"
+  | "OBJECT_STORAGE_FIELD_JSON_INVALID";
 
 /** Static, key-free lifecycle failure safe to surface in structured logs. */
 export class ObjectStorageLifecycleError extends Error {
   readonly code: ObjectStorageLifecycleErrorCode;
 
-  constructor(code: ObjectStorageLifecycleErrorCode, message: string) {
-    super(message);
+  constructor(code: ObjectStorageLifecycleErrorCode, message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "ObjectStorageLifecycleError";
     this.code = code;
   }
@@ -531,21 +534,27 @@ function safeSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._=-]/g, "_");
 }
 
-function objectKey(params: {
+/** Derive the immutable tenant/object/field key used by pointer-backed SQL rows. */
+export function buildObjectFieldKey(params: {
   namespace: ObjectNamespace;
   organizationId: string;
   objectId: string;
   field: string;
   createdAt: Date;
   extension: "json" | "txt";
+  /** Optional immutable write generation. Legacy callers omit it. */
+  version?: string;
 }): string {
   const day = params.createdAt.toISOString().slice(0, 10);
+  const filename = params.version
+    ? `${safeSegment(params.field)}.${safeSegment(params.version)}.${params.extension}`
+    : `${safeSegment(params.field)}.${params.extension}`;
   return [
     params.namespace,
     safeSegment(params.organizationId),
     day,
     safeSegment(params.objectId),
-    `${safeSegment(params.field)}.${params.extension}`,
+    filename,
   ].join("/");
 }
 
@@ -557,15 +566,25 @@ export async function putObjectText(params: {
   createdAt: Date;
   body: string;
   contentType: string;
+  version?: string;
+  /** Create-only write. Required for versioned SQL pointers. */
+  immutable?: boolean;
 }): Promise<string> {
   const extension = params.contentType.includes("json") ? "json" : "txt";
-  const key = objectKey({ ...params, extension });
+  const key = buildObjectFieldKey({ ...params, extension });
 
   const runtimeBucket = getRuntimeR2Bucket();
   if (runtimeBucket) {
-    await runtimeBucket.put(key, params.body, {
+    const result = await runtimeBucket.put(key, params.body, {
+      ...(params.immutable ? { onlyIf: new Headers({ "if-none-match": "*" }) } : {}),
       httpMetadata: { contentType: params.contentType },
     });
+    if (params.immutable && result === null) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
     return key;
   }
 
@@ -575,14 +594,27 @@ export async function putObjectText(params: {
     throw new Error("Object storage requested but client or bucket is not configured");
   }
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: params.body,
-      ContentType: params.contentType,
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: params.body,
+        ContentType: params.contentType,
+        ...(params.immutable ? { IfNoneMatch: "*" } : {}),
+      }),
+    );
+  } catch (error) {
+    // error-policy:J1 translate only the create-only conflict; all other
+    // provider failures retain their original authority for existing callers.
+    if (params.immutable && classifyImmutableWriteFailure(error) === "precondition") {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_IMMUTABLE_CONFLICT",
+        "Immutable field object already exists",
+      );
+    }
+    throw error;
+  }
   return key;
 }
 
@@ -2185,6 +2217,8 @@ export async function offloadTextField(params: {
    * the write so the caller cannot silently bloat a text column.
    */
   oversizeInline?: "clamp" | "throw";
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<string>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   if (!shouldOffload(params.value)) {
@@ -2203,6 +2237,8 @@ export async function offloadTextField(params: {
     createdAt: params.createdAt,
     body: params.value,
     contentType: "text/plain; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2222,6 +2258,8 @@ export async function offloadJsonField<T>(params: {
   createdAt: Date;
   value: T | null | undefined;
   inlineValueWhenOffloaded: T | null;
+  version?: string;
+  immutable?: boolean;
 }): Promise<OffloadedField<T>> {
   if (params.value == null) return { value: null, storage: "inline", key: null };
   const body = JSON.stringify(params.value);
@@ -2240,6 +2278,8 @@ export async function offloadJsonField<T>(params: {
     createdAt: params.createdAt,
     body,
     contentType: "application/json; charset=utf-8",
+    version: params.version,
+    immutable: params.immutable,
   });
 
   return {
@@ -2253,18 +2293,91 @@ export async function hydrateTextField(params: {
   storage: string;
   key: string | null;
   inlineValue: string | null;
+  strict?: boolean;
 }): Promise<string | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  return (await getObjectText(params.key)) ?? params.inlineValue;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed field is missing its exact object key",
+    );
+  }
+  try {
+    const hydrated = await getObjectText(params.key);
+    if (hydrated !== null) return hydrated;
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (!params.strict) return params.inlineValue;
+  throw new ObjectStorageLifecycleError(
+    "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+    "Object-backed field is unavailable at the storage boundary",
+  );
 }
 
 export async function hydrateJsonField<T>(params: {
   storage: string;
   key: string | null;
   inlineValue: T | null;
+  strict?: boolean;
 }): Promise<T | null> {
-  if (params.storage !== "r2" || !params.key) return params.inlineValue;
-  const raw = await getObjectText(params.key);
-  if (!raw) return params.inlineValue;
-  return JSON.parse(raw) as T;
+  if (params.storage !== "r2") {
+    if (params.strict && (params.storage !== "inline" || params.key !== null)) {
+      throw new ObjectStorageLifecycleError(
+        "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+        "Object-backed JSON field has an invalid inline pointer state",
+      );
+    }
+    return params.inlineValue;
+  }
+  if (!params.key) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_POINTER_INVALID",
+      "Object-backed JSON field is missing its exact object key",
+    );
+  }
+
+  let raw: string | null;
+  try {
+    raw = await getObjectText(params.key);
+  } catch (cause) {
+    // error-policy:J2 preserve the provider failure behind a key-free storage error.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+      { cause },
+    );
+  }
+  if (raw === null || (!params.strict && raw.length === 0)) {
+    if (!params.strict) return params.inlineValue;
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_UNAVAILABLE",
+      "Object-backed JSON field is unavailable at the storage boundary",
+    );
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch (cause) {
+    // error-policy:J2 preserve the parse failure without exposing object content.
+    throw new ObjectStorageLifecycleError(
+      "OBJECT_STORAGE_FIELD_JSON_INVALID",
+      "Object-backed JSON field contains malformed JSON",
+      { cause },
+    );
+  }
 }

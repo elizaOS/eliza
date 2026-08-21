@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:t
 
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import * as realDbSchemas from "../../db/schemas";
+import { logger } from "../utils/logger";
 import { elizaSandboxService } from "./eliza-sandbox";
 
 const findByPhoneNumberWithOrganization = mock();
@@ -109,6 +110,7 @@ mock.module("../../db/schemas", () => ({
   },
   phoneMessageLog: {
     phone_number_id: "phone_number_id",
+    organization_id: "message_organization_id",
     direction: "direction",
     to_number: "to_number",
     created_at: "created_at",
@@ -372,41 +374,41 @@ describe("AgentGatewayRouterService phone routing", () => {
     expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
   });
 
-  test("falls back to outbound phone message log when contact table is not migrated", async () => {
+  test("fails closed without consulting legacy logs when the contact table is not migrated", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
     const missingTable = new Error('relation "agent_phone_contacts" does not exist');
     (missingTable as Error & { code?: string }).code = "42P01";
     queueSelectError(missingTable);
+
+    await expect(newRouter().routePhoneMessage(routeArgs())).rejects.toMatchObject({
+      code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+      context: { table: "agent_phone_contacts" },
+    });
+    expect(selectCalls).toBe(1);
+    expect(findRunningSandbox).not.toHaveBeenCalled();
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("fails closed when the contact inbound audit observes missing schema", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue(null);
     queueSelectResult([
       {
         organizationId: "owner-org",
-        agentId: "logged-agent",
+        agentId: "friend-agent",
+        userId: "owner-user",
       },
     ]);
-    findRunningSandbox.mockResolvedValue({
-      id: "logged-agent",
-      organization_id: "owner-org",
-      user_id: "owner-user",
-      status: "running",
-      agent_config: {},
-    });
-    bridge.mockResolvedValue({
-      result: {
-        text: "logged agent reply",
-      },
-    });
+    updateWhere.mockRejectedValueOnce(
+      Object.assign(new Error("missing contact table"), { code: "42P01" }),
+    );
 
-    const result = await newRouter().routePhoneMessage(routeArgs());
-
-    expect(result).toMatchObject({
-      handled: true,
-      replyText: "logged agent reply",
-      agentId: "logged-agent",
-      organizationId: "owner-org",
-      userId: "owner-user",
+    await expect(newRouter().routePhoneMessage(routeArgs())).rejects.toMatchObject({
+      code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+      context: { table: "agent_phone_contacts" },
     });
-    expect(selectCalls).toBe(2);
-    expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
+    expect(selectCalls).toBe(1);
+    expect(findRunningSandbox).not.toHaveBeenCalled();
+    expect(runOnboardingChat).not.toHaveBeenCalled();
   });
 
   test("starts onboarding for phone numbers with no owner or contact relationship", async () => {
@@ -481,8 +483,22 @@ describe("AgentGatewayRouterService phone routing", () => {
     expect(findByPhoneNumberWithOrganization).toHaveBeenCalledTimes(2);
   });
 
-  test("starts onboarding instead of throwing when phone target resolution fails", async () => {
-    findByPhoneNumberWithOrganization.mockRejectedValue(new Error("lookup failed"));
+  test("starts onboarding without logging phone or hostile error fields when resolution fails", async () => {
+    const sentinel = "SENTINEL_PHONE_RESOLVER_BODY";
+    const sender = "+19995550123";
+    const recipient = "+19995550456";
+    findByPhoneNumberWithOrganization.mockRejectedValue(
+      Object.assign(
+        new Error(`${sentinel}-message`, {
+          cause: Object.assign(new Error(`${sentinel}-cause`), {
+            name: `${sentinel}-cause-name`,
+          }),
+        }),
+        {
+          name: `${sentinel}-name`,
+        },
+      ),
+    );
     runOnboardingChat.mockResolvedValue({
       reply: "resolver fallback reply",
       session: {
@@ -492,7 +508,8 @@ describe("AgentGatewayRouterService phone routing", () => {
       provisioning: {},
     });
 
-    const result = await newRouter().routePhoneMessage(routeArgs());
+    const errorLog = spyOn(logger, "error").mockImplementation(() => undefined as never);
+    const result = await newRouter().routePhoneMessage(routeArgs({ from: sender, to: recipient }));
 
     expect(result).toMatchObject({
       handled: true,
@@ -503,11 +520,17 @@ describe("AgentGatewayRouterService phone routing", () => {
     });
     expect(runOnboardingChat).toHaveBeenCalledWith(
       expect.objectContaining({
-        platformReplyAddress: "+14159611510",
+        platformReplyAddress: recipient,
         trustedPlatformIdentity: true,
         idempotencyKey: "blooio:msg-1",
       }),
     );
+    const serializedLogs = JSON.stringify(errorLog.mock.calls);
+    expect(serializedLogs).toContain('"errorClass":"unexpected_phone_failure"');
+    expect(serializedLogs).not.toContain(sender);
+    expect(serializedLogs).not.toContain(recipient);
+    expect(serializedLogs).not.toContain(sentinel);
+    errorLog.mockRestore();
   });
 
   test("falls back to authenticated onboarding when owner runtime lookup fails", async () => {
@@ -637,6 +660,39 @@ describe("AgentGatewayRouterService phone routing", () => {
     );
   });
 
+  test("scrubs local relay rejection bodies in the routing callee", async () => {
+    const sentinel = "SENTINEL_LOCAL_RELAY_REJECTION";
+    findByPhoneNumberWithOrganization.mockResolvedValue({
+      id: "known-user",
+      organization_id: "known-org",
+    });
+    listOwnerSessions.mockResolvedValue([
+      {
+        runtimeAgentId: "known-agent",
+        organizationId: "known-org",
+      },
+    ]);
+    routeToSession.mockResolvedValue({
+      error: { code: -32_000, message: sentinel, data: `${sentinel}-cause` },
+    });
+    runOnboardingChat.mockResolvedValue({
+      reply: "known user fallback reply",
+      session: { userId: "known-user", organizationId: "known-org" },
+      provisioning: { agentId: "known-agent" },
+    });
+    const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined as never);
+
+    const result = await newRouter().routePhoneMessage(routeArgs());
+
+    expect(result).toMatchObject({ handled: true, reason: "bridge_failed" });
+    const serializedLogs = JSON.stringify(warnLog.mock.calls);
+    expect(serializedLogs).toContain('"errorClass":"unexpected_phone_failure"');
+    expect(serializedLogs).not.toContain(sentinel);
+    expect(serializedLogs).not.toContain("+1 (555) 555-0100");
+    expect(serializedLogs).not.toContain("+14159611510");
+    warnLog.mockRestore();
+  });
+
   test("returns bridge_failed instead of onboarding when a friend contact target throws", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
     queueSelectResult([
@@ -666,6 +722,45 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(runOnboardingChat).not.toHaveBeenCalled();
+  });
+
+  test("scrubs sandbox rejection bodies and phone identities in the routing callee", async () => {
+    const sentinel = "SENTINEL_SANDBOX_REJECTION_BODY";
+    const sender = "+19995550777";
+    const recipient = "+19995550888";
+    findByPhoneNumberWithOrganization.mockResolvedValue(null);
+    queueSelectResult([
+      {
+        organizationId: "owner-org",
+        agentId: "friend-agent",
+        userId: "owner-user",
+      },
+    ]);
+    findRunningSandbox.mockResolvedValue({
+      id: "friend-agent",
+      organization_id: "owner-org",
+      user_id: "owner-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({
+      error: {
+        code: -32_000,
+        message: sentinel,
+        data: { cause: `${sentinel}-cause` },
+      },
+    });
+    const warnLog = spyOn(logger, "warn").mockImplementation(() => undefined as never);
+
+    const result = await newRouter().routePhoneMessage(routeArgs({ from: sender, to: recipient }));
+
+    expect(result).toMatchObject({ handled: false, reason: "bridge_failed" });
+    const serializedLogs = JSON.stringify(warnLog.mock.calls);
+    expect(serializedLogs).toContain('"errorClass":"unexpected_phone_failure"');
+    expect(serializedLogs).not.toContain(sender);
+    expect(serializedLogs).not.toContain(recipient);
+    expect(serializedLogs).not.toContain(sentinel);
+    warnLog.mockRestore();
   });
 
   test("routes a registered BlueBubbles bridge to its bound agent", async () => {
@@ -716,7 +811,8 @@ describe("AgentGatewayRouterService phone routing", () => {
     expect(findByPhoneNumberWithOrganization).not.toHaveBeenCalled();
   });
 
-  test("throws a typed failure when a registered BlueBubbles bridge cannot route", async () => {
+  test("throws a typed failure without logging BlueBubbles transport details", async () => {
+    const sentinel = "SENTINEL_REGISTERED_BLUEBUBBLES_FAILURE";
     findRunningSandbox.mockResolvedValue({
       id: "registered-agent",
       organization_id: "registered-org",
@@ -724,7 +820,19 @@ describe("AgentGatewayRouterService phone routing", () => {
       status: "running",
       agent_config: {},
     });
-    bridge.mockRejectedValue(new Error("registered bridge unavailable"));
+    bridge.mockRejectedValue(
+      Object.assign(
+        new Error(`${sentinel}-message`, {
+          cause: Object.assign(new Error(`${sentinel}-cause`), {
+            name: `${sentinel}-cause-name`,
+          }),
+        }),
+        {
+          name: `${sentinel}-name`,
+        },
+      ),
+    );
+    const errorLog = spyOn(logger, "error").mockImplementation(() => undefined as never);
 
     await expect(
       newRouter().routeRegisteredBlueBubblesMessage({
@@ -743,6 +851,12 @@ describe("AgentGatewayRouterService phone routing", () => {
         organizationId: "registered-org",
       }),
     });
+    const serializedLogs = JSON.stringify(errorLog.mock.calls);
+    expect(serializedLogs).toContain('"errorClass":"unexpected_phone_failure"');
+    expect(serializedLogs).not.toContain("+1 (555) 555-0100");
+    expect(serializedLogs).not.toContain("+1 (415) 555-0123");
+    expect(serializedLogs).not.toContain(sentinel);
+    errorLog.mockRestore();
   });
 });
 

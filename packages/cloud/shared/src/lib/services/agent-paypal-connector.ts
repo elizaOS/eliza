@@ -34,9 +34,13 @@ export function paypalFetch(
   init?: RequestInit,
   timeoutMs: number = PAYPAL_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  // Compose rather than replace: `init?.signal ?? AbortSignal.timeout(...)`
+  // lets any caller that passes a signal silently drop the hop deadline, which
+  // is the failure this bound exists to prevent.
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

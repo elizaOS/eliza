@@ -74,6 +74,7 @@ import {
 import {
   SharedRuntimeTimingCollector,
   type SharedRuntimeTimingOutcome,
+  type SharedRuntimeTimingReceipt,
 } from "./shared-runtime-timing";
 import { SHARED_TURN_MAX_RETRIES } from "./shared-turn-retry-budget";
 
@@ -500,9 +501,10 @@ async function executeSharedElizaRuntimeTurn(
     input.history.length,
   );
   let runtimeReporter: IAgentRuntime | undefined;
-  const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
+  const emitTiming = (outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt => {
+    const receipt = timing.receipt(outcome);
     try {
-      input.onRuntimeTiming?.(timing.receipt(outcome));
+      input.onRuntimeTiming?.(receipt);
     } catch (error) {
       // error-policy:J7 diagnostics must not kill the loop. Once the genuine
       // runtime exists, report through its canonical error surface; setup
@@ -524,6 +526,7 @@ async function executeSharedElizaRuntimeTurn(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    return receipt;
   };
   try {
     const result = await executeMeasuredSharedElizaRuntimeTurn(
@@ -534,8 +537,8 @@ async function executeSharedElizaRuntimeTurn(
         runtimeReporter = runtime;
       },
     );
-    emitTiming("success");
-    return result;
+    const receipt = emitTiming("success");
+    return { ...result, timing: receipt.model };
   } catch (error) {
     emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
     throw error;
@@ -564,12 +567,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
-  const model = getInteractiveCerebrasLanguageModel(input.model);
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
     params: GenerateTextParams,
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
+    const modelCall = timing.prepareModelCall();
+    const model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
@@ -590,7 +594,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(params.signal ? { abortSignal: params.signal } : {}),
     };
     if (onStreamChunk && params.stream === true) {
-      const result = streamText(generation);
+      let result: ReturnType<typeof streamText>;
+      try {
+        modelCall.begin();
+        result = streamText(generation);
+      } catch (error) {
+        // error-policy:J6 best-effort teardown — close the timing span so a
+        // synchronous streamText failure cannot leave the call recorded as
+        // still running, then let the original error propagate untouched.
+        modelCall.finish();
+        throw error;
+      }
       const text = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
       const finishReason = Promise.resolve(result.finishReason);
@@ -626,11 +640,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           yield chunk;
         }
       })();
-      const streamUsage = totalUsage.then((value) => {
-        const normalized = normalizeUsage(value);
-        usage = addUsage(usage, normalized);
-        return normalized;
-      });
+      const streamUsage = totalUsage
+        .then((value) => {
+          const normalized = normalizeUsage(value);
+          usage = addUsage(usage, normalized);
+          return normalized;
+        })
+        .finally(() => modelCall.finish());
       const normalizedToolCalls = toolCalls.then((calls) =>
         calls.map((call) => ({
           id: call.toolCallId,
@@ -651,9 +667,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         providerMetadata: { modelName: input.model },
       } as TextStreamResult;
     }
-    const result = await generateText({
-      ...generation,
-    });
+    let result: Awaited<ReturnType<typeof generateText>>;
+    try {
+      modelCall.begin();
+      result = await generateText({ ...generation });
+    } finally {
+      modelCall.finish();
+    }
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -1038,6 +1058,7 @@ export async function runSharedElizaRuntimeTurnStream(
         text: result.reply,
         ...(result.responded === false ? { responded: false } : {}),
         usage: result.usage,
+        ...(result.timing ? { timing: result.timing } : {}),
         ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
       });
       terminal = true;

@@ -341,9 +341,14 @@ function buildCommandHandler(
       let sectionLabel: string | undefined;
       if (command.name === "settings") {
         const raw = firstCommandArg(messageText(ctx));
-        if (raw) sectionLabel = resolveSettingsSection(raw) ?? raw;
+        if (raw) {
+          sectionLabel =
+            resolveSettingsSection(raw) ?? truncateTelegramCommandReply(raw);
+        }
       }
-      await ctx.reply(describeNavigation(command, sectionLabel));
+      await ctx.reply(
+        truncateTelegramCommandReply(describeNavigation(command, sectionLabel)),
+      );
       return;
     }
 

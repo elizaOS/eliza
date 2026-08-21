@@ -10,6 +10,7 @@ import {
   isGroqNativeModel,
   isVastNativeModel,
 } from "../models";
+import type { SharedModelCallSelection } from "../services/shared-runtime/shared-runtime-timing";
 import type { PooledDirectProvider } from "../services/team-credential-pool/provider-map";
 import { logger } from "../utils/logger";
 import { RETRYABLE_UPSTREAM_STATUSES } from "./failover";
@@ -489,12 +490,22 @@ async function invokeOpenRouterFallback<T>(
  * the native call returns a retryable error. A no-op when OPENROUTER_API_KEY is
  * unset, so direct-only deployments are unchanged.
  */
+/**
+ * `nativeProvider` names the provider serving `primaryModel` so a successful
+ * native call is attributed to itself rather than to the catch-all `other`.
+ */
 function withOpenRouterFallback(
   primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
   model: string,
+  nativeProvider: InteractiveLanguageModelSelection["provider"],
+  onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
 ) {
   if (!getOpenRouterApiKey()) {
-    return primaryModel;
+    return withSuccessfulProviderSelection(
+      primaryModel,
+      { provider: nativeProvider, fallback: false },
+      onProviderSelected,
+    );
   }
 
   const fallbackModel = getOpenRouterLanguageModel(model);
@@ -502,7 +513,9 @@ function withOpenRouterFallback(
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate, params }) => {
       try {
-        return await doGenerate();
+        const result = await doGenerate();
+        notifyProviderSelected(onProviderSelected, { provider: nativeProvider, fallback: false });
+        return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) {
           throw error;
@@ -512,14 +525,18 @@ function withOpenRouterFallback(
           model,
           aiSdkErrorStatus(error),
         );
-        return await invokeOpenRouterFallback(model, "generate", () =>
+        const result = await invokeOpenRouterFallback(model, "generate", () =>
           fallbackModel.doGenerate(params),
         );
+        notifyProviderSelected(onProviderSelected, { provider: "openrouter", fallback: true });
+        return result;
       }
     },
     wrapStream: async ({ doStream, params }) => {
       try {
-        return await doStream();
+        const result = await doStream();
+        notifyProviderSelected(onProviderSelected, { provider: nativeProvider, fallback: false });
+        return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) {
           throw error;
@@ -529,14 +546,40 @@ function withOpenRouterFallback(
           model,
           aiSdkErrorStatus(error),
         );
-        return await invokeOpenRouterFallback(model, "stream", () =>
+        const result = await invokeOpenRouterFallback(model, "stream", () =>
           fallbackModel.doStream(params),
         );
+        notifyProviderSelected(onProviderSelected, { provider: "openrouter", fallback: true });
+        return result;
       }
     },
   };
 
   return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
+function withSuccessfulProviderSelection(
+  model: Parameters<typeof wrapLanguageModel>[0]["model"],
+  selection: InteractiveLanguageModelSelection,
+  onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
+) {
+  if (!onProviderSelected) return model;
+  return wrapLanguageModel({
+    model,
+    middleware: {
+      specificationVersion: "v3",
+      wrapGenerate: async ({ doGenerate }) => {
+        const result = await doGenerate();
+        notifyProviderSelected(onProviderSelected, selection);
+        return result;
+      },
+      wrapStream: async ({ doStream }) => {
+        const result = await doStream();
+        notifyProviderSelected(onProviderSelected, selection);
+        return result;
+      },
+    },
+  });
 }
 
 /**
@@ -615,16 +658,23 @@ function withRateLimitFailFast(primaryModel: Parameters<typeof wrapLanguageModel
 function withCerebrasInteractiveFailover(
   primaryModel: Parameters<typeof wrapLanguageModel>[0]["model"],
   model: string,
+  onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
 ) {
   if (!getOpenRouterApiKey()) {
-    return primaryModel;
+    return withSuccessfulProviderSelection(
+      primaryModel,
+      { provider: "cerebras", fallback: false },
+      onProviderSelected,
+    );
   }
   const fallbackModel = getOpenRouterLanguageModel(resolveCerebrasOpenRouterFallbackModel(model));
   const middleware: LanguageModelMiddleware = {
     specificationVersion: "v3",
     wrapGenerate: async ({ doGenerate, params }) => {
       try {
-        return await doGenerate();
+        const result = await doGenerate();
+        notifyProviderSelected(onProviderSelected, { provider: "cerebras", fallback: false });
+        return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) throw error;
         logger.warn(
@@ -632,14 +682,18 @@ function withCerebrasInteractiveFailover(
           model,
           aiSdkErrorStatus(error),
         );
-        return await invokeOpenRouterFallback(model, "generate", () =>
+        const result = await invokeOpenRouterFallback(model, "generate", () =>
           fallbackModel.doGenerate(params),
         );
+        notifyProviderSelected(onProviderSelected, { provider: "openrouter", fallback: true });
+        return result;
       }
     },
     wrapStream: async ({ doStream, params }) => {
       try {
-        return await doStream();
+        const result = await doStream();
+        notifyProviderSelected(onProviderSelected, { provider: "cerebras", fallback: false });
+        return result;
       } catch (error) {
         if (!isRetryableAiSdkError(error)) throw error;
         logger.warn(
@@ -647,13 +701,40 @@ function withCerebrasInteractiveFailover(
           model,
           aiSdkErrorStatus(error),
         );
-        return await invokeOpenRouterFallback(model, "stream", () =>
+        const result = await invokeOpenRouterFallback(model, "stream", () =>
           fallbackModel.doStream(params),
         );
+        notifyProviderSelected(onProviderSelected, { provider: "openrouter", fallback: true });
+        return result;
       }
     },
   };
   return wrapLanguageModel({ model: primaryModel, middleware });
+}
+
+/**
+ * Provider attribution reported to a timing observer once a call succeeds.
+ * `other` is the deliberate catch-all for pooled, Groq, and Vast models, whose
+ * individual identity the Shared timing receipt does not need.
+ */
+export interface InteractiveLanguageModelSelection {
+  provider: SharedModelCallSelection["provider"];
+  fallback: boolean;
+}
+
+function notifyProviderSelected(
+  observer: ((selection: InteractiveLanguageModelSelection) => void) | undefined,
+  selection: InteractiveLanguageModelSelection,
+): void {
+  if (!observer) return;
+  try {
+    observer(selection);
+  } catch (error) {
+    // error-policy:J7 timing must never change a successful inference outcome.
+    logger.warn("[language-model] Provider-selection observer failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**
@@ -664,14 +745,18 @@ function withCerebrasInteractiveFailover(
  * normal router. Interactive callers (shared-runtime chat/voice turn) pair this
  * with `maxRetries: 0` so the only retry is the instant cross-provider failover.
  */
-export function getInteractiveCerebrasLanguageModel(model: string) {
+export function getInteractiveCerebrasLanguageModel(
+  model: string,
+  onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
+) {
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
     return withCerebrasInteractiveFailover(
       withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
       model,
+      onProviderSelected,
     );
   }
-  return getLanguageModel(model);
+  return getLanguageModel(model, undefined, onProviderSelected);
 }
 
 /**
@@ -750,19 +835,37 @@ export function hasTextEmbeddingProviderConfigured(model?: string): boolean {
   return Boolean(getProviderKey("OPENAI_API_KEY"));
 }
 
-export function getLanguageModel(model: string, credential?: PooledLanguageModelCredential) {
+export function getLanguageModel(
+  model: string,
+  credential?: PooledLanguageModelCredential,
+  onProviderSelected?: (selection: InteractiveLanguageModelSelection) => void,
+) {
   if (credential) {
     const pooledModel = getPooledLanguageModel(model, credential);
-    if (pooledModel) return pooledModel;
+    if (pooledModel) {
+      return withSuccessfulProviderSelection(
+        pooledModel,
+        { provider: "other", fallback: false },
+        onProviderSelected,
+      );
+    }
   }
 
   if (isGroqNativeModel(model)) {
-    return getGroqClient().languageModel(getGroqApiModelId(model));
+    return withSuccessfulProviderSelection(
+      getGroqClient().languageModel(getGroqApiModelId(model)),
+      { provider: "other", fallback: false },
+      onProviderSelected,
+    );
   }
 
   if (isVastNativeModel(model)) {
     const { client, apiModelId } = getVastClient(model);
-    return client.languageModel(apiModelId);
+    return withSuccessfulProviderSelection(
+      client.languageModel(apiModelId),
+      { provider: "other", fallback: false },
+      onProviderSelected,
+    );
   }
 
   // Cerebras-native bare IDs (gemma-4-31b, gpt-oss-120b, zai-glm-4.7) → Cerebras direct.
@@ -772,14 +875,22 @@ export function getLanguageModel(model: string, credential?: PooledLanguageModel
   // so that 429 surfaces in ~one round-trip instead of after the AI SDK's default
   // ~50s 3-attempt backoff (which turned a throttled turn into a 50s hang).
   if (isCerebrasNativeModel(model) && getProviderKey("CEREBRAS_API_KEY")) {
-    return withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model)));
+    return withSuccessfulProviderSelection(
+      withRateLimitFailFast(getCerebrasClient().chat(normalizeCerebrasModelId(model))),
+      { provider: "cerebras", fallback: false },
+      onProviderSelected,
+    );
   }
 
   // OpenRouter-catalog ids no native provider can serve (`:nitro`/`:floor`,
   // `openai/gpt-oss-120b` as an OpenRouter id) → OpenRouter backup.
   if (requiresGatewayRouting(model)) {
     if (getOpenRouterApiKey()) {
-      return getOpenRouterLanguageModel(model);
+      return withSuccessfulProviderSelection(
+        getOpenRouterLanguageModel(model),
+        { provider: "openrouter", fallback: false },
+        onProviderSelected,
+      );
     }
     throw new ProviderConfigurationError("OPENROUTER_API_KEY is required for this model");
   }
@@ -791,19 +902,25 @@ export function getLanguageModel(model: string, credential?: PooledLanguageModel
     const primary = getProviderKey("OPENAI_BASE_URL")
       ? getOpenAIClient().chat(modelId)
       : getOpenAIClient().languageModel(modelId);
-    return withOpenRouterFallback(primary, model);
+    return withOpenRouterFallback(primary, model, "openai", onProviderSelected);
   }
 
   if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {
     return withOpenRouterFallback(
       getAnthropicClient().languageModel(normalizeAnthropicModelId(model)),
       model,
+      "anthropic",
+      onProviderSelected,
     );
   }
 
   // Backup: OpenRouter (BYOK) serves any model we have no native key for.
   if (getOpenRouterApiKey()) {
-    return getOpenRouterLanguageModel(model);
+    return withSuccessfulProviderSelection(
+      getOpenRouterLanguageModel(model),
+      { provider: "openrouter", fallback: false },
+      onProviderSelected,
+    );
   }
 
   throw new ProviderConfigurationError(

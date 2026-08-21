@@ -26,12 +26,21 @@ describe("managed payment clients", () => {
 
     const config = resolveEnvElizaCloudManagedClientConfig({
       ELIZAOS_CLOUD_API_KEY: " eliza_test ",
-      ELIZAOS_CLOUD_BASE_URL: "https://cloud.example/api",
+      ELIZAOS_CLOUD_BASE_URL: "https://cloud.example",
     });
 
     expect(config.configured).toBe(true);
     expect(config.apiKey).toBe("eliza_test");
-    expect(config.apiBaseUrl).toContain("cloud.example");
+    // Pin the whole resolved base, not just the host: the clients append bare
+    // route paths, so the `/api/v1` prefix has to come from here or every
+    // managed-payment request 404s against the generated router.
+    expect(config.apiBaseUrl).toBe("https://cloud.example/api/v1");
+    expect(
+      resolveEnvElizaCloudManagedClientConfig({
+        ELIZAOS_CLOUD_API_KEY: "eliza_test",
+        ELIZAOS_CLOUD_BASE_URL: "https://cloud.example/api/v1",
+      }).apiBaseUrl
+    ).toBe("https://cloud.example/api/v1");
   });
 
   it("posts Plaid link token requests through the configured cloud API", async () => {
@@ -203,7 +212,7 @@ describe("managed payment clients", () => {
     const client = new PaypalManagedClient(() => ({
       configured: true,
       apiKey: "eliza_test",
-      apiBaseUrl: "https://cloud.example/api",
+      apiBaseUrl: "https://cloud.example/api/v1",
       siteUrl: "https://cloud.example",
     }));
 
@@ -227,7 +236,7 @@ describe("managed payment clients", () => {
     const paypal = new PaypalManagedClient(() => ({
       configured: false,
       apiKey: null,
-      apiBaseUrl: "https://cloud.example/api",
+      apiBaseUrl: "https://cloud.example/api/v1",
       siteUrl: "https://cloud.example",
     }));
 

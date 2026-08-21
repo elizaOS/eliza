@@ -220,6 +220,17 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       auto_top_up_threshold numeric(10, 2),
       CONSTRAINT credit_balance_non_negative CHECK (credit_balance >= 0)
     );
+    CREATE TABLE api_keys (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      is_active boolean NOT NULL DEFAULT true,
+      deleted_at timestamp without time zone,
+      updated_at timestamp without time zone NOT NULL DEFAULT now(),
+      key_ciphertext text,
+      key_nonce text,
+      key_auth_tag text,
+      key_kms_key_id text,
+      key_kms_key_version integer
+    );
     CREATE TABLE organization_billing (
       organization_id uuid NOT NULL UNIQUE
         REFERENCES organizations(id) ON DELETE CASCADE,
@@ -316,6 +327,14 @@ async function seedPreCheckpointSchema(client: pg.Client): Promise<void> {
       raw_payload_storage text NOT NULL DEFAULT 'inline',
       raw_payload_key text,
       received_at timestamp with time zone NOT NULL DEFAULT now()
+    );
+    CREATE TABLE remote_sessions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      agent_id uuid NOT NULL,
+      status text NOT NULL,
+      CONSTRAINT remote_sessions_status_check CHECK (
+        status IN ('pending', 'active', 'denied', 'revoked')
+      )
     );
     CREATE TABLE docker_nodes (
       id uuid PRIMARY KEY,
@@ -1043,13 +1062,101 @@ describe.skipIf(!ENABLED)(
 
       const second = await runScript(MIGRATOR, database.url);
       expect(second.exitCode, second.output).toBe(0);
-      expect(second.output).toContain("pending migrations: 0");
+      expect(second.output).toContain("pending migrations: 2");
+      expect(second.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const preflight = await runScript(PREFLIGHT, database.url);
       expect(preflight.exitCode, preflight.output).toBe(0);
       expect(preflight.output).toContain("catalog and journal verified");
       await database.client.end();
     }, 30_000);
+
+    test("restores the legacy usage-quota shape when 0282 is already ledgered", async () => {
+      const database = await createDatabase();
+      await seedAppliedPrefix(database.client, CHECKPOINT_PREFIX_LENGTH);
+
+      const safePrefix = await runScript(MIGRATOR, database.url);
+      expect(safePrefix.exitCode, safePrefix.output).toBe(0);
+      expect(safePrefix.output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
+
+      const entries = await journalEntries();
+      const dropIndex = entries.findIndex(
+        (entry) => entry.tag === "0282_drop_unused_usage_quotas_table",
+      );
+      const drop = entries[dropIndex];
+      const restore = entries[dropIndex + 1];
+      if (
+        !drop ||
+        restore?.tag !== "0282_01_restore_usage_quotas_compatibility"
+      ) {
+        throw new Error("Missing guarded usage-quotas migration pair");
+      }
+
+      const dropSql = await readFile(
+        path.join(MIGRATIONS_DIR, `${drop.tag}.sql`),
+        "utf8",
+      );
+      await database.client.query(dropSql);
+      await database.client.query(
+        "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($1, $2)",
+        [createHash("sha256").update(dropSql).digest("hex"), drop.when],
+      );
+
+      const repaired = await runScript(MIGRATOR, database.url);
+      expect(repaired.exitCode, repaired.output).toBe(0);
+      expect(repaired.output).toContain("pending migrations: 1");
+      expect(repaired.output).toContain(
+        "applying 0282_01_restore_usage_quotas_compatibility",
+      );
+      expect(repaired.output).toContain("migrations complete");
+
+      const oldSelection = await database.client.query(`
+        SELECT id, organization_id, quota_type, model_name, period_type,
+          credits_limit, current_usage, period_start, period_end, is_active,
+          created_at, updated_at
+        FROM usage_quotas
+      `);
+      expect(oldSelection.rows).toEqual([]);
+      expect(oldSelection.fields.map((field) => field.name)).toEqual([
+        "id",
+        "organization_id",
+        "quota_type",
+        "model_name",
+        "period_type",
+        "credits_limit",
+        "current_usage",
+        "period_start",
+        "period_end",
+        "is_active",
+        "created_at",
+        "updated_at",
+      ]);
+
+      const indexes = await database.client.query<{ indexname: string }>(`
+        SELECT indexname
+        FROM pg_indexes
+        WHERE schemaname = 'public' AND tablename = 'usage_quotas'
+        ORDER BY indexname
+      `);
+      expect(indexes.rows.map((row) => row.indexname)).toEqual([
+        "usage_quotas_active_idx",
+        "usage_quotas_org_id_idx",
+        "usage_quotas_period_idx",
+        "usage_quotas_pkey",
+        "usage_quotas_quota_type_idx",
+      ]);
+
+      const restoreLedger = await database.client.query<{ count: string }>(
+        "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",
+        [restore.when],
+      );
+      expect(restoreLedger.rows[0]?.count).toBe("1");
+      await database.client.end();
+    }, 120_000);
 
     test("accepts historical production hash drift but enforces hashes from the checkpoint forward", async () => {
       const database = await createDatabase();
@@ -1311,7 +1418,10 @@ describe.skipIf(!ENABLED)(
       const output = `${first.output}${second.output}`;
       expect(output).toContain("lock timeout on attempt");
       expect(output).toContain("migration lock busy on attempt");
-      expect(output).toContain("pending migrations: 0");
+      expect(output).toContain("pending migrations: 2");
+      expect(output).toContain(
+        "release barrier paused before 0282_drop_unused_usage_quotas_table",
+      );
 
       const journal = await database.client.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM drizzle.__drizzle_migrations WHERE created_at = $1",

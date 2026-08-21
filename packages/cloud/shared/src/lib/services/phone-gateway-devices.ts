@@ -1,9 +1,16 @@
 /** Coordinates cloud phone-gateway registration, authentication, and presence state. */
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { type Database, type DbTransaction, dbRead, dbWrite } from "../../db/client";
+import {
+  hydratePhoneGatewayDevice,
+  phoneGatewayDeviceLosslessSelection,
+} from "../../db/repositories/phone-metadata-readers";
 import { phoneGatewayDevices } from "../../db/schemas/phone-gateway-devices";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
+import { isPostgresUndefinedTableError, phoneErrorDiagnostic } from "./phone-error-diagnostics";
+import { PHONE_GATEWAY_METADATA_INVALID, requirePhoneJsonObject } from "./phone-payload-validation";
 
 export type PhoneGatewayProvider = "twilio" | "blooio" | "vonage" | "whatsapp" | "other";
 
@@ -51,6 +58,16 @@ interface BlueBubblesGatewayMetadataV2 extends Record<string, unknown> {
 
 type BlueBubblesGatewayMetadata = LegacyBlueBubblesGatewayMetadata | BlueBubblesGatewayMetadataV2;
 
+function providerDiagnostic(value: unknown): string {
+  return value === "twilio" ||
+    value === "blooio" ||
+    value === "vonage" ||
+    value === "whatsapp" ||
+    value === "other"
+    ? value
+    : "unknown";
+}
+
 export interface BlueBubblesGatewayRegistration {
   id: string;
   bridgeId: string;
@@ -74,70 +91,25 @@ export interface AuthenticatedBlueBubblesGateway {
   lastSeenAt: Date | null;
 }
 
-let ensureTablePromise: Promise<void> | null = null;
-
 function isUndefinedTableError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
-    return true;
-  }
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && cause !== error) return isUndefinedTableError(cause);
-  const message = (error as { message?: unknown }).message;
-  return (
-    typeof message === "string" &&
-    message.includes('relation "phone_gateway_devices" does not exist')
-  );
+  return isPostgresUndefinedTableError(error);
 }
 
-async function ensurePhoneGatewayDevicesTable(): Promise<void> {
-  ensureTablePromise ??= (async () => {
-    await dbWrite.execute(sql`
-      CREATE TABLE IF NOT EXISTS phone_gateway_devices (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id UUID,
-        provider phone_provider NOT NULL,
-        phone_number TEXT NOT NULL,
-        bridge_id TEXT NOT NULL DEFAULT 'default',
-        phone_account_id TEXT,
-        phone_account_label TEXT,
-        friendly_name TEXT,
-        send_method TEXT,
-        cloud_webhook_url TEXT,
-        local_webhook_url TEXT,
-        is_active BOOLEAN NOT NULL DEFAULT true,
-        can_send_sms BOOLEAN NOT NULL DEFAULT true,
-        can_receive_sms BOOLEAN NOT NULL DEFAULT true,
-        can_send_imessage BOOLEAN NOT NULL DEFAULT true,
-        can_receive_imessage BOOLEAN NOT NULL DEFAULT true,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        last_seen_at TIMESTAMP
-      )
-    `);
-    await dbWrite.execute(sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS phone_gateway_devices_provider_phone_bridge_idx
-      ON phone_gateway_devices(provider, phone_number, bridge_id)
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS phone_gateway_devices_organization_idx
-      ON phone_gateway_devices(organization_id)
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS phone_gateway_devices_phone_number_idx
-      ON phone_gateway_devices(phone_number)
-    `);
-    await dbWrite.execute(sql`
-      CREATE INDEX IF NOT EXISTS phone_gateway_devices_is_active_idx
-      ON phone_gateway_devices(is_active)
-    `);
-  })().catch((error) => {
-    ensureTablePromise = null;
-    throw error;
+function schemaMigrationRequired(error: unknown): ElizaError {
+  return new ElizaError("Phone gateway schema migration is required", {
+    code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+    context: { table: "phone_gateway_devices" },
+    cause: error,
   });
+}
 
-  return ensureTablePromise;
+async function withPhoneGatewaySchema<T>(operation: () => PromiseLike<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isUndefinedTableError(error)) throw schemaMigrationRequired(error);
+    throw error;
+  }
 }
 
 function nullableText(value: string | null | undefined): string | null {
@@ -167,9 +139,12 @@ function constantTimeStringEqual(left: string, right: string): boolean {
   return mismatch === 0;
 }
 
-function parseBlueBubblesMetadata(value: string): BlueBubblesGatewayMetadata | null {
+function parseBlueBubblesMetadata(value: unknown): BlueBubblesGatewayMetadata | null {
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
+    const parsed = requirePhoneJsonObject(value, {
+      field: "phone_gateway_devices.metadata",
+      code: PHONE_GATEWAY_METADATA_INVALID,
+    });
     if (
       parsed.gatewayKind !== "bluebubbles" ||
       typeof parsed.ownerUserId !== "string" ||
@@ -282,7 +257,7 @@ export async function createBlueBubblesGatewayRegistration(input: {
             eq(phoneGatewayDevices.provider, "blooio"),
             eq(phoneGatewayDevices.phone_number, phoneNumber),
             eq(phoneGatewayDevices.is_active, true),
-            sql`${phoneGatewayDevices.metadata}::jsonb ->> 'gatewayKind' = 'bluebubbles'`,
+            sql`${phoneGatewayDevices.metadata} ->> 'gatewayKind' = 'bluebubbles'`,
           ),
         );
       return await upsertPhoneGatewayDevice(registrationInput, tx);
@@ -293,8 +268,8 @@ export async function createBlueBubblesGatewayRegistration(input: {
     registered = await registerAtomically();
   } catch (error) {
     if (!isUndefinedTableError(error)) throw error;
-    await ensurePhoneGatewayDevicesTable();
-    registered = await registerAtomically();
+    // error-policy:J2 request-serving code must not synthesize a divergent table.
+    throw schemaMigrationRequired(error);
   }
   if (!registered.registered || !registered.id) {
     throw new Error(
@@ -319,17 +294,20 @@ export async function authenticateBlueBubblesGateway(
   token: string,
 ): Promise<AuthenticatedBlueBubblesGateway | null> {
   if (!bridgeId.trim() || !token.trim()) return null;
-  const records = await dbRead
-    .select()
-    .from(phoneGatewayDevices)
-    .where(
-      and(
-        eq(phoneGatewayDevices.bridge_id, bridgeId.trim()),
-        eq(phoneGatewayDevices.provider, "blooio"),
-        eq(phoneGatewayDevices.is_active, true),
-      ),
-    )
-    .limit(2);
+  const rawRecords = await withPhoneGatewaySchema(() =>
+    dbRead
+      .select(phoneGatewayDeviceLosslessSelection)
+      .from(phoneGatewayDevices)
+      .where(
+        and(
+          eq(phoneGatewayDevices.bridge_id, bridgeId.trim()),
+          eq(phoneGatewayDevices.provider, "blooio"),
+          eq(phoneGatewayDevices.is_active, true),
+        ),
+      )
+      .limit(2),
+  );
+  const records = rawRecords.map(hydratePhoneGatewayDevice);
 
   const matches = records
     .map((record) => ({ record, metadata: parseBlueBubblesMetadata(record.metadata) }))
@@ -355,16 +333,19 @@ export async function listBlueBubblesGateways(
   organizationId: string,
   userId: string,
 ): Promise<AuthenticatedBlueBubblesGateway[]> {
-  const records = await dbRead
-    .select()
-    .from(phoneGatewayDevices)
-    .where(
-      and(
-        eq(phoneGatewayDevices.organization_id, organizationId),
-        eq(phoneGatewayDevices.provider, "blooio"),
-        eq(phoneGatewayDevices.is_active, true),
+  const rawRecords = await withPhoneGatewaySchema(() =>
+    dbRead
+      .select(phoneGatewayDeviceLosslessSelection)
+      .from(phoneGatewayDevices)
+      .where(
+        and(
+          eq(phoneGatewayDevices.organization_id, organizationId),
+          eq(phoneGatewayDevices.provider, "blooio"),
+          eq(phoneGatewayDevices.is_active, true),
+        ),
       ),
-    );
+  );
+  const records = rawRecords.map(hydratePhoneGatewayDevice);
 
   return records.flatMap((record) => {
     const metadata = parseBlueBubblesMetadata(record.metadata);
@@ -375,10 +356,12 @@ export async function listBlueBubblesGateways(
 
 export async function touchBlueBubblesGateway(gatewayId: string): Promise<void> {
   const now = new Date();
-  await dbWrite
-    .update(phoneGatewayDevices)
-    .set({ last_seen_at: now, updated_at: now })
-    .where(eq(phoneGatewayDevices.id, gatewayId));
+  await withPhoneGatewaySchema(() =>
+    dbWrite
+      .update(phoneGatewayDevices)
+      .set({ last_seen_at: now, updated_at: now })
+      .where(eq(phoneGatewayDevices.id, gatewayId)),
+  );
 }
 
 export async function revokeBlueBubblesGateway(
@@ -386,35 +369,38 @@ export async function revokeBlueBubblesGateway(
   userId: string,
   gatewayId: string,
 ): Promise<boolean> {
-  // Read ownership from the primary immediately before revocation. A replica
-  // can lag just after registration, and org membership alone must not permit
-  // one member to revoke another member's local bridge credential.
-  const [record] = await dbWrite
-    .select()
-    .from(phoneGatewayDevices)
-    .where(
-      and(
-        eq(phoneGatewayDevices.id, gatewayId),
-        eq(phoneGatewayDevices.organization_id, organizationId),
-        eq(phoneGatewayDevices.provider, "blooio"),
-        eq(phoneGatewayDevices.is_active, true),
-      ),
-    )
-    .limit(1);
-  const metadata = record ? parseBlueBubblesMetadata(record.metadata) : null;
-  if (!metadata || metadata.ownerUserId !== userId) return false;
+  return await withPhoneGatewaySchema(async () => {
+    // Read ownership from the primary immediately before revocation. A replica
+    // can lag just after registration, and org membership alone must not permit
+    // one member to revoke another member's local bridge credential.
+    const [rawRecord] = await dbWrite
+      .select(phoneGatewayDeviceLosslessSelection)
+      .from(phoneGatewayDevices)
+      .where(
+        and(
+          eq(phoneGatewayDevices.id, gatewayId),
+          eq(phoneGatewayDevices.organization_id, organizationId),
+          eq(phoneGatewayDevices.provider, "blooio"),
+          eq(phoneGatewayDevices.is_active, true),
+        ),
+      )
+      .limit(1);
+    const record = rawRecord ? hydratePhoneGatewayDevice(rawRecord) : null;
+    const metadata = record ? parseBlueBubblesMetadata(record.metadata) : null;
+    if (!metadata || metadata.ownerUserId !== userId) return false;
 
-  const [updated] = await dbWrite
-    .update(phoneGatewayDevices)
-    .set({ is_active: false, updated_at: new Date() })
-    .where(
-      and(
-        eq(phoneGatewayDevices.id, gatewayId),
-        eq(phoneGatewayDevices.organization_id, organizationId),
-      ),
-    )
-    .returning({ id: phoneGatewayDevices.id });
-  return Boolean(updated);
+    const [updated] = await dbWrite
+      .update(phoneGatewayDevices)
+      .set({ is_active: false, updated_at: new Date() })
+      .where(
+        and(
+          eq(phoneGatewayDevices.id, gatewayId),
+          eq(phoneGatewayDevices.organization_id, organizationId),
+        ),
+      )
+      .returning({ id: phoneGatewayDevices.id });
+    return Boolean(updated);
+  });
 }
 
 export async function registerPhoneGatewayDevice(
@@ -425,28 +411,23 @@ export async function registerPhoneGatewayDevice(
     return { id: null, registered: false, skippedReason: "missing_phone_number" };
   }
 
-  const bridgeId = nullableText(input.bridgeId) ?? "default";
   const upsert = async () => await upsertPhoneGatewayDevice(input, dbWrite);
 
   try {
     return await upsert();
   } catch (error) {
+    // error-policy:J4 generic legacy persistence failures become the explicit
+    // write_failed result; typed validation and missing-schema failures rethrow.
+    if (error instanceof ElizaError && error.code === PHONE_GATEWAY_METADATA_INVALID) {
+      throw error;
+    }
     if (isUndefinedTableError(error)) {
-      try {
-        await ensurePhoneGatewayDevicesTable();
-        return await upsert();
-      } catch (ensureError) {
-        logger.warn("[phone-gateway-devices] table is not migrated yet", {
-          error: ensureError instanceof Error ? ensureError.message : String(ensureError),
-        });
-        return { id: null, registered: false, skippedReason: "table_missing" };
-      }
+      // error-policy:J2 request-serving code must not synthesize a divergent table.
+      throw schemaMigrationRequired(error);
     }
     logger.warn("[phone-gateway-devices] failed to register gateway device", {
-      provider: input.provider,
-      phoneNumber,
-      bridgeId,
-      error: error instanceof Error ? error.message : String(error),
+      provider: providerDiagnostic(input.provider),
+      ...phoneErrorDiagnostic(error),
     });
     return { id: null, registered: false, skippedReason: "write_failed" };
   }
@@ -463,7 +444,10 @@ async function upsertPhoneGatewayDevice(
   const now = new Date();
   const lastSeenAt = input.markSeen === false ? null : now;
   const bridgeId = nullableText(input.bridgeId) ?? "default";
-  const metadata = JSON.stringify(input.metadata ?? {});
+  const metadata = requirePhoneJsonObject(input.metadata ?? {}, {
+    field: "phone_gateway_devices.metadata",
+    code: PHONE_GATEWAY_METADATA_INVALID,
+  });
   const [record] = await writer
     .insert(phoneGatewayDevices)
     .values({

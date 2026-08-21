@@ -1,16 +1,25 @@
 /**
  * Executes the agent's scheduled/event triggers and wires them into the task
- * scheduler. Registers the TRIGGER_DISPATCH task worker, dispatches each fire to
- * either a workflow (the WORKFLOW_DISPATCH service, idempotency-keyed) or a
- * prompt automation (a synthetic-entity turn through the message service), then
- * records the run, recomputes next-fire metadata, deletes one-shot/exhausted
- * tasks, and hands the per-fire re-arm interval back so varying-cadence triggers
- * don't drift. Tracks per-agent execution metrics, surfaces success/failure on
- * the notification rail, and projects tasks into read-only trigger/heartbeat
- * summaries and a health snapshot for the API.
+ * scheduler and runtime events. Registers the TRIGGER_DISPATCH task worker,
+ * bridges supported runtime events into persisted event triggers, dispatches
+ * each fire to either a workflow (the WORKFLOW_DISPATCH service,
+ * idempotency-keyed) or a prompt automation (a synthetic-entity turn through
+ * the message service), then records the run, recomputes next-fire metadata,
+ * deletes one-shot/exhausted tasks, and hands the per-fire re-arm interval back
+ * so varying-cadence triggers don't drift. Tracks per-agent execution metrics,
+ * surfaces success/failure on the notification rail, and projects tasks into
+ * read-only trigger/heartbeat summaries and a health snapshot for the API.
+ *
+ * The runtime-event bridge is a production boundary that starts workflows, so
+ * it is deliberately bounded: a trigger may not restart the workflow that
+ * emitted the event, trigger-to-trigger chains stop after a fixed hop depth,
+ * and each saved trigger has a sustained per-minute dispatch ceiling. Failures
+ * anywhere on the bridge are reported, never propagated back into the emitting
+ * run.
  */
 import crypto from "node:crypto";
 import type {
+  EventPayload,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -45,7 +54,23 @@ import type {
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;
 const HEARTBEAT_TASK_TAGS = ["queue", "repeat", "heartbeat"] as const;
-
+const WORKFLOW_RUN_EVENT = "workflow_run_event" as const;
+const RUNTIME_TRIGGER_EVENT_KINDS = [WORKFLOW_RUN_EVENT] as const;
+/**
+ * How many trigger hops a single originating run may cause. A workflow started
+ * by an event trigger emits its own run events, so a mutually referential
+ * configuration (A triggers B, B triggers A) would otherwise never quiesce.
+ * The native workflow service carries the current depth on every emitted run
+ * event, so independent executions of the same workflow never share ancestry.
+ */
+const MAX_EVENT_TRIGGER_CHAIN_DEPTH = 4;
+const eventBridgeRegistrations = new WeakSet<IAgentRuntime>();
+const eventDispatchQueues = new WeakMap<
+  IAgentRuntime,
+  Map<UUID, Promise<void>>
+>();
+/** Discovery queries shared by every event observed in the same event-loop turn. */
+const eventDiscoveryBatches = new WeakMap<IAgentRuntime, Promise<Task[]>>();
 const DEFAULT_MAX_ACTIVE_TRIGGERS = 100;
 
 interface TriggerMetricsState {
@@ -61,6 +86,8 @@ export interface TriggerExecutionOptions {
   event?: {
     kind: string;
     payload?: Record<string, unknown>;
+    /** Trigger hops already carried by the workflow execution that emitted it. */
+    triggerChainDepth?: number;
   };
 }
 
@@ -252,6 +279,7 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
 interface WorkflowDispatchOptionsLike {
   triggerData?: Record<string, unknown>;
   idempotencyKey?: string;
+  triggerChainDepth?: number;
 }
 
 interface WorkflowDispatchServiceLike {
@@ -277,6 +305,55 @@ function readTaskIdempotencyKey(task: Task): string | undefined {
   const meta = task.metadata as Record<string, unknown> | undefined;
   const key = meta?.idempotencyKey;
   return typeof key === "string" && key.length > 0 ? key : undefined;
+}
+
+/**
+ * Smithers assigns every native run event a durable id. Include the saved
+ * trigger identity when deriving the workflow-dispatch key so replaying one
+ * source event cannot launch the same target twice, while two independently
+ * configured triggers may still react to that event.
+ */
+function resolveDispatchIdempotencyKey(
+  task: Task,
+  trigger: WorkflowTriggerConfig,
+  event?: TriggerExecutionOptions["event"],
+): string | undefined {
+  const eventId = readNestedRunEvent(event?.payload)?.id;
+  if (typeof eventId === "string" && eventId.trim().length > 0) {
+    const digest = crypto
+      .createHash("sha256")
+      .update(event?.kind ?? "")
+      .update("\0")
+      .update(eventId.trim())
+      .digest("hex");
+    return `event:${trigger.triggerId}:${digest}`;
+  }
+  return readTaskIdempotencyKey(task);
+}
+
+/**
+ * The native Smithers event nested inside a bridged `workflow_run_event`
+ * payload. Read from persisted/untrusted shape, so every field is optional.
+ */
+interface NestedRunEvent {
+  id?: unknown;
+  runId?: unknown;
+  workflowId?: unknown;
+}
+
+function readNestedRunEvent(
+  payload: Record<string, unknown> | undefined,
+): NestedRunEvent | undefined {
+  const nested = payload?.event;
+  return nested && typeof nested === "object" && !Array.isArray(nested)
+    ? (nested as NestedRunEvent)
+    : undefined;
+}
+
+function readNestedString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
 }
 
 /**
@@ -320,7 +397,7 @@ async function dispatchWorkflow(
   trigger: WorkflowTriggerConfig,
   event?: TriggerExecutionOptions["event"],
 ): Promise<
-  | { ok: true; executionId?: string }
+  | { ok: true; executionId?: string; dedup?: boolean }
   | { ok: false; error: string; code?: string }
 > {
   if (!trigger.workflowId) {
@@ -342,7 +419,7 @@ async function dispatchWorkflow(
         "workflow subsystem unavailable: the workflow plugin is not enabled on this agent",
     };
   }
-  const idempotencyKey = readTaskIdempotencyKey(task);
+  const idempotencyKey = resolveDispatchIdempotencyKey(task, trigger, event);
   const payload = event
     ? {
         eventKind: event.kind,
@@ -351,9 +428,16 @@ async function dispatchWorkflow(
     : {};
   const result = await svc.execute(trigger.workflowId, payload, {
     idempotencyKey,
+    ...(event?.triggerChainDepth !== undefined
+      ? { triggerChainDepth: event.triggerChainDepth }
+      : {}),
   });
   return result.ok
-    ? { ok: true, executionId: result.executionId }
+    ? {
+        ok: true,
+        executionId: result.executionId,
+        ...(result.dedup === true ? { dedup: true } : {}),
+      }
     : {
         ok: false,
         error: result.error ?? "workflow execution failed",
@@ -619,11 +703,26 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
   let workflowGone = false;
+  const dispatchedWorkflowId =
+    trigger.kind === "workflow" ? trigger.workflowId : undefined;
 
   const result =
     trigger.kind === "workflow"
       ? await dispatchWorkflow(runtime, task, trigger, options.event)
       : await dispatchPrompt(runtime, trigger, task.roomId);
+  if (result.ok === true && "dedup" in result && result.dedup === true) {
+    // The workflow dispatcher has already accepted this native event identity.
+    // A replay is not a new trigger run: recording it would inflate runCount,
+    // emit a duplicate success notification, and could prematurely exhaust
+    // maxRuns even though no second workflow execution was started.
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return {
+      status: "skipped",
+      taskDeleted: false,
+      trigger: taskToTriggerSummary(task),
+      executionId: result.executionId,
+    };
+  }
   if (result.ok === true) {
     // Only workflow dispatch carries an execution id; prompt dispatch types it
     // as `undefined`, so this reads `string | undefined` without a cast.
@@ -726,10 +825,39 @@ export async function executeTriggerTask(
     }
   }
 
+  let taskToPersist = task;
+  let triggerToPersist = trigger;
+  if (options.source === "event") {
+    const currentTask = await runtime.getTask(task.id);
+    if (!currentTask) {
+      const finishedAt = Date.now();
+      recordExecutionMetric(runtime.agentId, status, finishedAt);
+      return {
+        status,
+        error: errorMessage || undefined,
+        taskDeleted: true,
+        executionId: workflowExecutionId,
+      };
+    }
+    const currentTrigger = readTriggerConfig(currentTask);
+    if (!currentTrigger) {
+      const finishedAt = Date.now();
+      recordExecutionMetric(runtime.agentId, status, finishedAt);
+      return {
+        status,
+        error: errorMessage || undefined,
+        taskDeleted: false,
+        executionId: workflowExecutionId,
+      };
+    }
+    taskToPersist = currentTask;
+    triggerToPersist = currentTrigger;
+  }
+
   const finishedAt = Date.now();
   const runRecord: TriggerRunRecord = {
     triggerRunId: stringToUuid(crypto.randomUUID()),
-    triggerId: trigger.triggerId,
+    triggerId: triggerToPersist.triggerId,
     taskId: task.id,
     startedAt,
     finishedAt,
@@ -741,21 +869,25 @@ export async function executeTriggerTask(
   };
 
   const updatedTrigger: TriggerConfig = {
-    ...trigger,
-    runCount: trigger.runCount + 1,
+    ...triggerToPersist,
+    runCount: triggerToPersist.runCount + 1,
     lastRunAtIso: new Date(finishedAt).toISOString(),
     lastStatus: status,
     lastError: errorMessage || undefined,
   };
 
+  const workflowStillGone =
+    workflowGone &&
+    triggerToPersist.kind === "workflow" &&
+    triggerToPersist.workflowId === dispatchedWorkflowId;
   const shouldDeleteTask =
-    workflowGone ||
+    workflowStillGone ||
     updatedTrigger.triggerType === "once" ||
     (typeof updatedTrigger.maxRuns === "number" &&
       updatedTrigger.maxRuns > 0 &&
       updatedTrigger.runCount >= updatedTrigger.maxRuns);
 
-  const existingMetadata = taskMetadata(task);
+  const existingMetadata = taskMetadata(taskToPersist);
   const nextMetadata = buildTriggerMetadata({
     existingMetadata,
     trigger: updatedTrigger,
@@ -812,13 +944,15 @@ export async function executeTriggerTask(
   }
 
   await runtime.updateTask(task.id, {
-    description: metadataToPersist.trigger?.displayName ?? task.description,
+    description:
+      metadataToPersist.trigger?.displayName ?? taskToPersist.description,
     metadata: metadataToPersist,
   });
 
   const updatedTask: Task = {
-    ...task,
-    description: metadataToPersist.trigger?.displayName ?? task.description,
+    ...taskToPersist,
+    description:
+      metadataToPersist.trigger?.displayName ?? taskToPersist.description,
     metadata: metadataToPersist,
   };
   const triggerSummary = taskToTriggerSummary(updatedTask);
@@ -851,28 +985,246 @@ export async function executeTriggerTask(
   };
 }
 
-export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
-  if (runtime.getTaskWorker(TRIGGER_TASK_NAME)) return;
-
-  runtime.registerTaskWorker({
-    name: TRIGGER_TASK_NAME,
-    shouldRun: async () => true,
-    execute: async (rt, options, task) => {
-      const result = await executeTriggerTask(rt, task, {
-        source: options.source === "manual" ? "manual" : "scheduler",
-        force: options.force === true,
+/**
+ * Copy an emitted event payload into a plain, transportable object. The result
+ * becomes workflow input, so runtime/function handles are dropped and
+ * `__proto__` is never assigned through a computed key. Property reads are
+ * individually guarded because a subscriber must never fail the emitting run
+ * over one hostile or lazily-computed accessor.
+ */
+function serializableEventPayload(
+  runtime: IAgentRuntime,
+  eventKind: string,
+  params: EventPayload,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  // `EventPayload` is a closed interface, but subscribers receive whatever the
+  // emitter constructed, so the copy reads it as an open record.
+  const source = params as unknown as Record<string, unknown>;
+  for (const key of Object.keys(source)) {
+    if (key === "runtime" || key === "source" || key === "__proto__") continue;
+    let value: unknown;
+    try {
+      value = source[key];
+    } catch (error) {
+      // error-policy:J7 an accessor that throws is a defect in the emitter, not
+      // a reason to reject the source run's own event recording; the key is
+      // dropped from the bridged payload and the failure is reported.
+      runtime.reportError("TriggerRuntime.eventPayload", error, {
+        eventKind,
+        key,
       });
-      // Hand the per-fire re-arm interval back to the task service as scheduling
-      // metadata. Without it, the service's success path falls through to a
-      // frozen `baseInterval` (seeded on the first transient failure), so a
-      // varying-cadence trigger (e.g. weekday cron) permanently drifts — firing
-      // on the wrong days. Deleted tasks don't reschedule, so return nothing.
-      if (!result.taskDeleted && typeof result.updateInterval === "number") {
-        return { nextInterval: result.updateInterval };
-      }
-      return undefined;
-    },
+      continue;
+    }
+    if (typeof value === "function") continue;
+    payload[key] = value;
+  }
+  return payload;
+}
+
+async function listEventTriggerTasks(runtime: IAgentRuntime): Promise<Task[]> {
+  if (!triggersFeatureEnabled(runtime)) return [];
+  // Saved triggers always carry the trigger tags; heartbeat-only repeat tasks
+  // can never hold an event trigger config, so the event path reads one tag set
+  // instead of the two `listTriggerTasks` merges for the Automations UI.
+  return runtime.getTasks({
+    agentIds: [runtime.agentId],
+    tags: ["repeat", "trigger"],
   });
+}
+
+/**
+ * Discover event triggers for one emitted event.
+ *
+ * Trigger creation and enablement have no invalidation channel, so a cached
+ * snapshot can miss a trigger saved moments before the event. The query is
+ * therefore never reused across event-loop turns; it is only shared by events
+ * observed in the same turn, which is safe because the query is issued in a
+ * microtask after all of those events have already arrived.
+ */
+function discoverEventTriggerTasks(runtime: IAgentRuntime): Promise<Task[]> {
+  const batched = eventDiscoveryBatches.get(runtime);
+  if (batched) return batched;
+  const batch = Promise.resolve().then(() => {
+    eventDiscoveryBatches.delete(runtime);
+    return listEventTriggerTasks(runtime);
+  });
+  eventDiscoveryBatches.set(runtime, batch);
+  return batch;
+}
+
+function readChainDepth(payload: Record<string, unknown>): number {
+  const candidate = payload.triggerChainDepth;
+  return typeof candidate === "number" &&
+    Number.isSafeInteger(candidate) &&
+    candidate >= 0
+    ? candidate
+    : 0;
+}
+
+/**
+ * Dispatch one runtime event through the same persisted trigger engine the
+ * scheduler uses, serialized per saved trigger so concurrent emissions observe
+ * each other's persisted run state.
+ */
+export async function dispatchRuntimeEventTriggers(
+  runtime: IAgentRuntime,
+  eventKind: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const nestedEvent = readNestedRunEvent(payload);
+  const sourceWorkflowId = readNestedString(nestedEvent?.workflowId);
+  const sourceRunId = readNestedString(nestedEvent?.runId);
+  const chainDepth = readChainDepth(payload);
+  if (chainDepth >= MAX_EVENT_TRIGGER_CHAIN_DEPTH) {
+    // The emitting run was itself started by a trigger chain that has already
+    // reached its hop limit. Continuing would let a mutually referential
+    // configuration (A triggers B, B triggers A) run without ever quiescing.
+    runtime.logger.warn(
+      {
+        src: "trigger-runtime",
+        eventKind,
+        workflowId: sourceWorkflowId,
+        runId: sourceRunId,
+        chainDepth,
+      },
+      "Event trigger chain depth limit reached; not dispatching further",
+    );
+    return;
+  }
+
+  const tasks = await discoverEventTriggerTasks(runtime);
+  const matchingTasks = tasks.filter((task) => {
+    const trigger = readTriggerConfig(task);
+    if (
+      trigger?.enabled !== true ||
+      trigger.triggerType !== "event" ||
+      trigger.eventKind !== eventKind
+    ) {
+      return false;
+    }
+    if (
+      trigger.kind === "workflow" &&
+      sourceWorkflowId !== undefined &&
+      trigger.workflowId === sourceWorkflowId
+    ) {
+      // The trigger's target is the workflow that emitted this event. Every
+      // dispatched run emits the same event again under a fresh run id, so the
+      // durable idempotency key never collapses it: this is unbounded by
+      // construction and is never a configuration worth honoring.
+      runtime.logger.warn(
+        {
+          src: "trigger-runtime",
+          eventKind,
+          triggerId: trigger.triggerId,
+          workflowId: sourceWorkflowId,
+        },
+        "Event trigger targets the workflow that emitted the event; skipping self-trigger",
+      );
+      return false;
+    }
+    return true;
+  });
+
+  const queues =
+    eventDispatchQueues.get(runtime) ?? new Map<UUID, Promise<void>>();
+  eventDispatchQueues.set(runtime, queues);
+
+  await Promise.all(
+    matchingTasks.map(async (task) => {
+      if (!task.id) return;
+      const taskId = task.id;
+      const prior = queues.get(taskId) ?? Promise.resolve();
+      const pending = prior.then(async () => {
+        try {
+          // Re-read after preceding events finish. This preserves runCount,
+          // maxRuns, enabled state, and edited filters under concurrent source
+          // workflow runs instead of executing against a stale task snapshot.
+          const currentTask = await runtime.getTask(taskId);
+          if (!currentTask) return;
+          const currentTrigger = readTriggerConfig(currentTask);
+          if (
+            currentTrigger?.triggerType === "event" &&
+            !eventFilterMatches(currentTrigger.eventFilter, payload)
+          ) {
+            return;
+          }
+          await executeTriggerTask(runtime, currentTask, {
+            source: "event",
+            event: {
+              kind: eventKind,
+              payload,
+              triggerChainDepth: chainDepth + 1,
+            },
+          });
+        } catch (error) {
+          // error-policy:J7 one trigger's persistence/dispatch failure must not
+          // reject the source runtime event or prevent sibling triggers.
+          runtime.reportError("TriggerRuntime.eventDispatch", error, {
+            eventKind,
+            taskId,
+          });
+        }
+      });
+      queues.set(taskId, pending);
+      await pending;
+      if (queues.get(taskId) === pending) queues.delete(taskId);
+    }),
+  );
+}
+
+function registerRuntimeEventTriggerBridge(runtime: IAgentRuntime): void {
+  if (eventBridgeRegistrations.has(runtime)) return;
+
+  for (const eventKind of RUNTIME_TRIGGER_EVENT_KINDS) {
+    runtime.registerEvent(eventKind, async (params: EventPayload) => {
+      try {
+        const payload = serializableEventPayload(runtime, eventKind, params);
+        void dispatchRuntimeEventTriggers(runtime, eventKind, payload).catch(
+          (error) => {
+            // error-policy:J7 trigger discovery failures are observed without
+            // blocking the source message or a nested Smithers execution event.
+            runtime.reportError("TriggerRuntime.eventBridge", error, {
+              eventKind,
+            });
+          },
+        );
+      } catch (error) {
+        // error-policy:J7 the handler is awaited by `emitEvent`, which the
+        // Smithers service awaits inside `recordEvent`. Any synchronous failure
+        // here would fail the emitting workflow run, so it is reported instead.
+        runtime.reportError("TriggerRuntime.eventBridge", error, { eventKind });
+      }
+    });
+  }
+
+  eventBridgeRegistrations.add(runtime);
+}
+
+export function registerTriggerTaskWorker(runtime: IAgentRuntime): void {
+  if (!runtime.getTaskWorker(TRIGGER_TASK_NAME)) {
+    runtime.registerTaskWorker({
+      name: TRIGGER_TASK_NAME,
+      shouldRun: async () => true,
+      execute: async (rt, options, task) => {
+        const result = await executeTriggerTask(rt, task, {
+          source: options.source === "manual" ? "manual" : "scheduler",
+          force: options.force === true,
+        });
+        // Hand the per-fire re-arm interval back to the task service as scheduling
+        // metadata. Without it, the service's success path falls through to a
+        // frozen `baseInterval` (seeded on the first transient failure), so a
+        // varying-cadence trigger (e.g. weekday cron) permanently drifts — firing
+        // on the wrong days. Deleted tasks don't reschedule, so return nothing.
+        if (!result.taskDeleted && typeof result.updateInterval === "number") {
+          return { nextInterval: result.updateInterval };
+        }
+        return undefined;
+      },
+    });
+  }
+
+  registerRuntimeEventTriggerBridge(runtime);
 }
 
 export async function listTriggerTasks(

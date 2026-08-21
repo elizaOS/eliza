@@ -2,10 +2,7 @@
  * Network interception and HAR helpers for browser workspace page loading.
  */
 
-import {
-  browserWorkspacePageFetch,
-  DEFAULT_TIMEOUT_MS,
-} from "./browser-workspace-helpers.js";
+import { browserWorkspaceBoundedPageFetch } from "./browser-workspace-helpers.js";
 import { getBrowserWorkspaceTimestamp } from "./browser-workspace-state.js";
 import type {
   BrowserWorkspaceNetworkRequestRecord,
@@ -160,11 +157,13 @@ export async function fetchBrowserWorkspaceTrackedResponse(
     );
   }
 
-  const response = await browserWorkspacePageFetch(url, {
+  // `browserWorkspaceBoundedPageFetch` composes any caller signal with the hop
+  // deadline; passing `init.signal` through unchanged would let a caller signal
+  // replace the deadline instead of adding to it.
+  const response = await browserWorkspaceBoundedPageFetch(url, {
     ...init,
     headers,
     redirect: init.redirect ?? "follow",
-    signal: init.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
   });
   let responseBody: string | null = null;
   if (resourceType !== "document") {

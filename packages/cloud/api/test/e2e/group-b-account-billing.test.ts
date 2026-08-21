@@ -598,20 +598,28 @@ describeE2E("GET /api/v1/pricing/summary", () => {
 
 // -------- /api/quotas/usage ------------------------------------------------
 
-describeE2E("GET /api/quotas/usage", () => {
+describeE2E("GET /api/quotas/usage tombstone", () => {
   test("auth gate: 401 without credentials", async () => {
     const res = await api.get("/api/quotas/usage");
     expect(res.status).toBe(401);
   });
 
-  test("happy path: returns quota usage data for the authed org", async () => {
+  test("happy path: authenticated clients receive the stable retirement receipt", async () => {
     const res = await api.get("/api/quotas/usage", {
       headers: bearerHeaders(),
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { success?: boolean; data?: unknown };
-    expect(body.success).toBe(true);
-    expect(body.data).toBeDefined();
+
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      code?: string;
+    };
+    expect(body).toEqual({
+      success: false,
+      error: "Weekly usage quotas have been retired",
+      code: "usage_quotas_retired",
+    });
   });
 
   test("validation: POST is not mounted", async () => {

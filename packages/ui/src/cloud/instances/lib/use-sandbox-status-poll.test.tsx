@@ -36,6 +36,7 @@ function agent(status: "provisioning" | "running") {
 
 beforeEach(() => {
   mockedApi.mockReset();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
@@ -158,5 +159,71 @@ describe("useSandboxListPoll", () => {
     });
     expect(hungFetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe("useSandboxStatusPoll", () => {
+  it("starts polling a replacement agent after the previous agent reached a terminal state", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "running", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "provisioning", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 60_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("running"));
+    rerender({ agentId: "agent-b" });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/v1/eliza/agents/agent-b");
+    await waitFor(() => expect(result.current.status).toBe("provisioning"));
+  });
+
+  // The previous agent's terminal status must not be attributed to the new one.
+  // Resetting only the ref left the visible result untouched, so if agent-b's
+  // first fetch failed the catch merely bumped an error counter and agent-a's
+  // "running" stayed on screen indefinitely — a status we never loaded
+  // rendering as a healthy one we did.
+  it("clears a previous agent's status when the polled agent changes", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "running", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockRejectedValue(new Error("agent-b is unreachable"));
+
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 60_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("running"));
+
+    rerender({ agentId: "agent-b" });
+
+    await waitFor(() => expect(result.current.status).not.toBe("running"));
+    expect(result.current.status).toBe("pending");
+    expect(result.current.lastHeartbeat).toBeNull();
   });
 });

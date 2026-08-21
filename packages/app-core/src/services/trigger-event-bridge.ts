@@ -5,9 +5,9 @@
  * `executeTriggerTask` already handles `source: "event"` (see
  * `eliza/packages/agent/src/triggers/runtime.ts`), but nothing in the
  * runtime subscribes to `MESSAGE_RECEIVED` etc. and routes the payload
- * through it. Without this bridge, event-kind triggers can be created
- * and stored but will never fire from a real Discord / Telegram / WeChat
- * message.
+ * through it. Workflow-run events are deliberately owned by the agent trigger
+ * worker so standalone hosts and app hosts share one non-blocking Smithers
+ * bridge rather than dispatching the same saved trigger twice.
  *
  * On `start()` the bridge calls `runtime.registerEvent(eventType, handler)`
  * for every `EventType` in `EXPOSED_EVENTS`. Each handler:
@@ -43,7 +43,6 @@ import {
 } from "@elizaos/core";
 
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
-const WORKFLOW_RUN_EVENT_TYPE = "workflow_run_event" as EventType;
 /** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */
 const TRIGGER_CACHE_TTL_MS = 500;
 
@@ -58,7 +57,6 @@ export const EXPOSED_EVENTS: readonly EventType[] = [
   EventType.MESSAGE_SENT,
   EventType.REACTION_RECEIVED,
   EventType.ENTITY_JOINED,
-  WORKFLOW_RUN_EVENT_TYPE,
 ];
 
 export interface TriggerEventBridgeOptions {

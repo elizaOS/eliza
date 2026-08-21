@@ -56,7 +56,10 @@ import type {
   ExecuteWorkflowResult,
   LifeOpsWorkflowSchedulerState,
 } from "../service-types.js";
-import { LifeOpsServiceError } from "../service-types.js";
+import {
+  LifeOpsServiceError,
+  LifeOpsWorkflowRunFailedUncompensatedError,
+} from "../service-types.js";
 import { addMinutes } from "../time.js";
 
 type LifeOpsWorkflowEvent = {
@@ -71,6 +74,32 @@ type WorkflowEventSchedule = Extract<
   LifeOpsWorkflowSchedule,
   { kind: "event" }
 >;
+
+function readFailedCompensationKinds(
+  run: LifeOpsWorkflowRun,
+): readonly string[] {
+  if (!isRecord(run.result) || !Array.isArray(run.result.compensations)) {
+    return [];
+  }
+  return run.result.compensations.flatMap((entry) =>
+    isRecord(entry) &&
+    entry.status === "compensation_failed" &&
+    typeof entry.kind === "string"
+      ? [entry.kind]
+      : [],
+  );
+}
+
+function readRecordedWorkflowFailure(run: LifeOpsWorkflowRun): Error {
+  if (isRecord(run.result) && Array.isArray(run.result.steps)) {
+    for (const entry of [...run.result.steps].reverse()) {
+      if (isRecord(entry) && typeof entry.error === "string") {
+        return new Error(entry.error);
+      }
+    }
+  }
+  return new Error(`workflow run ${run.id} previously failed`);
+}
 
 /**
  * Cross-domain and base helpers the workflows domain depends on.
@@ -467,17 +496,37 @@ export class WorkflowsDomain {
         Date.parse(schedulerState.nextDueAt) <= nowMs
       ) {
         const dueAt = schedulerState.nextDueAt;
-        const { run, error } = await this.executeWorkflowDefinition(
-          nextWorkflow,
-          {
+        const { run, error, disposition } =
+          await this.executeWorkflowDefinition(nextWorkflow, {
             startedAt: dueAt,
             confirmBrowserActions: false,
             request: {
               scheduledExecution: true,
             },
             idempotencyKey: `schedule:${nextWorkflow.id}:${dueAt}`,
-          },
-        );
+          });
+        if (disposition === "in_progress") {
+          // A claim that never completed is unrecoverable without operator
+          // action: the partial unique index means this (agent, workflow, key)
+          // can never be claimed again, so this workflow's cursor stops
+          // advancing permanently. reportError is the designated signal for
+          // that — it reaches RECENT_ERRORS and owner escalation, where a warn
+          // re-logged on every scheduler tick reaches nobody.
+          this.ctx.runtime.reportError(
+            "workflow_scheduled_execution",
+            new LifeOpsServiceError(
+              409,
+              `workflow run ${run.id} holds an uncompleted running claim; the scheduler cursor cannot advance until it is released`,
+              "WORKFLOW_RUN_CLAIM_WEDGED",
+            ),
+            {
+              workflowId: nextWorkflow.id,
+              workflowRunId: run.id,
+              dueAt,
+            },
+          );
+          break;
+        }
         runs.push(run);
         await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
         const nextDueAt =
@@ -599,9 +648,8 @@ export class WorkflowsDomain {
             stateChanged = true;
             continue;
           }
-          const { run, error } = await this.executeWorkflowDefinition(
-            nextWorkflow,
-            {
+          const { run, error, disposition } =
+            await this.executeWorkflowDefinition(nextWorkflow, {
               startedAt: event.endAt,
               confirmBrowserActions: false,
               request: {
@@ -617,8 +665,27 @@ export class WorkflowsDomain {
                 },
               },
               idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.endAt}`,
-            },
-          );
+            });
+          if (disposition === "in_progress") {
+            // Same unrecoverable shape as the scheduled path above: the claim
+            // can never be re-taken, so this workflow stops advancing until an
+            // operator releases it.
+            this.ctx.runtime.reportError(
+              "workflow_event_execution",
+              new LifeOpsServiceError(
+                409,
+                `workflow run ${run.id} holds an uncompleted running claim; the event cursor cannot advance until it is released`,
+                "WORKFLOW_RUN_CLAIM_WEDGED",
+              ),
+              {
+                workflowId: nextWorkflow.id,
+                workflowRunId: run.id,
+                eventId: event.id,
+                eventEndAt: event.endAt,
+              },
+            );
+            break;
+          }
           runs.push(run);
           await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
           schedulerState = {
@@ -675,9 +742,8 @@ export class WorkflowsDomain {
             stateChanged = true;
             continue;
           }
-          const { run, error } = await this.executeWorkflowDefinition(
-            nextWorkflow,
-            {
+          const { run, error, disposition } =
+            await this.executeWorkflowDefinition(nextWorkflow, {
               startedAt: event.occurredAt,
               confirmBrowserActions: false,
               request: {
@@ -691,8 +757,27 @@ export class WorkflowsDomain {
                 },
               },
               idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.occurredAt}`,
-            },
-          );
+            });
+          if (disposition === "in_progress") {
+            // Same unrecoverable shape as the scheduled path above: the claim
+            // can never be re-taken, so this workflow stops advancing until an
+            // operator releases it.
+            this.ctx.runtime.reportError(
+              "workflow_event_execution",
+              new LifeOpsServiceError(
+                409,
+                `workflow run ${run.id} holds an uncompleted running claim; the event cursor cannot advance until it is released`,
+                "WORKFLOW_RUN_CLAIM_WEDGED",
+              ),
+              {
+                workflowId: nextWorkflow.id,
+                workflowRunId: run.id,
+                eventId: event.id,
+                eventEndAt: event.occurredAt,
+              },
+            );
+            break;
+          }
           runs.push(run);
           await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
           schedulerState = {
@@ -880,12 +965,11 @@ export class WorkflowsDomain {
   }
 
   /**
-   * Runs for the same workflow definition are serialized through this
-   * per-workflow promise chain so scheduled, event-triggered, and manual
-   * executions within this runtime process never interleave their step side
-   * effects. The guarantee is process-local: it also makes the replay-guard
-   * check-then-persist below atomic per workflow, but it does not fence
-   * concurrent independent runtime processes sharing one repository.
+   * Runs for the same agent and workflow definition are serialized through
+   * this promise chain so scheduled, event-triggered, and manual executions
+   * within this runtime process never interleave their step side effects.
+   * The durable run claim below provides the corresponding cross-process
+   * fence for keyed executions.
    */
   private readonly executionChains = new Map<string, Promise<unknown>>();
 
@@ -896,37 +980,115 @@ export class WorkflowsDomain {
       confirmBrowserActions: boolean;
       request: Record<string, unknown>;
       /**
-       * Replay guard. When set, a prior persisted run of this workflow whose
-       * result carries the same key is returned instead of re-executing the
-       * steps; a prior failed run is surfaced as a typed error rather than
-       * re-executed. Scheduled and event loops pass deterministic keys
-       * derived from the due instant / source event so a crash between run
-       * persistence and scheduler-cursor persistence cannot double-run side
-       * effects. Best-effort: a crash after a step's side effect but before
-       * the run row is persisted is not covered.
+       * Replay guard. A keyed run is reserved durably before its first step,
+       * then completed in place. This prevents another process from starting
+       * the same keyed execution and makes replay an indexed point lookup.
+       * It does not make external side effects transactional: a crash can
+       * leave a `running` reservation that requires operator recovery.
        */
       idempotencyKey?: string | null;
     },
   ): Promise<ExecuteWorkflowResult> {
-    const tail = this.executionChains.get(definition.id) ?? Promise.resolve();
+    // Capture the agent synchronously so a mutable runtime context cannot
+    // change the chain key or persistence scope after this call is queued.
+    const agentId = this.ctx.agentId();
+    const chainKey = JSON.stringify([agentId, definition.id]);
+    const tail = this.executionChains.get(chainKey) ?? Promise.resolve();
     const execution = tail.then(
-      () => this.executeWorkflowDefinitionSerialized(definition, args),
-      () => this.executeWorkflowDefinitionSerialized(definition, args),
+      () => this.executeWorkflowDefinitionSerialized(agentId, definition, args),
+      () => this.executeWorkflowDefinitionSerialized(agentId, definition, args),
     );
     const settled = execution.then(
       () => undefined,
       () => undefined,
     );
-    this.executionChains.set(definition.id, settled);
+    this.executionChains.set(chainKey, settled);
     void settled.then(() => {
-      if (this.executionChains.get(definition.id) === settled) {
-        this.executionChains.delete(definition.id);
+      if (this.executionChains.get(chainKey) === settled) {
+        this.executionChains.delete(chainKey);
       }
     });
     return execution;
   }
 
+  private replayWorkflowRun(
+    run: LifeOpsWorkflowRun,
+    idempotencyKey: string,
+  ): ExecuteWorkflowResult {
+    if (run.status === "success") {
+      return { run, error: null, disposition: "replayed" };
+    }
+    if (run.status === "failed_uncompensated") {
+      return {
+        run,
+        error: new LifeOpsWorkflowRunFailedUncompensatedError(
+          run,
+          readFailedCompensationKinds(run),
+          readRecordedWorkflowFailure(run),
+          409,
+        ),
+        disposition: "replayed",
+      };
+    }
+    if (run.status === "failed") {
+      return {
+        run,
+        error: new LifeOpsServiceError(
+          409,
+          `workflow run ${run.id} already failed for idempotency key "${idempotencyKey}"; use a new key to re-execute`,
+          "WORKFLOW_RUN_ALREADY_FAILED",
+        ),
+        disposition: "replayed",
+      };
+    }
+    if (run.status === "running" || run.status === "queued") {
+      return {
+        run,
+        error: new LifeOpsServiceError(
+          409,
+          `workflow run ${run.id} is already in progress for idempotency key "${idempotencyKey}"`,
+          "WORKFLOW_RUN_IN_PROGRESS",
+        ),
+        disposition: "in_progress",
+      };
+    }
+    return {
+      run,
+      error: new LifeOpsServiceError(
+        409,
+        `workflow run ${run.id} was cancelled for idempotency key "${idempotencyKey}"; use a new key to re-execute`,
+        "WORKFLOW_RUN_CANCELLED",
+      ),
+      disposition: "replayed",
+    };
+  }
+
+  private async persistTerminalWorkflowRun(
+    run: LifeOpsWorkflowRun,
+    wasClaimed: boolean,
+  ): Promise<void> {
+    if (!wasClaimed) {
+      await this.ctx.repository.createWorkflowRun(run);
+      return;
+    }
+    if (await this.ctx.repository.completeWorkflowRun(run)) {
+      return;
+    }
+    const error = new LifeOpsServiceError(
+      500,
+      `workflow run ${run.id} could not be completed from its running claim`,
+      "WORKFLOW_RUN_COMPLETION_CONFLICT",
+    );
+    this.ctx.runtime.reportError("workflow_run_completion", error, {
+      workflowId: run.workflowId,
+      workflowRunId: run.id,
+      status: run.status,
+    });
+    throw error;
+  }
+
   private async executeWorkflowDefinitionSerialized(
+    agentId: string,
     definition: LifeOpsWorkflowDefinition,
     args: {
       startedAt: string;
@@ -936,42 +1098,46 @@ export class WorkflowsDomain {
     },
   ): Promise<ExecuteWorkflowResult> {
     const idempotencyKey = args.idempotencyKey ?? null;
-    if (idempotencyKey) {
-      const priorRuns = await this.ctx.repository.listWorkflowRuns(
-        this.ctx.agentId(),
-        definition.id,
-      );
-      const replayed = priorRuns.find(
-        (run) =>
-          isRecord(run.result) && run.result.idempotencyKey === idempotencyKey,
-      );
-      if (replayed) {
-        // A prior failed run under the same key is terminal for that key:
-        // surface the recorded failure instead of masking it as success.
-        if (replayed.status === "failed") {
-          return {
-            run: replayed,
-            error: new LifeOpsServiceError(
-              409,
-              `workflow run ${replayed.id} already failed for idempotency key "${idempotencyKey}"; use a new key to re-execute`,
-              "WORKFLOW_RUN_ALREADY_FAILED",
-            ),
-          };
-        }
-        return { run: replayed, error: null };
-      }
-    }
-
-    const outputs: Record<string, unknown> = {};
-    const steps: Array<Record<string, unknown>> = [];
-    let status: LifeOpsWorkflowRun["status"] = "success";
-
     const registry = getWorkflowStepRegistry(this.ctx.runtime);
     if (!registry) {
       throw new Error(
         "WorkflowStepRegistry not registered on runtime — call registerDefaultWorkflowStepPack() in plugin init",
       );
     }
+
+    let claimedRun: LifeOpsWorkflowRun | null = null;
+    if (idempotencyKey !== null) {
+      claimedRun = createLifeOpsWorkflowRun({
+        agentId,
+        workflowId: definition.id,
+        idempotencyKey,
+        startedAt: args.startedAt,
+        finishedAt: null,
+        status: "running",
+        result: { idempotencyKey, steps: [], outputs: {} },
+        auditRef: null,
+      });
+      if (!(await this.ctx.repository.claimWorkflowRun(claimedRun))) {
+        const replayed =
+          await this.ctx.repository.getWorkflowRunByIdempotencyKey(
+            agentId,
+            definition.id,
+            idempotencyKey,
+          );
+        if (!replayed) {
+          throw new LifeOpsServiceError(
+            409,
+            `workflow run claim conflicted for idempotency key "${idempotencyKey}" but no claimed run was found`,
+            "WORKFLOW_RUN_CLAIM_CONFLICT",
+          );
+        }
+        return this.replayWorkflowRun(replayed, idempotencyKey);
+      }
+    }
+
+    const outputs: Record<string, unknown> = {};
+    const steps: Array<Record<string, unknown>> = [];
+    let status: LifeOpsWorkflowRun["status"] = "success";
     const ctx = this.deps.workflowStepContext;
     // Executed steps retained for reverse-order compensation on failure.
     const executed: Array<{
@@ -1022,6 +1188,7 @@ export class WorkflowsDomain {
         error: error instanceof Error ? error.message : String(error),
       });
       const compensations: Array<Record<string, unknown>> = [];
+      const failedCompensationKinds: string[] = [];
       for (const entry of executed.reverse()) {
         if (!entry.contribution.compensate) {
           continue;
@@ -1053,7 +1220,8 @@ export class WorkflowsDomain {
                 ? compensationError.message
                 : String(compensationError),
           });
-          this.ctx.logLifeOpsError(
+          failedCompensationKinds.push(entry.contribution.kind);
+          this.ctx.runtime.reportError(
             "workflow_step_compensation",
             compensationError,
             {
@@ -1062,6 +1230,9 @@ export class WorkflowsDomain {
             },
           );
         }
+      }
+      if (failedCompensationKinds.length > 0) {
+        status = "failed_uncompensated";
       }
       const audit = await this.deps.recordWorkflowAudit(
         "workflow_run",
@@ -1077,24 +1248,41 @@ export class WorkflowsDomain {
           compensations,
         },
       );
-      const run = createLifeOpsWorkflowRun({
-        agentId: this.ctx.agentId(),
-        workflowId: definition.id,
-        startedAt: args.startedAt,
+      const terminalValues = {
         finishedAt: new Date().toISOString(),
         status,
         result: {
           steps,
           outputs,
           compensations,
-          ...(idempotencyKey ? { idempotencyKey } : {}),
+          ...(idempotencyKey !== null ? { idempotencyKey } : {}),
         },
         auditRef: audit.id,
-      });
-      await this.ctx.repository.createWorkflowRun(run);
+      } satisfies Pick<
+        LifeOpsWorkflowRun,
+        "finishedAt" | "status" | "result" | "auditRef"
+      >;
+      const run = claimedRun
+        ? { ...claimedRun, ...terminalValues }
+        : createLifeOpsWorkflowRun({
+            agentId,
+            workflowId: definition.id,
+            idempotencyKey: null,
+            startedAt: args.startedAt,
+            ...terminalValues,
+          });
+      await this.persistTerminalWorkflowRun(run, claimedRun !== null);
       return {
         run,
-        error,
+        error:
+          status === "failed_uncompensated"
+            ? new LifeOpsWorkflowRunFailedUncompensatedError(
+                run,
+                failedCompensationKinds,
+                error,
+              )
+            : error,
+        disposition: "executed",
       };
     }
 
@@ -1111,23 +1299,33 @@ export class WorkflowsDomain {
         steps,
       },
     );
-    const run = createLifeOpsWorkflowRun({
-      agentId: this.ctx.agentId(),
-      workflowId: definition.id,
-      startedAt: args.startedAt,
+    const terminalValues = {
       finishedAt: new Date().toISOString(),
       status,
       result: {
         steps,
         outputs,
-        ...(idempotencyKey ? { idempotencyKey } : {}),
+        ...(idempotencyKey !== null ? { idempotencyKey } : {}),
       },
       auditRef: audit.id,
-    });
-    await this.ctx.repository.createWorkflowRun(run);
+    } satisfies Pick<
+      LifeOpsWorkflowRun,
+      "finishedAt" | "status" | "result" | "auditRef"
+    >;
+    const run = claimedRun
+      ? { ...claimedRun, ...terminalValues }
+      : createLifeOpsWorkflowRun({
+          agentId,
+          workflowId: definition.id,
+          idempotencyKey: null,
+          startedAt: args.startedAt,
+          ...terminalValues,
+        });
+    await this.persistTerminalWorkflowRun(run, claimedRun !== null);
     return {
       run,
       error: null,
+      disposition: "executed",
     };
   }
 
@@ -1156,6 +1354,9 @@ export class WorkflowsDomain {
       normalizeOptionalString(request.idempotencyKey) ?? null;
     if (idempotencyKey !== null && idempotencyKey.length > 256) {
       fail(400, "idempotencyKey must be at most 256 characters");
+    }
+    if (idempotencyKey?.includes("\0")) {
+      fail(400, "idempotencyKey must not contain NUL characters");
     }
     const result = await this.executeWorkflowDefinition(definition, {
       startedAt,

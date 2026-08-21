@@ -20,14 +20,25 @@ import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core/edge";
 import type { SharedReminderDelivery } from "@elizaos/plugin-scheduling/edge";
 import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-env";
 import { InsufficientCreditsError } from "../../api/errors";
+import { logger } from "../../utils/logger";
 import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { coordinateSharedBridge, coordinateSharedHistory } from "./conversation-coordinator";
 import type { SharedAgentCharacter } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { SharedRuntimeChannel } from "./shared-runtime-channel";
 import { type BridgeExecutionContext, sharedRuntimeChatService } from "./shared-runtime-chat";
+import {
+  parseSharedProviderTimingReceipt,
+  type SharedProviderTimingReceipt,
+} from "./shared-runtime-timing";
 
 const BRIDGE_INSUFFICIENT_CREDITS_CODE = -32002;
+
+/** Serialize the privacy-bounded provider receipt into finite Server-Timing metrics. */
+export function sharedTurnServerTiming(receipt: SharedProviderTimingReceipt | undefined): string {
+  if (!receipt) return "";
+  return `shared_model;dur=${receipt.durationMs.toFixed(1)};desc="provider=${receipt.selectedProvider} calls=${receipt.callCount} fallbacks=${receipt.fallbackCount} replayed=${receipt.replayed ? 1 : 0} clamped=${receipt.clamped ? 1 : 0}"`;
+}
 
 /** Minimal subset of the agent-server REST `Conversation` the chat client reads. */
 export interface SharedRestConversation {
@@ -544,7 +555,7 @@ export async function sharedRestMessageSend(
   trustedDelivery?: SharedReminderDelivery,
   trustedUserUtterance?: string,
   trustedChannel?: SharedRuntimeChannel,
-): Promise<{ text: string; agentName: string }> {
+): Promise<{ text: string; agentName: string; timing?: SharedProviderTimingReceipt }> {
   const rpc: BridgeRequest = {
     jsonrpc: "2.0",
     id: clientMessageId ?? crypto.randomUUID(),
@@ -579,7 +590,18 @@ export async function sharedRestMessageSend(
     }
     throw new Error(response.error.message || "shared message.send failed");
   }
-  const result = (response.result ?? {}) as { text?: unknown };
+  const result = (response.result ?? {}) as { text?: unknown; timing?: unknown };
   const replyText = typeof result.text === "string" ? result.text : "";
-  return { text: replyText, agentName: agentName || "Eliza" };
+  const timing = parseSharedProviderTimingReceipt(result.timing);
+  if (result.timing !== undefined && timing === undefined) {
+    logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
+      agentId: agent.id,
+      conversationId,
+    });
+  }
+  return {
+    text: replyText,
+    agentName: agentName || "Eliza",
+    ...(timing ? { timing } : {}),
+  };
 }

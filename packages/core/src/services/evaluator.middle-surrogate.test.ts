@@ -1,110 +1,143 @@
-/** Surrogate safety for evaluator prompt truncation helpers (truncateHeadForPrompt and trimHeadAndTailForPrompt). */
-import { describe, expect, test } from "vitest";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
+/**
+ * Regression for the head-and-tail truncation of an oversized evaluator section
+ * (`trimHeadAndTailForPrompt`).
+ *
+ * Evaluator sections keep their extraction rules (head) and the newest context
+ * (tail), so the assembled prompt carries two independent cut points. Both are
+ * driven here through the real `EvaluatorService.run` and asserted on the
+ * string handed to `useModel`, since that is the value a provider serializes.
+ */
+import { describe, expect, it, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { AgentRuntime } from "../runtime";
+import type { Character, Memory } from "../types";
+import { EVALUATOR_PROMPT_MAX_CHARS, EvaluatorService } from "./evaluator";
 
-const EVALUATOR_PROMPT_TRUNCATION_MARKER = "\n...[truncated]...\n";
+const FOX = "\u{1F98A}";
+const TRUNCATION_MARKER = "[... truncated; kept latest tail ...]";
 
 function isWellFormed(value: string): boolean {
-	if (!value) return true;
-	const maybe = value as unknown as { isWellFormed?: () => boolean };
-	if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
-	return toWellFormedUnicode(value) === value;
+	const native = value as unknown as { isWellFormed?: () => boolean };
+	if (typeof native.isWellFormed === "function") return native.isWellFormed();
+	for (let i = 0; i < value.length; i++) {
+		const code = value.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			const next = value.charCodeAt(i + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+			i++;
+		} else if (code >= 0xdc00 && code <= 0xdfff) return false;
+	}
+	return true;
 }
 
-function truncateHeadForPromptMock(text: string, maxChars: number): string {
-	if (maxChars <= 0) return "";
-	const wellFormed = toWellFormedUnicode(text);
-	if (wellFormed.length <= maxChars) return wellFormed;
-	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
-		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
-	}
-	const tailChars = maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length;
-	let tailStart = wellFormed.length - tailChars;
-	if (
-		tailStart > 0 &&
-		wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
-		wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
-		wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
-		wellFormed.charCodeAt(tailStart) <= 0xdfff
-	) {
-		tailStart += 1;
-	}
-	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${wellFormed.slice(tailStart)}`;
+function makeRuntime(): AgentRuntime {
+	const runtime = new AgentRuntime({
+		character: {
+			name: "EvaluatorMiddleAgent",
+			bio: "test",
+			settings: {},
+		} as Character,
+		adapter: new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+	});
+	runtime.evaluators.length = 0;
+	runtime.composeState = vi.fn(async () => ({
+		values: {},
+		data: {},
+		text: "",
+	}));
+	runtime.emitEvent = vi.fn(async () => {});
+	return runtime;
 }
 
-function trimHeadAndTailForPromptMock(text: string, maxChars: number): string {
-	if (maxChars <= 0) return "";
-	const wellFormed = toWellFormedUnicode(text);
-	if (wellFormed.length <= maxChars) return wellFormed;
-	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
-		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
-	}
-	const contentBudget = maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length;
-	const headBudget = Math.ceil(contentBudget / 3);
-	const tailBudget = contentBudget - headBudget;
-	const head = truncateWellFormed(wellFormed, headBudget);
-	let tail = "";
-	if (tailBudget > 0) {
-		let tailStart = wellFormed.length - tailBudget;
-		if (
-			tailStart > 0 &&
-			wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
-			wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
-			wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
-			wellFormed.charCodeAt(tailStart) <= 0xdfff
-		) {
-			tailStart += 1;
+function makeMessage(): Memory {
+	return {
+		id: "00000000-0000-0000-0000-000000000001" as Memory["id"],
+		entityId: "00000000-0000-0000-0000-000000000002" as Memory["entityId"],
+		roomId: "00000000-0000-0000-0000-000000000003" as Memory["roomId"],
+		content: { text: "hello", source: "test" },
+	} as Memory;
+}
+
+/**
+ * Runs one turn whose single evaluator section is `body`. `descriptionPad`
+ * shifts both section cut points by one character per added byte, which is what
+ * moves them across a surrogate boundary.
+ */
+async function sectionPromptFor(
+	body: string,
+	descriptionPad = 0,
+): Promise<string> {
+	const runtime = makeRuntime();
+	runtime.registerEvaluator({
+		name: "alpha",
+		description: `alpha section${".".repeat(descriptionPad)}`,
+		schema: {
+			type: "object",
+			properties: { ok: { type: "boolean" } },
+			required: ["ok"],
+		},
+		shouldRun: async () => true,
+		prompt: () => body,
+		parse: (output) => output as never,
+		processors: [
+			{ name: "storeAlpha", process: async () => ({ success: true }) },
+		],
+	});
+	let captured: string | undefined;
+	runtime.useModel = vi.fn(async (_modelType, params) => {
+		captured = String(params.messages?.[0]?.content ?? "");
+		return { alpha: { ok: true } };
+	}) as AgentRuntime["useModel"];
+	const result = await new EvaluatorService(runtime).run(makeMessage(), {
+		values: {},
+		data: {},
+		text: "",
+	});
+	expect(result.errors).toEqual([]);
+	expect(captured).toBeDefined();
+	return captured as string;
+}
+
+describe("evaluator section head-and-tail truncation is surrogate-safe", () => {
+	it("never emits a lone surrogate at either cut across parities", async () => {
+		const body = FOX.repeat(EVALUATOR_PROMPT_MAX_CHARS);
+		const illFormed: number[] = [];
+		for (let pad = 0; pad < 8; pad++) {
+			const prompt = await sectionPromptFor(body, pad);
+			expect(prompt).toContain(TRUNCATION_MARKER);
+			expect(prompt.length).toBeLessThanOrEqual(EVALUATOR_PROMPT_MAX_CHARS);
+			if (!isWellFormed(prompt)) illFormed.push(pad);
 		}
-		tail = wellFormed.slice(tailStart);
-	}
-	return `${head}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
-}
+		expect(illFormed).toEqual([]);
+	}, 60_000);
 
-describe("evaluator prompt truncation surrogate safety", () => {
-	test("truncateHeadForPrompt handles emoji at tail boundary cleanly", () => {
-		const fox = "🦊";
-		const input = `${"a".repeat(100)}${fox}${"b".repeat(100)}`;
-		const out = truncateHeadForPromptMock(input, 50);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.startsWith(EVALUATOR_PROMPT_TRUNCATION_MARKER)).toBe(true);
-		expect(() => JSON.stringify({ prompt: out })).not.toThrow();
-	});
+	it("keeps the rules head and the newest tail of an oversized section", async () => {
+		const body = `HEAD_RULES_SENTINEL${FOX.repeat(
+			EVALUATOR_PROMPT_MAX_CHARS,
+		)}TAIL_CONTEXT_SENTINEL`;
+		const prompt = await sectionPromptFor(body);
+		expect(isWellFormed(prompt)).toBe(true);
+		expect(prompt).toContain("HEAD_RULES_SENTINEL");
+		expect(prompt).toContain("TAIL_CONTEXT_SENTINEL");
+		expect(prompt).toContain(TRUNCATION_MARKER);
+	}, 60_000);
 
-	test("trimHeadAndTailForPrompt handles emoji at head boundary without lone surrogate", () => {
-		const fox = "🦊";
-		const input = `${"a".repeat(10)}${fox}${"b".repeat(100)}`;
-		const out = trimHeadAndTailForPromptMock(input, 60);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes(EVALUATOR_PROMPT_TRUNCATION_MARKER)).toBe(true);
-		expect(() => JSON.stringify({ prompt: out })).not.toThrow();
-	});
+	it("serializes to a provider body with no lone-surrogate escape", async () => {
+		const prompt = await sectionPromptFor(
+			FOX.repeat(EVALUATOR_PROMPT_MAX_CHARS),
+			1,
+		);
+		const serialized = JSON.stringify({ messages: [{ content: prompt }] });
+		expect(/\\ud[89ab][0-9a-f]{2}(?!\\ud[c-f])/i.test(serialized)).toBe(false);
+		expect(JSON.parse(serialized).messages[0].content).toBe(prompt);
+	}, 60_000);
 
-	test("trimHeadAndTailForPrompt handles emoji at tail boundary without lone surrogate", () => {
-		const fox = "🦊";
-		const input = `${"a".repeat(100)}${fox}${"b".repeat(10)}`;
-		const out = trimHeadAndTailForPromptMock(input, 60);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes(EVALUATOR_PROMPT_TRUNCATION_MARKER)).toBe(true);
-		expect(() => JSON.stringify({ prompt: out })).not.toThrow();
-	});
-
-	test("short prompt with emoji passes through untouched", () => {
-		const input = "Short evaluator context with 🦊 emoji";
-		const out = trimHeadAndTailForPromptMock(input, 100);
-		expect(isWellFormed(out)).toBe(true);
-		expect(out).toBe(input);
-	});
-
-	test("sweep offsets for trimHeadAndTailForPrompt all stay well-formed", () => {
-		const fox = "🦊";
-		for (let n = 50; n <= 80; n++) {
-			const input = `${"a".repeat(n)}${fox}${"b".repeat(n)}`;
-			const out = trimHeadAndTailForPromptMock(input, 70);
-			expect(isWellFormed(out)).toBe(true);
-			expect(() => JSON.stringify({ prompt: out })).not.toThrow();
-		}
-	});
+	it("passes a short section through untouched", async () => {
+		const body = `Short evaluator section with ${FOX} emoji`;
+		const prompt = await sectionPromptFor(body);
+		expect(prompt).toContain(body);
+		expect(prompt).not.toContain(TRUNCATION_MARKER);
+		expect(isWellFormed(prompt)).toBe(true);
+	}, 60_000);
 });

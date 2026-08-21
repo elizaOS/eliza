@@ -1,10 +1,12 @@
 /**
  * Covers InferenceTurnTimer and the inference-timing AsyncLocalStorage helpers:
  * span roll-up by name, request-boundary milestone derivation, duplicate-mark
- * anomaly detection, ALS attribution across async boundaries, and the emit /
- * format / dev-payload registry. Deterministic — no live model.
+ * anomaly detection, ALS attribution across async boundaries, the emit /
+ * format / dev-payload registry, and per-turn trace-id minting, adoption, and
+ * structured rejection. Deterministic — no live model.
  */
 import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors";
 import {
 	buildInferenceFlowBreakdown,
 	buildInferenceTimingDevPayload,
@@ -12,9 +14,11 @@ import {
 	formatInferenceTimingSummary,
 	getInferenceTimer,
 	INFERENCE_MARKS,
+	INFERENCE_TRACE_ID_PATTERN,
 	InferenceTurnTimer,
 	inferenceTimingRegistry,
 	markInference,
+	mintInferenceTraceId,
 	nextInferenceTurnId,
 	recordInferenceSpan,
 	runWithInferenceTiming,
@@ -499,5 +503,70 @@ describe("emit + format + registry", () => {
 				execution: expect.objectContaining({ p95: 5 }),
 			}),
 		);
+	});
+});
+
+describe("turn trace correlation (#16079)", () => {
+	it("mints a distinct 32-lowercase-hex trace id per turn", () => {
+		const a = new InferenceTurnTimer({ turnId: "trace-a", label: "test" });
+		const b = new InferenceTurnTimer({ turnId: "trace-b", label: "test" });
+		expect(a.traceId).toMatch(INFERENCE_TRACE_ID_PATTERN);
+		expect(b.traceId).toMatch(INFERENCE_TRACE_ID_PATTERN);
+		expect(a.traceId).not.toBe(b.traceId);
+	});
+
+	it("adopts a caller-propagated trace id and rejects malformed ones", () => {
+		const upstream = mintInferenceTraceId();
+		const timer = new InferenceTurnTimer({
+			turnId: "trace-c",
+			traceId: upstream,
+			label: "test",
+		});
+		expect(timer.traceId).toBe(upstream);
+
+		// Rejection is a structured domain failure, not a bare Error: callers
+		// classify on the code, and the raw caller-supplied id must never be
+		// echoed back into the error context.
+		for (const [turnId, bad] of [
+			["trace-bad-shape", "not-a-trace-id"],
+			["trace-bad-case", "A".repeat(32)],
+			["trace-too-long", `${upstream}0`],
+			["trace-too-short", upstream.slice(0, 31)],
+			["trace-empty", ""],
+		] as const) {
+			let thrown: unknown;
+			try {
+				new InferenceTurnTimer({ turnId, traceId: bad, label: "test" });
+			} catch (error) {
+				thrown = error;
+			}
+			expect(thrown).toBeInstanceOf(ElizaError);
+			const elizaError = thrown as ElizaError;
+			expect(elizaError.code).toBe("INFERENCE_TRACE_ID_INVALID");
+			expect(elizaError.severity).toBe("fatal");
+			expect(elizaError.context).toEqual({
+				turnId,
+				traceIdLength: bad.length,
+			});
+			if (bad !== "") {
+				expect(JSON.stringify(elizaError.context)).not.toContain(bad);
+				expect(elizaError.message).not.toContain(bad);
+			}
+		}
+	});
+
+	it("carries the trace id into the summary and formatted line", () => {
+		const timer = new InferenceTurnTimer({ turnId: "trace-f", label: "test" });
+		const s = timer.close();
+		expect(s.traceId).toBe(timer.traceId);
+		expect(formatInferenceTimingSummary(s)).toContain(`trace=${timer.traceId}`);
+	});
+
+	it("exposes the active turn's trace id through the ALS context", () => {
+		const timer = new InferenceTurnTimer({ turnId: "trace-g", label: "test" });
+		runWithInferenceTiming(timer, () => {
+			expect(getInferenceTimer()?.traceId).toBe(timer.traceId);
+		});
+		expect(getInferenceTimer()).toBeUndefined();
 	});
 });

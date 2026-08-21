@@ -554,10 +554,39 @@ export const SocialPlatformSchema = z.enum([
 
 export const NotificationPlatformSchema = z.enum(["discord", "telegram", "slack"]);
 
+/**
+ * Byte budget for the media a social provider hands to an upload API,
+ * whichever branch the bytes arrived on (`url`, `data` or `base64`).
+ *
+ * `downloadSocialMediaBytes` has enforced this number on the `url` branch
+ * since #22604. The sibling branches decode caller-supplied bytes in the same
+ * 128 MiB Worker isolate, so they are charged against the same constant rather
+ * than a second one that can drift away from it.
+ */
+export const SOCIAL_MEDIA_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Ceiling for an inline video payload. TikTok chunk-uploads video, so the
+ * 10 MiB image budget would reject ordinary posts — but the decode still
+ * happens in one `Buffer.from` inside the Worker isolate, so it needs a bound
+ * of its own rather than none. Sized to TikTok's documented direct-post limit.
+ */
+export const SOCIAL_MEDIA_VIDEO_MAX_BYTES = 128 * 1024 * 1024;
+
+/**
+ * Character ceiling of a base64 payload that can decode to
+ * {@link SOCIAL_MEDIA_MEDIA_MAX_BYTES}. Base64 emits 4 characters per 3 raw
+ * bytes, so this is the exact encoded equivalent of the byte budget — the same
+ * conversion the Telegram voice-note boundary already uses
+ * (`api/internal/eliza-app/personal-shared/messages/route.ts`). Charging the
+ * string length first bounds the decode before it allocates.
+ */
+export const SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH = Math.ceil(SOCIAL_MEDIA_MEDIA_MAX_BYTES / 3) * 4;
+
 export const MediaAttachmentSchema = z.object({
   type: z.enum(["image", "video", "gif"]),
   url: z.string().url().optional(),
-  base64: z.string().optional(),
+  base64: z.string().max(SOCIAL_MEDIA_MEDIA_MAX_BASE64_LENGTH).optional(),
   mimeType: z.string(),
   altText: z.string().optional(),
 });

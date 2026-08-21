@@ -364,6 +364,207 @@ describe("CredentialBroker.callProvider", () => {
   });
 });
 
+/**
+ * Response byte budget. The request side is capped at MAX_REQUEST_BODY_BYTES in
+ * the same function; these pin the counterpart on the response so an
+ * allowlisted host cannot decide how much memory the isolate spends.
+ *
+ * MAX_RESPONSE_BODY_BYTES is module-private by design (it is derived from the
+ * request cap, not a second independent literal), so these tests assert the
+ * observable contract at the boundary rather than importing the number.
+ */
+describe("CredentialBroker.callProvider (upstream response byte budget)", () => {
+  const OVER_BUDGET_BYTES = 5_000_001;
+  const AT_BUDGET_BYTES = 5_000_000;
+
+  /** A body stream that would emit `totalBytes` if it were ever drained. */
+  function chunkedBody(totalBytes: number, chunkBytes = 64 * 1024) {
+    let emitted = 0;
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (emitted >= totalBytes) {
+          controller.close();
+          return;
+        }
+        pulls += 1;
+        const size = Math.min(chunkBytes, totalBytes - emitted);
+        emitted += size;
+        controller.enqueue(new Uint8Array(size).fill(0x61));
+      },
+    });
+    return { stream, emitted: () => emitted, pulls: () => pulls };
+  }
+
+  it("rejects a declared content-length over budget without reading the body", async () => {
+    const source = chunkedBody(OVER_BUDGET_BYTES);
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(source.stream, {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": String(OVER_BUDGET_BYTES),
+          },
+        }),
+    });
+    await expect(
+      broker.callProvider({
+        organizationId: ORG,
+        userId: USER,
+        connectionId: CONN,
+        request: baseRequest,
+      }),
+    ).rejects.toMatchObject({ code: OAuthErrorCode.UPSTREAM_RESPONSE_TOO_LARGE });
+    // Charged before allocation: the broker never drained the body. The stream
+    // may have handed out at most the one chunk the runtime reads ahead when a
+    // streaming Response is constructed, which is not the broker reading it.
+    expect(source.pulls()).toBeLessThanOrEqual(1);
+    expect(source.emitted()).toBeLessThanOrEqual(64 * 1024);
+  });
+
+  it("cuts off an undeclared over-budget stream instead of draining it", async () => {
+    // 64 MiB of upstream with no content-length: the pre-check cannot help, so
+    // the running total has to stop it. Retained bytes must stay near the
+    // budget, not near what the host offered.
+    const source = chunkedBody(64 * 1024 * 1024);
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(source.stream, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    });
+    await expect(
+      broker.callProvider({
+        organizationId: ORG,
+        userId: USER,
+        connectionId: CONN,
+        request: baseRequest,
+      }),
+    ).rejects.toMatchObject({ code: OAuthErrorCode.UPSTREAM_RESPONSE_TOO_LARGE });
+    // Under 8% of what the host offered: the read stopped, it did not drain.
+    expect(source.emitted()).toBeLessThan((64 * 1024 * 1024) / 12);
+    // At most the budget, plus the chunk that crossed it, plus the runtime's
+    // one-chunk readahead. Never a function of the 64 MiB the host offered.
+    expect(source.emitted()).toBeLessThanOrEqual(AT_BUDGET_BYTES + 2 * 64 * 1024);
+  });
+
+  it("maps the over-budget failure to 502, not to a generic transport 500", async () => {
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(new Uint8Array(OVER_BUDGET_BYTES), {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    });
+    let caught: unknown;
+    try {
+      await broker.callProvider({
+        organizationId: ORG,
+        userId: USER,
+        connectionId: CONN,
+        request: baseRequest,
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(OAuthError);
+    expect((caught as OAuthError).code).toBe(OAuthErrorCode.UPSTREAM_RESPONSE_TOO_LARGE);
+    expect((caught as OAuthError).httpStatus).toBe(502);
+    expect((caught as OAuthError).reconnectRequired).toBe(false);
+    // No silent truncation served as success, and no token echo in the message.
+    expect((caught as OAuthError).message).not.toContain(SECRET);
+  });
+
+  it("accepts a large-but-bounded response whole, byte for byte", async () => {
+    const size = AT_BUDGET_BYTES;
+    const source = chunkedBody(size);
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(source.stream, {
+          status: 200,
+          headers: { "content-type": "application/octet-stream" },
+        }),
+    });
+    const result = await broker.callProvider({
+      organizationId: ORG,
+      userId: USER,
+      connectionId: CONN,
+      request: baseRequest,
+    });
+    expect(result.status).toBe(200);
+    expect(result.bodyEncoding).toBe("base64");
+    // base64 of `size` bytes, reassembled across many stream chunks.
+    expect(result.body.length).toBe(Math.ceil(size / 3) * 4);
+    expect(source.emitted()).toBe(size);
+  });
+
+  it("reassembles a multi-chunk textual body identically to a single-shot read", async () => {
+    const payload = JSON.stringify({ items: Array.from({ length: 4096 }, (_, i) => ({ i })) });
+    const encoded = new TextEncoder().encode(payload);
+    let offset = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset >= encoded.byteLength) {
+          controller.close();
+          return;
+        }
+        // 7 bytes at a time: splits multi-byte boundaries and proves the merge
+        // is a byte concatenation, not a per-chunk decode.
+        const end = Math.min(offset + 7, encoded.byteLength);
+        controller.enqueue(encoded.slice(offset, end));
+        offset = end;
+      },
+    });
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(stream, { status: 200, headers: { "content-type": "application/json" } }),
+    });
+    const result = await broker.callProvider({
+      organizationId: ORG,
+      userId: USER,
+      connectionId: CONN,
+      request: baseRequest,
+    });
+    expect(result.bodyEncoding).toBe("utf8");
+    expect(result.body).toBe(payload);
+  });
+
+  it("ignores an absent or unparseable content-length and falls back to counting", async () => {
+    const { broker } = makeHarness({
+      upstream: () =>
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json", "content-length": "not-a-number" },
+        }),
+    });
+    const result = await broker.callProvider({
+      organizationId: ORG,
+      userId: USER,
+      connectionId: CONN,
+      request: baseRequest,
+    });
+    expect(result.status).toBe(200);
+    expect(result.body).toBe(JSON.stringify({ ok: true }));
+  });
+
+  it("still accepts an empty 204 body", async () => {
+    const { broker } = makeHarness({
+      upstream: () => new Response(null, { status: 204 }),
+    });
+    const result = await broker.callProvider({
+      organizationId: ORG,
+      userId: USER,
+      connectionId: CONN,
+      request: baseRequest,
+    });
+    expect(result.status).toBe(204);
+    expect(result.body).toBe("");
+    expect(result.bodyEncoding).toBe("utf8");
+  });
+});
+
 describe("CredentialBroker.refreshToken", () => {
   let refreshedToken: TokenResult;
 
