@@ -217,6 +217,16 @@ describe("cli", () => {
     const malformedNumber = await runCli(["--keep", "1x"]);
     expect(malformedNumber.exitCode).toBe(1);
     expect(malformedNumber.stderr).toContain("--keep must be");
+    const unknownFlag = await runCli(["--keeep", "1"]);
+    expect(unknownFlag.exitCode).toBe(1);
+    expect(unknownFlag.stderr).toContain(
+      "unknown or positional argument: --keeep",
+    );
+    const positional = await runCli(["reviewed-agent-id"]);
+    expect(positional.exitCode).toBe(1);
+    expect(positional.stderr).toContain(
+      "unknown or positional argument: reviewed-agent-id",
+    );
 
     const receipt = temporaryReport();
     try {
@@ -282,6 +292,9 @@ describe("cli", () => {
       },
     });
     const receipt = temporaryReport();
+    const sentinelPath = path.join(receipt.directory, "sentinel.txt");
+    fs.writeFileSync(sentinelPath, "untouched\n");
+    fs.symlinkSync(sentinelPath, `${receipt.reportPath}.tmp`);
     try {
       const args = applyArgs(server, receipt.reportPath, ["old-dedicated"]);
       const result = await runCli(args);
@@ -302,6 +315,8 @@ describe("cli", () => {
         verifiedAbsent: ["old-dedicated"],
         attempts: [{ agentId: "old-dedicated", status: "completed" }],
       });
+      expect(fs.readFileSync(sentinelPath, "utf8")).toBe("untouched\n");
+      expect(fs.statSync(receipt.reportPath).mode & 0o777).toBe(0o600);
 
       const second = await runCli(args);
       expect(second.exitCode).toBe(0);
@@ -482,6 +497,87 @@ describe("cli", () => {
       receipt.cleanup();
     }
   });
+
+  test.each(["headers", "body"])(
+    "bounds a provider request that stalls before %s completion",
+    async (stallKind) => {
+      const server = Bun.serve({
+        port: 0,
+        async fetch(request) {
+          const url = new URL(request.url);
+          if (url.pathname === "/api/v1/credits/balance") {
+            return Response.json({ balance: 10 });
+          }
+          if (url.pathname === "/api/v1/eliza/agents") {
+            if (stallKind === "headers") {
+              return await new Promise(() => {});
+            }
+            return new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode('{"data":['));
+                },
+              }),
+              { headers: { "Content-Type": "application/json" } },
+            );
+          }
+          return new Response("not found", { status: 404 });
+        },
+      });
+      try {
+        const result = await runCli([
+          "--base",
+          server.url.toString(),
+          "--job-timeout-ms",
+          "30",
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toMatch(/aborted|timed out|timeout/i);
+      } finally {
+        server.stop(true);
+      }
+    },
+  );
+
+  test("allows only one concurrent writer to own a report receipt", async () => {
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url);
+        if (url.pathname === "/api/v1/credits/balance") {
+          return Response.json({ balance: 10 });
+        }
+        if (url.pathname === "/api/v1/eliza/agents") {
+          await Bun.sleep(100);
+          return Response.json({ data: [] });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const receipt = temporaryReport();
+    const args = [
+      "--base",
+      server.url.toString(),
+      "--report",
+      receipt.reportPath,
+      "--job-timeout-ms",
+      "1000",
+    ];
+    try {
+      const results = await Promise.all([runCli(args), runCli(args)]);
+      expect(results.map((result) => result.exitCode).sort()).toEqual([0, 1]);
+      expect(results.find((result) => result.exitCode === 1)?.stderr).toContain(
+        "report is already locked by another cleanup",
+      );
+      expect(
+        JSON.parse(fs.readFileSync(receipt.reportPath, "utf8")),
+      ).toMatchObject({ apply: false, attempts: [] });
+      expect(fs.existsSync(`${receipt.reportPath}.lock`)).toBe(false);
+    } finally {
+      server.stop(true);
+      receipt.cleanup();
+    }
+  });
 });
 
 const TEST_ADDRESS = "0x1111111111111111111111111111111111111111";
@@ -501,6 +597,7 @@ function temporaryReport() {
     path.join(os.tmpdir(), "eliza-e2e-cleanup-"),
   );
   return {
+    directory,
     reportPath: path.join(directory, "receipt.json"),
     cleanup: () => fs.rmSync(directory, { recursive: true, force: true }),
   };

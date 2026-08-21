@@ -26,6 +26,7 @@
  */
 
 import fs from "node:fs";
+import path from "node:path";
 import {
   assertExpectedCleanupIdentity,
   bindReviewedCleanupCandidates,
@@ -47,11 +48,42 @@ function argAll(name) {
   return values;
 }
 
+const BOOLEAN_OPTIONS = new Set(["--apply", "--wait", "--help", "-h"]);
+const VALUE_OPTIONS = new Set([
+  "--base",
+  "--candidate",
+  "--expected-address",
+  "--expected-org",
+  "--keep",
+  "--min-age-minutes",
+  "--protect",
+  "--report",
+  "--job-timeout-ms",
+  "--poll-interval-ms",
+]);
+
+function validateArgv(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (BOOLEAN_OPTIONS.has(token)) continue;
+    if (!VALUE_OPTIONS.has(token)) {
+      throw new Error(`unknown or positional argument: ${token}`);
+    }
+    const value = tokens[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error(`${token} requires a value`);
+    }
+    index += 1;
+  }
+}
+
 function arg(name, fallback = null) {
   const values = argAll(name);
   if (values.length > 1) throw new Error(`${name} may only be provided once`);
   return values[0] ?? fallback;
 }
+
+validateArgv(process.argv.slice(2));
 
 const has = (name) => process.argv.includes(name);
 const log = (message) => console.log(`[e2e-agent-cleanup] ${message}`);
@@ -194,8 +226,10 @@ async function resolveToken(options) {
 }
 
 async function cloud(options, token, path, init = {}) {
+  const requestTimeoutMs = Math.min(options.jobTimeoutMs, 15_000);
   const res = await fetch(`${options.baseUrl}${path}`, {
     ...init,
+    signal: AbortSignal.timeout(requestTimeoutMs),
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
@@ -303,13 +337,85 @@ async function deleteAgent(options, token, agent) {
 
 function writeReport(reportPath, report) {
   if (!reportPath) return;
-  const temporaryPath = `${reportPath}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(report, null, 2)}\n`);
-  fs.renameSync(temporaryPath, reportPath);
+  const directory = path.dirname(reportPath);
+  const temporaryPath = path.join(
+    directory,
+    `.${path.basename(reportPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  let fileDescriptor;
+  try {
+    fileDescriptor = fs.openSync(
+      temporaryPath,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+    fs.writeFileSync(
+      fileDescriptor,
+      `${JSON.stringify(report, null, 2)}\n`,
+      "utf8",
+    );
+    fs.fsyncSync(fileDescriptor);
+    fs.closeSync(fileDescriptor);
+    fileDescriptor = undefined;
+    fs.renameSync(temporaryPath, reportPath);
+
+    const directoryDescriptor = fs.openSync(directory, fs.constants.O_RDONLY);
+    try {
+      fs.fsyncSync(directoryDescriptor);
+    } finally {
+      fs.closeSync(directoryDescriptor);
+    }
+  } catch (error) {
+    if (fileDescriptor !== undefined) fs.closeSync(fileDescriptor);
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch (cleanupError) {
+      if (cleanupError?.code !== "ENOENT") throw cleanupError;
+    }
+    throw error;
+  }
 }
+
+let reportLockPath = null;
+
+function acquireReportLock(reportPath) {
+  if (!reportPath) return;
+  const lockPath = `${reportPath}.lock`;
+  try {
+    fs.mkdirSync(lockPath, { mode: 0o700 });
+  } catch (error) {
+    if (error?.code === "EEXIST") {
+      throw new Error(
+        `report is already locked by another cleanup: ${reportPath}`,
+        {
+          cause: error,
+        },
+      );
+    }
+    throw error;
+  }
+  reportLockPath = lockPath;
+}
+
+process.on("exit", () => {
+  if (!reportLockPath) return;
+  try {
+    fs.rmdirSync(reportLockPath);
+  } catch (error) {
+    // error-policy:J6 process teardown cannot safely recover a report lock;
+    // leave it fail-closed for explicit operator inspection.
+    console.error(
+      `[e2e-agent-cleanup] WARN: could not release report lock ${reportLockPath}: ${error.message}`,
+    );
+  }
+});
 
 async function main() {
   const options = parseOptions();
+  acquireReportLock(options.reportPath);
   const { token, identity } = await resolveToken(options);
   if (options.apply) {
     assertExpectedCleanupIdentity(identity, options);
