@@ -27,6 +27,26 @@ import {
 import { type ElizaAppProvisioningStatus, getElizaAppProvisioningStatus } from "./provisioning";
 import { elizaAppUserService } from "./user-service";
 
+const ONBOARDING_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound every onboarding coordinator / agent API hop so a hung or overloaded
+ * Durable Object or agent cannot pin the onboarding worker indefinitely. A
+ * caller-provided abort signal wins.
+ */
+export function onboardingFetch(
+  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
+  input: string | URL,
+  init?: RequestInit,
+  timeoutMs: number = ONBOARDING_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return stub.fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 export type OnboardingChatRole = "user" | "assistant";
 export type OnboardingPlatform = "web" | "telegram" | "discord" | "whatsapp" | "twilio" | "blooio";
 
@@ -311,9 +331,11 @@ async function resolveContinuationToken(token: string): Promise<string | null> {
 
   const coordinator = onboardingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(trimmed)
-      .fetch("https://onboarding.internal/resolve", { method: "POST" });
+    const response = await onboardingFetch(
+      coordinator.getByName(trimmed),
+      "https://onboarding.internal/resolve",
+      { method: "POST" },
+    );
     if (response.ok) {
       const resolved: unknown = await response.json();
       if (isOnboardingContinuation(resolved)) return resolved.sessionId;
@@ -341,13 +363,15 @@ async function loadOnboardingSessionForValidation(
 ): Promise<OnboardingSession | null> {
   const coordinator = onboardingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(sessionId)
-      .fetch("https://onboarding.internal/inspect", {
+    const response = await onboardingFetch(
+      coordinator.getByName(sessionId),
+      "https://onboarding.internal/inspect",
+      {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ sessionId }),
-      });
+      },
+    );
     if (response.ok) {
       return (await response.json()) as OnboardingSession;
     }
@@ -626,17 +650,21 @@ export async function claimTelegramOnboardingContinuation(
   if (!coordinator || !SESSION_ID_PATTERN.test(token) || isReservedSessionId(token)) {
     throw trustedContinuationError(null);
   }
-  const response = await coordinator.getByName(token).fetch("https://onboarding.internal/claim", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      claimId: input.claimId,
-      telegramId: input.telegramId,
-      phoneNumber: input.phoneNumber,
-      userId: input.authenticatedAccount?.userId,
-      organizationId: input.authenticatedAccount?.organizationId,
-    }),
-  });
+  const response = await onboardingFetch(
+    coordinator.getByName(token),
+    "https://onboarding.internal/claim",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        claimId: input.claimId,
+        telegramId: input.telegramId,
+        phoneNumber: input.phoneNumber,
+        userId: input.authenticatedAccount?.userId,
+        organizationId: input.authenticatedAccount?.organizationId,
+      }),
+    },
+  );
   if (!response.ok) throw trustedContinuationError(null);
   return parseTelegramOnboardingContinuationClaim(await response.json());
 }
@@ -651,13 +679,15 @@ export async function completeTelegramOnboardingContinuationClaim(input: {
 }): Promise<void> {
   const coordinator = onboardingCoordinator();
   if (!coordinator) throw trustedContinuationError(null);
-  const response = await coordinator
-    .getByName(input.continuationToken.trim())
-    .fetch("https://onboarding.internal/complete-claim", {
+  const response = await onboardingFetch(
+    coordinator.getByName(input.continuationToken.trim()),
+    "https://onboarding.internal/complete-claim",
+    {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
-    });
+    },
+  );
   if (!response.ok) throw trustedContinuationError(null);
 }
 
@@ -1312,7 +1342,8 @@ async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise
       organizationId: session.organizationId,
     });
 
-    const rememberResponse = await fetch(
+    const rememberResponse = await onboardingFetch(
+      { fetch },
       `${connection.apiBase.replace(/\/+$/, "")}/api/memory/remember`,
       {
         method: "POST",
@@ -1715,7 +1746,7 @@ async function runViaCoordinator(
   sessionId: string,
 ): Promise<OnboardingChatResult> {
   return readOnboardingCoordinatorResult<OnboardingChatResult>(
-    await stub.fetch("https://onboarding.internal/turn", {
+    await onboardingFetch(stub, "https://onboarding.internal/turn", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input, sessionId }),

@@ -6,7 +6,15 @@
 // Deterministic: real exported service driven through a mocked global fetch.
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { logger } from "../../utils/logger";
-import { discordAuthService } from "./discord-auth";
+
+// The brand catalog only supplies an unrelated app URL default here. Mock it
+// so this focused OAuth boundary test remains hermetic without a built
+// @elizaos/shared workspace package.
+mock.module("@elizaos/shared/brand", () => ({
+  EXTERNAL_URLS: { app: "https://app.example.com" },
+}));
+
+const { discordAuthService } = await import("./discord-auth");
 
 const REDIRECT_URI = "https://app.example.com/auth/discord/callback";
 const OK_USER = {
@@ -22,8 +30,9 @@ type FetchHandlers = {
   user?: () => Response | Promise<Response>;
 };
 
-function installFetch(handlers: FetchHandlers) {
-  globalThis.fetch = mock(async (input: RequestInfo | URL) => {
+function installFetch(handlers: FetchHandlers, signals?: AbortSignal[]) {
+  globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.signal) signals?.push(init.signal);
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/oauth2/token")) {
       if (!handlers.token) throw new Error("unexpected token fetch");
@@ -148,10 +157,14 @@ describe("verifyOAuthCode — internal failure throws (distinct from null)", () 
 
 describe("verifyOAuthCode — happy path (proves the success branch is real)", () => {
   test("valid token + valid human user -> DiscordUserData", async () => {
-    installFetch({
-      token: () => new Response(JSON.stringify({ access_token: "tok" }), { status: 200 }),
-      user: () => new Response(JSON.stringify(OK_USER), { status: 200 }),
-    });
+    const signals: AbortSignal[] = [];
+    installFetch(
+      {
+        token: () => new Response(JSON.stringify({ access_token: "tok" }), { status: 200 }),
+        user: () => new Response(JSON.stringify(OK_USER), { status: 200 }),
+      },
+      signals,
+    );
     const result = await discordAuthService.verifyOAuthCode("good-code", REDIRECT_URI);
     expect(result).toEqual({
       id: OK_USER.id,
@@ -159,5 +172,7 @@ describe("verifyOAuthCode — happy path (proves the success branch is real)", (
       global_name: OK_USER.global_name,
       avatar: OK_USER.avatar,
     });
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
   });
 });

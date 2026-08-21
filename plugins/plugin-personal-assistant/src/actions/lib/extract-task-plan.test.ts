@@ -45,6 +45,11 @@ const BASE_PLAN_JSON = {
   timeZone: null,
   everyMinutes: null,
   timesPerDay: null,
+  quotaTargetCount: null,
+  quotaUnit: null,
+  perOccurrenceWork: null,
+  checkInRequested: null,
+  checkInWindows: null,
   priority: null,
   durationMinutes: null,
   dueDate: null,
@@ -97,6 +102,36 @@ describe("textStatesExplicitSchedule", () => {
 });
 
 describe("extractTaskCreatePlanWithLlm datetime fields", () => {
+  it("extracts the exact flexible-quota target, work unit, and check-in policy intent", async () => {
+    const runtime = makeRuntime(() =>
+      JSON.stringify({
+        ...BASE_PLAN_JSON,
+        title: "Pushups",
+        cadenceKind: "count_per_day",
+        timesPerDay: 3,
+        quotaTargetCount: 3,
+        quotaUnit: "set",
+        perOccurrenceWork: "25 pushups",
+        checkInRequested: true,
+        checkInWindows: ["afternoon", "evening"],
+      }),
+    );
+    const plan = await extractTaskCreatePlanWithLlm({
+      runtime,
+      intent:
+        "Track 25 pushups, three sets a day, whenever, and check in with me later.",
+      state: undefined,
+    });
+    expect(plan).toMatchObject({
+      cadenceKind: "count_per_day",
+      quotaTargetCount: 3,
+      quotaUnit: "set",
+      perOccurrenceWork: "25 pushups",
+      checkInRequested: true,
+      checkInWindows: ["afternoon", "evening"],
+    });
+  });
+
   it("keeps dueWeekday and timeOfDay for a weekday reminder", async () => {
     const runtime = makeRuntime(() =>
       JSON.stringify({

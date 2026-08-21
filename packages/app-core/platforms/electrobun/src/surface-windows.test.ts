@@ -457,6 +457,189 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.manager.listWindows()).toEqual([second]);
   });
 
+  it("opens the full workspace shell at the root and deduplicates its managed window", async () => {
+    const fixture = createFixture();
+
+    const first = await fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = await fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Duplicate",
+      path: "/settings",
+    });
+
+    expect(first).toMatchObject({
+      id: "app_workspace",
+      surface: "app",
+      title: "Workspace",
+    });
+    expect(second).toEqual(first);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/?boot=1&appWindow=1#/",
+    );
+    expect(fixture.created[0]?.focus).toHaveBeenCalledOnce();
+  });
+
+  it("serializes false-true-false concurrent opens and returns the authoritative promoted snapshot", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({
+      resolveRendererUrl: () => rendererUrl,
+    });
+
+    const first = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Duplicate",
+      path: "/settings",
+      alwaysOnTop: true,
+    });
+    const third = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Ignored Later Duplicate",
+      path: "/chat",
+      alwaysOnTop: false,
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    const snapshots = await Promise.all([first, second, third]);
+
+    expect(snapshots).toEqual([
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+    ]);
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    expect(fixture.created[0]?.options.url).toBe(
+      "http://127.0.0.1:5173/?boot=1&appWindow=1#/",
+    );
+  });
+
+  it("gives every slug-less app window its own managed record instead of sharing one reservation", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({ resolveRendererUrl: () => rendererUrl });
+
+    const first = fixture.manager.openAppWindow({
+      title: "Scratch One",
+      path: "/apps/one",
+    });
+    const second = fixture.manager.openAppWindow({
+      title: "Scratch Two",
+      path: "/apps/two",
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    const [firstSnapshot, secondSnapshot] = await Promise.all([first, second]);
+
+    expect(firstSnapshot.id).not.toBe(secondSnapshot.id);
+    expect(firstSnapshot.title).toBe("Scratch One");
+    expect(secondSnapshot.title).toBe("Scratch Two");
+    expect(fixture.created).toHaveLength(2);
+    expect(fixture.manager.listWindows()).toHaveLength(2);
+  });
+
+  // The leader's window is raised by createManagedWindow's own dedupe, but a
+  // follower that joins a launch already in flight never goes through that
+  // path. Without an explicit focus, a burst of tray clicks resolves every
+  // caller against a window nobody raised.
+  it("raises the window once for each concurrent follower and not for the leader", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({
+      resolveRendererUrl: () => rendererUrl,
+    });
+
+    const leader = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const follower = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    await Promise.all([leader, follower]);
+
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("notifies the registry when a concurrent open promotes always-on-top after creation", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({ resolveRendererUrl: () => rendererUrl });
+
+    const first = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const second = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+      alwaysOnTop: true,
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    await Promise.all([first, second]);
+
+    expect(fixture.created[0]?.setAlwaysOnTop).toHaveBeenCalledWith(true);
+    // Creation notifies once; the post-creation promotion must notify again so
+    // the tray/menu window list does not keep a stale alwaysOnTop flag.
+    expect(fixture.registryChanged.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(fixture.manager.listWindows()).toEqual([
+      expect.objectContaining({ id: "app_workspace", alwaysOnTop: true }),
+    ]);
+  });
+
+  it("clears a failed app-slug reservation so a later open can retry", async () => {
+    const resolveRendererUrl = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error("renderer unavailable"))
+      .mockResolvedValueOnce("http://127.0.0.1:5173/?boot=1#old");
+    const fixture = createFixture({ resolveRendererUrl });
+
+    await expect(
+      fixture.manager.openAppWindow({
+        slug: "workspace",
+        title: "Workspace",
+        path: "/",
+      }),
+    ).rejects.toThrow("renderer unavailable");
+
+    await expect(
+      fixture.manager.openAppWindow({
+        slug: "workspace",
+        title: "Workspace",
+        path: "/",
+      }),
+    ).resolves.toMatchObject({ id: "app_workspace" });
+    expect(resolveRendererUrl).toHaveBeenCalledTimes(2);
+    expect(fixture.created).toHaveLength(1);
+  });
+
   it("focuses, mutates always-on-top, lists, traverses, and loads existing app windows", async () => {
     const fixture = createFixture();
 

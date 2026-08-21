@@ -234,6 +234,11 @@ function normalizedRequests() {
 export default scenario({
   id: "deterministic-app-control-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Deterministic app-control action catalog",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "app-control"],

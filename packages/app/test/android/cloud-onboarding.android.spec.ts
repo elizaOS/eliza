@@ -38,6 +38,11 @@ const DEFAULT_E2E_WALLET_PRIVATE_KEY_PARTS = [
 
 type CloudOnboardingMode = "tap" | "autologin";
 
+// The wallet private key crosses the browser evaluation boundary below.
+// Playwright traces serialize evaluation arguments, so this secret-bearing
+// lane must use the separately captured Android video and screenshots only.
+test.use({ trace: "off" });
+
 async function installCloudOnboardingHarness(
   page: import("@playwright/test").Page,
   mode: CloudOnboardingMode,

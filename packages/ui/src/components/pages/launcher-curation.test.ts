@@ -115,7 +115,9 @@ describe("routable launcher catalog pipeline", () => {
       cloudActive: false,
     });
 
-    expect(ids(page)).toEqual(["settings", "wallet", "my-apps"]);
+    // The stale builtin `my-apps` registration collapses onto the consolidated
+    // Projects tile (#17031) instead of resurrecting the retired view.
+    expect(ids(page)).toEqual(["settings", "wallet", "tasks"]);
     expect(ids(page)).not.toContain("views");
     expect(ids(page)).not.toContain("database");
     expect(ids(page)).not.toContain("hidden-plugin");
@@ -312,13 +314,15 @@ describe("curateLauncherPages", () => {
     ).toEqual(["wallet", "cloud"]);
   });
 
-  it("never tiles the Cloud Applications studio — My Apps is the one apps tile", () => {
-    // Shaw's consolidation: `cloud-apps` (the native Cloud Applications studio,
-    // label "Cloud Apps") is reached from inside My Apps and by /cloud-apps
-    // deep link; the launcher must show exactly one apps destination whether or
-    // not cloud is signed in.
+  it("never tiles the Cloud Applications studio — Projects is the one apps tile", () => {
+    // Consolidation (#17031): `cloud-apps` (the native Cloud Applications
+    // studio, label "Cloud Apps") is reached from the Projects view's Apps
+    // segment and by /cloud-apps deep link; the launcher must show exactly one
+    // apps destination whether or not cloud is signed in, and a stale
+    // `my-apps` registration folds onto that same tile.
     const views = [
       entry("wallet"),
+      entry("tasks", { label: "Projects", builtin: true }),
       entry("my-apps", { label: "My Apps", builtin: true }),
       entry("cloud-apps", { label: "Cloud Apps" }),
     ];
@@ -328,8 +332,8 @@ describe("curateLauncherPages", () => {
         enabledKinds: ENABLED,
         cloudActive,
       });
-      expect(ids(page)).toEqual(["wallet", "my-apps"]);
-      expect(page.find((e) => e.id === "my-apps")?.label).toBe("My Apps");
+      expect(ids(page)).toEqual(["wallet", "tasks"]);
+      expect(page.find((e) => e.id === "tasks")?.label).toBe("Projects");
     }
   });
 
@@ -556,9 +560,9 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("tasks", { builtin: true }),
     entry("todos"),
     entry("task-coordinator", { viewKind: "preview" }),
-    // Everyday apps.
+    // Stale everyday-apps registration — folds onto the Projects tile (#17031).
     entry("my-apps", { label: "My Apps", builtin: true }),
-    // The native Cloud Applications studio — folded into My Apps, never a tile.
+    // The native Cloud Applications studio — folded into Projects, never a tile.
     entry("cloud-apps", { label: "Cloud Apps" }),
     entry("calendar", {
       label: "Calendar",
@@ -611,15 +615,14 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      // chat is the home surface — no launcher tile (#14479); cloud-apps folds
-      // into my-apps rather than tiling.
+      // chat is the home surface — no launcher tile (#14479); cloud-apps and
+      // the stale my-apps registration fold into the Projects (tasks) tile.
       "settings",
       "wallet",
       "tasks",
       "simple-calendar",
       "notes",
       "automations",
-      "my-apps",
       "browser",
       "character",
       "documents",
@@ -652,7 +655,6 @@ describe("curateLauncherPages — full realistic view set", () => {
       "simple-calendar",
       "notes",
       "automations",
-      "my-apps",
       "browser",
       "character",
       "documents",

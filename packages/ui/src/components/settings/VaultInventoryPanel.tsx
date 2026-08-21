@@ -23,6 +23,7 @@
  */
 
 import {
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ChevronDown,
@@ -55,10 +56,15 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
 import { SettingsSelectTrigger } from "../ui/settings-controls";
-import type { VaultEntryCategory, VaultEntryMeta } from "./vault-tabs/types";
+import type {
+  ConnectorSecretFinding,
+  VaultEntryCategory,
+  VaultEntryMeta,
+} from "./vault-tabs/types";
 
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
   provider: "Providers",
+  connector: "Connected accounts",
   plugin: "Plugins",
   wallet: "Wallet",
   credential: "Saved logins",
@@ -68,6 +74,7 @@ const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {
 
 const CATEGORY_ORDER: VaultEntryCategory[] = [
   "provider",
+  "connector",
   "plugin",
   "wallet",
   "credential",
@@ -84,6 +91,11 @@ const CATEGORY_INPUT_OPTIONS: Array<{
     value: "provider",
     labelKey: "vaultinventory.category.provider",
     defaultLabel: "Provider",
+  },
+  {
+    value: "connector",
+    labelKey: "vaultinventory.category.connector",
+    defaultLabel: "Connected account",
   },
   {
     value: "plugin",
@@ -121,6 +133,10 @@ export interface VaultInventoryPanelProps {
    * upward via `onChanged`.
    */
   entries?: VaultEntryMeta[];
+  /** Credential locations that are protected by file permissions, not Vault. */
+  securityFindings?: ConnectorSecretFinding[];
+  /** False when the connector scan failed, so "no findings" is not asserted. */
+  securityFindingsAvailable?: boolean;
   /**
    * When the parent owns the data, this callback is invoked after every
    * mutation so the modal can re-fetch and propagate the new list to
@@ -162,6 +178,8 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
     });
   const {
     entries: externalEntries,
+    securityFindings: externalSecurityFindings,
+    securityFindingsAvailable: externalSecurityFindingsAvailable,
     onChanged: externalOnChanged,
     onJumpToRouting,
     focusKey,
@@ -172,16 +190,25 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   const [internalEntries, setInternalEntries] = useState<
     VaultEntryMeta[] | null
   >(null);
+  const [internalSecurityFindings, setInternalSecurityFindings] = useState<
+    ConnectorSecretFinding[]
+  >([]);
+  const [internalFindingsAvailable, setInternalFindingsAvailable] =
+    useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const body = await client.fetch<{ entries: VaultEntryMeta[] }>(
-        "/api/secrets/inventory",
-      );
+      const body = await client.fetch<{
+        entries: VaultEntryMeta[];
+        securityFindings?: ConnectorSecretFinding[];
+        securityFindingsAvailable?: boolean;
+      }>("/api/secrets/inventory");
       setInternalEntries(body.entries);
+      setInternalSecurityFindings(body.securityFindings ?? []);
+      setInternalFindingsAvailable(body.securityFindingsAvailable !== false);
     } catch (err) {
       // Boundary translation: surface fetch / parse errors to the panel
       // banner so the modal stays usable (other tabs can still load).
@@ -201,10 +228,19 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
   }, [externalOnChanged, load]);
 
   const entries = ownsData ? internalEntries : (externalEntries ?? []);
+  const securityFindings = ownsData
+    ? internalSecurityFindings
+    : (externalSecurityFindings ?? []);
+  // An unavailable scan is a third state, distinct from "clean". Rendering it
+  // as an empty list would assert a clean bill of health the server never gave.
+  const findingsAvailable = ownsData
+    ? internalFindingsAvailable
+    : externalSecurityFindingsAvailable !== false;
 
   const grouped = useMemo(() => {
     const buckets: Record<VaultEntryCategory, VaultEntryMeta[]> = {
       provider: [],
+      connector: [],
       plugin: [],
       wallet: [],
       credential: [],
@@ -220,6 +256,48 @@ export function VaultInventoryPanel(props: VaultInventoryPanelProps = {}) {
 
   return (
     <section data-testid="vault-inventory-panel" className="space-y-2 pt-1">
+      {findingsAvailable ? null : (
+        <div
+          data-testid="vault-security-findings-unavailable"
+          className="space-y-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+        >
+          <div className="flex items-center gap-2 font-medium text-warning">
+            Connector credential scan unavailable
+          </div>
+          <p className="text-muted-foreground">
+            The scan did not run, so this is not a clean result. Reload to try
+            again.
+          </p>
+        </div>
+      )}
+      {findingsAvailable && securityFindings.length > 0 ? (
+        <div
+          data-testid="vault-security-findings"
+          className="space-y-2 rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-xs"
+        >
+          <div className="flex items-center gap-2 font-medium text-warning">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {securityFindings.length} connector credential
+            {securityFindings.length === 1 ? "" : "s"} still outside encrypted
+            Vault storage
+          </div>
+          <ul className="space-y-1.5 text-muted">
+            {securityFindings.map((finding) => (
+              <li key={finding.id} className="flex items-start gap-2">
+                <span
+                  className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-warning"
+                  aria-hidden
+                />
+                <span>
+                  <span className="font-medium text-txt">{finding.label}</span>
+                  {" — "}
+                  {finding.detail}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="flex items-center justify-between gap-2">
         <p className="min-w-0 text-sm font-medium text-txt">
           {t("vaultinventory.storedSecrets", {

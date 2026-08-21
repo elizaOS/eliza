@@ -18,6 +18,26 @@ import { withRetry } from "../rate-limit";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
+const META_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Meta Graph API hop so a hung API cannot pin the publishing worker
+ * indefinitely. A caller-provided abort signal wins. `graphApiRequest` runs
+ * inside `withRetry(..., { maxRetries: 3 })`, which replays the hop up to four
+ * times, so the bound has to be charged per attempt.
+ */
+export function metaFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = META_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 interface GraphApiError {
   error?: { message: string; code: number; type: string };
 }
@@ -58,7 +78,7 @@ async function graphApiRequest<T>(
 
   const { data } = await withRetry<T>(
     () =>
-      fetch(url.toString(), {
+      metaFetch(url.toString(), {
         ...options,
         headers: { "Content-Type": "application/json", ...options.headers },
       }),

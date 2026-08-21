@@ -33,6 +33,7 @@ import {
   type ResolvedAttachmentBytes,
   resolveAttachmentBytes,
   ServiceType,
+  toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
@@ -2319,8 +2320,10 @@ export class MessageManager {
       // Create callback for handling reaction responses
       const callback: HandlerCallback = async (content: Content) => {
         try {
-          // Add null check for content.text
-          const replyText = content.text ?? "";
+          const replyText = truncateWellFormed(
+            toWellFormedUnicode(content.text ?? ""),
+            MAX_MESSAGE_LENGTH,
+          );
           const sentMessage = await ctx.reply(replyText);
           const responseMemory: Memory = {
             id: createUniqueUuid(
@@ -2335,6 +2338,7 @@ export class MessageManager {
             roomId,
             content: {
               ...content,
+              text: sentMessage.text,
               inReplyTo: reactionId,
               metadata: { accountId: this.accountId },
             },

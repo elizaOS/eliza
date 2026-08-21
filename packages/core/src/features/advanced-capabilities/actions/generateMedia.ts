@@ -31,6 +31,10 @@ import type {
 import { ContentType, ModelType, ServiceType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { resolveSetting } from "../../../utils/resolve-setting.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 
 const spec: ActionDoc = getActionSpec("GENERATE_MEDIA") ?? {
 	name: "GENERATE_MEDIA",
@@ -515,7 +519,10 @@ export const generateMediaAction = {
 					src: "plugin:advanced-capabilities:action:generate_media",
 					agentId: runtime.agentId,
 					mediaType: request.mediaType,
-					promptPreview: request.prompt.slice(0, 120),
+					promptPreview: truncateWellFormed(
+						toWellFormedUnicode(request.prompt),
+						120,
+					),
 					hasImageUrl: Boolean(request.imageUrl),
 				},
 				"GENERATE_MEDIA handler invoking media service",

@@ -5,6 +5,7 @@
  * `Memory`. Group DMs are deliberately distinct from 1:1 DMs: only a true DM
  * may attest as an owner-only delivery audience downstream.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
 	ChannelType as DiscordChannelType,
 	type Message as DiscordMessage,
@@ -114,9 +115,10 @@ function buildChannelLabel(
 }
 
 function truncateText(text: string, maxChars: number): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= maxChars) return trimmed;
-	return `${trimmed.slice(0, maxChars - 3)}...`;
+	const wellFormed = toWellFormedUnicode(text.trim());
+	if (wellFormed.length <= maxChars) return wellFormed;
+	const budget = Math.max(0, maxChars - 3);
+	return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 function sanitizeReplyReferenceText(text: string): string {

@@ -777,6 +777,7 @@ describe("buildAgentSandboxInsertValues", () => {
       organizationId: "22222222-2222-4222-8222-222222222222",
       userId: "33333333-3333-4333-8333-333333333333",
       agentName: "bnancy",
+      executionTier: "shared" as const,
     };
 
     expect(
@@ -4705,6 +4706,35 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
         captureWaiverGeneration: null,
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
+  test("account deletion does not create a new backup of data being erased", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState");
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, {
+          authorization: "account_deletion",
+        }),
+      ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
+      expect(fetchSnap).not.toHaveBeenCalled();
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "account_deletion", {
+        snapshot: null,
+        captureUnsupportedGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   capabilitiesForSide,
+  LIFEOPS_BROWSER_KINDS,
   LIFEOPS_CONNECTOR_DEGRADATION_AXES,
   LIFEOPS_DISCORD_CAPABILITIES,
   LIFEOPS_GOOGLE_CAPABILITIES,
@@ -19,6 +20,10 @@ import {
 } from "./personal-assistant";
 
 describe("LifeOps shared contracts", () => {
+  it("supports every shipped browser-bridge companion", () => {
+    expect(LIFEOPS_BROWSER_KINDS).toEqual(["chrome", "firefox", "safari"]);
+  });
+
   it("keeps owner-side capabilities read-only", () => {
     expect(capabilitiesForSide(LIFEOPS_GOOGLE_CAPABILITIES, "owner")).toEqual([
       "google.calendar.read",

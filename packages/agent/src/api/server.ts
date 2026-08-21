@@ -137,6 +137,8 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
   extensionPath: null,
   chromeBuildPath: null,
   chromePackagePath: null,
+  firefoxBuildPath: null,
+  firefoxPackagePath: null,
   safariWebExtensionPath: null,
   safariAppPath: null,
   safariPackagePath: null,
@@ -1320,6 +1322,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
@@ -1368,6 +1371,7 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
 const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1571,6 +1575,13 @@ async function handleRequest(
   // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
   // and live credit balance (W1-010).
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  const requestOrigin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  // A same-origin navigation commonly omits Origin. When an Origin is present,
+  // ambient cookie authority is available only to the narrower credentialed
+  // CORS trust set; arbitrary reflected origins remain bearer-only.
+  const allowHostCookieAuth =
+    requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1586,12 +1597,16 @@ async function handleRequest(
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
+          { allowCookieAuth: allowHostCookieAuth },
         );
         return hostSessionAuthorization;
       }
       const authorize = bridge.isHttpRequestAuthorized;
+      // A legacy boolean-only bridge cannot separate cookie from bearer
+      // authority. Do not consult it for an explicitly untrusted origin;
+      // standalone bearer schemes are evaluated by the normal server gates.
       const authorized =
-        typeof authorize === "function"
+        allowHostCookieAuth && typeof authorize === "function"
           ? await authorize(req, state.runtime)
           : false;
       // Legacy boolean-only hosts can still pass the coarse request gate, but
@@ -3546,6 +3561,11 @@ export type ApiServerConfigurator = (
   server: http.Server,
 ) => void | Promise<void>;
 
+export type WebSocketAuthorizer = (
+  request: http.IncomingMessage,
+  url: URL,
+) => boolean | Promise<boolean>;
+
 function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
@@ -3588,6 +3608,13 @@ export async function startApiServer(opts?: {
    * intended for protocol extensions such as WebSocket upgrade handlers.
    */
   configureServer?: ApiServerConfigurator;
+  /**
+   * Lets a host recognize credentials it owns before the dashboard WebSocket
+   * is admitted. The agent server still owns origin/path checks, pending-socket
+   * limits, and its static-token fallback; this hook only adds an authenticated
+   * principal such as app-core's revocable machine session.
+   */
+  authorizeWebSocket?: WebSocketAuthorizer;
 }): Promise<{
   port: number;
   close: () => Promise<void>;
@@ -4170,8 +4197,13 @@ export async function startApiServer(opts?: {
     );
   };
 
+  // Requests authenticated by the host hook must remain authenticated when
+  // `ws` emits its later connection event. IncomingMessage identity is stable
+  // across handleUpgrade, and WeakSet avoids retaining completed requests.
+  const hostAuthorizedWebSocketRequests = new WeakSet<http.IncomingMessage>();
+
   // Handle upgrade requests for WebSocket
-  server.on("upgrade", (request, socket, head) => {
+  server.on("upgrade", async (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
     // a WebSocket — and its error handler — exists. Unhandled, it crashes the
     // process. Attach a no-op-ish guard for the whole upgrade window.
@@ -4209,7 +4241,26 @@ export async function startApiServer(opts?: {
       // DoS. The slot releases when the socket authenticates or closes (see
       // the connection handler), or in the catch below if the upgrade fails.
       let pendingWsPeer: string | null | undefined;
-      if (!isWebSocketAuthorized(request, wsUrl)) {
+      const staticallyAuthorized = isWebSocketAuthorized(request, wsUrl);
+      let hostAuthorized = false;
+      if (!staticallyAuthorized && opts?.authorizeWebSocket) {
+        try {
+          hostAuthorized = await opts.authorizeWebSocket(request, wsUrl);
+        } catch (error) {
+          // error-policy:J1 host authentication is an outer protocol boundary:
+          // fail closed for that credential and retain the bounded post-open
+          // static-token flow instead of crashing the server.
+          logger.error(
+            `[eliza-api] host WebSocket authorization failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+      if (hostAuthorized) {
+        hostAuthorizedWebSocketRequests.add(request);
+      }
+      if (!staticallyAuthorized && !hostAuthorized) {
         const peer = request.socket.remoteAddress ?? null;
         if (!tryAcquirePendingWebSocket(peer)) {
           rejectWebSocketUpgrade(
@@ -4235,6 +4286,7 @@ export async function startApiServer(opts?: {
           wss.emit("connection", ws, request);
         });
       } catch (upgradeErr) {
+        hostAuthorizedWebSocketRequests.delete(request);
         // error-policy:J2 release the reserved pre-auth slot, then rethrow
         // unchanged into the outer boundary handler.
         if (pendingWsPeer !== undefined) {
@@ -4243,6 +4295,7 @@ export async function startApiServer(opts?: {
         throw upgradeErr;
       }
     } catch (err) {
+      hostAuthorizedWebSocketRequests.delete(request);
       logger.error(
         `[eliza-api] WebSocket upgrade error: ${err instanceof Error ? err.message : err}`,
       );
@@ -4269,7 +4322,9 @@ export async function startApiServer(opts?: {
       wsUrl = new URL("ws://localhost/ws");
     }
 
-    let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+    const hostAuthorized = hostAuthorizedWebSocketRequests.delete(request);
+    let isAuthenticated =
+      hostAuthorized || isWebSocketAuthorized(request, wsUrl);
 
     // W5-015: the upgrade handler reserved a pre-auth slot for this socket's
     // peer. It releases on post-open authentication or on close — whichever

@@ -72,6 +72,7 @@ import {
   getTweetV2,
   getTweetWhere,
   likeTweet,
+  nextTimelinePageCursor,
   type PollData,
   parseTweetV2ToV1,
   type Retweeter,
@@ -574,8 +575,11 @@ export class Client {
     const tweets = await this.withAuthenticatedSession(async () => {
       const collected: Tweet[] = [];
       let cursor: string | undefined;
+      let pageCount = 0;
+      const seenCursors = new Set<string>();
 
       while (collected.length < maxTweets) {
+        pageCount += 1;
         const response = await this.getUserTweets(
           userId,
           maxTweets - collected.length,
@@ -584,7 +588,15 @@ export class Client {
         collected.push(
           ...response.tweets.slice(0, maxTweets - collected.length),
         );
-        cursor = response.next;
+
+        if (collected.length >= maxTweets) break;
+
+        cursor = nextTimelinePageCursor(
+          "getUserTweetsIterator",
+          response.next,
+          seenCursors,
+          pageCount,
+        );
         if (!cursor) break;
       }
       return collected;

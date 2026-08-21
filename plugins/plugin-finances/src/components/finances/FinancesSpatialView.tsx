@@ -17,8 +17,17 @@
 
 import { Button, Card, HStack, List, Text, VStack } from "@elizaos/ui/spatial";
 
-/** Which render state the dashboard is in. */
-export type FinancesViewState = "loading" | "error" | "empty" | "ready";
+/**
+ * Which render state the dashboard is in. `reauth` is distinct from `empty`:
+ * sources exist but every one needs re-authentication, so the dashboard must
+ * not render balances that can no longer refresh as if they were healthy.
+ */
+export type FinancesViewState =
+  | "loading"
+  | "error"
+  | "empty"
+  | "reauth"
+  | "ready";
 
 /** A balance summary row, already projected to display strings by the wrapper. */
 export interface FinanceBalanceCard {
@@ -56,6 +65,25 @@ export interface FinanceRecurringCard {
   amount: string;
 }
 
+/** One connected payment source row, already projected to display strings. */
+export interface FinanceSourceCard {
+  id: string;
+  label: string;
+  /** Pre-formatted secondary line (institution + kind). */
+  meta: string;
+  /** Pre-formatted status label (e.g. "Connected", "Needs reconnect"). */
+  statusLabel: string;
+  /** True when the source needs re-authentication (renders the reconnect affordance). */
+  needsReauth: boolean;
+}
+
+/** One filter chip, already labeled by the wrapper; `action` is the dispatch id. */
+export interface FinanceFilterChip {
+  action: string;
+  label: string;
+  active: boolean;
+}
+
 export interface FinancesSnapshot {
   /** The dashboard state machine. */
   state: FinancesViewState;
@@ -63,10 +91,25 @@ export interface FinancesSnapshot {
   balance: FinanceBalanceCard;
   /** Recent transactions (only meaningful when state === "ready"). */
   transactions: FinanceTransactionCard[];
+  /**
+   * Count of transactions in the unfiltered window; when it exceeds
+   * `transactions.length`, an active filter is hiding rows and the empty
+   * transaction list is a designed-empty filter result, not "no data".
+   */
+  transactionsTotal: number;
   /** Recurring charges (only meaningful when state === "ready"). */
   recurring: FinanceRecurringCard[];
+  /** Connected payment sources (meaningful when state is "ready" or "reauth"). */
+  sources: FinanceSourceCard[];
+  /** Date-window / category filter chips (only meaningful when state === "ready"). */
+  filters: FinanceFilterChip[];
   /** One quiet proactive line, or empty when there is no genuine signal. */
   note: string;
+  /**
+   * True when the last quiet refresh failed and the rendered data may be out
+   * of date; drives a visible staleness line instead of silent fake freshness.
+   */
+  stale: boolean;
   /** Error message when state === "error". */
   error?: string;
 }
@@ -83,8 +126,12 @@ export const EMPTY_FINANCES_SNAPSHOT: FinancesSnapshot = {
   state: "loading",
   balance: EMPTY_BALANCE,
   transactions: [],
+  transactionsTotal: 0,
   recurring: [],
+  sources: [],
+  filters: [],
   note: "",
+  stale: false,
 };
 
 export interface FinancesSpatialViewProps {
@@ -93,6 +140,8 @@ export interface FinancesSpatialViewProps {
    * Dispatch by agent id:
    *   `retry`            reload after an error,
    *   `connect`          route a connect-a-source request to chat,
+   *   `reconnect-<id>`   route a re-authentication request to chat,
+   *   `filter-*`         toggle a date-window/category filter (wrapper-owned),
    *   `txn-<id>`         open a transaction,
    *   `bill-<id>`        open a recurring charge.
    */
@@ -115,6 +164,8 @@ export function FinancesSpatialView({
         <FinancesErrorBody snapshot={snapshot} dispatch={dispatch} />
       ) : snapshot.state === "empty" ? (
         <FinancesEmptyBody dispatch={dispatch} />
+      ) : snapshot.state === "reauth" ? (
+        <FinancesReauthBody snapshot={snapshot} dispatch={dispatch} />
       ) : (
         <FinancesReadyBody snapshot={snapshot} dispatch={dispatch} />
       )}
@@ -161,6 +212,49 @@ function FinancesEmptyBody({
   );
 }
 
+function FinancesReauthBody({
+  snapshot,
+  dispatch,
+}: {
+  snapshot: FinancesSnapshot;
+  dispatch: (action: string) => () => void;
+}) {
+  return (
+    <>
+      <Text bold>Reconnect needed</Text>
+      <Text tone="warning" style="caption">
+        Every payment source needs re-authentication. Balances cannot refresh
+        until a source is reconnected.
+      </Text>
+      <List gap={0}>
+        {snapshot.sources.map((source) => (
+          <HStack key={source.id} gap={1} align="center" width="100%">
+            <VStack gap={0} grow={1}>
+              <Text bold wrap={false}>
+                {source.label}
+              </Text>
+              <Text style="caption" tone="muted" wrap={false}>
+                {source.meta}
+              </Text>
+            </VStack>
+            <Button
+              agent={`reconnect-${source.id}`}
+              onPress={dispatch(`reconnect-${source.id}`)}
+            >
+              Reconnect
+            </Button>
+          </HStack>
+        ))}
+      </List>
+      <HStack gap={1}>
+        <Button agent="retry" onPress={dispatch("retry")}>
+          Retry
+        </Button>
+      </HStack>
+    </>
+  );
+}
+
 function FinancesReadyBody({
   snapshot,
   dispatch,
@@ -175,13 +269,92 @@ function FinancesReadyBody({
           {snapshot.note}
         </Text>
       ) : null}
+      {snapshot.stale ? (
+        <Text tone="warning" style="caption">
+          Data may be out of date — the last refresh failed.
+        </Text>
+      ) : null}
       <BalanceSection balance={snapshot.balance} />
+      <SourcesSection sources={snapshot.sources} dispatch={dispatch} />
+      <FiltersSection filters={snapshot.filters} dispatch={dispatch} />
       <TransactionsSection
         transactions={snapshot.transactions}
+        transactionsTotal={snapshot.transactionsTotal}
         dispatch={dispatch}
       />
       <RecurringSection recurring={snapshot.recurring} dispatch={dispatch} />
     </>
+  );
+}
+
+function SourcesSection({
+  sources,
+  dispatch,
+}: {
+  sources: FinanceSourceCard[];
+  dispatch: (action: string) => () => void;
+}) {
+  if (sources.length === 0) return null;
+  return (
+    <>
+      <Text style="caption" tone="muted">
+        Sources ({sources.length})
+      </Text>
+      <List gap={0}>
+        {sources.map((source) => (
+          <HStack key={source.id} gap={1} align="center" width="100%">
+            <VStack gap={0} grow={1}>
+              <Text bold wrap={false}>
+                {source.label}
+              </Text>
+              <Text style="caption" tone="muted" wrap={false}>
+                {source.meta}
+              </Text>
+            </VStack>
+            <Text
+              style="caption"
+              tone={source.needsReauth ? "warning" : "muted"}
+              wrap={false}
+            >
+              {source.statusLabel}
+            </Text>
+            {source.needsReauth ? (
+              <Button
+                agent={`reconnect-${source.id}`}
+                onPress={dispatch(`reconnect-${source.id}`)}
+              >
+                Reconnect
+              </Button>
+            ) : null}
+          </HStack>
+        ))}
+      </List>
+    </>
+  );
+}
+
+function FiltersSection({
+  filters,
+  dispatch,
+}: {
+  filters: FinanceFilterChip[];
+  dispatch: (action: string) => () => void;
+}) {
+  if (filters.length === 0) return null;
+  return (
+    <HStack gap={1} width="100%">
+      {filters.map((chip) => (
+        <Button
+          key={chip.action}
+          agent={chip.action}
+          tone={chip.active ? "primary" : "muted"}
+          pressed={chip.active}
+          onPress={dispatch(chip.action)}
+        >
+          {chip.label}
+        </Button>
+      ))}
+    </HStack>
   );
 }
 
@@ -213,19 +386,26 @@ function BalanceSection({ balance }: { balance: FinanceBalanceCard }) {
 
 function TransactionsSection({
   transactions,
+  transactionsTotal,
   dispatch,
 }: {
   transactions: FinanceTransactionCard[];
+  transactionsTotal: number;
   dispatch: (action: string) => () => void;
 }) {
+  const filteredOut = transactionsTotal > transactions.length;
   return (
     <>
       <Text style="caption" tone="muted">
-        Transactions ({transactions.length})
+        Transactions (
+        {filteredOut
+          ? `${transactions.length} of ${transactionsTotal}`
+          : transactions.length}
+        )
       </Text>
       {transactions.length === 0 ? (
         <Text tone="muted" style="caption">
-          None
+          {filteredOut ? "No transactions match the filter" : "None"}
         </Text>
       ) : (
         <List gap={0}>

@@ -8,7 +8,13 @@ import {
   resolveKnowledgeGraphService,
   resolveOwnerEntityId,
 } from "@elizaos/agent";
-import { ElizaError, type IAgentRuntime, type Memory } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  type Memory,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type {
   OwnerFactsView,
   ScheduledTaskDispatchRecord,
@@ -172,7 +178,10 @@ async function resolveRecentConversation(
             : "";
         if (!text) return null;
         const speaker = entityId === agentEntityId ? "Assistant" : "Owner";
-        return `${speaker}: ${text}`.slice(0, RECENT_CONVERSATION_LINE_LIMIT);
+        return truncateWellFormed(
+          toWellFormedUnicode(`${speaker}: ${text}`),
+          RECENT_CONVERSATION_LINE_LIMIT,
+        );
       })
       .filter((line: string | null): line is string => line !== null)
       .slice(-RECENT_CONVERSATION_LIMIT);

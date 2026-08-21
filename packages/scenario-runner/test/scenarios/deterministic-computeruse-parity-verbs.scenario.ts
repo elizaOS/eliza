@@ -134,6 +134,11 @@ function expectParityResults(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "deterministic-computeruse-parity-verbs",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Computer-use parity verbs (set_value / kill_app / window getters)",
   domain: "computeruse",
   tags: ["pr", "deterministic", "zero-cost", "computeruse", "parity"],

@@ -6,6 +6,7 @@ import type {
   MobileSignalsPermissionStatus,
   MobileSignalsPlatform,
   MobileSignalsPlugin,
+  MobileSignalsPresentScreenTimeReportResult,
   MobileSignalsScreenTimeStatus,
   MobileSignalsSettingsTarget,
   MobileSignalsSetupAction,
@@ -70,12 +71,15 @@ function getPlatform(): MobileSignalsPlatform {
 function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
   return {
     supported: false,
+    hostEnvironment: "web",
+    availability: "platform-unavailable",
     requirements: SCREEN_TIME_REQUIREMENTS,
     entitlements: {
       familyControls: false,
     },
     provisioning: {
       satisfied: false,
+      status: "missing",
       inspected: "not-inspectable",
       reason,
     },
@@ -280,6 +284,13 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
       target,
       actualTarget: "app",
       reason: "Web fallback cannot open native device settings.",
+    };
+  }
+
+  async presentScreenTimeReport(): Promise<MobileSignalsPresentScreenTimeReportResult> {
+    return {
+      presented: false,
+      reason: "Web fallback cannot present a native DeviceActivity report.",
     };
   }
 

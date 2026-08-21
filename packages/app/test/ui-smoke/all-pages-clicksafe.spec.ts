@@ -170,12 +170,13 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
     name: "my apps",
     path: "/apps",
-    // `/apps` is the canonical My Apps management surface. The launcher grid
-    // remains available at `/views`.
+    // Retired My Apps deep link (#17031): lands on the consolidated Projects
+    // surface with the Apps segment pre-selected. The launcher grid remains
+    // available at `/views`.
     readyChecks: [{ text: "Install, create, and run your elizaOS apps." }],
     timeoutMs: 60_000,
     requireViewHeader: true,
-    viewHeaderTitle: "My Apps",
+    viewHeaderTitle: "Projects",
   },
   {
     name: "automations",

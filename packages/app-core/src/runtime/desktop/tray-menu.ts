@@ -170,7 +170,7 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     entryPoint: "tray",
     label: "Open Workspace",
     expectedAction:
-      "Open and focus the complete Eliza workstation with its shared chat overlay.",
+      "Open and focus the singleton Eliza Workspace without duplicating the detached assistant.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },

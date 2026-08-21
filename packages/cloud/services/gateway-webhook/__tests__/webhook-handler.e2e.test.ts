@@ -547,7 +547,7 @@ describe("gateway webhook handler e2e routing", () => {
       expect.objectContaining({
         traceId: "11111111-1111-4111-8111-111111111111",
         attempt: 1,
-        maxAttempts: 3,
+        maxAttempts: 4,
         status: 200,
         retryable: false,
         retryDelayMs: null,
@@ -834,6 +834,78 @@ describe("gateway webhook handler e2e routing", () => {
       },
     ]);
     expect(adapter.replies).toEqual(["fresh-token reply"]);
+  });
+
+  test("still refreshes stale Cloud auth when transport retries happened first", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({ messageId: "SM_transport_then_auth" });
+    const adapter = createAdapter(event);
+    const reauth = mock(async () => ({ Authorization: "Bearer fresh" }));
+    const personalRequests: Array<{
+      authorization: string | null;
+      messageId: unknown;
+    }> = [];
+
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/eliza-app/personal-shared/messages"
+      ) {
+        const body = (await request.json()) as Record<string, unknown>;
+        personalRequests.push({
+          authorization: request.headers.get("authorization"),
+          messageId: body.messageId,
+        });
+        if (personalRequests.length <= 2) {
+          throw new Error("The operation timed out.");
+        }
+        if (personalRequests.length === 3) {
+          return new Response("unauthorized", { status: 401 });
+        }
+        return Response.json({ data: { reply: "recovered reply" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer stale" }),
+        reacquireAuthHeader: reauth,
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(
+      () => adapter.replies.length === 1,
+      "transport-then-auth personal Shared reply",
+    );
+    expect(reauth).toHaveBeenCalledTimes(1);
+    expect(personalRequests).toEqual([
+      {
+        authorization: "Bearer stale",
+        messageId: `twilio:eliza-app:${event.messageId}`,
+      },
+      {
+        authorization: "Bearer stale",
+        messageId: `twilio:eliza-app:${event.messageId}`,
+      },
+      {
+        authorization: "Bearer stale",
+        messageId: `twilio:eliza-app:${event.messageId}`,
+      },
+      {
+        authorization: "Bearer fresh",
+        messageId: `twilio:eliza-app:${event.messageId}`,
+      },
+    ]);
+    expect(adapter.replies).toEqual(["recovered reply"]);
   });
 
   test("routes linked Twilio through the canonical personal conversation", async () => {

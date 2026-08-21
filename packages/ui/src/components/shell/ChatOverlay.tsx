@@ -51,10 +51,11 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   type BackIntentEventDetail,
+  CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
-  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   type ChatPrefillEventDetail,
+  DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
   ELIZA_BACK_INTENT_EVENT,
   NAVIGATE_VIEW_EVENT,
   type NavigateViewDetail,
@@ -169,6 +170,7 @@ import {
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
+import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { RestingPillButton } from "./RestingPillButton";
@@ -1230,6 +1232,7 @@ export function ChatOverlay({
   slash: slashProp,
   firstRunOpen = false,
   releaseFirstRunToHalf = false,
+  releaseFirstRunToFull = false,
   onFirstRunReleaseHandled,
   onPilledChange,
   onDetentChange,
@@ -1265,6 +1268,8 @@ export function ChatOverlay({
    * completion and a runtime-target remount happen in the same transition.
    */
   releaseFirstRunToHalf?: boolean;
+  /** Optional browser/mobile completion release retained from the upstream shell. */
+  releaseFirstRunToFull?: boolean;
   /** Acknowledges that the retained completion intent reached this overlay. */
   onFirstRunReleaseHandled?: () => void;
   /** Reports entry to and exit from the component's resting pill state. */
@@ -1274,7 +1279,7 @@ export function ChatOverlay({
   /** Compatibility signal for hosts that still consume the named surface state. */
   onStateChange?: (state: ChatState) => void;
   /** Initial resting shape for a host-owned compact window. */
-  initialMode?: Extract<ChatMode, "pill" | "input">;
+  initialMode?: Extract<ChatMode, "pill" | "input" | "half">;
   /**
    * Start a detached pill host at its visible composer without changing its
    * resting contract. Unlike `requestedOpen`, this is consumed only by the
@@ -1579,6 +1584,16 @@ export function ChatOverlay({
     React.useState(false);
   const transcriptionComposerActive =
     transcriptionMode || transcriptionFinishing;
+  const cloudLoginWaiting = React.useMemo(
+    () =>
+      firstRunOpen &&
+      messages.some(
+        (message) =>
+          message.id === "first-run:cloud-login-waiting" &&
+          message.content.startsWith("Waiting for sign-in in the browser"),
+      ),
+    [firstRunOpen, messages],
+  );
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -1608,7 +1623,7 @@ export function ChatOverlay({
   // Onboarding stays undismissable on every host. The detached native
   // companion owns a full-height window during first-run; browser/mobile keep
   // their established shared half-sheet contract.
-  const pinnedOpen = firstRunOpen;
+  const pinnedOpen = firstRunOpen && !cloudLoginWaiting;
   const pinnedMode: ChatMode = desktopOverlayHost ? "full" : "half";
   const [mode, setMode] = React.useState<ChatMode>(
     pinnedOpen
@@ -1709,6 +1724,23 @@ export function ChatOverlay({
   // empty composer settles it back to compact. Elsewhere focus is tracked via
   // refs (composerFocusedAtPressRef) that must not trigger a re-render.
   const [composerFocused, setComposerFocused] = React.useState(false);
+  React.useEffect(
+    () => () => {
+      // The setting is WebView-global. Always restore it when chat leaves the
+      // tree so a later settings or onboarding field retains its accessory.
+      setChatComposerAccessoryBarHidden(false);
+    },
+    [],
+  );
+  React.useLayoutEffect(() => {
+    if (!transcriptionComposerActive && !realtimeVoiceComposerVisible) return;
+    // Removing a focused textarea does not reliably emit blur in WebKit. Give
+    // the WebView-global accessory back in the same commit that installs the
+    // voice/transcription surface, otherwise every later form can inherit
+    // chat's hidden state until the overlay itself unmounts.
+    setChatComposerAccessoryBarHidden(false);
+    setComposerFocused(false);
+  }, [realtimeVoiceComposerVisible, transcriptionComposerActive]);
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
@@ -3609,14 +3641,12 @@ export function ChatOverlay({
   // grabber. At the endpoint it hands off at the exact same pixels to the real
   // SheetGrabber, which retains all open-state interaction semantics. Embedded
   // and browser surfaces keep their established capsule/grabber treatment.
-  const desktopPillTravelerY = useTransform(
-    openProgress,
-    (progress) =>
-      desktopPillTravelerOffset(
-        progress,
-        CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
-        CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-      ),
+  const desktopPillTravelerY = useTransform(openProgress, (progress) =>
+    desktopPillTravelerOffset(
+      progress,
+      CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
+      CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+    ),
   );
   const desktopPillTravelerScaleX = useTransform(
     openProgress,
@@ -4255,7 +4285,10 @@ export function ChatOverlay({
     ],
   );
 
-  // First-run onboarding pin + release. The detached native companion owns a
+  // First-run onboarding pin + release. External browser sign-in temporarily
+  // returns every host to its compact composer so the browser remains readable
+  // and the familiar field can reopen the recovery transcript. The detached
+  // native companion otherwise owns a
   // full-height first-run window and settles to its composer-friendly HALF
   // stage. Browser/mobile retain the canonical HALF onboarding sheet and reveal
   // the completed conversation at inset FULL. Keeping this host-specific avoids
@@ -4264,21 +4297,43 @@ export function ChatOverlay({
   React.useEffect(() => {
     const was = wasFirstRunOpenRef.current;
     wasFirstRunOpenRef.current = firstRunOpen;
+    if (cloudLoginWaiting) {
+      setFreeH(null);
+      setMode("input");
+      setMaximized(false);
+      return;
+    }
     if (firstRunOpen) {
       setFreeH(null);
       setMode(desktopOverlayHost ? "full" : "half");
       setMaximized(false);
       return;
     }
-    if (was || releaseFirstRunToHalf) {
+    if (releaseFirstRunToFull) {
+      goToDetent("full");
+      onFirstRunReleaseHandled?.();
+      return;
+    }
+    if (releaseFirstRunToHalf) {
       goToDetent(desktopOverlayHost ? "half" : "full");
       onFirstRunReleaseHandled?.();
+      return;
+    }
+    if (was) {
+      // A bare status flip is not proof that the mounted onboarding transcript
+      // completed. Return to the normal composer until the shell supplies its
+      // one-shot release intent.
+      setFreeH(null);
+      setMode("input");
+      setMaximized(false);
     }
   }, [
+    cloudLoginWaiting,
     firstRunOpen,
     goToDetent,
     onFirstRunReleaseHandled,
     releaseFirstRunToHalf,
+    releaseFirstRunToFull,
     desktopOverlayHost,
   ]);
 
@@ -4543,6 +4598,18 @@ export function ChatOverlay({
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [pinnedOpen, expand]);
 
+  // Control-heavy views can explicitly ask the ambient sheet to yield focus.
+  // Keep onboarding pinned: its chat choices are the active first-run UI and
+  // must not be dismissed by background navigation.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onClose = () => {
+      if (!pinnedOpen) collapse();
+    };
+    window.addEventListener(CHAT_CLOSE_EVENT, onClose);
+    return () => window.removeEventListener(CHAT_CLOSE_EVENT, onClose);
+  }, [pinnedOpen, collapse]);
+
   // The structural OS-intent authority routes untrusted launch text as a local
   // composer-prefill event (or targeted cross-window delivery), never as an
   // automatic send. The user reviews it here before submitting.
@@ -4745,7 +4812,15 @@ export function ChatOverlay({
         inputRef.current?.focus();
       }
     },
-    [slash, submitText, setDraft, toggleTranscriptionMode, collapse],
+    [
+      slash,
+      submitText,
+      setDraft,
+      toggleTranscriptionMode,
+      collapse,
+      closeSheet,
+      desktopOverlayHost,
+    ],
   );
 
   const submit = React.useCallback(() => {
@@ -6038,7 +6113,7 @@ export function ChatOverlay({
       : // Onboarding is a pinned-open sheet even when sized to its content
         // (freeH); keep reporting "full" so the undismissable-onboarding
         // contract (unit + on-device gesture suites) stays honest.
-        firstRunOpen
+        pinnedOpen
         ? "full"
         : freeH != null
           ? Math.min(freeH, panelMaxH) >= openH - 1
@@ -6171,6 +6246,7 @@ export function ChatOverlay({
               : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
+      data-chat-overlay=""
       data-chat-gesture-surface=""
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -7262,9 +7338,12 @@ export function ChatOverlay({
                   ref={inputRef}
                   rows={1}
                   value={draft}
-                  // Onboarding is sign-in-first: lock the composer until the user
-                  // signs in, so they can't type into a chat that isn't ready yet.
-                  disabled={firstRunOpen}
+                  // Onboarding is sign-in-first: before launch the composer is
+                  // disabled. While the external browser owns sign-in it is
+                  // read-only, so clicking the compact composer can reopen the
+                  // recovery transcript without accepting an unsendable draft.
+                  disabled={firstRunOpen && !cloudLoginWaiting}
+                  readOnly={cloudLoginWaiting}
                   onChange={(e) => {
                     const nextDraft = e.target.value;
                     resetMessageHistory();
@@ -7286,6 +7365,7 @@ export function ChatOverlay({
                     if (nextDraft.trim().length > 0) expandFromTyping();
                   }}
                   onFocus={() => {
+                    setChatComposerAccessoryBarHidden(true);
                     // Widen out of the short-landscape compact affordance (#14173)
                     // on focus, before the first keystroke.
                     setComposerFocused(true);
@@ -7293,6 +7373,8 @@ export function ChatOverlay({
                     // expand a history thread (see suppressExpandOnFocusRef).
                     if (suppressExpandOnFocusRef.current) {
                       suppressExpandOnFocusRef.current = false;
+                    } else if (cloudLoginWaiting) {
+                      goToDetent("half");
                     } else if (!desktopOverlayHost) {
                       // The detached companion's input is a stable composer
                       // detent. Clicking into it should raise focus, not fling
@@ -7301,7 +7383,11 @@ export function ChatOverlay({
                       expand();
                     }
                   }}
+                  onClick={() => {
+                    if (cloudLoginWaiting) goToDetent("half");
+                  }}
                   onBlur={() => {
+                    setChatComposerAccessoryBarHidden(false);
                     setComposerFocused(false);
                     // A suppress-expand flag armed for a focus that never landed
                     // (openFromPill arms it BEFORE focusing) must not survive to
@@ -7319,7 +7405,9 @@ export function ChatOverlay({
                     compactLanding
                       ? "Message"
                       : firstRunOpen
-                        ? "Sign in to start chatting"
+                        ? cloudLoginWaiting
+                          ? "Waiting for sign-in…"
+                          : "Sign in to start chatting"
                         : noProviderConfigured
                           ? "Connect a model provider in Settings to chat"
                           : modelBlocksSend

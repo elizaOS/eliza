@@ -25,6 +25,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,7 +55,6 @@ import {
   LazyLogsView,
   LazyMemoryViewerView,
   LazyMessagesPageView,
-  LazyMyAppsView,
   LazyPendantTranscriptView,
   LazyPhonePageView,
   LazyPluginsPageView,
@@ -65,6 +65,7 @@ import {
   LazyStreamView,
   LazyTasksPageView,
   LazyTrajectoriesView,
+  LazyVaultPageView,
   LazyViewBoundary,
   scheduleRouteViewChunkPrefetch,
 } from "./app-route-loaders";
@@ -83,6 +84,7 @@ import {
   reportUserViewSwitch,
   useSlashCommandController,
 } from "./chat/useSlashCommandController";
+import { markCompletedActionNavigationHandled } from "./completed-action-navigation";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
@@ -105,8 +107,6 @@ import { ChatOverlay } from "./components/shell/ChatOverlay";
 import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import {
-  CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-  CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
   type ChatOverlayMaterialSize,
   type ChatOverlayWindowSizeClass,
   readChatOverlayAuthSize,
@@ -148,7 +148,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
   listenForConnectRequests,
-  NAVIGATE_VIEW_EVENT,
+  listenForNavigateViewRequests,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
@@ -197,12 +197,14 @@ import {
   useChatComposer,
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
+import { isAuthoritativeFirstRunOpen } from "./state/first-run-chat-release";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
   shouldShowRemoteAgentPairingGate,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
+import { useFirstRunChatRelease } from "./state/use-first-run-chat-release";
 import {
   isBootstrapGateRequired,
   isLoopbackGatewayHost,
@@ -367,7 +369,17 @@ function useDesktopWorkspacePresentation(): DesktopWorkspacePresentation {
  * window. Renders ONLY the waveform + pill + chat/voice overlay — no app
  * chrome — over a transparent background.
  */
-function ChatOverlayShell() {
+function ChatOverlayShell({
+  releaseFirstRunToFull,
+  onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
+  firstRunMountEpoch,
+}: {
+  releaseFirstRunToFull: boolean;
+  onFirstRunReleaseHandled: () => void;
+  onFirstRunChatMounted: (epoch: number) => void;
+  firstRunMountEpoch: number | null;
+}) {
   // The bar has no inline tab system, so "show a view" / "show the launcher"
   // intents open dedicated on-demand desktop windows instead (#9953 Phase 3).
   useBarSurfaceWindows();
@@ -518,6 +530,10 @@ function ChatOverlayShell() {
             initialMode="pill"
             initiallyOpen
             desktopOverlayHost
+            releaseFirstRunToHalf={releaseFirstRunToFull}
+            onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+            onFirstRunChatMounted={onFirstRunChatMounted}
+            firstRunMountEpoch={firstRunMountEpoch}
             requestedOpen={controller?.isOpen}
             openRequestSequence={openRequestSequence}
             onRequestedOpenChange={handleRequestedOpenChange}
@@ -1499,7 +1515,6 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<LazyMemoryViewerView />),
-    "my-apps": wrap(<LazyMyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -1528,6 +1543,7 @@ function buildStaticTabRenderers(): Record<
         />
       </TabContentView>
     ),
+    vault: wrap(<LazyVaultPageView />),
     // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
     // marker as the home tile, so a deep-link off the fork falls back to
     // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
@@ -2291,6 +2307,8 @@ function ShellFoundationMount({
 function ChatOverlayMount({
   releaseFirstRunToHalf = false,
   onFirstRunReleaseHandled,
+  onFirstRunChatMounted,
+  firstRunMountEpoch = null,
   onPilledChange,
   onDetentChange,
   onStateChange,
@@ -2306,6 +2324,8 @@ function ChatOverlayMount({
 }: {
   releaseFirstRunToHalf?: boolean;
   onFirstRunReleaseHandled?: () => void;
+  onFirstRunChatMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
   onPilledChange?: (pilled: boolean) => void;
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
@@ -2323,12 +2343,17 @@ function ChatOverlayMount({
   desktopOverlayHost?: boolean;
 }): ReactNode {
   const controller = useShellControllerContext();
-  const { characterData, agentStatus, firstRunComplete } =
+  const { characterData, agentStatus, firstRunComplete, startupPhase } =
     useAppSelectorShallow((s) => ({
       characterData: s.characterData,
       agentStatus: s.agentStatus,
       firstRunComplete: s.firstRunComplete,
+      startupPhase: s.startupCoordinator.phase,
     }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   // #12087 Item 20: derive the slash-command authority from the authoritative
   // role instead of the fail-open defaults. Elevated (owner-only) commands
   // require OWNER; authenticated commands require rank ≥ USER. A remote
@@ -2338,6 +2363,11 @@ function ChatOverlayMount({
     isElevated: isOwner,
     isAuthorized: atLeast("USER"),
   });
+  useLayoutEffect(() => {
+    if (controller && firstRunOpen && firstRunMountEpoch !== null) {
+      onFirstRunChatMounted?.(firstRunMountEpoch);
+    }
+  }, [controller, firstRunMountEpoch, firstRunOpen, onFirstRunChatMounted]);
   if (!controller) return null;
   // The live agent's name drives the composer placeholder ("Hey {name}...").
   // Character name wins (what the user configured), then the running agent's
@@ -2349,7 +2379,7 @@ function ChatOverlayMount({
       controller={controller}
       agentName={agentName}
       slash={slash}
-      firstRunOpen={firstRunComplete === false}
+      firstRunOpen={firstRunOpen}
       releaseFirstRunToHalf={releaseFirstRunToHalf}
       onFirstRunReleaseHandled={onFirstRunReleaseHandled}
       onPilledChange={onPilledChange}
@@ -2379,7 +2409,14 @@ function HomeScreenMount({
   initialSection?: "home" | "apps";
 }): ReactNode {
   const setTab = useAppSelector((s) => s.setTab);
-  const firstRunOpen = useAppSelector((s) => s.firstRunComplete === false);
+  const { firstRunComplete, startupPhase } = useAppSelectorShallow((state) => ({
+    firstRunComplete: state.firstRunComplete,
+    startupPhase: state.startupCoordinator.phase,
+  }));
+  const firstRunOpen = isAuthoritativeFirstRunOpen(
+    firstRunComplete,
+    startupPhase,
+  );
   const { views } = useAvailableViews();
   // Host apps can override the home screen via the `homeScreen` boot-config slot
   // (whitelabel seam); fall back to the built-in HomeScreen.
@@ -2507,18 +2544,12 @@ function AppContent() {
   );
   // Runtime-target adoption can remount the shell on the exact render where
   // first-run completes. Retain that completion edge above the remount and let
-  // the next ChatOverlay acknowledge it after applying the HALF detent.
-  const firstRunWasIncompleteRef = useRef(firstRunComplete === false);
-  const firstRunReleasePendingRef = useRef(false);
-  if (firstRunComplete === false) {
-    firstRunWasIncompleteRef.current = true;
-  } else if (firstRunComplete === true && firstRunWasIncompleteRef.current) {
-    firstRunWasIncompleteRef.current = false;
-    firstRunReleasePendingRef.current = true;
-  }
-  const handleFirstRunReleaseHandled = useCallback(() => {
-    firstRunReleasePendingRef.current = false;
-  }, []);
+  // the next canonical ChatOverlay acknowledge it after applying its native
+  // half-detent release contract.
+  const firstRunChatRelease = useFirstRunChatRelease(
+    firstRunComplete,
+    startupCoordinator.phase,
+  );
 
   useEffect(() => {
     if (!isShellPaintableNow) return;
@@ -2616,15 +2647,18 @@ function AppContent() {
     startupCoordinator.phase,
     firstRunComplete,
   );
-  // Record during render as well as in the settle effect below: stored-session
-  // adoption can complete onboarding in the same commit that first paints the
-  // shell, and the completion-edge probe must already see the shell as mounted
-  // on that render — the effect alone would run one commit too late.
-  if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
-    onboardingShellMountedRef.current = true;
-  }
-  useEffect(() => {
-    if (isShellPaintableNow && !bootstrapGateHolds && firstRunOwnsAuthSurface) {
+  // Only a committed shell may authorize this exception. A render-time ref
+  // write survives an interrupted render and could otherwise let a later auth
+  // probe expose shell providers even though onboarding never painted. Layout
+  // effects run before a user can complete the mounted onboarding UI, so the
+  // prior committed first-run frame is recorded before its completion edge.
+  useLayoutEffect(() => {
+    if (
+      isShellPaintableNow &&
+      !bootstrapGateHolds &&
+      firstRunOwnsAuthSurface &&
+      firstRunChatRelease.mountedOnboarding
+    ) {
       onboardingShellMountedRef.current = true;
     } else if (authState.phase !== "loading") {
       onboardingShellMountedRef.current = false;
@@ -2633,6 +2667,7 @@ function AppContent() {
     authState.phase,
     bootstrapGateHolds,
     firstRunOwnsAuthSurface,
+    firstRunChatRelease.mountedOnboarding,
     isShellPaintableNow,
   ]);
   const preserveMountedOnboardingShell =
@@ -2946,7 +2981,12 @@ function AppContent() {
     // slash-command path uses (initialSection + #hash) instead of the generic
     // path nav, which would drop the requested section.
     const handleNavigateView = (event: Event) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented) return false;
+      // Returns whether the request was actually applied — this is the
+      // canonical, single-owner handler `listenForNavigateViewRequests` claims
+      // the intent for, so an accurate `true`/`false` here (not just "was
+      // invoked") is what lets a cold-boot Android deep link only get
+      // acknowledged once its navigation genuinely landed (see events/index.ts).
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       if (
         detail?.subview &&
@@ -2959,13 +2999,16 @@ function AppContent() {
         setSettingsNavigatePayload(detail.payload);
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
-        return;
+        markCompletedActionNavigationHandled(event, detail);
+        return true;
       }
-      baseHandler(event);
+      const handled = baseHandler(event);
+      if (handled) {
+        markCompletedActionNavigationHandled(event, detail);
+      }
+      return handled;
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
-    return () =>
-      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
+    return listenForNavigateViewRequests(handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,
@@ -3187,8 +3230,19 @@ function AppContent() {
     return (
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
-          <ChatOverlayShell />
-          <FirstRunConductorMount />
+          <ChatOverlayShell
+            releaseFirstRunToFull={firstRunChatRelease.releasePending}
+            onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+            onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+          />
+          <FirstRunConductorMount
+            onFirstRunTranscriptMounted={
+              firstRunChatRelease.recordMountedTranscript
+            }
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+            firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+          />
           <ModelStatusConductorMount />
           <BootRecoveryConductorMount />
           <ShellOverlays actionNotice={actionNotice} />
@@ -3506,15 +3560,23 @@ function AppContent() {
         */}
         {desktopWorkspacePresentation !== "content" ? (
           <ChatOverlayMount
-            releaseFirstRunToHalf={firstRunReleasePendingRef.current}
-            onFirstRunReleaseHandled={handleFirstRunReleaseHandled}
+            releaseFirstRunToHalf={firstRunChatRelease.releasePending}
+            onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+            onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+            firstRunMountEpoch={firstRunChatRelease.mountEpoch}
           />
         ) : null}
         {/* In-chat first-run conductor (headless) — while firstRunComplete is
             false it seeds the onboarding greeting + choices into the SAME live
             transcript the overlay renders and routes first-run picks to the
             headless finish use case. Renders null. */}
-        <FirstRunConductorMount />
+        <FirstRunConductorMount
+          onFirstRunTranscriptMounted={
+            firstRunChatRelease.recordMountedTranscript
+          }
+          firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+          firstRunAuthorityEpoch={firstRunChatRelease.authorityEpoch}
+        />
         {/* In-chat model-status card (headless) — while the local text model is
             downloading/loading/missing/errored it seeds ONE live status turn
             with cancel / switch-to-cloud / retry controls. Renders null. */}

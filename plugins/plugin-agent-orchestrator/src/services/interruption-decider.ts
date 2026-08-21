@@ -17,7 +17,12 @@
  * stop/redirect; otherwise relevant messages QUEUE and ambient ones are IGNORE.
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { parseJsonObjectResponse } from "./json-model-output.js";
 
 export type InterruptionAction = "deliver" | "queue" | "interrupt" | "ignore";
@@ -169,7 +174,7 @@ export function decideInterruption(
 function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
   const label = input.agentLabel?.trim() || input.agentType;
   const work = input.taskContext?.trim()
-    ? input.taskContext.trim().slice(0, 500)
+    ? truncateWellFormed(toWellFormedUnicode(input.taskContext.trim()), 500)
     : "a coding task";
   const state = input.sessionBusy
     ? "MID-TURN (actively generating or running a tool right now)"
@@ -193,7 +198,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     `State: ${state}`,
     `Room: ${room}`,
     "",
-    `Incoming message: """${input.text.trim().slice(0, 800)}"""`,
+    `Incoming message: """${truncateWellFormed(toWellFormedUnicode(input.text.trim()), 800)}"""`,
     "",
     "Choose EXACTLY one action:",
     '- "interrupt": stop or change direction RIGHT NOW — an explicit halt ("stop", "cancel", "wait"), or a redirect that invalidates the work in progress ("no, use Postgres not MySQL", "scrap that, start over"). Reserve for genuine halts/redirects worth cancelling live work for.',
@@ -225,7 +230,7 @@ function parseInterruptionVerdict(raw: string): InterruptionDecision | null {
   }
   const detail =
     typeof obj.reason === "string" && obj.reason.trim()
-      ? obj.reason.trim().slice(0, 160)
+      ? truncateWellFormed(toWellFormedUnicode(obj.reason.trim()), 160)
       : "verdict";
   return { action, reason: `model: ${detail}` };
 }

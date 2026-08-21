@@ -1,19 +1,24 @@
 /**
- * Defines the provider seam and a bounded, SSRF-guarded JSON-over-HTTP adapter.
- * Credentials are pinned to one configured origin; redirects are rejected and
- * every production connection uses core's DNS-pinned transport.
+ * Defines the maps provider seam and the JSON-over-HTTP adapter built on the
+ * core managed-provider SDK. The SDK owns origin pinning, SSRF-guarded
+ * transport, deadlines, bounded reads, and failure classification; this file
+ * owns the maps route contract, provider-spoofing assertions, and translation
+ * of the shared failure taxonomy into `MapsError` codes. It is the reference
+ * migration for the adapter SDK: local mode carries the user credential and
+ * managed mode carries only an opaque Cloud connection id.
  */
 
 import {
-  fetchWithSsrfGuard,
   type GuardedFetchOptions,
-  isBlockedHostname,
-  isPrivateIpAddress,
-  logger,
-  SsrfBlockedError,
+  ManagedProviderError,
+  type ManagedProviderErrorCode,
+  ManagedProviderHttpClient,
+  resolveProviderConnection,
 } from "@elizaos/core";
-import { MapsError } from "./errors.js";
+import { MapsError, type MapsErrorCode } from "./errors.js";
 import {
+  mapsAttributionSchema,
+  mapsProviderIdSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -55,105 +60,37 @@ export interface JsonMapsHttpAdapterOptions {
   allowPrivateNetworkForTests?: boolean;
 }
 
-const DEFAULT_TIMEOUT_MS = 10_000;
-const MIN_TIMEOUT_MS = 100;
-const MAX_TIMEOUT_MS = 60_000;
-const DEFAULT_RESPONSE_BYTES = 1024 * 1024;
-const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const MAPS_CODE_BY_SDK_CODE: Record<ManagedProviderErrorCode, MapsErrorCode> = {
+  INVALID_INPUT: "MAPS_INVALID_INPUT",
+  CONNECTION_UNAVAILABLE: "MAPS_PROVIDER_UNAVAILABLE",
+  AUTH_EXPIRED: "MAPS_AUTH_EXPIRED",
+  AUTH_REVOKED: "MAPS_AUTH_REVOKED",
+  RATE_LIMITED: "MAPS_RATE_LIMITED",
+  PROVIDER_REJECTED: "MAPS_PROVIDER_REJECTED",
+  PROVIDER_FAILURE: "MAPS_PROVIDER_FAILURE",
+  PROVIDER_TIMEOUT: "MAPS_PROVIDER_TIMEOUT",
+  PROVIDER_NETWORK: "MAPS_PROVIDER_NETWORK",
+  ENDPOINT_BLOCKED: "MAPS_ENDPOINT_BLOCKED",
+  RESPONSE_TOO_LARGE: "MAPS_RESPONSE_TOO_LARGE",
+  MALFORMED_RESPONSE: "MAPS_MALFORMED_RESPONSE",
+  PAGINATION_OVERFLOW: "MAPS_MALFORMED_RESPONSE",
+};
 
-interface RequestDeadline {
-  signal: AbortSignal;
-  dispose(): void;
-}
-
-function requestDeadline(timeoutMs: number): RequestDeadline {
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () =>
-      controller.abort(
-        new DOMException("Maps deadline elapsed", "TimeoutError"),
-      ),
-    timeoutMs,
-  );
-  timeout.unref?.();
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timeout),
-  };
-}
-
-function observeTeardown(operation: Promise<unknown>, surface: string): void {
-  // error-policy:J6 Teardown is intentionally non-blocking; a redacted debug
-  // observation keeps cancellation failures visible without delaying results.
-  void operation.catch((error) => {
-    logger.debug(
-      {
-        errorName: error instanceof Error ? error.name : typeof error,
-        surface,
-      },
-      "[MapsHttpAdapter] Response-stream teardown did not complete cleanly",
-    );
-  });
-}
-
-function cancelBody(response: Response, reason: string): void {
-  // error-policy:J6 Cancellation is teardown only and must never delay the
-  // typed terminal result from an untrusted response stream.
-  if (response.body) observeTeardown(response.body.cancel(reason), reason);
-}
-
-function retryAfterMs(response: Response): number | undefined {
-  const raw = response.headers.get("retry-after");
-  if (!raw) return undefined;
-  const seconds = Number(raw);
-  if (Number.isFinite(seconds) && seconds >= 0)
-    return Math.round(seconds * 1_000);
-  const date = Date.parse(raw);
-  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
-}
-
-function providerError(response: Response, body: unknown): MapsError {
-  const providerCode =
-    body && typeof body === "object" && "code" in body
-      ? String((body as { code?: unknown }).code)
-      : "";
-  if (response.status === 401 && providerCode === "credential_expired") {
-    return new MapsError("The maps connection has expired.", {
-      code: "MAPS_AUTH_EXPIRED",
-      context: { status: response.status },
+function toMapsError(error: unknown): MapsError {
+  // error-policy:J2 Translate the shared adapter taxonomy into the maps
+  // domain error at this boundary, preserving the SDK failure as the cause.
+  if (error instanceof ManagedProviderError) {
+    return new MapsError(`The maps provider request failed: ${error.message}`, {
+      code: MAPS_CODE_BY_SDK_CODE[error.code],
+      retryAfterMs: error.retryAfterMs,
+      cause: error,
+      context: error.context,
     });
   }
-  if (response.status === 401 && providerCode !== "credential_revoked") {
-    return new MapsError("The maps connection has expired.", {
-      code: "MAPS_AUTH_EXPIRED",
-      context: { status: response.status },
-    });
-  }
-  if (
-    (response.status === 401 || response.status === 403) &&
-    providerCode === "credential_revoked"
-  ) {
-    return new MapsError("The maps connection was revoked.", {
-      code: "MAPS_AUTH_REVOKED",
-      context: { status: response.status },
-    });
-  }
-  if (response.status === 429) {
-    return new MapsError("The maps provider is rate limited.", {
-      code: "MAPS_RATE_LIMITED",
-      retryAfterMs: retryAfterMs(response),
-      context: { status: response.status },
-    });
-  }
-  if (response.status >= 500) {
-    return new MapsError("The maps provider failed.", {
-      code: "MAPS_PROVIDER_FAILURE",
-      context: { status: response.status },
-    });
-  }
-  return new MapsError("The maps provider rejected the request.", {
-    code: "MAPS_PROVIDER_REJECTED",
-    context: { status: response.status },
+  if (error instanceof MapsError) return error;
+  return new MapsError("The maps provider request failed.", {
+    code: "MAPS_PROVIDER_NETWORK",
+    cause: error,
   });
 }
 
@@ -161,114 +98,56 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
   readonly id: string;
   readonly connectionId: string;
   readonly attribution?: string;
-  private readonly baseOrigin: string;
-  private readonly credential?: string;
-  private readonly timeoutMs: number;
-  private readonly responseByteLimit: number;
-  private readonly testTransport?: JsonMapsHttpAdapterOptions["testTransport"];
-  private readonly allowPrivateNetworkForTests: boolean;
+  private readonly client: ManagedProviderHttpClient;
 
   constructor(options: JsonMapsHttpAdapterOptions) {
-    if (!/^[a-z0-9][a-z0-9_-]*$/i.test(options.id)) {
+    const providerId = mapsProviderIdSchema.safeParse(options.id);
+    if (!providerId.success) {
       throw new MapsError("Maps adapter id is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        cause: providerId.error,
       });
     }
-    if (!/^conn_[A-Za-z0-9_-]{16,}$/.test(options.connectionId)) {
-      throw new MapsError("Maps adapter connection id must be opaque.", {
-        code: "MAPS_INVALID_INPUT",
-      });
-    }
-    if (
-      options.attribution !== undefined &&
-      (!options.attribution.trim() || options.attribution.length > 500)
-    ) {
+    const attribution =
+      options.attribution === undefined
+        ? undefined
+        : mapsAttributionSchema.safeParse(options.attribution);
+    if (attribution !== undefined && !attribution.success) {
       throw new MapsError("Maps adapter attribution is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        cause: attribution.error,
       });
     }
-    let baseUrl: URL;
     try {
-      baseUrl = new URL(options.baseUrl);
+      const connection =
+        options.credential === undefined
+          ? resolveProviderConnection({
+              mode: "managed",
+              providerId: options.id,
+              connectionId: options.connectionId,
+              gatewayBaseUrl: options.baseUrl,
+            })
+          : resolveProviderConnection({
+              mode: "local",
+              providerId: options.id,
+              connectionId: options.connectionId,
+              baseUrl: options.baseUrl,
+              credential: options.credential,
+            });
+      this.client = new ManagedProviderHttpClient({
+        connection,
+        connectionIdHeader: "x-maps-connection-id",
+        timeoutMs: options.timeoutMs,
+        responseByteLimit: options.responseByteLimit,
+        testTransport: options.testTransport,
+        allowPrivateNetworkForTests: options.allowPrivateNetworkForTests,
+      });
     } catch (error) {
-      throw new MapsError("Maps adapter endpoint is invalid.", {
-        code: "MAPS_INVALID_INPUT",
-        cause: error,
-      });
+      throw toMapsError(error);
     }
-    const allowPrivateTest = options.allowPrivateNetworkForTests === true;
-    if (allowPrivateTest && !options.testTransport?.fetchImpl) {
-      throw new MapsError(
-        "Private-network maps endpoints require an explicit injected test transport.",
-        { code: "MAPS_INVALID_INPUT" },
-      );
-    }
-    if (
-      baseUrl.protocol !== "https:" &&
-      !(allowPrivateTest && baseUrl.protocol === "http:")
-    ) {
-      throw new MapsError("Maps adapter endpoint must use HTTPS.", {
-        code: "MAPS_INVALID_INPUT",
-      });
-    }
-    if (
-      baseUrl.username ||
-      baseUrl.password ||
-      baseUrl.search ||
-      baseUrl.hash
-    ) {
-      throw new MapsError(
-        "Maps adapter endpoint cannot contain userinfo, query, or fragment data.",
-        { code: "MAPS_INVALID_INPUT" },
-      );
-    }
-    if (baseUrl.pathname !== "/") {
-      throw new MapsError("Maps adapter endpoint must be an origin URL.", {
-        code: "MAPS_INVALID_INPUT",
-      });
-    }
-    if (
-      !allowPrivateTest &&
-      (isBlockedHostname(baseUrl.hostname) ||
-        isPrivateIpAddress(baseUrl.hostname))
-    ) {
-      throw new MapsError("Maps adapter endpoint is not a public origin.", {
-        code: "MAPS_ENDPOINT_BLOCKED",
-      });
-    }
-    const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    if (
-      !Number.isFinite(timeoutMs) ||
-      !Number.isInteger(timeoutMs) ||
-      timeoutMs < MIN_TIMEOUT_MS ||
-      timeoutMs > MAX_TIMEOUT_MS
-    ) {
-      throw new MapsError(
-        `Maps adapter timeout must be an integer from ${MIN_TIMEOUT_MS} to ${MAX_TIMEOUT_MS} ms.`,
-        { code: "MAPS_INVALID_INPUT" },
-      );
-    }
-    const responseByteLimit =
-      options.responseByteLimit ?? DEFAULT_RESPONSE_BYTES;
-    if (
-      !Number.isFinite(responseByteLimit) ||
-      !Number.isInteger(responseByteLimit) ||
-      responseByteLimit < 1 ||
-      responseByteLimit > MAX_RESPONSE_BYTES
-    ) {
-      throw new MapsError("Maps adapter response byte limit is invalid.", {
-        code: "MAPS_INVALID_INPUT",
-      });
-    }
-    this.id = options.id;
+    this.id = providerId.data;
     this.connectionId = options.connectionId;
-    this.attribution = options.attribution?.trim();
-    this.baseOrigin = baseUrl.origin;
-    this.credential = options.credential;
-    this.timeoutMs = timeoutMs;
-    this.responseByteLimit = responseByteLimit;
-    this.testTransport = options.testTransport;
-    this.allowPrivateNetworkForTests = allowPrivateTest;
+    this.attribution = attribution?.data;
   }
 
   async searchPlaces(request: PlaceSearchRequest): Promise<PlacePage> {
@@ -279,7 +158,7 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         cause: parsed.error,
       });
     const validated = parsed.data;
-    const url = new URL("/places/search", this.baseOrigin);
+    const url = this.client.url("/places/search");
     url.searchParams.set("query", validated.query);
     if (validated.cursor) url.searchParams.set("cursor", validated.cursor);
     if (validated.limit !== undefined)
@@ -288,7 +167,16 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
       url.searchParams.set("latitude", String(validated.near.latitude));
       url.searchParams.set("longitude", String(validated.near.longitude));
     }
-    const page = await this.request(url, { method: "GET" }, placePageSchema);
+    let page: PlacePage;
+    try {
+      page = await this.client.requestJson(
+        url,
+        { method: "GET" },
+        placePageSchema,
+      );
+    } catch (error) {
+      throw toMapsError(error);
+    }
     for (const place of page.places) this.assertPlaceProvider(place, "search");
     return page;
   }
@@ -299,35 +187,18 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         code: "MAPS_INVALID_INPUT",
       });
     }
-    const url = new URL(
-      `/places/${encodeURIComponent(providerPlaceId)}`,
-      this.baseOrigin,
-    );
-    const deadline = requestDeadline(this.timeoutMs);
+    let place: PlaceRef | null;
     try {
-      const guarded = await this.fetchResponse(
-        url,
+      place = await this.client.requestOptionalJson(
+        this.client.url(`/places/${encodeURIComponent(providerPlaceId)}`),
         { method: "GET" },
-        deadline,
+        placeRefSchema,
       );
-      try {
-        if (guarded.response.status === 404) {
-          cancelBody(guarded.response, "maps place was not found");
-          return null;
-        }
-        const place = await this.decodeResponse(
-          guarded.response,
-          placeRefSchema,
-          deadline,
-        );
-        this.assertPlaceProvider(place, "detail");
-        return place;
-      } finally {
-        await guarded.release();
-      }
-    } finally {
-      deadline.dispose();
+    } catch (error) {
+      throw toMapsError(error);
     }
+    if (place !== null) this.assertPlaceProvider(place, "detail");
+    return place;
   }
 
   async planRoute(request: RoutePlanRequest): Promise<RoutePlan> {
@@ -356,16 +227,20 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         );
       }
     }
-    const url = new URL("/routes", this.baseOrigin);
-    const route = await this.request(
-      url,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(validated),
-      },
-      routePlanSchema,
-    );
+    let route: RoutePlan;
+    try {
+      route = await this.client.requestJson(
+        this.client.url("/routes"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(validated),
+        },
+        routePlanSchema,
+      );
+    } catch (error) {
+      throw toMapsError(error);
+    }
     if (route.provider !== this.id) {
       throw new MapsError("Maps route response spoofed another provider.", {
         code: "MAPS_MALFORMED_RESPONSE",
@@ -450,247 +325,5 @@ export class JsonMapsHttpAdapter implements MapsProviderAdapter {
         },
       });
     }
-  }
-
-  private async request<T>(
-    url: URL,
-    init: RequestInit,
-    schema: {
-      safeParse(
-        value: unknown,
-      ): { success: true; data: T } | { success: false; error: unknown };
-    },
-  ): Promise<T> {
-    const deadline = requestDeadline(this.timeoutMs);
-    try {
-      const guarded = await this.fetchResponse(url, init, deadline);
-      try {
-        return await this.decodeResponse(guarded.response, schema, deadline);
-      } finally {
-        await guarded.release();
-      }
-    } finally {
-      deadline.dispose();
-    }
-  }
-
-  private async fetchResponse(
-    url: URL,
-    init: RequestInit,
-    deadline: RequestDeadline,
-  ): ReturnType<typeof fetchWithSsrfGuard> {
-    if (url.origin !== this.baseOrigin) {
-      throw new MapsError(
-        "Maps request escaped the configured provider origin.",
-        {
-          code: "MAPS_ENDPOINT_BLOCKED",
-        },
-      );
-    }
-    const headers = new Headers(init.headers);
-    if (this.credential)
-      headers.set("authorization", `Bearer ${this.credential}`);
-    headers.set("x-maps-connection-id", this.connectionId);
-    try {
-      return await fetchWithSsrfGuard({
-        url: url.href,
-        init: { ...init, headers, redirect: "manual", signal: deadline.signal },
-        maxRedirects: 0,
-        timeoutMs: this.timeoutMs,
-        signal: deadline.signal,
-        policy: this.allowPrivateNetworkForTests
-          ? { allowPrivateNetwork: true }
-          : undefined,
-        ...this.testTransport,
-      });
-    } catch (error) {
-      // error-policy:J2 Add a typed provider/network classification while
-      // preserving the original transport failure as the cause.
-      if (
-        deadline.signal.aborted ||
-        (error instanceof Error &&
-          (error.name === "AbortError" || error.name === "TimeoutError"))
-      ) {
-        throw new MapsError("The maps provider timed out.", {
-          code: "MAPS_PROVIDER_TIMEOUT",
-          cause: error,
-        });
-      }
-      if (error instanceof SsrfBlockedError) {
-        throw new MapsError(
-          "The maps provider endpoint was blocked by network policy.",
-          {
-            code: "MAPS_ENDPOINT_BLOCKED",
-            cause: error,
-          },
-        );
-      }
-      throw new MapsError("The maps provider connection failed.", {
-        code: "MAPS_PROVIDER_NETWORK",
-        cause: error,
-      });
-    }
-  }
-
-  private async readBoundedBody(
-    response: Response,
-    deadline: RequestDeadline,
-  ): Promise<string> {
-    const declared = response.headers.get("content-length");
-    if (
-      declared &&
-      /^\d+$/.test(declared) &&
-      Number(declared) > this.responseByteLimit
-    ) {
-      cancelBody(response, "maps declared response exceeded byte limit");
-      throw new MapsError(
-        "The maps provider response exceeded the byte limit.",
-        {
-          code: "MAPS_RESPONSE_TOO_LARGE",
-          context: { status: response.status, limit: this.responseByteLimit },
-        },
-      );
-    }
-    if (!response.body) return "";
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8", { fatal: true });
-    let body = "";
-    let bytes = 0;
-    try {
-      while (true) {
-        const chunk = await new Promise<ReadableStreamReadResult<Uint8Array>>(
-          (resolve, reject) => {
-            const onAbort = () =>
-              reject(
-                deadline.signal.reason ??
-                  new DOMException("Maps deadline elapsed", "TimeoutError"),
-              );
-            if (deadline.signal.aborted) return onAbort();
-            deadline.signal.addEventListener("abort", onAbort, { once: true });
-            void reader
-              .read()
-              .then(resolve, reject)
-              .finally(() =>
-                deadline.signal.removeEventListener("abort", onAbort),
-              );
-          },
-        );
-        if (chunk.done) break;
-        bytes += chunk.value.byteLength;
-        if (bytes > this.responseByteLimit) {
-          observeTeardown(
-            reader.cancel("maps response exceeded byte limit"),
-            "response-too-large",
-          );
-          throw new MapsError(
-            "The maps provider response exceeded the byte limit.",
-            {
-              code: "MAPS_RESPONSE_TOO_LARGE",
-              context: {
-                status: response.status,
-                limit: this.responseByteLimit,
-              },
-            },
-          );
-        }
-        body += decoder.decode(chunk.value, { stream: true });
-      }
-      body += decoder.decode();
-      return body;
-    } catch (error) {
-      if (error instanceof MapsError) throw error;
-      if (
-        deadline.signal.aborted ||
-        (error instanceof Error &&
-          (error.name === "AbortError" || error.name === "TimeoutError"))
-      ) {
-        observeTeardown(
-          reader.cancel("maps response deadline elapsed"),
-          "response-deadline",
-        );
-        throw new MapsError("The maps provider timed out.", {
-          code: "MAPS_PROVIDER_TIMEOUT",
-          cause: error,
-          context: { status: response.status },
-        });
-      }
-      // error-policy:J2 Provider bytes are untrusted; preserve bounded read and
-      // UTF-8 failures without retaining or exposing response content.
-      throw new MapsError(
-        "The maps provider response body could not be read.",
-        {
-          code: "MAPS_MALFORMED_RESPONSE",
-          cause: error,
-          context: { status: response.status },
-        },
-      );
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch (error) {
-        // error-policy:J6 A pending untrusted read owns the lock until its
-        // non-blocking cancellation settles; terminal classification is fixed.
-        logger.debug(
-          {
-            errorName: error instanceof Error ? error.name : typeof error,
-            surface: "reader-release-lock",
-          },
-          "[MapsHttpAdapter] Response reader lock remained pending during teardown",
-        );
-      }
-    }
-  }
-
-  private async decodeResponse<T>(
-    response: Response,
-    schema: {
-      safeParse(
-        value: unknown,
-      ): { success: true; data: T } | { success: false; error: unknown };
-    },
-    deadline: RequestDeadline,
-  ): Promise<T> {
-    if (!response.ok) {
-      let errorBody: unknown;
-      if (response.status === 401 || response.status === 403) {
-        try {
-          const text = await this.readBoundedBody(response, deadline);
-          if (text) errorBody = JSON.parse(text);
-        } catch {
-          // error-policy:J3 Diagnostic bytes are optional; once headers carry
-          // an error status, timeout/size/parse failures cannot replace it.
-          errorBody = undefined;
-        }
-      } else {
-        cancelBody(response, "maps provider returned an error status");
-      }
-      throw providerError(response, errorBody);
-    }
-    const text = await this.readBoundedBody(response, deadline);
-    let body: unknown;
-    try {
-      body = JSON.parse(text);
-    } catch (error) {
-      // error-policy:J2 Provider bytes are untrusted; preserve the JSON parse
-      // failure without retaining or exposing the response body.
-      throw new MapsError("The maps provider returned malformed JSON.", {
-        code: "MAPS_MALFORMED_RESPONSE",
-        cause: error,
-        context: { status: response.status },
-      });
-    }
-    if (!response.ok) throw providerError(response, body);
-    const parsed = schema.safeParse(body);
-    if (!parsed.success) {
-      throw new MapsError(
-        "The maps provider response did not match the contract.",
-        {
-          code: "MAPS_MALFORMED_RESPONSE",
-          cause: parsed.error,
-          context: { status: response.status },
-        },
-      );
-    }
-    return parsed.data;
   }
 }

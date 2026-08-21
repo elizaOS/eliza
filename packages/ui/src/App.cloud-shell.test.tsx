@@ -58,16 +58,19 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain("Chat overlay");
     expect(APP_TSX).toContain("<ChatOverlayMount");
     expect(APP_TSX).toContain(
-      "releaseFirstRunToHalf={firstRunReleasePendingRef.current}",
+      "releaseFirstRunToHalf={firstRunChatRelease.releasePending}",
     );
     expect(APP_TSX).toContain(
-      "onFirstRunReleaseHandled={handleFirstRunReleaseHandled}",
+      "onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}",
+    );
+    expect(APP_TSX).toContain(
+      "onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}",
     );
   });
 
   it("opens the packaged desktop pill into the shared web chat panel", () => {
     const overlayShell = APP_TSX.slice(
-      APP_TSX.indexOf("function ChatOverlayShell()"),
+      APP_TSX.indexOf("function ChatOverlayShell({"),
       APP_TSX.indexOf("function TrayPopoverShell()"),
     );
 
@@ -104,8 +107,12 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf('if (shellMode === "chat-overlay") {'),
       APP_TSX.indexOf('if (shellMode === "tray-popover") {'),
     );
-    expect(branch).toContain("<ChatOverlayShell />");
-    expect(branch).toContain("<FirstRunConductorMount />");
+    expect(branch).toContain("<ChatOverlayShell");
+    expect(branch).toContain("<FirstRunConductorMount");
+    expect(branch).toContain(
+      "releaseFirstRunToFull={firstRunChatRelease.releasePending}",
+    );
+    expect(branch).toContain("onFirstRunTranscriptMounted={");
     expect(branch).toContain("<ShellOverlays actionNotice={actionNotice} />");
   });
 

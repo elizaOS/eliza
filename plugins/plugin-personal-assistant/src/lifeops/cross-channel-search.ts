@@ -21,7 +21,13 @@
 // can't import its runtime helpers from here. We type-shape the parts we
 // touch and provide a local fallback for cluster memory lookup.
 import type { IAgentRuntime, Memory, Room, Service, UUID } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 type RelationshipsPersonSummary = {
   groupId: UUID;
@@ -429,7 +435,9 @@ async function searchGmail(
       text: msg.snippet,
       citation: {
         platform: "gmail",
-        label: msg.subject || msg.snippet.slice(0, 80),
+        label:
+          msg.subject ||
+          truncateWellFormed(toWellFormedUnicode(msg.snippet), 80),
         url: msg.htmlLink ?? undefined,
       },
     });
@@ -467,7 +475,10 @@ async function searchTelegram(
     if (!withinTimeWindow(msg.timestamp ?? undefined, query.timeWindow)) {
       continue;
     }
-    const sourceRef = msg.id ?? msg.dialogId ?? msg.content.slice(0, 48);
+    const sourceRef =
+      msg.id ??
+      msg.dialogId ??
+      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
     hits.push({
       channel: "telegram",
       id: `telegram:${sourceRef}`,
@@ -510,7 +521,10 @@ async function searchDiscord(
     if (!withinTimeWindow(msg.timestamp ?? undefined, query.timeWindow)) {
       continue;
     }
-    const sourceRef = msg.id ?? msg.channelId ?? msg.content.slice(0, 48);
+    const sourceRef =
+      msg.id ??
+      msg.channelId ??
+      truncateWellFormed(toWellFormedUnicode(msg.content), 48);
     hits.push({
       channel: "discord",
       id: `discord:${sourceRef}`,
@@ -957,7 +971,7 @@ async function memoriesToHits(
       sourceRef: memId,
       timestamp: iso,
       speaker: speakerEntity ?? "unknown",
-      text: text.slice(0, 600),
+      text: truncateWellFormed(toWellFormedUnicode(text), 600),
       citation: {
         platform: KNOWN_PLATFORM_FOR_CHANNEL[channel],
         label: roomRecord?.name ?? `room:${(roomId ?? "").slice(0, 8)}`,

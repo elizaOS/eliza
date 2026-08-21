@@ -1,4 +1,4 @@
-// Exercises app container provider behavior with deterministic cloud-shared lib fixtures.
+/** Exercises app container orchestration with a deterministic in-process SSH seam. */
 import { describe, expect, test } from "bun:test";
 import {
   AppContainerProvider,
@@ -34,19 +34,24 @@ const INPUT: CreateContainerInput = {
 
 function recordingSsh(create = "containerid-abc123") {
   const calls: string[] = [];
+  const stdinCalls: Array<{ command: string; input: string | Buffer }> = [];
   const ssh: AppContainerSsh = {
     async exec(command) {
       calls.push(command);
-      if (command.startsWith("docker create")) return create;
       return "";
     },
+    async execStdin(command, input) {
+      calls.push(command);
+      stdinCalls.push({ command, input });
+      return create;
+    },
   };
-  return { calls, ssh };
+  return { calls, ssh, stdinCalls };
 }
 
 describe("AppContainerProvider.provision", () => {
   test("ensures the --internal network, creates, starts, and returns the id", async () => {
-    const { calls, ssh } = recordingSsh();
+    const { calls, ssh, stdinCalls } = recordingSsh();
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
@@ -64,17 +69,107 @@ describe("AppContainerProvider.provision", () => {
     expect(result.hostPort).toBe(49001);
     expect(result.network).toMatch(/^app-net-/);
 
-    // network ensured first; a docker-ps probe runs for collision-safe ports
-    expect(calls[0]).toContain("docker network create --driver bridge --internal");
-    expect(calls.some((c) => c.startsWith("docker ps"))).toBe(true);
-    const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
+    // The collision probe is read-only; the network remains the first remote
+    // mutation, followed by stale-name cleanup and the stdin-backed create.
+    const psIndex = calls.findIndex((c) => c.startsWith("docker ps"));
+    const networkIndex = calls.findIndex((c) =>
+      c.includes("docker network create --driver bridge --internal"),
+    );
+    const removeIndex = calls.indexOf("docker rm -f 'app-nubilio'");
+    const createIndex = calls.findIndex((c) => c.includes("docker create"));
+    expect(psIndex).toBeGreaterThanOrEqual(0);
+    expect(networkIndex).toBeGreaterThan(psIndex);
+    expect(removeIndex).toBeGreaterThan(networkIndex);
+    expect(createIndex).toBeGreaterThan(removeIndex);
+    const createCmd = stdinCalls[0]?.command ?? "";
+    const createInput = String(stdinCalls[0]?.input ?? "");
     expect(createCmd).toContain("--cap-drop=ALL");
     // Host port is bound to loopback only (ingress/proxy reaches it via
     // 127.0.0.1 on the node) — never exposed on the node's public interface.
     expect(createCmd).toContain("-p 127.0.0.1:49001:3000");
-    expect(createCmd).toContain("HTTP_PROXY=http://egress-gw:3128");
+    expect(createCmd).not.toContain("HTTP_PROXY");
+    expect(createCmd).not.toContain("http://egress-gw:3128");
+    expect(createInput).toContain("HTTP_PROXY=http://egress-gw:3128");
     expect(createCmd).not.toContain("NET_ADMIN");
     expect(calls).toContain("docker start 'app-nubilio'");
+  });
+
+  test("preserves multiline and large app environment through stdin", async () => {
+    const { calls, ssh, stdinCalls } = recordingSsh();
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+    const pem = "-----BEGIN CERTIFICATE-----\nline one\nline two\n-----END CERTIFICATE-----\n";
+    const large = "x".repeat(70 * 1024);
+
+    await provider.provision({
+      appId: APP_ID,
+      containerName: "app-nubilio",
+      input: { ...INPUT, environmentVars: { TLS_CERT: pem, LARGE_CONFIG: large } },
+    });
+
+    const create = stdinCalls[0];
+    expect(create).toBeDefined();
+    expect(create?.command).not.toContain("TLS_CERT");
+    expect(create?.command).not.toContain(pem);
+    expect(create?.command).not.toContain(large);
+    expect(String(create?.input)).toContain(pem);
+    expect(String(create?.input)).toContain(large);
+    expect(calls).toContain("docker start 'app-nubilio'");
+  });
+
+  test("rejects an impossible app environment before allocation or remote IO", async () => {
+    const { calls, ssh } = recordingSsh();
+    let allocations = 0;
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => {
+        allocations += 1;
+        return 49001;
+      },
+    });
+
+    await expect(
+      provider.provision({
+        appId: APP_ID,
+        containerName: "app-nubilio",
+        input: { ...INPUT, environmentVars: { OVERSIZED: "x".repeat(121 * 1024) } },
+      }),
+    ).rejects.toThrow(/process entry limit/);
+
+    expect(calls).toEqual([]);
+    expect(allocations).toBe(0);
+  });
+
+  test("validates the rewritten DSN before creating the network or ambassador", async () => {
+    const { calls, ssh } = recordingSsh();
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+    const dsnPrefix = "postgresql://app:";
+    const dsnSuffix = "@x:5432/db";
+    const entryLimit = 120 * 1024;
+    const paddingLength =
+      entryLimit -
+      Buffer.byteLength("DATABASE_URL=") -
+      Buffer.byteLength(dsnPrefix) -
+      Buffer.byteLength(dsnSuffix);
+    const boundaryDsn = `${dsnPrefix}${"p".repeat(paddingLength)}${dsnSuffix}`;
+
+    await expect(
+      provider.provision({
+        appId: APP_ID,
+        containerName: "app-nubilio",
+        input: { ...INPUT, environmentVars: { DATABASE_URL: boundaryDsn } },
+      }),
+    ).rejects.toThrow(/process entry limit/);
+
+    expect(calls).toEqual([]);
   });
 
   test("removes any stale container by name BEFORE docker create (redeploy self-heal)", async () => {
@@ -92,7 +187,7 @@ describe("AppContainerProvider.provision", () => {
     });
 
     const rmIdx = calls.indexOf("docker rm -f 'app-nubilio'");
-    const createIdx = calls.findIndex((c) => c.startsWith("docker create"));
+    const createIdx = calls.findIndex((c) => c.includes("docker create"));
     // The idempotent `docker rm -f <name>` is issued, and it precedes the create
     // so the deterministic `app-<slug>` name is free (no 'name already in use').
     expect(rmIdx).toBeGreaterThanOrEqual(0);
@@ -107,8 +202,11 @@ describe("AppContainerProvider.provision", () => {
         calls.push(command);
         if (command === "docker rm -f 'app-nubilio'") throw new Error("rm failed");
         if (command.startsWith("docker inspect")) throw new Error("No such container");
-        if (command.startsWith("docker create")) return "cid";
         return "";
+      },
+      async execStdin(command) {
+        calls.push(command);
+        return "cid";
       },
     };
     const provider = new AppContainerProvider({
@@ -123,7 +221,7 @@ describe("AppContainerProvider.provision", () => {
     });
     // rm failed, but inspect proved the name absent before create continued.
     expect(result.containerId).toBe("cid");
-    expect(calls.some((c) => c.startsWith("docker create"))).toBe(true);
+    expect(calls.some((c) => c.includes("docker create"))).toBe(true);
   });
 
   test("an uninspectable pre-clean target blocks provisioning", async () => {
@@ -132,6 +230,9 @@ describe("AppContainerProvider.provision", () => {
         if (command.startsWith("docker rm -f")) throw new Error("ssh write failed");
         if (command.startsWith("docker inspect")) throw new Error("ssh read failed");
         return "";
+      },
+      async execStdin() {
+        return "cid";
       },
     };
     const provider = new AppContainerProvider({
@@ -152,8 +253,10 @@ describe("AppContainerProvider.provision", () => {
     const ssh = {
       async exec(command: string) {
         if (command.startsWith("docker ps")) return "0.0.0.0:30000->3000/tcp, :::30000->3000/tcp";
-        if (command.startsWith("docker create")) return "cid";
         return "";
+      },
+      async execStdin() {
+        return "cid";
       },
     };
     const provider = new AppContainerProvider({
@@ -175,9 +278,12 @@ describe("AppContainerProvider.provision", () => {
     const ssh: AppContainerSsh = {
       async exec(command) {
         calls.push(command);
-        if (command.startsWith("docker create")) return "cid";
         if (command.startsWith("docker start")) throw new Error("start failed");
         return "";
+      },
+      async execStdin(command) {
+        calls.push(command);
+        return "cid";
       },
     };
     const provider = new AppContainerProvider({
@@ -193,7 +299,7 @@ describe("AppContainerProvider.provision", () => {
   });
 
   test("provision with DATABASE_URL + POSTGRES_URL stands up the ambassador + rewrites BOTH", async () => {
-    const { calls, ssh } = recordingSsh();
+    const { calls, ssh, stdinCalls } = recordingSsh();
     const provider = new AppContainerProvider({
       ssh,
       nodeId: "node-1",
@@ -219,15 +325,19 @@ describe("AppContainerProvider.provision", () => {
     expect(joined).toContain("'TCP-LISTEN:5432,fork,reuseaddr'");
     expect(joined).toMatch(/docker network connect 'app-net-\S+' 'app-db-111111112222'/);
     // the app container's DSN host is rewritten to the ambassador (creds/db/params kept)
-    const createCmd = calls.find((c) => c.startsWith("docker create")) ?? "";
-    expect(createCmd).toContain(
-      "DATABASE_URL=postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require",
+    const createCmd = stdinCalls[0]?.command ?? "";
+    const createInput = String(stdinCalls[0]?.input ?? "");
+    expect(createCmd).not.toContain("DATABASE_URL");
+    expect(createCmd).not.toContain("POSTGRES_URL");
+    expect(createCmd).not.toContain("p%40ss");
+    expect(createInput).toContain(
+      "DATABASE_URL='postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require'",
     );
-    expect(createCmd).toContain(
-      "POSTGRES_URL=postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require",
+    expect(createInput).toContain(
+      "POSTGRES_URL='postgresql://app_x:p%40ss@app-db-111111112222:5432/db_app_x?sslmode=require'",
     );
     // neither var still points at the real cluster host (both rewritten to the ambassador)
-    expect(createCmd).not.toContain("@10.43.0.10:5432");
+    expect(createInput).not.toContain("@10.43.0.10:5432");
   });
 
   test("lifecycle verbs issue the expected docker commands", async () => {
@@ -249,5 +359,20 @@ describe("AppContainerProvider.provision", () => {
       "docker restart 'app-x'",
       "docker logs --tail 50 'app-x'",
     ]);
+  });
+});
+
+describe("AppContainerProvider.deletePrimaryById", () => {
+  test("removes only the immutable primary and preserves the shared ambassador", async () => {
+    const { calls, ssh } = recordingSsh();
+    const provider = new AppContainerProvider({
+      ssh,
+      nodeId: "node-1",
+      allocateHostPort: async () => 49001,
+    });
+
+    await provider.deletePrimaryById("docker-stale-1");
+
+    expect(calls).toEqual(["docker rm -f 'docker-stale-1'"]);
   });
 });

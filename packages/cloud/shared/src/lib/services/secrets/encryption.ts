@@ -1,4 +1,6 @@
-// Coordinates cloud service encryption behavior behind route handlers.
+/** Coordinates Cloud service encryption behavior behind route handlers. */
+
+import { ElizaError } from "@elizaos/core";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
@@ -11,6 +13,16 @@ export class DecryptionError extends Error {
   ) {
     super(message);
     this.name = "DecryptionError";
+  }
+}
+
+/** Signals that stored ciphertext must not be attempted with the active KMS key. */
+export class EncryptionKeyMismatchError extends ElizaError {
+  constructor() {
+    super("Stored secret requires credential rotation before it can be decrypted.", {
+      code: "ENCRYPTION_KEY_MISMATCH",
+      severity: "fatal",
+    });
   }
 }
 
@@ -36,6 +48,7 @@ export interface KMSProvider {
     keyId: string;
   }>;
   decrypt(ciphertext: string): Promise<Buffer>;
+  currentKeyId?(): string;
   isConfigured(): boolean;
 }
 
@@ -102,6 +115,7 @@ export class LocalKMSProvider implements KMSProvider {
     }
   }
 
+  currentKeyId = () => this.keyId;
   isConfigured = () => true;
 }
 
@@ -186,6 +200,7 @@ export class AWSKMSProvider implements KMSProvider {
     return Buffer.from(response.Plaintext);
   }
 
+  currentKeyId = () => this.keyId;
   isConfigured = () => !!this.keyId;
 }
 
@@ -197,6 +212,13 @@ export class SecretsEncryptionService {
   }
 
   isConfigured = () => this.kms.isConfigured();
+
+  assertCurrentKeyId(storedKeyId: string): void {
+    const currentKeyId = this.kms.currentKeyId?.();
+    if (!currentKeyId || storedKeyId !== currentKeyId) {
+      throw new EncryptionKeyMismatchError();
+    }
+  }
 
   async encrypt(plaintext: string, aad?: string): Promise<EncryptionResult> {
     const { plaintext: dek, ciphertext: encryptedDek, keyId } = await this.kms.generateDataKey();

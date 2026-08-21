@@ -22,6 +22,7 @@ export interface WebEntryDecisionInput {
 
 const EXACT_PUBLIC_PATHS = new Set([
   "/accept-invitation",
+  "/account-deletion",
   "/app-auth/authorize",
   "/auth/bridge",
   "/auth/callback/email",

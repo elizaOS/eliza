@@ -77,6 +77,7 @@ mock.module("./api-keys", () => ({
       incrementUsageCalls.push(id);
     },
   },
+  isMobileApiKeySecret: (value: string) => /^eliza_mobile_[0-9a-f]{64}$/.test(value),
 }));
 mock.module("./inference-admission-snapshot", () => ({
   loadInferenceAdmissionSnapshot: async () => ADMISSION,
@@ -117,9 +118,11 @@ const {
   readInferenceAuthContext,
   invalidateInferenceAuthContextByKeyHash,
   isInferenceAuthContext,
+  writeInferenceAuthContext,
 } = await import("./inference-auth-cache");
 
 const KEY = "test-api-key";
+const MOBILE_KEY = `eliza_mobile_${"a".repeat(64)}`;
 
 function reqWithApiKey(key = KEY): Request {
   return new Request("https://api.example/api/v1/chat/completions", {
@@ -227,6 +230,40 @@ describe("resolveInferenceAuthContext", () => {
   test("non-API-key request -> slow_path", async () => {
     const res = await resolveInferenceAuthContext(new Request("https://x/"));
     expect(res.kind).toBe("slow_path");
+  });
+
+  test("mobile credentials bypass even a pre-existing positive inference cache entry", async () => {
+    const keyHash = hashApiKey(MOBILE_KEY);
+    await writeInferenceAuthContext({
+      v: 1,
+      cachedAt: Date.now(),
+      userId: "stale-mobile-user",
+      orgId: "stale-mobile-org",
+      apiKeyId: "stale-mobile-key",
+      keyHash,
+    });
+    const availability = spyOn(cache, "isAvailable");
+    const cacheRead = spyOn(cache, "getWithOutcome");
+    const cacheWrite = spyOn(cache, "setWithOutcome");
+
+    try {
+      const result = await resolveInferenceAuthContext(reqWithApiKey(MOBILE_KEY));
+
+      expect(result).toEqual({
+        kind: "slow_path",
+        reason: "mobile_api_key",
+      });
+      expect(bypassCacheCalls).toEqual([]);
+      expect(incrementUsageCalls).toEqual([]);
+      expect(availability).not.toHaveBeenCalled();
+      expect(cacheRead).not.toHaveBeenCalled();
+      expect(cacheWrite).not.toHaveBeenCalled();
+    } finally {
+      availability.mockRestore();
+      cacheRead.mockRestore();
+      cacheWrite.mockRestore();
+      await invalidateInferenceAuthContextByKeyHash(keyHash);
+    }
   });
 
   test("miss -> runs authoritative chain, authorizes, and caches", async () => {

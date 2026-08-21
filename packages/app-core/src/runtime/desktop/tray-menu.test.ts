@@ -47,4 +47,17 @@ describe("desktop tray menu", () => {
     expect(source).toContain('case "tray-show-window"');
     expect(source).toContain("dispatchAppEvent(CHAT_OVERLAY_OPEN_EVENT)");
   });
+
+  // The runtime routing itself is exercised behaviorally in
+  // DesktopTrayRuntime.workspace.test.tsx; this only pins the audit row that
+  // the click-audit report renders.
+  it("audits the Desktop Workspace click as the complete managed shell", () => {
+    const audit = DESKTOP_TRAY_CLICK_AUDIT.find(
+      (entry) => entry.id === "tray-open-desktop-workspace",
+    );
+    expect(audit?.expectedAction).toBe(
+      "Open and focus the singleton Eliza Workspace without duplicating the detached assistant.",
+    );
+    expect(audit?.coverage).toBe("automated");
+  });
 });

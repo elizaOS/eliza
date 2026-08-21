@@ -32,6 +32,7 @@ import type { MutableRefObject } from "react";
 import { useEffect, useRef } from "react";
 import { type ConversationMessage, client } from "../api";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { recoverMissedCurrentView } from "../view-action-handoff";
@@ -185,9 +186,9 @@ export function useAppLifecycleEvents({
     // One resume burst runs at most one reconnect and one tail reload.
     const runResume = (): void => {
       resumeTimer = null;
-      const skipAgentRuntimeResume = isElizaCloudControlPlaneAgentlessBase(
-        client.getBaseUrl(),
-      );
+      const skipAgentRuntimeResume =
+        isAndroidCloudBuild() ||
+        isElizaCloudControlPlaneAgentlessBase(client.getBaseUrl());
 
       if (!skipAgentRuntimeResume) {
         void probeAgentHealth();

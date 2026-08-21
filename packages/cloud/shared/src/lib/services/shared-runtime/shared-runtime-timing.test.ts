@@ -4,7 +4,11 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { SharedRuntimeTimingCollector } from "./shared-runtime-timing";
+import {
+  MAX_SHARED_PROVIDER_TIMING_MS,
+  parseSharedProviderTimingReceipt,
+  SharedRuntimeTimingCollector,
+} from "./shared-runtime-timing";
 
 function clock(values: number[]): () => number {
   let index = 0;
@@ -50,10 +54,281 @@ describe("SharedRuntimeTimingCollector", () => {
         providerTotalDurationMs: 0,
         slowestProviderDurationMs: null,
       },
+      model: {
+        replayed: false,
+        durationMs: 0,
+        clamped: false,
+        callCount: 0,
+        fallbackCount: 0,
+        selectedProvider: "none",
+        callsTruncated: false,
+        calls: [],
+      },
       routing: {
         decision: "unknown",
         contextIds: [],
       },
+    });
+  });
+
+  test("excludes dispatch and setup before the SDK invocation begins", () => {
+    const timing = new SharedRuntimeTimingCollector("provider", 0, clock([0, 100, 145, 200, 220]));
+    timing.markProviderDispatched();
+    const call = timing.prepareModelCall();
+    call.select({ provider: "openrouter", fallback: true });
+    call.begin();
+    call.finish();
+
+    expect(timing.receipt("success").model).toEqual({
+      replayed: false,
+      durationMs: 55,
+      clamped: false,
+      callCount: 1,
+      fallbackCount: 1,
+      selectedProvider: "openrouter",
+      callsTruncated: false,
+      calls: [{ provider: "openrouter", durationMs: 55, fallback: true }],
+    });
+  });
+
+  test("records a call whose provider selection never fired as unobserved", () => {
+    const timing = new SharedRuntimeTimingCollector("unobserved", 0, clock([0, 10, 40, 60]));
+    const call = timing.prepareModelCall();
+    call.begin();
+    // The provider threw before any wrapper reported a successful selection.
+    call.finish();
+
+    expect(timing.receipt("error").model).toEqual({
+      replayed: false,
+      durationMs: 30,
+      clamped: false,
+      callCount: 1,
+      fallbackCount: 0,
+      selectedProvider: "none",
+      callsTruncated: false,
+      calls: [{ provider: "unobserved", durationMs: 30, fallback: false }],
+    });
+  });
+
+  test("keeps an unobserved failed call from forcing mixed attribution", () => {
+    let now = 0;
+    const timing = new SharedRuntimeTimingCollector("failed-then-served", 0, () => (now += 5));
+    const failed = timing.prepareModelCall();
+    failed.begin();
+    failed.finish();
+    const served = timing.prepareModelCall();
+    served.select({ provider: "cerebras", fallback: false });
+    served.begin();
+    served.finish();
+
+    const model = timing.receipt("success").model;
+    expect(model.selectedProvider).toBe("cerebras");
+    expect(model.callCount).toBe(2);
+    expect(model.calls.map((call) => call.provider)).toEqual(["unobserved", "cerebras"]);
+  });
+
+  test("attributes a native OpenAI selection to itself instead of the catch-all", () => {
+    const timing = new SharedRuntimeTimingCollector("native", 0, clock([0, 5, 25]));
+    const call = timing.prepareModelCall();
+    call.select({ provider: "openai", fallback: false });
+    call.begin();
+    call.finish();
+
+    expect(timing.receipt("success").model).toMatchObject({
+      selectedProvider: "openai",
+      calls: [{ provider: "openai", durationMs: 20, fallback: false }],
+    });
+  });
+
+  test("reports an over-bound single call at the bound and marks it clamped", () => {
+    const timing = new SharedRuntimeTimingCollector(
+      "slow",
+      0,
+      clock([0, 1, MAX_SHARED_PROVIDER_TIMING_MS + 5_000]),
+    );
+    const call = timing.prepareModelCall();
+    call.select({ provider: "cerebras", fallback: false });
+    call.begin();
+    call.finish();
+
+    expect(timing.receipt("success").model).toMatchObject({
+      durationMs: MAX_SHARED_PROVIDER_TIMING_MS,
+      clamped: true,
+      callCount: 1,
+      selectedProvider: "cerebras",
+      calls: [{ provider: "cerebras", durationMs: MAX_SHARED_PROVIDER_TIMING_MS, fallback: false }],
+    });
+  });
+
+  test("survives the transport boundary when the summed total is clamped", () => {
+    const perCall = MAX_SHARED_PROVIDER_TIMING_MS * 0.6;
+    let now = 0;
+    const timing = new SharedRuntimeTimingCollector("clamped-total", 0, () => {
+      const value = now;
+      now += perCall;
+      return value;
+    });
+    for (let index = 0; index < 2; index += 1) {
+      const call = timing.prepareModelCall();
+      call.select({ provider: "cerebras", fallback: false });
+      call.begin();
+      call.finish();
+    }
+
+    const model = timing.receipt("success").model;
+    expect(model.clamped).toBe(true);
+    expect(model.durationMs).toBe(MAX_SHARED_PROVIDER_TIMING_MS);
+    // The exact-sum rule would otherwise discard the whole receipt here.
+    expect(parseSharedProviderTimingReceipt(model)).toEqual(model);
+  });
+
+  test("rejects a clamped receipt whose duration is not the bound", () => {
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 12,
+        clamped: true,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "cerebras",
+        callsTruncated: false,
+        calls: [{ provider: "cerebras", durationMs: 12, fallback: false }],
+      }),
+    ).toBeUndefined();
+  });
+
+  test("rejects a receipt that claims an unobserved call as the selected provider", () => {
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 4,
+        clamped: false,
+        callCount: 1,
+        fallbackCount: 0,
+        selectedProvider: "unobserved",
+        callsTruncated: false,
+        calls: [{ provider: "unobserved", durationMs: 4, fallback: false }],
+      }),
+    ).toBeUndefined();
+  });
+
+  test("keeps exact aggregate counts while truncating only the first-16 call list", () => {
+    let now = 0;
+    const timing = new SharedRuntimeTimingCollector("many-provider-calls", 0, () => now++);
+    for (let index = 0; index < 17; index += 1) {
+      const call = timing.prepareModelCall();
+      call.select(
+        index === 16
+          ? { provider: "openrouter", fallback: true }
+          : { provider: "cerebras", fallback: false },
+      );
+      call.begin();
+      call.finish();
+    }
+
+    expect(timing.receipt("success").model).toMatchObject({
+      durationMs: 17,
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: true,
+    });
+    expect(timing.receipt("success").model.calls).toHaveLength(16);
+  });
+
+  test("canonicalizes a valid receipt and strips undeclared transport fields", () => {
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 8.1,
+        clamped: false,
+        callCount: 2,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: false,
+        privateTrace: "drop-me",
+        calls: [
+          {
+            provider: "cerebras",
+            durationMs: 3,
+            fallback: false,
+            privateProviderMetadata: "drop-me",
+          },
+          { provider: "openrouter", durationMs: 5.1, fallback: true },
+        ],
+      }),
+    ).toEqual({
+      replayed: false,
+      durationMs: 8.1,
+      clamped: false,
+      callCount: 2,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: false,
+      calls: [
+        { provider: "cerebras", durationMs: 3, fallback: false },
+        { provider: "openrouter", durationMs: 5.1, fallback: true },
+      ],
+    });
+  });
+
+  test("rejects internally impossible untrusted receipts", () => {
+    const base = {
+      replayed: false,
+      durationMs: 1,
+      clamped: false,
+      callCount: 1,
+      fallbackCount: 0,
+      selectedProvider: "cerebras",
+      callsTruncated: false,
+      calls: [{ provider: "cerebras", durationMs: 1, fallback: false }],
+    };
+    expect(parseSharedProviderTimingReceipt(base)).toBeDefined();
+    expect(parseSharedProviderTimingReceipt({ ...base, fallbackCount: 1 })).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({ ...base, selectedProvider: "mixed" }),
+    ).toBeUndefined();
+    expect(parseSharedProviderTimingReceipt({ ...base, durationMs: 2 })).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({
+        ...base,
+        calls: [{ provider: "cerebras", durationMs: 1, fallback: true }],
+      }),
+    ).toBeUndefined();
+    expect(
+      parseSharedProviderTimingReceipt({
+        ...base,
+        callCount: 0,
+        durationMs: 0,
+        calls: [],
+        selectedProvider: "openrouter",
+      }),
+    ).toBeUndefined();
+  });
+
+  test("accepts an internally possible first-16 truncated receipt", () => {
+    const calls = Array.from({ length: 16 }, () => ({
+      provider: "cerebras",
+      durationMs: 1,
+      fallback: false,
+    }));
+    expect(
+      parseSharedProviderTimingReceipt({
+        replayed: false,
+        durationMs: 17,
+        clamped: false,
+        callCount: 17,
+        fallbackCount: 1,
+        selectedProvider: "mixed",
+        callsTruncated: true,
+        calls,
+      }),
+    ).toMatchObject({
+      callCount: 17,
+      fallbackCount: 1,
+      selectedProvider: "mixed",
+      callsTruncated: true,
+      calls,
     });
   });
 

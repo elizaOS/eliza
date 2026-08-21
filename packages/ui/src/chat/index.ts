@@ -219,6 +219,7 @@ export interface BuildCommandsArgs {
   openBugReport: () => void;
   desktopRuntime: boolean;
   focusDesktopMainWindow: () => void;
+  openDesktopWorkspaceWindow: () => void;
   openDesktopSettingsWindow: (tabHint?: string) => void;
   openDesktopSurfaceWindow: (
     surface: DesktopWorkspaceSurface,
@@ -231,7 +232,8 @@ export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     id: "desktop-open-workspace",
     entryPoint: "command-palette",
     label: "Open Desktop Workspace",
-    expectedAction: "Open the full Eliza workspace at its desktop section.",
+    expectedAction:
+      "Open and focus the complete singleton Eliza Workspace at its desktop section.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -282,6 +284,7 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
     openBugReport,
     desktopRuntime,
     focusDesktopMainWindow,
+    openDesktopWorkspaceWindow,
     openDesktopSettingsWindow,
     openDesktopSurfaceWindow,
   } = args;
@@ -357,7 +360,7 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
         id: "desktop-open-workspace",
         label: "Open Desktop Workspace",
         category: "desktop",
-        action: () => openDesktopSettingsWindow("desktop"),
+        action: openDesktopWorkspaceWindow,
       },
       {
         id: "desktop-open-voice-controls",

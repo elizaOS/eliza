@@ -34,6 +34,12 @@ it("derives the Android and iOS official package tables from the mobile plugin m
   expect(ANDROID_OFFICIAL_CAPACITOR_PACKAGES).not.toContain(
     "@capacitor/network",
   );
+  expect(new Map(IOS_OFFICIAL_PODS).get("CapacitorLocalNotifications")).toBe(
+    "@capacitor/local-notifications",
+  );
+  expect(ANDROID_OFFICIAL_CAPACITOR_PACKAGES).not.toContain(
+    "@capacitor/local-notifications",
+  );
 });
 
 it("keeps the existing iOS custom pod include gates", () => {

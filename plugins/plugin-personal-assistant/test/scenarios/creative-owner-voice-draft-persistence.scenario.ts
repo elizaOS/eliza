@@ -88,6 +88,11 @@ function assertComposeAndRevision(ctx: ScenarioContext): string | undefined {
 export default scenario({
   id: "creative-owner-voice-draft-persistence",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Owner voice draft preserves memo affect and reloads the standing artifact for revision",
   domain: "lifeops.creative",

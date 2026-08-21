@@ -42,8 +42,15 @@ const TELEGRAM: PersonalDeliveryInput = {
   username: "nubs",
   displayName: "Nubs",
 };
+const PHONE: PersonalDeliveryInput = {
+  platform: "phone",
+  phoneNumber: "+15551234567",
+};
 
-function request(path: "/resolve" | "/invalidate", body?: unknown): Request {
+function request(
+  path: "/resolve" | "/invalidate" | "/fence" | "/release",
+  body?: unknown,
+): Request {
   return new Request(`https://personal-delivery-projection${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -82,6 +89,25 @@ describe("PersonalDeliveryProjection", () => {
       dedicatedTarget: null,
       isNew: false,
       resolution: "sender-projection-hit",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("shares one verified-phone projection across Blooio and Twilio", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+
+    const cold = await object.fetch(request("/resolve", PHONE));
+    const warm = await object.fetch(request("/resolve", PHONE));
+
+    expect(cold.status).toBe(200);
+    expect(await warm.json()).toMatchObject({
+      resolution: "sender-projection-hit",
+      userId: "user-1",
+      organizationId: "org-1",
     });
     expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
   });
@@ -187,6 +213,130 @@ describe("PersonalDeliveryProjection", () => {
     await object.fetch(request("/resolve", TELEGRAM));
 
     expect(resolvePersonalDelivery).toHaveBeenCalledTimes(2);
+  });
+
+  test("a durable mutation fence survives process death and prevents stale cache acceptance", async () => {
+    const memory = state();
+    let organizationId = "org-1";
+    const firstResolver = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const first = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery: firstResolver,
+    });
+    await first.fetch(request("/resolve", PHONE));
+    expect(
+      (await (
+        await first.fetch(request("/fence", { token: "mutation-1" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: true });
+
+    // Simulate the lifecycle DB commit followed by process death before release.
+    organizationId = "org-2";
+    const afterCrashResolver = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const afterCrash = new PersonalDeliveryProjection(
+      memory.durableState,
+      ENV,
+      { resolvePersonalDelivery: afterCrashResolver },
+    );
+    const firstFenced = await afterCrash.fetch(request("/resolve", PHONE));
+    const secondFenced = await afterCrash.fetch(request("/resolve", PHONE));
+
+    expect(await firstFenced.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await secondFenced.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(afterCrashResolver).toHaveBeenCalledTimes(2);
+    expect(memory.storage.values.has("shared-account")).toBe(false);
+  });
+
+  test("a resolve racing the lifecycle commit cannot repopulate stale durable state", async () => {
+    const memory = state();
+    let organizationId = "org-1";
+    const resolvePersonalDelivery = mock(async () => ({
+      ...sharedResult(),
+      organizationId,
+    }));
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+    await object.fetch(request("/resolve", PHONE));
+    await object.fetch(request("/fence", { token: "move-1" }));
+
+    const beforeCommit = await object.fetch(request("/resolve", PHONE));
+    organizationId = "org-2";
+    const afterCommit = await object.fetch(request("/resolve", PHONE));
+    await object.fetch(request("/release", { token: "move-1" }));
+    const afterRelease = await object.fetch(request("/resolve", PHONE));
+    const warmNewOrganization = await object.fetch(request("/resolve", PHONE));
+
+    expect(await beforeCommit.json()).toMatchObject({
+      organizationId: "org-1",
+      resolution: "single-query-repeat",
+    });
+    expect(await afterCommit.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await afterRelease.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "single-query-repeat",
+    });
+    expect(await warmNewOrganization.json()).toMatchObject({
+      organizationId: "org-2",
+      resolution: "sender-projection-hit",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(4);
+  });
+
+  test("overlapping mutation tokens keep the object fenced until every writer releases", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+    await object.fetch(request("/fence", { token: "writer-a" }));
+    await object.fetch(request("/fence", { token: "writer-b" }));
+    expect(
+      (await (
+        await object.fetch(request("/release", { token: "writer-a" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: true });
+
+    await object.fetch(request("/resolve", TELEGRAM));
+    await object.fetch(request("/resolve", TELEGRAM));
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(2);
+    expect(memory.storage.values.has("shared-account")).toBe(false);
+
+    expect(
+      (await (
+        await object.fetch(request("/release", { token: "writer-b" }))
+      ).json()) as Record<string, unknown>,
+    ).toEqual({ success: true, fenced: false });
+    await object.fetch(request("/resolve", TELEGRAM));
+    await object.fetch(request("/resolve", TELEGRAM));
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(3);
+  });
+
+  test("rejects malformed mutation fence tokens", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+
+    expect(
+      (await object.fetch(request("/fence", { token: "bad token" }))).status,
+    ).toBe(400);
+    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 
   test("serializes concurrent cold turns into one database hydration", async () => {

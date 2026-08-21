@@ -85,7 +85,8 @@
     "audit:story-coverage:report": "node scripts/stories-coverage.mjs --write-report",
     "audit:story-coverage:update-baseline": "node scripts/stories-coverage.mjs --update-baseline",
     "audit:dead-code": "knip --config knip.json --include files,dependencies,unlisted,unresolved --max-issues 0",
-    "audit:public-api": "node scripts/audit-public-api.mjs",
+    "audit:public-api:test": "node --test scripts/public-api-explicit-subpaths.test.mjs",
+    "audit:public-api": "node --test scripts/public-api-explicit-subpaths.test.mjs && node scripts/audit-public-api.mjs",
     "audit:public-api:update-baseline": "node scripts/audit-public-api.mjs --update-baseline",
     "audit:boundaries": "node scripts/scan-import-boundaries.mjs",
     "audit:boundaries:update-baseline": "node scripts/scan-import-boundaries.mjs --update-baseline",
@@ -127,6 +128,11 @@
       "types": "./dist/cloud/*.d.ts",
       "import": "./dist/cloud/*.js",
       "default": "./dist/cloud/*.js"
+    },
+    "./android-cloud/*": {
+      "types": "./dist/android-cloud/*.d.ts",
+      "import": "./dist/android-cloud/*.js",
+      "default": "./dist/android-cloud/*.js"
     },
     "./agent-surface": {
       "types": "./dist/agent-surface/index.d.ts",
@@ -412,7 +418,8 @@
   },
   "optionalDependencies": {
     "@elizaos/capacitor-bun-runtime": "workspace:*",
-    "@elizaos/capacitor-camera": "workspace:*"
+    "@elizaos/capacitor-camera": "workspace:*",
+    "@elizaos/capacitor-secure-store": "workspace:*"
   },
   "dependencies": {
     "@babel/runtime": "^7.29.7",

@@ -23,6 +23,10 @@ import type {
 	WorldSettings,
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("SETTINGS");
@@ -393,7 +397,11 @@ export const settingsProvider: Provider = {
 				state,
 			);
 			if (output.length > MAX_SETTINGS_OUTPUT_LENGTH) {
-				output = `${output.slice(0, MAX_SETTINGS_OUTPUT_LENGTH - 3)}...`;
+				const wellFormed = toWellFormedUnicode(output);
+				output =
+					wellFormed.length > MAX_SETTINGS_OUTPUT_LENGTH
+						? `${truncateWellFormed(wellFormed, MAX_SETTINGS_OUTPUT_LENGTH - 3)}...`
+						: wellFormed;
 			}
 
 			return {

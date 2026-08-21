@@ -350,6 +350,10 @@ import {
 	StructuredFieldStreamExtractor,
 } from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "./utils/well-formed.js";
 
 const environmentSettings: RuntimeSettings = {};
 // Whether debug-level logs are emitted, captured once at load (mirrors the
@@ -5357,7 +5361,9 @@ export class AgentRuntime implements IAgentRuntime {
 						// access row — omit them so readers do not slice a different
 						// string with compose-local offsets.
 						purpose: "compose_state",
-						query: { message: userText.slice(0, 2000) },
+						query: {
+							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
+						},
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -5401,7 +5407,9 @@ export class AgentRuntime implements IAgentRuntime {
 						tokenCount: attribution?.tokenCount,
 						position: attribution?.position,
 						purpose: "compose_state",
-						query: { message: userText.slice(0, 2000) },
+						query: {
+							message: truncateWellFormed(toWellFormedUnicode(userText), 2000),
+						},
 						runId: trajCtx?.runId,
 						roomId: trajCtx?.roomId,
 						messageId: trajCtx?.messageId,
@@ -9338,8 +9346,11 @@ ${section_end}`;
 						const validatedContent = extractor.getValidatedFields();
 						const validatedParts: string[] = [];
 						for (const [field, content] of validatedContent) {
+							const wellFormedContent = toWellFormedUnicode(content);
 							const truncated =
-								content.length > 500 ? `${content.slice(0, 497)}...` : content;
+								wellFormedContent.length > 500
+									? `${truncateWellFormed(wellFormedContent, 497)}...`
+									: wellFormedContent;
 							validatedParts.push(
 								stringifyStructuredForPrompt({ [field]: truncated }),
 							);
@@ -9369,8 +9380,8 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = this.redactSecrets(cleanResponse).slice(
-							0,
+						const priorOutput = truncateWellFormed(
+							toWellFormedUnicode(this.redactSecrets(cleanResponse)),
 							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
 						);
 						const issueList = repairIssues

@@ -34,17 +34,25 @@ const ensureAgentSandboxSchema = mock(async () => {});
 let selectRows: unknown[] = [];
 let selectRowBatches: unknown[][] = [];
 
+let capturedGroupBy: unknown[] = [];
+
 function chainableRows(): unknown[] & {
   limit: () => unknown[];
   orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+  groupBy: (...columns: unknown[]) => unknown[];
 } {
   const sourceRows = selectRowBatches.length > 0 ? selectRowBatches.shift() : selectRows;
   const rows = [...(sourceRows ?? [])] as unknown[] & {
     limit: () => unknown[];
     orderBy: () => unknown[] & { limit: () => unknown[]; orderBy: () => unknown[] };
+    groupBy: (...columns: unknown[]) => unknown[];
   };
   rows.limit = () => rows;
   rows.orderBy = () => rows;
+  rows.groupBy = (...columns: unknown[]) => {
+    capturedGroupBy = columns;
+    return rows;
+  };
   return rows;
 }
 
@@ -66,6 +74,7 @@ const select = mock(() => ({ from: selectFrom }));
 type ExecuteResult = { rows: unknown[]; rowCount?: number };
 let executeHandler: (sqlText: string) => ExecuteResult = () => ({ rows: [] });
 let userRowForClaim: unknown;
+let warmClaimReadWhereClause: SQL | undefined;
 let warmClaimWhereClause: SQL | undefined;
 const warmClaimUpdateSet = mock((values: Record<string, unknown>) => {
   void values;
@@ -87,11 +96,14 @@ function makeTx() {
     }),
     select: mock(() => ({
       from: mock(() => ({
-        where: mock(() => ({
-          for: mock(() => ({
-            limit: mock(() => [userRowForClaim].filter(Boolean)),
-          })),
-        })),
+        where: mock((clause: SQL) => {
+          warmClaimReadWhereClause = clause;
+          return {
+            for: mock(() => ({
+              limit: mock(() => [userRowForClaim].filter(Boolean)),
+            })),
+          };
+        }),
       })),
     })),
     update: mock(() => ({
@@ -280,6 +292,58 @@ describe("AgentSandboxesRepository", () => {
     // eq/ne bind their operands, so the values land in `params`, not the SQL.
     expect(query.params).toContain("running");
     expect(query.params).toContain("shared");
+    // #22548: soft-deleted rows and unclaimed warm-pool rows must never be
+    // dialed — both guards are present, matching the sibling predicates.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("dedicated fleet census groups by tier AND status over the container-backed fleet (#22548)", async () => {
+    capturedWhere = undefined;
+    capturedGroupBy = [];
+    select.mockClear();
+
+    const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+
+    await new AgentSandboxesRepository().summarizeDedicatedFleet();
+
+    if (!capturedWhere) throw new Error("summarizeDedicatedFleet did not build a where clause");
+    const query = new PgDialect().sqlToQuery(capturedWhere);
+    const sql = query.sql.toLowerCase();
+
+    // The census must NOT filter on status: the caller applies the serving
+    // contract, and it needs the off-state counts (sleeping/stopped) to tell
+    // "no agents exist" from "all are asleep". A fleet whose every row sits in
+    // `error` — invisible to the heartbeat sweep — must still be counted.
+    expect(sql).not.toContain('"status"');
+    expect(query.params).not.toContain("running");
+
+    // The tier filter is an explicit allowlist, not `<> 'shared'`, so a tier
+    // added later cannot silently enroll itself in the paging census.
+    expect(sql).toContain("execution_tier");
+    expect(sql).toContain("in (");
+    expect(sql).not.toContain("<>");
+    expect(query.params).toContain("dedicated-lazy");
+    expect(query.params).toContain("dedicated-always");
+    expect(query.params).toContain("custom");
+    expect(query.params).not.toContain("shared");
+
+    // Deleted and warm-pool rows are not tenant-serving fleet.
+    expect(sql).toContain("deleted_at");
+    expect(sql).toContain("pool_status");
+    expect((sql.match(/is null/g) ?? []).length).toBeGreaterThanOrEqual(2);
+
+    // Tier must be both projected and grouped: a status-only census cannot
+    // distinguish a sleeping lazy agent (fine) from a sleeping always-on one.
+    const lastSelectArgs = select.mock.calls.at(-1) as unknown as unknown[] | undefined;
+    const projection = lastSelectArgs?.[0] as Record<string, unknown> | undefined;
+    expect(Object.keys(projection ?? {})).toEqual(
+      expect.arrayContaining(["execution_tier", "status", "count"]),
+    );
+    expect(capturedGroupBy).toHaveLength(2);
+    const groupedNames = capturedGroupBy.map((column) => (column as { name?: string }).name);
+    expect(groupedNames).toEqual(expect.arrayContaining(["execution_tier", "status"]));
   });
 
   test("heartbeat writeback is fenced to the exact running generation and loses to deletion", async () => {
@@ -694,6 +758,7 @@ describe("AgentSandboxesRepository", () => {
         id: params.userAgentId,
         organization_id: params.organizationId,
         status: "pending",
+        execution_tier: "dedicated-always",
         database_status: null,
         database_uri: null,
         deletion_attempt_id: null,
@@ -709,6 +774,8 @@ describe("AgentSandboxesRepository", () => {
 
     beforeEach(() => {
       useTransactionMock = true;
+      warmClaimReadWhereClause = undefined;
+      warmClaimWhereClause = undefined;
     });
 
     afterEach(() => {
@@ -779,6 +846,7 @@ describe("AgentSandboxesRepository", () => {
         id: "pool-1",
         pool_status: "unclaimed",
         status: "running",
+        execution_tier: "shared",
         docker_image: IMAGE,
         image_digest: `sha256:${"a".repeat(64)}`,
         pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
@@ -839,13 +907,62 @@ describe("AgentSandboxesRepository", () => {
       // carries the id out of the transaction (#17066 review — the claimed
       // row's own id can never reach that key name).
       expect(result?.warm_pool_row_id).toBe("pool-1");
+      if (!warmClaimReadWhereClause) throw new Error("Warm claim did not guard its target read");
+      const readQuery = new PgDialect().sqlToQuery(warmClaimReadWhereClause);
+      expect(readQuery.sql.toLowerCase()).toContain("execution_tier");
+      expect(readQuery.sql.toLowerCase()).toContain("pool_status");
+      expect(readQuery.sql.toLowerCase()).toContain("deleted_at");
+      expect(readQuery.params).toEqual(
+        expect.arrayContaining(["dedicated-lazy", "dedicated-always", "custom"]),
+      );
+      expect(readQuery.params).not.toContain("shared");
       if (!warmClaimWhereClause) throw new Error("Warm claim did not build an update predicate");
-      const updateSql = new PgDialect().sqlToQuery(warmClaimWhereClause).sql.toLowerCase();
+      const updateQuery = new PgDialect().sqlToQuery(warmClaimWhereClause);
+      const updateSql = updateQuery.sql.toLowerCase();
       expect(updateSql).toContain("organization_id");
+      expect(updateSql).toContain("execution_tier");
+      expect(updateSql).toContain("pool_status");
+      expect(updateSql).toContain("deleted_at");
+      expect(updateQuery.params).toEqual(
+        expect.arrayContaining(["dedicated-lazy", "dedicated-always", "custom"]),
+      );
+      expect(updateQuery.params).not.toContain("shared");
       expect(updateSql).toContain("deletion_attempt_id");
       expect(updateSql).toContain("deletion_pending");
       expect(updateSql).toContain("deletion_failed");
       expect(updateSql).toContain("lifecycle_revision");
+    });
+
+    test("a Shared target is refused before any pool transfer", async () => {
+      userRowForClaim = { ...pendingUserRow(), execution_tier: "shared" };
+      warmClaimUpdateSet.mockClear();
+      warmClaimDeleteWhere.mockClear();
+      executeHandler = (sqlText: string) => {
+        if (sqlText.includes("FOR UPDATE SKIP LOCKED")) {
+          return {
+            rows: [
+              {
+                id: "legacy-shared-pool-source",
+                pool_status: "unclaimed",
+                status: "running",
+                execution_tier: "shared",
+                docker_image: IMAGE,
+                image_digest: `sha256:${"d".repeat(64)}`,
+                pool_ready_at: new Date("2026-07-07T11:00:00.000Z"),
+                node_id: "legacy-node",
+                container_name: "legacy-container",
+                bridge_url: "http://100.64.0.11:3000",
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      };
+
+      const { AgentSandboxesRepository } = await import("./agent-sandboxes");
+      await expect(new AgentSandboxesRepository().claimWarmContainer(params)).resolves.toBeNull();
+      expect(warmClaimUpdateSet).not.toHaveBeenCalled();
+      expect(warmClaimDeleteWhere).not.toHaveBeenCalled();
     });
 
     test("a stale lifecycle revision cannot consume a warm pool container", async () => {

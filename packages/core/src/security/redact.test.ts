@@ -85,6 +85,48 @@ describe("redactSensitiveText (pattern detection)", () => {
 		expect(redactSensitiveText(benign)).toBe(benign);
 	});
 
+	it("masks a quoted credential key the ENV-style row cannot reach", () => {
+		// The ENV-style assignment pattern requires the key's word boundary to be
+		// followed immediately by `=`/`:`; a quoted key's closing quote always
+		// intervenes, so `{"api_key": "..."}` matched nothing before this fix.
+		// Assembled at runtime so no scannable secret-shaped literal sits in
+		// source (gitleaks/push-protection).
+		const value = ["sk", "_live_51H8xQ2LmNpQrStUv"].join("");
+		for (const [key, quote] of [
+			["api_key", '"'],
+			["api-key", '"'],
+			["api_key", "'"],
+		] as const) {
+			const body = `${quote}${key}${quote}: ${quote}${value}${quote}`;
+			const out = redactSensitiveText(`{${body}}`);
+			expect(out, `${key} (${quote})`).not.toContain(value);
+		}
+		// A prefixed name vocabulary still requires the separator before the
+		// credential word — "monkey" must not fold into "key".
+		const benign = '{"context_monkey": "banana bread"}';
+		expect(redactSensitiveText(benign)).toBe(benign);
+	});
+
+	it("masks Google OAuth refresh and access tokens", () => {
+		// `1//0...` (refresh) and `ya29....` (access) both survive a
+		// `\b`-anchored alphanumeric pattern because `1//` opens with a digit
+		// followed by slashes, which `\b` does not separate from what precedes
+		// it. Assembled at runtime per the fixture convention above.
+		const refreshToken = ["1//0", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join(
+			"",
+		);
+		const accessToken = [
+			"ya29.",
+			"AbCdEfGhIjKlMnOpQrStUvWxYz1234-5678_90",
+		].join("");
+		for (const token of [refreshToken, accessToken]) {
+			const out = redactSensitiveText(
+				`token endpoint returned ${token} in the body`,
+			);
+			expect(out, token).not.toContain(token);
+		}
+	});
+
 	it("redacts credentials embedded in URI userinfo", () => {
 		const httpsUrl = "https://admin:hunter2hunter2@host.example.com/private";
 		const postgresUrl =

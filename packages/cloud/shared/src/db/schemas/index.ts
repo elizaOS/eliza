@@ -4,6 +4,7 @@
  * Central export point for all database table schemas.
  */
 
+export * from "./account-deletion-requests";
 export * from "./ad-accounts";
 export * from "./ad-audience-segments";
 export * from "./ad-campaigns";
@@ -78,6 +79,7 @@ export * from "./job-execution-leases";
 export * from "./jobs";
 export * from "./llm-trajectories";
 export * from "./managed-domains";
+export * from "./mobile-app-auth-grants";
 export * from "./model-pricing";
 export * from "./moderation-violations";
 export * from "./oauth-success-proof-tickets";
@@ -122,7 +124,6 @@ export * from "./tenant-db-clusters";
 export * from "./token-redemptions";
 export * from "./tts-first-line-cache";
 export * from "./twilio-inbound-calls";
-export * from "./usage-quotas";
 export * from "./usage-records";
 export * from "./user-characters";
 export * from "./user-identities";

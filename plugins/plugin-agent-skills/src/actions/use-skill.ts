@@ -24,6 +24,8 @@ import {
 	type Memory,
 	type State,
 	type TrajectorySkillInvocationRecord,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 
@@ -530,10 +532,11 @@ export const useSkillAction: Action = {
 		}
 
 		const maxLen = 3500;
+		const wellFormedBody = toWellFormedUnicode(instructions.body);
 		const truncatedBody =
-			instructions.body.length > maxLen
-				? `${instructions.body.substring(0, maxLen)}\n\n...[truncated]`
-				: instructions.body;
+			wellFormedBody.length > maxLen
+				? `${truncateWellFormed(wellFormedBody, maxLen)}\n\n...[truncated]`
+				: wellFormedBody;
 
 		const text = `## ${skill.name}\n\n${skill.description}\n\n### Instructions\n\n${truncatedBody}`;
 

@@ -145,6 +145,7 @@ describe("StewardLoginSection button label contrast", () => {
       expiresAt: Date.now() + 600_000,
       challengeId: "challenge-1",
       pollSecret: "poll-secret",
+      emailCodeDelivered: true,
     });
     emailLoginSpies.poll.mockResolvedValue("pending");
     sessionSpies.sync.mockResolvedValue(undefined);

@@ -75,8 +75,13 @@ export class RemoteSigningService {
   }
 
   async submitSigningRequest(request: SigningRequest): Promise<SigningResult> {
-    // Evaluate policy
-    const decision = this.policyEvaluator.evaluate(request);
+    // Atomically check-and-reserve: a plain evaluate() followed by a later
+    // recordRequest() left a TOCTOU window where two concurrent submissions
+    // could both pass a maxTransactionsPerHour: 1 policy before either
+    // recorded (#23228). tryReserve() closes it; every path below that
+    // abandons an allowed-but-unconsumed reservation must call
+    // policyEvaluator.release(request.requestId) to return the slot.
+    const decision = this.policyEvaluator.tryReserve(request);
 
     this.auditLog?.record({
       type: "signing_request_submitted",
@@ -153,6 +158,7 @@ export class RemoteSigningService {
     // Check expiration
     if (Date.now() > approval.expiresAt) {
       this.pendingApprovals.delete(requestId);
+      this.policyEvaluator.release(requestId);
       return {
         success: false,
         error: "Approval expired",
@@ -171,6 +177,10 @@ export class RemoteSigningService {
     this.pendingApprovals.delete(requestId);
 
     if (existed) {
+      // The reservation tryReserve() made at submit time is never going to
+      // be consumed by a sign now — return the rate-limit slot and replay
+      // marker to the pool.
+      this.policyEvaluator.release(requestId);
       this.auditLog?.record({
         type: "signing_request_rejected",
         summary: `Human rejected request ${requestId}`,
@@ -188,6 +198,7 @@ export class RemoteSigningService {
     for (const [id, approval] of this.pendingApprovals) {
       if (now > approval.expiresAt) {
         this.pendingApprovals.delete(id);
+        this.policyEvaluator.release(id);
       }
     }
     return [...this.pendingApprovals.values()];
@@ -228,8 +239,10 @@ export class RemoteSigningService {
       }
       const signedTx = await this.signer.signTransaction(unsigned);
 
-      // Record for replay protection and rate limiting
-      this.policyEvaluator.recordRequest(request.requestId);
+      // Replay protection + rate limiting were already reserved atomically
+      // by tryReserve() before this method was called; the reservation is
+      // now consumed by a real signed transaction, so there is nothing left
+      // to record here.
 
       this.auditLog?.record({
         type: "signing_request_approved",
@@ -251,6 +264,11 @@ export class RemoteSigningService {
       };
     } catch (err) {
       const errorMsg = String(err);
+
+      // The reservation was never consumed by a real signature — return the
+      // slot and replay marker so a legitimate retry isn't blocked by a
+      // failed attempt (#23228).
+      this.policyEvaluator.release(request.requestId);
 
       this.auditLog?.record({
         type: "signing_request_rejected",

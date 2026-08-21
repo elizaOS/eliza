@@ -3,9 +3,12 @@
 
 /**
  * Coverage for `src/mobile-lifecycle.ts` — the idempotent Capacitor lifecycle
- * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
+ * wiring (`createMobileLifecycle`). Exercises the three device-free seams a
  * jsdom test can drive deterministically:
  *
+ *   - `initializeKeyboard()` — iOS delegates WebView-global accessory
+ *     ownership to the focus-aware chat controller while retaining height
+ *     lifecycle events.
  *   - `initializeDeepLinks()` + `initializeAppLifecycle()` — early
  *     `appUrlOpen`/cold-launch capture plus `appStateChange` / `backButton`
  *     wiring. Asserts the events the module dispatches
@@ -92,17 +95,36 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
     };
   });
 
+const { keyboardListeners, keyboardMock } = vi.hoisted(() => {
+  const keyboardListeners = new Map<string, CapacitorEventHandler[]>();
+  return {
+    keyboardListeners,
+    keyboardMock: {
+      setResizeMode: vi.fn(async () => undefined),
+      setScroll: vi.fn(async () => undefined),
+      addListener: vi.fn(
+        (eventName: string, handler: CapacitorEventHandler) => {
+          const handlers = keyboardListeners.get(eventName) ?? [];
+          handlers.push(handler);
+          keyboardListeners.set(eventName, handlers);
+          return Promise.resolve({ remove: async () => undefined });
+        },
+      ),
+    },
+  };
+});
+
+const initializeAccessoryBar = vi.hoisted(() => vi.fn(async () => undefined));
+
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
+vi.mock("@elizaos/ui/components/shell/ios-chat-accessory-bar", () => ({
+  initializeIosKeyboardAccessoryBar: initializeAccessoryBar,
+}));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
 vi.mock("@capacitor/keyboard", () => ({
-  Keyboard: {
-    setResizeMode: vi.fn(async () => undefined),
-    setScroll: vi.fn(async () => undefined),
-    setAccessoryBarVisible: vi.fn(async () => undefined),
-    addListener: vi.fn(async () => ({ remove: async () => undefined })),
-  },
+  Keyboard: keyboardMock,
   KeyboardResize: { None: "none" },
 }));
 
@@ -181,6 +203,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   appListeners.clear();
   networkListeners.clear();
+  keyboardListeners.clear();
   capacitorAppMock.__setLaunchUrl(null);
   historyBackSpy = vi
     .spyOn(window.history, "back")
@@ -203,6 +226,7 @@ describe("createMobileLifecycle — app lifecycle", () => {
     // The live entrypoint must route through the extracted helper — this suite
     // certifies the shipped behavior only while main.tsx actually calls it.
     expect(mainSrc).toContain("getMobileLifecycle().initializeAppLifecycle()");
+    expect(mainSrc).toContain("getMobileLifecycle().initializeKeyboard()");
     expect(mainSrc).toContain("getMobileLifecycle().initializeDeepLinks()");
     expect(mainSrc).toContain(
       "getMobileLifecycle().initializeNetworkListener()",
@@ -213,6 +237,45 @@ describe("createMobileLifecycle — app lifecycle", () => {
     expect(mainSrc).not.toContain('addEventListener("visibilitychange"');
     expect(mainSrc).not.toContain('addListener("backButton"');
     expect(mainSrc).not.toContain('addListener("appStateChange"');
+    expect(mainSrc).not.toContain("async function initializeKeyboard()");
+  });
+
+  it("keeps keyboard height events and delegates iOS accessory ownership", async () => {
+    const lifecycle = createMobileLifecycle(
+      makeContext({ isIOS: true, isAndroid: false }),
+    );
+
+    await lifecycle.initializeKeyboard();
+
+    expect(keyboardMock.setResizeMode).toHaveBeenCalledWith({ mode: "none" });
+    expect(keyboardMock.setScroll).toHaveBeenCalledWith({ isDisabled: true });
+    expect(initializeAccessoryBar).toHaveBeenCalledOnce();
+
+    for (const handler of keyboardListeners.get("keyboardWillShow") ?? []) {
+      handler({ keyboardHeight: 321 });
+    }
+    expect(document.body.style.getPropertyValue("--keyboard-height")).toBe(
+      "321px",
+    );
+    expect(document.body.classList).toContain("keyboard-open");
+
+    for (const handler of keyboardListeners.get("keyboardWillHide") ?? []) {
+      handler({});
+    }
+    expect(document.body.style.getPropertyValue("--keyboard-height")).toBe(
+      "0px",
+    );
+    expect(document.body.classList).not.toContain("keyboard-open");
+  });
+
+  it("does not change Android keyboard accessory policy", async () => {
+    const lifecycle = createMobileLifecycle(makeContext());
+
+    await lifecycle.initializeKeyboard();
+
+    expect(keyboardMock.setResizeMode).not.toHaveBeenCalled();
+    expect(keyboardMock.setScroll).not.toHaveBeenCalled();
+    expect(initializeAccessoryBar).not.toHaveBeenCalled();
   });
 
   it("dispatches APP_RESUME_EVENT when the app becomes active", async () => {
@@ -443,6 +506,165 @@ describe("createMobileLifecycle — app lifecycle", () => {
     await vi.waitFor(() =>
       expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
         url: bufferedUrl,
+      }),
+    );
+  });
+
+  it("defers the Android ack until handleDeepLink's returned promise resolves applied=true (#23350)", async () => {
+    // Regression: `ctx.handleDeepLink` used to be treated as complete the
+    // instant it returned, so `acknowledgePendingUrl` fired even though the
+    // navigation intent it dispatched was still only enqueued, not yet
+    // claimed by the App shell. A renderer reload/crash in that window lost
+    // the intent while Android had already been told it was delivered.
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveApplied = resolve;
+          }),
+      ),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    // The intent is dispatched, but nothing has confirmed it landed yet —
+    // acknowledging now would be the exact bug this test guards against.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    // Simulate the App shell's canonical listener claiming + applying it.
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
+  it("never acknowledges Android when handleDeepLink's promise resolves applied=false (dropped/never claimed)", async () => {
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(() => Promise.resolve(false)),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Never applied (e.g. every listener declined, or it overflowed the
+    // replay bound) — the native buffer must stay unacknowledged so a fresh
+    // process can pick the intent back up.
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+  });
+
+  it("queues an in-flight redelivery's ack behind the original attempt instead of confirming it early", async () => {
+    // Android's cold-launch replay polls the unacked buffer every second
+    // for up to 15s. A poll landing while the FIRST attempt is still
+    // in-flight must not let that second poll's ack fire ahead of — or
+    // instead of — the real "applied" confirmation.
+    vi.useFakeTimers();
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    let callCount = 0;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(() => {
+        callCount += 1;
+        return new Promise<boolean>((resolve) => {
+          resolveApplied = resolve;
+        });
+      }),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeAppLifecycle();
+    // A poll redelivers the same still-unacked URL while the first attempt
+    // is in-flight.
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // handleDeepLink is only invoked once per URL — the redelivery reuses
+    // the first attempt's outcome rather than re-dispatching.
+    expect(callCount).toBe(1);
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
+  it("does not ack when getLaunchUrl starts applying before the buffer reports the same URL", async () => {
+    const url = "elizaos://apps/deploy";
+    capacitorAppMock.__setLaunchUrl({ url });
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveApplied = resolve;
+          }),
+      ),
+    });
+
+    createMobileLifecycle(ctx).initializeAppLifecycle();
+    await vi.waitFor(() => expect(ctx.handleDeepLink).toHaveBeenCalledOnce());
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
+  it("retries a buffered URL after an application attempt resolves false", async () => {
+    vi.useFakeTimers();
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi
+        .fn<MobileLifecycleContext["handleDeepLink"]>()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true),
+    });
+
+    createMobileLifecycle(ctx).initializeAppLifecycle();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
       }),
     );
   });

@@ -22,11 +22,13 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   ChannelKeyError,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
   type ScheduledTaskFireResult,
   type ScheduledTaskRunnerHandle,
 } from "../scheduled-task/index.js";
 import {
+  scheduledTaskEditPayloadSchema,
   scheduledTaskFilterSchema,
   scheduledTaskInputSchema,
   scheduledTaskSnoozePayloadSchema,
@@ -485,8 +487,13 @@ async function handleScheduledTasks(
           (req.headers["content-length"] as string | undefined) ?? "0",
           10,
         );
+        const hasTransferEncoding =
+          req.headers["transfer-encoding"] !== undefined;
         let body: unknown;
-        if (Number.isFinite(contentLength) && contentLength > 0) {
+        if (
+          (Number.isFinite(contentLength) && contentLength > 0) ||
+          hasTransferEncoding
+        ) {
           const parsed = await readJsonBody<Record<string, unknown>>(req, res);
           if (parsed === null) return true;
           body = parsed;
@@ -498,6 +505,43 @@ async function handleScheduledTasks(
             error(
               res,
               `invalid snooze payload: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
+              400,
+            );
+            return true;
+          }
+          payload = parsed.data;
+        } else if (verb === "edit") {
+          // `applyEdit` merges this body onto the live task with
+          // `Object.assign`, so it needs the same edge validation `snooze`
+          // already gets. Unvalidated, a caller writes wrong-typed fields
+          // straight into a persisted `ScheduledTask` — and `{"trigger":null}`
+          // crashes `computeNextFireAt` into a 500 instead of the 400 this
+          // boundary promises for malformed input. A `JSON.parse`-produced own
+          // `"__proto__"` key additionally re-parents the task object, because
+          // `Object.assign` writes through `[[Set]]`.
+          if (body === undefined) {
+            error(res, "invalid edit payload: request body is required", 400);
+            return true;
+          }
+          const raw = (body ?? {}) as Record<string, unknown>;
+          // Refuse the read-only keys up front, with the runner's own message
+          // and the 409 the boundary already documents for a read-only field.
+          // Zod reports neither: `.strict()` skips `__proto__`, and the two
+          // server-managed keys would degrade to a generic unknown-key 400.
+          const readOnly = SCHEDULED_TASK_EDIT_READONLY_KEYS.find((key) =>
+            Object.hasOwn(raw, key),
+          );
+          if (readOnly) {
+            error(res, `edit: ${readOnly} is read-only`, 409);
+            return true;
+          }
+          const parsed = scheduledTaskEditPayloadSchema.safeParse(raw);
+          if (!parsed.success) {
+            error(
+              res,
+              `invalid edit payload: ${parsed.error.issues
+                .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+                .join("; ")}`,
               400,
             );
             return true;

@@ -83,6 +83,10 @@ import {
 } from "../../types/primitives.ts";
 import { ServiceType } from "../../types/service.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
+import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseJSONObjectFromText,
@@ -243,7 +247,7 @@ function textContainsAgentName(
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -263,7 +267,7 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const safeText = truncateWellFormed(toWellFormedUnicode(text), 10_000);
 	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
@@ -392,8 +396,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						descriptionPreview:
-							described.description.substring(0, 100) || undefined,
+						descriptionPreview: described.description
+							? truncateWellFormed(
+									toWellFormedUnicode(described.description),
+									100,
+								)
+							: undefined,
 					},
 					"Generated description",
 				);
@@ -444,8 +452,12 @@ export async function processAttachments(
 					{
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
-						textPreview:
-							processedAttachment.text.substring(0, 100) || undefined,
+						textPreview: processedAttachment.text
+							? truncateWellFormed(
+									toWellFormedUnicode(processedAttachment.text),
+									100,
+								)
+							: undefined,
 					},
 					"Extracted text content",
 				);
@@ -470,7 +482,9 @@ export async function processAttachments(
 						src: "basic-capabilities",
 						agentId: runtime.agentId,
 						textLength: textContent.length,
-						textPreview: textContent.substring(0, 100) || undefined,
+						textPreview: textContent
+							? truncateWellFormed(toWellFormedUnicode(textContent), 100)
+							: undefined,
 					},
 					"Extracted PDF text content",
 				);
@@ -1085,7 +1099,9 @@ const events: PluginEvents = {
 					new Error(
 						"outbound message contains external-content envelope markers",
 					),
-					{ preview: sentText.slice(0, 120) },
+					{
+						preview: truncateWellFormed(toWellFormedUnicode(sentText), 120),
+					},
 				);
 			}
 		},

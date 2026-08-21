@@ -3,10 +3,17 @@
 import { describe, expect, mock, test } from "bun:test";
 import { runInNewContext } from "node:vm";
 import appViteConfig, {
+  ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS,
+  androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
+  appShellMetadataPlugin,
+  findAndroidCloudEmittedRoutingFindings,
   resolveAppShellLocalCspSources,
   resolveDevApiProxyAuthority,
   rewriteSameOriginDevProxyOrigin,
+  selectAndroidCloudRendererEntry,
+  stripAndroidCloudIpcBootstrap,
+  stripAndroidCloudPublicAssetReferences,
 } from "./vite.config";
 
 describe("appDevWsBasePlugin", () => {
@@ -72,6 +79,126 @@ describe("app shell local connection policy", () => {
       localHttpSources: " http://localhost:* http://127.0.0.1:*",
       localConnectSources: " http: ws:",
     });
+  });
+
+  test("keeps cleartext and local routing out of Android cloud builds", () => {
+    expect(resolveAppShellLocalCspSources("android", false, true)).toEqual({
+      localHttpSources: "",
+      localConnectSources: "",
+    });
+  });
+
+  test("audits every emitted file without rewriting packaged code", () => {
+    const lazyCode = "http://127.0.0.1:31337 adb reverse tcp:32437";
+    const bundle = {
+      "entry.js": {
+        type: "chunk" as const,
+        isEntry: true,
+        imports: ["runtime.js"],
+        code: 'import "./runtime.js"',
+      },
+      "runtime.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: "const emulatorHost = '10.0.2.2'",
+      },
+      "lazy-direct-runtime.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: lazyCode,
+      },
+    };
+
+    expect(findAndroidCloudEmittedRoutingFindings(bundle)).toEqual([
+      "lazy-direct-runtime.js: 31337",
+      "lazy-direct-runtime.js: 32437",
+      "lazy-direct-runtime.js: adb reverse",
+      "runtime.js: 10.0.2.2",
+    ]);
+    expect(bundle["lazy-direct-runtime.js"].code).toBe(lazyCode);
+    expect(ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS).toContain("adb reverse");
+  });
+
+  test("physically removes the native local-agent bootstrap from Android cloud HTML", () => {
+    const source = `
+      <head>
+        <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->
+        <script>window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__ = true; fetch("eliza-local-agent://ipc")</script>
+        <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->
+        <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: eliza-local-agent: https://*;" />
+      </head>
+      <script type="module" src="/src/entry.ts"></script>`;
+    const stripped = stripAndroidCloudIpcBootstrap(source);
+    expect(stripped).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
+    expect(stripped).not.toContain("eliza-local-agent:");
+
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: true,
+      capacitorBuildTarget: "android",
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+    const transformed = plugin.transformIndexHtml(source) as string;
+    expect(transformed).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
+    expect(transformed).not.toContain("eliza-local-agent:");
+  });
+
+  test("removes browser-only public asset references from the Play shell", () => {
+    const source = `
+      <link rel="icon" href="/brand/favicons/favicon.svg" />
+      <link rel="apple-touch-icon" href="/brand/favicons/apple-touch-icon.png" />
+      <link rel="manifest" href="/site.webmanifest" />
+      <link rel="stylesheet" href="/assets/app.css" />`;
+    const stripped = stripAndroidCloudPublicAssetReferences(source);
+
+    expect(stripped).not.toMatch(/favicon|apple-touch-icon|site\.webmanifest/);
+    expect(stripped).toContain('rel="stylesheet"');
+  });
+
+  test("selects the dedicated renderer before the Android Cloud graph is bundled", () => {
+    const source = '<script type="module" src="/src/entry.ts"></script>';
+
+    expect(selectAndroidCloudRendererEntry(source, true)).toBe(
+      '<script type="module" src="/src/main.android-cloud.tsx"></script>',
+    );
+    expect(selectAndroidCloudRendererEntry(source, false)).toBe(source);
+    expect(() =>
+      selectAndroidCloudRendererEntry("<main></main>", true),
+    ).toThrow("missing the expected /src/entry.ts");
+
+    const hook = androidCloudRendererEntryPlugin(true).transformIndexHtml;
+    if (typeof hook !== "object" || !("handler" in hook)) {
+      throw new Error("Android Cloud entry plugin has no pre-transform");
+    }
+    expect(hook.order).toBe("pre");
+    const transformed = hook.handler(source, {
+      path: "/",
+      filename: "index.html",
+      server: undefined,
+      bundle: undefined,
+      chunk: undefined,
+      originalUrl: "/",
+    }) as string;
+    expect(transformed).toContain("/src/main.android-cloud.tsx");
+    expect(transformed).not.toContain('src="/src/entry.ts"');
+  });
+
+  test("retains the native local-agent bootstrap outside Android cloud builds", () => {
+    const source = `
+      <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->
+      <script>fetch("eliza-local-agent://ipc")</script>
+      <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->`;
+    const plugin = appShellMetadataPlugin({
+      androidCloudBuild: false,
+      capacitorBuildTarget: "android",
+    });
+    if (typeof plugin.transformIndexHtml !== "function") {
+      throw new Error("app metadata plugin has no HTML transform");
+    }
+    expect(plugin.transformIndexHtml(source)).toContain(
+      "eliza-local-agent://ipc",
+    );
   });
 
   test("allows an owner-selected LAN WebSocket outside iOS store builds", () => {

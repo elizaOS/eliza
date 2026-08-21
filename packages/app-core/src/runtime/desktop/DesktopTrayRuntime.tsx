@@ -6,6 +6,7 @@
  * native tray surface plus detached-view launchers. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
+import { logger } from "@elizaos/logger";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -18,6 +19,7 @@ import {
   dispatchAppEvent,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui/events";
+import { TOAST_TTL_MS } from "@elizaos/ui/state/action-notice";
 import {
   type DesktopLauncherEntry,
   type DesktopLauncherIconId,
@@ -54,7 +56,8 @@ interface TrayActionDetail {
 }
 
 export function DesktopTrayRuntime() {
-  const { handleReset, handleResetAppliedFromMain, t } = useApp();
+  const { handleReset, handleResetAppliedFromMain, setActionNotice, t } =
+    useApp();
 
   // Publish the tray-popover launcher catalog to the renderer store the popover
   // shell reads (#12184). Single source of truth stays `DESKTOP_VIEW_WINDOWS`;
@@ -216,17 +219,29 @@ export function DesktopTrayRuntime() {
         }
       };
 
-      // error-policy:J6 best-effort UI dispatch from a DOM event handler; a
-      // failed tray action leaves the window in its current (visible) state,
-      // which the user sees and can retry — nothing to unwind here.
-      void run().catch(() => {});
+      void run().catch((error: unknown) => {
+        // error-policy:J4 Tray commands terminate at this UI boundary, so an
+        // RPC failure must remain visibly distinct from successful dispatch.
+        // This wraps all eleven tray actions, so the cause is logged rather
+        // than discarded — otherwise every one of them collapses into the same
+        // undiagnosable notice.
+        logger.error({ error }, "[DesktopTrayRuntime] tray action failed");
+        setActionNotice(
+          t("desktop.tray.actionFailed", {
+            defaultValue:
+              "Unable to complete the desktop action. Please retry.",
+          }),
+          "error",
+          TOAST_TTL_MS.notificationInterruptive,
+        );
+      });
     };
 
     document.addEventListener(TRAY_ACTION_EVENT, handleTrayAction);
     return () => {
       document.removeEventListener(TRAY_ACTION_EVENT, handleTrayAction);
     };
-  }, [t]);
+  }, [setActionNotice, t]);
 
   return null;
 }

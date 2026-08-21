@@ -31,6 +31,11 @@ import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { formatActionResultsForPrompt } from "../utils/action-results.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
+import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -115,28 +120,41 @@ type BoundedPrompt = {
 	originalSectionChars: Record<string, number>;
 };
 
+/**
+ * Keeps the newest `maxChars` of `text` for the prompt. The cut is taken with
+ * {@link tailWellFormed} and the input is sanitized with
+ * {@link toWellFormedUnicode} first: a raw negative slice can start on the low
+ * half of a surrogate pair, and the resulting lone surrogate travels into the
+ * merged evaluator prompt and out to the model provider, where strict JSON
+ * parsers reject the request body outright. This mirrors the boundary handling
+ * {@link trimHeadAndTailForPrompt} already performs.
+ */
 function trimTailForPrompt(text: string, maxChars: number): string {
 	if (maxChars <= 0) return "";
-	if (text.length <= maxChars) return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxChars) return wellFormed;
 	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
 		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
 	}
-	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${text.slice(
-		-(maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length),
+	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tailWellFormed(
+		wellFormed,
+		maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length,
 	)}`;
 }
 
 function trimHeadAndTailForPrompt(text: string, maxChars: number): string {
 	if (maxChars <= 0) return "";
-	if (text.length <= maxChars) return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxChars) return wellFormed;
 	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
 		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
 	}
 	const contentBudget = maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length;
 	const headBudget = Math.ceil(contentBudget / 3);
 	const tailBudget = contentBudget - headBudget;
-	const tail = tailBudget > 0 ? text.slice(-tailBudget) : "";
-	return `${text.slice(0, headBudget)}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
+	const head = truncateWellFormed(wellFormed, headBudget);
+	const tail = tailWellFormed(wellFormed, tailBudget);
+	return `${head}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
 }
 
 function allocateFairBudgets(lengths: number[], totalBudget: number): number[] {
@@ -787,7 +805,10 @@ export class EvaluatorService extends BaseService {
 						src: "service:evaluator",
 						agentId: this.runtime.agentId,
 						evaluator: evaluator.name,
-						rawSection: stringifyForDiagnostics(rawSection).slice(0, 500),
+						rawSection: truncateWellFormed(
+							toWellFormedUnicode(stringifyForDiagnostics(rawSection)),
+							500,
+						),
 					},
 					"Evaluator output section did not validate",
 				);

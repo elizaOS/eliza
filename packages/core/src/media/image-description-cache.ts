@@ -11,6 +11,7 @@
  */
 import type { IAgentRuntime } from "../types/index.ts";
 import { ModelType } from "../types/index.ts";
+import { createHash } from "../utils/crypto-compat";
 import { parseJSONObjectFromText } from "../utils.ts";
 
 export interface CachedImageDescription {
@@ -19,20 +20,15 @@ export interface CachedImageDescription {
 	text: string;
 }
 
-const CACHE_VERSION = "v1";
-
-/** Browser/edge-safe FNV-1a (no `node:crypto`) for the cache key. */
-function fnv1aHex(input: string): string {
-	let hash = 0x811c9dc5;
-	for (let i = 0; i < input.length; i++) {
-		hash ^= input.charCodeAt(i);
-		hash = Math.imul(hash, 0x01000193);
-	}
-	return (hash >>> 0).toString(16).padStart(8, "0");
-}
+const CACHE_VERSION = "v2";
 
 export function imageDescriptionCacheKey(imageUrl: string): string {
-	return `img-desc:${CACHE_VERSION}:${fnv1aHex(imageUrl)}`;
+	// SHA-256, not a truncated non-crypto hash: this key is a persistent
+	// content address across agents' cache namespaces, so a collision would
+	// permanently serve one image's description for a different image.
+	return `img-desc:${CACHE_VERSION}:${createHash("sha256")
+		.update(imageUrl)
+		.digest("hex")}`;
 }
 
 /** Coerce any IMAGE_DESCRIPTION model response into a uniform description shape. */

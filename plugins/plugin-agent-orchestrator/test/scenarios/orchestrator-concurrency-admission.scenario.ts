@@ -413,6 +413,11 @@ function concurrencyScenarioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-concurrency-admission",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Orchestrator admits N concurrent tasks against a worker cap with zero drops and per-task trace correlation",
   domain: "agent-orchestrator",

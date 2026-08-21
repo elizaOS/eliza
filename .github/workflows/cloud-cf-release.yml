@@ -642,6 +642,33 @@ jobs:
             require_exact RELAY_ORIGIN "$RELAY_ORIGIN" "https://relay-staging.eliza.app"
           fi
 
+      - name: Validate protected staging Blooio configuration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
+        run: |
+          set -euo pipefail
+          required_names=(
+            ELIZA_APP_BLOOIO_API_KEY
+            ELIZA_APP_BLOOIO_PHONE_NUMBER
+            ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+          )
+          missing=()
+          for name in "${required_names[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected staging Blooio secret name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Verified ${#required_names[@]} protected staging Blooio secret names; values were not printed."
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -664,11 +691,36 @@ jobs:
           fi
           echo "Staging session exchange is off before config validation or deploy ($result)."
 
+      # Installed in THIS job (not inherited from migrate-db, a separate
+      # runner instance) so verify_webhook_gateway_binding_candidates below
+      # can fetch the live gateway secret's value from Railway and prove it
+      # still matches the Worker's queued value — closing the "same name,
+      # different value" gap a names-only wrangler inventory cannot see.
+      # Pinned to the exact version migrate-db already proved compatible.
+      - name: Install pinned Railway CLI for webhook gateway value match
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-deploy-api"
+          archive="$RUNNER_TEMP/railway-v5.38.0-deploy-api.tar.gz"
+          mkdir -p "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
       - name: Prepare Worker secrets for atomic deploy
         id: worker-secrets
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
         env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
@@ -781,6 +833,13 @@ jobs:
           # activation is a separate protected, live-proven rollout.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          # Personal Shared Blooio is a staging acceptance surface. These
+          # protected values are mandatory in staging and are committed with
+          # the exact Worker source through the atomic secrets file below.
+          # Production keeps its existing bindings and never queues this source.
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
           # Personal Shared APNs stays dormant unless the complete protected
           # environment config is present. Topic/environment are explicit so a
           # signed development build cannot silently receive production pushes.
@@ -969,7 +1028,7 @@ jobs:
               return 0
             fi
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -997,7 +1056,7 @@ jobs:
 
           verify_apns_binding_candidates() {
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1029,7 +1088,7 @@ jobs:
               return 0
             fi
             local secret_inventory
-            secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
             printf '%s' "$secret_inventory" | node -e '
               const fs = require("node:fs");
               const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1046,6 +1105,49 @@ jobs:
               }
               console.log("Verified staging local embeddings bearer binding name; its value was not read.");
             ' "${worker_secret_names[@]}"
+          }
+
+          verify_webhook_gateway_binding_candidates() {
+            if ! has_nonblank_value "$ELIZA_APP_WEBHOOK_GATEWAY_URL"; then
+              return 0
+            fi
+            local secret_inventory
+            secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+
+            # Names-only wiring (above/below) proves a binding NAME exists or
+            # is queued; it cannot prove the VALUE still matches the live
+            # gateway's. Fetch that live value from Railway — the same
+            # trusted source deploy-gateway-webhook.yml already reads for its
+            # analogous Blooio value-match — and hand it to the node script
+            # purely through this one subshell's environment. It is never
+            # exported into the step's persistent shell state, assigned to a
+            # variable outside this function, or passed to any command that
+            # could echo it (no `set -x`, no `jq` on the raw value, no
+            # temp file). A failed or empty fetch resolves to an empty
+            # string, and the node script fails closed on that: a missing
+            # gateway-side proof is a mismatch, never a silent pass.
+            local railway_gateway_secret_inventory=""
+            local railway_gateway_secret_value=""
+            if railway_gateway_secret_inventory="$(railway variable list \
+                --project "$RAILWAY_PROJECT_ID" \
+                --environment "$RAILWAY_ENVIRONMENT_ID" \
+                --service "$RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK" \
+                --json 2>/dev/null)"; then
+              railway_gateway_secret_value="$(printf '%s' "$railway_gateway_secret_inventory" | jq -r \
+                'if (.ELIZA_APP_WEBHOOK_GATEWAY_SECRET | type) == "string" then .ELIZA_APP_WEBHOOK_GATEWAY_SECRET else "" end')"
+            else
+              echo "::warning::Could not fetch the live gateway's ELIZA_APP_WEBHOOK_GATEWAY_SECRET from Railway; the value-match half of the webhook gateway check will fail closed"
+            fi
+            railway_gateway_secret_inventory=""
+
+            printf '%s' "$secret_inventory" | env \
+              "WEBHOOK_GATEWAY_RAILWAY_SECRET_VALUE=$railway_gateway_secret_value" \
+              node \
+              "$CHECKOUT_DIR/packages/cloud/scripts/verify-webhook-gateway-binding.mjs" \
+              "${worker_secret_names[@]}"
+            local status=$?
+            railway_gateway_secret_value=""
+            return $status
           }
 
           # Like queue_secret, but for values that act as ROUTING TOGGLES
@@ -1117,6 +1219,20 @@ jobs:
             queue_secret "$name" || exit 1
           done
 
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+            do
+              if ! has_nonblank_value "${!name:-}"; then
+                echo "::error::Required protected staging Blooio secret is absent or blank: $name"
+                exit 1
+              fi
+              queue_secret "$name" || exit 1
+            done
+          fi
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -1186,6 +1302,14 @@ jobs:
           # same Worker version. A missing value may never deploy as a healthy
           # but permanently unauthorized embeddings path.
           verify_staging_embeddings_secret_candidate || exit 1
+          # The messaging webhook gateway URL is a routing toggle: unset stays
+          # on the honest WEBHOOK_GATEWAY_NOT_CONFIGURED 503 (#18235), but a
+          # configured URL must point at THIS environment's canonical gateway
+          # and carry the paired forwarder secret, or every provider webhook
+          # would fail as a misleading 401/upstream error instead. This runs
+          # before the atomic Worker secrets version is written; the
+          # unset-toggle deletions in the queue loop above have already run.
+          verify_webhook_gateway_binding_candidates || exit 1
 
           # Wrangler deploy accepts this JSON additively: named values are
           # committed in the same Worker version as the exact source, while
@@ -1297,7 +1421,7 @@ jobs:
           VOICE_REALTIME_WS_ENABLED: ${{ (steps.env.outputs.deploy_environment == 'production' || contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED)) && 'true' || 'false' }}
         run: |
           set -euo pipefail
-          secret_inventory="$(bunx wrangler@4.100.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
+          secret_inventory="$(bunx wrangler@4.116.0 secret list ${{ steps.env.outputs.wrangler_args }} --format json)"
           printf '%s' "$secret_inventory" | node -e '
             const fs = require("node:fs");
             const parsed = JSON.parse(fs.readFileSync(0, "utf8"));
@@ -1325,6 +1449,11 @@ jobs:
             ];
             if (process.env.DEPLOY_ENVIRONMENT === "staging") {
               required.push("LOCAL_EMBEDDINGS_API_KEY");
+              required.push(
+                "ELIZA_APP_BLOOIO_API_KEY",
+                "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+                "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+              );
             }
             if (
               process.env.DEPLOY_ENVIRONMENT === "production" &&

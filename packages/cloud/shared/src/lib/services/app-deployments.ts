@@ -5,8 +5,9 @@
  *
  * Source of truth is the `apps` table itself: the `deployment_status`,
  * `production_url`, and `last_deployed_at` columns added in migration 0007.
- * A deployment is identified by `<appId>:<last_deployed_at_iso>` so the
- * CLI can correlate POST → GET polls without a separate `deployments` table.
+ * A deployment is identified by an immutable UUID stored in app metadata so
+ * queued work and status writes can reject stale generations without another
+ * deployments table.
  * The real build/deploy pipeline has landed (Apps / Product 2): when a deploy
  * runner or APP_DEPLOY enqueuer is wired, `createDeployment` triggers a real
  * isolated provision (the daemon runs it — build-from-repo when armed, prebuilt
@@ -14,6 +15,7 @@
  * polling `getLatestDeployment` regardless of which backend is wired.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { ApiError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
 import type { AppDeployRunner, AppDeployRunOptions } from "./app-deploy-orchestrator";
@@ -72,10 +74,23 @@ function deployMetadataFor(
  */
 export type AppDeployEnqueuer = (p: {
   appId: string;
+  deploymentGeneration: string;
   organizationId: string;
   userId: string;
   options?: AppDeployRunOptions;
 }) => Promise<unknown>;
+
+/** A queue write may have committed even though its caller lost the response. */
+export class AppDeployEnqueueAmbiguousError extends ElizaError {
+  constructor(deploymentGeneration: string, cause: unknown) {
+    super(`APP_DEPLOY enqueue outcome is ambiguous for generation ${deploymentGeneration}`, {
+      code: "APP_DEPLOY_ENQUEUE_AMBIGUOUS",
+      context: { deploymentGeneration },
+      cause,
+      severity: "fatal",
+    });
+  }
+}
 
 export class AppDeploymentsService {
   private deployRunner?: AppDeployRunner;
@@ -129,10 +144,11 @@ export class AppDeploymentsService {
       throw new Error("App not found");
     }
     const startedAt = new Date();
+    const deploymentGeneration = crypto.randomUUID();
     const deploymentMetadata = deployMetadataFor(existing.metadata ?? {}, input);
-    const updated = await appsService.claimDeploymentStart(input.appId, {
+    const updated = await appsService.claimDeploymentStart(input.appId, deploymentGeneration, {
       last_deployed_at: startedAt,
-      ...(deploymentMetadata ? { metadata: deploymentMetadata } : {}),
+      metadata: deploymentMetadata ?? existing.metadata ?? {},
     });
     if (!updated) {
       throw new ApiError(
@@ -153,19 +169,31 @@ export class AppDeploymentsService {
         if (this.deployEnqueuer) {
           await this.deployEnqueuer({
             appId: input.appId,
+            deploymentGeneration,
             organizationId: input.organizationId,
             userId: input.userId,
             ...(deployOptions ? { options: deployOptions } : {}),
           });
         } else if (this.deployRunner) {
-          await this.deployRunner.run(input.appId, deployOptions);
+          await this.deployRunner.run(input.appId, deploymentGeneration, deployOptions);
         }
       } catch (error) {
+        // error-policy:J1 terminalize this generation before preserving the
+        // trigger error. If an ambiguous insert actually committed, the queued
+        // runner's building-only claim becomes a no-op; if it did not commit,
+        // admission is no longer stranded behind an unreplayable generation.
         logger.error("[AppDeployments] deploy trigger failed", {
           appId: input.appId,
           error: error instanceof Error ? error.message : String(error),
         });
-        await appsService.update(input.appId, { deployment_status: "failed" });
+        await appsService.updateDeploymentGeneration(
+          input.appId,
+          deploymentGeneration,
+          { deployment_status: "failed" },
+          error instanceof AppDeployEnqueueAmbiguousError
+            ? ["building"]
+            : ["building", "deploying"],
+        );
         throw error;
       }
     }

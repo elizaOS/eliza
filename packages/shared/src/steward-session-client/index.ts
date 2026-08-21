@@ -28,6 +28,60 @@ export interface StewardSessionChangeDetail {
 }
 
 let sessionEpoch = 0;
+let stewardTokenMutationTail: Promise<void> = Promise.resolve();
+
+type StewardTokenRemoval = () => Promise<void>;
+type StewardTokenPersistence = (token: string) => Promise<void>;
+
+let stewardTokenRemoval: StewardTokenRemoval | null = null;
+let stewardTokenPersistence: StewardTokenPersistence | null = null;
+
+/**
+ * Orders canonical token writes and removals through their authority event.
+ * The host secure-store adapter also serializes native I/O, but queueing only
+ * at that lower layer lets a later writer update its in-memory cache before an
+ * earlier writer publishes `present`. Consumers handling the earlier event can
+ * then observe a newer token that has not reached durable storage yet. Keeping
+ * the producer and its event in one queue closes that authority race.
+ */
+function serializeStewardTokenMutation<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const result = stewardTokenMutationTail
+    .catch(() => undefined)
+    .then(operation);
+  stewardTokenMutationTail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+/** Distinguishes a failed durable token write from an ordinary auth failure. */
+export class StewardTokenPersistenceError extends Error {
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : "Could not persist the protected Steward token",
+      { cause },
+    );
+    this.name = "StewardTokenPersistenceError";
+  }
+}
+
+/** Distinguishes a failed canonical token removal from legacy-key cleanup. */
+export class StewardTokenRemovalError extends Error {
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : "Could not remove the protected Steward token",
+      { cause },
+    );
+    this.name = "StewardTokenRemovalError";
+  }
+}
 
 /** Publish a credential-domain-specific transition without exposing the token. */
 export function dispatchStewardSessionChange(
@@ -40,6 +94,36 @@ export function dispatchStewardSessionChange(
       detail: { state, sessionEpoch },
     }),
   );
+}
+
+/**
+ * Installs the host-owned durable removal boundary for the Steward token.
+ * Browser-only consumers fall back to localStorage; native shells register
+ * their awaited secure-store implementation while the storage bridge is live.
+ */
+export function registerStewardTokenRemoval(
+  removal: StewardTokenRemoval,
+): () => void {
+  stewardTokenRemoval = removal;
+  return () => {
+    if (stewardTokenRemoval === removal) stewardTokenRemoval = null;
+  };
+}
+
+/**
+ * Installs the host-owned durable persistence boundary for the Steward token.
+ * Native shells register an awaited secure-store write plus exact readback;
+ * browser-only consumers retain the localStorage fallback.
+ */
+export function registerStewardTokenPersistence(
+  persistence: StewardTokenPersistence,
+): () => void {
+  stewardTokenPersistence = persistence;
+  return () => {
+    if (stewardTokenPersistence === persistence) {
+      stewardTokenPersistence = null;
+    }
+  };
 }
 
 /**
@@ -232,12 +316,52 @@ export function readStoredStewardToken(): string | null {
   return window.localStorage.getItem(STEWARD_TOKEN_KEY);
 }
 
-/** Persists the canonical token and publishes exactly one authority transition. */
-export function writeStoredStewardToken(token: string): void {
+async function persistStoredStewardToken(token: string): Promise<void> {
+  try {
+    if (stewardTokenPersistence) {
+      await stewardTokenPersistence(token);
+    } else {
+      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    }
+  } catch (error) {
+    // error-policy:J2 callers must not publish authenticated state after a
+    // failed durable write on a protected host.
+    throw new StewardTokenPersistenceError(error);
+  }
+}
+
+/**
+ * Persists the canonical token and publishes authority only after the durable
+ * host boundary succeeds. A protected-store rejection never becomes a
+ * healthy-looking in-memory login that disappears on relaunch.
+ */
+export async function writeStoredStewardToken(token: string): Promise<void> {
   if (typeof window === "undefined") return;
-  if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === token) return;
-  window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
-  dispatchStewardSessionChange("present");
+  await serializeStewardTokenMutation(async () => {
+    const wasCurrent = window.localStorage.getItem(STEWARD_TOKEN_KEY) === token;
+    if (!stewardTokenPersistence && wasCurrent) return;
+    await persistStoredStewardToken(token);
+    if (!wasCurrent) dispatchStewardSessionChange("present");
+  });
+}
+
+/**
+ * Replaces a token only while `expectedToken` still owns session authority.
+ * The comparison, durable write, and event share the canonical mutation queue,
+ * so a refresh response that arrives after logout cannot resurrect the session.
+ */
+export async function replaceStoredStewardTokenIfCurrent(
+  expectedToken: string,
+  token: string,
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  return serializeStewardTokenMutation(async () => {
+    const current = window.localStorage.getItem(STEWARD_TOKEN_KEY);
+    if (current !== expectedToken) return false;
+    await persistStoredStewardToken(token);
+    if (current !== token) dispatchStewardSessionChange("present");
+    return true;
+  });
 }
 
 /**
@@ -245,11 +369,23 @@ export function writeStoredStewardToken(token: string): void {
  * Once the canonical removal succeeds, invalidation is published even if the
  * legacy cleanup fails; either storage failure remains observable to callers.
  */
-export function clearStoredStewardToken(): void {
+export async function clearStoredStewardToken(): Promise<void> {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STEWARD_TOKEN_KEY);
-  dispatchStewardSessionChange("cleared");
-  window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+  await serializeStewardTokenMutation(async () => {
+    try {
+      if (stewardTokenRemoval) {
+        await stewardTokenRemoval();
+      } else {
+        window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+      }
+    } catch (error) {
+      // error-policy:J2 callers must distinguish canonical removal failure from
+      // obsolete refresh-key cleanup so they never publish a false logout.
+      throw new StewardTokenRemovalError(error);
+    }
+    dispatchStewardSessionChange("cleared");
+    window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
+  });
 }
 
 /**

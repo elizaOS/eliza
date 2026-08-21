@@ -80,7 +80,7 @@ beforeAll(async () => {
     id uuid PRIMARY KEY, name text NOT NULL, description text, key_hash text NOT NULL UNIQUE,
     key_prefix text NOT NULL, key_ciphertext text, key_nonce text, key_auth_tag text,
     key_kms_key_id text, key_kms_key_version integer, organization_id uuid NOT NULL,
-    user_id uuid NOT NULL, rate_limit integer NOT NULL DEFAULT 1000,
+    user_id uuid NOT NULL, source_app_id uuid, rate_limit integer NOT NULL DEFAULT 1000,
     is_active boolean NOT NULL DEFAULT true, usage_count integer NOT NULL DEFAULT 0,
     expires_at timestamp, last_used_at timestamp, created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now(), deleted_at timestamp

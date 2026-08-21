@@ -771,8 +771,14 @@ export class GatewayManager {
       this.isElizaAppLeader = false;
     }
 
+    // Revoke ownership before any awaited teardown. An in-flight login or
+    // Discord event must observe that shutdown owns the connection now and
+    // may not publish a late status or route an event.
+    const connectionsToClose = [...this.connections.entries()];
+    this.connections.clear();
+
     // Save session state and disconnect all bots
-    for (const [connectionId, conn] of this.connections) {
+    for (const [connectionId, conn] of connectionsToClose) {
       await this.saveSessionState(connectionId, conn);
       this.removeAllListeners(conn);
       // Reservations have no client until connectBot finishes.
@@ -819,7 +825,6 @@ export class GatewayManager {
       }
     }
 
-    this.connections.clear();
     logger.info("Gateway manager shutdown complete");
   }
 
@@ -1073,7 +1078,16 @@ export class GatewayManager {
       ),
     };
 
+    const previous = this.connections.get(assignment.connectionId);
     this.connections.set(assignment.connectionId, conn);
+    if (previous?.client) {
+      // Same teardown contract as disconnectBot/shutdown: persist the
+      // superseded connection's counters before its client is destroyed, so a
+      // replacement does not silently discard guild and event totals.
+      await this.saveSessionState(assignment.connectionId, previous);
+      this.removeAllListeners(previous);
+      previous.client.destroy();
+    }
 
     const markConnectionReady = async (
       source: "client-ready" | "shard-ready" | "shard-resume",
@@ -1120,6 +1134,9 @@ export class GatewayManager {
       handler: (...args: T) => Promise<void>,
     ) => {
       const wrappedHandler = async (...args: T) => {
+        if (this.connections.get(assignment.connectionId) !== conn) {
+          return;
+        }
         try {
           await handler(...args);
         } catch (error) {
@@ -1369,6 +1386,23 @@ export class GatewayManager {
     try {
       await client.login(assignment.botToken);
     } catch (error) {
+      // error-policy:J1 transport boundary — a login failure for the current
+      // owner is published to the control plane as an "error" connection
+      // status so the next poll can reassign it.
+      //
+      // error-policy:J5 a disconnect, replacement, or shutdown revokes
+      // ownership before it starts awaited teardown, so this rejection belongs
+      // to a client that path already destroyed; disconnectBot/shutdown
+      // publishes the authoritative status for the slot and this stale
+      // rejection must not overwrite it.
+      if (this.connections.get(assignment.connectionId) !== conn) {
+        logger.debug("Ignoring stale bot login rejection", {
+          connectionId: assignment.connectionId,
+          error: sanitizeError(error),
+        });
+        return;
+      }
+
       const errorMessage = sanitizeError(error);
       logger.error("Failed to login bot", {
         connectionId: assignment.connectionId,
@@ -1394,13 +1428,15 @@ export class GatewayManager {
     if (!conn) return;
 
     logger.info("Disconnecting bot", { connectionId });
+    // Revoke ownership synchronously so a login rejection or queued Discord
+    // event cannot race the awaited session save and act as the live client.
+    this.connections.delete(connectionId);
     await this.saveSessionState(connectionId, conn);
     this.removeAllListeners(conn);
     // Reservations have no client until connectBot finishes.
     if (conn.client) {
       conn.client.destroy();
     }
-    this.connections.delete(connectionId);
     await this.updateConnectionStatus(connectionId, "disconnected");
   }
 

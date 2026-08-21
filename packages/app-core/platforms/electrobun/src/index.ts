@@ -32,6 +32,7 @@ import {
   findViewMenuEntryById,
   parseSettingsWindowAction,
   parseViewWindowAction,
+  resolveDesktopWorkspaceWindowOptions,
 } from "./application-menu";
 import { setApplicationMenuActionHandler } from "./application-menu-action-registry";
 import { showBackgroundNoticeOnce } from "./background-notice";
@@ -117,7 +118,6 @@ import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
-import { resolveTrustedMediaCaptureOrigin } from "./trusted-media-origin";
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
@@ -151,6 +151,7 @@ import {
   type ManagedWindowLike,
   SurfaceWindowManager,
 } from "./surface-windows";
+import { resolveTrustedMediaCaptureOrigin } from "./trusted-media-origin";
 import type { SendToWebview } from "./types.js";
 import {
   resolveDesktopBundleVersion,
@@ -1147,10 +1148,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
   if (process.platform === "darwin") {
     const rendererOrigin = resolveTrustedMediaCaptureOrigin(baseRendererUrl);
-    if (
-      rendererOrigin &&
-      !installTrustedMediaCaptureOrigin(rendererOrigin)
-    ) {
+    if (rendererOrigin && !installTrustedMediaCaptureOrigin(rendererOrigin)) {
       logger.warn(
         `[Main] Renderer media origin was not trusted: ${rendererOrigin}`,
       );
@@ -2235,8 +2233,31 @@ async function setupUpdater(): Promise<void> {
     };
 
     const handleSurfaceMenuAction = (action: string | undefined): boolean => {
-      if (action === "open-workspace") {
-        void surfaceWindowManager?.openWorkspaceWindow();
+      const workspaceOptions = resolveDesktopWorkspaceWindowOptions(action);
+      if (workspaceOptions) {
+        const manager = surfaceWindowManager;
+        if (!manager) {
+          logger.warn("[Main] Desktop workspace manager is not ready.");
+          return true;
+        }
+        void manager
+          .openWorkspaceWindow(
+            workspaceOptions.path,
+            undefined,
+            false,
+            "standard",
+          )
+          .catch((error: unknown) => {
+            // error-policy:J1 The native application-menu boundary translates
+            // launch failure into diagnostics and a visible OS notification.
+            logger.error(
+              `[Main] Desktop workspace launch failed: ${formatError(error)}`,
+            );
+            Utils.showNotification({
+              title: "Desktop Workspace Failed",
+              body: "Unable to open the desktop workspace. Please retry.",
+            });
+          });
         return true;
       }
       // "Views" submenu (#10716): `new-window:view-<id>` opens a builtin view in

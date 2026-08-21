@@ -1421,6 +1421,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "elizaos-plugin-livetennis": {
+      "git": {
+        "repo": "livetennisapi/elizaos-plugin-livetennis",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "elizaos-plugin-livetennis",
+        "v0": null,
+        "v1": null,
+        "v2": "0.1.2"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Live tennis scores, upcoming fixtures, and player search for elizaOS agents via the Live Tennis API — ATP, WTA, Challenger, ITF and juniors. FREE-tier endpoints only, with honest per-action tier errors.",
+      "homepage": "https://livetennisapi.com",
+      "topics": [
+        "tennis",
+        "sports",
+        "live-scores",
+        "fixtures",
+        "rankings"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "elizaos-plugin-neynar-search": {
       "git": {
         "repo": "xavier-arosemena/elizaos-plugin-neynar-search",

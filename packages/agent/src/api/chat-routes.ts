@@ -54,7 +54,9 @@ import {
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
   timeInferenceSpan,
+  toWellFormedUnicode,
   trackPostDeliveryTask,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -708,10 +710,11 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/\bEliza-1\b/gi, "Eliza-1")
     .trim();
   text = text.replace(/\s+/g, " ").trim();
-  if (text.length <= 700) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= 700) {
+    return wellFormed;
   }
-  const truncated = text.slice(0, 700);
+  const truncated = truncateWellFormed(wellFormed, 700);
   const sentenceEnd = Math.max(
     truncated.lastIndexOf("."),
     truncated.lastIndexOf("!"),
@@ -1907,7 +1910,10 @@ function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    return value.length > 1000 ? `${value.slice(0, 997)}...` : value;
+    const wellFormed = toWellFormedUnicode(value);
+    return wellFormed.length > 1000
+      ? `${truncateWellFormed(wellFormed, 997)}...`
+      : wellFormed;
   }
   if (Array.isArray(value)) {
     if (depth >= 2) return undefined;

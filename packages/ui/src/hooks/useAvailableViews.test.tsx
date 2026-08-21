@@ -424,8 +424,8 @@ describe("useAvailableViews", () => {
     );
     expect(routable.result.current.views).toContainEqual(
       expect.objectContaining({
-        id: "my-apps",
-        icon: "Boxes",
+        id: "tasks",
+        icon: "ListTodo",
       }),
     );
   });

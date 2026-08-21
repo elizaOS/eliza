@@ -5,6 +5,7 @@
  * load/save failures, returning null / false rather than throwing.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 
 export const OWNER_NAME_MAX_LENGTH = 60;
@@ -21,7 +22,10 @@ function normalizeOwnerName(value: unknown): string | null {
   if (!trimmed) {
     return null;
   }
-  return trimmed.slice(0, OWNER_NAME_MAX_LENGTH);
+  return truncateWellFormed(
+    toWellFormedUnicode(trimmed),
+    OWNER_NAME_MAX_LENGTH,
+  );
 }
 
 export async function fetchConfiguredOwnerName(): Promise<string | null> {

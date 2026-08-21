@@ -92,10 +92,6 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.coverage).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          viewId: "tasks",
-          semanticActions: ["SCHEDULED_TASKS"],
-        }),
-        expect.objectContaining({
           viewId: "plugins-page",
           semanticActions: [
             "APP",
@@ -115,9 +111,9 @@ describe("builtin view action ratchet (#14369)", () => {
           semanticActions: ["SCHEDULED_TASKS", "TRIGGER"],
         }),
         expect.objectContaining({
-          viewId: "my-apps",
-          observedMutationSites: 24,
-          semanticActions: ["APP", "VIEWS"],
+          viewId: "tasks",
+          observedMutationSites: 26,
+          semanticActions: ["SCHEDULED_TASKS", "APP", "VIEWS"],
         }),
         expect.objectContaining({
           viewId: "logs",
@@ -132,7 +128,9 @@ describe("builtin view action ratchet (#14369)", () => {
       (entry) => entry.viewId === "tasks",
     );
     if (!tasks) throw new Error("tasks baseline entry missing");
-    const sourceWithNewButton = `${readRepoSource(tasks.sourceFiles[0])}
+    // Append an unmapped control to each REAL source so the named-affordance
+    // inventory still matches and the only drift is the injected mutation.
+    const injectedButton = `
       export function InjectedLocalOnlyButton() {
         return <button onClick={() => window.localStorage.setItem("x", "1")}>Local only</button>;
       }
@@ -140,18 +138,23 @@ describe("builtin view action ratchet (#14369)", () => {
 
     const result = validateBuiltinViewMutationCoverage({
       baseline: [tasks],
-      readSource: () => sourceWithNewButton,
+      readSource: (path) => `${readRepoSource(path)}${injectedButton}`,
       registeredActions: REGISTERED_ACTIONS,
       registeredViews: REGISTERED_VIEWS,
     });
 
     expect(result.ok).toBe(false);
-    expect(result.findings).toEqual([
-      expect.objectContaining({
-        viewId: "tasks",
-        code: "new-local-mutation",
-      }),
-    ]);
+    // The injected-button source replaces EVERY file of the consolidated tasks
+    // entry, so the named-affordance inventory also drifts; the ratchet must at
+    // minimum flag the unmapped local mutation.
+    expect(result.findings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          viewId: "tasks",
+          code: "new-local-mutation",
+        }),
+      ]),
+    );
   });
 
   it.each(["documents", "files", "memories", "automations", "triggers"])(
@@ -267,12 +270,12 @@ describe("builtin view action ratchet (#14369)", () => {
     ]);
   });
 
-  it("inventories every direct and mounted My Apps mutation with explicit authority", () => {
+  it("inventories every direct and mounted Projects apps-segment mutation with explicit authority", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
     if (!myApps?.mutationAffordances) {
-      throw new Error("my-apps mutation inventory missing");
+      throw new Error("tasks mutation inventory missing");
     }
 
     const claimedByFile = new Map<string, number>();
@@ -284,7 +287,7 @@ describe("builtin view action ratchet (#14369)", () => {
     }
 
     expect(Object.fromEntries(claimedByFile)).toEqual({
-      "packages/ui/src/components/pages/MyAppsView.tsx": 1,
+      "packages/ui/src/components/pages/TasksPageView.tsx": 3,
       "packages/ui/src/components/settings/AppsManagementSection.tsx": 23,
     });
     expect(
@@ -305,12 +308,13 @@ describe("builtin view action ratchet (#14369)", () => {
         ],
       },
       { action: "VIEWS", operations: ["show"] },
+      { action: "SCHEDULED_TASKS", operations: ["list"] },
     ]);
     expect(myApps.mountedSourceFiles).toEqual([
       expect.objectContaining({
         sourceFile:
           "packages/ui/src/components/settings/AppsManagementSection.tsx",
-        mountedBy: "packages/ui/src/components/pages/MyAppsView.tsx",
+        mountedBy: "packages/ui/src/components/pages/TasksPageView.tsx",
       }),
     ]);
     expect(
@@ -326,9 +330,9 @@ describe("builtin view action ratchet (#14369)", () => {
 
   it("fails when the VIEWS.show target is absent from the server view registry", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
-    if (!myApps) throw new Error("my-apps baseline entry missing");
+    if (!myApps) throw new Error("tasks baseline entry missing");
     const withoutCloudApps = new Set(
       [...REGISTERED_VIEWS].filter((viewId) => viewId !== "cloud-apps"),
     );
@@ -343,7 +347,7 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.ok).toBe(false);
     expect(result.findings).toEqual([
       expect.objectContaining({
-        viewId: "my-apps",
+        viewId: "tasks",
         code: "mutation-view-target-drift",
         message: expect.stringContaining("registered server view inventory"),
       }),
@@ -352,10 +356,10 @@ describe("builtin view action ratchet (#14369)", () => {
 
   it("fails when the Cloud Apps control stops selecting its declared view target", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
-    if (!myApps) throw new Error("my-apps baseline entry missing");
-    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    if (!myApps) throw new Error("tasks baseline entry missing");
+    const page = "packages/ui/src/components/pages/TasksPageView.tsx";
     const source = readRepoSource(page).replace(
       '.find((page) => page.id === "cloud-apps")?.path ?? null',
       '.find((page) => page.id === "cloud-deployments")?.path ?? null',
@@ -372,7 +376,7 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.ok).toBe(false);
     expect(result.findings).toEqual([
       expect.objectContaining({
-        viewId: "my-apps",
+        viewId: "tasks",
         code: "mutation-view-target-drift",
       }),
     ]);
@@ -380,9 +384,9 @@ describe("builtin view action ratchet (#14369)", () => {
 
   it("fails when the mounted app-management child gains an uninventoried mutation", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
-    if (!myApps) throw new Error("my-apps baseline entry missing");
+    if (!myApps) throw new Error("tasks baseline entry missing");
     const child =
       "packages/ui/src/components/settings/AppsManagementSection.tsx";
     const injected = `${readRepoSource(child)}
@@ -403,11 +407,11 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.findings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          viewId: "my-apps",
+          viewId: "tasks",
           code: "new-local-mutation",
         }),
         expect.objectContaining({
-          viewId: "my-apps",
+          viewId: "tasks",
           code: "mutation-inventory-count",
           message: expect.stringContaining("add or remove named operations"),
         }),
@@ -415,12 +419,12 @@ describe("builtin view action ratchet (#14369)", () => {
     );
   });
 
-  it("fails when a named My Apps operation drifts away from its source", () => {
+  it("fails when a named Projects apps-segment operation drifts away from its source", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
-    if (!myApps) throw new Error("my-apps baseline entry missing");
-    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    if (!myApps) throw new Error("tasks baseline entry missing");
+    const page = "packages/ui/src/components/pages/TasksPageView.tsx";
     const source = readRepoSource(page).replace(
       "onClick={() => navigateBrowserPath(cloudStudioPath)}",
       "onClick={() => navigateBrowserPath(String(cloudStudioPath))}",
@@ -437,22 +441,22 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.ok).toBe(false);
     expect(result.findings).toEqual([
       expect.objectContaining({
-        viewId: "my-apps",
+        viewId: "tasks",
         code: "mutation-signature-drift",
         message: expect.stringContaining("cloud-apps.open"),
       }),
     ]);
   });
 
-  it("fails closed when a named My Apps affordance lacks operation authority", () => {
+  it("fails closed when a named Projects apps-segment affordance lacks operation authority", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
     if (!myApps?.mutationAffordances) {
-      throw new Error("my-apps mutation inventory missing");
+      throw new Error("tasks mutation inventory missing");
     }
     const [first, ...rest] = myApps.mutationAffordances;
-    if (!first) throw new Error("my-apps mutation inventory is empty");
+    if (!first) throw new Error("tasks mutation inventory is empty");
 
     const result = validateBuiltinViewMutationCoverage({
       baseline: [
@@ -470,7 +474,7 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.findings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          viewId: "my-apps",
+          viewId: "tasks",
           code: "mutation-action-drift",
           message: expect.stringContaining("has no declared authority"),
         }),
@@ -478,12 +482,12 @@ describe("builtin view action ratchet (#14369)", () => {
     );
   });
 
-  it("fails when the mounted My Apps child is no longer mounted", () => {
+  it("fails when the mounted Projects apps-segment child is no longer mounted", () => {
     const myApps = BUILTIN_VIEW_MUTATION_BASELINE.find(
-      (entry) => entry.viewId === "my-apps",
+      (entry) => entry.viewId === "tasks",
     );
-    if (!myApps) throw new Error("my-apps baseline entry missing");
-    const page = "packages/ui/src/components/pages/MyAppsView.tsx";
+    if (!myApps) throw new Error("tasks baseline entry missing");
+    const page = "packages/ui/src/components/pages/TasksPageView.tsx";
     const source = readRepoSource(page).replace(
       "<AppsManagementSection />",
       "<div />",
@@ -500,7 +504,7 @@ describe("builtin view action ratchet (#14369)", () => {
     expect(result.ok).toBe(false);
     expect(result.findings).toEqual([
       expect.objectContaining({
-        viewId: "my-apps",
+        viewId: "tasks",
         code: "mutation-mount-drift",
       }),
     ]);

@@ -229,9 +229,47 @@ const DOCUMENT_SCOPES = new Set<DocumentVisibilityScope>([
 ]);
 const DOCUMENT_SCOPE_OPTIONS = [...DOCUMENT_SCOPES, "all-visible"] as const;
 
-const DOCUMENT_PATH_PATTERN =
-	/(?:\/[\w .-]+)+|(?:[a-zA-Z]:[\\/][\w\s.-]+(?:[\\/][\w\s.-]+)*)/;
 const URL_PATTERN = /https?:\/\/[^\s)]+/i;
+
+function isDocumentPathCharacter(char: string, windows: boolean): boolean {
+	const code = char.charCodeAt(0);
+	return (
+		(code >= 48 && code <= 57) ||
+		(code >= 65 && code <= 90) ||
+		(code >= 97 && code <= 122) ||
+		char === "_" ||
+		char === "." ||
+		char === "-" ||
+		char === " " ||
+		(windows && /\s/u.test(char))
+	);
+}
+
+function extractDocumentPath(text: string): string | null {
+	for (let start = 0; start < text.length; start += 1) {
+		const windows =
+			/[A-Za-z]/.test(text[start]) &&
+			text[start + 1] === ":" &&
+			(text[start + 2] === "/" || text[start + 2] === "\\");
+		if (text[start] !== "/" && !windows) continue;
+		let cursor = start + (windows ? 3 : 1);
+		let lastValidEnd = -1;
+		while (cursor < text.length) {
+			const segmentStart = cursor;
+			while (
+				cursor < text.length &&
+				isDocumentPathCharacter(text[cursor], windows)
+			)
+				cursor += 1;
+			if (cursor === segmentStart) break;
+			lastValidEnd = cursor;
+			if (text[cursor] !== "/" && (!windows || text[cursor] !== "\\")) break;
+			cursor += 1;
+		}
+		if (lastValidEnd >= 0) return text.slice(start, lastValidEnd);
+	}
+	return null;
+}
 
 const DOCUMENTS_SEARCH_CATEGORY: SearchCategoryRegistration = {
 	category: "documents",
@@ -507,9 +545,7 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (
-		unwrapUserMessageText(message).match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
-	);
+	return extractDocumentPath(unwrapUserMessageText(message));
 }
 
 function getUrl(

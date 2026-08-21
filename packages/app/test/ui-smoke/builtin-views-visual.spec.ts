@@ -43,7 +43,6 @@ const BUILTIN_VIEW_CASES: Array<{
   { id: "tasks", path: "/apps/tasks" },
   { id: "browser", path: "/browser" },
   { id: "stream", path: "/stream" },
-  { id: "my-apps", path: "/apps", viewHeaderTitle: "My Apps" },
   { id: "views", path: "/views" },
   { id: "character", path: "/character" },
   { id: "character-select", path: "/character/select" },

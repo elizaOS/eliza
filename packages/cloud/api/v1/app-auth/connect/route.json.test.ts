@@ -16,6 +16,10 @@ const issueAppAuthCode = mock(async () => ({
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
   requireUserOrApiKey: async () => ({ id: "user-1" }),
+  // route.ts's mobile_pkce branch also imports requireUserWithOrg — an
+  // incomplete mock leaves that named export missing and fails module
+  // resolution for every test in this file before any test body runs.
+  requireUserWithOrg: async () => ({ id: "user-1" }),
 }));
 
 mock.module("@/db/repositories/apps", () => ({

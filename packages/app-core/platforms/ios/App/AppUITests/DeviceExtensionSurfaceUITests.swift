@@ -9,6 +9,7 @@
  keyboard enablement still require the provisioned-device lane called out in
  #13567/#13563.
  */
+import UserNotifications
 import XCTest
 
 final class DeviceExtensionSurfaceUITests: XCTestCase {
@@ -17,6 +18,93 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = false
+    }
+
+    func testLocalNotificationTriggerStaysFireableAcrossPermissionDelay() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let immediateDates = [
+            now.addingTimeInterval(-30),
+            now,
+            now.addingTimeInterval(0.5),
+        ]
+
+        for fireDate in immediateDates {
+            let trigger = ElizaNotificationTriggerPolicy.trigger(
+                fireDate: fireDate,
+                now: now
+            )
+            let interval = trigger as? UNTimeIntervalNotificationTrigger
+            XCTAssertEqual(interval?.timeInterval, 1)
+            XCTAssertEqual(interval?.repeats, false)
+        }
+
+        let future = ElizaNotificationTriggerPolicy.trigger(
+            fireDate: now.addingTimeInterval(60),
+            now: now,
+            calendar: Calendar(identifier: .gregorian)
+        )
+        let calendar = future as? UNCalendarNotificationTrigger
+        XCTAssertNotNil(calendar)
+        XCTAssertEqual(calendar?.repeats, false)
+    }
+
+    func testFallbackNotificationPayloadSupportsCapacitorAndAppDelegateTaps() throws {
+        let userInfo = ElizaNotificationTapPayload.userInfo(
+            deepLink: "/notifications",
+            deepLinkOnTap: "elizaos://notifications"
+        )
+        let extra = try XCTUnwrap(userInfo["cap_extra"] as? [String: String])
+
+        XCTAssertEqual(extra, ["deepLink": "/notifications"])
+        XCTAssertEqual(
+            userInfo["deepLinkOnTap"] as? String,
+            "elizaos://notifications"
+        )
+        XCTAssertTrue(
+            ElizaNotificationTapPayload.userInfo(
+                deepLink: nil,
+                deepLinkOnTap: nil
+            ).isEmpty
+        )
+        XCTAssertTrue(
+            ElizaNotificationTapPayload.userInfo(
+                deepLink: "//attacker.example/notifications",
+                deepLinkOnTap: "javascript:alert(1)"
+            ).isEmpty
+        )
+        for privilegedTarget in [
+            "elizaos://auth/callback?code=secret",
+            "elizaos://first-run/runtime/remote",
+            "elizaos://connect?url=https://example.test",
+            "elizaos://share?file=/private/note.txt",
+            "elizaos://keyboard-dictation",
+            "elizaos://aec-loop?duration=30",
+            "elizaos://%61uth/callback?code=secret",
+        ] {
+            XCTAssertNil(
+                ElizaNotificationTapPayload.userInfo(
+                    deepLink: nil,
+                    deepLinkOnTap: privilegedTarget
+                )["deepLinkOnTap"]
+            )
+            XCTAssertNil(
+                ElizaNotificationTapPayload.safeOpenDestination(
+                    ["deepLinkOnTap": privilegedTarget]["deepLinkOnTap"]
+                ),
+                "Remote notification payloads must cross the same privileged-route guard as locally scheduled notifications."
+            )
+        }
+        XCTAssertEqual(
+            ElizaNotificationTapPayload.safeOpenDestination(
+                ["deepLinkOnTap": "elizaos://notifications"]["deepLinkOnTap"]
+            )?.absoluteString,
+            "elizaos://notifications"
+        )
+        XCTAssertNil(
+            ElizaNotificationTapPayload.safeOpenDestination(
+                ["deepLinkOnTap": 42]["deepLinkOnTap"]
+            )
+        )
     }
 
     func testControlCenterGalleryListsElizaControls() throws {

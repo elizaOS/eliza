@@ -69,6 +69,7 @@ export const CONNECTOR_ENV_MAP: Readonly<
     botToken: "SLACK_BOT_TOKEN",
     appToken: "SLACK_APP_TOKEN",
     userToken: "SLACK_USER_TOKEN",
+    signingSecret: "SLACK_SIGNING_SECRET",
   },
   signal: {
     authDir: "SIGNAL_AUTH_DIR",

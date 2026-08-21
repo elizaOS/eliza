@@ -192,6 +192,56 @@ describe("coding-tools WEB_FETCH", () => {
     });
   });
 
+  it("keeps surrogate pairs intact when truncating large responses", async () => {
+    const text = `${"a".repeat(7_999)}🦊${"b".repeat(100)}`;
+    usePinnedRoutes({
+      "https://public.example.test/emoji.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/emoji.txt",
+    });
+    expect(result.success).toBe(true);
+    const truncated = (result.text ?? "").split("\n")[0];
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(8_000);
+    expect(truncated).toBe("a".repeat(7_999));
+  });
+
+  it("preserves a fitting emoji under the truncation cap", async () => {
+    const text = `${"a".repeat(100)}🦊`;
+    usePinnedRoutes({
+      "https://public.example.test/fitting.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/fitting.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe(text);
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes lone surrogates in fetched text", async () => {
+    const text = "a\ud800bc";
+    usePinnedRoutes({
+      "https://public.example.test/lone.txt": new Response(text, {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      }),
+    });
+    const result = await runFetch({
+      url: "https://public.example.test/lone.txt",
+    });
+    expect(result.success).toBe(true);
+    expect(result.text).toBe("a\ufffdbc");
+    expect(result.text?.isWellFormed()).toBe(true);
+  });
+
   it("surfaces timeout-style fetch errors honestly", async () => {
     __setWebHttpLookupFnForTests(async () => [
       { address: PUBLIC_IP, family: 4 },

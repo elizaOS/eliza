@@ -235,7 +235,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["cloud", "apps", "applications", "deploy", "monetize"],
     // The renderer registers the native studio in-process under this same id
     // and path. Keeping it in the server registry makes VIEWS/show resolve the
-    // My Apps navigation row instead of claiming an action that cannot open it.
+    // Projects Apps-segment navigation row instead of claiming an action that
+    // cannot open it.
     visibleInManager: false,
     platforms: ["web", "desktop", "ios", "android"],
   },
@@ -339,6 +340,32 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     order: 81,
     tags: ["logs", "debug", "runtime"],
     visibleInManager: true,
+  },
+  {
+    id: "vault",
+    viewKind: "system",
+    label: "Vault",
+    description:
+      "Owner-only encrypted credentials, connected accounts, saved logins, and secret routing",
+    icon: "KeyRound",
+    heroImagePath: "assets/view-heroes/settings.png",
+    path: "/vault",
+    order: 89,
+    tags: [
+      "vault",
+      "secrets",
+      "credentials",
+      "keys",
+      "connected accounts",
+      "password manager",
+    ],
+    relatedActions: ["SECRETS"],
+    anticipatoryIntent:
+      "Offer to inventory or safely configure the exact credential the user needs without exposing secret values, and distinguish local Vault entries from Eliza Cloud organization credentials.",
+    roleGate: { minRole: "OWNER" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
   },
   {
     id: "settings",

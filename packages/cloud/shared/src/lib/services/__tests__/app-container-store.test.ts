@@ -49,6 +49,14 @@ describe("mapContainerRowToAppContainerRow", () => {
     );
   });
 
+  test("projects a valid deployment generation from container metadata", () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    expect(
+      mapContainerRowToAppContainerRow(row({ metadata: { deploymentGeneration } }))
+        .deploymentGeneration,
+    ).toBe(deploymentGeneration);
+  });
+
   test("null image_tag becomes empty string", () => {
     expect(mapContainerRowToAppContainerRow(row({ image_tag: null })).image).toBe("");
   });
@@ -77,6 +85,7 @@ describe("toNewContainer", () => {
   test("the app's OWN DSN rides in environment_vars; project_name + metadata key off appId", () => {
     const nc = toNewContainer({
       appId: "app-id-123",
+      deploymentGeneration: "11111111-1111-4111-8111-111111111111",
       organizationId: "org-1",
       userId: "user-1",
       containerName: "app-abc",
@@ -86,7 +95,10 @@ describe("toNewContainer", () => {
     });
     expect(nc.environment_vars).toEqual({ DATABASE_URL: DSN });
     expect(nc.project_name).toBe("app-id-123");
-    expect(nc.metadata).toEqual({ appId: "app-id-123" });
+    expect(nc.metadata).toEqual({
+      appId: "app-id-123",
+      deploymentGeneration: "11111111-1111-4111-8111-111111111111",
+    });
     expect(nc.status).toBe("pending");
     expect(nc.image_tag).toBe("ghcr.io/elizaos/app-x:latest");
   });

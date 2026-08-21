@@ -22,6 +22,7 @@ import {
   ANDROID_BUNDLETOOL_TIMEOUT_MS,
   ANDROID_BUNDLETOOL_URL,
   ANDROID_BUNDLETOOL_VERSION,
+  ANDROID_PLAY_FORBIDDEN_DEX_MARKERS,
   ensureAndroidBundletoolJar,
   inspectAndroidAppBundle,
   listAabDexEntries,
@@ -2028,6 +2029,39 @@ describe("inspectAndroidAppBundle", () => {
       "feature/dex/classes2.dex contains forbidden LP3 marker: lp3_color_policy",
     );
   });
+
+  it.each(ANDROID_PLAY_FORBIDDEN_DEX_MARKERS)(
+    "rejects Play local-runtime marker %s in any module DEX",
+    (forbiddenMarker) => {
+      const harness = successfulToolHarness(
+        new Map([
+          ["base", CLEAN_MANIFEST],
+          ["feature", CLEAN_MANIFEST],
+        ]),
+      );
+      const readDexEntries = (dexEntries) =>
+        dexEntries.map((entry) =>
+          Buffer.from(
+            entry.startsWith("feature/")
+              ? `dex strings ${forbiddenMarker}`
+              : "clean base dex",
+            "utf8",
+          ),
+        );
+
+      expect(() =>
+        inspectAndroidAppBundle(
+          inspectOptions({
+            entries: MULTI_MODULE_ENTRIES,
+            readDexEntries,
+          }),
+          harness.deps,
+        ),
+      ).toThrow(
+        `feature/dex/classes2.dex contains forbidden Play local-runtime marker: ${forbiddenMarker}`,
+      );
+    },
+  );
 
   it("rejects an LP3 marker in a dex smuggled outside a module dex dir", () => {
     const harness = successfulToolHarness();

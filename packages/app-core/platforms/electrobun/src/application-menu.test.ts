@@ -6,7 +6,9 @@ import {
   findViewMenuEntryById,
   getViewMenuEntries,
   NEW_VIEW_WINDOW_ACTION_PREFIX,
+  OPEN_DESKTOP_WORKSPACE_ACTION,
   parseViewWindowAction,
+  resolveDesktopWorkspaceWindowOptions,
 } from "./application-menu";
 import { overrideBrandConfig, resetBrandConfigForTests } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
@@ -169,7 +171,7 @@ describe("buildApplicationMenu", () => {
     ).toBe(true);
   });
 
-  it("opens the complete desktop workspace instead of misrouting to settings", () => {
+  it("routes Desktop Workspace to the complete managed shell", () => {
     const menu = buildApplicationMenu({
       isMac: true,
       browserEnabled: true,
@@ -180,6 +182,16 @@ describe("buildApplicationMenu", () => {
       (item) => item.label === "Desktop Workspace",
     );
 
-    expect(workspace?.action).toBe("open-workspace");
+    expect(workspace?.action).toBe(OPEN_DESKTOP_WORKSPACE_ACTION);
+    expect(workspace?.action).not.toBe("open-settings-desktop");
+    expect(resolveDesktopWorkspaceWindowOptions(workspace?.action)).toEqual({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+      alwaysOnTop: false,
+    });
+    expect(
+      resolveDesktopWorkspaceWindowOptions("open-settings-desktop"),
+    ).toBeUndefined();
   });
 });

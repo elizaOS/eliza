@@ -2,6 +2,12 @@
  * Full Hono application — imported asynchronously from `index.ts` so the Worker
  * does not evaluate hundreds of route modules during Cloudflare startup validation
  * (error 10021: Script startup exceeded CPU time limit).
+ *
+ * The generated route graph is additionally sharded (issue #22550): passing a
+ * request pathname to `createApp` mounts only the shard of route modules that
+ * can match it, so a cold isolate evaluates tens of route modules instead of
+ * all ~677. Omitting the pathname mounts everything (tests, dev server, and
+ * any dispatch that has no concrete request path).
  */
 
 import { Hono } from "hono";
@@ -11,22 +17,31 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import {
+  getPresentedMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@/lib/auth/mobile-api-key";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import {
-  getIpKey,
-  getRequestIp,
   rateLimit,
   rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
-import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
+import {
+  getCloudAwareEnv,
+  runWithCloudBindingsAsync,
+} from "@/lib/runtime/cloud-bindings";
 import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
 import { configureAppsDeployTrigger } from "@/lib/services/app-deploy-job-service";
 import { getProviderEnvDiagnostics } from "@/lib/services/oauth/provider-registry";
+import {
+  SubscriptionCatalogError,
+  validateSubscriptionCatalogConfiguration,
+} from "@/lib/services/subscription-catalog";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import { describeUnhandledError } from "@/lib/utils/unhandled-error-detail";
@@ -35,11 +50,12 @@ import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
-import { mountRoutes } from "./_router.generated";
+import { mountRoutes, mountShardRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
+import { routeShardKey } from "./router-shards";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
 
@@ -211,10 +227,45 @@ function logProviderEnvDiagnostics(): void {
   }
 }
 
-export function createApp(): Hono<AppEnv> {
+export interface CreateAppOptions {
+  /**
+   * When set, only the generated route shard that can match this pathname is
+   * mounted; the resulting app must only be dispatched requests whose shard
+   * key equals `routeShardKey(requestPath)`. Omit to mount every route.
+   */
+  readonly requestPath?: string;
+}
+
+/**
+ * Process-global wiring that must happen exactly once per isolate. Sharding
+ * builds several apps in one isolate, but these calls mutate module-level
+ * singletons — re-running them would replace a dispatcher that in-flight
+ * requests (or a test's `setAuditDispatcher`) already hold.
+ */
+let globalWiringInstalled = false;
+
+/**
+ * Uses Cloudflare's authenticated connecting-IP header when available; the
+ * forwarding headers retain local and non-Cloudflare deployment compatibility.
+ */
+function requestIp(headers: Headers): string | undefined {
+  return (
+    headers.get("cf-connecting-ip") ||
+    headers.get("x-real-ip") ||
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    undefined
+  );
+}
+
+function requestIpKey(request: Request): string {
+  return `ip:${requestIp(request.headers) ?? "unknown"}`;
+}
+
+function installProcessGlobalWiring(): void {
+  if (globalWiringInstalled) return;
+
   // Initialise the global audit dispatcher (auth_events sink + optional
-  // console sink) before any route handlers run. Idempotent — safe to
-  // call from tests too.
+  // console sink) before any route handlers run.
   initAuditDispatcher();
 
   // Apps (Product 2): when enabled, wire the deploy trigger so
@@ -236,6 +287,21 @@ export function createApp(): Hono<AppEnv> {
     );
   }
 
+  // Publish completion only after every required singleton mutation succeeds.
+  // A failed initialization must remain retryable in the same isolate.
+  globalWiringInstalled = true;
+}
+
+/** Reset the once-per-isolate guard so a test can assert the wiring reruns. */
+export function resetProcessGlobalWiringForTests(): void {
+  globalWiringInstalled = false;
+}
+
+export async function createApp(
+  options?: CreateAppOptions,
+): Promise<Hono<AppEnv>> {
+  installProcessGlobalWiring();
+
   const app = new Hono<AppEnv>({ strict: false });
 
   // Once-per-isolate guard for missing OAuth provider env vars. Must run
@@ -243,6 +309,7 @@ export function createApp(): Hono<AppEnv> {
   // bindings — at `createApp()` time only `process.env` is available, which
   // would produce false warnings on deployed Workers.
   let providerEnvVarsLogged = false;
+  let subscriptionCatalogConfigurationChecked = false;
 
   app.use("*", async (c, next) => {
     setRuntimeR2Bucket(c.env.BLOB);
@@ -256,6 +323,22 @@ export function createApp(): Hono<AppEnv> {
     await runWithCloudBindingsAsync(
       c.env as Record<string, unknown>,
       async () => {
+        if (!subscriptionCatalogConfigurationChecked) {
+          subscriptionCatalogConfigurationChecked = true;
+          try {
+            validateSubscriptionCatalogConfiguration(getCloudAwareEnv());
+          } catch (error) {
+            // error-policy:J4 Subscription publication fails closed at its own
+            // route; other Cloud capabilities remain available while startup
+            // diagnostics alert on names-only configuration state.
+            logger.error(
+              "[bootstrap-app] Subscription catalog is unavailable",
+              error instanceof SubscriptionCatalogError
+                ? { code: error.code, context: error.context }
+                : { code: "SUBSCRIPTION_CATALOG_CONFIGURATION_UNAVAILABLE" },
+            );
+          }
+        }
         if (!providerEnvVarsLogged) {
           logProviderEnvDiagnostics();
           providerEnvVarsLogged = true;
@@ -265,7 +348,7 @@ export function createApp(): Hono<AppEnv> {
         // #10423) without threading them through every call site.
         return runWithRequestContext(
           {
-            clientIp: getRequestIp(c),
+            clientIp: requestIp(c.req.raw.headers),
             idempotencyKey:
               c.req.header("idempotency-key") ||
               c.req.header("x-request-id") ||
@@ -437,11 +520,38 @@ export function createApp(): Hono<AppEnv> {
         maxRequests: 600,
         // Namespaced so this backstop counter never collides with a per-route
         // IP-keyed limiter sharing the same `ip:<addr>` key.
-        keyGenerator: (c) => `global:${getIpKey(c)}`,
+        keyGenerator: (c) => `global:${requestIpKey(c.req.raw)}`,
       },
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
+
+  // A mobile secret bypasses positive auth caches so revocation is immediate.
+  // Bound each credential before auth to keep primary-consistency validation
+  // from becoming unbounded DB work. The independent global IP limiter above
+  // bounds high-cardinality key spray while clients behind one carrier NAT do
+  // not consume each other's credential bucket.
+  const mobileApiKeyIngressLimit = rateLimit(
+    {
+      windowMs: 60_000,
+      maxRequests: 120,
+      keyGenerator: (c) => {
+        const secret = getPresentedMobileApiKeySecret(c.req.raw);
+        if (!secret) {
+          throw new TypeError("Mobile ingress limiter requires a mobile key");
+        }
+        return mobileApiKeyIngressRateLimitKey(secret);
+      },
+    },
+    { bindingName: "MOBILE_API_KEY_INGRESS_LIMITER" },
+  );
+  app.use("*", async (c, next) => {
+    if (!getPresentedMobileApiKeySecret(c.req.raw)) {
+      await next();
+      return;
+    }
+    return await mobileApiKeyIngressLimit(c, next);
+  });
 
   app.use("*", authMiddleware);
   // CSRF: cookie-authenticated mutations must carry a first-party Origin and a
@@ -519,7 +629,11 @@ export function createApp(): Hono<AppEnv> {
     return c.json({ language });
   });
 
-  mountRoutes(app);
+  if (options?.requestPath === undefined) {
+    await mountRoutes(app);
+  } else {
+    await mountShardRoutes(app, routeShardKey(options.requestPath));
+  }
 
   app.notFound((c) =>
     c.json(

@@ -306,7 +306,7 @@ export default function CliLoginPage() {
         const aborted =
           error instanceof DOMException && error.name === "AbortError";
         if (error instanceof ApiError && error.status === 401) {
-          clearStaleStewardSession();
+          await clearStaleStewardSession();
         }
         setCompletion({
           status: "error",

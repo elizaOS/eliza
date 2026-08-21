@@ -13,6 +13,9 @@ vi.mock("@elizaos/core", async () => {
 	const { sanitizeSpawnEnv } = await import(
 		"../../../../packages/core/src/security/spawn-env-policy"
 	);
+	const { toWellFormedUnicode, truncateWellFormed } = await import(
+		"../../../../packages/core/src/utils/well-formed"
+	);
 	const streamingContext = new AsyncLocalStorage<
 		{ abortSignal?: AbortSignal } | undefined
 	>();
@@ -158,6 +161,8 @@ vi.mock("@elizaos/core", async () => {
 		promoteSubactionsToActions: (action: unknown) => [action],
 		unwrapUserMessageText,
 		sanitizeSpawnEnv,
+		toWellFormedUnicode,
+		truncateWellFormed,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";

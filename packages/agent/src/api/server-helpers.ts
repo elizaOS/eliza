@@ -20,6 +20,8 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Media,
   sendJsonError,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
   validateUuid,
 } from "@elizaos/core";
@@ -269,7 +271,11 @@ const APP_OWNER_NAME_MAX_LENGTH = 60;
 /** Resolve the app owner's display name from config, or fall back to "User". */
 export function resolveAppUserName(config: ElizaConfig): string {
   const ownerName = config.ui?.ownerName;
-  const normalized = ownerName?.trim().slice(0, APP_OWNER_NAME_MAX_LENGTH);
+  const normalized =
+    truncateWellFormed(
+      toWellFormedUnicode(ownerName?.trim() ?? ""),
+      APP_OWNER_NAME_MAX_LENGTH,
+    ) || undefined;
   return normalized || "User";
 }
 

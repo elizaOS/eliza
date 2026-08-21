@@ -1044,6 +1044,9 @@ const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
 const CAPACITOR_BUILD_TARGET = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
+const IS_ANDROID_CLOUD_RENDERER_BUILD =
+  CAPACITOR_BUILD_TARGET === "android" &&
+  process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud";
 const USE_CORE_SOURCE_BROWSER_ENTRY =
   IS_CAPACITOR_MOBILE_BUILD ||
   process.env.ELIZA_DESKTOP_VITE_FAST_DIST === "1" ||
@@ -1057,11 +1060,12 @@ const USE_CORE_SOURCE_BROWSER_ENTRY =
 export function resolveAppShellLocalCspSources(
   capacitorBuildTarget: string,
   isIosStoreBuild: boolean,
+  isAndroidCloudBuild = false,
 ): {
   localHttpSources: string;
   localConnectSources: string;
 } {
-  if (isIosStoreBuild) {
+  if (isIosStoreBuild || isAndroidCloudBuild) {
     return { localHttpSources: "", localConnectSources: "" };
   }
 
@@ -1086,15 +1090,141 @@ export function resolveAppShellLocalCspSources(
   };
 }
 
+export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "10.0.2.2",
+  "adb reverse",
+  "eliza-local-agent:",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "remote-mac",
+]);
+
+type AndroidCloudAuditOutput = {
+  type: "chunk" | "asset";
+  code?: string;
+  source?: string | Uint8Array;
+};
+
+/**
+ * Fail-only audit of every text-bearing file emitted into the Android Cloud
+ * renderer. Build policy must never rewrite arbitrary dependency output to
+ * conceal a marker, and lazy chunks remain executable packaged product code.
+ */
+export function findAndroidCloudEmittedRoutingFindings(
+  bundle: Record<string, AndroidCloudAuditOutput>,
+): string[] {
+  const findings: string[] = [];
+  for (const [fileName, output] of Object.entries(bundle)) {
+    const content =
+      output.type === "chunk"
+        ? output.code
+        : typeof output.source === "string"
+          ? output.source
+          : output.source instanceof Uint8Array
+            ? new TextDecoder().decode(output.source)
+            : undefined;
+    if (!content) continue;
+    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+      if (content.toLowerCase().includes(marker.toLowerCase())) {
+        findings.push(`${fileName}: ${marker}`);
+      }
+    }
+  }
+  return findings.sort();
+}
+
+function androidCloudRendererPolicyPlugin(): Plugin {
+  return {
+    name: "android-cloud-renderer-policy",
+    enforce: "pre",
+    generateBundle(_options, bundle) {
+      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
+      const findings = findAndroidCloudEmittedRoutingFindings(bundle);
+      if (findings.length > 0) {
+        throw new Error(
+          `Android Cloud renderer contains forbidden local routing markers:\n${findings
+            .sort()
+            .map((finding) => `  - ${finding}`)
+            .join("\n")}`,
+        );
+      }
+    },
+  };
+}
+
 /** Viewport policies selected by the app-shell metadata transform. */
 export const VIEWPORT_META_NATIVE =
   "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
 export const VIEWPORT_META_WEB =
   "width=device-width, initial-scale=1.0, viewport-fit=cover";
 
+const NATIVE_AGENT_IPC_BRIDGE_BLOCK =
+  /\s*<!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_START -->[\s\S]*?<!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->\s*/;
+
+/**
+ * Removes the native local-agent fetch shim and its CSP scheme from the
+ * standard Android Cloud renderer. Direct Android and iOS builds retain the
+ * bridge unchanged.
+ */
+export function stripAndroidCloudIpcBootstrap(html: string): string {
+  const withoutBridge = html.replace(NATIVE_AGENT_IPC_BRIDGE_BLOCK, "\n");
+  return withoutBridge.replace(
+    /(connect-src\s[^;]*?)\s+eliza-local-agent:/,
+    "$1",
+  );
+}
+
+/** Removes browser-only icons/manifest links whose public tree is not packaged. */
+export function stripAndroidCloudPublicAssetReferences(html: string): string {
+  return html.replace(
+    /\s*<link\b[^>]*\brel=["'](?:icon|apple-touch-icon|manifest)["'][^>]*>\s*/gi,
+    "\n",
+  );
+}
+
+const DEFAULT_RENDERER_ENTRY = "/src/entry.ts";
+const ANDROID_CLOUD_RENDERER_ENTRY = "/src/main.android-cloud.tsx";
+
+/**
+ * Selects the minimal Play-safe renderer before Rollup sees the application
+ * graph. A source-level entry swap is stronger than a runtime branch: Android
+ * Cloud builds cannot accidentally package the desktop, local-runtime, iOS,
+ * service-worker, or generic App composition roots behind a dormant condition.
+ */
+export function selectAndroidCloudRendererEntry(
+  html: string,
+  androidCloudBuild: boolean,
+): string {
+  if (!androidCloudBuild) return html;
+  if (!html.includes(DEFAULT_RENDERER_ENTRY)) {
+    throw new Error(
+      `Android Cloud HTML is missing the expected ${DEFAULT_RENDERER_ENTRY} module entry`,
+    );
+  }
+  return html.replace(DEFAULT_RENDERER_ENTRY, ANDROID_CLOUD_RENDERER_ENTRY);
+}
+
+/** Runs before Vite discovers HTML module imports, enforcing graph isolation. */
+export function androidCloudRendererEntryPlugin(
+  androidCloudBuild = IS_ANDROID_CLOUD_RENDERER_BUILD,
+): Plugin {
+  return {
+    name: "android-cloud-renderer-entry",
+    transformIndexHtml: {
+      order: "pre",
+      handler(html) {
+        return selectAndroidCloudRendererEntry(html, androidCloudBuild);
+      },
+    },
+  };
+}
+
 /** Creates the metadata transform; the target override keeps build-mode tests exact. */
 export function appShellMetadataPlugin(
-  options: { capacitorBuildTarget?: string } = {},
+  options: { androidCloudBuild?: boolean; capacitorBuildTarget?: string } = {},
 ): Plugin {
   const capacitorBuildTarget =
     options.capacitorBuildTarget ?? CAPACITOR_BUILD_TARGET;
@@ -1104,8 +1234,16 @@ export function appShellMetadataPlugin(
     capacitorBuildTarget === "ios" &&
     (process.env.ELIZA_BUILD_VARIANT === "store" ||
       process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
+  const isAndroidCloudBuild =
+    options.androidCloudBuild ??
+    (capacitorBuildTarget === "android" &&
+      process.env.VITE_ELIZA_ANDROID_RUNTIME_MODE === "cloud");
   const { localHttpSources, localConnectSources } =
-    resolveAppShellLocalCspSources(capacitorBuildTarget, isIosStoreBuild);
+    resolveAppShellLocalCspSources(
+      capacitorBuildTarget,
+      isIosStoreBuild,
+      isAndroidCloudBuild,
+    );
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -1151,6 +1289,10 @@ export function appShellMetadataPlugin(
       for (const [token, value] of replacements) {
         next = next.replaceAll(token, value);
       }
+      if (isAndroidCloudBuild) {
+        next = stripAndroidCloudIpcBootstrap(next);
+        next = stripAndroidCloudPublicAssetReferences(next);
+      }
       return next;
     },
     configureServer(server) {
@@ -1169,6 +1311,7 @@ export function appShellMetadataPlugin(
       });
     },
     generateBundle() {
+      if (isAndroidCloudBuild) return;
       this.emitFile({
         type: "asset",
         fileName: "site.webmanifest",
@@ -2216,7 +2359,9 @@ export default defineConfig(({ command }) => ({
   cacheDir: process.env.ELIZA_VITE_CACHE_DIR
     ? path.resolve(process.env.ELIZA_VITE_CACHE_DIR)
     : path.resolve(here, ".vite"),
-  publicDir: path.resolve(here, "public"),
+  publicDir: IS_ANDROID_CLOUD_RENDERER_BUILD
+    ? false
+    : path.resolve(here, "public"),
   define: {
     global: "globalThis",
     // Build variant — set at signing time by desktop-build.mjs and embedded
@@ -2259,6 +2404,8 @@ export default defineConfig(({ command }) => ({
     ),
   },
   plugins: [
+    androidCloudRendererEntryPlugin(),
+    androidCloudRendererPolicyPlugin(),
     forcedHostModeFlagGuardPlugin(),
     productionBuildStampGuardPlugin(),
     bufferEsmShimPlugin(),

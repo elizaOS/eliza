@@ -68,6 +68,7 @@ import {
   type AgentSandboxStatus,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
@@ -499,6 +500,11 @@ export class AgentSandboxesRepository {
    * (node_id / container_name are NULL by design), so there is nothing to
    * dial over the Headscale tunnel — heartbeating them only ever fails and
    * spams the logs. Only dedicated/custom tiers have a real container.
+   *
+   * Soft-deleted rows and unclaimed warm-pool rows are excluded like the
+   * sibling predicates in this file: neither belongs to a tenant-serving
+   * agent, so dialing them wastes cycles and pollutes heartbeat telemetry
+   * (#22548).
    */
   async listRunning(): Promise<Array<{ id: string; organization_id: string }>> {
     return dbRead
@@ -508,8 +514,55 @@ export class AgentSandboxesRepository {
       })
       .from(agentSandboxes)
       .where(
-        and(eq(agentSandboxes.status, "running"), ne(agentSandboxes.execution_tier, "shared")),
+        and(
+          eq(agentSandboxes.status, "running"),
+          ne(agentSandboxes.execution_tier, "shared"),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
       );
+  }
+
+  /**
+   * Tier x status census of the container-backed tenant fleet, for the
+   * fleet-liveness monitor (#22548). Grouping by BOTH keys is the point: the
+   * monitor cannot decide whether a row "should be reachable right now" from
+   * its status alone, because the tiers carry different serving contracts —
+   * `dedicated-lazy` is allowed to sleep, `dedicated-always`/`custom` are not.
+   * The caller applies that contract with `isFleetRowExpectedReachable`.
+   *
+   * The tier filter is an explicit allowlist rather than `<> 'shared'` so a
+   * tier added later cannot silently join the paging census: shared rows are
+   * container-free by design, and any new tier must state its own serving
+   * contract before it can raise a fleet alarm. Soft-deleted rows and
+   * unclaimed warm-pool rows are excluded because neither belongs to a
+   * tenant-serving agent.
+   *
+   * Status is deliberately NOT filtered here: the monitor needs the off-state
+   * counts (`sleeping`, `stopped`, ...) to report the whole fleet picture
+   * alongside the alarm, and a fleet whose every row sits in `error` — the
+   * exact shape the heartbeat sweep cannot see, since it iterates only
+   * `running` rows — must still appear in the census.
+   */
+  async summarizeDedicatedFleet(): Promise<
+    Array<{ execution_tier: string; status: string; count: number }>
+  > {
+    await ensureAgentSandboxSchema();
+    return dbRead
+      .select({
+        execution_tier: agentSandboxes.execution_tier,
+        status: agentSandboxes.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(agentSandboxes)
+      .where(
+        and(
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+          isNull(agentSandboxes.deleted_at),
+          isNull(agentSandboxes.pool_status),
+        ),
+      )
+      .groupBy(agentSandboxes.execution_tier, agentSandboxes.status);
   }
 
   /**
@@ -1807,11 +1860,17 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
           ),
         )
         .for("update")
         .limit(1);
       if (!userRow) return null;
+      if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === userRow.execution_tier)) {
+        return null;
+      }
 
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
@@ -1889,6 +1948,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
             ...(params.expectedLifecycleRevision === undefined
               ? []
               : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
@@ -1911,7 +1973,18 @@ export class AgentSandboxesRepository {
 
   /** Insert a pool entry pre-bound to the sentinel pool org. */
   async createPoolEntry(
-    data: Omit<NewAgentSandbox, "organization_id" | "user_id" | "pool_status">,
+    data: Omit<
+      NewAgentSandbox,
+      | "organization_id"
+      | "user_id"
+      | "pool_status"
+      | "execution_tier"
+      | "billing_status"
+      | "last_billed_at"
+      | "hourly_rate"
+      | "shutdown_warning_sent_at"
+      | "scheduled_shutdown_at"
+    >,
   ): Promise<AgentSandbox> {
     await ensureAgentSandboxSchema();
     const [row] = await dbWrite
@@ -1921,6 +1994,17 @@ export class AgentSandboxesRepository {
         organization_id: WARM_POOL_ORG_ID,
         user_id: WARM_POOL_USER_ID,
         pool_status: "unclaimed",
+        // Pool placeholders own a real prewarmed container. Never inherit the
+        // schema's container-free Shared default at this creation seam.
+        execution_tier: "dedicated-always",
+        // The sentinel org owns capacity, not a customer subscription. Keep
+        // pool generations outside elapsed charging until a claim transfers
+        // infrastructure onto an already-container-backed user row.
+        billing_status: "exempt",
+        last_billed_at: null,
+        hourly_rate: "0.0000",
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
       })
       .returning();
     if (!row) throw new Error("Failed to create warm pool entry");

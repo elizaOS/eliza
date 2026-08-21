@@ -2,6 +2,27 @@
 import { getBrandConfig } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 
+export const OPEN_DESKTOP_WORKSPACE_ACTION = "open-desktop-workspace";
+
+export interface DesktopWorkspaceWindowOptions {
+  readonly slug: "workspace";
+  readonly title: "Workspace";
+  readonly path: "/";
+  readonly alwaysOnTop: false;
+}
+
+export function resolveDesktopWorkspaceWindowOptions(
+  action: string | undefined,
+): DesktopWorkspaceWindowOptions | undefined {
+  if (action !== OPEN_DESKTOP_WORKSPACE_ACTION) return undefined;
+  return {
+    slug: "workspace",
+    title: "Workspace",
+    path: "/",
+    alwaysOnTop: false,
+  };
+}
+
 // Minimal slug + display + windowPath slice mirroring the renderer-side
 // internal-tool ViewDeclarations in `packages/ui/src/components/apps/
 // internal-tool-apps.ts` (the source of truth — it owns hero images,
@@ -243,7 +264,10 @@ function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   return {
     label: "Desktop",
     submenu: [
-      { label: "Desktop Workspace", action: "open-workspace" },
+      {
+        label: "Desktop Workspace",
+        action: OPEN_DESKTOP_WORKSPACE_ACTION,
+      },
       { label: "Voice Controls", action: "open-settings-voice" },
       { label: "Permissions", action: "open-settings-permissions" },
       { label: "Cloud Settings", action: "open-settings-cloud" },

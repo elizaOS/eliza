@@ -1918,8 +1918,9 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   font-size: 0.95rem;
   line-height: 1.3;
   opacity: 0;
-  transform: translateY(8px);
-  animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
 }
 
 .landing-message {
@@ -1997,6 +1998,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-message--typing .landing-message-author {
+  margin-left: 0;
   max-width: 12rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2032,6 +2034,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: #0a84ff;
   color: #ffffff;
   border-bottom-right-radius: 0.3rem;
+  transform-origin: right bottom;
 }
 
 .landing-bubble--eliza {
@@ -2049,10 +2052,589 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 @keyframes landing-bubble-in {
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  0% {
+    opacity: 0;
+    transform: translateY(0.55rem) scale(0.96);
   }
+  68% {
+    opacity: 1;
+    transform: translateY(-0.04rem) scale(1.008);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.landing-message--attachment {
+  max-width: 94%;
+}
+
+.landing-place-attachment {
+  width: min(15.8rem, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  background: #f7f7f8;
+  color: #111;
+  opacity: 0;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
+}
+
+.landing-place-map {
+  position: relative;
+  height: 7.1rem;
+  overflow: hidden;
+  background: #e8ece5;
+}
+
+.landing-place-map > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.landing-map-park {
+  fill: #cfe4c5;
+}
+
+.landing-map-block {
+  fill: #f5f1e7;
+  stroke: #ded9cd;
+  stroke-width: 1;
+}
+
+.landing-map-street {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 13;
+  stroke-linecap: round;
+}
+
+.landing-map-street--minor {
+  stroke-width: 7;
+}
+
+.landing-map-route {
+  fill: none;
+  stroke: #1687ff;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.landing-map-user-ring {
+  fill: #fff;
+  opacity: 0.95;
+}
+
+.landing-map-user {
+  fill: #1687ff;
+}
+
+.landing-map-pin path {
+  fill: #ff3b30;
+}
+
+.landing-map-pin circle {
+  fill: #fff;
+}
+
+.landing-place-map-label {
+  position: absolute;
+  top: 0.72rem;
+  right: 0.6rem;
+  max-width: 8.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.45rem;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 0.12rem 0.45rem rgb(0 0 0 / 14%);
+  font-size: 0.66rem;
+  font-weight: 650;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.landing-place-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.7rem 0.75rem 0.5rem;
+}
+
+.landing-place-copy > div {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-place-copy strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  line-height: 1.18;
+}
+
+.landing-place-copy span:not(.landing-place-directions) {
+  margin-top: 0.1rem;
+  color: #6e6e73;
+  font-size: 0.7rem;
+}
+
+.landing-place-directions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: #e6f1ff;
+  color: #087cff;
+}
+
+.landing-place-directions svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.landing-place-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0 0.75rem 0.55rem;
+  color: #515156;
+  font-size: 0.68rem;
+}
+
+.landing-place-meta > span:not(:last-child)::after {
+  margin-left: 0.42rem;
+  color: #b0b0b5;
+  content: "·";
+}
+
+.landing-place-rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+}
+
+.landing-place-rating svg {
+  width: 0.62rem;
+  height: 0.62rem;
+  fill: #ff9f0a;
+  color: #ff9f0a;
+}
+
+.landing-task-list-attachment {
+  width: min(15.8rem, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  background: #f7f7f8;
+  color: #111;
+  opacity: 0;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
+}
+
+.landing-attachment-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 0.75rem;
+}
+
+.landing-attachment-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.52rem;
+  color: #fff;
+}
+
+.landing-attachment-icon svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.landing-task-list-icon {
+  background: #ff9f0a;
+}
+
+.landing-task-list-head > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-task-list-head strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.landing-task-list-head b {
+  color: #c56f00;
+  font-size: 0.66rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.landing-task-list-items {
+  margin: 0;
+  padding: 0 0.75rem;
+  border-top: 1px solid rgb(0 0 0 / 7%);
+  background: #fff;
+  list-style: none;
+}
+
+.landing-task-list-items li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.15rem;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+}
+
+.landing-task-list-items li:last-child {
+  border-bottom: 0;
+}
+
+.landing-task-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid #ff9f0a;
+  border-radius: 50%;
+  color: #fff;
+}
+
+.landing-task-list-items li[data-completed="true"] .landing-task-check {
+  background: #ff9f0a;
+}
+
+.landing-task-check svg {
+  width: 0.68rem;
+  height: 0.68rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.landing-task-list-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.landing-task-list-items strong {
+  min-width: 0;
+  font-size: 0.73rem;
+  font-weight: 520;
+  line-height: 1.2;
+}
+
+.landing-task-list-items small {
+  flex: 0 0 auto;
+  color: #7b7b80;
+  font-size: 0.64rem;
+}
+
+.landing-task-list-items li[data-completed="true"] strong {
+  color: #8e8e93;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.landing-handoff-attachment,
+.landing-itinerary-attachment,
+.landing-heat-plan-attachment {
+  width: min(15.8rem, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  color: #111;
+  opacity: 0;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
+}
+
+.landing-handoff-attachment {
+  background: #fff;
+}
+
+.landing-calendar-head {
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+  background: #f7f7f8;
+}
+
+.landing-calendar-icon {
+  background: #ff3b30;
+}
+
+.landing-calendar-head strong {
+  color: #111;
+  font-size: 0.92rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.landing-calendar-day-view {
+  position: relative;
+  height: 7.6rem;
+  background: #fff;
+}
+
+.landing-calendar-hour {
+  position: absolute;
+  left: 0.68rem;
+  width: 2.1rem;
+  color: #8e8e93;
+  font-size: 0.57rem;
+  line-height: 1;
+  text-align: right;
+  transform: translateY(-50%);
+}
+
+.landing-calendar-hour--four {
+  top: 1.15rem;
+}
+
+.landing-calendar-hour--five {
+  top: 6.15rem;
+}
+
+.landing-itinerary-stops,
+.landing-heat-plan-schedule {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-calendar-line {
+  position: absolute;
+  right: 0;
+  left: 3.25rem;
+  height: 1px;
+  background: rgb(0 0 0 / 8%);
+}
+
+.landing-calendar-line--four {
+  top: 1.15rem;
+}
+
+.landing-calendar-line--half {
+  top: 3.65rem;
+}
+
+.landing-calendar-line--five {
+  top: 6.15rem;
+}
+
+.landing-calendar-event {
+  position: absolute;
+  top: 2rem;
+  right: 0.7rem;
+  left: 3.5rem;
+  display: grid;
+  min-height: 3.55rem;
+  padding: 0.52rem 0.58rem 0.48rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #ffe9e7;
+  color: #6c1712;
+}
+
+.landing-calendar-event::before {
+  position: absolute;
+  top: 0.38rem;
+  bottom: 0.38rem;
+  left: 0.28rem;
+  width: 0.16rem;
+  border-radius: 999px;
+  background: #ff3b30;
+  content: "";
+}
+
+.landing-calendar-event strong {
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.12;
+}
+
+.landing-calendar-event span,
+.landing-calendar-event small {
+  margin-top: 0.05rem;
+  color: #8a302a;
+  font-size: 0.6rem;
+  line-height: 1.15;
+}
+
+.landing-itinerary-attachment {
+  background: #fff;
+}
+
+.landing-itinerary-head {
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+  background: #f7f7f8;
+}
+
+.landing-itinerary-head strong {
+  font-size: 0.92rem;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.landing-itinerary-app-icon {
+  background: #0a84ff;
+}
+
+.landing-itinerary-stops {
+  padding: 0.35rem 0.75rem 0.42rem;
+}
+
+.landing-itinerary-stops li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.2rem 2.15rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.36rem;
+  min-height: 2.15rem;
+}
+
+.landing-itinerary-stops li:not(:last-child)::after {
+  position: absolute;
+  z-index: 0;
+  top: 1.48rem;
+  bottom: -0.68rem;
+  left: 0.57rem;
+  width: 1px;
+  background: #b9d8fb;
+  content: "";
+}
+
+.landing-itinerary-icon {
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: #e4f1ff;
+  color: #0a84ff;
+}
+
+.landing-itinerary-icon svg {
+  width: 0.66rem;
+  height: 0.66rem;
+  stroke-width: 2;
+}
+
+.landing-itinerary-time {
+  color: #0a66cc;
+  font-size: 0.61rem;
+  font-weight: 650;
+}
+
+.landing-itinerary-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-itinerary-copy strong {
+  font-size: 0.7rem;
+  font-weight: 620;
+  line-height: 1.15;
+}
+
+.landing-heat-plan-attachment {
+  background: #fff;
+}
+
+.landing-heat-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(145deg, #2f8be8, #67b8ec);
+  color: #fff;
+}
+
+.landing-heat-plan-head strong {
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.landing-heat-plan-head > svg {
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  color: #ffd45a;
+  fill: rgb(255 212 90 / 20%);
+  stroke-width: 1.6;
+}
+
+.landing-heat-plan-schedule {
+  padding: 0 0.75rem;
+}
+
+.landing-heat-plan-schedule li {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+}
+
+.landing-heat-plan-schedule li:last-child {
+  border-bottom: 0;
+}
+
+.landing-heat-plan-schedule strong {
+  color: #2577c8;
+  font-size: 0.57rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.landing-heat-plan-schedule span {
+  min-width: 0;
+  font-size: 0.69rem;
+  font-weight: 560;
+}
+
+.landing-heat-plan-schedule small {
+  color: #7b7b80;
+  font-size: 0.6rem;
 }
 
 .landing-composer-row {
@@ -2202,97 +2784,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
     opacity: 1;
     transform: scale(1);
   }
-}
-
-.landing-bubble-card {
-  max-width: 100%;
-  animation: landing-bubble-in 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.landing-demo-card {
-  display: grid;
-  gap: 0.22rem;
-  padding: 0.76rem 0.9rem;
-  border: 1px solid rgb(0 0 0 / 7%);
-  border-radius: 1rem;
-  background: #f2f2f7;
-  box-shadow: none;
-  font-size: 0.88rem;
-  line-height: 1.3;
-}
-
-.landing-demo-card-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: #6e6e73;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.landing-demo-card-label::before {
-  width: 0.38rem;
-  height: 0.38rem;
-  border-radius: 999px;
-  background: #8e8e93;
-  content: "";
-}
-
-.landing-demo-card strong {
-  color: #111;
-  font-size: 0.96rem;
-  text-wrap: pretty;
-}
-
-.landing-demo-card-row {
-  color: #5b5b60;
-  text-wrap: pretty;
-}
-
-.landing-demo-card-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.3rem;
-  color: #76767c;
-  font-size: 0.72rem;
-  font-weight: 500;
-}
-
-.landing-demo-card-source svg {
-  width: 0.8rem;
-  height: 0.8rem;
-  flex: 0 0 auto;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.35;
-}
-
-.landing-demo-card-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-top: 0.32rem;
-  color: #6e6e73;
-  font-size: 0.76rem;
-  font-weight: 600;
-}
-
-.landing-demo-card-status svg {
-  width: 0.82rem;
-  height: 0.82rem;
-  flex: 0 0 auto;
-  color: #007aff;
-}
-
-.landing-demo-card-status[data-status-kind="open"] svg {
-  color: #007aff;
 }
 
 /* The keyboard moves as one opaque iOS surface. Fading it independently from
@@ -2695,18 +3186,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   .landing-message--typing-multiple .landing-message-avatar-slot {
     flex-basis: 1.7rem;
     width: 1.7rem;
-  }
-
-  .landing-demo-card {
-    font-size: 0.92rem;
-  }
-
-  .landing-demo-card strong {
-    font-size: 0.98rem;
-  }
-
-  .landing-demo-card-row {
-    font-size: 0.9rem;
   }
 
   .landing-thread-timestamp {

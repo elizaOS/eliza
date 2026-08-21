@@ -82,6 +82,102 @@ describe("steward email sign-in adapter", () => {
     });
   });
 
+  it("leaves code delivery unknown when the send response does not declare factors", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: {
+          expiresAt: "2026-07-17T12:10:00.000Z",
+          challengeId: "challenge-1",
+          pollSecret: "poll-secret",
+        },
+      }),
+    );
+
+    const challenge = await startStewardEmailLogin(
+      { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+      "person@example.com",
+    );
+    // Polling credentials alone never imply an email code was delivered.
+    expect(challenge.emailCodeDelivered).toBeUndefined();
+  });
+
+  it("parses an explicit deliveredFactors declaration from the send response", async () => {
+    const withFactors = (factors: unknown) =>
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          data: {
+            expiresAt: "2026-07-17T12:10:00.000Z",
+            challengeId: "challenge-1",
+            pollSecret: "poll-secret",
+            deliveredFactors: factors,
+          },
+        }),
+      );
+
+    await expect(
+      startStewardEmailLogin(
+        {
+          baseUrl: "/steward",
+          fetchImpl: withFactors(["magic_link", "email_code"]),
+        },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: true });
+
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", fetchImpl: withFactors(["magic_link"]) },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: false });
+
+    // A malformed declaration is treated as absent, not as a delivery claim.
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", fetchImpl: withFactors([42]) },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: undefined });
+  });
+
+  it("parses the codeDelivery shorthand from the send response", async () => {
+    const withCodeDelivery = (codeDelivery: unknown) =>
+      vi.fn().mockResolvedValue(
+        jsonResponse({
+          ok: true,
+          data: {
+            expiresAt: "2026-07-17T12:10:00.000Z",
+            challengeId: "challenge-1",
+            pollSecret: "poll-secret",
+            codeDelivery,
+          },
+        }),
+      );
+
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", fetchImpl: withCodeDelivery("email") },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: true });
+
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", fetchImpl: withCodeDelivery("none") },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: false });
+
+    await expect(
+      startStewardEmailLogin(
+        { baseUrl: "/steward", fetchImpl: withCodeDelivery("carrier-pigeon") },
+        "person@example.com",
+      ),
+    ).resolves.toMatchObject({ emailCodeDelivered: undefined });
+  });
+
   it("verifies a six-digit companion code and returns the Steward session", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({

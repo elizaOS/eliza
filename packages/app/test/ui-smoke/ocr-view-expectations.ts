@@ -98,7 +98,7 @@ export const VIEW_OCR_POLICIES = {
     ],
   }),
   "builtin-apps": expected({
-    requireAll: ["My Apps"],
+    requireAll: ["Projects"],
     requireAny: [
       "elizaOS apps",
       "Advanced",
@@ -225,6 +225,12 @@ export const VIEW_OCR_POLICIES = {
   "builtin-settings": expected({
     requireAll: ["Settings"],
     requireAny: ["Models & Providers", "Voice", "Appearance", "Basics"],
+  }),
+  "builtin-vault": expected({
+    // The audit intentionally captures routed views with the chat sheet open.
+    // Vault's non-interactive identity stays visible for orientation while its
+    // subtitle and every sensitive control are occluded in short landscapes.
+    requireAll: ["Vault"],
   }),
   "builtin-logs": expected({
     requireAll: ["Logs"],

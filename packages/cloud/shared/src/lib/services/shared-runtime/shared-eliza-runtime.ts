@@ -14,6 +14,7 @@ import {
   basicServices,
   CONTEXT_ROUTING_METADATA_KEY,
   createMessageMemory,
+  ElizaError,
   type GenerateTextParams,
   generateMediaAction,
   type IAgentRuntime,
@@ -38,6 +39,7 @@ import {
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
+import type { AgentCapabilityTransport } from "@elizaos/shared";
 import {
   generateText,
   type JSONSchema7,
@@ -59,11 +61,17 @@ import type {
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
   SHARED_RUNTIME_CAPABILITIES_PROVIDER,
 } from "./shared-runtime-capabilities";
+import {
+  insertSharedRuntimeGroundingMessages,
+  sharedPublicWebGrounding,
+  sharedRuntimeGroundingProjectionMessages,
+} from "./shared-runtime-history-policy";
 import {
   sharedRuntimeConversationRoomId,
   sharedRuntimeWorldId,
@@ -71,6 +79,7 @@ import {
 import {
   SharedRuntimeTimingCollector,
   type SharedRuntimeTimingOutcome,
+  type SharedRuntimeTimingReceipt,
 } from "./shared-runtime-timing";
 import { SHARED_TURN_MAX_RETRIES } from "./shared-turn-retry-budget";
 
@@ -232,6 +241,7 @@ function createRuntime(options: {
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  transport?: AgentCapabilityTransport;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
@@ -242,6 +252,7 @@ function createRuntime(options: {
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
+    transport: options.transport,
   });
   return new AgentRuntime({
     agentId: options.agentId ?? stringToUuid(options.agentKey),
@@ -495,9 +506,10 @@ async function executeSharedElizaRuntimeTurn(
     input.history.length,
   );
   let runtimeReporter: IAgentRuntime | undefined;
-  const emitTiming = (outcome: SharedRuntimeTimingOutcome): void => {
+  const emitTiming = (outcome: SharedRuntimeTimingOutcome): SharedRuntimeTimingReceipt => {
+    const receipt = timing.receipt(outcome);
     try {
-      input.onRuntimeTiming?.(timing.receipt(outcome));
+      input.onRuntimeTiming?.(receipt);
     } catch (error) {
       // error-policy:J7 diagnostics must not kill the loop. Once the genuine
       // runtime exists, report through its canonical error surface; setup
@@ -519,6 +531,7 @@ async function executeSharedElizaRuntimeTurn(
         error: error instanceof Error ? error.message : String(error),
       });
     }
+    return receipt;
   };
   try {
     const result = await executeMeasuredSharedElizaRuntimeTurn(
@@ -529,8 +542,8 @@ async function executeSharedElizaRuntimeTurn(
         runtimeReporter = runtime;
       },
     );
-    emitTiming("success");
-    return result;
+    const receipt = emitTiming("success");
+    return { ...result, timing: receipt.model };
   } catch (error) {
     emitTiming(input.abortSignal?.aborted ? "aborted" : "error");
     throw error;
@@ -543,18 +556,37 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   timing: SharedRuntimeTimingCollector,
   exposeRuntime: (runtime: IAgentRuntime) => void,
 ): Promise<RunSharedAgentTurnResult> {
+  if (typeof input.execution.roomKey !== "string" || !input.execution.roomKey.trim()) {
+    throw new ElizaError(
+      "Eliza Shared runtime requires a trusted room key when execution authority is provided",
+      {
+        code: "SHARED_RUNTIME_ROOM_AUTHORITY_MISSING",
+        context: { agentKey: input.agentKey },
+      },
+    );
+  }
+  const trustedRoomKey = input.execution.roomKey.trim();
   await ensureEdgeStreamingContext();
   timing.markEdgeContextReady();
   const adapter = new InMemoryDatabaseAdapter();
   let providerDispatched = false;
   const inferenceTelemetry: { summary?: InferenceTurnSummary } = {};
   let usage: SharedAgentTurnUsage | undefined;
-  const model = getInteractiveCerebrasLanguageModel(input.model);
+  const groundingObservedAt = Date.now();
+  // The native tool-call projection may only reference a tool the current
+  // request actually declares; otherwise the evidence is carried as data-only
+  // transcript content so a strict provider cannot reject the whole request.
+  const persistedGroundingMessages = (declaresWebSearch: boolean): ModelMessage[] =>
+    sharedRuntimeGroundingProjectionMessages(input.history, input.message, groundingObservedAt, {
+      nativeToolProjection: declaresWebSearch,
+    });
 
   const modelHandler = async (
     _runtime: IAgentRuntime,
     params: GenerateTextParams,
   ): Promise<string | NativeTextModelResult | TextStreamResult> => {
+    const modelCall = timing.prepareModelCall();
+    const model = getInteractiveCerebrasLanguageModel(input.model, modelCall.select);
     if (!providerDispatched) {
       providerDispatched = true;
       await input.onProviderDispatch?.();
@@ -565,7 +597,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       maxRetries: SHARED_TURN_MAX_RETRIES,
       allowSystemInMessages: true,
       ...(params.messages
-        ? { messages: params.messages as ModelMessage[] }
+        ? {
+            messages: insertSharedRuntimeGroundingMessages(
+              params.messages as ModelMessage[],
+              persistedGroundingMessages(
+                params.tools?.some((tool) => tool.name === "WEB_SEARCH") === true,
+              ),
+            ),
+          }
         : { prompt: params.prompt ?? "" }),
       ...(params.tools ? { tools: modelTools(params.tools) } : {}),
       ...(params.toolChoice ? { toolChoice: modelToolChoice(params.toolChoice) } : {}),
@@ -575,7 +614,17 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(params.signal ? { abortSignal: params.signal } : {}),
     };
     if (onStreamChunk && params.stream === true) {
-      const result = streamText(generation);
+      let result: ReturnType<typeof streamText>;
+      try {
+        modelCall.begin();
+        result = streamText(generation);
+      } catch (error) {
+        // error-policy:J6 best-effort teardown — close the timing span so a
+        // synchronous streamText failure cannot leave the call recorded as
+        // still running, then let the original error propagate untouched.
+        modelCall.finish();
+        throw error;
+      }
       const text = Promise.resolve(result.text);
       const toolCalls = Promise.resolve(result.toolCalls);
       const finishReason = Promise.resolve(result.finishReason);
@@ -611,11 +660,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           yield chunk;
         }
       })();
-      const streamUsage = totalUsage.then((value) => {
-        const normalized = normalizeUsage(value);
-        usage = addUsage(usage, normalized);
-        return normalized;
-      });
+      const streamUsage = totalUsage
+        .then((value) => {
+          const normalized = normalizeUsage(value);
+          usage = addUsage(usage, normalized);
+          return normalized;
+        })
+        .finally(() => modelCall.finish());
       const normalizedToolCalls = toolCalls.then((calls) =>
         calls.map((call) => ({
           id: call.toolCallId,
@@ -636,9 +687,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         providerMetadata: { modelName: input.model },
       } as TextStreamResult;
     }
-    const result = await generateText({
-      ...generation,
-    });
+    let result: Awaited<ReturnType<typeof generateText>>;
+    try {
+      modelCall.begin();
+      result = await generateText({ ...generation });
+    } finally {
+      modelCall.finish();
+    }
     if (result.text.trim()) timing.markProviderFirstText();
     usage = addUsage(usage, normalizeUsage(result.usage));
     if (result.toolCalls.length === 0) {
@@ -687,6 +742,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: input.character,
     modelPlugin,
+    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
@@ -755,12 +811,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         throw new Error("Eliza Shared runtime initialized without its GENERATE_MEDIA action");
       }
     }
-    const roomId = sharedRuntimeConversationRoomId(input.agentKey);
+    const roomId = sharedRuntimeConversationRoomId(trustedRoomKey);
     timing.markConnectionStarted();
     await runtime.ensureConnection({
       entityId: incomingEntityId,
       roomId,
-      worldId: sharedRuntimeWorldId(input.agentKey),
+      worldId: sharedRuntimeWorldId(trustedRoomKey),
       userName: actionsEnabled ? "Shared user" : "Shared lifecycle",
       source: actionsEnabled ? input.execution.channel.source : "shared-runtime-system",
       type: input.execution.channel.type,
@@ -825,7 +881,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       roomId,
       content: {
         text: input.message.trim(),
-        ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         // Only the server-owned execution attestation may translate a Shared
         // turn to authenticated client-chat provenance. Connector payloads and
         // direct runtime callers remain on the fail-closed Shared source.
@@ -919,6 +974,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         reply,
         input.messageIds,
         input.messageRole,
+        sharedPublicWebGrounding(result.actionResults),
       ),
       model: input.model,
       degraded: false,
@@ -1023,6 +1079,7 @@ export async function runSharedElizaRuntimeTurnStream(
         text: result.reply,
         ...(result.responded === false ? { responded: false } : {}),
         usage: result.usage,
+        ...(result.timing ? { timing: result.timing } : {}),
         ...(result.actionResults?.length ? { actionResults: result.actionResults } : {}),
       });
       terminal = true;

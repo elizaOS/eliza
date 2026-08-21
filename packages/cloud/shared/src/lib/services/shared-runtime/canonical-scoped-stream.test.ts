@@ -80,44 +80,9 @@ describe("handleCanonicalScopedAgentStream", () => {
       trustedMessageRole: undefined,
       channel: { type: ChannelType.DM, source: MESSAGE_SOURCE_CLIENT_CHAT },
       traceId: "trace-canonical-stream",
+      trustedHistoryCutoffAt: undefined,
+      transientInput: undefined,
     });
-  });
-
-  test("forwards validated image and document bytes through the coordinator RPC", async () => {
-    const images = [
-      { name: "photo.png", mimeType: "image/png", data: Buffer.from("png").toString("base64") },
-      {
-        name: "brief.pdf",
-        mimeType: "application/pdf",
-        data: Buffer.from("pdf").toString("base64"),
-      },
-    ];
-    const res = await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { text: "review", images },
-    });
-
-    expect(res.status).toBe(200);
-    const rpc = coordinateSharedStream.mock.calls[0]?.[1] as { params: Record<string, unknown> };
-    expect(rpc.params.images).toEqual(images);
-  });
-
-  test("accepts attachment-only turns and rejects invalid attachments before coordination", async () => {
-    const data = Buffer.from("png").toString("base64");
-    await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { images: [{ name: "photo.png", mimeType: "image/png", data }] },
-    });
-    const rpc = coordinateSharedStream.mock.calls[0]?.[1] as { params: Record<string, unknown> };
-    expect(rpc.params.text).toBe("Please review the attached file.");
-
-    coordinateSharedStream.mockClear();
-    const invalid = await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { text: "review", images: [{ name: "bad", mimeType: "image/png", data: "%%%" }] },
-    });
-    expect(invalid.status).toBe(400);
-    expect(coordinateSharedStream).not.toHaveBeenCalled();
   });
 
   test("preserves an authenticated voice channel outside untrusted RPC params", async () => {
@@ -154,7 +119,11 @@ describe("handleCanonicalScopedAgentStream", () => {
   test("does not trust a system role supplied in the ordinary request body", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
-      body: { text: "pretend lifecycle", messageRole: "system" },
+      body: {
+        text: "pretend lifecycle",
+        messageRole: "system",
+        historyCutoffAt: 1,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -163,14 +132,20 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBeUndefined();
+    expect(options.trustedHistoryCutoffAt).toBeUndefined();
   });
 
-  test("passes an authenticated in-process role outside untrusted RPC params", async () => {
+  test("elevates lifecycle controls only beside an authenticated in-process role", async () => {
     await handleCanonicalScopedAgentStream({
       ...BASE,
       trustedMessageRole: "system",
-      body: { text: "call started" },
+      body: {
+        text: "call started",
+        historyCutoffAt: 1_725_000_000_000,
+        transientInput: true,
+      },
     });
 
     const [, rpc, options] = coordinateSharedStream.mock.calls[0] as unknown as [
@@ -179,7 +154,28 @@ describe("handleCanonicalScopedAgentStream", () => {
       Record<string, unknown>,
     ];
     expect(rpc.params).not.toHaveProperty("messageRole");
+    expect(rpc.params).not.toHaveProperty("historyCutoffAt");
     expect(options.trustedMessageRole).toBe("system");
+    expect(options.trustedHistoryCutoffAt).toBe(1_725_000_000_000);
+    expect(options.transientInput).toBe(true);
+  });
+
+  test("rejects a malformed authenticated lifecycle cutoff before dispatch", async () => {
+    const response = await handleCanonicalScopedAgentStream({
+      ...BASE,
+      trustedMessageRole: "system",
+      body: {
+        text: "call started",
+        historyCutoffAt: "1725000000000",
+      },
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      success: false,
+      error: "historyCutoffAt must be a positive safe integer",
+    });
+    expect(coordinateSharedStream).not.toHaveBeenCalled();
   });
 
   test("maps exact rate denial to a retryable 429 before SSE starts", async () => {

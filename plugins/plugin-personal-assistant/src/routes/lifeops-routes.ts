@@ -2480,6 +2480,7 @@ export async function handleLifeOpsRoutes(
         title: occurrence.title,
         status: occurrenceStateToTodoStatus(occurrence.state),
         dueDate: occurrence.dueAt,
+        progress: occurrence.progress,
       }));
       json(res, { todos });
     });

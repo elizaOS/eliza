@@ -369,7 +369,7 @@ export async function siweLoginWithInjectedWallet(
     throw new Error("Eliza Cloud SIWE verify returned no API key.");
   }
 
-  writeStoredStewardToken(verified.apiKey);
+  await writeStoredStewardToken(verified.apiKey);
   window.dispatchEvent(new CustomEvent("steward-token-sync"));
   logger.info(
     `[CloudSiweLogin] SIWE login verified for ${address.slice(0, 6)}…${address.slice(-4)} on chain ${walletChainId}`,

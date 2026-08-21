@@ -6,6 +6,7 @@ import {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
   fetchWithSsrfGuard,
+  getInferenceTimer,
   hasDocumentAugmentationEnvelope,
   runWithTrajectoryPurpose,
   SsrfBlockedError,
@@ -27,6 +28,10 @@ describe("elizaos-core Worker stub", () => {
     await expect(
       runWithTrajectoryPurpose("inbox_triage", async () => "ok"),
     ).resolves.toBe("ok");
+  });
+
+  test("exposes the Worker-safe empty inference timing context", () => {
+    expect(getInferenceTimer()).toBeUndefined();
   });
 
   test("re-exports canonical pure text sanitizers used by Worker consumers", () => {

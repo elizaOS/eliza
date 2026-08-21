@@ -8,6 +8,7 @@ Owner-facing finance dashboard for elizaOS: balance summary, transactions, and r
 - `runPaymentsHandler`, `MONEY_PARAMETERS`, `OWNER_FINANCE_SIMILES`, `MONEY_TAGS`, `MONEY_CONTEXTS` (`src/actions/finances.ts`) — the payments OWNER_FINANCES dispatch and parameter schema. `@elizaos/plugin-personal-assistant` imports these; the registered `OWNER_FINANCES` umbrella action stays in PA because it also routes `subscription_*` to PA's subscription back-end.
 - `FinancesService` (`src/finances-service.ts`) — payment sources, CSV import, transactions, spending summaries, recurring-charge detection, and email bills. Holds its own runtime + `FinancesRepository`.
 - `FinancesRepository` (`src/db/finances-repository.ts`) — raw SQL over `app_finances`.
+- Normalized capability layer (`src/finance-capabilities.ts`) — provider-neutral `balances`, `budget_status`, `subscriptions`, and `anomalies` subactions with freshness/calculation metadata (`FinanceCapabilityMeta`) on reads and `FinanceWriteReceipt` receipts on internal writes. Read/derive only; no payments or trading.
 
 **View**
 - `finances` — `FinancesView` at `/finances` with balance summary, transactions, and recurring charges. Bundle: `dist/views/bundle.js`.
@@ -38,7 +39,7 @@ bun run --cwd plugins/plugin-finances clean
 
 | Variable | Required | Description |
 |---|---|---|
-| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting Plaid / PayPal tokens at rest. Falls back to a lazily-generated file under `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
+| `ELIZA_TOKEN_ENCRYPTION_KEY` | No | 32-byte (base64/hex) key encrypting PayPal tokens at rest. Plaid Item tokens remain in organization-bound Cloud credentials; the local source stores only an opaque connection id. Falls back to a lazily-generated file under `<oauth-dir>/lifeops/payments/.encryption-key` (mode 0600). |
 | `ELIZAOS_CLOUD_API_KEY` | No | Eliza Cloud API key for the managed Plaid / PayPal bridges. |
 | `ELIZAOS_CLOUD_BASE_URL` | No | Eliza Cloud base URL override for the managed bridges. |
 

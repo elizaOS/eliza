@@ -57,6 +57,11 @@ function expectRelationshipFollowupCreatedAndListed() {
 
 export default scenario({
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   id: "g1-followup-cadence-reset",
   title: "G1 overdue communication cadence uses relationship follow-up tasks",
   domain: "lifeops.relationships",

@@ -31,12 +31,12 @@ export function CloudAccountMenu({
   const t = useCloudT();
   const accountLabel = t("cloud.nav.account", { defaultValue: "Account" });
 
-  const signOut = () => {
+  const signOut = async () => {
     if (onSignOut) {
-      onSignOut();
+      await onSignOut();
       return;
     }
-    clearStaleStewardSession();
+    await clearStaleStewardSession();
     navigate("/login", { replace: true });
   };
 

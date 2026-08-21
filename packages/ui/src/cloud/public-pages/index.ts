@@ -32,6 +32,7 @@ export { default as BallotPage } from "./pages/ballot/ballot-page";
 export { default as BscPromoPage } from "./pages/bsc-page";
 export { default as PublicChatPage } from "./pages/chat/public-chat-page";
 export { default as InviteAcceptPage } from "./pages/invite/invite-accept-page";
+export { default as AccountDeletionPage } from "./pages/legal/account-deletion-page";
 export { default as PrivacyPolicyPage } from "./pages/legal/privacy-policy-page";
 export { default as TermsOfServicePage } from "./pages/legal/terms-of-service-page";
 export { default as LoginPage } from "./pages/login/login-page";

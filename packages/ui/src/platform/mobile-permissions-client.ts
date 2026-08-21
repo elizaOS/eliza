@@ -309,11 +309,13 @@ function findSetupAction(
 function restrictedReasonForScreenTime(
   screenTime: MobileSignalsScreenTimeStatus,
 ): PermissionState["restrictedReason"] {
-  const reason = screenTime.reason ?? screenTime.provisioning.reason ?? "";
-  if (reason.toLowerCase().includes("entitlement")) {
+  if (!screenTime.supported) return "platform_unsupported";
+  // Classify from the typed provisioning verdict, never from host prose: a
+  // reason that merely mentions entitlement inspection is not a missing
+  // entitlement.
+  if (screenTime.provisioning.status === "missing") {
     return "entitlement_required";
   }
-  if (!screenTime.supported) return "platform_unsupported";
   return "os_policy";
 }
 
@@ -326,8 +328,12 @@ function stateFromScreenTime(
     "android_usage_access",
   ]);
   const authorizationStatus = screenTime.authorization.status;
+  const hasUsableCapability =
+    screenTime.reportAvailable ||
+    screenTime.coarseSummaryAvailable ||
+    screenTime.thresholdEventsAvailable;
 
-  if (authorizationStatus === "approved") {
+  if (authorizationStatus === "approved" && hasUsableCapability) {
     return defaultMobileState("screentime", "granted", {
       canRequest: false,
       reason: screenTime.reason ?? action?.reason ?? undefined,
@@ -860,8 +866,14 @@ export function createMobileSignalsPermissionsRegistry(
           typeof plugin.requestPermissions === "function"
         ) {
           await plugin.requestPermissions({ target: "screenTime" });
-        } else {
+        } else if (
+          current.status === "denied" ||
+          current.status === "not-determined" ||
+          current.status === "limited"
+        ) {
           await openMobilePermissionSettings(id, plugin);
+        } else {
+          requestedState = current;
         }
       } else if (
         id === "usage-access" ||

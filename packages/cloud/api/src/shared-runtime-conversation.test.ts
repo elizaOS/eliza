@@ -39,6 +39,7 @@ let rehydrateCalls = 0;
 let bridgeFunding: unknown;
 let recoveredCutoverTargetId: string | null = null;
 let lastBridgeAgent: unknown;
+let lastStreamOptions: Record<string, unknown> | undefined;
 let apnsOutcome: { outcome: string; reason?: string; status?: number } = {
   outcome: "accepted",
 };
@@ -204,6 +205,8 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
       agent: { id: string },
       rpc: { id?: string | number; params?: { roomId?: string } },
       options: {
+        trustedMessageRole?: "system";
+        trustedHistoryCutoffAt?: number;
         historyStore: {
           merge(
             agentId: string,
@@ -213,6 +216,7 @@ mock.module("@/lib/services/shared-runtime/shared-runtime-chat", () => ({
         };
       },
     ) => {
+      lastStreamOptions = options as unknown as Record<string, unknown>;
       const channelId = rpc.params?.roomId ?? agent.id;
       let canceled = false;
       const body = new ReadableStream<Uint8Array>({
@@ -288,6 +292,7 @@ beforeEach(() => {
   bridgeFunding = undefined;
   recoveredCutoverTargetId = null;
   lastBridgeAgent = undefined;
+  lastStreamOptions = undefined;
   apnsOutcome = { outcome: "accepted" };
   apnsSentTokens.length = 0;
   apnsOutcomes.clear();
@@ -1731,6 +1736,49 @@ test("personal history archives beyond the model window and cutover reads every 
   const body = (await response.json()) as { history: unknown[] };
   expect(body.history).toHaveLength(46);
   await Promise.all(background.splice(0));
+});
+
+test("forwards the server-authenticated history cutoff across the Durable Object", async () => {
+  const data = new Map<string, unknown>([
+    [
+      "conversation",
+      {
+        agentId: AGENT_FIXTURE.id,
+        channelId: "room-1",
+        history: [],
+        dirty: false,
+        version: 1,
+      },
+    ],
+  ]);
+  const object = new SharedRuntimeConversation(
+    makeState(data, []) as never,
+    {} as never,
+  );
+
+  const response = await object.fetch(
+    new Request("https://shared-runtime.internal/stream", {
+      method: "POST",
+      body: JSON.stringify({
+        operation: "stream",
+        agent: AGENT_FIXTURE,
+        trustedMessageRole: "system",
+        trustedHistoryCutoffAt: 1_725_000_000_000,
+        rpc: {
+          jsonrpc: "2.0",
+          id: "trusted-cutoff",
+          method: "message.send",
+          params: { text: "generate a greeting", roomId: "room-1" },
+        },
+      }),
+    }),
+  );
+  await response.body?.cancel();
+
+  expect(lastStreamOptions).toMatchObject({
+    trustedMessageRole: "system",
+    trustedHistoryCutoffAt: 1_725_000_000_000,
+  });
 });
 
 test("stream body cancellation persists before the room queue releases", async () => {

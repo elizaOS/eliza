@@ -23,6 +23,7 @@ import {
 import {
 	resolveOptimizedPrompt,
 	resolveOptimizedPromptForRuntime,
+	trimDemonstrationInput,
 } from "./optimized-prompt-resolver";
 
 const BASELINE = "BASELINE_PROMPT_FOR_TEST";
@@ -267,5 +268,69 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 	test("runtime without getService → baseline", () => {
 		const out = resolveOptimizedPromptForRuntime({}, "response", BASELINE);
 		expect(out).toBe(BASELINE);
+	});
+});
+describe("trimDemonstrationInput surrogate handling", () => {
+	function isWellFormed(value: string): boolean {
+		for (let index = 0; index < value.length; index += 1) {
+			const codeUnit = value.charCodeAt(index);
+			if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+				const next = value.charCodeAt(index + 1);
+				if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+				index += 1;
+			} else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) return false;
+		}
+		return true;
+	}
+
+	test("keeps surrogate pairs intact at the 600 candidate boundary", () => {
+		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+		const candidate = `${"a".repeat(599)}${emoji}${"b".repeat(50)}`;
+		const rawInput = `user: ${candidate}`;
+		const out = trimDemonstrationInput(rawInput);
+		expect(out.length).toBeLessThanOrEqual(602);
+		expect(out.isWellFormed()).toBe(true);
+		expect(isWellFormed(out)).toBe(true);
+		expect(out).not.toContain(emoji);
+		expect(out.endsWith(" …")).toBe(true);
+	});
+
+	test("preserves a fitting emoji at exactly 600", () => {
+		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+		const candidate = `${"a".repeat(598)}${emoji}`;
+		expect(candidate.length).toBe(600);
+		const out = trimDemonstrationInput(`user: ${candidate}`);
+		expect(out).toBe(candidate);
+		expect(out.isWellFormed()).toBe(true);
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	test("sanitizes lone surrogates in candidate and raw fallback", () => {
+		const lone = `a${String.fromCharCode(0xd800)}${"b".repeat(10)}`;
+		const out1 = trimDemonstrationInput(`user: ${lone}`);
+		expect(out1).toContain("�");
+		expect(out1.isWellFormed()).toBe(true);
+		expect(isWellFormed(out1)).toBe(true);
+
+		const rawLone = `ok ${String.fromCharCode(0xd800)} end`;
+		const out2 = trimDemonstrationInput(rawLone);
+		expect(out2).toBe("ok � end");
+		expect(isWellFormed(out2)).toBe(true);
+	});
+
+	test("keeps surrogate pairs intact in rawInput head/tail fallback", () => {
+		const emoji = String.fromCharCode(0xd83e, 0xdd8a);
+		const head = `${"a".repeat(399)}${emoji}${"b".repeat(10)}`;
+		const tail = `${"c".repeat(199)}${emoji}`;
+		const rawInput = `${head}${"x".repeat(100)}${tail}`;
+		expect(rawInput.length).toBeGreaterThan(600);
+		const out = trimDemonstrationInput(rawInput);
+		expect(out.isWellFormed()).toBe(true);
+		expect(isWellFormed(out)).toBe(true);
+		expect(out).toContain("\n…\n");
+		const parts = out.split("\n…\n");
+		expect(parts[0].length).toBeLessThanOrEqual(400);
+		expect(parts[1].length).toBeLessThanOrEqual(200);
+		expect(parts[1].isWellFormed()).toBe(true);
 	});
 });

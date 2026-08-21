@@ -13,6 +13,7 @@
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -37,10 +38,12 @@ import { useAvailableViews } from "../../hooks/useAvailableViews";
 import { SHORTCUT_OPEN_COMMAND_PALETTE } from "../../hooks/useKeyboardShortcuts";
 import type { Tab } from "../../navigation";
 import { useAppSelectorShallow } from "../../state";
+import { TOAST_TTL_MS } from "../../state/action-notice";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
+  openDesktopWorkspaceWindow,
   requestDesktopBridge,
 } from "../../utils";
 import { Button } from "../ui/button";
@@ -70,6 +73,7 @@ export function CommandPalette() {
     handleChatClear,
     activeGameViewerUrl,
     setState,
+    setActionNotice,
     t,
   } = useAppSelectorShallow((s) => ({
     commandPaletteOpen: s.commandPaletteOpen,
@@ -87,6 +91,7 @@ export function CommandPalette() {
     handleChatClear: s.handleChatClear,
     activeGameViewerUrl: s.activeGameViewerUrl,
     setState: s.setState,
+    setActionNotice: s.setActionNotice,
     t: s.t,
   }));
   const { open: openBugReport } = useBugReport();
@@ -157,6 +162,27 @@ export function CommandPalette() {
           "desktop:focusWindow",
         );
       },
+      openDesktopWorkspaceWindow: () => {
+        void openDesktopWorkspaceWindow().catch((error: unknown) => {
+          // error-policy:J4 a native window launch failure becomes a visible
+          // shell notice instead of an unhandled command rejection. The catch
+          // is unconditional, so the cause is logged rather than discarded — a
+          // programming error here would otherwise leave nothing behind but
+          // generic retry text.
+          logger.error(
+            { error },
+            "[CommandPalette] desktop workspace launch failed",
+          );
+          setActionNotice(
+            t("desktop.workspace.launchFailed", {
+              defaultValue:
+                "Unable to open the desktop workspace. Please retry.",
+            }),
+            "error",
+            TOAST_TTL_MS.notificationInterruptive,
+          );
+        });
+      },
       openDesktopSettingsWindow: (tabHint?: string) => {
         void openDesktopSettingsWindow(tabHint);
       },
@@ -179,8 +205,10 @@ export function CommandPalette() {
     loadLogs,
     loadWorkbench,
     handleChatClear,
+    setActionNotice,
     openBugReport,
     desktopRuntime,
+    t,
   ]);
 
   // Filter commands by query

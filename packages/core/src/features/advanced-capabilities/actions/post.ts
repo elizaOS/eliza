@@ -26,6 +26,10 @@ import type {
 } from "../../../types/index.ts";
 import { ChannelType } from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { stringToUuid } from "../../../utils.ts";
 import {
 	boolParam,
@@ -191,10 +195,11 @@ function applyPostContentShaping(
 	connector: PostConnector,
 	content: Content,
 ): Content {
-	let text = typeof content.text === "string" ? content.text : "";
+	let text =
+		typeof content.text === "string" ? toWellFormedUnicode(content.text) : "";
 	const shaping = connector.contentShaping;
 	if (text && typeof shaping?.postProcess === "function") {
-		text = shaping.postProcess(text);
+		text = toWellFormedUnicode(shaping.postProcess(text));
 	}
 	const maxLength = shaping?.constraints?.maxLength;
 	if (
@@ -204,7 +209,7 @@ function applyPostContentShaping(
 		maxLength > 0 &&
 		text.length > maxLength
 	) {
-		text = text.slice(0, Math.max(0, Math.floor(maxLength)));
+		text = truncateWellFormed(text, Math.max(0, Math.floor(maxLength)));
 	}
 	return text === content.text ? content : { ...content, text };
 }

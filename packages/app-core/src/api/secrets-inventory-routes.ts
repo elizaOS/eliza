@@ -1,8 +1,8 @@
 /**
  * Vault inventory + profile + routing API routes.
  *
- *   GET    /api/secrets/inventory                   → VaultEntryMeta[]
- *                                                    (no values; loopback gate only — list is meta)
+ *   GET    /api/secrets/inventory                   → VaultEntryMeta[] + non-revealing
+ *                                                    connector storage findings
  *   GET    /api/secrets/inventory/:key              → reveal active-profile value
  *                                                    (sensitive → ensureCompatSensitiveRouteAuthorized)
  *   PUT    /api/secrets/inventory/:key              → upsert { value, label?, providerId?, category? }
@@ -36,6 +36,9 @@
  */
 
 import type http from "node:http";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { logger } from "@elizaos/core";
 import {
   listVaultInventory,
   profileStorageKey,
@@ -50,6 +53,7 @@ import {
   type VaultEntryProfile,
   writeRoutingConfig,
 } from "@elizaos/vault";
+import { listConnectorSecretFindings } from "../services/connector-secret-inventory";
 import { sharedVault } from "../services/vault-mirror";
 import {
   type CompatStateLike,
@@ -64,6 +68,7 @@ const KEY_RE = /^[A-Za-z0-9_.-]+$/;
 const PROFILE_ID_RE = /^[A-Za-z0-9_-]+$/;
 const CATEGORY_VALUES: ReadonlySet<VaultEntryCategory> = new Set([
   "provider",
+  "connector",
   "plugin",
   "wallet",
   "credential",
@@ -191,7 +196,35 @@ export async function handleSecretsInventoryRoute(
     const entries = categoryParam
       ? all.filter((e) => e.category === categoryParam)
       : all;
-    sendJson(res, 200, { ok: true, entries: entries as VaultEntryMeta[] });
+    let securityFindings: ReturnType<typeof listConnectorSecretFindings> = [];
+    // A scan that failed is not a scan that found nothing. Without this the
+    // response is indistinguishable from a clean bill of health, which is the
+    // worst possible default for a security surface.
+    let securityFindingsAvailable = true;
+    if (!categoryParam) {
+      try {
+        securityFindings = listConnectorSecretFindings(
+          loadElizaConfig() as unknown as Record<string, unknown>,
+          resolveStateDir(),
+        );
+      } catch {
+        // error-policy:J4 the inventory stays usable when the compatibility
+        // config is malformed or disappears during a concurrent write, but the
+        // caller is told the scan did not run rather than being handed an empty
+        // finding list. Do not attach the thrown value:
+        // parser errors can echo credential-bearing source text.
+        logger.warn(
+          "[secrets-inventory] connector fallback findings unavailable",
+        );
+        securityFindingsAvailable = false;
+      }
+    }
+    sendJson(res, 200, {
+      ok: true,
+      entries: entries as VaultEntryMeta[],
+      securityFindings,
+      securityFindingsAvailable,
+    });
     return true;
   }
 

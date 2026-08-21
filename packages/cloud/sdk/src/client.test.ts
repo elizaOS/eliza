@@ -70,6 +70,25 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     );
   });
 
+  it("loads the subscription catalog without sending stored credentials", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+
+    const result = await client.getSubscriptionPlans();
+
+    expect(result).toEqual({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/subscriptions/plans",
+      method: "GET",
+    });
+    expect(requests[0]?.headers.authorization).toBeUndefined();
+  });
+
   it("rejects apiBaseUrl values that already include a resource path or URL components", () => {
     expect(
       () =>

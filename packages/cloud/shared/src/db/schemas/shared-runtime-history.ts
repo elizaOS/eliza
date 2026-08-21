@@ -1,5 +1,22 @@
 // Defines the shared runtime history Drizzle table shape used by cloud repositories and services.
+import type { KeylessWebSearchProvider } from "@elizaos/core";
 import { jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
+
+/** Bounded public-read authority retained so a follow-up honors success or unavailability. */
+export type SharedRuntimePublicGrounding =
+  | {
+      kind: "web_search";
+      query: string;
+      provider: KeylessWebSearchProvider;
+      text: string;
+      observedAt: number;
+      truncated: boolean;
+    }
+  | {
+      kind: "web_search_unavailable";
+      query: string;
+      observedAt: number;
+    };
 
 /** One persisted turn in a shared-runtime conversation. Mirrors `SharedTurnMessage`. */
 export type SharedRuntimeHistoryMessage = {
@@ -11,6 +28,8 @@ export type SharedRuntimeHistoryMessage = {
   createdAt?: number;
   /** True when an assistant message is a partial interrupted response. */
   interrupted?: boolean;
+  /** Successful public read attached to this reply; never mutation or private-account data. */
+  grounding?: SharedRuntimePublicGrounding;
 };
 
 /**

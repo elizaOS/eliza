@@ -19,6 +19,7 @@ import { isElizaCloudControlPlaneHostname } from "@elizaos/shared/elizacloud";
 import {
   clearStoredStewardToken,
   readStoredStewardToken,
+  replaceStoredStewardTokenIfCurrent,
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -679,7 +680,7 @@ export function useCloudState({
         // resolve without opening a real sign-in, then reload into the same
         // rejected session. Drain only the canonical Cloud credential here;
         // `client` may hold the separate agent bearer needed by the proxy.
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
@@ -826,7 +827,7 @@ export function useCloudState({
       // cannot shadow the device-code credentials in subsequent authed calls
       // (this mirrors what launchStewardLogin would have done before throwing).
       if (readStoredStewardToken()?.trim()) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       }
 
       // Legacy device-code fallback (retired for Cloud; preserved for the
@@ -1064,7 +1065,7 @@ export function useCloudState({
                 // not a volatile in-memory global — otherwise getCloudAuthToken()
                 // reads nothing, elizaCloudConnected never recomputes true, and
                 // onboarding restarts at the greeting.
-                writeStoredStewardToken(poll.token);
+                await writeStoredStewardToken(poll.token);
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
                 setBootConfig({
@@ -1203,7 +1204,7 @@ export function useCloudState({
                 "Eliza Cloud login completed, but the cloud session did not return a session token.";
               break;
             }
-            writeStoredStewardToken(poll.token);
+            await writeStoredStewardToken(poll.token);
             setBootConfig({
               ...getBootConfig(),
               cloudApiBase: authenticatedCloudApiBase,
@@ -1432,7 +1433,11 @@ export function useCloudState({
             }),
           ]);
         }
-
+        // Confirm the protected credential is durably absent before any
+        // signed-out UI or logical account state is published. A denied native
+        // deletion stays in the connected/error path and cannot rehydrate a
+        // token after the UI claimed a successful disconnect.
+        await clearStoredStewardToken();
         setElizaCloudEnabled(false);
         setElizaCloudConnected(false);
         publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
@@ -1463,7 +1468,6 @@ export function useCloudState({
         // persists its session token) and (b) per-agent-profile accessToken
         // copies. Clear both on an explicit disconnect so no usable credential
         // survives at rest / in memory (XSS / same-origin plugin views).
-        clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
         // The durable cloud-pair API token (localStorage + sessionStorage,
         // written by CloudPairRelay and re-adopted at every boot) is a third
@@ -1584,8 +1588,10 @@ export function useCloudState({
 
     let disposed = false;
     const checkAndRefresh = async () => {
-      const token = readStoredStewardToken()?.trim();
-      if (!token) return;
+      const storedToken = readStoredStewardToken();
+      if (!storedToken) return;
+      const token = storedToken.trim();
+      if (token.length === 0) return;
       const secs = cloudTokenSecsRemaining(token);
       // No `exp` (opaque token / device-code session) → nothing to refresh.
       if (secs === null) return;
@@ -1595,16 +1601,16 @@ export function useCloudState({
         result = await refreshCloudStewardSession({
           endpoint: resolveStewardRefreshEndpoint(),
         });
+        if (disposed) return;
+        if (result?.token) {
+          await replaceStoredStewardTokenIfCurrent(storedToken, result.token);
+        }
       } catch (err: unknown) {
-        // error-policy:J4 pre-emptive token refresh; a resolution or transport
-        // failure is reported and keeps the stored token until the next authed
-        // call surfaces the re-auth path. No token rotation on failure.
+        // error-policy:J4 a pre-emptive refresh or protected persistence
+        // failure keeps the prior durable token until an auth boundary exposes
+        // the re-auth path. No rejected token is published.
         logger.warn({ err }, "[useCloudState] steward session refresh failed");
         return;
-      }
-      if (disposed) return;
-      if (result?.token) {
-        writeStoredStewardToken(result.token);
       }
     };
 
