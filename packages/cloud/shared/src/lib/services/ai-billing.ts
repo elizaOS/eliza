@@ -13,6 +13,7 @@
 
 import Decimal from "decimal.js";
 import { affiliatesRepository } from "../../db/repositories/affiliates";
+import { subscriptionEntitlementsRepository } from "../../db/repositories/subscription-entitlements";
 import type { UsageRecord } from "../../db/repositories/usage-records";
 import {
   calculateCost,
@@ -29,12 +30,16 @@ import {
 import { AFFILIATE_PAYOUT_CONTRACT_VERSION } from "./affiliate-payout-outbox";
 import type { PricingBillingSource } from "./ai-pricing-definitions";
 import {
+  COST_BUFFER,
   type CreditReconciliationResult,
   type CreditReservation,
   creditsService,
   InsufficientCreditsError,
+  MIN_RESERVATION,
+  RESERVATION_SWEEP_GRACE_MS,
 } from "./credits";
 import { generationsService } from "./generations";
+import { subscriptionFundingService } from "./subscription-funding";
 import { usageService } from "./usage";
 
 // ============================================================================
@@ -95,6 +100,97 @@ export interface FlatBillingCost {
   totalCost: number;
   baseTotalCost: number;
   platformMarkup: number;
+}
+
+interface SubscriptionFundingSelection {
+  /** Admission already resolved subscriber authority and can avoid a duplicate read. */
+  subscriptionFunded?: boolean;
+}
+
+/** Paid-plan organizations must use allowance-aware inference funding. */
+export async function isSubscriptionFundedOrganization(organizationId: string): Promise<boolean> {
+  if (organizationId === "anonymous") return false;
+  const entitlement = await subscriptionEntitlementsRepository.find(organizationId);
+  return entitlement !== undefined && entitlement.plan_key !== "free";
+}
+
+function inferenceFundingLogicalOperationId(
+  context: BillingContext,
+  logicalOperationKey?: string,
+): string {
+  const requestId = logicalOperationKey || context.requestId || crypto.randomUUID();
+  return `inference-gate:${requestId}`;
+}
+
+function canonicalFundingAmount(value: number): string {
+  const amount = new Decimal(value).toDecimalPlaces(6);
+  if (!amount.isFinite() || amount.isNegative()) {
+    throw new Error("AI billing funding amount must be finite and non-negative");
+  }
+  return amount.toFixed(6);
+}
+
+async function reserveSubscriptionFunding(params: {
+  context: BillingContext;
+  reservedAmount: number;
+  affiliate: BillableAffiliate | null;
+  affiliatePayoutSourceId: string | null;
+  metadata?: Record<string, unknown>;
+  logicalOperationKey?: string;
+}): Promise<CreditReservation> {
+  const { context, affiliate, affiliatePayoutSourceId } = params;
+  const logicalOperationId = inferenceFundingLogicalOperationId(
+    context,
+    params.logicalOperationKey,
+  );
+  const reserveResult = await subscriptionFundingService.reserve({
+    organizationId: context.organizationId,
+    logicalOperationId,
+    operation: "ai_inference",
+    amount: canonicalFundingAmount(params.reservedAmount),
+    description: context.description ?? `AI request: ${context.model}`,
+    reservationTtlMs: RESERVATION_SWEEP_GRACE_MS,
+    metadata: {
+      ...(params.metadata ?? {}),
+      ...(context.requestId && { requestId: context.requestId }),
+      userId: context.userId,
+      model: normalizeModelName(context.model),
+      provider: context.provider ?? getProviderFromModel(context.model),
+      billingSource: context.billingSource ?? null,
+    },
+  });
+  const reservedAmount = Number(reserveResult.reservation.requested_amount);
+  const settlementOccurredAt = reserveResult.reservation.created_at;
+  return {
+    reservedAmount,
+    reservationTransactionId: reserveResult.reservation.id,
+    affiliateAttribution: affiliate?.attribution ?? null,
+    affiliatePayoutSourceId,
+    reconcile: async (actualCost) => {
+      const canonicalActual = canonicalFundingAmount(actualCost);
+      const settlement = await subscriptionFundingService.settle({
+        organizationId: context.organizationId,
+        logicalOperationId,
+        operation: "ai_inference",
+        actualAmount: canonicalActual,
+        occurredAt: settlementOccurredAt,
+        metadata: params.metadata,
+      });
+      const actual = Number(canonicalActual);
+      return {
+        reservedAmount,
+        actualCost,
+        collectedAmount: actual,
+        reservationTransactionId: reserveResult.reservation.id,
+        settlementTransactionIds: [
+          settlement.reservation.id,
+          ...(settlement.overageReservation ? [settlement.overageReservation.id] : []),
+        ],
+        adjustmentType:
+          actual > reservedAmount ? "overage" : actual < reservedAmount ? "refund" : "none",
+      };
+    },
+  };
 }
 
 export function getAffiliatePayoutSourceId(context: BillingContext): string {
@@ -317,12 +413,34 @@ export async function reserveCredits(
   context: BillingContext,
   estimatedInputTokens: number,
   estimatedOutputTokens: number = 500,
+  selection?: SubscriptionFundingSelection,
 ): Promise<CreditReservation> {
   const provider = context.provider ?? getProviderFromModel(context.model);
   const normalizedModel = normalizeModelName(context.model);
   const affiliate = await resolveBillableAffiliate(context);
   const affiliatePayoutSourceId = affiliate ? getAffiliatePayoutSourceId(context) : null;
   const metadata = affiliatePayoutMetadata(context, affiliate, affiliatePayoutSourceId);
+  const subscriptionFunded =
+    selection?.subscriptionFunded ??
+    (await isSubscriptionFundedOrganization(context.organizationId));
+  if (subscriptionFunded) {
+    const { totalCost } = await calculateCost(
+      normalizedModel,
+      provider,
+      estimatedInputTokens,
+      estimatedOutputTokens,
+      context.billingSource,
+    );
+    const affiliateMultiplier = affiliate ? 1 + affiliate.markupPercent : 1;
+    const reservedAmount = Math.max(totalCost * affiliateMultiplier * COST_BUFFER, MIN_RESERVATION);
+    return await reserveSubscriptionFunding({
+      context,
+      reservedAmount,
+      affiliate,
+      affiliatePayoutSourceId,
+      metadata,
+    });
+  }
   const reservation = await creditsService.reserve({
     organizationId: context.organizationId,
     model: normalizedModel,
@@ -355,7 +473,7 @@ export async function reserveCredits(
 export async function reserveFlatUsageCredits(
   context: BillingContext,
   cost: FlatBillingCost,
-  options?: { idempotencyKey?: string },
+  options?: { idempotencyKey?: string; subscriptionFunded?: boolean },
 ): Promise<CreditReservation> {
   const preAffiliateCost = new Decimal(cost.totalCost);
   if (!preAffiliateCost.isFinite() || !preAffiliateCost.gt(0)) {
@@ -367,6 +485,18 @@ export async function reserveFlatUsageCredits(
     .times(affiliate ? new Decimal(affiliate.markupPercent).plus(1) : 1)
     .toNumber();
   const metadata = affiliatePayoutMetadata(context, affiliate, affiliatePayoutSourceId);
+  const subscriptionFunded =
+    options?.subscriptionFunded ?? (await isSubscriptionFundedOrganization(context.organizationId));
+  if (subscriptionFunded) {
+    return await reserveSubscriptionFunding({
+      context,
+      reservedAmount,
+      affiliate,
+      affiliatePayoutSourceId,
+      metadata,
+      logicalOperationKey: options?.idempotencyKey,
+    });
+  }
   const reservation = await creditsService.reserve({
     organizationId: context.organizationId,
     userId: context.userId,

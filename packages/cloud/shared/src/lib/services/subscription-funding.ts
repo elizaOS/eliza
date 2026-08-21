@@ -20,6 +20,7 @@ import {
   subscriptionAllowancePeriods,
 } from "../../db/schemas/subscription-allowance-periods";
 import { subscriptionAllowanceTransactions } from "../../db/schemas/subscription-allowance-transactions";
+import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
 import { creditsService, triggerDurableAutoTopUpForBalanceDecrease } from "./credits";
 import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
@@ -36,17 +37,19 @@ export const SUBSCRIPTION_FUNDING_NOT_FOUND = "SUBSCRIPTION_FUNDING_NOT_FOUND";
 export const SUBSCRIPTION_FUNDING_OVERAGE_REQUIRED = "SUBSCRIPTION_FUNDING_OVERAGE_REQUIRED";
 export const SUBSCRIPTION_FUNDING_RELEASE_NOT_DUE = "SUBSCRIPTION_FUNDING_RELEASE_NOT_DUE";
 
-export interface ReserveSubscriptionFundingInput {
+interface ReserveSubscriptionFundingBaseInput {
   organizationId: string;
   logicalOperationId: string;
   operation: SubscriptionFundingOperation;
   /** Exact positive USD amount with no more than six fractional digits. */
   amount: string;
   description: string;
-  expiresAt: Date;
   occurredAt?: Date;
   metadata?: Record<string, unknown>;
 }
+
+export type ReserveSubscriptionFundingInput = ReserveSubscriptionFundingBaseInput &
+  ({ expiresAt: Date; reservationTtlMs?: never } | { expiresAt?: never; reservationTtlMs: number });
 
 export interface SubscriptionFundingReservationResult {
   reservation: BillingFundingReservation;
@@ -137,6 +140,10 @@ function exactReservationReplay(
   input: ReserveSubscriptionFundingInput,
   requestedAmount: string,
 ): boolean {
+  const exactExpiry =
+    input.expiresAt !== undefined
+      ? row.expires_at.getTime() === input.expiresAt.getTime()
+      : row.expires_at.getTime() - row.created_at.getTime() === input.reservationTtlMs;
   return (
     row.reservation_phase === "initial" &&
     row.phase_sequence === 0 &&
@@ -144,7 +151,7 @@ function exactReservationReplay(
     row.root_reservation_id === null &&
     row.funding_class === SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation] &&
     row.requested_amount === requestedAmount &&
-    row.expires_at.getTime() === input.expiresAt.getTime()
+    exactExpiry
   );
 }
 
@@ -572,8 +579,21 @@ export class SubscriptionFundingService {
         severity: "fatal",
       });
     }
-    if (!(input.expiresAt instanceof Date) || !Number.isFinite(input.expiresAt.getTime())) {
+    if (
+      input.expiresAt !== undefined &&
+      (!(input.expiresAt instanceof Date) || !Number.isFinite(input.expiresAt.getTime()))
+    ) {
       throw new ElizaError("Subscription funding reservation expiry is invalid", {
+        code: SUBSCRIPTION_FUNDING_INVALID_AMOUNT,
+        context: { organizationId: input.organizationId },
+        severity: "fatal",
+      });
+    }
+    if (
+      input.reservationTtlMs !== undefined &&
+      (!Number.isSafeInteger(input.reservationTtlMs) || input.reservationTtlMs <= 0)
+    ) {
+      throw new ElizaError("Subscription funding reservation TTL is invalid", {
         code: SUBSCRIPTION_FUNDING_INVALID_AMOUNT,
         context: { organizationId: input.organizationId },
         severity: "fatal",
@@ -587,8 +607,11 @@ export class SubscriptionFundingService {
       });
     }
     const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
-    const occurredAt = input.occurredAt ?? new Date();
-    if (input.expiresAt.getTime() <= occurredAt.getTime()) {
+    if (
+      input.expiresAt !== undefined &&
+      input.occurredAt !== undefined &&
+      input.expiresAt.getTime() <= input.occurredAt.getTime()
+    ) {
       throw new ElizaError("Subscription funding reservation expiry must be in the future", {
         code: SUBSCRIPTION_FUNDING_INVALID_AMOUNT,
         context: { organizationId: input.organizationId },
@@ -599,6 +622,17 @@ export class SubscriptionFundingService {
     const digest = await operationDigest(input.organizationId, input.logicalOperationId);
     let purchasedBalanceAfter: number | undefined;
     const result = await writeTransaction(async (tx) => {
+      const databaseOccurredAt = await databaseNow(tx);
+      const occurredAt = input.occurredAt ?? databaseOccurredAt;
+      const expiresAt =
+        input.expiresAt ?? new Date(databaseOccurredAt.getTime() + input.reservationTtlMs);
+      if (expiresAt.getTime() <= occurredAt.getTime()) {
+        throw new ElizaError("Subscription funding reservation expiry must be in the future", {
+          code: SUBSCRIPTION_FUNDING_INVALID_AMOUNT,
+          context: { organizationId: input.organizationId },
+          severity: "fatal",
+        });
+      }
       const [organization] = await tx
         .select({ id: organizations.id })
         .from(organizations)
@@ -704,7 +738,7 @@ export class SubscriptionFundingService {
           purchased_credit_amount: fixed(purchased),
           allowance_period_id: allowance.gt(0) && period ? period.id : null,
           purchased_credit_reservation_transaction_id: purchasedTransactionId,
-          expires_at: input.expiresAt,
+          expires_at: expiresAt,
         })
         .returning();
       if (!reservation) {
@@ -834,6 +868,11 @@ export class SubscriptionFundingService {
               leg.settled_at?.getTime() === input.occurredAt.getTime(),
           )
         ) {
+          await enqueueCollectedAffiliatePayout(tx, {
+            reservationMetadata: input.metadata ?? {},
+            actualTotalCost: actual.toNumber(),
+            collectedTotalCost: actual.toNumber(),
+          });
           return {
             reservation,
             ...(children[0] ? { overageReservation: children[0] } : {}),
@@ -878,6 +917,11 @@ export class SubscriptionFundingService {
         purchasedBalanceChanged ||= settledOverage.purchasedBalanceChanged;
         overageReservation = settledOverage.reservation;
       }
+      await enqueueCollectedAffiliatePayout(tx, {
+        reservationMetadata: input.metadata ?? {},
+        actualTotalCost: actual.toNumber(),
+        collectedTotalCost: actual.toNumber(),
+      });
       return {
         reservation: settledRoot.reservation,
         ...(overageReservation ? { overageReservation } : {}),
