@@ -51,10 +51,11 @@ const PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES = 32 * MIB;
  * reports as still available to this process. This is cgroup-aware in supported
  * runtimes and does not incorrectly charge the already-resident PGlite WASM
  * heap a second time. The archive estimate charges 4 KiB per entry plus 1 MiB
- * fixed tar/gzip overhead.
+ * fixed tar/gzip overhead. There is deliberately no independent directory-size
+ * ceiling: the archive estimate is the quantity materialization consumes, and
+ * the available-memory gate below bounds it against the current runtime.
  */
 export const AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS = Object.freeze({
-  maxPhysicalBytes: 40 * MIB,
   availableMemoryHeadroomBytes: PGLITE_CAPTURE_AVAILABLE_MEMORY_HEADROOM_BYTES,
   archiveCopyFactor: 8,
   archiveEntryOverheadBytes: 4 * 1024,
@@ -462,18 +463,6 @@ export async function preflightPglitePhysicalDirectory(
         }
 
         physicalBytes += stats.size;
-        if (physicalBytes > BigInt(limits.maxPhysicalBytes)) {
-          captureError(
-            "PGlite exceeds the bounded materializing-export size limit",
-            "AGENT_BACKUP_V2_PGLITE_PHYSICAL_BYTES_LIMIT",
-            {
-              agentId,
-              maxPhysicalBytes: limits.maxPhysicalBytes,
-              observedPhysicalBytes: physicalBytes.toString(),
-            },
-            { severity: "fatal" },
-          );
-        }
         estimatedArchiveBytes += roundUpTarBlock(stats.size);
       }
 
