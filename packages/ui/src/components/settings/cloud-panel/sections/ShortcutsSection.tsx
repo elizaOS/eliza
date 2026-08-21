@@ -5,14 +5,15 @@
  *
  * The shortcut definitions mirror the accelerator strings used by the Electrobun
  * application menu (`app-core/platforms/electrobun/src/application-menu.ts`).
- * Bindings are held in local state for now — the desktop RPC to re-register a
- * global shortcut from this surface does not exist yet (see `useChatOverlayHotkey`
- * for the one shortcut that already has a live bridge). When that RPC lands,
- * `commitCombo`/`resetCombo` are the single call sites to wire it through.
+ * Bindings are re-registered through the desktop bridge (`desktop:registerShortcut`
+ * / `desktop:unregisterShortcut`) on commit/reset, following the same pattern as
+ * `ChatHotkeySettingsGroup.syncChatOverlayShortcut`.
  */
 
 import { AlertTriangle, Keyboard, Mouse, RotateCcw } from "lucide-react";
 import * as React from "react";
+import { invokeDesktopBridgeRequest } from "../../../../bridge";
+import { isDesktopPlatform } from "../../../../platform";
 import { cn } from "../../../../lib/utils";
 import {
   SettingsGroup,
@@ -86,6 +87,61 @@ function comboFromKeyboardEvent(event: KeyboardEvent): Combo | null {
   if (event.shiftKey) parts.push("shift");
   parts.push(key);
   return parts.join("+");
+}
+
+/** Convert a canonical combo ("cmd+shift+e") to an Electrobun accelerator
+ * string ("CommandOrControl+Shift+E"). Mirrors `acceleratorFromKeyboardEvent`
+ * from `useChatOverlayHotkey` but works on the stored combo format. */
+function comboToAccelerator(combo: Combo): string {
+  const parts = combo.split("+");
+  const key = parts[parts.length - 1];
+  const mods = parts.slice(0, -1);
+  const out: string[] = [];
+  if (mods.includes("cmd") || mods.includes("ctrl")) out.push("CommandOrControl");
+  if (mods.includes("alt")) out.push("Alt");
+  if (mods.includes("shift")) out.push("Shift");
+  const keyLabel = key.length === 1 ? key.toUpperCase() : key.charAt(0).toUpperCase() + key.slice(1);
+  out.push(keyLabel);
+  return out.join("+");
+}
+
+/** Re-register a shortcut through the desktop bridge. Unregisters the old
+ * binding first, then registers the new one. Best-effort — a bridge failure
+ * leaves the persisted combo untouched and is logged but not surfaced as a
+ * blocking error (the user can see the combo changed in the UI). */
+async function syncShortcut(id: string, combo: Combo): Promise<void> {
+  if (!isDesktopPlatform()) return;
+  try {
+    await invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopUnregisterShortcut",
+      ipcChannel: "desktop:unregisterShortcut",
+      params: { id: `settings-${id}` },
+    });
+    const result = await invokeDesktopBridgeRequest<{ success: boolean }>({
+      rpcMethod: "desktopRegisterShortcut",
+      ipcChannel: "desktop:registerShortcut",
+      params: { id: `settings-${id}`, accelerator: comboToAccelerator(combo) },
+    });
+    if (result?.success === false) {
+      // OS rejected the accelerator — non-fatal, the combo is still stored.
+    }
+  } catch {
+    // Bridge unavailable — non-fatal on non-desktop or when RPC is missing.
+  }
+}
+
+/** Unregister a shortcut through the desktop bridge. */
+async function unregisterShortcut(id: string): Promise<void> {
+  if (!isDesktopPlatform()) return;
+  try {
+    await invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopUnregisterShortcut",
+      ipcChannel: "desktop:unregisterShortcut",
+      params: { id: `settings-${id}` },
+    });
+  } catch {
+    // Non-fatal.
+  }
 }
 
 // Defaults mirror the accelerators in application-menu.ts and the spec table.
@@ -169,6 +225,18 @@ export function ShortcutsSection() {
   const [clickAction, setClickAction] = React.useState("toggle-recording");
   const [holdAction, setHoldAction] = React.useState("push-to-talk");
 
+  // Register all default shortcuts on mount so they're live in the OS.
+  React.useEffect(() => {
+    for (const s of DEFAULT_SHORTCUTS) {
+      void syncShortcut(s.id, s.combo);
+    }
+    return () => {
+      for (const s of DEFAULT_SHORTCUTS) {
+        void unregisterShortcut(s.id);
+      }
+    };
+  }, []);
+
   // Long-recording cancel confirmation — persisted to the app store when wired.
   const [confirmCancel, setConfirmCancel] = React.useState(true);
   const [threshold, setThreshold] = React.useState("30");
@@ -204,9 +272,9 @@ export function ShortcutsSection() {
       prev.map((s) => (s.id === id ? { ...s, combo } : s)),
     );
     setPending(null);
-    // NOTE: the desktop RPC to unregister the old global shortcut and register
-    // the new one does not exist yet for these bindings. When it lands, call it
-    // here (see ChatHotkeySettingsGroup.syncChatOverlayShortcut for the shape).
+    // Re-register the shortcut through the desktop bridge so the change
+    // takes effect without a relaunch.
+    void syncShortcut(id, combo);
   }, []);
 
   const resetCombo = React.useCallback(
@@ -231,7 +299,9 @@ export function ShortcutsSection() {
         }),
       );
       setPending(null);
-      // NOTE: wire desktop shortcut re-registration here once the RPC exists.
+      // Re-register both affected shortcuts through the desktop bridge.
+      void syncShortcut(id, combo);
+      if (conflictDef) void syncShortcut(conflictId, conflictDef.defaultCombo);
     },
     [],
   );

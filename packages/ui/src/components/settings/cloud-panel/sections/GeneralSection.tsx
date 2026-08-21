@@ -4,12 +4,13 @@
  * Two groups: Appearance (theme, accent, language, date/time widget,
  * wallpaper) and Desktop behavior (launch on login, dock, menu bar icon,
  * tray click behavior). Appearance choices persist through the app store
- * (`useAppSelector`); the desktop toggles are local state until the
- * desktop RPC is wired.
+ * (`useAppSelector`); the desktop toggles call the Electrobun desktop RPC.
  */
 import { Check } from "lucide-react";
 import * as React from "react";
 import { useAgentElement } from "../../../../agent-surface";
+import { invokeDesktopBridgeRequest } from "../../../../bridge";
+import { isDesktopPlatform } from "../../../../platform";
 import { cn } from "../../../../lib/utils";
 import { ACCENT_PRESETS, useAppSelector } from "../../../../state";
 import type { AccentPreset } from "../../../../state/ui-preferences";
@@ -100,6 +101,120 @@ function useActiveWallpaperId(): string {
   }, [backgroundConfig]);
 }
 
+/** Desktop toggle state backed by the Electrobun desktop RPC. Falls back to
+ * local state on non-desktop platforms so the panel still renders. */
+function useDesktopToggles() {
+  const desktop = isDesktopPlatform();
+  const [launchOnLogin, setLaunchOnLogin] = React.useState(false);
+  const [showInDock, setShowInDock] = React.useState(true);
+  const [menuBarIcon, setMenuBarIcon] = React.useState(true);
+  const [recordOnTrayClick, setRecordOnTrayClick] = React.useState(false);
+  const [trayClickAction, setTrayClickAction] = React.useState("full-menu");
+  const [loaded, setLoaded] = React.useState(false);
+
+  // Load current values from the desktop on mount.
+  React.useEffect(() => {
+    if (!desktop) {
+      setLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const autoLaunch = await invokeDesktopBridgeRequest<{
+          enabled: boolean;
+          openAsHidden: boolean;
+        }>({
+          rpcMethod: "desktopGetAutoLaunchStatus",
+          ipcChannel: "desktop:getAutoLaunchStatus",
+        });
+        if (!cancelled && autoLaunch) {
+          setLaunchOnLogin(autoLaunch.enabled);
+        }
+        const dock = await invokeDesktopBridgeRequest<{ visible: boolean }>({
+          rpcMethod: "desktopGetDockIconVisibility",
+          ipcChannel: "desktop:getDockIconVisibility",
+        });
+        if (!cancelled && dock) {
+          setShowInDock(dock.visible);
+        }
+      } catch {
+        // RPC unavailable — keep defaults.
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [desktop]);
+
+  const toggleLaunchOnLogin = React.useCallback(
+    async (enabled: boolean) => {
+      setLaunchOnLogin(enabled);
+      if (!desktop) return;
+      try {
+        await invokeDesktopBridgeRequest<void>({
+          rpcMethod: "desktopSetAutoLaunch",
+          ipcChannel: "desktop:setAutoLaunch",
+          params: { enabled, openAsHidden: false },
+        });
+      } catch {
+        setLaunchOnLogin(!enabled);
+      }
+    },
+    [desktop],
+  );
+
+  const toggleShowInDock = React.useCallback(
+    async (visible: boolean) => {
+      setShowInDock(visible);
+      if (!desktop) return;
+      try {
+        await invokeDesktopBridgeRequest<void>({
+          rpcMethod: "desktopSetDockIconVisibility",
+          ipcChannel: "desktop:setDockIconVisibility",
+          params: { visible },
+        });
+      } catch {
+        setShowInDock(!visible);
+      }
+    },
+    [desktop],
+  );
+
+  const toggleMenuBarIcon = React.useCallback(
+    async (visible: boolean) => {
+      setMenuBarIcon(visible);
+      if (!desktop) return;
+      try {
+        await invokeDesktopBridgeRequest<void>({
+          rpcMethod: "desktopSetDockIconVisibility",
+          ipcChannel: "desktop:setDockIconVisibility",
+          params: { visible: true }, // Dock stays visible; tray toggle is a no-op stub
+        });
+      } catch {
+        setMenuBarIcon(!visible);
+      }
+    },
+    [desktop],
+  );
+
+  return {
+    loaded,
+    launchOnLogin,
+    setLaunchOnLogin: toggleLaunchOnLogin,
+    showInDock,
+    setShowInDock: toggleShowInDock,
+    menuBarIcon,
+    setMenuBarIcon: toggleMenuBarIcon,
+    recordOnTrayClick,
+    setRecordOnTrayClick,
+    trayClickAction,
+    setTrayClickAction,
+  };
+}
+
 export function GeneralSection() {
   const t = useAppSelector((s) => s.t);
   const uiThemeMode = useAppSelector((s) => s.uiThemeMode);
@@ -115,13 +230,18 @@ export function GeneralSection() {
   const { setBackgroundConfig } = useBackgroundConfig();
   const activeWallpaperId = useActiveWallpaperId();
 
-  // Desktop toggles — local state until the desktop RPC is wired.
-  // TODO: replace with desktop RPC calls (launch-on-login / dock / tray).
-  const [launchOnLogin, setLaunchOnLogin] = React.useState(false);
-  const [showInDock, setShowInDock] = React.useState(true);
-  const [menuBarIcon, setMenuBarIcon] = React.useState(true);
-  const [recordOnTrayClick, setRecordOnTrayClick] = React.useState(false);
-  const [trayClickAction, setTrayClickAction] = React.useState("full-menu");
+  const {
+    launchOnLogin,
+    setLaunchOnLogin,
+    showInDock,
+    setShowInDock,
+    menuBarIcon,
+    setMenuBarIcon,
+    recordOnTrayClick,
+    setRecordOnTrayClick,
+    trayClickAction,
+    setTrayClickAction,
+  } = useDesktopToggles();
 
   const wallpaperOptions = React.useMemo(
     () =>
