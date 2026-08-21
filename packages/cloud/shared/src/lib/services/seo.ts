@@ -20,6 +20,23 @@ import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
 
+const SEO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every SEO provider hop AND keep it inside the file's own SSRF-safe
+ * wrapper: `safeFetch` screens and pins every outbound address, and this helper
+ * adds a fail-closed hop timeout. A caller-provided signal is composed with the
+ * deadline rather than replacing it — a caller that cancels still aborts early,
+ * and a caller whose signal never fires still cannot outlive the bound.
+ */
+export function seoFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
+  const deadline = AbortSignal.timeout(SEO_REQUEST_TIMEOUT_MS);
+  return safeFetch(rawUrl, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
+
 export type CreateSeoRequestParams = {
   organizationId: string;
   userId?: string;
@@ -99,7 +116,7 @@ async function callDataForSeoKeywords(
     keywords,
   };
 
-  const response = await fetch(
+  const response = await seoFetch(
     "https://api.dataforseo.com/v3/keywords_data/google_ads/keywords_for_keywords/live",
     {
       method: "POST",
@@ -164,7 +181,7 @@ async function callSerpApiSnapshot(params: {
   url.searchParams.set("device", params.device || "desktop");
   url.searchParams.set("api_key", apiKey);
 
-  const response = await fetch(url.toString());
+  const response = await seoFetch(url.toString());
   if (!response.ok) {
     const text = await response.text();
     throw new Error(`SerpApi request failed: ${response.status} ${text}`);
@@ -244,7 +261,7 @@ async function submitIndexNow(urlToSubmit: string): Promise<{ submitted: boolean
   const keyLocation = ensureEnv("INDEXNOW_KEY_LOCATION", "IndexNow key location");
   const url = await assertSafeOutboundUrl(urlToSubmit);
 
-  const response = await fetch("https://api.indexnow.org/indexnow", {
+  const response = await seoFetch("https://api.indexnow.org/indexnow", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
