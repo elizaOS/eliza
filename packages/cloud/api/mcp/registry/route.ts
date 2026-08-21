@@ -1,8 +1,23 @@
-/** Serves the public MCP catalog with validated filters and optional community entries. */
+/**
+ * Serves the public MCP catalog with validated filters and optional community
+ * entries. Platform entries carry trust/health/availability metadata from the
+ * integration catalog policy; unconfigured integrations are never advertised
+ * and kill-switched ones are listed as disabled with their connection surface
+ * withheld.
+ */
 
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: file contains MCP config templates with literal ${BASE_URL} placeholders for client-side substitution
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  INTEGRATION_TRUST,
+  type IntegrationAvailability,
+  type IntegrationHealth,
+  type IntegrationTrust,
+  integrationHealth,
+  plannerVisibleFeatures,
+  resolveIntegrationAvailability,
+} from "@/api-app/lib/mcp/integration-catalog";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { userMcpsService } from "@/lib/services/user-mcps";
@@ -86,6 +101,9 @@ interface McpRegistryEntry {
 type BuiltInRegistryEntry = McpRegistryEntry & {
   source: "platform";
   fullEndpoint: string;
+  availability: IntegrationAvailability;
+  health: IntegrationHealth;
+  trust: IntegrationTrust;
 };
 type UserRegistryEntry = ReturnType<typeof userMcpsService.toRegistryFormat> & {
   source: "community";
@@ -444,27 +462,58 @@ app.get("/", async (c) => {
 
     const { category, status, limit, search } = validationResult.data;
 
-    // Process built-in registry entries
-    const builtInRegistry: BuiltInRegistryEntry[] = MCP_REGISTRY.map(
-      (entry) => ({
+    // Process built-in registry entries. Availability gates advertising:
+    // unconfigured integrations (their transport would answer 501) are never
+    // listed, and kill-switched entries are listed as disabled with their
+    // connection surface (config template, endpoint) withheld.
+    const builtInRegistry: BuiltInRegistryEntry[] = [];
+    for (const entry of MCP_REGISTRY) {
+      const trust: IntegrationTrust | undefined = INTEGRATION_TRUST[entry.id];
+      if (trust === undefined) {
+        // Fail closed: an entry without a trust record is unreviewed and must
+        // not be advertised at all.
+        logger.warn("[MCP Registry] No trust record; entry withheld", {
+          id: entry.id,
+        });
+        continue;
+      }
+      const availability = resolveIntegrationAvailability(
+        c.env,
+        entry.id,
+        entry.endpoint,
+      );
+      if (availability === "unconfigured") continue;
+      const disabled = availability === "disabled";
+      builtInRegistry.push({
         ...entry,
         source: "platform" as const,
-        configTemplate: {
-          servers: Object.fromEntries(
-            Object.entries(entry.configTemplate.servers).map(([key, value]) => [
-              key,
-              {
-                ...value,
-                url: value.url.replace("${BASE_URL}", ""),
-              },
-            ]),
-          ),
-        },
-        fullEndpoint: entry.endpoint.startsWith("http")
-          ? entry.endpoint
-          : `${baseUrl}${entry.endpoint}`,
-      }),
-    );
+        availability,
+        health: integrationHealth(availability, trust.provenance),
+        trust,
+        status: disabled ? "maintenance" : entry.status,
+        features: disabled ? [] : plannerVisibleFeatures(trust, entry.features),
+        configTemplate: disabled
+          ? { servers: {} }
+          : {
+              servers: Object.fromEntries(
+                Object.entries(entry.configTemplate.servers).map(
+                  ([key, value]) => [
+                    key,
+                    {
+                      ...value,
+                      url: value.url.replace("${BASE_URL}", ""),
+                    },
+                  ],
+                ),
+              ),
+            },
+        fullEndpoint: disabled
+          ? ""
+          : entry.endpoint.startsWith("http")
+            ? entry.endpoint
+            : `${baseUrl}${entry.endpoint}`,
+      });
+    }
 
     // Fetch user MCPs (public, live). The community subset is an enhancement on
     // top of the always-available built-in registry, so a lookup failure/timeout
