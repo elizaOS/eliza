@@ -8,6 +8,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { CONFIGS, evaluate, parseGitNameStatus } from "../ci-path-gate.mjs";
 
 const CLASSIFIER_PATH = ".github/workflows/classify-paths.yml";
+const DEVELOP_PUSH_WRAPPER_PATH = ".github/workflows/ci-develop-push.yml";
 const tmpFile = `${import.meta.dir}/.tmp-classifier-only-diff`;
 
 /**
@@ -20,6 +21,22 @@ const tmpFile = `${import.meta.dir}/.tmp-classifier-only-diff`;
  * consumer (#14051 review round 2, P1 finding). This test proves the fix.
  */
 describe("classifier self-registration regression", () => {
+  it("test config triggers all seven lanes for a develop-push wrapper diff", () => {
+    writeFileSync(tmpFile, `${DEVELOP_PUSH_WRAPPER_PATH}\n`);
+    try {
+      const result = evaluate(CONFIGS.test, {
+        eventName: "pull_request",
+        labels: "",
+        changedFilesPath: tmpFile,
+      });
+      for (const lane of CONFIGS.test.outputs) {
+        expect(result.matchesByLane.get(lane).length).toBeGreaterThan(0);
+      }
+    } finally {
+      unlinkSync(tmpFile);
+    }
+  });
+
   it("test config triggers all seven lanes for a classifier-only diff", () => {
     writeFileSync(tmpFile, `${CLASSIFIER_PATH}\n`);
     try {

@@ -29,6 +29,7 @@ on:
   workflow_run:
     workflows:
       - CI
+      - CI Develop Push
       - Develop Exhaustive Lane
       - Quality (Extended)
     types: [completed]

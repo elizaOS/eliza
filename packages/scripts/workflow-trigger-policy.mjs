@@ -17,6 +17,7 @@ const FORBIDDEN_EVENTS = new Set([
   "pull_request_target",
 ]);
 const CANONICAL_ADMISSION_WORKFLOW = "ci.yml";
+const CANONICAL_DEVELOP_PUSH_WORKFLOW = "ci-develop-push.yml";
 const MERGE_GROUP_WORKFLOWS = new Set([
   CANONICAL_ADMISSION_WORKFLOW,
   "merge-candidate-biome.yml",
@@ -56,6 +57,7 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   let files = 0;
   let developPushWorkflows = 0;
   let sawCanonicalWorkflow = false;
+  let sawCanonicalDevelopPush = false;
   let sawCanonicalPullRequest = false;
   let sawCanonicalMergeGroup = false;
 
@@ -121,6 +123,12 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
       }
 
       if (eventName !== "push") continue;
+      if (name === CANONICAL_ADMISSION_WORKFLOW) {
+        failures.push(
+          `${CANONICAL_ADMISSION_WORKFLOW}: direct develop pushes must enter through ${CANONICAL_DEVELOP_PUSH_WORKFLOW}`,
+        );
+        continue;
+      }
       if (!config || typeof config !== "object") {
         failures.push(
           `${name}: push must be branch-filtered to develop (tag-only release pushes are allowed)`,
@@ -143,6 +151,8 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
         continue;
       }
       developPushWorkflows += 1;
+      if (name === CANONICAL_DEVELOP_PUSH_WORKFLOW)
+        sawCanonicalDevelopPush = true;
     }
   }
 
@@ -157,6 +167,11 @@ export function validateWorkflowTriggerPolicy(repoRoot) {
   if (sawCanonicalWorkflow && !sawCanonicalMergeGroup) {
     failures.push(
       `${CANONICAL_ADMISSION_WORKFLOW}: canonical merge_group trigger is absent or invalid`,
+    );
+  }
+  if (sawCanonicalWorkflow && !sawCanonicalDevelopPush) {
+    failures.push(
+      `${CANONICAL_DEVELOP_PUSH_WORKFLOW}: canonical develop push trigger is absent or invalid`,
     );
   }
   if (failures.length > 0) {

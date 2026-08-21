@@ -1,11 +1,12 @@
 /**
  * Pins the develop-health.yml canonical trunk-signal contract (#19181).
- * During merge waves push-triggered CI runs on develop are superseded before
- * concluding, so the lane exists to produce a signal that always terminates:
- * it must stay schedule/dispatch-only, never cancel in progress, never share
- * a ref-scoped concurrency group with push runs, measure the live develop
- * tip, stay one job wide, and publish a `develop-health` commit status on
- * the exact SHA it measured. Deterministic, reads the real workflow file.
+ * During merge waves hosted capacity can delay the bounded canonical push queue
+ * and arrivals beyond its 100-pending limit can be rejected, so this lane exists
+ * to produce an independent signal that always terminates. It must stay
+ * schedule/dispatch-only, never cancel in progress, never share a ref-scoped
+ * concurrency group with push runs, measure the live develop tip, stay one job
+ * wide, and publish a `develop-health` commit status on the exact SHA it measured.
+ * Deterministic, reads the real workflow file.
  */
 
 import { describe, expect, test } from "bun:test";

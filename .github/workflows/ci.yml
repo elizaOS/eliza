@@ -1,28 +1,23 @@
-# This workflow is the canonical required merge-candidate and develop branch-health
-# validation entry point. Every pull request and merge-group candidate publishes
-# the stable fail-closed `CI / All Tests Passed` admission context.
+# This reusable workflow is the canonical required merge-candidate and develop
+# branch-health validation graph. Every pull request and merge-group candidate
+# publishes the stable fail-closed `CI / All Tests Passed` admission context.
 name: CI
 
 on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  push:
-    branches: [develop]
   merge_group:
     types: [checks_requested]
   workflow_call:
   workflow_dispatch:
 
-# Manual diagnostics keep a run-scoped identity, while PR and merge-queue runs
-# still supersede stale work. A develop push uses a stable terminal-v2 group
-# with the default single-pending queue: the running verification finishes and
-# GitHub retains only the newest waiting tip. The versioned group also avoids
-# inheriting the pre-fix ci-refs/heads/develop run that can remain retained.
-# Do not add queue: max here; it is incompatible with cancellable PR/merge
-# events and would retain every merge-wave push instead of only the latest.
+# ci-develop-push.yml serializes branch pushes with a distinct queue:max group
+# before calling this graph. Caller-backed push, schedule, and dispatch runs use
+# a run-scoped internal group so Nightly and other reusable callers cannot evict
+# the wrapper's queued work. PR and merge candidates still supersede stale work.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('terminal-v2-{0}', github.ref) || github.ref || github.run_id }}
+  group: ci-internal-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'merge_group' && format('merge-{0}', github.ref) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 permissions:

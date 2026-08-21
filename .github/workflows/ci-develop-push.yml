@@ -1,0 +1,30 @@
+# Serializes develop pushes before entering the reusable canonical CI graph.
+# `queue: max` retains up to GitHub's bounded limit of 100 pending merge-wave
+# heads instead of replacing an older pending run; arrivals beyond that limit
+# are cancelled. Keep this group distinct from ci.yml's internal group: a caller
+# and called workflow sharing one group can cancel each other.
+name: CI Develop Push
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: ci-develop-push-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Canonical CI
+    # GitHub validates permissions across the full reusable-workflow graph
+    # before evaluating job conditions. These permissions cover ci.yml's
+    # opt-in device caller even though a push can never select that job.
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    uses: ./.github/workflows/ci.yml

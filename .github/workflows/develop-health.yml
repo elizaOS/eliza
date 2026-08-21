@@ -1,13 +1,14 @@
 # Scheduled, low-footprint canonical health signal for the develop branch
-# (#19181). During merge waves nearly every push-triggered CI run on develop
-# is superseded before finishing, so the branch's true state becomes
-# unobservable through Actions. This lane always checks out the current
-# develop tip on a single hosted runner, runs the repository verify gate, and
-# publishes the outcome as a `develop-health` commit status on the exact SHA
-# it measured — a timestamped signal that survives push storms because it
-# never shares a concurrency group with push-triggered runs and never
-# cancels in progress. It intentionally stays one job wide: fleet saturation
-# is the failure mode being observed, so the observer must not add fan-out.
+# (#19181). During merge waves the bounded canonical push queue can be delayed
+# by hosted capacity and can reject arrivals beyond its 100-pending platform
+# limit, so not every develop head is guaranteed a terminal Actions signal.
+# This lane always checks out the current develop tip on a single hosted runner,
+# runs the repository verify gate, and publishes the outcome as a
+# `develop-health` commit status on the exact SHA it measured — a timestamped
+# signal that survives push storms because it never shares a concurrency group
+# with push-triggered runs and never cancels in progress. It intentionally stays
+# one job wide: fleet saturation is the failure mode being observed, so the
+# observer must not add fan-out.
 name: Develop Health
 
 on:

@@ -68,6 +68,7 @@ export const CONFIGS = {
           "android_aab",
         ],
         patterns: [
+          ".github/workflows/ci-develop-push.yml",
           ".github/workflows/ci.yml",
           ".github/workflows/test.yml",
           ".github/actions/setup-bun-workspace/**",

@@ -64,6 +64,8 @@ jobs:
         run: >-
           "$RUNNER_TEMP/workflow-linters/actionlint"
           -config-file .github/actionlint.yaml
+          .github/workflows/claude-ci-autoheal.yml
+          .github/workflows/ci-develop-push.yml
           .github/workflows/ci.yml
           .github/workflows/develop-pr.yml
           .github/workflows/cloud-tests.yml

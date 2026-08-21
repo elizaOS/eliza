@@ -34,10 +34,15 @@ on:
   pull_request:
     branches: [develop, main]
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  push:
-    branches: [develop]
   merge_group:
     types: [checks_requested]
+jobs: {}
+`;
+
+const canonicalDevelopPush = `name: CI Develop Push
+on:
+  push:
+    branches: [develop]
 jobs: {}
 `;
 
@@ -93,11 +98,14 @@ jobs: {}
   });
 
   test("accepts the exact canonical PR and merge-group aggregate", () => {
-    const root = buildRepo({ "ci.yml": canonicalCi });
+    const root = buildRepo({
+      "ci-develop-push.yml": canonicalDevelopPush,
+      "ci.yml": canonicalCi,
+    });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 1,
+        files: 2,
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -116,7 +124,10 @@ jobs: {}
       ),
     ];
     for (const workflow of variants) {
-      const root = buildRepo({ "ci.yml": workflow });
+      const root = buildRepo({
+        "ci-develop-push.yml": canonicalDevelopPush,
+        "ci.yml": workflow,
+      });
       try {
         expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
           /canonical (pull_request|merge_group) trigger is absent or invalid/,
@@ -134,14 +145,43 @@ jobs: {}
       ),
     ).toThrow(/merge_group is reserved/);
     const root = buildRepo({
+      "ci-develop-push.yml": canonicalDevelopPush,
       "ci.yml": canonicalCi,
       "merge-candidate-biome.yml": `on:\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
     });
     try {
       expect(validateWorkflowTriggerPolicy(root)).toEqual({
         developPushWorkflows: 1,
-        files: 2,
+        files: 3,
       });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a direct canonical CI push trigger", () => {
+    const root = buildRepo({
+      "ci-develop-push.yml": canonicalDevelopPush,
+      "ci.yml": canonicalCi.replace(
+        "  merge_group:\n",
+        "  push:\n    branches: [develop]\n  merge_group:\n",
+      ),
+    });
+    try {
+      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
+        /direct develop pushes must enter through ci-develop-push\.yml/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when the canonical develop push wrapper is absent", () => {
+    const root = buildRepo({ "ci.yml": canonicalCi });
+    try {
+      expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
+        /canonical develop push trigger is absent or invalid/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

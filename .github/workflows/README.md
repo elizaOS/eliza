@@ -6,15 +6,21 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`ci.yml` is the canonical pull-request, merge-queue, and `develop` branch-health
-workflow. Pull requests targeting `develop` or `main` and every `merge_group`
-candidate run the same fail-closed job graph. Branch rules require only its stable
-`CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
-succeeds; individual lane names may evolve without silently weakening admission.
-Manual diagnostics use independent concurrency groups, PR and merge candidates
-supersede stale runs, and `develop` pushes share a never-cancelled terminal group.
-GitHub's default single-pending queue therefore lets the running push finish while
-retaining only the newest waiting tip instead of accumulating every merge-wave run.
+`ci.yml` is the reusable canonical pull-request, merge-queue, and `develop`
+branch-health graph. Pull requests targeting `develop` or `main` and every
+`merge_group` candidate run the same fail-closed job graph. Branch rules require
+only its stable `CI / All Tests Passed` aggregate, which succeeds only when every
+mandatory lane succeeds; individual lane names may evolve without silently
+weakening admission. Manual diagnostics use independent concurrency groups, and
+PR and merge candidates supersede stale runs.
+
+`ci-develop-push.yml` owns the sole direct `develop` push trigger for canonical
+CI. Its stable, wrapper-only concurrency group uses `cancel-in-progress: false`
+and `queue: max`, so one branch-health graph runs at a time and GitHub retains up
+to 100 pending merge heads instead of replacing an older pending run. Additional
+arrivals at the platform limit are cancelled, keeping the backlog bounded. The
+wrapper group must remain distinct from `ci.yml`'s internal group because a
+reusable workflow can cancel its caller when both use the same concurrency group.
 
 `merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
 GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
@@ -54,15 +60,15 @@ force-push/deletion bans remain active here.
 core smoke tests. It never publishes packages or creates releases.
 
 `develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
-Pending push-triggered develop runs can still supersede each other during merge
-waves and hosted capacity can delay their start. This lane independently runs
-the repository verify gate on the live develop tip four times a day (and on
-manual dispatch) from a single hosted runner, in a fixed
-never-cancelled concurrency group, and publishes the outcome as a
-`develop-health` commit status on the exact SHA it measured. A missing status
-means no measurement concluded; a red status means develop is actually red —
-the lane exists to keep those two states distinguishable while the fleet is
-saturated.
+Canonical push-triggered CI now retains up to 100 pending develop heads, but
+hosted capacity can still delay their start and arrivals beyond that platform
+limit are cancelled. This lane independently runs the repository verify gate on
+the live develop tip four times a day (and on manual dispatch) from a single
+hosted runner, in a fixed never-cancelled concurrency group, and publishes the
+outcome as a `develop-health` commit status on the exact SHA it measured. A
+missing status means no measurement concluded; a red status means develop is
+actually red — the lane exists to keep those two states distinguishable while
+the fleet is saturated.
 [![develop health](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml/badge.svg?branch=develop)](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml)
 
 ## Scheduled security analysis
