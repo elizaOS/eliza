@@ -1219,6 +1219,7 @@ describe("Shared Eliza Workerd runtime", () => {
       },
       execution: {
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        roomKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
         channel: { type: "DM", source: "shared-runtime" },
       },
     });
@@ -1318,6 +1319,7 @@ describe("Shared Eliza Workerd runtime", () => {
       message: "How does the corrected Tessera project work?",
       execution: {
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        roomKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
         channel: { type: "DM", source: "shared-runtime" },
       },
     });
@@ -1434,6 +1436,7 @@ describe("Shared Eliza Workerd runtime", () => {
       message: "How does the Tessera architecture GitHub project work?",
       execution: {
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        roomKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
         channel: { type: "DM", source: "shared-runtime" },
       },
     });
@@ -1523,6 +1526,7 @@ describe("Shared Eliza Workerd runtime", () => {
       message: "How does the Tessera architecture GitHub project work?",
       execution: {
         agentKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
+        roomKey: "personal:1b956543-7274-4759-b8f9-f458631277ea",
         channel: { type: "DM", source: "shared-runtime" },
       },
     });

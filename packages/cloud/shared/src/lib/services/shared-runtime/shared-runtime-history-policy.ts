@@ -10,6 +10,7 @@ import type {
   SharedRuntimeHistoryMessage,
   SharedRuntimePublicGrounding,
 } from "../../../db/schemas/shared-runtime-history";
+import { logger } from "../../utils/logger";
 
 export const MAX_HISTORY_MESSAGES = 40;
 export const MAX_PUBLIC_WEB_GROUNDING_QUERY_BYTES = 512;
@@ -182,21 +183,37 @@ export function sharedPublicWebGrounding(
     const data = record.data as Record<string, unknown>;
     if (data.actionName !== "WEB_SEARCH") continue;
     const observedAt = Date.now();
-    if (record.success !== true) {
-      return parseSharedPublicWebGrounding({
-        kind: "web_search_unavailable",
-        query: data.query,
-        observedAt,
-      });
+    const parsed =
+      record.success === true
+        ? parseSharedPublicWebGrounding({
+            kind: "web_search",
+            query: data.query,
+            provider: data.provider,
+            text: record.text,
+            observedAt,
+            truncated: data.truncated === true,
+          })
+        : parseSharedPublicWebGrounding({
+            kind: "web_search_unavailable",
+            query: data.query,
+            observedAt,
+          });
+    if (!parsed) {
+      // error-policy:J7 A WEB_SEARCH result this turn just produced is our own
+      // contract, not untrusted input: an unparseable envelope means the action
+      // shape drifted. Report it instead of silently dropping the grounding,
+      // which would degrade the follow-up into an ungrounded reply.
+      logger.warn(
+        "[sharedPublicWebGrounding] fresh WEB_SEARCH result failed grounding validation; dropping authority",
+        {
+          success: record.success === true,
+          queryType: typeof data.query,
+          providerValue: typeof data.provider === "string" ? data.provider : typeof data.provider,
+          textType: typeof record.text,
+        },
+      );
     }
-    return parseSharedPublicWebGrounding({
-      kind: "web_search",
-      query: data.query,
-      provider: data.provider,
-      text: record.text,
-      observedAt,
-      truncated: data.truncated === true,
-    });
+    return parsed;
   }
   return undefined;
 }
@@ -426,8 +443,13 @@ function meaningfulWords(text: string): Set<string> {
 function relevanceScore(query: Set<string>, message: SharedRuntimeHistoryMessageLike): number {
   if (query.size === 0) return 0;
   const grounding = parseSharedPublicWebGrounding(message.grounding);
+  // A grounded reply is recallable by what it says AND by what it searched for:
+  // scoring the union keeps ordinary lexical recall intact while letting a
+  // follow-up phrased like the original query find the reply that answered it.
   const words = meaningfulWords(
-    message.role === "assistant" && grounding ? grounding.query : message.content,
+    message.role === "assistant" && grounding
+      ? `${message.content}\n${grounding.query}`
+      : message.content,
   );
   let overlap = 0;
   for (const word of query) {

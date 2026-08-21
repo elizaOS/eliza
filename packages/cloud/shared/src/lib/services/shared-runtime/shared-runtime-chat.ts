@@ -1694,8 +1694,8 @@ export class SharedRuntimeChatService {
     const finalizeMessages = (
       reply: string,
       interrupted: boolean,
-      grounding?: SharedTurnMessage["grounding"],
       afterWrite?: () => Promise<void>,
+      grounding?: SharedTurnMessage["grounding"],
     ): Promise<void> => {
       if (finalized) return finalizationPromise ?? Promise.resolve();
       if (finalizationPromise) return finalizationPromise;
@@ -1759,7 +1759,7 @@ export class SharedRuntimeChatService {
             finished = true;
             const finalReply = part.text.trim() || streamedReply.trim();
             if (part.responded === false) {
-              await finalizeMessages("", false, undefined, async () => {
+              await finalizeMessages("", false, async () => {
                 if (claimKey && options.turnClaims) {
                   await options.turnClaims.complete(claimKey, {
                     text: "",
@@ -1828,7 +1828,6 @@ export class SharedRuntimeChatService {
             await finalizeMessages(
               finalReply,
               false,
-              sharedPublicWebGrounding(actionResults),
               async () => {
                 // Durable claim completion before the done frame: a lost/dropped
                 // terminal frame replays this result on retry instead of
@@ -1857,6 +1856,7 @@ export class SharedRuntimeChatService {
                   );
                 }
               },
+              sharedPublicWebGrounding(actionResults),
             );
             const done = actionResults
               ? {
@@ -1875,7 +1875,7 @@ export class SharedRuntimeChatService {
             controller.enqueue(encoder.encode(chatSseFrame("done", done)));
           }
           if (!finished) {
-            await finalizeMessages(streamedReply, true, undefined, () =>
+            await finalizeMessages(streamedReply, true, () =>
               settleInterruptedTurn("provider stream ended without completion"),
             );
             if (!consumerCanceled) {
@@ -1890,7 +1890,7 @@ export class SharedRuntimeChatService {
           }
         } catch (error) {
           // error-policy:J1 partial SSE cannot become an HTTP error.
-          await finalizeMessages(streamedReply, true, undefined, async () => {
+          await finalizeMessages(streamedReply, true, async () => {
             if (!terminalSettlementStarted) {
               terminalSettlementStarted = true;
               await settleFailedProviderWorkOffPath(
@@ -1968,7 +1968,7 @@ export class SharedRuntimeChatService {
         // The room may advance only after interrupted history is durable. It
         // must not wait for provider teardown: abort is already signalled and
         // consumerCanceled fences all late output from persistence/delivery.
-        await finalizeMessages(interruptedReply, true, undefined, () =>
+        await finalizeMessages(interruptedReply, true, () =>
           settleInterruptedTurn("consumer canceled stream"),
         );
       },

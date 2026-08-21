@@ -3,7 +3,8 @@
  * The deterministic cases model completion/cancel races and stale mirrors.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { logger } from "../../utils/logger";
 import {
   encodeSharedPublicWebGrounding,
   insertSharedRuntimeGroundingMessages,
@@ -13,6 +14,7 @@ import {
   MAX_PUBLIC_WEB_GROUNDING_FUTURE_SKEW_MS,
   mergeSharedRuntimeHistoryMessages,
   parseSharedPublicWebGrounding,
+  type SharedRuntimeHistoryMessageLike,
   selectSharedRuntimeContext,
   sharedPublicWebGrounding,
   sharedRuntimeGroundingProjectionMessages,
@@ -781,5 +783,65 @@ describe("shared runtime long-term transcript context", () => {
     expect(context.map((message) => message.id)).toEqual(
       Array.from({ length: 24 }, (_, index) => `message-${index + 56}`),
     );
+  });
+
+  test("a grounded reply stays recallable by its own prose and by its search query", () => {
+    const history: SharedRuntimeHistoryMessageLike[] = Array.from({ length: 60 }, (_, index) => ({
+      id: `message-${index}`,
+      role: index % 2 === 0 ? ("user" as const) : ("assistant" as const),
+      content: index === 5 ? "Barolo is a Nebbiolo wine from Piedmont." : `ordinary turn ${index}`,
+      createdAt: index,
+    }));
+    history[5].grounding = {
+      kind: "web_search",
+      query: "Turin airport transfer schedule",
+      provider: "parallel",
+      text: "Airport transfers run hourly from the terminal.",
+      observedAt: Date.now(),
+      truncated: false,
+    };
+
+    // Scoring the union of prose and grounding query keeps ordinary lexical
+    // recall intact instead of narrowing a grounded reply to its query alone.
+    expect(
+      selectSharedRuntimeContext(
+        history,
+        "Tell me about Nebbiolo from Piedmont",
+        MAX_HISTORY_MESSAGES,
+      ).map((message) => message.id),
+    ).toContain("message-5");
+
+    // The same reply is still reachable through what it searched for.
+    expect(
+      selectSharedRuntimeContext(
+        history,
+        "Turin airport transfer schedule",
+        MAX_HISTORY_MESSAGES,
+      ).map((message) => message.id),
+    ).toContain("message-5");
+  });
+
+  test("a malformed fresh WEB_SEARCH envelope is reported rather than silently dropped", () => {
+    const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+    try {
+      expect(
+        sharedPublicWebGrounding([
+          {
+            success: true,
+            text: "Tessera validates ARC resources.",
+            data: {
+              actionName: "WEB_SEARCH",
+              query: "Tessera",
+              provider: "bing",
+              truncated: false,
+            },
+          },
+        ]),
+      ).toBeUndefined();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("failed grounding validation");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
