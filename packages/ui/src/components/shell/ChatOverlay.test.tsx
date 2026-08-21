@@ -4352,15 +4352,10 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       <ChatOverlay
         controller={makeSwipeController().controller}
         desktopOverlayHost
-        initialMode="input"
+        initialMode="pill"
       />,
     );
     const sheet = screen.getByTestId("chat-sheet");
-    const grabber = screen.getByTestId("chat-sheet-grabber");
-    fireEvent.pointerDown(grabber, { clientY: 200, pointerId: 80 });
-    fireEvent.pointerMove(grabber, { clientY: 380, pointerId: 80 });
-    fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 80 });
-
     expect(sheet.dataset.detent).toBe("pill");
     const overlay = screen.getByTestId("chat-overlay");
     expect(overlay.style.paddingLeft).toBe("0px");

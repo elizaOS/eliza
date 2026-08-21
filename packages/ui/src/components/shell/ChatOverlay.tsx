@@ -3438,6 +3438,12 @@ export function ChatOverlay({
   // Side inset (12→0px), corner radius (inset radius→0), and the composer bottom
   // inset (full→0), each scaled by the spring so they collapse/return together.
   const overlayPadX = useTransform(fullBleedT, [0, 1], [12, 0]);
+  // The detached host's resting window clips the 600px logical stage down to
+  // the centered 64px white bar. That bar needs zero logical inset so all of it
+  // is a real hit target. As the composer forms, restore the stage's normal
+  // 12px inset in lockstep with the opening morph: its resulting 576px surface
+  // then exactly matches the compact native envelope instead of being cut off.
+  const desktopOverlayPadX = useTransform(openProgress, [0, 1], [0, 12]);
   // The panel WRAPPER's max-width rides the same morph: 48rem (max-w-3xl; the
   // compact landscape affordance is 13rem) widening to the full viewport as the
   // shape goes edge-to-edge. Discrete classes popped the width only when the
@@ -6030,13 +6036,11 @@ export function ChatOverlay({
         // Non-full-bleed keeps the same safe-area clearance above the reclaimed
         // physical bottom, with the wallpaper/app floor owning everything below.
         // Side inset eases with the shape spring (12px inset → 0 at full-bleed).
-        // The detached native host already IS the exact visible surface width.
-        // Keeping the shared mobile inset here left a 40px parent inside the
-        // 64px resting window: WebKit painted the overflowing white bar but
-        // clipped its hit-testing to the center. Desktop therefore uses the
-        // native width directly; browser/mobile retain their safe inset.
-        paddingLeft: desktopOverlayHost ? "0px" : overlayPadX,
-        paddingRight: desktopOverlayHost ? "0px" : overlayPadX,
+        // Detached desktop transitions 0→12 with openProgress: the whole 64px
+        // resting bar is hot, while the 576px composer fits its native envelope.
+        // Browser/mobile retain the existing full-bleed safe-inset morph.
+        paddingLeft: desktopOverlayHost ? desktopOverlayPadX : overlayPadX,
+        paddingRight: desktopOverlayHost ? desktopOverlayPadX : overlayPadX,
         // Bottom clearance: the keyboard-lift gap wins when the keyboard is up;
         // else, only WHILE maximizing/restoring does the composer inset ease with
         // the shape spring (its value equals the plain rest inset at the boundary,
