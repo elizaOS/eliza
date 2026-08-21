@@ -16,6 +16,24 @@ import { promisify } from "node:util";
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isContainerAbsentMessage } from "./docker-error-classifier";
+
+const SANDBOX_BRIDGE_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every local-sandbox bridge hop so a wedged container cannot pin the
+ * caller indefinitely. A caller-provided abort signal wins.
+ */
+export function sandboxBridgeFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = SANDBOX_BRIDGE_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
@@ -531,7 +549,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
    */
   async bridge(handle: SandboxHandle, body: unknown): Promise<Response> {
     const url = `${handle.bridgeUrl.replace(/\/$/, "")}/bridge`;
-    return fetch(url, {
+    return sandboxBridgeFetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
@@ -544,7 +562,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
    */
   async bridgeStream(handle: SandboxHandle, body: unknown): Promise<Response> {
     const url = `${handle.bridgeUrl.replace(/\/$/, "")}/bridge`;
-    return fetch(url, {
+    return sandboxBridgeFetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
