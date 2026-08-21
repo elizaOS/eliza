@@ -497,6 +497,10 @@ function setupStorageProxy(): void {
     nativeStorage;
   const secureSetItem = (key: string, value: string): void => {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
+      // Web Storage is synchronous, so this legacy-compatible surface remains
+      // explicitly optimistic. Security-critical producers use the awaited
+      // setStorageValue registration below and are published only after
+      // protected-store write plus exact readback succeeds.
       markProtectedStorageMutation(key);
       protectedStorageCache.set(key, value);
       originalRemoveItem(key);
@@ -659,22 +663,11 @@ export async function setStorageValue(
 ): Promise<void> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     const mutationVersion = markProtectedStorageMutation(key);
-    const hadPreviousValue = protectedStorageCache.has(key);
-    const previousValue = protectedStorageCache.get(key);
-    protectedStorageCache.set(key, value);
-    try {
-      if (!(await serializedProtectedStoreSet(key, value))) {
-        throw new Error(`Protected storage rejected write for ${key}`);
-      }
-    } catch (error) {
-      if (protectedStorageMutationVersion.get(key) === mutationVersion) {
-        if (hadPreviousValue && previousValue !== undefined) {
-          protectedStorageCache.set(key, previousValue);
-        } else {
-          protectedStorageCache.delete(key);
-        }
-      }
-      throw error;
+    if (!(await serializedProtectedStoreSet(key, value))) {
+      throw new Error(`Protected storage rejected write for ${key}`);
+    }
+    if (protectedStorageMutationVersion.get(key) === mutationVersion) {
+      protectedStorageCache.set(key, value);
     }
     return;
   }

@@ -409,6 +409,75 @@ describe("native protected-storage bridge contract", () => {
     expect(bridge.isStorageBridgeInitialized()).toBe(true);
   }, 60_000);
 
+  it("keeps an awaited Steward write hidden until native verification succeeds", async () => {
+    const bridge = await import("./storage-bridge");
+    await bridge.initializeStorageBridge();
+    await bridge.setStorageValue(STEWARD_TOKEN_KEY, "durable-steward-token");
+    nativeStores.operations.length = 0;
+    let releaseWrite: () => void = () => {};
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const transitions: string[] = [];
+    const listener = (event: Event) => {
+      transitions.push((event as CustomEvent<{ state: string }>).detail.state);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      const pendingWrite = writeStoredStewardToken("verified-steward-token");
+      await vi.waitFor(() => {
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        );
+      });
+
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "durable-steward-token",
+      );
+      expect(transitions).toEqual([]);
+
+      releaseWrite();
+      await pendingWrite;
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "verified-steward-token",
+      );
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "verified-steward-token",
+      );
+      expect(transitions).toEqual(["present"]);
+
+      nativeStores.operations.length = 0;
+      nativeStores.secureSetError = "rejected";
+      nativeStores.secureSetWait = new Promise<void>((resolve) => {
+        releaseWrite = resolve;
+      });
+      const rejectedWrite = writeStoredStewardToken("rejected-steward-token");
+      await vi.waitFor(() => {
+        expect(nativeStores.operations).toContain(
+          "set:start:session.steward_token",
+        );
+      });
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "verified-steward-token",
+      );
+
+      releaseWrite();
+      await expect(rejectedWrite).rejects.toMatchObject({
+        name: "StewardTokenPersistenceError",
+      });
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+        "verified-steward-token",
+      );
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "verified-steward-token",
+      );
+      expect(transitions).toEqual(["present"]);
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
   it("retains the live and restart credential when native deletion is denied", async () => {
     const bridge = await import("./storage-bridge");
     await bridge.setStorageValue(
