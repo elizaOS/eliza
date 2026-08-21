@@ -1,3 +1,4 @@
+import type { ActionFailureProvenance } from "../types/action-failure";
 import { truncateWellFormed } from "../utils/well-formed";
 
 /**
@@ -153,12 +154,19 @@ export class TrajectoryLimitExceeded extends Error {
 	readonly kind: TrajectoryLimitKind;
 	readonly max: number;
 	readonly observed: number;
+	/**
+	 * Present only for `repeated_failures`, where the underlying tool failure
+	 * has a structured cause worth surfacing. Consumed by
+	 * `classifyStructuredFailureCause` in `services/message/fallback-reply.ts`.
+	 */
+	readonly failureProvenance?: ActionFailureProvenance;
 
 	constructor(params: {
 		kind: TrajectoryLimitKind;
 		max: number;
 		observed: number;
 		message?: string;
+		failureProvenance?: ActionFailureProvenance;
 	}) {
 		super(
 			params.message ??
@@ -168,6 +176,9 @@ export class TrajectoryLimitExceeded extends Error {
 		this.kind = params.kind;
 		this.max = params.max;
 		this.observed = params.observed;
+		if (params.failureProvenance !== undefined) {
+			this.failureProvenance = params.failureProvenance;
+		}
 	}
 }
 
@@ -198,6 +209,13 @@ export interface FailureLike {
 	error?: unknown;
 	success?: boolean;
 	repeatKey?: string;
+	/**
+	 * Structured cause carried up from the settled `ActionResult`. When a
+	 * repeated-failure abort is raised, this is what lets the fallback reply
+	 * say *why* the tool kept failing (a dead datastore, say) rather than
+	 * reporting generic planner exhaustion.
+	 */
+	failureProvenance?: ActionFailureProvenance;
 }
 
 export function getFailureSignature(failure: FailureLike): string | null {
@@ -260,6 +278,7 @@ export function assertRepeatedFailureLimit(params: {
 			message: `Repeated tool failure limit exceeded for ${getFailureSignature(
 				params.latestFailure,
 			)}`,
+			failureProvenance: params.latestFailure.failureProvenance,
 		});
 	}
 }
