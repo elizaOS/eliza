@@ -138,6 +138,11 @@ describe("parseCompletionEnvelope (#8895)", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("keeps original offsets when a Unicode prefix expands under lowercase", () => {
+    const res = parseCompletionEnvelope(`İ prefix\n${fenced(validEnvelope())}`);
+    expect(res.ok).toBe(true);
+  });
+
   it("accepts a bare JSON object with no fence", () => {
     const res = parseCompletionEnvelope(JSON.stringify(validEnvelope()));
     expect(res.ok).toBe(true);

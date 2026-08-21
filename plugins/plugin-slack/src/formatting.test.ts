@@ -37,6 +37,10 @@ describe("escapeSlackMrkdwn", () => {
   it("escapes a long run of unmatched angle brackets linearly", () => {
     expect(escapeSlackMrkdwn("<".repeat(50_000))).toBe("&lt;".repeat(50_000));
   });
+
+  it("fully escapes a nested token that could otherwise forge a mention", () => {
+    expect(escapeSlackMrkdwn("<<@U1>")).toBe("&lt;&lt;@U1&gt;");
+  });
 });
 
 describe("markdownToSlackMrkdwn", () => {

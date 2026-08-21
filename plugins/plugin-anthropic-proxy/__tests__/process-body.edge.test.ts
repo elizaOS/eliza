@@ -97,4 +97,10 @@ describe("processBody edge handling", () => {
     expect(stats.thinkingParamsStripped).toBe(20_000);
     expect(JSON.stringify(parsed)).not.toContain('"thinking"');
   });
+
+  it("fails closed when a sanitized deeply nested body cannot be serialized", () => {
+    const depth = 100_000;
+    const body = `${'{"nested":'.repeat(depth)}{"thinking":{"enabled":true}}${"}".repeat(depth)}`;
+    expect(() => processBody(body, baseConfig)).toThrow();
+  });
 });

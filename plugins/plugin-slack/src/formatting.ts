@@ -61,30 +61,33 @@ function escapeSlackMrkdwnContent(text: string): string {
   const out: string[] = [];
   let plainStart = 0;
   let tokenStart = -1;
+  let tokenMalformed = false;
   for (let index = 0; index < text.length; index++) {
     const character = text[index];
     if (tokenStart < 0) {
       if (character === "<") {
         out.push(escapeSlackMrkdwnSegment(text.slice(plainStart, index)));
         tokenStart = index;
+        tokenMalformed = false;
       }
       continue;
     }
     if (character === "<") {
-      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, index)));
-      tokenStart = index;
+      tokenMalformed = true;
     } else if (character === "\n") {
       out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, index + 1)));
       tokenStart = -1;
+      tokenMalformed = false;
       plainStart = index + 1;
     } else if (character === ">") {
       const token = text.slice(tokenStart, index + 1);
       out.push(
-        isAllowedSlackAngleToken(token)
+        !tokenMalformed && isAllowedSlackAngleToken(token)
           ? token
           : escapeSlackMrkdwnSegment(token),
       );
       tokenStart = -1;
+      tokenMalformed = false;
       plainStart = index + 1;
     }
   }

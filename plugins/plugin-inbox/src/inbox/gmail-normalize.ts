@@ -1295,14 +1295,28 @@ export function buildFallbackGmailReplyDraftBody(args: {
 export function normalizeGeneratedGmailReplyDraftBody(
   value: string,
 ): string | null {
-  const lower = value.toLowerCase();
+  const findAsciiCaseInsensitive = (
+    lowerNeedle: string,
+    from: number,
+  ): number => {
+    const lastStart = value.length - lowerNeedle.length;
+    outer: for (let start = from; start <= lastStart; start++) {
+      for (let offset = 0; offset < lowerNeedle.length; offset++) {
+        const code = value.charCodeAt(start + offset);
+        const folded = code >= 65 && code <= 90 ? code + 32 : code;
+        if (folded !== lowerNeedle.charCodeAt(offset)) continue outer;
+      }
+      return start;
+    }
+    return -1;
+  };
   const chunks: string[] = [];
   let cursor = 0;
   while (cursor < value.length) {
-    const start = lower.indexOf("<think>", cursor);
+    const start = findAsciiCaseInsensitive("<think>", cursor);
     if (start < 0) break;
     chunks.push(value.slice(cursor, start), " ");
-    const end = lower.indexOf("</think>", start + 7);
+    const end = findAsciiCaseInsensitive("</think>", start + 7);
     if (end < 0) {
       cursor = value.length;
       break;

@@ -60,7 +60,9 @@ function parseArgs(argv) {
         break;
       case "--help":
       case "-h":
-        console.log(`Usage: bun run bench:cloud-login [--rounds N] [--api-base URL] [--web-base URL] [--poll-rounds N] [--poll-interval MS] [--no-cors-check]`);
+        console.log(
+          `Usage: bun run bench:cloud-login [--rounds N] [--api-base URL] [--web-base URL] [--poll-rounds N] [--poll-interval MS] [--no-cors-check]`,
+        );
         process.exit(0);
     }
   }
@@ -252,8 +254,13 @@ async function main() {
   console.log(`API base:       ${config.apiBase}`);
   console.log(`Web base:       ${config.webBase}`);
   console.log(`Rounds:         ${config.rounds}`);
-  console.log(`Poll rounds:    ${config.pollRounds} (interval: ${config.pollIntervalMs}ms)`);
-  const runtimeName = typeof Bun !== "undefined" ? `Bun ${Bun.version}` : `Node ${process.version}`;
+  console.log(
+    `Poll rounds:    ${config.pollRounds} (interval: ${config.pollIntervalMs}ms)`,
+  );
+  const runtimeName =
+    typeof Bun !== "undefined"
+      ? `Bun ${Bun.version}`
+      : `Node ${process.version}`;
   console.log(`Runtime:        ${runtimeName}`);
   console.log(`Timestamp:      ${new Date().toISOString()}`);
   console.log("=".repeat(80));
@@ -295,9 +302,7 @@ async function main() {
         : r.error
           ? `ERR: ${r.error}`
           : `${r.status}`;
-      console.log(
-        `  ${r.label}`,
-      );
+      console.log(`  ${r.label}`);
       console.log(
         `    status: ${status}  time: ${fmtMs(r.totalMs)}  ttfb: ${r.ttfbMs ? fmtMs(r.ttfbMs) : "n/a"}`,
       );
@@ -380,7 +385,9 @@ async function main() {
     `   TOTAL estimated e2e:            ~${(totalEstimate / 1000).toFixed(1)}s`,
   );
   console.log();
-  console.log(`   API-only overhead (no user):   ${fmtMs(createMs + pollLoopMs)}`);
+  console.log(
+    `   API-only overhead (no user):   ${fmtMs(createMs + pollLoopMs)}`,
+  );
   console.log(
     `   User-dependent latency:         ~${((browserOpenMs + userAuthMs + tokenPersistMs) / 1000).toFixed(1)}s`,
   );
@@ -392,8 +399,12 @@ async function main() {
   console.log(
     `\nCreate:  [${createSamples.map((s) => s.toFixed(1)).join(", ")}] ms`,
   );
-  console.log(`Poll:    [${pollSamples.map((s) => s.toFixed(1)).join(", ")}] ms`);
-  console.log(`Flow:    [${flowSamples.map((s) => s.toFixed(1)).join(", ")}] ms`);
+  console.log(
+    `Poll:    [${pollSamples.map((s) => s.toFixed(1)).join(", ")}] ms`,
+  );
+  console.log(
+    `Flow:    [${flowSamples.map((s) => s.toFixed(1)).join(", ")}] ms`,
+  );
 
   console.log("\nDone.");
 }

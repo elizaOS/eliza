@@ -104,13 +104,29 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((x) => typeof x === "string");
 }
 
+function findAsciiCaseInsensitive(
+  text: string,
+  lowerNeedle: string,
+  from: number,
+): number {
+  const lastStart = text.length - lowerNeedle.length;
+  outer: for (let start = from; start <= lastStart; start++) {
+    for (let offset = 0; offset < lowerNeedle.length; offset++) {
+      const code = text.charCodeAt(start + offset);
+      const folded = code >= 65 && code <= 90 ? code + 32 : code;
+      if (folded !== lowerNeedle.charCodeAt(offset)) continue outer;
+    }
+    return start;
+  }
+  return -1;
+}
+
 function extractJsonCandidate(text: string): string | null {
   // Prefer the LAST fenced ```json block (the completion envelope comes last).
   let last: string | null = null;
-  const lower = text.toLowerCase();
   let cursor = 0;
   while (cursor < text.length) {
-    const start = lower.indexOf("```json", cursor);
+    const start = findAsciiCaseInsensitive(text, "```json", cursor);
     if (start < 0) break;
     let bodyStart = start + 7;
     let sawLineFeed = false;

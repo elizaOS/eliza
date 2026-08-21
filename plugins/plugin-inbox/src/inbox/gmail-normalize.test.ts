@@ -54,6 +54,12 @@ describe("normalizeGeneratedGmailReplyDraftBody", () => {
       "Visible",
     );
   });
+
+  it("keeps original offsets when a Unicode prefix expands under lowercase", () => {
+    expect(
+      normalizeGeneratedGmailReplyDraftBody("İ<think>secret</think>Visible"),
+    ).toBe("İ Visible");
+  });
 });
 
 describe("splitMailboxLikeList", () => {

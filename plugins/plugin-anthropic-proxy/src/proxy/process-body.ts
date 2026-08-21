@@ -229,21 +229,34 @@ export function processBody(bodyStr: string, config: ProcessBodyConfig): Process
   let thinkingBlocksStripped = 0;
   let thinkingParamsStripped = 0;
   if (config.stripThinkingBlocks !== false) {
+    let parsedThinkingBody: unknown;
+    let parsedThinkingBodyOk = false;
     try {
-      const parsed = JSON.parse(m) as unknown;
-      const pending: unknown[] = [parsed];
+      parsedThinkingBody = JSON.parse(m) as unknown;
+      parsedThinkingBodyOk = true;
+    } catch {
+      // error-policy:J3 malformed upstream JSON remains explicit input for later validation.
+    }
+    if (parsedThinkingBodyOk) {
+      let strippedParams = 0;
+      const pending: unknown[] = [parsedThinkingBody];
       while (pending.length > 0) {
         const value = pending.pop();
         if (!value || typeof value !== "object") continue;
         if (!Array.isArray(value) && Object.hasOwn(value, "thinking")) {
           delete (value as Record<string, unknown>).thinking;
-          thinkingParamsStripped++;
+          strippedParams++;
         }
         for (const nested of Object.values(value)) pending.push(nested);
       }
-      if (thinkingParamsStripped > 0) m = JSON.stringify(parsed);
-    } catch {
-      // error-policy:J3 malformed upstream JSON remains explicit input for later validation.
+      if (strippedParams > 0) {
+        const sanitized = JSON.stringify(parsedThinkingBody);
+        if (sanitized === undefined) {
+          throw new TypeError("Sanitized Anthropic request body is not JSON");
+        }
+        m = sanitized;
+        thinkingParamsStripped = strippedParams;
+      }
     }
     const msgsIdx2 = m.indexOf('"messages":[');
     if (msgsIdx2 !== -1) {
