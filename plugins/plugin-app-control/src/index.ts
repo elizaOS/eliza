@@ -24,14 +24,8 @@ import {
 } from "./actions/views.js";
 import { createViewsClient } from "./actions/views-client.js";
 import { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-import { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
-import { viewContextEvaluator } from "./evaluators/view-context.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { currentViewProvider } from "./providers/current-view.js";
-import {
-	applyCurrentViewComposeHook,
-	CURRENT_VIEW_HOOK_ID,
-} from "./runtime/current-view-hook.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
 import { AppWorkerHostService } from "./services/app-worker-host-service.js";
@@ -81,11 +75,6 @@ export {
 	type SettingsWritableKey,
 	settingsAction,
 } from "./actions/settings.js";
-export {
-	__matcherData,
-	MATCHER_VIEW_IDS,
-	matchViewCommand,
-} from "./actions/view-command-matcher.js";
 export type { ViewsMode } from "./actions/views.js";
 export {
 	closeAllViewsAction,
@@ -95,7 +84,6 @@ export {
 	viewsAction,
 } from "./actions/views.js";
 export type { ViewSummary } from "./actions/views-client.js";
-export { INTENT_VIEW_IDS, resolveIntentView } from "./actions/views-show.js";
 export {
 	type AppWorkerCapability,
 	parseAppWorkerCapability,
@@ -103,12 +91,6 @@ export {
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export { createChoiceShortcutEvaluator } from "./evaluators/create-choice-shortcut.js";
-export { viewCommandShortcutEvaluator } from "./evaluators/view-command-shortcut.js";
-export {
-	CONTEXT_VIEWS,
-	viewContextEvaluator,
-} from "./evaluators/view-context.js";
-export { viewFollowupRoutingEvaluator } from "./evaluators/view-followup-routing.js";
 export { currentViewProvider } from "./providers/current-view.js";
 export {
 	APP_REGISTRY_SERVICE_TYPE,
@@ -133,10 +115,6 @@ export {
 	VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
 	VerificationRoomBridgeService,
 } from "./services/verification-room-bridge.js";
-export {
-	VIEW_NAVIGATION_SHORTCUT_ID,
-	viewNavigationShortcuts,
-} from "./shortcuts.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -159,25 +137,13 @@ export const appControlPlugin: Plugin = {
 		agentSwitchAction,
 		settingsAction,
 	],
-	// View-switch cascade:
-	//  1. PLAN   — exact multilingual commands select one deterministic VIEWS
-	//     call after Stage 1; contextual navigation remains model-selected.
-	//  2. ACTION — viewsAction resolves the selected target and navigates.
-	//  3. POST   — viewContextEvaluator (small model) catches contextual intent
-	//     the user never spelled out ("fix the login bug" -> task-coordinator).
-	//     Its gate defers whenever resolveIntentView already matches a direct
-	//     surface (the rigid matchViewCommand matcher, or the legacy intent
-	//     rules it falls back to), so it never contends with the action.
-	evaluators: [viewContextEvaluator],
-	// Exact multilingual navigation is already resolved by the same rigid matcher
-	// the action uses. Select that one verified action deterministically so a
-	// second model call does not re-plan parameters Stage 1 already identified.
-	// The post-action acknowledgement remains model-authored. Persisted choice
-	// widgets keep their separate explicit continuation protocol.
-	responseHandlerEvaluators: [
-		viewCommandShortcutEvaluator,
-		createChoiceShortcutEvaluator,
-	],
+	// Natural-language view selection belongs to the normal Eliza planning
+	// pipeline. The model chooses VIEWS and supplies structured action/view
+	// parameters; this plugin only validates and executes that typed decision.
+	// Persisted choice widgets keep their explicit continuation protocol because
+	// they are UI state acknowledgements, not natural-language intent routing.
+	evaluators: [],
+	responseHandlerEvaluators: [createChoiceShortcutEvaluator],
 	providers: [availableAppsProvider, currentViewProvider],
 	services: [
 		AppRegistryService,
@@ -185,20 +151,6 @@ export const appControlPlugin: Plugin = {
 		AppWorkerHostService,
 		VerificationRoomBridgeService,
 	],
-	async init(_config, runtime) {
-		// Inject the `current_view` state provider into the curated Stage-1
-		// response state only on explicit switch turns (gating in
-		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
-		// cost. The planner state already composes `current_view` by default.
-		runtime.registerPipelineHook({
-			id: CURRENT_VIEW_HOOK_ID,
-			phase: "compose_state_providers",
-			handler: (_rt, ctx) => {
-				if (ctx.phase !== "compose_state_providers") return;
-				applyCurrentViewComposeHook(ctx);
-			},
-		});
-	},
 	async dispose(runtime) {
 		await runtime
 			.getService<VerificationRoomBridgeService>(

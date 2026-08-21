@@ -16,13 +16,14 @@ const MATCH_CONTEXT = {
 } as const;
 
 describe("viewNavigationShortcuts (#8791)", () => {
-	it("remain compatibility exports while the post-Stage-1 evaluator is registered", () => {
+	it("keeps every first-party natural-language view route model-owned", () => {
 		expect(appControlPlugin.shortcuts ?? []).toEqual([]);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,
 			),
-		).toContain("app-control.view-command-shortcut");
+		).not.toContain("app-control.view-command-shortcut");
+		expect(appControlPlugin.evaluators ?? []).toEqual([]);
 		expect(
 			appControlPlugin.responseHandlerEvaluators?.map(
 				(evaluator) => evaluator.name,

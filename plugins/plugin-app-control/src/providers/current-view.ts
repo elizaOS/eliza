@@ -12,19 +12,8 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
-import { resolveIntentView } from "../actions/views-show.js";
-import { userRequestMessageText } from "../params.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
-
-/** Humanize a view id ("task-coordinator" → "Task Coordinator") for phrasing. */
-function humanizeViewId(viewId: string): string {
-	return viewId
-		.split(/[-_]/)
-		.filter(Boolean)
-		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-		.join(" ");
-}
 
 export const currentViewProvider: Provider = {
 	name: "current_view",
@@ -39,24 +28,6 @@ export const currentViewProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-			// Security-unwrapped user words — never raw (possibly enveloped) text.
-			const text = userRequestMessageText(message);
-			// An explicit target is authoritative before the planner applies it. Do
-			// not wait on the renderer here: its current value cannot change that
-			// decision and may sit behind a native bridge or remote shell boundary.
-			const intentTargetId = resolveIntentView(text);
-			if (intentTargetId) {
-				const label = humanizeViewId(intentTargetId);
-				return {
-					text: `Requested view target: ${label} (id: ${intentTargetId}). Navigation has not completed yet. The requested target is authoritative for this turn.`,
-					values: {
-						switchingToViewId: intentTargetId,
-						viewSwitchPending: true,
-					},
-					data: { switchingTo: intentTargetId },
-				};
-			}
-
 			const current = await createViewsClient().getCurrentView();
 
 			if (!current) return EMPTY;

@@ -292,6 +292,19 @@ describe("view switching — VIEWS action resolver", () => {
 		vi.clearAllMocks();
 	});
 
+	it("requires the model to supply a structured navigation target", async () => {
+		const { navigated } = installNavigateCapture();
+		const { result } = await runShow(REGISTRY, "open settings", {
+			action: "show",
+		});
+
+		expect(result).toMatchObject({
+			success: false,
+			text: "VIEWS requires a structured view id or label for action=show.",
+		});
+		expect(navigated).toEqual([]);
+	});
+
 	it("keeps inventory internal through the public wrapper while preserving natural navigation replies", async () => {
 		const action = createViewsAction({
 			client: clientFor(REGISTRY),

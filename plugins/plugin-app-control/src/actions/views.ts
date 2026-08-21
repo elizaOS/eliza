@@ -36,7 +36,6 @@ import {
 	targetReferenceLogView,
 	userRequestMessageText,
 } from "../params.js";
-import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	createViewsClient,
 	parseViewInteractionResponse,
@@ -58,12 +57,12 @@ import {
 	runViewsDelete,
 } from "./views-delete.js";
 import { runViewsEdit } from "./views-edit.js";
-import { isViewIconRequest, runViewsIcon } from "./views-icon.js";
+import { runViewsIcon } from "./views-icon.js";
 import { runViewsList } from "./views-list.js";
 import { createViewsRequestHeaders } from "./views-request-auth.js";
-import { isRollbackRequest, runViewsRollback } from "./views-rollback.js";
+import { runViewsRollback } from "./views-rollback.js";
 import { runViewsSearch, scoreView } from "./views-search.js";
-import { resolveIntentView, runViewsShow } from "./views-show.js";
+import { runViewsShow } from "./views-show.js";
 import { requestWorkspaceDismissal } from "./workspace-dismiss.js";
 
 export type ViewsMode =
@@ -280,74 +279,10 @@ const VIEW_ACTION_CONTEXTS = [
 	"game",
 ] as const;
 
-// Intent regexes — order matters: more specific first.
-const LIST_VERBS =
-	/\b(list|show all|what views|all views|available views|which views)\b/i;
-// NB: "open" is deliberately excluded here — "open <name> view" is a navigate
-// (show) intent, not a "report the currently-open view" query. Phrasings like
-// "which view is currently open" still match via the "current" keyword.
-const CURRENT_VIEW_VERBS =
-	/\b(current|active|selected)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
-const WHAT_VIEWS_VERB = /what.{0,20}views?\b/i;
-const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
-const MANAGER_VERBS =
-	/\b(view manager|views manager|manage views|open manager|show manager)\b/i;
-const SHOW_ALL_VIEWS_MANAGER =
-	/\b(show|open|bring up|pull up)\b\s+(?:me\s+)?(?:all\s+)?(?:the\s+)?views\b/i;
-const SHOW_APPS_VERBS =
-	/\b(show|open|go to|navigate to)\b\s+(?:the\s+)?(?:apps?|app page|apps page)\b/i;
-const CLOSE_VERBS =
-	/\b(close|dismiss|hide|exit|quit)\b.{0,40}\b(view|app|panel|window)\b/i;
-const CLOSE_ALL_VERBS =
-	/\b(close|dismiss|hide|exit|quit)\b.{0,30}\ball\b.{0,30}\b(views?|apps?|panels?|windows?|tabs?)\b/i;
-const CLOSE_PREFIX_VERBS = /^\s*(close|dismiss|hide|exit|quit)\b/i;
-const SHOW_VERBS =
-	/\b(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i;
-const VIEW_NOUN = /\bview[s]?\b/i;
-const BROADCAST_VERBS =
-	/\b(tell|notify|signal|broadcast|send.*event|emit|trigger|ping)\b.{0,60}\bview\b/i;
-const INTERACT_VERBS =
-	/\b(click|tap|press|focus|fill|interact|invoke|call|use capability)\b.{0,60}\b(view|button|input|field)\b/i;
-const CREATE_VERBS =
-	/\b(create|build|make|new|scaffold|generate|spin up)\b.{0,30}\b(view|plugin)\b/i;
-const EDIT_VERBS_RE =
-	/\b(edit|update|modify|change|fix|improve|rewrite)\b.{0,30}\b(view|plugin)\b/i;
-const DELETE_VERBS_RE =
-	/\b(delete|remove|uninstall|destroy|drop)\b.{0,30}\b(view|plugin)\b/i;
-const PIN_VERBS =
-	/\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
-const WINDOW_VERBS =
-	/\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
 const SPLIT_VERBS =
 	/\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b/i;
 const TILE_VERBS =
 	/\b(tile|grid|arrange|layout)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(tile|grid|arrange|layout)\b/i;
-const LAYOUT_OVERRIDE_MODES = new Set([
-	"create",
-	"delete",
-	"edit",
-	"list",
-	"open",
-	"remove",
-	"show",
-]);
-const VIEW_SURFACE_TOKENS = new Set([
-	"app",
-	"apps",
-	"desktop",
-	"manager",
-	"panel",
-	"panels",
-	"screen",
-	"screens",
-	"tab",
-	"tabs",
-	"ui",
-	"view",
-	"views",
-	"window",
-	"windows",
-]);
 const USER_REQUEST_OPEN_TAG = "<user_request>";
 const USER_REQUEST_CLOSE_TAG = "</user_request>";
 
@@ -448,28 +383,13 @@ function defaultRepoRoot(): string {
 }
 
 function inferMode(
-	text: string,
+	_text: string,
 	options?: Record<string, unknown>,
 ): ViewsMode | null {
 	const explicit =
 		readStringOption(options, "action") ?? readStringOption(options, "mode");
-	const trimmed = viewRequestText(text).trim();
 	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
-	// An explicit request to (re)generate a view's icon/image wins over the
-	// generic edit/create/update verbs that share its phrasing — regenerating an
-	// icon is a direct asset write, not a coding-agent edit.
-	if (
-		isViewIconRequest(trimmed, options) &&
-		(!normalizedExplicit ||
-			normalizedExplicit === "icon" ||
-			normalizedExplicit === "edit" ||
-			normalizedExplicit === "create" ||
-			normalizedExplicit === "update" ||
-			normalizedExplicit === "modify" ||
-			normalizedExplicit === "change")
-	) {
-		return "icon";
-	}
+	if (!normalizedExplicit) return null;
 	if (
 		normalizedExplicit === "close" ||
 		normalizedExplicit === "close_view" ||
@@ -483,18 +403,6 @@ function inferMode(
 		normalizedExplicit === "split_view" ||
 		normalizedExplicit === "split_views"
 	) {
-		if (isTileLayoutRequest(trimmed) && !isSplitLayoutRequest(trimmed)) {
-			return "tile";
-		}
-		return "split";
-	}
-	if (
-		(normalizedExplicit === "tile" ||
-			normalizedExplicit === "tile_view" ||
-			normalizedExplicit === "tile_views") &&
-		isSplitLayoutRequest(trimmed) &&
-		!isTileLayoutRequest(trimmed)
-	) {
 		return "split";
 	}
 	if (
@@ -504,21 +412,8 @@ function inferMode(
 	) {
 		return "tile";
 	}
-	if (isNonDestructiveCloseRequest(trimmed)) {
-		return "close";
-	}
-	if (
-		(normalizedExplicit === "delete" || normalizedExplicit === "remove") &&
-		isNonDestructiveCloseRequest(trimmed) &&
-		!DELETE_VERBS_RE.test(trimmed)
-	) {
-		return "close";
-	}
 	if (normalizedExplicit && isGenericViewNavigationMode(normalizedExplicit)) {
-		if (isPinRequest(trimmed)) return "pin";
-		if (isWindowRequest(trimmed)) return "window";
-		if (isTileLayoutRequest(trimmed)) return "tile";
-		if (isSplitLayoutRequest(trimmed)) return "split";
+		return "show";
 	}
 	// Explicit rollback aliases. Handled before the generic non-mode -> interact
 	// fallthrough so `action=revert`/`action=undo` resolve to the rollback handler.
@@ -531,63 +426,10 @@ function inferMode(
 	) {
 		return "rollback";
 	}
-	if (
-		normalizedExplicit &&
-		!(MODES as readonly string[]).includes(normalizedExplicit)
-	) {
+	if (!(MODES as readonly string[]).includes(normalizedExplicit)) {
 		return "interact";
 	}
-	if (
-		normalizedExplicit &&
-		(MODES as readonly string[]).includes(normalizedExplicit)
-	) {
-		if (LAYOUT_OVERRIDE_MODES.has(normalizedExplicit)) {
-			if (isPinRequest(trimmed)) return "pin";
-			if (isWindowRequest(trimmed)) return "window";
-			if (isTileLayoutRequest(trimmed)) return "tile";
-			if (isSplitLayoutRequest(trimmed)) return "split";
-		}
-		return normalizedExplicit as ViewsMode;
-	}
-
-	if (!trimmed) return null;
-
-	// Rollback/undo of a view-plugin create/edit must be checked before the
-	// edit/delete verbs so "undo the view creation" / "roll back the plugin edit"
-	// route to the rollback handler instead of being treated as an edit/delete.
-	if (isRollbackRequest(trimmed)) return "rollback";
-	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
-	if (CREATE_VERBS.test(trimmed)) return "create";
-	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
-	if (isPinRequest(trimmed) || PIN_VERBS.test(trimmed)) return "pin";
-	if (isWindowRequest(trimmed) || WINDOW_VERBS.test(trimmed)) return "window";
-	if (isTileLayoutRequest(trimmed)) return "tile";
-	if (isSplitLayoutRequest(trimmed)) return "split";
-	if (INTERACT_VERBS.test(trimmed)) return "interact";
-	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
-	if (MANAGER_VERBS.test(trimmed)) return "manager";
-	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
-	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
-	if (CLOSE_VERBS.test(trimmed)) return "close";
-	if (CLOSE_PREFIX_VERBS.test(trimmed)) return "close";
-	if (SEARCH_VERBS.test(trimmed)) return "search";
-	if (CURRENT_VIEW_VERBS.test(trimmed)) return "current";
-	if (WHAT_VIEWS_VERB.test(trimmed)) return "list";
-	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
-	if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "show";
-	if (
-		/^\s*(show|open|navigate to|go to|switch to|launch|display|bring up|pull up)\b/i.test(
-			trimmed,
-		)
-	)
-		return "show";
-
-	// Passive domain intent ("what's on my calendar", "add a feature to my app",
-	// "check my messages") carries no explicit mode keyword but maps to a known
-	// view — route it to `show` so runViewsShow can open that surface.
-	if (resolveIntentView(trimmed)) return "show";
-
-	return null;
+	return normalizedExplicit as ViewsMode;
 }
 
 function isGenericViewNavigationMode(normalizedExplicit: string): boolean {
@@ -622,54 +464,6 @@ function isSplitLayoutRequest(text: string): boolean {
 	);
 }
 
-function normalizedWordSet(text: string): Set<string> {
-	return new Set(
-		normalizeLooseTerm(text)
-			.split(" ")
-			.map((token) => token.trim())
-			.filter(Boolean),
-	);
-}
-
-function hasAnyToken(tokens: ReadonlySet<string>, values: readonly string[]) {
-	return values.some((value) => tokens.has(value));
-}
-
-function mentionsViewSurface(tokens: ReadonlySet<string>): boolean {
-	for (const token of tokens) {
-		if (VIEW_SURFACE_TOKENS.has(token)) return true;
-	}
-	return false;
-}
-
-function isPinRequest(text: string): boolean {
-	const tokens = normalizedWordSet(text);
-	return hasAnyToken(tokens, ["dock", "pin"]) && mentionsViewSurface(tokens);
-}
-
-function isWindowRequest(text: string): boolean {
-	const tokens = normalizedWordSet(text);
-	const hasWindowIntent =
-		hasAnyToken(tokens, ["detach", "popout", "window", "windows"]) ||
-		(tokens.has("pop") && tokens.has("out"));
-	if (!hasWindowIntent) return false;
-	return (
-		hasAnyToken(tokens, [
-			"detach",
-			"display",
-			"launch",
-			"new",
-			"open",
-			"pop",
-			"popout",
-			"separate",
-			"show",
-			"window",
-			"windows",
-		]) && mentionsViewSurface(tokens)
-	);
-}
-
 function isLikelyViewContentOperation(text: string): boolean {
 	if (/\b(views?|apps?|panels?|windows?|tabs?|screen|layout)\b/i.test(text)) {
 		return false;
@@ -681,14 +475,6 @@ function isLikelyViewContentOperation(text: string): boolean {
 		/\b(notes?|events?|tasks?|todos?|records?|items?|entries?|reminders?)\b/i.test(
 			text,
 		)
-	);
-}
-
-function isNonDestructiveCloseRequest(text: string): boolean {
-	return (
-		CLOSE_ALL_VERBS.test(text) ||
-		CLOSE_VERBS.test(text) ||
-		CLOSE_PREFIX_VERBS.test(text)
 	);
 }
 
@@ -1020,10 +806,6 @@ function isViewNavigationRequest(
 	// rigid multilingual matcher. That surface is pure navigation (it exposes no
 	// capabilities), so a request that targets it can never be a foreground-view
 	// capability read (#17299).
-	if (matchViewCommand(viewRequestText(text)) === "chat") return true;
-	if (explicitTarget && matchViewCommand(explicitTarget) === "chat") {
-		return true;
-	}
 	if (
 		(mode === "show" || mode === "list") &&
 		/\b(view|views|app|apps|panel|panels|tab|tabs|window|windows)\b/i.test(
@@ -2452,6 +2234,7 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 const VIEWS_ROUTING_HINT = [
 	"UI view/window/panel/app navigation and layout -> VIEWS.",
 	"View switching is a common proactive response in app chat: use action=show when the user asks to open, show, switch to, or pull up a matching surface, including a bare surface name in any language.",
+	"Always supply a structured action parameter. For action=show/open/close, always supply the registered view id or label in the view parameter; the executor never parses the user's prose to guess it.",
 	"Use VIEWS for navigation, close/hide, the view manager, split/tile/window/pin layouts, and capabilities that the selected view actually declares.",
 	"Opening the Calendar surface uses VIEWS action=show; reading or changing calendar events uses the CALENDAR action because the first-party Calendar view is read-only.",
 	"Sticky Notes operations use the registered Notes capabilities. Create and update pass the complete user-authored note in the single content field; never invent a separate title or body. Do not route Notes to documents or Knowledge.",
@@ -2623,7 +2406,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"torch",
 		],
 		description:
-			"Manage and navigate UI views. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
+			"Manage and navigate UI views through model-supplied structured parameters. List available views, report the current view, open or close a view, search views, show the view manager, arrange layouts, and invoke capabilities that a view declares, including Notes and native device controls. For show/open/close, supply the registered view id or label in view. Calendar event reads and writes belong to the CALENDAR action; VIEWS only opens the Calendar surface.",
 		descriptionCompressed:
 			"navigate/close/arrange UI views; invoke declared Notes/device capabilities; Calendar records use CALENDAR",
 		routingHint: VIEWS_ROUTING_HINT,
@@ -2656,7 +2439,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "view",
 				description:
-					"View name, label, or id (show / open / close / edit / delete).",
+					"Required model-selected view name, label, or id for show / open / close; also used by edit / delete. The executor does not infer it from message text.",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -3019,13 +2802,6 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				let effectiveMode = mode;
-				// The exact conversational "go back" command means return to the
-				// canonical Home surface. A small planner can still emit action=close
-				// for that wording; never let that internal mode guess close the chat
-				// view and race a canned close receipt against the model-owned reply.
-				if (effectiveMode === "close" && matchViewCommand(text) === "chat") {
-					effectiveMode = "show";
-				}
 				let prefetchedViews: ViewSummary[] | null = null;
 				let prefetchedCurrentView:
 					| Awaited<ReturnType<ViewsClient["getCurrentView"]>>
