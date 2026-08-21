@@ -99,9 +99,15 @@ describe("count-per-day quota progress — real store", () => {
     expect(replay.progressEventId).toBeNull();
     expect(replay.progress.completedCount).toBe(1);
 
-    const second = await service.recordOccurrenceProgress(occurrenceId, {
-      idempotencyKey: "msg-2",
-    });
+    // A service/runtime worker restart reconstructs progress from durable
+    // events instead of process memory.
+    const restartedService = new LifeOpsService(runtimeResult.runtime);
+    const second = await restartedService.recordOccurrenceProgress(
+      occurrenceId,
+      {
+        idempotencyKey: "msg-2",
+      },
+    );
     expect(second.progress.completedCount).toBe(2);
     expect(second.completed).toBe(false);
 
@@ -147,11 +153,131 @@ describe("count-per-day quota progress — real store", () => {
     }
     const view = await repository.getOccurrenceView(agentId, occurrenceId);
     expect(view?.state).toBe("completed");
+    const events = await repository.listProgressEvents(agentId, occurrenceId);
+    expect(events.reduce((sum, event) => sum + event.quantity, 0)).toBe(3);
+    expect(events).toHaveLength(3);
+    const audits = await repository.listAuditEvents(
+      agentId,
+      "occurrence",
+      occurrenceId,
+    );
+    expect(
+      audits.filter((event) => event.eventType === "occurrence_completed"),
+    ).toHaveLength(1);
     const finalRead = await service.recordOccurrenceProgress(occurrenceId, {
       idempotencyKey: "after",
     });
     expect(finalRead.progress.completedCount).toBe(3);
     expect(finalRead.completed).toBe(true);
+  });
+
+  it("projects progress into occurrence DTOs and schedules a structurally gated check-in", async () => {
+    const now = new Date();
+    const nowMinute = now.getUTCHours() * 60 + now.getUTCMinutes();
+    const startMinute = Math.max(0, nowMinute - 1);
+    const endMinute = Math.min(24 * 60 - 1, nowMinute + 30);
+    const record = await service.createDefinition({
+      kind: "habit",
+      title: "hydration quota",
+      description: "",
+      originalIntent: "drink three glasses and check in with me",
+      timezone: "UTC",
+      priority: 3,
+      cadence: {
+        kind: "count_per_day",
+        targetCount: 3,
+        unit: "glass",
+        perOccurrenceWork: "one glass of water",
+        timing: { kind: "anytime" },
+      },
+      windowPolicy: {
+        timezone: "UTC",
+        windows: [
+          {
+            name: "custom",
+            label: "Current test window",
+            startMinute,
+            endMinute,
+          },
+        ],
+      },
+      checkInPolicy: {
+        kind: "quota_progress",
+        windows: ["custom"],
+        followupAfterMinutes: 30,
+        noReplyPolicy: {
+          maxRetries: 1,
+          retryCadenceMinutes: [30],
+          terminalStatus: "expired",
+          terminalReason: "quota_checkin_no_reply",
+        },
+        stopWhenComplete: true,
+      },
+    });
+    expect(record.definition.checkInPolicy).toMatchObject({
+      kind: "quota_progress",
+      windows: ["custom"],
+      stopWhenComplete: true,
+    });
+    const occurrences = await repository.listOccurrencesForDefinition(
+      agentId,
+      record.definition.id,
+    );
+    const occurrence = occurrences.find(
+      (candidate) =>
+        candidate.metadata.localDateKey === now.toISOString().slice(0, 10),
+    );
+    expect(occurrence).toBeDefined();
+    if (!occurrence) throw new Error("current quota occurrence missing");
+
+    const before = await repository.getOccurrenceView(agentId, occurrence.id);
+    expect(before?.progress).toEqual({
+      completedCount: 0,
+      targetCount: 3,
+      remainingCount: 3,
+      unit: "glass",
+      perOccurrenceWork: "one glass of water",
+    });
+
+    const tasks = await repository.listScheduledTasks(agentId, {
+      kind: "checkin",
+      source: "plugin",
+    });
+    const checkIn = tasks.find(
+      (task) => task.metadata?.quotaOccurrenceId === occurrence.id,
+    );
+    expect(checkIn).toMatchObject({
+      completionCheck: {
+        kind: "quota_complete",
+        followupAfterMinutes: 30,
+      },
+      shouldFire: {
+        compose: "all",
+        gates: [
+          { kind: "quota_incomplete" },
+          { kind: "quiet_hours", params: { highPriorityBypass: false } },
+        ],
+      },
+      metadata: {
+        quotaDefinitionId: record.definition.id,
+        quotaOccurrenceId: occurrence.id,
+        noReplyPolicy: {
+          maxRetries: 1,
+          retryCadenceMinutes: [30],
+          terminalStatus: "expired",
+        },
+      },
+    });
+
+    await service.recordOccurrenceProgress(occurrence.id, {
+      idempotencyKey: "hydration-1",
+      quantity: 2,
+    });
+    const after = await repository.getOccurrenceView(agentId, occurrence.id);
+    expect(after?.progress).toMatchObject({
+      completedCount: 2,
+      remainingCount: 1,
+    });
   });
 
   it("refuses increments from a skipped occurrence and on non-quota cadences", async () => {
@@ -184,6 +310,27 @@ describe("count-per-day quota progress — real store", () => {
     ).rejects.toThrowError(/count-per-day/);
   });
 
+  it("preserves partial progress through snooze and still completes at target", async () => {
+    const { occurrenceId } = await createQuotaDefinition("snoozed quota");
+    await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "before-snooze",
+    });
+    const snoozed = await service.snoozeOccurrence(occurrenceId, {
+      minutes: 60,
+    });
+    expect(snoozed.state).toBe("snoozed");
+    const whileSnoozed = await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "during-snooze",
+    });
+    expect(whileSnoozed.occurrence.state).toBe("snoozed");
+    expect(whileSnoozed.progress.completedCount).toBe(2);
+    const completed = await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "finish-snoozed",
+    });
+    expect(completed.completed).toBe(true);
+    expect(completed.occurrence.state).toBe("completed");
+  });
+
   it("rejects invalid quantities and blank idempotency keys", async () => {
     const { occurrenceId } = await createQuotaDefinition("squats");
     await expect(
@@ -197,5 +344,66 @@ describe("count-per-day quota progress — real store", () => {
         quantity: 0,
       }),
     ).rejects.toThrowError(/quantity/);
+  });
+
+  it("does not silently move in-progress quota events across active-day semantics", async () => {
+    const { record, occurrenceId } = await createQuotaDefinition(
+      "timezone-safe quota",
+    );
+    await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "timezone-progress",
+    });
+    await expect(
+      service.updateDefinition(record.definition.id, {
+        timezone: "America/Los_Angeles",
+      }),
+    ).rejects.toThrowError(/cannot change during an in-progress active day/);
+    await expect(
+      service.updateDefinition(record.definition.id, {
+        cadence: {
+          kind: "count_per_day",
+          targetCount: 4,
+          unit: "set",
+          perOccurrenceWork: "25 pushups",
+          timing: { kind: "anytime" },
+        },
+      }),
+    ).rejects.toThrowError(/cannot change during an in-progress active day/);
+  });
+
+  it("preserves a partial day, rejects late logging, and resets the next day", async () => {
+    const { record, occurrenceId } =
+      await createQuotaDefinition("daily reset quota");
+    await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "partial-day",
+    });
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1_000);
+    await service.refreshDefinitionOccurrences(record.definition, tomorrow);
+
+    const previous = await repository.getOccurrenceView(agentId, occurrenceId);
+    expect(previous?.state).toBe("expired");
+    expect(previous?.progress?.completedCount).toBe(1);
+    await expect(
+      service.recordOccurrenceProgress(
+        occurrenceId,
+        { idempotencyKey: "late-log" },
+        tomorrow,
+      ),
+    ).rejects.toThrowError(/expired/);
+
+    const nextDayKey = tomorrow.toISOString().slice(0, 10);
+    const nextDay = (
+      await repository.listOccurrencesForDefinition(
+        agentId,
+        record.definition.id,
+      )
+    ).find((occurrence) => occurrence.metadata.localDateKey === nextDayKey);
+    expect(nextDay).toBeDefined();
+    if (!nextDay) throw new Error("next-day quota occurrence missing");
+    const nextDayView = await repository.getOccurrenceView(agentId, nextDay.id);
+    expect(nextDayView?.progress).toMatchObject({
+      completedCount: 0,
+      remainingCount: 3,
+    });
   });
 });

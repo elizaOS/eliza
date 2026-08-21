@@ -675,6 +675,23 @@ export interface LifeOpsCountPerDayCadence {
   visibilityLagMinutes?: number;
 }
 
+/** Adaptive, scheduler-backed check-ins for one flexible daily quota. */
+export interface LifeOpsQuotaCheckInPolicy {
+  kind: "quota_progress";
+  /** Named owner-local windows in which a progress check-in may fire. */
+  windows: LifeOpsTimeWindowName[];
+  /** Minutes after a fire before the no-reply policy is evaluated. */
+  followupAfterMinutes: number;
+  noReplyPolicy: {
+    maxRetries: number;
+    retryCadenceMinutes: number[];
+    terminalStatus: "expired";
+    terminalReason: string;
+  };
+  /** Frozen true: reaching the quota structurally suppresses later nudges. */
+  stopWhenComplete: true;
+}
+
 export type LifeOpsCadence =
   // An explicitly undated item ("no due date", "just a plain todo"): the
   // definition exists and is reviewable but materializes no occurrences and
@@ -781,6 +798,7 @@ export interface LifeOpsTaskDefinition {
   cadence: LifeOpsCadence;
   windowPolicy: LifeOpsWindowPolicy;
   progressionRule: LifeOpsProgressionRule;
+  checkInPolicy: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess: LifeOpsWebsiteAccessPolicy | null;
   reminderPlanId: string | null;
   goalId: string | null;
@@ -824,6 +842,8 @@ export interface LifeOpsOccurrenceView extends LifeOpsOccurrence {
   timezone: string;
   source: string;
   goalId: string | null;
+  /** Required server projection; null for cadences without incremental progress. */
+  progress: LifeOpsOccurrenceProgress | null;
 }
 
 /**
@@ -3323,6 +3343,7 @@ export interface CreateLifeOpsDefinitionRequest {
   cadence: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   reminderPlan?: {
     steps: LifeOpsReminderStep[];
@@ -3344,6 +3365,7 @@ export interface UpdateLifeOpsDefinitionRequest {
   cadence?: LifeOpsCadence;
   windowPolicy?: LifeOpsWindowPolicy;
   progressionRule?: LifeOpsProgressionRule;
+  checkInPolicy?: LifeOpsQuotaCheckInPolicy | null;
   websiteAccess?: LifeOpsWebsiteAccessPolicy | null;
   status?: LifeOpsDefinitionStatus;
   reminderPlan?: {

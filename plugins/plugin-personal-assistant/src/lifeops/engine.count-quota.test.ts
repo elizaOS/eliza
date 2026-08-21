@@ -56,6 +56,7 @@ function makeQuotaDefinition(
       ],
     },
     progressionRule: { kind: "none" },
+    checkInPolicy: null,
     websiteAccess: null,
     reminderPlanId: null,
     goalId: null,

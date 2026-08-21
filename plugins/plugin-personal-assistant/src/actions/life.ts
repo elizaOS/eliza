@@ -204,9 +204,12 @@ const SUBACTIONS = {
     required: ["kind", "target"],
   },
   complete: {
-    description: "Mark an occurrence as done.",
-    descriptionCompressed: "mark occurrence done",
+    description:
+      "Mark an occurrence as done. For a count quota, details.quantity is the positive number of units just completed and defaults to one.",
+    descriptionCompressed:
+      "mark occurrence done; count quota details.quantity defaults 1",
     required: ["target"],
+    optional: ["details"],
   },
   skip: {
     description: "Skip an occurrence.",
@@ -2642,7 +2645,7 @@ export function buildCadenceFromLlmParams(
       },
     };
   }
-  if (kind === "times_per_day") {
+  if (kind === "times_per_day" || kind === "count_per_day") {
     if (explicitSlots.length >= 2) {
       return {
         cadence: {
@@ -2666,7 +2669,7 @@ export function buildCadenceFromLlmParams(
         },
       };
     }
-    const count = params.timesPerDay;
+    const count = params.quotaTargetCount ?? params.timesPerDay;
     if (!count || count <= 0) return null;
     // The owner gave a count with no clock times: this is a flexible daily
     // quota. Fabricating distributed minuteOfDay slots here invented
@@ -2676,8 +2679,8 @@ export function buildCadenceFromLlmParams(
       cadence: {
         kind: "count_per_day",
         targetCount: Math.trunc(count),
-        unit: "time",
-        perOccurrenceWork: null,
+        unit: params.quotaUnit ?? "time",
+        perOccurrenceWork: params.perOccurrenceWork ?? null,
         timing:
           windows.length > 0
             ? { kind: "windows", windows }
@@ -2845,6 +2848,37 @@ export function buildCadenceFromUpdateFields(args: {
     };
   }
 
+  if (kind === "count_per_day") {
+    const targetCount =
+      update.quotaTargetCount ??
+      (currentCadence.kind === "count_per_day"
+        ? currentCadence.targetCount
+        : null);
+    if (!targetCount || targetCount <= 0) return null;
+    return {
+      cadence: {
+        kind: "count_per_day",
+        targetCount: Math.trunc(targetCount),
+        unit:
+          update.quotaUnit ??
+          (currentCadence.kind === "count_per_day"
+            ? currentCadence.unit
+            : "time"),
+        perOccurrenceWork:
+          update.perOccurrenceWork ??
+          (currentCadence.kind === "count_per_day"
+            ? currentCadence.perOccurrenceWork
+            : null),
+        timing:
+          requestedWindows.length > 0
+            ? { kind: "windows", windows: requestedWindows }
+            : currentCadence.kind === "count_per_day"
+              ? currentCadence.timing
+              : { kind: "anytime" },
+      },
+    };
+  }
+
   if (kind === "times_per_day") {
     if (timeOfDayMinute !== null) {
       return {
@@ -2931,7 +2965,8 @@ function hasDefinitionUpdateChanges(
     request.priority != null ||
     request.description != null ||
     request.windowPolicy != null ||
-    request.reminderPlan != null
+    request.reminderPlan != null ||
+    request.checkInPolicy !== undefined
   );
 }
 
@@ -4813,6 +4848,34 @@ async function runLifeOperationHandlerInner(
                 multiStep: llmPlan?.multiStep === true,
               }),
             });
+      const extractedCheckInPolicy = (() => {
+        if (
+          leadShaped.cadence.kind !== "count_per_day" ||
+          llmPlan?.checkInRequested !== true
+        ) {
+          return undefined;
+        }
+        const requestedWindows = normalizeLifeWindows(
+          llmPlan.checkInWindows ?? [],
+        );
+        return {
+          kind: "quota_progress" as const,
+          windows:
+            requestedWindows.length > 0
+              ? requestedWindows
+              : leadShaped.cadence.timing.kind === "windows"
+                ? leadShaped.cadence.timing.windows
+                : normalizeLifeWindows(["afternoon"]),
+          followupAfterMinutes: 120,
+          noReplyPolicy: {
+            maxRetries: 1,
+            retryCadenceMinutes: [120],
+            terminalStatus: "expired" as const,
+            terminalReason: "quota_checkin_no_reply",
+          },
+          stopWhenComplete: true as const,
+        };
+      })();
       const definitionDraft = {
         intent,
         operation: "create_definition",
@@ -4848,6 +4911,12 @@ async function runLifeOperationHandlerInner(
               "progressionRule",
             ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
             deferredDefinitionDraft?.request.progressionRule,
+          checkInPolicy:
+            (detailObject(details, "checkInPolicy") as
+              | CreateLifeOpsDefinitionRequest["checkInPolicy"]
+              | undefined) ??
+            extractedCheckInPolicy ??
+            deferredDefinitionDraft?.request.checkInPolicy,
           reminderPlan: leadShaped.plan,
           timezone:
             normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
@@ -4995,6 +5064,7 @@ async function runLifeOperationHandlerInner(
         priority: definitionDraft.request.priority,
         windowPolicy: definitionDraft.request.windowPolicy,
         progressionRule: definitionDraft.request.progressionRule,
+        checkInPolicy: definitionDraft.request.checkInPolicy,
         reminderPlan: definitionDraft.request.reminderPlan,
         metadata: definitionDraft.request.metadata,
         websiteAccess: definitionDraft.request.websiteAccess,
@@ -5474,6 +5544,10 @@ async function runLifeOperationHandlerInner(
           details,
           "reminderPlan",
         ) as UpdateLifeOpsDefinitionRequest["reminderPlan"],
+        checkInPolicy: detailObject(
+          details,
+          "checkInPolicy",
+        ) as UpdateLifeOpsDefinitionRequest["checkInPolicy"],
       };
 
       // If no explicit changes from structured details, try LLM extraction
@@ -5497,6 +5571,9 @@ async function runLifeOperationHandlerInner(
             llmFields.windows ||
             llmFields.weekdays ||
             llmFields.everyMinutes ||
+            llmFields.quotaTargetCount ||
+            llmFields.quotaUnit ||
+            llmFields.perOccurrenceWork ||
             llmFields.timeOfDay ||
             llmFields.dueDate ||
             llmFields.dueInDays !== null ||
@@ -5519,6 +5596,37 @@ async function runLifeOperationHandlerInner(
                       timezone: requestedTimeZone,
                     }
                   : undefined);
+            }
+          }
+          if (llmFields.checkInRequested !== null) {
+            const effectiveCadence =
+              request.cadence ?? target.definition.cadence;
+            if (
+              llmFields.checkInRequested === true &&
+              effectiveCadence.kind === "count_per_day"
+            ) {
+              const requestedCheckInWindows = normalizeLifeWindows(
+                llmFields.checkInWindows ?? [],
+              );
+              request.checkInPolicy = {
+                kind: "quota_progress",
+                windows:
+                  requestedCheckInWindows.length > 0
+                    ? requestedCheckInWindows
+                    : effectiveCadence.timing.kind === "windows"
+                      ? effectiveCadence.timing.windows
+                      : ["afternoon"],
+                followupAfterMinutes: 120,
+                noReplyPolicy: {
+                  maxRetries: 1,
+                  retryCadenceMinutes: [120],
+                  terminalStatus: "expired",
+                  terminalReason: "quota_checkin_no_reply",
+                },
+                stopWhenComplete: true,
+              };
+            } else if (llmFields.checkInRequested === false) {
+              request.checkInPolicy = null;
             }
           }
         }
@@ -5895,6 +6003,7 @@ async function runLifeOperationHandlerInner(
           resolvedTargetId,
           {
             idempotencyKey: `msg:${message.id}`,
+            quantity: detailNumber(details, "quantity") ?? undefined,
             note: detailString(details, "note"),
           },
         );

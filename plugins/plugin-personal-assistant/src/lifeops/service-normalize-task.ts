@@ -15,6 +15,7 @@ import type {
   GetLifeOpsHealthSummaryRequest,
   LifeOpsCadence,
   LifeOpsProgressionRule,
+  LifeOpsQuotaCheckInPolicy,
   LifeOpsTimeWindowDefinition,
   LifeOpsWebsiteAccessPolicy,
   LifeOpsWindowPolicy,
@@ -602,6 +603,90 @@ export function normalizeCadence(
     default:
       fail(400, "cadence.kind is not supported");
   }
+}
+
+/** Validate the structural, scheduler-backed check-in policy for a quota. */
+export function normalizeQuotaCheckInPolicy(
+  value: LifeOpsQuotaCheckInPolicy | null | undefined,
+  cadence: LifeOpsCadence,
+  windowPolicy: LifeOpsWindowPolicy,
+): LifeOpsQuotaCheckInPolicy | null {
+  if (value === undefined || value === null) return null;
+  if (cadence.kind !== "count_per_day") {
+    fail(400, "checkInPolicy is only valid for count_per_day cadence");
+  }
+  if (value.kind !== "quota_progress") {
+    fail(400, "checkInPolicy.kind must be quota_progress");
+  }
+  if (value.stopWhenComplete !== true) {
+    fail(400, "checkInPolicy.stopWhenComplete must be true");
+  }
+  const windows = normalizeWindowNames(
+    value.windows,
+    "checkInPolicy.windows",
+    windowPolicy,
+  );
+  const followupAfterMinutes = Math.trunc(
+    normalizeFiniteNumber(
+      value.followupAfterMinutes,
+      "checkInPolicy.followupAfterMinutes",
+    ),
+  );
+  if (followupAfterMinutes < 1 || followupAfterMinutes > DAY_MINUTES) {
+    fail(400, "checkInPolicy.followupAfterMinutes must be between 1 and 1440");
+  }
+  const maxRetries = Math.trunc(
+    normalizeFiniteNumber(
+      value.noReplyPolicy?.maxRetries,
+      "checkInPolicy.noReplyPolicy.maxRetries",
+    ),
+  );
+  if (maxRetries < 0 || maxRetries > 3) {
+    fail(400, "checkInPolicy.noReplyPolicy.maxRetries must be between 0 and 3");
+  }
+  const retryCadenceMinutes = Array.isArray(
+    value.noReplyPolicy?.retryCadenceMinutes,
+  )
+    ? value.noReplyPolicy.retryCadenceMinutes.map((entry, index) => {
+        const normalized = Math.trunc(
+          normalizeFiniteNumber(
+            entry,
+            `checkInPolicy.noReplyPolicy.retryCadenceMinutes[${index}]`,
+          ),
+        );
+        if (normalized < 1 || normalized > DAY_MINUTES) {
+          fail(
+            400,
+            "checkInPolicy.noReplyPolicy.retryCadenceMinutes entries must be between 1 and 1440",
+          );
+        }
+        return normalized;
+      })
+    : [];
+  if (retryCadenceMinutes.length < maxRetries) {
+    fail(
+      400,
+      "checkInPolicy.noReplyPolicy.retryCadenceMinutes must cover maxRetries",
+    );
+  }
+  if (value.noReplyPolicy?.terminalStatus !== "expired") {
+    fail(400, "checkInPolicy.noReplyPolicy.terminalStatus must be expired");
+  }
+  return {
+    kind: "quota_progress",
+    windows,
+    followupAfterMinutes,
+    noReplyPolicy: {
+      maxRetries,
+      retryCadenceMinutes,
+      terminalStatus: "expired",
+      terminalReason: requireNonEmptyString(
+        value.noReplyPolicy.terminalReason,
+        "checkInPolicy.noReplyPolicy.terminalReason",
+      ),
+    },
+    stopWhenComplete: true,
+  };
 }
 
 export function normalizeWebsiteAccessPolicy(

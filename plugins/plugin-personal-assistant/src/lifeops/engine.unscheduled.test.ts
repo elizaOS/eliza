@@ -30,6 +30,7 @@ const unscheduledDefinition: LifeOpsTaskDefinition = {
   cadence: { kind: "unscheduled" },
   windowPolicy: { windows: [] },
   progressionRule: { kind: "none" },
+  checkInPolicy: null,
   websiteAccess: null,
   reminderPlanId: null,
   goalId: null,

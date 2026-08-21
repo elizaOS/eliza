@@ -105,6 +105,7 @@ export const lifeTaskDefinitions = appLifeopsPgSchema.table(
     cadenceJson: text("cadence_json").notNull().default("{}"),
     windowPolicyJson: text("window_policy_json").notNull().default("{}"),
     progressionRuleJson: text("progression_rule_json").notNull().default("{}"),
+    checkInPolicyJson: text("check_in_policy_json"),
     websiteAccessJson: text("website_access_json"),
     reminderPlanId: text("reminder_plan_id"),
     goalId: text("goal_id"),
@@ -177,8 +178,8 @@ export const lifeTaskOccurrences = appLifeopsPgSchema.table(
  * completed count is always derived by summing rows for an occurrence — it is
  * never cached on the occurrence row, so concurrent increments cannot clobber
  * each other through full-row occurrence upserts. The (agent, occurrence,
- * idempotency key) uniqueness makes replayed increments single-statement
- * no-ops (INSERT .. ON CONFLICT DO NOTHING), mirroring life_audit_events.
+ * idempotency key) uniqueness makes replayed increments no-ops inside the
+ * occurrence-locked append transaction.
  */
 export const lifeTaskProgressEvents = appLifeopsPgSchema.table(
   "life_task_progress_events",

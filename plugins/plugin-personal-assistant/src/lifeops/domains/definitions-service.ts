@@ -46,6 +46,7 @@ import { normalizeWindowPolicyInput } from "../service-normalize-connector.js";
 import {
   normalizeCadence,
   normalizeProgressionRule,
+  normalizeQuotaCheckInPolicy,
   normalizeWebsiteAccessPolicy,
 } from "../service-normalize-task.js";
 import { callerDefinitionScopes } from "./definition-authorization.js";
@@ -192,6 +193,11 @@ export class DefinitionsDomain {
       fail(400, "unscheduled cadence is only valid for task definitions");
     }
     const progressionRule = normalizeProgressionRule(request.progressionRule);
+    const checkInPolicy = normalizeQuotaCheckInPolicy(
+      request.checkInPolicy,
+      cadence,
+      windowPolicy,
+    );
     const reminderPlanDraft = normalizeReminderPlanDraft(
       request.reminderPlan,
       "create",
@@ -213,6 +219,7 @@ export class DefinitionsDomain {
       cadence,
       windowPolicy,
       progressionRule,
+      checkInPolicy,
       websiteAccess:
         normalizeWebsiteAccessPolicy(request.websiteAccess, "websiteAccess") ??
         null,
@@ -310,6 +317,37 @@ export class DefinitionsDomain {
       nextWindowPolicy,
     );
     if (
+      current.definition.cadence.kind === "count_per_day" &&
+      (nextTimezone !== current.definition.timezone ||
+        JSON.stringify(nextCadence) !==
+          JSON.stringify(current.definition.cadence))
+    ) {
+      const occurrences =
+        await this.ctx.repository.listOccurrencesForDefinition(
+          this.ctx.agentId(),
+          current.definition.id,
+        );
+      for (const occurrence of occurrences) {
+        if (
+          ["completed", "skipped", "expired", "muted"].includes(
+            occurrence.state,
+          )
+        ) {
+          continue;
+        }
+        const progress = await this.ctx.repository.sumProgressEvents(
+          this.ctx.agentId(),
+          occurrence.id,
+        );
+        if (progress > 0) {
+          fail(
+            409,
+            "quota cadence or timezone cannot change during an in-progress active day",
+          );
+        }
+      }
+    }
+    if (
       nextCadence.kind === "unscheduled" &&
       current.definition.kind !== "task"
     ) {
@@ -351,6 +389,20 @@ export class DefinitionsDomain {
         request.progressionRule !== undefined
           ? normalizeProgressionRule(request.progressionRule)
           : current.definition.progressionRule,
+      checkInPolicy:
+        request.checkInPolicy !== undefined
+          ? normalizeQuotaCheckInPolicy(
+              request.checkInPolicy,
+              nextCadence,
+              nextWindowPolicy,
+            )
+          : nextCadence.kind === "count_per_day"
+            ? normalizeQuotaCheckInPolicy(
+                current.definition.checkInPolicy,
+                nextCadence,
+                nextWindowPolicy,
+              )
+            : null,
       websiteAccess:
         request.websiteAccess !== undefined
           ? (normalizeWebsiteAccessPolicy(
@@ -461,7 +513,7 @@ export class DefinitionsDomain {
 
   /**
    * Records one increment toward a count-per-day quota occurrence. The write
-   * is a single-statement idempotent append keyed by the caller's idempotency
+   * is a transactionally serialized append keyed by the caller's idempotency
    * key, and the day's completed count is always re-derived from the
    * append-only event table so concurrent increments can neither lose nor
    * exceed the target: when the derived count reaches the target the
@@ -508,19 +560,24 @@ export class DefinitionsDomain {
     const alreadyComplete = occurrence.state === "completed";
     if (!alreadyComplete) {
       const eventId = crypto.randomUUID();
-      applied = await this.ctx.repository.appendProgressEventIfNew({
-        id: eventId,
-        agentId: this.ctx.agentId(),
-        definitionId: definition.id,
-        occurrenceId: occurrence.id,
-        localDateKey,
-        idempotencyKey,
-        quantity,
-        unit: cadence.unit,
-        note,
-        actor: "owner",
-        createdAt: now.toISOString(),
-      });
+      const appliedQuantity =
+        await this.ctx.repository.appendProgressEventIfNew(
+          {
+            id: eventId,
+            agentId: this.ctx.agentId(),
+            definitionId: definition.id,
+            occurrenceId: occurrence.id,
+            localDateKey,
+            idempotencyKey,
+            quantity,
+            unit: cadence.unit,
+            note,
+            actor: "owner",
+            createdAt: now.toISOString(),
+          },
+          cadence.targetCount,
+        );
+      applied = appliedQuantity !== null;
       if (applied) {
         progressEventId = eventId;
         await this.ctx.recordAudit(
@@ -528,7 +585,7 @@ export class DefinitionsDomain {
           "occurrence",
           occurrence.id,
           "quota progress increment recorded",
-          { idempotencyKey, quantity, note },
+          { idempotencyKey, quantity: appliedQuantity, note },
           {
             definitionId: definition.id,
             occurrenceKey: occurrence.occurrenceKey,
@@ -612,7 +669,21 @@ export class DefinitionsDomain {
       },
       updatedAt: now.toISOString(),
     };
-    await this.ctx.repository.updateOccurrence(updatedOccurrence);
+    const wonCompletion =
+      await this.ctx.repository.completeOccurrenceIfNonTerminal(
+        updatedOccurrence,
+      );
+    if (!wonCompletion) {
+      const current = await this.ctx.repository.getOccurrenceView(
+        this.ctx.agentId(),
+        occurrence.id,
+      );
+      if (current?.state === "completed") return current;
+      fail(
+        409,
+        `occurrence cannot be completed from state ${current?.state ?? "missing"}`,
+      );
+    }
     await this.ctx.recordAudit(
       "occurrence_completed",
       "occurrence",
