@@ -128,6 +128,14 @@ export async function convergeAgentSandboxSchemaOnMigrationClient(
 // order, and completeness identity are enforced from this entry forward.
 const HASH_IDENTITY_ENFORCEMENT_TAG =
   "0194_job_execution_interruptions_catalog_guard";
+const USAGE_QUOTAS_RELEASE_BARRIER_TAGS = [
+  "0282_drop_unused_usage_quotas_table",
+  "0282_01_restore_usage_quotas_compatibility",
+] as const;
+
+type MigrationReleaseBarrierDecision =
+  | { action: "continue" }
+  | { action: "pause"; stopBeforeJournalIndex: number };
 
 async function readJournal(): Promise<Journal> {
   return JSON.parse(await readFile(JOURNAL_PATH, "utf8")) as Journal;
@@ -378,6 +386,78 @@ export function validateAppliedMigrationLedger(
   return { lastAppliedJournalIndex };
 }
 
+/**
+ * Fences the two-step usage-quotas repair while the compatibility Worker is
+ * being rolled out. Any validated ledger before 0282 may apply its safe prefix
+ * but pauses before the drop so the deploy can continue without exposing the
+ * old Worker to the missing table. Environments that already recorded 0282
+ * must proceed directly to the restoring 0282_01 migration. Any other suffix is
+ * unsafe and fails closed before the first pending migration is applied.
+ */
+export function evaluateMigrationReleaseBarrier(
+  migrations: Migration[],
+  lastAppliedJournalIndex: number,
+): MigrationReleaseBarrierDecision {
+  const journalTags = migrations.map((migration) => migration.entry.tag);
+  const barrierIndexes = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.map((tag) =>
+    journalTags.reduce<number[]>((indexes, candidate, index) => {
+      if (candidate === tag) indexes.push(index);
+      return indexes;
+    }, []),
+  );
+  const presentBarrierTags = barrierIndexes.filter(
+    (indexes) => indexes.length > 0,
+  ).length;
+
+  // Older synthetic histories and checkouts pre-dating 0282 have no barrier.
+  if (presentBarrierTags === 0) return { action: "continue" };
+
+  const expectedSuffix = USAGE_QUOTAS_RELEASE_BARRIER_TAGS.join(", ");
+  if (barrierIndexes.some((indexes) => indexes.length !== 1)) {
+    throw new Error(
+      `Migration release barrier requires exactly one of each suffix entry (${expectedSuffix})`,
+    );
+  }
+
+  const dropIndex = barrierIndexes[0]?.[0];
+  const restoreIndex = barrierIndexes[1]?.[0];
+  // Anchor on ADJACENCY, not on the journal tail. Requiring the pair to be the
+  // last two entries means the next migration anyone appends makes this throw
+  // for every target, including fully-migrated ones — a repo-wide stop-the-
+  // world. What the barrier actually needs is that the restore immediately
+  // follows the drop, so no other migration can interleave between them.
+  if (
+    dropIndex === undefined ||
+    restoreIndex === undefined ||
+    restoreIndex !== dropIndex + 1
+  ) {
+    const actualSuffix = journalTags
+      .slice(Math.max(0, Math.min(dropIndex ?? 0, restoreIndex ?? 0)))
+      .join(", ");
+    throw new Error(
+      `Migration release barrier expected adjacent journal entries (${expectedSuffix}); found (${actualSuffix || "empty"})`,
+    );
+  }
+
+  if (lastAppliedJournalIndex < dropIndex) {
+    return { action: "pause", stopBeforeJournalIndex: dropIndex };
+  }
+
+  if (lastAppliedJournalIndex === dropIndex) {
+    // Only the NEXT entry has to be the restore — later migrations are none of
+    // this barrier's business, and demanding it be the only pending one is the
+    // same tail-pinning mistake one layer down.
+    const nextTag = journalTags[lastAppliedJournalIndex + 1];
+    if (nextTag !== USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]) {
+      throw new Error(
+        `Migration release barrier expected ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[1]} immediately after ledgered 0282; found (${nextTag ?? "empty"})`,
+      );
+    }
+  }
+
+  return { action: "continue" };
+}
+
 async function acquireMigrationLock(
   client: MigrationClient,
   options: LockRetryOptions,
@@ -583,16 +663,37 @@ export async function runMigrations(
         }`,
       );
 
+      const releaseBarrier = evaluateMigrationReleaseBarrier(
+        migrations,
+        validatedLedger.lastAppliedJournalIndex,
+      );
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,
+        releaseBarrier.action === "pause"
+          ? releaseBarrier.stopBeforeJournalIndex
+          : undefined,
       );
-      console.log(`[db:migrate] pending migrations: ${pending.length}`);
+      console.log(
+        `[db:migrate] pending migrations: ${migrations.length - validatedLedger.lastAppliedJournalIndex - 1}`,
+      );
+      if (releaseBarrier.action === "pause") {
+        console.log(
+          `[db:migrate] release barrier permits ${pending.length} safe pending migrations before 0282`,
+        );
+      }
 
       for (const migration of pending) {
         await applyMigration(client, migration, retryOptions);
       }
 
       await postMigrationConvergence?.(client);
+
+      if (releaseBarrier.action === "pause") {
+        console.warn(
+          `[db:migrate] release barrier paused before ${USAGE_QUOTAS_RELEASE_BARRIER_TAGS[0]}; deploy the compatibility Worker before advancing the migration ledger`,
+        );
+        return;
+      }
 
       console.log("[db:migrate] migrations complete");
     },

@@ -642,6 +642,12 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       personalSharedTelegramEdge: {
         enabled: personalSharedTelegramEdgeEnabled,
       },
+      // Value-free schema compatibility beacon. The release workflow checks
+      // the currently served Worker for this marker before the later quota
+      // table drop is allowed to run.
+      schemaCompatibility: {
+        usageQuotasTombstone: true,
+      },
       // Value-free cutover receipt for the default-off staging QA bridge. The
       // deploy workflow proves exact code first, flips the secret last, then
       // requires this beacon to report the expected version/readiness. No key,

@@ -1940,6 +1940,13 @@
       "when": 1793072900000,
       "tag": "0282_drop_unused_usage_quotas_table",
       "breakpoints": true
+    },
+    {
+      "idx": 277,
+      "version": "7",
+      "when": 1793072900001,
+      "tag": "0282_01_restore_usage_quotas_compatibility",
+      "breakpoints": true
     }
   ]
 }
