@@ -65,14 +65,32 @@ describe("jobErrorText — never throws before the job is written back", () => {
     expect(() => jobErrorText(error)).not.toThrow();
     expect(jobErrorText(error)).toContain("outer");
   });
+
+  test("hostile and revoked Proxies cannot escape Error classification", () => {
+    const prototypeHostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("hostile prototype");
+      },
+      get() {
+        throw new Error("hostile property read");
+      },
+    });
+    const { proxy: revoked, revoke } = Proxy.revocable(new Error("revoked"), {});
+    revoke();
+
+    for (const hostile of [prototypeHostile, revoked]) {
+      expect(() => jobErrorText(hostile)).not.toThrow();
+      expect(() => jobErrorSummary(hostile)).not.toThrow();
+      expect(jobErrorText(hostile).length).toBeGreaterThan(0);
+      expect(jobErrorSummary(hostile).length).toBeGreaterThan(0);
+    }
+  });
 });
 
 describe("jobErrorText — redaction before durable storage", () => {
   test("a bearer credential in the message does not reach the column", () => {
     const text = jobErrorText(
-      new Error(
-        "Authorization: Bearer sk-live-abcdef0123456789abcdef0123456789",
-      ),
+      new Error("Authorization: Bearer sk-live-abcdef0123456789abcdef0123456789"),
     );
     expect(text).not.toContain("sk-live-abcdef0123456789abcdef0123456789");
   });

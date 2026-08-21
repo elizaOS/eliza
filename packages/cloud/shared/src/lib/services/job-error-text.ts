@@ -31,6 +31,16 @@ const TRUNCATION_SUFFIX = "\n… truncated";
 /** Wrapped throws are common here; deeper chains are noise in a job row. */
 const MAX_CAUSE_DEPTH = 4;
 
+/** Classify an untrusted throw without allowing Proxy reflection to escape. */
+function safeError(value: unknown): Error | undefined {
+  try {
+    return value instanceof Error ? value : undefined;
+  } catch {
+    // error-policy:J3 a revoked or hostile Proxy can throw from getPrototypeOf.
+    return undefined;
+  }
+}
+
 /** Stringify anything without ever throwing (null-prototype, hostile toString). */
 function safeString(value: unknown): string {
   if (typeof value === "string") return value;
@@ -41,7 +51,7 @@ function safeString(value: unknown): string {
     if (
       value !== null &&
       typeof value === "object" &&
-      !(value instanceof Error) &&
+      !safeError(value) &&
       typeof (value as { toString?: unknown }).toString !== "function"
     ) {
       const json = JSON.stringify(value);
@@ -103,14 +113,14 @@ function describeErrorChain(error: unknown): string {
     }
     if (typeof current === "object") seen.add(current);
 
-    const text =
-      current instanceof Error ? safeStack(current) : safeString(current);
+    const currentError = safeError(current);
+    const text = currentError ? safeStack(currentError) : safeString(current);
     parts.push(depth === 0 ? text : `caused by: ${text}`);
 
-    if (!(current instanceof Error)) break;
+    if (!currentError) break;
     let next: unknown;
     try {
-      next = (current as { cause?: unknown }).cause;
+      next = (currentError as { cause?: unknown }).cause;
     } catch {
       // error-policy:J3 hostile cause accessor ends the chain rather than
       // replacing the failure being recorded.
@@ -158,19 +168,19 @@ export function jobErrorText(error: unknown): string {
  * the wrapped error's own `cause` will need.
  */
 export function jobErrorSummary(error: unknown): string {
-  const text =
-    error instanceof Error
-      ? (() => {
-          try {
-            return typeof error.message === "string" && error.message.length > 0
-              ? error.message
-              : safeString(error);
-          } catch {
-            // error-policy:J3 hostile message accessor.
-            return "[unreadable error]";
-          }
-        })()
-      : safeString(error);
+  const classifiedError = safeError(error);
+  const text = classifiedError
+    ? (() => {
+        try {
+          return typeof classifiedError.message === "string" && classifiedError.message.length > 0
+            ? classifiedError.message
+            : safeString(classifiedError);
+        } catch {
+          // error-policy:J3 hostile message accessor.
+          return "[unreadable error]";
+        }
+      })()
+    : safeString(error);
   return (text.split("\n", 1)[0] ?? "").trim() || "[no error text]";
 }
 
@@ -180,9 +190,7 @@ export function jobErrorSummary(error: unknown): string {
  * module layout, which a non-admin job owner has no business reading. Keep the
  * first line — the failure summary — and drop the frames.
  */
-export function publicJobErrorSummary(
-  storedError: string | null | undefined,
-): string | null {
+export function publicJobErrorSummary(storedError: string | null | undefined): string | null {
   if (typeof storedError !== "string") return null;
   // Split on the frame marker rather than the first newline: an error message
   // can itself be multi-line ("Provisioning failed:\nnode: …\nreason: …") and
