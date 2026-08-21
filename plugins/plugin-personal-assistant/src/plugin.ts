@@ -1153,6 +1153,16 @@ const rawPersonalAssistantPlugin: Plugin = {
         prefix: "[lifeops]",
         label: "scheduler task",
         ensure: async () => {
+          // The workflow-run claim is only an election once the partial
+          // unique index exists (installed by the bootstrapSchema compat
+          // repair, not by the ordinary drizzle migration). Install/verify it
+          // before the scheduler task is ensured so a cold worker cannot
+          // execute workflows against an unconstrained table. On failure the
+          // scheduler task stays un-ensured and the failure is logged +
+          // recorded by scheduleTaskEnsureAfterRuntimeInit ("subsystem is
+          // degraded"); claimWorkflowRun's explicit conflict target fails
+          // closed as the backstop for any path that races this install.
+          await LifeOpsRepository.bootstrapSchema(runtime);
           await ensureLifeOpsSchedulerTask(runtime);
         },
       });
