@@ -2884,6 +2884,7 @@ async function main(): Promise<void> {
   // constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
   const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
   const surfaceSenders = new WeakMap<ManagedWindowLike, SendToWebview>();
+  let focusPillAfterWorkspaceDismiss = false;
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
@@ -2968,13 +2969,19 @@ async function main(): Promise<void> {
       const workspacePresent =
         (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
       if (!workspacePresent) {
-        void getDesktopManager()
-          .setMainWindowSuppressedByWorkspace(false)
-          .catch((error: unknown) => {
-            logger.warn(
-              `[surface-windows] Failed to restore pill after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          });
+        const shouldFocusPill = focusPillAfterWorkspaceDismiss;
+        focusPillAfterWorkspaceDismiss = false;
+        void (async () => {
+          await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
+          // Wait for the actual native close event before activating the pill.
+          // Focusing immediately after close() races AppKit's next-key-window
+          // selection and can leave the composer unfocused.
+          if (shouldFocusPill) await getDesktopManager().focusWindow();
+        })().catch((error: unknown) => {
+          logger.warn(
+            `[surface-windows] Failed to restore pill after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
       }
       // Dockless mode: any open managed window (dashboard/surface/settings/app)
       // reveals the Dock icon; closing the last one hides it again.
@@ -3020,20 +3027,13 @@ async function main(): Promise<void> {
     });
   });
   getDesktopManager().setDismissWorkspaceCallback(() => {
+    focusPillAfterWorkspaceDismiss =
+      (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
     const result = surfaceWindowManager?.dismissWorkspaceWindow() ?? {
       closed: false,
       reason: "already-closed" as const,
     };
-    if (result.closed) {
-      void (async () => {
-        await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
-        await getDesktopManager().focusWindow();
-      })().catch((error: unknown) => {
-        logger.warn(
-          `[surface-windows] Failed to restore pill focus after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      });
-    }
+    if (!result.closed) focusPillAfterWorkspaceDismiss = false;
     return result;
   });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
