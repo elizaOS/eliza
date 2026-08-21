@@ -1,6 +1,6 @@
 /**
- * Host-side coverage for the Android service boot gate that decides whether a
- * stock phone should spawn the bundled local agent before the renderer starts.
+ * Host-side coverage for Android service boot gates that select local-agent
+ * autostart and the bionic host for a bundled fused inference runtime.
  */
 package ai.elizaos.app;
 
@@ -137,5 +137,12 @@ public class ElizaAgentAutostartPolicyTest {
         assertTrue(ElizaAgentService.coldBootStampTrustworthy(false, true));
         assertTrue(ElizaAgentService.coldBootStampTrustworthy(true, true));
         assertFalse(ElizaAgentService.coldBootStampTrustworthy(true, false));
+    }
+
+    @Test
+    public void fusedInferenceUsesBionicHostWithoutSplitVulkanLibrary() {
+        assertTrue(ElizaAgentService.shouldDelegateToBionicHost(true, true));
+        assertFalse(ElizaAgentService.shouldDelegateToBionicHost(true, false));
+        assertFalse(ElizaAgentService.shouldDelegateToBionicHost(false, true));
     }
 }
