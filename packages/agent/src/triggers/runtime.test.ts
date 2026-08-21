@@ -1079,7 +1079,7 @@ describe("runtime event trigger bridge", () => {
       event: { id: "event-2", type: "NodeFinished" },
     } as never);
     await vi.waitFor(() =>
-      expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4),
+      expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2),
     );
 
     const metadata = target.metadata as unknown as {
@@ -1107,7 +1107,7 @@ describe("runtime event trigger bridge", () => {
     ).toMatchObject({ enabled: false, runCount: 1 });
   });
 
-  it("performs fresh discovery for concurrent and newly saved trigger events", async () => {
+  it("shares one discovery query per turn and re-queries for a newly saved trigger", async () => {
     const target = makeTriggerTask({
       triggerType: "event",
       eventKind: "workflow_run_event",
@@ -1126,7 +1126,9 @@ describe("runtime event trigger bridge", () => {
       } as never),
     ]);
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(2));
-    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(4);
+    // Both events were observed before the batched query was issued, so they
+    // share it: two events cost one task-store read, not one read each.
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(1);
 
     const newlySaved = makeTriggerTask({
       triggerType: "event",
@@ -1138,7 +1140,9 @@ describe("runtime event trigger bridge", () => {
       event: { id: "event-3", type: "NodeFinished" },
     } as never);
     await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(4));
-    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(6);
+    // A later turn never reuses the earlier snapshot, so the trigger saved in
+    // between is visible to the third event.
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(2);
   });
 
   it("sees create and enable writes while an older discovery is still in flight", async () => {
@@ -1155,7 +1159,7 @@ describe("runtime event trigger bridge", () => {
       });
       const getTasks = vi.fn(async () => {
         const callNumber = getTasks.mock.calls.length;
-        if (callNumber <= 2) {
+        if (callNumber <= 1) {
           await initialLookup;
           return initialTasks;
         }
@@ -1167,14 +1171,14 @@ describe("runtime event trigger bridge", () => {
       await lane.runtime.emitEvent("workflow_run_event", {
         event: { id: `${eventPrefix}-before`, type: "NodeFinished" },
       } as never);
-      await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(1));
 
       lane.setTasks([currentTask]);
       await lane.runtime.emitEvent("workflow_run_event", {
         event: { id: `${eventPrefix}-after`, type: "NodeFinished" },
       } as never);
       try {
-        await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(4));
+        await vi.waitFor(() => expect(getTasks).toHaveBeenCalledTimes(2));
         await vi.waitFor(() => expect(lane.dispatchCalls).toHaveLength(1));
       } finally {
         releaseInitialLookup?.();
@@ -1355,6 +1359,220 @@ describe("runtime event trigger bridge", () => {
     expect(handle.runtime.updateTask).not.toHaveBeenCalled();
     expect(handle.runtime.deleteTask).not.toHaveBeenCalled();
     expect(readTriggerConfig(target)?.runCount).toBe(0);
+  });
+
+  it("never restarts the workflow that emitted the event", async () => {
+    const selfTrigger = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "wf-self",
+      },
+      { maxRuns: 0 },
+    );
+    handle.setTasks([selfTrigger]);
+    registerTriggerTaskWorker(handle.runtime);
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      event: {
+        id: "run-self:1",
+        runId: "run-self",
+        workflowId: "wf-self",
+        type: "NodeFinished",
+      },
+    } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(handle.dispatchCalls).toHaveLength(0);
+    expect(
+      handle.warnings.some((entry) =>
+        String(entry[1]).includes("skipping self-trigger"),
+      ),
+    ).toBe(true);
+  });
+
+  it("quiesces a mutually referential trigger chain instead of running forever", async () => {
+    // wf-a's events start wf-b and wf-b's events start wf-a. Each dispatched
+    // run emits its own event under a fresh run id, so nothing about durable
+    // event identity can collapse the cycle; only ancestry can stop it.
+    const aToB = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "wf-b",
+      },
+      { maxRuns: 0 },
+    );
+    const bToA = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "wf-a",
+      },
+      { maxRuns: 0 },
+    );
+    handle.setTasks([aToB, bToA]);
+
+    const feedback: Array<() => Promise<void>> = [];
+    let runSeq = 0;
+    const execute = vi.fn(async (workflowId: string) => {
+      runSeq += 1;
+      const runId = `run-${runSeq}`;
+      feedback.push(async () => {
+        await handle.runtime.emitEvent("workflow_run_event", {
+          event: {
+            id: `${runId}:1`,
+            runId,
+            workflowId,
+            type: "NodeFinished",
+          },
+        } as never);
+      });
+      return { ok: true as const, executionId: runId };
+    });
+    (
+      handle.runtime.getService("WORKFLOW_DISPATCH") as unknown as {
+        execute: typeof execute;
+      }
+    ).execute = execute;
+    registerTriggerTaskWorker(handle.runtime);
+
+    await handle.runtime.emitEvent("workflow_run_event", {
+      event: {
+        id: "seed:1",
+        runId: "run-seed",
+        workflowId: "wf-a",
+        type: "NodeFinished",
+      },
+    } as never);
+
+    for (let round = 0; round < 20; round += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (feedback.length === 0) break;
+      const next = feedback.splice(0, feedback.length);
+      for (const emit of next) await emit();
+    }
+
+    // Four hops from the seed, then the chain stops on its own.
+    expect(feedback).toHaveLength(0);
+    expect(execute).toHaveBeenCalledTimes(4);
+  });
+
+  it("cuts off a saved trigger that exceeds the sustained dispatch ceiling", async () => {
+    const target = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "wf-target",
+      },
+      { maxRuns: 0 },
+    );
+    handle.setTasks([target]);
+    registerTriggerTaskWorker(handle.runtime);
+
+    for (let index = 0; index < 65; index += 1) {
+      await handle.runtime.emitEvent("workflow_run_event", {
+        event: {
+          id: `flood-${index}`,
+          runId: `run-flood-${index}`,
+          workflowId: "wf-source",
+          type: "NodeFinished",
+        },
+      } as never);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(handle.dispatchCalls).toHaveLength(60);
+    expect(
+      handle.reportedErrors.filter(
+        (entry) =>
+          (entry.error as { code?: string }).code ===
+          "TRIGGER_EVENT_DISPATCH_RATE_EXCEEDED",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("reads the task store once per event instead of once per tag set", async () => {
+    handle.setTasks([makeTriggerTask({ triggerType: "interval" })]);
+    registerTriggerTaskWorker(handle.runtime);
+
+    for (let index = 0; index < 5; index += 1) {
+      await handle.runtime.emitEvent("workflow_run_event", {
+        event: {
+          id: `quiet-${index}`,
+          runId: `run-quiet-${index}`,
+          workflowId: "wf-source",
+          type: "NodeFinished",
+        },
+      } as never);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    expect(handle.dispatchCalls).toHaveLength(0);
+    expect(handle.runtime.getTasks).toHaveBeenCalledTimes(5);
+  });
+
+  it("keeps the source run alive when an event payload accessor throws", async () => {
+    const target = makeTriggerTask(
+      {
+        triggerType: "event",
+        eventKind: "workflow_run_event",
+        workflowId: "wf-target",
+      },
+      { maxRuns: 0 },
+    );
+    handle.setTasks([target]);
+    registerTriggerTaskWorker(handle.runtime);
+
+    const handlers = (
+      handle.runtime as unknown as {
+        getEvent: (
+          kind: string,
+        ) => Array<(params: Record<string, unknown>) => Promise<void>>;
+      }
+    ).getEvent("workflow_run_event");
+    const handler = handlers?.[0];
+    if (!handler) throw new Error("bridge handler was not registered");
+
+    // A hostile accessor and an own `__proto__` key: the emitting Smithers run
+    // awaits this handler inside `recordEvent`, so neither may reach it.
+    const params: Record<string, unknown> = {
+      runtime: handle.runtime,
+      event: {
+        id: "hostile:1",
+        runId: "run-hostile",
+        workflowId: "wf-source",
+        type: "NodeFinished",
+      },
+    };
+    Object.defineProperty(params, "hostile", {
+      enumerable: true,
+      get() {
+        throw new Error("hostile accessor");
+      },
+    });
+    Object.defineProperty(params, "__proto__", {
+      enumerable: true,
+      configurable: true,
+      value: { polluted: true },
+    });
+
+    await expect(handler(params)).resolves.toBeUndefined();
+    await vi.waitFor(() => expect(handle.dispatchCalls).toHaveLength(1));
+
+    const eventPayload = handle.dispatchCalls[0]?.payload?.eventPayload as
+      | Record<string, unknown>
+      | undefined;
+    if (!eventPayload) throw new Error("bridged payload missing");
+    expect(eventPayload).not.toHaveProperty("hostile");
+    expect((eventPayload.event as { id?: string }).id).toBe("hostile:1");
+    expect(Object.getPrototypeOf(eventPayload)).toBe(Object.prototype);
+    expect((eventPayload as { polluted?: boolean }).polluted).toBeUndefined();
+    expect(
+      handle.reportedErrors.some(
+        (entry) => entry.scope === "TriggerRuntime.eventPayload",
+      ),
+    ).toBe(true);
   });
 });
 
