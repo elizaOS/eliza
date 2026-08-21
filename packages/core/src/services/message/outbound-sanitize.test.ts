@@ -29,6 +29,11 @@ describe("sanitizeOutboundText — reasoning tags (Discord characterization)", (
 		);
 	});
 
+	it("bounds repeated unmatched openings without exposing their payload", () => {
+		const residue = `${"<reasoning>".repeat(20_000)}private payload`;
+		expect(sanitizeOutboundText(residue)).toBe("");
+	});
+
 	it("strips every reasoning tag family", () => {
 		for (const tag of REASONING_TAG_NAMES) {
 			expect(

@@ -186,8 +186,19 @@ export function sanitizeOutboundText(text: string): string {
 	for (const tag of MACHINE_SYNTAX_TAGS) {
 		const openTag = `<\\s*${tag}(?=[\\s/>])[^>]*>`;
 		const closeTag = `<\\s*\\/\\s*${tag}\\s*>`;
-		const paired = new RegExp(`${openTag}([\\s\\S]*?)${closeTag}`, "gi");
-		processed = processed.replace(paired, "");
+		const closeTagMatches = new RegExp(closeTag, "gi");
+		let lastCloseEnd = -1;
+		for (const match of processed.matchAll(closeTagMatches)) {
+			lastCloseEnd = (match.index ?? 0) + match[0].length;
+		}
+		if (lastCloseEnd >= 0) {
+			// A suffix after the final close cannot contain a complete pair. Do not
+			// make the paired regex fail again from every unmatched opening there.
+			const pairedPrefix = processed
+				.slice(0, lastCloseEnd)
+				.replace(new RegExp(`${openTag}([\\s\\S]*?)${closeTag}`, "gi"), "");
+			processed = pairedPrefix + processed.slice(lastCloseEnd);
+		}
 
 		const unclosed = new RegExp(`${openTag}[\\s\\S]*$`, "gi");
 		processed = processed.replace(unclosed, "");

@@ -108,6 +108,11 @@ describe("shared reasoning-tag grammar", () => {
 			stripReasoningBlocks("< thinking >private</ thinking >Visible"),
 		).toBe("Visible");
 	});
+
+	it("bounds repeated unmatched openings without exposing their payload", () => {
+		const residue = `${"<reasoning>".repeat(20_000)}private payload`;
+		expect(stripReasoningBlocks(residue)).toBe("");
+	});
 });
 
 describe("reasoning residue at final egress", () => {
