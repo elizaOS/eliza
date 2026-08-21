@@ -46,8 +46,10 @@ export function createChatAccessoryBarController({
         appliedHidden = targetHidden;
       })
       .catch((error) => {
-        // error-policy:J4 the optional native keyboard bridge can be absent or
-        // unavailable; ordinary WebView keyboard behavior remains usable.
+        // error-policy:J7 native keyboard-bridge diagnostics must not kill the
+        // focus loop. This narrows no error shape and renders no distinguishable
+        // state, so it is a diagnostics catch rather than a J4 degrade: the
+        // accessory bar simply keeps whatever visibility the WebView gave it.
         reportError(error);
       });
     return update;
@@ -75,7 +77,7 @@ const chatAccessoryBarController = createChatAccessoryBarController({
   reportError: (error) => {
     logger.warn(
       { error },
-      "[ChatOverlay] iOS keyboard accessory visibility unavailable",
+      "[ios-chat-accessory-bar] iOS keyboard accessory visibility unavailable",
     );
   },
 });

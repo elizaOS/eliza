@@ -3,7 +3,7 @@
  * WebView-global writes with a deterministic fake native bridge.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createChatAccessoryBarController } from "./ios-chat-accessory-bar";
 
@@ -126,5 +126,47 @@ describe("iOS chat accessory controller", () => {
     await controller.setChatComposerHidden(false);
 
     expect(loadKeyboard).not.toHaveBeenCalled();
+  });
+});
+
+// The exported functions run against a module-level singleton whose `enabled`
+// flag and dynamic `@capacitor/keyboard` import are the actual production
+// wiring. The controller tests above inject fakes for both, so without these
+// the shipped path — the one that decides whether anything is hidden at all —
+// would be covered by nothing.
+describe("production singleton wiring", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("mutates the native bridge on a native iOS build", async () => {
+    const setAccessoryBarVisible = vi.fn().mockResolvedValue(undefined);
+    vi.doMock("../../platform/init", () => ({ isNative: true, isIOS: true }));
+    vi.doMock("@capacitor/keyboard", () => ({
+      Keyboard: { setAccessoryBarVisible },
+    }));
+
+    const { setChatComposerAccessoryBarHidden } = await import(
+      "./ios-chat-accessory-bar"
+    );
+    setChatComposerAccessoryBarHidden(true);
+    await vi.waitFor(() =>
+      expect(setAccessoryBarVisible).toHaveBeenCalledWith({ isVisible: false }),
+    );
+  });
+
+  it("never imports the native bridge on a non-iOS build", async () => {
+    const keyboardModule = vi.fn();
+    vi.doMock("../../platform/init", () => ({ isNative: true, isIOS: false }));
+    vi.doMock("@capacitor/keyboard", keyboardModule);
+
+    const {
+      initializeIosKeyboardAccessoryBar,
+      setChatComposerAccessoryBarHidden,
+    } = await import("./ios-chat-accessory-bar");
+    await initializeIosKeyboardAccessoryBar();
+    setChatComposerAccessoryBarHidden(true);
+
+    expect(keyboardModule).not.toHaveBeenCalled();
   });
 });
