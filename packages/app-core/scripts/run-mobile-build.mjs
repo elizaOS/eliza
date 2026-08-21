@@ -6930,6 +6930,9 @@ function stripAndroidForCloud({ env = process.env } = {}) {
         "",
       )
       .replace(/android:allowBackup="[^"]*"/, 'android:allowBackup="false"');
+    xml = xml
+      .replace(/(<\/provider>)\n[ \t]*(<activity\b)/g, "$1\n\n        $2")
+      .replace(/\n[ \t]*<\/(application)>/g, "\n    </$1>");
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
