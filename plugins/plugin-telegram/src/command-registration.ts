@@ -43,6 +43,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -109,8 +111,11 @@ function sanitizeCommandName(name: string): string | null {
 
 /** Clamp a description to Telegram's limit; a description is always required. */
 function clampDescription(description: string): string {
-  const trimmed = description.trim();
-  return trimmed.slice(0, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+  const wellFormed = toWellFormedUnicode(description.trim());
+  if (wellFormed.length <= TELEGRAM_COMMAND_DESCRIPTION_MAX) {
+    return wellFormed;
+  }
+  return truncateWellFormed(wellFormed, TELEGRAM_COMMAND_DESCRIPTION_MAX);
 }
 
 /**

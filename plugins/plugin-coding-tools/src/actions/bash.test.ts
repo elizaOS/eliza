@@ -3241,6 +3241,197 @@ describe("destructive-bulk confirm gate", () => {
     }
   });
 
+  it.each([
+    ["line feed", "\n"],
+    ["carriage return", "\r"],
+    ["background separator", " & "],
+  ])(
+    "blocks an unconfirmed recursive delete after an unquoted %s",
+    async (_name, separator) => {
+      const { command, target } = await createRecursiveDeleteCommand();
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "inspect, then clean up the old projects"),
+          undefined,
+          { command: `printf safe${separator}${command}` },
+        );
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(result.data).toMatchObject({
+          destructive_reason: "recursive delete",
+        });
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(target, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "does not gate destructive-looking heredoc data",
+    async () => {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print this example without running it"),
+        undefined,
+        { command: "cat <<'EOF'\nrm -rf ./data\nEOF" },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toContain("rm -rf ./data");
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "blocks recursive deletes across nested executable expansion shapes",
+    async () => {
+      const commandShapes = [
+        (command: string) => `printf '%s' "$(${command})"`,
+        (command: string) => `printf '%s' \`${command}\``,
+        (command: string) => `cat <<EOF\n$(${command})\nEOF`,
+        (command: string) => `printf '%s' "prefix ' $(${command})"`,
+        (command: string) => `printf '%s' "$(printf safe # )\n${command}\n)"`,
+      ];
+
+      for (const shape of commandShapes) {
+        const syntaxProbe = await execFileAsync("/bin/bash", [
+          "--noprofile",
+          "--norc",
+          "-c",
+          shape("printf nested-expansion-boundary"),
+        ]);
+        expect(syntaxProbe.stdout).toContain("nested-expansion-boundary");
+
+        const { command, target } = await createRecursiveDeleteCommand();
+        const { runtime } = await makeRuntime();
+        try {
+          const result = await shellAction.handler?.(
+            runtime,
+            makeMessage(undefined, "inspect the generated value"),
+            undefined,
+            { command: shape(command) },
+          );
+
+          expect(result.success).toBe(false);
+          expect(result.text).toContain("needs_confirmation");
+          expect(result.data).toMatchObject({
+            destructive_reason: "recursive delete",
+          });
+          expect(await pathExists(target)).toBe(true);
+        } finally {
+          await fs.rm(target, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "runs nested destructive-looking text when shell quoting makes it literal",
+    async () => {
+      const { runtime } = await makeRuntime();
+      const literal = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the literal example"),
+        undefined,
+        { command: "printf '%s' '$(rm -rf ./data)'" },
+      );
+      const quotedHeredoc = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the quoted heredoc example"),
+        undefined,
+        { command: "cat <<'EOF'\n$(rm -rf ./data)\nEOF" },
+      );
+      const commentedLiteral = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "print the benign generated value"),
+        undefined,
+        {
+          command: `printf '%s' "$(printf safe # rm -rf ./data )\n)"`,
+        },
+      );
+
+      expect(literal.success).toBe(true);
+      expect(literal.text).toContain("$(rm -rf ./data)");
+      expect(quotedHeredoc.success).toBe(true);
+      expect(quotedHeredoc.text).toContain("$(rm -rf ./data)");
+      expect(commentedLiteral.success).toBe(true);
+      expect(commentedLiteral.text).toContain("safe");
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "does not let parameter expansion text hide a recursive delete",
+    async () => {
+      const { command, target } = await createRecursiveDeleteCommand();
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "inspect, then clean up the old projects"),
+          undefined,
+          {
+            command: `printf '%s' \${review_unset:-<<EOF}\n${command}\nEOF`,
+          },
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(result.data).toMatchObject({
+          destructive_reason: "recursive delete",
+        });
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(target, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "gates executable lines after arithmetic shifts and continued heredoc terminators",
+    async () => {
+      const commandShapes = [
+        (command: string) =>
+          `review_slots[1<<2]=ready\n${command}\n2]=ready\n:`,
+        (command: string) => `printf '%s' $[1<<2]\n${command}\n2]\n:`,
+        (command: string) =>
+          `cat <<EOF\nsafe payload\nEO\\\nF\n${command}\nEOF\n:`,
+      ];
+
+      for (const shape of commandShapes) {
+        const syntaxProbe = await execFileAsync("/bin/bash", [
+          "--noprofile",
+          "--norc",
+          "-c",
+          shape("printf shell-boundary"),
+        ]);
+        expect(syntaxProbe.stdout).toContain("shell-boundary");
+
+        const { command, target } = await createRecursiveDeleteCommand();
+        const { runtime } = await makeRuntime();
+        try {
+          const result = await shellAction.handler?.(
+            runtime,
+            makeMessage(undefined, "inspect, then clean up the old projects"),
+            undefined,
+            { command: shape(command) },
+          );
+
+          expect(result.success).toBe(false);
+          expect(result.text).toContain("needs_confirmation");
+          expect(result.data).toMatchObject({
+            destructive_reason: "recursive delete",
+          });
+          expect(await pathExists(target)).toBe(true);
+        } finally {
+          await fs.rm(target, { recursive: true, force: true });
+        }
+      }
+    },
+  );
+
   it("runs the exact command only after the one-time later-message ceremony", async () => {
     const { command, target } = await createRecursiveDeleteCommand();
     const { runtime } = await makeRuntime();

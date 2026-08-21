@@ -114,6 +114,68 @@ describe("classifyDestructiveCommand — fires", () => {
     expect(v.destructive).toBe(true);
     expect(v.targets[0]).toContain("eliza");
   });
+
+  it.each([
+    ["command substitution", "printf '%s' $(rm -rf ./nested)"],
+    ["double-quoted command substitution", 'printf "%s" "$(rm -rf ./nested)"'],
+    ["backtick substitution", "printf '%s' `rm -rf ./nested`"],
+    [
+      "nested legacy backticks",
+      "printf '%s' `printf '%s' \\`rm -rf ./nested\\``",
+    ],
+    [
+      "command substitution inside backticks",
+      "printf '%s' `printf '%s' \"$(rm -rf ./nested)\"`",
+    ],
+    [
+      "mixed nested substitutions",
+      'printf "%s" "$(printf \'%s\' "$(rm -rf ./nested)")"',
+    ],
+    [
+      "substitution after an apostrophe inside double quotes",
+      'printf "%s" "prefix \' $(rm -rf ./nested)"',
+    ],
+    [
+      "substitution after a commented closing parenthesis",
+      'printf "%s" "$(printf safe # )\nrm -rf ./nested\n)"',
+    ],
+  ])("recursive delete inside %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["./nested"],
+    });
+  });
+
+  it.each([
+    ["command substitution", "cat <<EOF\n$(rm -rf ./nested)\nEOF"],
+    ["backtick substitution", "cat <<EOF\n`rm -rf ./nested`\nEOF"],
+    [
+      "quoted-looking payload around an expansion",
+      "cat <<EOF\n'$(rm -rf ./nested)'\nEOF",
+    ],
+  ])("recursive delete inside an unquoted heredoc %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["./nested"],
+    });
+  });
+
+  it.each([
+    ["unterminated command substitution", "printf '%s' $(rm -rf ./nested"],
+    ["unterminated backtick substitution", "printf '%s' `rm -rf ./nested"],
+  ])("fails safe for an %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "shell syntax requires confirmation (unterminated posix token)",
+    });
+  });
+
+  it("fails safe when nested expansion depth exceeds the inspection bound", () => {
+    const command = `${"$(printf %s ".repeat(18)}safe${")".repeat(18)}`;
+    expect(classifyDestructiveCommand(command).destructive).toBe(true);
+  });
 });
 
 describe("classifyDestructiveCommand — lexical bypass resistance", () => {
@@ -369,6 +431,31 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     ).toBe(false);
   });
   it.each([
+    ["single-quoted command substitution", "printf '%s' '$(rm -rf ./data)'"],
+    ["escaped command substitution", "printf '%s' \\$(rm -rf ./data)"],
+    ["single-quoted backticks", "printf '%s' '`rm -rf ./data`'"],
+    ["escaped backticks", "printf '%s' \\`rm -rf ./data\\`"],
+    ["benign nested substitution", "printf '%s' \"$(printf safe)\""],
+    [
+      "apostrophe before a benign double-quoted substitution",
+      'printf "%s" "prefix \' $(printf safe)"',
+    ],
+    [
+      "closing parenthesis quoted inside a substitution",
+      "printf \"%s\" \"$(printf '%s' '# )')\"",
+    ],
+    [
+      "destructive-looking text inside a substitution comment",
+      'printf "%s" "$(printf safe # rm -rf ./data )\n)"',
+    ],
+    [
+      "escaped comment marker before the substitution delimiter",
+      'printf "%s" "$(printf \\# )"',
+    ],
+  ])("%s remains literal or benign", (_name, command) => {
+    expect(classifyDestructiveCommand(command).destructive).toBe(false);
+  });
+  it.each([
     ["line feed", "printf 'safe\nrm -rf ./data'"],
     ["carriage return", "printf 'safe\rrm -rf ./data'"],
     ["ampersand", "printf 'safe & rm -rf ./data'"],
@@ -462,5 +549,13 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
       classifyDestructiveCommand("cat <<'EOF'\nEO\\\nF\nrm -rf ./data\nEOF")
         .destructive,
     ).toBe(false);
+  });
+
+  it.each([
+    ["single-quoted", "cat <<'EOF'\n$(rm -rf ./data)\nEOF"],
+    ["double-quoted", 'cat <<"EOF"\n`rm -rf ./data`\nEOF'],
+    ["backslash-quoted", "cat <<\\EOF\n$(rm -rf ./data)\nEOF"],
+  ])("keeps expansions in a %s heredoc literal", (_name, command) => {
+    expect(classifyDestructiveCommand(command).destructive).toBe(false);
   });
 });

@@ -58,6 +58,12 @@ __filename = '"/worker.js"'
 [observability]
 enabled = true
 
+# Querying these logs after the fact: the Observability query API silently caps
+# results (~50 events) with NO truncation signal — one wide query over a
+# multi-minute window can cover only its last seconds and look complete. Slice
+# the window (~5s slices) and aggregate before asserting absence or measuring a
+# rate (#22548). Same caveat is documented in scripts/admin/cf-tail.sh.
+
 # Logs and traces are configured separately. Keep logs complete for production
 # diagnostics while sampling distributed traces to bound storage volume.
 [observability.logs]

@@ -354,4 +354,27 @@ describe("DiscordTriageAdapter", () => {
 			),
 		).rejects.toThrow(/no cached draft/);
 	});
+
+	it("keeps surrogate pairs intact in draft preview truncation", async () => {
+		const service = createFakeDiscordService({
+			channels: [{ channelId: "c1" }],
+			messagesByChannel: {
+				c1: [discordMemory({ messageId: "89", channelId: "c1" })],
+			},
+		});
+		const runtime = createRuntime(service);
+		const adapter = new DiscordTriageAdapter();
+		await adapter.listMessages(runtime, {});
+
+		const longBody = `${"a".repeat(236)}🦊${"b".repeat(50)}`;
+		const { preview } = await adapter.createDraft(runtime, {
+			source: "discord",
+			inReplyToId: "discord:89",
+			to: [{ identifier: "111222333444555666" }],
+			body: longBody,
+		});
+
+		expect(preview.isWellFormed()).toBe(true);
+		expect(preview).toBe(`${"a".repeat(236)}...`);
+	});
 });

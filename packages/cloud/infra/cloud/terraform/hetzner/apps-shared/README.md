@@ -173,23 +173,74 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
 
 1. Download the newest set from the bucket to an operator machine or a
    throwaway VM with an **isolated** Postgres instance (never the live node).
-2. Run the harness:
+2. Initialize a disposable Postgres target with a unique bootstrap superuser
+   that does not exist in the source archive (for example
+   `eliza_restore_admin_<uuid>`), plus pgbouncer. A default target containing
+   the source `postgres` role is intentionally refused before destructive SQL:
+   strict `pg_dumpall --globals-only` replay cannot safely ignore role
+   collisions. Generate a one-use identity (`drill-<uuid>`) and set it on the
+   Postgres server:
+
+   ```sql
+   ALTER SYSTEM SET eliza.restore_target_id =
+     'drill-11111111-2222-4333-8444-555555555555';
+   SELECT pg_reload_conf();
+   ```
+
+   The harness inventories existing target roles before restore and refuses
+   any collision with `globals.sql`. It also verifies the server-side identity
+   in the same psql session before globals, each database drop/create, and each
+   database's rendered pg_restore SQL. Restore sessions use `--no-psqlrc`, and
+   the harness renders without pg_restore `--create`, so no unguarded reconnect
+   exists. A DNS alias, alternate address, or SSH tunnel cannot redirect a
+   later destructive connection to another server. The identity is genuinely
+   one-use: the harness's very first guarded session both verifies it and
+   clears it (`ALTER SYSTEM RESET` + `pg_reload_conf()`), so a second run —
+   accidental re-invocation or a racing process — observes an unset setting
+   and fails closed with `REFUSED_TARGET_AUTHORITY` rather than replaying the
+   same nonce. Still generate a fresh identity per drill and destroy the
+   target afterward.
+
+3. Prepare a root-readable `tenant-probes.json` that covers every opaque dump
+   id in `dbmap.tsv` and references password environment variables rather
+   than containing passwords or database names:
+
+   ```json
+   {
+     "schema_version": 1,
+     "tenants": [
+       {
+         "dump_id": "0123456789ab",
+         "role": "restored_tenant_role",
+         "password_env": "DRILL_TENANT_1_PASSWORD"
+       }
+     ]
+   }
+   ```
+
+   Export each referenced variable from the protected operator secret source.
+   The restored SCRAM hashes authenticate those real roles; values are passed
+   to libpq only through `PGPASSWORD` and never enter arguments or reports.
+
+4. Run the harness:
 
    ```bash
    bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts \
      --set-dir <downloaded-set> \
-     --target-dsn postgresql://postgres:...@127.0.0.1:5433/postgres \
-     --passphrase-file <path> --rpo-hours 26 --rto-minutes 60 \
-     --output drill-report.json
+     --target-dsn postgresql://eliza_restore_admin:...@127.0.0.1:5433/postgres \
+     --target-id drill-11111111-2222-4333-8444-555555555555 \
+     --pooler-endpoint 127.0.0.1:6432 \
+     --tenant-probes-file <path> --passphrase-file <path> \
+     --rpo-hours 26 --rto-minutes 60 --output drill-report.json
    ```
 
-   It verifies sidecar/archive integrity and per-file checksums, restores
-   globals then every database, proves per-tenant isolation after restore
-   (own-database connect works; `has_database_privilege` shows CONNECT revoked
-   cross-tenant), and emits a redacted report with measured RPO/RTO. It
-   refuses `10.30.1.10` and any `:6432` pooler target outright, and exits `2`
-   when objectives are missed.
-3. File the redacted `drill-report.json` with the ops evidence for the run and
+   It fails the globals restore on the first SQL error, restores each database,
+   then authenticates every tenant role to its own database through both direct
+   Postgres and pgbouncer and requires every cross-tenant connection to fail.
+   Each successful own connection must also return the one-use target identity.
+   The report contains only opaque dump ids/counts and measured RPO/RTO; the
+   process exits `2` when objectives are missed.
+5. File the redacted `drill-report.json` with the ops evidence for the run and
    destroy the verification instance (the harness already shreds its decrypted
    workspace).
 

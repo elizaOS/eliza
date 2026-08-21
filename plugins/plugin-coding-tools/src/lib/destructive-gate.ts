@@ -70,6 +70,28 @@ const POSIX_COMMAND_PREFIXES = new Set([
   "while",
 ]);
 const ASSIGNMENT_WORD = /^[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?=/;
+const POSIX_RESERVED_WORDS = new Set([
+  "!",
+  "case",
+  "coproc",
+  "do",
+  "done",
+  "elif",
+  "else",
+  "esac",
+  "fi",
+  "for",
+  "function",
+  "if",
+  "in",
+  "select",
+  "then",
+  "time",
+  "until",
+  "while",
+  "{",
+  "}",
+]);
 const DROP_SQL =
   /\bdrop\s+(database|table|schema)\s+(?:if\s+exists\s+)?([^\s;]+)/i;
 
@@ -93,6 +115,26 @@ function endsWithLineContinuation(line: string): boolean {
     count += 1;
   }
   return count % 2 === 1;
+}
+
+/** Index of the closing backtick honoring backslash escapes, or -1. */
+function backtickEnd(source: string, start: number): number {
+  let end = start;
+  while (end < source.length) {
+    if (source[end] === "\\") end += 2;
+    else if (source[end] === "`") return end;
+    else end += 1;
+  }
+  return -1;
+}
+
+/**
+ * Removes the backtick-form escapes the shell strips before re-parsing the
+ * substitution body, so an escaped nested backtick is inspected as the
+ * executable substitution it becomes.
+ */
+function unescapeBacktickBody(body: string): string {
+  return body.replace(/\\([$`\\])/g, "$1");
 }
 
 /**
@@ -167,6 +209,44 @@ function isStaticArithmetic(body: string): boolean {
     }
   }
   return depth === 0;
+}
+
+/**
+ * Inspects the substitutions an expanding heredoc body will execute. Quotes
+ * in a heredoc body are data, so only `$(...)` and backtick regions run;
+ * each is classified recursively and anything unbalanced fails closed.
+ */
+function expandedHeredocVerdict(
+  body: string,
+  budget: Budget,
+): DestructiveVerdict | undefined {
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index] as string;
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === "$" && body[index + 1] === "(") {
+      const sub = parenthesized(body, index + 2, "posix");
+      if (!sub) return unproved("heredoc command interpolation");
+      const verdict = nested(sub.body, "posix", budget);
+      if (verdict.destructive) return verdict;
+      index = sub.end;
+      continue;
+    }
+    if (char === "`") {
+      const end = backtickEnd(body, index + 1);
+      if (end < 0) return unproved("heredoc command interpolation");
+      const verdict = nested(
+        unescapeBacktickBody(body.slice(index + 1, end)),
+        "posix",
+        budget,
+      );
+      if (verdict.destructive) return verdict;
+      index = end;
+    }
+  }
+  return undefined;
 }
 
 function addToken(result: Lexed, budget: Budget, token: Token): boolean {
@@ -325,9 +405,12 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
           break;
         }
         const body = source.slice(bodyStart, terminatorStart);
-        if (heredoc.expand && (body.includes("$(") || body.includes("`"))) {
-          result.verdict = unproved("heredoc command interpolation");
-          break;
+        if (heredoc.expand) {
+          const verdict = expandedHeredocVerdict(body, budget);
+          if (verdict) {
+            result.verdict = verdict;
+            break;
+          }
         }
       }
       continue;
@@ -476,6 +559,31 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
     ) {
       result.error = "extended glob executable is not statically supported";
       break;
+    }
+    // `word(` followed by anything but `)` is a hard POSIX syntax error: the
+    // shell refuses the offending line and aborts, so only lines already
+    // completed can have executed. Reserved words, assignment prefixes
+    // (arrays), and function definitions keep the ordinary analyzed reading.
+    if (dialect === "posix" && char === "(" && !boundary) {
+      const previous = result.tokens[result.tokens.length - 1];
+      const previousWord =
+        previous?.kind === "word" ? previous.value : undefined;
+      if (
+        previousWord !== undefined &&
+        !previousWord.endsWith("=") &&
+        !POSIX_RESERVED_WORDS.has(previousWord) &&
+        !/^[\t ]*\)/.test(source.slice(index + 1))
+      ) {
+        let keep = result.tokens.length;
+        while (keep > 0) {
+          const token = result.tokens[keep - 1];
+          if (token?.kind === "operator" && token.value === "\n") break;
+          keep -= 1;
+        }
+        result.tokens.length = keep;
+        index = source.length;
+        continue;
+      }
     }
     if (dialect === "posix" && pair === "{}") {
       addToken(result, budget, {
@@ -693,6 +801,21 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
             dynamic = true;
             value += "__substitution__";
             index = sub.end + 1;
+          } else if (dialect === "posix" && quoted === "`") {
+            // A backtick substitution executes inside double quotes too.
+            const end = backtickEnd(source, index + 1);
+            if (end < 0) break;
+            recordNested(
+              result,
+              nested(
+                unescapeBacktickBody(source.slice(index + 1, end)),
+                dialect,
+                budget,
+              ),
+            );
+            dynamic = true;
+            value += "__substitution__";
+            index = end + 1;
           } else {
             if (quoted === "$" && /[A-Za-z_{]/.test(source[index + 1] ?? "")) {
               dynamic = true;
@@ -718,19 +841,18 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
         continue;
       }
       if (dialect === "posix" && wordChar === "`") {
-        let end = index + 1;
-        while (end < source.length) {
-          if (source[end] === "\\") end += 2;
-          else if (source[end] === "`") break;
-          else end += 1;
-        }
-        if (end >= source.length) {
+        const end = backtickEnd(source, index + 1);
+        if (end < 0) {
           valid = false;
           break;
         }
         recordNested(
           result,
-          nested(source.slice(index + 1, end), dialect, budget),
+          nested(
+            unescapeBacktickBody(source.slice(index + 1, end)),
+            dialect,
+            budget,
+          ),
         );
         dynamic = true;
         value += "__substitution__";

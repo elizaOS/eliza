@@ -6,6 +6,7 @@
  * success/failure shape identical.
  */
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type ActionResultData,
   FAILURE_TEXT_PREFIX,
@@ -151,9 +152,11 @@ export function truncate(
   s: string,
   max: number,
 ): { text: string; truncated: boolean } {
-  if (s.length <= max) return { text: s, truncated: false };
+  const wellFormed = toWellFormedUnicode(s);
+  if (wellFormed.length <= max) return { text: wellFormed, truncated: false };
+  const truncatedPrefix = truncateWellFormed(wellFormed, max);
   return {
-    text: `${s.slice(0, max)}\n…[truncated, ${s.length - max} more chars]`,
+    text: `${truncatedPrefix}\n…[truncated, ${wellFormed.length - truncatedPrefix.length} more chars]`,
     truncated: true,
   };
 }

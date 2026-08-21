@@ -106,4 +106,42 @@ describe("listCharacterHistory limit guard", () => {
     expect(zero).toHaveLength(1);
     expect(zero).not.toHaveLength(20);
   });
+
+  it("omits poisoned rows and fills the requested limit with adjacent valid history", async () => {
+    const poisoned = makeMemory(2000);
+    const cyclic: Record<string, unknown> = { name: "poisoned" };
+    cyclic.self = cyclic;
+    poisoned.metadata.before = cyclic;
+    const valid = [makeMemory(1999), makeMemory(1998), makeMemory(1997)];
+    const getMemories = vi.fn(async () => [poisoned, ...valid]);
+    const runtime = { agentId: "agent-123", getMemories } as never;
+
+    const result = await listCharacterHistory(runtime, 2);
+
+    expect(result.map((entry) => entry.id)).toEqual(["m-1999", "m-1998"]);
+    expect(result).toHaveLength(2);
+  });
+
+  it("omits over-depth and over-node rows while filling the requested limit", async () => {
+    const overDepth = makeMemory(2001);
+    let nested: Record<string, unknown> = {};
+    overDepth.metadata.before = nested;
+    for (let depth = 0; depth <= 64; depth += 1) {
+      const child: Record<string, unknown> = {};
+      nested.child = child;
+      nested = child;
+    }
+    const overNode = makeMemory(2000);
+    const sparse: unknown[] = [];
+    sparse.length = 100_001;
+    overNode.metadata.before = { messageExamples: sparse };
+    const valid = [makeMemory(1999), makeMemory(1998), makeMemory(1997)];
+    const getMemories = vi.fn(async () => [overDepth, overNode, ...valid]);
+    const runtime = { agentId: "agent-123", getMemories } as never;
+
+    const result = await listCharacterHistory(runtime, 2);
+
+    expect(result.map((entry) => entry.id)).toEqual(["m-1999", "m-1998"]);
+    expect(result).toHaveLength(2);
+  });
 });

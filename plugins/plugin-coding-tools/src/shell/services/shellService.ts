@@ -1868,11 +1868,19 @@ export class ShellService extends Service {
         target: this.resolvePath(parts[1], cwd),
       });
     } else if (cmd === "echo" && command.includes(">")) {
-      const match = command.match(/>\s*([^\s]+)$/);
-      if (match) {
+      const redirect = command.lastIndexOf(">");
+      let targetStart = redirect + 1;
+      while (
+        targetStart < command.length &&
+        command[targetStart]?.trim() === ""
+      ) {
+        targetStart += 1;
+      }
+      const target = command.slice(targetStart);
+      if (target && ![...target].some((character) => character.trim() === "")) {
         operations.push({
           type: "write" as FileOperationType,
-          target: this.resolvePath(match[1], cwd),
+          target: this.resolvePath(target, cwd),
         });
       }
     } else if (cmd === "mkdir" && parts.length > 1) {

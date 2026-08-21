@@ -262,4 +262,62 @@ describe("SAVED_NOTES provider", () => {
     expect(text).toContain("(truncated)");
     expect(text.length).toBeLessThan(1_000);
   });
+
+  it("keeps UTF-16 surrogate pairs intact when truncating a note line to 400", () => {
+    const body = `${"a".repeat(382)}🦊${"b".repeat(100)}`;
+    const text = renderSavedNotesText([
+      {
+        id: "note-emoji-boundary",
+        title: "x",
+        body,
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    const noteLine = text.split("\n").find((line) => line.startsWith("- x"));
+    expect(noteLine).toBeDefined();
+    if (noteLine) {
+      expect(noteLine.isWellFormed()).toBe(true);
+      expect(noteLine.length).toBeLessThanOrEqual(402);
+    }
+    expect(noteLine).not.toContain("🦊");
+    expect(noteLine).toContain("(truncated)");
+  });
+
+  it("sanitizes lone surrogates in a note before truncation", () => {
+    const text = renderSavedNotesText([
+      {
+        id: "note-lone",
+        title: "a\ud800bc",
+        body: "",
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    expect(text).toContain("a\ufffdbc");
+    expect(text.isWellFormed()).toBe(true);
+  });
+
+  it("preserves an emoji that fits entirely under the 400 cap", () => {
+    const body = `${"a".repeat(10)}🦊`;
+    const text = renderSavedNotesText([
+      {
+        id: "note-fitting",
+        title: "t",
+        body,
+        color: "yellow",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:00.000Z",
+      },
+    ]);
+    expect(text).toContain("🦊");
+    expect(text.isWellFormed()).toBe(true);
+    const noteLine = text.split("\n").find((line) => line.startsWith("- t"));
+    expect(noteLine).toBeDefined();
+    if (noteLine) {
+      expect(noteLine.isWellFormed()).toBe(true);
+    }
+  });
 });

@@ -67,20 +67,6 @@ describe("Maps view serverInteract", () => {
     const { runtime, adapter } = harness();
 
     await expect(
-      serverInteract("maps-describe-providers", {}, { runtime }),
-    ).resolves.toMatchObject({
-      success: true,
-      data: {
-        providers: [
-          {
-            id: "fixture_maps",
-            attribution: "Map data © Fixture Maps",
-          },
-        ],
-      },
-    });
-
-    await expect(
       serverInteract(
         "maps-search-places",
         { query: " waterfront ", limit: 12 },
@@ -88,7 +74,14 @@ describe("Maps view serverInteract", () => {
       ),
     ).resolves.toMatchObject({
       success: true,
-      data: { places: [ORIGIN, DESTINATION], nextCursor: null },
+      data: {
+        page: { places: [ORIGIN, DESTINATION], nextCursor: null },
+        provider: {
+          id: "fixture_maps",
+          attribution: "Map data © Fixture Maps",
+          generation: 1,
+        },
+      },
     });
     expect(adapter.searchPlaces).toHaveBeenCalledWith({
       query: "waterfront",
@@ -101,7 +94,13 @@ describe("Maps view serverInteract", () => {
         { placeId: ORIGIN.providerPlaceId, provider: ORIGIN.provider },
         { runtime },
       ),
-    ).resolves.toMatchObject({ success: true, data: { place: ORIGIN } });
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        place: ORIGIN,
+        provider: { id: "fixture_maps", generation: 1 },
+      },
+    });
 
     await expect(
       serverInteract(
@@ -109,7 +108,13 @@ describe("Maps view serverInteract", () => {
         { origin: ORIGIN, destination: DESTINATION, travelMode: "walk" },
         { runtime },
       ),
-    ).resolves.toMatchObject({ success: true, data: { route: ROUTE } });
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        route: ROUTE,
+        provider: { id: "fixture_maps", generation: 1 },
+      },
+    });
   });
 
   it("returns typed invalid-input and provider failures", async () => {

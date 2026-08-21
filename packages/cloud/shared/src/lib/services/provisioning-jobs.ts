@@ -84,6 +84,10 @@ import {
 } from "./app-cache-invalidation-job";
 import { dispatchAppDbDeprovisionJob } from "./app-db-deprovision-job-service";
 import { dispatchAppDeployJob, readAppDeployJobData } from "./app-deploy-job-service";
+import {
+  APP_DEPLOYMENT_GENERATION_KEY,
+  deploymentGenerationFromMetadata,
+} from "./app-deployment-generation";
 import { dispatchContainerJob, getContainerExecutorDeps } from "./container-job-service";
 import { readContainerProvisionJobData } from "./container-jobs-data";
 import { dispatchContainerStopJob } from "./container-stop-job-service";
@@ -1068,6 +1072,25 @@ const SETTLEMENT_RETRY_MAX_MS = 5_000;
 const UNREACHABLE_BRIDGE_SENTINEL = "http://127.0.0.1:65535";
 
 /**
+ * Health-check budget a container lifecycle job may legitimately spend
+ * waiting for `/api/health`. Mirrors docker-sandbox-provider's
+ * `HEALTH_CHECK_TIMEOUT_MS` (360s) WITHOUT importing it — that module drags
+ * node-only deps (ssh2) into the Worker bundle. A guarding test
+ * (`provision-duration-estimate.test.ts`) asserts the two stay equal.
+ */
+export const CONTAINER_HEALTH_CHECK_BUDGET_MS = 360_000;
+
+/**
+ * User-facing duration estimate for container lifecycle jobs (provision /
+ * restart / restore / fresh-boot). The old flat 90s estimate assumed a 60s
+ * health check against the real 360s budget, so users were told a healthy
+ * in-budget job was "still in progress after 362s" (#22548). Estimate the
+ * real worst case: DB assignment + docker pull/run (~30s) + full health
+ * budget.
+ */
+export const CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS = 30_000 + CONTAINER_HEALTH_CHECK_BUDGET_MS;
+
+/**
  * Per-job execution timeout for the `withTimeout(executeJob(job), …)` wrap,
  * BY JOB TYPE (#10919).
  *
@@ -1656,8 +1679,7 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
-      // DB assignment + Docker pull/run (10-30s) + health check (up to 60s)
-      estimatedDurationMs: 90_000,
+      estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_provision",
       validateSandbox:
         expected !== undefined
@@ -2067,9 +2089,9 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
-      // docker start is ~5s on the fast path, full re-provision is ~60s.
-      // Budget the long path so the UI doesn't show a stuck estimate.
-      estimatedDurationMs: 90_000,
+      // docker start is ~5s on the fast path; budget the full re-provision
+      // path so the UI doesn't show a stuck estimate.
+      estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_resume",
       beforeInsert: async (tx) => {
         const supersededAt = new Date();
@@ -2156,8 +2178,8 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
-      // Fresh provision (~60-90s) + state restore.
-      estimatedDurationMs: 90_000,
+      // Fresh provision + state restore.
+      estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_wake",
       // Reusing an in-flight wake keeps ITS params and drops the caller's. A
       // bare retry ("wake me") may ride whatever is already running, but a
@@ -2229,8 +2251,8 @@ export class ProvisioningJobService {
       userId: params.userId,
       webhookUrl: params.webhookUrl,
       maxAttempts: 3,
-      // shutdown ~5s + provision ~60s; budget the long path.
-      estimatedDurationMs: 90_000,
+      // shutdown ~5s + full provision; budget the long path.
+      estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
       logName: "agent_restart",
     });
   }
@@ -2288,7 +2310,7 @@ export class ProvisioningJobService {
           organizationId: candidate.organization_id,
           userId: candidate.user_id,
           maxAttempts: 3,
-          estimatedDurationMs: 90_000,
+          estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
           logName: "legacy_warm_claim_recovery",
           mutuallyExclusiveJobTypes: [
             ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
@@ -2374,7 +2396,7 @@ export class ProvisioningJobService {
           organizationId: candidate.organization_id,
           userId: candidate.user_id,
           maxAttempts: 3,
-          estimatedDurationMs: 90_000,
+          estimatedDurationMs: CONTAINER_LIFECYCLE_ESTIMATED_DURATION_MS,
           logName: "stranded_warm_claim_recovery",
           mutuallyExclusiveJobTypes: [
             ...ADMIN_CANARY_CONFLICTING_JOB_TYPES,
@@ -3797,12 +3819,18 @@ export class ProvisioningJobService {
       // CP worker (still default=all lanes) claims an APP_DEPLOY it can't run
       // and exhausts retries.
       case JOB_TYPES.APP_DEPLOY: {
-        const { appId } = readAppDeployJobData(job);
+        const { appId, deploymentGeneration } = readAppDeployJobData(job);
         return async (tx, failedJob) => {
           const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
+            .where(
+              and(
+                eq(apps.id, appId),
+                eq(apps.organization_id, failedJob.organization_id),
+                sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`,
+              ),
+            )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
@@ -3829,12 +3857,14 @@ export class ProvisioningJobService {
       // container after ANOTHER tenant's app id and flip that app to `failed`,
       // because the cross-org WHERE matches zero rows.
       case JOB_TYPES.CONTAINER_PROVISION: {
-        const { containerId } = readContainerProvisionJobData(job);
+        const { containerId, deploymentGeneration: jobGeneration } =
+          readContainerProvisionJobData(job);
         return async (tx, failedJob) => {
           const [row] = await tx
             .select({
               projectName: containers.project_name,
               organizationId: containers.organization_id,
+              metadata: containers.metadata,
             })
             .from(containers)
             .where(
@@ -3846,10 +3876,22 @@ export class ProvisioningJobService {
             .limit(1);
           const appId = row?.projectName;
           if (!appId || !isValidUUID(appId)) return;
+          const rowGeneration = deploymentGenerationFromMetadata(row.metadata);
+          if (jobGeneration && jobGeneration !== rowGeneration) return;
+          const deploymentGeneration = jobGeneration ?? rowGeneration;
+          const generationFilter = deploymentGeneration
+            ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${deploymentGeneration}`
+            : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
           const [failedApp] = await tx
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
-            .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
+            .where(
+              and(
+                eq(apps.id, appId),
+                eq(apps.organization_id, row.organizationId),
+                generationFilter,
+              ),
+            )
             .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);

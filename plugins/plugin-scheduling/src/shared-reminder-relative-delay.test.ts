@@ -61,6 +61,8 @@ describe("explicit Shared reminder relative delay", () => {
 
   it.each([
     'Use the example "remind me in 2 minutes" in the documentation.',
+    'Don\'t say "remind me in 5 minutes" yet.',
+    'It\'s just an example: "remind me in 5 minutes".',
     "For example: remind me in 2 minutes.",
     "Remind me tomorrow to stretch for five minutes.",
     "Remind me at 3pm to check in with the team for 30 minutes.",

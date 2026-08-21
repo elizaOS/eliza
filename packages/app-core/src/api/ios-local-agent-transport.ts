@@ -497,9 +497,9 @@ export function isIosInProcessLocalAgentBase(
   baseUrl: string | null | undefined,
 ): boolean {
   if (!baseUrl) return false;
-  return isIosInProcessLocalAgentUrl(
-    `${baseUrl.replace(/\/+$/, "")}/api/health`,
-  );
+  let end = baseUrl.length;
+  while (end > 0 && baseUrl.charCodeAt(end - 1) === 47) end--;
+  return isIosInProcessLocalAgentUrl(`${baseUrl.slice(0, end)}/api/health`);
 }
 
 function isSafeLocalPath(path: string): boolean {

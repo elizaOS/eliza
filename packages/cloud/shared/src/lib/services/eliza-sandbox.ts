@@ -3899,11 +3899,16 @@ export class ElizaSandboxService {
     init: RequestInit,
     canonicalBridgeBase: unknown,
   ): Promise<Response> {
+    const trimTrailingSlashes = (value: string): string => {
+      let end = value.length;
+      while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+      return value.slice(0, end);
+    };
     const requestedBase =
       typeof canonicalBridgeBase === "string"
-        ? canonicalBridgeBase.trim().replace(/\/+$/, "")
+        ? trimTrailingSlashes(canonicalBridgeBase.trim())
         : null;
-    const storedBase = rec.bridge_url?.trim().replace(/\/+$/, "") ?? null;
+    const storedBase = rec.bridge_url ? trimTrailingSlashes(rec.bridge_url.trim()) : null;
     if (requestedBase && requestedBase === storedBase) {
       const url = new URL(requestedBase);
       const isLoopback =
@@ -6115,11 +6120,74 @@ export class ElizaSandboxService {
     const text = typeof params.text === "string" ? params.text.trim() : "";
     if (!text) return null;
 
-    const exactWords =
-      /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
-      /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
-    if (exactWords?.[1]?.trim()) {
-      return exactWords[1].trim();
+    const lower = text.toLowerCase();
+    let searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("exact word", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "exact word".length;
+      if (lower.charCodeAt(cursor) === 115) cursor++;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (lower.charCodeAt(cursor) !== 58) continue;
+      cursor++;
+      while (cursor < text.length && /\s/.test(text[cursor] ?? "")) cursor++;
+
+      let end = text.length;
+      while (end > cursor && /\s/.test(text[end - 1] ?? "")) end--;
+      if (cursor < end && (text[cursor] === '"' || text[cursor] === "'")) cursor++;
+      if (cursor < end && (text[end - 1] === '"' || text[end - 1] === "'")) end--;
+      const exact = text.slice(cursor, end).trim();
+      if (exact && !exact.includes("\n") && !exact.includes("\r")) return exact;
+    }
+
+    searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("reply", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "reply".length;
+      const whitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === whitespaceStart) continue;
+      if (lower.startsWith("briefly", cursor)) {
+        cursor += "briefly".length;
+        const brieflyWhitespaceStart = cursor;
+        while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+        if (cursor === brieflyWhitespaceStart) continue;
+      }
+      if (!lower.startsWith("with", cursor)) continue;
+      cursor += "with".length;
+      const withWhitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === withWhitespaceStart) continue;
+      const quote = text[cursor];
+      if (quote !== '"' && quote !== "'") continue;
+      const singleQuoteClose = text.indexOf("'", cursor + 1);
+      const doubleQuoteClose = text.indexOf('"', cursor + 1);
+      const close =
+        singleQuoteClose === -1
+          ? doubleQuoteClose
+          : doubleQuoteClose === -1
+            ? singleQuoteClose
+            : Math.min(singleQuoteClose, doubleQuoteClose);
+      if (close === -1) continue;
+      const reply = text.slice(cursor + 1, close).trim();
+      if (reply) return reply;
     }
 
     return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";

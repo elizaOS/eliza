@@ -8,20 +8,37 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  assertIsolatedTarget,
+  assertDirectTarget,
+  assertNoGlobalRoleCollisions,
+  assertRestoreTargetIdentity,
   buildIsolationChecks,
   evaluateObjectives,
+  guardedConsumeTargetIdentitySql,
+  guardPsqlScript,
+  isCrossTenantDenial,
   parseBackupManifest,
   parseBackupSidecar,
   parseChecksumFile,
   parseCliArgs,
   parseDbMap,
+  parseGlobalRoleNames,
+  parsePoolerEndpoint,
+  parseRestoreTargetAuthority,
+  parseTenantProbes,
+  quoteSqlIdentifier,
   RecoveryDrillError,
   redactDsn,
+  targetDatabaseDsn,
   verifyChecksums,
 } from "./apps-tenant-db-recovery";
 
@@ -91,43 +108,144 @@ describe("parseBackupManifest", () => {
   });
 });
 
-describe("assertIsolatedTarget", () => {
-  test("accepts an isolated local target", () => {
-    expect(() =>
-      assertIsolatedTarget("postgresql://postgres:pw@127.0.0.1:5433/postgres"),
-    ).not.toThrow();
-  });
+describe("restore target authority", () => {
+  const targetId = "drill-11111111-2222-4333-8444-555555555555";
 
-  test("refuses the live shared tenant DB private IP", () => {
-    expect(() =>
-      assertIsolatedTarget("postgresql://postgres:pw@10.30.1.10:5432/postgres"),
-    ).toThrow(expect.objectContaining({ code: "REFUSED_PRODUCTION_TARGET" }));
-  });
-
-  test("refusal message redacts the credential", () => {
-    try {
-      assertIsolatedTarget(
-        "postgresql://postgres:supersecret@10.30.1.10:5432/postgres",
-      );
-      throw new Error("expected refusal");
-    } catch (error) {
-      expect((error as Error).message).not.toContain("supersecret");
+  test("accepts direct DSN shapes without treating the hostname as authority", () => {
+    for (const host of ["127.0.0.1", "restore.internal", "10.30.1.10"]) {
+      expect(() =>
+        assertDirectTarget(`postgresql://postgres:pw@${host}:5433/postgres`),
+      ).not.toThrow();
     }
   });
 
-  test("refuses the pooler port even on another host", () => {
+  test("requires an exact server-returned one-use identity", () => {
+    expect(() => assertRestoreTargetIdentity(targetId, targetId)).not.toThrow();
+    expect(() => assertRestoreTargetIdentity(targetId, "")).toThrow(
+      expect.objectContaining({ code: "REFUSED_TARGET_AUTHORITY" }),
+    );
     expect(() =>
-      assertIsolatedTarget(
-        "postgresql://postgres:pw@192.168.7.2:6432/postgres",
+      assertRestoreTargetIdentity(
+        targetId,
+        "drill-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      ),
+    ).toThrow(expect.objectContaining({ code: "REFUSED_TARGET_AUTHORITY" }));
+    expect(() =>
+      assertRestoreTargetIdentity("production", "production"),
+    ).toThrow(expect.objectContaining({ code: "INVALID_TARGET_AUTHORITY" }));
+  });
+
+  test("keeps the destructive restore off the pooler surface", () => {
+    expect(() =>
+      assertDirectTarget(
+        "postgresql://postgres:pw@restore.internal:6432/postgres",
       ),
     ).toThrow(expect.objectContaining({ code: "REFUSED_POOLER_TARGET" }));
   });
 
-  test("refuses non-postgres URLs and garbage", () => {
-    expect(() => assertIsolatedTarget("mysql://a:b@c:3306/d")).toThrow(
+  test("parses only the credential-free canonical pooler port", () => {
+    expect(parsePoolerEndpoint("restore.internal:6432")).toEqual({
+      host: "restore.internal",
+      port: "6432",
+    });
+    expect(() => parsePoolerEndpoint("restore.internal:5432")).toThrow(
       RecoveryDrillError,
     );
-    expect(() => assertIsolatedTarget("::::")).toThrow(RecoveryDrillError);
+    expect(() => parsePoolerEndpoint("user:pw@restore.internal:6432")).toThrow(
+      RecoveryDrillError,
+    );
+  });
+
+  test("never echoes an invalid target credential", () => {
+    try {
+      assertDirectTarget("not-a-dsn-with-supersecret");
+      throw new Error("expected refusal");
+    } catch (error) {
+      // error-policy:J3 The harness inspects the explicit invalid-input boundary.
+      expect((error as Error).message).not.toContain("supersecret");
+    }
+  });
+
+  test("rejects bootstrap and other role collisions before restore", () => {
+    const globals = [
+      "CREATE ROLE postgres;",
+      'CREATE ROLE "tenant""quoted";',
+      "ALTER ROLE postgres WITH SUPERUSER;",
+      "",
+    ].join("\n");
+    expect(parseGlobalRoleNames(globals)).toEqual([
+      "postgres",
+      'tenant"quoted',
+    ]);
+    expect(() => assertNoGlobalRoleCollisions(globals, ["postgres"])).toThrow(
+      expect.objectContaining({ code: "REFUSED_NONEMPTY_TARGET" }),
+    );
+    expect(() =>
+      assertNoGlobalRoleCollisions(globals, ["restore_admin"]),
+    ).not.toThrow();
+  });
+
+  test("parses the server role inventory and refuses malformed output", () => {
+    expect(
+      parseRestoreTargetAuthority(
+        JSON.stringify({
+          target_id: targetId,
+          existing_roles: ["restore_admin"],
+        }),
+      ),
+    ).toEqual({ targetId, existingRoles: ["restore_admin"] });
+    expect(() => parseRestoreTargetAuthority("not-json")).toThrow(
+      RecoveryDrillError,
+    );
+  });
+
+  test("guards one exact session before any supplied SQL", () => {
+    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n");
+    expect(guarded).not.toContain("\\quit");
+    expect(guarded).toContain(
+      "RAISE EXCEPTION 'restore target identity mismatch'",
+    );
+    expect(guarded.indexOf("current_setting")).toBeLessThan(
+      guarded.indexOf("CREATE TABLE"),
+    );
+  });
+
+  test("quotes tenant identifiers and targets the restored database", () => {
+    expect(quoteSqlIdentifier('tenant"quoted')).toBe('"tenant""quoted"');
+    expect(
+      targetDatabaseDsn(
+        "postgresql://restore:pw@127.0.0.1:5433/postgres",
+        "tenant/a b",
+      ),
+    ).toBe("postgresql://restore:pw@127.0.0.1:5433/tenant%2Fa%20b");
+  });
+
+  test("consuming the nonce re-verifies inside the same guard, then resets and reloads", () => {
+    const script = guardedConsumeTargetIdentitySql();
+    // Same guard as every other destructive statement — a mismatched setting
+    // raises before ALTER SYSTEM is ever reached.
+    expect(script.startsWith(guardPsqlScript(""))).toBe(true);
+    expect(script).toContain("ALTER SYSTEM RESET eliza.restore_target_id;");
+    expect(script).toContain("SELECT pg_reload_conf();");
+    expect(script.indexOf("current_setting")).toBeLessThan(
+      script.indexOf("ALTER SYSTEM RESET"),
+    );
+    expect(script.indexOf("ALTER SYSTEM RESET")).toBeLessThan(
+      script.indexOf("SELECT pg_reload_conf();"),
+    );
+  });
+});
+
+describe("isCrossTenantDenial", () => {
+  test("accepts both the direct-Postgres and pgbouncer cross-tenant denial shapes", () => {
+    expect(
+      isCrossTenantDenial(
+        'psql: error: FATAL:  permission denied for database "tenant_b"',
+      ),
+    ).toBe(true);
+    expect(isCrossTenantDenial("FATAL: No such database: tenant_b")).toBe(true);
+    expect(isCrossTenantDenial("psql: error: connection refused")).toBe(false);
+    expect(isCrossTenantDenial("")).toBe(false);
   });
 });
 
@@ -191,6 +309,125 @@ describe("parseDbMap", () => {
     expect(() => parseDbMap("shortid\tx\n")).toThrow(RecoveryDrillError);
     expect(() => parseDbMap("aaaaaaaaaaaa\tx\textra\n")).toThrow(
       RecoveryDrillError,
+    );
+  });
+});
+
+describe("parseTenantProbes", () => {
+  const databases = [
+    { dumpId: "a".repeat(12), databaseName: "tenant_one" },
+    { dumpId: "b".repeat(12), databaseName: "tenant_two" },
+  ];
+
+  test("requires one credential reference per restored database", () => {
+    const probes = parseTenantProbes(
+      JSON.stringify({
+        schema_version: 1,
+        tenants: [
+          {
+            dump_id: "a".repeat(12),
+            role: "tenant_role_one",
+            password_env: "DRILL_TENANT_ONE_PASSWORD",
+          },
+          {
+            dump_id: "b".repeat(12),
+            role: "tenant_role_two",
+            password_env: "DRILL_TENANT_TWO_PASSWORD",
+          },
+        ],
+      }),
+      databases,
+    );
+    expect(probes).toHaveLength(2);
+    expect(JSON.stringify(probes)).not.toContain("tenant_one");
+    expect(JSON.stringify(probes)).not.toContain("password-value");
+  });
+
+  test("rejects missing coverage, duplicates, and unsafe env references", () => {
+    for (const tenants of [
+      [
+        {
+          dump_id: "a".repeat(12),
+          role: "r1",
+          password_env: "DRILL_PASSWORD",
+        },
+      ],
+      [
+        {
+          dump_id: "a".repeat(12),
+          role: "r1",
+          password_env: "DRILL_PASSWORD",
+        },
+        {
+          dump_id: "a".repeat(12),
+          role: "r2",
+          password_env: "DRILL_PASSWORD_TWO",
+        },
+      ],
+      [
+        {
+          dump_id: "a".repeat(12),
+          role: "r1",
+          password_env: "not-an-env-name",
+        },
+        {
+          dump_id: "b".repeat(12),
+          role: "r2",
+          password_env: "DRILL_PASSWORD_TWO",
+        },
+      ],
+    ]) {
+      expect(() =>
+        parseTenantProbes(
+          JSON.stringify({ schema_version: 1, tenants }),
+          databases,
+        ),
+      ).toThrow(RecoveryDrillError);
+    }
+  });
+});
+
+describe("root-sourced backup environment", () => {
+  const template = readFileSync(
+    join(
+      import.meta.dir,
+      "../../infra/cloud/terraform/hetzner/apps-shared/cloud-init/tenant-db.yaml.tftpl",
+    ),
+    "utf-8",
+  );
+  const recoverySource = readFileSync(
+    join(import.meta.dir, "apps-tenant-db-recovery.ts"),
+    "utf-8",
+  );
+
+  test("encodes every Terraform-provided value before shell sourcing", () => {
+    for (const value of [
+      "backup_s3_endpoint",
+      "backup_s3_bucket",
+      "backup_s3_prefix",
+      "backup_s3_access_key",
+      "backup_s3_secret_key",
+      "backup_encryption_passphrase",
+    ]) {
+      expect(template).toContain(`base64encode(${value})`);
+    }
+    expect(template).toContain("base64encode(tostring(backup_retention_days))");
+    expect(template).not.toContain(
+      "BACKUP_S3_SECRET_ACCESS_KEY=" + "$" + "{backup_s3_secret_key}",
+    );
+    expect(template).not.toContain(
+      "BACKUP_ENCRYPTION_PASSPHRASE=" + "$" + "{backup_encryption_passphrase}",
+    );
+  });
+
+  test("decodes only after sourcing syntax-safe base64 assignments", () => {
+    const sourceAt = template.indexOf('. "$ENV_FILE"');
+    const decodeAt = template.indexOf("base64 --decode");
+    expect(sourceAt).toBeGreaterThan(-1);
+    expect(decodeAt).toBeGreaterThan(sourceAt);
+    expect(recoverySource).not.toContain('"ON_ERROR_STOP=0"');
+    expect(recoverySource).toContain(
+      "/permission denied for database|no such database/i.test(stderr)",
     );
   });
 });
@@ -264,6 +501,12 @@ describe("parseCliArgs", () => {
       "/tmp/set",
       "--target-dsn",
       "postgresql://p:x@127.0.0.1:5433/postgres",
+      "--target-id",
+      "drill-11111111-2222-4333-8444-555555555555",
+      "--pooler-endpoint",
+      "127.0.0.1:6432",
+      "--tenant-probes-file",
+      "/tmp/probes.json",
       "--passphrase-file",
       "/tmp/pass",
     ]);

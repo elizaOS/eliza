@@ -11,8 +11,8 @@
  */
 
 import {
-  createNavigateViewEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
   dispatchOpenNotificationCenter,
 } from "@elizaos/ui/events";
 import { routeFirstRunDeepLink } from "@elizaos/ui/first-run/deep-link-handler";
@@ -60,7 +60,7 @@ export interface DeepLinkHandlerContext {
 function defaultDispatchNavigationIntent(
   intent: DeepLinkNavigationIntent,
 ): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+  dispatchNavigateViewRequest(intent);
 }
 
 /** True for an `https://<trusted-host>/<path>` universal/App link. */

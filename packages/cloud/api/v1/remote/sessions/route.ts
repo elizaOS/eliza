@@ -6,6 +6,7 @@
  */
 
 import { Hono } from "hono";
+import { isRemotePairingUuid } from "@/db/crypto/remote-pairing-code";
 import { remoteSessionsRepository } from "@/db/repositories/remote-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -23,6 +24,9 @@ app.get("/", async (c) => {
         { success: false, error: "agentId query parameter is required" },
         400,
       );
+    }
+    if (!isRemotePairingUuid(agentId)) {
+      return c.json({ success: false, error: "agentId must be a UUID" }, 400);
     }
 
     const sessions = await remoteSessionsRepository.listActiveByOwnedAgent(

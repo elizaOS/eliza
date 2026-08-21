@@ -885,7 +885,7 @@
     {
       "id": "coding-tools",
       "name": "Coding Tools",
-      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. AST-validated commands, mtime-gated writes, sealed workspace roots, optional per-OS process sandboxing (sandbox-exec on macOS, bwrap on Linux).",
+      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. Commands are analyzed before trusted host execution; mtime-gated file writes and configured path roots apply to FILE, WORKTREE, and the SHELL working directory.",
       "npmName": "@elizaos/plugin-coding-tools",
       "version": "0.1.0",
       "source": "bundled",
@@ -896,7 +896,7 @@
           "required": false,
           "sensitive": false,
           "label": "Workspace roots",
-          "help": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's cwd.",
+          "help": "Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. SHELL commands may address paths outside these roots. Defaults to the runtime's cwd.",
           "advanced": false
         },
         "CODING_TOOLS_DENY_COMMANDS": {
@@ -927,14 +927,6 @@
           "advanced": true,
           "min": 1000,
           "unit": "ms"
-        },
-        "CODING_TOOLS_OS_SANDBOX": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "OS-level sandbox",
-          "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
-          "advanced": true
         }
       },
       "render": {

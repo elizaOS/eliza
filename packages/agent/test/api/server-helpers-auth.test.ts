@@ -125,6 +125,24 @@ describe("applyCors", () => {
     expect(res.headers.get("Access-Control-Allow-Credentials")).toBe("true");
   });
 
+  it("never grants ambient credentials to file origins", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    const res = new HeaderCapture();
+
+    expect(
+      applyCors(
+        requestWithOrigin("file:///tmp/index.html"),
+        res,
+        "/api/status",
+      ),
+    ).toBe(true);
+
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
+      "file:///tmp/index.html",
+    );
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeUndefined();
+  });
+
   it("allows waifu token-page iframe ancestors when hosted chat JWT auth is enabled", () => {
     process.env.WAIFU_CHAT_ACCESS_JWT_SECRET = "waifu-secret";
     const res = new HeaderCapture();

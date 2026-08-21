@@ -138,6 +138,12 @@ describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
     );
   });
 
+  it("trims a 100k trailing slash run without changing the prefix", () => {
+    expect(
+      resolveDirectCloudWebBase(`https://example.com${"/".repeat(100_000)}`),
+    ).toBe("https://example.com");
+  });
+
   it("falls back to the raw input for an unparseable base", () => {
     expect(resolveDirectCloudWebBase("not a url")).toBe("not a url");
   });

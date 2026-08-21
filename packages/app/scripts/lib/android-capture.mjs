@@ -4,10 +4,12 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { resolveAdb } from "./android-device.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const require = createRequire(import.meta.url);
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -17,20 +19,93 @@ function isNonEmptyFile(filePath) {
   try {
     return fs.statSync(filePath).size > 0;
   } catch {
+    // error-policy:J4 an absent or unreadable capture is explicitly rejected
+    // as invalid evidence rather than represented as a successful empty file.
     return false;
   }
 }
 
-export function isFinalizedMp4(filePath) {
+function packagedBinary(name) {
+  try {
+    const loaded = require(name);
+    return typeof loaded === "string" ? loaded : loaded?.path;
+  } catch {
+    // error-policy:J1 dependency resolution is translated into an unavailable
+    // evidence tool; validation then fails closed at the capture boundary.
+    return undefined;
+  }
+}
+
+function executable(command) {
+  if (!command) return false;
+  const result = spawnSync(command, ["-version"], { stdio: "ignore" });
+  return !result.error && result.status === 0;
+}
+
+function resolveFfprobe(env = process.env) {
+  return [
+    env.ELIZA_FFPROBE_BIN,
+    "ffprobe",
+    packagedBinary("ffprobe-static"),
+  ].find(executable);
+}
+
+export function hasPositiveVideoDuration(
+  filePath,
+  { ffprobe = resolveFfprobe(), run = spawnSync } = {},
+) {
+  if (!ffprobe) return false;
+  const result = run(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration:stream=codec_type,duration",
+      "-of",
+      "json",
+      filePath,
+    ],
+    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+  );
+  if (result.error || result.status !== 0) return false;
+  let probe;
+  try {
+    probe = JSON.parse(result.stdout);
+  } catch {
+    // error-policy:J3 ffprobe output is untrusted process input; malformed
+    // metadata rejects the recording instead of fabricating valid duration.
+    return false;
+  }
+  const streams = Array.isArray(probe.streams) ? probe.streams : [];
+  const videoStreams = streams.filter(
+    (stream) => stream?.codec_type === "video",
+  );
+  if (videoStreams.length === 0) return false;
+  const durations = [
+    probe.format?.duration,
+    ...videoStreams.map((stream) => stream.duration),
+  ].map(Number);
+  return durations.some(
+    (duration) => Number.isFinite(duration) && duration > 0,
+  );
+}
+
+export function isFinalizedMp4(
+  filePath,
+  inspectMedia = hasPositiveVideoDuration,
+) {
   if (!isNonEmptyFile(filePath)) return false;
 
   const fd = fs.openSync(filePath, "r");
+  let structurallyComplete = false;
   try {
     const fileSize = fs.fstatSync(fd).size;
     const header = Buffer.alloc(16);
     let offset = 0;
     let sawFileType = false;
     let sawMovie = false;
+    let sawMediaPayload = false;
 
     while (offset + 8 <= fileSize) {
       const bytesRead = fs.readSync(fd, header, 0, 16, offset);
@@ -53,12 +128,62 @@ export function isFinalizedMp4(filePath) {
       if (boxSize < headerSize || offset + boxSize > fileSize) return false;
       if (type === "ftyp") sawFileType = true;
       if (type === "moov") sawMovie = true;
+      if (type === "mdat" && boxSize > headerSize) sawMediaPayload = true;
       offset += boxSize;
     }
 
-    return sawFileType && sawMovie && offset === fileSize;
+    structurallyComplete =
+      sawFileType && sawMovie && sawMediaPayload && offset === fileSize;
   } finally {
     fs.closeSync(fd);
+  }
+  return structurallyComplete && inspectMedia(filePath);
+}
+
+/** Package collected recording segments and remove every rejected partial. */
+export function finalizeAndroidRecordingSegments({
+  segments,
+  localPath,
+  captureComplete,
+  requireComplete,
+  concatenate = concatSegments,
+  validate = isFinalizedMp4,
+  log = () => {},
+}) {
+  let accepted = false;
+  try {
+    if (segments.length === 0) return null;
+    if (requireComplete && !captureComplete) {
+      log("one or more Android screenrecord segments were incomplete");
+      return null;
+    }
+    if (segments.length === 1) {
+      fs.copyFileSync(segments[0], localPath);
+    } else if (!concatenate(segments, localPath, log)) {
+      if (requireComplete) {
+        log("ffmpeg concat unavailable; complete recording is required");
+        return null;
+      }
+      // ffmpeg unavailable/failed: keep the longest single segment so the run
+      // still has watchable video rather than nothing.
+      const longest = segments
+        .map((file) => ({ file, size: fs.statSync(file).size }))
+        .sort((a, b) => b.size - a.size)[0];
+      fs.copyFileSync(longest.file, localPath);
+      log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
+    }
+    if (!isNonEmptyFile(localPath) || !validate(localPath)) {
+      log(
+        "chunked Android screenrecord was not a finalized positive-duration video",
+      );
+      return null;
+    }
+    accepted = true;
+    log(`wrote chunked Android screenrecord: ${localPath}`);
+    return localPath;
+  } finally {
+    for (const segment of segments) fs.rmSync(segment, { force: true });
+    if (!accepted) fs.rmSync(localPath, { force: true });
   }
 }
 
@@ -161,7 +286,9 @@ export async function startAndroidScreenRecord({
       if (!isNonEmptyFile(localPath)) return null;
       if (!isFinalizedMp4(localPath)) {
         fs.rmSync(localPath, { force: true });
-        log(`Android screenrecord did not finalize: ${remotePath}`);
+        log(
+          `Android screenrecord was not a finalized positive-duration video: ${remotePath}`,
+        );
         return null;
       }
       log(`wrote Android screenrecord: ${localPath}`);
@@ -186,6 +313,7 @@ export async function startChunkedAndroidScreenRecord({
   filename = "screenrecord.mp4",
   segmentSeconds = 170,
   bitRate = "4000000",
+  requireComplete = false,
   log = () => {},
 }) {
   if (!serial) throw new Error("serial is required for Android screenrecord");
@@ -202,6 +330,7 @@ export async function startChunkedAndroidScreenRecord({
   const segments = [];
   let stopped = false;
   let currentChild = null;
+  let captureComplete = true;
 
   const recordSegment = (index) => {
     const remotePath = `${remoteBase}-seg${String(index).padStart(3, "0")}.mp4`;
@@ -225,9 +354,15 @@ export async function startChunkedAndroidScreenRecord({
     );
     currentChild = child;
     return new Promise((resolve) => {
-      const done = () => resolve(remotePath);
-      child.once("close", done);
-      child.once("error", done);
+      let settled = false;
+      const done = (failed) => {
+        if (settled) return;
+        settled = true;
+        if (failed) captureComplete = false;
+        resolve(remotePath);
+      };
+      child.once("close", () => done(false));
+      child.once("error", () => done(true));
     });
   };
 
@@ -237,15 +372,25 @@ export async function startChunkedAndroidScreenRecord({
       const remotePath = await recordSegment(index);
       currentChild = null;
       const segmentLocal = path.join(artifactDir, `.${stem}-seg${index}.mp4`);
-      spawnSync(adb, ["-s", serial, "pull", remotePath, segmentLocal], {
-        stdio: "ignore",
-      });
+      const pull = spawnSync(
+        adb,
+        ["-s", serial, "pull", remotePath, segmentLocal],
+        {
+          stdio: "ignore",
+          timeout: 60_000,
+        },
+      );
       spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
         stdio: "ignore",
+        timeout: 10_000,
       });
-      if (isNonEmptyFile(segmentLocal)) {
+      if (pull.status === 0 && isFinalizedMp4(segmentLocal)) {
         segments.push(segmentLocal);
         log(`pulled Android screenrecord segment ${index}: ${segmentLocal}`);
+      } else {
+        captureComplete = false;
+        fs.rmSync(segmentLocal, { force: true });
+        log(`Android screenrecord segment ${index} was not finalized`);
       }
       index += 1;
     }
@@ -261,27 +406,33 @@ export async function startChunkedAndroidScreenRecord({
       spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
         stdio: "ignore",
       });
+      // Keep the local adb transport alive while the device encoder handles
+      // SIGINT and appends the trailing moov atom. Bound that wait, then stop a
+      // wedged transport so the segment loop can still fail closed.
+      const exitDeadline = Date.now() + 15_000;
+      while (
+        currentChild &&
+        currentChild.exitCode === null &&
+        Date.now() < exitDeadline
+      ) {
+        await delay(500);
+      }
       if (currentChild && currentChild.exitCode === null) {
-        currentChild.kill("SIGINT");
+        captureComplete = false;
+        currentChild.kill("SIGTERM");
       }
-      await Promise.race([loop, delay(8_000)]);
+      // The final pull contains the end of the user flow. Never package earlier
+      // segments while that pull is still running: a valid-but-truncated MP4 is
+      // not complete evidence.
+      await loop;
 
-      if (segments.length === 0) return null;
-      if (segments.length === 1) {
-        fs.copyFileSync(segments[0], localPath);
-      } else if (!concatSegments(segments, localPath, log)) {
-        // ffmpeg unavailable/failed: keep the longest single segment so the run
-        // still has watchable video rather than nothing.
-        const longest = segments
-          .map((file) => ({ file, size: fs.statSync(file).size }))
-          .sort((a, b) => b.size - a.size)[0];
-        fs.copyFileSync(longest.file, localPath);
-        log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
-      }
-      for (const segment of segments) fs.rmSync(segment, { force: true });
-      if (!isNonEmptyFile(localPath)) return null;
-      log(`wrote chunked Android screenrecord: ${localPath}`);
-      return localPath;
+      return finalizeAndroidRecordingSegments({
+        segments,
+        localPath,
+        captureComplete,
+        requireComplete,
+        log,
+      });
     },
   };
 }

@@ -729,6 +729,23 @@ export class JobsRepository {
     return await hydrateJob(job);
   }
 
+  /** Inserts a deterministic job id once and reconstructs the committed row on retry. */
+  async createOrGetById(jobData: NewJob & { id: string }): Promise<Job> {
+    const insertData = await prepareJobInsertData({ ...jobData, data_storage: "inline" });
+    const [created] = await dbWrite
+      .insert(jobs)
+      .values(insertData)
+      .onConflictDoNothing({ target: jobs.id })
+      .returning();
+    if (created) return await hydrateJob(created);
+
+    const existing = await this.findByIdForWrite(jobData.id);
+    if (!existing) {
+      throw new Error(`Idempotent job ${jobData.id} conflicted but could not be reconstructed`);
+    }
+    return existing;
+  }
+
   /**
    * Atomically claims pending jobs for processing using FOR UPDATE SKIP LOCKED.
    * This prevents race conditions where multiple workers could grab the same jobs.
@@ -1930,6 +1947,24 @@ export class JobsRepository {
       .orderBy(desc(jobs.created_at))
       .limit(1);
     return rows[0]?.created_at ?? null;
+  }
+
+  /**
+   * Outcome census of jobs of `type` created since `since`, grouped by
+   * status. Powers the fleet-liveness monitor's provisioning success rate
+   * (#22548): provisioning health is measured on the `jobs` ledger itself
+   * (`type='agent_provision'`), not on sandbox `status`, which is written at
+   * INSERT and therefore cannot testify to provisioning success.
+   */
+  async summarizeOutcomesByTypeSince(
+    type: string,
+    since: Date,
+  ): Promise<Array<{ status: string; count: number }>> {
+    return dbRead
+      .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.created_at} >= ${since}`))
+      .groupBy(jobs.status);
   }
 }
 

@@ -61,11 +61,27 @@ const PHONE_BACKED_INBOX_CHANNELS = new Set<LifeOpsInboxChannel>([
   "sms",
   "whatsapp",
 ]);
-const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 
 export type InboxChatType = "dm" | "group" | "channel";
+
+function stripSubjectReplyPrefixes(value: string): string {
+  let cursor = 0;
+  while (cursor < value.length) {
+    let prefixStart = cursor;
+    while (prefixStart < value.length && value[prefixStart]?.trim() === "") {
+      prefixStart += 1;
+    }
+    const colon = value.indexOf(":", prefixStart);
+    if (colon < 0) break;
+    const marker = value.slice(prefixStart, colon).trim().toLowerCase();
+    if (marker !== "re" && marker !== "fw" && marker !== "fwd") break;
+    cursor = colon + 1;
+    while (cursor < value.length && value[cursor]?.trim() === "") cursor += 1;
+  }
+  return value.slice(cursor);
+}
 
 export function normalizeInboxChannel(
   source: string | null | undefined,
@@ -127,13 +143,11 @@ function deriveThreadId(
     return message.xConversationId;
   }
   if (channel === "gmail") {
-    const subject = message.channelName
-      .replace(/^Email from\s+/i, "")
-      .replace(SUBJECT_REPLY_PREFIX, "")
-      .trim();
+    const subject = message.channelName.replace(/^Email from\s+/i, "").trim();
+    const normalizedSubject = stripSubjectReplyPrefixes(subject).trim();
     const fromKey =
       message.senderEmail?.trim().toLowerCase() ?? message.senderName;
-    return `gmail:${fromKey}:${subject || externalId}`;
+    return `gmail:${fromKey}:${normalizedSubject || externalId}`;
   }
   if (message.roomId) {
     return message.roomId;

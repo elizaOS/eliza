@@ -74,6 +74,9 @@ describe("isThinStewardPublicPath", () => {
     expect(isThinStewardPublicPath("/steward/auth/email/send")).toBe(false);
     expect(isThinStewardPublicPath("/steward/auth/nonce")).toBe(false);
     expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
+    expect(
+      isThinStewardPublicPath(`/steward/auth/providers${"/".repeat(100_000)}`),
+    ).toBe(true);
   });
 });
 
@@ -90,6 +93,11 @@ describe("isThinStewardEmailAuthPath", () => {
       false,
     );
     expect(isThinStewardEmailAuthPath("/steward/vault/keys")).toBe(false);
+    expect(
+      isThinStewardEmailAuthPath(
+        `/steward/auth/email/send${"/".repeat(100_000)}`,
+      ),
+    ).toBe(true);
     expect(isThinStewardEmailAuthPath("/steward/auth/passkey/register")).toBe(
       false,
     );

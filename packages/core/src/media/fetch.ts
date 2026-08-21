@@ -9,6 +9,10 @@ import {
 	type PinnedLookupFetchLike,
 	type SsrfPolicy,
 } from "../network/index.js";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 import { detectMime, extensionForMime } from "./mime.js";
 
 export type FetchMediaResult = {
@@ -99,7 +103,7 @@ function parseContentDispositionFileName(
 	return undefined;
 }
 
-async function readErrorBodySnippet(
+export async function readErrorBodySnippet(
 	res: Response,
 	maxChars = 200,
 ): Promise<string | undefined> {
@@ -114,10 +118,12 @@ async function readErrorBodySnippet(
 		if (!collapsed) {
 			return undefined;
 		}
-		if (collapsed.length <= maxChars) {
-			return collapsed;
+		const wellFormed = toWellFormedUnicode(collapsed);
+		if (wellFormed.length <= maxChars) {
+			return wellFormed;
 		}
-		return `${collapsed.slice(0, maxChars - 1)}…`;
+		const budget = Math.max(0, maxChars - 1);
+		return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 	} catch {
 		// error-policy:J7 The HTTP status remains authoritative when its optional
 		// diagnostic body snippet cannot be read.
