@@ -237,7 +237,6 @@ let globalWiringInstalled = false;
 
 function installProcessGlobalWiring(): void {
   if (globalWiringInstalled) return;
-  globalWiringInstalled = true;
 
   // Initialise the global audit dispatcher (auth_events sink + optional
   // console sink) before any route handlers run.
@@ -261,6 +260,10 @@ function installProcessGlobalWiring(): void {
       "[bootstrap-app] APPS_DEPLOY_ENABLED=1 ignored in production without APPS_DEPLOY_ALLOWED_ORG_IDS",
     );
   }
+
+  // Publish completion only after every required singleton mutation succeeds.
+  // A failed initialization must remain retryable in the same isolate.
+  globalWiringInstalled = true;
 }
 
 /** Reset the once-per-isolate guard so a test can assert the wiring reruns. */
