@@ -17,6 +17,7 @@ import { seedTestUser } from "../src/fixtures/seed";
 import {
   approveAppForMonetizationTest,
   authedClient,
+  pollUntil,
   retryInferenceCacheWarming,
 } from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
@@ -163,15 +164,34 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
     ).toBeGreaterThan(0);
 
     // ---- End-user org was debited (base + markup) ----
-    const balAfter = await buyer<BalanceResponse>(
-      "GET",
-      "/api/v1/credits/balance",
+    const settled = await pollUntil(
+      async () => {
+        const balance = await buyer<BalanceResponse>(
+          "GET",
+          "/api/v1/credits/balance",
+        );
+        expect(balance.status).toBe(200);
+        const creatorEarnings =
+          (await redeemableEarningsService.getBalance(seededUser.userId))
+            ?.availableBalance ?? 0;
+        const appEarnings =
+          (await appEarningsService.getEarningsSummary(appId))
+            ?.totalLifetimeEarnings ?? 0;
+        return {
+          afterBalance: balance.json.balance ?? beforeBalance,
+          creatorEarnings,
+          appEarnings,
+        };
+      },
+      (value) =>
+        value.afterBalance < beforeBalance &&
+        value.creatorEarnings + value.appEarnings >
+          creatorEarnBefore + appEarnBefore,
+      "deferred user debit and creator earnings settlement",
     );
-    expect(balAfter.status).toBe(200);
-    const afterBalance = balAfter.json.balance ?? 0;
-    const debited = beforeBalance - afterBalance;
+    const debited = beforeBalance - settled.afterBalance;
     console.log(
-      `[mock-journey] end-user debited ${debited} (before=${beforeBalance} after=${afterBalance})`,
+      `[mock-journey] end-user debited ${debited} (before=${beforeBalance} after=${settled.afterBalance})`,
     );
     expect(
       debited,
@@ -179,12 +199,8 @@ test.describe("creator-monetization journey (mock LLM, keyless)", () => {
     ).toBeGreaterThan(0);
 
     // ---- Creator earned the markup (both ledgers) ----
-    const creatorEarnAfter =
-      (await redeemableEarningsService.getBalance(seededUser.userId))
-        ?.availableBalance ?? 0;
-    const appEarnAfter =
-      (await appEarningsService.getEarningsSummary(appId))
-        ?.totalLifetimeEarnings ?? 0;
+    const creatorEarnAfter = settled.creatorEarnings;
+    const appEarnAfter = settled.appEarnings;
     console.log(
       `[mock-journey] creator redeemable ${creatorEarnBefore}->${creatorEarnAfter}, app_earnings ${appEarnBefore}->${appEarnAfter}`,
     );

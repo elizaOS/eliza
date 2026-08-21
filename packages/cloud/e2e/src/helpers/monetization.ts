@@ -11,6 +11,30 @@ export interface AuthedResponse<T> {
 
 export type AuthedClient = ReturnType<typeof authedClient>;
 
+/**
+ * Poll an eventually-consistent billing/read-model assertion without sleeping
+ * blindly. Worker `waitUntil` settlement is intentionally allowed to finish
+ * after the inference response has been returned to the caller.
+ */
+export async function pollUntil<T>(
+  read: () => Promise<T>,
+  accepted: (value: T) => boolean,
+  description: string,
+  options: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<T> {
+  const intervalMs = options.intervalMs ?? 100;
+  const deadline = Date.now() + (options.timeoutMs ?? 10_000);
+  let latest = await read();
+  while (!accepted(latest) && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    latest = await read();
+  }
+  if (!accepted(latest)) {
+    throw new Error(`Timed out waiting for ${description}`);
+  }
+  return latest;
+}
+
 const INFERENCE_WARMING_MESSAGES = new Set([
   "Authorization cache is warming. Retry shortly.",
   "Rate-limit authorization cache is warming. Retry shortly.",

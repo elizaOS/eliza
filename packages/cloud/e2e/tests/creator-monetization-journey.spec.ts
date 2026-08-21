@@ -21,11 +21,14 @@
 
 import { seedTestUser } from "../src/fixtures/seed";
 import {
+  approveAppForMonetizationTest,
   authedClient,
   cerebrasConfigured,
+  pollUntil,
   REAL_LLM_BILLING_SOURCE,
   REAL_LLM_MAX_TOKENS,
   REAL_LLM_MODEL,
+  retryInferenceCacheWarming,
 } from "../src/helpers/monetization";
 import { seedModelPricing } from "../src/helpers/seed-pricing";
 import { expect, test } from "../src/helpers/test-fixtures";
@@ -77,6 +80,21 @@ test.describe("creator-monetization journey (real LLM)", () => {
     expect(appId, "apps.create returns an app id").toBeTruthy();
     if (!appId) throw new Error("apps.create did not return an app id");
 
+    const draftMonetize = await creator(
+      "PUT",
+      `/api/v1/apps/${appId}/monetization`,
+      {
+        monetizationEnabled: true,
+        inferenceMarkupPercentage: 100,
+        purchaseSharePercentage: 10,
+      },
+    );
+    expect(
+      draftMonetize.status,
+      "draft app cannot enable monetization before compliance approval",
+    ).toBe(403);
+    await approveAppForMonetizationTest(appId, creator);
+
     const monetize = await creator(
       "PUT",
       `/api/v1/apps/${appId}/monetization`,
@@ -117,20 +135,22 @@ test.describe("creator-monetization journey (real LLM)", () => {
         ?.totalLifetimeEarnings ?? 0;
 
     // ---- REAL paid inference: end-user calls the monetized app ----
-    const inference = await buyer<MessagesResponse>(
-      "POST",
-      "/api/v1/messages",
-      {
-        // gemma-4-31b is non-reasoning by default, but give it the model's
-        // full output budget (40k on the paid tier) so long completions are
-        // never truncated.
-        model: REAL_LLM_MODEL,
-        max_tokens: REAL_LLM_MAX_TOKENS,
-        messages: [
-          { role: "user", content: "Reply with exactly the word: PONG" },
-        ],
-      },
-      { "X-App-Id": appId },
+    const inference = await retryInferenceCacheWarming(() =>
+      buyer<MessagesResponse>(
+        "POST",
+        "/api/v1/messages",
+        {
+          // gemma-4-31b is non-reasoning by default, but give it the model's
+          // full output budget (40k on the paid tier) so long completions are
+          // never truncated.
+          model: REAL_LLM_MODEL,
+          max_tokens: REAL_LLM_MAX_TOKENS,
+          messages: [
+            { role: "user", content: "Reply with exactly the word: PONG" },
+          ],
+        },
+        { "X-App-Id": appId },
+      ),
     );
     expect(inference.status, "monetized inference returns 200").toBe(200);
     const text =
@@ -145,15 +165,34 @@ test.describe("creator-monetization journey (real LLM)", () => {
     ).toBe(true);
 
     // ---- End-user org was debited (base + markup) ----
-    const balAfter = await buyer<BalanceResponse>(
-      "GET",
-      "/api/v1/credits/balance",
+    const settled = await pollUntil(
+      async () => {
+        const balance = await buyer<BalanceResponse>(
+          "GET",
+          "/api/v1/credits/balance",
+        );
+        expect(balance.status).toBe(200);
+        const creatorEarnings =
+          (await redeemableEarningsService.getBalance(seededUser.userId))
+            ?.availableBalance ?? 0;
+        const appEarnings =
+          (await appEarningsService.getEarningsSummary(appId))
+            ?.totalLifetimeEarnings ?? 0;
+        return {
+          afterBalance: balance.json.balance ?? beforeBalance,
+          creatorEarnings,
+          appEarnings,
+        };
+      },
+      (value) =>
+        value.afterBalance < beforeBalance &&
+        value.creatorEarnings + value.appEarnings >
+          creatorEarnBefore + appEarnBefore,
+      "deferred real-provider debit and creator earnings settlement",
     );
-    expect(balAfter.status).toBe(200);
-    const afterBalance = balAfter.json.balance ?? 0;
-    const debited = beforeBalance - afterBalance;
+    const debited = beforeBalance - settled.afterBalance;
     console.log(
-      `[journey] end-user debited ${debited} (before=${beforeBalance} after=${afterBalance})`,
+      `[journey] end-user debited ${debited} (before=${beforeBalance} after=${settled.afterBalance})`,
     );
     expect(
       debited,
@@ -161,12 +200,8 @@ test.describe("creator-monetization journey (real LLM)", () => {
     ).toBeGreaterThan(0);
 
     // ---- Creator earned the markup (both ledgers, per recordCreatorEarnings) ----
-    const creatorEarnAfter =
-      (await redeemableEarningsService.getBalance(seededUser.userId))
-        ?.availableBalance ?? 0;
-    const appEarnAfter =
-      (await appEarningsService.getEarningsSummary(appId))
-        ?.totalLifetimeEarnings ?? 0;
+    const creatorEarnAfter = settled.creatorEarnings;
+    const appEarnAfter = settled.appEarnings;
     console.log(
       `[journey] creator redeemable ${creatorEarnBefore}->${creatorEarnAfter}, app_earnings ${appEarnBefore}->${appEarnAfter}`,
     );
