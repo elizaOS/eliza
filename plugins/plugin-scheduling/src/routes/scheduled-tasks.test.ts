@@ -66,7 +66,12 @@ function setRemoteAddress(socket: Socket, remoteAddress: string): void {
   });
 }
 
-function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
+function buildCtx(args: {
+  method: string;
+  pathname: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+}): {
   ctx: SchedulingRouteContext;
   res: MockResponse;
 } {
@@ -75,9 +80,11 @@ function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
   setRemoteAddress(socket, "127.0.0.1");
   const httpReq = new IncomingMessage(socket);
   httpReq.method = args.method;
-  httpReq.headers = args.body
-    ? { "content-type": "application/json", "content-length": "1" }
-    : {};
+  httpReq.headers =
+    args.headers ??
+    (args.body
+      ? { "content-type": "application/json", "content-length": "1" }
+      : {});
   const httpRes = new ServerResponse(httpReq);
 
   const ctx: SchedulingRouteContext = {
@@ -533,16 +540,76 @@ describe("scheduled-tasks REST handler", () => {
     async function edit(
       handler: (ctx: SchedulingRouteContext) => Promise<boolean>,
       taskId: string,
-      body: unknown,
+      body?: unknown,
+      headers?: Record<string, string>,
     ): Promise<MockResponse> {
       const { ctx, res } = buildCtx({
         method: "POST",
         pathname: `/api/lifeops/scheduled-tasks/${taskId}/edit`,
         body,
+        headers,
       });
       await handler(ctx);
       return res;
     }
+
+    it("rejects a body-less edit before the runner can persist an empty patch", async () => {
+      const { runner, handler, task } = await seed();
+      let applyCalls = 0;
+      const originalApply = runner.apply.bind(runner);
+      runner.apply = async (taskId, verb, payload) => {
+        applyCalls += 1;
+        return originalApply(taskId, verb, payload);
+      };
+
+      const res = await edit(handler, task.taskId);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("request body is required");
+      expect(applyCalls).toBe(0);
+      expect(
+        (await runner.list()).find((item) => item.taskId === task.taskId),
+      ).toEqual(task);
+    });
+
+    it("reads and applies a chunked edit without a content-length header", async () => {
+      const { runner, handler, task } = await seed();
+      const res = await edit(
+        handler,
+        task.taskId,
+        { priority: "high" },
+        {
+          "content-type": "application/json",
+          "transfer-encoding": "chunked",
+        },
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(
+        (await runner.list()).find((item) => item.taskId === task.taskId)
+          ?.priority,
+      ).toBe("high");
+    });
+
+    it("keeps the sibling body-less snooze contract at 400", async () => {
+      const { runner, handler, task } = await seed();
+      let applyCalls = 0;
+      const originalApply = runner.apply.bind(runner);
+      runner.apply = async (taskId, verb, payload) => {
+        applyCalls += 1;
+        return originalApply(taskId, verb, payload);
+      };
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: `/api/lifeops/scheduled-tasks/${task.taskId}/snooze`,
+      });
+
+      await handler(ctx);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("invalid snooze payload");
+      expect(applyCalls).toBe(0);
+    });
 
     it("still accepts every editable ScheduledTaskInput field (no over-rejection)", async () => {
       const { runner, handler, task } = await seed();
