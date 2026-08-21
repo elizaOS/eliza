@@ -7,7 +7,13 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { addHeader, ChannelType, logger } from "@elizaos/core";
+import {
+  addHeader,
+  ChannelType,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 /** Alternate grouped shape used by some editors (`examples[]`). `Character.messageExamples` is `MessageExample[][]`. */
 type MessageExampleGroup = { examples: MessageExample[] };
@@ -18,9 +24,11 @@ const POST_EXAMPLE_LIMIT = 50;
 const MESSAGE_EXAMPLE_GROUP_LIMIT = 5;
 const CHARACTER_FIELD_TEXT_LIMIT = 4000;
 
-function truncateText(value: string, limit = CHARACTER_FIELD_TEXT_LIMIT): string {
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}...`;
+export function truncateText(value: string, limit = CHARACTER_FIELD_TEXT_LIMIT): string {
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= limit) return wellFormed;
+  const budget = Math.max(0, limit - 3);
+  return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 function getExampleMessages(example: MessageExampleGroup | MessageExample[]): MessageExample[] {

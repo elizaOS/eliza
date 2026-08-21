@@ -6,6 +6,8 @@ import {
   type Memory,
   type Provider,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { NativePlannerActionResult } from "../types";
 
@@ -15,9 +17,11 @@ const ACTION_MEMORY_FETCH_LIMIT = 20;
 const ACTION_MEMORY_LIMIT = 10;
 const FIELD_TEXT_LIMIT = 1000;
 
-function truncateText(value: string, limit = FIELD_TEXT_LIMIT): string {
-  if (value.length <= limit) return value;
-  return `${value.slice(0, limit)}...`;
+export function truncateText(value: string, limit = FIELD_TEXT_LIMIT): string {
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= limit) return wellFormed;
+  const budget = Math.max(0, limit - 3);
+  return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 function stringifyLimited(value: unknown): string {
