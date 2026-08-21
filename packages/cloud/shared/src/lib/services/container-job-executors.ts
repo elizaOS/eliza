@@ -293,11 +293,15 @@ export async function executeContainerProvision(
       deps.isAppDeploymentCurrent &&
       !(await deps.isAppDeploymentCurrent(row.appId, generation))
     ) {
-      logger.info("[ContainerExecutor] skipped stale app deployment ingress mutation", {
-        containerId,
-        appId: row.appId,
-        deploymentGeneration: generation,
-      });
+      await discardStaleProvision(deps, row, result);
+      logger.info(
+        "[ContainerExecutor] discarded app deployment that became stale before state mutation",
+        {
+          containerId,
+          appId: row.appId,
+          deploymentGeneration: generation,
+        },
+      );
       return;
     }
     await deps.store.markRunning(containerId, {

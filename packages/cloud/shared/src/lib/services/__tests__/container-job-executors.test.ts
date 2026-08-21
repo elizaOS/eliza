@@ -290,6 +290,38 @@ describe("executeContainerProvision", () => {
     ]);
   });
 
+  test("a generation that becomes stale before markRunning discards the primary and slot", async () => {
+    const deploymentGeneration = "11111111-1111-4111-8111-111111111111";
+    const { events, slotEvents, store } = fakeStore({ ...ROW, deploymentGeneration });
+    const { calls, provider } = fakeProvider();
+    let currentChecks = 0;
+
+    await executeContainerProvision(
+      job({
+        containerId: "container-1",
+        organizationId: "org-1",
+        userId: "user-1",
+        deploymentGeneration,
+      }),
+      {
+        provider,
+        store,
+        isAppDeploymentCurrent: async () => {
+          currentChecks += 1;
+          return currentChecks < 3;
+        },
+      },
+    );
+
+    expect(currentChecks).toBe(3);
+    expect(calls.map((call) => call.op)).toEqual(["provision", "deletePrimaryById"]);
+    expect(events).toEqual([]);
+    expect(slotEvents).toEqual([
+      { op: "claim", nodeId: "node-1" },
+      { op: "rollback", nodeId: "node-1" },
+    ]);
+  });
+
   test("marks error and rethrows when provisioning fails", async () => {
     const { events, slotEvents, store } = fakeStore();
     const { provider } = fakeProvider({
