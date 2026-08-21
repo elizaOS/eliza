@@ -103,37 +103,117 @@ const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]
 const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const MAX_PATCH_PATH_LENGTH = 256;
 const MAX_PATCH_PATH_SEGMENTS = 16;
+const MAX_PATCH_ARRAY_INDEX = 100_000;
+
+function invalidPatchPath(context: Record<string, unknown>, cause?: unknown): ElizaError {
+  return new ElizaError("Component patch path is invalid", {
+    code: "COMPONENT_PATCH_PATH_INVALID",
+    context,
+    cause,
+    severity: "fatal",
+  });
+}
 
 function patchPathSegments(path: string): string[] {
-  if (path.length > MAX_PATCH_PATH_LENGTH) {
-    throw new ElizaError("Component patch path is invalid", {
-      code: "COMPONENT_PATCH_PATH_INVALID",
-      context: { pathLength: path.length },
-      severity: "fatal",
-    });
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_PATCH_PATH_LENGTH) {
+    throw invalidPatchPath({ pathLength: typeof path === "string" ? path.length : null });
   }
   const parts = path.split(".");
   if (
     parts.length > MAX_PATCH_PATH_SEGMENTS ||
     !PATCH_PATH_PATTERN.test(path) ||
-    parts.some((part) => BLOCKED_PATCH_KEYS.has(part))
+    parts.some(
+      (part) =>
+        BLOCKED_PATCH_KEYS.has(part) || (/^\d+$/.test(part) && Number(part) > MAX_PATCH_ARRAY_INDEX)
+    )
   ) {
-    throw new ElizaError("Component patch path is invalid", {
-      code: "COMPONENT_PATCH_PATH_INVALID",
-      context: { path },
-      severity: "fatal",
-    });
+    throw invalidPatchPath({ pathLength: path.length, segmentCount: parts.length });
   }
   return parts;
 }
 
 function definePatchValue(target: Record<string, unknown>, key: string, value: unknown): void {
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  });
+  try {
+    Object.defineProperty(target, key, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
+  } catch (cause) {
+    throw invalidPatchPath({ key, reason: "write" }, cause);
+  }
+}
+
+function ownPatchValue(
+  target: Record<string, unknown>,
+  key: string
+): { found: boolean; value?: unknown } {
+  let descriptor: PropertyDescriptor | undefined;
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(target, key);
+  } catch (cause) {
+    throw invalidPatchPath({ key, reason: "descriptor" }, cause);
+  }
+  if (!descriptor) return { found: false };
+  if (!("value" in descriptor)) {
+    throw invalidPatchPath({ key, reason: "accessor" });
+  }
+  return { found: true, value: descriptor.value };
+}
+
+function assertPatchContainer(
+  value: unknown,
+  key: string
+): asserts value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    throw invalidPatchPath({ key, reason: "container" });
+  }
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    const safePrototype = Array.isArray(value) ? Array.prototype : Object.prototype;
+    if (prototype !== safePrototype && prototype !== null) {
+      throw invalidPatchPath({ key, reason: "nested-prototype" });
+    }
+  } catch (cause) {
+    if (cause instanceof ElizaError) throw cause;
+    throw invalidPatchPath({ key, reason: "prototype" }, cause);
+  }
+}
+
+function clonePatchRoot(value: unknown): Record<string, unknown> {
+  if (value == null) return Object.create(null) as Record<string, unknown>;
+  assertPatchContainer(value, "data");
+  if (Array.isArray(value)) {
+    throw invalidPatchPath({ key: "data", reason: "root-array" });
+  }
+  let descriptors: Record<string, PropertyDescriptor>;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch (cause) {
+    throw invalidPatchPath({ key: "data", reason: "descriptors" }, cause);
+  }
+  const clone = Object.create(null) as Record<string, unknown>;
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (BLOCKED_PATCH_KEYS.has(key) || !("value" in descriptor)) {
+      throw invalidPatchPath({ key, reason: "root-property" });
+    }
+    definePatchValue(clone, key, descriptor.value);
+  }
+  return clone;
+}
+
+function appendPatchValue(target: unknown[], key: string, value: unknown): void {
+  const length = ownPatchValue(target as unknown as Record<string, unknown>, "length").value;
+  if (
+    typeof length !== "number" ||
+    !Number.isSafeInteger(length) ||
+    length < 0 ||
+    length > MAX_PATCH_ARRAY_INDEX
+  ) {
+    throw invalidPatchPath({ key, reason: "array-length" });
+  }
+  definePatchValue(target as unknown as Record<string, unknown>, String(length), value);
 }
 
 interface StoredRelationship {
@@ -203,36 +283,54 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
 
   let parent: Record<string, unknown> = target;
   for (const segment of parts) {
-    const next = Object.hasOwn(parent, segment) ? parent[segment] : undefined;
-    if (next === null || typeof next !== "object") {
+    if (Array.isArray(parent) && !/^\d+$/.test(segment)) {
+      throw invalidPatchPath({ key: segment, reason: "array-key" });
+    }
+    const next = ownPatchValue(parent, segment);
+    if (!next.found || next.value === null || typeof next.value !== "object") {
       const created = Object.create(null) as Record<string, unknown>;
       definePatchValue(parent, segment, created);
       parent = created;
     } else {
-      parent = next as Record<string, unknown>;
+      assertPatchContainer(next.value, segment);
+      parent = next.value;
     }
   }
+
+  if (Array.isArray(parent) && !/^\d+$/.test(last)) {
+    throw invalidPatchPath({ key: last, reason: "array-key" });
+  }
+  const existing = ownPatchValue(parent, last);
 
   switch (op.op) {
     case "set":
       definePatchValue(parent, last, op.value);
       break;
     case "remove":
-      delete parent[last];
+      if (existing.found) {
+        try {
+          delete parent[last];
+        } catch (cause) {
+          throw invalidPatchPath({ key: last, reason: "delete" }, cause);
+        }
+      }
       break;
     case "push": {
-      const existing = Object.hasOwn(parent, last) ? parent[last] : undefined;
-      if (Array.isArray(existing)) {
-        existing.push(op.value);
+      if (Array.isArray(existing.value)) {
+        assertPatchContainer(existing.value, last);
+        appendPatchValue(existing.value, last, op.value);
       } else {
         definePatchValue(parent, last, [op.value]);
       }
       break;
     }
     case "increment": {
-      const existing = Object.hasOwn(parent, last) ? parent[last] : undefined;
       const delta = typeof op.value === "number" ? op.value : 1;
-      definePatchValue(parent, last, typeof existing === "number" ? existing + delta : delta);
+      definePatchValue(
+        parent,
+        last,
+        typeof existing.value === "number" ? existing.value + delta : delta
+      );
       break;
     }
   }
@@ -620,7 +718,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         update.componentId
       );
       if (!component) continue;
-      const data = { ...(component.data ?? {}) } as Record<string, unknown>;
+      const data = clonePatchRoot(component.data);
       for (const op of update.ops) {
         applyPatchOp(data, op);
       }
