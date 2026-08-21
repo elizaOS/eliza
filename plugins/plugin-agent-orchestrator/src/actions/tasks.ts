@@ -1111,6 +1111,7 @@ async function runCreateLegacy(
   const acceptanceCriteria = acceptanceCriteriaForTask(
     tasks.join("\n"),
     requestedAcceptanceCriteria,
+    requestText(message),
   );
   const taskRoomId =
     typeof swarmRoomMetadata.taskRoomId === "string"
@@ -2335,6 +2336,7 @@ async function runSpawnAgent(
             acceptanceCriteria: acceptanceCriteriaForTask(
               task,
               requestedAcceptanceCriteria,
+              requestText(message),
             ),
             originalRequest: requestText(message),
             ...(session.workdir ? { workdir: session.workdir } : {}),

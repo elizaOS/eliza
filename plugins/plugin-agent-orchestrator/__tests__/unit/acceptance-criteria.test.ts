@@ -203,6 +203,25 @@ describe("staticAcceptanceCriteria", () => {
     ]);
   });
 
+  it("uses the original normie request when the planner rewrites the goal", () => {
+    expect(
+      acceptanceCriteriaForTask(
+        "Implement the requested functionality in Node.js and verify it.",
+        [
+          "typecheck passes",
+          "lint passes",
+          "tests pass",
+          "the change is summarized in the diff",
+        ],
+        "Can you make me a little program that prints prime numbers and try it?",
+      ),
+    ).toEqual([
+      "the requested script file exists in the workdir",
+      "the script exits successfully when run",
+      "the run output matches the requested examples",
+    ]);
+  });
+
   it("produces DIFFERENT sets for coding vs app-build vs view-create", () => {
     const coding = staticAcceptanceCriteria("fix bug", "coding");
     const appBuild = staticAcceptanceCriteria("build a site", "app-build");
