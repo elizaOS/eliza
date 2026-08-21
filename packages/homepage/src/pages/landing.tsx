@@ -23,8 +23,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
-import { LandingTaskListAttachment } from "@/components/landing-task-list-attachment";
+import {
+  isLandingDemoAttachmentStep,
+  LandingDemoAttachment,
+  type LandingDemoAttachmentStep,
+} from "@/components/landing-demo-attachment";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
@@ -81,16 +84,10 @@ type DemoItem =
       text: string;
     }
   | {
+      attachment: LandingDemoAttachmentStep;
       from: "eliza";
       id: number;
-      kind: "place";
-      place: Extract<LandingDemoStep, { kind: "place" }>["place"];
-    }
-  | {
-      from: "eliza";
-      id: number;
-      kind: "task-list";
-      taskList: Extract<LandingDemoStep, { kind: "task-list" }>["taskList"];
+      kind: "attachment";
     };
 
 interface DemoSender {
@@ -207,27 +204,20 @@ function scenarioItems(
   scenarioIndex: number,
 ): DemoItem[] {
   return scenario.steps.map((step, index) =>
-    step.kind === "place"
+    isLandingDemoAttachmentStep(step)
       ? {
+          attachment: step,
           from: "eliza",
           id: scenarioIndex * 100 + index,
-          kind: "place",
-          place: step.place,
+          kind: "attachment",
         }
-      : step.kind === "task-list"
-        ? {
-            from: "eliza",
-            id: scenarioIndex * 100 + index,
-            kind: "task-list",
-            taskList: step.taskList,
-          }
-        : {
-            id: scenarioIndex * 100 + index,
-            from: step.kind,
-            kind: "text",
-            name: step.kind === "member" ? step.name : undefined,
-            text: step.text,
-          },
+      : {
+          id: scenarioIndex * 100 + index,
+          from: step.kind,
+          kind: "text",
+          name: step.kind === "member" ? step.name : undefined,
+          text: step.text,
+        },
   );
 }
 
@@ -353,23 +343,16 @@ function PhoneMockup() {
             ...previous,
             { id, from: "eliza", kind: "text", text: step.text },
           ]);
-        } else if (step.kind === "place") {
-          await sleep(PRE_ATTACHMENT_MS);
-          if (cancelled) return;
-          setItems((previous) => [
-            ...previous,
-            { id, from: "eliza", kind: "place", place: step.place },
-          ]);
         } else {
           await sleep(PRE_ATTACHMENT_MS);
           if (cancelled) return;
           setItems((previous) => [
             ...previous,
             {
+              attachment: step,
               id,
               from: "eliza",
-              kind: "task-list",
-              taskList: step.taskList,
+              kind: "attachment",
             },
           ]);
         }
@@ -593,10 +576,8 @@ function PhoneMockup() {
                       {sender.name}
                     </span>
                   ) : null}
-                  {item.kind === "place" ? (
-                    <LandingPlaceAttachment place={item.place} />
-                  ) : item.kind === "task-list" ? (
-                    <LandingTaskListAttachment taskList={item.taskList} />
+                  {item.kind === "attachment" ? (
+                    <LandingDemoAttachment step={item.attachment} />
                   ) : (
                     <p
                       className={`landing-bubble landing-bubble--${item.from}`}

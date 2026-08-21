@@ -1,12 +1,15 @@
 /** Development-only board for reviewing every landing demo room at once. */
 
-import { LandingPlaceAttachment } from "@/components/landing-place-attachment";
-import { LandingTaskListAttachment } from "@/components/landing-task-list-attachment";
+import {
+  isLandingDemoAttachmentStep,
+  LandingDemoAttachment,
+} from "@/components/landing-demo-attachment";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
   type LandingDemoCapability,
   type LandingDemoStep,
+  landingDemoStepText,
 } from "@/lib/landing-demo";
 import "./demo-scenarios.css";
 
@@ -31,11 +34,7 @@ function stepCapability(step: LandingDemoStep): LandingDemoCapability | null {
 }
 
 function senderAvatar(step: LandingDemoStep): string | null {
-  if (
-    step.kind === "eliza" ||
-    step.kind === "place" ||
-    step.kind === "task-list"
-  ) {
+  if (step.kind !== "member" && step.kind !== "user") {
     return "/brand/logos/logo_white_orangebg.svg";
   }
   if (step.kind === "user") return null;
@@ -47,11 +46,7 @@ function senderAvatar(step: LandingDemoStep): string | null {
 }
 
 function stepKey(step: LandingDemoStep): string {
-  if (step.kind === "place") return `${step.kind}-${step.place.name}`;
-  if (step.kind === "task-list") {
-    return `${step.kind}-${step.taskList.title}`;
-  }
-  return `${step.kind}-${step.text}`;
+  return `${step.kind}-${landingDemoStepText(step)}`;
 }
 
 function sameStepSender(
@@ -74,7 +69,6 @@ function ReviewStep({
   step: LandingDemoStep;
 }) {
   const sender = stepSender(step);
-  const capability = stepCapability(step);
   const avatar = senderAvatar(step);
   const showAuthor = !sameStepSender(previousStep, step);
   const showAvatar = !sameStepSender(step, nextStep);
@@ -101,17 +95,10 @@ function ReviewStep({
         {showAuthor ? (
           <div className="demo-review-step-meta">
             <strong>{sender}</strong>
-            {capability ? (
-              <span className="demo-review-step-capability">
-                {CAPABILITY_LABELS[capability]}
-              </span>
-            ) : null}
           </div>
         ) : null}
-        {step.kind === "place" ? (
-          <LandingPlaceAttachment place={step.place} />
-        ) : step.kind === "task-list" ? (
-          <LandingTaskListAttachment taskList={step.taskList} />
+        {isLandingDemoAttachmentStep(step) ? (
+          <LandingDemoAttachment step={step} />
         ) : (
           <p>{step.text}</p>
         )}

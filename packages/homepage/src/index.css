@@ -2367,6 +2367,349 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   text-decoration-thickness: 1px;
 }
 
+.landing-handoff-attachment,
+.landing-itinerary-attachment,
+.landing-heat-plan-attachment {
+  width: min(15.8rem, 100%);
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 10%);
+  border-radius: 1rem;
+  color: #111;
+  opacity: 0;
+  transform: translateY(0.55rem) scale(0.96);
+  animation: landing-bubble-in 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: left bottom;
+}
+
+.landing-handoff-attachment {
+  background: #fff;
+}
+
+.landing-handoff-head {
+  display: grid;
+  grid-template-columns: 2.35rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.62rem;
+  padding: 0.68rem 0.75rem;
+}
+
+.landing-handoff-date {
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+  border: 1px solid rgb(255 59 48 / 24%);
+  border-radius: 0.58rem;
+  background: #fff;
+}
+
+.landing-handoff-date small {
+  width: 100%;
+  padding: 0.12rem 0;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 0.48rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.landing-handoff-date strong {
+  padding: 0.28rem 0.1rem 0.3rem;
+  color: #1c1c1e;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.landing-handoff-title {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-handoff-title strong {
+  font-size: 0.88rem;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.landing-handoff-title small {
+  margin-top: 0.12rem;
+  color: #6e6e73;
+  font-size: 0.66rem;
+}
+
+.landing-handoff-head > svg {
+  width: 1.08rem;
+  height: 1.08rem;
+  color: #ff3b30;
+  stroke-width: 1.8;
+}
+
+.landing-handoff-location,
+.landing-handoff-transfer,
+.landing-handoff-notes li {
+  border-top: 1px solid rgb(0 0 0 / 7%);
+}
+
+.landing-handoff-location {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.52rem 0.75rem;
+  color: #3a3a3c;
+  font-size: 0.68rem;
+}
+
+.landing-handoff-location svg,
+.landing-handoff-notes svg {
+  flex: 0 0 auto;
+  width: 0.86rem;
+  height: 0.86rem;
+  color: #ff3b30;
+  stroke-width: 1.9;
+}
+
+.landing-handoff-transfer {
+  display: flex;
+  align-items: center;
+  gap: 0.42rem;
+  padding: 0.52rem 0.75rem;
+  background: #f7f7f8;
+  font-size: 0.7rem;
+}
+
+.landing-handoff-transfer svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  color: #8e8e93;
+}
+
+.landing-handoff-notes,
+.landing-itinerary-stops,
+.landing-heat-plan-schedule {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.landing-handoff-notes li {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.86rem;
+  padding: 0 0.75rem;
+  color: #3a3a3c;
+  font-size: 0.67rem;
+}
+
+.landing-itinerary-attachment {
+  background: #fff;
+}
+
+.landing-itinerary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.68rem 0.75rem 0.62rem;
+  background: #f2f7ff;
+}
+
+.landing-itinerary-head > span {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-itinerary-head strong {
+  font-size: 0.9rem;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+.landing-itinerary-head small {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.12rem;
+  color: #46627d;
+  font-size: 0.65rem;
+}
+
+.landing-itinerary-head small svg {
+  width: 0.76rem;
+  height: 0.76rem;
+  stroke-width: 1.9;
+}
+
+.landing-itinerary-head > svg {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  color: #0a84ff;
+  stroke-width: 2;
+}
+
+.landing-itinerary-stops {
+  padding: 0.35rem 0.75rem 0.42rem;
+}
+
+.landing-itinerary-stops li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.2rem 2.15rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.36rem;
+  min-height: 2.15rem;
+}
+
+.landing-itinerary-stops li:not(:last-child)::after {
+  position: absolute;
+  z-index: 0;
+  top: 1.48rem;
+  bottom: -0.68rem;
+  left: 0.57rem;
+  width: 1px;
+  background: #b9d8fb;
+  content: "";
+}
+
+.landing-itinerary-icon {
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: #e4f1ff;
+  color: #0a84ff;
+}
+
+.landing-itinerary-icon svg {
+  width: 0.66rem;
+  height: 0.66rem;
+  stroke-width: 2;
+}
+
+.landing-itinerary-time {
+  color: #0a66cc;
+  font-size: 0.61rem;
+  font-weight: 650;
+}
+
+.landing-itinerary-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-itinerary-copy strong {
+  font-size: 0.7rem;
+  font-weight: 620;
+  line-height: 1.15;
+}
+
+.landing-itinerary-copy small {
+  margin-top: 0.04rem;
+  color: #6e6e73;
+  font-size: 0.59rem;
+  line-height: 1.2;
+}
+
+.landing-heat-plan-attachment {
+  background: #fff;
+}
+
+.landing-heat-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(145deg, #2f8be8, #67b8ec);
+  color: #fff;
+}
+
+.landing-heat-plan-head > span {
+  display: grid;
+  min-width: 0;
+}
+
+.landing-heat-plan-head small {
+  font-size: 0.6rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  opacity: 0.86;
+  text-transform: uppercase;
+}
+
+.landing-heat-plan-head strong {
+  margin-top: 0.05rem;
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.landing-heat-plan-head span span {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.2rem;
+  font-size: 0.64rem;
+}
+
+.landing-heat-plan-head span span svg {
+  width: 0.72rem;
+  height: 0.72rem;
+  stroke-width: 2;
+}
+
+.landing-heat-plan-head > svg {
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  color: #ffd45a;
+  fill: rgb(255 212 90 / 20%);
+  stroke-width: 1.6;
+}
+
+.landing-heat-plan-schedule {
+  padding: 0 0.75rem;
+}
+
+.landing-heat-plan-schedule li {
+  display: grid;
+  grid-template-columns: 2.4rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  border-bottom: 1px solid rgb(0 0 0 / 7%);
+}
+
+.landing-heat-plan-schedule li:last-child {
+  border-bottom: 0;
+}
+
+.landing-heat-plan-schedule strong {
+  color: #2577c8;
+  font-size: 0.57rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.landing-heat-plan-schedule span {
+  min-width: 0;
+  font-size: 0.69rem;
+  font-weight: 560;
+}
+
+.landing-heat-plan-schedule small {
+  color: #7b7b80;
+  font-size: 0.6rem;
+}
+
 .landing-composer-row {
   display: flex;
   align-items: center;

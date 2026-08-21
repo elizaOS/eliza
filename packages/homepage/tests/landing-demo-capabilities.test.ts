@@ -78,7 +78,10 @@ describe("landing Shared-agent capability contract", () => {
           (step) =>
             step.kind === "eliza" ||
             step.kind === "place" ||
-            step.kind === "task-list",
+            step.kind === "task-list" ||
+            step.kind === "handoff" ||
+            step.kind === "itinerary" ||
+            step.kind === "heat-plan",
         ),
       ).toBe(true);
     }
@@ -107,14 +110,15 @@ describe("landing Shared-agent capability contract", () => {
 
   test("gives every room a longer mini-story with evolving recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      const expectedAttachment =
-        scenario.id === "friends"
-          ? "place"
-          : scenario.id === "household"
-            ? "task-list"
-            : null;
-      expect(scenario.steps).toHaveLength(expectedAttachment ? 21 : 20);
-      expect(scenario.steps.at(-1)?.kind).toBe(expectedAttachment ?? "eliza");
+      const expectedAttachment = {
+        household: "task-list",
+        "co-parenting": "handoff",
+        friends: "place",
+        trip: "itinerary",
+        community: "heat-plan",
+      }[scenario.id];
+      expect(scenario.steps).toHaveLength(21);
+      expect(scenario.steps.at(-1)?.kind).toBe(expectedAttachment);
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
       ).toBeGreaterThanOrEqual(5);
@@ -168,6 +172,73 @@ describe("landing Shared-agent capability contract", () => {
         ? attachment.taskList.items.filter((item) => item.completed)
         : [],
     ).toHaveLength(2);
+  });
+
+  test("ends every room with one distinct native attachment", () => {
+    const attachments = LANDING_DEMO_SCENARIOS.map((scenario) =>
+      scenario.steps.at(-1),
+    );
+
+    expect(attachments.map((step) => step?.kind)).toEqual([
+      "task-list",
+      "handoff",
+      "place",
+      "itinerary",
+      "heat-plan",
+    ]);
+    expect(
+      attachments.every(
+        (step) =>
+          step?.kind !== "eliza" &&
+          step?.kind !== "member" &&
+          step?.kind !== "user",
+      ),
+    ).toBe(true);
+  });
+
+  test("keeps the three coordination attachments synced with their chats", () => {
+    const coParenting = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "co-parenting",
+    )?.steps.at(-1);
+    const trip = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "trip",
+    )?.steps.at(-1);
+    const community = LANDING_DEMO_SCENARIOS.find(
+      (scenario) => scenario.id === "community",
+    )?.steps.at(-1);
+
+    expect(coParenting).toMatchObject({
+      kind: "handoff",
+      handoff: {
+        child: "Ava",
+        time: "4:30 PM",
+        notes: ["Inhaler · front pocket", "Cleats · stay in the car"],
+      },
+    });
+    expect(trip).toMatchObject({
+      kind: "itinerary",
+      itinerary: {
+        alert: "Rain at 2 · covered route",
+        stops: [
+          { label: "Airport arrivals" },
+          { label: "Bag storage" },
+          { label: "Lunch" },
+          { label: "Apartment" },
+        ],
+      },
+    });
+    expect(community).toMatchObject({
+      kind: "heat-plan",
+      heatPlan: {
+        alert: "Water early Saturday",
+        schedule: [
+          { task: "Seedlings first" },
+          { task: "West bed" },
+          { task: "Mulch check" },
+          { task: "Hose at gate" },
+        ],
+      },
+    });
   });
 
   test("keeps every attributed speaker inside that room's member list", () => {

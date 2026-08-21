@@ -164,6 +164,21 @@ export type LandingDemoStep =
       capability: "room-memory";
       kind: "task-list";
       taskList: LandingDemoTaskList;
+    }
+  | {
+      capability: "scheduled-reminder";
+      handoff: LandingDemoHandoff;
+      kind: "handoff";
+    }
+  | {
+      capability: "public-web-search";
+      itinerary: LandingDemoItinerary;
+      kind: "itinerary";
+    }
+  | {
+      capability: "scheduled-reminder";
+      heatPlan: LandingDemoHeatPlan;
+      kind: "heat-plan";
     };
 
 export interface LandingDemoPlace {
@@ -179,6 +194,37 @@ export interface LandingDemoTaskList {
   items: readonly {
     assignee: string;
     completed: boolean;
+    task: string;
+  }[];
+  title: string;
+}
+
+export interface LandingDemoHandoff {
+  child: string;
+  day: string;
+  handoff: string;
+  location: string;
+  notes: readonly string[];
+  time: string;
+  title: string;
+}
+
+export interface LandingDemoItinerary {
+  alert: string;
+  stops: readonly {
+    detail: string;
+    label: string;
+    time: string;
+  }[];
+  title: string;
+}
+
+export interface LandingDemoHeatPlan {
+  alert: string;
+  day: string;
+  schedule: readonly {
+    assignee: string;
+    day: string;
     task: string;
   }[];
   title: string;
@@ -366,6 +412,19 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         kind: "eliza",
         text: "I added an inhaler check to Friday's 4:30 handoff reminder. Blue backpack, front pocket. Cleats stay in the car. You both have the same plan now.",
       },
+      {
+        capability: "scheduled-reminder",
+        kind: "handoff",
+        handoff: {
+          child: "Ava",
+          day: "Friday",
+          time: "4:30 PM",
+          title: "Soccer",
+          location: "Mission Rec Field",
+          handoff: "Nina → You",
+          notes: ["Inhaler · front pocket", "Cleats · stay in the car"],
+        },
+      },
     ],
   },
   {
@@ -521,6 +580,36 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         kind: "eliza",
         text: "I found three lunch spots on the covered walk by the bag desk. All have good vegetarian food for Emi and plenty of non-veg options for Theo. I'll pick the best-rated one that's open when you arrive. Then bags, lunch, and the apartment at 3 are handled.",
       },
+      {
+        capability: "public-web-search",
+        kind: "itinerary",
+        itinerary: {
+          title: "Arrival Plan",
+          alert: "Rain at 2 · covered route",
+          stops: [
+            {
+              time: "10:20",
+              label: "Airport arrivals",
+              detail: "Meet by Emi's red suitcase",
+            },
+            {
+              time: "Next",
+              label: "Bag storage",
+              detail: "Staffed · two blocks away",
+            },
+            {
+              time: "Then",
+              label: "Lunch",
+              detail: "Veggie + non-veg options",
+            },
+            {
+              time: "3:00",
+              label: "Apartment",
+              detail: "Samira has the keys",
+            },
+          ],
+        },
+      },
     ],
   },
   {
@@ -592,6 +681,21 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         kind: "eliza",
         text: "Your Saturday reminder now starts with the heat-sensitive seedlings, then the west bed. Rosa checks mulch Tuesday, and Tasha leaves the hose at the gate. No extra garden trip needed.",
       },
+      {
+        capability: "scheduled-reminder",
+        kind: "heat-plan",
+        heatPlan: {
+          title: "Heat Plan",
+          day: "Sunday",
+          alert: "Water early Saturday",
+          schedule: [
+            { day: "SAT AM", task: "Seedlings first", assignee: "You" },
+            { day: "SAT AM", task: "West bed", assignee: "You" },
+            { day: "TUE", task: "Mulch check", assignee: "Rosa" },
+            { day: "READY", task: "Hose at gate", assignee: "Tasha" },
+          ],
+        },
+      },
     ],
   },
 ];
@@ -628,6 +732,40 @@ export function landingDemoStepText(step: LandingDemoStep): string {
     return [
       step.taskList.title,
       ...step.taskList.items.flatMap((item) => [item.assignee, item.task]),
+    ].join(" ");
+  }
+  if (step.kind === "handoff") {
+    return [
+      step.handoff.child,
+      step.handoff.title,
+      step.handoff.day,
+      step.handoff.time,
+      step.handoff.location,
+      step.handoff.handoff,
+      ...step.handoff.notes,
+    ].join(" ");
+  }
+  if (step.kind === "itinerary") {
+    return [
+      step.itinerary.title,
+      step.itinerary.alert,
+      ...step.itinerary.stops.flatMap((stop) => [
+        stop.time,
+        stop.label,
+        stop.detail,
+      ]),
+    ].join(" ");
+  }
+  if (step.kind === "heat-plan") {
+    return [
+      step.heatPlan.title,
+      step.heatPlan.day,
+      step.heatPlan.alert,
+      ...step.heatPlan.schedule.flatMap((item) => [
+        item.day,
+        item.task,
+        item.assignee,
+      ]),
     ].join(" ");
   }
   return step.text;

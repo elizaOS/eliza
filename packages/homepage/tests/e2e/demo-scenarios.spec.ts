@@ -33,14 +33,22 @@ test("shows all five rooms and their native attachment prototypes", async ({
       '[data-demo-review-room]:not([data-demo-review-room="friends"]):not([data-demo-review-room="household"])',
     )
     .all()) {
-    await expect(room.locator("[data-demo-review-step]")).toHaveCount(20);
+    await expect(room.locator("[data-demo-review-step]")).toHaveCount(21);
   }
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
   await expect(page.locator(".landing-task-list-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-handoff-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-itinerary-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-heat-plan-attachment")).toHaveCount(1);
   await expect(page.locator(".landing-place-fit")).toHaveCount(0);
   await expect(
     page.locator(".landing-task-list-attachment footer"),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(
+      ".landing-place-attachment footer, .landing-handoff-attachment footer, .landing-itinerary-attachment footer, .landing-heat-plan-attachment footer",
+    ),
   ).toHaveCount(0);
   await expect(
     page.locator(
@@ -48,6 +56,7 @@ test("shows all five rooms and their native attachment prototypes", async ({
     ),
   ).toHaveCount(0);
   await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
+  await expect(page.locator(".demo-review-step-capability")).toHaveCount(0);
 
   const castSources = await page
     .locator(".demo-review-cast img:not([src*='logo_white_orangebg'])")
