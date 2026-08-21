@@ -1425,6 +1425,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
+        "@elizaos/scenario-runner": "workspace:*",
         "@types/node": "^24.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",

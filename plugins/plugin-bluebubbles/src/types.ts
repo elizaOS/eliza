@@ -108,12 +108,19 @@ export interface BlueBubblesWebhookPayload {
 
 export interface SendMessageOptions {
 	tempGuid?: string;
+	/** Cancels the provider request before a response is accepted. */
+	signal?: AbortSignal;
 	method?: "apple-script" | "private-api";
 	subject?: string;
 	effectId?: string;
 	selectedMessageGuid?: string;
 	partIndex?: number;
 	ddScan?: boolean;
+}
+
+export interface BlueBubblesClientOptions {
+	requestTimeoutMs?: number;
+	attachmentTimeoutMs?: number;
 }
 
 export interface SendMessageResult {

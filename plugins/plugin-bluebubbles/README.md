@@ -118,3 +118,17 @@ The plugin registers the following HTTP endpoints on the agent:
   connector-account provider. One service instance connects to the resolved
   default account; run separate agent instances for simultaneous independent
   BlueBubbles servers.
+
+## Deterministic loopback testing
+
+`@elizaos/plugin-bluebubbles/testing/loopback` provides a stateful BlueBubbles
+v1 HTTP loopback for scenario and connector tests. It supports deterministic
+reset, queued protocol faults, multi-account state, `tempGuid` idempotency, and
+mock-only effect/webhook receipts. Tests use it through the production
+`BlueBubblesClient`, webhook route, and `BlueBubblesService`; it is not a stub
+for those production components.
+
+The loopback represents an external BlueBubbles server only. It does not own or
+simulate the separate native local Messages integration in
+`@elizaos/plugin-imessage`, and its receipts are not live-provider
+qualification.

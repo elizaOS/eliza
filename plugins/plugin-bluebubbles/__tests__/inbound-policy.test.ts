@@ -45,6 +45,7 @@ function makeRuntime(
 		createEntity: vi.fn(async () => undefined),
 		ensureConnection: vi.fn(async () => undefined),
 		createMemory,
+		updateMemory: vi.fn(async () => true),
 		getRoom: vi.fn(async () => ({ id: "room-1" as UUID })),
 		messageService: { handleMessage },
 		reportError: vi.fn(),

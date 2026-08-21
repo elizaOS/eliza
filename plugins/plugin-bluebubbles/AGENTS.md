@@ -52,8 +52,10 @@ src/
   webhook-auth.ts               X-BlueBubbles-Webhook-Secret validation
   constants.ts                  Service name, default paths, policy constants
   types.ts                      Domain types (BlueBubblesConfig, BlueBubblesMessage, BlueBubblesChat…)
+  testing/loopback.ts           Stateful external-server protocol simulator (mock-only evidence)
   actions/index.ts              Empty — messaging uses connector hooks only
   providers/index.ts            Empty — context via connector getChatContext/getUserContext
+test/scenarios/                 Model-free real-runtime loopback scenarios
 auto-enable.ts                  Lightweight shouldEnable() for the plugin engine
 ```
 

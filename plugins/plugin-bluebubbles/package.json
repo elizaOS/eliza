@@ -47,6 +47,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
+    "test:scenarios": "cd ../.. && SCENARIO_USE_DETERMINISTIC_MODEL=1 EVAL_MODEL_PROVIDER=deterministic bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run plugins/plugin-bluebubbles/test/scenarios --lane pr-deterministic --report-dir reports/scenarios/pr-deterministic-bluebubbles --run-dir reports/scenarios/pr-deterministic-bluebubbles",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -55,6 +56,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.8",
+    "@elizaos/scenario-runner": "workspace:*",
     "@types/node": "^24.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",

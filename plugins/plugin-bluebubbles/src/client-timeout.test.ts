@@ -39,7 +39,11 @@ describe("BlueBubbles client request deadlines", () => {
 		const pending = client().sendMessage("iMessage;-;+14155550100", "hi");
 		controller.abort(new DOMException("deadline", "TimeoutError"));
 
-		await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+		await expect(pending).rejects.toMatchObject({
+			name: "BlueBubblesTransportError",
+			kind: "timeout",
+			acceptance: "ambiguous",
+		});
 		expect(timeout).toHaveBeenCalledWith(15_000);
 	});
 
@@ -53,7 +57,7 @@ describe("BlueBubbles client request deadlines", () => {
 
 		await expect(pending).resolves.toMatchObject({
 			ok: false,
-			error: "deadline",
+			error: "BlueBubbles request timed out",
 		});
 	});
 
@@ -103,7 +107,11 @@ describe("BlueBubbles client request deadlines", () => {
 		await vi.waitFor(() => expect(bodyStarted).toBe(true));
 		controller.abort(new DOMException("deadline", "TimeoutError"));
 
-		await expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+		await expect(pending).rejects.toMatchObject({
+			name: "BlueBubblesTransportError",
+			kind: "timeout",
+			acceptance: "ambiguous",
+		});
 		expect(timeout).toHaveBeenCalledWith(30_000);
 	});
 

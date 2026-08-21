@@ -512,6 +512,7 @@ export class BlueBubblesService extends Service {
 	private knownChats: Map<string, BlueBubblesChat> = new Map();
 	private entityCache: Map<string, UUID> = new Map();
 	private roomCache: Map<string, UUID> = new Map();
+	private incomingMessageWork = new Map<string, Promise<void>>();
 	private webhookPath: string = DEFAULT_WEBHOOK_PATH;
 	private isRunning = false;
 
@@ -785,7 +786,7 @@ export class BlueBubblesService extends Service {
 						...(memory.metadata ?? {}),
 						type: MemoryType.MESSAGE,
 						accountId: service.accountId,
-						bluebubblesChatGuid: chatGuid,
+						bluebubblesChatGuid: result.chatGuid ?? chatGuid,
 						bluebubblesMessageGuid: result.guid,
 						messageIdFull: result.guid,
 					};
@@ -1145,6 +1146,30 @@ export class BlueBubblesService extends Service {
 	private async handleIncomingMessage(
 		message: BlueBubblesMessage,
 	): Promise<void> {
+		const inFlight = this.incomingMessageWork.get(message.guid);
+		if (inFlight) {
+			await inFlight;
+			return;
+		}
+		const work = this.handleIncomingMessageOnce(message);
+		this.incomingMessageWork.set(message.guid, work);
+		try {
+			await work;
+		} finally {
+			if (this.incomingMessageWork.get(message.guid) === work) {
+				this.incomingMessageWork.delete(message.guid);
+			}
+		}
+	}
+
+	/**
+	 * Persists and processes one inbound provider message. Persistence alone is
+	 * not a delivery acknowledgement: retries resume a stored message until its
+	 * completion marker is durably written.
+	 */
+	private async handleIncomingMessageOnce(
+		message: BlueBubblesMessage,
+	): Promise<void> {
 		// Skip outgoing messages
 		if (message.isFromMe) {
 			return;
@@ -1157,6 +1182,21 @@ export class BlueBubblesService extends Service {
 
 		const config = this.blueBubblesConfig;
 		if (!config) {
+			return;
+		}
+		const memoryId = createUniqueUuid(
+			this.runtime,
+			`bluebubbles:${message.guid}`,
+		) as UUID;
+		const existingMemory =
+			typeof this.runtime.getMemoryById === "function"
+				? await this.runtime.getMemoryById(memoryId)
+				: null;
+		if (
+			(existingMemory?.metadata as Record<string, unknown> | undefined)
+				?.bluebubblesProcessingCompleted === true
+		) {
+			logger.debug(`Ignoring duplicate BlueBubbles message ${message.guid}`);
 			return;
 		}
 
@@ -1260,67 +1300,87 @@ export class BlueBubblesService extends Service {
 			},
 		});
 
-		const memory = createMessageMemory({
-			id: createUniqueUuid(this.runtime, `bluebubbles:${message.guid}`) as UUID,
-			agentId: this.runtime.agentId,
-			entityId,
-			roomId,
-			content: {
-				text: message.text ?? "",
+		const memory =
+			existingMemory ??
+			(createMessageMemory({
+				id: memoryId,
+				agentId: this.runtime.agentId,
+				entityId,
+				roomId,
+				content: {
+					text: message.text ?? "",
+					source: "bluebubbles",
+					...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
+					...(attachments.length > 0 ? { attachments } : {}),
+				},
+			}) as Memory);
+		if (!existingMemory) {
+			memory.createdAt = message.dateCreated;
+			memory.metadata = {
+				...(memory.metadata ?? {}),
 				source: "bluebubbles",
-				...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
-				...(attachments.length > 0 ? { attachments } : {}),
-			},
-		}) as Memory;
-		memory.createdAt = message.dateCreated;
-		memory.metadata = {
-			...(memory.metadata ?? {}),
-			source: "bluebubbles",
-			provider: "bluebubbles",
-			// Top-level accountId per MessageMetadata contract. Inbound connector
-			// stamps this so outbound resolution can route replies back through
-			// the same connector account.
-			accountId: this.accountId,
-			timestamp: message.dateCreated,
-			entityName: message.handle?.address ?? senderHandle,
-			entityUserName: senderHandle,
-			fromId: senderHandle,
-			sourceId: entityId,
-			chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
-			messageIdFull: message.guid,
-			sender: {
-				id: senderHandle,
-				name: message.handle?.address ?? senderHandle,
-				username: senderHandle,
-			},
-			bluebubbles: {
-				id: senderHandle,
-				userId: senderHandle,
-				username: senderHandle,
-				userName: senderHandle,
-				name: message.handle?.address ?? senderHandle,
-				chatGuid: chat.guid,
-				chatIdentifier: chat.chatIdentifier,
-				messageGuid: message.guid,
-			},
-			bluebubblesChatGuid: chat.guid,
-			bluebubblesChatIdentifier: chat.chatIdentifier,
-			bluebubblesMessageGuid: message.guid,
-			bluebubblesThreadOriginatorGuid:
-				message.threadOriginatorGuid ?? undefined,
-		} as Memory["metadata"];
+				provider: "bluebubbles",
+				// Top-level accountId per MessageMetadata contract. Inbound connector
+				// stamps this so outbound resolution can route replies back through
+				// the same connector account.
+				accountId: this.accountId,
+				timestamp: message.dateCreated,
+				entityName: message.handle?.address ?? senderHandle,
+				entityUserName: senderHandle,
+				fromId: senderHandle,
+				sourceId: entityId,
+				chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
+				messageIdFull: message.guid,
+				sender: {
+					id: senderHandle,
+					name: message.handle?.address ?? senderHandle,
+					username: senderHandle,
+				},
+				bluebubbles: {
+					id: senderHandle,
+					userId: senderHandle,
+					username: senderHandle,
+					userName: senderHandle,
+					name: message.handle?.address ?? senderHandle,
+					chatGuid: chat.guid,
+					chatIdentifier: chat.chatIdentifier,
+					messageGuid: message.guid,
+				},
+				bluebubblesChatGuid: chat.guid,
+				bluebubblesChatIdentifier: chat.chatIdentifier,
+				bluebubblesMessageGuid: message.guid,
+				bluebubblesThreadOriginatorGuid:
+					message.threadOriginatorGuid ?? undefined,
+			} as Memory["metadata"];
 
-		await this.runtime.createMemory(memory, "messages");
+			await this.runtime.createMemory(memory, "messages");
+		}
 
 		const room = await this.runtime.getRoom(roomId);
 		if (!room) {
-			logger.warn(
-				`BlueBubbles room ${roomId} not found after ensureConnection`,
+			throw new Error(
+				`BlueBubbles room ${roomId} not found after ensureConnection; webhook must be retried`,
 			);
-			return;
 		}
 
 		await this.processMessage(memory, room, chat.guid);
+		const latestMemory =
+			typeof this.runtime.getMemoryById === "function"
+				? ((await this.runtime.getMemoryById(memoryId)) ?? memory)
+				: memory;
+		const completed: Partial<Memory> & { id: UUID } = {
+			...latestMemory,
+			id: latestMemory.id ?? memoryId,
+			metadata: {
+				...(latestMemory.metadata ?? {}),
+				bluebubblesProcessingCompleted: true,
+			} as Memory["metadata"],
+		};
+		if (!(await this.runtime.updateMemory(completed))) {
+			throw new Error(
+				`BlueBubbles message ${message.guid} processed but completion could not be persisted`,
+			);
+		}
 	}
 
 	/**
@@ -1366,10 +1426,33 @@ export class BlueBubblesService extends Service {
 	private async handleMessageUpdate(
 		message: BlueBubblesMessage,
 	): Promise<void> {
-		// Handle edited or unsent messages
-		if (message.dateEdited) {
-			logger.debug(`Message ${message.guid} was edited`);
+		if (
+			!message.dateEdited ||
+			typeof this.runtime.getMemoryById !== "function"
+		) {
+			return;
 		}
+		const memoryId = createUniqueUuid(
+			this.runtime,
+			`bluebubbles:${message.guid}`,
+		) as UUID;
+		const existing = await this.runtime.getMemoryById(memoryId);
+		if (!existing) return;
+		const metadata = existing.metadata as Record<string, unknown> | undefined;
+		const priorEditedAt = Number(metadata?.bluebubblesDateEdited ?? 0);
+		if (message.dateEdited <= priorEditedAt) {
+			logger.debug(`Ignoring stale BlueBubbles update ${message.guid}`);
+			return;
+		}
+		await this.runtime.updateMemory({
+			...existing,
+			id: existing.id ?? memoryId,
+			content: { ...existing.content, text: message.text ?? "" },
+			metadata: {
+				...(existing.metadata ?? {}),
+				bluebubblesDateEdited: message.dateEdited,
+			} as Memory["metadata"],
+		});
 	}
 
 	/**
@@ -1446,7 +1529,7 @@ export class BlueBubblesService extends Service {
 		target: string,
 		text: string,
 		replyToMessageGuid?: string,
-	): Promise<{ guid: string; dateCreated: number }> {
+	): Promise<{ guid: string; dateCreated: number; chatGuid: string }> {
 		if (!this.client) {
 			throw new Error("BlueBubbles client not initialized");
 		}
@@ -1461,6 +1544,7 @@ export class BlueBubblesService extends Service {
 		return {
 			guid: result.guid,
 			dateCreated: result.dateCreated,
+			chatGuid,
 		};
 	}
 
@@ -1471,7 +1555,9 @@ export class BlueBubblesService extends Service {
 	): Promise<void> {
 		const messageService = getMessageService(this.runtime);
 		if (!messageService) {
-			return;
+			throw new Error(
+				"BlueBubbles message service is unavailable; webhook must be retried",
+			);
 		}
 
 		const callback: HandlerCallback = async (
