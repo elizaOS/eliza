@@ -129,7 +129,6 @@ export * from "./service-pricing";
 // Token Redemptions (elizaOS payouts)
 // ============================================
 export * from "./token-redemptions";
-export * from "./usage-quotas";
 export * from "./usage-records";
 // ============================================
 // User MCPs (Monetizable MCP Servers)
