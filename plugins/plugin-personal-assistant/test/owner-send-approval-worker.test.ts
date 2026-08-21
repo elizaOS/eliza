@@ -35,6 +35,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOwnerSendPolicy,
   OWNER_SEND_APPROVAL_TASK_NAME,
+  OWNER_SEND_OUTBOX_TASK_NAME,
   registerOwnerSendApprovalWorker,
 } from "../src/lifeops/messaging/owner-send-policy.js";
 
@@ -342,7 +343,7 @@ describe("owner send-approval worker", () => {
     expect(harness.rows.has(String(task.id))).toBe(false);
   });
 
-  it("a source with no registered adapter hard-fails, keeps the task for retry, and sends nothing", async () => {
+  it("a source with no registered adapter queues a proven non-delivery retry and sends nothing", async () => {
     const harness = makeRuntime();
     const policy = createOwnerSendPolicy();
     const enq = await policy.enqueueApproval(
@@ -357,9 +358,13 @@ describe("owner send-approval worker", () => {
       dispatchChosenOption(harness.runtime, task, "confirm"),
     ).rejects.toThrow(/no "calendly" message adapter/u);
     expect(adapter.sentDraftIds).toHaveLength(0);
-    // Retriable: the row survives so the owner can confirm again once the
-    // connector is available.
-    expect(harness.rows.has(String(task.id))).toBe(true);
+    const queuedRetry = harness.rows.get(String(task.id));
+    expect(queuedRetry).toMatchObject({
+      name: OWNER_SEND_OUTBOX_TASK_NAME,
+      tags: expect.arrayContaining(["queue", "repeat", "OUTBOX"]),
+      metadata: { updateInterval: 1_000 },
+    });
+    expect(queuedRetry?.metadata?.outboxReconciliationRequired).toBeUndefined();
   });
 
   it("worker registration is idempotent", async () => {

@@ -217,14 +217,13 @@ describe("ScenarioBackgroundRuntime approval and outbox composition", () => {
     ).rejects.toThrow("connector unavailable before provider acceptance");
     expect(adapter.acceptedDraftIds).toEqual([]);
     expect(harness.rows.has(approval.requestId)).toBe(true);
-    expect(harness.rows.get(approval.requestId)).toMatchObject({
+    expect(jsonRoundTrip(harness.rows.get(approval.requestId))).toMatchObject({
       name: OWNER_SEND_OUTBOX_TASK_NAME,
       tags: expect.arrayContaining(["queue", "repeat", "OUTBOX"]),
     });
     expect(
       getDefaultTriageService().getStore().getDraft("approval-draft-1"),
     ).toMatchObject({ sent: false });
-
     await expect(background.step()).rejects.toThrow(
       "1 scheduled task failure(s)",
     );

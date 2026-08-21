@@ -20,7 +20,9 @@ import {
   insertActivityEvent,
   listActivityEvents,
   listAllActivityEvents,
+  listAllActivitySignals,
   restoreActivityEventBaseline,
+  restoreActivitySignalBaseline,
 } from "../src/activity-profile/activity-tracker-repo.ts";
 import {
   type ActivityTrackerModule,
@@ -111,10 +113,16 @@ describe("activity collector background composition", () => {
           ActivityTrackerModule["startActivityCollector"]
         >[0]["onEvent"]
       | null = null;
+    let onIdleSample:
+      | Parameters<
+          ActivityTrackerModule["startActivityCollector"]
+        >[0]["onIdleSample"]
+      | null = null;
     const unregister = registerActivityTrackerAdapter(runtime, {
       isSupportedPlatform: () => true,
       startActivityCollector: (options) => {
         onEvent = options.onEvent;
+        onIdleSample = options.onIdleSample;
         return { pid: 22902, stop: async () => undefined };
       },
     });
@@ -138,6 +146,10 @@ describe("activity collector background composition", () => {
       windowTitle: null,
     });
     const baseline = await listAllActivityEvents(runtime, String(AGENT_ID));
+    const signalBaseline = await listAllActivitySignals(
+      runtime,
+      String(AGENT_ID),
+    );
     const unregisterReset = registerScenarioBackgroundDriver(
       runtime as unknown as AgentRuntime,
       {
@@ -145,12 +157,18 @@ describe("activity collector background composition", () => {
         ready: async () => undefined,
         step: async () => undefined,
         inspect: async () => [],
-        reset: async () =>
-          restoreActivityEventBaseline(
+        reset: async () => {
+          await restoreActivityEventBaseline(
             runtime,
             String(AGENT_ID),
             baseline.map((row) => row.id),
-          ),
+          );
+          await restoreActivitySignalBaseline(
+            runtime,
+            String(AGENT_ID),
+            signalBaseline.map((row) => row.id),
+          );
+        },
       },
     );
     runtime.registerTaskWorker({
@@ -165,8 +183,11 @@ describe("activity collector background composition", () => {
             windowTitle: "Synthetic world",
           }),
         );
-        if (parsed.kind !== "event" || !onEvent) throw new Error("not ready");
+        if (parsed.kind !== "event" || !onEvent || !onIdleSample) {
+          throw new Error("not ready");
+        }
         onEvent(parsed.value);
+        onIdleSample({ ts: Date.parse(EPOCH) + 1_000, idleSeconds: 45 });
         return undefined;
       },
     });
@@ -202,9 +223,21 @@ describe("activity collector background composition", () => {
         appName: "Safari",
       }),
     ]);
+    expect(await listAllActivitySignals(runtime, String(AGENT_ID))).toEqual([
+      expect.objectContaining({
+        source: "desktop_interaction",
+        state: "active",
+        observedAt: "2026-08-20T12:00:01.000Z",
+        idleState: "active",
+        idleTimeSeconds: 45,
+      }),
+    ]);
     await background.resetSharedRuntime();
     expect(await listAllActivityEvents(runtime, String(AGENT_ID))).toEqual(
       baseline,
+    );
+    expect(await listAllActivitySignals(runtime, String(AGENT_ID))).toEqual(
+      signalBaseline,
     );
     expect(await listAllActivityEvents(runtime, otherAgentId)).toEqual([
       expect.objectContaining({ bundleId: "baseline.other-agent" }),

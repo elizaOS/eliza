@@ -341,7 +341,7 @@ async function dispatchApprovedDraft(
   const service = getDefaultTriageService();
   const adapter = service.getAdapter(draft.source);
   if (!adapter) {
-    throw new Error(
+    throw new OwnerSendKnownNonDeliveryError(
       `[OwnerSendPolicy] no "${draft.source}" message adapter is registered; nothing was sent — retry once the connector is available`,
     );
   }

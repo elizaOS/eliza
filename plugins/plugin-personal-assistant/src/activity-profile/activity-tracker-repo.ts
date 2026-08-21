@@ -1,5 +1,6 @@
 /**
- * Repository helpers for T8d `app_lifeops.life_activity_events`.
+ * Repository helpers for the collector-owned activity event and idle-signal
+ * tables in `app_lifeops`.
  *
  * Writes are append-only (one row per `activate` / `deactivate`). Reads
  * derive per-app dwell time by pairing consecutive `activate` events (the
@@ -21,7 +22,17 @@ export interface ActivityEventRow {
   windowTitle: string | null;
 }
 
-/** Create the collector-owned append-only table without booting all LifeOps domains. */
+export interface ActivitySignalRow {
+  id: string;
+  agentId: string;
+  source: string;
+  state: string;
+  observedAt: string;
+  idleState: string | null;
+  idleTimeSeconds: number | null;
+}
+
+/** Create collector-owned tables without booting every LifeOps domain. */
 export async function bootstrapActivityEventSchema(
   runtime: IAgentRuntime,
 ): Promise<void> {
@@ -39,6 +50,27 @@ export async function bootstrapActivityEventSchema(
       metadata_json text NOT NULL DEFAULT '{}',
       created_at text NOT NULL
     )`,
+  );
+  await executeRawSql(
+    runtime,
+    `CREATE TABLE IF NOT EXISTS app_lifeops.life_activity_signals (
+      id text PRIMARY KEY,
+      agent_id text NOT NULL,
+      source text NOT NULL,
+      platform text NOT NULL DEFAULT '',
+      state text NOT NULL,
+      observed_at text NOT NULL,
+      idle_state text,
+      idle_time_seconds integer,
+      on_battery boolean,
+      metadata_json text NOT NULL DEFAULT '{}',
+      created_at text NOT NULL
+    )`,
+  );
+  await executeRawSql(
+    runtime,
+    `CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent
+     ON app_lifeops.life_activity_signals (agent_id, observed_at)`,
   );
 }
 
@@ -131,6 +163,61 @@ export async function listAllActivityEvents(
   return rows
     .map(mapRow)
     .filter((row): row is ActivityEventRow => row !== null);
+}
+
+/** List collector-originated idle signals for evidence and baseline capture. */
+export async function listAllActivitySignals(
+  runtime: IAgentRuntime,
+  agentId: string,
+): Promise<ActivitySignalRow[]> {
+  const rows = await executeRawSql(
+    runtime,
+    `SELECT id, agent_id, source, state, observed_at, idle_state, idle_time_seconds
+     FROM app_lifeops.life_activity_signals
+     WHERE agent_id = ${sqlQuote(agentId)}
+     ORDER BY observed_at ASC`,
+  );
+  return rows.flatMap((row): ActivitySignalRow[] => {
+    const id = toText(row.id, "");
+    const rowAgentId = toText(row.agent_id, "");
+    const source = toText(row.source, "");
+    const state = toText(row.state, "");
+    const observedAt = toText(row.observed_at, "");
+    if (!id || !rowAgentId || !source || !state || !observedAt) return [];
+    const idleTimeRaw = row.idle_time_seconds;
+    const idleTimeSeconds =
+      typeof idleTimeRaw === "number"
+        ? idleTimeRaw
+        : typeof idleTimeRaw === "bigint"
+          ? Number(idleTimeRaw)
+          : null;
+    return [
+      {
+        id,
+        agentId: rowAgentId,
+        source,
+        state,
+        observedAt,
+        idleState: typeof row.idle_state === "string" ? row.idle_state : null,
+        idleTimeSeconds,
+      },
+    ];
+  });
+}
+
+/** Remove signals appended after one agent's captured scenario baseline. */
+export async function restoreActivitySignalBaseline(
+  runtime: IAgentRuntime,
+  agentId: string,
+  baselineIds: readonly string[],
+): Promise<void> {
+  const keep = baselineIds.map(sqlQuote).join(", ");
+  await executeRawSql(
+    runtime,
+    `DELETE FROM app_lifeops.life_activity_signals
+     WHERE agent_id = ${sqlQuote(agentId)}
+       ${keep ? `AND id NOT IN (${keep})` : ""}`,
+  );
 }
 
 /** Restore one agent's activity rows to an exact captured baseline. */
