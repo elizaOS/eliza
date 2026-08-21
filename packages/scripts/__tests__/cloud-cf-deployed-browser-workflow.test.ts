@@ -85,6 +85,10 @@ const authorityUpload = requireStep(
   "Publish closed Pages deployment authority",
 );
 const deployedJob = requireJob("deployed-renderer-staging");
+const oneShotPrerequisite = requireStep(
+  deployedJob,
+  "Require one-shot staging release prerequisites",
+);
 const authorityDownload = requireStep(
   deployedJob,
   "Download exact Pages deployment authority",
@@ -186,6 +190,12 @@ describe("Cloudflare deployed browser workflow contract", () => {
       deployWorkflow.on?.workflow_dispatch?.inputs?.[inputName];
     const calledInput = workflow.on?.workflow_call?.inputs?.[inputName];
     const releaseJob = deployWorkflow.jobs?.release;
+    const sourceValidationStep = deployWorkflow.jobs?.[
+      "validate-deploy-source"
+    ]?.steps?.find(
+      (step) =>
+        step.name === "Reject feature refs targeting canonical environments",
+    );
     const admissionJob = deployWorkflow.jobs?.["admit-staging"];
     const admissionStep = admissionJob?.steps?.find(
       (step) =>
@@ -204,6 +214,16 @@ describe("Cloudflare deployed browser workflow contract", () => {
     expect(admissionStep?.env?.RUN_DEPLOYED_RENDERER_STAGING).toBe(
       releaseJob?.with?.[inputName],
     );
+    expect(sourceValidationStep?.env?.RUN_DEPLOYED_RENDERER_STAGING).toBe(
+      githubExpression("inputs.run_deployed_renderer_staging == true"),
+    );
+    expect(sourceValidationStep?.run).toContain(
+      '[ "$RUN_DEPLOYED_RENDERER_STAGING" = "true" ]',
+    );
+    expect(sourceValidationStep?.run).toContain(
+      '[ "$TARGET_ENVIRONMENT" != "staging" ]',
+    );
+    expect(sourceValidationStep?.run).toContain('[ "$FORCE" = "true" ]');
     expect(admissionStep?.run).toContain(
       '&& [ "$RUN_DEPLOYED_RENDERER_STAGING" != "true" ]',
     );
@@ -214,8 +234,25 @@ describe("Cloudflare deployed browser workflow contract", () => {
       "inputs.run_deployed_renderer_staging == true",
     );
     expect(deployedJob.if).toContain(
-      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' || (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)",
+      "vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1' && needs.deploy-app.result == 'success'",
     );
+    expect(deployedJob.if).toContain(
+      "|| (github.event_name == 'workflow_dispatch' && inputs.run_deployed_renderer_staging == true)",
+    );
+    expect(oneShotPrerequisite.if).toBe(
+      githubExpression("inputs.run_deployed_renderer_staging == true"),
+    );
+    expect(oneShotPrerequisite.env).toEqual({
+      DEPLOY_APP_RESULT: githubExpression("needs.deploy-app.result"),
+      PAGES_DEPLOYED: githubExpression(
+        "needs.deploy-app.outputs.pages_deployed",
+      ),
+      VERIFY_ROUTING_RESULT: githubExpression("needs.verify-routing.result"),
+    });
+    expect(oneShotPrerequisite.run).toContain(
+      '[ "$PAGES_DEPLOYED" != "true" ]',
+    );
+    expect(oneShotPrerequisite.run).toContain("exit 1");
     expect(deployWorkflow.on?.schedule).toBeUndefined();
   });
 
