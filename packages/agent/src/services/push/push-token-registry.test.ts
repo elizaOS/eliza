@@ -11,9 +11,12 @@
  * underfill, the persisted-record ceiling (exact boundary hydrates, one above
  * fails closed without destroying the durable row), one-time durable repair
  * that never rewrites a clean load, failed-write rollback (in-memory and durable
- * state unchanged, typed error, token redacted), and mutation-queue recovery
- * after a failed op. Backed by a Map-backed mock runtime cache — no real
- * storage.
+ * state unchanged, typed error, token redacted), mutation-queue recovery after a
+ * failed op, observable atomicity (list/count never see an uncommitted mutation
+ * while its write is pending and stay unchanged on rejection), and
+ * persistence-boundary validation of direct callers (unsupported platform and
+ * non-string token become the typed invalid error). Backed by a Map-backed mock
+ * runtime cache — no real storage.
  */
 import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
@@ -469,6 +472,92 @@ describe("PushTokenRegistry", () => {
     expect(
       (cache.get(KEY) as PushTokenRecord[]).map((r) => r.token).sort(),
     ).toEqual(["a", "c"]);
+  });
+
+  it("never exposes an uncommitted mutation while its write is pending, and stays unchanged on rejection", async () => {
+    const cache = new Map<string, unknown>();
+    let gateNextWrite = false;
+    let rejectPendingWrite!: (reason: Error) => void;
+    let pendingWriteStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      pendingWriteStarted = resolve;
+    });
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: <T>(k: string, value: T): Promise<boolean> => {
+        if (!gateNextWrite) {
+          cache.set(k, value);
+          return Promise.resolve(true);
+        }
+        return new Promise<boolean>((_resolve, reject) => {
+          rejectPendingWrite = reject;
+          pendingWriteStarted();
+        });
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    gateNextWrite = true;
+    const pending = reg.register("android", "pending-token");
+    await started;
+    // The candidate is staged but not published: readers observe only committed
+    // state while the durable write is in flight.
+    expect(await reg.count()).toBe(1);
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+
+    rejectPendingWrite(new Error("cache offline"));
+    await pending.then(
+      () => {
+        throw new Error("expected the rejected write to throw");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+
+    // Observable registry and durable cache are unchanged after the rejection.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("rejects an unsupported platform from a direct caller with a typed error", async () => {
+    const untyped = registry as unknown as {
+      register(platform: unknown, token: string): Promise<void>;
+    };
+    await untyped.register("web", "tok-web").then(
+      () => {
+        throw new Error("expected unsupported platform to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_INVALID_CODE);
+      },
+    );
+    expect(await registry.count()).toBe(0);
+    expect(ctx.cache.get(KEY)).toBeUndefined();
+  });
+
+  it("turns a non-string runtime token into the typed invalid error, not a TypeError", async () => {
+    const untyped = registry as unknown as {
+      register(platform: string, token: unknown): Promise<void>;
+    };
+    await untyped.register("ios", 12345).then(
+      () => {
+        throw new Error("expected a non-string token to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_INVALID_CODE);
+      },
+    );
+    expect(await registry.count()).toBe(0);
   });
 
   it("rejects an empty token with a typed validation error", async () => {

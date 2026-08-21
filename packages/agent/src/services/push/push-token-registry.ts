@@ -27,10 +27,12 @@
  *   4. When a bounded-but-dirty legacy dump is normalized, the repaired form is
  *      persisted once (guarded so a clean load never rewrites), so later
  *      restarts do not repeatedly re-scan and re-normalize the same dump.
- *   5. `register`/`unregister` are atomic w.r.t. `setCache`: a rejected durable
- *      write rolls the in-memory Map back to its pre-mutation snapshot, and the
- *      same-process mutation queue keeps processing later operations after a
- *      failure (no wedge).
+ *   5. `register`/`unregister` are observably atomic w.r.t. `setCache`: the
+ *      mutation is staged on a candidate Map that is published to `this.tokens`
+ *      only after the durable write succeeds, so `list`/`count` never observe an
+ *      uncommitted add/delete. A rejected write leaves the observable registry
+ *      unchanged, and the same-process mutation queue keeps processing later
+ *      operations after a failure (no wedge).
  *
  * Concurrency scope: mutations are serialized and failure-atomic WITHIN a
  * single process. Cross-process compare-and-swap is out of scope because the
@@ -103,10 +105,19 @@ function utf8ByteLength(value: string): number {
 
 /**
  * Validate and canonicalize a token for a mutation. Returns the trimmed token
- * or throws a typed {@link PUSH_TOKEN_INVALID_CODE} error. The error context
- * records only the byte length, never the token itself.
+ * or throws a typed {@link PUSH_TOKEN_INVALID_CODE} error. Accepts `unknown` so
+ * a non-string runtime value from untyped/plugin callers becomes the typed
+ * invalid error instead of leaking a raw `token.trim` TypeError. The error
+ * context records only the byte length or received type, never the token.
  */
-function assertValidToken(token: string): string {
+function assertValidToken(token: unknown): string {
+  if (typeof token !== "string") {
+    throw new ElizaError("[PushTokenRegistry] token must be a string", {
+      code: PUSH_TOKEN_INVALID_CODE,
+      context: { reason: "not_a_string", received: typeof token },
+      severity: "ephemeral",
+    });
+  }
   const trimmed = token.trim();
   if (!trimmed) {
     throw new ElizaError("[PushTokenRegistry] token is required", {
@@ -124,6 +135,23 @@ function assertValidToken(token: string): string {
     });
   }
   return trimmed;
+}
+
+/**
+ * Validate a platform at the persistence boundary. Direct `register()` callers
+ * in untyped/plugin code can pass an unsupported value (e.g. "web"); this
+ * rejects it with a typed {@link PUSH_TOKEN_INVALID_CODE} error before it
+ * reaches the durable cache, rather than persisting an arbitrary runtime string.
+ */
+function assertValidPlatform(platform: unknown): PushPlatform {
+  if (platform !== "ios" && platform !== "android") {
+    throw new ElizaError("[PushTokenRegistry] unsupported platform", {
+      code: PUSH_TOKEN_INVALID_CODE,
+      context: { reason: "unsupported_platform" },
+      severity: "ephemeral",
+    });
+  }
+  return platform;
 }
 
 export class PushTokenRegistry {
@@ -196,49 +224,56 @@ export class PushTokenRegistry {
   }
 
   /**
-   * Persist the current Map. On a durable-write rejection, roll the in-memory
-   * Map back to `snapshot` so the observable registry is unchanged, then rethrow
-   * a typed error. Callers run this inside {@link enqueueMutation}, so the next
-   * queued mutation still proceeds.
+   * Persist `candidate` and, only after the durable write succeeds, publish it
+   * as the observable registry. Because `this.tokens` is reassigned solely on
+   * success, `list`/`count` running while the write is pending observe the
+   * still-committed prior state; a rejected write leaves the observable registry
+   * unchanged and rethrows a typed error. Callers run this inside
+   * {@link enqueueMutation}, so the next queued mutation still proceeds.
    */
-  private async commit(snapshot: Map<string, PushTokenRecord>): Promise<void> {
+  private async commit(candidate: Map<string, PushTokenRecord>): Promise<void> {
     try {
-      await this.persist();
+      await this.runtime.setCache(this.cacheKey, [...candidate.values()]);
     } catch (error) {
-      this.tokens = snapshot;
       // error-policy:J2 context-adding rethrow — surface a typed persistence
-      // failure with a redacted count while preserving the underlying cause.
+      // failure with a redacted count while preserving the underlying cause. The
+      // candidate was never published, so the observable registry is unchanged.
       throw new ElizaError(
         "[PushTokenRegistry] failed to persist push-token mutation",
         {
           code: PUSH_TOKEN_PERSIST_FAILED_CODE,
           cause: error,
-          context: { tokenCount: snapshot.size },
+          context: { tokenCount: candidate.size },
           severity: "ephemeral",
         },
       );
     }
+    this.tokens = candidate;
   }
 
   /**
    * Register (upsert) a device token. Re-registering an existing token under a
    * new platform moves it to that platform and refreshes `createdAt`.
    *
-   * Atomic w.r.t. persistence: if the durable write rejects, the in-memory Map
-   * is restored to its pre-mutation snapshot and a typed error is thrown.
+   * Observably atomic w.r.t. persistence: the mutation is staged on a candidate
+   * Map and published only after the durable write succeeds, so a rejected write
+   * leaves the observable registry unchanged and a typed error is thrown.
+   * `platform` is validated at this boundary so a direct/untyped caller cannot
+   * persist an unsupported transport.
    */
   async register(platform: PushPlatform, token: string): Promise<void> {
+    const validPlatform = assertValidPlatform(platform);
     const trimmed = assertValidToken(token);
     await this.enqueueMutation(async () => {
       await this.hydrate();
-      const snapshot = new Map(this.tokens);
-      this.tokens.set(trimmed, {
+      const candidate = new Map(this.tokens);
+      candidate.set(trimmed, {
         token: trimmed,
-        platform,
+        platform: validPlatform,
         createdAt: Date.now(),
       });
-      evictOldestPushTokens(this.tokens);
-      await this.commit(snapshot);
+      evictOldestPushTokens(candidate);
+      await this.commit(candidate);
     });
   }
 
@@ -253,9 +288,9 @@ export class PushTokenRegistry {
       if (!this.tokens.has(trimmed)) {
         return false;
       }
-      const snapshot = new Map(this.tokens);
-      this.tokens.delete(trimmed);
-      await this.commit(snapshot);
+      const candidate = new Map(this.tokens);
+      candidate.delete(trimmed);
+      await this.commit(candidate);
       return true;
     });
   }
