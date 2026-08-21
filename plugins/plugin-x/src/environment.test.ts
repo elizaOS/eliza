@@ -103,14 +103,18 @@ describe("validateTwitterConfig interval settings", () => {
     TWITTER_DISCOVERY_INTERVAL_MAX: "30",
   } as const;
 
-  it.each(Object.entries(intervalDefaults))(
-    "rejects a partial %s value at the public configuration boundary",
-    async (key, defaultValue) => {
+  it.each(
+    Object.entries(intervalDefaults).flatMap(([key, defaultValue]) =>
+      ["1h", "0", "12.5", "1e3"].map((value) => [key, value, defaultValue]),
+    ),
+  )(
+    "rejects invalid %s value %s at the public configuration boundary",
+    async (key, value, defaultValue) => {
       const config = await validateTwitterConfig(
         makeRuntime({
           TWITTER_AUTH_MODE: "broker",
           TWITTER_BROKER_TOKEN: "test-token",
-          [key]: "1h",
+          [key]: value,
         }),
       );
       expect(config[key as keyof typeof intervalDefaults]).toBe(defaultValue);
@@ -136,10 +140,12 @@ describe("validateTwitterConfig interval settings", () => {
         TWITTER_AUTH_MODE: "broker",
         TWITTER_BROKER_TOKEN: "test-token",
         TWITTER_MAX_ENGAGEMENTS_PER_RUN: "0",
+        TWITTER_MAX_TWEET_LENGTH: "0",
         TWITTER_RETRY_LIMIT: "0",
       }),
     );
     expect(config.TWITTER_MAX_ENGAGEMENTS_PER_RUN).toBe("0");
+    expect(config.TWITTER_MAX_TWEET_LENGTH).toBe("0");
     expect(config.TWITTER_RETRY_LIMIT).toBe("0");
   });
 });

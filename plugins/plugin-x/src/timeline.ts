@@ -20,6 +20,7 @@ import {
 } from "@elizaos/core";
 import type { ClientBase, TwitterAccountSession, TwitterProfile } from "./base";
 import type { Client, Tweet } from "./client/index";
+import { parseTwitterInterval } from "./environment";
 import {
   quoteTweetTemplate,
   replyTweetTemplate,
@@ -178,12 +179,12 @@ export class TwitterTimelineClient {
       }
 
       // Use shared engagement interval
-      const engagementIntervalMinutes = parseInt(
+      const engagementIntervalMinutes = parseTwitterInterval(
         this.state?.TWITTER_ENGAGEMENT_INTERVAL ||
           (getSetting(this.runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string) ||
           process.env.TWITTER_ENGAGEMENT_INTERVAL ||
           "30",
-        10,
+        30,
       );
       const actionInterval = engagementIntervalMinutes * 60 * 1000;
 

@@ -100,7 +100,7 @@ function safeParseInt(value: string | undefined, defaultValue: number): number {
 }
 
 /** Parse an interval magnitude without accepting zero or partial integers. */
-function safeParseInterval(
+export function parseTwitterInterval(
   value: string | undefined,
   defaultValue: number,
 ): number {
@@ -267,7 +267,7 @@ export async function validateTwitterConfig(
         getSetting(runtime, "TWITTER_DM_POLICY") ??
         "",
       TWITTER_DM_POLL_INTERVAL_SECONDS: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_DM_POLL_INTERVAL_SECONDS ??
             getSetting(runtime, "TWITTER_DM_POLL_INTERVAL_SECONDS"),
           60,
@@ -281,56 +281,56 @@ export async function validateTwitterConfig(
         ).toLowerCase() === "true",
       ),
       TWITTER_POST_INTERVAL: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_POST_INTERVAL ??
             getSetting(runtime, "TWITTER_POST_INTERVAL"),
           120,
         ),
       ),
       TWITTER_POST_INTERVAL_MIN: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_POST_INTERVAL_MIN ??
             getSetting(runtime, "TWITTER_POST_INTERVAL_MIN"),
           90,
         ),
       ),
       TWITTER_POST_INTERVAL_MAX: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_POST_INTERVAL_MAX ??
             getSetting(runtime, "TWITTER_POST_INTERVAL_MAX"),
           180,
         ),
       ),
       TWITTER_ENGAGEMENT_INTERVAL: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_ENGAGEMENT_INTERVAL ??
             getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL"),
           30,
         ),
       ),
       TWITTER_ENGAGEMENT_INTERVAL_MIN: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_ENGAGEMENT_INTERVAL_MIN ??
             getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL_MIN"),
           20,
         ),
       ),
       TWITTER_ENGAGEMENT_INTERVAL_MAX: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_ENGAGEMENT_INTERVAL_MAX ??
             getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL_MAX"),
           40,
         ),
       ),
       TWITTER_DISCOVERY_INTERVAL_MIN: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_DISCOVERY_INTERVAL_MIN ??
             getSetting(runtime, "TWITTER_DISCOVERY_INTERVAL_MIN"),
           15,
         ),
       ),
       TWITTER_DISCOVERY_INTERVAL_MAX: String(
-        safeParseInterval(
+        parseTwitterInterval(
           config.TWITTER_DISCOVERY_INTERVAL_MAX ??
             getSetting(runtime, "TWITTER_DISCOVERY_INTERVAL_MAX"),
           30,
@@ -565,7 +565,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = parseStrictPositiveInt(postMin);
       maxInterval = parseStrictPositiveInt(postMax);
-      fixedInterval = safeParseInterval(
+      fixedInterval = parseTwitterInterval(
         getSetting(runtime, "TWITTER_POST_INTERVAL") as string,
         120,
       );
@@ -582,7 +582,7 @@ export function getRandomInterval(
       ) as string;
       minInterval = parseStrictPositiveInt(engagementMin);
       maxInterval = parseStrictPositiveInt(engagementMax);
-      fixedInterval = safeParseInterval(
+      fixedInterval = parseTwitterInterval(
         getSetting(runtime, "TWITTER_ENGAGEMENT_INTERVAL") as string,
         30,
       );
