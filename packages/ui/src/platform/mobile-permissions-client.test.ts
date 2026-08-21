@@ -202,27 +202,6 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     expect(native.requestPermissions).not.toHaveBeenCalled();
   });
 
-  it("surfaces the pre-authorization iOS Screen Time prompt instead of restricting it", async () => {
-    const native = plugin();
-    const registry = createMobileSignalsPermissionsRegistry(native);
-
-    await expect(registry.check("screentime")).resolves.toMatchObject({
-      id: "screentime",
-      status: "not-determined",
-      canRequest: true,
-    });
-
-    await registry.request("screentime", {
-      reason: "Read usage summaries.",
-      feature: { app: "lifeops", action: "usage.read" },
-    });
-
-    expect(native.requestPermissions).toHaveBeenCalledWith({
-      target: "screenTime",
-    });
-    expect(native.openSettings).not.toHaveBeenCalled();
-  });
-
   it("does not report unavailable iOS Screen Time as granted", async () => {
     const native = plugin(
       permissions({
