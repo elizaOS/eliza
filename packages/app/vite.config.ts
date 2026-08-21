@@ -839,6 +839,58 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
   return aliases;
 }
 
+function createWorkspacePackageExportAliases(packageDirs: string[]) {
+  const aliases = [];
+  for (const packageDir of packageDirs) {
+    const pkgPath = path.join(packageDir, "package.json");
+    if (!fs.existsSync(pkgPath)) continue;
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    const pkgName = pkg.name;
+    if (typeof pkgName !== "string") continue;
+    const pkgExports =
+      pkg.exports && typeof pkg.exports === "object"
+        ? (pkg.exports as Record<string, unknown>)
+        : {};
+
+    for (const [key, value] of Object.entries(pkgExports)) {
+      if (key !== "." && !key.startsWith("./")) continue;
+      const exportTarget = resolvePackageExportTarget(value);
+      if (!exportTarget) continue;
+      const packageSpecifier =
+        key === "." ? pkgName : `${pkgName}/${key.slice(2)}`;
+
+      const keyWildcard = packageSpecifier.indexOf("*");
+      const targetWildcard = exportTarget.indexOf("*");
+      if (keyWildcard >= 0 || targetWildcard >= 0) {
+        if (keyWildcard < 0 || targetWildcard < 0) continue;
+        const keyPrefix = packageSpecifier.slice(0, keyWildcard);
+        const keySuffix = packageSpecifier.slice(keyWildcard + 1);
+        const wildcardPlaceholder = "__ELIZA_PACKAGE_EXPORT_WILDCARD__";
+        const targetPattern = path.resolve(
+          packageDir,
+          `${exportTarget.slice(0, targetWildcard)}${wildcardPlaceholder}${exportTarget.slice(targetWildcard + 1)}`,
+        );
+        aliases.push({
+          find: new RegExp(
+            `^${escapeRegExp(keyPrefix)}(.+)${escapeRegExp(keySuffix)}$`,
+          ),
+          replacement: targetPattern.replace(wildcardPlaceholder, "$1"),
+        });
+        continue;
+      }
+
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(packageSpecifier)}$`),
+        replacement: path.resolve(packageDir, exportTarget),
+      });
+    }
+  }
+  return aliases;
+}
+
 function resolveAppPluginBrowserEntry(pkgDir: string): string | null {
   const preferred = [
     "src/ui.ts",
@@ -2938,6 +2990,12 @@ export const INVALID_TRACER_PROVIDER = {};
       // Dynamic aliases for local app plugin package roots that do not have a
       // dedicated browser facade.
       ...createWorkspacePackageAliases([path.resolve(elizaRoot, "plugins")]),
+      // Cloud UI imports shared contracts from this private source workspace.
+      // Alias its complete export map so clean renderer builds do not depend on
+      // package-manager subpath resolution or artifacts from another checkout.
+      ...createWorkspacePackageExportAliases([
+        path.resolve(elizaRoot, "packages/cloud/shared"),
+      ]),
       ...(() => {
         const sharedPkgPath = path.resolve(
           elizaRoot,
