@@ -5,6 +5,42 @@ import * as z from "zod";
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const opaqueText = (max: number) => z.string().min(1).max(max);
 
+export const MAX_MAPS_PROVIDERS = 32;
+export const MAX_MAPS_PROVIDER_ID_LENGTH = 64;
+export const MAX_MAPS_ATTRIBUTION_LENGTH = 500;
+
+/** Validates the canonical identity used to join adapter and browser metadata. */
+export const mapsProviderIdSchema = z
+  .string()
+  .min(1)
+  .max(MAX_MAPS_PROVIDER_ID_LENGTH)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/i);
+
+/** Trims bounded provider-owned legal text while rejecting blank attribution. */
+export const mapsAttributionSchema = z
+  .string()
+  .max(MAX_MAPS_ATTRIBUTION_LENGTH)
+  .trim()
+  .min(1);
+
+/** Couples one canonical provider id to legal text or explicit unavailability. */
+export const mapsProviderDescriptionSchema = z
+  .object({
+    id: mapsProviderIdSchema,
+    attribution: mapsAttributionSchema.nullable(),
+  })
+  .strict();
+
+export const mapsProviderDescriptionsSchema = z
+  .array(mapsProviderDescriptionSchema)
+  .max(MAX_MAPS_PROVIDERS)
+  .refine(
+    (providers) =>
+      new Set(providers.map((provider) => provider.id)).size ===
+      providers.length,
+    { message: "Maps provider metadata must contain unique provider ids." },
+  );
+
 /** Accepts canonical UUIDs, including deterministic elizaOS version-0 IDs. */
 export const elizaUuidSchema = z
   .string()
@@ -90,6 +126,9 @@ export const routePlanRequestSchema = z
   .strict();
 
 export type Coordinates = z.infer<typeof coordinatesSchema>;
+export type MapsProviderDescription = z.infer<
+  typeof mapsProviderDescriptionSchema
+>;
 export type CoordinateBinding = z.infer<typeof coordinateBindingSchema>;
 export type PlaceRef = z.infer<typeof placeRefSchema>;
 export type TravelMode = z.infer<typeof travelModeSchema>;

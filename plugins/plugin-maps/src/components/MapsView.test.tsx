@@ -124,6 +124,109 @@ describe("MapsView", () => {
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
   });
 
+  it("loads provider metadata after provider-backed results become available", async () => {
+    let providerReady = false;
+    const describeProviders = vi.fn(async () =>
+      providerReady
+        ? [{ id: "fixture_maps", attribution: "Late legal attribution" }]
+        : [],
+    );
+    const user = userEvent.setup();
+    render(
+      <MapsView
+        transport={transport({
+          describeProviders,
+          search: vi.fn(async () => {
+            providerReady = true;
+            return { places: [FERRY], nextCursor: null };
+          }),
+        })}
+        online
+      />,
+    );
+
+    expect(describeProviders).not.toHaveBeenCalled();
+    await searchFor(user, "waterfront");
+    expect(await screen.findByText("Late legal attribution")).toBeTruthy();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries failed metadata after a successful repeat search", async () => {
+    const describeProviders = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("metadata temporarily unavailable"))
+      .mockResolvedValueOnce([
+        { id: "fixture_maps", attribution: "Recovered legal attribution" },
+      ]);
+    const user = userEvent.setup();
+    render(<MapsView transport={transport({ describeProviders })} online />);
+
+    await searchFor(user, "waterfront");
+    expect(
+      await screen.findByText("Legal attribution unavailable for fixture_maps"),
+    ).toBeTruthy();
+
+    await searchFor(user, "waterfront");
+    expect(await screen.findByText("Recovered legal attribution")).toBeTruthy();
+    expect(describeProviders).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores stale provider metadata while a replacement search is pending", async () => {
+    let resolveOldMetadata:
+      | ((
+          value: Awaited<
+            ReturnType<NonNullable<MapsViewTransport["describeProviders"]>>
+          >,
+        ) => void)
+      | undefined;
+    let resolveReplacementSearch: ((value: PlacePage) => void) | undefined;
+    const describeProviders = vi.fn<
+      NonNullable<MapsViewTransport["describeProviders"]>
+    >(() => {
+      if (describeProviders.mock.calls.length === 1) {
+        return new Promise((resolve) => {
+          resolveOldMetadata = resolve;
+        });
+      }
+      return Promise.resolve([
+        { id: "fixture_maps", attribution: "Current legal attribution" },
+      ]);
+    });
+    const search = vi
+      .fn<MapsViewTransport["search"]>()
+      .mockResolvedValueOnce({ places: [FERRY], nextCursor: null })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveReplacementSearch = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+    render(
+      <MapsView transport={transport({ describeProviders, search })} online />,
+    );
+
+    await searchFor(user, "first");
+    expect(
+      (await screen.findAllByText("Ferry Building")).length,
+    ).toBeGreaterThan(0);
+    await waitFor(() => expect(describeProviders).toHaveBeenCalledTimes(1));
+
+    await searchFor(user, "second");
+    resolveOldMetadata?.([
+      { id: "fixture_maps", attribution: "Stale legal attribution" },
+    ]);
+    await act(async () => Promise.resolve());
+    expect(screen.queryByText("Stale legal attribution")).toBeNull();
+
+    resolveReplacementSearch?.({ places: [PLAZA], nextCursor: null });
+    expect(
+      (await screen.findAllByText("Embarcadero Plaza")).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByText("Current legal attribution")).toBeTruthy();
+    expect(describeProviders).toHaveBeenCalledTimes(2);
+  });
+
   it("explicitly reports unavailable legal attribution", async () => {
     const user = userEvent.setup();
     render(

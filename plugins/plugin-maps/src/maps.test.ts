@@ -24,6 +24,7 @@ import {
   MAX_SAVED_PLACE_STATE_BYTES,
   MAX_SAVED_PLACES_PER_OWNER,
 } from "./store.js";
+import { MAX_MAPS_PROVIDER_ID_LENGTH, MAX_MAPS_PROVIDERS } from "./types.js";
 
 const AGENT_ID = "11111111-1111-4111-a111-111111111111" as UUID;
 const OWNER_ID = "22222222-2222-4222-a222-222222222222" as UUID;
@@ -308,6 +309,76 @@ describe("MapsService and MAPS action", () => {
         attribution: null,
       },
     ]);
+  });
+
+  it("snapshots normalized legal attribution at adapter registration", () => {
+    const mutableAdapter = {
+      ...adapter,
+      attribution: "  Map data © Contract Maps  ",
+    };
+    const attributionService = new MapsService(runtime);
+    attributionService.registerAdapter(mutableAdapter, true);
+
+    mutableAdapter.attribution = "x".repeat(501);
+    const description = attributionService.describeProviders();
+    expect(description).toEqual([
+      {
+        id: adapter.id,
+        attribution: "Map data © Contract Maps",
+      },
+    ]);
+
+    (description[0] as { attribution: string | null }).attribution =
+      "caller mutation";
+    expect(attributionService.describeProviders()[0]?.attribution).toBe(
+      "Map data © Contract Maps",
+    );
+
+    attributionService.registerAdapter({
+      ...adapter,
+      attribution: "Updated legal notice",
+    });
+    expect(attributionService.describeProviders()[0]?.attribution).toBe(
+      "Updated legal notice",
+    );
+  });
+
+  it("keeps registered provider metadata within the browser DTO bounds", () => {
+    const boundedService = new MapsService(runtime);
+    expect(() =>
+      boundedService.registerAdapter({
+        ...adapter,
+        id: "x".repeat(MAX_MAPS_PROVIDER_ID_LENGTH + 1),
+      }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+
+    for (let index = 0; index < MAX_MAPS_PROVIDERS; index += 1) {
+      boundedService.registerAdapter({
+        ...adapter,
+        id: `provider_${index}`,
+        connectionId: `conn_${String(index).padStart(16, "0")}`,
+      });
+    }
+    expect(boundedService.describeProviders()).toHaveLength(MAX_MAPS_PROVIDERS);
+
+    expect(() =>
+      boundedService.registerAdapter({
+        ...adapter,
+        id: "one_provider_too_many",
+        connectionId: "conn_overflow00000000",
+      }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+
+    boundedService.registerAdapter({
+      ...adapter,
+      id: "provider_0",
+      connectionId: "conn_replacement000000",
+      attribution: "Replacement attribution",
+    });
+    expect(boundedService.describeProviders()[0]).toEqual({
+      id: "provider_0",
+      attribution: "Replacement attribution",
+    });
   });
 
   it("validates public store UUIDs before creating persistence namespaces", async () => {
