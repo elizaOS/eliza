@@ -216,11 +216,14 @@ function turnActionResults(
     RunSharedAgentTurnResult,
     "actionResults" | "capabilityWall" | "blockedSecondaryCapabilities"
   >,
+  context: { agentId: string; originalIntent: string; clientMessageId?: string },
 ): unknown[] | undefined {
   const results: unknown[] = [...(turn.actionResults ?? [])];
-  if (turn.capabilityWall) results.push(capabilityWallActionResult(turn.capabilityWall));
+  if (turn.capabilityWall) {
+    results.push(capabilityWallActionResult(turn.capabilityWall, context));
+  }
   for (const wall of turn.blockedSecondaryCapabilities ?? []) {
-    results.push(capabilityWallActionResult(wall));
+    results.push(capabilityWallActionResult(wall, context));
   }
   return results.length ? results : undefined;
 }
@@ -1388,7 +1391,11 @@ export class SharedRuntimeChatService {
     let turnIsProvablyFree = false;
     try {
       turnIsProvablyFree = turn.degraded || isProviderFreeTurn(turn);
-      const actionResults = turnActionResults(turn);
+      const actionResults = turnActionResults(turn, {
+        agentId: agent.id,
+        originalIntent: text,
+        ...(claimKey ? { clientMessageId: claimKey } : {}),
+      });
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
         ...(turn.responded === false ? { responded: false } : {}),
@@ -1808,10 +1815,17 @@ export class SharedRuntimeChatService {
               );
               continue;
             }
-            const actionResults = turnActionResults({
-              ...turn,
-              ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
-            });
+            const actionResults = turnActionResults(
+              {
+                ...turn,
+                ...(part.actionResults?.length ? { actionResults: part.actionResults } : {}),
+              },
+              {
+                agentId: agent.id,
+                originalIntent: text,
+                ...(claimKey ? { clientMessageId: claimKey } : {}),
+              },
+            );
             await finalizeMessages(finalReply, false, async () => {
               // Durable claim completion before the done frame: a lost/dropped
               // terminal frame replays this result on retry instead of

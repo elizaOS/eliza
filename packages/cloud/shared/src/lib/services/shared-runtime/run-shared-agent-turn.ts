@@ -35,6 +35,12 @@ import type { MobilePushMessage } from "../../mobile-push/types";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import { hasLanguageModelProviderConfigured } from "../../providers/language-model";
 import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+  type SharedCapabilityFlags,
+  sharedCapabilityTransportForSource,
+} from "./shared-capability-catalog";
+import {
   resolveSharedCapabilityIntent,
   type SharedCapabilityResolution,
   type SharedCapabilityWall,
@@ -291,7 +297,7 @@ export function resolveSharedAgentTurnModel(preferred?: string): string | null {
  */
 function buildSharedRuntimeSystem(
   character: SharedAgentCharacter,
-  capabilities: { webSearch: boolean; reminders: boolean; todos: boolean; media: boolean },
+  capabilities: SharedCapabilityFlags,
   recallContext?: string,
   blockedCapabilities: SharedCapabilityWall[] = [],
   requiredAction?: "REMINDERS" | "TODO",
@@ -299,24 +305,11 @@ function buildSharedRuntimeSystem(
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
-    "Shared runtime boundaries:\n" +
-      (capabilities.webSearch
-        ? "- You can converse, reason, draft, help the user plan, and use WEB_SEARCH for current public information.\n" +
-          "- WEB_SEARCH reads public results only; it does not operate websites, access accounts, submit forms, or make changes.\n"
-        : "- You can converse, reason, draft, and help the user plan; public web search is unavailable for this turn.\n") +
-      (capabilities.reminders
-        ? "- REMINDERS can create, list, snooze, complete, and dismiss reminders delivered to this private chat.\n"
-        : "- Reminders are unavailable on this transport.\n") +
-      (capabilities.todos
-        ? "- TODO can create, list, update, complete, cancel, and delete this account's persistent checklist.\n"
-        : "- Persistent todos are unavailable on this chat path.\n") +
-      (capabilities.media
-        ? "- GENERATE_MEDIA can create one organization-credit-funded image and return its public artifact URL.\n"
-        : "- Image generation is unavailable on this chat path.\n") +
-      "- You have no connected accounts, calendar, calling, arbitrary messaging, purchasing, notes store, shell, filesystem, browser control, or code execution in this runtime.\n" +
+    `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
-      "- When an ambiguous follow-up asks you to execute a prior external action, explain the actual limitation naturally and offer useful planning or drafting help.",
+      "- When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
   if (blockedCapabilities.length) {
     parts.push(
@@ -500,6 +493,7 @@ export async function runSharedAgentTurn(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(execution.channel.source),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
@@ -583,6 +577,7 @@ export async function runSharedAgentTurnStream(
               reminders: remindersEnabled,
               todos: todosEnabled,
               media: actionsEnabled && Boolean(execution.media),
+              transport: sharedCapabilityTransportForSource(execution.channel.source),
             },
             input.recallContext,
             capabilityWall ? [capabilityWall] : blockedSecondary,
