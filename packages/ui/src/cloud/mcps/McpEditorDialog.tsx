@@ -100,16 +100,36 @@ function emptyForm(): FormState {
   };
 }
 
+/** Default credit price seeded when no usable stored price exists. */
+const DEFAULT_CREDIT_PRICE_USD = "0.01";
+
+/** Parse a price field, returning null instead of coercing a typo to free. */
+export function parseEditorPriceUsd(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+/**
+ * Seed the price field from the record. `price_usd` is only meaningful for a
+ * credits-priced MCP — the server projects "0" for every other pricing type,
+ * so switching an x402 MCP to credits must fall back to the default rather
+ * than pre-filling a free price.
+ */
 export function resolveEditorPriceUsd(mcp: UserMcpRecord): string {
+  if (mcp.pricing_type !== "credits") return DEFAULT_CREDIT_PRICE_USD;
+
   const canonical = mcp.price_usd?.trim();
-  if (canonical) return canonical;
+  if (canonical && parseEditorPriceUsd(canonical) !== null) return canonical;
 
-  const legacyPoints = Number(mcp.credits_per_request);
-  if (Number.isFinite(legacyPoints) && legacyPoints >= 0) {
-    return String(legacyPoints / 100);
-  }
+  const legacyPoints = parseEditorPriceUsd(
+    String(mcp.credits_per_request ?? ""),
+  );
+  if (legacyPoints !== null) return String(legacyPoints / 100);
 
-  return "0.01";
+  return DEFAULT_CREDIT_PRICE_USD;
 }
 
 function formFromRecord(mcp: UserMcpRecord): FormState {
@@ -178,13 +198,34 @@ export function McpEditorDialog({
 
   const tools = useMemo(() => parseTools(form.toolsText), [form.toolsText]);
 
+  // A malformed price must block submission: coercing it to 0 would silently
+  // republish a paid MCP as free.
+  const priceUsd =
+    form.pricingType === "credits"
+      ? parseEditorPriceUsd(form.priceUsd)
+      : undefined;
+  const x402PriceUsd =
+    form.pricingType === "x402"
+      ? parseEditorPriceUsd(form.x402PriceUsd)
+      : undefined;
+
   const valid =
     form.name.trim().length > 0 &&
     form.description.trim().length > 0 &&
     (isEdit || form.slug.trim().length > 0) &&
-    (isEdit || form.externalEndpoint.trim().length > 0);
+    (isEdit || form.externalEndpoint.trim().length > 0) &&
+    (form.pricingType !== "credits" || priceUsd !== null) &&
+    (form.pricingType !== "x402" || x402PriceUsd !== null);
 
   const onSubmit = async () => {
+    if (!valid) {
+      toast.error(
+        t("cloud.mcps.invalidPrice", {
+          defaultValue: "Enter a valid non-negative price per request.",
+        }),
+      );
+      return;
+    }
     try {
       if (isEdit && editing) {
         const input: UpdateUserMcpInput = {
@@ -194,14 +235,8 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          priceUsd:
-            form.pricingType === "credits"
-              ? Number(form.priceUsd) || 0
-              : undefined,
-          x402PriceUsd:
-            form.pricingType === "x402"
-              ? Number(form.x402PriceUsd) || 0
-              : undefined,
+          priceUsd: priceUsd ?? undefined,
+          x402PriceUsd: x402PriceUsd ?? undefined,
           x402Enabled: form.x402Enabled,
           documentationUrl: form.documentationUrl.trim() || null,
         };
@@ -218,14 +253,8 @@ export function McpEditorDialog({
           endpointPath: form.endpointPath.trim() || undefined,
           tools,
           pricingType: form.pricingType,
-          priceUsd:
-            form.pricingType === "credits"
-              ? Number(form.priceUsd) || 0
-              : undefined,
-          x402PriceUsd:
-            form.pricingType === "x402"
-              ? Number(form.x402PriceUsd) || 0
-              : undefined,
+          priceUsd: priceUsd ?? undefined,
+          x402PriceUsd: x402PriceUsd ?? undefined,
           x402Enabled: form.x402Enabled,
           documentationUrl: form.documentationUrl.trim() || undefined,
         };
@@ -391,8 +420,17 @@ export function McpEditorDialog({
                 min={0}
                 step="0.0001"
                 value={form.priceUsd}
+                aria-invalid={priceUsd === null}
                 onChange={(e) => update_("priceUsd", e.target.value)}
               />
+              {priceUsd === null && (
+                <p role="alert" className="text-destructive text-xs">
+                  {t("cloud.mcps.invalidPrice", {
+                    defaultValue:
+                      "Enter a valid non-negative price per request.",
+                  })}
+                </p>
+              )}
             </div>
           )}
 

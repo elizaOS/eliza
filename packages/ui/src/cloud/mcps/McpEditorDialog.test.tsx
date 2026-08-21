@@ -8,7 +8,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserMcpRecord } from "./lib/api-types";
 
 const mutationMocks = vi.hoisted(() => ({
@@ -36,8 +36,11 @@ vi.mock("./lib/mcp-mutations", () => ({
   }),
 }));
 
-import { McpEditorDialog } from "./McpEditorDialog";
+import { McpEditorDialog, resolveEditorPriceUsd } from "./McpEditorDialog";
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 afterEach(cleanup);
 
 const EDITING_MCP = {
@@ -109,5 +112,38 @@ describe("McpEditorDialog canonical credit pricing", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("2.5");
+  });
+
+  it("refuses to submit a malformed price instead of publishing it as free", async () => {
+    render(
+      <McpEditorDialog open onOpenChange={vi.fn()} editing={EDITING_MCP} />,
+    );
+
+    fireEvent.change(
+      screen.getByLabelText("Price per request (USD cloud credit)"),
+      { target: { value: "abc" } },
+    );
+    expect(
+      await screen.findByText("Enter a valid non-negative price per request."),
+    ).toBeTruthy();
+
+    const save = screen.getByRole("button", {
+      name: "Save changes",
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.click(save);
+
+    await waitFor(() => expect(mutationMocks.update).not.toHaveBeenCalled());
+  });
+
+  it("seeds the credit default rather than the server's zero projection for an x402 MCP", () => {
+    const x402Record = {
+      ...EDITING_MCP,
+      pricing_type: "x402",
+      price_usd: "0",
+      credits_per_request: "0",
+    } as unknown as UserMcpRecord;
+
+    expect(resolveEditorPriceUsd(x402Record)).toBe("0.01");
   });
 });

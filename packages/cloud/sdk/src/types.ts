@@ -274,25 +274,21 @@ export interface CreditSummaryResponse extends Record<string, unknown> {
   };
 }
 
-interface CreditsCheckoutRedirects {
+/**
+ * Checkout accepts either the canonical `amountUsd` or the deprecated
+ * `credits` alias, which has always denominated the same dollar amount. Both
+ * stay optional so the interface remains extendable by SDK consumers; the
+ * server rejects a request that supplies neither, and rejects conflicting
+ * values when both are supplied.
+ */
+export interface CreateCreditsCheckoutRequest {
+  /** Canonical dollar charge and 1:1 organization-credit grant. */
+  amountUsd?: number;
+  /** @deprecated Compatibility alias; must equal amountUsd when both are sent. */
+  credits?: number;
   success_url: string;
   cancel_url: string;
 }
-
-export type CreateCreditsCheckoutRequest = CreditsCheckoutRedirects &
-  (
-    | {
-        /** Canonical dollar charge and 1:1 organization-credit grant. */
-        amountUsd: number;
-        /** @deprecated Compatibility alias; must equal amountUsd when supplied. */
-        credits?: number;
-      }
-    | {
-        amountUsd?: number;
-        /** @deprecated Compatibility alias; this number has always meant USD. */
-        credits: number;
-      }
-  );
 
 export interface CreateCreditsCheckoutResponse extends Record<string, unknown> {
   url?: string | null;

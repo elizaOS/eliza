@@ -8451,6 +8451,7 @@
   "cloud.mcps.editTitle": "Edit MCP server",
   "cloud.mcps.endpointPathLabel": "Endpoint path",
   "cloud.mcps.endpointTitle": "MCP Endpoint",
+  "cloud.mcps.invalidPrice": "Enter a valid non-negative price per request.",
   "cloud.mcps.loadingDetail": "Loading MCP...",
   "cloud.mcps.nameLabel": "Name",
   "cloud.mcps.namePlaceholder": "Weather Tools",

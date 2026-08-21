@@ -4,6 +4,13 @@
 **Audited source:** [`origin/develop@9edb8e24017b4675669e79ea6560b38a19aa8ec5`][source]<br>
 **Scope:** implementation inventory for [#22942][i22942], not a pricing or policy ratification.
 
+**Pending contract:** the Credits row, the user-MCP price statements, and the
+`[U01]` resolution describe the canonical organization-credit unit introduced by
+[#23114][i23114]. That contract is not yet on `develop`, so every pinned `[Cxx]`
+/ `[Ixx]` evidence link below still resolves against the audited commit and
+shows the pre-canonicalization source. Re-audit and repin those links once
+[#23114][i23114] merges.
+
 This matrix describes the contract observable at the audited commit. A value marked
 **UNKNOWN** is deliberately not inferred from UI copy, a dormant schema, or adjacent
 work. Every `Uxx` identifier links to its dedicated follow-up issue. “USD balance
@@ -237,6 +244,7 @@ All code links below are pinned to the audited commit.
 [i22920]: https://github.com/elizaOS/eliza/issues/22920
 [i22930]: https://github.com/elizaOS/eliza/issues/22930
 [i22942]: https://github.com/elizaOS/eliza/issues/22942
+[i23114]: https://github.com/elizaOS/eliza/pull/23114
 [i22982]: https://github.com/elizaOS/eliza/issues/22982
 [i23001]: https://github.com/elizaOS/eliza/issues/23001
 [i23003]: https://github.com/elizaOS/eliza/issues/23003

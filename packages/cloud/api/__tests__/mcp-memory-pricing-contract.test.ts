@@ -10,9 +10,11 @@ describe("MCP memory pricing contract", () => {
     const infoApp = new Hono().route("/", infoRoute);
     const listApp = new Hono().route("/", listRoute);
 
+    // The list route reads Worker bindings for the integration kill switch.
+    const env = { NEXT_PUBLIC_APP_URL: "https://app.example.test" };
     const [infoResponse, listResponse] = await Promise.all([
-      infoApp.request("/"),
-      listApp.request("/"),
+      infoApp.request("/", undefined, env),
+      listApp.request("/", undefined, env),
     ]);
     const info = (await infoResponse.json()) as {
       pricing: { rates: Record<string, string> };

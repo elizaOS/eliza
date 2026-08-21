@@ -8,6 +8,7 @@
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import {
+  formatOrganizationCreditUsd,
   legacyMcpPointsToOrganizationCredits,
   ORGANIZATION_CREDIT_UNIT,
   organizationCreditsToLegacyMcpPoints,
@@ -256,6 +257,11 @@ function resolveStoredMcpPricePoints(params: {
   return convertedCanonical ?? legacyPrice ?? params.fallback;
 }
 
+/**
+ * Render the stored price as canonical cloud-credit USD. Quantizing here is
+ * what keeps a fractional legacy point value such as `1.1` from serializing as
+ * `0.011000000000000001` into the API, registry, and public description.
+ */
 function formatCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
   if (mcp.pricing_type === "credits") {
     const legacyPoints = parseNonNegativeMcpBillingNumber(
@@ -263,9 +269,11 @@ function formatCanonicalMcpPriceUsd(mcp: UserMcp | PublicUserMcp): string {
       "credits_per_request",
       0,
     );
-    return legacyMcpPointsToOrganizationCredits(legacyPoints).toString();
+    return formatOrganizationCreditUsd(legacyMcpPointsToOrganizationCredits(legacyPoints));
   }
   if (mcp.pricing_type === "x402") {
+    // x402 prices are already stored as USD and may be finer than the
+    // cloud-credit grid, so they are passed through without quantization.
     return parseNonNegativeMcpBillingNumber(mcp.x402_price_usd, "x402_price_usd", 0).toString();
   }
   return "0";
@@ -1004,9 +1012,11 @@ class UserMcpsService {
       credit_unit: ORGANIZATION_CREDIT_UNIT,
       price_usd: formatCanonicalMcpPriceUsd(mcp),
       legacy_credits_per_request: mcp.pricing_type === "credits" ? mcp.credits_per_request : null,
-      total_creator_revenue_usd: legacyMcpPointsToOrganizationCredits(
-        parseNonNegativeMcpBillingNumber(mcp.total_credits_earned, "total_credits_earned", 0),
-      ).toString(),
+      total_creator_revenue_usd: formatOrganizationCreditUsd(
+        legacyMcpPointsToOrganizationCredits(
+          parseNonNegativeMcpBillingNumber(mcp.total_credits_earned, "total_credits_earned", 0),
+        ),
+      ),
     };
   }
 

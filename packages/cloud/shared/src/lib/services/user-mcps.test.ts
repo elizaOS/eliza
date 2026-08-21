@@ -520,6 +520,17 @@ describe("userMcpsService.toRegistryFormat", () => {
       description: "$0.01 in cloud credit per request",
     });
   });
+
+  test("renders a fractional stored point price without a float artifact", async () => {
+    const created = await userMcpsService.create(baseCreateParams({ creditsPerRequest: 1.1 }));
+    const live = await userMcpsService.publish(created.id, ORG);
+
+    // 1.1 / 100 is 0.011000000000000001 in binary floating point.
+    expect(userMcpsService.toApiMcp(live).price_usd).toBe("0.011");
+    const entry = userMcpsService.toRegistryFormat(live, "https://www.elizacloud.ai");
+    expect(entry.pricing.priceUsd).toBe("0.011");
+    expect(entry.pricing.description).toBe("$0.011 in cloud credit per request");
+  });
 });
 
 describe("userMcpsService base-price stats", () => {

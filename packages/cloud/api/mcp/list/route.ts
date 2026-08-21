@@ -326,7 +326,7 @@ const mcpDefinitions = [
             description: "Enable streaming response via SSE",
           },
         },
-        cost: "Unavailable",
+        cost: MCP_USAGE_BASED_COST_LABEL,
       },
       {
         name: "list_agents",

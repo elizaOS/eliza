@@ -2,6 +2,7 @@
 
 import { describe, expect, test } from "vitest";
 import {
+  formatOrganizationCreditUsd,
   LEGACY_MCP_POINTS_PER_DOLLAR,
   legacyMcpPointsToOrganizationCredits,
   ORGANIZATION_CREDIT_PRICING,
@@ -38,6 +39,22 @@ describe("organization credit unit", () => {
         legacyMcpPointsToOrganizationCredits(organizationCreditsToLegacyMcpPoints(amount)),
       ).toBeCloseTo(amount, 12);
     }
+  });
+
+  test("quantizes the float remainder a fractional point price would otherwise leak", () => {
+    // 1.1 / 100 is 0.011000000000000001 in binary floating point.
+    expect(legacyMcpPointsToOrganizationCredits(1.1)).toBe(0.011);
+    expect(formatOrganizationCreditUsd(1.1 / 100)).toBe("0.011");
+    // 0.011 * 100 is 1.1000000000000001 before quantization.
+    expect(organizationCreditsToLegacyMcpPoints(0.011)).toBe(1.1);
+  });
+
+  test("formats canonical amounts without trailing zeros or lost micro-prices", () => {
+    expect(formatOrganizationCreditUsd(1)).toBe("1");
+    expect(formatOrganizationCreditUsd(0)).toBe("0");
+    expect(formatOrganizationCreditUsd(0.0125)).toBe("0.0125");
+    expect(formatOrganizationCreditUsd(0.000001)).toBe("0.000001");
+    expect(formatOrganizationCreditUsd(100)).toBe("100");
   });
 
   test("rejects negative and non-finite amounts", () => {

@@ -33,6 +33,16 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
+/**
+ * Worker bindings the catalog policy reads. `MCP_SEARCH_STREAMABLE_HTTP_URL`
+ * is what makes the Web Search entry advertisable; without a configured
+ * upstream the registry deliberately omits it.
+ */
+const TEST_ENV = {
+  NEXT_PUBLIC_APP_URL: "https://app.example.test",
+  MCP_SEARCH_STREAMABLE_HTTP_URL: "https://search.example.test/mcp",
+};
+
 const app = new Hono();
 app.route("/api/mcp/info", infoRoute);
 app.route("/api/mcp/list", listRoute);
@@ -42,8 +52,8 @@ app.route("/api/mcps/weather", weatherRoute);
 describe("public MCP pricing contract", () => {
   test("platform info and list agree with memory execution pricing", async () => {
     const [infoResponse, listResponse] = await Promise.all([
-      app.request("/api/mcp/info"),
-      app.request("/api/mcp/list"),
+      app.request("/api/mcp/info", undefined, TEST_ENV),
+      app.request("/api/mcp/list", undefined, TEST_ENV),
     ]);
     expect(infoResponse.status).toBe(200);
     expect(listResponse.status).toBe(200);
@@ -78,9 +88,9 @@ describe("public MCP pricing contract", () => {
 
   test("list and mounted metadata keep unmetered Time and Weather free", async () => {
     const [listResponse, timeResponse, weatherResponse] = await Promise.all([
-      app.request("/api/mcp/list"),
-      app.request("/api/mcps/time"),
-      app.request("/api/mcps/weather"),
+      app.request("/api/mcp/list", undefined, TEST_ENV),
+      app.request("/api/mcps/time", undefined, TEST_ENV),
+      app.request("/api/mcps/weather", undefined, TEST_ENV),
     ]);
     const list = (await listResponse.json()) as {
       mcps: Array<{
@@ -112,9 +122,7 @@ describe("public MCP pricing contract", () => {
 
   test("registry built-ins use the same fixed/free/usage-based authority", async () => {
     const registryRoute = (await import("../mcp/registry/route")).default;
-    const response = await registryRoute.request("/", undefined, {
-      NEXT_PUBLIC_APP_URL: "https://app.example.test",
-    });
+    const response = await registryRoute.request("/", undefined, TEST_ENV);
     expect(response.status).toBe(200);
 
     const body = (await response.json()) as {

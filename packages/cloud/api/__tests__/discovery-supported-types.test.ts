@@ -159,6 +159,7 @@ describe("GET /api/v1/discovery supported type contract", () => {
     };
     expect(body.services[0]?.pricing).toEqual({
       type: "credits",
+      priceAvailable: true,
       amount: 125,
       amountUsd: 1.25,
       amountUnit: "legacy_mcp_pricing_points",

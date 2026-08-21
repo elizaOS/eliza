@@ -28,6 +28,8 @@ type ServiceSource = "cloud" | "local";
 
 interface ServicePricing {
   type: "free" | "credits" | "x402" | "subscription";
+  /** Present on priced rows; false when a stored price could not be read. */
+  priceAvailable?: boolean;
   /** @deprecated Legacy MCP amount; credits rows use cent-like pricing points. */
   amount?: number;
   /** Canonical dollar amount for USD-denominated prices. */
@@ -592,7 +594,9 @@ async function fetchLocalMcps(
         mcp.pricing_type === "free"
           ? { type: "free", description: "Free to use" }
           : mcp.pricing_type === "credits"
-            ? serializeLegacyMcpCreditPricing(mcp.credits_per_request)
+            ? serializeLegacyMcpCreditPricing(mcp.credits_per_request, {
+                mcpId: mcp.id,
+              })
             : {
                 type: "x402",
                 amount: Number(mcp.x402_price_usd),
