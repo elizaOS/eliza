@@ -281,3 +281,28 @@ describe("buildSkillCommandSpecs", () => {
     assert.strictEqual(specs[0].dispatch, undefined);
   });
 });
+
+describe("skill command name surrogate safety", () => {
+  it("does not split surrogate pairs in long skill names", () => {
+    // 30 ascii chars + 🦊 at the boundary of SKILL_COMMAND_MAX_LENGTH (32)
+    const longName = `${"a".repeat(30)}🦊${"b".repeat(10)}`;
+    const entries: SkillEntry[] = [
+      {
+        skill: { name: longName, description: "test" },
+        frontmatter: {},
+        metadata: {},
+        invocation: {},
+      },
+    ];
+    const specs = buildSkillCommandSpecs(entries);
+    const cmd = specs[0].command;
+    // no lone surrogate may survive truncation
+    for (const char of cmd) {
+      const code = char.charCodeAt(0);
+      assert.ok(
+        !(code >= 0xd800 && code <= 0xdfff),
+        `lone surrogate 0x${code.toString(16)} in command ${JSON.stringify(cmd)}`,
+      );
+    }
+  });
+});

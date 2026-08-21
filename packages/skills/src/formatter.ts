@@ -62,13 +62,17 @@ const SKILL_COMMAND_FALLBACK = "skill";
 const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
 
 function sanitizeSkillCommandName(raw: string): string {
-  const clamped = raw.length > 1024 ? raw.slice(0, 1024) : raw;
+  const wellFormed = toWellFormedUnicode(raw);
+  const clamped =
+    wellFormed.length > 1024
+      ? truncateWellFormed(wellFormed, 1024)
+      : wellFormed;
   const normalized = clamped
     .toLowerCase()
     .replace(/[^a-z0-9_]+/g, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
-  const trimmed = normalized.slice(0, SKILL_COMMAND_MAX_LENGTH);
+  const trimmed = truncateWellFormed(normalized, SKILL_COMMAND_MAX_LENGTH);
   return trimmed || SKILL_COMMAND_FALLBACK;
 }
 
@@ -82,7 +86,7 @@ function resolveUniqueSkillCommandName(
     }
     const suffix = `_${index}`;
     const maxBaseLength = Math.max(1, SKILL_COMMAND_MAX_LENGTH - suffix.length);
-    const trimmedBase = base.slice(0, maxBaseLength);
+    const trimmedBase = truncateWellFormed(base, maxBaseLength);
     const candidate = `${trimmedBase}${suffix}`;
     const candidateKey = candidate.toLowerCase();
     if (!used.has(candidateKey)) {
