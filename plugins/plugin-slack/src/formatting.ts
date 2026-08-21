@@ -8,7 +8,11 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
-import { ElizaError, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   parseSlackArchivesUrl,
   type SlackChannel,
@@ -544,10 +548,16 @@ export function truncateText(
   maxLength: number,
   ellipsis = "…",
 ): string {
-  if (text.length <= maxLength) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+  const boundedEllipsis = truncateWellFormed(
+    toWellFormedUnicode(ellipsis),
+    maxLength,
+  );
+  const budget = Math.max(0, maxLength - boundedEllipsis.length);
+  return `${truncateWellFormed(wellFormed, budget)}${boundedEllipsis}`;
 }
 
 /**

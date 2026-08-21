@@ -80,6 +80,16 @@ describe("textStatesExplicitRecurrence", () => {
     ).toBe(true);
   });
 
+  it("parses role labels with adversarial delimiter whitespace", () => {
+    const spacing = "\t".repeat(100_000);
+    expect(textStatesExplicitRecurrence(`user${spacing}: make it weekly`)).toBe(
+      true,
+    );
+    expect(
+      textStatesExplicitRecurrence(`assistant${spacing}: make it weekly`),
+    ).toBe(false);
+  });
+
   it("rejects Japanese one-shot windows and name-like cadence words", () => {
     expect(
       textStatesExplicitRecurrence("明日の朝、歯医者の予定を追加して"),

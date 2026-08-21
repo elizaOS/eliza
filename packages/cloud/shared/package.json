@@ -31,6 +31,8 @@
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
     "test": "node scripts/run-bun-tests.mjs",
     "test:vitest": "vitest run",
+    "verify:managed-accounts": "bun scripts/managed-accounts-doctor.mjs",
+    "verify:managed-accounts:strict": "bun scripts/managed-accounts-doctor.mjs --strict",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",

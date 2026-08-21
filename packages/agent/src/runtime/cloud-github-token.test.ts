@@ -70,7 +70,7 @@ describe("autoFetchCloudGithubToken", () => {
   it("returns the token without writing process.env.GITHUB_TOKEN", async () => {
     armCloudEnv();
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL) =>
         new Response(
           JSON.stringify({
             success: true,

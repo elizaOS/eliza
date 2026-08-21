@@ -116,3 +116,75 @@ describe("E2B remote runner router with the Coding remote runner HTTP runner", (
     ).resolves.toBe("remote-coded");
   });
 });
+
+describe("configured request timeout propagation (#23005 review findings)", () => {
+  /**
+   * A fetch whose responses never settle on their own: the only way out is the
+   * caller's AbortSignal firing. `/v1/health` can respond normally so a
+   * specific later hop is the one under test.
+   */
+  function hangingFetch(healthOk: boolean): typeof fetch {
+    return Object.assign(
+      async (
+        input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        if (healthOk && url.pathname === "/v1/health") {
+          return new Response("ok", { status: 200 });
+        }
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+  }
+
+  function makeService(requestTimeoutMs: number, healthOk: boolean) {
+    replaceGlobalFetch(hangingFetch(healthOk));
+    return new E2BRemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      provider: "home",
+      remoteHttpBaseUrl: REMOTE_RUNNER_URL,
+      remoteHttpToken: REMOTE_RUNNER_TOKEN,
+      agentRunners: ["codex"],
+      workdir: "/workspace",
+      hostWorkspaceRoot: workspaceRoot,
+      timeoutMs: 30_000,
+      requestTimeoutMs,
+      keepAlive: true,
+      allowInternetAccess: false,
+      envs: {},
+      metadata: {},
+    });
+  }
+
+  it("aborts fs.list at the configured request timeout, not the 60s default", async () => {
+    const service = makeService(100, true);
+    const start = Date.now();
+    await expect(service.fs.list({})).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("aborts fs.writeText at the configured request timeout, not the 60s default", async () => {
+    const service = makeService(100, true);
+    const start = Date.now();
+    await expect(
+      service.fs.writeText({ path: "/workspace/evidence.txt", text: "hi" }),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("aborts the remote runner health check at the configured request timeout", async () => {
+    const service = makeService(100, false);
+    const start = Date.now();
+    await expect(service.fs.list({})).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+});

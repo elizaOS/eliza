@@ -242,6 +242,15 @@ afterEach(() => {
 });
 
 describe("EarningsPageClient redemption contract", () => {
+  it("does not read wall time while the initial quote is absent", async () => {
+    const now = vi.spyOn(Date, "now");
+
+    render(<EarningsPageClient />);
+
+    await screen.findByRole("button", { name: "Redeem for elizaOS" });
+    expect(now).not.toHaveBeenCalled();
+  });
+
   it("renders canonical camelCase history with the server asset label", async () => {
     apiMock.mockReset();
     installApiResponses({

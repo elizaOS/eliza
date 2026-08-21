@@ -125,6 +125,117 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(vm.hasStandaloneWebUi).toBe(false);
   });
 
+  it("renders concise product cards without infrastructure metadata", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    const { container } = render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable
+          agents={[
+            row({
+              executionTier: "shared",
+              agentName: "Shared Eliza",
+              lastHeartbeatAt: "2026-08-18T10:00:00.000Z",
+            }),
+            row({
+              id: "00000000-1111-2222-3333-555555555555",
+              executionTier: "custom",
+              dockerImage: "private-image",
+              agentName: "Dedicated Eliza",
+            }),
+          ]}
+        />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getAllByText("Shared Agent").length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(screen.queryByText("Shared Eliza")).toBeNull();
+    expect(screen.queryByText("Dedicated Agent")).toBeNull();
+    expect(screen.queryByText("All statuses")).toBeNull();
+    expect(screen.queryByText("Details")).toBeNull();
+    expect(container.textContent).not.toContain("00000000");
+    expect(container.textContent).not.toContain("Heartbeat");
+    expect(screen.getAllByText("Free").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$0.01/hr").length).toBeGreaterThanOrEqual(2);
+    const sharedRow = screen.getAllByText("Shared Agent")[0]?.closest("tr");
+    const dedicatedRow = screen
+      .getAllByText("Dedicated Eliza")[0]
+      ?.closest("tr");
+    expect(sharedRow).toBeTruthy();
+    expect(dedicatedRow).toBeTruthy();
+    expect(
+      (
+        within(sharedRow as HTMLElement).getByRole(
+          "checkbox",
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      within(sharedRow as HTMLElement).queryByRole("button", {
+        name: "Suspend agent",
+      }),
+    ).toBeNull();
+    expect(
+      within(sharedRow as HTMLElement).queryByRole("button", {
+        name: "Delete agent",
+      }),
+    ).toBeNull();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Suspend agent",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Open Web UI",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(dedicatedRow as HTMLElement).getByRole("button", {
+        name: "Delete agent",
+      }),
+    ).toBeTruthy();
+    for (const rejected of [
+      "Sandbox",
+      "Cloud sandbox",
+      "Managed runtime",
+      "Shared runtime",
+      "Docker",
+    ]) {
+      expect(container.textContent).not.toContain(rejected);
+    }
+  });
+
+  it("uses product copy instead of a deploy instruction when no rows exist", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ElizaAgentsTable agents={[]} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText("No agents yet")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Your Shared or Dedicated Agent will appear here when available.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/deploy your first agent/i)).toBeNull();
+  });
+
   it("uses active poll jobs as the displayed status and busy state", () => {
     const vm = derive({ status: "pending" }, { active: true });
 
@@ -157,6 +268,7 @@ describe("ElizaAgentsTable per-row view model", () => {
       status: "running",
       executionTier: "shared",
     });
+    expect(runningShared.canStop).toBe(false);
     expect(runningShared.canSleep).toBe(false);
 
     const sleeping = derive({ status: "sleeping" });
@@ -206,6 +318,9 @@ describe("ElizaAgentsTable per-row view model", () => {
       screen.getAllByRole("button", { name: "Reactivate agent" }).length,
     ).toBeGreaterThanOrEqual(1);
     expect(
+      screen.getAllByRole("button", { name: "Resume agent" }).length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(
       screen.queryByRole("button", { name: "Deactivate agent" }),
     ).toBeNull();
     // Billing transparency on the card itself: an explicit $0.00/hr.
@@ -239,12 +354,16 @@ describe("ElizaAgentsTable per-row view model", () => {
     expect(
       within(dialog).getByText(/stops consuming hourly credits/),
     ).toBeTruthy();
+    expect(within(dialog).getByText(/retains your agent data/i)).toBeTruthy();
     expect(
-      within(dialog).getByText(/if the backup cannot be saved/i),
+      within(dialog).getByText(/if deactivation cannot complete/i),
     ).toBeTruthy();
     expect(
       within(dialog).getByText(/requires available credits/i),
     ).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(
+      /backup|snapshot|container|runtime|compute/i,
+    );
 
     // Cancel is a real exit: no job fired, dialog gone.
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -284,8 +403,9 @@ describe("ElizaAgentsTable per-row view model", () => {
       expect(screen.getAllByText("Grace").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("error").length).toBeGreaterThanOrEqual(1);
       expect(
-        screen.getAllByText("Runtime image unavailable").length,
+        screen.getAllByText("Agent needs attention").length,
       ).toBeGreaterThanOrEqual(1);
+      expect(screen.queryByText("Runtime image unavailable")).toBeNull();
     });
   });
 

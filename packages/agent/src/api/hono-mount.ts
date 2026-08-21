@@ -97,18 +97,76 @@ export function resetHonoMountCache(): void {
   cached = null;
 }
 
-async function readNodeBody(req: IncomingMessage): Promise<ArrayBuffer | null> {
+// Matches the 1 MiB cap applied to the sibling JSON/body readers in
+// server.ts (MAX_BODY_BYTES). The Hono fallback path never goes through that
+// reader, so it needs its own guard: without it a POST to any Hono-eligible
+// plugin routeHandler with an unbounded body is fully buffered into an
+// ArrayBuffer with no 413, hanging or OOM-ing the process.
+const MAX_HONO_BODY_BYTES = 1024 * 1024; // 1 MiB
+
+interface ReadNodeBodyResult {
+  body: ArrayBuffer | null;
+  tooLarge: boolean;
+}
+
+async function readNodeBody(req: IncomingMessage): Promise<ReadNodeBodyResult> {
   const method = (req.method ?? "GET").toUpperCase();
-  if (method === "GET" || method === "HEAD") return null;
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  if (method === "GET" || method === "HEAD") {
+    return { body: null, tooLarge: false };
   }
-  if (chunks.length === 0) return null;
-  const concatenated = Buffer.concat(chunks);
-  const body = new ArrayBuffer(concatenated.byteLength);
-  new Uint8Array(body).set(concatenated);
-  return body;
+
+  const declaredLength = Number(req.headers["content-length"]);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_HONO_BODY_BYTES) {
+    req.pause();
+    return { body: null, tooLarge: true };
+  }
+
+  return new Promise<ReadNodeBodyResult>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+
+    const cleanup = () => {
+      req.off("data", onData);
+      req.off("end", onEnd);
+      req.off("error", onError);
+      req.off("aborted", onAborted);
+    };
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+    const onAborted = () => onError(new Error("Request body was aborted"));
+    const onEnd = () => {
+      cleanup();
+      if (chunks.length === 0) {
+        resolve({ body: null, tooLarge: false });
+        return;
+      }
+      const concatenated = Buffer.concat(chunks, total);
+      const body = new ArrayBuffer(concatenated.byteLength);
+      new Uint8Array(body).set(concatenated);
+      resolve({ body, tooLarge: false });
+    };
+    const onData = (chunk: Buffer | Uint8Array | string) => {
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += buf.byteLength;
+      if (total > MAX_HONO_BODY_BYTES) {
+        cleanup();
+        // Pause immediately, but keep the socket alive until the 413 response
+        // is flushed. Destroying IncomingMessage here resets the connection and
+        // turns the promised HTTP response into ECONNRESET for real clients.
+        req.pause();
+        resolve({ body: null, tooLarge: true });
+        return;
+      }
+      chunks.push(buf);
+    };
+
+    req.on("data", onData);
+    req.once("end", onEnd);
+    req.once("error", onError);
+    req.once("aborted", onAborted);
+  });
 }
 
 function nodeHeadersToWeb(headers: IncomingMessage["headers"]): Headers {
@@ -237,7 +295,22 @@ export async function tryHandleHonoRuntimeRoute(options: {
 
   const app = getHonoApp(runtime);
 
-  const bodyBytes = await readNodeBody(req);
+  const { body: bodyBytes, tooLarge } = await readNodeBody(req);
+  if (tooLarge) {
+    // The request body exceeded the 1 MiB cap. Respond 413 without dispatching
+    // to Hono — the body was never fully buffered and the request was destroyed.
+    res.statusCode = 413;
+    res.setHeader("content-type", "application/json");
+    res.setHeader("connection", "close");
+    res.once("finish", () => req.destroy());
+    res.end(
+      JSON.stringify({
+        error: "Request body too large",
+        maxBytes: MAX_HONO_BODY_BYTES,
+      }),
+    );
+    return true;
+  }
   const url = new URL(
     req.url ?? "/",
     `http://${req.headers.host ?? "localhost"}`,

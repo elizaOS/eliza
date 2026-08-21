@@ -69,6 +69,13 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
+import {
+  buildSharedFactsContext,
+  extractSharedTurnFacts,
+  SHARED_FACTS_CONTEXT_MAX_FACTS,
+  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
+  sharedFactsEnabled,
+} from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
   buildSharedRecallContext,
@@ -580,6 +587,100 @@ async function sharedTurnRecallContext(
     );
     return undefined;
   }
+}
+
+/**
+ * P4 knowledge parity: renders the known-facts provider block for one turn, or
+ * undefined while the flag is off, the memory store is absent, or the tenant
+ * has no facts yet. Facts are an enhancement — a typed read failure degrades
+ * to a facts-free turn rather than failing a healthy reply.
+ */
+async function sharedTurnFactsContext(
+  store: SharedMemoryStore | null,
+): Promise<string | undefined> {
+  if (!store || !sharedFactsEnabled()) return undefined;
+  try {
+    const facts = await store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS);
+    return buildSharedFactsContext(facts) ?? undefined;
+  } catch (error) {
+    // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
+    // the visible signal and the reply itself stays healthy.
+    logger.warn(
+      `[shared-runtime-chat] facts context unavailable this turn: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+}
+
+/** Joins the facts and recall provider blocks into one runtime context block. */
+function combinedTurnContext(
+  factsContext: string | undefined,
+  recallContext: string | undefined,
+): string | undefined {
+  const parts = [factsContext, recallContext].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
+/**
+ * P4 post-turn facts extraction, strictly off the response path (same shape as
+ * the P5 trace recorder): one small extraction call through the SAME platform
+ * model path the turn used, deduped against known facts, written as durable
+ * `facts` rows. Runs only for landed user turns while the flag is on; any
+ * failure is warned and dropped so knowledge accumulation can never fail or
+ * slow a delivered reply.
+ */
+function extractSharedTurnFactsOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  store: SharedMemoryStore | null,
+  character: SharedAgentCharacter,
+  userMessage: string,
+  assistantReply: string,
+): void {
+  if (!store || !sharedFactsEnabled()) return;
+  const model = resolveSharedAgentTurnModel(character.model);
+  if (!model) return;
+  void settleOffResponsePath(executionCtx, async () => {
+    try {
+      const [{ generateText }, { getInteractiveCerebrasLanguageModel }, knownFacts] =
+        await Promise.all([
+          import("ai"),
+          import("../../providers/language-model"),
+          store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS),
+        ]);
+      const facts = await extractSharedTurnFacts({
+        agentName: character.name,
+        userMessage,
+        assistantReply,
+        knownFacts,
+        generate: async (prompt) => {
+          const result = await generateText({
+            model: getInteractiveCerebrasLanguageModel(model),
+            prompt,
+            temperature: 0,
+            maxOutputTokens: 512,
+            maxRetries: 0,
+            // A stalled provider request must not pin the waitUntil task open;
+            // the deadline surfaces as a distinct AbortError in the J7 warn.
+            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
+          });
+          return result.text;
+        },
+      });
+      if (facts.length) await store.recordFacts(facts);
+    } catch (error) {
+      // error-policy:J7 knowledge extraction is off-path enrichment; its
+      // failure must never surface into the already-delivered turn.
+      logger.warn(
+        `[shared-runtime-chat] facts extraction failed for this turn: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  });
 }
 
 function stableUuid(raw: string): string {
@@ -1178,7 +1279,11 @@ export class SharedRuntimeChatService {
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = sharedTurnMemoryStore(agent);
-    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const [factsContext, recallBlock] = await Promise.all([
+      sharedTurnFactsContext(memoryStore),
+      sharedTurnRecallContext(memoryStore, text, history),
+    ]);
+    const recallContext = combinedTurnContext(factsContext, recallBlock);
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
@@ -1237,6 +1342,9 @@ export class SharedRuntimeChatService {
       turn,
       terminalTiming,
     );
+    if (!turn.degraded && turn.responded !== false && messageRole === "user") {
+      extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
+    }
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
@@ -1392,7 +1500,11 @@ export class SharedRuntimeChatService {
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     const streamMemoryStore = sharedTurnMemoryStore(agent);
-    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const [streamFactsContext, streamRecallBlock] = await Promise.all([
+      sharedTurnFactsContext(streamMemoryStore),
+      sharedTurnRecallContext(streamMemoryStore, text, history),
+    ]);
+    const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
@@ -1546,6 +1658,15 @@ export class SharedRuntimeChatService {
             interrupted,
             channel: options.channel,
           });
+        }
+        if (!interrupted && messageRole === "user" && reply.trim()) {
+          extractSharedTurnFactsOffPath(
+            options.executionCtx,
+            streamMemoryStore,
+            character,
+            text,
+            reply,
+          );
         }
         await afterWrite?.();
         finalized = true;
