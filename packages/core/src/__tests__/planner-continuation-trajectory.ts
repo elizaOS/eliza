@@ -303,3 +303,28 @@ export async function writePlannerContinuationEvidenceArtifact(
 	await writeFile(tmpPath, body);
 	await rename(tmpPath, path);
 }
+
+/**
+ * Finish teardown before publishing a terminal artifact. Publishing
+ * `captured` first would leave a false-success receipt if teardown hung or the
+ * process was killed before a later cleanup-failed rewrite.
+ */
+export async function finalizePlannerContinuationEvidence(
+	outcome: PlannerContinuationEvidenceOutcome,
+	cleanup: () => Promise<void>,
+	publish: (body: string) => Promise<void>,
+): Promise<void> {
+	let cleanupError: unknown;
+	try {
+		await cleanup();
+	} catch (error) {
+		// error-policy:J1 The live-test boundary records this teardown failure in
+		// the terminal artifact and then rethrows it to keep the lane red.
+		cleanupError = error;
+	}
+
+	await publish(
+		serializePlannerContinuationEvidence({ ...outcome, cleanupError }),
+	);
+	if (cleanupError !== undefined) throw cleanupError;
+}
