@@ -15,6 +15,66 @@ export const CODING_AGENT_BACKENDS = [
 
 export type CodingAgentBackend = (typeof CODING_AGENT_BACKENDS)[number];
 
+export const CODING_PROVIDER_DESCRIPTOR_VERSION = 1 as const;
+
+export type CodingProviderAccountKind = "subscription" | "api-key";
+export type CodingProviderAuthMode =
+  | "oauth"
+  | "api-key"
+  | "external-cli"
+  | "unavailable";
+export type CodingProviderBillingMode = "subscription" | "usage";
+export type CodingProviderDiscoveryPolicy =
+  | "bundled-or-configured-command"
+  | "configured-command-or-path"
+  | "vendored-or-path"
+  | "none";
+
+export interface CodingAgentBackendPreflight {
+  requiredRuntime: string;
+  discoveryPolicy: Exclude<CodingProviderDiscoveryPolicy, "none">;
+}
+
+/** Executable discovery contract implemented by ACP for every spawn backend. */
+export const CODING_AGENT_BACKEND_PREFLIGHTS = {
+  elizaos: {
+    requiredRuntime: "elizaos-acp",
+    discoveryPolicy: "bundled-or-configured-command",
+  },
+  "pi-agent": {
+    requiredRuntime: "pi-acp",
+    discoveryPolicy: "bundled-or-configured-command",
+  },
+  claude: {
+    requiredRuntime: "claude-acp",
+    discoveryPolicy: "configured-command-or-path",
+  },
+  codex: {
+    requiredRuntime: "codex-acp",
+    discoveryPolicy: "configured-command-or-path",
+  },
+  opencode: {
+    requiredRuntime: "opencode-acp",
+    discoveryPolicy: "vendored-or-path",
+  },
+} as const satisfies Readonly<
+  Record<CodingAgentBackend, CodingAgentBackendPreflight>
+>;
+
+export interface CodingProviderDescriptor {
+  version: typeof CODING_PROVIDER_DESCRIPTOR_VERSION;
+  providerId: string;
+  accountKind: CodingProviderAccountKind;
+  authMode: CodingProviderAuthMode;
+  billingMode: CodingProviderBillingMode;
+  inferenceSupport: boolean;
+  backend: CodingAgentBackend | null;
+  spawnSupport: boolean;
+  requiredRuntime: string | null;
+  discoveryPolicy: CodingProviderDiscoveryPolicy;
+  unsupportedReason: string | null;
+}
+
 export function isCodingAgentBackend(
   value: unknown,
 ): value is CodingAgentBackend {
@@ -24,43 +84,179 @@ export function isCodingAgentBackend(
   );
 }
 
-/** Ordered credential providers per executable backend. */
-export const CODING_AGENT_BACKEND_PROVIDERS = {
-  elizaos: [],
-  "pi-agent": [],
-  claude: ["anthropic-subscription", "anthropic-api"],
-  codex: ["openai-codex", "openai-api"],
-  opencode: ["cerebras-api"],
-} as const satisfies Readonly<Record<CodingAgentBackend, readonly string[]>>;
+function descriptor(
+  providerId: string,
+  accountKind: CodingProviderAccountKind,
+  authMode: CodingProviderAuthMode,
+  billingMode: CodingProviderBillingMode,
+  inferenceSupport: boolean,
+  backend: CodingAgentBackend | null,
+  unsupportedReason: string | null,
+): CodingProviderDescriptor {
+  const preflight = backend ? CODING_AGENT_BACKEND_PREFLIGHTS[backend] : null;
+  return {
+    version: CODING_PROVIDER_DESCRIPTOR_VERSION,
+    providerId,
+    accountKind,
+    authMode,
+    billingMode,
+    inferenceSupport,
+    backend,
+    spawnSupport: backend !== null,
+    requiredRuntime: preflight?.requiredRuntime ?? null,
+    discoveryPolicy: preflight?.discoveryPolicy ?? "none",
+    unsupportedReason,
+  };
+}
+
+/**
+ * Canonical account, inference, and executable-spawn truth for every linked
+ * account provider in the runtime catalog.
+ */
+export const CODING_PROVIDER_DESCRIPTORS = {
+  "anthropic-subscription": descriptor(
+    "anthropic-subscription",
+    "subscription",
+    "oauth",
+    "subscription",
+    false,
+    "claude",
+    null,
+  ),
+  "openai-codex": descriptor(
+    "openai-codex",
+    "subscription",
+    "oauth",
+    "subscription",
+    true,
+    "codex",
+    null,
+  ),
+  "gemini-cli": descriptor(
+    "gemini-cli",
+    "subscription",
+    "external-cli",
+    "subscription",
+    false,
+    null,
+    "Gemini CLI is not wired to a supported coding-agent spawn backend.",
+  ),
+  "zai-coding": descriptor(
+    "zai-coding",
+    "subscription",
+    "api-key",
+    "subscription",
+    true,
+    null,
+    "The z.ai coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
+  ),
+  "kimi-coding": descriptor(
+    "kimi-coding",
+    "subscription",
+    "api-key",
+    "subscription",
+    true,
+    null,
+    "The Kimi coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
+  ),
+  "deepseek-coding": descriptor(
+    "deepseek-coding",
+    "subscription",
+    "unavailable",
+    "subscription",
+    false,
+    null,
+    "No first-party DeepSeek coding subscription surface or supported coding-agent spawn backend is available.",
+  ),
+  "anthropic-api": descriptor(
+    "anthropic-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    "claude",
+    null,
+  ),
+  "openai-api": descriptor(
+    "openai-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    "codex",
+    null,
+  ),
+  "deepseek-api": descriptor(
+    "deepseek-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    null,
+    "The DeepSeek API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
+  ),
+  "zai-api": descriptor(
+    "zai-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    null,
+    "The z.ai API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
+  ),
+  "moonshot-api": descriptor(
+    "moonshot-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    null,
+    "The Kimi / Moonshot API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
+  ),
+  "cerebras-api": descriptor(
+    "cerebras-api",
+    "api-key",
+    "api-key",
+    "usage",
+    true,
+    "opencode",
+    null,
+  ),
+} as const satisfies Readonly<Record<string, CodingProviderDescriptor>>;
+
+export type CodingProviderId = keyof typeof CODING_PROVIDER_DESCRIPTORS;
+
+/** Ordered credential providers derived from the canonical descriptors. */
+export const CODING_AGENT_BACKEND_PROVIDERS = Object.fromEntries(
+  CODING_AGENT_BACKENDS.map((backend) => [
+    backend,
+    Object.values(CODING_PROVIDER_DESCRIPTORS)
+      .filter((descriptor) => descriptor.backend === backend)
+      .map((descriptor) => descriptor.providerId as CodingProviderId),
+  ]),
+) as unknown as Readonly<
+  Record<CodingAgentBackend, readonly CodingProviderId[]>
+>;
 
 export type CodingAgentAccountProviderId =
   (typeof CODING_AGENT_BACKEND_PROVIDERS)[CodingAgentBackend][number];
 
-const PROVIDER_BACKENDS: Readonly<Partial<Record<string, CodingAgentBackend>>> =
-  Object.fromEntries(
-    Object.entries(CODING_AGENT_BACKEND_PROVIDERS).flatMap(
-      ([backend, providers]) =>
-        providers.map((providerId) => [providerId, backend]),
-    ),
-  ) as Partial<Record<string, CodingAgentBackend>>;
+export interface CodingProviderSupportMatrix {
+  version: typeof CODING_PROVIDER_DESCRIPTOR_VERSION;
+  providers: readonly CodingProviderDescriptor[];
+}
 
-const PROVIDER_UNAVAILABLE_REASONS: Readonly<Partial<Record<string, string>>> =
-  {
-    "gemini-cli":
-      "Gemini CLI is not wired to a supported coding-agent spawn backend.",
-    "zai-coding":
-      "The z.ai coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
-    "kimi-coding":
-      "The Kimi coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
-    "deepseek-coding":
-      "No first-party DeepSeek coding subscription surface or supported coding-agent spawn backend is available.",
-    "deepseek-api":
-      "The DeepSeek API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
-    "zai-api":
-      "The z.ai API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
-    "moonshot-api":
-      "The Kimi / Moonshot API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
-  };
+/** Serializable domain artifact used by reviews and catalog drift checks. */
+export const CODING_PROVIDER_SUPPORT_MATRIX: CodingProviderSupportMatrix = {
+  version: CODING_PROVIDER_DESCRIPTOR_VERSION,
+  providers: Object.values(CODING_PROVIDER_DESCRIPTORS),
+};
+
+export function codingProviderDescriptorForProvider(
+  providerId: string,
+): CodingProviderDescriptor | undefined {
+  return CODING_PROVIDER_DESCRIPTORS[providerId as CodingProviderId];
+}
 
 export interface CodingAgentSpawnCapability {
   available: boolean;
@@ -72,7 +268,7 @@ export interface CodingAgentSpawnCapability {
 export function codingAgentBackendForProvider(
   providerId: string,
 ): CodingAgentBackend | undefined {
-  return PROVIDER_BACKENDS[providerId];
+  return codingProviderDescriptorForProvider(providerId)?.backend ?? undefined;
 }
 
 /**
@@ -84,10 +280,11 @@ export function codingAgentSpawnCapabilityForProvider(
 ): CodingAgentSpawnCapability {
   const backend = codingAgentBackendForProvider(providerId);
   if (backend) return { available: true, backend };
+  const descriptor = codingProviderDescriptorForProvider(providerId);
   return {
     available: false,
     unavailableReason:
-      PROVIDER_UNAVAILABLE_REASONS[providerId] ??
+      descriptor?.unsupportedReason ??
       "No supported coding-agent spawn backend consumes this account provider.",
   };
 }
