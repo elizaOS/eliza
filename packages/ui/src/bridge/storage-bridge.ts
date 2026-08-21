@@ -327,6 +327,25 @@ export async function initializeStorageBridge(): Promise<void> {
   const { getItem: originalGetItem, removeItem: originalRemoveItem } =
     getNativeLocalStorageMethods();
 
+  // Install the proxy FIRST, before any of the awaited native round trips
+  // below. Hydration and protected-credential migration each await the real
+  // Preferences/secure-store bridge, which can take several retries to warm
+  // up; every await below is a window where a concurrent `localStorage` call
+  // on a protected key (e.g. a login flow racing this init) would otherwise
+  // hit the raw, unpatched Storage prototype — reading a still-present legacy
+  // plaintext value straight off disk, or writing a fresh credential in
+  // plaintext instead of into the secure store. Installing the proxy up front
+  // means every protected-key access, including ones that race this
+  // function, is intercepted from the first possible moment: reads are
+  // gated on `protectedStorageCache` (empty until migration populates it,
+  // so they return null rather than leaking the legacy plaintext) and writes
+  // go straight to the secure store instead of `originalSetItem`. The
+  // migration loop below reads/removes the legacy value through the
+  // `originalGetItem`/`originalRemoveItem` closures captured above, which
+  // stay bound to the raw prototype regardless of when the proxy patches it,
+  // so migration itself is unaffected by moving this earlier.
+  setupStorageProxy();
+
   // The Capacitor Preferences plugin is frequently not yet responsive on the
   // first read during very early WebView startup (the bridge is still wiring
   // up), so a single best-effort pass loses critical session/first-run state —
@@ -431,10 +450,6 @@ export async function initializeStorageBridge(): Promise<void> {
       }
     }
   }
-
-  // Set up the storage proxy (idempotent) so localStorage<->Preferences sync
-  // works even while we wait for a cold plugin to warm up.
-  setupStorageProxy();
 
   // Only consider the bridge initialized once the native plugin has actually
   // answered. If it never warmed up, leave `initialized` false so a later call
