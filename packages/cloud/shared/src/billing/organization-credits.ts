@@ -14,6 +14,10 @@ export type OrganizationCreditUnit = typeof ORGANIZATION_CREDIT_UNIT;
 export const ORGANIZATION_CREDITS_PER_DOLLAR = 1 as const;
 export const USD_PER_ORGANIZATION_CREDIT = 1 as const;
 
+/** Public A2A/MCP memory prices, shared by execution and discovery surfaces. */
+export const SAVE_MEMORY_PRICE_USD = 1 as const;
+export const RETRIEVE_MEMORIES_PRICE_USD = 0 as const;
+
 /** Historical user-MCP pricing points: 100 stored points equal $1. */
 export const LEGACY_MCP_POINTS_PER_DOLLAR = 100 as const;
 

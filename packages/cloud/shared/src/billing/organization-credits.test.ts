@@ -6,6 +6,8 @@ import {
   legacyMcpPointsToOrganizationCredits,
   ORGANIZATION_CREDIT_PRICING,
   organizationCreditsToLegacyMcpPoints,
+  RETRIEVE_MEMORIES_PRICE_USD,
+  SAVE_MEMORY_PRICE_USD,
 } from "./organization-credits";
 
 describe("organization credit unit", () => {
@@ -15,6 +17,11 @@ describe("organization credit unit", () => {
       creditsPerDollar: 1,
       usdPerCredit: 1,
     });
+  });
+
+  test("publishes the memory prices used by execution and discovery", () => {
+    expect(SAVE_MEMORY_PRICE_USD).toBe(1);
+    expect(RETRIEVE_MEMORIES_PRICE_USD).toBe(0);
   });
 
   test("keeps legacy MCP point prices value-equivalent", () => {

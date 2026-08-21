@@ -11,12 +11,10 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
 
-// mock.module is process-global — spread the real auth module so only
-// requireUserOrApiKeyWithOrg is overridden (mirrors agent-mcp-billing.test.ts).
+// This route imports only requireUserOrApiKeyWithOrg; keep the test isolated
+// from Steward/cache initialization so the money-path assertions stay focused.
 const requireUserOrApiKeyWithOrg = mock();
-const realAuth = await import("@/lib/auth/workers-hono-auth");
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  ...realAuth,
   requireUserOrApiKeyWithOrg,
 }));
 
@@ -102,6 +100,8 @@ test("unreachable upstream (502) refunds the upfront debit (#11637)", async () =
   safeFetch.mockRejectedValue(new Error("ECONNREFUSED"));
   const res = await post();
   expect(res.status).toBe(502);
+  expect(reserveAndDeductCredits).toHaveBeenCalledTimes(1);
+  expect(refundCredits).toHaveBeenCalledTimes(1);
   expect(reserveAndDeductCredits).toHaveBeenCalledWith(
     expect.objectContaining({ amount: 0.05, organizationId: "org1" }),
   );

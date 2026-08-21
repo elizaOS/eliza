@@ -6,7 +6,11 @@
  * Dynamic provider-backed tools deliberately expose no guessed dollar amount.
  */
 
-import { ORGANIZATION_CREDIT_UNIT } from "./organization-credits.js";
+import {
+  ORGANIZATION_CREDIT_UNIT,
+  RETRIEVE_MEMORIES_PRICE_USD,
+  SAVE_MEMORY_PRICE_USD,
+} from "./organization-credits.js";
 
 export const MCP_FREE_COST_LABEL = "Free" as const;
 export const MCP_USAGE_BASED_COST_LABEL = "Usage-based cloud credits" as const;
@@ -14,12 +18,12 @@ export const MCP_USAGE_BASED_COST_LABEL = "Usage-based cloud credits" as const;
 export const PLATFORM_MCP_TOOL_PRICING = Object.freeze({
   save_memory: Object.freeze({
     billing: "fixed" as const,
-    priceUsd: 1,
-    label: "$1 in cloud credit",
+    priceUsd: SAVE_MEMORY_PRICE_USD,
+    label: `$${SAVE_MEMORY_PRICE_USD} in cloud credit`,
   }),
   retrieve_memories: Object.freeze({
     billing: "free" as const,
-    priceUsd: 0,
+    priceUsd: RETRIEVE_MEMORIES_PRICE_USD,
     label: MCP_FREE_COST_LABEL,
   }),
 });

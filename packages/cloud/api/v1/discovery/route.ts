@@ -7,10 +7,6 @@
  * @route GET /api/v1/discovery
  */
 
-import {
-  legacyMcpPointsToOrganizationCredits,
-  ORGANIZATION_CREDIT_UNIT,
-} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
@@ -24,6 +20,7 @@ import { charactersService } from "@/lib/services/characters/characters";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { serializeLegacyMcpCreditPricing } from "./pricing";
 
 const serviceTypeSchema = z.enum(["agent", "mcp"]);
 type ServiceType = z.infer<typeof serviceTypeSchema>;
@@ -595,18 +592,7 @@ async function fetchLocalMcps(
         mcp.pricing_type === "free"
           ? { type: "free", description: "Free to use" }
           : mcp.pricing_type === "credits"
-            ? {
-                type: "credits",
-                amount: Number(mcp.credits_per_request),
-                amountUsd: legacyMcpPointsToOrganizationCredits(
-                  Number(mcp.credits_per_request),
-                ),
-                amountUnit: "legacy_mcp_pricing_points",
-                currency: ORGANIZATION_CREDIT_UNIT,
-                description: `$${legacyMcpPointsToOrganizationCredits(
-                  Number(mcp.credits_per_request),
-                )} in cloud credit per request`,
-              }
+            ? serializeLegacyMcpCreditPricing(mcp.credits_per_request)
             : {
                 type: "x402",
                 amount: Number(mcp.x402_price_usd),
