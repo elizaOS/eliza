@@ -1,3 +1,4 @@
+import { types as nodeUtilTypes } from "node:util";
 import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
 
 /**
@@ -58,6 +59,36 @@ function ownDataProperty(target: object, key: string): unknown {
   return descriptor && "value" in descriptor ? descriptor.value : undefined;
 }
 
+/** Reject direct or prototype-chain Proxies before reflective projection. */
+function hasProxyInPrototypeChain(value: object): boolean {
+  let current: object | null = value;
+  while (current !== null) {
+    if (nodeUtilTypes.isProxy(current)) return true;
+    current = Object.getPrototypeOf(current) as object | null;
+  }
+  return false;
+}
+
+const typedArrayLengthGetter = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype),
+  "length"
+)?.get;
+
+/** Read Buffer width without consulting an overridable own `length`. */
+function bufferLength(value: Uint8Array): number {
+  if (!typedArrayLengthGetter) {
+    throw new PromptPayloadSerializationError("TypedArray length getter is unavailable");
+  }
+  return typedArrayLengthGetter.call(value) as number;
+}
+
+/** Copy Buffer bytes without consulting the payload's `@@iterator`. */
+function bufferBytes(value: Uint8Array, length: number): number[] {
+  const bytes = new Array<number>(length);
+  for (let index = 0; index < length; index += 1) bytes[index] = value[index];
+  return bytes;
+}
+
 type JsonSafe = string | number | boolean | null | JsonSafe[] | { [key: string]: JsonSafe };
 
 function dateProjection(value: object): { matched: boolean; value: string | null } {
@@ -95,6 +126,11 @@ function toJsonValue(value: unknown, traversal: PayloadTraversal): JsonSafe | un
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return undefined; // undefined / function / symbol: dropped, as today
   const object = value as object;
+  if (hasProxyInPrototypeChain(object)) {
+    throw new PromptPayloadSerializationError(
+      "Tool payload contains a Proxy and cannot be read safely"
+    );
+  }
   // Brand check, not `instanceof`: a Date from another realm fails the
   // prototype test and used to fall through to the object branch, rendering
   // `{}` and losing the timestamp entirely. Dispatch through the builtins so an
@@ -107,8 +143,9 @@ function toJsonValue(value: unknown, traversal: PayloadTraversal): JsonSafe | un
   // object branch, dropping the bytes / the href. Reproduce what the
   // original `JSON.stringify` path produced for each.
   if (isBufferValue(object)) {
-    const bytes = object as Uint8Array;
-    return { type: "Buffer", data: Array.from(bytes) };
+    const buffer = object as Uint8Array;
+    const length = bufferLength(buffer);
+    return { type: "Buffer", data: bufferBytes(buffer, length) };
   }
   const url = urlProjection(object);
   if (url.matched) return url.value;
@@ -122,7 +159,13 @@ function toJsonValue(value: unknown, traversal: PayloadTraversal): JsonSafe | un
     try {
       const items: JsonSafe[] = [];
       for (let index = 0; index < object.length; index += 1) {
-        items.push(toJsonValue(object[index], traversal) ?? null);
+        const descriptor = Object.getOwnPropertyDescriptor(object, String(index));
+        if (descriptor && !("value" in descriptor)) {
+          throw new PromptPayloadSerializationError(
+            `Tool payload array element ${index} is an accessor and cannot be read safely`
+          );
+        }
+        items.push(toJsonValue(descriptor?.value, traversal) ?? null);
       }
       return items;
     } finally {
@@ -181,6 +224,9 @@ function toolOutputToText(
   if (output == null) return "";
   if (typeof output === "string") return output;
   if (typeof output !== "object") return String(output);
+  if (hasProxyInPrototypeChain(output)) {
+    throw new PromptPayloadSerializationError("Tool output contains a Proxy and cannot be read safely");
+  }
   if (traversal.ancestors.has(output)) {
     throw new PromptPayloadSerializationError(
       "Tool output contains a cycle and cannot be sent to the model losslessly"
@@ -191,7 +237,13 @@ function toolOutputToText(
     try {
       const parts: string[] = [];
       for (let index = 0; index < output.length; index += 1) {
-        const text = toolOutputToText(output[index], traversal);
+        const descriptor = Object.getOwnPropertyDescriptor(output, String(index));
+        if (descriptor && !("value" in descriptor)) {
+          throw new PromptPayloadSerializationError(
+            `Tool output array element ${index} is an accessor and cannot be read safely`
+          );
+        }
+        const text = toolOutputToText(descriptor?.value, traversal);
         if (text) parts.push(text);
       }
       return parts.join("\n");
