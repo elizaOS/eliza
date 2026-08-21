@@ -378,7 +378,12 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
       let listeners: ActivePlayVoiceListeners | null = null;
       const listenerResults = await Promise.allSettled([
         PlayVoice.addListener("transcript", (event) => {
-          if (activeVoiceListeners !== listeners || !event.isFinal) return;
+          if (
+            !listeners ||
+            activeVoiceListeners !== listeners ||
+            !event.isFinal
+          )
+            return;
           const transcript = event.text.trim();
           if (transcript) onFinalTranscript(transcript);
           void androidCloudVoice
@@ -387,7 +392,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
             .catch((error) => logOptionalPluginFailure("PlayVoice", error));
         }),
         PlayVoice.addListener("error", (event) => {
-          if (activeVoiceListeners !== listeners) return;
+          if (!listeners || activeVoiceListeners !== listeners) return;
           onError(playVoiceError(event.code));
           void androidCloudVoice
             .stop()

@@ -25,6 +25,17 @@ function json(status: number, body: unknown): Response {
   });
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 describe("AndroidCloudClient", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -150,6 +161,31 @@ describe("AndroidCloudClient", () => {
     expect(secureToken).toBe("fresh-token");
   });
 
+  it("does not let a delayed stale 401 clear a newer login", async () => {
+    let secureToken: string | null = "stale-token";
+    const verification = deferred<Response>();
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const fetchImpl = vi.fn<typeof fetch>(() => verification.promise);
+    const client = new AndroidCloudClient({ credentialStore, fetchImpl });
+
+    const staleRestore = client.restoreSession();
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledOnce());
+    await client.persistLogin("fresh-token");
+    verification.resolve(json(401, {}));
+
+    await expect(staleRestore).resolves.toBeNull();
+    expect(credentialStore.clear).not.toHaveBeenCalled();
+    expect(secureToken).toBe("fresh-token");
+  });
+
   it("restores identity and resolves its managed runtime before chat", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
@@ -227,7 +263,7 @@ describe("AndroidCloudClient", () => {
     });
 
     await expect(client.restoreSession()).resolves.toBeNull();
-    expect(credentialStore.read).toHaveBeenCalledOnce();
+    expect(credentialStore.read).toHaveBeenCalledTimes(2);
     expect(credentialStore.clear).toHaveBeenCalledOnce();
     expect(secureToken).toBeNull();
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();

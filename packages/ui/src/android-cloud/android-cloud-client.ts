@@ -195,7 +195,7 @@ export class AndroidCloudClient {
       },
     );
     if (response.status === 401) {
-      await this.credentialStore.clear();
+      await this.discardLogin(token);
       return null;
     }
     if (!response.ok) {

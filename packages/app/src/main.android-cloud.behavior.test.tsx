@@ -13,6 +13,10 @@ const playEntry = vi.hoisted(() => ({
   voiceListeners: new Map<string, (value: never) => void>(),
   voiceListenerRemovals: new Map<string, ReturnType<typeof vi.fn>>(),
   voiceListenerGate: null as Promise<void> | null,
+  voiceRegistrationEvent: null as {
+    eventName: string;
+    value: never;
+  } | null,
   voiceStart: vi.fn(async () => ({ started: true })),
   voiceStop: vi.fn(async () => undefined),
   createRoot: vi.fn(() => ({ render: vi.fn() })),
@@ -49,6 +53,9 @@ vi.mock("@capacitor/core", () => ({
       : {
           addListener: vi.fn(
             async (eventName: string, listener: (value: never) => void) => {
+              if (playEntry.voiceRegistrationEvent?.eventName === eventName) {
+                listener(playEntry.voiceRegistrationEvent.value);
+              }
               await playEntry.voiceListenerGate;
               playEntry.voiceListeners.set(eventName, listener);
               const remove = vi.fn(async () => {
@@ -138,6 +145,7 @@ beforeEach(async () => {
   playEntry.voiceListeners.clear();
   playEntry.voiceListenerRemovals.clear();
   playEntry.voiceListenerGate = null;
+  playEntry.voiceRegistrationEvent = null;
   playEntry.voiceStart.mockResolvedValue({ started: true });
   playEntry.voiceStop.mockResolvedValue(undefined);
   window.localStorage.clear();
@@ -183,6 +191,22 @@ describe("Android Cloud renderer behavior", () => {
       playEntry.voiceListenerRemovals.get("transcript"),
     ).toHaveBeenCalledOnce();
     expect(playEntry.voiceListenerRemovals.get("error")).toHaveBeenCalledOnce();
+  });
+
+  it("ignores native events delivered before the listener pair is active", async () => {
+    const onError = vi.fn();
+    playEntry.voiceRegistrationEvent = {
+      eventName: "error",
+      value: { code: 7 } as never,
+    };
+
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), onError);
+
+    expect(onError).not.toHaveBeenCalled();
+    expect([...playEntry.voiceListeners.keys()].sort()).toEqual([
+      "error",
+      "transcript",
+    ]);
   });
 
   it("cancels startup and removes listeners when stopped during registration", async () => {

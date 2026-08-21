@@ -191,6 +191,10 @@ describe("AndroidCloudApp", () => {
     const client = createClient();
     const voice = createVoice();
     const startup = deferred<void>();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.mocked(voice.stop).mockRejectedValueOnce(
+      new Error("native stop unavailable"),
+    );
     let startupSignal: AbortSignal | undefined;
     vi.mocked(voice.requestAndStart).mockImplementation(
       async (_onTranscript, _onError, signal) => {
@@ -208,10 +212,44 @@ describe("AndroidCloudApp", () => {
 
     expect(startupSignal?.aborted).toBe(true);
     expect(voice.stop).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        "[AndroidCloudApp] Voice teardown failed",
+        expect.objectContaining({ message: "native stop unavailable" }),
+      ),
+    );
     await act(async () => {
       startup.resolve(undefined);
       await startup.promise;
     });
+  });
+
+  it("surfaces a system-browser close failure during sign-in cancellation", async () => {
+    const client = createClient();
+    const login = deferred<{
+      sessionId: string;
+      browserUrl: string;
+    }>();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockReturnValue(login.promise);
+    const closeExternal = vi.fn(async () => {
+      throw new Error("browser close unavailable");
+    });
+    render(
+      <AndroidCloudApp
+        client={client}
+        closeExternal={closeExternal}
+        voice={createVoice()}
+      />,
+    );
+    await screen.findByRole("button", { name: "Sign in" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The sign-in browser could not be closed: browser close unavailable",
+    );
   });
 
   it("ends dictation and surfaces an asynchronous native voice failure", async () => {

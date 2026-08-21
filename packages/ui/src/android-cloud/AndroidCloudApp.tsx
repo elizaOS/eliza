@@ -144,7 +144,11 @@ export function AndroidCloudApp({
       abortRef.current?.abort();
       voiceAttemptRef.current += 1;
       voiceAbortRef.current?.abort();
-      void voice?.stop();
+      void voice?.stop().catch((stopError) => {
+        // error-policy:J6 unmount owns this best-effort native teardown and
+        // cannot render a failure after the component has been removed.
+        console.warn("[AndroidCloudApp] Voice teardown failed", stopError);
+      });
     };
   }, [restore, voice]);
 
@@ -244,7 +248,15 @@ export function AndroidCloudApp({
     loginAbortRef.current?.abort();
     loginAbortRef.current = null;
     setBusy(false);
-    void closeExternal?.();
+    void Promise.resolve()
+      .then(() => closeExternal?.())
+      .catch((closeError) => {
+        // error-policy:J4 cancellation remains complete while a duplicate
+        // system-browser close failure is surfaced to the signed-out shell.
+        setError(
+          `The sign-in browser could not be closed: ${errorMessage(closeError)}`,
+        );
+      });
   }, [closeExternal]);
 
   const signOut = useCallback(async () => {
