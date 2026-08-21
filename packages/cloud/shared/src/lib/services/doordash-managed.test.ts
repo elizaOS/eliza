@@ -121,8 +121,11 @@ describe("managed DoorDash", () => {
     expect(result).toMatchObject({
       success: true,
       authRequired: true,
+      humanInterventionRequired: true,
+      humanInterventionKind: "cloudflare-browser-run",
       loginUrl: "https://login.example/session-1",
       appBrowserPath: "/browser?browse=https%3A%2F%2Flogin.example%2Fsession-1",
+      appDeepLink: "elizaos://browser?browse=https%3A%2F%2Flogin.example%2Fsession-1",
     });
   });
 
@@ -131,6 +134,9 @@ describe("managed DoorDash", () => {
       {
         loggedIn: false,
         securityVerificationRequired: true,
+        humanInterventionRequired: true,
+        handoffId: "handoff-1",
+        handoffState: "active",
         url: "https://www.doordash.com/",
       },
     ];
@@ -139,6 +145,8 @@ describe("managed DoorDash", () => {
       success: true,
       authRequired: true,
       securityVerificationRequired: true,
+      handoffId: "handoff-1",
+      handoffState: "active",
     });
     expect(result.instructions).toContain("complete DoorDash's security verification");
   });

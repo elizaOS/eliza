@@ -80,6 +80,55 @@ function toJsonValue(value: unknown): JsonValue {
   return String(value);
 }
 
+interface DoorDashHumanIntervention {
+  readonly liveViewUrl: string;
+  readonly appBrowserPath: string;
+  readonly appDeepLink: string;
+  readonly handoffId?: string;
+  readonly handoffState?: string;
+}
+
+function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
+  if (!isRecord(value) || value.humanInterventionRequired !== true) return null;
+  if (typeof value.loginUrl !== "string") {
+    return null;
+  }
+  let liveViewUrl: string;
+  try {
+    const parsed = new URL(value.loginUrl);
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.hostname !== "live.browser.run"
+    ) {
+      return null;
+    }
+    liveViewUrl = parsed.href;
+  } catch {
+    // error-policy:J3 untrusted MCP handoff output is never rendered as a link.
+    return null;
+  }
+  return {
+    liveViewUrl,
+    appBrowserPath: `/browser?browse=${encodeURIComponent(liveViewUrl)}`,
+    appDeepLink: `elizaos://browser?browse=${encodeURIComponent(liveViewUrl)}`,
+    ...(typeof value.handoffId === "string"
+      ? { handoffId: value.handoffId }
+      : {}),
+    ...(typeof value.handoffState === "string"
+      ? { handoffState: value.handoffState }
+      : {}),
+  };
+}
+
+function humanInterventionText(handoff: DoorDashHumanIntervention): string {
+  return [
+    "DoorDash needs you to complete sign-in or a security check.",
+    `Open the secure browser in Eliza: ${handoff.appDeepLink}`,
+    `If the app link is unavailable, open Cloudflare Live View: ${handoff.liveViewUrl}`,
+    "Complete only the verification/sign-in step, select Done, then ask me to continue. I will not place an order without a separate explicit confirmation.",
+  ].join("\n");
+}
+
 export function checkoutPreviewDigest(value: unknown): string {
   return createHash("sha256")
     .update(JSON.stringify(stableValue(value)))
@@ -381,11 +430,44 @@ async function execute(
       args,
       typeof args.serverName === "string" ? args.serverName : undefined,
     );
+    const handoff = humanIntervention(called.value);
+    if (
+      isRecord(called.value) &&
+      called.value.humanInterventionRequired === true &&
+      !handoff
+    ) {
+      throw new ElizaError(
+        "DoorDash returned an invalid human-intervention link.",
+        {
+          code: "DOORDASH_INVALID_HANDOFF",
+          severity: "ephemeral",
+        },
+      );
+    }
+    const responseText = handoff
+      ? humanInterventionText(handoff)
+      : called.text || JSON.stringify(called.value);
     return reply(
       {
         success: true,
-        text: called.text || JSON.stringify(called.value),
-        userFacingText: called.text || JSON.stringify(called.value, null, 2),
+        text: responseText,
+        userFacingText: responseText,
+        ...(handoff
+          ? {
+              values: {
+                provider: "doordash",
+                humanInterventionRequired: true,
+                humanInterventionKind: "cloudflare-browser-run",
+                liveViewUrl: handoff.liveViewUrl,
+                appBrowserPath: handoff.appBrowserPath,
+                appDeepLink: handoff.appDeepLink,
+                ...(handoff.handoffId ? { handoffId: handoff.handoffId } : {}),
+                ...(handoff.handoffState
+                  ? { handoffState: handoff.handoffState }
+                  : {}),
+              },
+            }
+          : {}),
         data: {
           serverName: called.serverName,
           toolName: called.toolName,

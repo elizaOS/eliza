@@ -352,8 +352,11 @@ export async function callManagedDoorDashTool(
       ...result,
       success: true,
       authRequired: true,
+      humanInterventionRequired: true,
+      humanInterventionKind: "cloudflare-browser-run",
       loginUrl: session.interactiveLiveViewUrl,
       appBrowserPath: `/browser?browse=${encodeURIComponent(session.interactiveLiveViewUrl)}`,
+      appDeepLink: `elizaos://browser?browse=${encodeURIComponent(session.interactiveLiveViewUrl)}`,
       instructions: securityVerificationRequired
         ? "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), complete DoorDash's security verification and sign in, then ask the agent to check DoorDash status again."
         : "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), sign in to DoorDash, then ask the agent to check DoorDash status again.",

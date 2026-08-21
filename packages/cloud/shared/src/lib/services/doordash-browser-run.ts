@@ -6,11 +6,14 @@
 
 import type { Browser, BrowserWorker, Page } from "@cloudflare/playwright";
 import { getCloudBinding } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
 
 const BASE_URL = "https://www.doordash.com";
 const KEEP_ALIVE_MS = 600_000;
-const LIVE_VIEW_TTL_MS = 3_600_000;
+const LIVE_VIEW_TTL_MS = KEEP_ALIVE_MS;
 const BROWSER_RUN_ENDPOINT = "https://browser.run.invalid";
+const HUMAN_HANDOFF_INSTRUCTIONS =
+  "Complete DoorDash security verification and sign in. Do not add items, check out, or place an order. Select Done when DoorDash is ready for the agent.";
 
 async function browserRunSdk(): Promise<typeof import("@cloudflare/playwright")> {
   return await import("@cloudflare/playwright");
@@ -19,6 +22,12 @@ async function browserRunSdk(): Promise<typeof import("@cloudflare/playwright")>
 export interface DoorDashBrowserSession {
   readonly id: string;
   readonly interactiveLiveViewUrl: string;
+}
+
+interface DoorDashHumanHandoff {
+  readonly humanInterventionRequired: true;
+  readonly handoffId?: string;
+  readonly handoffState: "active" | "manual";
 }
 
 function browserBinding(): BrowserWorker {
@@ -42,6 +51,42 @@ async function liveViewUrl(page: Page): Promise<string> {
       expiresInMs: LIVE_VIEW_TTL_MS,
     });
     return liveView.devtoolsFrontendUrl;
+  } finally {
+    await cdp.detach();
+  }
+}
+
+async function ensureHumanHandoff(page: Page): Promise<DoorDashHumanHandoff> {
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const current = await cdp.send("Cloudflare.getHandoffState", {});
+    if (current.active && current.handoffId) {
+      return {
+        humanInterventionRequired: true,
+        handoffId: current.handoffId,
+        handoffState: "active",
+      };
+    }
+    const created = await cdp.send("Cloudflare.handoff", {
+      instructions: HUMAN_HANDOFF_INSTRUCTIONS,
+      timeout: KEEP_ALIVE_MS,
+    });
+    return {
+      humanInterventionRequired: true,
+      handoffId: created.handoffId,
+      handoffState: "active",
+    };
+  } catch (error) {
+    // error-policy:J4 Live View remains a usable, visibly manual fallback if
+    // Browser Run's structured handoff control is temporarily unavailable.
+    logger.warn(
+      { error },
+      "[DoorDashBrowserRun] Structured human handoff unavailable; using manual Live View",
+    );
+    return {
+      humanInterventionRequired: true,
+      handoffState: "manual",
+    };
   } finally {
     await cdp.detach();
   }
@@ -152,6 +197,7 @@ async function runDoorDashOperation(
       return {
         loggedIn: false,
         securityVerificationRequired: true,
+        ...(await ensureHumanHandoff(page)),
         url: page.url(),
       };
     }
@@ -163,9 +209,11 @@ async function runDoorDashOperation(
         'a[href*="consumer/account"], a[href*="orders"], button[aria-label*="account" i], button[aria-label*="profile" i]',
       )
       .first();
+    const loggedIn = await visible(account);
     return {
-      loggedIn: await visible(account),
+      loggedIn,
       loginVisible: await visible(login),
+      ...(!loggedIn ? await ensureHumanHandoff(page) : {}),
       url: page.url(),
     };
   }
