@@ -1206,21 +1206,6 @@ async function runCreateLegacy(
     if (duplicate) {
       return duplicateSpawnGuardResult(runtime, callback, duplicate);
     }
-    const originMessageId = typeof message.id === "string" ? message.id : "";
-    if (
-      originMessageId &&
-      content.source !== MESSAGE_SOURCE_SUB_AGENT &&
-      extraMetadata.subAgent !== true &&
-      !DUPLICATE_SPAWN_FORCE_RE.test(
-        typeof content.text === "string" ? content.text : "",
-      ) &&
-      !claimCreateForMessage(originMessageId)
-    ) {
-      return duplicateSpawnGuardResult(runtime, callback, {
-        name: "this request",
-        status: "already launched",
-      });
-    }
   }
 
   // Ack FIRST — before task-record creation (whose criteria generation can
@@ -2024,6 +2009,30 @@ async function runCreate(
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  // One user-facing create per originating message (the planner loop re-issued
+  // a second TASKS create in the same turn after the first one's completion
+  // relay landed — two kickoff bubbles, one answer, live 2026-08-21). Checked
+  // HERE, at the dispatch, so per-lane runCreateLegacy legs of one fan-out and
+  // the send-redirect successors stay exempt. Synthetic sub-agent inbounds
+  // (respawns, retries) are runtime-driven and stay exempt too.
+  {
+    const originMessageId = typeof message.id === "string" ? message.id : "";
+    const extra = additionalSessionMetadata(params, content);
+    if (
+      originMessageId &&
+      content.source !== MESSAGE_SOURCE_SUB_AGENT &&
+      extra.subAgent !== true &&
+      !DUPLICATE_SPAWN_FORCE_RE.test(
+        typeof content.text === "string" ? content.text : "",
+      ) &&
+      !claimCreateForMessage(runtime, originMessageId)
+    ) {
+      return duplicateSpawnGuardResult(runtime, callback, {
+        name: "this request",
+        status: "already launched",
+      });
+    }
+  }
   // Fail fast on empty/derived-only tasks BEFORE any planner or ACP work; this
   // single gate covers the lane-planner path and every runCreateLegacy fallback.
   // A missing ACP service still wins (SERVICE_UNAVAILABLE) — capability absence
@@ -3684,6 +3693,12 @@ async function runSend(
           logger(runtime).info(
             `[TASKS:send] target session gone after interrupt; redirecting follow-up to a successor create (predecessor=${predecessor.id})`,
           );
+          // Record the create claim: this redirect IS the launch for the
+          // originating message, so a planner-issued TASKS create later in
+          // the same turn gets deduped instead of double-spawning.
+          if (typeof _message.id === "string") {
+            claimCreateForMessage(runtime, _message.id);
+          }
           return runCreateLegacy(
             runtime,
             _message,
@@ -3749,6 +3764,11 @@ async function runSend(
       logger(runtime).info(
         `[TASKS:send] target session ${target.session.id} is terminal (${target.session.status}); redirecting follow-up to a successor create`,
       );
+      // Same claim as the interrupt redirect: the successor create below is
+      // the launch for this message; a duplicate planner create is deduped.
+      if (typeof _message.id === "string") {
+        claimCreateForMessage(runtime, _message.id);
+      }
       return runCreateLegacy(
         runtime,
         _message,
@@ -4618,16 +4638,24 @@ const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
  *  kickoff bubbles, one answer). The in-flight similarity guard misses it
  *  because the first task is already done by then. Keyed on the exact message
  *  id, so a genuinely new "run it again" message is never blocked. */
-const RECENT_CREATE_CLAIMS = new Map<string, number>();
 const RECENT_CREATE_CLAIM_TTL_MS = 10 * 60_000;
 
-function claimCreateForMessage(messageId: string): boolean {
+// Runtime-attached (not module-level): module state bleeds across runtimes in
+// tests and splits under bundled+external dual module resolution.
+function claimCreateForMessage(
+  runtime: IAgentRuntime,
+  messageId: string,
+): boolean {
+  const holder = runtime as IAgentRuntime & {
+    __orchestratorCreateClaims?: Map<string, number>;
+  };
+  const claims = (holder.__orchestratorCreateClaims ??= new Map());
   const now = Date.now();
-  for (const [id, at] of RECENT_CREATE_CLAIMS) {
-    if (now - at > RECENT_CREATE_CLAIM_TTL_MS) RECENT_CREATE_CLAIMS.delete(id);
+  for (const [id, at] of claims) {
+    if (now - at > RECENT_CREATE_CLAIM_TTL_MS) claims.delete(id);
   }
-  if (RECENT_CREATE_CLAIMS.has(messageId)) return false;
-  RECENT_CREATE_CLAIMS.set(messageId, now);
+  if (claims.has(messageId)) return false;
+  claims.set(messageId, now);
   return true;
 }
 
