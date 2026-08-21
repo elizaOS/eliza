@@ -326,12 +326,32 @@ function groundingAuthorityMarker(selection: SelectedGrounding): ModelMessage {
   };
 }
 
+/**
+ * Shapes selected evidence for one provider request.
+ *
+ * `nativeToolProjection` must be false whenever the current request does not
+ * declare `WEB_SEARCH` in its tool set: a strict provider rejects an entire
+ * request whose history references an undeclared tool, which loses the turn
+ * rather than only the grounding. The data-only transcript form carries the
+ * same bounded, JSON-encoded evidence text and is valid on every provider.
+ */
+export interface SharedRuntimeGroundingProjectionOptions {
+  nativeToolProjection?: boolean;
+}
+
 function groundingProjectionMessages(
   message: SharedRuntimeHistoryMessageLike,
   selection: SelectedGrounding,
+  options?: SharedRuntimeGroundingProjectionOptions,
 ): ModelMessage[] {
   if (selection.status !== "available") return [groundingAuthorityMarker(selection)];
   if (selection.grounding.kind !== "web_search") return [];
+  if (options?.nativeToolProjection === false) {
+    return [
+      groundingAuthorityMarker(selection),
+      { role: "system", content: encodeSharedPublicWebGrounding(selection.grounding) },
+    ];
+  }
   const toolCallId = `persisted-web-${stringToUuid(`shared:${messageIdentity(message)}`)}`;
   return [
     {
@@ -370,11 +390,12 @@ export function sharedRuntimeGroundingProjectionMessages(
   history: SharedRuntimeHistoryMessageLike[],
   queryText: string,
   now = Date.now(),
+  options?: SharedRuntimeGroundingProjectionOptions,
 ): ModelMessage[] {
   const selected = selectedGrounding(history, queryText, now);
   if (!selected) return [];
   const message = history[selected.index];
-  return message ? groundingProjectionMessages(message, selected) : [];
+  return message ? groundingProjectionMessages(message, selected, options) : [];
 }
 
 /** Projects selected evidence as native tool results while keeping assistant prose separate. */

@@ -1838,9 +1838,9 @@ export class SharedRuntimeChatService {
               },
             );
             await finalizeMessages(
-                finalReply,
-                false,
-                async () => {
+              finalReply,
+              false,
+              async () => {
                 // Durable claim completion before the done frame: a lost/dropped
                 // terminal frame replays this result on retry instead of
                 // re-dispatching the provider. Interrupted turns stay pending.

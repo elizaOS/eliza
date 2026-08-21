@@ -1256,7 +1256,13 @@ describe("Shared Eliza Workerd runtime", () => {
     expect(encodedRequest).toContain("untrusted_public_web_search_result");
     expect(encodedRequest).toContain("origin guard and credential relay");
     expect(encodedRequest).not.toContain("OBSOLETE");
-    expect(encodedRequest).toContain('"role":"tool"');
+    // This stage declares only HANDLE_RESPONSE, so the evidence must travel as
+    // data-only transcript content: a request whose history referenced an
+    // undeclared WEB_SEARCH tool is rejected outright by strict providers.
+    const requestTools = (modelRequests[0].tools ?? []) as Array<{ function?: { name?: string } }>;
+    expect(requestTools.some((tool) => tool.function?.name === "WEB_SEARCH")).toBe(false);
+    expect(encodedRequest).not.toContain('"role":"tool"');
+    expect(encodedRequest).not.toContain("tool_calls");
   });
 
   test("does not hydrate superseded grounding after the latest search is unavailable", async () => {
