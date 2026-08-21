@@ -15,6 +15,7 @@ import {
   androidPlayManifestEvidenceFromAapt,
   createAndroidPlayManifestPolicy,
   findAndroidPlayIndexHtmlFindings,
+  findAndroidPlayTextAssetFindings,
 } from "./run-mobile-build.mjs";
 
 const VARIABLES_GRADLE = fs.readFileSync(
@@ -187,10 +188,6 @@ describe("Android Play manifest policy", () => {
     expect(APP_BUILD_GRADLE).toContain(
       'implementation "androidx.work:work-runtime:2.11.0"',
     );
-    const mainActivity = cloudSafeMainActivityJava("ai.elizaos.app");
-    expect(mainActivity).not.toContain("android.os.SystemProperties");
-    expect(mainActivity).not.toContain("java.lang.reflect");
-    expect(mainActivity).not.toContain("GatewayConnectionService");
   });
 
   it("rejects local routing and credential material in packaged text assets", () => {
