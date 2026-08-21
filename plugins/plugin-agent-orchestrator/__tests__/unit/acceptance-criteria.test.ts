@@ -184,6 +184,25 @@ describe("staticAcceptanceCriteria", () => {
     ]);
   });
 
+  it("keeps a model-rewritten write-a-program goal on script checks", () => {
+    const goal =
+      "Write a program that prints prime numbers from 1 to 20. Run it to verify the output.";
+
+    expect(detectTaskType(goal)).toBe("script");
+    expect(
+      acceptanceCriteriaForTask(goal, [
+        "typecheck passes",
+        "lint passes",
+        "tests pass",
+        "the change is summarized in the diff",
+      ]),
+    ).toEqual([
+      "the requested script file exists in the workdir",
+      "the script exits successfully when run",
+      "the run output matches the requested examples",
+    ]);
+  });
+
   it("produces DIFFERENT sets for coding vs app-build vs view-create", () => {
     const coding = staticAcceptanceCriteria("fix bug", "coding");
     const appBuild = staticAcceptanceCriteria("build a site", "app-build");

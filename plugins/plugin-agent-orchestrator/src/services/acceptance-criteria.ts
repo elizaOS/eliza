@@ -107,7 +107,7 @@ const DEPLOY_RE =
 const APP_BUILD_RE =
   /\b(website|web\s*site|landing\s+page|web\s+app|webapp|frontend\s+app|(?:build|create|make)\s+an?\s+(?:\w+[ -]){0,2}(?:site|page|app|application)\b)/i;
 const SCRIPT_RE =
-  /(?:\b(?:script|standalone program|command-line program|cli script|(?:python|ruby|bash|shell|powershell) program|(?:little|small|simple|tiny) program)\b|\.(?:py|rb|sh|bash|ps1)\b)/i;
+  /(?:\b(?:script|standalone program|command-line program|cli script|(?:python|ruby|bash|shell|powershell) program|(?:little|small|simple|tiny) program|(?:write|create|make)\s+(?:me\s+)?(?:an?\s+)?program)\b|\.(?:py|rb|sh|bash|ps1)\b)/i;
 const WORKSPACE_MUTATION_RE =
   /\b(?:add|build|change|create|delete|edit|fix|implement|make|modify|move|refactor|remove|rename|replace|update|write)\b/gi;
 const MUTATION_NEGATION_RE =
