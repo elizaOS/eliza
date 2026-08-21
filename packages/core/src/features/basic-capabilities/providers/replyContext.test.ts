@@ -256,16 +256,17 @@ describe("replyContextProvider", () => {
 });
 
 describe("truncateSingleLine", () => {
-	it("keeps surrogate pairs intact at the max-1 boundary", () => {
-		const text = `hello${"🦊"}world`;
-		const at7 = truncateSingleLine(text, 7);
-		expect(at7).toBe("hello…");
-		expect(isWellFormed(at7)).toBe(true);
-		expect(at7.length).toBeLessThanOrEqual(7);
-		const at8 = truncateSingleLine(text, 8);
-		expect(at8).toBe("hello🦊…");
-		expect(isWellFormed(at8)).toBe(true);
-		expect(at8.length).toBeLessThanOrEqual(8);
+	it("keeps surrogate pairs intact at exact and max-plus-one bounds", () => {
+		const exact = "hello🦊";
+		expect(exact.length).toBe(7);
+		expect(truncateSingleLine(exact, 7)).toBe(exact);
+
+		const maxPlusOne = `${exact}b`;
+		expect(maxPlusOne.length).toBe(8);
+		const truncated = truncateSingleLine(maxPlusOne, 7);
+		expect(truncated).toBe("hello…");
+		expect(isWellFormed(truncated)).toBe(true);
+		expect(truncated.length).toBeLessThanOrEqual(7);
 	});
 
 	it("sanitizes lone surrogates before truncation", () => {
@@ -275,11 +276,12 @@ describe("truncateSingleLine", () => {
 		expect(isWellFormed(truncated)).toBe(true);
 	});
 
-	it("sanitizes lone surrogate without truncation", () => {
-		const lone = `a\uD800bc`;
-		const out = truncateSingleLine(lone, 10);
-		expect(out).toBe(`a�bc`);
-		expect(isWellFormed(out)).toBe(true);
+	it("sanitizes either lone surrogate half without truncation", () => {
+		for (const lone of [`a\uD800bc`, `a\uDC00bc`]) {
+			const out = truncateSingleLine(lone, 10);
+			expect(out).toBe(`a�bc`);
+			expect(isWellFormed(out)).toBe(true);
+		}
 	});
 
 	it("collapses whitespace and trims before well-formed check", () => {
@@ -301,11 +303,15 @@ describe("truncateSingleLine", () => {
 });
 
 describe("withBoundedText", () => {
-	it("keeps surrogate pairs intact at the 1000-char window cap", () => {
-		const emoji = "🦊";
-		const text =
-			`a`.repeat(MAX_REPLY_WINDOW_MESSAGE_CHARS - 1) + emoji + `tail`;
-		const bounded = withBoundedText(mem("m1", USER_ID, text, 100));
+	it("keeps surrogate pairs intact at exact and max-plus-one window bounds", () => {
+		const exact = `${`a`.repeat(MAX_REPLY_WINDOW_MESSAGE_CHARS - 2)}🦊`;
+		const exactMemory = mem("m0", USER_ID, exact, 99);
+		expect(exact.length).toBe(MAX_REPLY_WINDOW_MESSAGE_CHARS);
+		expect(withBoundedText(exactMemory)).toBe(exactMemory);
+
+		const maxPlusOne = `${exact}b`;
+		expect(maxPlusOne.length).toBe(MAX_REPLY_WINDOW_MESSAGE_CHARS + 1);
+		const bounded = withBoundedText(mem("m1", USER_ID, maxPlusOne, 100));
 		const out = bounded.content.text as string;
 		expect(out.length).toBeLessThanOrEqual(MAX_REPLY_WINDOW_MESSAGE_CHARS);
 		expect(out.endsWith("…")).toBe(true);
@@ -314,7 +320,7 @@ describe("withBoundedText", () => {
 	});
 
 	it("sanitizes lone surrogates in window text", () => {
-		const lone = `x\uD800` + `y`.repeat(2000);
+		const lone = `x\uD800${`y`.repeat(2000)}`;
 		const bounded = withBoundedText(mem("m2", USER_ID, lone, 200));
 		const out = bounded.content.text as string;
 		expect(out).toContain("�");
