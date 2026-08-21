@@ -825,6 +825,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       roomId,
       content: {
         text: input.message.trim(),
+        ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         // Only the server-owned execution attestation may translate a Shared
         // turn to authenticated client-chat provenance. Connector payloads and
         // direct runtime callers remain on the fail-closed Shared source.
