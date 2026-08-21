@@ -30,8 +30,6 @@ function escapeSlackMrkdwnSegment(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-const SLACK_ANGLE_TOKEN_RE = /<[^>\n]+>/g;
-
 /**
  * Checks if an angle-bracket token is an allowed Slack format
  */
@@ -60,25 +58,41 @@ function escapeSlackMrkdwnContent(text: string): string {
     return text;
   }
 
-  SLACK_ANGLE_TOKEN_RE.lastIndex = 0;
   const out: string[] = [];
-  let lastIndex = 0;
-
-  for (
-    let match = SLACK_ANGLE_TOKEN_RE.exec(text);
-    match;
-    match = SLACK_ANGLE_TOKEN_RE.exec(text)
-  ) {
-    const matchIndex = match.index;
-    out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex, matchIndex)));
-    const token = match[0] ?? "";
-    out.push(
-      isAllowedSlackAngleToken(token) ? token : escapeSlackMrkdwnSegment(token),
-    );
-    lastIndex = matchIndex + token.length;
+  let plainStart = 0;
+  let tokenStart = -1;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (tokenStart < 0) {
+      if (character === "<") {
+        out.push(escapeSlackMrkdwnSegment(text.slice(plainStart, index)));
+        tokenStart = index;
+      }
+      continue;
+    }
+    if (character === "<") {
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, index)));
+      tokenStart = index;
+    } else if (character === "\n") {
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, index + 1)));
+      tokenStart = -1;
+      plainStart = index + 1;
+    } else if (character === ">") {
+      const token = text.slice(tokenStart, index + 1);
+      out.push(
+        isAllowedSlackAngleToken(token)
+          ? token
+          : escapeSlackMrkdwnSegment(token),
+      );
+      tokenStart = -1;
+      plainStart = index + 1;
+    }
   }
-
-  out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex)));
+  out.push(
+    escapeSlackMrkdwnSegment(
+      text.slice(tokenStart >= 0 ? tokenStart : plainStart),
+    ),
+  );
   return out.join("");
 }
 
@@ -136,8 +150,31 @@ function convertStrikethrough(text: string): string {
  * Converts markdown code blocks to Slack mrkdwn
  */
 function convertCodeBlocks(text: string): string {
-  // Slack code blocks don't support language hints in the same way
-  return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "```\n$2```");
+  const output: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = text.indexOf("```", cursor);
+    if (start < 0) break;
+    const end = text.indexOf("```", start + 3);
+    if (end < 0) break;
+    output.push(text.slice(cursor, start), "```\n");
+    let bodyStart = start + 3;
+    while (bodyStart < end) {
+      const code = text.charCodeAt(bodyStart);
+      const isLanguageCharacter =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        code === 95 ||
+        (code >= 97 && code <= 122);
+      if (!isLanguageCharacter) break;
+      bodyStart++;
+    }
+    if (text[bodyStart] === "\n") bodyStart++;
+    output.push(text.slice(bodyStart, end), "```");
+    cursor = end + 3;
+  }
+  output.push(text.slice(cursor));
+  return output.join("");
 }
 
 /**

@@ -132,6 +132,12 @@ describe("parseCompletionEnvelope (#8895)", () => {
     expect(res.ok).toBe(true);
   });
 
+  it("handles an adversarial amount of fence whitespace without backtracking", () => {
+    const input = `\`\`\`json${" \n\t".repeat(40_000)}${JSON.stringify(validEnvelope())}\n\`\`\``;
+    const res = parseCompletionEnvelope(input);
+    expect(res.ok).toBe(true);
+  });
+
   it("accepts a bare JSON object with no fence", () => {
     const res = parseCompletionEnvelope(JSON.stringify(validEnvelope()));
     expect(res.ok).toBe(true);

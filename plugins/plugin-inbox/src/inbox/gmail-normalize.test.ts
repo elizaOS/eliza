@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractNormalizedEmailAddress,
   filterGmailMessagesBySearch,
+  normalizeGeneratedGmailReplyDraftBody,
   normalizeGmailSearchQueryMatches,
   normalizeOptionalGmailLabelIdArray,
   normalizeOptionalMessageIdArray,
@@ -34,6 +35,24 @@ describe("extractNormalizedEmailAddress", () => {
     expect(extractNormalizedEmailAddress("not an email")).toBeNull();
     expect(extractNormalizedEmailAddress("missing@domain")).toBeNull();
     expect(extractNormalizedEmailAddress("")).toBeNull();
+  });
+
+  it("scans adversarial punctuation and angle brackets in one pass", () => {
+    expect(extractNormalizedEmailAddress(`${"!".repeat(50_000)}a@b.com`)).toBe(
+      `${"!".repeat(50_000)}a@b.com`,
+    );
+    expect(extractNormalizedEmailAddress(`${"<".repeat(50_000)}a@b.com>`)).toBe(
+      "a@b.com",
+    );
+  });
+});
+
+describe("normalizeGeneratedGmailReplyDraftBody", () => {
+  it("removes repeated thinking blocks while preserving visible prose", () => {
+    const thinking = "<think>hidden</think>".repeat(20_000);
+    expect(normalizeGeneratedGmailReplyDraftBody(`${thinking}Visible`)).toBe(
+      "Visible",
+    );
   });
 });
 

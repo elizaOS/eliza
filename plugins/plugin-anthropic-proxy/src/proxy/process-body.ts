@@ -229,11 +229,21 @@ export function processBody(bodyStr: string, config: ProcessBodyConfig): Process
   let thinkingBlocksStripped = 0;
   let thinkingParamsStripped = 0;
   if (config.stripThinkingBlocks !== false) {
-    const thinkingParamRegex = /,?"thinking":\s*\{[^}]*\}/g;
-    const thinkingMatches = m.match(thinkingParamRegex);
-    if (thinkingMatches) {
-      m = m.replace(thinkingParamRegex, "");
-      thinkingParamsStripped = thinkingMatches.length;
+    try {
+      const parsed = JSON.parse(m) as unknown;
+      const pending: unknown[] = [parsed];
+      while (pending.length > 0) {
+        const value = pending.pop();
+        if (!value || typeof value !== "object") continue;
+        if (!Array.isArray(value) && Object.hasOwn(value, "thinking")) {
+          delete (value as Record<string, unknown>).thinking;
+          thinkingParamsStripped++;
+        }
+        for (const nested of Object.values(value)) pending.push(nested);
+      }
+      if (thinkingParamsStripped > 0) m = JSON.stringify(parsed);
+    } catch {
+      // error-policy:J3 malformed upstream JSON remains explicit input for later validation.
     }
     const msgsIdx2 = m.indexOf('"messages":[');
     if (msgsIdx2 !== -1) {

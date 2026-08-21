@@ -192,11 +192,44 @@ export function extractNormalizedEmailAddress(value: string): string | null {
   if (!trimmed) {
     return null;
   }
-  const angleMatch = trimmed.match(/<\s*([^<>\s@]+@[^<>\s@]+)\s*>/u);
-  const rawCandidate =
-    angleMatch?.[1] ??
-    trimmed.match(/([^\s<>()"';,]+@[^\s<>()"';,]+)/u)?.[1] ??
-    trimmed;
+  const isAddressCharacter = (character: string): boolean =>
+    !/\s/u.test(character) && !`<>()"';,`.includes(character);
+  const isSyntacticAddressToken = (candidate: string): boolean => {
+    const at = candidate.indexOf("@");
+    return at > 0 && at < candidate.length - 1;
+  };
+  let angleCandidate: string | null = null;
+  let angleStart = -1;
+  let tokenCandidate: string | null = null;
+  let tokenStart = -1;
+  for (let index = 0; index <= trimmed.length; index++) {
+    const character = trimmed[index];
+    if (character && isAddressCharacter(character)) {
+      if (tokenStart < 0) tokenStart = index;
+    } else if (tokenStart >= 0) {
+      const token = trimmed.slice(tokenStart, index);
+      if (isSyntacticAddressToken(token)) {
+        tokenCandidate ??= token;
+      }
+      tokenStart = -1;
+    }
+
+    if (character === "<") {
+      angleStart = index;
+    } else if (character === ">" && angleStart >= 0) {
+      const inside = trimmed.slice(angleStart + 1, index).trim();
+      if (
+        isSyntacticAddressToken(inside) &&
+        inside.length > 0 &&
+        Array.from(inside).every(isAddressCharacter)
+      ) {
+        angleCandidate = inside;
+        break;
+      }
+      angleStart = -1;
+    }
+  }
+  const rawCandidate = angleCandidate ?? tokenCandidate ?? trimmed;
   const normalized = rawCandidate
     .trim()
     .replace(/^["']+|["']+$/g, "")
@@ -1262,7 +1295,22 @@ export function buildFallbackGmailReplyDraftBody(args: {
 export function normalizeGeneratedGmailReplyDraftBody(
   value: string,
 ): string | null {
-  const withoutThink = value.replace(/<think>[\s\S]*?<\/think>/gi, " ").trim();
+  const lower = value.toLowerCase();
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (cursor < value.length) {
+    const start = lower.indexOf("<think>", cursor);
+    if (start < 0) break;
+    chunks.push(value.slice(cursor, start), " ");
+    const end = lower.indexOf("</think>", start + 7);
+    if (end < 0) {
+      cursor = value.length;
+      break;
+    }
+    cursor = end + 8;
+  }
+  chunks.push(value.slice(cursor));
+  const withoutThink = chunks.join("").trim();
   if (!withoutThink) {
     return null;
   }

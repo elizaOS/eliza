@@ -33,6 +33,10 @@ describe("escapeSlackMrkdwn", () => {
     expect(escapeSlackMrkdwn("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
     expect(escapeSlackMrkdwn("plain text")).toBe("plain text");
   });
+
+  it("escapes a long run of unmatched angle brackets linearly", () => {
+    expect(escapeSlackMrkdwn("<".repeat(50_000))).toBe("&lt;".repeat(50_000));
+  });
 });
 
 describe("markdownToSlackMrkdwn", () => {
@@ -41,6 +45,13 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("*italic*")).toBe("_italic_");
     expect(markdownToSlackMrkdwn("~~struck~~")).toBe("~struck~");
     expect(markdownToSlackMrkdwn("")).toBe("");
+  });
+
+  it("preserves fenced code with a long language tag", () => {
+    const language = `ts${"a".repeat(50_000)}`;
+    expect(
+      markdownToSlackMrkdwn(`\`\`\`${language}\nconst x = 1;\n\`\`\``),
+    ).toBe("```\nconst x = 1;\n```");
   });
 });
 

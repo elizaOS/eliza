@@ -83,6 +83,11 @@ describe("stripToolTranscript", () => {
   it("returns empty string for empty input", () => {
     expect(stripToolTranscript("")).toBe("");
   });
+
+  it("strips a long malformed opener tail without rescanning it", () => {
+    const input = `keep\n${"[tool output:".repeat(40_000)}`;
+    expect(stripToolTranscript(input)).toBe("keep");
+  });
 });
 
 describe("elideLongBlocks", () => {

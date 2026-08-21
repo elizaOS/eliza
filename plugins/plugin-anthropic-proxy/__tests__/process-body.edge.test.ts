@@ -87,4 +87,14 @@ describe("processBody edge handling", () => {
     ]);
     expect(JSON.stringify(parsed)).not.toContain("hidden");
   });
+
+  it("strips a large collection of thinking fields without regex rescans", () => {
+    const thinking = Array.from({ length: 20_000 }, (_, index) => ({
+      thinking: { index },
+      visible: index,
+    }));
+    const { parsed, stats } = parseProcessed({ messages: [], items: thinking });
+    expect(stats.thinkingParamsStripped).toBe(20_000);
+    expect(JSON.stringify(parsed)).not.toContain('"thinking"');
+  });
 });

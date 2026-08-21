@@ -169,4 +169,11 @@ describe("extractShouldRespondDecision", () => {
       extractShouldRespondDecision(makeLlmCall({ response: "lorem ipsum" })),
     ).toBeNull();
   });
+
+  it("handles deeply repeated opening braces without regex backtracking", () => {
+    const out = extractShouldRespondDecision(
+      makeLlmCall({ response: `${"{".repeat(50_000)} RESPOND` }),
+    );
+    expect(out).toEqual({ decision: "RESPOND" });
+  });
 });

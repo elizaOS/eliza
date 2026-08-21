@@ -25,6 +25,7 @@
  *   --poll-interval MS  Milliseconds between polls (default 2000)
  *   --no-cors-check     Skip the CORS preflight check
  */
+import crypto from "node:crypto";
 
 // ─── Arg parsing ─────────────────────────────────────────────────────────────
 
@@ -137,7 +138,7 @@ async function runLoginFlow(round) {
 
   // Step 1: Create CLI session
   const sessionPayload = JSON.stringify({
-    sessionId: `bench-${Date.now()}-${round}-${Math.random().toString(36).slice(2, 8)}`,
+    sessionId: `bench-${round}-${crypto.randomUUID()}`,
   });
 
   const createResult = await timedFetch(
