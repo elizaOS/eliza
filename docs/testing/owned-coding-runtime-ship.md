@@ -339,9 +339,11 @@ evidence path against the same protected Cerebras account:
 
 The `visible_*` and `final_literal_check_v2.py` scripts were QA artifacts and
 were removed after their content, execution result, hash, task, session, change
-set, and browser result were recorded. The retained chat history still shows
-older failed probes above these clean results; it was deliberately not
-rewritten.
+set, and browser result were recorded. After acceptance, 27 messages belonging
+to six failed QA attempts were removed by exact message id through
+`DELETE /api/conversations/:id/messages/:messageId`. Successful coding, exact
+relay, evidence-path, arithmetic, and readiness turns remain visible; a browser
+reload confirmed that the old failure/provisional notices are gone.
 
 Two failed runs are intentionally retained as regression evidence. The first
 used a stale source-checkout cwd. The second produced a correct child result in
@@ -514,13 +516,15 @@ for a normal handoff, and it should still be reviewed before publication.
   the lifecycle explicitly after independent verification to avoid spending a
   second model judgment on known read-only fixtures.
 - OpenCode and Pi Agent are not runtime dependencies of this ship candidate.
-- The current chat still contains persisted history from earlier failed and
-  misleading attempts. Those old messages were not deleted or rewritten, so
-  the transcript does not look flawless even though the latest paths pass.
-- The runtime's local fused embedding library is unavailable in this isolated
-  environment. Memory rows persist, but vector embeddings are degraded. This is
-  separate from the verified Cerebras chat/coding path and remains an open
-  release concern.
+- The isolated runtime now has a pinned CPU `libelizainference` build and the
+  complete 67,308,128-byte `gte-small_fp16.gguf` artifact (SHA-256
+  `6c3d85a9af8ef795854d28cd25fa14bbf1638243d6c094d6f4c673b50b69271d`).
+  A live runtime PATCH generated, persisted, read back, and then cleaned a
+  finite 384-dimension vector. Fresh boot logs contain no disabled/degraded
+  embedding warning.
+- Standalone embedding downloads now stream to `<model>.part` and rename only
+  after the byte-count gate succeeds. Focused regression tests prove that an
+  in-progress or short download is never published as an installed GGUF.
 - Eliza Code's compacted 24,987-token prime-script prompt is materially better
   than 32,634, but is still large enough to warrant later profiling before
   calling the coding UX polished.
