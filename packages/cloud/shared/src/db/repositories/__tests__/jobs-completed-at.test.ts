@@ -3,8 +3,9 @@
  * status (failed, cancelled, completed) sets `completed_at` transactionally,
  * and retry transitions back to `pending` clear it. Uses real PGlite state.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { eq } from "drizzle-orm";
+import { type RuntimeR2Bucket, setRuntimeR2Bucket } from "../../../lib/storage/r2-runtime-binding";
 import { type Job, jobs } from "../../schemas/jobs";
 
 process.env.DATABASE_URL ||= "pglite://memory";
@@ -20,6 +21,29 @@ const JOB_STARTED_AT = new Date("2020-01-01T00:00:00.000Z");
 let dbWrite: typeof import("../../client").dbWrite;
 let closeDb: typeof import("../../client").closeDatabaseConnectionsForTests | undefined;
 let repo: typeof import("../jobs").jobsRepository;
+
+function memoryBucket(objects: Map<string, string>): RuntimeR2Bucket {
+  return {
+    async get(key) {
+      const value = objects.get(key);
+      return value === undefined
+        ? null
+        : {
+            async text() {
+              return value;
+            },
+          };
+    },
+    async put(key, value) {
+      objects.set(key, typeof value === "string" ? value : String(value ?? ""));
+      return {};
+    },
+    async delete(key) {
+      objects.delete(key);
+      return {};
+    },
+  };
+}
 
 async function seedJob(params: {
   id: string;
@@ -114,6 +138,9 @@ afterAll(async () => {
 
 describe("completed_at terminal-timestamp contract", () => {
   beforeEach(async () => {
+    setRuntimeR2Bucket(null);
+    delete process.env.SQL_HEAVY_PAYLOAD_STORAGE;
+    delete process.env.SQL_HEAVY_PAYLOAD_MIN_BYTES;
     await dbWrite.execute("DELETE FROM jobs;");
   });
 
@@ -202,6 +229,33 @@ describe("completed_at terminal-timestamp contract", () => {
       const job = await getJob(id);
       expect(job?.status).toBe("failed");
       expect(job?.completed_at).not.toBeNull();
+    });
+
+    test("terminalizes a JSON-round-tripped deletion job without calling toISOString on a string", async () => {
+      const id = "00000000-0000-4900-8000-000000000012";
+      await seedJob({ id, maxAttempts: 1, attempts: 0, type: "agent_delete" });
+      const stored = await repo.findById(id);
+      if (!stored) throw new Error("seeded job not found");
+      const roundTripped = JSON.parse(JSON.stringify(stored)) as Job;
+      const findSpy = spyOn(repo, "findByIdForWrite").mockResolvedValueOnce(roundTripped);
+      const objects = new Map<string, string>();
+      setRuntimeR2Bucket(memoryBucket(objects));
+      process.env.SQL_HEAVY_PAYLOAD_STORAGE = "r2";
+      process.env.SQL_HEAVY_PAYLOAD_MIN_BYTES = "1";
+
+      try {
+        const failed = await repo.incrementAttempt(id, "delete failed", 1);
+        expect(failed?.status).toBe("failed");
+        expect(failed?.scheduled_for).toEqual(JOB_STARTED_AT);
+        expect(failed?.completed_at).not.toBeNull();
+        expect(failed?.error).toBe("delete failed");
+        expect([...objects.keys()]).toEqual([`job-payloads/${ORG_ID}/2020-01-01/${id}/error.txt`]);
+      } finally {
+        findSpy.mockRestore();
+        setRuntimeR2Bucket(null);
+        delete process.env.SQL_HEAVY_PAYLOAD_STORAGE;
+        delete process.env.SQL_HEAVY_PAYLOAD_MIN_BYTES;
+      }
     });
 
     test("keeps completed_at null on retry (not yet exhausted)", async () => {
