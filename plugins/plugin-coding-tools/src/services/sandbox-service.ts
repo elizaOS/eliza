@@ -1,9 +1,20 @@
 /**
  * `SandboxService` (serviceType `CODING_TOOLS_SANDBOX`): the path-access policy for
- * every filesystem operation. `validatePath` rejects paths on the blocklist
- * (defaults cover `~/.ssh`, `~/.aws`, `~/.gnupg`, credential stores, and per-OS
- * system paths) and, when `CODING_TOOLS_WORKSPACE_ROOTS` is set, any path outside
- * the allow-roots. No file handler may touch disk without passing through here.
+ * the FILE handlers. `validatePath` rejects paths on the blocklist (defaults cover
+ * `~/.ssh`, `~/.aws`, `~/.gnupg`, credential stores, and per-OS system paths) and,
+ * when `CODING_TOOLS_WORKSPACE_ROOTS` is set, any path outside the allow-roots.
+ *
+ * Two limits of this policy, stated so callers do not over-trust it:
+ *
+ * - It authorizes a PATHNAME, not an opened object. Handlers stat/read/write the
+ *   returned string afterwards, so an ancestor swapped between authorization and
+ *   use is not caught here. Closing that needs descriptor-relative opens, which
+ *   node's fs surface does not expose (`O_NOFOLLOW` exists, `openat` does not) —
+ *   tracked separately, see the module's tracking issues.
+ * - SHELL is NOT confined by it. `bash.ts` validates only the requested cwd; the
+ *   command string addresses the filesystem directly and the execution backend
+ *   applies no allow-root check. `CODING_TOOLS_WORKSPACE_ROOTS` therefore bounds
+ *   the FILE handlers, not arbitrary shell commands.
  */
 import { homedir } from "node:os";
 import * as path from "node:path";
@@ -79,9 +90,13 @@ function deniesEntry(
 
 /** Allowlist match: the canonical candidate against the entry's best spelling. */
 function admitsRoot(candidateCanonical: string, entry: PathEntry): boolean {
-  return isPathWithinRoot(candidateCanonical, entry.canonical ?? entry.lexical, {
-    allowRoot: true,
-  });
+  return isPathWithinRoot(
+    candidateCanonical,
+    entry.canonical ?? entry.lexical,
+    {
+      allowRoot: true,
+    },
+  );
 }
 
 async function toPathEntry(raw: string): Promise<PathEntry> {

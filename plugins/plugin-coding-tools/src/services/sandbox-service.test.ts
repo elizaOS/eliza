@@ -494,9 +494,10 @@ describe("SandboxService blocklist resolution drift (#22944)", () => {
       process.env.CODING_TOOLS_BLOCKED_PATHS_ADD = alias;
       const svc = await SandboxService.start(mockRuntime());
 
-      // Retarget the alias AFTER the entry canonicalized to target-a. The
-      // candidate's canonical spelling (target-b/…) no longer matches the
-      // entry's canonical (target-a); only the lexical arm still blocks it.
+      // Retarget the alias AFTER the entry canonicalized to target-a, but
+      // BEFORE validatePath runs — this covers policy-entry drift (a stored
+      // canonical form going stale), NOT validate-to-use race safety, which
+      // this policy does not provide (see the service header).
       rmSync(alias);
       symlinkSync(targetB, alias, "dir");
 
