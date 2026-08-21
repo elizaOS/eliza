@@ -245,22 +245,39 @@ function selectedGrounding(
     return [{ index, overlap, immediate, grounding }];
   });
   const topical = candidates.filter((candidate) => candidate.overlap > 0);
-  const ranked =
-    topical.length > 0
-      ? topical.sort(
-          (left, right) =>
-            right.overlap - left.overlap ||
-            right.grounding.observedAt - left.grounding.observedAt ||
-            right.index - left.index,
-        )
-      : DEICTIC_GROUNDING_FOLLOW_UP.test(queryText)
-        ? candidates
-            .filter((candidate) => candidate.immediate)
-            .sort(
-              (left, right) =>
-                right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
-            )
-        : [];
+  let ranked: typeof candidates = [];
+  if (topical.length > 0) {
+    // Overlap identifies the topic anchor, but the newest same-topic attempt
+    // (a corrected search or an unavailable tombstone) is the authority even
+    // when its shorter query overlaps the follow-up less than a stale result.
+    const anchor = topical.reduce((best, candidate) => {
+      const order =
+        candidate.overlap - best.overlap ||
+        candidate.grounding.observedAt - best.grounding.observedAt ||
+        candidate.index - best.index;
+      return order > 0 ? candidate : best;
+    });
+    const anchorQueryWords = groundingWords(anchor.grounding.query);
+    ranked = topical
+      .filter((candidate) => {
+        if (candidate === anchor) return true;
+        for (const word of groundingWords(candidate.grounding.query)) {
+          if (anchorQueryWords.has(word)) return true;
+        }
+        return false;
+      })
+      .sort(
+        (left, right) =>
+          right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
+      );
+  } else if (DEICTIC_GROUNDING_FOLLOW_UP.test(queryText)) {
+    ranked = candidates
+      .filter((candidate) => candidate.immediate)
+      .sort(
+        (left, right) =>
+          right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
+      );
+  }
   const latest = ranked[0];
   if (!latest) return undefined;
   if (latest.grounding.kind === "web_search_unavailable") {
