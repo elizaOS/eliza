@@ -8,9 +8,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-// Keep the ratchet aligned with the current develop corpus. New deterministic
-// scenarios still fail this test unless the baseline is reviewed explicitly.
-const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 118;
+const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 79;
 
 type ScenarioSourceClassification = {
   deterministic: boolean;
@@ -59,6 +57,73 @@ function scenarioObjectFromExport(
   return ts.isObjectLiteralExpression(firstArgument) ? firstArgument : null;
 }
 
+function assignedProperty(
+  object: ts.ObjectLiteralExpression,
+  name: string,
+): ts.Expression | null {
+  const property = object.properties.find(
+    (candidate) => propertyName(candidate) === name,
+  );
+  return property && ts.isPropertyAssignment(property)
+    ? unwrapExpression(property.initializer)
+    : null;
+}
+
+function isStaticallyModelFree(
+  declaration: ts.ObjectLiteralExpression,
+): boolean {
+  const turns = assignedProperty(declaration, "turns");
+  if (!turns || !ts.isArrayLiteralExpression(turns)) return false;
+  const onlyDirectTurns = turns.elements.every((element) => {
+    const turn = unwrapExpression(element);
+    if (!ts.isObjectLiteralExpression(turn)) return false;
+    const kind = assignedProperty(turn, "kind");
+    return (
+      kind !== null &&
+      ts.isStringLiteralLike(kind) &&
+      (kind.text === "action" || kind.text === "api")
+    );
+  });
+  if (!onlyDirectTurns) return false;
+
+  const finalChecks = assignedProperty(declaration, "finalChecks");
+  if (!finalChecks) return true;
+  if (!ts.isArrayLiteralExpression(finalChecks)) return false;
+  return finalChecks.elements.every((element) => {
+    const check = unwrapExpression(element);
+    if (!ts.isObjectLiteralExpression(check)) return false;
+    const type = assignedProperty(check, "type");
+    return !(
+      type !== null &&
+      ts.isStringLiteralLike(type) &&
+      type.text === "judgeRubric"
+    );
+  });
+}
+
+function hasStrictDeclaration(
+  declaration: ts.ObjectLiteralExpression,
+): boolean {
+  const modelFixtures = assignedProperty(declaration, "modelFixtures");
+  if (!modelFixtures || !ts.isObjectLiteralExpression(modelFixtures)) {
+    return false;
+  }
+  const mode = assignedProperty(modelFixtures, "mode");
+  if (!mode || !ts.isStringLiteralLike(mode)) return false;
+  if (mode.text === "fixtures") {
+    const fixtures = assignedProperty(modelFixtures, "fixtures");
+    return fixtures !== null && ts.isArrayLiteralExpression(fixtures);
+  }
+  const reason = assignedProperty(modelFixtures, "reason");
+  return (
+    mode.text === "model-free" &&
+    reason !== null &&
+    ts.isStringLiteralLike(reason) &&
+    reason.text.trim().length > 0 &&
+    isStaticallyModelFree(declaration)
+  );
+}
+
 function classifyScenarioSource(
   sourceText: string,
   fileName = "fixture.scenario.ts",
@@ -87,14 +152,12 @@ function classifyScenarioSource(
     laneValue !== null &&
     ts.isStringLiteralLike(laneValue) &&
     laneValue.text === "pr-deterministic";
-  const declared = declaration.properties.some(
-    (property) => propertyName(property) === "modelFixtures",
-  );
+  const declared = hasStrictDeclaration(declaration);
   return { deterministic, declared };
 }
 
 function scenarioFiles(): string[] {
-  const output = execFileSync("rg", ["--files", "-g", "*.scenario.ts"], {
+  const output = execFileSync("git", ["ls-files", "--", "*.scenario.ts"], {
     cwd: repoRoot,
     encoding: "utf8",
   }).trim();
@@ -121,8 +184,8 @@ describe("scenario model fixture migration", () => {
       strictOrModelFree: deterministic.length - legacy.length,
       legacy: legacy.length,
       total: deterministic.length,
-    }).toEqual({ strictOrModelFree: 0, legacy: 118, total: 118 });
-  });
+    }).toEqual({ strictOrModelFree: 40, legacy: 79, total: 119 });
+  }, 120_000);
 
   it("recognizes authored properties while ignoring comments and setup strings", () => {
     expect(
@@ -156,5 +219,26 @@ describe("scenario model fixture migration", () => {
         } satisfies ScenarioDefinition);
       `),
     ).toEqual({ deterministic: true, declared: true });
+
+    expect(
+      classifyScenarioSource(`
+        export default scenario({
+          lane: "pr-deterministic",
+          modelFixtures: { mode: "model-free", reason: "not truthful" },
+          turns: [{ kind: "message", text: "hello" }],
+        });
+      `),
+    ).toEqual({ deterministic: true, declared: false });
+
+    expect(
+      classifyScenarioSource(`
+        export default scenario({
+          lane: "pr-deterministic",
+          modelFixtures: { mode: "model-free", reason: "not truthful" },
+          turns: [{ kind: "api", path: "/test" }],
+          finalChecks: [{ type: "judgeRubric", rubric: "good" }],
+        });
+      `),
+    ).toEqual({ deterministic: true, declared: false });
   });
 });
