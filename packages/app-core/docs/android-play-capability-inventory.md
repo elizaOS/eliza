@@ -7,8 +7,9 @@ manifest and build-strip tests are regression guards for future builds.
 ## Standard consumer capabilities
 
 - Cloud chat over TLS using ordinary `INTERNET` and `ACCESS_NETWORK_STATE`.
-- User-invoked voice capture using `RECORD_AUDIO`, requested at runtime, plus
-  `MODIFY_AUDIO_SETTINGS` for Android audio routing and echo cancellation.
+- User-invoked voice capture using `RECORD_AUDIO`, requested at runtime. The
+  Play voice bridge uses Android speech recognition directly and does not
+  modify global audio routing.
 - Audio playback through ordinary platform media APIs with no background
   foreground service.
 - Secure app-private persistence. Android backup is disabled.
