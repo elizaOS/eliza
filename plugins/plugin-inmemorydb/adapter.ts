@@ -1180,21 +1180,43 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit ?? 10;
 
-      const results = await this.vectorIndex.search(params.embedding, limit * 2, threshold);
+      // Scope eligibility must be applied BEFORE the top-K cut so the result is
+      // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
+      // searchMemories comment (base.ts) warns that a two-stage form — a global
+      // vector top-K followed by a post-hoc scope filter — "silently drops
+      // eligible matches whenever closer out-of-scope vectors outnumber the
+      // candidate pool (multi-agent and room-scoped recall starve first)".
+      // The approximate HNSW `search` cannot serve this: it navigates the graph
+      // and can leave in-scope-but-unvisited vectors out of the ranking entirely
+      // (a dense cluster of closer out-of-scope duplicates traps the beam), so
+      // even requesting the full size does not guarantee the eligible set. The
+      // exact scan ranks every eligible indexed vector, so the bounded top-K
+      // heap yields the true top K among eligible memories. Threshold
+      // stays outside scope filtering: it is monotone in the similarity ordering,
+      // so applying it during ranking is identical to applying it after the cut.
+      const eligibleMemories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
+          (!params.roomId || memory.roomId === params.roomId) &&
+          (!params.worldId || memory.worldId === params.worldId) &&
+          (!params.entityId || memory.entityId === params.entityId) &&
+          (!params.unique || !!memory.unique)
+      );
+      const memoriesById = new Map(
+        eligibleMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
+      );
+      const results = await this.vectorIndex.searchExact(
+        params.embedding,
+        limit,
+        threshold,
+        new Set(memoriesById.keys())
+      );
 
-      const memories: Memory[] = [];
-      for (const result of results) {
-        const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
-        if (!memory) continue;
-        if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
-        if (params.roomId && memory.roomId !== params.roomId) continue;
-        if (params.worldId && memory.worldId !== params.worldId) continue;
-        if (params.entityId && memory.entityId !== params.entityId) continue;
-        if (params.unique && !memory.unique) continue;
-        memories.push({ ...toMemory(memory), similarity: result.similarity });
-      }
-
-      return memories.slice(0, limit);
+      return results.flatMap((result) => {
+        const memory = memoriesById.get(result.id);
+        return memory ? [{ ...toMemory(memory), similarity: result.similarity }] : [];
+      });
     });
   }
 
