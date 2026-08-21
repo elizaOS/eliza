@@ -9,6 +9,10 @@
  * to replace it wholesale.
  */
 import { v4 } from "uuid";
+import {
+	parseEgressDisclosureSubject,
+	resolveEgressAudienceAdmission,
+} from "../access-control/audience-egress";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
@@ -222,6 +226,7 @@ import {
 } from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
+	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -11814,15 +11819,103 @@ function enforceEffectGroundedVisibleContent(
 }
 
 /**
+ * Withhold a response whose declared disclosure subject the attested delivery
+ * audience does not admit in FULL. Built from constants so nothing from the
+ * withheld payload survives; `privacyReason` carries `audience_admission` plus
+ * the min level the room earned, so the model-visible note and downstream
+ * tooling can tell an audience-admission withholding apart from the
+ * owner-exclusive revalidation denial.
+ */
+function audienceAdmissionWithheld(
+	runtime: IAgentRuntime,
+	message: Memory,
+	level: "redacted" | "none",
+	blockingCount: number,
+): Content {
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			messageId: message.id,
+			roomId: message.roomId,
+			admissionLevel: level,
+			blockingCount,
+		},
+		"Withheld scoped response the delivery audience does not admit in full",
+	);
+	return {
+		text: PRIVACY_DENIED_TEXT,
+		actions: ["PRIVACY_DENIED"],
+		data: {
+			privacyDenied: true,
+			privacyReason: `audience_admission:${level}`,
+		},
+	};
+}
+
+/**
+ * Enforce min-over-members audience admission at egress for a response that
+ * declares the disclosure subject it requires of its recipients
+ * (`content.data.disclosureSubject`). The attested delivery audience is joined
+ * with the subject through the pure policy core
+ * ({@link resolveEgressAudienceAdmission}); anything short of a FULL admission
+ * withholds the response. Fail-closed: a declared subject with NO attested
+ * audience earns nothing and is withheld, so a scoped reply cannot ship into an
+ * unverified room. A response with no declared subject is not narrowed here and
+ * falls through to the caller's other egress checks unchanged.
+ */
+function enforceAudienceAdmissionAtEgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	response: Content,
+): Content {
+	const data = isRecord(response.data) ? response.data : undefined;
+	if (!data || !("disclosureSubject" in data)) return response;
+	const subject = parseEgressDisclosureSubject(data.disclosureSubject);
+	// A `disclosureSubject` key present but unparseable never means "unscoped":
+	// `parseEgressDisclosureSubject` fails closed to owner-private, so `subject`
+	// is defined whenever the key exists. Guard anyway for undefined markers.
+	if (!subject) return response;
+	const audience = getTrustedDeliveryAudience(message);
+	if (!audience) {
+		// A scoped response with no attested audience earns nothing — withhold
+		// rather than ship into an unverified room. (Not an error-policy case:
+		// there is no catch here, and tagging an ordinary guard pollutes the
+		// grep that exists to audit retained catches.)
+		return audienceAdmissionWithheld(runtime, message, "none", 0);
+	}
+	const admission = resolveEgressAudienceAdmission(subject, audience);
+	if (admission.level === "full") return response;
+	return audienceAdmissionWithheld(
+		runtime,
+		message,
+		admission.level,
+		admission.blockingEntityIds.length,
+	);
+}
+
+/**
  * Revalidate a turn that consumed owner-private data immediately before any
  * visible or durable egress. The replacement is constructed from constants so
  * no text, attachment, or structured payload from the private result survives.
+ *
+ * Two independent, both-fail-closed seams run here: first the per-recipient
+ * audience-admission check for a response that declares its own disclosure
+ * subject ({@link enforceAudienceAdmissionAtEgress}), then the owner-exclusive
+ * revalidation for turns that consumed owner-private context. Either may
+ * withhold; a withholding from the first short-circuits the second because its
+ * replacement carries no owner-private data to revalidate.
  */
 export async function enforceTrustedDeliveryAudienceAtEgress(
 	runtime: IAgentRuntime,
 	message: Memory,
 	response: Content,
 ): Promise<Content> {
+	const admissionChecked = enforceAudienceAdmissionAtEgress(
+		runtime,
+		message,
+		response,
+	);
+	if (admissionChecked !== response) return admissionChecked;
 	if (!ownerExclusiveDisclosureWasUsed(message)) return response;
 	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
 	if (disclosure.allowed) return response;
@@ -11859,7 +11952,14 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 	responseContent: Content | null;
 	responseMessages: Memory[];
 }> {
-	if (!ownerExclusiveDisclosureWasUsed(message)) {
+	// Two egress seams can withhold here: the owner-exclusive revalidation (only
+	// relevant when the turn consumed owner-private data) and the per-recipient
+	// audience-admission check (relevant whenever the response declares its own
+	// disclosure subject). Skip the pass only when NEITHER can fire.
+	const declaresDisclosureSubject =
+		isRecord(responseContent?.data) &&
+		"disclosureSubject" in responseContent.data;
+	if (!ownerExclusiveDisclosureWasUsed(message) && !declaresDisclosureSubject) {
 		return { responseContent, responseMessages };
 	}
 	const finalContent = await enforceTrustedDeliveryAudienceAtEgress(
