@@ -5,9 +5,10 @@
  *
  * Store reviewers follow these URLs literally, so a dead one blocks a listing
  * rather than degrading it. Two failure modes are pinned here because both have
- * already shipped: references to the retired `elizaos/elizaos-app` GitHub repo
- * (the org/repo no longer resolves), and Eliza Cloud paths that do not match a
- * route registered in `packages/ui/src/cloud/public-pages/register.ts`. The
+ * already shipped: support/source destinations that reference the retired
+ * `elizaos/elizaos-app` GitHub repo (the org/repo no longer resolves), and Eliza
+ * Cloud paths that do not match a route registered in
+ * `packages/ui/src/cloud/public-pages/register.ts`. The
  * cloud app serves an SPA fallback, so an unregistered path still answers HTTP
  * 200 — only the route registry proves the page exists, which is why this suite
  * reads that file as the source of truth instead of probing the network.
@@ -44,6 +45,16 @@ const METADATA_FILES = [
   "platforms/ios/fastlane/metadata/en-US/marketing_url.txt",
 ];
 
+// Download recipes are deliberately excluded from the repository-destination
+// assertion. The canonical repository has not published the historical
+// Homebrew DMG tag/assets yet, so changing those URLs would merely replace one
+// 404 with another. The parent release issue owns that artifact migration.
+const REPOSITORY_DESTINATION_FILES = METADATA_FILES.filter(
+  (relativePath) =>
+    relativePath !== "packaging/homebrew/elizaos-app.cask.rb" &&
+    relativePath !== "packaging/homebrew/README.md",
+);
+
 function readMetadata(relativePath) {
   return readFileSync(path.join(appCoreRoot, relativePath), "utf8");
 }
@@ -77,8 +88,8 @@ function registeredCloudRoutePaths() {
   return paths;
 }
 
-test("no store metadata references the retired elizaos/elizaos-app repository", () => {
-  for (const relativePath of METADATA_FILES) {
+test("no support or source metadata references the retired elizaos/elizaos-app repository", () => {
+  for (const relativePath of REPOSITORY_DESTINATION_FILES) {
     const contents = readMetadata(relativePath);
     assert.equal(
       RETIRED_REPO_PATTERN.test(contents),
@@ -148,4 +159,7 @@ test("privacy and support destinations are the canonical live endpoints", () => 
     metainfo,
     /<url type="vcs-browser">https:\/\/github\.com\/elizaOS\/eliza<\/url>/,
   );
+
+  const cask = readMetadata("packaging/homebrew/elizaos-app.cask.rb");
+  assert.match(cask, /^ {2}homepage "https:\/\/github\.com\/elizaOS\/eliza"$/m);
 });
