@@ -67,6 +67,16 @@ let verifyRemotePairingCodeVerifier: typeof import("@/db/crypto/remote-pairing-c
 let app: Hono<AppEnv>;
 
 async function seedAgent(userId = ownerId, deleted = false): Promise<void> {
+  // The replayed migrations enforce the real tenant foreign keys, so the
+  // referenced organization and users must exist before an agent can.
+  await dbWrite.execute(sql`
+    INSERT INTO organizations (id) VALUES (${organizationId}) ON CONFLICT DO NOTHING
+  `);
+  for (const id of [ownerId, otherUserId]) {
+    await dbWrite.execute(sql`
+      INSERT INTO users (id) VALUES (${id}) ON CONFLICT DO NOTHING
+    `);
+  }
   await dbWrite.execute(sql`
     INSERT INTO agent_sandboxes (id, organization_id, user_id, deleted_at)
     VALUES (${agentId}, ${organizationId}, ${userId}, ${deleted ? new Date() : null})
@@ -101,31 +111,38 @@ beforeAll(async () => {
     "@/db/crypto/remote-pairing-code"
   ));
 
-  await dbWrite.execute(sql`
-    CREATE TABLE agent_sandboxes (
+  // The remote_sessions table is built by replaying the real migrations rather
+  // than hand-rolled here: 0068 carries the status CHECK and 0275 widens it, so
+  // a lifecycle write that production would reject fails this suite too. The
+  // sandbox table is created under its pre-rename name and renamed exactly as
+  // production did, because that rename is what preserves the CHECK.
+  await pglite.exec(`
+    CREATE TABLE organizations (id uuid PRIMARY KEY);
+    CREATE TABLE users (id uuid PRIMARY KEY);
+    CREATE TABLE eliza_sandboxes (
       id uuid PRIMARY KEY,
       organization_id uuid NOT NULL,
       user_id uuid NOT NULL,
       deleted_at timestamp with time zone
-    )
+    );
   `);
-  await dbWrite.execute(sql`
-    CREATE TABLE remote_sessions (
-      id uuid PRIMARY KEY,
-      organization_id uuid NOT NULL,
-      user_id uuid NOT NULL,
-      agent_id uuid NOT NULL,
-      status text NOT NULL,
-      requester_identity text NOT NULL,
-      pairing_token_hash text,
-      ingress_url text,
-      ingress_reason text,
-      expires_at timestamp with time zone,
-      created_at timestamp with time zone NOT NULL DEFAULT now(),
-      updated_at timestamp with time zone NOT NULL DEFAULT now(),
-      ended_at timestamp with time zone
-    )
-  `);
+  for (const migration of [
+    "0068_add_remote_sessions",
+    "0275_remote_sessions_first_class_expiry",
+  ]) {
+    const source = await Bun.file(
+      new URL(
+        `../../../../shared/src/db/migrations/${migration}.sql`,
+        import.meta.url,
+      ),
+    ).text();
+    for (const statement of source.split("--> statement-breakpoint")) {
+      if (statement.trim()) await pglite.exec(statement);
+    }
+  }
+  await dbWrite.execute(
+    sql`ALTER TABLE eliza_sandboxes RENAME TO agent_sandboxes`,
+  );
 
   const { default: pairRoute } = await import("./route");
   const { default: sessionsRoute } = await import("../sessions/route");
@@ -362,6 +379,117 @@ describe("remote pairing real persistence boundary", () => {
     };
     expect(revokeBody.data.alreadyEnded).toBe(true);
     expect(revokeBody.data.status).toBe("expired");
+  });
+
+  test("revoking a run-out pending grant directly reports expired, with no prior list", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 minute'
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+
+    // Deliberately no list and no reissuance in between: revoke itself has to
+    // reconcile the run-out grant, or it reports a fresh revocation of a row
+    // whose authority already lapsed.
+    const revokeResponse = await app.request(
+      `https://api.example.test/api/v1/remote/sessions/${pairBody.data.sessionId}/revoke`,
+      { method: "POST" },
+    );
+    expect(revokeResponse.status).toBe(200);
+    const revokeBody = (await revokeResponse.json()) as {
+      data: { alreadyEnded: boolean; status: string };
+    };
+    expect(revokeBody.data.status).toBe("expired");
+    expect(revokeBody.data.alreadyEnded).toBe(true);
+
+    const [stored] = await dbWrite.select().from(remoteSessions);
+    expect(stored?.status).toBe("expired");
+    expect(stored?.ended_at).not.toBeNull();
+  });
+
+  test("direct revocation of a run-out legacy grant terminalizes it as expired", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+    // A row predating the first-class column whose signed verifier has lapsed:
+    // listing already hides it, so revoke must agree rather than revoke it.
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = NULL,
+          pairing_token_hash = ${`hmac-sha256-v2:1000000000000:${"a".repeat(64)}`}
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+
+    const revokeBody = (await (
+      await app.request(
+        `https://api.example.test/api/v1/remote/sessions/${pairBody.data.sessionId}/revoke`,
+        { method: "POST" },
+      )
+    ).json()) as { data: { alreadyEnded: boolean; status: string } };
+    expect(revokeBody.data.status).toBe("expired");
+    expect(revokeBody.data.alreadyEnded).toBe(true);
+  });
+
+  test("an active session survives pairing-challenge expiry and stays revocable", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+    // Consuming the code promotes the grant; the challenge deadline passing
+    // must not terminate the session it already produced.
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET status = 'active', expires_at = now() - interval '1 minute'
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+
+    const revokeBody = (await (
+      await app.request(
+        `https://api.example.test/api/v1/remote/sessions/${pairBody.data.sessionId}/revoke`,
+        { method: "POST" },
+      )
+    ).json()) as { data: { alreadyEnded: boolean; status: string } };
+    expect(revokeBody.data.status).toBe("revoked");
+    expect(revokeBody.data.alreadyEnded).toBe(false);
+  });
+
+  test("the sweep terminalizes a grant stranded by an ownership transfer", async () => {
+    await seedAgent();
+    const pairBody = (await (await pair()).json()) as {
+      data: { sessionId: string };
+    };
+    await dbWrite.execute(sql`
+      UPDATE remote_sessions
+      SET expires_at = now() - interval '1 minute'
+      WHERE id = ${pairBody.data.sessionId}
+    `);
+    // Every request-path predicate requires current ownership, so after the
+    // transfer no owner-scoped call can ever reach this row again.
+    await dbWrite.execute(
+      sql`UPDATE agent_sandboxes SET user_id = ${otherUserId} WHERE id = ${agentId}`,
+    );
+
+    expect(
+      (
+        await app.request(
+          `https://api.example.test/api/v1/remote/sessions?agentId=${agentId}`,
+        )
+      ).status,
+    ).toBe(404);
+    const [beforeSweep] = await dbWrite.select().from(remoteSessions);
+    expect(beforeSweep?.status).toBe("pending");
+
+    expect(await repository.expireRunOutPendingSessions()).toBe(1);
+    const [afterSweep] = await dbWrite.select().from(remoteSessions);
+    expect(afterSweep?.status).toBe("expired");
+    expect(afterSweep?.ended_at).not.toBeNull();
+    // Draining is idempotent: a second pass finds nothing left to terminalize.
+    expect(await repository.expireRunOutPendingSessions()).toBe(0);
   });
 
   test("a legacy pending row without first-class expiry falls back to the verifier's signed expiry", async () => {

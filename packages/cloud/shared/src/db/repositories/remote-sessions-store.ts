@@ -161,12 +161,79 @@ export class RemoteSessionsRepository {
       );
   }
 
+  /**
+   * Terminalizes one already-locked pending row whose grant has run out.
+   * A run-out pairing challenge must never be reported as freshly revoked, so
+   * this runs inside the caller's lock before any terminal decision. Rows
+   * predating the first-class column carry NULL and are judged by the signed
+   * expiry inside their verifier, matching what listing already hides.
+   */
+  private async reconcileLockedRowExpiry(
+    tx: Pick<Database, "update">,
+    row: RemoteSession,
+    now: Date,
+  ): Promise<RemoteSession | undefined> {
+    if (row.status !== "pending") return undefined;
+    const runOut =
+      row.expires_at !== null
+        ? row.expires_at.getTime() <= now.getTime()
+        : !isRemotePairingSessionCurrent(row.status, row.pairing_token_hash, now.getTime());
+    if (!runOut) return undefined;
+
+    const [expired] = await tx
+      .update(remoteSessions)
+      .set({ status: "expired", updated_at: now, ended_at: now })
+      .where(and(eq(remoteSessions.id, row.id), eq(remoteSessions.status, "pending")))
+      .returning();
+    return expired;
+  }
+
+  /**
+   * Terminalizes run-out pending grants without requiring current ownership.
+   *
+   * Every request-path predicate is scoped to the agent's present owner, so an
+   * ownership transfer strands the previous owner's pending row as `pending`
+   * forever. This sweep is the cleanup owner for those rows: it matches on
+   * elapsed first-class expiry alone. Each call is bounded so a backlog is
+   * drained over several passes rather than locking an unbounded row set, and
+   * it returns how many rows it terminalized so a caller can loop until zero.
+   */
+  async expireRunOutPendingSessions(limit = 500, now: Date = new Date()): Promise<number> {
+    if (!Number.isInteger(limit) || limit <= 0) {
+      throw new TypeError("Remote session expiry sweep limit must be a positive integer");
+    }
+    return this.database.transaction(async (tx) => {
+      const candidates = await tx
+        .select({ id: remoteSessions.id })
+        .from(remoteSessions)
+        .where(and(eq(remoteSessions.status, "pending"), lte(remoteSessions.expires_at, now)))
+        .orderBy(remoteSessions.expires_at)
+        .limit(limit)
+        .for("update", { skipLocked: true });
+      if (candidates.length === 0) return 0;
+
+      const rows = await tx
+        .update(remoteSessions)
+        .set({ status: "expired", updated_at: now, ended_at: now })
+        .where(
+          and(
+            inArray(
+              remoteSessions.id,
+              candidates.map((candidate) => candidate.id),
+            ),
+            eq(remoteSessions.status, "pending"),
+          ),
+        )
+        .returning({ id: remoteSessions.id });
+      return rows.length;
+    });
+  }
+
   async revoke(
     id: string,
     orgId: string,
     userId: string,
   ): Promise<RevokeRemoteSessionResult | undefined> {
-    const now = new Date();
     return this.database.transaction(async (tx) => {
       const [authorized] = await tx
         .select({ agentId: remoteSessions.agent_id })
@@ -203,6 +270,9 @@ export class RemoteSessionsRepository {
         )
         .for("update");
       if (!current) return undefined;
+      // Sampled only once both locks are held: a clock read taken before
+      // waiting on contention would judge expiry against a stale instant.
+      const now = new Date();
       if (
         current.status === "revoked" ||
         current.status === "denied" ||
@@ -210,6 +280,11 @@ export class RemoteSessionsRepository {
       ) {
         return { session: current, alreadyEnded: true };
       }
+
+      // A pending grant that ran out is already terminal; only an `active`
+      // session survives pairing-challenge expiry and is genuinely revocable.
+      const expired = await this.reconcileLockedRowExpiry(tx, current, now);
+      if (expired) return { session: expired, alreadyEnded: true };
 
       const [row] = await tx
         .update(remoteSessions)
