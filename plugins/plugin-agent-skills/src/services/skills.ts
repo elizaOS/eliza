@@ -832,6 +832,15 @@ export class AgentSkillsService extends Service {
 		const safeSlug = sanitizeSlug(slug);
 		await this.withSkillInstallMutex(safeSlug, options.signal, async () => {
 			options.signal?.throwIfAborted();
+			if (!this.isSkillAllowed(safeSlug)) {
+				this.loadedSkills.delete(safeSlug);
+				this.scanStatusMap.delete(safeSlug);
+				this.currentScanDigests.delete(safeSlug);
+				this.acknowledgedScanDigests.delete(safeSlug);
+				this.eligibilityCache.delete(safeSlug);
+				return;
+			}
+			const previous = this.loadedSkills.get(safeSlug);
 			let replacement: LoadedSkillWithSource | null = null;
 			let replacementReport: SkillScanReport | null = null;
 			for (const candidate of this.skillSourceCandidates()) {
@@ -855,6 +864,14 @@ export class AgentSkillsService extends Service {
 				}
 			}
 			options.signal?.throwIfAborted();
+			if (
+				previous &&
+				replacement &&
+				previous.source === replacement.source &&
+				previous.path === replacement.path &&
+				SKILL_SOURCE_PRECEDENCE[previous.source] >
+					SKILL_SOURCE_PRECEDENCE.marketplace
+			) return;
 			this.acknowledgedScanDigests.delete(safeSlug);
 			this.eligibilityCache.delete(safeSlug);
 			if (replacement) this.loadedSkills.set(safeSlug, replacement);

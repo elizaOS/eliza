@@ -226,8 +226,39 @@ describe("managed skill install transactions", () => {
 			path.join(directWorkspaceDir, "SKILL.md"),
 			skillMarkdown("shared", "workspace body"),
 		);
+		await fs.writeFile(
+			path.join(directWorkspaceDir, ".scan-results.json"),
+			JSON.stringify({
+				scannedAt: "2026-08-20T00:01:00.000Z",
+				status: "warning",
+				summary: { scannedFiles: 1, critical: 0, warn: 1, info: 0 },
+				findings: [
+					{
+						ruleId: "external-url",
+						severity: "warn",
+						file: "SKILL.md",
+						line: 1,
+						message: "External URL",
+						evidence: "example",
+					},
+				],
+				manifestFindings: [],
+				skillPath: directWorkspaceDir,
+			}),
+		);
 		await service.refreshMarketplaceSkill("shared");
 		expect(service.getLoadedSkill("shared")?.source).toBe("workspace");
+		const workspaceDigest = (
+			service as unknown as { currentScanDigests: Map<string, string> }
+		).currentScanDigests.get("shared") as string;
+		expect(service.acknowledgeSkillScan("shared", workspaceDigest)).toBe(true);
+		expect(
+			service.setSkillEnabled("shared", true, {
+				reportDigest: workspaceDigest,
+			}),
+		).toBe(true);
+		await service.refreshMarketplaceSkill("shared");
+		expect(service.isSkillEnabled("shared")).toBe(true);
 		await fs.rm(directWorkspaceDir, { recursive: true });
 		await service.refreshMarketplaceSkill("shared");
 		expect(service.getLoadedSkill("shared")?.source).toBe("marketplace");
@@ -236,6 +267,38 @@ describe("managed skill install transactions", () => {
 		await service.refreshMarketplaceSkill("shared");
 		expect(service.getLoadedSkill("shared")?.source).toBe("managed");
 		expect(service.getSkillInstructions("shared")?.body).toContain("managed body");
+	});
+
+	it("applies denylist precedence to marketplace startup and live reconciliation", async () => {
+		const workspaceDir = await temporaryDirectory("marketplace-denied-");
+		const skillsDir = path.join(workspaceDir, "skills");
+		const marketplaceDir = path.join(skillsDir, ".marketplace", "denied");
+		await fs.mkdir(marketplaceDir, { recursive: true });
+		await fs.writeFile(
+			path.join(marketplaceDir, "SKILL.md"),
+			skillMarkdown("denied", "must not load"),
+		);
+		await fs.writeFile(
+			path.join(marketplaceDir, ".scan-results.json"),
+			JSON.stringify({
+				scannedAt: "2026-08-20T00:00:00.000Z",
+				status: "clean",
+				summary: { scannedFiles: 1, critical: 0, warn: 0, info: 0 },
+				findings: [],
+				manifestFindings: [],
+				skillPath: marketplaceDir,
+			}),
+		);
+		const service = await AgentSkillsService.start(runtime(), {
+			autoLoad: true,
+			storage: new MemorySkillStore(),
+			workspaceSkillsDir: skillsDir,
+			allowlist: ["denied"],
+			denylist: ["denied"],
+		});
+		expect(service.getLoadedSkill("denied")).toBeUndefined();
+		await service.refreshMarketplaceSkill("denied");
+		expect(service.getLoadedSkill("denied")).toBeUndefined();
 	});
 
 	it("keeps finding-bearing skills disabled until the exact report is acknowledged and enabled", async () => {
