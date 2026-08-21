@@ -100,7 +100,8 @@ export type RemotePluginTrustDecision = {
     | "provenance-issuer-not-allowed"
     | "missing-provenance-public-key"
     | "invalid-provenance-signature"
-    | "invalid-provenance-digest";
+    | "invalid-provenance-digest"
+    | "provenance-walk-bound";
   provenanceIssuer?: string;
 };
 
@@ -1178,17 +1179,20 @@ function evaluateRemotePluginTrustPolicy(
           details: { trustDecision: decision },
         });
       }
-      if (!remotePluginModuleProvenanceDigestMatches(module)) {
-        const decision = trustDecision(
-          module,
-          endpointId,
-          false,
-          "invalid-provenance-digest",
-        );
+      const digestMatch = remotePluginModuleProvenanceDigestResult(module);
+      if (!digestMatch.ok) {
+        const reason =
+          digestMatch.reason === "walk-bound"
+            ? "provenance-walk-bound"
+            : "invalid-provenance-digest";
+        const decision = trustDecision(module, endpointId, false, reason);
         decisions.push(decision);
         throw new CapabilityError({
           code: "CAPABILITY_UNAVAILABLE",
-          message: `Remote plugin module "${module.id}" provenance digest does not match module contents.`,
+          message:
+            digestMatch.reason === "walk-bound"
+              ? `Remote plugin module "${module.id}" provenance walk exceeded bound.`
+              : `Remote plugin module "${module.id}" provenance digest does not match module contents.`,
           capability: "plugin",
           method: "plugin.modules.list",
           details: { trustDecision: decision },
@@ -1231,15 +1235,90 @@ function remotePluginModuleProvenancePayload(
   ].join("\n");
 }
 
+/** Nesting cap for untrusted remote-plugin provenance canonicalization. */
+const MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH = 32;
+/** Node cap so a wide DAG cannot exhaust the heap during digest hashing. */
+const MAX_REMOTE_PLUGIN_PROVENANCE_NODES = 4_096;
+
+class RemotePluginProvenanceWalkBoundError extends Error {
+  readonly reason: "cycle" | "depth" | "nodes";
+
+  constructor(reason: "cycle" | "depth" | "nodes") {
+    super(`Remote plugin provenance walk exceeded ${reason} bound`);
+    this.name = "RemotePluginProvenanceWalkBoundError";
+    this.reason = reason;
+  }
+}
+
+function canonicalizeForRemotePluginProvenance(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+  budget = { remaining: MAX_REMOTE_PLUGIN_PROVENANCE_NODES },
+): unknown {
+  if (depth > MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH) {
+    throw new RemotePluginProvenanceWalkBoundError("depth");
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) {
+      throw new RemotePluginProvenanceWalkBoundError("cycle");
+    }
+    seen.add(value);
+    budget.remaining -= 1;
+    if (budget.remaining < 0) {
+      throw new RemotePluginProvenanceWalkBoundError("nodes");
+    }
+    return value.map((entry) =>
+      canonicalizeForRemotePluginProvenance(entry, seen, depth + 1, budget),
+    );
+  }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) {
+      throw new RemotePluginProvenanceWalkBoundError("cycle");
+    }
+    seen.add(value);
+    budget.remaining -= 1;
+    if (budget.remaining < 0) {
+      throw new RemotePluginProvenanceWalkBoundError("nodes");
+    }
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [
+          key,
+          canonicalizeForRemotePluginProvenance(entry, seen, depth + 1, budget),
+        ]),
+    );
+  }
+  return value;
+}
+
+function remotePluginModuleProvenanceDigestResult(
+  module: RemotePluginModuleManifest,
+): { ok: true } | { ok: false; reason: "mismatch" | "walk-bound" } {
+  const provenance = module.provenance;
+  if (!provenance) return { ok: false, reason: "mismatch" };
+  try {
+    if (
+      hashRemotePluginModuleForProvenance(module) ===
+      provenance.digestSha256.toLowerCase()
+    ) {
+      return { ok: true };
+    }
+    return { ok: false, reason: "mismatch" };
+  } catch (error) {
+    if (error instanceof RemotePluginProvenanceWalkBoundError) {
+      return { ok: false, reason: "walk-bound" };
+    }
+    throw error;
+  }
+}
+
 function remotePluginModuleProvenanceDigestMatches(
   module: RemotePluginModuleManifest,
 ): boolean {
-  const provenance = module.provenance;
-  if (!provenance) return false;
-  return (
-    hashRemotePluginModuleForProvenance(module) ===
-    provenance.digestSha256.toLowerCase()
-  );
+  return remotePluginModuleProvenanceDigestResult(module).ok;
 }
 
 function hashRemotePluginModuleForProvenance(
@@ -1259,24 +1338,6 @@ function canonicalJsonForRemotePluginProvenance(
     ...rest
   } = module;
   return JSON.stringify(canonicalizeForRemotePluginProvenance(rest));
-}
-
-function canonicalizeForRemotePluginProvenance(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((entry) => canonicalizeForRemotePluginProvenance(entry));
-  }
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [
-          key,
-          canonicalizeForRemotePluginProvenance(entry),
-        ]),
-    );
-  }
-  return value;
 }
 
 function trustDecision(
