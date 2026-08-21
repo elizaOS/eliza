@@ -189,6 +189,111 @@ struct HmacHarness {
     30_000,
   );
 
+  macOsIt(
+    "accepts broker RFC3339 milliseconds and enforces bounded native token expiry",
+    async () => {
+      const directory = await fs.mkdtemp(
+        path.join(os.tmpdir(), "browser-bridge-safari-response-"),
+      );
+      temporaryDirectories.push(directory);
+      const harnessPath = path.join(directory, "ResponseHarness.swift");
+      const executablePath = path.join(directory, "response-harness");
+      await fs.writeFile(
+        harnessPath,
+        `import Foundation
+
+@main
+struct ResponseHarness {
+    static let request = ValidatedEnrollmentRequest(
+        requestId: "123e4567-e89b-42d3-a456-426614174000",
+        nonce: "AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM",
+        extensionVersion: "1.2.3",
+        profileId: "123e4567-e89b-42d3-a456-426614174001",
+        dictionary: [:]
+    )
+
+    static func response(issuedAt: String, expiresAt: Any) throws -> [String: Any] {
+        let value: [String: Any] = [
+            "v": 1,
+            "type": "browser_bridge.enroll_result",
+            "requestId": request.requestId,
+            "nonce": request.nonce,
+            "issuedAt": issuedAt,
+            "config": [
+                "apiBaseUrl": "http://127.0.0.1:3210",
+                "companionId": "desktop-companion",
+                "pairingToken": "secret-token",
+                "pairingTokenExpiresAt": expiresAt,
+                "browser": "safari",
+                "profileId": request.profileId,
+                "profileLabel": "Safari profile",
+                "label": "Local Eliza",
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    }
+
+    static func isAccepted(issuedAt: String, expiresAt: Any) -> Bool {
+        do {
+            _ = try SafariNativeResponseValidator.validate(
+                try response(issuedAt: issuedAt, expiresAt: expiresAt),
+                request: request
+            )
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    static func main() {
+        precondition(isAccepted(
+            issuedAt: "2027-01-02T03:04:05.123Z",
+            expiresAt: "2027-01-02T03:09:05.123Z"
+        ))
+        precondition(isAccepted(
+            issuedAt: "2027-01-02T03:04:05Z",
+            expiresAt: "2027-01-02T03:09:05Z"
+        ))
+        precondition(!isAccepted(
+            issuedAt: "2027-01-02T03:04:05.123Z",
+            expiresAt: NSNull()
+        ))
+        precondition(!isAccepted(
+            issuedAt: "2027-01-02T03:04:05.123Z",
+            expiresAt: "2027-01-02T03:09:05.124Z"
+        ))
+        precondition(!isAccepted(
+            issuedAt: "2027-01-02 03:04:05.123Z",
+            expiresAt: "2027-01-02T03:09:05.123Z"
+        ))
+        print("broker-response-validation-ok")
+    }
+}
+`,
+      );
+      await execFileAsync("xcrun", [
+        "swiftc",
+        path.join(
+          extensionRoot,
+          "safari",
+          "native",
+          "SafariWebExtensionHandler.swift",
+        ),
+        harnessPath,
+        "-framework",
+        "SafariServices",
+        "-framework",
+        "Security",
+        "-o",
+        executablePath,
+      ]);
+      const { stdout } = await execFileAsync(executablePath);
+      expect(stdout.trim()).toBe("broker-response-validation-ok");
+    },
+    30_000,
+  );
+
   it("uses deterministic development defaults", () => {
     expect(resolveSafariNativeConfiguration({})).toMatchObject({
       release: false,

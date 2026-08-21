@@ -17,6 +17,7 @@ private enum NativeEnrollmentConstants {
     static let errorType = "browser_bridge.error"
     static let maximumMessageBytes = 65_536
     static let socketTimeoutSeconds = 3
+    static let maximumPairingTokenLifetimeSeconds: TimeInterval = 300
     static let keychainAccount = "native-enrollment-broker"
 }
 
@@ -285,7 +286,7 @@ private enum DesktopBrokerRelay {
         else {
             throw NativeEnrollmentError.brokerUnavailable
         }
-        return try validateResponse(response, request: request)
+        return try SafariNativeResponseValidator.validate(response, request: request)
     }
 
     private static func readBrokerCredential(service: String, accessGroup: String) throws -> Data {
@@ -394,8 +395,10 @@ private enum DesktopBrokerRelay {
         }
         return data
     }
+}
 
-    private static func validateResponse(
+enum SafariNativeResponseValidator {
+    static func validate(
         _ response: [String: Any],
         request: ValidatedEnrollmentRequest
     ) throws -> [String: Any] {
@@ -428,7 +431,7 @@ private enum DesktopBrokerRelay {
                 Set(response.keys) == expectedKeys,
                 response["nonce"] as? String == request.nonce,
                 let issuedAt = response["issuedAt"] as? String,
-                ISO8601DateFormatter().date(from: issuedAt) != nil,
+                let issuedDate = CanonicalRfc3339.parse(issuedAt),
                 let config = response["config"] as? [String: Any],
                 Set(config.keys) == expectedConfigKeys,
                 config["browser"] as? String == "safari",
@@ -446,7 +449,11 @@ private enum DesktopBrokerRelay {
                 (1 ... 256).contains(companionId.utf8.count),
                 let pairingToken = config["pairingToken"] as? String,
                 (1 ... 4_096).contains(pairingToken.utf8.count),
-                validOptionalIso8601(config["pairingTokenExpiresAt"]),
+                let pairingTokenExpiresAt = config["pairingTokenExpiresAt"] as? String,
+                let pairingTokenExpiry = CanonicalRfc3339.parse(pairingTokenExpiresAt),
+                pairingTokenExpiry > issuedDate,
+                pairingTokenExpiry.timeIntervalSince(issuedDate)
+                    <= NativeEnrollmentConstants.maximumPairingTokenLifetimeSeconds,
                 let profileLabel = config["profileLabel"] as? String,
                 (1 ... 256).contains(profileLabel.utf8.count),
                 let label = config["label"] as? String,
@@ -479,15 +486,25 @@ private enum DesktopBrokerRelay {
         }
         throw NativeEnrollmentError.brokerUnavailable
     }
+}
 
-    private static func validOptionalIso8601(_ value: Any?) -> Bool {
-        if value is NSNull {
-            return true
+private enum CanonicalRfc3339 {
+    private static let shape = try! NSRegularExpression(
+        pattern: #"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$"#
+    )
+
+    static func parse(_ value: String) -> Date? {
+        let range = NSRange(value.startIndex ..< value.endIndex, in: value)
+        guard shape.firstMatch(in: value, range: range)?.range == range else {
+            return nil
         }
-        guard let string = value as? String else {
-            return false
-        }
-        return ISO8601DateFormatter().date(from: string) != nil
+        let options: ISO8601DateFormatter.Options = value.contains(".")
+            ? [.withInternetDateTime, .withFractionalSeconds]
+            : [.withInternetDateTime]
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = options
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.date(from: value)
     }
 }
 
