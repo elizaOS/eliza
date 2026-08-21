@@ -1588,9 +1588,10 @@ function extractIntentTextAfter(
 	labels: readonly string[],
 ): string | null {
 	for (const label of labels) {
-		const match = new RegExp(`\\b(?:with\\s+)?${label}\\s+(.+)$`, "i").exec(
-			intent,
-		);
+		const match = new RegExp(
+			`\\b(?:with\\s+)?${escapeRegExp(label)}\\s+(.+)$`,
+			"i",
+		).exec(intent);
 		if (match?.[1]?.trim()) return match[1].trim();
 	}
 	return null;
