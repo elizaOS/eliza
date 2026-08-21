@@ -649,8 +649,9 @@ export function truncateText(
 		return wellFormed;
 	}
 	const safeEllipsis = toWellFormedUnicode(ellipsis);
-	const budget = Math.max(0, maxLength - safeEllipsis.length);
-	return `${truncateWellFormed(wellFormed, budget)}${safeEllipsis}`;
+	const retainedEllipsis = truncateWellFormed(safeEllipsis, maxLength);
+	const budget = Math.max(0, maxLength - retainedEllipsis.length);
+	return `${truncateWellFormed(wellFormed, budget)}${retainedEllipsis}`;
 }
 
 /**

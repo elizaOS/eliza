@@ -67,11 +67,12 @@ describe("truncateText", () => {
 		expect(out.length).toBeLessThanOrEqual(5);
 	});
 
-	it("sanitizes lone surrogates before truncation", () => {
-		const text = "a\ud800bc";
-		const out = truncateText(text, 10, "…");
-		expect(out).toBe("a\ufffdbc");
-		expect(out.isWellFormed()).toBe(true);
+	it("sanitizes either lone surrogate half before truncation", () => {
+		for (const text of ["a\ud800bc", "a\udc00bc"]) {
+			const out = truncateText(text, 10, "…");
+			expect(out).toBe("a\ufffdbc");
+			expect(out.isWellFormed()).toBe(true);
+		}
 	});
 
 	it("preserves an emoji that fits under the cap", () => {
@@ -81,6 +82,17 @@ describe("truncateText", () => {
 
 	it("returns short text unchanged", () => {
 		expect(truncateText("short", 20)).toBe("short");
+	});
+
+	it("keeps a long or astral ellipsis inside the exact output budget", () => {
+		expect(truncateText("abcdef", 3, "[truncated]")).toBe("[tr");
+		expect(truncateText("abcdef", 1, "🦊")).toBe("a");
+		expect(truncateText("abcdef", 0, "🦊")).toBe("");
+		for (const maxLength of [0, 1, 3]) {
+			const out = truncateText("abcdef", maxLength, "🦊[truncated]");
+			expect(out.length).toBeLessThanOrEqual(maxLength);
+			expect(out.isWellFormed()).toBe(true);
+		}
 	});
 });
 
