@@ -136,6 +136,40 @@ describe("parseEmailAddresses top-level comma splitting", () => {
     expect(msg.to?.map((address) => address.email)).toEqual(["erin@corp.com", "fred@y.com"]);
   });
 
+  it("does not split or strip syntax inside a domain literal", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        {
+          name: "To",
+          value: "literal@[zone,(west),still-one], second@example.com",
+        },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to?.map((address) => address.email)).toEqual([
+      "literal@[zone,(west),still-one]",
+      "second@example.com",
+    ]);
+  });
+
+  it("keeps an escaped closing bracket and comma inside a domain literal", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        {
+          name: "To",
+          value: "literal@[zone\\],west], second@example.com",
+        },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to?.map((address) => address.email)).toEqual([
+      "literal@[zone\\],west]",
+      "second@example.com",
+    ]);
+  });
+
   it("parses a mixed quoted/comment/plain multi-address list without phantoms", async () => {
     const client = clientReturning(
       messageWithHeaders([

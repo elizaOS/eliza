@@ -735,6 +735,7 @@ function splitAddressList(value: string): string[] {
   let inQuote = false;
   let commentDepth = 0;
   let inAngle = false;
+  let inDomainLiteral = false;
   let escaped = false;
   for (const char of value) {
     if (escaped) {
@@ -742,7 +743,7 @@ function splitAddressList(value: string): string[] {
       escaped = false;
       continue;
     }
-    if ((inQuote || commentDepth > 0) && char === "\\") {
+    if ((inQuote || commentDepth > 0 || inDomainLiteral) && char === "\\") {
       current += char;
       escaped = true;
       continue;
@@ -763,6 +764,13 @@ function splitAddressList(value: string): string[] {
       current += char;
       continue;
     }
+    if (inDomainLiteral) {
+      if (char === "]") {
+        inDomainLiteral = false;
+      }
+      current += char;
+      continue;
+    }
     if (char === '"') {
       inQuote = true;
       current += char;
@@ -770,6 +778,11 @@ function splitAddressList(value: string): string[] {
     }
     if (char === "(") {
       commentDepth += 1;
+      current += char;
+      continue;
+    }
+    if (char === "[") {
+      inDomainLiteral = true;
       current += char;
       continue;
     }
@@ -792,7 +805,7 @@ function splitAddressList(value: string): string[] {
   }
   tokens.push(current);
 
-  if (inQuote || commentDepth > 0 || inAngle || escaped) {
+  if (inQuote || commentDepth > 0 || inAngle || inDomainLiteral || escaped) {
     // Unterminated quote/comment/angle context: the comma boundaries we scanned
     // are no longer trustworthy, so preserve one opaque token rather than
     // emitting several half-parsed recipients.
@@ -812,6 +825,7 @@ function stripMailboxComments(value: string): string {
   let result = "";
   let inQuote = false;
   let commentDepth = 0;
+  let inDomainLiteral = false;
   let escaped = false;
   for (const char of value) {
     if (escaped) {
@@ -821,7 +835,7 @@ function stripMailboxComments(value: string): string {
       escaped = false;
       continue;
     }
-    if ((inQuote || commentDepth > 0) && char === "\\") {
+    if ((inQuote || commentDepth > 0 || inDomainLiteral) && char === "\\") {
       if (commentDepth === 0) {
         result += char;
       }
@@ -843,6 +857,13 @@ function stripMailboxComments(value: string): string {
       }
       continue;
     }
+    if (inDomainLiteral) {
+      result += char;
+      if (char === "]") {
+        inDomainLiteral = false;
+      }
+      continue;
+    }
     if (char === '"') {
       inQuote = true;
       result += char;
@@ -850,6 +871,11 @@ function stripMailboxComments(value: string): string {
     }
     if (char === "(") {
       commentDepth += 1;
+      continue;
+    }
+    if (char === "[") {
+      inDomainLiteral = true;
+      result += char;
       continue;
     }
     result += char;
@@ -862,18 +888,50 @@ function stripMailboxComments(value: string): string {
 // with a non-empty local part and a dotted or bracketed-literal domain, and no
 // structural characters that only belong to display names or comments.
 function isPlausibleEmailAddress(value: string): boolean {
-  if (!value || /[\s",()<>]/.test(value)) {
+  if (!value) {
     return false;
   }
   const at = value.indexOf("@");
   if (at <= 0 || at !== value.lastIndexOf("@") || at === value.length - 1) {
     return false;
   }
+  const local = value.slice(0, at);
   const domain = value.slice(at + 1);
-  if (/^\[[^\]]+\]$/.test(domain)) {
+  if (/[\s",()<>[\]\\]/.test(local)) {
+    return false;
+  }
+  if (isBracketedDomainLiteral(domain)) {
     return true;
   }
+  if (/[\s",()<>[\]\\]/.test(domain)) {
+    return false;
+  }
   return domain.includes(".") && !domain.startsWith(".") && !domain.endsWith(".");
+}
+
+function isBracketedDomainLiteral(value: string): boolean {
+  if (!value.startsWith("[") || !value.endsWith("]")) {
+    return false;
+  }
+  let escaped = false;
+  for (let index = 1; index < value.length - 1; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "[") {
+      return false;
+    }
+    if (char === "]") {
+      return false;
+    }
+  }
+  return !escaped;
 }
 
 // Unquote and unescape an RFC 5322 quoted-string display name, preserving any
