@@ -111,6 +111,13 @@ describe("browser bridge desktop lifecycle", () => {
         1_800_000_000_000,
       ),
     ).toBeNull();
+    expect(
+      desktopOwnerSessionFromCookies(
+        cookies.map(({ path: _path, ...cookie }) => cookie),
+        "http://127.0.0.1:31337",
+        1_800_000_000_000,
+      ),
+    ).toBeNull();
   });
 
   it("permits external-runtime startup only for an exact loopback API origin", () => {
