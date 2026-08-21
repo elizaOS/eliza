@@ -357,6 +357,13 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
         stdout,
         stderr: typeof payload.stderr === "string" ? payload.stderr : "",
       };
+    } catch (error) {
+      if (timeout.timedOut()) {
+        throw createTimeoutError(
+          opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs,
+        );
+      }
+      throw error;
     } finally {
       timeout.dispose();
     }
@@ -1110,16 +1117,49 @@ function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
   return normalizeSandboxEntryType(value);
 }
 
+function createTimeoutError(ms: number): Error {
+  const error = new Error(`The operation timed out after ${ms}ms.`);
+  error.name = "TimeoutError";
+  return error;
+}
+
+function isTimeoutErrorLike(value: unknown): boolean {
+  if (!(value instanceof Error)) return false;
+  if (
+    value.name === "TimeoutError" ||
+    /timed? out|timeout/i.test(value.message)
+  ) {
+    return true;
+  }
+  return isTimeoutErrorLike((value as Error & { cause?: unknown }).cause);
+}
+
 function timeoutSignal(ms: number | undefined): {
   signal: AbortSignal | undefined;
   dispose(): void;
+  timedOut(): boolean;
 } {
-  if (!ms) return { signal: undefined, dispose: () => {} };
+  if (!ms) {
+    return {
+      signal: undefined,
+      dispose: () => {},
+      timedOut: () => false,
+    };
+  }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  const reason = createTimeoutError(ms);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(reason);
+  }, ms);
   return {
     signal: controller.signal,
     dispose: () => clearTimeout(timer),
+    timedOut: () =>
+      timedOut ||
+      (controller.signal.aborted &&
+        isTimeoutErrorLike(controller.signal.reason)),
   };
 }
 
@@ -1457,9 +1497,7 @@ function commandResultFromError(error: Error): SandboxCommandResult | null {
 }
 
 function isTimeoutError(error: Error): boolean {
-  return (
-    error.name === "TimeoutError" || /timed? out|timeout/i.test(error.message)
-  );
+  return isTimeoutErrorLike(error);
 }
 
 function normalizeSandboxPath(input: string): string {
