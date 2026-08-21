@@ -80,6 +80,7 @@ import {
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import {
   type AgentType,
+  type PromptResult,
   type SessionInfo,
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
@@ -3653,6 +3654,39 @@ async function runSpawnAgent(
 
 // ── action: send (SEND_TO_AGENT) ────────────────────────────────────────────
 
+/**
+ * What a redirect successor inherits from the finished (or interrupted)
+ * predecessor lane: its title/label — the successor continues THAT work, it is
+ * not a new task named after the follow-up sentence — and its acceptance
+ * contract. Regenerating criteria from the follow-up alone classified "run it
+ * again, i want another card" as coding and minted typecheck/lint/test
+ * criteria a script rerun can never evidence; the verifier then parked a child
+ * that had the new card in 3 seconds (live 2026-08-21). The predecessor's
+ * criteria already describe the deliverable the follow-up builds on.
+ */
+async function successorInheritance(
+  runtime: IAgentRuntime,
+  session: SessionInfo,
+): Promise<Record<string, unknown>> {
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const taskService = runtime.getService?.(
+    OrchestratorTaskService.serviceType,
+  ) as OrchestratorTaskService | null | undefined;
+  const record =
+    taskService && typeof taskService.getTaskForSession === "function"
+      ? await taskService.getTaskForSession(session.id).catch(() => null)
+      : null;
+  return {
+    ...(typeof meta?.label === "string" && meta.label
+      ? { label: meta.label }
+      : {}),
+    ...(record?.title ? { title: record.title } : {}),
+    ...(record?.acceptanceCriteria?.length
+      ? { acceptanceCriteria: [...record.acceptanceCriteria] }
+      : {}),
+  };
+}
+
 async function runSend(
   runtime: IAgentRuntime,
   _message: Memory,
@@ -3738,7 +3772,9 @@ async function runSend(
             state,
             {
               ...params,
+              ...(await successorInheritance(runtime, predecessor)),
               action: "create",
+              goal: followUp,
               task: `${predecessorTask}\n\nFollow-up from the user (fold into the SAME deliverable): ${followUp}`,
             },
             content,
@@ -3825,7 +3861,9 @@ async function runSend(
         state,
         {
           ...params,
+          ...(priorTask ? await successorInheritance(runtime, target.session) : {}),
           action: "create",
+          goal: textInput,
           // Follow-up FIRST: leading with the original task made the child
           // re-execute it verbatim — "Write a python script…" re-wrote the
           // existing file (tripping the read-first guard) when the user only
@@ -3894,8 +3932,9 @@ Build on the existing files; do not recreate them.`
           continueChain: false,
         };
       }
+      let prompt: PromptResult | undefined;
       try {
-        await service.sendToSession(target.session.id, textInput);
+        prompt = await service.sendToSession(target.session.id, textInput);
       } catch (error) {
         // A busy session is not a failure — it is exactly what the
         // sub-agent inbox exists for. The bare "ACP session is already
@@ -3925,12 +3964,20 @@ Build on the existing files; do not recreate them.`
         throw error;
       }
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
+      // The session ran the prompt to a stop: that is the provider's
+      // acceptance of the send, and the receipt layer reads it as such. A
+      // send that resolves void stays unconfirmed.
+      const stopReason =
+        prompt && !prompt.error && typeof prompt.stopReason === "string"
+          ? prompt.stopReason
+          : undefined;
       return {
         success: true,
         text,
         data: {
           sessionId: target.session.id,
           input: textInput,
+          ...(stopReason ? { stopReason } : {}),
           ...(task ? { task } : {}),
         },
       };
@@ -6743,6 +6790,9 @@ function tasksNoopReason(
   if (result.success && data.duplicateSpawnGuard === true) {
     return "A near-duplicate of in-flight work was detected; no new agent was started.";
   }
+  if (result.success && data.redundantSameOriginSend === true) {
+    return "The lane launched for this request already carries these instructions.";
+  }
   if (
     (operation === "stop_agent" || operation === "cancel") &&
     result.success &&
@@ -6932,31 +6982,55 @@ function tasksEffectProof(
       : undefined;
   }
   if (operation === "create") {
-    const taskRefs = [
-      effectString(data.taskId),
-      ...effectRecords(data.lanes).map((lane) => effectString(lane.taskId)),
-    ]
-      .filter((id): id is string => Boolean(id))
-      .map((id) => ({ kind: "orchestrator.task", id }));
-    const sessionRefs = effectRecords(data.agents)
-      .filter((agent) => agent.status !== "failed" && agent.reused !== true)
-      .map((agent) => effectString(agent.sessionId) ?? effectString(agent.id))
-      .filter((id): id is string => Boolean(id))
-      .map((id) => ({ kind: "acp.session", id }));
-    const refs = uniqueEffectRefs([...taskRefs, ...sessionRefs]);
-    if (refs.length === 0) return undefined;
-    const durable = refs.find((ref) => ref.kind === "orchestrator.task");
-    const resource = durable ?? refs[0];
-    return {
-      commitId: resource.id,
-      commitKind: durable ? "durable" : "provider_accepted",
-      resource,
-      artifacts: refs.filter(
-        (ref) => ref.kind !== resource.kind || ref.id !== resource.id,
-      ),
-    };
+    return createEffectProof(data);
+  }
+  if (operation === "send") {
+    // A send into a finished/interrupted lane redirects to a successor
+    // create — the durable task it launched is the proof. Without this the
+    // redirect's honest kickoff ack was replaced by the unconfirmed hedge on
+    // every follow-up (live 2026-08-21).
+    const created = createEffectProof(data);
+    if (created) return created;
+    const sessionId = effectString(data.sessionId);
+    // Queued through the inbox, or the session ran the prompt to a stop:
+    // provider acceptance. A void send (no stop, no queue) stays unconfirmed.
+    return sessionId && (data.queued === true || effectString(data.stopReason))
+      ? {
+          commitId: sessionId,
+          commitKind: "provider_accepted",
+          resource: { kind: "acp.session", id: sessionId },
+        }
+      : undefined;
   }
   return undefined;
+}
+
+function createEffectProof(
+  data: Record<string, unknown>,
+): TasksEffectProof | undefined {
+  const taskRefs = [
+    effectString(data.taskId),
+    ...effectRecords(data.lanes).map((lane) => effectString(lane.taskId)),
+  ]
+    .filter((id): id is string => Boolean(id))
+    .map((id) => ({ kind: "orchestrator.task", id }));
+  const sessionRefs = effectRecords(data.agents)
+    .filter((agent) => agent.status !== "failed" && agent.reused !== true)
+    .map((agent) => effectString(agent.sessionId) ?? effectString(agent.id))
+    .filter((id): id is string => Boolean(id))
+    .map((id) => ({ kind: "acp.session", id }));
+  const refs = uniqueEffectRefs([...taskRefs, ...sessionRefs]);
+  if (refs.length === 0) return undefined;
+  const durable = refs.find((ref) => ref.kind === "orchestrator.task");
+  const resource = durable ?? refs[0];
+  return {
+    commitId: resource.id,
+    commitKind: durable ? "durable" : "provider_accepted",
+    resource,
+    artifacts: refs.filter(
+      (ref) => ref.kind !== resource.kind || ref.id !== resource.id,
+    ),
+  };
 }
 
 function tasksReceiptBase(
