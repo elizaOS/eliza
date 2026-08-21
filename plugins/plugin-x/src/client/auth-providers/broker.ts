@@ -16,6 +16,7 @@ import {
   type IAgentRuntime,
   isBlockedHostname,
   isPrivateIpAddress,
+  logger,
 } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
 import type { BrokerAuthCredentials, TwitterBrokerProvider } from "./types";
@@ -265,16 +266,23 @@ async function readBoundedJson(
     }
   } catch (error) {
     if (signal.aborted) {
-      try {
-        await reader.cancel(abortReason(signal));
-      } catch {
-        // error-policy:J6 The authoritative timeout/invalidation error remains
-        // unchanged while the guarded transport release still runs.
-      }
+      void reader.cancel(abortReason(signal)).catch(() => {
+        // error-policy:J6 The authoritative timeout/invalidation error remains;
+        // cancellation is observed but cannot delay guarded transport release.
+        logger.debug(
+          "[XBroker] Broker response cancellation failed during teardown",
+        );
+      });
     }
     throw error;
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // error-policy:J6 The authoritative read result remains while guarded
+      // transport release proceeds after best-effort stream lock teardown.
+      logger.debug("[XBroker] Broker response reader lock release failed");
+    }
   }
 
   const bytes = new Uint8Array(totalBytes);

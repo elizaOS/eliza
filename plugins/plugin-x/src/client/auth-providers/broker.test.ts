@@ -35,6 +35,29 @@ function newTestProvider(runtimeValue: IAgentRuntime): BrokerAuthProvider {
   return new BrokerAuthProvider(runtimeValue, testGuardedFetch);
 }
 
+async function settleWithin<T>(
+  promise: Promise<T>,
+  milliseconds = 250,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error("Promise did not settle before the test deadline"),
+            ),
+          milliseconds,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
@@ -327,33 +350,37 @@ describe("BrokerAuthProvider", () => {
     const timeout = new DOMException("body deadline", "TimeoutError");
     vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
     let markPullStarted!: () => void;
-    const cancel = vi.fn();
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const release = vi.fn(async () => undefined);
     const pullStarted = new Promise<void>((resolve) => {
       markPullStarted = resolve;
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response(
-            new ReadableStream<Uint8Array>({
-              pull() {
-                markPullStarted();
-                return new Promise<void>(() => undefined);
-              },
-              cancel,
-            }),
-          ),
-      ),
+    const guardedFetch = vi.fn(
+      async (): Promise<GuardedFetchResult> => ({
+        response: new Response(
+          new ReadableStream<Uint8Array>({
+            pull() {
+              markPullStarted();
+              return new Promise<void>(() => undefined);
+            },
+            cancel,
+          }),
+        ),
+        finalUrl:
+          "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+        release,
+      }),
     );
-    const provider = newTestProvider(
+    const provider = new BrokerAuthProvider(
       runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+      guardedFetch,
     );
     const pending = provider.getAccessToken();
     await pullStarted;
     controller.abort(timeout);
-    await expect(pending).rejects.toBe(timeout);
+    await expect(settleWithin(pending)).rejects.toBe(timeout);
     expect(cancel).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("rejects overlong secrets and invalid expiry timestamps", async () => {
@@ -662,12 +689,14 @@ describe("BrokerAuthProvider", () => {
     const pullStarted = new Promise<void>((resolve) => {
       markPullStarted = resolve;
     });
-    const cancel = vi.fn();
-    const fetchMock = vi
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const staleRelease = vi.fn(async () => undefined);
+    const freshRelease = vi.fn(async () => undefined);
+    const guardedFetch = vi
       .fn()
       .mockImplementationOnce(
-        async () =>
-          new Response(
+        async (): Promise<GuardedFetchResult> => ({
+          response: new Response(
             new ReadableStream<Uint8Array>({
               pull() {
                 markPullStarted();
@@ -676,22 +705,36 @@ describe("BrokerAuthProvider", () => {
               cancel,
             }),
           ),
+          finalUrl:
+            "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+          release: staleRelease,
+        }),
       )
-      .mockResolvedValueOnce(
-        Response.json({ auth_mode: "oauth2", access_token: "fresh-token" }),
-      );
-    vi.stubGlobal("fetch", fetchMock);
-    const provider = newTestProvider(
+      .mockResolvedValueOnce({
+        response: Response.json({
+          auth_mode: "oauth2",
+          access_token: "fresh-token",
+        }),
+        finalUrl:
+          "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+        release: freshRelease,
+      });
+    const provider = new BrokerAuthProvider(
       runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+      guardedFetch,
     );
 
     const staleRequest = provider.getAccessToken();
     await pullStarted;
     provider.invalidate();
     const freshRequest = provider.getAccessToken();
-    await expect(staleRequest).rejects.toMatchObject({ name: "AbortError" });
-    await expect(freshRequest).resolves.toBe("fresh-token");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(settleWithin(staleRequest)).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await expect(settleWithin(freshRequest)).resolves.toBe("fresh-token");
+    expect(guardedFetch).toHaveBeenCalledTimes(2);
     expect(cancel).toHaveBeenCalledOnce();
+    expect(staleRelease).toHaveBeenCalledOnce();
+    expect(freshRelease).toHaveBeenCalledOnce();
   });
 });
