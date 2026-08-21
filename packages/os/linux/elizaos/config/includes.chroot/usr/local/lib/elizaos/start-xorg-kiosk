@@ -1,0 +1,35 @@
+#!/bin/sh
+# Run the Electrobun app under stock Xorg, not cage+Xwayland.
+#
+# Background: the Electrobun native wrapper (electrobun@1.18.1's
+# libNativeWrapper.so) is GTK3+X11 hard-wired (calls gdk_x11_window_get_xid /
+# XOpenDisplay, no Wayland path) and DEADLOCKS during its post-gtk_main() init
+# under cage's Xwayland — bun's main thread blocks in do_sys_poll, no
+# WebKitWebProcess ever spawns, the window stays black. The exact same bundle
+# paints fine on stock Xorg on the host. start-cage delegates here whenever
+# /opt/elizaos/app/elizaos is present so the kiosk uses real Xorg on Electrobun
+# arches; riscv64 (no Electrobun, epiphany kiosk) keeps the cage path.
+#
+# The kiosk service runs us as the unprivileged `user`; /etc/X11/Xwrapper.config
+# (allowed_users=anybody, needs_root_rights=yes) lets that user start Xorg via
+# /usr/lib/xorg/Xorg.wrap from xserver-xorg-legacy. xinit starts Xorg on tty1
+# and the electrobun-xinitrc client launches the app fullscreen — no window
+# manager, the app's GTK window IS the locked kiosk surface.
+set -eu
+log() { echo "elizaos-xorg-kiosk: $*" >&2; }
+
+ELECTROBUN=/opt/elizaos/app/elizaos
+if [ ! -x "${ELECTROBUN}" ]; then
+    log "FATAL: ${ELECTROBUN} missing — refusing to start Xorg with no client"
+    exit 1
+fi
+if [ ! -x /usr/bin/xinit ]; then
+    log "FATAL: /usr/bin/xinit missing (install xinit)"
+    exit 1
+fi
+
+# The kiosk-env exports (LIBGL_ALWAYS_SOFTWARE, WEBKIT_*, ELIZAOS_*) are set in
+# electrobun-xinitrc so they take effect for the app's process tree under Xorg.
+log "starting Xorg on :0 + Electrobun app as the only client"
+exec /usr/bin/xinit /usr/local/lib/elizaos/electrobun-xinitrc -- \
+    /usr/bin/Xorg :0 vt1 -nolisten tcp -nolisten local -noreset -keeptty

@@ -45,6 +45,7 @@ import type {
 import { resolveArtifactDisclosure } from "./artifact-disclosure";
 import {
 	type AudienceAdmission,
+	attestedAudienceViewerResolver,
 	type DisclosureLevel,
 	type DisclosureSubject,
 	disclosureSubjectRecord,
@@ -138,47 +139,6 @@ export function parseEgressDisclosureSubject(
 }
 
 /**
- * The per-member AccessContext egress derives from attested evidence alone.
- *
- * The canonical owner gets the OWNER tier (`isOwner: true`), every other
- * participant gets the bare `USER` tier (no role, not owner) so the artifact
- * scope ladder / grant matrix decides — the fail-closed floor described in the
- * module header.
- */
-function egressAccessContext(
-	entityId: UUID,
-	canonicalOwnerEntityId: UUID | null,
-): AccessContext {
-	if (canonicalOwnerEntityId !== null && entityId === canonicalOwnerEntityId) {
-		return { requesterEntityId: entityId, isOwner: true, role: "OWNER" };
-	}
-	return { requesterEntityId: entityId };
-}
-
-/**
- * Build the per-viewer resolver the policy core requires, derived purely from
- * attested audience evidence. Every member is evaluated through the SAME
- * `resolveArtifactDisclosure` over `disclosureSubjectRecord(subject)` the
- * artifact read-side uses, so admission inherits the exact tier order
- * (agent/OWNER/ADMIN full → grant beats ladder both directions → owner-private
- * fails closed). The resolver is never hand-rolled at the call site.
- */
-export function viewerResolverFromAudience(
-	subject: DisclosureSubject,
-	audience: TrustedDeliveryAudience,
-): (entityId: UUID) => DisclosureLevel {
-	const record = disclosureSubjectRecord(subject);
-	const agentId = audience.agentEntityId;
-	const canonicalOwnerEntityId = audience.canonicalOwnerEntityId;
-	return (entityId) =>
-		resolveArtifactDisclosure(
-			record,
-			egressAccessContext(entityId, canonicalOwnerEntityId),
-			agentId,
-		);
-}
-
-/**
  * Compute what the attested delivery audience admits for one disclosure
  * subject at the egress seam. A thin, fail-closed composition: build the
  * evidence-derived resolver, then defer to the pure policy core. The caller
@@ -193,6 +153,9 @@ export function resolveEgressAudienceAdmission(
 	return resolveAudienceAdmission(
 		subject,
 		audience,
-		viewerResolverFromAudience(subject, audience),
+		// The attestation-derived resolver lives in the policy module. Keeping a
+		// second copy here would mean two implementations of the same
+		// fail-closed security floor, free to drift apart.
+		attestedAudienceViewerResolver(subject, audience),
 	);
 }

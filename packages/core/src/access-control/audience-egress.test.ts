@@ -10,11 +10,13 @@
 import { describe, expect, it } from "vitest";
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
 import type { UUID } from "../types";
-import type { DisclosureSubject } from "./audience-disclosure";
+import {
+	attestedAudienceViewerResolver,
+	type DisclosureSubject,
+} from "./audience-disclosure";
 import {
 	parseEgressDisclosureSubject,
 	resolveEgressAudienceAdmission,
-	viewerResolverFromAudience,
 } from "./audience-egress";
 
 const OWNER = "11111111-1111-1111-1111-111111111111" as UUID;
@@ -47,9 +49,12 @@ const OWNER_PRIVATE_SUBJECT: DisclosureSubject = {
 	scopedEntityId: OWNER,
 };
 
-describe("viewerResolverFromAudience", () => {
+// The resolver itself lives in `audience-disclosure`; these cases pin the
+// grant-vs-ladder and null-owner behavior the egress seam depends on when it
+// composes that resolver into `resolveEgressAudienceAdmission` below.
+describe("attestedAudienceViewerResolver (as composed at the egress seam)", () => {
 	it("resolves the canonical owner to full on an owner-private subject", () => {
-		const resolve = viewerResolverFromAudience(
+		const resolve = attestedAudienceViewerResolver(
 			OWNER_PRIVATE_SUBJECT,
 			census([OWNER, AGENT, GUEST]),
 		);
@@ -57,7 +62,7 @@ describe("viewerResolverFromAudience", () => {
 	});
 
 	it("resolves a non-owner participant to none on an owner-private subject (fail-closed floor)", () => {
-		const resolve = viewerResolverFromAudience(
+		const resolve = attestedAudienceViewerResolver(
 			OWNER_PRIVATE_SUBJECT,
 			census([OWNER, AGENT, GUEST]),
 		);
@@ -69,7 +74,7 @@ describe("viewerResolverFromAudience", () => {
 			...OWNER_PRIVATE_SUBJECT,
 			grants: [{ entityId: GUEST, mode: "full" }],
 		};
-		const resolve = viewerResolverFromAudience(
+		const resolve = attestedAudienceViewerResolver(
 			subject,
 			census([OWNER, AGENT, GUEST]),
 		);
@@ -81,7 +86,7 @@ describe("viewerResolverFromAudience", () => {
 			scope: "global",
 			grants: [{ entityId: GUEST, mode: "redacted" }],
 		};
-		const resolve = viewerResolverFromAudience(
+		const resolve = attestedAudienceViewerResolver(
 			subject,
 			census([OWNER, AGENT, GUEST]),
 		);
@@ -89,7 +94,7 @@ describe("viewerResolverFromAudience", () => {
 	});
 
 	it("treats a null canonical owner as no elevated member (all non-agent → ladder)", () => {
-		const resolve = viewerResolverFromAudience(
+		const resolve = attestedAudienceViewerResolver(
 			OWNER_PRIVATE_SUBJECT,
 			census([OWNER, AGENT, GUEST], { canonicalOwnerEntityId: null }),
 		);
