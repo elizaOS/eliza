@@ -21,6 +21,10 @@ function nestArray(depth: number): unknown {
 }
 
 describe("readProviderOptions", () => {
+  class CustomOptions {
+    enabled = true;
+  }
+
   it("preserves root and nested __proto__ keys as inert own data", () => {
     const nested = Object.fromEntries([["__proto__", { nested: true }]]);
     const input = Object.fromEntries([
@@ -53,6 +57,36 @@ describe("readProviderOptions", () => {
     });
     for (const invalid of [null, ["not", "a", "record"], "scalar"]) {
       expect(() => readProviderOptions(invalid)).toThrow(
+        expect.objectContaining({ code: ZAI_PROVIDER_OPTIONS_UNBOUNDED })
+      );
+    }
+  });
+
+  it("accepts root and nested null-prototype records and copies them to inert records", () => {
+    const nested = Object.assign(Object.create(null) as Record<string, unknown>, {
+      effort: "high",
+    });
+    const root = Object.assign(Object.create(null) as Record<string, unknown>, {
+      agentName: "eliza",
+      zai: nested,
+    });
+
+    const copied = readProviderOptions(root);
+
+    expect(copied).toEqual({ agentName: "eliza", zai: { effort: "high" } });
+    expect(Object.getPrototypeOf(copied)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(copied.zai as object)).toBe(Object.prototype);
+  });
+
+  it.each([
+    ["Date", () => new Date(0)],
+    ["Map", () => new Map([["enabled", true]])],
+    ["Set", () => new Set(["enabled"])],
+    ["class instance", () => new CustomOptions()],
+    ["custom prototype", () => Object.create({ inherited: true })],
+  ])("rejects %s values at root and nested record boundaries", (_name, makeValue) => {
+    for (const candidate of [makeValue(), { nested: makeValue() }]) {
+      expect(() => readProviderOptions(candidate)).toThrow(
         expect.objectContaining({ code: ZAI_PROVIDER_OPTIONS_UNBOUNDED })
       );
     }
@@ -164,5 +198,29 @@ describe("readProviderOptions", () => {
     expect(() => readProviderOptions(hostile)).toThrow(
       expect.objectContaining({ code: ZAI_PROVIDER_OPTIONS_UNBOUNDED })
     );
+  });
+
+  it("translates hostile and revoked prototype reflection at root and nested boundaries", () => {
+    const hostile = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          throw new Error("prototype reflection trap");
+        },
+      }
+    );
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+
+    for (const candidate of [
+      hostile,
+      { nested: hostile },
+      revoked.proxy,
+      { nested: revoked.proxy },
+    ]) {
+      expect(() => readProviderOptions(candidate)).toThrow(
+        expect.objectContaining({ code: ZAI_PROVIDER_OPTIONS_UNBOUNDED })
+      );
+    }
   });
 });
