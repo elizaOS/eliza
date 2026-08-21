@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["./types.ts", "./vector-storage-contract.test.ts"],
+  "exclude": []
+}
