@@ -12,7 +12,8 @@ This is a local candidate, not a claim of flawless behavior or a published
 release. Per the latest owner instruction, none of this coding-agent work is
 pushed. The final exact-content app behavior is at
 `4d9ae562ae40996482a02f37c0136cab1764947e`; diagnostic-only log cleanup is at
-`afb43bdd92e38970c90c2a6c97af38e22e6c07ca`. The final documentation commit and
+`afb43bdd92e38970c90c2a6c97af38e22e6c07ca`; completion display-name polish is
+at `52bb814d3827666998480bca042479ba5748f8d9`. The final documentation commit and
 annotated candidate tag are recorded in the checkpoint ledger.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
@@ -718,6 +719,9 @@ the child transcript, absolute path, session id, provisional failure, or
 "final check" footer. The real browser followed the link and independently
 observed heading `Hello Nubs, verified and ready!` and button
 `Pick another happy color`; clicking the button changed the page background.
+The follow-up completion bridge regression uses the verified launch display
+name, so later completions say `Nubs Color Pebble is ready` rather than exposing
+the `nubs-color-pebble` slug.
 The consolidated secret-free acceptance record is:
 
 `/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/final-app-edit-acceptance-20260821.json`
