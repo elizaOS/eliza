@@ -24,7 +24,7 @@
  * log-capture pipeline.
  */
 
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 export type AndroidActionKind =
   | "tap"
@@ -66,7 +66,7 @@ export interface AndroidTrajectoryStepEvent {
   rationale: string;
 }
 
-const MAX_ERROR_MSG = 256;
+export const MAX_ERROR_MSG = 256;
 
 /**
  * Emit a `computeruse.android.action` log entry. Returns the payload so
@@ -77,7 +77,10 @@ export function emitAndroidAction(
 ): AndroidTrajectoryActionEvent {
   const trimmed: AndroidTrajectoryActionEvent = { ...event };
   if (trimmed.errorMessage) {
-    trimmed.errorMessage = trimmed.errorMessage.slice(0, MAX_ERROR_MSG);
+    trimmed.errorMessage = truncateWellFormed(
+      toWellFormedUnicode(trimmed.errorMessage),
+      MAX_ERROR_MSG,
+    );
   }
   logger.info(
     {

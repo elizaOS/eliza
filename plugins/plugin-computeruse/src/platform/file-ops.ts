@@ -11,6 +11,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { FileActionResult, FileEntry } from "../types.js";
 import { resolveSafeFileTarget } from "./security.js";
 
@@ -131,7 +132,10 @@ export async function readFile(
     return {
       success: true,
       path: check.resolvedPath,
-      content: read.buffer.toString(encoding).slice(0, READ_FILE_CHAR_LIMIT),
+      content: truncateWellFormed(
+        toWellFormedUnicode(read.buffer.toString(encoding)),
+        READ_FILE_CHAR_LIMIT,
+      ),
     };
   } catch (error) {
     // error-policy:J1 file-op boundary — the failure returns as a structured
