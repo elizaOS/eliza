@@ -64,7 +64,6 @@ function inspectSwap<T>(operation: string, inspect: () => T): T {
 	}
 }
 
-
 export class SecretSwapUnresolvedPlaceholderError extends Error {
 	readonly placeholders: string[];
 
@@ -176,26 +175,23 @@ function collectMatches(
 	return values;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		Object.getPrototypeOf(value) === Object.prototype
-	);
-}
-
 function createSecretSwapWalkContext(): SecretSwapWalkContext {
 	return { visits: 0, visiting: new WeakSet<object>() };
 }
 
-function reserveSecretSwapVisit(ctx: SecretSwapWalkContext): void {
-	if (ctx.visits >= MAX_SECRET_SWAP_WALK_NODES) {
+function reserveSecretSwapVisits(ctx: SecretSwapWalkContext, count = 1): void {
+	if (
+		!Number.isSafeInteger(count) ||
+		count < 0 ||
+		count > MAX_SECRET_SWAP_WALK_NODES - ctx.visits
+	) {
 		failSecretSwapUnbounded({
-			visits: ctx.visits + 1,
+			visits: ctx.visits,
+			requestedVisits: count,
 			maxNodes: MAX_SECRET_SWAP_WALK_NODES,
 		});
 	}
-	ctx.visits += 1;
+	ctx.visits += count;
 }
 
 function ownValueDescriptor(
@@ -207,9 +203,54 @@ function ownValueDescriptor(
 	);
 	if (!descriptor) return undefined;
 	if (!("value" in descriptor)) {
-		failSecretSwapUnbounded({ accessor: true, key: String(key) });
+		failSecretSwapUnbounded({
+			accessor: true,
+			numericKey: typeof key === "number",
+		});
 	}
 	return descriptor;
+}
+
+function isSecretSwapArray(value: object): boolean {
+	return inspectSwap("isArray", () => Array.isArray(value));
+}
+
+function isSecretSwapPlainObject(
+	value: object,
+): value is Record<string, unknown> {
+	return (
+		inspectSwap("getPrototypeOf", () => Object.getPrototypeOf(value)) ===
+		Object.prototype
+	);
+}
+
+function ownArrayLength(value: object): number {
+	const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, "length"),
+	);
+	if (
+		!descriptor ||
+		!("value" in descriptor) ||
+		typeof descriptor.value !== "number" ||
+		!Number.isSafeInteger(descriptor.value) ||
+		descriptor.value < 0
+	) {
+		failSecretSwapUnbounded({ invalidArrayLength: true });
+	}
+	return descriptor.value;
+}
+
+function defineSecretSwapValue(
+	target: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): void {
+	Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
 }
 
 function walkSecretSwapValue(
@@ -233,57 +274,48 @@ function walkSecretSwapValue(
 	if (ctx.visiting.has(value)) {
 		failSecretSwapUnbounded({ cycle: true });
 	}
-	reserveSecretSwapVisit(ctx);
+	reserveSecretSwapVisits(ctx);
 	ctx.visiting.add(value);
 	try {
-		if (Array.isArray(value)) {
-			const lengthDescriptor = inspectSwap("getOwnPropertyDescriptor", () =>
-				Object.getOwnPropertyDescriptor(value, "length"),
-			);
-			const length =
-				lengthDescriptor && "value" in lengthDescriptor
-					? lengthDescriptor.value
-					: value.length;
-			if (
-				typeof length !== "number" ||
-				!Number.isFinite(length) ||
-				length < 0
-			) {
-				failSecretSwapUnbounded({ arrayLength: length });
-			}
-			const size = Math.trunc(length);
-			const next: unknown[] = [];
+		if (isSecretSwapArray(value)) {
+			const size = ownArrayLength(value);
+			// Reserve every logical slot before scanning descriptors or allocating the
+			// output. Sparse arrays otherwise bypass a per-value visit counter.
+			reserveSecretSwapVisits(ctx, size);
+			const next = new Array<unknown>(size);
 			for (let index = 0; index < size; index += 1) {
 				const descriptor = ownValueDescriptor(value, index);
-				next.push(
-					walkSecretSwapValue(
-						descriptor ? descriptor.value : undefined,
-						depth + 1,
-						ctx,
-						mapString,
-					),
+				if (!descriptor) continue;
+				next[index] = walkSecretSwapValue(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					mapString,
 				);
 			}
 			return next;
 		}
-		if (!isPlainObject(value)) {
+		if (!isSecretSwapPlainObject(value)) {
 			return value;
 		}
 		const next: Record<string, unknown> = {};
-		for (const key of inspectSwap("ownKeys", () => Reflect.ownKeys(value))) {
+		const keys = inspectSwap("ownKeys", () => Reflect.ownKeys(value));
+		// Charge reflection work up front, including symbols and non-enumerable
+		// keys that still require inspection before they can be skipped.
+		reserveSecretSwapVisits(ctx, keys.length);
+		for (const key of keys) {
 			if (typeof key !== "string") continue;
 			const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
 				Object.getOwnPropertyDescriptor(value, key),
 			);
 			if (!descriptor?.enumerable) continue;
 			if (!("value" in descriptor)) {
-				failSecretSwapUnbounded({ accessor: true, key });
+				failSecretSwapUnbounded({ accessor: true });
 			}
-			next[key] = walkSecretSwapValue(
-				descriptor.value,
-				depth + 1,
-				ctx,
-				mapString,
+			defineSecretSwapValue(
+				next,
+				key,
+				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString),
 			);
 		}
 		return next;
@@ -291,7 +323,6 @@ function walkSecretSwapValue(
 		ctx.visiting.delete(value);
 	}
 }
-
 
 export class SecretSwapSession {
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();

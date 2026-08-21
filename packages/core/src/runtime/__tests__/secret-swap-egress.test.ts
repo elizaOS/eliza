@@ -9,7 +9,10 @@
  * trajectory context exactly as `useModel` stores it on ingress.
  */
 import { describe, expect, it, vi } from "vitest";
-import { SecretSwapSession } from "../../security/secret-swap";
+import {
+	MAX_SECRET_SWAP_WALK_NODES,
+	SecretSwapSession,
+} from "../../security/secret-swap";
 import { runWithTrajectoryContext } from "../../trajectory-context";
 import type { Action, IAgentRuntime, Memory } from "../../types";
 import { executePlannedToolCall } from "../execute-planned-tool-call";
@@ -133,5 +136,41 @@ describe("secret-swap egress at executePlannedToolCall", () => {
 
 		expect(result.success).toBe(true);
 		expect(received.token).toBe("plain-non-secret-token");
+	});
+
+	it("rejects an unbounded action graph before handler dispatch", async () => {
+		const handler = vi.fn(async () => ({ success: true }));
+		const action = {
+			name: "PROCESS_PAYLOAD",
+			description: "Process a structured payload",
+			parameters: [
+				{
+					name: "payload",
+					description: "Payload values",
+					required: true,
+					schema: { type: "array" },
+				},
+			],
+			validate: async () => true,
+			handler,
+		} as Action;
+		const session = new SecretSwapSession();
+
+		const result = await runWithTrajectoryContext(
+			{ runId: "run-unbounded", secretSwapSession: session },
+			() =>
+				executePlannedToolCall(
+					makeRuntime([action]),
+					{ message: makeMessage() },
+					{
+						name: action.name,
+						params: { payload: new Array(MAX_SECRET_SWAP_WALK_NODES) },
+					},
+				),
+		);
+
+		expect(result.success).toBe(false);
+		expect(String(result.error)).toContain("walk budget");
+		expect(handler).not.toHaveBeenCalled();
 	});
 });

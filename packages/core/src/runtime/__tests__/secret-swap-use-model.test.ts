@@ -8,6 +8,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import {
+	MAX_SECRET_SWAP_WALK_NODES,
+	SECRET_SWAP_UNBOUNDED,
+} from "../../security/secret-swap";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
@@ -66,6 +70,20 @@ describe("AgentRuntime.useModel secret swap", () => {
 
 		expect(seenPrompt).toContain("whsec_1234567890abcdef");
 		expect(seenPrompt).not.toContain("__ELIZA_SECRET_");
+	});
+
+	it("rejects an unbounded sparse graph before model-provider dispatch", async () => {
+		const runtime = makeRuntime(true);
+		const handler = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "bounded prompt",
+				payload: new Array(MAX_SECRET_SWAP_WALK_NODES),
+			}),
+		).rejects.toMatchObject({ code: SECRET_SWAP_UNBOUNDED });
+		expect(handler).not.toHaveBeenCalled();
 	});
 
 	it("swaps secrets added by pre_model hooks before provider execution", async () => {
