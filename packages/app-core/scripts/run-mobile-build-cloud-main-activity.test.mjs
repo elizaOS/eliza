@@ -89,6 +89,14 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("else failure.addSuppressed(error);");
     expect(source).toContain("if (failure != null) throw failure;");
     expect(source).toContain('"SPEECH_RECOGNITION_STOP_FAILED"');
+    expect(source).toContain("private void stopRecognizerAfterCallback()");
+    expect(source).toContain(
+      'android.util.Log.e("ElizaPlayVoice", "Recognizer callback cleanup failed", error);',
+    );
+    expect(source).toContain('event.put("code", -1);');
+    expect(source).toContain(
+      "@Override public void onResults(Bundle results) {\n        publishTranscript(results, true);\n        stopRecognizerAfterCallback();",
+    );
     expect(source).not.toMatch(/LocalSocket|HttpURLConnection|apiKey|bionic/i);
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");

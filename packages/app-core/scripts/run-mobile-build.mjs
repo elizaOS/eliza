@@ -6473,6 +6473,21 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         if (failure != null) throw failure;
     }
 
+    private void stopRecognizerAfterCallback() {
+        try {
+            stopRecognizer();
+        } catch (RuntimeException error) {
+            // error-policy:J4 Preserve the callback result and surface cleanup failure to JS.
+            // Framework callbacks must not throw onto Android's main thread.
+            // Preserve the diagnostic locally and notify the JS owner so its
+            // bounded retry teardown remains observable.
+            android.util.Log.e("ElizaPlayVoice", "Recognizer callback cleanup failed", error);
+            JSObject event = new JSObject();
+            event.put("code", -1);
+            notifyListeners("error", event);
+        }
+    }
+
     private void publishTranscript(Bundle results, boolean isFinal) {
         ArrayList<String> values = results == null
                 ? null
@@ -6495,11 +6510,11 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         JSObject event = new JSObject();
         event.put("code", error);
         notifyListeners("error", event);
-        stopRecognizer();
+        stopRecognizerAfterCallback();
     }
     @Override public void onResults(Bundle results) {
         publishTranscript(results, true);
-        stopRecognizer();
+        stopRecognizerAfterCallback();
     }
     @Override public void onPartialResults(Bundle partialResults) {
         publishTranscript(partialResults, false);
