@@ -2119,25 +2119,35 @@ function mediaContentUrlRegions(
 			text[end] !== ">"
 		)
 			end += 1;
-		const url = text.slice(http, end);
-		const lower = url.toLowerCase();
+		const lower = lowerText.slice(http, end);
 		const scheme = lower.startsWith("https://")
 			? 8
 			: lower.startsWith("http://")
 				? 7
 				: 0;
-		const marker = lower.indexOf("/v1/", scheme);
-		if (scheme && marker >= 0 && lower.endsWith("/content")) {
-			const tail = lower.slice(marker + 4, -"/content".length);
-			const slash = tail.indexOf("/");
-			const kind = slash < 0 ? "" : tail.slice(0, slash);
-			const id = slash < 0 ? "" : tail.slice(slash + 1);
-			if (
-				["videos", "images", "audio"].includes(kind) &&
-				id &&
-				!id.includes("/")
-			) {
-				regions.push({ start: http, end });
+		if (scheme) {
+			// The endpoint may sit mid-token (trailing punctuation, query strings)
+			// and after any of several `/v1/` segments; the region ends right after
+			// `/content` so surrounding punctuation survives for later cleanup.
+			let matchEnd = -1;
+			let marker = lower.indexOf("/v1/", scheme);
+			while (marker >= 0) {
+				const kindEnd = lower.indexOf("/", marker + 4);
+				if (kindEnd >= 0) {
+					const kind = lower.slice(marker + 4, kindEnd);
+					const idEnd = lower.indexOf("/", kindEnd + 1);
+					if (
+						["videos", "images", "audio"].includes(kind) &&
+						idEnd > kindEnd + 1 &&
+						lower.startsWith("content", idEnd + 1)
+					) {
+						matchEnd = idEnd + 1 + "content".length;
+					}
+				}
+				marker = lower.indexOf("/v1/", marker + 4);
+			}
+			if (matchEnd > 0) {
+				regions.push({ start: http, end: http + matchEnd });
 			}
 		}
 		cursor = Math.max(end, http + 1);

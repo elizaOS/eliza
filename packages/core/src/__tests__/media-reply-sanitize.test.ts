@@ -26,6 +26,23 @@ describe("sanitizeReplyTextAfterMediaDelivery", () => {
 		).toBe("");
 	});
 
+	it("strips embedded endpoints wrapped in punctuation or carrying a query", () => {
+		expect(sanitizeReplyTextAfterMediaDelivery(`Saved (${url}).`, [])).toBe(
+			"Saved .",
+		);
+		expect(
+			sanitizeReplyTextAfterMediaDelivery(`Download: ${url}?download=1`, []),
+		).toBe("Download:?download=1");
+	});
+
+	it("finds the endpoint after an earlier /v1/ segment", () => {
+		const nested =
+			"http://192.168.255.164:8080/v1/proxy/v1/videos/50a2f4c2/content";
+		expect(
+			sanitizeReplyTextAfterMediaDelivery(`Here you go ${nested}`, []),
+		).toBe("");
+	});
+
 	it("preserves meaningful text that is not a URL echo", () => {
 		expect(
 			sanitizeReplyTextAfterMediaDelivery(
