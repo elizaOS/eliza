@@ -5,6 +5,7 @@
  */
 
 import { ElizaCloudClient } from "@elizaos/cloud-sdk";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { z } from "zod";
 import {
   normalizeCloudSiteUrl,
@@ -85,10 +86,13 @@ async function readPlaidJson<T>(
           error?: string;
           message?: string;
         };
-        detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        detail =
+          parsed.message ??
+          parsed.error ??
+          truncateWellFormed(toWellFormedUnicode(text), 240);
         code = typeof parsed.code === "string" ? parsed.code : null;
       } catch {
-        detail = text.slice(0, 240);
+        detail = truncateWellFormed(toWellFormedUnicode(text), 240);
       }
     }
     for (const secret of secrets) {
@@ -123,10 +127,13 @@ async function readPaypalJson<T>(response: Response): Promise<T> {
           message?: string;
           fallback?: "csv_export" | null;
         };
-        detail = parsed.message ?? parsed.error ?? text.slice(0, 240);
+        detail =
+          parsed.message ??
+          parsed.error ??
+          truncateWellFormed(toWellFormedUnicode(text), 240);
         fallback = parsed.fallback ?? null;
       } catch {
-        detail = text.slice(0, 240);
+        detail = truncateWellFormed(toWellFormedUnicode(text), 240);
       }
     }
     throw new PaypalManagedClientError(response.status, detail, fallback);

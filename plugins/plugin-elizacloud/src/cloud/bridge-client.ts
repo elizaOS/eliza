@@ -553,7 +553,8 @@ export class ElizaCloudClient {
       const parsed = JSON.parse(text) as { error?: string };
       if (parsed.error) errMessage = parsed.error;
     } catch {
-      if (text) errMessage = text.slice(0, 200);
+      if (text)
+        errMessage = truncateWellFormed(toWellFormedUnicode(text), 200);
     }
 
     if (response.status === 401) {
