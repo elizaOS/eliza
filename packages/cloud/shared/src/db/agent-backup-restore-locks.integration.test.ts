@@ -1804,7 +1804,14 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           lifecycle_generation uuid NOT NULL, lifecycle_revision numeric(20, 0) NOT NULL,
           manifest_digest text NOT NULL, manifest_version integer, catalog_state text,
           vault_key_generation_id uuid, vault_key_authority_receipt_digest text,
-          UNIQUE (id, catalog_organization_id, catalog_agent_id)
+          CONSTRAINT agent_sandbox_backups_catalog_chain_identity_unique
+            UNIQUE (id, catalog_organization_id, catalog_agent_id)
+        );
+        CREATE TABLE agent_sandboxes (
+          id uuid PRIMARY KEY,
+          organization_id uuid NOT NULL REFERENCES organizations(id),
+          activation_backup_id uuid,
+          activation_consent_head_backup_id uuid
         );
         INSERT INTO organizations VALUES ('${CLOCK_ORG_ID}');
         INSERT INTO agent_backup_catalog_authorities

@@ -5,6 +5,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { MemoryKmsAdapter } from "@elizaos/core/security/kms";
 import {
   AGENT_BACKUP_MANIFEST_FORMAT,
@@ -766,6 +767,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    // error-policy:J1 setup failure is retained for the test boundary assertion.
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -903,27 +905,66 @@ describe("strict restore catalogue authority", () => {
       throw new Error("simulated KMS failure");
     });
     try {
-      await expect(
-        createOrRotateAgentVaultKeyGeneration(
-          {
-            organizationId: ORG_ID,
-            agentId: AGENT_ID,
-            generationId: VAULT_GENERATION,
-            sourceActivationGeneration: ACTIVATION_GENERATION,
-            expectedCurrentGenerationId: null,
-          },
-          {
-            kmsClient: kms,
-            randomBytes: (size) => new Uint8Array(size).fill(0x45),
-          },
-        ),
-      ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_CREATE_FAILED" });
+      const attempt = createOrRotateAgentVaultKeyGeneration(
+        {
+          organizationId: ORG_ID,
+          agentId: AGENT_ID,
+          generationId: VAULT_GENERATION,
+          sourceActivationGeneration: ACTIVATION_GENERATION,
+          expectedCurrentGenerationId: null,
+        },
+        {
+          kmsClient: kms,
+          randomBytes: (size) => new Uint8Array(size).fill(0x45),
+        },
+      );
+      await expect(attempt).rejects.toBeInstanceOf(ElizaError);
+      await expect(attempt).rejects.toMatchObject({
+        code: "AGENT_VAULT_KEY_CREATE_FAILED",
+        cause: expect.any(Error),
+      });
       expect(borrowedPlaintext).not.toBeNull();
       expect(isZeroized(borrowedPlaintext)).toBe(true);
       expect(await dbWrite.select().from(agentVaultKeyGenerations)).toHaveLength(0);
     } finally {
       encryptSpy.mockRestore();
     }
+  });
+
+  test("rejects non-canonical restore authority inputs with typed field context", async () => {
+    const input = {
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: SHA,
+      copyRole: "primary" as const,
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d010",
+      ownerId: "restore-worker",
+      leaseMs: 60_000,
+    };
+    const uppercaseTenant = acquireAgentBackupRestoreLease({
+      ...input,
+      organizationId: ORG_ID.toUpperCase(),
+    });
+    await expect(uppercaseTenant).rejects.toBeInstanceOf(ElizaError);
+    await expect(uppercaseTenant).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "organizationId" },
+    });
+    await expect(
+      acquireAgentBackupRestoreLease({ ...input, expectedManifestSha256: SHA.toUpperCase() }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "expectedManifestSha256" },
+    });
+    await expect(
+      acquireAgentBackupRestoreLease({ ...input, ownerId: "x".repeat(256) }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "ownerId" },
+    });
   });
 
   for (const state of ["primary_verified", "secondary_pending"] as const) {
