@@ -11,9 +11,9 @@ This plugin adds two interactive surfaces to the elizaOS dashboard:
 **Orchestrator** — a multi-agent task orchestration workbench. Create task threads with goals and acceptance criteria, assign sub-agents (elizaOS, Claude Code, Codex, OpenCode, Pi Agent), monitor their timeline of events and messages, fork tasks, validate results, and send messages to running tasks — all from one panel.
 
 Both surfaces ship as dashboard GUI views. The view manifest keeps the standard
-view contract for web and desktop hosts; only signed native builds register
-lazy in-process loaders for the same components because native policy rejects
-agent-served executable JavaScript.
+view contract for every host. The developer-only `/orchestrator` route is the
+sole exception: signed native builds register a lazy in-process loader for it
+because native policy rejects agent-served executable JavaScript.
 
 The plugin also fills the coding-agent slot components that `@elizaos/ui` leaves empty until a slot provider registers them:
 - A header control chip showing active agent count with a stop-all button.

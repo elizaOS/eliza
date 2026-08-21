@@ -1,4 +1,4 @@
-/** Verifies only signed native clients receive bundled coordinator routes. */
+/** Verifies only signed native clients receive the bundled Orchestrator route. */
 
 import { describe, expect, it, vi } from "vitest";
 
@@ -33,21 +33,9 @@ describe("Task coordinator app registration", () => {
       })),
     ).toEqual([
       {
-        id: "task-coordinator",
-        label: "Task Coordinator",
-        path: "/task-coordinator",
-        viewKind: "preview",
-      },
-      {
         id: "orchestrator",
         label: "Orchestrator",
         path: "/orchestrator",
-        viewKind: "developer",
-      },
-      {
-        id: "cockpit",
-        label: "Cockpit",
-        path: "/cockpit",
         viewKind: "developer",
       },
     ]);
