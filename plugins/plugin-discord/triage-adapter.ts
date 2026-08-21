@@ -32,6 +32,8 @@ import {
 	type MessageSource,
 	type SendHandlerOutcome,
 	type TargetInfo,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import { DISCORD_SERVICE_NAME } from "./constants";
 
@@ -105,9 +107,12 @@ function metaString(
 }
 
 function clip(value: string, maxLength: number): string {
-	return value.length > maxLength
-		? `${value.slice(0, maxLength - 3)}...`
-		: value;
+	const wellFormed = toWellFormedUnicode(value);
+	if (wellFormed.length <= maxLength) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, maxLength - 3);
+	return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 function refId(discordMessageId: string): string {
