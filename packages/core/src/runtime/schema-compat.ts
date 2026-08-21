@@ -10,7 +10,9 @@
  * User-supplied tool schemas are JSON.parse-legal before this walk
  * (`plugin-openai` cerebrasMode). An 8k-deep `properties` nest or a cyclic
  * `not` graph RangeError'd the unbounded recursion on origin develop.
- * Depth, node, cycle, and accessor budgets fail closed instead.
+ * Depth, node, path-local cycle, and accessor budgets fail closed instead.
+ * Array.isArray / getPrototypeOf / length reads stay inside inspectSchema
+ * so a revoked or hostile Array Proxy cannot leak a raw TypeError.
  */
 import { ElizaError } from "../errors";
 
@@ -31,6 +33,7 @@ export const CEREBRAS_SCHEMA_UNBOUNDED = "CEREBRAS_SCHEMA_UNBOUNDED";
 
 type SchemaWalkContext = {
 	visits: number;
+	/** Path-local ancestry only. Entries are deleted on unwind so honest DAGs pass. */
 	visiting: WeakSet<object>;
 };
 
@@ -66,9 +69,16 @@ function inspectSchema<T>(operation: string, inspect: () => T): T {
 	try {
 		return inspect();
 	} catch (cause) {
+		if (isCerebrasSchemaUnbounded(cause)) {
+			throw cause;
+		}
 		// error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
 		failCerebrasSchemaUnbounded({ inspection: operation }, cause);
 	}
+}
+
+function safeIsArray(value: unknown): boolean {
+	return inspectSchema("isArray", () => Array.isArray(value));
 }
 
 function ownEnumerableStringKeys(value: object): string[] {
@@ -102,18 +112,39 @@ function ownArrayLength(value: unknown[]): number {
 	const descriptor = inspectSchema("getOwnPropertyDescriptor", () =>
 		Object.getOwnPropertyDescriptor(value, "length"),
 	);
-	const length =
-		descriptor && "value" in descriptor ? descriptor.value : value.length;
+	if (!descriptor || !("value" in descriptor)) {
+		failCerebrasSchemaUnbounded({
+			arrayLength: true,
+			missingOwnLength: true,
+		});
+	}
+	const length = descriptor.value;
 	if (typeof length !== "number" || !Number.isFinite(length) || length < 0) {
 		failCerebrasSchemaUnbounded({ arrayLength: length });
 	}
 	return Math.trunc(length);
 }
 
+function ownArrayValues(value: unknown[]): unknown[] {
+	const length = ownArrayLength(value);
+	const mapped: unknown[] = [];
+	for (let index = 0; index < length; index += 1) {
+		const descriptor = ownValueDescriptor(value, String(index));
+		mapped.push(descriptor ? descriptor.value : undefined);
+	}
+	return mapped;
+}
+
 function isArrayRecord(value: unknown): value is unknown[] {
-	return (
-		Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype
-	);
+	return inspectSchema("isArrayRecord", () => {
+		return (
+			Array.isArray(value) && Object.getPrototypeOf(value) === Array.prototype
+		);
+	});
+}
+
+function hasNonEmptyOwnArray(value: unknown): boolean {
+	return isArrayRecord(value) && ownArrayLength(value) > 0;
 }
 
 function cloneOwnData(value: object): Record<string, unknown> {
@@ -137,9 +168,9 @@ function createSchemaWalkContext(): SchemaWalkContext {
 
 function hasIllegalCerebrasRoot(node: Record<string, unknown>): boolean {
 	if (node.type !== "object") return true;
-	if (Array.isArray(node.oneOf) && node.oneOf.length > 0) return true;
-	if (Array.isArray(node.anyOf) && node.anyOf.length > 0) return true;
-	if (Array.isArray(node.enum)) return true;
+	if (hasNonEmptyOwnArray(node.oneOf)) return true;
+	if (hasNonEmptyOwnArray(node.anyOf)) return true;
+	if (isArrayRecord(node.enum)) return true;
 	if (node.not !== undefined) return true;
 	return false;
 }
@@ -177,7 +208,7 @@ const SCHEMA_MAP_KEYS = [
 ] as const;
 
 function isSchemaRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+	return Boolean(value) && typeof value === "object" && !safeIsArray(value);
 }
 
 const OBJECT_SCHEMA_KEYS = [
@@ -198,7 +229,8 @@ function describesObjectSchema(node: Record<string, unknown>): boolean {
 	const type = node.type;
 	return (
 		type === "object" ||
-		(Array.isArray(type) && type.includes("object")) ||
+		(safeIsArray(type) &&
+			ownArrayValues(type as unknown[]).includes("object")) ||
 		OBJECT_SCHEMA_KEYS.some((key) => key in node)
 	);
 }
@@ -209,11 +241,12 @@ function enforceStrictObjectShape(node: Record<string, unknown>): void {
 
 	const properties = node.properties;
 	const hasProperties =
-		isSchemaRecord(properties) && Object.keys(properties).length > 0;
-	const hasAnyOf = Array.isArray(node.anyOf) && node.anyOf.length > 0;
+		isSchemaRecord(properties) &&
+		ownEnumerableStringKeys(properties).length > 0;
+	const hasAnyOf = hasNonEmptyOwnArray(node.anyOf);
 	if (!hasProperties && !hasAnyOf) {
 		node.properties = {};
-		if (Array.isArray(node.required) && node.required.length === 0) {
+		if (isArrayRecord(node.required) && ownArrayLength(node.required) === 0) {
 			delete node.required;
 		}
 	}
@@ -357,7 +390,7 @@ function normalizeSchemaForCerebrasWalk(
 	depth: number,
 	ctx: SchemaWalkContext,
 ): unknown {
-	if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+	if (!schema || typeof schema !== "object" || safeIsArray(schema)) {
 		// A missing/non-object tool schema means the tool takes no arguments.
 		if (isRoot) {
 			return options.strict === false
@@ -379,38 +412,44 @@ function normalizeSchemaForCerebrasWalk(
 	ctx.visiting.add(schema);
 	reserveSchemaVisits(ctx, 1);
 
-	let node = cloneOwnData(schema);
+	try {
+		let node = cloneOwnData(schema);
 
-	if (isRoot && hasIllegalCerebrasRoot(node)) {
-		// Wrap the cloned schema under properties.value so the model still
-		// emits a structured payload Cerebras's grammar compiler accepts.
-		// Walking the clone (not the original) keeps cycle detection honest
-		// when the illegal root is the same object the children point at.
-		node = {
-			type: "object",
-			properties: { value: node },
-			required: ["value"],
-			additionalProperties: false,
-		};
-	}
-
-	if (options.strict !== false) {
-		enforceStrictObjectShape(node);
-		// Cerebras's strict grammar compiler rejects `oneOf` outright
-		// ("Unsupported JSON schema fields ... oneOf") while accepting `anyOf`
-		// — verified against the live API with otherwise-identical payloads.
-		// The weakening from exclusive-or to inclusive-or is immaterial here:
-		// constrained generation emits a single value, and runtime validation
-		// re-checks the parsed arguments. Non-strict schemas keep `oneOf`.
-		if (Array.isArray(node.oneOf) && node.oneOf.length > 0) {
-			const existing = Array.isArray(node.anyOf) ? node.anyOf : [];
-			node.anyOf = [...existing, ...node.oneOf];
-			delete node.oneOf;
+		if (isRoot && hasIllegalCerebrasRoot(node)) {
+			// Wrap the cloned schema under properties.value so the model still
+			// emits a structured payload Cerebras's grammar compiler accepts.
+			// Walking the clone (not the original) keeps cycle detection honest
+			// when the illegal root is the same object the children point at.
+			node = {
+				type: "object",
+				properties: { value: node },
+				required: ["value"],
+				additionalProperties: false,
+			};
 		}
-	}
 
-	walkSchemaChildren(node, options, depth, ctx);
-	return node;
+		if (options.strict !== false) {
+			enforceStrictObjectShape(node);
+			// Cerebras's strict grammar compiler rejects `oneOf` outright
+			// ("Unsupported JSON schema fields ... oneOf") while accepting `anyOf`
+			// — verified against the live API with otherwise-identical payloads.
+			// The weakening from exclusive-or to inclusive-or is immaterial here:
+			// constrained generation emits a single value, and runtime validation
+			// re-checks the parsed arguments. Non-strict schemas keep `oneOf`.
+			if (hasNonEmptyOwnArray(node.oneOf)) {
+				const existing = isArrayRecord(node.anyOf)
+					? ownArrayValues(node.anyOf)
+					: [];
+				node.anyOf = [...existing, ...ownArrayValues(node.oneOf as unknown[])];
+				delete node.oneOf;
+			}
+		}
+
+		walkSchemaChildren(node, options, depth, ctx);
+		return node;
+	} finally {
+		ctx.visiting.delete(schema);
+	}
 }
 
 export function normalizeSchemaForCerebras(
