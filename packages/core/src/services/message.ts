@@ -9357,6 +9357,21 @@ export async function runV5MessageRuntimeStage1(args: {
 						) {
 							return prePatchStageOneReply;
 						}
+						// A promotion patch that CLEARED the answer outright (clearReply,
+						// e.g. core.simple_registered_action_request keyword-matching a
+						// conversational remark to TASKS) is the same disarm with a worse
+						// outcome: the planner sanely refuses the forced tool, the miss
+						// cap exhausts with no captured text, and the user gets the
+						// canned apology in place of the good answer Stage 1 already
+						// wrote ("test the cloud app version" in a group chat → "i'm
+						// sorry, i couldn't quite finish that", live 2026-08-21).
+						if (
+							prePatchStageOneReply &&
+							postPatch === undefined &&
+							!prePatchStageOneReplyIsUngroundedAppliedClaim
+						) {
+							return prePatchStageOneReply;
+						}
 						return postPatch;
 					})(),
 					// Per-turn miss-budget cap for answered turns escalated only by a
