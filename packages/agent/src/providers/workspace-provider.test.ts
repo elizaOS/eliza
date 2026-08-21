@@ -57,15 +57,18 @@ describe("workspace provider truncation", () => {
     expect(truncate("longer", -1)).toBe("");
   });
 
-  it("keeps surrogate pairs intact at the truncation boundary", () => {
+  it("keeps surrogate pairs intact at exact and max-plus-one boundaries", () => {
     const max = 20_000;
     const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
     const budget = max - suffix.length;
-    const text = `${"a".repeat(budget - 1)}🦊${"b".repeat(100)}`;
-    const out = truncate(text, max);
-    expect(out.length).toBeLessThanOrEqual(max);
-    expect(out.length).toBeGreaterThanOrEqual(max - 1);
-    expect(out.isWellFormed()).toBe(true);
+    const exact = `${"a".repeat(max - 2)}🦊`;
+    expect(exact.length).toBe(max);
+    expect(truncate(exact, max)).toBe(exact);
+
+    const maxPlusOne = `${"a".repeat(budget - 1)}🦊${"b".repeat(suffix.length)}`;
+    expect(maxPlusOne.length).toBe(max + 1);
+    const out = truncate(maxPlusOne, max);
+    expect(out.length).toBe(max - 1);
     expect(isWellFormed(out)).toBe(true);
     expect(out.endsWith(suffix)).toBe(true);
     expect(out.startsWith("a".repeat(budget - 1))).toBe(true);
@@ -87,26 +90,31 @@ describe("workspace provider truncation", () => {
     const out = truncate(lone, 20_000);
     expect(out).toContain("�");
     expect(isWellFormed(out)).toBe(true);
-    expect(out.isWellFormed()).toBe(true);
   });
 
-  it("sanitizes lone surrogates without truncation when under limit", () => {
-    const lone = `ok \uD800 end`;
-    const out = truncate(lone, 100);
-    expect(out).toBe(`ok � end`);
-    expect(isWellFormed(out)).toBe(true);
+  it("sanitizes either lone surrogate half without truncation", () => {
+    for (const lone of [`ok \uD800 end`, `ok \uDC00 end`]) {
+      const out = truncate(lone, 100);
+      expect(out).toBe(`ok � end`);
+      expect(isWellFormed(out)).toBe(true);
+    }
+  });
+
+  it("preserves prefix whitespace before the truncation marker", () => {
+    const max = 100;
+    const suffix = `\n\n[... truncated at ${max.toLocaleString()} chars]`;
+    const budget = max - suffix.length;
+    const text = `${"a".repeat(budget - 2)}  ${"x".repeat(suffix.length + 1)}`;
+    expect(truncate(text, max)).toBe(`${"a".repeat(budget - 2)}  ${suffix}`);
   });
 
   it("never emits lone surrogates at every boundary around the suffix", () => {
     const max = 50;
     for (let n = 0; n <= max + 5; n++) {
-      const text = `x`.repeat(n) + `🦊`;
+      const text = `${`x`.repeat(n)}🦊`;
       const out = truncate(text, max);
       expect(isWellFormed(out)).toBe(true);
-      expect(out.isWellFormed()).toBe(true);
-      expect(out.length).toBeLessThanOrEqual(
-        Math.max(n <= max ? n : max, out.length),
-      );
+      expect(out.length).toBeLessThanOrEqual(max);
     }
   });
 });
