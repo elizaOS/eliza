@@ -12,6 +12,7 @@ import type {
   Service,
   State,
 } from "@elizaos/core";
+import { existsSync, readdirSync } from "node:fs";
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
@@ -448,12 +449,35 @@ function recentCompletedLines(all: SessionInfo[]): string[] {
   if (done.length === 0) return [];
   return [
     "## Recently finished sub-agent work (last 30 min)",
-    "Ground truth for follow-ups on a finished deliverable — its files live in the listed workdir. For run-it/show-me follow-ups use SEND_TO_AGENT { sessionId, text } (the orchestrator reopens the work in the right directory). Never guess paths or search the filesystem for these files.",
+    "Ground truth for follow-ups on a finished deliverable. When files are listed, they are verified on disk in the workdir. When the workdir was cleaned up, the ONLY working route is SEND_TO_AGENT { sessionId, text } — the orchestrator rebuilds and reopens the work; a SHELL path there fails. Never guess paths or search the filesystem for these files.",
     ...done.map(
       (s) =>
-        `- [${labelOf(s)}] sessionId=${s.id} status=${s.status} workdir=${s.workdir}`,
+        `- [${labelOf(s)}] sessionId=${s.id} status=${s.status} ${describeFinishedWorkdir(s.workdir)}`,
     ),
   ];
+}
+
+/** Scratch workdirs are garbage-collected shortly after completion, so a
+ *  listed path may already be gone — the planner then runs a doomed SHELL
+ *  against it (live 2026-08-20: python3 <gc'd workspace>/main.py errored and
+ *  the turn ended in an apology). Verify on disk and, when present, name the
+ *  few real files so a run-it follow-up needs zero guessing. */
+function describeFinishedWorkdir(workdir: string): string {
+  try {
+    if (!workdir || !existsSync(workdir)) {
+      return "workdir=(cleaned up — reopen via SEND_TO_AGENT)";
+    }
+    const files = readdirSync(workdir)
+      .filter((name) => !name.startsWith(".") && name !== "node_modules" && name !== "venv")
+      .slice(0, 4);
+    return files.length > 0
+      ? `workdir=${workdir} files=${files.join(",")}`
+      : `workdir=${workdir} (empty)`;
+  } catch {
+    // error-policy:J4 disk probe is per-line enrichment; an unreadable dir
+    // degrades to the bare path rather than dropping the session line.
+    return `workdir=${workdir}`;
+  }
 }
 
 function emptyResult(
