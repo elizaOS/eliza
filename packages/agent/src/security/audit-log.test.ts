@@ -3,13 +3,13 @@
  * append-only recording, trimming, query filters, subscriptions, and the
  * token-replacement/capability/policy helpers.
  */
-import { describe, expect, it, beforeEach, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  SandboxAuditLog,
-  queryAuditFeed,
-  subscribeAuditFeed,
-  getAuditFeedSize,
   __resetAuditFeedForTests,
+  getAuditFeedSize,
+  queryAuditFeed,
+  SandboxAuditLog,
+  subscribeAuditFeed,
 } from "./audit-log.ts";
 
 describe("SandboxAuditLog", () => {
@@ -40,19 +40,28 @@ describe("SandboxAuditLog", () => {
         severity: "info",
       });
     }
-    // Trim keeps floor(max/2) entries and never exceeds maxEntries.
-    expect(log.size).toBeGreaterThan(0);
-    expect(log.size).toBeLessThanOrEqual(10);
-    expect(log.size).toBeGreaterThanOrEqual(5);
-    // Newest entries survive; oldest are dropped.
+    // Each overflow keeps the newest floor(max/2) entries. The second trim
+    // happens at event 16, then events 17-19 append normally.
+    expect(log.size).toBe(8);
     const summaries = log.getRecent(100).map((e) => e.summary);
-    expect(summaries[0]).not.toBe("event 0");
-    expect(summaries[summaries.length - 1]).toBe("event 19");
+    expect(summaries).toEqual([
+      "event 12",
+      "event 13",
+      "event 14",
+      "event 15",
+      "event 16",
+      "event 17",
+      "event 18",
+      "event 19",
+    ]);
   });
 
   it("records token replacement with metadata (outbound)", () => {
     const log = new SandboxAuditLog({ console: false });
-    log.recordTokenReplacement("outbound", "https://api.x.com", ["tok-1", "tok-2"]);
+    log.recordTokenReplacement("outbound", "https://api.x.com", [
+      "tok-1",
+      "tok-2",
+    ]);
     const entry = log.getByType("secret_token_replacement_outbound")[0];
     expect(entry.metadata?.tokenCount).toBe(2);
     expect(entry.metadata?.tokenIds).toBe("tok-1,tok-2");
@@ -89,7 +98,11 @@ describe("SandboxAuditLog", () => {
   it("invokes a configured sink", () => {
     const sink = vi.fn();
     const log = new SandboxAuditLog({ console: false, sink });
-    log.record({ type: "security_kill_switch", summary: "kill", severity: "critical" });
+    log.record({
+      type: "security_kill_switch",
+      summary: "kill",
+      severity: "critical",
+    });
     expect(sink).toHaveBeenCalledTimes(1);
     expect(sink.mock.calls[0][0].type).toBe("security_kill_switch");
   });
@@ -97,11 +110,14 @@ describe("SandboxAuditLog", () => {
   it("getRecent returns the newest N", () => {
     const log = new SandboxAuditLog({ console: false });
     for (let i = 0; i < 5; i++) {
-      log.record({ type: "sandbox_lifecycle", summary: `e${i}`, severity: "info" });
+      log.record({
+        type: "sandbox_lifecycle",
+        summary: `e${i}`,
+        severity: "info",
+      });
     }
     const recent = log.getRecent(2);
-    expect(recent).toHaveLength(2);
-    expect(recent[0].summary).toBe("e3");
+    expect(recent.map((entry) => entry.summary)).toEqual(["e3", "e4"]);
   });
 
   it("getByType filters by type", () => {
@@ -148,7 +164,9 @@ describe("audit feed (process-wide)", () => {
     const firstTs = Date.parse(log.getRecent(1)[0].timestamp);
     log.record({ type: "sandbox_lifecycle", summary: "b", severity: "info" });
     // Entries at or after firstTs are included (both were recorded at ~now).
-    expect(queryAuditFeed({ sinceMs: firstTs }).length).toBeGreaterThanOrEqual(1);
+    expect(queryAuditFeed({ sinceMs: firstTs }).length).toBeGreaterThanOrEqual(
+      1,
+    );
     // A far-future sinceMs excludes everything.
     expect(queryAuditFeed({ sinceMs: Date.now() + 60_000 })).toHaveLength(0);
   });
@@ -156,9 +174,16 @@ describe("audit feed (process-wide)", () => {
   it("bounds the limit", () => {
     const log = new SandboxAuditLog({ console: false });
     for (let i = 0; i < 5; i++) {
-      log.record({ type: "sandbox_lifecycle", summary: `e${i}`, severity: "info" });
+      log.record({
+        type: "sandbox_lifecycle",
+        summary: `e${i}`,
+        severity: "info",
+      });
     }
-    expect(queryAuditFeed({ limit: 2 })).toHaveLength(2);
+    expect(queryAuditFeed({ limit: 2 }).map((entry) => entry.summary)).toEqual([
+      "e3",
+      "e4",
+    ]);
   });
 
   it("handles invalid sinceMs and limit gracefully", () => {
