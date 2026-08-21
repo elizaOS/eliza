@@ -15,6 +15,7 @@
  * about its own death) — wiring that schedule is infra, not this module.
  */
 
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 import { writeCloudApiDbHeartbeat } from "./cloud-api-db-heartbeat";
 import {
@@ -24,20 +25,98 @@ import {
 } from "./provisioning-worker-health";
 
 const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+const ALERT_TITLE_MAX_CHARS = 512;
+const ALERT_MESSAGE_MAX_CHARS = 4_000;
+const ALERT_DETAILS_MAX_CHARS = 8_000;
+
+type AlertTransport = (input: string, init?: RequestInit) => Promise<Response>;
+
+function boundedAlertText(value: string, maxChars: number): string {
+  const wellFormed = value.toWellFormed();
+  return wellFormed.length <= maxChars
+    ? wellFormed
+    : `${wellFormed.slice(0, maxChars - 1).toWellFormed()}…`;
+}
+
+function boundedAlertDetails(details: Record<string, unknown>): Record<string, unknown> {
+  const seen = new WeakSet<object>();
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(details, (_key, value: unknown) => {
+      if (typeof value === "bigint") return value.toString();
+      if (typeof value === "string") return boundedAlertText(value, ALERT_MESSAGE_MAX_CHARS);
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) return "[circular]";
+        seen.add(value);
+      }
+      return value;
+    });
+  } catch {
+    // error-policy:J3 untrusted diagnostic details become an explicit invalid
+    // marker instead of preventing every configured alert channel from firing.
+    return { serializationError: "Alert details were not serializable" };
+  }
+
+  if (serialized === undefined) {
+    return { serializationError: "Alert details did not serialize to JSON" };
+  }
+
+  if (serialized.length <= ALERT_DETAILS_MAX_CHARS) {
+    const parsed: unknown = JSON.parse(serialized);
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : { value: parsed };
+  }
+  return {
+    truncated: true,
+    preview: boundedAlertText(serialized, ALERT_DETAILS_MAX_CHARS),
+  };
+}
 
 /**
- * Bound every ops-alert hop so a hung webhook cannot pin the monitor. A
- * caller-provided abort signal wins.
+ * Bound every ops-alert hop so a hung webhook cannot pin the monitor. The
+ * canonical transport validates and pins every redirect hop; redirects are
+ * rejected here because alert POST bodies must never be replayed elsewhere.
  */
-export function alertFetch(
-  input: RequestInfo | URL,
+export async function alertFetch(
+  input: string,
   init?: RequestInit,
   timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
-  });
+  transport: AlertTransport = safeFetch,
+): Promise<void> {
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw new RangeError("Alert request timeout must be a positive 32-bit safe integer");
+  }
+  const deadlineController = new AbortController();
+  const deadlineTimer = setTimeout(() => {
+    deadlineController.abort(new DOMException("Alert request timed out", "TimeoutError"));
+  }, timeoutMs);
+  try {
+    const signal = init?.signal
+      ? AbortSignal.any([init.signal, deadlineController.signal])
+      : deadlineController.signal;
+    const response = await transport(input, {
+      ...init,
+      redirect: "error",
+      signal,
+    });
+    try {
+      if (!response.ok) {
+        throw new Error(`Alert endpoint returned HTTP ${response.status}`);
+      }
+    } finally {
+      try {
+        await response.body?.cancel();
+      } catch (cleanupError) {
+        // error-policy:J6 best-effort teardown of an unused alert response body.
+        logger.warn("[ProvisioningWorkerHealth] Failed to cancel alert response body", {
+          error: cleanupError,
+        });
+      }
+    }
+  } finally {
+    clearTimeout(deadlineTimer);
+  }
 }
 
 /**
@@ -93,49 +172,66 @@ export function isHeartbeatStale(
  * PagerDuty uses a fixed dedup key so a sustained outage is ONE incident, not
  * one per monitor tick.
  */
-export async function sendProvisioningWorkerAlert(alert: DaemonHealthAlert): Promise<void> {
-  logger.error(`[ProvisioningWorkerHealth] ${alert.title}`, {
-    message: alert.message,
-    ...alert.details,
-  });
-
+export async function sendProvisioningWorkerAlert(
+  alert: DaemonHealthAlert,
+  deps: { transport?: AlertTransport } = {},
+): Promise<void> {
   const slackWebhook = process.env[ALERT_SLACK_WEBHOOK_ENV];
   const pagerDutyKey = process.env[ALERT_PAGERDUTY_KEY_ENV];
+  const title = boundedAlertText(alert.title, ALERT_TITLE_MAX_CHARS);
+  const message = boundedAlertText(alert.message, ALERT_MESSAGE_MAX_CHARS);
+  const details = boundedAlertDetails(alert.details);
+  logger.error(`[ProvisioningWorkerHealth] ${title}`, { message, ...details });
 
   const sends: Promise<unknown>[] = [];
 
   if (slackWebhook) {
     sends.push(
-      alertFetch(slackWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: `🚨 *[elizaOS Provisioning]* ${alert.title}\n${alert.message}`,
-        }),
-      }),
+      alertFetch(
+        slackWebhook,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: `🚨 *[elizaOS Provisioning]* ${title}\n${message}`,
+          }),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        deps.transport,
+      ),
     );
   }
 
   if (pagerDutyKey) {
     sends.push(
-      alertFetch("https://events.pagerduty.com/v2/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          routing_key: pagerDutyKey,
-          event_action: "trigger",
-          dedup_key: alert.dedupKey ?? "provisioning-worker-unhealthy",
-          payload: {
-            summary: `[elizaOS Provisioning] ${alert.title}`,
-            severity: "critical",
-            source: "eliza-cloud-provisioning-worker",
-            custom_details: { message: alert.message, ...alert.details },
-          },
-        }),
-      }),
+      alertFetch(
+        "https://events.pagerduty.com/v2/enqueue",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            routing_key: boundedAlertText(pagerDutyKey, ALERT_TITLE_MAX_CHARS),
+            event_action: "trigger",
+            dedup_key: boundedAlertText(
+              alert.dedupKey ?? "provisioning-worker-unhealthy",
+              ALERT_TITLE_MAX_CHARS,
+            ),
+            payload: {
+              summary: `[elizaOS Provisioning] ${title}`,
+              severity: "critical",
+              source: "eliza-cloud-provisioning-worker",
+              custom_details: { message, ...details },
+            },
+          }),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        deps.transport,
+      ),
     );
   }
 
+  // error-policy:J7 alert-channel failures must be observable without killing
+  // the scheduled monitor after its structured primary error was recorded.
   const results = await Promise.allSettled(sends);
   const failures = results.filter((r) => r.status === "rejected").length;
   if (failures > 0) {

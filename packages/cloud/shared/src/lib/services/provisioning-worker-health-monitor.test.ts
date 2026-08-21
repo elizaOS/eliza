@@ -1,5 +1,5 @@
 // Exercises provisioning worker health monitor behavior with deterministic cloud-shared lib fixtures.
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, mock } from "bun:test";
 import type { ProvisioningWorkerHealth } from "./provisioning-worker-health";
 import {
   alertFetch,
@@ -9,7 +9,6 @@ import {
 } from "./provisioning-worker-health-monitor";
 
 const NOW = Date.parse("2026-06-28T00:00:00.000Z");
-
 describe("isHeartbeatStale", () => {
   it("treats a fresh heartbeat as not stale", () => {
     const fresh = new Date(NOW - 1_000).toISOString();
@@ -139,49 +138,73 @@ describe("monitorProvisioningWorkerHealth", () => {
     const { sendProvisioningWorkerAlert } = await import("./provisioning-worker-health-monitor");
     const prevSlack = process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
     const prevPd = process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
-    const realFetch = globalThis.fetch;
-    const posted: string[] = [];
-    globalThis.fetch = (async (url: string | URL | Request) => {
-      posted.push(String(url));
+    const posted: Array<{ url: string; init?: RequestInit }> = [];
+    const transport = async (url: string, init?: RequestInit) => {
+      posted.push({ url, init });
       return new Response("ok");
-    }) as typeof fetch;
+    };
     try {
       // No channels configured: structured log only, no fetch, no throw.
       delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
       delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
-      await sendProvisioningWorkerAlert({
-        title: "t",
-        message: "m",
-        details: { code: "TEST" },
-      });
+      await sendProvisioningWorkerAlert(
+        { title: "t", message: "m", details: { code: "TEST" } },
+        { transport },
+      );
       expect(posted).toHaveLength(0);
 
       // Both channels configured: one POST each (Slack webhook + PagerDuty).
       process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = "https://hooks.slack.example/T/B/x";
       process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = "pd-routing-key";
-      await sendProvisioningWorkerAlert({
-        title: "t",
-        message: "m",
-        details: { code: "TEST" },
-        dedupKey: "test-dedup",
-      });
+      await sendProvisioningWorkerAlert(
+        {
+          title: "t".repeat(1_000),
+          message: "m".repeat(10_000),
+          details: { code: "TEST", diagnostic: "d".repeat(20_000) },
+          dedupKey: "test-dedup",
+        },
+        { transport },
+      );
       expect(posted).toHaveLength(2);
-      expect(posted[0]).toBe("https://hooks.slack.example/T/B/x");
-      expect(posted[1]).toBe("https://events.pagerduty.com/v2/enqueue");
+      expect(posted[0]?.url).toBe("https://hooks.slack.example/T/B/x");
+      expect(posted[1]?.url).toBe("https://events.pagerduty.com/v2/enqueue");
+      for (const post of posted) {
+        expect(post.init?.method).toBe("POST");
+        expect(post.init?.redirect).toBe("error");
+        expect(post.init?.signal).toBeDefined();
+        expect(String(post.init?.body).length).toBeLessThan(20_000);
+        expect(() => JSON.parse(String(post.init?.body))).not.toThrow();
+      }
     } finally {
-      globalThis.fetch = realFetch;
       if (prevSlack === undefined) delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
       else process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = prevSlack;
       if (prevPd === undefined) delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
       else process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = prevPd;
     }
   });
+
+  it("keeps channel HTTP failures non-fatal after the primary structured alert", async () => {
+    const previous = process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
+    process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = "https://hooks.slack.example/T/B/x";
+    try {
+      const { sendProvisioningWorkerAlert } = await import("./provisioning-worker-health-monitor");
+      await expect(
+        sendProvisioningWorkerAlert(
+          { title: "t", message: "m", details: { code: "TEST" } },
+          { transport: async () => new Response("down", { status: 503 }) },
+        ),
+      ).resolves.toBeUndefined();
+    } finally {
+      if (previous === undefined) delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
+      else process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = previous;
+    }
+  });
 });
 
 describe("alertFetch — bounded alert hops fail closed and keep caller signals", () => {
   it("aborts a hung alert hop at the configured timeout", async () => {
-    globalThis.fetch = mock(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
+    const transport = mock(
+      (_input: string, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted.", "AbortError"));
@@ -191,22 +214,79 @@ describe("alertFetch — bounded alert hops fail closed and keep caller signals"
 
     const start = Date.now();
     await expect(
-      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 100),
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 100, transport),
     ).rejects.toThrow(/aborted/i);
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("composes a caller-provided abort signal with the deadline", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const transport = mock(async (_input: string, init?: RequestInit) => {
       seen = init?.signal;
       return new Response("{}", { status: 200 });
-    }) as typeof fetch;
+    });
 
     const controller = new AbortController();
-    await alertFetch("https://events.pagerduty.com/v2/enqueue", {
-      signal: controller.signal,
+    await alertFetch(
+      "https://events.pagerduty.com/v2/enqueue",
+      {
+        signal: controller.signal,
+      },
+      100,
+      transport,
+    );
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+  });
+
+  it("keeps the deadline when a caller signal never fires", async () => {
+    const transport = mock(
+      (_input: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+    const caller = new AbortController();
+    await expect(
+      alertFetch(
+        "https://events.pagerduty.com/v2/enqueue",
+        { signal: caller.signal },
+        100,
+        transport,
+      ),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(caller.signal.aborted).toBe(false);
+  });
+
+  it("still lets the caller abort ahead of the deadline", async () => {
+    const transport = mock(
+      (_input: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+    );
+    const caller = new AbortController();
+    const pending = alertFetch(
+      "https://events.pagerduty.com/v2/enqueue",
+      { signal: caller.signal },
+      1_000,
+      transport,
+    );
+    caller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("rejects non-success responses and cancels their bodies", async () => {
+    let cancelled = false;
+    const body = new ReadableStream({
+      cancel() {
+        cancelled = true;
+      },
     });
-    expect(seen).toBe(controller.signal);
+    const transport = mock(async () => new Response(body, { status: 503 }));
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 100, transport),
+    ).rejects.toThrow("HTTP 503");
+    expect(cancelled).toBe(true);
   });
 });
