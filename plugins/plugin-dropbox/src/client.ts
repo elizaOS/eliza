@@ -15,6 +15,7 @@
  * garbage, so callers can point the user at the temporary link instead.
  */
 import { ElizaError } from "@elizaos/core";
+import { readBoundedResponse } from "./bounded-response.js";
 import type {
   DropboxAccountRef,
   DropboxCredentialResolver,
@@ -30,6 +31,11 @@ export const DROPBOX_DEFAULT_CONTENT_BASE = "https://content.dropboxapi.com";
 export const DROPBOX_FETCH_TIMEOUT_MS = 30_000;
 /** Refuse to decode files larger than this as text (protects model context). */
 export const DROPBOX_MAX_TEXT_BYTES = 1_000_000;
+/** Dropbox's single-request upload endpoint accepts at most 150 MB. */
+export const DROPBOX_MAX_UPLOAD_BYTES = 150_000_000;
+
+const DROPBOX_MAX_JSON_BYTES = 4_000_000;
+const DROPBOX_MAX_ERROR_BYTES = 64_000;
 
 const MAX_PAGE_SIZE = 1000;
 
@@ -145,19 +151,38 @@ export class DropboxClient {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) {
-      throw await dropboxHttpError(response, {
-        accountId: params.accountId,
-        path: "/2/files/download",
-      });
+      throw await dropboxHttpError(
+        response,
+        { accountId: params.accountId, path: "/2/files/download" },
+        this.timeoutMs
+      );
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    if (bytes.length > DROPBOX_MAX_TEXT_BYTES || looksBinary(bytes)) {
+    const bytes = await readDropboxBody(
+      response,
+      DROPBOX_MAX_TEXT_BYTES,
+      params.path,
+      this.timeoutMs,
+      { tooLargeCode: "DROPBOX_FILE_TOO_LARGE" }
+    );
+    if (looksBinary(bytes)) {
       throw new ElizaError(
         `DropboxClient: ${params.path} does not decode as text. Use getTemporaryLink instead.`,
         { code: "DROPBOX_FILE_NOT_TEXT", context: { path: params.path, bytes: bytes.length } }
       );
     }
-    return { entry, text: new TextDecoder("utf-8", { fatal: false }).decode(bytes) };
+    try {
+      return { entry, text: new TextDecoder("utf-8", { fatal: true }).decode(bytes) };
+    } catch (cause) {
+      // error-policy:J3 invalid UTF-8 is an explicit non-text result, never replacement text.
+      throw new ElizaError(
+        `DropboxClient: ${params.path} is not valid UTF-8 text. Use getTemporaryLink instead.`,
+        {
+          code: "DROPBOX_FILE_NOT_TEXT",
+          context: { path: params.path, bytes: bytes.length },
+          cause: cause instanceof Error ? cause : undefined,
+        }
+      );
+    }
   }
 
   async upload(params: DropboxUploadInput): Promise<DropboxEntry> {
@@ -166,6 +191,15 @@ export class DropboxClient {
       typeof params.content === "string"
         ? new TextEncoder().encode(params.content)
         : params.content;
+    if (bytes.byteLength > DROPBOX_MAX_UPLOAD_BYTES) {
+      throw new ElizaError(
+        `DropboxClient: upload is ${bytes.byteLength} bytes, larger than the ${DROPBOX_MAX_UPLOAD_BYTES}-byte single-request cap.`,
+        {
+          code: "DROPBOX_FILE_TOO_LARGE",
+          context: { path: params.path, bytes: bytes.byteLength, cap: DROPBOX_MAX_UPLOAD_BYTES },
+        }
+      );
+    }
     // Copy into a plain ArrayBuffer-backed Blob so BodyInit accepts it
     // regardless of the source view's underlying buffer type.
     const body = new Blob([bytes.slice()]);
@@ -185,12 +219,18 @@ export class DropboxClient {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) {
-      throw await dropboxHttpError(response, {
-        accountId: params.accountId,
-        path: "/2/files/upload",
-      });
+      throw await dropboxHttpError(
+        response,
+        { accountId: params.accountId, path: "/2/files/upload" },
+        this.timeoutMs
+      );
     }
-    const payload = await parseJsonRecord(response, "/2/files/upload", params.accountId);
+    const payload = await parseJsonRecord(
+      response,
+      "/2/files/upload",
+      params.accountId,
+      this.timeoutMs
+    );
     return mapEntry({ ".tag": "file", ...payload });
   }
 
@@ -222,24 +262,34 @@ export class DropboxClient {
       signal: AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) {
-      throw await dropboxHttpError(response, { accountId: account.accountId, path });
+      throw await dropboxHttpError(
+        response,
+        { accountId: account.accountId, path },
+        this.timeoutMs
+      );
     }
-    return parseJsonRecord(response, path, account.accountId);
+    return parseJsonRecord(response, path, account.accountId, this.timeoutMs);
   }
 }
 
 async function parseJsonRecord(
   response: Response,
   path: string,
-  accountId: string
+  accountId: string,
+  timeoutMs: number
 ): Promise<JsonRecord> {
-  const parsed: unknown = await response.json().catch((cause: unknown) => {
+  const bytes = await readDropboxBody(response, DROPBOX_MAX_JSON_BYTES, path, timeoutMs);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (cause) {
+    // error-policy:J3 the success body is untrusted and must be valid bounded UTF-8 JSON.
     throw new ElizaError("DropboxClient: Dropbox returned a non-JSON success body.", {
       code: "DROPBOX_MALFORMED_RESPONSE",
       context: { path, accountId },
       cause: cause instanceof Error ? cause : undefined,
     });
-  });
+  }
   if (!isRecord(parsed)) {
     throw new ElizaError("DropboxClient: Dropbox returned a non-object success body.", {
       code: "DROPBOX_MALFORMED_RESPONSE",
@@ -251,11 +301,23 @@ async function parseJsonRecord(
 
 async function dropboxHttpError(
   response: Response,
-  context: { accountId: string; path: string }
+  context: { accountId: string; path: string },
+  timeoutMs: number
 ): Promise<ElizaError> {
   // error-policy:J3 the upstream error body is untrusted; an unparseable body
   // degrades to an empty record and the HTTP status still drives the code.
-  const bodyText = await response.text().catch(() => "");
+  let bodyBytes: Uint8Array = new Uint8Array();
+  try {
+    bodyBytes = await readDropboxBody(response, DROPBOX_MAX_ERROR_BYTES, context.path, timeoutMs);
+  } catch {
+    // error-policy:J3 malformed, stalled, or oversized error bodies are ignored; status is authoritative.
+  }
+  let bodyText = "";
+  try {
+    bodyText = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
+  } catch {
+    // error-policy:J3 malformed error text is ignored; HTTP status remains authoritative.
+  }
   let body: JsonRecord = {};
   try {
     const parsed: unknown = JSON.parse(bodyText);
@@ -316,6 +378,33 @@ async function dropboxHttpError(
   return new ElizaError(`DropboxClient: Dropbox request failed with status ${response.status}.`, {
     code: "DROPBOX_UPSTREAM_FAILURE",
     context: base,
+  });
+}
+
+async function readDropboxBody(
+  response: Response,
+  maxBytes: number,
+  path: string,
+  timeoutMs: number,
+  options: { tooLargeCode?: string } = {}
+): Promise<Uint8Array> {
+  return readBoundedResponse(response, maxBytes, timeoutMs, {
+    tooLarge: (declaredBytes) =>
+      new ElizaError("DropboxClient: Dropbox response exceeded the permitted body size.", {
+        code: options.tooLargeCode ?? "DROPBOX_MALFORMED_RESPONSE",
+        context: { path, cap: maxBytes, declaredBytes },
+      }),
+    timedOut: () =>
+      new ElizaError("DropboxClient: timed out while reading the Dropbox response body.", {
+        code: "DROPBOX_UPSTREAM_FAILURE",
+        context: { path, timeoutMs },
+      }),
+    readFailed: (cause) =>
+      new ElizaError("DropboxClient: failed while reading the Dropbox response body.", {
+        code: "DROPBOX_UPSTREAM_FAILURE",
+        context: { path },
+        cause: cause instanceof Error ? cause : undefined,
+      }),
   });
 }
 

@@ -268,6 +268,90 @@ describe("DropboxClient content endpoints", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("accepts the exact text cap without reading a max+1 byte", async () => {
+    const bytes = new Uint8Array(DROPBOX_MAX_TEXT_BYTES).fill(0x61);
+    const { fetchImpl } = fakeDropbox((request) => {
+      if (request.url.includes("get_metadata")) {
+        return {
+          status: 200,
+          body: fileEntry("exact.txt", "/exact.txt", { size: DROPBOX_MAX_TEXT_BYTES }),
+        };
+      }
+      return { status: 200, raw: bytes };
+    });
+    const result = await client(fetchImpl).downloadText({ accountId: "acct", path: "/exact.txt" });
+    expect(result.text).toHaveLength(DROPBOX_MAX_TEXT_BYTES);
+  });
+
+  it("cancels a dishonest max+1 stream and reports DROPBOX_FILE_TOO_LARGE", async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async (input) => {
+      if (String(input).includes("get_metadata")) {
+        return new Response(
+          JSON.stringify(fileEntry("dishonest.txt", "/dishonest.txt", { size: 1 })),
+          { status: 200 }
+        );
+      }
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(DROPBOX_MAX_TEXT_BYTES + 1).fill(0x61));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      });
+      return new Response(stream, { status: 200, headers: { "Content-Length": "1" } });
+    };
+    const error = await client(fetchImpl)
+      .downloadText({ accountId: "acct", path: "/dishonest.txt" })
+      .catch((e: unknown) => e);
+    expect((error as ElizaError).code).toBe("DROPBOX_FILE_TOO_LARGE");
+    expect(cancelled).toBe(true);
+  });
+
+  it("cancels a stalled download at the body deadline", async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async (input) => {
+      if (String(input).includes("get_metadata")) {
+        return new Response(JSON.stringify(fileEntry("stalled.txt", "/stalled.txt", { size: 1 })), {
+          status: 200,
+        });
+      }
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200 }
+      );
+    };
+    const c = new DropboxClient(resolver, {
+      apiBaseUrl: "https://api.dropbox.test",
+      contentBaseUrl: "https://content.dropbox.test",
+      fetchImpl,
+      timeoutMs: 5,
+    });
+    const error = await c
+      .downloadText({ accountId: "acct", path: "/stalled.txt" })
+      .catch((e: unknown) => e);
+    expect((error as ElizaError).code).toBe("DROPBOX_UPSTREAM_FAILURE");
+    expect(cancelled).toBe(true);
+  });
+
+  it("rejects malformed UTF-8 as non-text", async () => {
+    const { fetchImpl } = fakeDropbox((request) => {
+      if (request.url.includes("get_metadata")) {
+        return { status: 200, body: fileEntry("bad.txt", "/bad.txt", { size: 2 }) };
+      }
+      return { status: 200, raw: new Uint8Array([0xc3, 0x28]) };
+    });
+    const error = await client(fetchImpl)
+      .downloadText({ accountId: "acct", path: "/bad.txt" })
+      .catch((e: unknown) => e);
+    expect((error as ElizaError).code).toBe("DROPBOX_FILE_NOT_TEXT");
+  });
+
   it("uploads bytes with mode and returns the mapped entry", async () => {
     const { fetchImpl, requests } = fakeDropbox(() => ({
       status: 200,

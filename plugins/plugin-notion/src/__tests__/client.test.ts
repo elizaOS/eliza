@@ -182,6 +182,27 @@ describe("NotionClient.search", () => {
     expect((error as ElizaError).code).toBe("NOTION_MALFORMED_RESPONSE");
   });
 
+  it("rejects an oversized declared success body before draining it", async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("{}"));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: { "Content-Length": "4000001" } }
+      );
+    const error = await client(fetchImpl)
+      .search({ accountId: "acct", query: "q" })
+      .catch((e: unknown) => e);
+    expect((error as ElizaError).code).toBe("NOTION_MALFORMED_RESPONSE");
+    expect(cancelled).toBe(true);
+  });
+
   it("rejects an object result missing its id or url", async () => {
     const { fetchImpl } = fakeNotion(() => ({
       status: 200,

@@ -9,6 +9,7 @@
  * `ELIZA_MOCK_NOTION_BASE` for protocol-faithful mock servers in tests.
  */
 import { ElizaError } from "@elizaos/core";
+import { readBoundedResponse } from "./bounded-response.js";
 import type {
   NotionAccountRef,
   NotionAppendInput,
@@ -23,6 +24,9 @@ export const NOTION_API_VERSION = "2022-06-28";
 export const NOTION_DEFAULT_BASE_URL = "https://api.notion.com";
 /** Maximum time allowed for one Notion API request. */
 export const NOTION_FETCH_TIMEOUT_MS = 20_000;
+
+const NOTION_MAX_JSON_BYTES = 4_000_000;
+const NOTION_MAX_ERROR_BYTES = 64_000;
 
 const MAX_PAGE_SIZE = 100;
 /** Cap block-children pagination so one pathological page cannot spin forever. */
@@ -159,16 +163,16 @@ export class NotionClient {
     });
 
     if (!response.ok) {
-      throw await notionHttpError(response, { accountId: account.accountId, path });
+      throw await notionHttpError(response, { accountId: account.accountId, path }, this.timeoutMs);
     }
 
-    const parsed: unknown = await response.json().catch((cause: unknown) => {
-      throw new ElizaError("NotionClient: Notion returned a non-JSON success body.", {
-        code: "NOTION_MALFORMED_RESPONSE",
-        context: { path, accountId: account.accountId },
-        cause: cause instanceof Error ? cause : undefined,
-      });
-    });
+    const parsed = await parseNotionJson(
+      response,
+      path,
+      account.accountId,
+      NOTION_MAX_JSON_BYTES,
+      this.timeoutMs
+    );
     if (!isRecord(parsed)) {
       throw new ElizaError("NotionClient: Notion returned a non-object success body.", {
         code: "NOTION_MALFORMED_RESPONSE",
@@ -181,14 +185,24 @@ export class NotionClient {
 
 async function notionHttpError(
   response: Response,
-  context: { accountId: string; path: string }
+  context: { accountId: string; path: string },
+  timeoutMs: number
 ): Promise<ElizaError> {
   // error-policy:J3 the upstream error body is untrusted; an unparseable body
   // degrades to an empty record and the HTTP status still drives the code.
-  const body: JsonRecord = await response
-    .json()
-    .then((value: unknown) => (isRecord(value) ? value : {}))
-    .catch(() => ({}));
+  let body: JsonRecord = {};
+  try {
+    const parsed = await parseNotionJson(
+      response,
+      context.path,
+      context.accountId,
+      NOTION_MAX_ERROR_BYTES,
+      timeoutMs
+    );
+    if (isRecord(parsed)) body = parsed;
+  } catch {
+    // error-policy:J3 malformed or oversized error bodies are ignored; status remains authoritative.
+  }
   const upstreamCode = typeof body.code === "string" ? body.code : undefined;
   const upstreamMessage = typeof body.message === "string" ? body.message : undefined;
   const base = { ...context, status: response.status, upstreamCode, upstreamMessage };
@@ -227,6 +241,43 @@ async function notionHttpError(
     code: "NOTION_UPSTREAM_FAILURE",
     context: base,
   });
+}
+
+async function parseNotionJson(
+  response: Response,
+  path: string,
+  accountId: string,
+  maxBytes: number,
+  timeoutMs: number
+): Promise<unknown> {
+  const bytes = await readBoundedResponse(response, maxBytes, timeoutMs, {
+    tooLarge: (declaredBytes) =>
+      new ElizaError("NotionClient: Notion response exceeded the permitted body size.", {
+        code: "NOTION_MALFORMED_RESPONSE",
+        context: { path, accountId, cap: maxBytes, declaredBytes },
+      }),
+    timedOut: () =>
+      new ElizaError("NotionClient: timed out while reading the Notion response body.", {
+        code: "NOTION_UPSTREAM_FAILURE",
+        context: { path, accountId, timeoutMs },
+      }),
+    readFailed: (cause) =>
+      new ElizaError("NotionClient: failed while reading the Notion response body.", {
+        code: "NOTION_UPSTREAM_FAILURE",
+        context: { path, accountId },
+        cause: cause instanceof Error ? cause : undefined,
+      }),
+  });
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (cause) {
+    // error-policy:J3 the response is untrusted and must be valid bounded UTF-8 JSON.
+    throw new ElizaError("NotionClient: Notion returned a non-JSON success body.", {
+      code: "NOTION_MALFORMED_RESPONSE",
+      context: { path, accountId },
+      cause: cause instanceof Error ? cause : undefined,
+    });
+  }
 }
 
 function parseRetryAfter(value: string | null): number | null {
