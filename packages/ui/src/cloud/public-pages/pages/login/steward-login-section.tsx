@@ -2,8 +2,8 @@
  * Steward login section for the app-hosted login page.
  *
  * Supports phone OTP when Steward advertises SMS, passkey where browser
- * WebAuthn is actually available, plus email magic-link, OAuth, wallets, and
- * the post-redirect OAuth `code` consumption + cookie sync.
+ * WebAuthn is actually available, plus email magic-link, OAuth, Telegram,
+ * wallets, and the post-redirect OAuth `code` consumption + cookie sync.
  *
  * Wallet (SIWE / SIWS) sign-in is the bounded port of the wallet UI from
  * `cloud-frontend@4056e0e868` (nubs's call, 2026-07-06): gated on the live
@@ -28,6 +28,7 @@ import type {
   StewardAuthResult,
   StewardMfaRequiredResult,
   StewardProviders,
+  StewardTelegramLoginPayload,
 } from "@stwd/sdk";
 import { StewardApiError, StewardAuth } from "@stwd/sdk";
 import type { CountryCode } from "libphonenumber-js/min";
@@ -104,6 +105,11 @@ import {
   normalizePhoneForCountry,
   PHONE_COUNTRY_OPTIONS,
 } from "./phone-country";
+import {
+  getConfiguredTelegramBotId,
+  requestTelegramLogin,
+  TelegramLoginCancelledError,
+} from "./telegram-login-widget";
 
 const Github = ({ className }: { className?: string }) => (
   <svg
@@ -184,6 +190,8 @@ type Provider =
   | "discord"
   | "github"
   | "twitter"
+  | "apple"
+  | "telegram"
   | "ethereum"
   | "solana";
 
@@ -204,6 +212,23 @@ function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
 }
 
+const STEWARD_OAUTH_PROVIDERS = [
+  "google",
+  "discord",
+  "github",
+  "twitter",
+  "apple",
+] as const satisfies readonly StewardOAuthProvider[];
+
+function isStewardOAuthProviderEnabled(
+  providers: StewardProviders,
+  provider: StewardOAuthProvider,
+): boolean {
+  if (providers.oauth?.includes(provider)) return true;
+  if (provider === "apple") return false;
+  return providers[provider] === true;
+}
+
 const DEFAULT_PROVIDERS: StewardProviders = {
   passkey: true,
   email: true,
@@ -214,6 +239,7 @@ const DEFAULT_PROVIDERS: StewardProviders = {
   discord: false,
   github: false,
   twitter: false,
+  telegram: false,
   oauth: [],
 };
 
@@ -389,6 +415,7 @@ function normalizeSessionCachedProviders(
   const discord = record.discord;
   const github = record.github;
   const twitter = record.twitter;
+  const telegram = record.telegram;
   const oauth = record.oauth;
   if (
     typeof passkey !== "boolean" ||
@@ -401,7 +428,8 @@ function normalizeSessionCachedProviders(
     typeof twitter !== "boolean" ||
     !Array.isArray(oauth) ||
     !oauth.every((provider) => typeof provider === "string") ||
-    (record.sms !== undefined && typeof record.sms !== "boolean")
+    (record.sms !== undefined && typeof record.sms !== "boolean") ||
+    (telegram !== undefined && typeof telegram !== "boolean")
   ) {
     return null;
   }
@@ -416,6 +444,7 @@ function normalizeSessionCachedProviders(
     twitter,
     oauth,
     ...(typeof record.sms === "boolean" ? { sms: record.sms } : {}),
+    ...(typeof telegram === "boolean" ? { telegram } : {}),
   };
 }
 
@@ -571,9 +600,12 @@ export default function StewardLoginSection() {
         : null,
     );
 
-  const hasOAuthProviders = Boolean(
-    providers.google || providers.discord || providers.github,
+  const enabledOAuthProviders = STEWARD_OAUTH_PROVIDERS.filter((provider) =>
+    isStewardOAuthProviderEnabled(providers, provider),
   );
+  const telegramBotId = getConfiguredTelegramBotId();
+  const showTelegram = providers.telegram === true && telegramBotId !== null;
+  const hasIdentityProviders = enabledOAuthProviders.length > 0 || showTelegram;
   const showWallets = hasAnyWalletProvider(providers);
   const showPasskey =
     providers.passkey !== false && passkeyCapability?.usable === true;
@@ -1337,6 +1369,39 @@ export default function StewardLoginSection() {
     window.location.href = authorizeUrl;
   }
 
+  async function handleTelegram() {
+    if (!telegramBotId) {
+      setError("Telegram sign-in is not configured for this app.");
+      return;
+    }
+
+    setLoading("telegram");
+    setError(null);
+    try {
+      const payload: StewardTelegramLoginPayload =
+        await requestTelegramLogin(telegramBotId);
+      const result = requireCompletedAuth(
+        await auth.signInWithTelegram(payload, {
+          tenantId: STEWARD_TENANT_ID,
+        }),
+      );
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (telegramError) {
+      // A closed Telegram popup is recoverable and materially different from
+      // a provider/network failure. Keep both states visible and actionable.
+      setError(
+        telegramError instanceof TelegramLoginCancelledError
+          ? "Telegram sign-in was cancelled. Try again when you're ready."
+          : getErrorMessage(
+              telegramError,
+              "Telegram sign-in failed. Try again.",
+            ),
+      );
+    } finally {
+      setLoading(null);
+    }
+  }
+
   // First wallet click: mount the lazy wallet stack and remember which chain
   // to auto-start once it's up, so the user doesn't have to click twice.
   function handleWalletIntent(kind: WalletKind) {
@@ -2038,50 +2103,34 @@ export default function StewardLoginSection() {
         </section>
       )}
 
-      {hasOAuthProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          {providers.google && (
+      {hasIdentityProviders && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {enabledOAuthProviders.map((provider) => (
             <Button
+              key={provider}
               variant="ghost"
               type="button"
-              onClick={() => handleOAuth("google")}
+              onClick={() => handleOAuth(provider)}
               disabled={isLoading}
               className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
-              {loading === "google" ? <Spinner /> : <GoogleIcon />}{" "}
-              {t("cloud.login.button.google", { defaultValue: "Google" })}
-            </Button>
-          )}
-          {providers.discord && (
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => handleOAuth("discord")}
-              disabled={isLoading}
-              className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
-            >
-              {loading === "discord" ? (
+              {loading === provider ? (
                 <Spinner />
               ) : (
-                <DiscordIcon className="h-4 w-4" />
+                <StewardOAuthIcon provider={provider} />
               )}{" "}
-              {t("cloud.login.button.discord", { defaultValue: "Discord" })}
+              {stewardOAuthProviderLabel(provider)}
             </Button>
-          )}
-          {providers.github && (
+          ))}
+          {showTelegram && (
             <Button
               variant="ghost"
               type="button"
-              onClick={() => handleOAuth("github")}
+              onClick={handleTelegram}
               disabled={isLoading}
               className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
             >
-              {loading === "github" ? (
-                <Spinner />
-              ) : (
-                <Github className="h-4 w-4" />
-              )}{" "}
-              {t("cloud.login.button.github", { defaultValue: "GitHub" })}
+              {loading === "telegram" ? <Spinner /> : <TelegramIcon />} Telegram
             </Button>
           )}
         </div>
@@ -2198,6 +2247,75 @@ export default function StewardLoginSection() {
 function Spinner() {
   return (
     <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70 motion-reduce:animate-none" />
+  );
+}
+
+function stewardOAuthProviderLabel(provider: StewardOAuthProvider): string {
+  switch (provider) {
+    case "google":
+      return "Google";
+    case "discord":
+      return "Discord";
+    case "github":
+      return "GitHub";
+    case "twitter":
+      return "X";
+    case "apple":
+      return "Apple";
+  }
+}
+
+function StewardOAuthIcon({ provider }: { provider: StewardOAuthProvider }) {
+  switch (provider) {
+    case "google":
+      return <GoogleIcon />;
+    case "discord":
+      return <DiscordIcon className="h-4 w-4" />;
+    case "github":
+      return <Github className="h-4 w-4" />;
+    case "twitter":
+      return <XIcon />;
+    case "apple":
+      return <AppleIcon />;
+  }
+}
+
+function AppleIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.79 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.53 4.1v-.01ZM12.03 7.25C11.88 5.02 13.69 3.18 15.77 3c.29 2.58-2.34 4.5-3.74 4.25Z" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z" />
+    </svg>
+  );
+}
+
+function TelegramIcon() {
+  return (
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M21.94 4.67c.29-1.34-.48-1.87-1.37-1.54L2.78 10c-1.21.47-1.2 1.14-.21 1.45l4.57 1.43 10.58-6.68c.5-.3.96-.14.58.2l-8.57 7.74-.33 4.52c.48 0 .69-.22.96-.48l2.19-2.13 4.55 3.36c.84.46 1.44.22 1.65-.78l3.19-13.96Z" />
+    </svg>
   );
 }
 

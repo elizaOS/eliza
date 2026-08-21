@@ -138,6 +138,7 @@ function walletProviders() {
     discord: false,
     github: false,
     twitter: false,
+    telegram: false,
     oauth: [],
   };
 }
@@ -179,6 +180,8 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     const walletToggle = await screen.findByRole("button", {
       name: /Continue with a wallet/i,
     });
+    expect(screen.queryByRole("button", { name: "Apple" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Telegram" })).toBeNull();
 
     // Disclosure semantics: collapsed state has aria-expanded=false and the
     // button is NOT disabled — keyboard users can focus and activate it.

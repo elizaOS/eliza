@@ -153,19 +153,21 @@ function resolveStewardUpstream(
   return null;
 }
 
-type ProvidersBody = {
+type ProvidersData = {
+  passkey?: boolean;
+  email?: boolean;
+  siwe?: boolean;
+  siws?: boolean;
+  google?: boolean;
+  discord?: boolean;
+  github?: boolean;
+  oauth?: string[];
+  [key: string]: unknown;
+};
+
+type ProvidersBody = ProvidersData & {
   ok?: boolean;
-  data?: {
-    passkey?: boolean;
-    email?: boolean;
-    siwe?: boolean;
-    siws?: boolean;
-    google?: boolean;
-    discord?: boolean;
-    github?: boolean;
-    oauth?: string[];
-    [key: string]: unknown;
-  };
+  data?: ProvidersData;
 };
 
 function hasOAuthCreds(
@@ -322,10 +324,12 @@ async function patchProvidersResponse(
   } catch {
     return upstream;
   }
-  if (!parsed?.data) return upstream;
-
-  const oauth = new Set<string>(parsed.data.oauth ?? []);
-  const patched: ProvidersBody["data"] = { ...parsed.data };
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return upstream;
+  }
+  const providerData = parsed.data ?? parsed;
+  const oauth = new Set<string>(providerData.oauth ?? []);
+  const patched: ProvidersData = { ...providerData };
 
   for (const provider of ["google", "discord", "github"] as const) {
     if (!patched[provider] && hasOAuthCreds(env, provider)) {
@@ -335,13 +339,13 @@ async function patchProvidersResponse(
   }
   patched.oauth = [...oauth];
 
-  return Response.json(
-    { ...parsed, data: patched },
-    {
-      status: upstream.status,
-      headers: upstream.headers,
-    },
-  );
+  const body = parsed.data
+    ? { ...parsed, data: patched }
+    : { ...parsed, ...patched };
+  return Response.json(body, {
+    status: upstream.status,
+    headers: upstream.headers,
+  });
 }
 
 export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {

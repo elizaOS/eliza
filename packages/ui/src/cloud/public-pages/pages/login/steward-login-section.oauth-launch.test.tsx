@@ -21,6 +21,12 @@ const oauthState = vi.hoisted(() => ({
   storeVerifier: true,
   storedVerifierArgs: [] as Array<{ verifier: string; state?: string }>,
   authorizeUrlOptions: [] as Array<Record<string, unknown>>,
+  telegramSignIns: [] as Array<{
+    payload: Record<string, unknown>;
+    config: Record<string, unknown>;
+  }>,
+  syncedSessions: [] as Array<unknown[]>,
+  storedToken: null as string | null,
 }));
 
 vi.mock("@elizaos/shared/steward-session-client", async () => {
@@ -29,6 +35,11 @@ vi.mock("@elizaos/shared/steward-session-client", async () => {
   >("@elizaos/shared/steward-session-client");
   return {
     ...actual,
+    hasStewardAuthedCookie: () => false,
+    readStoredStewardToken: () => oauthState.storedToken,
+    writeStoredStewardToken: (token: string) => {
+      oauthState.storedToken = token;
+    },
     generateStewardOAuthState: () => "state-1",
     buildStewardOAuthAuthorizeUrl: (
       provider: string,
@@ -55,14 +66,39 @@ vi.mock("@stwd/sdk", () => ({
         google: true,
         discord: true,
         github: true,
-        twitter: false,
-        oauth: ["google"],
+        twitter: true,
+        telegram: true,
+        oauth: ["google", "discord", "github", "twitter", "apple"],
       });
     }
     refreshSession() {
       return Promise.resolve(null);
     }
+    signInWithTelegram(
+      payload: Record<string, unknown>,
+      config: Record<string, unknown>,
+    ) {
+      oauthState.telegramSignIns.push({ payload, config });
+      return Promise.resolve({
+        token: "telegram-token",
+        refreshToken: "telegram-refresh",
+        expiresIn: 900,
+        user: { id: "telegram-user", email: null },
+      });
+    }
   },
+}));
+
+vi.mock("./telegram-login-widget", () => ({
+  TelegramLoginCancelledError: class TelegramLoginCancelledError extends Error {},
+  getConfiguredTelegramBotId: () => "7684336618",
+  requestTelegramLogin: () =>
+    Promise.resolve({
+      id: 42,
+      first_name: "Eliza",
+      auth_date: 1_787_000_000,
+      hash: "signed-payload",
+    }),
 }));
 
 vi.mock("./passkey-capability", () => ({
@@ -91,7 +127,10 @@ vi.mock("../../lib/steward-session", () => ({
   exchangeStewardCodeViaApi: () => Promise.resolve({}),
   recoverStewardSessionViaCookie: () => Promise.resolve(null),
   refreshStewardSessionViaCookie: () => Promise.resolve({ ok: true as const }),
-  syncStewardSessionCookie: () => Promise.resolve(),
+  syncStewardSessionCookie: (...args: unknown[]) => {
+    oauthState.syncedSessions.push(args);
+    return Promise.resolve();
+  },
 }));
 
 vi.mock("../../lib/login-return-to", () => ({
@@ -154,6 +193,9 @@ describe("StewardLoginSection OAuth launch", () => {
     oauthState.storeVerifier = true;
     oauthState.storedVerifierArgs = [];
     oauthState.authorizeUrlOptions = [];
+    oauthState.telegramSignIns = [];
+    oauthState.syncedSessions = [];
+    oauthState.storedToken = null;
   });
 
   afterEach(() => {
@@ -164,9 +206,15 @@ describe("StewardLoginSection OAuth launch", () => {
     }
   });
 
-  it.each(["Google", "Discord", "GitHub"])(
+  it.each([
+    ["Google", "google"],
+    ["Discord", "discord"],
+    ["GitHub", "github"],
+    ["X", "twitter"],
+    ["Apple", "apple"],
+  ])(
     "navigates the current document for %s without opening a popup",
-    async (providerLabel) => {
+    async (providerLabel, provider) => {
       const openSpy = vi.spyOn(window, "open");
       renderSection();
 
@@ -176,7 +224,7 @@ describe("StewardLoginSection OAuth launch", () => {
 
       await waitFor(() =>
         expect(window.location.href).toBe(
-          `https://api.example.test/steward/auth/oauth/${providerLabel.toLowerCase()}/authorize`,
+          `https://api.example.test/steward/auth/oauth/${provider}/authorize`,
         ),
       );
       expect(openSpy).not.toHaveBeenCalled();
@@ -199,6 +247,27 @@ describe("StewardLoginSection OAuth launch", () => {
       codeChallenge: "challenge",
       state: "state-1",
     });
+  });
+
+  it("exchanges a signed Telegram widget payload and syncs the Cloud session", async () => {
+    renderSection();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Telegram" }));
+
+    await waitFor(() => expect(oauthState.telegramSignIns).toHaveLength(1));
+    expect(oauthState.telegramSignIns[0]).toMatchObject({
+      payload: {
+        id: 42,
+        auth_date: 1_787_000_000,
+        hash: "signed-payload",
+      },
+      config: { tenantId: "elizacloud" },
+    });
+    await waitFor(() =>
+      expect(oauthState.syncedSessions).toEqual([
+        ["telegram-token", "telegram-refresh"],
+      ]),
+    );
   });
 
   it("releases the OAuth provider lock after a back-forward cache restoration", async () => {

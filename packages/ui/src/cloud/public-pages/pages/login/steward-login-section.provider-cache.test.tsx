@@ -64,6 +64,12 @@ vi.mock("./passkey-capability", () => ({
   resolveWebPasskeyCapability: () => new Promise(() => {}),
 }));
 
+vi.mock("./telegram-login-widget", () => ({
+  TelegramLoginCancelledError: class TelegramLoginCancelledError extends Error {},
+  getConfiguredTelegramBotId: () => "7684336618",
+  requestTelegramLogin: () => new Promise(() => {}),
+}));
+
 vi.mock("../../../shell/steward-url", () => ({
   resolveBrowserStewardApiUrl: () => "https://api.example.test",
 }));
@@ -119,6 +125,7 @@ const CACHED_PROVIDERS = {
   discord: true,
   github: false,
   twitter: false,
+  telegram: true,
   oauth: [],
 };
 
@@ -183,6 +190,7 @@ describe("StewardLoginSection — session-cached provider fast path (#18256)", (
       screen.queryByRole("status", { name: "Loading sign-in options" }),
     ).toBeNull();
     expect(screen.getByRole("button", { name: /^Google$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Telegram$/i })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /^GitHub$/i })).toBeNull();
   });
 

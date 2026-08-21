@@ -47,17 +47,15 @@ function providersUpstreamResponse(
 ): Response {
   return Response.json({
     ok: true,
-    data: {
-      passkey: true,
-      email: true,
-      siwe: false,
-      siws: false,
-      google: false,
-      discord: false,
-      github: false,
-      oauth: [],
-      ...overrides,
-    },
+    passkey: true,
+    email: true,
+    siwe: false,
+    siws: false,
+    google: false,
+    discord: false,
+    github: false,
+    oauth: [],
+    ...overrides,
   });
 }
 
@@ -192,7 +190,10 @@ describe("createStewardThinApp", () => {
             ? input.toString()
             : input.url;
       expect(url).toBe(`${UPSTREAM}/auth/providers`);
-      return providersUpstreamResponse();
+      return providersUpstreamResponse({
+        telegram: true,
+        oauth: ["apple"],
+      });
     });
 
     const app = createStewardThinApp();
@@ -212,11 +213,16 @@ describe("createStewardThinApp", () => {
     );
     const body = (await response.json()) as {
       ok?: boolean;
-      data?: { google?: boolean; passkey?: boolean };
+      google?: boolean;
+      passkey?: boolean;
+      telegram?: boolean;
+      oauth?: string[];
     };
     expect(body.ok).toBe(true);
-    expect(body.data?.passkey).toBe(true);
-    expect(body.data?.google).toBe(true);
+    expect(body.passkey).toBe(true);
+    expect(body.google).toBe(true);
+    expect(body.telegram).toBe(true);
+    expect(body.oauth).toEqual(["apple", "google"]);
   });
 
   test("serves GET /steward/tenants/config without upstream and defaults no-store", async () => {
