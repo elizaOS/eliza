@@ -239,4 +239,20 @@ describe("terminal run limits", () => {
     );
     expect(runShellMock).toHaveBeenCalledOnce();
   });
+
+  it("fails closed when the run-id reservation registry is saturated", async () => {
+    const gate = createLeaseGate();
+    const route = makeContext("run-00000000-0000-4000-8000-000000000007", gate);
+    route.ctx.tryAcquireTerminalRunSlot = () => ({
+      rejection: "registry-capacity",
+    });
+
+    expect(await handleMiscRoutes(route.ctx)).toBe(true);
+    expect(route.error).toHaveBeenCalledWith(
+      route.ctx.res,
+      "Terminal run admission is temporarily unavailable",
+      503,
+    );
+    expect(runShellMock).not.toHaveBeenCalled();
+  });
 });

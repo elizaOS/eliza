@@ -238,7 +238,9 @@ export interface MiscRouteContext {
   tryAcquireTerminalRunSlot?: (
     runId: string,
     maxConcurrent: number,
-  ) => { release: () => void } | { rejection: "capacity" | "duplicate" };
+  ) =>
+    | { release: () => void }
+    | { rejection: "capacity" | "duplicate" | "registry-capacity" };
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +521,10 @@ export async function handleMiscRoutes(
     if ("rejection" in admission) {
       if (admission.rejection === "duplicate") {
         error(res, "Terminal run id was already used", 409);
+        return true;
+      }
+      if (admission.rejection === "registry-capacity") {
+        error(res, "Terminal run admission is temporarily unavailable", 503);
         return true;
       }
       error(

@@ -768,6 +768,7 @@ async function readBackupJsonBody(
 let activeTerminalRunCount = 0;
 const terminalRunIdReservations = new Map<string, number>();
 const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
@@ -3359,6 +3360,11 @@ async function handleRequest(
         }
         if (activeTerminalRunCount >= maxConcurrent) {
           return { rejection: "capacity" as const };
+        }
+        if (
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          return { rejection: "registry-capacity" as const };
         }
         terminalRunIdReservations.set(
           runId,
