@@ -270,6 +270,7 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
 }
 
 let activeTranscriptListener: { remove: () => Promise<void> } | null = null;
+let activeVoiceErrorListener: { remove: () => Promise<void> } | null = null;
 
 interface PlayVoicePlugin {
   requestPermission(): Promise<{ granted: boolean }>;
@@ -282,14 +283,20 @@ interface PlayVoicePlugin {
     eventName: "transcript",
     listener: (event: { text: string; isFinal: boolean }) => void,
   ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    eventName: "error",
+    listener: (event: { code?: number; message?: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
 
-const androidCloudVoice: AndroidCloudVoiceAdapter = {
-  async requestAndStart(onFinalTranscript) {
+export const androidCloudVoice: AndroidCloudVoiceAdapter = {
+  async requestAndStart(onFinalTranscript, onError) {
     await activeTranscriptListener?.remove();
+    await activeVoiceErrorListener?.remove();
     activeTranscriptListener = null;
+    activeVoiceErrorListener = null;
     const permissions = await PlayVoice.requestPermission();
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
@@ -304,24 +311,52 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
       },
     );
     activeTranscriptListener = transcriptListener;
+    let errorListener: { remove: () => Promise<void> };
+    try {
+      errorListener = await PlayVoice.addListener("error", (event) => {
+        const nativeMessage = event.message?.trim();
+        const codeSuffix =
+          typeof event.code === "number" ? ` (code ${event.code})` : "";
+        onError(
+          new Error(
+            nativeMessage ||
+              `Voice dictation stopped${codeSuffix}. Check your connection and try again.`,
+          ),
+        );
+        void androidCloudVoice.stop();
+      });
+    } catch (error) {
+      await transcriptListener.remove();
+      if (activeTranscriptListener === transcriptListener) {
+        activeTranscriptListener = null;
+      }
+      throw error;
+    }
+    activeVoiceErrorListener = errorListener;
     const result = await PlayVoice.startDictation({
       language: navigator.language || "en-US",
     });
     if (!result.started) {
       await transcriptListener.remove();
+      await errorListener.remove();
       if (activeTranscriptListener === transcriptListener) {
         activeTranscriptListener = null;
+      }
+      if (activeVoiceErrorListener === errorListener) {
+        activeVoiceErrorListener = null;
       }
       throw new Error(result.error || "Voice dictation could not start.");
     }
   },
   async stop() {
     const listener = activeTranscriptListener;
+    const errorListener = activeVoiceErrorListener;
     activeTranscriptListener = null;
+    activeVoiceErrorListener = null;
     try {
       await PlayVoice.stopDictation();
     } finally {
-      await listener?.remove();
+      await Promise.all([listener?.remove(), errorListener?.remove()]);
     }
   },
   async speak(text) {

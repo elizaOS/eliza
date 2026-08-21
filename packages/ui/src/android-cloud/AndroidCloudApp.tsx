@@ -27,7 +27,10 @@ export interface AndroidCloudAppProps {
 }
 
 export interface AndroidCloudVoiceAdapter {
-  requestAndStart(onFinalTranscript: (text: string) => void): Promise<void>;
+  requestAndStart(
+    onFinalTranscript: (text: string) => void,
+    onError: (error: Error) => void,
+  ): Promise<void>;
   stop(): Promise<void>;
   speak(text: string): Promise<void>;
 }
@@ -73,6 +76,7 @@ export function AndroidCloudApp({
   const [listening, setListening] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const loginAbortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
 
   const restore = useCallback(async () => {
@@ -120,6 +124,7 @@ export function AndroidCloudApp({
     void restore();
     return () => {
       loginAttemptRef.current += 1;
+      loginAbortRef.current?.abort();
       abortRef.current?.abort();
       void voice?.stop();
     };
@@ -139,6 +144,9 @@ export function AndroidCloudApp({
   const signIn = useCallback(async () => {
     const attemptNumber = loginAttemptRef.current + 1;
     loginAttemptRef.current = attemptNumber;
+    loginAbortRef.current?.abort();
+    const controller = new AbortController();
+    loginAbortRef.current = controller;
     setBusy(true);
     setError(null);
     try {
@@ -150,7 +158,11 @@ export function AndroidCloudApp({
           window.setTimeout(resolve, LOGIN_POLL_MS),
         );
         if (loginAttemptRef.current !== attemptNumber) return;
-        const result = await client.pollLogin(attempt.sessionId);
+        const result = await client.pollLogin(
+          attempt.sessionId,
+          controller.signal,
+        );
+        if (loginAttemptRef.current !== attemptNumber) return;
         if (result.status === "pending") continue;
         if (result.status === "expired") throw new Error(result.error);
         await closeExternal?.();
@@ -160,14 +172,21 @@ export function AndroidCloudApp({
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
       // error-policy:J4 the sign-in boundary renders the actionable failure.
-      setError(errorMessage(signInError));
+      if (!controller.signal.aborted) {
+        setError(errorMessage(signInError));
+      }
     } finally {
-      if (loginAttemptRef.current === attemptNumber) setBusy(false);
+      if (loginAttemptRef.current === attemptNumber) {
+        loginAbortRef.current = null;
+        setBusy(false);
+      }
     }
   }, [client, closeExternal, openExternal, restore]);
 
   const cancelSignIn = useCallback(() => {
     loginAttemptRef.current += 1;
+    loginAbortRef.current?.abort();
+    loginAbortRef.current = null;
     setBusy(false);
     void closeExternal?.();
   }, [closeExternal]);
@@ -265,13 +284,24 @@ export function AndroidCloudApp({
       return;
     }
     try {
-      await voice.requestAndStart((value) => {
-        const transcript = value.trim();
-        if (transcript) {
-          setDraft((current) => `${current}${current ? " " : ""}${transcript}`);
-        }
-        setListening(false);
-      });
+      let failed = false;
+      await voice.requestAndStart(
+        (value) => {
+          const transcript = value.trim();
+          if (transcript) {
+            setDraft(
+              (current) => `${current}${current ? " " : ""}${transcript}`,
+            );
+          }
+          setListening(false);
+        },
+        (dictationError) => {
+          failed = true;
+          setListening(false);
+          setError(errorMessage(dictationError));
+        },
+      );
+      if (failed) return;
       setError(null);
       setListening(true);
     } catch (dictationError) {

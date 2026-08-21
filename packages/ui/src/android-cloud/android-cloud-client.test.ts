@@ -84,6 +84,32 @@ describe("AndroidCloudClient", () => {
     );
   });
 
+  it("does not persist a sign-in response that resolves after cancellation", async () => {
+    let resolvePoll: ((response: Response) => void) | undefined;
+    const fetchImpl = vi.fn<typeof fetch>(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+    const credentialStore = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => undefined),
+      clear: vi.fn(async () => undefined),
+    };
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+    const controller = new AbortController();
+
+    const poll = client.pollLogin(SESSION_ID, controller.signal);
+    controller.abort();
+    resolvePoll?.(
+      json(200, { status: "authenticated", apiKey: "stale-token" }),
+    );
+
+    await expect(poll).rejects.toMatchObject({ name: "AbortError" });
+    expect(credentialStore.write).not.toHaveBeenCalled();
+  });
+
   it("restores identity and resolves its managed runtime before chat", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(

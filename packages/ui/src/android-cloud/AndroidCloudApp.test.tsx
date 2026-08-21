@@ -64,6 +64,59 @@ describe("AndroidCloudApp", () => {
     ).toBeTruthy();
   });
 
+  it("aborts an in-flight login poll without restoring a stale session", async () => {
+    const client = createClient();
+    const restoreSession = vi
+      .spyOn(client, "restoreSession")
+      .mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl:
+        "https://cloud.eliza.app/auth/cli-login?session=10000000-0000-4000-8000-000000000001",
+    });
+    let resolvePoll:
+      | ((result: { status: "authenticated"; token: string }) => void)
+      | undefined;
+    const pollLogin = vi.spyOn(client, "pollLogin").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePoll = resolve;
+        }),
+    );
+    const closeExternal = vi.fn(async () => undefined);
+
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={closeExternal}
+        voice={createVoice()}
+      />,
+    );
+    const signInButton = await screen.findByRole("button", { name: "Sign in" });
+    vi.spyOn(window, "setTimeout").mockImplementation(((
+      handler: TimerHandler,
+    ) => {
+      if (typeof handler === "function") handler();
+      return 1;
+    }) as typeof window.setTimeout);
+    fireEvent.click(signInButton);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(pollLogin).toHaveBeenCalledOnce();
+    const signal = pollLogin.mock.calls[0]?.[1];
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    expect(signal?.aborted).toBe(true);
+    resolvePoll?.({ status: "authenticated", token: "stale-token" });
+    await act(async () => undefined);
+
+    expect(restoreSession).toHaveBeenCalledOnce();
+    expect(closeExternal).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
   it("accepts a native share/deep-link compose event without auto-sending", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession").mockResolvedValue(session);
@@ -148,5 +201,33 @@ describe("AndroidCloudApp", () => {
     await waitFor(() => expect(screen.queryByText("Thinking…")).toBeNull());
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("Never finish")).toBeTruthy();
+  });
+
+  it("stops listening and displays an asynchronous native voice error", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    let reportVoiceError: ((error: Error) => void) | undefined;
+    const voice: AndroidCloudVoiceAdapter = {
+      requestAndStart: vi.fn(async (_onTranscript, onError) => {
+        reportVoiceError = onError;
+      }),
+      stop: vi.fn(async () => undefined),
+      speak: vi.fn(async () => undefined),
+    };
+    render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    expect(
+      await screen.findByRole("button", { name: "Stop dictation" }),
+    ).toBeTruthy();
+    act(() => reportVoiceError?.(new Error("Voice network unavailable.")));
+
+    expect(
+      screen.getByRole("button", { name: "Start dictation" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Voice network unavailable.",
+    );
   });
 });

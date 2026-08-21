@@ -251,12 +251,16 @@ export class AndroidCloudClient {
     return { sessionId, browserUrl: url.toString() };
   }
 
-  async pollLogin(sessionId: string): Promise<AndroidCloudLoginPoll> {
+  async pollLogin(
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<AndroidCloudLoginPoll> {
     if (!SESSION_ID_PATTERN.test(sessionId)) {
       throw new Error("The sign-in session is invalid.");
     }
     const response = await this.fetchImpl(
       `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      { signal },
     );
     if (response.status === 404) {
       return { status: "expired", error: "Sign-in expired. Please try again." };
@@ -276,7 +280,12 @@ export class AndroidCloudClient {
         stringField(data.accessToken) ??
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
+      signal?.throwIfAborted();
       await this.credentialStore.write(token);
+      if (signal?.aborted) {
+        await this.credentialStore.clear();
+        signal.throwIfAborted();
+      }
       return { status: "authenticated", token };
     }
     if (status === "expired" || status === "error") {
