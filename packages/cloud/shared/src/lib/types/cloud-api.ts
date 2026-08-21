@@ -771,33 +771,12 @@ export interface OrgInviteDto {
 }
 
 // ---------------------------------------------------------------------------
-// Session and quota usage DTOs
-// Shapes returned by GET /api/sessions/current and /api/quotas/usage
+// Session usage DTOs
+// Shapes returned by GET /api/sessions/current
 // ---------------------------------------------------------------------------
 
 export interface SessionStatsDto {
   credits_used: number;
   requests_made: number;
   tokens_consumed: number;
-}
-
-export interface QuotaGlobalDto {
-  used: number;
-  limit: number | null;
-  periodEnd: string | null;
-  usedPercent: number | null;
-  usedPercentClamped: number;
-}
-
-export interface QuotaModelDto {
-  used: number;
-  limit: number;
-  periodEnd: string;
-  usedPercent: number;
-  usedPercentClamped: number;
-}
-
-export interface QuotaUsageDto {
-  global: QuotaGlobalDto;
-  modelSpecific: Record<string, QuotaModelDto>;
 }
