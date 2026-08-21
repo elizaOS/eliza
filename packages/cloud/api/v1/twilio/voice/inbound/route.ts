@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { dbRead, dbWrite } from "@/db/helpers";
 import { sharedRuntimeHistory, twilioInboundCalls } from "@/db/schemas";
+import { appendServerTiming } from "@/lib/observability/http-telemetry";
 import { sharedRuntimeChannelId } from "@/lib/services/shared-runtime/shared-runtime-chat";
 import { ObjectNamespaces } from "@/lib/storage/object-namespace";
 import { offloadJsonField } from "@/lib/storage/object-store";
@@ -281,6 +282,7 @@ app.post("/", async (c) => {
   logger.info("[twilio-voice-inbound] realtime TwiML ready", {
     callSid: event.CallSid,
     returningCaller: Boolean(priorCall || priorConversation),
+    targetResolution: phoneNumber.resolution,
     targetMs: targetResolvedAt - requestStartedAt,
     callerLookupMs: callerResolvedAt - targetResolvedAt,
     tokenAndDirectoryMs: responseReadyAt - callerResolvedAt,
@@ -289,7 +291,7 @@ app.post("/", async (c) => {
   publicUrl.pathname = "/api/v1/twilio/voice/media";
   publicUrl.search = "";
   publicUrl.protocol = publicUrl.protocol === "http:" ? "ws:" : "wss:";
-  return new Response(
+  const response = new Response(
     buildRealtimeVoiceTwiML({
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
@@ -299,6 +301,22 @@ app.post("/", async (c) => {
       headers: { "Content-Type": "text/xml" },
     },
   );
+  appendServerTiming(response.headers, [
+    {
+      name: "voice_target",
+      durationMs: targetResolvedAt - requestStartedAt,
+      description: phoneNumber.resolution,
+    },
+    {
+      name: "voice_caller_history",
+      durationMs: callerResolvedAt - targetResolvedAt,
+    },
+    {
+      name: "voice_token_directory",
+      durationMs: responseReadyAt - callerResolvedAt,
+    },
+  ]);
+  return response;
 });
 
 export default app;
