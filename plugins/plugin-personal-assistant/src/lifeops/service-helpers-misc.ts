@@ -3,7 +3,7 @@
  * computation, metadata merging, reminder-channel/urgency checks, and other
  * small pure utilities shared across the domains.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, truncateWellFormed, toWellFormedUnicode } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,
@@ -699,9 +699,10 @@ export function normalizeGeneratedLifeOpsAssistantText(
   if (!cleaned) {
     return null;
   }
-  return cleaned.length > 280
-    ? `${cleaned.slice(0, 277).trimEnd()}...`
-    : cleaned;
+  const normalized = toWellFormedUnicode(cleaned);
+  return normalized.length > 280
+    ? `${truncateWellFormed(normalized, 277).trimEnd()}...`
+    : normalized;
 }
 
 export function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
