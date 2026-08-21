@@ -47,7 +47,10 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
-import { truncateWellFormed } from "../../../utils/well-formed.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
@@ -445,11 +448,13 @@ export const REFLECTION_ENTITY_LIMIT = 50;
 // dominate the prompt.
 const ENTITY_NAMES_RENDER_MAX_CHARS = 240;
 
-function boundRender(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
+export function boundRender(text: string, maxChars: number): string {
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxChars) return wellFormed;
 	const suffix = "…[truncated]";
-	if (maxChars <= suffix.length) return suffix.slice(0, maxChars);
-	return `${truncateWellFormed(text, maxChars - suffix.length)}${suffix}`;
+	if (maxChars <= suffix.length)
+		return truncateWellFormed(suffix, Math.max(0, maxChars));
+	return `${truncateWellFormed(wellFormed, maxChars - suffix.length)}${suffix}`;
 }
 
 function boundReflectionEntities(params: {
