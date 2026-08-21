@@ -91,7 +91,8 @@ describe("POST /api/v1/containers quota race", () => {
     });
 
     expect(response.status).toBe(402);
-    expect(await response.json()).toEqual({
+    const payload = (await response.json()) as unknown;
+    expect(payload).toEqual({
       success: false,
       error: "Container quota exceeded (2/2)",
       quota: {
