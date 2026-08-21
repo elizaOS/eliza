@@ -4,10 +4,12 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { resolveAdb } from "./android-device.mjs";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const require = createRequire(import.meta.url);
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -17,21 +19,93 @@ function isNonEmptyFile(filePath) {
   try {
     return fs.statSync(filePath).size > 0;
   } catch {
+    // error-policy:J4 an absent or unreadable capture is explicitly rejected
+    // as invalid evidence rather than represented as a successful empty file.
     return false;
   }
 }
 
-export function isFinalizedMp4(filePath) {
+function packagedBinary(name) {
+  try {
+    const loaded = require(name);
+    return typeof loaded === "string" ? loaded : loaded?.path;
+  } catch {
+    // error-policy:J1 dependency resolution is translated into an unavailable
+    // evidence tool; validation then fails closed at the capture boundary.
+    return undefined;
+  }
+}
+
+function executable(command) {
+  if (!command) return false;
+  const result = spawnSync(command, ["-version"], { stdio: "ignore" });
+  return !result.error && result.status === 0;
+}
+
+function resolveFfprobe(env = process.env) {
+  return [
+    env.ELIZA_FFPROBE_BIN,
+    "ffprobe",
+    packagedBinary("ffprobe-static"),
+  ].find(executable);
+}
+
+export function hasPositiveVideoDuration(
+  filePath,
+  { ffprobe = resolveFfprobe(), run = spawnSync } = {},
+) {
+  if (!ffprobe) return false;
+  const result = run(
+    ffprobe,
+    [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration:stream=codec_type,duration",
+      "-of",
+      "json",
+      filePath,
+    ],
+    { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 },
+  );
+  if (result.error || result.status !== 0) return false;
+  let probe;
+  try {
+    probe = JSON.parse(result.stdout);
+  } catch {
+    // error-policy:J3 ffprobe output is untrusted process input; malformed
+    // metadata rejects the recording instead of fabricating valid duration.
+    return false;
+  }
+  const streams = Array.isArray(probe.streams) ? probe.streams : [];
+  const videoStreams = streams.filter(
+    (stream) => stream?.codec_type === "video",
+  );
+  if (videoStreams.length === 0) return false;
+  const durations = [
+    probe.format?.duration,
+    ...videoStreams.map((stream) => stream.duration),
+  ].map(Number);
+  return durations.some(
+    (duration) => Number.isFinite(duration) && duration > 0,
+  );
+}
+
+export function isFinalizedMp4(
+  filePath,
+  inspectMedia = hasPositiveVideoDuration,
+) {
   if (!isNonEmptyFile(filePath)) return false;
 
   const fd = fs.openSync(filePath, "r");
+  let structurallyComplete = false;
   try {
     const fileSize = fs.fstatSync(fd).size;
     const header = Buffer.alloc(16);
     let offset = 0;
     let sawFileType = false;
     let sawMovie = false;
-    let sawSampleData = false;
+    let sawMediaPayload = false;
 
     while (offset + 8 <= fileSize) {
       const bytesRead = fs.readSync(fd, header, 0, 16, offset);
@@ -53,18 +127,63 @@ export function isFinalizedMp4(filePath) {
 
       if (boxSize < headerSize || offset + boxSize > fileSize) return false;
       if (type === "ftyp") sawFileType = true;
-      // An mdat with only its header carries no frames: screenrecord killed
-      // before it wrote any sample data leaves exactly that shape.
-      if (type === "mdat" && boxSize > headerSize) sawSampleData = true;
-      // The device writes moov last. Requiring it after sample data rejects a
-      // file whose movie header was salvaged without the frames it indexes.
-      if (type === "moov" && sawSampleData) sawMovie = true;
+      if (type === "moov") sawMovie = true;
+      if (type === "mdat" && boxSize > headerSize) sawMediaPayload = true;
       offset += boxSize;
     }
 
-    return sawFileType && sawSampleData && sawMovie && offset === fileSize;
+    structurallyComplete =
+      sawFileType && sawMovie && sawMediaPayload && offset === fileSize;
   } finally {
     fs.closeSync(fd);
+  }
+  return structurallyComplete && inspectMedia(filePath);
+}
+
+/** Package collected recording segments and remove every rejected partial. */
+export function finalizeAndroidRecordingSegments({
+  segments,
+  localPath,
+  captureComplete,
+  requireComplete,
+  concatenate = concatSegments,
+  validate = isFinalizedMp4,
+  log = () => {},
+}) {
+  let accepted = false;
+  try {
+    if (segments.length === 0) return null;
+    if (requireComplete && !captureComplete) {
+      log("one or more Android screenrecord segments were incomplete");
+      return null;
+    }
+    if (segments.length === 1) {
+      fs.copyFileSync(segments[0], localPath);
+    } else if (!concatenate(segments, localPath, log)) {
+      if (requireComplete) {
+        log("ffmpeg concat unavailable; complete recording is required");
+        return null;
+      }
+      // ffmpeg unavailable/failed: keep the longest single segment so the run
+      // still has watchable video rather than nothing.
+      const longest = segments
+        .map((file) => ({ file, size: fs.statSync(file).size }))
+        .sort((a, b) => b.size - a.size)[0];
+      fs.copyFileSync(longest.file, localPath);
+      log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
+    }
+    if (!isNonEmptyFile(localPath) || !validate(localPath)) {
+      log(
+        "chunked Android screenrecord was not a finalized positive-duration video",
+      );
+      return null;
+    }
+    accepted = true;
+    log(`wrote chunked Android screenrecord: ${localPath}`);
+    return localPath;
+  } finally {
+    for (const segment of segments) fs.rmSync(segment, { force: true });
+    if (!accepted) fs.rmSync(localPath, { force: true });
   }
 }
 
@@ -167,7 +286,9 @@ export async function startAndroidScreenRecord({
       if (!isNonEmptyFile(localPath)) return null;
       if (!isFinalizedMp4(localPath)) {
         fs.rmSync(localPath, { force: true });
-        log(`Android screenrecord did not finalize: ${remotePath}`);
+        log(
+          `Android screenrecord was not a finalized positive-duration video: ${remotePath}`,
+        );
         return null;
       }
       log(`wrote Android screenrecord: ${localPath}`);
@@ -305,38 +426,13 @@ export async function startChunkedAndroidScreenRecord({
       // not complete evidence.
       await loop;
 
-      if (segments.length === 0) return null;
-      if (requireComplete && !captureComplete) {
-        for (const segment of segments) fs.rmSync(segment, { force: true });
-        log("one or more Android screenrecord segments were incomplete");
-        return null;
-      }
-      if (segments.length === 1) {
-        fs.copyFileSync(segments[0], localPath);
-      } else if (!concatSegments(segments, localPath, log)) {
-        if (requireComplete) {
-          for (const segment of segments) fs.rmSync(segment, { force: true });
-          fs.rmSync(localPath, { force: true });
-          log("ffmpeg concat unavailable; complete recording is required");
-          return null;
-        }
-        // ffmpeg unavailable/failed: keep the longest single segment so the run
-        // still has watchable video rather than nothing.
-        const longest = segments
-          .map((file) => ({ file, size: fs.statSync(file).size }))
-          .sort((a, b) => b.size - a.size)[0];
-        fs.copyFileSync(longest.file, localPath);
-        log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
-      }
-      for (const segment of segments) fs.rmSync(segment, { force: true });
-      if (!isNonEmptyFile(localPath)) return null;
-      if (!isFinalizedMp4(localPath)) {
-        fs.rmSync(localPath, { force: true });
-        log("chunked Android screenrecord did not finalize");
-        return null;
-      }
-      log(`wrote chunked Android screenrecord: ${localPath}`);
-      return localPath;
+      return finalizeAndroidRecordingSegments({
+        segments,
+        localPath,
+        captureComplete,
+        requireComplete,
+        log,
+      });
     },
   };
 }

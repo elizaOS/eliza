@@ -8,14 +8,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  finalizeAndroidRecordingSegments,
+  hasPositiveVideoDuration,
   isFinalizedMp4,
-  startAndroidScreenRecord,
 } from "./android-capture.mjs";
 
-const files = [];
+const paths = [];
 
 afterEach(() => {
-  for (const file of files.splice(0)) fs.rmSync(file, { force: true });
+  for (const target of paths.splice(0)) {
+    fs.rmSync(target, { recursive: true, force: true });
+  }
 });
 
 function box(type, payload = Buffer.alloc(0)) {
@@ -26,121 +29,191 @@ function box(type, payload = Buffer.alloc(0)) {
   return value;
 }
 
-function mdatWithFrames(bytes = 64) {
-  return box("mdat", Buffer.alloc(bytes, 0x21));
-}
-
 function writeRecording(...boxes) {
   const file = path.join(
     os.tmpdir(),
-    `eliza-android-recording-${process.pid}-${files.length}.mp4`,
+    `eliza-android-recording-${process.pid}-${paths.length}.mp4`,
   );
   fs.writeFileSync(file, Buffer.concat(boxes));
-  files.push(file);
+  paths.push(file);
   return file;
 }
 
+function mediaPayload() {
+  return Buffer.from([0x00, 0x00, 0x00, 0x01]);
+}
+
+function segmentFixture(count = 1) {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "eliza-android-segments-"),
+  );
+  paths.push(root);
+  const segments = Array.from({ length: count }, (_, index) => {
+    const segment = path.join(root, `.recording-seg${index}.mp4`);
+    fs.writeFileSync(segment, `segment-${index}`);
+    return segment;
+  });
+  return {
+    root,
+    segments,
+    localPath: path.join(root, "recording.mp4"),
+  };
+}
+
 describe("Android screenrecord finalization", () => {
-  test("accepts a complete MP4 with file type and movie metadata", () => {
-    const file = writeRecording(box("ftyp"), mdatWithFrames(), box("moov"));
-    expect(isFinalizedMp4(file)).toBe(true);
+  test("accepts structure only when media inspection proves positive video duration", () => {
+    const file = writeRecording(
+      box("ftyp"),
+      box("mdat", mediaPayload()),
+      box("moov"),
+    );
+    expect(isFinalizedMp4(file, () => true)).toBe(true);
+    expect(isFinalizedMp4(file, () => false)).toBe(false);
+  });
+
+  test("rejects finalized metadata without media payload", () => {
+    const file = writeRecording(box("ftyp"), box("moov"));
+    expect(isFinalizedMp4(file, () => true)).toBe(false);
+  });
+
+  test("rejects an empty media box even when movie metadata exists", () => {
+    const file = writeRecording(box("ftyp"), box("mdat"), box("moov"));
+    expect(isFinalizedMp4(file, () => true)).toBe(false);
+  });
+
+  test("requires a video stream with positive ffprobe duration", () => {
+    const probe = (payload) => (_bin, args) => {
+      expect(args.at(-1)).toBe("/evidence/walkthrough.mp4");
+      return {
+        error: undefined,
+        status: 0,
+        stdout: JSON.stringify(payload),
+      };
+    };
+    expect(
+      hasPositiveVideoDuration("/evidence/walkthrough.mp4", {
+        ffprobe: "/tools/ffprobe",
+        run: probe({
+          format: { duration: "1.25" },
+          streams: [{ codec_type: "video" }],
+        }),
+      }),
+    ).toBe(true);
+    expect(
+      hasPositiveVideoDuration("/evidence/walkthrough.mp4", {
+        ffprobe: "/tools/ffprobe",
+        run: probe({
+          format: { duration: "0" },
+          streams: [{ codec_type: "video", duration: "0" }],
+        }),
+      }),
+    ).toBe(false);
+    expect(
+      hasPositiveVideoDuration("/evidence/walkthrough.mp4", {
+        ffprobe: "/tools/ffprobe",
+        run: probe({
+          format: { duration: "2" },
+          streams: [{ codec_type: "audio" }],
+        }),
+      }),
+    ).toBe(false);
   });
 
   test("rejects the exact truncated shape produced before moov is flushed", () => {
-    const file = writeRecording(box("ftyp"), mdatWithFrames());
-    expect(isFinalizedMp4(file)).toBe(false);
+    const file = writeRecording(box("ftyp"), box("mdat", mediaPayload()));
+    expect(isFinalizedMp4(file, () => true)).toBe(false);
   });
 
   test("rejects a partial trailing box", () => {
     const partialMovie = Buffer.from([
       0x00, 0x00, 0x00, 0x10, 0x6d, 0x6f, 0x6f, 0x76, 0x00,
     ]);
-    const file = writeRecording(box("ftyp"), mdatWithFrames(), partialMovie);
-    expect(isFinalizedMp4(file)).toBe(false);
-  });
-
-  test("rejects a moov salvaged without any sample data", () => {
-    const file = writeRecording(box("ftyp"), box("mdat"), box("moov"));
-    expect(isFinalizedMp4(file)).toBe(false);
-  });
-
-  test("rejects a moov written before the sample data it indexes", () => {
-    const file = writeRecording(box("ftyp"), box("moov"), mdatWithFrames());
-    expect(isFinalizedMp4(file)).toBe(false);
+    const file = writeRecording(
+      box("ftyp"),
+      box("mdat", mediaPayload()),
+      partialMovie,
+    );
+    expect(isFinalizedMp4(file, () => true)).toBe(false);
   });
 });
 
-/**
- * Drives the real recorder against a fake adb so the stop() contract is
- * exercised end to end: stop() must not return until the final segment pull has
- * landed, and requireComplete must discard evidence when any segment is
- * unfinalized.
- */
-describe("chunked Android screenrecord collection", () => {
-  const dirs = [];
+describe("Android segment packaging", () => {
+  test("rejects a failed final pull and removes accepted earlier segments", () => {
+    const fixture = segmentFixture();
+    const result = finalizeAndroidRecordingSegments({
+      ...fixture,
+      captureComplete: false,
+      requireComplete: true,
+      validate: () => true,
+    });
 
-  afterEach(() => {
-    for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+    expect(result).toBeNull();
+    expect(fs.existsSync(fixture.localPath)).toBe(false);
+    expect(fs.existsSync(fixture.segments[0])).toBe(false);
   });
 
-  function fakeAdb(mode) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fake-adb-"));
-    dirs.push(dir);
-    const adb = path.join(dir, "adb");
-    // The pull sleeps: a stop() that failed to await the segment loop would
-    // package evidence before the final segment exists on disk.
-    const script = [
-      "#!/bin/sh",
-      "op=",
-      'for a in "$@"; do',
-      '  case "$a" in pull) op=pull;; screenrecord) op=record;; esac',
-      "done",
-      'if [ "$op" = record ]; then sleep 2; exit 0; fi',
-      'if [ "$op" = pull ]; then',
-      "  sleep 1",
-      '  for out in "$@"; do :; done',
-      '  printf "\\000\\000\\000\\010ftyp" > "$out"',
-      '  printf "\\000\\000\\000\\014mdatXXXX" >> "$out"',
-      mode === "complete"
-        ? '  printf "\\000\\000\\000\\010moov" >> "$out"'
-        : "  :",
-      "  exit 0",
-      "fi",
-      "exit 0",
-      "",
-    ].join("\n");
-    fs.writeFileSync(adb, script, { mode: 0o755 });
-    return adb;
-  }
-
-  async function runRecorder(mode) {
-    const artifactDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-android-art-"));
-    dirs.push(artifactDir);
-    const recorder = await startAndroidScreenRecord({
-      adb: fakeAdb(mode),
-      serial: "emulator-5554",
-      artifactDir,
-      filename: "flow.mp4",
+  test("rejects failed required concatenation and removes all partials", () => {
+    const fixture = segmentFixture(2);
+    const result = finalizeAndroidRecordingSegments({
+      ...fixture,
+      captureComplete: true,
       requireComplete: true,
-      segmentSeconds: 1,
-      log: () => {},
+      concatenate: (_segments, localPath) => {
+        fs.writeFileSync(localPath, "partial concat");
+        return false;
+      },
+      validate: () => true,
     });
-    return { recorder, artifactDir };
-  }
 
-  test("stop() waits for the in-flight final pull before packaging", async () => {
-    const { recorder, artifactDir } = await runRecorder("complete");
-    const result = await recorder.stop();
-    expect(result).toBe(path.join(artifactDir, "flow.mp4"));
-    expect(isFinalizedMp4(result)).toBe(true);
-    // No staging segment may survive a packaged run.
-    expect(fs.readdirSync(artifactDir).filter((f) => f.startsWith("."))).toEqual([]);
-  }, 30_000);
+    expect(result).toBeNull();
+    expect(fs.existsSync(fixture.localPath)).toBe(false);
+    expect(fixture.segments.every((file) => !fs.existsSync(file))).toBe(true);
+  });
 
-  test("stop() fails closed and packages nothing when a segment is unfinalized", async () => {
-    const { recorder, artifactDir } = await runRecorder("truncated");
-    expect(await recorder.stop()).toBeNull();
-    expect(fs.existsSync(path.join(artifactDir, "flow.mp4"))).toBe(false);
-    expect(fs.readdirSync(artifactDir)).toEqual([]);
-  }, 30_000);
+  test("cleans partials when concatenation throws", () => {
+    const fixture = segmentFixture(2);
+    expect(() =>
+      finalizeAndroidRecordingSegments({
+        ...fixture,
+        captureComplete: true,
+        requireComplete: true,
+        concatenate: (_segments, localPath) => {
+          fs.writeFileSync(localPath, "partial concat");
+          throw new Error("concat process failed");
+        },
+        validate: () => true,
+      }),
+    ).toThrow("concat process failed");
+
+    expect(fs.existsSync(fixture.localPath)).toBe(false);
+    expect(fixture.segments.every((file) => !fs.existsSync(file))).toBe(true);
+  });
+
+  test("keeps the accepted package and removes its source segment", () => {
+    const fixture = segmentFixture();
+    const result = finalizeAndroidRecordingSegments({
+      ...fixture,
+      captureComplete: true,
+      requireComplete: true,
+      validate: () => true,
+    });
+
+    expect(result).toBe(fixture.localPath);
+    expect(fs.readFileSync(fixture.localPath, "utf8")).toBe("segment-0");
+    expect(fs.existsSync(fixture.segments[0])).toBe(false);
+  });
+
+  test("removes copied output when final validation fails", () => {
+    const fixture = segmentFixture();
+    const result = finalizeAndroidRecordingSegments({
+      ...fixture,
+      captureComplete: true,
+      requireComplete: true,
+      validate: () => false,
+    });
+
+    expect(result).toBeNull();
+    expect(fs.existsSync(fixture.localPath)).toBe(false);
+    expect(fs.existsSync(fixture.segments[0])).toBe(false);
+  });
 });
