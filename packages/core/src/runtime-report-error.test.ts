@@ -19,6 +19,26 @@ function makeRuntime(): AgentRuntime {
 }
 
 describe("AgentRuntime.reportError", () => {
+	it("keeps diagnostic-only reports observable without error-level log noise", () => {
+		const runtime = makeRuntime();
+		const debug = vi.spyOn(runtime.logger, "debug");
+		const error = vi.spyOn(runtime.logger, "error");
+
+		runtime.reportError("LateCapture", new Error("arrived late"), {
+			diagnosticOnly: true,
+		});
+
+		expect(debug).toHaveBeenCalledOnce();
+		expect(error).not.toHaveBeenCalled();
+		expect(runtime.getRecentReportedErrors()).toEqual([
+			expect.objectContaining({
+				scope: "LateCapture",
+				message: "arrived late",
+				context: expect.objectContaining({ diagnosticOnly: true }),
+			}),
+		]);
+	});
+
 	it("keeps queue-listener diagnostics observable without narrating them into chat", async () => {
 		const runtime = makeRuntime();
 		runtime.roomHandlerQueue.onEvent(() => {

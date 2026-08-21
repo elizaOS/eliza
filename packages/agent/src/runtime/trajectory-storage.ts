@@ -171,7 +171,6 @@ function reportLateTrajectoryCapture(
       context: { stepId, captureType },
     },
   );
-  warnRuntime(runtime, "Rejected late trajectory capture", error);
   runtime.reportError("TrajectoryStorage.lateCapture", error, {
     stepId,
     captureType,

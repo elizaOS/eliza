@@ -10427,17 +10427,20 @@ ${section_end}`;
 					? (merged.roomId as UUID)
 					: undefined;
 
-			this.logger.error(
-				{
-					src: "agent",
-					scope,
-					code: normalized.code,
-					severity: normalized.severity,
-					context: merged,
-					err: normalized,
-				},
-				`[${scope}] ${normalized.message}`,
-			);
+			const logData = {
+				src: "agent",
+				scope,
+				code: normalized.code,
+				severity: normalized.severity,
+				context: merged,
+				err: normalized,
+			};
+			const logMessage = `[${scope}] ${normalized.message}`;
+			if (merged?.diagnosticOnly === true) {
+				this.logger.debug(logData, logMessage);
+			} else {
+				this.logger.error(logData, logMessage);
+			}
 
 			const entry: ReportedError = {
 				scope,
