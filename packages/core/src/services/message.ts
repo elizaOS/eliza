@@ -10762,15 +10762,15 @@ function looksLikeDelegationExcludedAsk(text: string): boolean {
 const LEGACY_CODING_WORK_VERB_PATTERN =
 	/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|update|verify)\b/giu;
 const LEGACY_CODING_ARTIFACT_PATTERN =
-	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
+	/\b(?:app|site|website|page|code|file|files|project|program|cli|script|backend|frontend|repo|feature|bug|url)\b/giu;
 const CODING_OPERATION_VERB_PATTERN =
 	/\b(?:refactor|debug|deploy|patch|optimize|migrate|profile)\b/giu;
 const REVIEW_WORK_VERB_PATTERN =
 	/\b(?:review|audit|investigate|analyze|inspect|test|trace|diagnose)\b/giu;
 const STRONG_CODE_ARTIFACT_PATTERN =
-	/\b(?:code|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
+	/\b(?:code|program|cli|script|backend|frontend|repo|repository|bug|pr|pull request|commit|branch|stack trace|pipeline|ci)\b/giu;
 const EXPANDED_WORK_ARTIFACT_PATTERN =
-	/\b(?:app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
+	/\b(?:app|site|website|page|code|file|files|project|program|cli|script|backend|frontend|repo|repository|feature|bug|url|pr|pull request|issue|commit|branch|build|test|error|stack trace|failure|log|docs|documentation|run|pipeline|ci)\b/giu;
 const HTTP_URL_PATTERN = /\bhttps?:\/\/[^\s<>()]+/iu;
 
 interface TextSpan {
@@ -10870,7 +10870,8 @@ function looksLikeInlineCodeSnippetRequest(text: string): boolean {
 	if (
 		/\b(?:file|files|repo|repository|project|app|site|page|backend|frontend|deploy|build|run|execute|install|test|verify|fix|edit|modify|save|write\s+(?:to|in)\s+(?:\/|\.\/|[a-z]:\\))\b/iu.test(
 			normalized,
-		)
+		) ||
+		/\btry\s+(?:it|this|the\s+(?:code|program|script))\b/iu.test(normalized)
 	) {
 		return false;
 	}

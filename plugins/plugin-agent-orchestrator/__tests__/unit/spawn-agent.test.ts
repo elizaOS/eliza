@@ -53,6 +53,10 @@ describe("TASKS:spawn_agent", () => {
     ).toContain("spawn_agent");
   });
 
+  it("maps the stage-one CODE_EXECUTE hint to the coding task surface", () => {
+    expect(spawnAgentAction.similes).toContain("CODE_EXECUTE");
+  });
+
   it("exposes lockWorkdir so planner-generated calls can honor exact user paths", () => {
     expect(spawnAgentAction.parameters?.map((param) => param.name)).toContain(
       "lockWorkdir",

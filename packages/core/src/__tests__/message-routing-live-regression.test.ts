@@ -627,6 +627,37 @@ describe("live routing regressions", () => {
 		).toEqual(["WEB_SEARCH"]);
 	});
 
+	it("routes a normie program request with try-it language to coding", () => {
+		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
+			{ name: "TASKS", similes: ["TASKS_SPAWN_AGENT"] },
+			{ name: "REPLY" },
+		];
+		const messageText =
+			"Can you make me a little program that shows the prime numbers from 1 to 20? Try it too so I know it works.";
+
+		expect(
+			inferDirectCurrentRequestCandidateActions(actions, messageText),
+		).toEqual(["TASKS"]);
+
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["code"],
+				intents: ["create prime numbers program", "run prime numbers program"],
+				replyText: "On it.",
+				candidateActionNames: ["CODE_EXECUTE"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions, messageText },
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("TASKS");
+	});
+
 	it("URL work orders with unlisted verbs reach TASKS through the real production path (issue #18108)", () => {
 		// This is the load-bearing regression for issue #18108: "review this PR …",
 		// "audit this repository …", and "investigate the failure here …" must each
