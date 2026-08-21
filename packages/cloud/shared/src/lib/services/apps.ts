@@ -546,6 +546,13 @@ export class AppsService {
     return updated;
   }
 
+  async claimDeploymentStart(
+    id: string,
+    data: { last_deployed_at: Date; metadata?: Record<string, unknown> },
+  ): Promise<App | undefined> {
+    return await appsRepository.claimDeploymentStart(id, data);
+  }
+
   async delete(id: string): Promise<void> {
     const app = await appsRepository.findById(id);
 

@@ -122,7 +122,11 @@ export class HetznerContainersClient {
       metadata: { provider: "hetzner-docker", image: input.image },
     };
 
-    const row = await containersRepository.createWithQuotaCheck(newRow);
+    const admitted = await containersRepository.createWithProjectIntentAndQuotaCheck(newRow);
+    const row = admitted.container;
+    if (!admitted.created) {
+      return rowToSummary(row);
+    }
 
     // 2. Hetzner Cloud volume pre-flight. Create or find the volume before
     // node selection so scheduling can respect the volume's location.
@@ -142,50 +146,59 @@ export class HetznerContainersClient {
     let hcloudVolumeId: number | undefined;
     let hcloudVolumeLocation: string | undefined;
 
-    if (wantHcloudVolume) {
-      const volService = getHetznerVolumeService();
-      const defaultLocation = containersEnv.defaultHcloudLocation();
-      const volume = await volService.getOrCreateProjectVolume(
-        { organizationId: input.organizationId, projectName: input.projectName },
-        { sizeGb: input.volumeSizeGb ?? 10, location: defaultLocation },
-      );
-      hcloudVolumeId = volume.id;
-      hcloudVolumeLocation = volume.location.name;
-    }
-
-    // 3. Node selection.
-    //
-    // Stateful workloads need to land on the same node as the existing
-    // volume. For Hetzner Cloud volumes, the node MUST be in the same
-    // Hetzner location as the volume (location-bound block storage).
-    //
-    // Priority:
-    //   a) Sticky node from a prior container in this project (if healthy,
-    //      has capacity, and for hcloud volumes is in the right location)
-    //   b) Least-loaded node in the volume's location (hcloud volumes only)
-    //   c) Global least-loaded node (stateless or local-volume workloads)
     let node: DockerNode | null = null;
+    try {
+      if (wantHcloudVolume) {
+        const volService = getHetznerVolumeService();
+        const defaultLocation = containersEnv.defaultHcloudLocation();
+        const volume = await volService.getOrCreateProjectVolume(
+          { organizationId: input.organizationId, projectName: input.projectName },
+          { sizeGb: input.volumeSizeGb ?? 10, location: defaultLocation },
+        );
+        hcloudVolumeId = volume.id;
+        hcloudVolumeLocation = volume.location.name;
+      }
 
-    if (input.persistVolume) {
-      const sticky = await findStickyNodeForProject(input.organizationId, input.projectName);
-      if (sticky) {
-        if (hcloudVolumeLocation) {
-          if (getDockerNodeLocation(sticky) === hcloudVolumeLocation) {
+      // 3. Node selection.
+      //
+      // Stateful workloads need to land on the same node as the existing
+      // volume. For Hetzner Cloud volumes, the node MUST be in the same
+      // Hetzner location as the volume (location-bound block storage).
+      //
+      // Priority:
+      //   a) Sticky node from a prior container in this project (if healthy,
+      //      has capacity, and for hcloud volumes is in the right location)
+      //   b) Least-loaded node in the volume's location (hcloud volumes only)
+      //   c) Global least-loaded node (stateless or local-volume workloads)
+      if (input.persistVolume) {
+        const sticky = await findStickyNodeForProject(input.organizationId, input.projectName);
+        if (sticky) {
+          if (hcloudVolumeLocation) {
+            if (getDockerNodeLocation(sticky) === hcloudVolumeLocation) {
+              node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
+            }
+          } else {
             node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
           }
-        } else {
-          node = (await dockerNodeManager.ensureNodeReady(sticky)) ? sticky : null;
         }
       }
-    }
 
-    if (!node && hcloudVolumeLocation) {
-      const located = await findNodeInLocation(hcloudVolumeLocation);
-      node = located && (await dockerNodeManager.ensureNodeReady(located)) ? located : null;
-    }
+      if (!node && hcloudVolumeLocation) {
+        const located = await findNodeInLocation(hcloudVolumeLocation);
+        node = located && (await dockerNodeManager.ensureNodeReady(located)) ? located : null;
+      }
 
-    if (!node && !hcloudVolumeLocation) {
-      node = await dockerNodeManager.getAvailableNode();
+      if (!node && !hcloudVolumeLocation) {
+        node = await dockerNodeManager.getAvailableNode();
+      }
+    } catch (error) {
+      // error-policy:J2 a created intent must become terminal when provider
+      // preflight fails; otherwise future single-flight retries would
+      // reconstruct a permanently-pending row and never retry provisioning.
+      const message = error instanceof Error ? error.message : String(error);
+      await containersRepository.updateStatus(row.id, "failed", message);
+      if (error instanceof HetznerClientError) throw error;
+      throw new HetznerClientError("container_create_failed", message, error);
     }
 
     if (!node) {
