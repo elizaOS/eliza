@@ -52,6 +52,12 @@ describe("parseGatewayPreforwardHeader", () => {
     [null, "absent header"],
     ["", "empty value"],
     ["total=1;auth=2;mid=3;reserve=4", "missing field"],
+    ["total=;auth=2;mid=3;reserve=4;setup=5", "emptied field value"],
+    ["total=   ;auth=2;mid=3;reserve=4;setup=5", "whitespace-only field value"],
+    ["total=0x64;auth=2;mid=3;reserve=4;setup=5", "hex literal"],
+    ["total=1e3;auth=2;mid=3;reserve=4;setup=5", "exponent notation"],
+    ["total=+5;auth=2;mid=3;reserve=4;setup=5", "signed value"],
+    ["total=Infinity;auth=2;mid=3;reserve=4;setup=5", "infinite value"],
     ["total=1;auth=2;mid=3;reserve=4;setup=5;setup=6", "duplicate field"],
     ["total=1;auth=2;mid=3;reserve=4;setup=-1", "negative duration"],
     ["total=1;auth=2;mid=3;reserve=4;setup=NaN", "non-finite duration"],
@@ -134,6 +140,21 @@ describe("recordGatewayResponseTelemetry", () => {
         "chat/completions"
       );
     });
+    expect(t.close().spans.some((entry) => entry.name === "cloud.gateway-preforward")).toBe(false);
+  });
+
+  it("records nothing when an intermediary empties every field value", () => {
+    const t = timer();
+    runWithInferenceTiming(t, () => {
+      recordGatewayResponseTelemetry(
+        gatewayResponse({
+          [ELIZA_PREFORWARD_HEADER]: "total=;auth=;mid=;reserve=;setup=",
+        }),
+        "chat/completions"
+      );
+    });
+    // A recorded 0ms span would be indistinguishable from a genuinely instant
+    // gateway; absence of attribution must stay visible as absence.
     expect(t.close().spans.some((entry) => entry.name === "cloud.gateway-preforward")).toBe(false);
   });
 

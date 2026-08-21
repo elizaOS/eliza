@@ -559,10 +559,11 @@ export async function requestNativeWithWarmingRetry(
   for (;;) {
     const response = await withNativeChatLimit(doRequest, label);
     const bodyText = await response.text();
-    if (response.status !== 503) {
-      recordGatewayResponseTelemetry(response, label);
-      return { response, bodyText };
-    }
+    // Recorded before the status check so the give-up 503 keeps its gateway
+    // decomposition too — a turn that burned the whole warming ladder is
+    // exactly the turn whose pre-forward attribution matters.
+    recordGatewayResponseTelemetry(response, label);
+    if (response.status !== 503) return { response, bodyText };
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
     if (delayMs === undefined) return { response, bodyText };
     logger.warn(

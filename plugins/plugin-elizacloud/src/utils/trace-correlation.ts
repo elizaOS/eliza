@@ -55,6 +55,13 @@ export interface GatewayPreforwardBreakdown {
 
 const PREFORWARD_FIELDS = ["total", "auth", "mid", "reserve", "setup"] as const;
 const MAX_PREFORWARD_MS = 3_600_000;
+/**
+ * Plain non-negative decimal only. `Number()` alone would coerce `""`, a
+ * whitespace-only value, `0x64`, `1e3`, or `+5` into a finite number, so an
+ * emptied or rewritten field would land as a fake `0ms` span instead of
+ * invalidating the header.
+ */
+const PREFORWARD_VALUE = /^\d+(?:\.\d+)?$/;
 
 /**
  * Strictly parse `X-Eliza-Preforward-Ms`
@@ -71,7 +78,9 @@ export function parseGatewayPreforwardHeader(
     const eq = part.indexOf("=");
     if (eq <= 0) return null;
     const name = part.slice(0, eq).trim();
-    const parsed = Number(part.slice(eq + 1).trim());
+    const rawValue = part.slice(eq + 1).trim();
+    if (!PREFORWARD_VALUE.test(rawValue)) return null;
+    const parsed = Number(rawValue);
     if (
       !(PREFORWARD_FIELDS as readonly string[]).includes(name) ||
       fields.has(name) ||
