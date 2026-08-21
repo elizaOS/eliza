@@ -122,6 +122,14 @@ export class SigningPolicyEvaluator {
     try {
       const txValue = BigInt(request.value || "0");
       const maxValue = BigInt(this.policy.maxTransactionValueWei);
+      if (txValue < 0n) {
+        return {
+          allowed: false,
+          reason: "Transaction value must not be negative",
+          requiresHumanConfirmation: false,
+          matchedRule: "value_non_negative",
+        };
+      }
       if (txValue > maxValue) {
         return {
           allowed: false,
@@ -142,10 +150,19 @@ export class SigningPolicyEvaluator {
     // ── Method selector ──────────────────────────────────────────────
     if (
       this.policy.allowedMethodSelectors.length > 0 &&
-      request.data &&
-      request.data.length >= 10
+      request.data.toLowerCase() !== "0x"
     ) {
-      const selector = request.data.substring(0, 10).toLowerCase();
+      const selectorMatch = /^0x[0-9a-f]{8}/i.exec(request.data);
+      if (!selectorMatch) {
+        return {
+          allowed: false,
+          reason: "Calldata must begin with a complete 4-byte hex selector",
+          requiresHumanConfirmation: false,
+          matchedRule: "method_selector_format",
+        };
+      }
+
+      const selector = selectorMatch[0].toLowerCase();
       if (
         !this.policy.allowedMethodSelectors.some(
           (s) => s.toLowerCase() === selector,
