@@ -1,10 +1,28 @@
+export function formatTokenFingerprint(token: string): string {
+  const wellFormed = toWellFormedUnicode(token);
+  if (wellFormed.length <= 8) return "****";
+  const head = truncateWellFormed(wellFormed, 4);
+  let tailStart = wellFormed.length - 4;
+  if (
+    tailStart > 0 &&
+    wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
+    wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
+    wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
+    wellFormed.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1;
+  }
+  const tail = wellFormed.slice(tailStart);
+  return `${head}...${tail}`;
+}
+
 /**
  * Auth, CORS, pairing, terminal, and WebSocket auth helpers extracted from server.ts.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   isCloudProvisionedContainer,
   isLoopbackBindHost,
@@ -501,7 +519,7 @@ export function ensureApiTokenForBindHost(host: string): void {
       `[eliza-api] ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN is unset.`,
     );
   }
-  const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
+  const tokenFingerprint = formatTokenFingerprint(generated);
   logger.warn(
     `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN explicitly to override.`,
   );
