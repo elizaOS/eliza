@@ -5,6 +5,9 @@
  */
 export type AgentType = "elizaos" | "pi-agent" | "claude" | "codex" | string;
 
+/** Declares whether a subscription coding-agent session has an active user. */
+export type SubscriptionExecutionMode = "user-attended" | "unattended";
+
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -149,6 +152,11 @@ export interface SpawnOptions {
    */
   slotClass?: SessionSlotClass;
   /**
+   * Required by subscription runtimes whose terms permit only user-attended
+   * operation. Kimi Code fails closed when this is omitted or unattended.
+   */
+  subscriptionExecutionMode?: SubscriptionExecutionMode;
+  /**
    * When true, spawnSession places this session in a per-session subdir of
    * `workdir` (a SHARED scratch root) so concurrent tasks can't collide.
    * Set by the orchestrator only when the workdir resolved to a configured
@@ -227,6 +235,13 @@ export interface AvailableAgentInfo {
   unavailableReason?: string;
   installCommand?: string;
   docsUrl?: string;
+  billingSource?: {
+    kind: "included-plan" | "api-payg";
+    label: string;
+  };
+  executionPolicy?: {
+    requiresUserAttended: boolean;
+  };
   auth?: {
     status?: "authenticated" | "unauthenticated" | "unknown" | string;
     detail?: string;

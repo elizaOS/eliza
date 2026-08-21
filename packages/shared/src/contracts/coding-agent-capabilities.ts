@@ -12,6 +12,8 @@ export const CODING_AGENT_BACKENDS = [
   "pi-agent",
   "claude",
   "codex",
+  "kimi",
+  "grok",
 ] as const;
 
 export type CodingAgentBackend = (typeof CODING_AGENT_BACKENDS)[number];
@@ -82,6 +84,20 @@ export const CODING_AGENT_BACKEND_PREFLIGHTS = {
     discoveryPolicy: "configured-command-or-path",
     commandConfigKey: "ELIZA_CODEX_ACP_COMMAND",
     commandResolution: "managed-codex",
+  },
+  kimi: {
+    requiredRuntime: "kimi-cli",
+    discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_KIMI_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "kimi acp",
+  },
+  grok: {
+    requiredRuntime: "grok-build-cli",
+    discoveryPolicy: "configured-command-or-path",
+    commandConfigKey: "ELIZA_GROK_ACP_COMMAND",
+    commandResolution: "literal",
+    defaultCommand: "grok agent stdio",
   },
 } as const satisfies Readonly<
   Record<CodingAgentBackend, CodingAgentBackendPreflight>
@@ -205,7 +221,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     true,
     true,
     null,
-    "The Kimi coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
+    "The saved Kimi coding-plan key can serve API inference, but the Kimi ACP backend uses its official CLI OAuth session and does not consume that key.",
   ),
   "deepseek-coding": descriptor(
     "deepseek-coding",
@@ -265,7 +281,7 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     true,
     true,
     null,
-    "The Kimi / Moonshot API account can serve model inference, but no supported coding-agent spawn backend consumes it.",
+    "The Kimi / Moonshot API account can serve direct API inference, but the Kimi ACP backend uses its official CLI OAuth session and does not consume that key.",
   ),
   "cerebras-api": descriptor(
     "cerebras-api",

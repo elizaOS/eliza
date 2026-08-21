@@ -59,7 +59,7 @@
   "accounts.provider.deepseekApi": "DeepSeek API",
   "accounts.provider.deepseekCoding": "Gói đăng ký lập trình DeepSeek",
   "accounts.provider.geminiCli": "Gói đăng ký Gemini CLI",
-  "accounts.provider.kimiCoding": "Kimi Code",
+  "accounts.provider.kimiCoding": "Khóa endpoint lập trình Kimi",
   "accounts.provider.moonshotApi": "Kimi / Moonshot API",
   "accounts.provider.openaiApi": "OpenAI API",
   "accounts.provider.openaiCodex": "Gói đăng ký OpenAI Codex",
