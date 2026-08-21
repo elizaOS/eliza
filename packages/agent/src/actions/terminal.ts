@@ -1,17 +1,8 @@
 /**
- * TERMINAL_SHELL action — runs one explicit shell command on the server.
- *
- * When triggered the action:
- *   1. Extracts the command from parameters or MCP-style JSON
- *   2. POSTs to the local API server to execute it
- *   3. The API broadcasts output via WebSocket for real-time display
- *   4. Captures the output for planner follow-up
- *   5. Stores the full output as a document attachment for follow-up actions
- *
- * The loopback POST to `/api/terminal/run` uses
- * `TERMINAL_RUN_FETCH_TIMEOUT_MS` so a hung API cannot stall TERMINAL_SHELL.
- *
- * @module actions/terminal
+ * Executes one explicit shell command through the local terminal API and
+ * converts its bounded output into planner-visible data and an attachment.
+ * Every dispatch carries a fresh run identity; transport ambiguity preserves
+ * that identity so callers can reconcile the effect instead of retrying it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -40,8 +31,6 @@ import { resolveTerminalRunLimits } from "../api/terminal-run-limits.ts";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
-/** HTTP bound for the loopback `/api/terminal/run` hop. Longer than the API's 30s command cap so honest `timedOut` JSON can still return. */
-export const TERMINAL_RUN_FETCH_TIMEOUT_MS = 60_000;
 const MAX_TERMINAL_DATA_CHARS = 16000;
 const TERMINAL_TRANSPORT_GRACE_MS = 10_000;
 const MAX_TERMINAL_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -652,9 +641,6 @@ export const terminalAction: Action = {
         },
       );
     } catch (error) {
-      if (callerSignal?.aborted) {
-        throw callerSignal.reason ?? error;
-      }
       // error-policy:J2 once dispatch begins, a transport failure cannot prove
       // whether the server accepted the command. Preserve the client-selected
       // run identity so the caller can reconcile the operation before retrying.
@@ -686,26 +672,37 @@ export const terminalAction: Action = {
     try {
       responseBody = await readTerminalResponseJson(response, requestSignal);
     } catch (error) {
-      if (callerSignal?.aborted) {
-        throw callerSignal.reason ?? error;
-      }
-      if (transportSignal.aborted) {
-        // error-policy:J2 response headers do not prove completion. Bind the
-        // ambiguous result to the same run identity used by the server.
-        throw new ElizaError("Terminal execution outcome is unknown", {
-          code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
-          context: {
-            acceptance: "unknown",
-            runId,
-            transportTimeoutMs,
-          },
-          cause: error,
-          severity: "fatal",
-        });
-      }
-      throw error;
+      // error-policy:J2 an accepted request with an unreadable, cancelled, or
+      // malformed result may already have executed. Bind every such ambiguity
+      // to the dispatched run identity instead of presenting a safe retry.
+      throw new ElizaError("Terminal execution outcome is unknown", {
+        code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+        context: {
+          acceptance: "unknown",
+          runId,
+          transportTimeoutMs,
+        },
+        cause: error,
+        severity: "fatal",
+      });
     }
-    const rawRun = normalizeCapturedRun(command, responseBody, runId);
+    let rawRun: CapturedTerminalRun;
+    try {
+      rawRun = normalizeCapturedRun(command, responseBody, runId);
+    } catch (error) {
+      // error-policy:J2 a 2xx body that cannot prove the bound run's terminal
+      // result is still an ambiguous effect, not a safely retryable parse error.
+      throw new ElizaError("Terminal execution outcome is unknown", {
+        code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+        context: {
+          acceptance: "unknown",
+          runId,
+          transportTimeoutMs,
+        },
+        cause: error,
+        severity: "fatal",
+      });
+    }
     // Sanitize once before constructing model text, bounded action data, the
     // user-facing relay, attachments, or persisted attachment memory.
     const capturedRun: CapturedTerminalRun = {

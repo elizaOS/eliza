@@ -55,19 +55,24 @@ function shellResult(overrides: Partial<ShellResult> = {}): ShellResult {
 
 function createLeaseGate(): {
   active: () => number;
-  acquire: (maxConcurrent: number) => (() => void) | null;
+  acquire: MiscRouteContext["tryAcquireTerminalRunSlot"];
 } {
   let active = 0;
+  const seen = new Set<string>();
   return {
     active: () => active,
-    acquire: (maxConcurrent) => {
-      if (active >= maxConcurrent) return null;
+    acquire: (runId, maxConcurrent) => {
+      if (seen.has(runId)) return { rejection: "duplicate" };
+      if (active >= maxConcurrent) return { rejection: "capacity" };
+      seen.add(runId);
       active += 1;
       let released = false;
-      return () => {
-        if (released) return;
-        released = true;
-        active -= 1;
+      return {
+        release: () => {
+          if (released) return;
+          released = true;
+          active -= 1;
+        },
       };
     },
   };
@@ -193,5 +198,45 @@ describe("terminal run limits", () => {
     expect(payload.truncated).toBe(true);
     expect(`${payload.stdout}${payload.stderr}`).not.toContain("\uFFFD");
     expect(gate.active()).toBe(0);
+  });
+
+  it("releases admission when the shell launcher throws synchronously", async () => {
+    const gate = createLeaseGate();
+    runShellMock.mockImplementationOnce(() => {
+      throw new Error("launch failed");
+    });
+    const route = makeContext("run-00000000-0000-4000-8000-000000000005", gate);
+
+    expect(await handleMiscRoutes(route.ctx)).toBe(true);
+    await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+    expect(gate.active()).toBe(0);
+  });
+
+  it("rejects reuse of a run id before and after the first run settles", async () => {
+    const gate = createLeaseGate();
+    const pending = deferred<ShellResult>();
+    const runId = "run-00000000-0000-4000-8000-000000000006";
+    runShellMock.mockReturnValueOnce(pending.promise);
+    const first = makeContext(runId, gate);
+    const concurrentReplay = makeContext(runId, gate);
+
+    expect(await handleMiscRoutes(first.ctx)).toBe(true);
+    expect(await handleMiscRoutes(concurrentReplay.ctx)).toBe(true);
+    expect(concurrentReplay.error).toHaveBeenCalledWith(
+      concurrentReplay.ctx.res,
+      "Terminal run id was already used",
+      409,
+    );
+
+    pending.resolve(shellResult());
+    await vi.waitFor(() => expect(first.json).toHaveBeenCalledOnce());
+    const settledReplay = makeContext(runId, gate);
+    expect(await handleMiscRoutes(settledReplay.ctx)).toBe(true);
+    expect(settledReplay.error).toHaveBeenCalledWith(
+      settledReplay.ctx.res,
+      "Terminal run id was already used",
+      409,
+    );
+    expect(runShellMock).toHaveBeenCalledOnce();
   });
 });

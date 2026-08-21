@@ -353,7 +353,8 @@ describe("terminal action effect proof", () => {
     await expect(
       terminalAction.handler(runtime(), message(), undefined, options()),
     ).rejects.toMatchObject({
-      code: "TERMINAL_RESPONSE_INVALID",
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: { acceptance: "unknown" },
     });
   });
 
@@ -373,10 +374,10 @@ describe("terminal action effect proof", () => {
     await expect(
       terminalAction.handler(runtime(), message(), undefined, options()),
     ).rejects.toMatchObject({
-      code: "TERMINAL_RESPONSE_INVALID",
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
       context: {
-        expectedRunId: dispatchedRunId,
-        receivedRunId: "run-00000000-0000-4000-8000-000000000001",
+        acceptance: "unknown",
+        runId: dispatchedRunId,
       },
     });
   });
@@ -403,7 +404,7 @@ describe("terminal action effect proof", () => {
     expect(resolveTerminalTransportTimeoutMs()).toBe(3_610_000);
   });
 
-  it("cancels a stalled response body with the caller's abort reason", async () => {
+  it("classifies caller abort after dispatch as an acceptance-unknown outcome", async () => {
     const caller = new AbortController();
     let bodyCancelled = false;
     vi.stubGlobal(
@@ -431,7 +432,13 @@ describe("terminal action effect proof", () => {
     });
     caller.abort(abortReason);
 
-    await expect(pending).rejects.toBe(abortReason);
+    await expect(pending).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: {
+        acceptance: "unknown",
+        runId: expect.stringMatching(/^run-[0-9a-f-]{36}$/u),
+      },
+    });
     expect(bodyCancelled).toBe(true);
   });
 
@@ -457,7 +464,10 @@ describe("terminal action effect proof", () => {
 
     await expect(
       terminalAction.handler(runtime(), message(), undefined, options()),
-    ).rejects.toMatchObject({ code: "TERMINAL_RESPONSE_INVALID" });
+    ).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: { acceptance: "unknown" },
+    });
     expect(bodyCancelled).toBe(true);
   });
 
@@ -588,7 +598,7 @@ describe("terminal secret hygiene", () => {
       terminalAction.handler(runtime(), message(), undefined, options()),
     ).rejects.toMatchObject({
       name: ElizaError.name,
-      code: "TERMINAL_REQUEST_FAILED",
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
     });
     expect(Date.now() - started).toBeLessThan(1_000);
   });

@@ -235,7 +235,10 @@ export interface MiscRouteContext {
    * Atomically reserves one process-wide terminal slot. Production supplies
    * this instead of relying on the count snapshot captured before body parsing.
    */
-  tryAcquireTerminalRunSlot?: (maxConcurrent: number) => (() => void) | null;
+  tryAcquireTerminalRunSlot?: (
+    runId: string,
+    maxConcurrent: number,
+  ) => { release: () => void } | { rejection: "capacity" | "duplicate" };
 }
 
 // ---------------------------------------------------------------------------
@@ -498,20 +501,26 @@ export async function handleMiscRoutes(
     }
 
     const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
-    const releaseTerminalRunSlot = ctx.tryAcquireTerminalRunSlot
-      ? ctx.tryAcquireTerminalRunSlot(maxConcurrent)
+    const admission = ctx.tryAcquireTerminalRunSlot
+      ? ctx.tryAcquireTerminalRunSlot(runId, maxConcurrent)
       : ctx.activeTerminalRunCount < maxConcurrent
-        ? (() => {
-            ctx.setActiveTerminalRunCount(1);
-            let released = false;
-            return () => {
-              if (released) return;
-              released = true;
-              ctx.setActiveTerminalRunCount(-1);
-            };
-          })()
-        : null;
-    if (!releaseTerminalRunSlot) {
+        ? {
+            release: (() => {
+              ctx.setActiveTerminalRunCount(1);
+              let released = false;
+              return () => {
+                if (released) return;
+                released = true;
+                ctx.setActiveTerminalRunCount(-1);
+              };
+            })(),
+          }
+        : { rejection: "capacity" as const };
+    if ("rejection" in admission) {
+      if (admission.rejection === "duplicate") {
+        error(res, "Terminal run id was already used", 409);
+        return true;
+      }
       error(
         res,
         `Too many active terminal runs (${maxConcurrent}). Wait for a command to finish.`,
@@ -519,6 +528,7 @@ export async function handleMiscRoutes(
       );
       return true;
     }
+    const releaseTerminalRunSlot = admission.release;
 
     if (!captureOutput) {
       json(res, { ok: true, runId });
@@ -605,19 +615,22 @@ export async function handleMiscRoutes(
     };
 
     const shell = resolveTerminalShellCommand();
-    runShell(
-      {
-        command: shell.command,
-        args: shell.argsFor(command),
-        cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
-        env: { FORCE_COLOR: "0" },
-        timeoutMs: maxDurationMs,
-        onStdout: (text) => appendAndEmit("stdout", text),
-        onStderr: (text) => appendAndEmit("stderr", text),
-        toolName: "terminal.run",
-      },
-      null,
-    )
+    Promise.resolve()
+      .then(() =>
+        runShell(
+          {
+            command: shell.command,
+            args: shell.argsFor(command),
+            cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
+            env: { FORCE_COLOR: "0" },
+            timeoutMs: maxDurationMs,
+            onStdout: (text) => appendAndEmit("stdout", text),
+            onStderr: (text) => appendAndEmit("stderr", text),
+            toolName: "terminal.run",
+          },
+          null,
+        ),
+      )
       .then((result) => {
         finalize();
         emitTerminalEvent({
