@@ -100,7 +100,8 @@ describe("POST /api/v1/me/account-deletion", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
+    const body: unknown = await response.json();
+    expect(body).toEqual({
       error: "Transfer shared resources before deletion",
       code: "TRANSFER_REQUIRED",
     });
