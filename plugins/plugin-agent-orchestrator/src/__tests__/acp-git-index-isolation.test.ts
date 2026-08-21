@@ -65,6 +65,7 @@ type GitIndexPreparer = {
     workdir: string,
     sessionId: string,
     baselineSha?: string,
+    baselineDirty?: boolean,
   ): Promise<
     | {
         env: Record<string, string>;
@@ -233,6 +234,34 @@ describe("ACP per-session git index isolation (#13773)", () => {
     expect(git(repo, ["ls-tree", "--name-only", "-r", "HEAD"])).toBe(
       ["README.md", "a.txt", "b.txt"].join("\n"),
     );
+  });
+
+  it("refuses broad staging when the workspace was already dirty", async () => {
+    const service = new AcpService(makeRuntime(), {
+      store: new InMemorySessionStore(),
+    });
+    const prepare = (
+      service as unknown as GitIndexPreparer
+    ).prepareSessionGitIndex.bind(service);
+    const baselineSha = git(repo, ["rev-parse", "HEAD"]);
+    writeFileSync(path.join(repo, "README.md"), "pre-existing user edit\n");
+    const prepared = await prepare(
+      repo,
+      `${sessionPrefix}dirty-baseline`,
+      baselineSha,
+      true,
+    );
+    writeFileSync(path.join(repo, "task-file.txt"), "task output\n");
+
+    expect(() => git(repo, ["add", "."], prepared?.env)).toThrow();
+    expect(() => git(repo, ["add", "-A"], prepared?.env)).toThrow();
+    git(repo, ["add", "task-file.txt"], prepared?.env);
+    expect(git(repo, ["diff", "--cached", "--name-only"], prepared?.env)).toBe(
+      "task-file.txt",
+    );
+    expect(() =>
+      git(repo, ["commit", "-am", "unsafe"], prepared?.env),
+    ).toThrow();
   });
 
   it("lands both commits through independently claimed warm-child wrapper paths", async () => {

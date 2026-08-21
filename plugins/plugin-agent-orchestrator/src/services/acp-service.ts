@@ -432,16 +432,18 @@ const path = require("node:path");
 const git = process.env.ACP_REAL_GIT || "git";
 const indexFile = process.env.ACP_GIT_INDEX_FILE;
 const baseline = process.env.ACP_GIT_BASELINE_SHA;
+const baselineDirty = process.env.ACP_GIT_BASELINE_DIRTY === "1";
 if (indexFile) process.env.GIT_INDEX_FILE = indexFile;
 delete process.env.ACP_GIT_INDEX_FILE;
 delete process.env.ACP_GIT_BASELINE_SHA;
+delete process.env.ACP_GIT_BASELINE_DIRTY;
 delete process.env.ACP_REAL_GIT;
 const args = process.argv.slice(2);
 function commandInfo(argv) {
   const prefix = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === "--") return { cmd: undefined, prefix };
+    if (arg === "--") return { cmd: undefined, cmdIndex: -1, prefix };
     if (arg === "-C" || arg === "-c" || arg === "--git-dir" || arg === "--work-tree" || arg === "--namespace") {
       prefix.push(arg, argv[i + 1]);
       i += 1;
@@ -455,9 +457,9 @@ function commandInfo(argv) {
       prefix.push(arg);
       continue;
     }
-    return { cmd: arg, prefix };
+    return { cmd: arg, cmdIndex: i, prefix };
   }
-  return { cmd: undefined, prefix };
+  return { cmd: undefined, cmdIndex: -1, prefix };
 }
 function run(argv, opts = {}) {
   return spawnSync(git, argv, { stdio: "inherit", env: process.env, ...opts });
@@ -657,6 +659,19 @@ function acquireCommitLock(gitDir) {
   }
 }
 const info = commandInfo(args);
+const commandArgs = info.cmdIndex >= 0 ? args.slice(info.cmdIndex + 1) : [];
+const broadAdd = info.cmd === "add" && commandArgs.some((arg) =>
+  arg === "." || arg === "-A" || arg === "--all" || arg === "-u" || arg === "--update"
+);
+const broadCommit = info.cmd === "commit" && commandArgs.some((arg) =>
+  arg === "-a" || arg === "--all" || (/^-[^-]+$/.test(arg) && arg.slice(1).includes("a"))
+);
+if (baselineDirty && (broadAdd || broadCommit)) {
+  process.stderr.write(
+    "eliza-acp: refusing broad Git staging in a workspace that was already dirty at session start; stage only the named files this task changed\\n",
+  );
+  process.exit(2);
+}
 if (indexFile && baseline && info.cmd === "commit") {
   // The diff reads only this session's staged index vs its baseline, so it does
   // not depend on HEAD and stays outside the lock.
@@ -1225,6 +1240,7 @@ export class AcpService extends Service {
     workdir: string,
     sessionId: string,
     baselineSha?: string,
+    baselineDirty = false,
   ): Promise<
     | {
         env: Record<string, string>;
@@ -1280,6 +1296,7 @@ export class AcpService extends Service {
         GIT_INDEX_FILE: indexFile,
         PATH: `${wrapperDir}:${process.env.PATH ?? ""}`,
         ...(baselineSha ? { ACP_GIT_BASELINE_SHA: baselineSha } : {}),
+        ...(baselineDirty ? { ACP_GIT_BASELINE_DIRTY: "1" } : {}),
       },
       metadata: {
         [ACP_METADATA_GIT_INDEX_FILE]: indexFile,
@@ -1308,6 +1325,13 @@ export class AcpService extends Service {
       ...(typeof session.metadata?.codingBaselineSha === "string"
         ? { ACP_GIT_BASELINE_SHA: session.metadata.codingBaselineSha }
         : {}),
+      ...(Array.isArray(session.metadata?.codingBaselineDirty) &&
+      session.metadata.codingBaselineDirty.length > 0
+        ? { ACP_GIT_BASELINE_DIRTY: "1" }
+        : Array.isArray(session.metadata?.codingBaselineUntracked) &&
+            session.metadata.codingBaselineUntracked.length > 0
+          ? { ACP_GIT_BASELINE_DIRTY: "1" }
+          : {}),
     };
   }
 
@@ -1911,6 +1935,7 @@ export class AcpService extends Service {
         workdir,
         id,
         baselineSha,
+        baselineDirty.length > 0 || baselineUntracked.length > 0,
       );
       const sessionEnv: Record<string, string> = {
         ...(opts.env ?? {}),
