@@ -127,7 +127,11 @@ export async function confirmTelegramAccountClaim(
   const response = await postAuthJson(STEWARD_SESSION_ENDPOINT, request);
   if (!response.ok) {
     const body = await readSessionError(response);
-    throw new Error(body.error || "Could not connect this Telegram account.");
+    throw new StewardSessionError(
+      body.error || "Could not connect this Telegram account.",
+      response.status,
+      body.code ?? null,
+    );
   }
   clearPendingOnboardingSessionIfMatches(
     telegramContinuation,

@@ -19,7 +19,10 @@
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
+import {
+  readStoredStewardToken,
+  StewardSessionError,
+} from "@elizaos/shared/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/button";
@@ -66,6 +69,7 @@ export default function GetStartedPage(): React.JSX.Element {
   const [searchParams] = useSearchParams();
   const [phase, setPhase] = useState<GetStartedPhase>("checking");
   const [error, setError] = useState<string | null>(null);
+  const [telegramClaimConflict, setTelegramClaimConflict] = useState(false);
   const [platformIdentity, setPlatformIdentity] =
     useState<MessagingContinuationPreview | null>(null);
   const [
@@ -133,6 +137,7 @@ export default function GetStartedPage(): React.JSX.Element {
   const claimTelegramAccount = useCallback(async (continuation: string) => {
     setPhase("linking");
     setError(null);
+    setTelegramClaimConflict(false);
     try {
       const stewardToken = readStoredStewardToken();
       if (!stewardToken) {
@@ -141,8 +146,15 @@ export default function GetStartedPage(): React.JSX.Element {
       await confirmTelegramAccountClaim(stewardToken, continuation);
       setPhase("done");
     } catch (err) {
-      // error-policy:J4 claim failures remain visible and retryable; the
-      // pending authority is cleared only by a successful server sync.
+      // A deterministic conflict needs Cloud-side account convergence. Never
+      // turn its recovery control into the same mutating POST again: that is
+      // an infinite retry loop and suggests the browser can repair ownership.
+      // The pending authority remains intact for a fresh claim after Cloud
+      // resolves the account state.
+      setTelegramClaimConflict(
+        err instanceof StewardSessionError &&
+          err.code === "telegram_claim_conflict",
+      );
       setError(describeContinuationError(err));
       setPhase("error");
     }
@@ -309,37 +321,68 @@ export default function GetStartedPage(): React.JSX.Element {
         ) : renderedPhase === "error" ? (
           <div className="flex flex-col items-center gap-4">
             <h1 className="font-poppins text-lg font-semibold text-white">
-              {t("cloud.getStarted.errorTitle", {
-                defaultValue: "Couldn't connect your account",
-              })}
+              {telegramClaimConflict
+                ? "We couldn't safely combine these accounts"
+                : t("cloud.getStarted.errorTitle", {
+                    defaultValue: "Couldn't connect your account",
+                  })}
             </h1>
-            <p className="text-sm text-white/70">{renderedError}</p>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                if (telegramClaimPersistenceBlocked) {
-                  retryTelegramClaimPersistence();
-                  return;
-                }
-                if (telegramClaimToken) {
-                  // Retry only the step that failed: the mutating claim once
-                  // the preview has named the identity, otherwise the preview.
-                  // A failed preview must never escalate into the claim.
-                  if (platformIdentity)
-                    void claimTelegramAccount(telegramClaimToken);
-                  else void preview(telegramClaimToken);
-                  return;
-                }
-                const token = peekPendingOnboardingSession();
-                if (!token) return;
-                if (platformIdentity) void redeem(token);
-                else void preview(token);
-              }}
-              className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
-            >
-              {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
-            </Button>
+            {telegramClaimConflict ? (
+              <>
+                <p className="text-sm text-white/70">
+                  Nothing changed. Your Telegram and phone histories remain
+                  separate. This account needs Cloud support before you request
+                  a fresh <strong>/connect</strong> link in Telegram.
+                </p>
+                {platformIdentity?.returnUrl &&
+                isSafeNavigationUrl(platformIdentity.returnUrl) ? (
+                  <Button
+                    asChild
+                    className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
+                  >
+                    <a href={platformIdentity.returnUrl}>Back to Telegram</a>
+                  </Button>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => navigate("/join")}
+                  className="px-6 py-2.5 font-semibold text-white/80 hover:text-white"
+                >
+                  Open Eliza Cloud
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-white/70">{renderedError}</p>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    if (telegramClaimPersistenceBlocked) {
+                      retryTelegramClaimPersistence();
+                      return;
+                    }
+                    if (telegramClaimToken) {
+                      // Retry only the step that failed: the mutating claim once
+                      // the preview has named the identity, otherwise the preview.
+                      // A failed preview must never escalate into the claim.
+                      if (platformIdentity)
+                        void claimTelegramAccount(telegramClaimToken);
+                      else void preview(telegramClaimToken);
+                      return;
+                    }
+                    const token = peekPendingOnboardingSession();
+                    if (!token) return;
+                    if (platformIdentity) void redeem(token);
+                    else void preview(token);
+                  }}
+                  className="bg-txt px-6 py-2.5 font-semibold text-bg transition-colors hover:bg-txt/90 hover:!text-bg"
+                >
+                  {t("cloud.getStarted.retry", { defaultValue: "Try again" })}
+                </Button>
+              </>
+            )}
           </div>
         ) : (
           <div

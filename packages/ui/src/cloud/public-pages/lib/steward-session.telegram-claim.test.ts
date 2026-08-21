@@ -1,6 +1,7 @@
 /** Verifies Telegram claim authority survives Steward login without replay or loss. */
 // @vitest-environment jsdom
 
+import { StewardSessionError } from "@elizaos/shared/steward-session-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearPendingOnboardingSession,
@@ -113,9 +114,17 @@ describe("Steward Telegram account claim handoff", () => {
       ),
     );
 
-    await expect(
-      confirmTelegramAccountClaim("steward-token", TOKEN),
-    ).rejects.toThrow("This Telegram chat cannot be linked automatically");
+    const failure = await confirmTelegramAccountClaim(
+      "steward-token",
+      TOKEN,
+    ).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(StewardSessionError);
+    expect(failure).toMatchObject({
+      status: 409,
+      code: "telegram_claim_conflict",
+      message: "This Telegram chat cannot be linked automatically",
+    });
     expect(peekPendingOnboardingSession()).toBe(TOKEN);
   });
 

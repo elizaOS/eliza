@@ -1,6 +1,7 @@
 /** Regression coverage for one-shot messaging onboarding continuation redemption. */
 // @vitest-environment jsdom
 
+import { StewardSessionError } from "@elizaos/shared/steward-session-client";
 import {
   cleanup,
   fireEvent,
@@ -359,6 +360,54 @@ describe("GetStartedPage", () => {
     expect(await screen.findByText("join")).toBeTruthy();
     expect(confirmTelegramAccountClaim).toHaveBeenCalledTimes(2);
     expect(previewPendingOnboardingContinuation).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not repeat a deterministic Telegram account conflict", async () => {
+    vi.mocked(previewPendingOnboardingContinuation).mockResolvedValue({
+      platform: "telegram",
+      platformUserId: "123456789",
+      platformDisplayName: "attested-telegram-user",
+      returnUrl: "https://t.me/eliza_test_bot",
+    });
+    confirmTelegramAccountClaim.mockRejectedValueOnce(
+      new StewardSessionError(
+        "This Telegram chat cannot be linked automatically",
+        409,
+        "telegram_claim_conflict",
+      ),
+    );
+    const entry = `/get-started?onboardingSession=${TOKEN}&accountClaim=telegram`;
+    window.history.replaceState(null, "", entry);
+
+    render(
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path="/get-started" element={<GetStartedPage />} />
+          <Route path="/join" element={<div>join</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /Connect this Telegram account/,
+      }),
+    );
+
+    expect(
+      await screen.findByText("We couldn't safely combine these accounts"),
+    ).toBeTruthy();
+    expect(screen.getByText(/Nothing changed/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: "Back to Telegram" })
+        .getAttribute("href"),
+    ).toBe("https://t.me/eliza_test_bot");
+    expect(confirmTelegramAccountClaim).toHaveBeenCalledTimes(1);
+    expect(peekPendingOnboardingSession(TELEGRAM_ACCOUNT_CLAIM_PURPOSE)).toBe(
+      TOKEN,
+    );
   });
 
   it("retries a failed Telegram claim preview without ever firing the claim", async () => {
