@@ -390,6 +390,37 @@ describe("SurfaceWindowManager app windows", () => {
     expect(fixture.manager.listWindows()).toHaveLength(2);
   });
 
+  // The leader's window is raised by createManagedWindow's own dedupe, but a
+  // follower that joins a launch already in flight never goes through that
+  // path. Without an explicit focus, a burst of tray clicks resolves every
+  // caller against a window nobody raised.
+  it("raises the window once for each concurrent follower and not for the leader", async () => {
+    let releaseRendererUrl: ((url: string) => void) | undefined;
+    const rendererUrl = new Promise<string>((resolve) => {
+      releaseRendererUrl = resolve;
+    });
+    const fixture = createFixture({
+      resolveRendererUrl: () => rendererUrl,
+    });
+
+    const leader = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+    const follower = fixture.manager.openAppWindow({
+      slug: "workspace",
+      title: "Workspace",
+      path: "/",
+    });
+
+    releaseRendererUrl?.("http://127.0.0.1:5173/?boot=1#old");
+    await Promise.all([leader, follower]);
+
+    expect(fixture.created).toHaveLength(1);
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
+  });
+
   it("notifies the registry when a concurrent open promotes always-on-top after creation", async () => {
     let releaseRendererUrl: ((url: string) => void) | undefined;
     const rendererUrl = new Promise<string>((resolve) => {

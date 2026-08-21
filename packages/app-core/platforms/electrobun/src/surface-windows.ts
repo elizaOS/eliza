@@ -327,7 +327,13 @@ export class SurfaceWindowManager {
     if (pending) {
       pending.alwaysOnTopRequested ||= options.alwaysOnTop === true;
       await pending.task;
-      return this.finishPendingAppWindow(options.slug, pending);
+      const snapshot = this.finishPendingAppWindow(options.slug, pending);
+      // A follower joined a launch already in flight, so createManagedWindow's
+      // own dedupe never ran for it and nothing raised the window on its
+      // behalf. The leader's branch below is already focused by that path;
+      // focusing there too would raise it once per concurrent caller.
+      this.focusWindow(snapshot.id);
+      return snapshot;
     }
 
     const pendingAppWindow: PendingAppWindow = {

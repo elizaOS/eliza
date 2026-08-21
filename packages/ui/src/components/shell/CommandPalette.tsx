@@ -13,6 +13,7 @@
  * mirrors the view catalog, so hidden developer/preview views never leak.
  */
 
+import { logger } from "@elizaos/logger";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -162,9 +163,16 @@ export function CommandPalette() {
         );
       },
       openDesktopWorkspaceWindow: () => {
-        void openDesktopWorkspaceWindow().catch(() => {
-          // error-policy:J4 a native window launch failure remains visible in
-          // the shell instead of becoming an unhandled command rejection.
+        void openDesktopWorkspaceWindow().catch((error: unknown) => {
+          // error-policy:J4 a native window launch failure becomes a visible
+          // shell notice instead of an unhandled command rejection. The catch
+          // is unconditional, so the cause is logged rather than discarded — a
+          // programming error here would otherwise leave nothing behind but
+          // generic retry text.
+          logger.error(
+            { error },
+            "[CommandPalette] desktop workspace launch failed",
+          );
           setActionNotice(
             t("desktop.workspace.launchFailed", {
               defaultValue:

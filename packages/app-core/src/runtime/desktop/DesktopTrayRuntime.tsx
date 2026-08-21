@@ -8,6 +8,7 @@
  * show/hide/quit — all through the electrobun-rpc bridge. Only active under
  * isElectrobunRuntime(); polls with backoff until the RPC bridge attaches.
  */
+import { logger } from "@elizaos/logger";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -283,9 +284,13 @@ export function DesktopTrayRuntime() {
         }
       };
 
-      void run().catch(() => {
+      void run().catch((error: unknown) => {
         // error-policy:J4 Tray commands terminate at this UI boundary, so an
         // RPC failure must remain visibly distinct from successful dispatch.
+        // This wraps all eleven tray actions, so the cause is logged rather
+        // than discarded — otherwise every one of them collapses into the same
+        // undiagnosable notice.
+        logger.error({ error }, "[DesktopTrayRuntime] tray action failed");
         setActionNotice(
           t("desktop.tray.actionFailed", {
             defaultValue:
