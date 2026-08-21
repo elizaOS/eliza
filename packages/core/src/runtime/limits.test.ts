@@ -139,10 +139,18 @@ describe("countRepeatedFailures / assertRepeatedFailureLimit", () => {
 	});
 
 	it("throws repeated_failures once the cap is exceeded", () => {
+		const failureProvenance = {
+			kind: "missing_capability",
+			boundary: "capability",
+			code: "ACTION_NOT_AVAILABLE",
+			retryable: false,
+		} as const;
+		const latestFailure = fail({ failureProvenance });
+
 		try {
 			assertRepeatedFailureLimit({
-				failures: [fail(), fail(), fail()],
-				latestFailure: fail(),
+				failures: [fail(), fail(), latestFailure],
+				latestFailure,
 				maxRepeatedFailures: 2,
 			});
 			throw new Error("should have thrown");
@@ -150,6 +158,9 @@ describe("countRepeatedFailures / assertRepeatedFailureLimit", () => {
 			expect(e).toBeInstanceOf(TrajectoryLimitExceeded);
 			expect((e as TrajectoryLimitExceeded).kind).toBe("repeated_failures");
 			expect((e as TrajectoryLimitExceeded).observed).toBe(3);
+			expect((e as TrajectoryLimitExceeded).failureProvenance).toEqual(
+				failureProvenance,
+			);
 		}
 	});
 });

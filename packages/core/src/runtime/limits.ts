@@ -1,5 +1,3 @@
-import { truncateWellFormed } from "../utils/well-formed";
-
 /**
  * Bounds and guard functions for the planner chaining loop: the
  * `ChainingLoopConfig` limit contract (max tool calls, repeated-failure and
@@ -7,6 +5,12 @@ import { truncateWellFormed } from "../utils/well-formed";
  * `TrajectoryLimitExceeded` error, and the assert/count helpers that stop a
  * runaway or stuck planner from burning a turn.
  */
+import type { ActionFailureProvenance } from "../types/action-failure";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
+
 export interface ChainingLoopConfig {
 	/** Maximum tool calls executed during one planner loop. */
 	maxToolCalls: number;
@@ -153,12 +157,14 @@ export class TrajectoryLimitExceeded extends Error {
 	readonly kind: TrajectoryLimitKind;
 	readonly max: number;
 	readonly observed: number;
+	readonly failureProvenance?: ActionFailureProvenance;
 
 	constructor(params: {
 		kind: TrajectoryLimitKind;
 		max: number;
 		observed: number;
 		message?: string;
+		failureProvenance?: ActionFailureProvenance;
 	}) {
 		super(
 			params.message ??
@@ -168,6 +174,7 @@ export class TrajectoryLimitExceeded extends Error {
 		this.kind = params.kind;
 		this.max = params.max;
 		this.observed = params.observed;
+		this.failureProvenance = params.failureProvenance;
 	}
 }
 
@@ -198,6 +205,7 @@ export interface FailureLike {
 	error?: unknown;
 	success?: boolean;
 	repeatKey?: string;
+	failureProvenance?: ActionFailureProvenance;
 }
 
 export function getFailureSignature(failure: FailureLike): string | null {
@@ -215,7 +223,7 @@ export function getFailureSignature(failure: FailureLike): string | null {
 					? "failed"
 					: JSON.stringify(failure.error);
 	const normalizedError = truncateWellFormed(
-		rawError.trim().replace(/\s+/g, " "),
+		toWellFormedUnicode(rawError.trim().replace(/\s+/g, " ")),
 		240,
 	);
 	return `${toolName}:${normalizedError}`;
@@ -243,7 +251,9 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey
+		? `${signature}:${truncateWellFormed(toWellFormedUnicode(repeatKey), 240)}`
+		: signature;
 }
 
 export function assertRepeatedFailureLimit(params: {
@@ -257,6 +267,7 @@ export function assertRepeatedFailureLimit(params: {
 			kind: "repeated_failures",
 			max: params.maxRepeatedFailures,
 			observed,
+			failureProvenance: params.latestFailure.failureProvenance,
 			message: `Repeated tool failure limit exceeded for ${getFailureSignature(
 				params.latestFailure,
 			)}`,

@@ -1,60 +1,77 @@
 /**
- * Regression for limits surrogate-safe truncation (240).
+ * Regression coverage for the production planner-limit Unicode boundaries.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed.ts";
 import { describe, expect, it } from "vitest";
+import { toWellFormedUnicode } from "../utils/well-formed.ts";
+import {
+	countRepeatedFailures,
+	type FailureLike,
+	getFailureSignature,
+} from "./limits.ts";
 
-const LIMITS_TRUNCATE = 240;
-
-function clampLimits(text: string): string {
-  const wellFormed = toWellFormedUnicode(text ?? "");
-  return truncateWellFormed(wellFormed, LIMITS_TRUNCATE);
+function errorPortion(error: string): string {
+	const signature = getFailureSignature({ toolName: "X", error });
+	if (signature === null) {
+		throw new Error("Expected a failure signature");
+	}
+	return signature.slice(2);
 }
 
-function isWellFormed(s: string): boolean {
-  const w = s as unknown as { isWellFormed?: () => boolean };
-  if (typeof w.isWellFormed === "function") return w.isWellFormed();
-  return toWellFormedUnicode(s) === s;
+function isWellFormed(text: string): boolean {
+	const candidate = text as unknown as { isWellFormed?: () => boolean };
+	if (typeof candidate.isWellFormed === "function") {
+		return candidate.isWellFormed();
+	}
+	return toWellFormedUnicode(text) === text;
 }
 
-describe("limits well-formed", () => {
-  it("backs off astral at 240 boundary (239+fox->239)", () => {
-    const fox = "🦊";
-    const input = `${"a".repeat(239)}${fox}${"b".repeat(20)}`;
-    const out = clampLimits(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(239);
-    expect(out).toBe("a".repeat(239));
-  });
+function failure(repeatKey: string): FailureLike {
+	return {
+		toolName: "WEB_FETCH",
+		error: "ETIMEDOUT",
+		success: false,
+		repeatKey,
+	};
+}
 
-  it("preserves fitting astral at 240 (238+fox intact)", () => {
-    const fox = "🦊";
-    const input = `${"a".repeat(238)}${fox}`;
-    const out = clampLimits(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe(input);
-    expect(out.length).toBe(240);
-  });
+describe("planner limit signatures stay well-formed", () => {
+	it("backs off an astral character at the 240-code-unit error boundary", () => {
+		const out = errorPortion(`${"a".repeat(239)}🦊${"b".repeat(20)}`);
 
-  it("sanitizes lone high surrogate", () => {
-    const lone = `err ${String.fromCharCode(0xd800)} text`;
-    const out = clampLimits(`${lone}${"x".repeat(300)}`);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.includes("�")).toBe(true);
-  });
+		expect(out).toBe("a".repeat(239));
+		expect(isWellFormed(out)).toBe(true);
+	});
 
-  it("short passthrough", () => {
-    expect(clampLimits("short error")).toBe("short error");
-  });
+	it("preserves an astral character that fits the error boundary", () => {
+		const input = `${"a".repeat(238)}🦊`;
+		const out = errorPortion(input);
 
-  it("sweep around 240 well-formed", () => {
-    const fox = "🦊";
-    for (let n = 235; n <= 245; n++) {
-      const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
-      const out = clampLimits(input);
-      expect(isWellFormed(out)).toBe(true);
-      expect(out.length).toBeLessThanOrEqual(240);
-    }
-  });
+		expect(out).toBe(input);
+		expect(out).toHaveLength(240);
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	it("sanitizes a pre-existing lone surrogate in the error", () => {
+		const loneHighSurrogate = String.fromCharCode(0xd800);
+		const out = errorPortion(`err ${loneHighSurrogate} text${"x".repeat(300)}`);
+
+		expect(out).toContain("�");
+		expect(out).not.toContain(loneHighSurrogate);
+		expect(isWellFormed(out)).toBe(true);
+	});
+
+	it("normalizes astral repeat keys before comparing their bounded prefix", () => {
+		const grinning = failure(`${"x".repeat(239)}😀-one`);
+		const fox = failure(`${"x".repeat(239)}🦊-two`);
+
+		expect(countRepeatedFailures([grinning, fox], grinning)).toBe(2);
+	});
+
+	it("normalizes lone surrogates in repeat keys before comparison", () => {
+		const malformed = failure(`key-${String.fromCharCode(0xd800)}`);
+		const repaired = failure("key-�");
+
+		expect(countRepeatedFailures([malformed, repaired], repaired)).toBe(2);
+	});
 });
