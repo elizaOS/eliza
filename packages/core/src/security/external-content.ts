@@ -9,6 +9,10 @@ import {
 	INJECTION_KEYWORDS,
 	INJECTION_PATTERNS,
 } from "../features/trust/injection-primitives.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.js";
 
 /**
  * Check if content contains suspicious patterns that may indicate injection.
@@ -24,7 +28,7 @@ import {
  * @returns Array of matched pattern sources / keywords (empty if none)
  */
 export function detectSuspiciousPatterns(content: string): string[] {
-	const safe = content.length > 100_000 ? content.slice(0, 100_000) : content;
+	const safe = truncateWellFormed(toWellFormedUnicode(content), 100_000);
 	const matches: string[] = [];
 	for (const pattern of INJECTION_PATTERNS) {
 		if (pattern.test(safe)) {
