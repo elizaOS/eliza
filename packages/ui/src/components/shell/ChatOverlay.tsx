@@ -6990,7 +6990,18 @@ export function ChatOverlay({
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
               {!transcriptionComposerActive ? (
-                <DropdownMenu>
+                <DropdownMenu
+                  onOpenChange={(open) => {
+                    // A detached input pill is only 64px tall, so a portalled
+                    // menu placed above the trigger is correctly clipped by
+                    // its exact native host. Open the shared chat surface first
+                    // so the action menu has visible window space; browser and
+                    // in-app overlays keep their existing menu-only behavior.
+                    if (open && desktopOverlayHost && !sheetOpen) {
+                      goToDetent("half");
+                    }
+                  }}
+                >
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"

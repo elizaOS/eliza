@@ -4347,6 +4347,34 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
+  it("opens detached Mac chat before showing the composer actions menu", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.dataset.detent).toBe("collapsed");
+
+    const plus = screen.getByTestId("chat-composer-plus");
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 81,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 81,
+      pointerType: "mouse",
+    });
+
+    expect(sheet.dataset.detent).toBe("half");
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+  });
+
   it("click-away closes detached Mac history only to the visible composer", () => {
     render(
       <ChatOverlay
