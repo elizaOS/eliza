@@ -65,3 +65,70 @@ variable "operator_ingress_cidrs" {
     error_message = "operator_ingress_cidrs MUST be a non-empty list of tight CIDRs (no 0.0.0.0/0 or ::/0); pin to operator IPs or the control-plane IP"
   }
 }
+
+# ── Off-host encrypted backups (#21729) ──────────────────────────────────────
+# Hetzner provider snapshots (`backups = true` on the server) are a host
+# safeguard, not an application-consistent database backup: they cannot prove
+# a restorable Postgres state and they live in the same failure domain. These
+# variables arm the on-node nightly logical-backup pipeline that dumps every
+# tenant database, encrypts the archive locally with AES-256, and ships it to
+# an S3-compatible bucket OUTSIDE the Hetzner apps project (e.g. a dedicated
+# R2 bucket). All of endpoint/bucket/access/secret/passphrase must be set
+# together; leaving them empty keeps the pipeline installed but INERT — the
+# tenant_db server precondition in main.tf rejects partial configuration.
+variable "backup_s3_endpoint" {
+  description = "S3-compatible endpoint URL for off-host tenant-DB backups. Empty disables the backup pipeline."
+  type        = string
+  default     = ""
+}
+
+variable "backup_s3_bucket" {
+  description = "Bucket for off-host tenant-DB backups. MUST be a dedicated backup bucket — never the terraform state bucket — so a state-bucket credential leak cannot also read tenant data."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.backup_s3_bucket != "eliza-terraform-state"
+    error_message = "backup_s3_bucket must be a dedicated backup bucket, never the terraform state bucket"
+  }
+}
+
+variable "backup_s3_prefix" {
+  description = "Object key prefix under which dated backup sets are written."
+  type        = string
+  default     = "tenant-db"
+}
+
+variable "backup_s3_access_key" {
+  description = "Access key id for the backup bucket. Scope the token to this bucket only (write + list + delete for retention pruning). SENSITIVE."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "backup_s3_secret_key" {
+  description = "Secret access key for the backup bucket. SENSITIVE."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "backup_encryption_passphrase" {
+  description = "Symmetric passphrase used to AES-256 encrypt every backup archive BEFORE upload, so the bucket operator never sees tenant plaintext. Custody: org password manager (cloud-ops vault); losing it makes every off-host backup unreadable. SENSITIVE."
+  type        = string
+  default     = ""
+  sensitive   = true
+  validation {
+    condition     = var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32
+    error_message = "backup_encryption_passphrase must be empty (disabled) or at least 32 characters"
+  }
+}
+
+variable "backup_retention_days" {
+  description = "Days of dated backup sets retained off-host before the nightly job prunes them. Floor of 7 keeps at least a week of restore points."
+  type        = number
+  default     = 14
+  validation {
+    condition     = var.backup_retention_days >= 7
+    error_message = "backup_retention_days must be at least 7"
+  }
+}

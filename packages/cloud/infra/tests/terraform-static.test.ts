@@ -290,6 +290,120 @@ describe("Apps tenant-DB connection scaling (#8321 P0 #2)", () => {
   });
 });
 
+describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
+  const HETZNER_APPS_SHARED = join(
+    import.meta.dir,
+    "..",
+    "cloud",
+    "terraform",
+    "hetzner",
+    "apps-shared",
+  );
+  const tenantDbInit = readFileSync(
+    join(HETZNER_APPS_SHARED, "cloud-init", "tenant-db.yaml.tftpl"),
+    "utf-8",
+  );
+  const mainTf = readFileSync(join(HETZNER_APPS_SHARED, "main.tf"), "utf-8");
+  const variablesTf = readFileSync(
+    join(HETZNER_APPS_SHARED, "variables.tf"),
+    "utf-8",
+  );
+  const outputsTf = readFileSync(
+    join(HETZNER_APPS_SHARED, "outputs.tf"),
+    "utf-8",
+  );
+
+  test("marks every backup credential variable sensitive", () => {
+    for (const name of [
+      "backup_s3_access_key",
+      "backup_s3_secret_key",
+      "backup_encryption_passphrase",
+    ]) {
+      const start = variablesTf.indexOf(`variable "${name}"`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const block = variablesTf.slice(start, variablesTf.indexOf("}\n", start));
+      expect(block).toContain("sensitive   = true");
+    }
+  });
+
+  test("refuses the terraform state bucket as the backup destination", () => {
+    expect(variablesTf).toContain(
+      'var.backup_s3_bucket != "eliza-terraform-state"',
+    );
+  });
+
+  test("enforces passphrase strength and a retention floor", () => {
+    expect(variablesTf).toContain(
+      'var.backup_encryption_passphrase == "" || length(var.backup_encryption_passphrase) >= 32',
+    );
+    expect(variablesTf).toContain("var.backup_retention_days >= 7");
+  });
+
+  test("arms all-or-nothing via a server precondition", () => {
+    expect(mainTf).toContain("backup_enabled = alltrue(");
+    const server = terraformResource(mainTf, "hcloud_server", "tenant_db");
+    expect(server).toContain("precondition");
+    expect(server).toContain("local.backup_enabled");
+  });
+
+  test("encrypts on-node before upload and keeps credentials root-only", () => {
+    // Env file with the bucket credential + passphrase is 0600 root and only
+    // rendered when the full variable set is present.
+    expect(tenantDbInit).toContain("%{ if backup_enabled ~}");
+    const envIndex = tenantDbInit.indexOf(
+      "- path: /etc/eliza/tenant-db-backup.env",
+    );
+    expect(envIndex).toBeGreaterThanOrEqual(0);
+    expect(tenantDbInit.slice(envIndex, envIndex + 400)).toContain("'0600'");
+    // AES-256 with PBKDF2 before rclone ever sees the bytes.
+    expect(tenantDbInit).toContain(
+      "openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt",
+    );
+    expect(tenantDbInit).toContain("rclone copyto backup.tar.gz.enc");
+  });
+
+  test("takes application-consistent dumps with globals-before-databases ordering", () => {
+    expect(tenantDbInit).toContain("pg_dumpall --globals-only");
+    expect(tenantDbInit).toContain("pg_dump --format=custom");
+    expect(tenantDbInit.indexOf("pg_dumpall --globals-only")).toBeLessThan(
+      tenantDbInit.indexOf("pg_dump --format=custom"),
+    );
+    expect(tenantDbInit).toContain("checksums.sha256");
+  });
+
+  test("keeps tenant database names out of logs and object keys", () => {
+    // Dump files are keyed by truncated sha256 of the db name; the real-name
+    // map travels only inside the encrypted archive.
+    expect(tenantDbInit).toContain("sha256sum | cut -c1-12");
+    expect(tenantDbInit).toContain("dbmap.tsv");
+    // The success log line reports counts/bytes/duration only.
+    expect(tenantDbInit).toContain(
+      'log "uploaded set $STAMP: $COUNT databases, $ENC_BYTES encrypted bytes',
+    );
+  });
+
+  test("schedules nightly runs with retention pruning and an inert-when-unarmed gate", () => {
+    expect(tenantDbInit).toContain("- rclone");
+    expect(tenantDbInit).toContain("OnCalendar=*-*-* 02:15:00 UTC");
+    expect(tenantDbInit).toContain("Persistent=true");
+    expect(tenantDbInit).toContain(
+      "systemctl enable --now tenant-db-backup.timer",
+    );
+    expect(tenantDbInit).toContain("rclone purge");
+    expect(tenantDbInit).toContain(
+      'log "off-host backup not configured; skipping."',
+    );
+  });
+
+  test("exposes arming state without exposing credentials", () => {
+    expect(outputsTf).toContain('output "tenant_db_backup_configured"');
+    const start = outputsTf.indexOf('output "tenant_db_backup_configured"');
+    const block = outputsTf.slice(start, outputsTf.indexOf("}", start));
+    expect(block).toContain("local.backup_enabled");
+    expect(block).not.toContain("sensitive   = true");
+  });
+});
+
 describe("Terraform namespace contracts", () => {
   test("documents that database cluster keys are Kubernetes namespaces", () => {
     const variables = readK8sTerraform("variables.tf");
