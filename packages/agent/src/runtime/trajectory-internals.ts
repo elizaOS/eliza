@@ -26,6 +26,8 @@ import {
   resolveStateDir,
   resolveTrajectoryGate,
   sanitizeTrajectoryJsonObject,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 
@@ -488,8 +490,10 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const safeResponse =
-    response.length > 100_000 ? response.slice(0, 100_000) : response;
+  const safeResponse = truncateWellFormed(
+    toWellFormedUnicode(response),
+    100_000,
+  );
   const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
   let match: RegExpExecArray | null;
   match = decisionPattern.exec(safeResponse);
@@ -624,7 +628,7 @@ export async function flushObservationBuffer(
   const exchangeText = exchanges
     .map(
       (e, i) =>
-        `Exchange ${i + 1}:\nUser: ${e.userPrompt.slice(0, 500)}\nAssistant: ${e.response.slice(0, 500)}`,
+        `Exchange ${i + 1}:\nUser: ${truncateWellFormed(toWellFormedUnicode(e.userPrompt), 500)}\nAssistant: ${truncateWellFormed(toWellFormedUnicode(e.response), 500)}`,
     )
     .join("\n\n");
 
