@@ -1,0 +1,82 @@
+name: Scenario stability live qualification
+
+on:
+  schedule:
+    - cron: "17 8 * * 2"
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Scenario id to qualify
+        required: true
+        default: live-active-view-agent-surface
+      model_a:
+        description: First exact OpenAI model identifier
+        required: true
+        default: gpt-5-mini
+      model_b:
+        description: Second exact OpenAI model identifier
+        required: true
+        default: gpt-5.1
+
+permissions:
+  contents: read
+
+jobs:
+  strict-three-attempts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SCENARIO_STABILITY_SCENARIO_DIR: packages/scenario-runner/test/scenarios
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Boot seeded synthetic-world reset authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${OPENAI_API_KEY:-}"
+          token="$(openssl rand -hex 32)"
+          echo "SCENARIO_STABILITY_RESET_TOKEN=${token}" >> "$GITHUB_ENV"
+          echo "SCENARIO_STABILITY_RESET_URL=http://127.0.0.1:43191/reset" >> "$GITHUB_ENV"
+          SCENARIO_STABILITY_RESET_TOKEN="$token" \
+            bun packages/scenario-runner/src/stability-mock-world-server.ts \
+            > reports-stability-reset.log 2>&1 &
+          echo "$!" > reports-stability-reset.pid
+          for _ in $(seq 1 100); do
+            curl --fail --silent http://127.0.0.1:43191/health >/dev/null && exit 0
+            sleep 0.1
+          done
+          cat reports-stability-reset.log
+          exit 1
+      - name: Execute strict real-model matrix over resettable mock services
+        shell: bash
+        run: |
+          scenario="${{ inputs.scenario || 'live-active-view-agent-surface' }}"
+          model_a="${{ inputs.model_a || 'gpt-5-mini' }}"
+          model_b="${{ inputs.model_b || 'gpt-5.1' }}"
+          bun packages/scenario-runner/src/cli.ts stability reports/stability \
+            --runId "scheduled-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --execute-driver packages/scenario-runner/src/stability-subprocess-adapter.ts \
+            --target "${scenario},openai,${model_a}" \
+            --target "${scenario},openai,${model_b}" \
+            --attempt-timeout-ms 180000 \
+            --max-input-tokens 32000 \
+            --max-output-tokens 8000 \
+            --max-tool-calls 32
+      - name: Stop synthetic-world reset authority
+        if: always()
+        shell: bash
+        run: |
+          if test -f reports-stability-reset.pid; then
+            kill "$(cat reports-stability-reset.pid)" 2>/dev/null || true
+          fi
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: scenario-stability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/stability
+          if-no-files-found: error

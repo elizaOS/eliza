@@ -98,11 +98,19 @@ using provider precedence. Invalid or unavailable selections fail loudly.
 
 Exit codes: `0` = all passed (or skipped with `SKIP_REASON` set), `1` = at least one failed, `2` = config/usage error or a scenario skipped without `SKIP_REASON`.
 
-The `stability` command is report plumbing only. With no attempt reports it
+The `stability` command plans or executes strict qualification. With no attempt reports it
 writes a plan with three unique run IDs and isolated `attempt-01` through
 `attempt-03` output directories. With exactly three reports at those declared
 paths, it writes deterministic `3/3`, `2/3`, `1/3`, or `0/3` tiers and a
-focus list. It does not execute scenarios or providers.
+focus list.
+With `--execute-driver` and one or more `--target scenario,provider,model`
+values, it executes every scenario/model cell exactly three times. The bundled
+subprocess driver calls the real scenario runtime in a killable fresh process
+only after an authenticated mock-world endpoint returns a versioned reset
+proof. It verifies reset hash equality, passes provider/model identity through
+the ordinary `run --provider` path, enforces time/token/tool budgets, and
+records trajectory, tool, state, provider, and judge evidence. All three
+attempts run after failures; any cell below `3/3` exits nonzero.
 Aggregation consumes the pre-existing `stability-plan.json`; it never replaces
 that authority. Reports must be regular files at its exact paths and are bounded
 to 64 MiB, 10,000 scenarios, 1,000 failed assertions per scenario, and bounded

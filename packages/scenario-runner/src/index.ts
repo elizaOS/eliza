@@ -39,6 +39,8 @@ export {
   waitForScenarioRequiredServices,
 } from "./required-services.ts";
 export * from "./stability.ts";
+export * from "./stability-executor.ts";
+export * from "./stability-subprocess-adapter.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

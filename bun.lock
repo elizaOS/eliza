@@ -1026,6 +1026,7 @@
         "@elizaos/plugin-video": "workspace:*",
         "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
+        "@elizaos/synthetic-world": "workspace:*",
         "ws": "^8.21.3",
       },
       "devDependencies": {

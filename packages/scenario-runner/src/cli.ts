@@ -12,9 +12,10 @@
  */
 
 import crypto from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { logger } from "@elizaos/core";
 import type { LiveProviderName } from "@elizaos/core/testing";
 import {
@@ -46,6 +47,12 @@ import {
   writeScenarioStabilityPlan,
   writeScenarioStabilityReport,
 } from "./stability.ts";
+import {
+  executeScenarioStabilityMatrix,
+  type StabilityExecutionAdapter,
+  type StabilityExecutionBudgets,
+  type StabilityExecutionTarget,
+} from "./stability-executor.ts";
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
@@ -217,6 +224,9 @@ export interface ParsedArgs {
   countScenarios?: boolean;
   validateScenarios?: boolean;
   attemptReportPaths?: string[];
+  stabilityDriverPath?: string;
+  stabilityTargets?: StabilityExecutionTarget[];
+  stabilityBudgets?: StabilityExecutionBudgets;
 }
 
 export class CliUsageError extends Error {
@@ -368,7 +378,7 @@ function usageAndExit(message: string, code: number): never {
 function formatUsageError(error: CliUsageError): string {
   return (
     `[eliza-scenarios] ${error.message}\n` +
-    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [--provider groq|openai|anthropic|google|openrouter|cli] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios stability <output-dir> --runId <id> [--attempt-report <matrix.json>]×3\n"
+    "Usage:\n  eliza-scenarios run  <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [--lane pr-deterministic|live-only] [--provider groq|openai|anthropic|google|openrouter|cli] [fileGlob ...]\n  eliza-scenarios list <dir> [--expand-scenarios] [--count-scenarios] [--validate-scenarios] [--lane pr-deterministic|live-only] [fileGlob ...]\n  eliza-scenarios stability <output-dir> --runId <id> [--attempt-report <matrix.json>]×3 | [--execute-driver <module> --target <scenario,provider,model>]\n"
   );
 }
 
@@ -379,6 +389,14 @@ function parseStabilityArgs(argv: readonly string[]): ParsedArgs {
   }
   let runId: string | undefined;
   const attemptReportPaths: string[] = [];
+  let stabilityDriverPath: string | undefined;
+  const stabilityTargets: StabilityExecutionTarget[] = [];
+  const stabilityBudgets: StabilityExecutionBudgets = {
+    timeoutMs: 120_000,
+    maxInputTokens: 32_000,
+    maxOutputTokens: 8_000,
+    maxToolCalls: 32,
+  };
   for (let index = 2; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--runId") {
@@ -391,6 +409,37 @@ function parseStabilityArgs(argv: readonly string[]): ParsedArgs {
       if (!value) usageAndExit("--attempt-report missing value", 2);
       attemptReportPaths.push(path.resolve(value));
       index += 1;
+    } else if (arg === "--execute-driver") {
+      const value = argv[index + 1];
+      if (!value) usageAndExit("--execute-driver missing value", 2);
+      stabilityDriverPath = path.resolve(value);
+      index += 1;
+    } else if (arg === "--target") {
+      const value = argv[index + 1];
+      const [scenarioId, provider, model, ...extra] = value?.split(",") ?? [];
+      if (!scenarioId || !provider || !model || extra.length > 0)
+        usageAndExit("--target must be scenarioId,provider,model", 2);
+      stabilityTargets.push({ scenarioId, model: { provider, model } });
+      index += 1;
+    } else if (
+      arg === "--attempt-timeout-ms" ||
+      arg === "--max-input-tokens" ||
+      arg === "--max-output-tokens" ||
+      arg === "--max-tool-calls"
+    ) {
+      const value = Number(argv[index + 1]);
+      if (!Number.isSafeInteger(value) || value <= 0)
+        usageAndExit(`${arg} requires a positive integer`, 2);
+      const key =
+        arg === "--attempt-timeout-ms"
+          ? "timeoutMs"
+          : arg === "--max-input-tokens"
+            ? "maxInputTokens"
+            : arg === "--max-output-tokens"
+              ? "maxOutputTokens"
+              : "maxToolCalls";
+      stabilityBudgets[key] = value;
+      index += 1;
     } else {
       usageAndExit(`unknown stability argument '${arg}'`, 2);
     }
@@ -402,11 +451,21 @@ function parseStabilityArgs(argv: readonly string[]): ParsedArgs {
       2,
     );
   }
+  if (stabilityDriverPath && stabilityTargets.length === 0)
+    usageAndExit("--execute-driver requires at least one --target", 2);
+  if (stabilityDriverPath && attemptReportPaths.length > 0)
+    usageAndExit(
+      "--execute-driver cannot be combined with --attempt-report",
+      2,
+    );
   return {
     command: "stability",
     dir: path.resolve(outputDir),
     runId,
     attemptReportPaths,
+    stabilityDriverPath,
+    stabilityTargets,
+    stabilityBudgets,
   };
 }
 
@@ -600,6 +659,40 @@ export async function runCli(
       );
     }
     const attemptReportPaths = parsed.attemptReportPaths ?? [];
+    if (parsed.stabilityDriverPath) {
+      try {
+        writeScenarioStabilityPlan(requestedPlan);
+        const driver = (await import(
+          pathToFileURL(parsed.stabilityDriverPath).href
+        )) as {
+          default?: StabilityExecutionAdapter;
+          createStabilityAdapter?: () =>
+            | StabilityExecutionAdapter
+            | Promise<StabilityExecutionAdapter>;
+        };
+        const adapter = driver.createStabilityAdapter
+          ? await driver.createStabilityAdapter()
+          : driver.default;
+        if (!adapter)
+          throw new Error(
+            "stability driver must export default adapter or createStabilityAdapter()",
+          );
+        const matrix = await executeScenarioStabilityMatrix({
+          plan: requestedPlan,
+          targets: parsed.stabilityTargets ?? [],
+          budgets: parsed.stabilityBudgets as StabilityExecutionBudgets,
+          adapter,
+        });
+        process.stdout.write(`${JSON.stringify(matrix, null, 2)}\n`);
+        return matrix.status === "passed" ? 0 : 1;
+      } catch (error) {
+        // error-policy:J1 CLI boundary translates driver and execution failures into a strict nonzero verdict.
+        process.stderr.write(
+          `[eliza-scenarios] stability execution failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+        return 1;
+      }
+    }
     if (attemptReportPaths.length === 0) {
       try {
         writeScenarioStabilityPlan(requestedPlan);
@@ -642,6 +735,7 @@ export async function runCli(
         rawReport = readScenarioStabilityJsonArtifact(
           resolvedReportPath,
           `attempt report '${resolvedReportPath}'`,
+          plan.outputRoot,
         );
       } catch (error) {
         // error-policy:J1 CLI boundary translates malformed or unbounded report artifacts into usage errors.
@@ -894,6 +988,59 @@ export async function runCli(
   logger.info(
     `[eliza-scenarios] provider: ${providerName}; execution profile: ${executionProfile}`,
   );
+  const syntheticResetId = process.env.ELIZA_SYNTHETIC_RESET_ID?.trim();
+  if (syntheticResetId) {
+    try {
+      if (!effectiveRunDir)
+        throw new Error(
+          "synthetic stability execution requires a retained run directory",
+        );
+      const generation = Number(process.env.ELIZA_SYNTHETIC_RESET_GENERATION);
+      const manifestHash =
+        process.env.ELIZA_SYNTHETIC_MANIFEST_HASH?.trim() ?? "";
+      if (
+        !Number.isSafeInteger(generation) ||
+        generation <= 0 ||
+        !/^[a-f0-9]{64}$/.test(manifestHash)
+      )
+        throw new Error(
+          "synthetic stability execution received invalid reset provenance",
+        );
+      const providerConfig = runtimeResult.providerConfig;
+      if (
+        !("smallModel" in providerConfig) ||
+        !("largeModel" in providerConfig)
+      )
+        throw new Error(
+          "synthetic stability execution requires a live provider configuration",
+        );
+      mkdirSync(effectiveRunDir, { recursive: true });
+      writeFileSync(
+        path.join(effectiveRunDir, "stability-runtime-config.json"),
+        `${JSON.stringify(
+          {
+            schemaVersion: "eliza.stability-runtime-config/v1",
+            executionProfile,
+            providerName,
+            providerPluginPackage: providerConfig.pluginPackage,
+            smallModel: providerConfig.smallModel,
+            largeModel: providerConfig.largeModel,
+            resetId: syntheticResetId,
+            generation,
+            manifestHash,
+            mockServiceIsolation: "fresh-process-simulated-profile",
+          },
+          null,
+          2,
+        )}\n`,
+        { encoding: "utf8", flag: "wx" },
+      );
+    } catch (error) {
+      // error-policy:J1 CLI bootstrap boundary tears down a runtime whose stability attestation could not be written.
+      await cleanup();
+      throw error;
+    }
+  }
 
   // Per-turn timeout. Defaults to 120s (fast hosted providers), but a real
   // local model on a CPU backend needs a larger budget; expose it via env so

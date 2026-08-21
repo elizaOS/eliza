@@ -92,8 +92,14 @@ With no attempt reports, `stability` writes a three-attempt plan containing
 unique run IDs and isolated output paths. Once the three declared `matrix.json`
 reports exist, supply all three paths to produce strict `3/3` through `0/3`
 tiers, structural failure classifications, and a deterministic focus list.
-This command only plans and aggregates artifacts; it does not execute scenarios
-or model providers.
+With `--execute-driver` and `--target scenario,provider,model`, the command also
+runs all three attempts for every scenario/model cell. The bundled subprocess
+driver invokes the real scenario runtime in a killable fresh process, can reset
+only after an authenticated mock-world endpoint returns a versioned reset proof,
+enforces time/token/tool budgets, and preserves trajectory, tool, state,
+provider, and judge evidence. Provider/model identity is passed through the
+ordinary `run --provider` runtime path and verified again from trajectories.
+All three attempts run even after failure; any cell below `3/3` exits nonzero.
 
 Aggregation reads the existing `stability-plan.json` as the run/path authority
 and refuses to replace a conflicting plan. Attempt reports must be regular,

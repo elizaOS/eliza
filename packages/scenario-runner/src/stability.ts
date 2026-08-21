@@ -187,7 +187,9 @@ function requireRecord(
 export function readScenarioStabilityJsonArtifact(
   filePath: string,
   source: string,
+  authorityRoot = path.dirname(filePath),
 ): unknown {
+  assertNoSymlinkPathComponents(authorityRoot, filePath, source);
   const descriptor = openSync(filePath, "r");
   try {
     const fileStat = fstatSync(descriptor);
@@ -242,6 +244,28 @@ export function readScenarioStabilityJsonArtifact(
   }
 }
 
+function assertNoSymlinkPathComponents(
+  authorityRoot: string,
+  targetPath: string,
+  source: string,
+): void {
+  const root = path.resolve(authorityRoot);
+  const target = path.resolve(targetPath);
+  if (target !== root && !target.startsWith(`${root}${path.sep}`))
+    throw new Error(`${source} is outside its authority root`);
+  for (const entry of [
+    root,
+    ...path
+      .relative(root, target)
+      .split(path.sep)
+      .filter(Boolean)
+      .map((_, index, parts) => path.join(root, ...parts.slice(0, index + 1))),
+  ]) {
+    if (lstatSync(entry).isSymbolicLink())
+      throw new Error(`${source} path contains a symlink component: ${entry}`);
+  }
+}
+
 /** Reconstructs and verifies a persisted plan against CLI-owned identity and paths. */
 export function parseScenarioStabilityPlan(
   value: unknown,
@@ -290,7 +314,11 @@ export function readScenarioStabilityPlan(params: {
   const expected = createScenarioStabilityPlan(params);
   const source = `scenario stability plan '${expected.planPath}'`;
   return parseScenarioStabilityPlan(
-    readScenarioStabilityJsonArtifact(expected.planPath, source),
+    readScenarioStabilityJsonArtifact(
+      expected.planPath,
+      source,
+      expected.outputRoot,
+    ),
     params,
     source,
   );
@@ -603,6 +631,7 @@ export function writeScenarioStabilityPlan(plan: ScenarioStabilityPlan): void {
       readScenarioStabilityJsonArtifact(
         canonical.planPath,
         `scenario stability plan '${canonical.planPath}'`,
+        canonical.outputRoot,
       ),
       { runId: canonical.runId, outputRoot: canonical.outputRoot },
       `scenario stability plan '${canonical.planPath}'`,
@@ -611,11 +640,31 @@ export function writeScenarioStabilityPlan(plan: ScenarioStabilityPlan): void {
     for (const attempt of canonical.attempts) {
       mkdirSync(attempt.outputDir, { recursive: true });
     }
+    for (const target of [
+      canonical.outputRoot,
+      ...canonical.attempts.map((attempt) => attempt.outputDir),
+    ]) {
+      assertNoSymlinkPathComponents(
+        canonical.outputRoot,
+        target,
+        "scenario stability plan output",
+      );
+    }
     return;
   }
   mkdirSync(canonical.outputRoot, { recursive: true });
   for (const attempt of canonical.attempts) {
     mkdirSync(attempt.outputDir, { recursive: true });
+  }
+  for (const target of [
+    canonical.outputRoot,
+    ...canonical.attempts.map((attempt) => attempt.outputDir),
+  ]) {
+    assertNoSymlinkPathComponents(
+      canonical.outputRoot,
+      target,
+      "scenario stability plan output",
+    );
   }
   writeFileSync(canonical.planPath, `${JSON.stringify(canonical, null, 2)}\n`, {
     encoding: "utf8",
@@ -634,6 +683,11 @@ export function writeScenarioStabilityReport(
     );
   }
   mkdirSync(plan.outputRoot, { recursive: true });
+  assertNoSymlinkPathComponents(
+    plan.outputRoot,
+    plan.outputRoot,
+    "scenario stability report output",
+  );
   writeFileSync(plan.reportPath, `${JSON.stringify(report, null, 2)}\n`, {
     encoding: "utf8",
     flag: "wx",

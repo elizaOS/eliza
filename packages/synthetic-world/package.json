@@ -6,7 +6,8 @@
   "description": "Versioned, deterministic synthetic-world contracts for scenario and Cloud test harnesses.",
   "main": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./test-fixture": "./src/test-fixture.ts"
   },
   "scripts": {
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",

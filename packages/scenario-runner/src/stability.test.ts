@@ -4,8 +4,10 @@
  */
 
 import {
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   truncateSync,
@@ -629,6 +631,45 @@ describe("scenario stability report plumbing", () => {
           attempt.reportPath,
         ]),
       ]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+  });
+
+  it("rejects symlink substitution at attempt-directory and output-root ancestors", async () => {
+    const parent = tempRoot();
+    const outputRoot = path.join(parent, "declared-root");
+    const plan = createScenarioStabilityPlan({
+      runId: "ancestor-symlink",
+      outputRoot,
+    });
+    writeScenarioStabilityPlan(plan);
+    for (const attempt of plan.attempts) {
+      writeFileSync(
+        attempt.reportPath,
+        `${JSON.stringify(aggregate(attempt.attemptId, [scenario("alpha", "passed")]))}\n`,
+      );
+    }
+    const attemptExternal = path.join(parent, "external-attempt");
+    mkdirSync(attemptExternal);
+    writeFileSync(
+      path.join(attemptExternal, "matrix.json"),
+      readFileSync(plan.attempts[0].reportPath),
+    );
+    rmSync(plan.attempts[0].outputDir, { recursive: true });
+    symlinkSync(attemptExternal, plan.attempts[0].outputDir, "dir");
+    const args = plan.attempts.flatMap((attempt) => [
+      "--attempt-report",
+      attempt.reportPath,
+    ]);
+    await expect(
+      runCli(["stability", outputRoot, "--runId", plan.runId, ...args]),
+    ).rejects.toMatchObject({ exitCode: 2 });
+
+    rmSync(plan.attempts[0].outputDir);
+    const movedRoot = path.join(parent, "external-root");
+    renameSync(outputRoot, movedRoot);
+    symlinkSync(movedRoot, outputRoot, "dir");
+    await expect(
+      runCli(["stability", outputRoot, "--runId", plan.runId, ...args]),
     ).rejects.toMatchObject({ exitCode: 2 });
   });
 
