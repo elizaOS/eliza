@@ -18,6 +18,9 @@ interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   platform: SocialPlatform;
+  signal?: AbortSignal;
+  deadlineAt?: number;
+  minimumAttemptBudgetMs?: number;
 }
 
 const PLATFORM_RATE_LIMITS: Record<
@@ -37,7 +40,23 @@ const PLATFORM_RATE_LIMITS: Record<
   mastodon: { requestsPerWindow: 300, windowMs: 5 * 60 * 1000 },
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = (): void => {
+      if (timeout !== undefined) clearTimeout(timeout);
+      reject(signal?.reason);
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 
 /**
  * Upper bound on how long a single `withRetry` attempt will hold the caller
@@ -78,6 +97,36 @@ export function clampRateLimitWaitMs(waitMs: number): number {
   return Math.min(Math.max(waitMs, 0), MAX_RATE_LIMIT_WAIT_MS);
 }
 
+function retryBudgetError(platform: SocialPlatform): DOMException {
+  return new DOMException(`${platform} retry sequence deadline expired`, "TimeoutError");
+}
+
+function remainingRetryBudgetMs(
+  platform: SocialPlatform,
+  deadlineAt: number | undefined,
+  minimumAttemptBudgetMs: number,
+): number | undefined {
+  if (deadlineAt === undefined) return undefined;
+  if (!Number.isFinite(deadlineAt)) {
+    throw new TypeError("Retry deadlineAt must be finite");
+  }
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= minimumAttemptBudgetMs) throw retryBudgetError(platform);
+  return remainingMs;
+}
+
+function boundedRetryWaitMs(
+  requestedMs: number,
+  platform: SocialPlatform,
+  deadlineAt: number | undefined,
+  minimumAttemptBudgetMs: number,
+): number {
+  const waitMs = clampRateLimitWaitMs(requestedMs);
+  const remainingMs = remainingRetryBudgetMs(platform, deadlineAt, minimumAttemptBudgetMs);
+  if (remainingMs === undefined) return waitMs;
+  return Math.min(waitMs, Math.max(0, remainingMs - minimumAttemptBudgetMs));
+}
+
 function parseRetryAfter(response: Response): number | undefined {
   const header = response.headers.get("retry-after");
   if (!header) return undefined;
@@ -107,22 +156,43 @@ export async function withRetry<T>(
   parser: (response: Response) => Promise<T>,
   options: RetryOptions,
 ): Promise<ApiResponse<T>> {
-  const { maxRetries = 3, baseDelayMs = 1000, platform } = options;
+  const {
+    maxRetries = 3,
+    baseDelayMs = 1000,
+    platform,
+    signal,
+    deadlineAt,
+    minimumAttemptBudgetMs = 0,
+  } = options;
+  if (
+    !Number.isSafeInteger(minimumAttemptBudgetMs) ||
+    minimumAttemptBudgetMs < 0 ||
+    minimumAttemptBudgetMs > 2_147_483_647
+  ) {
+    throw new TypeError("minimumAttemptBudgetMs must be a non-negative timer-safe integer");
+  }
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      signal?.throwIfAborted();
+      remainingRetryBudgetMs(platform, deadlineAt, minimumAttemptBudgetMs);
       const response = await fn();
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
-        const waitMs = clampRateLimitWaitMs(retryAfter ?? baseDelayMs * 2 ** attempt);
+        const waitMs = boundedRetryWaitMs(
+          retryAfter ?? baseDelayMs * 2 ** attempt,
+          platform,
+          deadlineAt,
+          minimumAttemptBudgetMs,
+        );
 
         if (attempt < maxRetries) {
           logger.warn(
             `[${platform}] Rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`,
           );
-          await sleep(waitMs);
+          await sleep(waitMs, signal);
           continue;
         }
         throw createRateLimitError(
@@ -149,9 +219,14 @@ export async function withRetry<T>(
       if ((error as RateLimitError).rateLimited) throw error;
 
       if (attempt < maxRetries) {
-        const delayMs = clampRateLimitWaitMs(baseDelayMs * 2 ** attempt);
+        const delayMs = boundedRetryWaitMs(
+          baseDelayMs * 2 ** attempt,
+          platform,
+          deadlineAt,
+          minimumAttemptBudgetMs,
+        );
         logger.warn(`[${platform}] Request failed, retrying in ${delayMs}ms: ${lastError.message}`);
-        await sleep(delayMs);
+        await sleep(delayMs, signal);
       }
     }
   }

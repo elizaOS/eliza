@@ -15,7 +15,7 @@
  * and JSON parser run without the exponential-backoff sleeps; `globalThis.fetch` supplies
  * the raw upstream Response.
  */
-import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { SocialCredentials } from "../../../types/social-media";
 import * as realRateLimit from "../rate-limit";
 
@@ -45,19 +45,19 @@ mock.module("../rate-limit", () => ({
   },
 }));
 
-const { twitterProvider, twitterFetch } = await import("./twitter");
+const { twitterProvider, twitterFetch, waitForProcessing } = await import("./twitter");
 
 const CREDS = { accessToken: "tok" } as SocialCredentials;
 
 const originalFetch = globalThis.fetch;
 let fetchImpl: (url: string, init?: RequestInit) => Promise<unknown>;
 
-function okJson(body: unknown): Partial<Response> {
-  return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+function okJson(body: unknown): Response {
+  return Response.json(body);
 }
 
-function upstreamFailure(status: number, body: string): Partial<Response> {
-  return { ok: false, status, json: async () => ({}), text: async () => body };
+function upstreamFailure(status: number, body: string): Response {
+  return new Response(body, { status });
 }
 
 beforeEach(() => {
@@ -203,21 +203,247 @@ describe("twitterFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("composes a caller-provided abort signal with the hop deadline", async () => {
+  it("composes caller cancellation with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
-      return okJson({ media_id_string: "m1" });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal ?? undefined;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
 
     const controller = new AbortController();
-    await twitterFetch("https://upload.twitter.com/media/upload.json", {
+    const pending = twitterFetch("https://upload.twitter.com/media/upload.json", {
       signal: controller.signal,
     });
-    // The wrapper owns the deadline, so the signal handed to the transport is
-    // a composition of the caller's signal and that deadline — never the caller's
-    // object verbatim. Asserting identity here would pin the very behavior that
-    // lets a never-firing caller signal defeat the bound.
+    await Promise.resolve();
     expect(seen).not.toBe(controller.signal);
+    controller.abort(new Error("caller cancelled"));
+    await expect(pending).rejects.toThrow(/caller cancelled/);
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("keeps the deadline when a supplied caller signal never aborts", async () => {
+    const controller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch(
+        "https://upload.twitter.com/media/upload.json",
+        { signal: controller.signal },
+        100,
+      ),
+    ).rejects.toThrow(/timed out/i);
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  it("does not dispatch a request when the caller is already aborted", async () => {
+    const controller = new AbortController();
+    const reason = new Error("cancelled before dispatch");
+    controller.abort(reason);
+    let fetched = false;
+    globalThis.fetch = mock(async () => {
+      fetched = true;
+      return new Response();
+    }) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch("https://upload.twitter.com/media/upload.json", {
+        signal: controller.signal,
+      }),
+    ).rejects.toBe(reason);
+    expect(fetched).toBe(false);
+  });
+
+  it("bounds a response body stall under the same hop deadline and cancels the stream", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = mock(async () => new Response(body)) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch("https://upload.twitter.com/media/upload.json", undefined, 50),
+    ).rejects.toThrow(/timed out/i);
+    expect(cancelled).toBe(true);
+  });
+
+  it("rejects a declared oversized body before reading and cancels it", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = mock(
+      async () =>
+        new Response(body, {
+          headers: { "content-length": String(4 * 1024 * 1024 + 1) },
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch("https://upload.twitter.com/media/upload.json", undefined, 1_000),
+    ).rejects.toMatchObject({ code: "TWITTER_RESPONSE_TOO_LARGE" });
+    expect(cancelled).toBe(true);
+  });
+
+  it("rejects an incrementally oversized body when content-length is absent", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(4 * 1024 * 1024));
+        controller.enqueue(new Uint8Array([1]));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    globalThis.fetch = mock(async () => new Response(body)) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch("https://upload.twitter.com/media/upload.json", undefined, 1_000),
+    ).rejects.toMatchObject({ code: "TWITTER_RESPONSE_TOO_LARGE" });
+    expect(cancelled).toBe(true);
+  });
+
+  it("clears its timer and caller listener after success", async () => {
+    const controller = new AbortController();
+    const removeListener = spyOn(controller.signal, "removeEventListener");
+    const clearTimer = spyOn(globalThis, "clearTimeout");
+    globalThis.fetch = mock(async () => new Response("ok")) as unknown as typeof fetch;
+    try {
+      const response = await twitterFetch(
+        "https://upload.twitter.com/media/upload.json",
+        { signal: controller.signal },
+        1_000,
+      );
+      expect(await response.text()).toBe("ok");
+      expect(removeListener).toHaveBeenCalledWith("abort", expect.any(Function));
+      expect(clearTimer).toHaveBeenCalled();
+    } finally {
+      removeListener.mockRestore();
+      clearTimer.mockRestore();
+    }
+  });
+
+  it("rejects invalid timeout values before dispatch", async () => {
+    let fetched = false;
+    globalThis.fetch = mock(async () => {
+      fetched = true;
+      return new Response();
+    }) as unknown as typeof fetch;
+
+    for (const timeout of [0, -1, Number.NaN, 2_147_483_648]) {
+      await expect(
+        twitterFetch("https://upload.twitter.com/media/upload.json", undefined, timeout),
+      ).rejects.toMatchObject({ code: "INVALID_TWITTER_TIMEOUT" });
+    }
+    expect(fetched).toBe(false);
+  });
+
+  it("rejects over-budget post media before the first upload mutation", async () => {
+    let fetched = false;
+    fetchImpl = async () => {
+      fetched = true;
+      return okJson({});
+    };
+    const media = Array.from({ length: 5 }, () => ({
+      type: "image" as const,
+      mimeType: "image/png",
+      data: Buffer.from([1]),
+    }));
+
+    const result = await twitterProvider.createPost(CREDS, { text: "hello", media });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("at most 4 media items");
+    expect(fetched).toBe(false);
+  });
+
+  it("clears upload and request deadlines after a successful media post", async () => {
+    const clearTimer = spyOn(globalThis, "clearTimeout");
+    fetchImpl = async (url) => {
+      if (url.includes("media/upload.json")) {
+        return okJson({ media_id_string: "media-1" });
+      }
+      return okJson({ data: { id: "post-1", text: "hello" } });
+    };
+    try {
+      const result = await twitterProvider.createPost(CREDS, {
+        text: "hello",
+        media: [{ type: "image", mimeType: "image/png", data: Buffer.from([1]) }],
+      });
+      expect(result).toMatchObject({ success: true, postId: "post-1" });
+      expect(clearTimer.mock.calls.length).toBeGreaterThanOrEqual(4);
+    } finally {
+      clearTimer.mockRestore();
+    }
+  });
+});
+
+describe("waitForProcessing — one wall-clock budget bounds provider polling", () => {
+  it("keeps a non-2xx STATUS response distinct", async () => {
+    globalThis.fetch = mock(
+      async () => new Response("busy", { status: 503 }),
+    ) as unknown as typeof fetch;
+
+    await expect(waitForProcessing("tok", "media-1", 1_000)).rejects.toThrow(
+      "Media processing STATUS failed: 503",
+    );
+  });
+
+  it("rejects malformed and unknown processing states", async () => {
+    const payloads = [
+      { processing_info: [] },
+      { processing_info: { state: "mystery" } },
+      { processing_info: { state: "pending", check_after_secs: "soon" } },
+    ];
+    for (const payload of payloads) {
+      globalThis.fetch = mock(async () => Response.json(payload)) as unknown as typeof fetch;
+      await expect(waitForProcessing("tok", "media-1", 1_000)).rejects.toThrow(
+        /malformed|invalid state|invalid check_after_secs/,
+      );
+    }
+  });
+
+  it("clamps an oversized provider poll delay to the operation deadline", async () => {
+    let statusCalls = 0;
+    globalThis.fetch = mock(async () => {
+      statusCalls += 1;
+      return Response.json({
+        processing_info: { state: "pending", check_after_secs: 999_999_999 },
+      });
+    }) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(waitForProcessing("tok", "media-1", 50)).rejects.toThrow(/timed out/i);
+    expect(Date.now() - start).toBeLessThan(2_000);
+    expect(statusCalls).toBe(1);
+  });
+
+  it("clears the processing deadline timer on terminal success", async () => {
+    const clearTimer = spyOn(globalThis, "clearTimeout");
+    globalThis.fetch = mock(async () =>
+      Response.json({ processing_info: { state: "succeeded" } }),
+    ) as unknown as typeof fetch;
+    try {
+      await waitForProcessing("tok", "media-1", 1_000);
+      expect(clearTimer.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      clearTimer.mockRestore();
+    }
   });
 });

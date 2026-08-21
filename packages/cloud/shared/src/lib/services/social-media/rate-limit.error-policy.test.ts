@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 
-const warn = mock(() => undefined);
+const warn = mock((_message: string) => undefined);
 
 mock.module("../../utils/logger", () => ({
   logger: { warn, info: () => {}, error: () => {}, debug: () => {} },
@@ -47,7 +47,7 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
         text: async () => {
           throw new Error("body stream locked");
         },
-      }) as Response;
+      }) as unknown as Response;
     const parser = async (r: Response) => r.json();
 
     await expect(withRetry(fn, parser, NO_WAIT)).rejects.toThrow("twitter API error 503:");
@@ -84,6 +84,117 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
       withRetry(fn, parser, { platform: "twitter", maxRetries: 1, baseDelayMs: 100 }),
     ).resolves.toEqual({ data: { ok: true } });
     expect(warn).toHaveBeenCalledWith("[twitter] Rate limited, waiting 0ms before retry 1/1");
+  });
+
+  it("aborts an oversized Retry-After wait without starting another mutation", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return new Response("", { status: 429, headers: { "retry-after": "3600" } });
+    };
+    const reason = new Error("overall deadline reached");
+    const timeout = setTimeout(() => controller.abort(reason), 25);
+    try {
+      await expect(
+        withRetry(fn, async (response) => response.json(), {
+          platform: "twitter",
+          maxRetries: 3,
+          signal: controller.signal,
+        }),
+      ).rejects.toBe(reason);
+      expect(calls).toBe(1);
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
+  it("clamps Retry-After to the remaining budget and starts no under-budget attempt", async () => {
+    let calls = 0;
+    const start = Date.now();
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          return new Response("", { status: 429, headers: { "retry-after": "3600" } });
+        },
+        async (response) => response.json(),
+        {
+          platform: "twitter",
+          maxRetries: 3,
+          deadlineAt: Date.now() + 80,
+          minimumAttemptBudgetMs: 30,
+        },
+      ),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(Date.now() - start).toBeLessThan(2_000);
+    expect(calls).toBe(1);
+  });
+
+  it("clamps exponential transport backoff to the remaining budget", async () => {
+    let calls = 0;
+    await expect(
+      withRetry(
+        async () => {
+          calls += 1;
+          throw new Error("network down");
+        },
+        async (response) => response.json(),
+        {
+          platform: "twitter",
+          maxRetries: 3,
+          baseDelayMs: 3_600_000,
+          deadlineAt: Date.now() + 80,
+          minimumAttemptBudgetMs: 30,
+        },
+      ),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(calls).toBe(1);
+  });
+
+  it("rejects invalid retry budget inputs before the first mutation", async () => {
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return new Response();
+    };
+    const parser = async (response: Response) => response.text();
+
+    await expect(
+      withRetry(fn, parser, {
+        platform: "twitter",
+        deadlineAt: Number.NaN,
+      }),
+    ).rejects.toThrow("deadlineAt must be finite");
+    await expect(
+      withRetry(fn, parser, {
+        platform: "twitter",
+        minimumAttemptBudgetMs: -1,
+      }),
+    ).rejects.toThrow("minimumAttemptBudgetMs");
+    expect(calls).toBe(0);
+  });
+
+  it("retries successfully while enough operation budget remains", async () => {
+    let calls = 0;
+    const result = await withRetry(
+      async () => {
+        calls += 1;
+        return calls === 1
+          ? new Response("", { status: 429, headers: { "retry-after": "0" } })
+          : Response.json({ ok: true });
+      },
+      async (response) => (await response.json()) as { ok: boolean },
+      {
+        platform: "twitter",
+        maxRetries: 1,
+        deadlineAt: Date.now() + 1_000,
+        minimumAttemptBudgetMs: 30,
+      },
+    );
+
+    expect(result).toEqual({ data: { ok: true } });
+    expect(calls).toBe(2);
   });
 
   it("PROPAGATES a thrown fn (network/parse) as the final error, not a default", async () => {
