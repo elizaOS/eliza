@@ -143,6 +143,23 @@ describe("SIWS HTTP boundary", () => {
     expect(signals[0]).not.toBe(signals[1]);
   });
 
+  test("accepts the canonical Cloud relying party from the marketing origin", async () => {
+    // Production shape: the page is served from eliza.app while the Cloud API
+    // issues its own NEXT_PUBLIC_APP_URL origin as the SIWS relying party.
+    const cloudNonce = {
+      ...nonce,
+      domain: "cloud.eliza.app",
+      uri: "https://cloud.eliza.app",
+    };
+    let request = 0;
+    installBrowserDoubles(async () => {
+      request += 1;
+      return jsonResponse(request === 1 ? cloudNonce : verified);
+    });
+
+    await expect(signInWithSolana()).resolves.toEqual(verified);
+  });
+
   test("rejects redirects and accepts valid response shapes", async () => {
     const redirects: Array<RequestRedirect | undefined> = [];
     let request = 0;

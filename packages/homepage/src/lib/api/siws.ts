@@ -94,22 +94,27 @@ function errorWithCause(message: string, cause: unknown): Error {
   return error;
 }
 
-function expectedRelyingPartyOrigin(): string {
-  if (typeof window === "undefined" || !window.location) {
-    return "https://eliza.app";
+/**
+ * Relying-party origins the wallet may be asked to sign for. The Cloud API
+ * issues its own `NEXT_PUBLIC_APP_URL` origin (`https://cloud.eliza.app` in
+ * production, `https://cloud-staging.eliza.app` on staging) as the nonce
+ * `uri`, so those canonical origins are always trusted; the page's own origin
+ * is included for e2e doubles and preview deployments that mirror it.
+ */
+function expectedRelyingPartyOrigins(): ReadonlySet<string> {
+  const origins = new Set([
+    "https://cloud.eliza.app",
+    "https://cloud-staging.eliza.app",
+  ]);
+  if (typeof window !== "undefined" && window.location) {
+    origins.add(window.location.origin);
   }
-  const origin = window.location.origin;
-  const hostname = window.location.hostname.toLowerCase();
-  if (hostname === "cloud.eliza.app") return "https://eliza.app";
-  if (hostname === "cloud-staging.eliza.app") {
-    return "https://staging.eliza.app";
-  }
-  return origin;
+  return origins;
 }
 
 function parseNonceResponse(
   value: unknown,
-  expectedOrigin: string,
+  allowedOrigins: ReadonlySet<string>,
 ): NonceResponse {
   if (
     !isRecord(value) ||
@@ -136,12 +141,12 @@ function parseNonceResponse(
   }
   if (
     relyingParty.host !== value.domain ||
-    relyingParty.origin !== expectedOrigin ||
     relyingParty.username !== "" ||
     relyingParty.password !== "" ||
     relyingParty.hash !== "" ||
     !(
-      relyingParty.protocol === "https:" ||
+      (relyingParty.protocol === "https:" &&
+        allowedOrigins.has(relyingParty.origin)) ||
       (relyingParty.protocol === "http:" &&
         LOOPBACK_HOSTS.has(relyingParty.hostname))
     )
@@ -456,7 +461,7 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
       headers: { Accept: "application/json" },
     },
   );
-  const nonce = parseNonceResponse(nonceValue, expectedRelyingPartyOrigin());
+  const nonce = parseNonceResponse(nonceValue, expectedRelyingPartyOrigins());
 
   const message = buildSiwsMessage({
     domain: nonce.domain,
