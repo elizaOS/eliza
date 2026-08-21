@@ -2883,9 +2883,7 @@ async function main(): Promise<void> {
           managedWindow?.close();
         },
         () => {
-          if (managedWindow) {
-            surfaceWindowManager?.revealWindow(managedWindow);
-          }
+          managedWindow?.show?.();
         },
       );
       const window = createElectrobunBrowserWindow({

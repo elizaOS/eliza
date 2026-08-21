@@ -28,11 +28,6 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly show = vi.fn();
   readonly hide = vi.fn();
   readonly maximize = vi.fn();
-  readonly setFrame = vi.fn(
-    (x: number, y: number, width: number, height: number) => {
-      this.frame = { x, y, width, height };
-    },
-  );
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
   });
@@ -202,19 +197,9 @@ describe("SurfaceWindowManager app windows", () => {
       title: "elizaOS Workspace",
       url: "http://127.0.0.1:5173/?desktopSurface=workspace",
       titleBarStyle: "hiddenInset",
-      transparent: true,
-      hidden: false,
-      frame: { x: -20_000, y: -20_000, width: 1440, height: 960 },
+      transparent: false,
+      hidden: true,
     });
-    expect(fixture.created[0]?.focus).not.toHaveBeenCalled();
-    fixture.manager.revealWindow(fixture.created[0]!);
-    expect(fixture.created[0]?.hide).toHaveBeenCalledTimes(1);
-    expect(fixture.created[0]?.setFrame).toHaveBeenCalledWith(
-      120,
-      80,
-      1440,
-      960,
-    );
     expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
     expect(fixture.manager.listWindows("workspace")).toEqual([first]);
 
@@ -230,7 +215,6 @@ describe("SurfaceWindowManager app windows", () => {
 
     await fixture.manager.openWorkspaceWindow();
     const window = fixture.created[0];
-    fixture.manager.revealWindow(window!);
     await fixture.manager.openWorkspaceWindow("/notes", undefined, true);
 
     expect(fixture.navigated).toHaveBeenCalledWith(
@@ -239,7 +223,7 @@ describe("SurfaceWindowManager app windows", () => {
       undefined,
     );
     expect(window?.maximize).toHaveBeenCalledTimes(1);
-    expect(window?.focus).toHaveBeenCalledTimes(2);
+    expect(window?.focus).toHaveBeenCalledTimes(1);
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {

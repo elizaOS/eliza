@@ -2402,27 +2402,10 @@ function AppContent() {
     ) {
       return;
     }
-    // Coordinator readiness means data may render, but React and WKWebView can
-    // still be one compositor commit behind. Wait through a complete painted
-    // frame before the native host moves the staged Workspace on-screen; this
-    // prevents a traffic-light-only dark window from flashing first.
-    let cancelled = false;
-    let firstFrame = 0;
-    let paintedFrame = 0;
-    firstFrame = window.requestAnimationFrame(() => {
-      paintedFrame = window.requestAnimationFrame(() => {
-        if (cancelled) return;
-        void invokeDesktopBridgeRequest<void>({
-          rpcMethod: "desktopRendererReady",
-          ipcChannel: "desktop:rendererReady",
-        });
-      });
+    void invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopRendererReady",
+      ipcChannel: "desktop:rendererReady",
     });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(firstFrame);
-      window.cancelAnimationFrame(paintedFrame);
-    };
   }, [isCoordinatorReady]);
   // The live shell may MOUNT once the backend is reached and the agent boot is
   // underway (first-run-required / starting-runtime / hydrating / ready) —
