@@ -1,7 +1,7 @@
 /** Credit balance in agent state (60s cache). */
 
 import type { IAgentRuntime, Memory, Provider, ProviderResult, State } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { CloudAuthService } from "../services/cloud-auth";
 import type { CreditBalanceResponse } from "../types/cloud";
 import { getCachedAccountSnapshot } from "./cloud-account";
@@ -33,13 +33,25 @@ export const creditBalanceProvider: Provider = {
     const shared = getCachedAccountSnapshot(runtime);
     if (shared) {
       const result = format(shared.balance);
-      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+      return {
+        ...result,
+        text: truncateWellFormed(
+          toWellFormedUnicode(result.text ?? ""),
+          MAX_CREDIT_TEXT_CHARS,
+        ),
+      };
     }
 
     const cached = creditCaches.get(runtime);
     if (cached && Date.now() - cached.at < TTL) {
       const result = format(cached.value);
-      return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+      return {
+        ...result,
+        text: truncateWellFormed(
+          toWellFormedUnicode(result.text ?? ""),
+          MAX_CREDIT_TEXT_CHARS,
+        ),
+      };
     }
 
     let balance: number;
@@ -52,7 +64,13 @@ export const creditBalanceProvider: Provider = {
       );
       if (cached) {
         const result = format(cached.value);
-        return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+        return {
+          ...result,
+          text: truncateWellFormed(
+            toWellFormedUnicode(result.text ?? ""),
+            MAX_CREDIT_TEXT_CHARS,
+          ),
+        };
       }
       return { text: "", values: { cloudCreditsUnavailable: true }, data: {} };
     }
@@ -60,7 +78,13 @@ export const creditBalanceProvider: Provider = {
 
     if (balance < 1.0) logger.warn(`[CloudCredits] Low balance: $${balance.toFixed(2)}`);
     const result = format(balance);
-    return { ...result, text: (result.text ?? "").slice(0, MAX_CREDIT_TEXT_CHARS) };
+    return {
+      ...result,
+      text: truncateWellFormed(
+        toWellFormedUnicode(result.text ?? ""),
+        MAX_CREDIT_TEXT_CHARS,
+      ),
+    };
   },
 };
 

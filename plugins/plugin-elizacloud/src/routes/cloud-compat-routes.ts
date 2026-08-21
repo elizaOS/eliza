@@ -1,6 +1,6 @@
 import type http from "node:http";
 import type { AgentRuntime, Service } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import {
   type CloudAuthApiKeyService,
@@ -101,10 +101,12 @@ async function fetchUpstream(
   return res;
 }
 
-function summarizeUpstreamBody(bodyText: string): string {
-  const trimmed = bodyText.trim();
-  if (!trimmed) return "";
-  return trimmed.length > 300 ? `${trimmed.slice(0, 297)}...` : trimmed;
+export function summarizeUpstreamBody(bodyText: string): string {
+  const wellFormed = toWellFormedUnicode(bodyText.trim());
+  if (!wellFormed) return "";
+  return wellFormed.length > 300
+    ? `${truncateWellFormed(wellFormed, 297)}...`
+    : wellFormed;
 }
 
 function isResourceCompatPath(pathname: string): boolean {
