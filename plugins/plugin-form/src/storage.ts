@@ -88,7 +88,9 @@ const resolveComponentContext = async (
   return { roomId: runtime.agentId, worldId: runtime.agentId };
 };
 
-const isFormSession = (data: JsonValue | object): data is FormSession => {
+const isFormSessionIdentity = (
+  data: JsonValue | object,
+): data is FormSession => {
   if (!isRecord(data)) return false;
   return (
     typeof data.id === "string" &&
@@ -97,6 +99,11 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
     typeof data.roomId === "string"
   );
 };
+
+const isFormSession = (data: JsonValue | object): data is FormSession =>
+  isFormSessionIdentity(data) &&
+  typeof data.updatedAt === "number" &&
+  Number.isFinite(data.updatedAt);
 
 const isLiveSession = (session: FormSession): boolean => !isExpired(session);
 
@@ -625,12 +632,16 @@ export async function saveSession(
   session: FormSession,
   refreshUpdatedAt = false,
 ): Promise<void> {
-  const componentData = toComponentData(session);
+  const stagedSession = toComponentData(session);
+  if (!isFormSessionIdentity(stagedSession)) {
+    failComponentData("session-shape");
+  }
+  if (refreshUpdatedAt) stagedSession.updatedAt = Date.now();
+  const componentData = toComponentData(stagedSession);
   if (!isFormSession(componentData)) {
     failComponentData("session-shape");
   }
   const persistedSession = componentData;
-  if (refreshUpdatedAt) persistedSession.updatedAt = Date.now();
   const componentType = sessionComponentType(
     persistedSession.roomId,
     persistedSession.id,
