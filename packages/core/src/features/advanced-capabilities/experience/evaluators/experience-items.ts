@@ -25,6 +25,10 @@ import type {
 import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
 import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
 import type { ExperienceService } from "../service.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../../utils/well-formed.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
 const EXPERIENCE_EXTRACTION_FALLBACK_INTERVAL = 25;
@@ -237,7 +241,7 @@ function buildExperienceProvenance(
 }
 
 function normalizeStoredText(runtime: IAgentRuntime, text: string): string {
-	return runtime.redactSecrets(text).slice(0, 500);
+	return truncateWellFormed(toWellFormedUnicode(runtime.redactSecrets(text)), 500);
 }
 
 function normalizeLearningKey(text: string): string {
