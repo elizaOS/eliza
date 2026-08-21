@@ -20,17 +20,10 @@ describe("cloudSafeMainActivityJava", () => {
     expect(splashInstall).toBeLessThan(bridgeCreation);
   });
 
-  it("registers the Firebase-safe push plugin after Capacitor creates the bridge", () => {
+  it("keeps the notification plugin out of the Play-safe activity", () => {
     const source = cloudSafeMainActivityJava("ai.elizaos.app");
-    const bridgeCreation = source.indexOf(
-      "super.onCreate(savedInstanceState);",
-    );
-    const safeRegistration = source.indexOf(
-      "getBridge().registerPlugin(SafePushNotificationsPlugin.class);",
-    );
 
-    expect(bridgeCreation).toBeGreaterThanOrEqual(0);
-    expect(safeRegistration).toBeGreaterThan(bridgeCreation);
+    expect(source).not.toContain("SafePushNotificationsPlugin");
   });
 
   it("captures cold and warm deep links before Capacitor dispatches them", () => {

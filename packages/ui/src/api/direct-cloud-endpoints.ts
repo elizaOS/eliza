@@ -158,3 +158,24 @@ export function resolveDirectCloudAuthApiBase(cloudBase: string): string {
     return normalized;
   }
 }
+
+/**
+ * Resolve the fixed API authority used by store-distributed Cloud shells.
+ * Unlike the general resolver above, an unknown or malformed configured host
+ * is not preserved: store clients must never inherit an owner-selected,
+ * sideload, or restored authority.
+ */
+export function resolveCanonicalDirectCloudApiBase(
+  cloudBase: string | null | undefined,
+): string {
+  const normalized = cloudBase?.trim().replace(/\/+$/, "") ?? "";
+  try {
+    const host = new URL(normalized).hostname.toLowerCase();
+    return (
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(host) ??
+      DEFAULT_DIRECT_CLOUD_API_BASE_URL
+    );
+  } catch {
+    return DEFAULT_DIRECT_CLOUD_API_BASE_URL;
+  }
+}
