@@ -34,6 +34,7 @@ import type {
   RuntimeR2Bucket,
   RuntimeR2ObjectMetadata,
 } from "../../../lib/storage/r2-runtime-binding";
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import {
   agentBackupCatalogAuthorities,
@@ -41,6 +42,7 @@ import {
   agentBackupObjects,
   agentBackupRestoreLeases,
 } from "../../schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
@@ -975,6 +977,7 @@ beforeAll(async () => {
         organizations,
         users,
         userCharacters,
+        agentNodeIncarnationHistories,
         dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
@@ -986,6 +989,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) => dbWrite.execute(statement));
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -1000,6 +1004,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);
