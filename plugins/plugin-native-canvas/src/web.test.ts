@@ -162,6 +162,88 @@ describe("CanvasWeb validation", () => {
   );
 });
 
+describe("CanvasWeb attachment lifecycle", () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
+      createContextStub(),
+    );
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document.body.innerHTML = "";
+  });
+
+  it("composites a layer created before the base canvas is attached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+    const host = document.createElement("div");
+
+    await canvas.attach({ canvasId, element: host });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(2);
+  });
+
+  it("composites a layer created after the base canvas is attached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const host = document.createElement("div");
+    await canvas.attach({ canvasId, element: host });
+
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(2);
+  });
+
+  it("removes the base canvas and every layer when detached", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const host = document.createElement("div");
+    await canvas.attach({ canvasId, element: host });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    await canvas.detach({ canvasId });
+
+    expect(host.querySelectorAll("canvas")).toHaveLength(0);
+  });
+
+  it("reattaches the base canvas and retained layers into a new host", async () => {
+    const canvas = new CanvasWeb();
+    const { canvasId } = await canvas.create({
+      size: { width: 10, height: 10 },
+    });
+    const firstHost = document.createElement("div");
+    const secondHost = document.createElement("div");
+    await canvas.attach({ canvasId, element: firstHost });
+    await canvas.createLayer({
+      canvasId,
+      layer: { visible: true, opacity: 1, zIndex: 1 },
+    });
+
+    await canvas.detach({ canvasId });
+    await canvas.attach({ canvasId, element: secondHost });
+
+    expect(firstHost.querySelectorAll("canvas")).toHaveLength(0);
+    expect(secondHost.querySelectorAll("canvas")).toHaveLength(2);
+  });
+});
+
 describe("CanvasWeb eval message source", () => {
   afterEach(() => {
     document.body.innerHTML = "";
