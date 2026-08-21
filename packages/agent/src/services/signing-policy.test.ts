@@ -108,7 +108,12 @@ describe("SigningPolicyEvaluator", () => {
     const evaluator = new SigningPolicyEvaluator(input);
 
     input.deniedContracts.push("0x0000000000000000000000000000000000000001");
-    evaluator.getPolicy().allowedMethodSelectors.length = 0;
+    // getPolicy() now returns a frozen snapshot: a mutation attempt throws
+    // immediately instead of silently succeeding on a copy that has no
+    // effect on future decisions (#23228).
+    expect(() => {
+      evaluator.getPolicy().allowedMethodSelectors.length = 0;
+    }).toThrow();
 
     expect(
       evaluator.evaluate(createRequest({ data: "0x12345678" })),
@@ -182,5 +187,50 @@ describe("SigningPolicyEvaluator", () => {
     expect(
       evaluator.evaluate(createRequest({ requestId: "candidate" })),
     ).toMatchObject({ allowed: true, matchedRule: "allowed" });
+  });
+
+  it("closes the evaluate/recordRequest TOCTOU race: exactly one of two concurrent reservations succeeds at a limit of 1", async () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ maxTransactionsPerHour: 1, maxTransactionsPerDay: 1 }),
+    );
+
+    // Two "submissions" that each do their own check-and-reserve with no
+    // knowledge of the other. With the old evaluate()+recordRequest() split,
+    // both checks could run (and both pass) before either recordRequest()
+    // executed. tryReserve() performs the check and the record in one
+    // synchronous call, so the second call always observes the first's
+    // reservation, however the two calls get interleaved by the scheduler.
+    const results = await Promise.all([
+      Promise.resolve().then(() =>
+        evaluator.tryReserve(createRequest({ requestId: "concurrent-a" })),
+      ),
+      Promise.resolve().then(() =>
+        evaluator.tryReserve(createRequest({ requestId: "concurrent-b" })),
+      ),
+    ]);
+
+    expect(results.filter((r) => r.allowed)).toHaveLength(1);
+    expect(results.map((r) => r.matchedRule).sort()).toEqual(
+      ["allowed", "rate_limit_hourly"].sort(),
+    );
+  });
+
+  it("release() undoes a reservation so a later request can take the freed slot", () => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ maxTransactionsPerHour: 1, maxTransactionsPerDay: 1 }),
+    );
+
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-1" })).allowed,
+    ).toBe(true);
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-2" })),
+    ).toMatchObject({ matchedRule: "rate_limit_hourly" });
+
+    evaluator.release("req-1");
+
+    expect(
+      evaluator.tryReserve(createRequest({ requestId: "req-2" })).allowed,
+    ).toBe(true);
   });
 });
