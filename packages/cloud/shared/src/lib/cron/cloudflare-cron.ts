@@ -67,6 +67,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
+    // Native authorization codes expire after five minutes. A bounded drain
+    // keeps inactive exchange credentials short-lived without an unbounded run.
+    "/api/cron/cleanup-mobile-app-auth",
     "/api/v1/cron/refresh-model-catalog",
     "/api/cron/domain-health",
   ],

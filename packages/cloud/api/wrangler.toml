@@ -88,7 +88,7 @@ crons = [
   "*/2 * * * *",    # pool-health-check
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
   "*/10 * * * *",   # cleanup-expired-crypto-payments
-  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
+  "*/15 * * * *",   # auto-top-up + agent-budgets + cleanup-mobile-app-auth + refresh-model-catalog + domain-health
   "0 * * * *",      # agent-billing
   "0 */6 * * *",  # cleanup-cli-sessions + agent-backups + reap-orphan-shared-bridges + gc-stranded-sandbox-keys
   "0 0 * * *",      # container-billing
@@ -120,6 +120,11 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615303"
 simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615304"
+simple = { limit = 120, period = 60 }
 
 [[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
@@ -750,6 +755,11 @@ name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615313"
 simple = { limit = 60, period = 60 }
 
+[[env.staging.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615314"
+simple = { limit = 120, period = 60 }
+
 [env.production]
 name = "eliza-cloud-api-prod"
 
@@ -996,5 +1006,10 @@ simple = { limit = 200, period = 60 }
 name = "DASHBOARD_CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615323"
 simple = { limit = 60, period = 60 }
+
+[[env.production.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615324"
+simple = { limit = 120, period = 60 }
 
 # deploy-kick 2026-07-22T19:02Z: re-trigger push-event Cloud CF Deploy after GH queue wedge (runs 29918527708/29940486657/29946551580 all starved). [sol-orch]

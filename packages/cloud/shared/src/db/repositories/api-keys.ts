@@ -1,10 +1,12 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
 
 export type { ApiKey, NewApiKey };
+
+const MOBILE_RECOVERY_LIST_LIMIT = 100;
 
 /**
  * Repository for API key database operations.
@@ -37,10 +39,17 @@ export class ApiKeysRepository {
     });
   }
 
-  /** Finds an API key by ID on the primary connection for lifecycle mutations. */
+  /** Reads one row from the primary for mutation authorization. */
   async findByIdConsistent(id: string): Promise<ApiKey | undefined> {
     return await dbWrite.query.apiKeys.findFirst({
       where: eq(apiKeys.id, id),
+    });
+  }
+
+  /** Generic key-management surfaces never expose mobile lifecycle credentials. */
+  async findManageableById(id: string): Promise<ApiKey | undefined> {
+    return await dbRead.query.apiKeys.findFirst({
+      where: and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)),
     });
   }
 
@@ -49,6 +58,13 @@ export class ApiKeysRepository {
    */
   async findByHash(hash: string): Promise<ApiKey | undefined> {
     return await dbRead.query.apiKeys.findFirst({
+      where: eq(apiKeys.key_hash, hash),
+    });
+  }
+
+  /** Reads any matching row from the primary, including inactive mobile credentials. */
+  async findByHashConsistent(hash: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
       where: eq(apiKeys.key_hash, hash),
     });
   }
@@ -126,7 +142,11 @@ export class ApiKeysRepository {
    */
   async listByOrganization(organizationId: string): Promise<ApiKey[]> {
     return await dbRead.query.apiKeys.findMany({
-      where: eq(apiKeys.organization_id, organizationId),
+      where: and(
+        eq(apiKeys.organization_id, organizationId),
+        isNull(apiKeys.deleted_at),
+        isNull(apiKeys.source_app_id),
+      ),
     });
   }
 
@@ -212,7 +232,7 @@ export class ApiKeysRepository {
         ...data,
         updated_at: new Date(),
       })
-      .where(eq(apiKeys.id, id))
+      .where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)))
       .returning();
     return updated;
   }
@@ -237,7 +257,110 @@ export class ApiKeysRepository {
    * Deletes an API key by ID.
    */
   async delete(id: string): Promise<void> {
-    await dbWrite.delete(apiKeys).where(eq(apiKeys.id, id));
+    await dbWrite.delete(apiKeys).where(and(eq(apiKeys.id, id), isNull(apiKeys.source_app_id)));
+  }
+
+  async findExactActiveMobileConsistent(id: string, keyHash: string): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: and(
+        eq(apiKeys.id, id),
+        eq(apiKeys.key_hash, keyHash),
+        eq(apiKeys.is_active, true),
+        isNull(apiKeys.deleted_at),
+        isNotNull(apiKeys.source_app_id),
+      ),
+    });
+  }
+
+  /** Lists mobile lifecycle credentials from primary storage for account recovery. */
+  async listMobileByOwnerConsistent(userId: string, organizationId: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+      orderBy: [desc(apiKeys.created_at)],
+      limit: MOBILE_RECOVERY_LIST_LIMIT,
+    });
+  }
+
+  /** Resolves one mobile credential without revealing whether another owner has it. */
+  async findMobileByOwnerConsistent(
+    id: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: and(
+        eq(apiKeys.id, id),
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+    });
+  }
+
+  /** Tombstones an account-owned mobile credential and erases recoverable secret bytes. */
+  async tombstoneMobileByOwner(
+    id: string,
+    userId: string,
+    organizationId: string,
+    revokedAt: Date,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await dbWrite
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.user_id, userId),
+          eq(apiKeys.organization_id, organizationId),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
+  }
+
+  /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
+  async tombstoneExactMobileCredential(
+    id: string,
+    keyHash: string,
+    revokedAt: Date,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await dbWrite
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.key_hash, keyHash),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {

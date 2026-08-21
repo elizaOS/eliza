@@ -63,6 +63,10 @@ export interface Bindings {
    * while it is absent or false, subject to the primary database control.
    */
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
+  ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -121,6 +125,7 @@ export interface Bindings {
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
   DASHBOARD_CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -582,6 +587,8 @@ export interface Variables {
   traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
+  /** Registered app that issued a mobile lifecycle credential. */
+  apiKeySourceAppId?: string;
 }
 
 export type AppEnv = {
