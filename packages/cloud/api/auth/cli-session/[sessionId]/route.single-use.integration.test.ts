@@ -2,7 +2,8 @@
  * Real-persistence regression coverage for the single-use CLI key reveal.
  *
  * The HTTP route, service, repositories, Drizzle queries, and PGlite database
- * are real. Only the external KMS decrypt boundary and logger are controlled.
+ * are real. Only the external KMS decrypt, cache, and logger boundaries are
+ * controlled.
  */
 import {
   afterAll,
@@ -11,6 +12,7 @@ import {
   describe,
   expect,
   mock,
+  spyOn,
   test,
 } from "bun:test";
 import crypto from "node:crypto";
@@ -76,6 +78,7 @@ let cliAuthSessionsRepository: typeof import("../../../../shared/src/db/reposito
 let apiKeysRepository: typeof import("../../../../shared/src/db/repositories/api-keys").apiKeysRepository;
 let apiKeysService: typeof import("../../../../shared/src/lib/services/api-keys").apiKeysService;
 let cliAuthSessionsService: typeof import("../../../../shared/src/lib/services/cli-auth-sessions").cliAuthSessionsService;
+let restoreCacheDelete: (() => void) | undefined;
 let pollApp: Hono;
 let legacyPollApp: Hono;
 
@@ -108,6 +111,9 @@ beforeAll(async () => {
   ({ apiKeysService } = await import(
     "../../../../shared/src/lib/services/api-keys"
   ));
+  const { cache } = await import("../../../../shared/src/lib/cache/client");
+  const cacheDeleteSpy = spyOn(cache, "delConfirmed").mockResolvedValue(true);
+  restoreCacheDelete = () => cacheDeleteSpy.mockRestore();
   ({ cliAuthSessionsService } = await import(
     "../../../../shared/src/lib/services/cli-auth-sessions"
   ));
@@ -124,6 +130,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+  restoreCacheDelete?.();
   await closeDb?.();
 });
 
