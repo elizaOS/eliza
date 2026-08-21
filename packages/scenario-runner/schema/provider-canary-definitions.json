@@ -16,11 +16,7 @@
           "@elizaos/plugin-bluebubbles"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "bluebubbles",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "bluebubbles", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -66,11 +62,7 @@
           "@elizaos/plugin-discord"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "discord",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "discord", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -111,9 +103,7 @@
       "evidenceScope": "provider-certification",
       "isolation": "per-scenario",
       "requires": {
-        "plugins": [
-          "@elizaos/plugin-personal-assistant"
-        ]
+        "plugins": ["@elizaos/plugin-personal-assistant"]
       },
       "tags": [
         "provider-canary",
@@ -227,11 +217,7 @@
           "@elizaos/plugin-google-workspace"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "gmail",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "gmail", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -277,11 +263,7 @@
           "@elizaos/plugin-google-workspace"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "google-calendar",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "google-calendar", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -327,11 +309,7 @@
           "@elizaos/plugin-google-workspace"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "google-drive",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "google-drive", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -377,11 +355,7 @@
           "@elizaos/plugin-signal"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "signal",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "signal", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -422,15 +396,9 @@
       "evidenceScope": "provider-certification",
       "isolation": "per-scenario",
       "requires": {
-        "plugins": [
-          "@elizaos/plugin-slack"
-        ]
+        "plugins": ["@elizaos/plugin-slack"]
       },
-      "tags": [
-        "provider-canary",
-        "slack",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "slack", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -476,11 +444,7 @@
           "@elizaos/plugin-telegram"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "telegram",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "telegram", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -526,12 +490,7 @@
           "@elizaos/plugin-phone"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "twilio",
-        "sms",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "twilio", "sms", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -577,11 +536,7 @@
           "@elizaos/plugin-phone"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "twilio",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "twilio", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -627,11 +582,7 @@
           "@elizaos/plugin-whatsapp"
         ]
       },
-      "tags": [
-        "provider-canary",
-        "whatsapp",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "whatsapp", "external-observer"],
       "turns": [
         {
           "kind": "message",
@@ -672,16 +623,9 @@
       "evidenceScope": "provider-certification",
       "isolation": "per-scenario",
       "requires": {
-        "plugins": [
-          "@elizaos/plugin-personal-assistant",
-          "@elizaos/plugin-x"
-        ]
+        "plugins": ["@elizaos/plugin-personal-assistant", "@elizaos/plugin-x"]
       },
-      "tags": [
-        "provider-canary",
-        "x",
-        "external-observer"
-      ],
+      "tags": ["provider-canary", "x", "external-observer"],
       "turns": [
         {
           "kind": "message",

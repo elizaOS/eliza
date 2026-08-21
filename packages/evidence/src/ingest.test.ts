@@ -3,15 +3,25 @@
  * on-disk shape (e2e-recordings run dirs, aesthetic-audit output, device-e2e
  * bundle dirs from packages/app/scripts/lib/device-e2e-bundle.mjs, Playwright
  * test-results, iOS boot captures/device logs, walkthrough/live-run reports,
- * scenario-runner reports). Also
+ * scenario-runner reports, and provider-qualification artifacts). Also
  * pins the honesty contract: an absent silo reports `absent`, an existing but
  * empty silo reports `ingested` with zero artifacts — never the same result.
  */
 
+import { generateKeyPairSync, type KeyObject } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import providerCanaryDefinitions from "../../scenario-runner/schema/provider-canary-definitions.json" with {
+  type: "json",
+};
+import {
+  canonicalJsonValue,
+  canonicalSha256,
+} from "../../scenario-runner/src/provider-qualified/manifest.ts";
+import { providerObserverKeyId } from "../../scenario-runner/src/provider-qualified/qualification.ts";
+import { PROVIDER_QUALIFICATION_RELEASE_TRUST_POLICY_SCHEMA } from "../../scenario-runner/src/provider-qualified/release-trust-policy.ts";
 import { createBundle, type EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
 import {
@@ -41,6 +51,54 @@ function write(repoRoot: string, relPath: string, content: string): void {
   const filePath = path.join(repoRoot, ...relPath.split("/"));
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
+}
+
+function testPolicyPin(key: KeyObject) {
+  const spkiPem = key.export({ type: "spki", format: "pem" }).toString();
+  return {
+    keyId: providerObserverKeyId(spkiPem),
+    algorithm: "ed25519",
+    spkiPem,
+  };
+}
+
+function selfGeneratedReleaseTrustPolicy(): Record<string, unknown> {
+  const authority = generateKeyPairSync("ed25519").publicKey;
+  const observer = generateKeyPairSync("ed25519").publicKey;
+  const judge = generateKeyPairSync("ed25519").publicKey;
+  const core = {
+    schema: PROVIDER_QUALIFICATION_RELEASE_TRUST_POLICY_SCHEMA,
+    releaseId: "untrusted-self-generated-fixture",
+    repositorySha: "b".repeat(40),
+    deploymentSha: "c".repeat(64),
+    organizations: {
+      manifestAuthority: {
+        organizationId: "self-authority.example",
+        keys: [testPolicyPin(authority)],
+      },
+      providerObserver: {
+        organizationId: "self-observer.example",
+        keys: [testPolicyPin(observer)],
+        allowedWorkloadSha256s: ["d".repeat(64)],
+        allowedStatementSha256s: ["e".repeat(64)],
+      },
+      semanticJudge: {
+        organizationId: "self-judge.example",
+        keys: [testPolicyPin(judge)],
+      },
+      cleanup: {
+        organizationId: "self-observer.example",
+        keys: [testPolicyPin(observer)],
+      },
+    },
+  };
+  return {
+    ...core,
+    policySha256: canonicalSha256(
+      canonicalJsonValue(core, "providerQualificationReleaseTrustPolicyCore"),
+      "providerQualificationReleaseTrustPolicy",
+    ),
+  };
 }
 
 /** Fixture repo mirroring the real silo layouts inspected on develop. */
@@ -409,6 +467,11 @@ describe("ingestAllSilos", () => {
         status: "ingested",
         artifactCount: 2,
       },
+      "provider-qualification": {
+        silo: "provider-qualification",
+        status: "absent",
+        artifactCount: 0,
+      },
     });
   });
 
@@ -525,6 +588,91 @@ describe("ingestAllSilos", () => {
       if (name === "aesthetic-audit") continue;
       expect(byName[name].status).toBe("absent");
     }
+  });
+
+  it("rejects raw artifacts, missing derived Markdown, and retired catalogs", async () => {
+    for (const setup of [
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/qualification.json",
+          '{"schema":"eliza.provider-qualification-artifact.v4"}\n',
+        ),
+      (repo: string) =>
+        write(
+          repo,
+          "reports/provider-qualification/run/gmail/publication.json",
+          '{"schema":"eliza.provider-qualification-publication.v1"}\n',
+        ),
+      (repo: string) => {
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.json",
+          '{"schema":"eliza.provider-qualification-catalog.v1"}\n',
+        );
+        write(
+          repo,
+          "reports/provider-qualification/run/catalog/catalog.md",
+          "# retired\n",
+        );
+      },
+    ]) {
+      const repo = tmpDir();
+      setup(repo);
+      await expect(build(repo)).rejects.toMatchObject({
+        code: "PROVIDER_PUBLICATION_INVALID",
+      });
+    }
+  });
+
+  it("rejects fabricated shallow capsules even with a self-generated trust policy", async () => {
+    const repo = tmpDir();
+    write(
+      repo,
+      "reports/provider-qualification/run/trust-policy.json",
+      `${JSON.stringify(selfGeneratedReleaseTrustPolicy(), null, 2)}\n`,
+    );
+    for (const { id } of providerCanaryDefinitions.scenarios) {
+      const slug = id.replace(/^provider\./u, "").replaceAll(".", "-");
+      write(
+        repo,
+        `reports/provider-qualification/run/${slug}/publication.json`,
+        `${JSON.stringify({
+          schema: "eliza.provider-qualification-publication.v2",
+          scenarioId: id,
+          artifactSha256: "a".repeat(64),
+          cleanupProof: { payload: {} },
+          qualificationArtifact: {
+            schema: "eliza.provider-qualification-artifact.v5",
+            scenarioId: id,
+            artifactSha256: "a".repeat(64),
+          },
+        })}\n`,
+      );
+      write(
+        repo,
+        `reports/provider-qualification/run/${slug}/publication.md`,
+        "## fabricated publication\n",
+      );
+    }
+    write(
+      repo,
+      "reports/provider-qualification/run/catalog/catalog.json",
+      `${JSON.stringify({
+        schema: "eliza.provider-qualification-catalog.v2",
+        repositorySha: "b".repeat(40),
+        createdAtIso: "2026-08-20T00:00:00.000Z",
+      })}\n`,
+    );
+    write(
+      repo,
+      "reports/provider-qualification/run/catalog/catalog.md",
+      "## fabricated catalog\n",
+    );
+
+    await expect(build(repo)).rejects.toMatchObject({
+      code: "PROVIDER_PUBLICATION_INVALID",
+    });
   });
 });
 

@@ -39,7 +39,18 @@ dashboard cannot overwrite the signed manifest or add unlisted files.
 | Walkthrough capture | `reports/walkthrough/` | `walkthrough` |
 | Live-test artifact wrapper | `reports/live-test-runs/` | `live-test-runs` |
 | Scenario runner package commands | `reports/scenarios/` | `scenario-runner` / `scenario` |
+| Provider qualification publications | `reports/provider-qualification/` | `provider-qualification` / `provider` |
 | Matrix lane result | temporary `matrix-run.json` | `test-matrix` / `matrix` |
+
+Provider qualification is opt-in because it consumes completed,
+operator-authorized real-provider publications. Run it through the matrix with
+`--provider-qualification-config=<file>`. The closed
+`eliza.provider-qualification-matrix-producer-config.v3` object names exactly
+13 unique `publicationFiles`, one `catalogConfigFile`, the protected
+`releaseTrustPolicyFile`, and a new `publicationOutputDir` below
+`reports/provider-qualification/`. It contains paths, not credentials or
+private keys. The producer and ingestor both reverify the staged publication
+bytes against that release policy before the bundle can finalize.
 
 The old compatibility roots `device-e2e-output/`,
 `packages/app/reports/walkthrough/`, and

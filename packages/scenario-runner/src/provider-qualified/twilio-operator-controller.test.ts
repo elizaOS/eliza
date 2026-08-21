@@ -282,8 +282,7 @@ function fixture(channel: FixtureChannel) {
     scenarioId: contract.scenario.id,
     runId: bindings.runId,
     deploymentSha256: bindings.deploymentSha,
-    ingressEndpoint:
-      "https://agent.example.test/provider-canary/v1/ingress",
+    ingressEndpoint: "https://agent.example.test/provider-canary/v1/ingress",
     ingressEndpointOriginSha256: bindings.ingress.endpointOriginSha256,
     operationBindingSha256: canonicalSha256(
       bindings.target.operation,

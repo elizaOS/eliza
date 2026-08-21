@@ -116,6 +116,8 @@ Options:
   --review / --no-review   Generate the evidence reviewer after the matrix.
   --open / --no-open       Open the reviewer after generation. Default: no-open.
   --review-ocr=on          OCR mode passed to evidence:review. Packaged OCR is required.
+  --provider-qualification-config=<file>
+                           Opt in to the 13-canary offline qualification producer.
   --stop-on-failure        Stop after the first failed step.
   --dry-run                Write a planned manifest without executing commands.
   --help, -h               Show this help.`);
@@ -130,6 +132,7 @@ export function parseMatrixArgs(argv) {
     review: true,
     open: false,
     reviewOcr: "on",
+    providerQualificationConfig: null,
     stopOnFailure: false,
     dryRun: false,
   };
@@ -154,6 +157,12 @@ export function parseMatrixArgs(argv) {
       options.tier = arg.slice("--tier=".length);
     } else if (arg.startsWith("--review-ocr=")) {
       options.reviewOcr = arg.slice("--review-ocr=".length);
+    } else if (arg.startsWith("--provider-qualification-config=")) {
+      const candidate = arg.slice("--provider-qualification-config=".length);
+      if (candidate.trim() === "") {
+        throw new Error("--provider-qualification-config requires a file");
+      }
+      options.providerQualificationConfig = path.resolve(REPO_ROOT, candidate);
     } else if (arg === "--help" || arg === "-h") {
       options.help = true;
     } else {
@@ -170,6 +179,24 @@ export function parseMatrixArgs(argv) {
     throw new Error("--tier must be cpu, gpu, or full");
   }
   return options;
+}
+
+/** Add credential-free, opt-in producers without changing the default matrix. */
+export function matrixStepsForOptions(options) {
+  if (!options.providerQualificationConfig) return MATRIX_STEPS;
+  return [
+    ...MATRIX_STEPS,
+    {
+      id: "provider-qualification",
+      label: "Provider qualification catalog (13 canaries)",
+      command: [
+        "node",
+        "scripts/evidence-review/provider-qualification-producer.mjs",
+        options.providerQualificationConfig,
+      ],
+      tags: ["provider", "qualification"],
+    },
+  ];
 }
 
 export function selectMatrixSteps(steps, options) {
@@ -267,6 +294,7 @@ function writeManifest(options, steps, reviewer, outputDir) {
       review: options.review,
       open: options.open,
       reviewOcr: options.reviewOcr,
+      providerQualification: options.providerQualificationConfig !== null,
       stopOnFailure: options.stopOnFailure,
       dryRun: options.dryRun,
       tier: options.tier,
@@ -456,6 +484,34 @@ export function executeSteps(
   return results;
 }
 
+/**
+ * Preserve the certification-critical ordering: snapshot producers, execute
+ * every selected producer, write the lane report, then ingest and verify.
+ */
+export function executeMatrixProduction(
+  steps,
+  options,
+  stagingDir,
+  {
+    reporter,
+    captureBaseline = captureEvidenceBaseline,
+    execute = executeSteps,
+    write = writeManifest,
+    createBundle = createVerifiedBundle,
+  } = {},
+) {
+  const baselinePath = captureBaseline(stagingDir);
+  const results = execute(steps, options, { reporter });
+  const { manifestPath: stagedManifest } = write(
+    options,
+    results,
+    null,
+    stagingDir,
+  );
+  const bundle = createBundle(options, stagedManifest, baselinePath);
+  return { baselinePath, results, stagedManifest, bundle };
+}
+
 async function main() {
   const options = parseMatrixArgs(process.argv.slice(2));
   if (options.help) {
@@ -463,7 +519,7 @@ async function main() {
     return;
   }
 
-  const steps = selectMatrixSteps(MATRIX_STEPS, options);
+  const steps = selectMatrixSteps(matrixStepsForOptions(options), options);
 
   let reporter = null;
   if (!options.dryRun) {
@@ -496,15 +552,12 @@ async function main() {
 
   const stagingDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-matrix-"));
   try {
-    const baselinePath = captureEvidenceBaseline(stagingDir);
-    const results = executeSteps(steps, options, { reporter });
-    const { manifestPath: stagedManifest } = writeManifest(
+    const { results, bundle } = executeMatrixProduction(
+      steps,
       options,
-      results,
-      null,
       stagingDir,
+      { reporter },
     );
-    const bundle = createVerifiedBundle(options, stagedManifest, baselinePath);
     console.log(bundle.createOutput);
     console.log(bundle.verifyOutput);
     const reviewer = runReviewer(options, bundle.bundleDir);

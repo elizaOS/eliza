@@ -16,6 +16,9 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import providerCanaryDefinitions from "../../scenario-runner/schema/provider-canary-definitions.json" with {
+  type: "json",
+};
 import type { EvidenceBundle } from "./bundle.ts";
 import { EvidenceError } from "./errors.ts";
 import type { ArtifactKind } from "./schema.ts";
@@ -41,6 +44,14 @@ interface SiloDefinition {
   roots: SiloRoot[];
   /** Per-silo kind override; receives the root-relative posix path. */
   classify?: (relPath: string, defaultKind: ArtifactKind) => ArtifactKind;
+  validateInventory?: (relativePaths: readonly string[]) => void;
+  validateStagedInventory?: (
+    captured: ReadonlyMap<string, string>,
+  ) => void | Promise<void>;
+  validateSelectedInventory?: (
+    allRelativePaths: readonly string[],
+    selectedRelativePaths: readonly string[],
+  ) => void;
 }
 
 export interface SiloSnapshot {
@@ -71,6 +82,21 @@ function sameIdentity(left: fs.BigIntStats, right: fs.BigIntStats): boolean {
     left.mtimeNs === right.mtimeNs &&
     left.ctimeNs === right.ctimeNs &&
     left.nlink === right.nlink
+  );
+}
+
+function matchesBaseline(
+  captured: StableCapture,
+  previous:
+    | { sha256: string; size: number; mtimeMs: number; ctimeMs: number }
+    | undefined,
+): boolean {
+  return (
+    previous !== undefined &&
+    previous.size === captured.size &&
+    previous.mtimeMs === captured.mtimeMs &&
+    previous.ctimeMs === captured.ctimeMs &&
+    previous.sha256 === captured.sha256
   );
 }
 
@@ -308,24 +334,54 @@ async function ingestSilo(
         },
       );
     }
-    for (const rel of walkSiloFiles(rootDir)) {
+    const relativePaths = walkSiloFiles(rootDir);
+    definition.validateInventory?.(relativePaths);
+    const stagedInventory = new Map<string, StableCapture>();
+    if (definition.validateStagedInventory !== undefined) {
+      for (const rel of relativePaths) {
+        const sourcePath = path.join(rootDir, ...rel.split("/"));
+        assertCanonicalRoot(repoRoot, sourcePath);
+        const captured = captureStableFile(sourcePath, stagingDir);
+        assertCanonicalRoot(repoRoot, sourcePath);
+        stagedInventory.set(rel, captured);
+      }
+      await definition.validateStagedInventory(
+        new Map(
+          [...stagedInventory].map(([rel, captured]) => {
+            if (captured.stagedPath === undefined) {
+              throw new EvidenceError(
+                "stable ingest capture did not produce staged bytes",
+                { code: "SILO_SOURCE_UNSTABLE", context: { rel } },
+              );
+            }
+            return [rel, captured.stagedPath];
+          }),
+        ),
+      );
+    }
+    const selectedRelativePaths = relativePaths.filter((rel) => {
+      const captured = stagedInventory.get(rel);
+      if (captured === undefined) return true;
+      return !matchesBaseline(
+        captured,
+        baseline?.files[snapshotKey(definition.silo, root.label, rel)],
+      );
+    });
+    definition.validateSelectedInventory?.(
+      relativePaths,
+      selectedRelativePaths,
+    );
+    for (const rel of relativePaths) {
       const sourcePath = path.join(rootDir, ...rel.split("/"));
-      assertCanonicalRoot(repoRoot, sourcePath);
-      const captured = captureStableFile(sourcePath, stagingDir);
-      assertCanonicalRoot(repoRoot, sourcePath);
+      const captured =
+        stagedInventory.get(rel) ?? captureStableFile(sourcePath, stagingDir);
       const previous =
         baseline?.files[snapshotKey(definition.silo, root.label, rel)];
-      if (previous !== undefined) {
-        if (
-          previous.size === captured.size &&
-          previous.mtimeMs === captured.mtimeMs &&
-          previous.ctimeMs === captured.ctimeMs &&
-          previous.sha256 === captured.sha256
-        ) {
-          if (captured.stagedPath)
-            fs.rmSync(captured.stagedPath, { force: true });
-          continue;
+      if (matchesBaseline(captured, previous)) {
+        if (captured.stagedPath) {
+          fs.rmSync(captured.stagedPath, { force: true });
         }
+        continue;
       }
       const defaultKind = classifyByExtension(rel);
       const kind = definition.classify?.(rel, defaultKind) ?? defaultKind;
@@ -346,10 +402,257 @@ async function ingestSilo(
         relativePath: namespace ? `${root.label}/${rel}` : rel,
       });
       fs.rmSync(captured.stagedPath, { force: true });
+      stagedInventory.delete(rel);
       artifactCount += 1;
+    }
+    for (const captured of stagedInventory.values()) {
+      if (captured.stagedPath) fs.rmSync(captured.stagedPath, { force: true });
     }
   }
   return { silo: definition.silo, status: "ingested", artifactCount };
+}
+
+function validateProviderQualificationInventory(
+  relativePaths: readonly string[],
+): void {
+  const files = new Set(relativePaths);
+  for (const rel of relativePaths) {
+    const name = path.posix.basename(rel);
+    if (
+      ![
+        "publication.json",
+        "publication.md",
+        "catalog.json",
+        "catalog.md",
+        "trust-policy.json",
+      ].includes(name)
+    ) {
+      throw new EvidenceError(
+        `provider qualification release tree contains non-publication authority: ${rel}`,
+        { code: "PROVIDER_PUBLICATION_INVALID", context: { rel } },
+      );
+    }
+    if (name === "publication.json") {
+      const sibling = path.posix.join(
+        path.posix.dirname(rel),
+        "publication.md",
+      );
+      if (!files.has(sibling)) {
+        throw new EvidenceError(
+          `provider publication is missing capsule-derived Markdown: ${rel}`,
+          { code: "PROVIDER_PUBLICATION_INVALID", context: { rel, sibling } },
+        );
+      }
+    }
+    if (name === "catalog.json") {
+      const sibling = path.posix.join(path.posix.dirname(rel), "catalog.md");
+      if (!files.has(sibling)) {
+        throw new EvidenceError(
+          `provider catalog is missing capsule-derived Markdown: ${rel}`,
+          { code: "PROVIDER_PUBLICATION_INVALID", context: { rel, sibling } },
+        );
+      }
+    }
+  }
+}
+
+function validateProviderQualificationSelectedInventory(
+  allRelativePaths: readonly string[],
+  selectedRelativePaths: readonly string[],
+): void {
+  const selected = new Set(selectedRelativePaths);
+  const releases = new Map<string, string[]>();
+  for (const relPath of allRelativePaths) {
+    const [release] = relPath.split("/");
+    if (release === undefined || release === "") {
+      throw new EvidenceError(
+        `provider qualification release path has no run directory: ${relPath}`,
+        { code: "PROVIDER_PUBLICATION_INVALID", context: { relPath } },
+      );
+    }
+    const paths = releases.get(release) ?? [];
+    paths.push(relPath);
+    releases.set(release, paths);
+  }
+  for (const [release, paths] of releases) {
+    const selectedCount = paths.filter((relPath) =>
+      selected.has(relPath),
+    ).length;
+    if (selectedCount !== 0 && selectedCount !== paths.length) {
+      throw new EvidenceError(
+        `provider qualification release ${release} was only partially written during this evidence run`,
+        {
+          code: "PROVIDER_PUBLICATION_INVALID",
+          context: { release, selectedCount, releaseFileCount: paths.length },
+        },
+      );
+    }
+  }
+}
+
+const CANONICAL_PROVIDER_SCENARIO_IDS = Object.freeze(
+  providerCanaryDefinitions.scenarios.map(({ id }) => id),
+);
+
+function stagedUtf8(
+  staged: ReadonlyMap<string, string>,
+  relPath: string,
+): string {
+  const file = staged.get(relPath);
+  if (file === undefined) {
+    throw new Error(`provider qualification release is missing ${relPath}`);
+  }
+  return fs.readFileSync(file, "utf8");
+}
+
+function parseStagedJson(
+  staged: ReadonlyMap<string, string>,
+  relPath: string,
+): unknown {
+  return JSON.parse(stagedUtf8(staged, relPath));
+}
+
+function providerSlug(scenarioId: string): string {
+  return scenarioId.replace(/^provider\./u, "").replaceAll(".", "-");
+}
+
+/** Fully reverify every stable release snapshot before it enters a bundle. */
+async function validateProviderQualificationStagedInventory(
+  staged: ReadonlyMap<string, string>,
+): Promise<void> {
+  try {
+    const [publicationModule, catalogModule, cliModule, policyModule] =
+      await Promise.all([
+        import(
+          "../../scenario-runner/src/provider-qualified/publication-capsule.ts"
+        ),
+        import(
+          "../../scenario-runner/src/provider-qualified/qualification-catalog.ts"
+        ),
+        import(
+          "../../scenario-runner/src/provider-qualified/qualification-cli.ts"
+        ),
+        import(
+          "../../scenario-runner/src/provider-qualified/release-trust-policy.ts"
+        ),
+      ]);
+    const { reverifyProviderQualificationPublication } = publicationModule;
+    const {
+      assembleProviderQualificationCatalog,
+      renderProviderQualificationCatalogMarkdown,
+    } = catalogModule;
+    const { renderProviderQualificationPublicationMarkdown } = cliModule;
+    const { validateProviderQualificationReleaseTrustPolicy } = policyModule;
+    const releases = new Map<string, Set<string>>();
+    for (const relPath of staged.keys()) {
+      const [release, leaf, name, ...extra] = relPath.split("/");
+      if (
+        release !== undefined &&
+        leaf === "trust-policy.json" &&
+        name === undefined
+      ) {
+        const entries = releases.get(release) ?? new Set<string>();
+        entries.add("trust-policy.json");
+        releases.set(release, entries);
+        continue;
+      }
+      if (
+        release === undefined ||
+        leaf === undefined ||
+        name === undefined ||
+        extra.length > 0
+      ) {
+        throw new Error(
+          `provider release path has an invalid shape: ${relPath}`,
+        );
+      }
+      const entries = releases.get(release) ?? new Set<string>();
+      entries.add(`${leaf}/${name}`);
+      releases.set(release, entries);
+    }
+    for (const [release, entries] of releases) {
+      const expectedEntries = new Set([
+        "trust-policy.json",
+        "catalog/catalog.json",
+        "catalog/catalog.md",
+        ...CANONICAL_PROVIDER_SCENARIO_IDS.flatMap((scenarioId) => {
+          const slug = providerSlug(scenarioId);
+          return [`${slug}/publication.json`, `${slug}/publication.md`];
+        }),
+      ]);
+      if (
+        entries.size !== expectedEntries.size ||
+        [...entries].some((entry) => !expectedEntries.has(entry))
+      ) {
+        throw new Error(
+          `provider release ${release} must contain exactly the canonical ${CANONICAL_PROVIDER_SCENARIO_IDS.length} publications and one catalog`,
+        );
+      }
+      const releaseTrustPolicy =
+        validateProviderQualificationReleaseTrustPolicy(
+          parseStagedJson(staged, `${release}/trust-policy.json`),
+        );
+      const publications = CANONICAL_PROVIDER_SCENARIO_IDS.map((scenarioId) => {
+        const base = `${release}/${providerSlug(scenarioId)}`;
+        const publication = reverifyProviderQualificationPublication(
+          parseStagedJson(staged, `${base}/publication.json`),
+          releaseTrustPolicy,
+        );
+        if (publication.scenarioId !== scenarioId) {
+          throw new Error(
+            `${base}/publication.json projects scenario ${publication.scenarioId}`,
+          );
+        }
+        const markdown = renderProviderQualificationPublicationMarkdown(
+          publication,
+          releaseTrustPolicy,
+        );
+        if (stagedUtf8(staged, `${base}/publication.md`) !== markdown) {
+          throw new Error(`${base}/publication.md is not capsule-derived`);
+        }
+        return publication;
+      });
+      const catalogPath = `${release}/catalog/catalog.json`;
+      const persistedCatalog = parseStagedJson(staged, catalogPath) as Record<
+        string,
+        unknown
+      >;
+      if (
+        typeof persistedCatalog.repositorySha !== "string" ||
+        typeof persistedCatalog.createdAtIso !== "string"
+      ) {
+        throw new Error(`${catalogPath} is missing its release binding`);
+      }
+      const catalog = assembleProviderQualificationCatalog({
+        publications,
+        expectedRepositorySha: persistedCatalog.repositorySha,
+        createdAtIso: persistedCatalog.createdAtIso,
+        releaseTrustPolicy,
+      });
+      if (
+        stagedUtf8(staged, catalogPath) !==
+        `${JSON.stringify(catalog, null, 2)}\n`
+      ) {
+        throw new Error(
+          `${catalogPath} is not derived from the staged capsules`,
+        );
+      }
+      if (
+        stagedUtf8(staged, `${release}/catalog/catalog.md`) !==
+        renderProviderQualificationCatalogMarkdown(catalog)
+      ) {
+        throw new Error(`${release}/catalog/catalog.md is not catalog-derived`);
+      }
+    }
+  } catch (error) {
+    throw new EvidenceError(
+      "provider qualification release failed full offline reverification",
+      {
+        code: "PROVIDER_PUBLICATION_INVALID",
+        cause: error,
+      },
+    );
+  }
 }
 
 /**
@@ -425,6 +728,15 @@ const SILO_DEFINITIONS: SiloDefinition[] = [
     producedBy: "progressive content corpus, scenario, and benchmark lanes",
     lane: "content-context",
     roots: [{ label: "repo", dir: "reports/content-context" }],
+  },
+  {
+    silo: "provider-qualification",
+    source: "provider-qualification",
+    producedBy: "scripts/evidence-review/provider-qualification-producer.mjs",
+    roots: [{ label: "repo", dir: "reports/provider-qualification" }],
+    validateInventory: validateProviderQualificationInventory,
+    validateStagedInventory: validateProviderQualificationStagedInventory,
+    validateSelectedInventory: validateProviderQualificationSelectedInventory,
   },
 ];
 
