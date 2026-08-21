@@ -11,6 +11,8 @@ import {
   getTrajectoryContext,
   ModelType,
   parseJSONObjectFromText,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
@@ -38,10 +40,12 @@ type ActionHistoryItem = {
 };
 
 function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
+  const wellFormed = toWellFormedUnicode(value);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return `${value.slice(0, maxLength - 1).trimEnd()}…`;
+  const budget = Math.max(0, maxLength - 1);
+  return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 function normalizeReplyText(raw: string): string {

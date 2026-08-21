@@ -4,14 +4,32 @@
  * discriminators across the native JSON-RPC bridge.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   appendBridgeCallbackContent,
   type BridgeMessageResult,
   bridgeResultText,
   checkRuntimeDatabaseLiveness,
   publicDatabaseLiveness,
+  warnGeneratedBridgeSecret,
 } from "./cloud-agent-shared";
+
+describe("cloud-agent generated bridge credentials", () => {
+  it("warns without accepting or printing the generated secret", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    warnGeneratedBridgeSecret();
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls.flat().join(" ")).toContain(
+      "generated ephemeral secret",
+    );
+    expect(warn.mock.calls.flat().join(" ")).not.toContain(
+      "Generated BRIDGE_SECRET:",
+    );
+    warn.mockRestore();
+  });
+});
 
 describe("cloud-agent bridge callback results", () => {
   it("accumulates text while preserving the runtime failure discriminator", () => {

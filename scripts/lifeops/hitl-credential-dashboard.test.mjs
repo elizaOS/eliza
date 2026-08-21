@@ -92,6 +92,15 @@ function waitForDashboard(child) {
   });
 }
 
+async function stopDashboard(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolvePromise) => {
+    child.once("exit", resolvePromise);
+  });
+  child.kill("SIGTERM");
+  await exited;
+}
+
 async function postEnv(baseUrl, headers, value) {
   return fetch(`${baseUrl}api/env`, {
     method: "POST",
@@ -177,8 +186,7 @@ test("credential dashboard rejects cross-site writes and requires its page sessi
       /TELEGRAM_BOT_TOKEN=operator-token-value/,
     );
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    await stopDashboard(child);
     rmSync(home, { recursive: true, force: true });
   }
 });
@@ -231,9 +239,50 @@ test("discord loopback OAuth surfaces fail closed without registration or a know
     const callbackHtml = await callback.text();
     assert.match(callbackHtml, /unknown or expired/);
     assert.equal(existsSync(envPath), false);
+
+    const authHeaders = {
+      Origin: sameOrigin,
+      "Content-Type": "application/json",
+      "X-HITL-Session": tokenMatch[1],
+    };
+    for (const [key, value] of [
+      ["DISCORD_CLIENT_ID", "123456789"],
+      ["DISCORD_CLIENT_SECRET", "test-only-secret"],
+    ]) {
+      const saved = await fetch(`${baseUrl}api/env`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ key, value, target: "home" }),
+      });
+      assert.equal(saved.status, 200);
+    }
+
+    const registeredStart = await fetch(
+      `${baseUrl}api/oneclick/discord-oauth/start`,
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ target: "home" }),
+      },
+    );
+    assert.equal(registeredStart.status, 200);
+    const { authorizeUrl } = await registeredStart.json();
+    const state = new URL(authorizeUrl).searchParams.get("state");
+    assert.ok(state);
+
+    const payload = `<img src=x onerror=alert(1)>"'&`;
+    const hostileCallback = await fetch(
+      `${baseUrl}oauth/discord/callback?state=${encodeURIComponent(state)}&error=${encodeURIComponent(payload)}`,
+    );
+    assert.equal(hostileCallback.status, 400);
+    const hostileCallbackHtml = await hostileCallback.text();
+    assert.doesNotMatch(hostileCallbackHtml, /<img src=x/);
+    assert.match(
+      hostileCallbackHtml,
+      /&lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;/,
+    );
   } finally {
-    child.kill("SIGTERM");
-    await new Promise((resolvePromise) => child.once("exit", resolvePromise));
+    await stopDashboard(child);
     rmSync(home, { recursive: true, force: true });
   }
 });

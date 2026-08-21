@@ -6950,7 +6950,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "Provisionamento do agente",
   "cloud.elizaAgentsTable.agentSuspend": "Suspensão do agente",
   "cloud.elizaAgentsTable.noAgentsYet": "Nenhum agente ainda",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "Implante seu primeiro agente para começar.",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "Seu agente compartilhado ou dedicado aparecerá aqui quando estiver disponível.",
   "cloud.elizaAgentsTable.searchAgents": "Buscar agentes…",
   "cloud.elizaAgentsTable.allStatuses": "Todos os status",
   "cloud.elizaAgentsTable.running": "Em execução",

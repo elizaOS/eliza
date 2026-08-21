@@ -182,6 +182,23 @@ function tokenMatches(actual, expected) {
   );
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => {
+    switch (character) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+}
+
 function assertDashboardPost(req) {
   const remoteAddress = req.socket?.remoteAddress;
   if (remoteAddress && !LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress)) {
@@ -646,9 +663,9 @@ async function handleDiscordOAuthCallback(url, res) {
     "Cache-Control": "no-store",
   });
   res.end(
-    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>` +
+    `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
       `<style>body{margin:0;background:#101014;color:#e8e6e3;font:15px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh}main{max-width:26rem;padding:1rem;text-align:center}h1{font-size:1.1rem}</style>` +
-      `</head><body><main><h1>${title}</h1><p>${note}</p><p>You can close this tab.</p></main></body></html>`,
+      `</head><body><main><h1>${escapeHtml(title)}</h1><p>${escapeHtml(note)}</p><p>You can close this tab.</p></main></body></html>`,
   );
 }
 

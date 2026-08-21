@@ -8,7 +8,11 @@
  * channel-type / display-name helpers. Used by `service.ts` on the send/receive
  * paths and re-exported from `index.ts`.
  */
-import { ElizaError, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   parseSlackArchivesUrl,
   type SlackChannel,
@@ -544,17 +548,23 @@ export function truncateText(
   maxLength: number,
   ellipsis = "…",
 ): string {
-  if (text.length <= maxLength) {
-    return text;
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+  const boundedEllipsis = truncateWellFormed(
+    toWellFormedUnicode(ellipsis),
+    maxLength,
+  );
+  const budget = Math.max(0, maxLength - boundedEllipsis.length);
+  return `${truncateWellFormed(wellFormed, budget)}${boundedEllipsis}`;
 }
 
 /**
  * Strips Slack mrkdwn formatting from text
  */
 export function stripSlackFormatting(text: string): string {
-  return text
+  const withoutMarkup = text
     .replace(/```[\s\S]*?```/g, "") // Code blocks (must be before inline code)
     .replace(/\*([^*]+)\*/g, "$1") // Bold
     .replace(/_([^_]+)_/g, "$1") // Italic
@@ -565,10 +575,13 @@ export function stripSlackFormatting(text: string): string {
     .replace(/<!subteam\^[A-Z0-9]+(?:\|[^>]*)?>/gi, "") // User group mentions
     .replace(/<!(?:here|channel|everyone)(?:\|[^>]*)?>/gi, "") // Special mentions
     .replace(/<((?:https?|slack|mailto|tel):[^|>]+)\|([^>]*)>/g, "$2") // Links with text → label
-    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1") // Plain links → URL
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
+    .replace(/<((?:https?|slack|mailto|tel):[^>]+)>/g, "$1"); // Plain links → URL
+  const entities: Record<string, string> = { amp: "&", lt: "<", gt: ">" };
+  return withoutMarkup
+    .replace(
+      /&(amp|lt|gt);/g,
+      (entity, name: string) => entities[name] ?? entity,
+    )
     .trim();
 }
 

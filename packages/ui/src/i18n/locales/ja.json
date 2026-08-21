@@ -6950,7 +6950,7 @@
   "cloud.elizaAgentsTable.agentProvisioning": "エージェントのプロビジョニング",
   "cloud.elizaAgentsTable.agentSuspend": "エージェントの一時停止",
   "cloud.elizaAgentsTable.noAgentsYet": "エージェントがまだありません",
-  "cloud.elizaAgentsTable.noAgentsYetDesc": "最初のエージェントをデプロイして始めましょう。",
+  "cloud.elizaAgentsTable.noAgentsYetDesc": "共有エージェントまたは専用エージェントが利用可能になると、ここに表示されます。",
   "cloud.elizaAgentsTable.searchAgents": "エージェントを検索…",
   "cloud.elizaAgentsTable.allStatuses": "すべてのステータス",
   "cloud.elizaAgentsTable.running": "実行中",

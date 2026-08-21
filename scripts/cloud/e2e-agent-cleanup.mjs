@@ -26,10 +26,13 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   assertExpectedCleanupIdentity,
   bindReviewedCleanupCandidates,
   normalizeAgentRow,
+  remainingJobBudget,
   resolveE2eWalletPrivateKey,
   selectAgentsForCleanup,
 } from "./e2e-agent-cleanup-lib.mjs";
@@ -47,11 +50,42 @@ function argAll(name) {
   return values;
 }
 
+const BOOLEAN_OPTIONS = new Set(["--apply", "--wait", "--help", "-h"]);
+const VALUE_OPTIONS = new Set([
+  "--base",
+  "--candidate",
+  "--expected-address",
+  "--expected-org",
+  "--keep",
+  "--min-age-minutes",
+  "--protect",
+  "--report",
+  "--job-timeout-ms",
+  "--poll-interval-ms",
+]);
+
+function validateArgv(tokens) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (BOOLEAN_OPTIONS.has(token)) continue;
+    if (!VALUE_OPTIONS.has(token)) {
+      throw new Error(`unknown or positional argument: ${token}`);
+    }
+    const value = tokens[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error(`${token} requires a value`);
+    }
+    index += 1;
+  }
+}
+
 function arg(name, fallback = null) {
   const values = argAll(name);
   if (values.length > 1) throw new Error(`${name} may only be provided once`);
   return values[0] ?? fallback;
 }
+
+validateArgv(process.argv.slice(2));
 
 const has = (name) => process.argv.includes(name);
 const log = (message) => console.log(`[e2e-agent-cleanup] ${message}`);
@@ -100,6 +134,12 @@ function parseOptions() {
   const parsedBase = new URL(baseUrl);
   if (!/^https?:$/.test(parsedBase.protocol)) {
     throw new Error("--base must be an http(s) URL");
+  }
+  if (parsedBase.username || parsedBase.password) {
+    throw new Error("--base must not contain credentials");
+  }
+  if (parsedBase.search || parsedBase.hash) {
+    throw new Error("--base must not contain a query or fragment");
   }
   const isLoopback = ["127.0.0.1", "localhost", "::1"].includes(
     parsedBase.hostname,
@@ -193,9 +233,20 @@ async function resolveToken(options) {
   };
 }
 
-async function cloud(options, token, path, init = {}) {
-  const res = await fetch(`${options.baseUrl}${path}`, {
+async function cloud(
+  options,
+  token,
+  requestPath,
+  init = {},
+  timeoutMs = options.jobTimeoutMs,
+) {
+  const requestTimeoutMs = Math.min(timeoutMs, 15_000);
+  if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+    throw new Error(`Cloud request deadline elapsed before ${requestPath}`);
+  }
+  const res = await fetch(`${options.baseUrl}${requestPath}`, {
     ...init,
+    signal: AbortSignal.timeout(requestTimeoutMs),
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
@@ -212,7 +263,7 @@ async function cloud(options, token, path, init = {}) {
   }
   if (!res.ok) {
     throw new Error(
-      `Cloud request failed (${res.status}) ${path}: ${text.slice(0, 300)}`,
+      `Cloud request failed (${res.status}) ${requestPath}: ${text.slice(0, 300)}`,
     );
   }
   return { status: res.status, body };
@@ -280,10 +331,16 @@ async function deleteAgent(options, token, agent) {
     }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      const remainingMs = remainingJobBudget(
+        deadline,
+        Number.POSITIVE_INFINITY,
+      );
       const job = await cloud(
         options,
         token,
         `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+        {},
+        remainingMs,
       );
       const status = String(
         job.body?.data?.status ?? job.body?.status ?? "",
@@ -294,7 +351,10 @@ async function deleteAgent(options, token, agent) {
         throw new Error(
           `delete job ${jobId} for ${agent.id} failed: ${status}`,
         );
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      const sleepMs = remainingJobBudget(deadline, pollIntervalMs);
+      if (sleepMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, sleepMs));
+      }
     }
     throw new Error(`delete job ${jobId} for ${agent.id} timed out`);
   }
@@ -303,13 +363,184 @@ async function deleteAgent(options, token, agent) {
 
 function writeReport(reportPath, report) {
   if (!reportPath) return;
-  const temporaryPath = `${reportPath}.tmp`;
-  fs.writeFileSync(temporaryPath, `${JSON.stringify(report, null, 2)}\n`);
-  fs.renameSync(temporaryPath, reportPath);
+  const directory = path.dirname(reportPath);
+  const temporaryPath = path.join(
+    directory,
+    `.${path.basename(reportPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  let fileDescriptor;
+  try {
+    fileDescriptor = fs.openSync(
+      temporaryPath,
+      fs.constants.O_WRONLY |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        fs.constants.O_NOFOLLOW,
+      0o600,
+    );
+    fs.writeFileSync(
+      fileDescriptor,
+      `${JSON.stringify(report, null, 2)}\n`,
+      "utf8",
+    );
+    fs.fsyncSync(fileDescriptor);
+    fs.closeSync(fileDescriptor);
+    fileDescriptor = undefined;
+    fs.renameSync(temporaryPath, reportPath);
+
+    const directoryDescriptor = fs.openSync(directory, fs.constants.O_RDONLY);
+    try {
+      fs.fsyncSync(directoryDescriptor);
+    } finally {
+      fs.closeSync(directoryDescriptor);
+    }
+  } catch (error) {
+    // error-policy:J2 receipt persistence is a required boundary, so retain
+    // the filesystem cause while adding the destination needed to diagnose it.
+    if (fileDescriptor !== undefined) fs.closeSync(fileDescriptor);
+    try {
+      fs.unlinkSync(temporaryPath);
+    } catch (cleanupError) {
+      // error-policy:J6 a failed temp-file cleanup must not replace the
+      // receipt write failure that stopped mutation and remains actionable.
+      if (cleanupError?.code !== "ENOENT") {
+        console.warn(
+          `[e2e-agent-cleanup] WARN: failed to clean temporary receipt: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+    }
+    throw new Error(`failed to persist cleanup receipt at ${reportPath}`, {
+      cause: error,
+    });
+  }
 }
 
-async function main() {
-  const options = parseOptions();
+function sameFileIdentity(left, right) {
+  return left.dev === right.dev && left.ino === right.ino;
+}
+
+function acquireReportLock(reportPath) {
+  if (!reportPath) return () => {};
+  const lockPath = `${reportPath}.lock`;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    let descriptor;
+    let createdIdentity;
+    try {
+      descriptor = fs.openSync(
+        lockPath,
+        fs.constants.O_WRONLY |
+          fs.constants.O_CREAT |
+          fs.constants.O_EXCL |
+          fs.constants.O_NOFOLLOW,
+        0o600,
+      );
+      createdIdentity = fs.fstatSync(descriptor);
+      fs.writeFileSync(
+        descriptor,
+        `${JSON.stringify({ pid: process.pid, hostname: os.hostname(), startedAt: new Date().toISOString() })}\n`,
+        "utf8",
+      );
+      fs.fsyncSync(descriptor);
+      const identity = fs.fstatSync(descriptor);
+      fs.closeSync(descriptor);
+      descriptor = undefined;
+      return () => {
+        try {
+          const current = fs.lstatSync(lockPath);
+          if (!sameFileIdentity(identity, current)) {
+            throw new Error("report lock changed while cleanup was running");
+          }
+          fs.unlinkSync(lockPath);
+        } catch (error) {
+          // error-policy:J6 releasing the advisory receipt lock is teardown;
+          // the receipt itself already records the authoritative run result.
+          console.warn(
+            `[e2e-agent-cleanup] WARN: failed to release report lock: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      };
+    } catch (error) {
+      // error-policy:J2 lock acquisition failures gain report-path context and
+      // preserve their filesystem cause; EEXIST is inspected fail-closed below.
+      if (descriptor !== undefined) fs.closeSync(descriptor);
+      if (createdIdentity !== undefined) {
+        try {
+          const current = fs.lstatSync(lockPath);
+          if (sameFileIdentity(createdIdentity, current))
+            fs.unlinkSync(lockPath);
+        } catch (cleanupError) {
+          // error-policy:J6 this cleanup only removes a lock created by this
+          // failed acquisition; the original failure remains authoritative.
+          if (cleanupError?.code !== "ENOENT") {
+            console.warn(
+              `[e2e-agent-cleanup] WARN: failed to clean incomplete report lock: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+            );
+          }
+        }
+      }
+      if (error?.code !== "EEXIST") {
+        throw new Error(
+          `failed to acquire cleanup report lock at ${lockPath}`,
+          {
+            cause: error,
+          },
+        );
+      }
+    }
+
+    let existingDescriptor;
+    let owner;
+    let existingIdentity;
+    try {
+      existingDescriptor = fs.openSync(
+        lockPath,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
+      );
+      existingIdentity = fs.fstatSync(existingDescriptor);
+      const text = fs.readFileSync(existingDescriptor, "utf8");
+      try {
+        owner = JSON.parse(text);
+      } catch (error) {
+        // error-policy:J3 lock contents are untrusted; malformed ownership can
+        // never authorize removal of a potentially live process's lock.
+        throw new Error(`cleanup report lock is malformed at ${lockPath}`, {
+          cause: error,
+        });
+      }
+    } finally {
+      if (existingDescriptor !== undefined) fs.closeSync(existingDescriptor);
+    }
+    if (
+      owner?.hostname !== os.hostname() ||
+      !Number.isInteger(owner?.pid) ||
+      owner.pid <= 0
+    ) {
+      throw new Error(`cleanup report is locked by an unverifiable owner`);
+    }
+
+    let ownerAlive = true;
+    try {
+      process.kill(owner.pid, 0);
+    } catch (error) {
+      // error-policy:J3 only the OS's definitive no-such-process result makes
+      // a same-host lock stale; permissions and unknown errors stay locked.
+      if (error?.code === "ESRCH") ownerAlive = false;
+      else throw new Error(`cleanup report is locked by pid ${owner.pid}`);
+    }
+    if (ownerAlive) {
+      throw new Error(`cleanup report is locked by active pid ${owner.pid}`);
+    }
+
+    const currentIdentity = fs.lstatSync(lockPath);
+    if (!sameFileIdentity(existingIdentity, currentIdentity)) {
+      throw new Error("cleanup report lock changed during stale-lock recovery");
+    }
+    fs.unlinkSync(lockPath);
+  }
+  throw new Error(`failed to acquire cleanup report lock at ${lockPath}`);
+}
+
+async function executeCleanup(options) {
   const { token, identity } = await resolveToken(options);
   if (options.apply) {
     assertExpectedCleanupIdentity(identity, options);
@@ -406,6 +637,16 @@ async function main() {
       ? `done: verified ${report.verifiedAbsent.length} reviewed candidate(s) absent`
       : `dry run: ${toDelete.length} eligible agent(s); review IDs before --apply`,
   );
+}
+
+async function main() {
+  const options = parseOptions();
+  const releaseReportLock = acquireReportLock(options.reportPath);
+  try {
+    await executeCleanup(options);
+  } finally {
+    releaseReportLock();
+  }
 }
 
 main().catch((error) => {

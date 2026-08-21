@@ -4008,6 +4008,41 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
     }
   });
 
+  test("an explicit state-loss acknowledgement binds a capture waiver to this generation", async () => {
+    const { svc, spyTarget } = await makeCaptureSvc();
+    const rec = customSandbox();
+    const getForWrite = spyOn(spyTarget, "getAgentForWrite").mockResolvedValue(rec);
+    const fetchSnap = spyOn(spyTarget, "fetchSnapshotState").mockRejectedValue(
+      new Error("available-memory budget exceeded"),
+    );
+    const prepare = spyOn(spyTarget, "prepareAgentDelete").mockResolvedValue({
+      ok: false,
+      error: "halted by test after capture phase",
+    });
+    try {
+      await expect(
+        svc.deleteAgent(rec.id, rec.organization_id, {
+          authorization: "user_request",
+          stateLossAcknowledged: true,
+        }),
+      ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
+      expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
+        snapshot: null,
+        captureWaiverGeneration: {
+          bridgeUrl: rec.bridge_url,
+          environmentRevision: rec.environment_revision,
+          sandboxId: rec.sandbox_id,
+        },
+        captureWaiverAlreadyPersisted: false,
+        existingBackup: null,
+      });
+    } finally {
+      getForWrite.mockRestore();
+      fetchSnap.mockRestore();
+      prepare.mockRestore();
+    }
+  });
+
   test("a transient capture failure refuses the delete with the transient message", async () => {
     const { mod, svc, spyTarget } = await makeCaptureSvc();
     const rec = customSandbox();
@@ -4049,7 +4084,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       ).resolves.toEqual({ success: false, error: "halted by test after capture phase" });
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
-        captureUnsupportedGeneration: {
+        captureWaiverGeneration: {
           bridgeUrl: rec.bridge_url,
           environmentRevision: rec.environment_revision,
           sandboxId: rec.sandbox_id,
@@ -4091,7 +4126,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: true,
         existingBackup: null,
       });
@@ -4136,7 +4171,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
           }
         ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
           snapshot: null,
-          captureUnsupportedGeneration: null,
+          captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: true,
           existingBackup: null,
         }),
@@ -4201,7 +4236,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });
@@ -4226,7 +4261,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });
@@ -4302,7 +4337,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, "user_request", {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: {
           id: priorBackupId,
@@ -4338,7 +4373,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).not.toHaveBeenCalled();
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot: null,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });
@@ -4383,7 +4418,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
       expect(fetchSnap).toHaveBeenCalledTimes(1);
       expect(prepare).toHaveBeenCalledWith(rec.id, rec.organization_id, undefined, {
         snapshot,
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       });
@@ -4421,7 +4456,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
             sizeBytes: 12,
             bridgeUrl: "https://a-different-generation.example",
           },
-          captureUnsupportedGeneration: null,
+          captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: null,
         }),
@@ -4485,7 +4520,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         }
       ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
         snapshot: { stateData, sizeBytes: 34, bridgeUrl: live.bridge_url as string },
-        captureUnsupportedGeneration: null,
+        captureWaiverGeneration: null,
         captureWaiverAlreadyPersisted: false,
         existingBackup: null,
       })) as { ok: boolean };
@@ -4539,7 +4574,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
         }
       ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
         snapshot: null,
-        captureUnsupportedGeneration: {
+        captureWaiverGeneration: {
           bridgeUrl: live.bridge_url,
           environmentRevision: live.environment_revision,
           sandboxId: live.sandbox_id,
@@ -4611,7 +4646,7 @@ describe("ElizaSandboxService.deleteAgent fail-closed pre-deletion capture (#185
           }
         ).prepareAgentDelete(live.id, live.organization_id, "user_request", {
           snapshot: null,
-          captureUnsupportedGeneration: null,
+          captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: { id: backupId, deletionAttemptId },
         }),
@@ -4783,7 +4818,7 @@ describe("ElizaSandboxService.deleteAgent teardown cap (#9066)", () => {
             sizeBytes: 1,
             bridgeUrl: live.bridge_url,
           },
-          captureUnsupportedGeneration: null,
+          captureWaiverGeneration: null,
           captureWaiverAlreadyPersisted: false,
           existingBackup: null,
         }),

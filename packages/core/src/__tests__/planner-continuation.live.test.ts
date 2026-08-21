@@ -18,22 +18,17 @@ import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
 } from "../testing/index.ts";
+import { readCompletedPlannerContinuationTrajectory } from "./planner-continuation-trajectory.ts";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };
 	steps?: Array<{
 		llmCalls?: Array<{
 			provider?: string;
+			model?: string;
 			response?: string;
 		}>;
 	}>;
-}
-
-interface LiveTrajectoryService {
-	flushWriteQueue?: (trajectoryId: string) => Promise<void>;
-	getTrajectoryDetail?: (
-		trajectoryId: string,
-	) => Promise<LiveTrajectoryDetail | null>;
 }
 
 const liveDescribe =
@@ -112,7 +107,8 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 					{
 						provider: harness.providerName,
 						baseUrl: harness.providerConfig?.baseUrl,
-						model: harness.providerConfig?.model,
+						smallModel: harness.providerConfig?.smallModel,
+						largeModel: harness.providerConfig?.largeModel,
 						evidence,
 					},
 					null,
@@ -205,33 +201,25 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 		if (typeof trajectoryId !== "string" || !trajectoryId.trim()) {
 			throw new Error("live continuation turn did not create a trajectory");
 		}
-		const trajectoryService = harness.runtime.getService(
-			"trajectories",
-		) as LiveTrajectoryService | null;
-		if (typeof trajectoryService?.getTrajectoryDetail !== "function") {
-			throw new Error(
-				"live continuation turn has no readable trajectory service",
+		const trajectoryService = harness.runtime.getService("trajectories");
+		const trajectory =
+			await readCompletedPlannerContinuationTrajectory<LiveTrajectoryDetail>(
+				harness.runtime,
+				trajectoryId,
+				trajectoryService,
 			);
-		}
-		let trajectory: LiveTrajectoryDetail | null = null;
-		for (let attempt = 0; attempt < 50; attempt += 1) {
-			await trajectoryService.flushWriteQueue?.(trajectoryId);
-			trajectory = await trajectoryService.getTrajectoryDetail(trajectoryId);
-			if (trajectory?.metrics?.finalStatus === "completed") break;
-			await new Promise((resolve) => setTimeout(resolve, 20));
-		}
-		if (!trajectory)
-			throw new Error("live continuation trajectory was not persisted");
 		const modelResponses =
 			trajectory.steps
 				?.flatMap((step) => step.llmCalls ?? [])
 				.map((call) => ({
 					provider: call.provider,
+					model: call.model,
 					response: call.response,
 				}))
 				.filter((call) => Boolean(call.response?.trim())) ?? [];
 		const record = {
 			caseName: params.caseName,
+			trajectoryId,
 			priorUser: priorUser.content,
 			priorAssistant: priorAssistant.content,
 			currentText: params.currentText,

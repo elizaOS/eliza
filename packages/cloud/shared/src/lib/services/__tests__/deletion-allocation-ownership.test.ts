@@ -565,6 +565,47 @@ describe("releaseDeletionAllocationOnReap — absence proven by the orphan reape
   );
 
   test(
+    "absence proof clears stale network locators so recovery does not recapture a dead generation",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, nodeId } = await seedNodeWithTargetAndSibling({
+        allocationCounted: true,
+        status: "deletion_failed",
+      });
+      await dbWrite
+        .update(agentSandboxes)
+        .set({
+          bridge_url: "http://100.64.0.10:3000",
+          health_url: "http://100.64.0.10:3000/api/health",
+        })
+        .where(eq(agentSandboxes.id, agentId));
+
+      expect(await agentSandboxesRepository.releaseDeletionAllocationOnReap(agentId, nodeId)).toBe(
+        "released",
+      );
+
+      const [retained] = await dbWrite
+        .select({
+          bridgeUrl: agentSandboxes.bridge_url,
+          healthUrl: agentSandboxes.health_url,
+          containerName: agentSandboxes.container_name,
+          nodeId: agentSandboxes.node_id,
+          status: agentSandboxes.status,
+        })
+        .from(agentSandboxes)
+        .where(eq(agentSandboxes.id, agentId));
+      expect(retained).toMatchObject({
+        bridgeUrl: null,
+        healthUrl: null,
+        nodeId,
+        status: "deletion_failed",
+      });
+      expect(retained.containerName).not.toBeNull();
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a second reap of the same agent does not free the live sibling's slot",
     async () => {
       if (!pgliteReady) return;
@@ -732,6 +773,70 @@ describe("workload reconciliation counts a deletion row exactly while it owns a 
 });
 
 describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state", () => {
+  test(
+    "an explicit state-loss acknowledgement is durable job authority",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+
+      const enqueued = await new ProvisioningJobService().enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      });
+
+      expect(enqueued.job.data).toMatchObject({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a repeated delete monotonically upgrades the in-flight job with state-loss authority",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const service = new ProvisioningJobService();
+
+      const first = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+      expect(first.created).toBe(true);
+      expect(first.job.data.stateLossAcknowledged).toBeUndefined();
+
+      const upgraded = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      });
+      expect(upgraded.created).toBe(false);
+      expect(upgraded.job.id).toBe(first.job.id);
+      expect(upgraded.job.data.stateLossAcknowledged).toBe(true);
+
+      const reusedWithoutAuthority = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+      expect(reusedWithoutAuthority.created).toBe(false);
+      expect(reusedWithoutAuthority.job.data.stateLossAcknowledged).toBe(true);
+    },
+    PGLITE_TIMEOUT,
+  );
+
   test(
     "a placed, running agent starts its deletion owning one slot; a re-enqueue keeps that answer",
     async () => {
