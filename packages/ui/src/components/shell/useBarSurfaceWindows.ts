@@ -70,6 +70,9 @@ export function useBarSurfaceWindows(options?: {
       if (!detail) return;
       if (detail.action === "close" || detail.action === "close-all") {
         event.preventDefault();
+        window.dispatchEvent(
+          new Event(DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT),
+        );
         void dismissWorkspaceRef.current();
         return;
       }

@@ -3019,13 +3019,23 @@ async function main(): Promise<void> {
       );
     });
   });
-  getDesktopManager().setDismissWorkspaceCallback(
-    () =>
-      surfaceWindowManager?.dismissWorkspaceWindow() ?? {
-        closed: false,
-        reason: "already-closed",
-      },
-  );
+  getDesktopManager().setDismissWorkspaceCallback(() => {
+    const result = surfaceWindowManager?.dismissWorkspaceWindow() ?? {
+      closed: false,
+      reason: "already-closed" as const,
+    };
+    if (result.closed) {
+      void (async () => {
+        await getDesktopManager().setMainWindowSuppressedByWorkspace(false);
+        await getDesktopManager().focusWindow();
+      })().catch((error: unknown) => {
+        logger.warn(
+          `[surface-windows] Failed to restore pill focus after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+    }
+    return result;
+  });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);
   });

@@ -1716,7 +1716,8 @@ export function ChatOverlay({
   // A pill-driven content Workspace briefly makes its native window key while
   // it is created or routed. That is presentation plumbing, not a user
   // dismissal: keep the current detent/voice session intact and restore the
-  // composer only when it owned focus before the handoff.
+  // composer whenever text mode owns the interaction. Active voice keeps the
+  // continuous voice surface instead of being converted back to text focus.
   const contentWorkspaceHandoffUntilRef = React.useRef(0);
   const restoreComposerAfterContentHandoffRef = React.useRef(false);
   // Snapshot of "was the composer focused (keyboard up) at the last pointerdown".
@@ -3915,8 +3916,7 @@ export function ChatOverlay({
     const beginContentWorkspaceHandoff = () => {
       contentWorkspaceHandoffUntilRef.current = performance.now() + 2500;
       restoreComposerAfterContentHandoffRef.current =
-        typeof document !== "undefined" &&
-        document.activeElement === inputRef.current;
+        !continuousVoiceComposerVisible;
     };
     window.addEventListener(
       DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
@@ -3927,7 +3927,7 @@ export function ChatOverlay({
         DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
         beginContentWorkspaceHandoff,
       );
-  }, [desktopOverlayHost]);
+  }, [continuousVoiceComposerVisible, desktopOverlayHost]);
 
   React.useEffect(() => {
     if (!desktopOverlayHost || !sheetOpen || pinnedOpen) return undefined;
@@ -3945,8 +3945,7 @@ export function ChatOverlay({
 
   // Content Workspace opens are intentionally background navigation from the
   // pill's point of view. Once AppKit returns key status to the detached host,
-  // restore only the focus it had before the handoff. Voice-only interaction
-  // therefore keeps listening without unexpectedly focusing the text field.
+  // restore text focus unless the continuous voice surface owns the session.
   React.useEffect(() => {
     if (!desktopOverlayHost) return undefined;
     return subscribeDesktopBridgeEvent({

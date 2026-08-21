@@ -111,6 +111,11 @@ describe("useBarSurfaceWindows", () => {
 
   it("dismisses the Workspace for close actions and ignores detail-less events", async () => {
     const { dismissWorkspace, openWindow, openWorkspace } = setup();
+    const contentHandoff = vi.fn();
+    window.addEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+    );
     const event = await dispatchNavigate({
       action: "close",
       viewId: "calendar",
@@ -120,7 +125,12 @@ describe("useBarSurfaceWindows", () => {
     expect(openWindow).not.toHaveBeenCalled();
     expect(openWorkspace).not.toHaveBeenCalled();
     expect(dismissWorkspace).toHaveBeenCalledTimes(2);
+    expect(contentHandoff).toHaveBeenCalledTimes(2);
     expect(event.defaultPrevented).toBe(true);
+    window.removeEventListener(
+      DESKTOP_CONTENT_WORKSPACE_HANDOFF_EVENT,
+      contentHandoff,
+    );
   });
 
   it("is inert off the desktop runtime", async () => {

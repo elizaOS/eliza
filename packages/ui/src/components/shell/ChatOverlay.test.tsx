@@ -4523,7 +4523,7 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     }
   });
 
-  it("keeps the detached composer open and restores focus through a content Workspace handoff", async () => {
+  it("keeps the detached composer open and always restores text focus through a content Workspace handoff", async () => {
     let nativeBlur: ((payload: unknown) => void) | undefined;
     let nativeFocus: ((payload: unknown) => void) | undefined;
     const rpc = {
@@ -4548,8 +4548,8 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       const sheet = screen.getByTestId("chat-sheet");
       fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
       const composer = screen.getByTestId("chat-composer-textarea");
-      composer.focus();
       expect(sheet.dataset.detent).toBe("half");
+      expect(document.activeElement).not.toBe(composer);
 
       act(() => {
         window.dispatchEvent(
