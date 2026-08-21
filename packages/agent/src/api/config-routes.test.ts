@@ -7,9 +7,9 @@ import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
 import {
   type ConfigRouteContext,
-  MAX_CONFIG_PATCH_DEPTH,
   configPatchExceedsBound,
   handleConfigRoutes,
+  MAX_CONFIG_PATCH_DEPTH,
 } from "./config-routes";
 
 function nest(depth: number): Record<string, unknown> {
