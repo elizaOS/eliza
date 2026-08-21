@@ -36,6 +36,25 @@ import type { RuntimeDurableObjectNamespace } from "../../../types/cloud-worker-
 import { getCloudBinding, hasCloudBindingsContext } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 
+const GREETING_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound every onboarding coordinator hop so a hung or overloaded Durable
+ * Object cannot pin the greeting worker indefinitely. A caller-provided abort
+ * signal wins.
+ */
+export function greetingFetch(
+  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
+  input: string | URL,
+  init?: RequestInit,
+  timeoutMs: number = GREETING_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return stub.fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 export interface ProactiveGreetingEntry {
   /** Platform-scoped onboarding session id (`platform:discord:<userId>`). */
   sessionId: string;
@@ -148,13 +167,15 @@ export async function enqueueDiscordProactiveGreeting(
   try {
     const coordinator = greetingCoordinator();
     if (coordinator) {
-      const response = await coordinator
-        .getByName(DISCORD_GREETING_QUEUE_NAME)
-        .fetch("https://onboarding.internal/enqueue-greeting", {
+      const response = await greetingFetch(
+        coordinator.getByName(DISCORD_GREETING_QUEUE_NAME),
+        "https://onboarding.internal/enqueue-greeting",
+        {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(entry),
-        });
+        },
+      );
       if (!response.ok) {
         throw new Error(`greeting enqueue failed (${response.status})`);
       }
@@ -182,13 +203,15 @@ export async function enqueueDiscordProactiveGreeting(
 export async function drainDiscordProactiveGreetings(): Promise<LeasedProactiveGreetingEntry[]> {
   const coordinator = greetingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(DISCORD_GREETING_QUEUE_NAME)
-      .fetch("https://onboarding.internal/drain-greetings", {
+    const response = await greetingFetch(
+      coordinator.getByName(DISCORD_GREETING_QUEUE_NAME),
+      "https://onboarding.internal/drain-greetings",
+      {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ limit: MAX_GREETING_DRAIN }),
-      });
+      },
+    );
     if (!response.ok) {
       throw new Error(`greeting drain failed (${response.status})`);
     }
@@ -230,13 +253,15 @@ export async function acknowledgeDiscordProactiveGreetings(
 ): Promise<number> {
   const coordinator = greetingCoordinator();
   if (coordinator) {
-    const response = await coordinator
-      .getByName(DISCORD_GREETING_QUEUE_NAME)
-      .fetch("https://onboarding.internal/ack-greetings", {
+    const response = await greetingFetch(
+      coordinator.getByName(DISCORD_GREETING_QUEUE_NAME),
+      "https://onboarding.internal/ack-greetings",
+      {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ acknowledgements }),
-      });
+      },
+    );
     if (!response.ok) {
       throw new Error(`greeting acknowledgement failed (${response.status})`);
     }
