@@ -94,8 +94,9 @@ describe("Android screenrecord finalization", () => {
   });
 
   test("requires a video stream with positive ffprobe duration", () => {
-    const probe = (payload) => (_bin, args) => {
+    const probe = (payload) => (_bin, args, options) => {
       expect(args.at(-1)).toBe("/evidence/walkthrough.mp4");
+      expect(options.timeout).toBeGreaterThan(0);
       return {
         error: undefined,
         status: 0,
@@ -107,7 +108,14 @@ describe("Android screenrecord finalization", () => {
         ffprobe: "/tools/ffprobe",
         run: probe({
           format: { duration: "1.25" },
-          streams: [{ codec_type: "video" }],
+          streams: [
+            {
+              codec_type: "video",
+              width: 1080,
+              height: 1920,
+              nb_read_frames: "3",
+            },
+          ],
         }),
       }),
     ).toBe(true);
@@ -116,7 +124,31 @@ describe("Android screenrecord finalization", () => {
         ffprobe: "/tools/ffprobe",
         run: probe({
           format: { duration: "0" },
-          streams: [{ codec_type: "video", duration: "0" }],
+          streams: [
+            {
+              codec_type: "video",
+              width: 1080,
+              height: 1920,
+              duration: "0",
+              nb_read_frames: "3",
+            },
+          ],
+        }),
+      }),
+    ).toBe(false);
+    expect(
+      hasPositiveVideoDuration("/evidence/walkthrough.mp4", {
+        ffprobe: "/tools/ffprobe",
+        run: probe({
+          format: { duration: "2" },
+          streams: [
+            {
+              codec_type: "video",
+              width: 1080,
+              height: 1920,
+              nb_read_frames: "0",
+            },
+          ],
         }),
       }),
     ).toBe(false);
@@ -343,13 +375,14 @@ describe("chunked Android screenrecord collection", () => {
     dirs.push(dir);
     const ffprobe = path.join(dir, "ffprobe");
     const duration = mode === "complete" ? "1.5" : "0";
+    const frames = mode === "complete" ? "30" : "0";
     const script = [
       "#!/bin/sh",
       'if [ "$1" = "-version" ]; then',
       "  echo fake-ffprobe",
       "  exit 0",
       "fi",
-      `printf '{"format":{"duration":"${duration}"},"streams":[{"codec_type":"video","duration":"${duration}"}]}'`,
+      `printf '{"format":{"duration":"${duration}"},"streams":[{"codec_type":"video","width":1080,"height":1920,"duration":"${duration}","nb_read_frames":"${frames}"}]}'`,
       "exit 0",
       "",
     ].join("\n");
