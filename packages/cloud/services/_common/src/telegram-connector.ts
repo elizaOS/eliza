@@ -32,6 +32,8 @@ export interface TelegramConnectorEvent {
   senderName?: string;
   text: string;
   isCommand: boolean;
+  groupInvocation?: "mention" | "command" | "reply" | "ambient";
+  replyToMessageId?: string;
   providerSentAtMs?: number;
   voiceNote?: {
     fileId: string;
@@ -88,6 +90,7 @@ export interface TelegramMessage {
     length: number;
   }>;
   reply_to_message?: {
+    message_id?: number;
     from?: { is_bot?: boolean; username?: string };
   };
   voice?: {
@@ -126,20 +129,19 @@ function entityText(
  * explicit @mention of this bot, or a reply to one of its messages. Ambient
  * replies require an explicit opt-in even if Telegram privacy mode is off.
  */
-export function isTelegramGroupInvocation(
+export function classifyTelegramGroupInvocation(
   message: TelegramMessage,
   text: string,
   policy: TelegramGroupPolicy,
-): boolean {
-  if (policy.allowAmbient) return true;
+): TelegramConnectorEvent["groupInvocation"] | null {
   const botUsername = normalizedTelegramUsername(policy.botUsername);
-  if (!botUsername) return false;
+  if (!botUsername) return null;
   if (
     message.reply_to_message?.from?.is_bot &&
     normalizedTelegramUsername(message.reply_to_message.from.username ?? "") ===
       botUsername
   ) {
-    return true;
+    return "reply";
   }
   const entities = message.text ? message.entities : message.caption_entities;
   for (const entity of entities ?? []) {
@@ -157,16 +159,24 @@ export function isTelegramGroupInvocation(
       entity.type === "mention" &&
       normalizedTelegramUsername(value) === botUsername
     ) {
-      return true;
+      return "mention";
     }
     if (entity.type === "bot_command") {
       const target = value.match(/@([a-z0-9_]{5,32})$/i)?.[1];
       if (!target || normalizedTelegramUsername(target) === botUsername) {
-        return true;
+        return "command";
       }
     }
   }
-  return false;
+  return policy.allowAmbient ? "ambient" : null;
+}
+
+export function isTelegramGroupInvocation(
+  message: TelegramMessage,
+  text: string,
+  policy: TelegramGroupPolicy,
+): boolean {
+  return classifyTelegramGroupInvocation(message, text, policy) !== null;
 }
 
 export class TelegramApiTransportError extends Error {
@@ -236,10 +246,11 @@ export function parseTelegramWebhook(
   const voice = message.voice;
   if (!text && !voice) return null;
   if (message.from?.is_bot) return null;
-  if (
-    isGroup &&
-    (!groupPolicy || !isTelegramGroupInvocation(message, text, groupPolicy))
-  ) {
+  const groupInvocation =
+    isGroup && groupPolicy
+      ? classifyTelegramGroupInvocation(message, text, groupPolicy)
+      : null;
+  if (isGroup && !groupInvocation) {
     return null;
   }
 
@@ -270,6 +281,10 @@ export function parseTelegramWebhook(
     senderName: message.from?.first_name,
     text,
     isCommand: text.startsWith("/"),
+    ...(groupInvocation ? { groupInvocation } : {}),
+    ...(Number.isInteger(message.reply_to_message?.message_id)
+      ? { replyToMessageId: String(message.reply_to_message?.message_id) }
+      : {}),
     ...(typeof message.date === "number" &&
     Number.isInteger(message.date) &&
     message.date > 0

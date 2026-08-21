@@ -800,13 +800,25 @@ function beginTypingFeedback(
   if (adapter.platform === "telegram") {
     return startTypingRefreshLoop(adapter, config, event);
   }
-  adapter.sendTypingIndicator(config, event).catch((err) => {
-    logger.debug("sendTypingIndicator failed", {
-      platform: adapter.platform,
-      error: err instanceof Error ? err.message : String(err),
+  const typingStarted = adapter
+    .sendTypingIndicator(config, event)
+    .catch((err) => {
+      logger.debug("sendTypingIndicator failed", {
+        platform: adapter.platform,
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
-  return () => undefined;
+  if (!adapter.stopTypingIndicator) return () => undefined;
+  return () => {
+    void typingStarted
+      .then(() => adapter.stopTypingIndicator?.(config, event))
+      .catch((err) => {
+        logger.debug("stopTypingIndicator failed", {
+          platform: adapter.platform,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  };
 }
 
 async function sendUnlinkedReply(

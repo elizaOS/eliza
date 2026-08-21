@@ -15,6 +15,10 @@ export interface ChatEvent {
   senderName?: string;
   text: string;
   isCommand?: boolean;
+  /** Deterministic group-policy classification, before model should-respond. */
+  groupInvocation?: "mention" | "command" | "reply" | "ambient";
+  /** Provider message referenced by an inline reply, when exposed. */
+  replyToMessageId?: string;
   /** Provider-accepted message time, used only for coarse ingress latency. */
   providerSentAtMs?: number;
   mediaUrls?: string[];
@@ -55,6 +59,8 @@ export interface PlatformAdapter {
     deliveryHooks?: TelegramDeliveryHooks,
   ): Promise<PlatformDeliveryReceipt>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Clears an explicit provider typing state when the adapter supports it. */
+  stopTypingIndicator?(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */
   resolveVoiceNote?(
     config: WebhookConfig,

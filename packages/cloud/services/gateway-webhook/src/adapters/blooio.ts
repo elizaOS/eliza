@@ -36,6 +36,7 @@ const BlooioV2WebhookEventSchema = z.object({
   channel_id: z.string().trim().min(1).nullish(),
   channel_type: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
+  reply_to_message_id: z.string().trim().min(1).nullish(),
   attachments: z.array(BlooioAttachmentSchema).nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
@@ -47,7 +48,7 @@ const BlooioV4MessageSchema = z
   .object({
     id: z.string().trim().min(1).nullish(),
     message_id: z.string().trim().min(1).nullish(),
-    chat_id: z.string().nullish(),
+    chat_id: z.string().trim().min(1).nullish(),
     channel_id: z.string().trim().min(1).nullish(),
     channel_type: z.string().trim().min(1).nullish(),
     sender: z.string().trim().min(1).nullish(),
@@ -57,6 +58,7 @@ const BlooioV4MessageSchema = z
       .object({ identifier: z.string().trim().min(1).nullish() })
       .nullish(),
     text: z.string().nullish(),
+    reply_to_message_id: z.string().trim().min(1).nullish(),
     attachments: z.array(BlooioAttachmentSchema).nullish(),
     protocol: z.string().nullish(),
     is_group: z.boolean().nullish(),
@@ -92,6 +94,7 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
     channel_id: message.channel_id,
     channel_type: message.channel_type,
     text: message.text,
+    reply_to_message_id: message.reply_to_message_id,
     attachments: message.attachments,
     protocol: message.protocol,
     is_group: message.is_group ?? message.group != null,
@@ -340,6 +343,7 @@ export const blooioAdapter: PlatformAdapter = {
         mediaUrls.length > 0 && !text
           ? `[media: ${mediaUrls.join(", ")}]`
           : text,
+      replyToMessageId: event.reply_to_message_id ?? undefined,
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       rawPayload: data,
     };
@@ -367,18 +371,67 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
-      const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
       };
-      if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
-
-      await fetch(url, { method: "POST", headers });
+      if (/^chat_/i.test(event.chatId)) {
+        const chatBase = `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}`;
+        const [read, typing] = await Promise.all([
+          fetch(`${chatBase}/read`, { method: "POST", headers }),
+          fetch(`${chatBase}/typing`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ state: "started" }),
+          }),
+        ]);
+        if (!read.ok || !typing.ok) {
+          throw new BlooioApiResponseError(
+            !read.ok ? read.status : typing.status,
+            "Blooio chat feedback was rejected",
+          );
+        }
+      } else {
+        const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
+        if (config.fromNumber) headers["X-From-Number"] = config.fromNumber;
+        const response = await fetch(url, { method: "POST", headers });
+        if (!response.ok) {
+          throw new BlooioApiResponseError(
+            response.status,
+            "Blooio read receipt was rejected",
+          );
+        }
+      }
     } catch (error) {
       // error-policy:J4 typing is a non-critical UX affordance; a failed
       // indicator is observable but must not fail message delivery.
       logger.warn("Blooio typing indicator failed", {
+        error: error instanceof Error ? error.message : String(error),
+        messageId: event.messageId,
+      });
+    }
+  },
+
+  async stopTypingIndicator(config, event): Promise<void> {
+    if (!config.apiKey || !/^chat_/i.test(event.chatId)) return;
+    try {
+      const response = await fetch(
+        `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/typing`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${config.apiKey}` },
+        },
+      );
+      if (!response.ok) {
+        throw new BlooioApiResponseError(
+          response.status,
+          "Blooio stop-typing request was rejected",
+        );
+      }
+    } catch (error) {
+      // error-policy:J4 typing cleanup is presentation-only and cannot change
+      // the already-resolved model or egress result.
+      logger.warn("Blooio stop typing failed", {
         error: error instanceof Error ? error.message : String(error),
         messageId: event.messageId,
       });

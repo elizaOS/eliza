@@ -37,6 +37,8 @@ function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
     senderName: event.senderName,
     text: event.text,
     isCommand: event.isCommand ?? event.text.startsWith("/"),
+    groupInvocation: event.groupInvocation,
+    replyToMessageId: event.replyToMessageId,
     providerSentAtMs: event.providerSentAtMs,
     voiceNote: event.voiceNote,
     rawPayload: event.rawPayload,

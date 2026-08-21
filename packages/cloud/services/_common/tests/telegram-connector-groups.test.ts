@@ -40,6 +40,7 @@ describe("parseTelegramWebhook group policy", () => {
       chatType: "supergroup",
       senderId: "42",
       senderName: "Ada",
+      groupInvocation: "mention",
     });
   });
 
@@ -85,13 +86,17 @@ describe("parseTelegramWebhook group policy", () => {
         update({
           text: "following up",
           reply_to_message: {
+            message_id: 77,
             from: { is_bot: true, username: "ElizaIsNotABot" },
           },
         }),
         undefined,
         policy,
       ),
-    ).not.toBeNull();
+    ).toMatchObject({
+      groupInvocation: "reply",
+      replyToMessageId: "77",
+    });
     expect(
       parseTelegramWebhook(
         update({
@@ -115,6 +120,16 @@ describe("parseTelegramWebhook group policy", () => {
         ...policy,
         allowAmbient: true,
       }),
-    ).not.toBeNull();
+    ).toMatchObject({ groupInvocation: "ambient" });
+    expect(
+      parseTelegramWebhook(
+        update({
+          text: "@ElizaIsNotABot explicit",
+          entities: [{ type: "mention", offset: 0, length: 15 }],
+        }),
+        undefined,
+        { ...policy, allowAmbient: true },
+      ),
+    ).toMatchObject({ groupInvocation: "mention" });
   });
 });
