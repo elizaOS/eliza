@@ -70,6 +70,10 @@ const TELEGRAM_COMMAND_DESCRIPTION_MAX = 256;
 const TELEGRAM_MAX_COMMANDS = 100;
 /** Telegram caps a single text message at 4096 characters. */
 const TELEGRAM_MESSAGE_MAX = 4096;
+
+export function truncateTelegramCommandReply(reply: string): string {
+  return truncateWellFormed(toWellFormedUnicode(reply), TELEGRAM_MESSAGE_MAX);
+}
 /** The catalog surface this bridge serves. */
 const TELEGRAM_SURFACE = "telegram";
 const DEFAULT_ACCOUNT_ID = "default";
@@ -283,7 +287,7 @@ async function dispatchAgentCommand(
       ...(sender.senderName ? { senderName: sender.senderName } : {}),
     });
     if (resolved.handled && resolved.reply !== undefined) {
-      await ctx.reply(resolved.reply.slice(0, TELEGRAM_MESSAGE_MAX));
+      await ctx.reply(truncateTelegramCommandReply(resolved.reply));
       return;
     }
   }

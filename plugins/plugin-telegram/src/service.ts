@@ -33,6 +33,8 @@ import {
   Service,
   type TargetInfo,
   type ThreadHandle,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
   type World,
   type WorldPayload,
@@ -294,6 +296,10 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
  *
  * @extends Service
  */
+export function truncateForumTopicName(name?: string): string {
+  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
+}
+
 export class TelegramService extends Service {
   static serviceType = TELEGRAM_SERVICE_NAME;
   capabilityDescription =
@@ -2360,7 +2366,7 @@ export class TelegramService extends Service {
     // create the new topic on the parent chat (the pattern preserves negative ids).
     const threadedMatch = chatId.match(TELEGRAM_THREADED_CHANNEL_PATTERN);
     const parentChatId = threadedMatch ? threadedMatch[1] : chatId;
-    const name = (params.name ?? "thread").slice(0, 128);
+    const name = truncateForumTopicName(params.name ?? "thread");
     const topic = await bot.telegram.createForumTopic(parentChatId, name);
     return {
       threadId: String(topic.message_thread_id),
