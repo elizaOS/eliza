@@ -9,6 +9,8 @@
  * no-ops as unavailable when the plugin is not loaded; `accountId` is carried
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type DraftRequest,
@@ -22,7 +24,6 @@ import {
   type MessageSource,
   type SearchMessagesFilters,
 } from "@elizaos/core/node";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/well-formed";
 import { isEmailAddress } from "./gmail-message-connector.js";
 import type {
   GoogleGmailBulkOperation,

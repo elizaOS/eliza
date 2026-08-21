@@ -28,9 +28,10 @@ import {
   type MessageConnectorTarget,
   type SendHandlerOutcome,
   type TargetInfo,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core/utils/well-formed";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
 
 export const GMAIL_MESSAGE_SOURCE = "gmail";
