@@ -12,6 +12,7 @@ import type {
   RouteRequest,
   RouteResponse,
 } from "@elizaos/core";
+import { trackPostDeliveryTask } from "@elizaos/core";
 import {
   pendingPostDeliveryTaskCount,
   stringToUuid,
