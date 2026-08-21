@@ -9,6 +9,10 @@ import * as path from "node:path";
 import { ElizaError } from "../../errors.ts";
 import type { IAgentRuntime } from "../../types/index.ts";
 import { resolveStateDir } from "../../utils/state-dir";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
 
 // --- Inlined types ---
 
@@ -104,8 +108,9 @@ function createDefaultStore(): TaskClipboardStore {
 	return { version: 1, maxItems: TASK_CLIPBOARD_MAX_ITEMS, items: [] };
 }
 
-function sanitizeTitle(value: string): string {
-	return value.replace(/\s+/g, " ").trim().slice(0, 120);
+export function sanitizeTitle(value: string): string {
+	const wellFormed = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
+	return truncateWellFormed(wellFormed, 120);
 }
 
 function defaultTitleForInput(input: AddTaskClipboardItemInput): string {
