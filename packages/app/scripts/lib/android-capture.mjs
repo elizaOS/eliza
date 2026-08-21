@@ -31,6 +31,7 @@ export function isFinalizedMp4(filePath) {
     let offset = 0;
     let sawFileType = false;
     let sawMovie = false;
+    let sawSampleData = false;
 
     while (offset + 8 <= fileSize) {
       const bytesRead = fs.readSync(fd, header, 0, 16, offset);
@@ -52,19 +53,19 @@ export function isFinalizedMp4(filePath) {
 
       if (boxSize < headerSize || offset + boxSize > fileSize) return false;
       if (type === "ftyp") sawFileType = true;
-      if (type === "moov") sawMovie = true;
+      // An mdat with only its header carries no frames: screenrecord killed
+      // before it wrote any sample data leaves exactly that shape.
+      if (type === "mdat" && boxSize > headerSize) sawSampleData = true;
+      // The device writes moov last. Requiring it after sample data rejects a
+      // file whose movie header was salvaged without the frames it indexes.
+      if (type === "moov" && sawSampleData) sawMovie = true;
       offset += boxSize;
     }
 
-    return sawFileType && sawMovie && offset === fileSize;
+    return sawFileType && sawSampleData && sawMovie && offset === fileSize;
   } finally {
     fs.closeSync(fd);
   }
-}
-
-/** Wait until every recorded segment, including the final pull, is collected. */
-export async function waitForCompleteAndroidSegments(segmentLoop) {
-  await segmentLoop;
 }
 
 export async function startAndroidScreenRecord({
@@ -302,7 +303,7 @@ export async function startChunkedAndroidScreenRecord({
       // The final pull contains the end of the user flow. Never package earlier
       // segments while that pull is still running: a valid-but-truncated MP4 is
       // not complete evidence.
-      await waitForCompleteAndroidSegments(loop);
+      await loop;
 
       if (segments.length === 0) return null;
       if (requireComplete && !captureComplete) {
