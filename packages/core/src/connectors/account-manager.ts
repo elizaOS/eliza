@@ -36,6 +36,10 @@ import type {
 	PostConnectorRegistration,
 } from "../types/runtime";
 import { Service } from "../types/service";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 
 // Re-export the policy types whose canonical home is types/connector-account-policy.
 export type {
@@ -1136,7 +1140,7 @@ function databaseRecordToOAuthFlow(
 		fallback?.id ??
 		(lookupValue?.startsWith("oauth_")
 			? lookupValue
-			: `oauth_${record.stateHash.slice(0, 16)}`);
+			: `oauth_${truncateWellFormed(toWellFormedUnicode(record.stateHash), 16)}`);
 	const state =
 		fallback?.state ??
 		(lookupValue && !lookupValue.startsWith("oauth_")
