@@ -11,6 +11,12 @@ import {
 
 // Absolute path so the spawned CLI resolves regardless of the runner's cwd
 // (the cloud lane runs `bun test` from packages/cloud, not the repo root).
+//
+// The CLI is spawned under `bun`, never `process.execPath`: it imports the
+// domain contract from TypeScript source, which `node` refuses with
+// ERR_UNKNOWN_FILE_EXTENSION. Pinning the interpreter here asserts that
+// requirement instead of inheriting whichever runtime happened to launch the
+// test, and matches the `cloud:verify-steward-email-callback` root script.
 const CLI_PATH = fileURLToPath(
   new URL("../verify-steward-email-callback-config.mjs", import.meta.url),
 );
@@ -106,7 +112,7 @@ describe("Steward email callback configuration readiness", () => {
 test("CLI exits non-zero for the stale staging callback host", async () => {
   const child = Bun.spawn(
     [
-      process.execPath,
+      "bun",
       CLI_PATH,
       "--environment",
       "staging",
@@ -124,10 +130,10 @@ test("CLI exits non-zero for the stale staging callback host", async () => {
 });
 
 test("CLI does not echo a raw positional secret", async () => {
-  const child = Bun.spawn(
-    [process.execPath, CLI_PATH, "raw-positional-secret"],
-    { cwd: process.cwd(), stderr: "pipe" },
-  );
+  const child = Bun.spawn(["bun", CLI_PATH, "raw-positional-secret"], {
+    cwd: process.cwd(),
+    stderr: "pipe",
+  });
   expect(await child.exited).toBe(1);
   const diagnostic = await new Response(child.stderr).text();
   expect(diagnostic).toContain("Invalid arguments");
@@ -137,7 +143,7 @@ test("CLI does not echo a raw positional secret", async () => {
 test("CLI sanitizes a malformed magic-link base URL", async () => {
   const child = Bun.spawn(
     [
-      process.execPath,
+      "bun",
       CLI_PATH,
       "--environment",
       "staging",

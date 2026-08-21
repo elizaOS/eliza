@@ -3,6 +3,18 @@
  * Steward login section with the terms/privacy links. Listens for device-code
  * auth completion on same-origin tabs so an orphaned sign-in form does not
  * stay live after the session already finished (#18001).
+ *
+ * The default export is also the host router for `/login`: the same bundle is
+ * served on the app hosts, on the managed cloud UI hosts, and on self-hosted
+ * origins, and each needs a different sign-in surface. App-mode hosts sign in
+ * on their own origin (`PublicLoginPage`) — bouncing them to the managed cloud
+ * would strand the session on the wrong origin. The remaining managed cloud UI
+ * hosts (including per-agent dedicated hosts) have no local auth of their own,
+ * so they hand off to the managed flow. Every other origin, self-hosted or
+ * `vite dev`, falls back to the public page. The app-mode check runs first and
+ * through {@link isAppModeHost} so the `VITE_FORCE_APP_MODE` dev flag routes
+ * exactly as a real app host does; that flag is the only way to exercise this
+ * decision locally.
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
@@ -11,7 +23,7 @@ import { CheckCircle2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { isAppModeHost, isAppModeHostname } from "../../../app-mode/app-mode";
+import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
@@ -249,14 +261,12 @@ function PublicLoginPage(): React.JSX.Element {
 }
 
 export default function LoginPage(): React.JSX.Element {
-  const hostname =
-    typeof window === "undefined" ? "" : window.location.hostname;
-  const normalizedHostname = hostname.toLowerCase().replace(/\.$/, "");
-  if (isAppModeHostname(normalizedHostname, false)) {
-    return <PublicLoginPage />;
+  if (isAppModeHost()) return <PublicLoginPage />;
+  if (
+    typeof window !== "undefined" &&
+    isElizaManagedCloudUiHostname(window.location.hostname)
+  ) {
+    return <ManagedCloudLoginHandoff />;
   }
-  const managedCloudHost =
-    isAppModeHost() || isElizaManagedCloudUiHostname(hostname);
-  if (managedCloudHost) return <ManagedCloudLoginHandoff />;
   return <PublicLoginPage />;
 }

@@ -85,10 +85,15 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 
+// The managed-cloud branch only shows itself when a handoff is actually
+// available; with the real `shouldAutoBridgeToSso` it short-circuits back to
+// the same local page an app host renders, and every assertion below would
+// hold no matter which branch ran. Forcing it true makes the two outcomes
+// distinguishable, so these tests fail when an app host is misrouted.
 vi.mock("../../../sso-bridge/sso-bridge", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../../../sso-bridge/sso-bridge")>();
-  return { ...actual, redirectToSsoBridge };
+  return { ...actual, redirectToSsoBridge, shouldAutoBridgeToSso: () => true };
 });
 
 import LoginPage from "./login-page";
@@ -116,6 +121,7 @@ it("keeps canonical app-host login on the current origin", async () => {
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
+  expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
   expect(redirectToSsoBridge).not.toHaveBeenCalled();
   expect(window.location.origin).toBe("https://cloud.eliza.app");
 });
@@ -135,6 +141,7 @@ it("keeps canonical staging app-host login on the current origin", async () => {
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
+  expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
   expect(redirectToSsoBridge).not.toHaveBeenCalled();
   expect(window.location.origin).toBe("https://cloud-staging.eliza.app");
 });
@@ -154,6 +161,7 @@ it("normalizes a canonical app hostname before keeping login local", async () =>
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
   ).toBeTruthy();
+  expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
   expect(redirectToSsoBridge).not.toHaveBeenCalled();
   expect(window.location.origin).toBe("https://cloud-staging.eliza.app");
 });
