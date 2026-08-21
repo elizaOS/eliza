@@ -38,9 +38,10 @@ export function linkedinFetch(
   init?: RequestInit,
   timeoutMs: number = LINKEDIN_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

@@ -203,7 +203,7 @@ describe("twitterFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("composes a caller-provided abort signal with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
@@ -214,6 +214,10 @@ describe("twitterFetch — bounded hops fail closed and keep caller signals", ()
     await twitterFetch("https://upload.twitter.com/media/upload.json", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    // The wrapper owns the deadline, so the signal handed to the transport is
+    // a composition of the caller's signal and that deadline — never the caller's
+    // object verbatim. Asserting identity here would pin the very behavior that
+    // lets a never-firing caller signal defeat the bound.
+    expect(seen).not.toBe(controller.signal);
   });
 });
