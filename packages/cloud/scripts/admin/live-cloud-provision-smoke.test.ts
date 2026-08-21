@@ -53,7 +53,11 @@ interface HarnessOptions {
   existingPreflight?: JsonObject[];
   pairing?: "negative" | "positive";
   retryAfter?: string;
-  sseReply?: "valid" | "invalid" | "warming-once";
+  sseReply?:
+    | "valid"
+    | "invalid"
+    | "warming-once"
+    | "malformed-503";
 }
 
 function requestBody(init: RequestInit | undefined): JsonObject | null {
@@ -241,6 +245,12 @@ function makeHarness(options: HarnessOptions = {}) {
       method === "POST"
     ) {
       sseAttempts += 1;
+      if (options.sseReply === "malformed-503") {
+        return new Response("not-json", {
+          status: 503,
+          headers: { "Retry-After": "1" },
+        });
+      }
       if (options.sseReply === "warming-once" && sseAttempts === 1) {
         return Response.json(
           {
@@ -646,6 +656,29 @@ describe("shared staging onboarding smoke", () => {
     expect(harness.sleeps).toContain(3_000);
     expect(evidence.path.successfulPaths).toBe(2);
     expect(evidence.path.pairingUnavailable).toBe(true);
+    expect(evidence.cleanup).toEqual({
+      status: "passed",
+      possibleOrphan: false,
+    });
+  });
+
+  test("fails closed without retrying a malformed SSE response and still cleans up", async () => {
+    const harness = makeHarness({ sseReply: "malformed-503" });
+    const evidence = await runSharedStagingOnboardingSmoke(harness.options);
+
+    expect(evidence.failure).toEqual({
+      phase: "sse",
+      code: "invalid_json_response_http_503",
+    });
+    expect(evidence.capacity.chatRequests).toBe(2);
+    expect(
+      harness.requests.filter(
+        (request) =>
+          request.method === "POST" &&
+          new URL(request.url).pathname.endsWith("/stream"),
+      ),
+    ).toHaveLength(1);
+    expect(evidence.path.pairingUnavailable).toBe(false);
     expect(evidence.cleanup).toEqual({
       status: "passed",
       possibleOrphan: false,
