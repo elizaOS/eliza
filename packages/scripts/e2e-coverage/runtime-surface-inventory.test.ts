@@ -5,7 +5,15 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import {
   candidateClassification,
@@ -13,7 +21,10 @@ import {
 } from "./check-runtime-surface-coverage.ts";
 import {
   buildRuntimeSurfaceInventory,
+  isDeterministicScenarioSource,
+  isExecutableBoundaryEvidence,
   loadRuntimeSurfaceBaseline,
+  packageEntryPoints,
   RUNTIME_SURFACE_REPO_ROOT,
   RUNTIME_SURFACE_SCHEMA,
   RUNTIME_SURFACE_STATUSES,
@@ -22,6 +33,10 @@ import {
   type RuntimeSurfaceKind,
   type RuntimeSurfaceRow,
   type RuntimeSurfaceStatus,
+  reachableProductionFiles,
+  scenarioMetadataFromSource,
+  scenarioOwnsSurface,
+  servedCloudRouteFiles,
 } from "./runtime-surface-inventory.ts";
 
 function row(
@@ -95,6 +110,7 @@ function baseline(
         },
       ]),
     ),
+    packageClassifications: {},
   };
 }
 
@@ -181,6 +197,38 @@ describe("runtime-surface production inventory", () => {
           entry.packageName === "@elizaos/plugin-todos" &&
           entry.kind === "view" &&
           entry.surfaceName === "todos",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.packageName === "@elizaos/plugin-cli-inference" &&
+          entry.kind === "model-handler" &&
+          entry.surfaceName === "ACTION_PLANNER",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.packageName === "@elizaos/plugin-inmemorydb" &&
+          entry.kind === "service" &&
+          entry.surfaceName === "database-adapter",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.packageName === "@elizaos/plugin-app-manager" &&
+          entry.kind === "route" &&
+          entry.surfaceName === "handleAppsRoutes",
+      ),
+    ).toBe(true);
+    expect(
+      has(
+        (entry) =>
+          entry.packageName === "@elizaos/plugin-registry" &&
+          entry.kind === "service" &&
+          entry.surfaceName === "installPlugin",
       ),
     ).toBe(true);
     expect(
@@ -292,18 +340,185 @@ describe("runtime-surface production inventory", () => {
       realInventory.gaps.byScenarioLane["missing-deterministic"]?.length,
     ).toBeGreaterThan(0);
     expect(Object.keys(realInventory.gaps.byWorkstream).sort()).toEqual(
-      expect.arrayContaining([
-        "#22898",
-        "#22899",
-        "#22901",
-        "#22902",
-        "#22904",
-      ]),
+      expect.arrayContaining(["#22899", "#22901", "#22904", "unassigned"]),
     );
   });
 });
 
 describe("runtime-surface adversarial ratchet", () => {
+  test("requires an explicit deterministic lane instead of inferring it from location", () => {
+    expect(
+      isDeterministicScenarioSource("export default { id: 'absent' }"),
+    ).toBe(false);
+    expect(
+      isDeterministicScenarioSource(
+        "export default { id: 'live', lane: 'live-only' }",
+      ),
+    ).toBe(false);
+    expect(
+      isDeterministicScenarioSource(
+        "export default { id: 'pr', lane: 'pr-deterministic' }",
+      ),
+    ).toBe(true);
+  });
+
+  test("binds scenario ownership to the scenario object, not comment or string decoys", () => {
+    expect(
+      scenarioMetadataFromSource(`
+        // requires: { plugins: ['@elizaos/plugin-decoy'] }
+        const text = "requires: { plugins: ['@elizaos/plugin-string-decoy'] }";
+        export default {
+          id: 'real-scenario',
+          requires: { plugins: ['@elizaos/plugin-real'] },
+        };
+      `),
+    ).toEqual({
+      id: "real-scenario",
+      plugins: ["@elizaos/plugin-real"],
+      lane: null,
+    });
+    expect(
+      isDeterministicScenarioSource(`
+        const decoy = { lane: 'pr-deterministic' };
+        export default { id: 'live', lane: 'live-only', requires: { plugins: [] } };
+      `),
+    ).toBe(false);
+    expect(scenarioOwnsSurface("packages/agent", ["@elizaos/agent"], [])).toBe(
+      false,
+    );
+    expect(
+      scenarioOwnsSurface(
+        "packages/agent",
+        ["@elizaos/agent"],
+        ["@elizaos/agent"],
+      ),
+    ).toBe(true);
+    expect(
+      scenarioOwnsSurface(
+        "plugins/plugin-decoy",
+        ["@elizaos/plugin-decoy"],
+        [],
+      ),
+    ).toBe(false);
+    expect(
+      scenarioMetadataFromSource(`
+        export const decoy = { id: 'decoy', lane: 'pr-deterministic' };
+        export default { id: 'canonical', lane: 'live-only' };
+      `),
+    ).toEqual({ id: "canonical", plugins: [], lane: "live-only" });
+  });
+
+  test("rejects name-only comments, fixture setup, and unasserted calls as coverage", () => {
+    const action = { kind: "action" as const, name: "SEND_MESSAGE" };
+    expect(
+      isExecutableBoundaryEvidence(action, "// actionName: 'SEND_MESSAGE'"),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        "const fixture = { actionName: 'SEND_MESSAGE' };",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "const routeFixture = '/api/messages';",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        "assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' });",
+      ),
+    ).toBe(true);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "expect(await request.get('/api/messages')).toBeDefined();",
+      ),
+    ).toBe(true);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        "const payload = `assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' })`;",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        action,
+        "function unused() { assertTurn({ type: 'actionCalled', actionName: 'SEND_MESSAGE' }); }",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "request.get('/api/messages'); expect(true).toBe(true);",
+      ),
+    ).toBe(false);
+    expect(
+      isExecutableBoundaryEvidence(
+        { kind: "route", name: "GET /api/messages" },
+        "expect(request.get('/wrong', { note: '/api/messages' })).toBeDefined();",
+      ),
+    ).toBe(false);
+  });
+
+  test("uses package exports and import reachability instead of scanning dead files", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "surface-entrypoints-"));
+    try {
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ exports: { ".": "./index.ts" } }),
+      );
+      writeFileSync(
+        path.join(root, "index.ts"),
+        "export * from './runtime.ts';\n",
+      );
+      writeFileSync(
+        path.join(root, "runtime.ts"),
+        "export const live = true;\n",
+      );
+      writeFileSync(path.join(root, "dead.ts"), "export const dead = true;\n");
+      expect(packageEntryPoints(root)).toContain(path.join(root, "index.ts"));
+      expect(reachableProductionFiles(root)).toEqual(
+        expect.arrayContaining([
+          path.join(root, "index.ts"),
+          path.join(root, "runtime.ts"),
+        ]),
+      );
+      expect(reachableProductionFiles(root)).not.toContain(
+        path.join(root, "dead.ts"),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("uses generated Cloud router authority and excludes unserved route files", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "surface-cloud-routes-"));
+    try {
+      mkdirSync(path.join(root, "src", "api", "served"), { recursive: true });
+      mkdirSync(path.join(root, "src", "api", "dead"), { recursive: true });
+      writeFileSync(
+        path.join(root, "src", "_router.generated.ts"),
+        "import route from '../src/api/served/route';\nexport default route;\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "api", "served", "route.ts"),
+        "export default {};\n",
+      );
+      writeFileSync(
+        path.join(root, "src", "api", "dead", "route.ts"),
+        "export default {};\n",
+      );
+      expect(servedCloudRouteFiles(root)).toEqual([
+        path.join(root, "src", "api", "served", "route.ts"),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("accepts every explicit status class with a written reason", () => {
     const classifiedStatuses = RUNTIME_SURFACE_STATUSES.filter(
       (status): status is Exclude<RuntimeSurfaceStatus, "covered"> =>
@@ -367,6 +582,58 @@ describe("runtime-surface adversarial ratchet", () => {
     expect(candidateClassification("provider", [], ["googleapis"]).status).toBe(
       "provider-qualified-only",
     );
-    expect(candidateClassification("action", [], []).status).toBe("exempt");
+    expect(candidateClassification("action", [], []).status).toBe("uncovered");
+  });
+
+  test("rejects blanket classification reasons reused across many surfaces", () => {
+    const rows = Array.from({ length: 9 }, (_, index) =>
+      row(`surface-${index}`, "uncovered"),
+    );
+    const repeatedReason =
+      "A broad generated disposition must never stand in for per-surface review.";
+    const entries = rows.map(
+      (entry) =>
+        [entry.id, "uncovered", repeatedReason] as [
+          string,
+          "uncovered",
+          string,
+        ],
+    );
+    const result = evaluateRuntimeSurfaceCoverage(
+      inventory(rows),
+      baseline(entries),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.overbroadClassificationReasons).toHaveLength(1);
+  });
+
+  test("fails closed for zero-surface packages and rejects stale dispositions", () => {
+    const fixture = inventory([]);
+    fixture.packages = [
+      {
+        owner: "@elizaos/test",
+        packageName: "@elizaos/test",
+        packageDir: "plugins/plugin-test",
+        runtimeRequirements: [],
+        platformRequirements: [],
+        externalDependencies: [],
+        registeredSurfaceIds: [],
+        registrationState: "no-runtime-registration",
+        reason: "UNCLASSIFIED",
+      },
+    ];
+    expect(evaluateRuntimeSurfaceCoverage(fixture, baseline([])).ok).toBe(
+      false,
+    );
+    const reviewed = baseline([]);
+    reviewed.packageClassifications["plugins/plugin-test"] = {
+      status: "no-runtime-registration",
+      reason:
+        "This package exports compile-time fixtures only and has no runtime entrypoint.",
+    };
+    expect(evaluateRuntimeSurfaceCoverage(fixture, reviewed).ok).toBe(true);
+    fixture.packages[0].registrationState = "registered-surfaces";
+    fixture.packages[0].registeredSurfaceIds = ["new-surface"];
+    expect(evaluateRuntimeSurfaceCoverage(fixture, reviewed).ok).toBe(false);
   });
 });
