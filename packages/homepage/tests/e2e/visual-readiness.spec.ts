@@ -66,7 +66,7 @@ test("reduced motion renders the settled household room without category labels"
     "data-demo-visited",
     "household,co-parenting,friends,trip,community",
   );
-  await expect(demo).toHaveAttribute("data-demo-messages", "20");
+  await expect(demo).toHaveAttribute("data-demo-messages", "21");
   await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);

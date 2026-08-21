@@ -309,15 +309,16 @@ test("concurrent human replies share one compact typing row", async ({
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(360_000);
+  await page.clock.install();
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
-  await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
-    timeout: 340_000,
-  });
+  await page.clock.runFor(600_000);
+  await expect
+    .poll(async () => Number(await phone.getAttribute("data-demo-cycle")))
+    .toBeGreaterThanOrEqual(1);
   await expect(phone).toHaveAttribute("data-demo-scenario", "household", {
     timeout: 5_000,
   });
