@@ -8,6 +8,7 @@ import {
   isKeyWindow,
   pollWindowOutsideClick,
   setWindowInteractiveMaterialSize,
+  setWindowNonactivatingPanel,
 } from "./mac-window-effects";
 
 vi.mock("@elizaos/core", async (importOriginal) => {
@@ -27,6 +28,7 @@ vi.mock("./mac-window-effects", () => ({
   enableVibrancy: vi.fn(() => false),
   setWindowShadow: vi.fn(() => false),
   setWindowInteractiveMaterialSize: vi.fn(() => true),
+  setWindowNonactivatingPanel: vi.fn(() => true),
   isAppActive: vi.fn(() => false),
   isKeyWindow: vi.fn(() => false),
   pollWindowOutsideClick: vi.fn(() => false),
@@ -453,6 +455,26 @@ describe("DesktopManager main window controls", () => {
       380,
       180,
       32,
+    );
+    await manager.dispose();
+  });
+
+  it("uses a nonactivating native panel only for the resting pill", async () => {
+    const { manager, window } = createManagerWithWindow();
+    const nativeWindowPtr = { id: "native-window" };
+    Object.assign(window, { ptr: nativeWindowPtr });
+    manager.enableBottomBarReanchor();
+
+    await manager.setBottomBarSurfaceState({ state: "CLOSED" });
+    expect(setWindowNonactivatingPanel).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      true,
+    );
+
+    await manager.setBottomBarSurfaceState({ state: "INPUT" });
+    expect(setWindowNonactivatingPanel).toHaveBeenLastCalledWith(
+      nativeWindowPtr,
+      false,
     );
     await manager.dispose();
   });

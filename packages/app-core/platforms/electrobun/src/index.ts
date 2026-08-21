@@ -1201,6 +1201,17 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     forceMainWindowCef,
     buildInfo,
   });
+  // A resting assistant pill should behave like Spotlight: clicking it performs
+  // the action without first activating the owning app. Electrobun creates an
+  // NSPanel when this mask is present. The desktop state bridge removes the
+  // mask and activates the window as soon as chat forms, so textarea focus and
+  // ordinary key-window behavior remain available in interactive states.
+  const bottomBarActivationOptions = bottomBar
+    ? {
+        activate: false,
+        styleMask: { NonactivatingPanel: true },
+      }
+    : {};
 
   if (forceMainWindowCef && !canUseCefView) {
     logger.warn(
@@ -1223,6 +1234,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       titleBarStyle,
       transparent,
       passthrough,
+      ...bottomBarActivationOptions,
     });
     win.webview.remove();
     const mainView = new BrowserView({
@@ -1262,6 +1274,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       transparent,
       passthrough,
       rpc,
+      ...bottomBarActivationOptions,
       ...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
     });
   }

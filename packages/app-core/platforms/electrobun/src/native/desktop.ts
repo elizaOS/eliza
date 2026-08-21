@@ -112,6 +112,7 @@ import {
   pollFnMonitor,
   pollWindowOutsideClick,
   setWindowInteractiveMaterialSize,
+  setWindowNonactivatingPanel,
   startAccessingSecurityScopedBookmark,
   startFnMonitor,
   stopAccessingSecurityScopedBookmarks,
@@ -1753,6 +1754,20 @@ X-GNOME-Autostart-enabled=true
         : this.resolveBottomBarFrame(workArea, baseFrame);
     this.applyBottomBarFrame(win, frame);
     this.applyBottomBarTransparentHost();
+    if (process.platform === "darwin") {
+      const ptr = (win as typeof win & { ptr?: unknown }).ptr;
+      if (
+        ptr &&
+        !setWindowNonactivatingPanel(
+          ptr as Parameters<typeof setWindowNonactivatingPanel>[0],
+          options.state === "CLOSED",
+        )
+      ) {
+        throw new Error(
+          "[Desktop] failed to update bottom-bar activation behavior",
+        );
+      }
+    }
     this.bottomBarWorkArea = workArea;
     this.bottomBarFrameDirty = false;
   }

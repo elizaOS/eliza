@@ -721,6 +721,51 @@ extern "C" bool setWindowUserResizable(void *windowPtr, bool enabled) {
 	return success;
 }
 
+/**
+ * Switch the detached assistant between a Spotlight-style nonactivating pill
+ * and an ordinary key-capable chat panel. The window is created as NSPanel by
+ * Electrobun when NonactivatingPanel is present; toggling the same AppKit mask
+ * preserves the one-window renderer while giving the resting surface true
+ * first-click delivery. Opening chat removes the mask and activates normally
+ * so its composer can become first responder.
+ */
+extern "C" bool setWindowNonactivatingPanel(void *windowPtr, bool enabled) {
+	if (windowPtr == nullptr) {
+		return false;
+	}
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSPanel class]]) {
+			return;
+		}
+
+		NSWindowStyleMask styleMask = [window styleMask];
+		BOOL currentlyNonactivating =
+			(styleMask & NSWindowStyleMaskNonactivatingPanel) != 0;
+		if (currentlyNonactivating != (enabled ? YES : NO)) {
+			if (enabled) {
+				styleMask |= NSWindowStyleMaskNonactivatingPanel;
+			} else {
+				styleMask &= ~NSWindowStyleMaskNonactivatingPanel;
+			}
+			[window setStyleMask:styleMask];
+		}
+
+		if (enabled) {
+			// Keep the pill visible at its floating level without activating Eliza.
+			[window orderFrontRegardless];
+		} else if (![window isKeyWindow] || ![NSApp isActive]) {
+			[NSApp activateIgnoringOtherApps:YES];
+			[window makeKeyAndOrderFront:nil];
+		}
+		success = YES;
+	});
+
+	return success;
+}
+
 /** Positions right/bottom/BR strips; z-order: below dragView, corner above
  *  right above bottom so BR gets diagonal hit testing. */
 static void elizaInstallResizeStripOverlays(NSWindow *window,

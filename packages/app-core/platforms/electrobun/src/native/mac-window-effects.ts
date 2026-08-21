@@ -27,6 +27,7 @@ type MacEffectsSymbols = {
   pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
+  setWindowNonactivatingPanel(ptr: Pointer, enabled: boolean): boolean;
   setWindowTrafficLightsPosition(ptr: Pointer, x: number, y: number): boolean;
   setNativeWindowDragRegion(ptr: Pointer, x: number, height: number): boolean;
   disableWindowBackForwardNavigationGestures(ptr: Pointer): boolean;
@@ -107,6 +108,10 @@ function loadLib(): MacEffectsLib {
         returns: FFIType.bool,
       },
       setWindowUserResizable: {
+        args: [FFIType.ptr, FFIType.bool],
+        returns: FFIType.bool,
+      },
+      setWindowNonactivatingPanel: {
         args: [FFIType.ptr, FFIType.bool],
         returns: FFIType.bool,
       },
@@ -237,6 +242,14 @@ export function setWindowUserResizable(
   enabled: boolean,
 ): boolean {
   return getLib()?.symbols.setWindowUserResizable(ptr, enabled) ?? false;
+}
+
+/** Use a true nonactivating NSPanel only for the detached resting pill. */
+export function setWindowNonactivatingPanel(
+  ptr: Pointer,
+  enabled: boolean,
+): boolean {
+  return getLib()?.symbols.setWindowNonactivatingPanel(ptr, enabled) ?? false;
 }
 
 export function setTrafficLightsPosition(
