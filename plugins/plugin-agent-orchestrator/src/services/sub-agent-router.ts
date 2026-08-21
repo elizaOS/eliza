@@ -1682,15 +1682,24 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
       if (deliverable === undefined) {
-        deliverable = extractAskedOutputDeliverable(
-          data,
-          userTaskFromInitialTask(
-            pickPlainString(
-              (session.metadata as Record<string, unknown> | undefined)
-                ?.initialTask,
-            ),
+        const ask = userTaskFromInitialTask(
+          pickPlainString(
+            (session.metadata as Record<string, unknown> | undefined)
+              ?.initialTask,
           ),
         );
+        deliverable = extractAskedOutputDeliverable(data, ask);
+        this.log("warn", "asked-output deliverable probe", {
+          sessionId,
+          askHead: ask.slice(0, 80),
+          askMatched: OUTPUT_ASK_RE.test(ask),
+          responseHead: (
+            pickPayloadString(data, "response") ??
+            pickPayloadString(data, "finalText") ??
+            "(none)"
+          ).slice(0, 120),
+          deliverable: deliverable?.slice(0, 80),
+        });
       }
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
