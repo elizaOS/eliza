@@ -12,8 +12,10 @@ import type {
   SocialCredentials,
   SocialMediaProvider,
 } from "../../../types/social-media";
+import { SOCIAL_MEDIA_VIDEO_MAX_BYTES } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
+import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
@@ -239,7 +241,21 @@ export const tiktokProvider: SocialMediaProvider = {
 
       // File upload method (requires chunked upload)
       if (video.data || video.base64) {
-        const videoData = video.data || Buffer.from(video.base64!, "base64");
+        // Bounded against the video ceiling rather than the image budget: the
+        // decode is a single allocation inside the Worker isolate, so it needs
+        // a bound even though 10 MiB would reject ordinary video posts.
+        const videoData = video.data
+          ? (assertSocialMediaBytesWithinBudget(
+              video.data.byteLength,
+              { platform: "tiktok" },
+              SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+            ),
+            video.data)
+          : decodeSocialMediaBase64(
+              video.base64!,
+              { platform: "tiktok" },
+              SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+            );
         const videoBody = new Uint8Array(videoData);
 
         // Initialize chunked upload
