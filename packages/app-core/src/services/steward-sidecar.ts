@@ -92,6 +92,14 @@ function getBunRuntime(): BunRuntimeLike | null {
   return (globalThis as { Bun?: BunRuntimeLike }).Bun ?? null;
 }
 
+/** The spawned steward child, normalized across the Bun and Node spawn paths. */
+type StewardProcessHandle = {
+  kill: (signal?: string) => void;
+  pid?: number | null;
+  exitCode?: number | null;
+  exited?: Promise<number>;
+};
+
 // ---------------------------------------------------------------------------
 // StewardSidecar
 // ---------------------------------------------------------------------------
@@ -102,12 +110,13 @@ export class StewardSidecar {
   > &
     StewardSidecarConfig;
   private status: StewardSidecarStatus;
-  private process: {
-    kill: (signal?: string) => void;
-    pid?: number | null;
-    exitCode?: number | null;
-    exited?: Promise<number>;
-  } | null = null;
+  private process: StewardProcessHandle | null = null;
+  /**
+   * Handles this class killed on purpose because their lifecycle failed after
+   * the spawn. Their exit is expected, so it must not be read as a crash and
+   * must not start the restart backoff.
+   */
+  private discardedProcesses = new WeakSet<StewardProcessHandle>();
   private stopping = false;
   private lifecycleGeneration = 0;
   private startPromise: Promise<StewardSidecarStatus> | null = null;
@@ -171,12 +180,15 @@ export class StewardSidecar {
     this.stopping = false;
     this.updateStatus({ state: "starting", error: null });
 
+    let spawned: StewardProcessHandle | null = null;
+
     try {
       await this.ensureDataDir();
       await this.loadOrCreateCredentials();
       if (!(await this.spawnProcess(generation))) {
         return this.status;
       }
+      spawned = this.process;
 
       const abort = new AbortController();
       this.healthCheckAbort = abort;
@@ -212,11 +224,12 @@ export class StewardSidecar {
 
       return this.status;
     } catch (err) {
+      this.discardSpawnedProcess(spawned);
       if (!this.isLifecycleActive(generation)) {
         return this.status;
       }
       const error = err instanceof Error ? err.message : String(err);
-      this.updateStatus({ state: "error", error });
+      this.updateStatus({ state: "error", error, pid: null });
       throw err;
     }
   }
@@ -443,7 +456,7 @@ export class StewardSidecar {
       pipeOutput(proc.stderr, "stderr", this.config.onLog);
 
       proc.exited.then((code: number) => {
-        if (!this.stopping) {
+        if (!this.stopping && !this.discardedProcesses.has(proc)) {
           logger.warn(
             `[StewardSidecar] Process exited unexpectedly (code ${code})`,
           );
@@ -461,12 +474,13 @@ export class StewardSidecar {
         child.on("exit", (code) => resolve(code ?? 1));
       });
 
-      this.process = {
+      const handle: StewardProcessHandle = {
         kill: (signal?: string) =>
           child.kill((signal as NodeJS.Signals) ?? "SIGTERM"),
         pid: child.pid ?? null,
         exited: exitPromise,
       };
+      this.process = handle;
 
       this.updateStatus({ pid: child.pid ?? null });
 
@@ -491,7 +505,7 @@ export class StewardSidecar {
       }
 
       exitPromise.then((code) => {
-        if (!this.stopping) {
+        if (!this.stopping && !this.discardedProcesses.has(handle)) {
           logger.warn(
             `[StewardSidecar] Process exited unexpectedly (code ${code})`,
           );
@@ -533,10 +547,13 @@ export class StewardSidecar {
     this.restartTimer = setTimeout(async () => {
       if (!this.isLifecycleActive(generation)) return;
 
+      let spawned: StewardProcessHandle | null = null;
+
       try {
         if (!(await this.spawnProcess(generation))) {
           return;
         }
+        spawned = this.process;
 
         const abort = new AbortController();
         this.healthCheckAbort = abort;
@@ -559,13 +576,45 @@ export class StewardSidecar {
           error: null,
         });
       } catch (err) {
+        this.discardSpawnedProcess(spawned);
         if (!this.isLifecycleActive(generation)) {
           return;
         }
         const error = err instanceof Error ? err.message : String(err);
-        this.updateStatus({ state: "error", error });
+        this.updateStatus({ state: "error", error, pid: null });
       }
     }, backoff);
+  }
+
+  /**
+   * Kill a child this lifecycle spawned but never managed to bring up.
+   *
+   * `spawnProcess` publishes `this.process` as soon as the child exists, which
+   * is before `waitForHealthy` and `ensureWalletSetup` run. If either of those
+   * fails, the child is still alive — bound to the steward port with the wallet
+   * database open — and `stop()` is the only other code path that kills it. The
+   * failing lifecycle never calls `stop()`, and `startSteward()` only skips a
+   * restart when the state is `"running"`, so a retry after a failed start
+   * reaches `spawnProcess` again and overwrites `this.process`. At that point
+   * nothing holds a reference to the first child and no code path can ever kill
+   * it: it outlives the app, still holding the port and the wallet data.
+   *
+   * A catch cannot un-allocate a process, so the kill has to happen here. The
+   * handle is identity-checked first because a newer generation may already own
+   * `this.process`, and it is recorded as discarded so its exit is not read as
+   * a crash and does not start the restart backoff.
+   */
+  private discardSpawnedProcess(spawned: StewardProcessHandle | null): void {
+    if (!spawned || this.process !== spawned) {
+      return;
+    }
+    this.discardedProcesses.add(spawned);
+    try {
+      spawned.kill("SIGTERM");
+    } catch {
+      // Already dead — nothing to reclaim.
+    }
+    this.process = null;
   }
 
   private isLifecycleActive(generation: number): boolean {
