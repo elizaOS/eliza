@@ -111,7 +111,6 @@ describe("VaultInventoryPanel connector security findings", () => {
   });
 
   it("retains the row and reports recovery when secure deletion is rejected", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     clientMocks.rawRequest.mockResolvedValueOnce({ ok: false, status: 503 });
     const onChanged = vi.fn();
     render(
@@ -130,9 +129,70 @@ describe("VaultInventoryPanel connector security findings", () => {
     );
 
     fireEvent.click(screen.getByLabelText("Delete Test provider"));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    expect(clientMocks.rawRequest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText("Permanently delete Test provider"));
     expect(await screen.findByText(/credential was retained/i)).toBeTruthy();
     expect(screen.getByTestId("vault-entry-row-TEST_API_KEY")).toBeTruthy();
     expect(onChanged).not.toHaveBeenCalled();
+    expect(clientMocks.rawRequest).toHaveBeenCalledWith(
+      "/api/secrets/inventory/TEST_API_KEY",
+      { method: "DELETE" },
+      { allowNonOk: true, timeoutMs: 30_000 },
+    );
+  });
+
+  it("keeps deletion in-app and lets the owner cancel without a request", () => {
+    render(
+      <VaultInventoryPanel
+        entries={[
+          {
+            key: "TEST_API_KEY",
+            category: "provider",
+            label: "Test provider",
+            hasProfiles: false,
+            kind: "secret",
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Delete Test provider"));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Cancel deleting Test provider"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(clientMocks.rawRequest).not.toHaveBeenCalled();
+  });
+
+  it("gives a first native secure write the extended Keychain budget", async () => {
+    clientMocks.rawRequest.mockResolvedValueOnce({ ok: true, status: 200 });
+    const onChanged = vi.fn();
+    const { container } = render(
+      <VaultInventoryPanel entries={[]} onChanged={onChanged} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add secret" }));
+    fireEvent.change(screen.getByPlaceholderText("OPENROUTER_API_KEY"), {
+      target: { value: "SYNTHETIC_QA_KEY" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("OpenRouter"), {
+      target: { value: "Synthetic QA" },
+    });
+    const password = container.querySelector<HTMLInputElement>(
+      'input[type="password"]',
+    );
+    expect(password).toBeTruthy();
+    fireEvent.change(password as HTMLInputElement, {
+      target: { value: "disposable-test-only" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(clientMocks.rawRequest).toHaveBeenCalledWith(
+      "/api/secrets/inventory/SYNTHETIC_QA_KEY",
+      expect.objectContaining({ method: "PUT" }),
+      { allowNonOk: true, timeoutMs: 30_000 },
+    );
   });
 });
 
