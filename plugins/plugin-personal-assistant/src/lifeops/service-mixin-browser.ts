@@ -7,6 +7,7 @@ import type {
   BrowserBridgeCompanionPairingResponse,
   BrowserBridgeCompanionPreflightRequest,
   BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
   BrowserBridgeCompanionSessionBeginRequest,
   BrowserBridgeCompanionSessionProgressRequest,
@@ -44,6 +45,9 @@ export interface BrowserBridgeService {
   createBrowserCompanionPairing(
     request: CreateBrowserBridgeCompanionPairingRequest,
   ): Promise<BrowserBridgeCompanionPairingResponse>;
+  resetBrowserCompanionRevocation(
+    companionId: string,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,

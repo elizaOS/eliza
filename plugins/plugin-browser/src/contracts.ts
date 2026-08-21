@@ -228,6 +228,7 @@ export interface CreateBrowserBridgeCompanionPairingRequest {
   profileLabel?: string | null;
   label?: string | null;
   extensionVersion?: string | null;
+  pairingKind?: "manual" | "native_enrollment";
   metadata?: Record<string, unknown>;
 }
 
@@ -235,6 +236,11 @@ export interface BrowserBridgeCompanionPairingResponse {
   companion: BrowserBridgeCompanionStatus;
   pairingToken: string;
   pairingTokenExpiresAt: string | null;
+}
+
+export interface BrowserBridgeCompanionRevocationResetResponse {
+  companion: BrowserBridgeCompanionStatus;
+  resetAt: string;
 }
 
 export interface BrowserBridgeCompanionConfig {

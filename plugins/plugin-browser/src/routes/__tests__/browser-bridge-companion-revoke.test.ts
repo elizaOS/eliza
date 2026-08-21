@@ -242,6 +242,88 @@ describe("Browser Bridge companion revoke route", () => {
     });
   });
 
+  it("resets revocation only through the owner-authenticated route", async () => {
+    const resetAt = "2026-05-08T12:05:00.000Z";
+    const resetBrowserCompanionRevocation = vi.fn(async () => ({
+      companion: { id: "companion-1", pairingTokenRevokedAt: null },
+      resetAt,
+    }));
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/companion-1/reset-revocation",
+      service: { resetBrowserCompanionRevocation },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    const handled = await handleBrowserBridgeRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(resetBrowserCompanionRevocation).toHaveBeenCalledWith(
+      "companion-1",
+      "owner-1",
+    );
+    expect(ctx.res.statusCode).toBe(200);
+    expect(ctx.res.body).toMatchObject({ resetAt });
+  });
+
+  it("returns the canonical revoked code from pairing failures", async () => {
+    const createBrowserCompanionPairing = vi.fn(async () => {
+      throw Object.assign(
+        new Error("Browser companion enrollment was revoked"),
+        {
+          status: 409,
+          code: "revoked",
+        },
+      );
+    });
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/pair",
+      body: {
+        browser: "chrome",
+        profileId: "profile-1",
+        pairingKind: "native_enrollment",
+      },
+      service: { createBrowserCompanionPairing },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    await handleBrowserBridgeRoutes(ctx);
+
+    expect(ctx.res.statusCode).toBe(409);
+    expect(ctx.res.body).toEqual({
+      code: "revoked",
+      error: "Browser companion enrollment was revoked",
+    });
+  });
+
+  it("forwards native enrollment intent to the pairing service", async () => {
+    const pairingTokenExpiresAt = "2026-05-08T12:05:00.000Z";
+    const createBrowserCompanionPairing = vi.fn(async () => ({
+      companion: { id: "companion-1" },
+      pairingToken: "short-lived-token",
+      pairingTokenExpiresAt,
+    }));
+    const body = {
+      browser: "firefox" as const,
+      profileId: "profile-native",
+      pairingKind: "native_enrollment" as const,
+    };
+    const ctx = createContext({
+      method: "POST",
+      pathname: "/api/browser-bridge/companions/pair",
+      body,
+      service: { createBrowserCompanionPairing },
+    });
+    const { handleBrowserBridgeRoutes } = await import("../bridge.js");
+
+    await handleBrowserBridgeRoutes(ctx);
+
+    expect(createBrowserCompanionPairing).toHaveBeenCalledWith(body, "owner-1");
+    expect(ctx.res.statusCode).toBe(201);
+    expect(ctx.res.body).toMatchObject({ pairingTokenExpiresAt });
+  });
+
   it("returns 503 when the route service is unavailable", async () => {
     const ctx = createContext({
       method: "GET",

@@ -620,6 +620,29 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
+  const browserCompanionResetRevocationMatch = pathname.match(
+    /^\/api\/browser-bridge\/companions\/([^/]+)\/reset-revocation$/,
+  );
+  if (method === "POST" && browserCompanionResetRevocationMatch) {
+    const companionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionResetRevocationMatch,
+      1,
+      res,
+      "browser companion id",
+    );
+    if (!companionId) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.resetBrowserCompanionRevocation(
+          companionId,
+          ctx.state.adminEntityId,
+        ),
+      );
+    });
+  }
+
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
     return runStatelessRoute(ctx, async () => {
       json(res, { status: getBrowserBridgeCompanionPackageStatus() });
