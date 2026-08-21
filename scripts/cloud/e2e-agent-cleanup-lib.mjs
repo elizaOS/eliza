@@ -178,3 +178,8 @@ export function assertExpectedCleanupIdentity(
     );
   }
 }
+
+/** Cap one polling operation to the unspent portion of its overall deadline. */
+export function remainingJobBudget(deadlineMs, requestedMs, now = Date.now()) {
+  return Math.min(requestedMs, Math.max(0, deadlineMs - now));
+}

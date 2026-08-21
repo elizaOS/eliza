@@ -31,6 +31,7 @@ import {
   assertExpectedCleanupIdentity,
   bindReviewedCleanupCandidates,
   normalizeAgentRow,
+  remainingJobBudget,
   resolveE2eWalletPrivateKey,
   selectAgentsForCleanup,
 } from "./e2e-agent-cleanup-lib.mjs";
@@ -133,6 +134,12 @@ function parseOptions() {
   if (!/^https?:$/.test(parsedBase.protocol)) {
     throw new Error("--base must be an http(s) URL");
   }
+  if (parsedBase.username || parsedBase.password) {
+    throw new Error("--base must not contain credentials");
+  }
+  if (parsedBase.search || parsedBase.hash) {
+    throw new Error("--base must not contain a query or fragment");
+  }
   const isLoopback = ["127.0.0.1", "localhost", "::1"].includes(
     parsedBase.hostname,
   );
@@ -225,9 +232,18 @@ async function resolveToken(options) {
   };
 }
 
-async function cloud(options, token, path, init = {}) {
-  const requestTimeoutMs = Math.min(options.jobTimeoutMs, 15_000);
-  const res = await fetch(`${options.baseUrl}${path}`, {
+async function cloud(
+  options,
+  token,
+  requestPath,
+  init = {},
+  timeoutMs = options.jobTimeoutMs,
+) {
+  const requestTimeoutMs = Math.min(timeoutMs, 15_000);
+  if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0) {
+    throw new Error(`Cloud request deadline elapsed before ${requestPath}`);
+  }
+  const res = await fetch(`${options.baseUrl}${requestPath}`, {
     ...init,
     signal: AbortSignal.timeout(requestTimeoutMs),
     headers: {
@@ -246,7 +262,7 @@ async function cloud(options, token, path, init = {}) {
   }
   if (!res.ok) {
     throw new Error(
-      `Cloud request failed (${res.status}) ${path}: ${text.slice(0, 300)}`,
+      `Cloud request failed (${res.status}) ${requestPath}: ${text.slice(0, 300)}`,
     );
   }
   return { status: res.status, body };
@@ -314,10 +330,16 @@ async function deleteAgent(options, token, agent) {
     }
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
+      const remainingMs = remainingJobBudget(
+        deadline,
+        Number.POSITIVE_INFINITY,
+      );
       const job = await cloud(
         options,
         token,
         `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+        {},
+        remainingMs,
       );
       const status = String(
         job.body?.data?.status ?? job.body?.status ?? "",
@@ -328,7 +350,10 @@ async function deleteAgent(options, token, agent) {
         throw new Error(
           `delete job ${jobId} for ${agent.id} failed: ${status}`,
         );
-      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      const sleepMs = remainingJobBudget(deadline, pollIntervalMs);
+      if (sleepMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, sleepMs));
+      }
     }
     throw new Error(`delete job ${jobId} for ${agent.id} timed out`);
   }
@@ -369,13 +394,23 @@ function writeReport(reportPath, report) {
       fs.closeSync(directoryDescriptor);
     }
   } catch (error) {
+    // error-policy:J2 receipt persistence is a required boundary, so retain
+    // the filesystem cause while adding the destination needed to diagnose it.
     if (fileDescriptor !== undefined) fs.closeSync(fileDescriptor);
     try {
       fs.unlinkSync(temporaryPath);
     } catch (cleanupError) {
-      if (cleanupError?.code !== "ENOENT") throw cleanupError;
+      // error-policy:J6 a failed temp-file cleanup must not replace the
+      // receipt write failure that stopped mutation and remains actionable.
+      if (cleanupError?.code !== "ENOENT") {
+        console.warn(
+          `[e2e-agent-cleanup] WARN: failed to clean temporary receipt: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
     }
-    throw error;
+    throw new Error(`failed to persist cleanup receipt at ${reportPath}`, {
+      cause: error,
+    });
   }
 }
 
