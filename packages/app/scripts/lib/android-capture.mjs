@@ -31,6 +31,7 @@ export function isFinalizedMp4(filePath) {
     let offset = 0;
     let sawFileType = false;
     let sawMovie = false;
+    let sawSampleData = false;
 
     while (offset + 8 <= fileSize) {
       const bytesRead = fs.readSync(fd, header, 0, 16, offset);
@@ -52,11 +53,16 @@ export function isFinalizedMp4(filePath) {
 
       if (boxSize < headerSize || offset + boxSize > fileSize) return false;
       if (type === "ftyp") sawFileType = true;
-      if (type === "moov") sawMovie = true;
+      // An mdat with only its header carries no frames: screenrecord killed
+      // before it wrote any sample data leaves exactly that shape.
+      if (type === "mdat" && boxSize > headerSize) sawSampleData = true;
+      // The device writes moov last. Requiring it after sample data rejects a
+      // file whose movie header was salvaged without the frames it indexes.
+      if (type === "moov" && sawSampleData) sawMovie = true;
       offset += boxSize;
     }
 
-    return sawFileType && sawMovie && offset === fileSize;
+    return sawFileType && sawSampleData && sawMovie && offset === fileSize;
   } finally {
     fs.closeSync(fd);
   }
@@ -186,6 +192,7 @@ export async function startChunkedAndroidScreenRecord({
   filename = "screenrecord.mp4",
   segmentSeconds = 170,
   bitRate = "4000000",
+  requireComplete = false,
   log = () => {},
 }) {
   if (!serial) throw new Error("serial is required for Android screenrecord");
@@ -202,6 +209,7 @@ export async function startChunkedAndroidScreenRecord({
   const segments = [];
   let stopped = false;
   let currentChild = null;
+  let captureComplete = true;
 
   const recordSegment = (index) => {
     const remotePath = `${remoteBase}-seg${String(index).padStart(3, "0")}.mp4`;
@@ -225,9 +233,15 @@ export async function startChunkedAndroidScreenRecord({
     );
     currentChild = child;
     return new Promise((resolve) => {
-      const done = () => resolve(remotePath);
-      child.once("close", done);
-      child.once("error", done);
+      let settled = false;
+      const done = (failed) => {
+        if (settled) return;
+        settled = true;
+        if (failed) captureComplete = false;
+        resolve(remotePath);
+      };
+      child.once("close", () => done(false));
+      child.once("error", () => done(true));
     });
   };
 
@@ -237,15 +251,25 @@ export async function startChunkedAndroidScreenRecord({
       const remotePath = await recordSegment(index);
       currentChild = null;
       const segmentLocal = path.join(artifactDir, `.${stem}-seg${index}.mp4`);
-      spawnSync(adb, ["-s", serial, "pull", remotePath, segmentLocal], {
-        stdio: "ignore",
-      });
+      const pull = spawnSync(
+        adb,
+        ["-s", serial, "pull", remotePath, segmentLocal],
+        {
+          stdio: "ignore",
+          timeout: 60_000,
+        },
+      );
       spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
         stdio: "ignore",
+        timeout: 10_000,
       });
-      if (isNonEmptyFile(segmentLocal)) {
+      if (pull.status === 0 && isFinalizedMp4(segmentLocal)) {
         segments.push(segmentLocal);
         log(`pulled Android screenrecord segment ${index}: ${segmentLocal}`);
+      } else {
+        captureComplete = false;
+        fs.rmSync(segmentLocal, { force: true });
+        log(`Android screenrecord segment ${index} was not finalized`);
       }
       index += 1;
     }
@@ -261,15 +285,41 @@ export async function startChunkedAndroidScreenRecord({
       spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
         stdio: "ignore",
       });
-      if (currentChild && currentChild.exitCode === null) {
-        currentChild.kill("SIGINT");
+      // Keep the local adb transport alive while the device encoder handles
+      // SIGINT and appends the trailing moov atom. Bound that wait, then stop a
+      // wedged transport so the segment loop can still fail closed.
+      const exitDeadline = Date.now() + 15_000;
+      while (
+        currentChild &&
+        currentChild.exitCode === null &&
+        Date.now() < exitDeadline
+      ) {
+        await delay(500);
       }
-      await Promise.race([loop, delay(8_000)]);
+      if (currentChild && currentChild.exitCode === null) {
+        captureComplete = false;
+        currentChild.kill("SIGTERM");
+      }
+      // The final pull contains the end of the user flow. Never package earlier
+      // segments while that pull is still running: a valid-but-truncated MP4 is
+      // not complete evidence.
+      await loop;
 
       if (segments.length === 0) return null;
+      if (requireComplete && !captureComplete) {
+        for (const segment of segments) fs.rmSync(segment, { force: true });
+        log("one or more Android screenrecord segments were incomplete");
+        return null;
+      }
       if (segments.length === 1) {
         fs.copyFileSync(segments[0], localPath);
       } else if (!concatSegments(segments, localPath, log)) {
+        if (requireComplete) {
+          for (const segment of segments) fs.rmSync(segment, { force: true });
+          fs.rmSync(localPath, { force: true });
+          log("ffmpeg concat unavailable; complete recording is required");
+          return null;
+        }
         // ffmpeg unavailable/failed: keep the longest single segment so the run
         // still has watchable video rather than nothing.
         const longest = segments
@@ -280,6 +330,11 @@ export async function startChunkedAndroidScreenRecord({
       }
       for (const segment of segments) fs.rmSync(segment, { force: true });
       if (!isNonEmptyFile(localPath)) return null;
+      if (!isFinalizedMp4(localPath)) {
+        fs.rmSync(localPath, { force: true });
+        log("chunked Android screenrecord did not finalize");
+        return null;
+      }
       log(`wrote chunked Android screenrecord: ${localPath}`);
       return localPath;
     },
