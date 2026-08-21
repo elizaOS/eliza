@@ -18,6 +18,8 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "./wrap-untrusted-email-content.js";
 
@@ -242,6 +244,20 @@ function disabledClassification(): EmailClassification {
   return { category: "personal", confidence: 0, signals: ["disabled"] };
 }
 
+export const EMAIL_SNIPPET_MAX_LENGTH = 800;
+
+/**
+ * Truncates an email snippet to {@link EMAIL_SNIPPET_MAX_LENGTH} code units
+ * without splitting a surrogate pair. Lone surrogates are replaced with U+FFFD
+ * so the LLM prompt is always well-formed and JSON-serializable.
+ */
+export function formatEmailSnippet(snippet: string | null | undefined): string {
+  return truncateWellFormed(
+    toWellFormedUnicode(snippet ?? ""),
+    EMAIL_SNIPPET_MAX_LENGTH,
+  );
+}
+
 /**
  * Apply the rule layer. Returns null when no rule matched at all so the
  * caller can decide whether to invoke the LLM.
@@ -335,7 +351,7 @@ export function classifyEmailByRules(
   };
 }
 
-function buildLlmPrompt(message: EmailLikeMessage): string {
+export function buildLlmPrompt(message: EmailLikeMessage): string {
   return [
     "Classify this email into one of: promotional, bill, transactional, personal.",
     "Return ONLY a JSON object with fields category, confidence, and signals.",
@@ -353,7 +369,7 @@ function buildLlmPrompt(message: EmailLikeMessage): string {
         `Subject: ${message.subject ?? ""}`,
         `From: ${message.from ?? ""}`,
         `From email: ${message.fromEmail ?? ""}`,
-        `Snippet: ${(message.snippet ?? "").slice(0, 800)}`,
+        `Snippet: ${formatEmailSnippet(message.snippet)}`,
       ].join("\n"),
     ),
   ].join("\n");
