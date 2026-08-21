@@ -12,7 +12,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { stripHtmlRawTextElements } from "@elizaos/core";
+import {
+  stripHtmlRawTextElements,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
@@ -210,10 +214,11 @@ export const webFetchAction: Action = {
         response.contentType,
         extract,
       );
+      const wellFormed = toWellFormedUnicode(extracted.value);
       const value =
-        extracted.value.length > WEB_FETCH_RESULT_CHARS
-          ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
-          : extracted.value;
+        wellFormed.length > WEB_FETCH_RESULT_CHARS
+          ? `${truncateWellFormed(wellFormed, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
+          : wellFormed;
       return successActionResult(value, {
         action: "WEB_FETCH",
         url,
@@ -222,7 +227,7 @@ export const webFetchAction: Action = {
         content_type: response.contentType,
         kind: extracted.kind,
         truncated:
-          response.truncated || extracted.value.length > WEB_FETCH_RESULT_CHARS,
+          response.truncated || wellFormed.length > WEB_FETCH_RESULT_CHARS,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
