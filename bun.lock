@@ -3046,6 +3046,7 @@
         "@electric-sql/pglite": "^0.4.0",
         "@electric-sql/pglite-sync": "0.5.6",
         "@neondatabase/serverless": "^1.1.0",
+        "@noble/hashes": "2.2.0",
         "drizzle-orm": "0.45.2",
         "pg": "^8.23.0",
         "uuid": "^14.0.0",
