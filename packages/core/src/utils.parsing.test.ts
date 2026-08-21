@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
 	parseBooleanFromText,
 	parseJSONObjectFromText,
+	parseToonKeyValue,
 	stringToUuid,
 	truncateToCompleteSentence,
 	validateUuid,
@@ -63,6 +64,19 @@ describe("parseJSONObjectFromText", () => {
 		expect(
 			parseJSONObjectFromText('"Sure - I added milk to your shopping list."'),
 		).toBeNull();
+	});
+});
+
+describe("parseToonKeyValue", () => {
+	it("parses a compact unlabeled whole-value code fence", () => {
+		expect(parseToonKeyValue("```name: eliza```")).toEqual({ name: "eliza" });
+	});
+
+	it("parses indexed and scalar keys around adversarial delimiter whitespace", () => {
+		const spacing = " ".repeat(100_000);
+		expect(
+			parseToonKeyValue(`name${spacing}:${spacing}eliza\nitems[2]: ready`),
+		).toEqual({ name: "eliza", items: [undefined, undefined, "ready"] });
 	});
 });
 

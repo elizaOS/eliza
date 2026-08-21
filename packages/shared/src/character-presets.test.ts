@@ -94,7 +94,7 @@ describe("character preset resolution with a shared avatarIndex", () => {
 describe("default Eliza persona safety", () => {
   const definition = CHARACTER_DEFINITIONS.find(({ id }) => id === "eliza");
 
-  it("attributes Eliza to Eliza Research in San Francisco without personal handles", () => {
+  it("keeps conversational identity to the agent's name", () => {
     expect(definition).toBeDefined();
     const identity = [
       definition?.system,
@@ -103,19 +103,21 @@ describe("default Eliza persona safety", () => {
         conversation.map(({ content }) => content.text),
       ),
     ].join("\n");
-    expect(identity).toContain("Eliza Research");
-    expect(identity).toContain("San Francisco");
-    expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
+    expect(definition?.system).toContain('say "I\'m {{name}}."');
+    expect(definition?.messageExamples[0]?.[1]?.content.text).toBe(
+      "I'm {{agentName}}.",
+    );
+    expect(identity).not.toMatch(
+      /eliza research|san francisco|elizaos|open source|self-host|github\.com|\b(?:shaw|nubs|shad0w)\b/i,
+    );
   });
 
   it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {
     expect(definition).toBeDefined();
     expect(definition?.system).toContain(
-      "Ask one clear question before consequential actions, external writes",
+      "Before consequential actions, confirm the exact target.",
     );
-    expect(definition?.system).toContain(
-      "unless the current turn has a matching tool receipt",
-    );
+    expect(definition?.system).toContain("without a matching result.");
 
     const replies = definition?.messageExamples.flatMap((conversation) =>
       conversation
@@ -128,31 +130,35 @@ describe("default Eliza persona safety", () => {
     );
   });
 
-  it("treats brevity as a default that explicit depth requests override", () => {
+  it("keeps brevity flexible and warmth grounded in attention", () => {
     expect(definition).toBeDefined();
-    expect(definition?.system).toContain("Short is a default, not a ceiling.");
     expect(definition?.system).toContain(
-      "give them the depth they asked for and keep it for the rest of the conversation",
+      "Let warmth come from attention, specificity, and remembering the thread",
     );
     expect(definition?.system).toContain(
-      '"Tell me more" means more about what you were just talking about.',
+      "Not every message is a task to optimize.",
     );
     expect(definition?.style.chat).toContain(
-      "an explicit ask for length or detail beats every brevity rule, honor it for the whole conversation",
+      "short answers are welcome, but clarity beats an arbitrary word limit",
+    );
+    expect(definition?.style.chat).toContain(
+      "an explicit ask for length or detail beats the brevity default",
     );
     expect(definition?.style.chat).toContain(
       '"tell me more" is about the last thing discussed, answer it instead of asking which thing',
     );
   });
 
-  it("carries the depth-override rule into every language variant's resolved system", () => {
+  it("carries the warm identity into every language variant's resolved system", () => {
     expect(definition).toBeDefined();
     for (const language of Object.keys(definition?.variants ?? {})) {
       const preset = resolveStylePresetById(
         "eliza",
         language as keyof NonNullable<typeof definition>["variants"],
       );
-      expect(preset?.system).toContain("Short is a default, not a ceiling.");
+      expect(preset?.system).toContain(
+        "Make the user's next five minutes easier.",
+      );
     }
   });
 

@@ -642,6 +642,33 @@ jobs:
             require_exact RELAY_ORIGIN "$RELAY_ORIGIN" "https://relay-staging.eliza.app"
           fi
 
+      - name: Validate protected staging Blooio configuration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
+        env:
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
+        run: |
+          set -euo pipefail
+          required_names=(
+            ELIZA_APP_BLOOIO_API_KEY
+            ELIZA_APP_BLOOIO_PHONE_NUMBER
+            ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+          )
+          missing=()
+          for name in "${required_names[@]}"; do
+            value="${!name:-}"
+            if [ -z "${value//[[:space:]]/}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing required protected staging Blooio secret name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Verified ${#required_names[@]} protected staging Blooio secret names; values were not printed."
+
       - name: Disable staging session exchange before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
         working-directory: ${{ env.CHECKOUT_DIR }}/packages/cloud/api
@@ -781,6 +808,13 @@ jobs:
           # activation is a separate protected, live-proven rollout.
           ELIZA_APP_TELEGRAM_BOT_TOKEN: ${{ secrets.ELIZA_APP_TELEGRAM_BOT_TOKEN }}
           ELIZA_APP_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.ELIZA_APP_TELEGRAM_WEBHOOK_SECRET }}
+          # Personal Shared Blooio is a staging acceptance surface. These
+          # protected values are mandatory in staging and are committed with
+          # the exact Worker source through the atomic secrets file below.
+          # Production keeps its existing bindings and never queues this source.
+          ELIZA_APP_BLOOIO_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
           # Personal Shared APNs stays dormant unless the complete protected
           # environment config is present. Topic/environment are explicit so a
           # signed development build cannot silently receive production pushes.
@@ -1117,6 +1151,20 @@ jobs:
             queue_secret "$name" || exit 1
           done
 
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+            do
+              if ! has_nonblank_value "${!name:-}"; then
+                echo "::error::Required protected staging Blooio secret is absent or blank: $name"
+                exit 1
+              fi
+              queue_secret "$name" || exit 1
+            done
+          fi
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -1325,6 +1373,11 @@ jobs:
             ];
             if (process.env.DEPLOY_ENVIRONMENT === "staging") {
               required.push("LOCAL_EMBEDDINGS_API_KEY");
+              required.push(
+                "ELIZA_APP_BLOOIO_API_KEY",
+                "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+                "ELIZA_APP_BLOOIO_WEBHOOK_SECRET",
+              );
             }
             if (
               process.env.DEPLOY_ENVIRONMENT === "production" &&

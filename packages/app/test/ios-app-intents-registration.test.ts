@@ -46,6 +46,10 @@ const liveActivityBridgeSwift = readFileSync(
   path.join(iosAppRoot, "App/ElizaLiveActivityBridge.swift"),
   "utf8",
 );
+const bridgeViewControllerSwift = readFileSync(
+  path.join(iosAppRoot, "App/ElizaBridgeViewController.swift"),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -251,6 +255,23 @@ describe("native assistant entry contracts", () => {
     expect(pbxproj).toContain("ElizaAppIntents.swift */");
   });
 
+  it("registers every App-target in-app Capacitor plugin exactly once", () => {
+    for (const pluginClass of [
+      "GlassBridge",
+      "ElizaIntentPlugin",
+      "ElizaKeyboardPlugin",
+      "ElizaLiveActivityPlugin",
+      "NativeTranscriptPlugin",
+    ]) {
+      expect(
+        bridgeViewControllerSwift.match(
+          new RegExp(`registerPluginInstance\\(${pluginClass}\\(\\)\\)`, "g"),
+        ),
+        `${pluginClass} must have one native registration authority`,
+      ).toHaveLength(1);
+    }
+  });
+
   it("exposes the expected iOS Siri and Shortcuts launch surfaces", () => {
     for (const intentName of [
       "AskElizaIntent",
@@ -285,12 +306,15 @@ describe("native assistant entry contracts", () => {
       "Ask, talk, and plan with Eliza from your Home and Lock Screen.",
       "Eliza Voice",
       "Keyboard dictation",
-      "Stop Dictation",
-      "Save Dictation",
       "Recording",
+      "Ready",
+      "Listening",
       "Transcribing",
       "Thinking",
       "Speaking",
+      "Error",
+      "Ended",
+      "Stop",
       "Voice session",
     ];
 
@@ -423,16 +447,21 @@ describe("native assistant entry contracts", () => {
     expect(dictationAttributesSwift).toContain("@available(iOS 16.1, *)");
 
     // Live Activity rendering: ActivityConfiguration + Dynamic Island + the
-    // interactive Stop/Save buttons routing the elizaos:// spine.
+    // interactive Stop button routing the elizaos:// spine.
     expect(dictationLiveActivitySwift).toContain(
       "struct ElizaDictationLiveActivity: Widget",
     );
     expect(dictationLiveActivitySwift).toContain("ActivityConfiguration");
     expect(dictationLiveActivitySwift).toContain("DynamicIsland");
-    expect(dictationLiveActivitySwift).toContain("StopElizaDictationIntent");
-    expect(dictationLiveActivitySwift).toContain("SaveElizaDictationIntent");
+    expect(dictationLiveActivitySwift).toContain("StopElizaVoiceIntent");
+    expect(dictationLiveActivitySwift).not.toContain(
+      "SaveElizaDictationIntent",
+    );
     expect(dictationLiveActivitySwift).toContain(
-      'ElizaWidgetDeepLink.dictation(action: "stop")',
+      'ElizaWidgetDeepLink.dictation(action: "stop-voice")',
+    );
+    expect(dictationLiveActivitySwift).not.toContain(
+      "context.state.transcriptSnippet",
     );
 
     // The bundle registers the Live Activity behind the iOS 16.1 gate.
@@ -446,6 +475,18 @@ describe("native assistant entry contracts", () => {
     );
     expect(liveActivityBridgeSwift).toContain('jsName = "ElizaLiveActivity"');
     expect(liveActivityBridgeSwift).toContain("Activity.request");
+    expect(liveActivityBridgeSwift).toContain(
+      "private static var lifecycleGeneration = 0",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      "@MainActor private static var currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain(
+      "let ownsCurrent = explicitId == nil || explicitId == Self.currentActivityId",
+    );
+    expect(liveActivityBridgeSwift).toContain("if ownsCurrent {");
+    expect(liveActivityBridgeSwift).toContain("await Self.endActivities(");
+    expect(liveActivityBridgeSwift).toContain('transcriptSnippet: ""');
 
     // pbxproj: the shared attributes file is a member of BOTH the App and the
     // ElizaWidgets Sources phases; the render + bridge files land in their

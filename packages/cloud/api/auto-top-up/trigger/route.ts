@@ -7,8 +7,8 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
 import { logger } from "@/lib/utils/logger";
@@ -16,13 +16,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-app.use(
-  "*",
-  rateLimit({
-    ...RateLimitPresets.STRICT,
-    failClosed: true,
-  }),
-);
+app.use("*", moneyRateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
   try {

@@ -274,7 +274,7 @@ jobs:
               --arg repo "$GITHUB_REPOSITORY" \
               '.status == "completed"
                 and .conclusion == "success"
-                and .event == "push"
+                and (.event == "push" or .event == "workflow_dispatch")
                 and .head_branch == "develop"
                 and .path == ".github/workflows/cloud-cf-deploy.yml"
                 and .repository.full_name == $repo' \
@@ -392,7 +392,10 @@ jobs:
     needs: release
     # A superseded release ends neutrally without mutating anything, so its
     # tree was never actually deployed and must not receive a certification.
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
+    # A canonical manual staging dispatch is equally authoritative after the
+    # same release and routing checks; supporting it makes intentional pinned
+    # releases certifiable when develop is moving faster than hosted runners.
+    if: ${{ always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/develop' && needs.release.result == 'success' && needs.release.outputs.superseded != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -427,6 +430,7 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" \
             --run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --event "$GITHUB_EVENT_NAME" \
             --source-sha "$GITHUB_SHA" \
             --tree-sha "$tree_sha" \
             --artifact-name "$artifact_name" \

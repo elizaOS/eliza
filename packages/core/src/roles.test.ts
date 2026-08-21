@@ -585,7 +585,9 @@ describe("connector metadata is registry-driven, not Discord-special-cased (#120
 				if (id === ownerEntityId || id === senderEntityId) {
 					return {
 						id,
-						metadata: { telegram: { id: "telegram-owner" } },
+						metadata: {
+							telegram: { id: "telegram-owner", ownerBindVerifiedAt: 1 },
+						},
 					};
 				}
 				return null;

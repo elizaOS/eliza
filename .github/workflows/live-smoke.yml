@@ -13,7 +13,13 @@ on:
         required: true
         default: all
         type: choice
-        options: [all, app, scenarios, cloud, voice, dedicated]
+        options: [all, app, scenarios, live-information, cloud, voice, dedicated]
+      planner_provider:
+        description: Planner backend for the focused live-information suite
+        required: true
+        default: openai
+        type: choice
+        options: [openai, anthropic, openrouter]
       stale_canary_suffix:
         description: "Exact prior dedicated-canary suffix (r<run-id>a<attempt>) to verify and delete before the fresh canary"
         required: false
@@ -47,6 +53,7 @@ jobs:
       CI: "true"
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
@@ -55,6 +62,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
+
+      - name: Require exact live information credentials
+        if: inputs.suite == 'live-information'
+        shell: bash
+        env:
+          PLANNER_PROVIDER: ${{ inputs.planner_provider }}
+        run: |
+          set -euo pipefail
+          case "$PLANNER_PROVIDER" in
+            openai) planner_key="${OPENAI_API_KEY:-}" ;;
+            anthropic) planner_key="${ANTHROPIC_API_KEY:-}" ;;
+            openrouter) planner_key="${OPENROUTER_API_KEY:-}" ;;
+            *) echo "::error::Unsupported live-information planner provider."; exit 1 ;;
+          esac
+          planner_key_without_whitespace="${planner_key//[[:space:]]/}"
+          judge_key="${EVAL_CEREBRAS_API_KEY:-${CEREBRAS_API_KEY:-}}"
+          judge_key_without_whitespace="${judge_key//[[:space:]]/}"
+          if [[ -z "$planner_key_without_whitespace" ]]; then
+            echo "::error::The selected live-information planner credential is missing or blank; compatible provider keys cannot substitute for it."
+            exit 1
+          fi
+          if [[ -z "$judge_key_without_whitespace" ]]; then
+            echo "::error::The independent Cerebras judge credential is missing or blank."
+            exit 1
+          fi
+          unset planner_key planner_key_without_whitespace judge_key judge_key_without_whitespace
 
       - uses: ./.github/actions/setup-bun-workspace
         with:
@@ -72,16 +105,39 @@ jobs:
         if: inputs.suite == 'all' || inputs.suite == 'app'
         run: bun run --cwd packages/app test:e2e:walkthrough:live
 
+      # Both the scenario graph and cloud API load the compiled
+      # @elizaos/core/edge export. The lean install above skips lifecycle
+      # scripts, so build that contract before either consumer starts.
+      - name: Build core runtime contract
+        if: inputs.suite == 'all' || inputs.suite == 'scenarios' || inputs.suite == 'live-information' || inputs.suite == 'cloud'
+        run: bun run build:core
+
       - name: Live scenarios
         if: inputs.suite == 'all' || inputs.suite == 'scenarios'
         run: bun run --cwd packages/scenario-runner test:live:e2e
 
-      # Cloud API e2e loads the compiled Workerd export from
-      # @elizaos/core/edge. The lean install above skips lifecycle scripts, so
-      # this artifact must be built explicitly on a clean runner.
-      - name: Build core runtime contract
-        if: inputs.suite == 'all' || inputs.suite == 'cloud'
-        run: bun run build:core
+      - name: Live information routing
+        if: inputs.suite == 'live-information'
+        env:
+          SCENARIO_JUDGE_REQUIRE_INDEPENDENT: "1"
+          SCENARIO_TURN_TIMEOUT_MS: "300000"
+        run: >-
+          bun --conditions eliza-source --tsconfig-override tsconfig.json
+          packages/scenario-runner/src/cli.ts run packages/test/scenarios
+          --scenario cross.live-information-routing --lane live-only
+          --provider ${{ inputs.planner_provider }}
+          --run-dir reports/scenarios/live-information/run
+          --report-dir reports/scenarios/live-information/report
+          --export-native reports/scenarios/live-information/native.jsonl
+
+      - name: Upload live information evidence
+        if: always() && inputs.suite == 'live-information'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: live-information-${{ inputs.planner_provider }}-${{ github.run_id }}
+          path: reports/scenarios/live-information
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Cloud end-to-end
         if: inputs.suite == 'all' || inputs.suite == 'cloud'

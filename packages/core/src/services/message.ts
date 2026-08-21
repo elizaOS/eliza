@@ -658,6 +658,29 @@ function parseInlinePlannerParams(
 	}
 }
 
+function splitInlinePlannerParams(
+	value: string,
+): { name: string; body: string } | null {
+	const lower = value.toLowerCase();
+	let open = lower.indexOf("<params");
+	while (open >= 0) {
+		const boundary = lower[open + "<params".length];
+		if (!boundary || !/[a-z0-9_]/i.test(boundary)) break;
+		open = lower.indexOf("<params", open + "<params".length);
+	}
+	if (open < 0) return null;
+	const bodyStart = value.indexOf(">", open + "<params".length);
+	if (bodyStart < 0) return null;
+	const close = lower.indexOf("</params>", bodyStart + 1);
+	if (close < 0 || value.slice(close + "</params>".length).trim() !== "") {
+		return null;
+	}
+	return {
+		name: value.slice(0, open).trimEnd(),
+		body: value.slice(bodyStart + 1, close),
+	};
+}
+
 function extractInlinePlannerActionParams(value: string): {
 	name: string;
 	params?: Record<string, unknown>;
@@ -675,13 +698,11 @@ function extractInlinePlannerActionParams(value: string): {
 		}
 	}
 
-	const inlineParamsMatch = value.match(
-		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
-	);
-	if (inlineParamsMatch) {
+	const inlineParams = splitInlinePlannerParams(value);
+	if (inlineParams) {
 		return {
-			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
-			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+			name: unwrapPlannerIdentifier(inlineParams.name),
+			params: parseInlinePlannerParams(inlineParams.body) ?? undefined,
 		};
 	}
 
@@ -2004,10 +2025,203 @@ export function answerlessToolTurnReport(args: {
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
-/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
-const MEDIA_CONTENT_URL_RE =
-	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+/** Where the zero-delivery recovery sourced its terminal reply from. */
+export type ZeroDeliveryRecoverySource =
+	| "plannedText"
+	| "actionUserFacingText"
+	| "stageOneAck"
+	| "fallbackText";
 
+/**
+ * Decides whether — and with what text — a RESPOND turn that ran tools but
+ * delivered nothing terminal recovers instead of ending silent (#20083,
+ * corrected by #20086). Source precedence: the planner's surviving terminal
+ * text, then the last explicit action-owned `userFacingText`, then the
+ * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
+ * fallback whose wording is failure-aware — it claims completion only when at
+ * least one tool actually succeeded. After an early progress ack the turn
+ * recovers only when grounded text exists or any tool failed: a successful
+ * async handoff reports through a later completion relay, so manufacturing a
+ * "finished" line behind its ack would be a lie, while a failed handoff will
+ * never relay anything and the ack's promise must be corrected.
+ * `plannedText` must arrive pre-blanked when it merely repeats the early ack.
+ */
+export function resolveZeroDeliveryRecovery(args: {
+	plannedText: string;
+	actionResults: ReadonlyArray<
+		Pick<ActionResult, "success" | "userFacingText">
+	>;
+	stageOneAck: string;
+	earlyReplySent: boolean;
+}): {
+	recover: boolean;
+	text: string;
+	source: ZeroDeliveryRecoverySource;
+	actionSuccessCount: number;
+	actionFailureCount: number;
+} {
+	const actionSuccessCount = args.actionResults.filter(
+		(result) => result.success === true,
+	).length;
+	const actionFailureCount = args.actionResults.filter(
+		(result) => result.success === false,
+	).length;
+	const lastActionUserFacingText =
+		args.actionResults
+			.map((result) =>
+				typeof result.userFacingText === "string"
+					? result.userFacingText.trim()
+					: "",
+			)
+			.filter((ownedText) => ownedText.length > 0)
+			.at(-1) ?? "";
+	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const fallbackRecoveryText =
+		actionSuccessCount > 0 && actionFailureCount > 0
+			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
+			: actionSuccessCount > 0
+				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
+				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+	const text =
+		args.plannedText ||
+		lastActionUserFacingText ||
+		ackRecoveryText ||
+		fallbackRecoveryText;
+	const source: ZeroDeliveryRecoverySource = args.plannedText
+		? "plannedText"
+		: lastActionUserFacingText
+			? "actionUserFacingText"
+			: ackRecoveryText
+				? "stageOneAck"
+				: "fallbackText";
+	const recover =
+		!args.earlyReplySent ||
+		Boolean(args.plannedText) ||
+		lastActionUserFacingText.length > 0 ||
+		actionFailureCount > 0;
+	return { recover, text, source, actionSuccessCount, actionFailureCount };
+}
+
+function mediaContentUrlRegions(
+	text: string,
+): Array<{ start: number; end: number }> {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lowerText = text.toLowerCase();
+	let cursor = 0;
+	while (cursor < text.length) {
+		const http = lowerText.indexOf("http", cursor);
+		if (http < 0) break;
+		let end = http;
+		while (
+			end < text.length &&
+			!/\s/u.test(text[end]) &&
+			text[end] !== "<" &&
+			text[end] !== ">"
+		)
+			end += 1;
+		const lower = lowerText.slice(http, end);
+		const scheme = lower.startsWith("https://")
+			? 8
+			: lower.startsWith("http://")
+				? 7
+				: 0;
+		if (scheme) {
+			// The endpoint may sit mid-token (trailing punctuation, query strings)
+			// and after any of several `/v1/` segments; the region ends right after
+			// `/content` so surrounding punctuation survives for later cleanup.
+			let matchEnd = -1;
+			let marker = lower.indexOf("/v1/", scheme);
+			while (marker >= 0) {
+				const kindEnd = lower.indexOf("/", marker + 4);
+				if (kindEnd >= 0) {
+					const kind = lower.slice(marker + 4, kindEnd);
+					const idEnd = lower.indexOf("/", kindEnd + 1);
+					if (
+						["videos", "images", "audio"].includes(kind) &&
+						idEnd > kindEnd + 1 &&
+						lower.startsWith("content", idEnd + 1)
+					) {
+						matchEnd = idEnd + 1 + "content".length;
+					}
+				}
+				marker = lower.indexOf("/v1/", marker + 4);
+			}
+			if (matchEnd > 0) {
+				regions.push({ start: http, end: http + matchEnd });
+			}
+		}
+		cursor = Math.max(end, http + 1);
+	}
+	return regions;
+}
+
+function removeRegions(
+	text: string,
+	regions: Array<{ start: number; end: number }>,
+): string {
+	if (regions.length === 0) return text;
+	const chunks: string[] = [];
+	let cursor = 0;
+	for (const region of regions) {
+		let start = region.start;
+		let end = region.end;
+		while (start > cursor && /\s/u.test(text[start - 1])) start -= 1;
+		if (text[start - 1] === "<") start -= 1;
+		while (end < text.length && /\s/u.test(text[end])) end += 1;
+		if (text[end] === ">") end += 1;
+		chunks.push(text.slice(cursor, start));
+		cursor = end;
+	}
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
+}
+
+function removeDeliveredUrl(text: string, url: string): string {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lower = text.toLowerCase();
+	const needle = url.toLowerCase();
+	let cursor = 0;
+	while (needle && cursor < text.length) {
+		const start = lower.indexOf(needle, cursor);
+		if (start < 0) break;
+		regions.push({ start, end: start + url.length });
+		cursor = start + url.length;
+	}
+	return removeRegions(text, regions);
+}
+
+const MEDIA_DELIVERY_PREAMBLES = [
+	...["here", "here's", "here is", "here you go"].flatMap((base) => [
+		`${base} it is`,
+		base,
+	]),
+	"done.",
+	...["video", "video'", "videos", "video's"].flatMap((subject) =>
+		["up", "live", "ready"].map((state) => `done ${subject} ${state}`),
+	),
+	"done",
+	"your video is ready",
+	"your video",
+].sort((left, right) => right.length - left.length);
+
+function stripMediaDeliveryPreamble(text: string): string {
+	const lower = text.toLowerCase();
+	for (const prefix of MEDIA_DELIVERY_PREAMBLES) {
+		if (!lower.startsWith(prefix)) continue;
+		let cursor = prefix.length;
+		if (
+			cursor < text.length &&
+			!/\s/u.test(text[cursor]) &&
+			text[cursor] !== ":"
+		)
+			continue;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		if (text[cursor] === ":") cursor += 1;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		return text.slice(cursor);
+	}
+	return text;
+}
 function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
 	const urls = new Set<string>();
 	for (const result of actionResults) {
@@ -2045,23 +2259,17 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
-		cleaned,
-	);
+	const embeddedRegions = mediaContentUrlRegions(cleaned);
+	const hasEmbeddedMediaUrl = embeddedRegions.length > 0;
 	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
 		return cleaned;
 	}
 
 	for (const url of deliveredUrls) {
-		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+		cleaned = removeDeliveredUrl(cleaned, url);
 	}
-	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = removeRegions(cleaned, mediaContentUrlRegions(cleaned));
 	cleaned = cleaned
-		.replace(
-			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
-			"",
-		)
 		.replace(/:\s*$/g, "")
 		.replace(/<\s*>/g, "")
 		.replace(/\(\s*\)/g, "")
@@ -2069,6 +2277,7 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		// newlines are reply formatting and must survive.
 		.replace(/[^\S\n]{2,}/g, " ")
 		.trim();
+	cleaned = stripMediaDeliveryPreamble(cleaned).trim();
 
 	if (
 		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
@@ -5572,6 +5781,7 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,
@@ -9814,48 +10024,56 @@ export async function runV5MessageRuntimeStage1(args: {
 		// produced a correct answer and the user got silence. Recover with the
 		// best grounded text available and name the failure in the log so the
 		// upstream emptying path is diagnosable instead of invisible.
-		// Two states are NOT recoverable silence: a synchronously delivered
+		// Three states are NOT recoverable silence: a synchronously delivered
 		// media deliverable is a delivery even though it never enters the
-		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// visible-TEXT set; deliberate silence (suppressPlannerReply
 		// terminals, ambient IGNORE after tool work) is a contract this
-		// invariant must honor, not a failure for it to "fix" into filler.
+		// invariant must honor, not a failure for it to "fix" into filler;
+		// and a planned reply suppressed because the early ack ALREADY said it
+		// verbatim means the terminal content did reach the user. An early
+		// PROGRESS ack alone, however, is not a terminal answer — the turn
+		// still owes the user its outcome, so `earlyReplySent` by itself does
+		// not disarm the recovery; it only removes the ack (and any text that
+		// repeats it) from the pool of recovery sources so nothing delivers
+		// twice (#20086). One asymmetry is deliberate: the early ack only
+		// ships ahead of an async handoff, whose completion arrives through a
+		// later relay turn — after an ack, recover only when grounded terminal
+		// text exists or any tool failed (a failed handoff will never relay
+		// a completion, so the ack's promise must be corrected). A successful
+		// ack-then-background turn with nothing grounded to say stays silent.
+		const zeroDeliveryRecovery = resolveZeroDeliveryRecovery({
+			plannedText: plannedTextRepeatsEarlyReply
+				? ""
+				: effectiveDeliveredReplyText,
+			actionResults,
+			stageOneAck,
+			earlyReplySent,
+		});
 		if (
 			!shouldSendPlannedText &&
-			!earlyReplySent &&
 			!suppressesPlannerReply &&
+			!(earlyReplySent && plannedTextRepeatsEarlyReply) &&
+			zeroDeliveryRecovery.recover &&
 			deliveredVisibleTexts.size === 0 &&
 			deliveredMediaUrls.length === 0 &&
 			actionResults.length > 0
 		) {
-			const recoveredText =
-				effectiveDeliveredReplyText ||
-				stageOneAck ||
-				actionResults
-					.map((result) =>
-						typeof result.userFacingText === "string"
-							? result.userFacingText.trim()
-							: "",
-					)
-					.filter((ownedText) => ownedText.length > 0)
-					.at(-1) ||
-				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					emptyFinal: !effectiveReplyText,
+					earlyReplySent,
 					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
 					suppressedByActionReply: plannedTextRepeatsActionReply,
-					recoveredFrom: effectiveDeliveredReplyText
-						? "plannedText"
-						: stageOneAck
-							? "stageOneAck"
-							: "actionUserFacingText",
+					actionSuccessCount: zeroDeliveryRecovery.actionSuccessCount,
+					actionFailureCount: zeroDeliveryRecovery.actionFailureCount,
+					recoveredFrom: zeroDeliveryRecovery.source,
 				},
 				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 			);
-			effectiveReplyText = recoveredText;
-			strippedPlannedReplyText = recoveredText;
-			effectiveDeliveredReplyText = recoveredText;
+			effectiveReplyText = zeroDeliveryRecovery.text;
+			strippedPlannedReplyText = zeroDeliveryRecovery.text;
+			effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
 			shouldSendPlannedText = true;
 		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model

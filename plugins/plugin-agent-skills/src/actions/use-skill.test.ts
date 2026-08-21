@@ -541,4 +541,49 @@ describe("useSkillAction", () => {
 		expect(result?.success).toBe(true);
 		expect(mockedAnnotateActiveTrajectoryStep).not.toHaveBeenCalled();
 	});
+
+	it("keeps surrogate pairs intact when truncating guidance instructions", async () => {
+		const longInstructions = `${"a".repeat(3499)}🦊${"b".repeat(50)}`;
+		const skill = {
+			slug: "guidance-long",
+			name: "Guidance Long",
+			description: "Guidance with long instructions",
+			source: "bundled",
+			scripts: [],
+		};
+		const service = {
+			getLoadedSkill: vi.fn(() => skill),
+			getLoadedSkills: vi.fn(() => [skill]),
+			isSkillEnabled: vi.fn(() => true),
+			checkSkillEligibility: vi.fn(async () => ({
+				slug: "guidance-long",
+				eligible: true,
+				reasons: [],
+				checkedAt: 0,
+			})),
+			getSkillInstructions: vi.fn(() => ({
+				slug: "guidance-long",
+				body: longInstructions,
+				estimatedTokens: 1000,
+			})),
+		};
+		const runtimeShape = {
+			getService: vi.fn(() => service),
+		};
+		const callback = vi.fn();
+
+		const result = await useSkillAction.handler(
+			Object.assign(Object.create(null) as IAgentRuntime, runtimeShape),
+			{ content: { text: "use guidance-long skill" } } as Memory,
+			undefined,
+			{ parameters: { slug: "guidance-long", mode: "guidance" } },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		const text = callback.mock.calls.at(-1)?.[0]?.text ?? "";
+		expect(text.isWellFormed()).toBe(true);
+		expect(text).toContain("...[truncated]");
+		expect(text).toContain(`${"a".repeat(3499)}\n\n...[truncated]`);
+	});
 });

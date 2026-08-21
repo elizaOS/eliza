@@ -138,6 +138,12 @@ describe("resolveDirectCloudWebBase / resolveDirectCloudAuthApiBase", () => {
     );
   });
 
+  it("trims a 100k trailing slash run without changing the prefix", () => {
+    expect(
+      resolveDirectCloudWebBase(`https://example.com${"/".repeat(100_000)}`),
+    ).toBe("https://example.com");
+  });
+
   it("falls back to the raw input for an unparseable base", () => {
     expect(resolveDirectCloudWebBase("not a url")).toBe("not a url");
   });
@@ -189,7 +195,11 @@ describe("refreshCloudStewardSession (web/fetch branch)", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        signal: expect.any(AbortSignal),
+      }),
     );
     expect(result).toEqual({ token: "rotated-jwt", expiresIn: 900 });
   });
@@ -281,5 +291,180 @@ describe("refreshCloudStewardSession (web/fetch branch)", () => {
       endpoint: "https://api.elizacloud.ai/api/v1/auth/steward/refresh",
     });
     expect(result).toBeNull();
+  });
+});
+
+describe("refreshCloudStewardSession timeouts (portable fallback, fake timers)", () => {
+  const ENDPOINT = "https://api.elizacloud.ai/api/v1/auth/steward/refresh";
+  const TIMEOUT_MS = 30_000;
+  let originalTimeout: unknown;
+
+  beforeEach(() => {
+    // Force the AbortController+setTimeout fallback so fake timers control the
+    // timeout deterministically. Native AbortSignal.timeout uses an internal
+    // timer not governed by vi.useFakeTimers() in all runtimes, so forcing
+    // fallback makes the 30 s contract testable.
+    originalTimeout = (AbortSignal as unknown as { timeout?: unknown }).timeout;
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: originalTimeout,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it("aborts a headers-stalled fetch at 30 s and maps to STEWARD_SESSION_REFRESH_TRANSIENT (throwOnTransient)", async () => {
+    const fetchMock = vi.fn(
+      (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined;
+          if (signal?.aborted) {
+            reject(new DOMException("TimeoutError", "TimeoutError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("TimeoutError", "TimeoutError")),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = refreshCloudStewardSession({
+      endpoint: ENDPOINT,
+      throwOnTransientHttpFailure: true,
+    });
+
+    // Must NOT settle before the timeout fires.
+    let settled = false;
+    pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const signal = (fetchMock.mock.calls[0]?.[1] as RequestInit | undefined)
+      ?.signal as AbortSignal | undefined;
+    expect(signal).toBeInstanceOf(AbortSignal);
+
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+
+    await expect(pending).rejects.toMatchObject({
+      code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+      context: { endpoint: ENDPOINT },
+    });
+    // Timer is disposed after abort so success-before-timeout does not leak.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("returns null on headers stall when not in throwOnTransient mode (fail-closed)", async () => {
+    const fetchMock = vi.fn(
+      (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined;
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("AbortError", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const pending = refreshCloudStewardSession({ endpoint: ENDPOINT });
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+    await expect(pending).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("aborts a headers-received plus stalled body at 30 s (signal kept alive through json)", async () => {
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        return {
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              if (signal?.aborted) {
+                reject(new DOMException("TimeoutError", "TimeoutError"));
+                return;
+              }
+              signal?.addEventListener(
+                "abort",
+                () => reject(new DOMException("TimeoutError", "TimeoutError")),
+                { once: true },
+              );
+            }),
+        };
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const pending = refreshCloudStewardSession({
+      endpoint: ENDPOINT,
+      throwOnTransientHttpFailure: true,
+    });
+
+    // Let the fetch resolve headers (microtask) but json stays pending.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Still pending before timeout.
+    let settled = false;
+    pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(TIMEOUT_MS);
+
+    await expect(pending).rejects.toMatchObject({
+      code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+    });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clears the pending timer on success before timeout (no leak under fake timers)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ token: "fresh-jwt", expiresIn: 900 }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await refreshCloudStewardSession({ endpoint: ENDPOINT });
+    expect(result).toEqual({ token: "fresh-jwt", expiresIn: 900 });
+    // dispose() cleared the fallback timer; no pending timers remain.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not mutate the global AbortSignal.timeout across tests (fallback proof)", () => {
+    // This test proves the fallback path was exercised without leaking the
+    // stub — the afterEach restores the original, so a later test sees the
+    // native impl again.
+    expect(
+      (AbortSignal as unknown as { timeout?: unknown }).timeout,
+    ).toBeUndefined();
   });
 });

@@ -374,10 +374,12 @@ function buildConnectorCredentialVaultRef(params: {
 }
 
 function normalizeVaultSegment(value: string): string {
-  const normalized = value
-    .trim()
-    .replace(/[^a-zA-Z0-9_-]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const slug = value.trim().replace(/[^a-zA-Z0-9_-]+/g, "_");
+  let start = 0;
+  let end = slug.length;
+  while (start < end && slug.charCodeAt(start) === 95) start += 1;
+  while (end > start && slug.charCodeAt(end - 1) === 95) end -= 1;
+  const normalized = slug.slice(start, end);
   return (normalized || "unknown").slice(0, 64);
 }
 

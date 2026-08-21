@@ -11,6 +11,8 @@ import cloudApiWorker, {
   isElizaAppWebhookPath,
   isInternalDiscordGatewayPath,
   isThinInferenceEnabled,
+  isThinStewardEmailAuthPath,
+  isThinStewardPath,
   isThinStewardPublicPath,
   isUnsupportedLegacyWildcardHostname,
   redirectFrontendHost,
@@ -398,6 +400,66 @@ describe("thin Steward public path dispatch (#18049)", () => {
     expect(isThinStewardPublicPath("/steward/auth/email/send")).toBe(false);
     expect(isThinStewardPublicPath("/steward/auth/nonce")).toBe(false);
     expect(isThinStewardPublicPath("/api/v1/oauth/providers")).toBe(false);
+  });
+
+  test("POST Magic Link email legs are thin-eligible; other mutations are not", () => {
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/code/verify")).toBe(
+      true,
+    );
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/vault/keys")).toBe(false);
+    expect(isThinStewardPath("POST", "/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardPath("POST", "/steward/auth/providers")).toBe(false);
+    expect(isThinStewardPath("GET", "/steward/auth/email/send")).toBe(false);
+    expect(isThinStewardPath("DELETE", "/steward/auth/email/send")).toBe(false);
+    expect(isThinStewardPath("OPTIONS", "/steward/auth/email/send")).toBe(true);
+  });
+
+  test("dispatches POST /steward/auth/email/send through the thin shell", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+      expect(url).toBe("https://steward.example.test/auth/email/send");
+      return Response.json({
+        ok: true,
+        data: {
+          expiresAt: "2026-01-01T00:00:00.000Z",
+          challengeId: "c1",
+          pollSecret: "p1",
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const response = await cloudApiWorker.fetch(
+        new Request("https://api.eliza.app/steward/auth/email/send", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            origin: "https://cloud.eliza.app",
+          },
+          body: JSON.stringify({ email: "user@example.com" }),
+        }),
+        stewardEnv,
+        executionCtx,
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-eliza-steward-path")).toBe("thin");
+      const body = (await response.json()) as {
+        ok?: boolean;
+        data?: { challengeId?: string };
+      };
+      expect(body.ok).toBe(true);
+      expect(body.data?.challengeId).toBe("c1");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("dispatches GET /steward/auth/providers through the thin shell", async () => {
@@ -814,6 +876,20 @@ describe("cloud-api worker entrypoint", () => {
     ).toBeNull();
   });
 
+  test("normalizes a 100k-dot configured hostname without pathological matching", () => {
+    const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+    const env = {
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: `cloud.eliza.app${".".repeat(100_000)}`,
+    };
+
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.cloud.eliza.app/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+  });
+
   test("proxies canonical staging marketing to the unified Pages develop branch", () => {
     const target = getFrontendAliasProxyTarget(
       new URL("https://staging.eliza.app/dashboard?tab=agents"),
@@ -1128,7 +1204,7 @@ describe("cloud-api worker entrypoint", () => {
     );
     expect(
       config.env?.staging?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
-    ).toBe("true");
+    ).toBe("false");
     expect(
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");

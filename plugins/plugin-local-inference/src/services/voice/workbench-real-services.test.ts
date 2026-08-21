@@ -1,14 +1,17 @@
 /**
- * Deterministic coverage for the real workbench stream diarization adapter.
- * Native pyannote and WeSpeaker calls are injected so window coverage, stream
- * offsets, final-window clipping, overlap, and blind clustering are exercised
- * without model artifacts.
+ * Deterministic coverage for the real workbench measurement adapters: stream
+ * diarization, streaming ASR selection, ERLE echo replay, and the barge-in
+ * native-TTS cancellation probe. Native pyannote/WeSpeaker/Kokoro calls are injected so
+ * window coverage, stream offsets, blind clustering, canceller replay, and
+ * cancel-latency semantics are exercised without model artifacts.
  */
 
 import { describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
 	diarizeVoiceWorkbenchStream,
+	measureBargeInTtsCancelMs,
+	measureEchoTurnErle,
 	transcribeVoiceWorkbenchStream,
 } from "./workbench-real-services";
 
@@ -151,5 +154,108 @@ describe("transcribeVoiceWorkbenchStream", () => {
 		expect(streamFeeds).toBe(5);
 		expect(result.transcript).toBe("hello from streaming");
 		expect(result.partials).toContain("hello from streaming");
+	});
+});
+
+describe("measureEchoTurnErle", () => {
+	function noiseSignal(samples: number, seed: number): Float32Array {
+		const out = new Float32Array(samples);
+		let state = seed >>> 0;
+		for (let i = 0; i < samples; i++) {
+			state = (state * 1664525 + 1013904223) >>> 0;
+			out[i] = (state / 0xffffffff) * 0.6 - 0.3;
+		}
+		return out;
+	}
+
+	it("cancels a pure linear echo well above the 18 dB floor", () => {
+		const far = noiseSignal(SAMPLE_RATE * 2, 7);
+		const near = new Float32Array(far.length);
+		for (let i = 0; i < far.length; i++) near[i] = far[i] * 0.5;
+		const erleDb = measureEchoTurnErle({ near, farReference: far });
+		expect(erleDb).not.toBeNull();
+		expect(erleDb as number).toBeGreaterThan(18);
+	});
+
+	it("still measures when the near end carries environmental noise", () => {
+		const far = noiseSignal(SAMPLE_RATE * 2, 7);
+		const hiss = noiseSignal(far.length, 99);
+		const near = new Float32Array(far.length);
+		for (let i = 0; i < far.length; i++) {
+			near[i] = far[i] * 0.5 + hiss[i] * 0.01;
+		}
+		const erleDb = measureEchoTurnErle({ near, farReference: far });
+		expect(erleDb).not.toBeNull();
+		expect(Number.isFinite(erleDb as number)).toBe(true);
+		expect(erleDb as number).toBeGreaterThan(6);
+	});
+
+	it("pads a shorter far-end reference instead of truncating the near end", () => {
+		const far = noiseSignal(SAMPLE_RATE, 7);
+		const near = new Float32Array(SAMPLE_RATE * 2);
+		for (let i = 0; i < far.length; i++) near[i] = far[i] * 0.5;
+		const erleDb = measureEchoTurnErle({ near, farReference: far });
+		expect(erleDb).not.toBeNull();
+	});
+
+	it("returns null for an empty or silent window instead of fabricating dB", () => {
+		expect(
+			measureEchoTurnErle({
+				near: new Float32Array(0),
+				farReference: new Float32Array(SAMPLE_RATE),
+			}),
+		).toBeNull();
+		expect(
+			measureEchoTurnErle({
+				near: new Float32Array(SAMPLE_RATE),
+				farReference: new Float32Array(0),
+			}),
+		).toBeNull();
+		// A silent far end has no far-active block — no echo, no measurement.
+		expect(
+			measureEchoTurnErle({
+				near: new Float32Array(SAMPLE_RATE).fill(0.1),
+				farReference: new Float32Array(SAMPLE_RATE),
+			}),
+		).toBeNull();
+	});
+});
+
+describe("measureBargeInTtsCancelMs", () => {
+	it("reports the latency from cancel request to stream return", async () => {
+		const cancelMs = await measureBargeInTtsCancelMs(
+			async ({ cancelSignal, onChunk }) => {
+				for (let i = 0; i < 100; i++) {
+					if (cancelSignal.cancelled) return { cancelled: true };
+					onChunk({ pcm: new Float32Array(320).fill(0.1), isFinal: false });
+					await Promise.resolve();
+				}
+				onChunk({ pcm: new Float32Array(0), isFinal: true });
+				return { cancelled: false };
+			},
+		);
+		expect(cancelMs).toBeGreaterThanOrEqual(0);
+		expect(Number.isFinite(cancelMs)).toBe(true);
+	});
+
+	it("fails fast when the stream produces no audio to cancel", async () => {
+		await expect(
+			measureBargeInTtsCancelMs(async ({ onChunk }) => {
+				onChunk({ pcm: new Float32Array(0), isFinal: true });
+				return { cancelled: false };
+			}),
+		).rejects.toThrow(/produced no audio/);
+	});
+
+	it("fails fast when the engine ignores the cancel signal", async () => {
+		await expect(
+			measureBargeInTtsCancelMs(async ({ onChunk }) => {
+				for (let i = 0; i < 3; i++) {
+					onChunk({ pcm: new Float32Array(320).fill(0.1), isFinal: false });
+				}
+				onChunk({ pcm: new Float32Array(0), isFinal: true });
+				return { cancelled: false };
+			}),
+		).rejects.toThrow(/ignored the barge-in cancel/);
 	});
 });

@@ -75,4 +75,23 @@ describe("iMessage launch-time permission invariant", () => {
 
     expect(loadContactsMock).not.toHaveBeenCalled();
   });
+
+  it("does not launch or probe Messages.app during IMessageService.start()", async () => {
+    if (process.platform !== "darwin") return;
+
+    const runAppleScript = vi.fn(async () => "");
+    const servicePrototype = IMessageService.prototype as unknown as {
+      runAppleScript(script: string): Promise<string>;
+    };
+    vi.spyOn(servicePrototype, "runAppleScript").mockImplementation(runAppleScript);
+
+    try {
+      await IMessageService.start(makeRuntime());
+    } catch {
+      // Other local service dependencies may be unavailable in the unit
+      // harness; the launch-time Apple Events invariant remains observable.
+    }
+
+    expect(runAppleScript).not.toHaveBeenCalled();
+  });
 });

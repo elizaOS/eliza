@@ -54,6 +54,33 @@
     }
     return out;
   }
+  function secureUuidV4() {
+    var cryptoObject = window.crypto;
+    if (cryptoObject && typeof cryptoObject.randomUUID === "function") {
+      return cryptoObject.randomUUID();
+    }
+    if (!cryptoObject || typeof cryptoObject.getRandomValues !== "function") {
+      throw new Error(
+        "EIP-6963 provider discovery requires a cryptographically secure random source",
+      );
+    }
+    var bytes = new Uint8Array(16);
+    cryptoObject.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    var hex = _bytesToHex(bytes).slice(2);
+    return (
+      hex.slice(0, 8) +
+      "-" +
+      hex.slice(8, 12) +
+      "-" +
+      hex.slice(12, 16) +
+      "-" +
+      hex.slice(16, 20) +
+      "-" +
+      hex.slice(20)
+    );
+  }
   function utf8ToBytes(s) {
     return new TextEncoder().encode(s);
   }
@@ -519,11 +546,7 @@
 
     // EIP-6963 — modern multi-wallet discovery used by RainbowKit, Wagmi, etc.
     var info = {
-      uuid:
-        "00000000-0000-4000-8000-" +
-        `000000000000${Math.floor(Math.random() * 1e12).toString(16)}`.slice(
-          -12,
-        ),
+      uuid: secureUuidV4(),
       name: CONFIG.walletName,
       icon: CONFIG.walletIcon,
       rdns: "ai.elizaos.wallet",

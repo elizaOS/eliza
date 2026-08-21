@@ -1,6 +1,11 @@
 /** Exercises server config filter behavior with deterministic app-core test fixtures. */
 import { describe, expect, test } from "vitest";
-import { filterConfigEnvForResponse } from "../src/api/server-config-filter";
+import { ElizaError } from "@elizaos/core";
+import {
+  CONFIG_FILTER_UNBOUNDED,
+  MAX_CONFIG_FILTER_DEPTH,
+  filterConfigEnvForResponse,
+} from "../src/api/server-config-filter";
 
 describe("filterConfigEnvForResponse", () => {
   test("redacts nested secret-shaped config values", () => {
@@ -60,5 +65,56 @@ describe("filterConfigEnvForResponse", () => {
       SAFE_FLAG: "1",
       OPENAI_API_KEY: "[REDACTED]",
     });
+  });
+
+  test("fail-closed on a cyclic config graph instead of RangeError", () => {
+    const cyclic: Record<string, unknown> = {
+      env: { SAFE_FLAG: "1" },
+      cloud: { apiKey: "eliza_secret" },
+    };
+    cyclic.self = cyclic;
+
+    try {
+      filterConfigEnvForResponse(cyclic);
+      throw new Error("expected CONFIG_FILTER_UNBOUNDED");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CONFIG_FILTER_UNBOUNDED);
+      expect(error).not.toBeInstanceOf(RangeError);
+    }
+  });
+
+  test("fail-closed on over-deep config nests before the walk RangeErrors", () => {
+    let nest: Record<string, unknown> = { leaf: "ok" };
+    for (let i = 0; i < MAX_CONFIG_FILTER_DEPTH + 8; i += 1) {
+      nest = { nest };
+    }
+
+    try {
+      filterConfigEnvForResponse(nest);
+      throw new Error("expected CONFIG_FILTER_UNBOUNDED");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CONFIG_FILTER_UNBOUNDED);
+    }
+  });
+
+  test("does not invoke enumerable getters while redacting", () => {
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, "apiKey", {
+      enumerable: true,
+      get() {
+        throw new Error("GETTER_INVOKED");
+      },
+    });
+
+    try {
+      filterConfigEnvForResponse({ cloud: hostile });
+      throw new Error("expected CONFIG_FILTER_UNBOUNDED");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ElizaError);
+      expect((error as ElizaError).code).toBe(CONFIG_FILTER_UNBOUNDED);
+      expect(String(error)).not.toContain("GETTER_INVOKED");
+    }
   });
 });

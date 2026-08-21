@@ -45,6 +45,16 @@
       "import": "./dist/wallet-provision-challenge.js",
       "default": "./dist/wallet-provision-challenge.js"
     },
+    "./redemption-contract": {
+      "types": "./dist/redemption-contract.d.ts",
+      "eliza-source": {
+        "types": "./src/redemption-contract.ts",
+        "import": "./src/redemption-contract.ts",
+        "default": "./src/redemption-contract.ts"
+      },
+      "import": "./dist/redemption-contract.js",
+      "default": "./dist/redemption-contract.js"
+    },
     "./cloud-setup-session": {
       "types": "./dist/cloud-setup-session/index.d.ts",
       "import": "./dist/cloud-setup-session/index.js",

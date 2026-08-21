@@ -43,6 +43,8 @@ import {
   type IAgentRuntime,
   logger,
   type Memory,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -68,6 +70,15 @@ const TELEGRAM_COMMAND_DESCRIPTION_MAX = 256;
 const TELEGRAM_MAX_COMMANDS = 100;
 /** Telegram caps a single text message at 4096 characters. */
 const TELEGRAM_MESSAGE_MAX = 4096;
+
+/**
+ * Caps a slash-command reply at Telegram's message limit without splitting a
+ * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
+ */
+export function truncateTelegramCommandReply(reply: string): string {
+  return truncateWellFormed(toWellFormedUnicode(reply), TELEGRAM_MESSAGE_MAX);
+}
+
 /** The catalog surface this bridge serves. */
 const TELEGRAM_SURFACE = "telegram";
 const DEFAULT_ACCOUNT_ID = "default";
@@ -109,8 +120,11 @@ function sanitizeCommandName(name: string): string | null {
 
 /** Clamp a description to Telegram's limit; a description is always required. */
 function clampDescription(description: string): string {
-  const trimmed = description.trim();
-  return trimmed.slice(0, TELEGRAM_COMMAND_DESCRIPTION_MAX);
+  const wellFormed = toWellFormedUnicode(description.trim());
+  if (wellFormed.length <= TELEGRAM_COMMAND_DESCRIPTION_MAX) {
+    return wellFormed;
+  }
+  return truncateWellFormed(wellFormed, TELEGRAM_COMMAND_DESCRIPTION_MAX);
 }
 
 /**
@@ -278,7 +292,7 @@ async function dispatchAgentCommand(
       ...(sender.senderName ? { senderName: sender.senderName } : {}),
     });
     if (resolved.handled && resolved.reply !== undefined) {
-      await ctx.reply(resolved.reply.slice(0, TELEGRAM_MESSAGE_MAX));
+      await ctx.reply(truncateTelegramCommandReply(resolved.reply));
       return;
     }
   }

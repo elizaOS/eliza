@@ -4,8 +4,8 @@
  * and the resolution that turns a sender + world into an effective role. A role
  * is merged here from four sources — an explicit grant stored on world metadata
  * (`roles`/`roleSources`), the configured or world-recorded canonical owner, a
- * connector-admin whitelist match on a stable platform id, and confirmed
- * identity links that let a linked entity inherit the owner/grant. `canModifyRole`
+ * connector-admin whitelist match on a stable platform id, and identity
+ * evidence selected by the active authority cutover state. `canModifyRole`
  * is the privilege-escalation gate (OWNER may change anyone; ADMIN only
  * strictly-lower ranks and never grants OWNER); `hasRoleAccess` is the read-time
  * gate callers use to admit or deny an action.
@@ -30,12 +30,14 @@ import { createUniqueUuid } from "./entities";
 import { ElizaError } from "./errors.ts";
 import { logger } from "./logger";
 import type { IAgentRuntime, Memory, UUID, World } from "./types";
+import type { IdentityResolutionService } from "./types/identity";
 import {
 	MESSAGE_SOURCE_AGENT_GREETING,
 	MESSAGE_SOURCE_CLIENT_CHAT,
 	MESSAGE_SOURCE_CODING_AGENT,
 	MESSAGE_SOURCE_SUB_AGENT,
 } from "./types/message-source";
+import { ServiceType } from "./types/service";
 import { formatError } from "./utils/format-error";
 import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
 import { validateUuid } from "./utils.ts";
@@ -454,7 +456,6 @@ function connectorIdentityMatches(
 		if (!leftConnector || !rightConnector) {
 			continue;
 		}
-
 		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
 			const leftValue = leftConnector[field];
 			const rightValue = rightConnector[field];
@@ -471,59 +472,90 @@ function connectorIdentityMatches(
 	return false;
 }
 
-async function hasConfirmedIdentityLink(
-	runtime: IAgentRuntime,
-	entityId: string,
-	ownerId: string,
-): Promise<boolean> {
-	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
-	return linkedIds.includes(ownerId);
-}
-
 async function getConfirmedLinkedEntityIds(
 	runtime: IAgentRuntime,
 	entityId: string,
 ): Promise<string[]> {
-	if (typeof runtime.getRelationships !== "function") {
-		return [];
-	}
+	if (typeof runtime.getRelationships !== "function") return [];
 
 	try {
 		const relationships = await runtime.getRelationships({
 			entityIds: [entityId as UUID],
 			tags: ["identity_link"],
 		});
-
 		const linkedIds = new Set<string>();
 		for (const relationship of relationships) {
 			const metadata = asRecord(relationship.metadata);
-			if (metadata?.status !== "confirmed") {
-				continue;
-			}
-
-			if (
-				relationship.sourceEntityId === entityId &&
-				typeof relationship.targetEntityId === "string"
-			) {
+			if (metadata?.status !== "confirmed") continue;
+			if (relationship.sourceEntityId === entityId) {
 				linkedIds.add(relationship.targetEntityId);
 			}
-			if (
-				relationship.targetEntityId === entityId &&
-				typeof relationship.sourceEntityId === "string"
-			) {
+			if (relationship.targetEntityId === entityId) {
 				linkedIds.add(relationship.sourceEntityId);
 			}
 		}
-
 		return [...linkedIds];
 	} catch (error) {
-		// error-policy:J2 identity links participate in authorization; preserve
-		// lookup context instead of treating a failed read as no links.
+		// error-policy:J2 identity links participate in the pre-cutover
+		// authorization path, so a failed read must not become an empty result.
 		throw new ElizaError("Failed to load confirmed identity links", {
 			code: "IDENTITY_LINK_QUERY_FAILED",
 			cause: error,
 			context: { entityId },
 		});
+	}
+}
+
+async function resolveIdentityOwnerBinding(
+	runtime: IAgentRuntime,
+	entityId: UUID,
+	ownerIds: readonly UUID[],
+): Promise<boolean | null> {
+	if (typeof runtime.getService !== "function") return null;
+	const service = runtime.getService<IdentityResolutionService>(
+		ServiceType.IDENTITY_RESOLUTION,
+	);
+	if (!service) return null;
+
+	try {
+		const canonical = await service.resolveCanonicalPrincipal(
+			runtime.agentId,
+			entityId,
+		);
+		// The canonical read must echo exactly the request it resolved; a
+		// misrouted response for another agent or actor must not authorize.
+		if (
+			canonical.agentId !== runtime.agentId ||
+			canonical.requestedPrincipalId !== entityId ||
+			!Number.isSafeInteger(canonical.generation) ||
+			canonical.generation < 0
+		) {
+			return false;
+		}
+		const evaluation = await service.evaluateOwnerBinding({
+			agentId: runtime.agentId,
+			actorPrincipalId: entityId,
+			candidateOwnerPrincipalIds: ownerIds,
+			purpose: "role_resolution",
+		});
+		// Both reads must observe the same identity-graph generation; a merge
+		// or split between the two awaits invalidates the binding decision.
+		return (
+			evaluation.decision === "bound" &&
+			evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId &&
+			ownerIds.includes(evaluation.ownerPrincipalId) &&
+			validateUuid(evaluation.actorCanonicalPrincipalId) !== null &&
+			validateUuid(evaluation.claimId) !== null &&
+			typeof evaluation.ownerBindingId === "string" &&
+			evaluation.ownerBindingId.length > 0 &&
+			Number.isSafeInteger(evaluation.generation) &&
+			evaluation.generation === canonical.generation
+		);
+	} catch (error) {
+		// error-policy:J4 authority read failure is reported and degrades to a
+		// fail-closed non-owner decision instead of falling back to weaker paths.
+		runtime.reportError("Roles.evaluateOwnerBinding", error, { entityId });
+		return false;
 	}
 }
 
@@ -547,11 +579,19 @@ async function resolveOwnershipRole(
 		if (ownerId === entityId) {
 			return "OWNER";
 		}
+	}
 
-		if (await hasConfirmedIdentityLink(runtime, entityId, ownerId)) {
-			return "OWNER";
-		}
+	const verifiedBinding = await resolveIdentityOwnerBinding(
+		runtime,
+		entityId as UUID,
+		ownerIds as UUID[],
+	);
+	if (verifiedBinding !== null) return verifiedBinding ? "OWNER" : null;
 
+	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
+	if (ownerIds.some((ownerId) => linkedIds.includes(ownerId))) return "OWNER";
+
+	for (const ownerId of ownerIds) {
 		const ownerMetadata = await getEntityMetadata(runtime, ownerId);
 		if (!ownerMetadata) {
 			continue;
@@ -736,27 +776,28 @@ async function resolveExplicitGrantedRole(
 		return { role: directRole, source: "manual" };
 	}
 
+	const identityService =
+		typeof runtime.getService === "function"
+			? runtime.getService<IdentityResolutionService>(
+					ServiceType.IDENTITY_RESOLUTION,
+				)
+			: null;
+	if (identityService) return null;
+
 	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
 	let bestRole: RoleName | null = null;
-
 	for (const linkedEntityId of linkedIds) {
 		const linkedRole = getEntityRole(metadata, linkedEntityId);
-		if (linkedRole === "GUEST") {
-			continue;
-		}
+		if (linkedRole === "GUEST") continue;
 		const linkedSource = await resolveStoredRoleSource(
 			runtime,
 			metadata,
 			linkedEntityId,
 		);
-		if (linkedSource !== "manual") {
-			continue;
-		}
-		if (!bestRole || ROLE_RANK[linkedRole] > ROLE_RANK[bestRole]) {
+		if (linkedSource !== "manual") continue;
+		if (!bestRole || ROLE_RANK[linkedRole] > ROLE_RANK[bestRole])
 			bestRole = linkedRole;
-		}
 	}
-
 	return bestRole ? { role: bestRole, source: "linked_manual" } : null;
 }
 

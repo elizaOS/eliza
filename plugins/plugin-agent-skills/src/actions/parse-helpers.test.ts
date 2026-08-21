@@ -49,4 +49,16 @@ describe("skill reference clamps", () => {
 		expect(view.length).toBe(121);
 		expect(view.endsWith("…")).toBe(true);
 	});
+
+	it("keeps surrogate pairs intact and sanitizes lone surrogates in log view", () => {
+		const longWithEmoji = `${"a".repeat(119)}🦊${"b".repeat(50)}`;
+		const view = skillReferenceLogView(longWithEmoji);
+		expect(view.isWellFormed()).toBe(true);
+		expect(view).toBe(`${"a".repeat(119)}…`);
+
+		const lone = `bad ${String.fromCharCode(0xd800)} ref`;
+		const loneView = skillReferenceLogView(lone);
+		expect(loneView.isWellFormed()).toBe(true);
+		expect(loneView).toBe("bad \uFFFD ref");
+	});
 });

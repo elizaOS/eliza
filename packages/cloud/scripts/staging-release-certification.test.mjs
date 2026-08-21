@@ -114,6 +114,23 @@ describe("staging release certification payload", () => {
     });
   });
 
+  test("accepts an explicit canonical staging dispatch", () => {
+    const input = fixture();
+    input.certification = createStagingReleaseCertification({
+      repository: "elizaOS/eliza",
+      runId: "12345",
+      runAttempt: "2",
+      sourceSha,
+      treeSha,
+      workflowSha256,
+      event: "workflow_dispatch",
+      artifactName,
+      issuedAt,
+    });
+    input.run.event = "workflow_dispatch";
+    expect(verifyStagingReleaseCertification(input).treeSha).toBe(treeSha);
+  });
+
   test.each([
     ["wrong tree", (input) => (input.expectedTreeSha = "e".repeat(40))],
     [
@@ -128,10 +145,7 @@ describe("staging release certification payload", () => {
       "wrong environment",
       (input) => (input.certification.environment = "production"),
     ],
-    [
-      "wrong event",
-      (input) => (input.certification.event = "workflow_dispatch"),
-    ],
+    ["wrong event", (input) => (input.certification.event = "pull_request")],
     ["wrong ref", (input) => (input.certification.ref = "refs/heads/main")],
     ["expired", (input) => (input.now = "2026-08-30T12:00:00.000Z")],
     [
@@ -149,7 +163,8 @@ describe("staging release certification payload", () => {
   test.each([
     ["failed", (run) => (run.conclusion = "failure")],
     ["incomplete", (run) => (run.status = "in_progress")],
-    ["manual", (run) => (run.event = "workflow_dispatch")],
+    ["pull request", (run) => (run.event = "pull_request")],
+    ["event mismatch", (run) => (run.event = "workflow_dispatch")],
     ["main", (run) => (run.head_branch = "main")],
     ["wrong workflow", (run) => (run.path = ".github/workflows/ci.yml")],
     ["wrong repository", (run) => (run.repository.full_name = "attacker/fork")],
@@ -275,14 +290,16 @@ describe("staging release certification CLI", () => {
 });
 
 describe("Cloud CF workflow staging certification gate", () => {
-  test("emits a certificate only after a successful develop push release", () => {
+  test("emits a certificate only after a successful canonical develop release", () => {
     const block = jobBlock(workflow, "certify-staging-release");
     expect(block).toContain("needs: release");
     expect(block).toContain("github.event_name == 'push'");
+    expect(block).toContain("github.event_name == 'workflow_dispatch'");
     expect(block).toContain("github.ref == 'refs/heads/develop'");
     expect(block).toContain("needs.release.result == 'success'");
     expect(block).toContain("git rev-parse 'HEAD^{tree}'");
     expect(block).toContain("staging-release-certification.mjs create");
+    expect(block).toContain('--event "$GITHUB_EVENT_NAME"');
     expect(block).toContain(
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     );
@@ -299,7 +316,9 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(validate).toContain("ref: $" + "{{ github.sha }}");
     expect(validate).toContain("persist-credentials: false");
     expect(validate).toContain("git rev-parse 'HEAD^{tree}'");
-    expect(validate).toContain('event == "push"');
+    expect(validate).toContain(
+      '(.event == "push" or .event == "workflow_dispatch")',
+    );
     expect(validate).toContain('head_branch == "develop"');
     expect(validate).toContain(
       'path == ".github/workflows/cloud-cf-deploy.yml"',

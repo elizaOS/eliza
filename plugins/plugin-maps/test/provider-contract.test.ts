@@ -588,6 +588,37 @@ describe("JsonMapsHttpAdapter provider contract", () => {
     }
   });
 
+  it("normalizes bounded adapter-owned legal attribution", () => {
+    const attributed = new JsonMapsHttpAdapter({
+      id: "attributed-maps",
+      connectionId: "conn_attribution_123456",
+      baseUrl: "https://maps-attribution.example.test",
+      attribution: "  Map data © Contract Maps  ",
+    });
+    expect(attributed.attribution).toBe("Map data © Contract Maps");
+
+    for (const attribution of ["   ", "x".repeat(501)]) {
+      expect(
+        () =>
+          new JsonMapsHttpAdapter({
+            id: "attributed-maps",
+            connectionId: "conn_attribution_123456",
+            baseUrl: "https://maps-attribution.example.test",
+            attribution,
+          }),
+      ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    }
+
+    expect(
+      () =>
+        new JsonMapsHttpAdapter({
+          id: "x".repeat(65),
+          connectionId: "conn_attribution_123456",
+          baseUrl: "https://maps-attribution.example.test",
+        }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+  });
+
   it("rejects provider-semantic spoofing and mixed-provider routes", async () => {
     const spoofed = new JsonMapsHttpAdapter({
       id: "provider-a",

@@ -7,12 +7,14 @@
  * - Level 3 (Resources): As needed (unlimited, executed without loading)
  */
 
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	ProviderResult,
-	State,
+import {
+	type IAgentRuntime,
+	type Memory,
+	type Provider,
+	type ProviderResult,
+	type State,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import type { Skill, SkillCatalogEntry } from "../types";
@@ -181,10 +183,11 @@ export const skillInstructionsProvider: Provider = {
 
 		// Truncate if too long (respect ~5k token guideline)
 		const maxChars = 4000;
+		const wellFormedBody = toWellFormedUnicode(instructions.body);
 		const truncatedBody =
-			instructions.body.length > maxChars
-				? `${instructions.body.substring(0, maxChars)}\n\n...[truncated]`
-				: instructions.body;
+			wellFormedBody.length > maxChars
+				? `${truncateWellFormed(wellFormedBody, maxChars)}\n\n...[truncated]`
+				: wellFormedBody;
 
 		const text = `## Active Skill: ${topSkill.skill.name}
 

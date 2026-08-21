@@ -158,7 +158,7 @@ export function estimateTwilioSmsSegments(body: string): number {
  * would coerce (`"0x10"` → 16, binary/octal, `"Infinity"`) so malformed config
  * falls back to the safe default instead of billing an absurd per-segment cost.
  */
-const TWILIO_SMS_COST_PATTERN = /^\+?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+const TWILIO_SMS_COST_PATTERN = /^\+?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
 /**
  * Resolve the Twilio SMS segment unit cost from configuration.

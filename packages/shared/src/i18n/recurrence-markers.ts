@@ -158,12 +158,15 @@ function authoritativeSegments(text: string): string[] {
     .map((line) => line.trim())
     .filter(Boolean)
     .flatMap((line) => {
-      const roleMatch = line.match(
-        /^(user|owner|assistant|agent|system)\s*:\s*(.*)$/i,
-      );
-      if (!roleMatch) return [line];
-      const role = roleMatch[1]?.toLowerCase();
-      return role === "user" || role === "owner" ? [roleMatch[2] ?? ""] : [];
+      const colonIndex = line.indexOf(":");
+      if (colonIndex < 0) return [line];
+      const role = line.slice(0, colonIndex).trim().toLowerCase();
+      if (!["user", "owner", "assistant", "agent", "system"].includes(role)) {
+        return [line];
+      }
+      return role === "user" || role === "owner"
+        ? [line.slice(colonIndex + 1).trimStart()]
+        : [];
     });
 }
 

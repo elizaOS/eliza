@@ -27,6 +27,16 @@ describe("shouldKeepConversationMessage", () => {
     expect(shouldKeepConversationMessage(msg({ text: "hi" }))).toBe(true);
   });
 
+  it("keeps a zero-token interrupted receipt despite empty text", () => {
+    expect(
+      shouldKeepConversationMessage(msg({ text: "", interrupted: true })),
+    ).toBe(true);
+  });
+
+  it("still drops empty assistant turns that are not interrupted", () => {
+    expect(shouldKeepConversationMessage(msg({ text: "  " }))).toBe(false);
+  });
+
   it("drops explicitly internal assistant turns before considering media", () => {
     expect(
       shouldKeepConversationMessage(

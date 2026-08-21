@@ -29,8 +29,11 @@
     "check:tenant-scope": "bun scripts/check-tenant-scope.ts",
     "check:tenant-scope:self-test": "bun test scripts/check-tenant-scope.test.ts",
     "verify:tenant-isolation": "bun scripts/verify-tenant-db-isolation.ts",
+    "reconcile:container-delete-jobs": "bun scripts/reconcile-container-delete-jobs.ts",
     "test": "node scripts/run-bun-tests.mjs",
     "test:vitest": "vitest run",
+    "verify:managed-accounts": "bun scripts/managed-accounts-doctor.mjs",
+    "verify:managed-accounts:strict": "bun scripts/managed-accounts-doctor.mjs --strict",
     "preflight:messaging-gateways": "node scripts/messaging-gateway-preflight.mjs",
     "preflight:messaging-gateways:strict": "node scripts/messaging-gateway-preflight.mjs --strict",
     "db:check-migrations": "drizzle-kit check",
@@ -97,6 +100,7 @@
     "viem": "^2.48.8",
     "wadis": "^1.0.2",
     "ws": "^8.21.3",
+    "yaml": "2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -6,6 +6,7 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { SkillCatalogEntry } from "../types";
+import { enabledSkillsProvider } from "./enabled-skills";
 import {
 	catalogAwarenessProvider,
 	skillInstructionsProvider,
@@ -92,5 +93,76 @@ describe("agent_skills_catalog provider", () => {
 		);
 
 		expect(result).toEqual({ text: "" });
+	});
+});
+
+describe("skillInstructionsProvider", () => {
+	it("keeps surrogate pairs intact when truncating active skill instructions", async () => {
+		const longInstructions = `${"a".repeat(3999)}🦊${"b".repeat(50)}`;
+		const service = {
+			getLoadedSkills: vi.fn(() => [
+				{
+					slug: "weather-pro",
+					name: "Weather Pro",
+					description: "Use when checking weather",
+				},
+			]),
+			getSkillInstructions: vi.fn(() => ({
+				body: longInstructions,
+				estimatedTokens: 1000,
+			})),
+		};
+		const runtime = {
+			getService: vi.fn((name: string) => {
+				if (name !== "AGENT_SKILLS_SERVICE") return undefined;
+				return service;
+			}),
+		} as unknown as IAgentRuntime;
+
+		const result = await skillInstructionsProvider.get(
+			runtime,
+			message("weather-pro"),
+			{} as State,
+		);
+
+		expect(result.text.isWellFormed()).toBe(true);
+		expect(result.text).toContain("...[truncated]");
+		expect(result.text).toContain(`${"a".repeat(3999)}\n\n...[truncated]`);
+	});
+});
+
+describe("enabledSkillsProvider", () => {
+	it("keeps surrogate pairs intact and sanitizes lone surrogates in descriptions", async () => {
+		const longDescription = `${"a".repeat(118)}🦊${"b".repeat(50)}`;
+		const service = {
+			getEligibleSkills: vi.fn(async () => [
+				{
+					slug: "custom-skill",
+					name: "Custom Skill",
+					description: longDescription,
+				},
+				{
+					slug: "lone-skill",
+					name: "Lone Skill",
+					description: `bad ${String.fromCharCode(0xd800)} description`,
+				},
+			]),
+			isSkillEnabled: vi.fn(() => true),
+		};
+		const runtime = {
+			getService: vi.fn((name: string) =>
+				name === "AGENT_SKILLS_SERVICE" ? service : undefined,
+			),
+		} as unknown as IAgentRuntime;
+
+		const result = await enabledSkillsProvider.get(
+			runtime,
+			message("skills"),
+			{} as State,
+		);
+
+		expect(result.text.isWellFormed()).toBe(true);
+		expect(result.text).toContain(`${"a".repeat(118)}…`);
+		expect(result.text).toContain("bad \uFFFD description");
 	});
 });

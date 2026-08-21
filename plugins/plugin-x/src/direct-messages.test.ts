@@ -69,6 +69,37 @@ describe("X DM conversation classification", () => {
 });
 
 describe("TwitterDirectMessageClient", () => {
+  it("does not prefix-parse a partial DM polling interval", async () => {
+    vi.useFakeTimers();
+    const listDmEvents = vi.fn(async () => ({ events: [] }));
+    const runtime = {
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getCache: vi.fn(async () => null),
+      setCache: vi.fn(async () => undefined),
+      reportError: vi.fn(),
+      getSetting: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    const client = {
+      accountId: "agent",
+      profile: { id: "agent-user-id", username: "elizamakesmagic" },
+      twitterClient: authenticatedTwitterClient("agent-user-id", {
+        listDmEvents,
+      }),
+    } as unknown as ClientBase;
+    const dmClient = new TwitterDirectMessageClient(client, runtime, {
+      TWITTER_DM_POLICY: "open",
+      TWITTER_DM_POLL_INTERVAL_SECONDS: "90s",
+    });
+
+    await dmClient.start();
+    expect(listDmEvents).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000 - 1);
+    expect(listDmEvents).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(listDmEvents).toHaveBeenCalledTimes(2);
+    await dmClient.stop();
+  });
+
   it("routes configured DMs to personal Eliza without invoking the public agent", async () => {
     vi.useFakeTimers();
     const listDmEvents = vi.fn(async () => ({

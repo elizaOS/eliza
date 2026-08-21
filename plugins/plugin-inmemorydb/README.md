@@ -4,6 +4,12 @@ A pure in-memory, ephemeral database adapter for elizaOS. All data is completely
 
 Intended for tests, stateless deployments, prototyping, and scenarios where zero setup and zero persistence are the goal. Not suitable for production agents that need to remember past interactions.
 
+Custom `IStorage` implementations must provide `applyBatch` to support document
+updates. The adapter fails closed when that primitive is absent because a
+parent document and all fragments of its new revision must become visible
+together. Replacement fragment IDs must be fresh and cannot reuse IDs from the
+committed generation.
+
 ## Installation
 
 ```bash

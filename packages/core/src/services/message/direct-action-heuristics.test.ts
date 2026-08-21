@@ -291,6 +291,11 @@ describe("looksLikeLocalShellRequest", () => {
 describe("looksLikeWebSearchRequest", () => {
 	it("fires on explicit search or current-market/news intent", () => {
 		expect(looksLikeWebSearchRequest("search the web for elizaOS")).toBe(true);
+		expect(
+			looksLikeWebSearchRequest(
+				"Fetch https://httpstat.us/503 and summarize the response",
+			),
+		).toBe(true);
 		expect(looksLikeWebSearchRequest("what is the current price of BTC")).toBe(
 			true,
 		);
@@ -823,6 +828,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"never please under any circumstances show my reminders",
 			"what happens when I say show my reminders",
 			'write a story where she says "show my goals"',
+			"i can't explain 'list my todos'",
+			"i'm quoting 'list my todos'",
+			"i'd rephrase 'list my todos'",
 			"explain the phrase show my routines",
 		]) {
 			expect(
@@ -845,6 +853,17 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				"what's on my todo list? i'd like to know",
 			),
 		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		for (const message of [
+			"'hello!' then list my todos '...world'",
+			"'okay.' now show my todos '  thanks'",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
 		for (const message of [
 			"search the web for ways to organize my finances",
 			"look up advice about my finances",
@@ -1493,6 +1512,12 @@ describe("classifyExplicitContinuationTurn", () => {
 		expect(classifyExplicitContinuationTurn("yes")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("sounds good")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("that works")).toBe("approval");
+		expect(
+			classifyExplicitContinuationTurn("sure, that's great, go ahead"),
+		).toBe("approval");
+		expect(classifyExplicitContinuationTurn("please this is fine")).toBe(
+			"approval",
+		);
 	});
 
 	it("rejects ordinary chat, topic switches, and questions", () => {

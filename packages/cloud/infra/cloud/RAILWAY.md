@@ -19,10 +19,10 @@ config wins — fix this file.
 |---|---|---|---|---|
 | `eliza-app` Pages project (homepage, auth, cloud management, and managed agent app) | Cloudflare Pages | `packages/app/` (`build:web`, embedding `packages/homepage`) | `.github/workflows/cloud-cf-deploy.yml` `deploy-app` job | Public: `eliza.app` + `cloud.eliza.app` (staging: `staging.eliza.app` + `cloud-staging.eliza.app`) |
 | `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.eliza.app`, `x402.eliza.app`, and `*.cloud.eliza.app` (staging uses `*-staging.eliza.app`); legacy elizacloud.ai routes issue 308 redirects |
-| PostgreSQL | **Railway managed Postgres** (one instance per environment) | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
+| PostgreSQL | **Railway managed Postgres**. Environment-scoped bindings exist, but the repository and current public receipts do not prove an independently isolated staging service, volume, or Hyperdrive origin; follow the identity/recovery gates below | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
 | Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
 | Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db` | n/a |
-| `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | `railway.toml` + `Dockerfile`; Railway auto-deploys on push — `cloud-gateway-discord.yml` runs tests only | Discord-facing; `/internal/*` shared-secret routes |
+| `gateway-discord` (multi-tenant Discord WS gateway) | Railway (Docker) | `packages/cloud/services/gateway-discord/` | Authorized operator upload through `scripts/deploy-railway.sh`; `cloud-gateway-discord.yml` runs tests only and does not deploy | Discord-facing; `/internal/*` shared-secret routes |
 | `gateway-webhook` (Telegram / Blooio / Twilio / WhatsApp) | Railway (Docker) | `packages/cloud/services/gateway-webhook/` | protected `.github/workflows/deploy-gateway-webhook.yml` using `railway.toml` + `Dockerfile` | Public webhook ingress |
 | `voice-kokoro-tts` (free-cloud TTS) | Railway (Docker) | `packages/cloud/services/voice-kokoro-tts/` | `railway.toml`; its URL is injected at Worker deploy time as `KOKORO_TTS_URL` (GitHub var `ELIZA_VOICE_KOKORO_TTS_URL` in `cloud-cf-deploy.yml`) | **Private origin** behind the Worker's `POST /api/v1/voice/tts` — unauthenticated at the service boundary, so its URL must not be published |
 | `voice-whisper-stt` (free-cloud STT) | Railway (Docker) | `packages/cloud/services/voice-whisper-stt/` | `railway.toml`; consumed via the `WHISPER_STT_URL` env var | **Private origin** behind the Worker's `POST /api/v1/voice/stt` (same posture as Kokoro) |
@@ -232,9 +232,10 @@ was decommissioned on 2026-06-17.
 
 ### `gateway-discord` / `gateway-webhook`
 
-Docker/Bun services with `railway.toml` manifests. `gateway-discord` retains
-its Railway watched-branch deployment and `cloud-gateway-discord.yml` runs its
-repository tests. `gateway-webhook` has no Railway repo trigger: the protected
+Docker/Bun services with `railway.toml` manifests. `gateway-discord` has no
+connected Railway repository source; an authorized operator uploads it with
+its package deploy script, while `cloud-gateway-discord.yml` runs repository
+tests only. `gateway-webhook` has no Railway repo trigger: the protected
 `deploy-gateway-webhook.yml` dispatcher is its only deployment authority. It
 binds staging to `develop` and production to `main`, validates the exact
 Railway identities and canonical routing variables, uploads the exact dispatch

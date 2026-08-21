@@ -381,9 +381,30 @@ async function runAppleVision(
 export const UNLIMITED_OCR_PROMPT =
   "Convert this document image to markdown. Transcribe every visible character exactly, preserving reading order. Output only the transcribed text with no commentary.";
 
-// A grounding decoration is a line whose tail is a pixel bbox: `title [x1,y1,x2,y2]`.
-const GROUNDING_LINE =
-  /^(.*?)\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]$/;
+function parseGroundingLine(
+  line: string,
+): { text: string; box: [number, number, number, number] } | null {
+  const value = line.trim();
+  if (!value.endsWith("]")) return null;
+  const open = value.lastIndexOf("[");
+  if (open < 0) return null;
+  const parts = value.slice(open + 1, -1).split(",");
+  if (parts.length !== 4) return null;
+  const coordinates: number[] = [];
+  for (const part of parts) {
+    const token = part.trim();
+    if (!token) return null;
+    for (let index = 0; index < token.length; index += 1) {
+      const code = token.charCodeAt(index);
+      if (code < 48 || code > 57) return null;
+    }
+    coordinates.push(Number(token));
+  }
+  return {
+    text: value.slice(0, open).trimEnd(),
+    box: coordinates as [number, number, number, number],
+  };
+}
 
 /**
  * Split grounding decorations (`title [x1,y1,x2,y2]` lines the DeepSeek-OCR
@@ -401,17 +422,12 @@ export function parseGroundingDecorations(raw: string): {
   const regions: OcrGroundedRegion[] = [];
   const lines: string[] = [];
   for (const line of raw.split("\n")) {
-    const match = line.trim().match(GROUNDING_LINE);
-    if (match) {
-      const box: [number, number, number, number] = [
-        Number(match[2]),
-        Number(match[3]),
-        Number(match[4]),
-        Number(match[5]),
-      ];
+    const grounding = parseGroundingLine(line);
+    if (grounding) {
+      const { text, box } = grounding;
       if (validGroundingBox(box)) {
-        regions.push({ text: match[1], box });
-        if (match[1] !== "") lines.push(match[1]);
+        regions.push({ text, box });
+        if (text !== "") lines.push(text);
         continue;
       }
     }

@@ -5,7 +5,11 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveTelegramRuntimeEntityId } from "../identity";
-import { handleTelegramStandaloneMessage } from "./handler";
+import {
+  handleTelegramStandaloneMessage,
+  splitTelegramText,
+  TELEGRAM_MESSAGE_MAX_LENGTH,
+} from "./handler";
 
 function makeRuntime(
   options: {
@@ -231,5 +235,47 @@ describe("standalone Telegram DM policy gate", () => {
 
     expect(handleMessage).toHaveBeenCalledTimes(1);
     expect(pairingService.isAllowed).not.toHaveBeenCalled();
+  });
+});
+
+describe("splitTelegramText", () => {
+  it("keeps short text intact without chunking", () => {
+    expect(splitTelegramText("hello world")).toEqual(["hello world"]);
+  });
+
+  it("splits text longer than 4096 characters", () => {
+    const longText = "a".repeat(4096 * 2 + 100);
+    const chunks = splitTelegramText(longText);
+
+    expect(chunks.length).toBe(3);
+    expect(chunks[0].length).toBe(TELEGRAM_MESSAGE_MAX_LENGTH);
+    expect(chunks[1].length).toBe(TELEGRAM_MESSAGE_MAX_LENGTH);
+    expect(chunks[2].length).toBe(100);
+    expect(chunks.join("")).toBe(longText);
+  });
+
+  it("keeps UTF-16 surrogate pairs intact across the 4096 boundary", () => {
+    // 4095 single-unit chars + 2-unit emoji (🦊 \uD83E\uDD8A) + 100 chars
+    // Naive split at 4096 would split the emoji between \uD83E and \uDD8A.
+    const text = `${"x".repeat(4095)}🦊${"y".repeat(100)}`;
+    const chunks = splitTelegramText(text);
+
+    expect(chunks.length).toBe(2);
+    expect(chunks[0].length).toBe(4095); // backed off by 1 so emoji moves to chunk 2
+    expect(chunks[0]).toBe("x".repeat(4095));
+    expect(chunks[1]).toBe(`🦊${"y".repeat(100)}`);
+
+    for (const chunk of chunks) {
+      expect(chunk.isWellFormed()).toBe(true);
+      expect(chunk.length).toBeLessThanOrEqual(TELEGRAM_MESSAGE_MAX_LENGTH);
+    }
+  });
+
+  it("sanitizes pre-existing lone surrogates before chunking", () => {
+    const text = "a\ud800bc";
+    const chunks = splitTelegramText(text);
+
+    expect(chunks).toEqual(["a\ufffdbc"]);
+    expect(chunks.every((c) => c.isWellFormed())).toBe(true);
   });
 });

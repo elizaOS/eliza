@@ -10,7 +10,11 @@
  * handoff mode simultaneously (unlike `GlobalPauseStore`, which is global).
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 type RuntimeCacheLike = Pick<
   IAgentRuntime,
@@ -87,7 +91,9 @@ function isValidRecord(value: unknown): value is HandoffRecord {
 }
 
 function normalizeReason(reason: string): string {
-  return reason.trim().slice(0, 200);
+  const wellFormed = toWellFormedUnicode(reason.trim());
+  if (wellFormed.length <= 200) return wellFormed;
+  return truncateWellFormed(wellFormed, 200);
 }
 
 export function createHandoffStore(runtime: IAgentRuntime): HandoffStore {

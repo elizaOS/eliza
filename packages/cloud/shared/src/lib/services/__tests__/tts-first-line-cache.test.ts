@@ -14,7 +14,20 @@ describe("parseTtsCacheByteAggregate", () => {
   });
 
   test("refuses corrupt totals instead of evicting every cache entry from NaN", () => {
-    for (const value of [undefined, "garbage", Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5]) {
+    for (const value of [
+      undefined,
+      "garbage",
+      "0x10",
+      "0b10",
+      "1e3",
+      " 4096 ",
+      "+4096",
+      "04096",
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+      1.5,
+    ]) {
       expect(() => parseTtsCacheByteAggregate(value)).toThrow(
         "TTS first-line cache returned a corrupt byte aggregate",
       );

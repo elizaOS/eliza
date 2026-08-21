@@ -24,6 +24,7 @@ import {
   Service,
   stringToUuid,
   type TargetInfo,
+  toWellFormedUnicode,
   truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
@@ -140,8 +141,13 @@ function getInstagramTargetMetadata(target: TargetInfo): Record<string, unknown>
     : undefined;
 }
 
-function truncateInstagramComment(text: string): string {
-  return text.length > MAX_COMMENT_LENGTH ? `${text.slice(0, MAX_COMMENT_LENGTH - 3)}...` : text;
+export function truncateInstagramComment(text: string): string {
+  const wellFormed = toWellFormedUnicode(text);
+  if (wellFormed.length <= MAX_COMMENT_LENGTH) {
+    return wellFormed;
+  }
+  const budget = Math.max(0, MAX_COMMENT_LENGTH - 3);
+  return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 function getInstagramPostMetadata(content: Content): Record<string, unknown> {
@@ -424,9 +430,14 @@ export class InstagramService extends Service {
   private getAccountService(accountId = this.defaultAccountId): InstagramService {
     const normalized = normalizeInstagramAccountId(accountId);
     const services = this.accountServices ?? new Map<string, InstagramService>();
-    return (
-      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
-    );
+    const found =
+      services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined);
+    if (!found) {
+      throw new Error(
+        `Instagram account '${normalized}' is not available in this service instance`
+      );
+    }
+    return found;
   }
 
   /**

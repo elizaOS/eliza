@@ -6,6 +6,20 @@
  */
 import { describe, expect, mock, test } from "bun:test";
 
+const redactString = (_value: string | null | undefined): string =>
+  "[REDACTED]";
+const redact = {
+  txHash: redactString,
+  id: redactString,
+  orgId: redactString,
+  userId: redactString,
+  paymentId: redactString,
+  trackId: redactString,
+  ip: redactString,
+  address: redactString,
+  context: (_context: Record<string, unknown>): Record<string, unknown> => ({}),
+};
+
 mock.module("@/lib/services/cli-auth-sessions", () => ({
   cliAuthSessionsService: {
     createSession: async (sessionId: string) => ({
@@ -26,7 +40,14 @@ mock.module("@/lib/services/cli-auth-sessions", () => ({
 }));
 
 mock.module("@/lib/utils/logger", () => ({
-  logger: { debug() {}, info() {}, warn() {}, error() {} },
+  redact,
+  logger: {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+    redact,
+  },
 }));
 
 const worker = (await import("./index")).default;

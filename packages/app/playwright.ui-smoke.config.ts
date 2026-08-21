@@ -183,6 +183,7 @@ const shard = parseUiSmokeShard(process.env[UI_SMOKE_SHARD_ENV]);
 
 export default defineConfig({
   testDir: "./test/ui-smoke",
+  testMatch: "**/*.spec.ts",
   timeout: 180_000,
   expect: {
     timeout: 15_000,

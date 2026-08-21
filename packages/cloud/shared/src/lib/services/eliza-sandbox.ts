@@ -1947,7 +1947,10 @@ export class ElizaSandboxService {
   async deleteAgent(
     agentId: string,
     orgId: string,
-    options: { authorization?: DeleteAuthorization } = {},
+    options: {
+      authorization?: DeleteAuthorization;
+      stateLossAcknowledged?: boolean;
+    } = {},
   ): Promise<DeleteAgentResult> {
     // Phase 0 — fail-closed pre-deletion capture (#18517), the discipline
     // shutdown() applies before stopping: a live dedicated container is never
@@ -1959,7 +1962,7 @@ export class ElizaSandboxService {
     // its bridge intact, the capture happens before any teardown, and a
     // refusal leaves a recoverable tombstone the next attempt retries.
     let captureWaiverAlreadyPersisted = false;
-    let captureUnsupportedGeneration: {
+    let captureWaiverGeneration: {
       bridgeUrl: string;
       environmentRevision: number;
       sandboxId: string | null;
@@ -2032,7 +2035,7 @@ export class ElizaSandboxService {
           // an image that cannot snapshot by construction proceeds.
           const message = error instanceof Error ? error.message : String(error);
           if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
-            captureUnsupportedGeneration = {
+            captureWaiverGeneration = {
               bridgeUrl: snapshotSource.bridge_url,
               environmentRevision: snapshotSource.environment_revision,
               sandboxId: snapshotSource.sandbox_id,
@@ -2040,6 +2043,20 @@ export class ElizaSandboxService {
             logger.warn(
               "[agent-sandbox] Delete proceeding without capture: image has no snapshot endpoint",
               { agentId },
+            );
+          } else if (options.stateLossAcknowledged) {
+            // Explicit customer/operator recovery path: a capture failure can
+            // otherwise make a data-bearing agent undeletable forever. Bind the
+            // waiver to this exact deletion/container generation and persist it
+            // under the lifecycle lock before any destructive work begins.
+            captureWaiverGeneration = {
+              bridgeUrl: snapshotSource.bridge_url,
+              environmentRevision: snapshotSource.environment_revision,
+              sandboxId: snapshotSource.sandbox_id,
+            };
+            logger.error(
+              "[agent-sandbox] Delete proceeding WITHOUT pre-deletion capture: state loss acknowledged",
+              { agentId, captureError: message },
             );
           } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
             logger.warn(
@@ -2075,7 +2092,7 @@ export class ElizaSandboxService {
     // same agent/org. The lock + transaction are released the moment this returns.
     const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
       snapshot: preDeleteSnapshot,
-      captureUnsupportedGeneration,
+      captureWaiverGeneration,
       captureWaiverAlreadyPersisted,
       existingBackup: preDeleteBackupCandidate,
     });
@@ -2351,7 +2368,7 @@ export class ElizaSandboxService {
         sizeBytes: number;
         bridgeUrl: string;
       } | null;
-      captureUnsupportedGeneration: {
+      captureWaiverGeneration: {
         bridgeUrl: string;
         environmentRevision: number;
         sandboxId: string | null;
@@ -2442,12 +2459,12 @@ export class ElizaSandboxService {
           preDeleteCapture?.captureWaiverAlreadyPersisted === true &&
           this.hasCurrentPreDeleteCaptureWaiver(rec);
         if (preDeleteBackupId === null && !captureWaiverIsCurrent) {
-          const unsupported = preDeleteCapture?.captureUnsupportedGeneration ?? null;
-          if (unsupported) {
+          const waiver = preDeleteCapture?.captureWaiverGeneration ?? null;
+          if (waiver) {
             if (
-              rec.bridge_url !== unsupported.bridgeUrl ||
-              rec.environment_revision !== unsupported.environmentRevision ||
-              rec.sandbox_id !== unsupported.sandboxId
+              rec.bridge_url !== waiver.bridgeUrl ||
+              rec.environment_revision !== waiver.environmentRevision ||
+              rec.sandbox_id !== waiver.sandboxId
             ) {
               return {
                 ok: false as const,
@@ -2455,7 +2472,7 @@ export class ElizaSandboxService {
                   "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
               };
             }
-            captureWaiverToPersist = unsupported;
+            captureWaiverToPersist = waiver;
           } else {
             const snapshot = preDeleteCapture?.snapshot ?? null;
             // The capture must be OF THIS generation (shutdown's rule): a
@@ -2930,6 +2947,7 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     authorization?: DeleteAuthorization,
+    stateLossAcknowledged?: boolean,
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
@@ -2937,7 +2955,10 @@ export class ElizaSandboxService {
     error?: string;
     retryable?: true;
   }> {
-    const result = await this.deleteAgent(agentId, orgId, { authorization });
+    const result = await this.deleteAgent(agentId, orgId, {
+      authorization,
+      stateLossAcknowledged,
+    });
     if (!result.success) {
       // If the row is already gone, treat as success. This covers the retry
       // case where a prior attempt deleted the row but failed before updating
@@ -3878,11 +3899,16 @@ export class ElizaSandboxService {
     init: RequestInit,
     canonicalBridgeBase: unknown,
   ): Promise<Response> {
+    const trimTrailingSlashes = (value: string): string => {
+      let end = value.length;
+      while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+      return value.slice(0, end);
+    };
     const requestedBase =
       typeof canonicalBridgeBase === "string"
-        ? canonicalBridgeBase.trim().replace(/\/+$/, "")
+        ? trimTrailingSlashes(canonicalBridgeBase.trim())
         : null;
-    const storedBase = rec.bridge_url?.trim().replace(/\/+$/, "") ?? null;
+    const storedBase = rec.bridge_url ? trimTrailingSlashes(rec.bridge_url.trim()) : null;
     if (requestedBase && requestedBase === storedBase) {
       const url = new URL(requestedBase);
       const isLoopback =
@@ -6094,11 +6120,74 @@ export class ElizaSandboxService {
     const text = typeof params.text === "string" ? params.text.trim() : "";
     if (!text) return null;
 
-    const exactWords =
-      /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
-      /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
-    if (exactWords?.[1]?.trim()) {
-      return exactWords[1].trim();
+    const lower = text.toLowerCase();
+    let searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("exact word", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "exact word".length;
+      if (lower.charCodeAt(cursor) === 115) cursor++;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (lower.charCodeAt(cursor) !== 58) continue;
+      cursor++;
+      while (cursor < text.length && /\s/.test(text[cursor] ?? "")) cursor++;
+
+      let end = text.length;
+      while (end > cursor && /\s/.test(text[end - 1] ?? "")) end--;
+      if (cursor < end && (text[cursor] === '"' || text[cursor] === "'")) cursor++;
+      if (cursor < end && (text[end - 1] === '"' || text[end - 1] === "'")) end--;
+      const exact = text.slice(cursor, end).trim();
+      if (exact && !exact.includes("\n") && !exact.includes("\r")) return exact;
+    }
+
+    searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("reply", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "reply".length;
+      const whitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === whitespaceStart) continue;
+      if (lower.startsWith("briefly", cursor)) {
+        cursor += "briefly".length;
+        const brieflyWhitespaceStart = cursor;
+        while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+        if (cursor === brieflyWhitespaceStart) continue;
+      }
+      if (!lower.startsWith("with", cursor)) continue;
+      cursor += "with".length;
+      const withWhitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === withWhitespaceStart) continue;
+      const quote = text[cursor];
+      if (quote !== '"' && quote !== "'") continue;
+      const singleQuoteClose = text.indexOf("'", cursor + 1);
+      const doubleQuoteClose = text.indexOf('"', cursor + 1);
+      const close =
+        singleQuoteClose === -1
+          ? doubleQuoteClose
+          : doubleQuoteClose === -1
+            ? singleQuoteClose
+            : Math.min(singleQuoteClose, doubleQuoteClose);
+      if (close === -1) continue;
+      const reply = text.slice(cursor + 1, close).trim();
+      if (reply) return reply;
     }
 
     return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";
@@ -8257,10 +8346,101 @@ export class ElizaSandboxService {
   }
 
   /**
-   * Daemon-side handler for the `agent_suspend` job. Calls the provider's
-   * absence-proof replacement stop, flips the DB row to `stopped`, and clears
-   * bridge/health URLs — but keeps `sandbox_id` and the per-tenant managed DB
-   * so a subsequent `agent_resume` re-provisions against the retained state.
+   * Backup gate run before `executeSuspend` stops a data-bearing container
+   * (#20726 item 6: every destructive lifecycle / billing freeze proves a
+   * restorable backup first). The provider stop drops the container from its
+   * node, so container-local state that never reached a durable backup would
+   * be lost silently. Mirrors the sleep gate exactly: a live capture when the
+   * bridge is reachable, a transient capture signal deferring to the job
+   * retry loop, and any other capture failure — including an image with no
+   * snapshot endpoint — falling through to a proven-restorable existing
+   * backup via the wake integrity gate. Suspend keeps state for a later
+   * resume, so unlike delete there is no state-loss waiver: an uncapturable
+   * container with no durable backup refuses rather than discarding the only
+   * copy. A refusal leaves the container running; a
+   * billing-request suspend surfaces through the stop-intent retry /
+   * terminal-attention machinery instead of destroying state.
+   */
+  private async prepareSuspendBackupGate(
+    rec: AgentSandbox,
+  ): Promise<
+    | { outcome: "skip" }
+    | { outcome: "proceed"; backupId?: string; capturedFresh: boolean }
+    | { outcome: "refuse"; error: string }
+  > {
+    if (
+      !rec.sandbox_id ||
+      rec.execution_tier === "shared" ||
+      (rec.organization_id === WARM_POOL_ORG_ID && rec.pool_status === "unclaimed")
+    ) {
+      return { outcome: "skip" };
+    }
+    if (rec.bridge_url) {
+      try {
+        const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
+        const backup = await agentSandboxesRepository.createBackup({
+          sandbox_record_id: rec.id,
+          snapshot_type: "pre-shutdown",
+          state_data: stateData,
+          size_bytes: sizeBytes,
+        });
+        return { outcome: "proceed", backupId: backup.id, capturedFresh: true };
+      } catch (error) {
+        // error-policy:J1 the suspend command boundary translates capture
+        // failures into an explicit disposition: a transient signal defers to
+        // the job retry loop, and anything else — including an image with no
+        // snapshot endpoint — falls through to the proven-existing-backup
+        // gate below (retrying an unsupported capture can never succeed, and
+        // an unbacked-up container must not be dropped).
+        const message = error instanceof Error ? error.message : String(error);
+        if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
+          logger.warn("[agent-sandbox] Suspend deferred: capture transiently unavailable", {
+            agentId: rec.id,
+          });
+          return {
+            outcome: "refuse",
+            error: `Refusing to stop without a current backup: ${message}`,
+          };
+        }
+        logger.warn(
+          "[agent-sandbox] Suspend snapshot fetch failed; checking latest durable backup",
+          { agentId: rec.id, error: message },
+        );
+      }
+    }
+    const gate = await runWakeRestoreIntegrityGate({
+      sandboxRecordId: rec.id,
+      agentName: rec.agent_name,
+    });
+    if (!gate.ok) {
+      logger.error("[agent-sandbox] Suspend refused: no restorable backup proven", {
+        agentId: rec.id,
+        failure: gate.failure.kind,
+      });
+      return {
+        outcome: "refuse",
+        error: `Refusing to stop on an unproven backup; agent was left running. ${formatWakeRestoreIntegrityError(gate.failure)}`,
+      };
+    }
+    if (gate.backupId) {
+      return { outcome: "proceed", backupId: gate.backupId, capturedFresh: false };
+    }
+    if (gate.verification === "disabled") {
+      const existing = await agentSandboxesRepository.getLatestBackup(rec.id);
+      if (existing) return { outcome: "proceed", backupId: existing.id, capturedFresh: false };
+    }
+    return {
+      outcome: "refuse",
+      error: "Unable to create or find a durable backup before stopping; agent was left running.",
+    };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_suspend` job. Proves a durable backup
+   * (see `prepareSuspendBackupGate`), calls the provider's absence-proof
+   * replacement stop, flips the DB row to `stopped`, and clears bridge/health
+   * URLs — but keeps `sandbox_id` and the per-tenant managed DB so a
+   * subsequent `agent_resume` re-provisions against the retained state.
    * Replaces the Worker-callable `shutdown()` path which cannot reach SSH.
    */
   async executeSuspend(
@@ -8268,8 +8448,31 @@ export class ElizaSandboxService {
     orgId: string,
     jobId: string,
     authorization: "user_request" | "billing_request",
-  ): Promise<{ success: boolean; containerStopped: boolean; error?: string }> {
-    return await dbWrite.transaction(async (tx) => {
+  ): Promise<{ success: boolean; containerStopped: boolean; backupId?: string; error?: string }> {
+    // The backup is captured without holding the lifecycle lock (an HTTP
+    // round-trip must not pin a write transaction); the lifecycle generation
+    // is revalidated under the lock before the stop.
+    const snapshotSource = await this.getAgentForWrite(agentId, orgId);
+    if (
+      !snapshotSource ||
+      snapshotSource.deletion_attempt_id ||
+      this.isAwaitingDeletion(snapshotSource.status)
+    ) {
+      return { success: false, containerStopped: false, error: "Agent not found" };
+    }
+    let suspendBackupId: string | undefined;
+    let backupCapturedFresh = false;
+    if (snapshotSource.status !== "stopped") {
+      const gateResult = await this.prepareSuspendBackupGate(snapshotSource);
+      if (gateResult.outcome === "refuse") {
+        return { success: false, containerStopped: false, error: gateResult.error };
+      }
+      if (gateResult.outcome === "proceed") {
+        suspendBackupId = gateResult.backupId;
+        backupCapturedFresh = gateResult.capturedFresh;
+      }
+    }
+    const result = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec || rec.deletion_attempt_id || this.isAwaitingDeletion(rec.status))
@@ -8371,6 +8574,21 @@ export class ElizaSandboxService {
         }
       }
 
+      // The gate captured against snapshotSource's generation; a moved
+      // lifecycle means the backup may not cover the container being stopped.
+      if (
+        rec.lifecycle_revision !== snapshotSource.lifecycle_revision ||
+        rec.sandbox_id !== snapshotSource.sandbox_id ||
+        rec.bridge_url !== snapshotSource.bridge_url ||
+        rec.environment_revision !== snapshotSource.environment_revision
+      ) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent lifecycle changed while the suspend backup was prepared",
+        } as const;
+      }
+
       let containerStopped = false;
       const attempt = (stopIntent?.attempts ?? 0) + 1;
       if (stopIntent) {
@@ -8416,6 +8634,7 @@ export class ElizaSandboxService {
         SET status = 'stopped', billing_status = 'suspended',
             scheduled_shutdown_at = NULL, shutdown_warning_sent_at = NULL,
             bridge_url = NULL, health_url = NULL, updated_at = NOW()
+            ${backupCapturedFresh ? sql`, last_backup_at = NOW()` : sql``}
         WHERE id = ${rec.id}
       `);
       if (stopIntent) {
@@ -8429,8 +8648,19 @@ export class ElizaSandboxService {
           })
           .where(eq(agentComputeStopIntents.id, stopIntent.id));
       }
-      return { success: true, containerStopped } as const;
+      return { success: true, containerStopped, backupId: suspendBackupId } as const;
     });
+    if (result.success && backupCapturedFresh) {
+      // error-policy:J6 pruning is retention housekeeping after the suspend
+      // committed; its failure is logged, never surfaced as a suspend failure.
+      await agentSandboxesRepository.pruneBackups(agentId, MAX_BACKUPS).catch((error) => {
+        logger.warn("[agent-sandbox] Backup pruning failed after suspend", {
+          agentId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }
+    return result;
   }
 
   /**

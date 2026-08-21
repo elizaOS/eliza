@@ -14,6 +14,7 @@ import {
 } from "../../lib/services/provisioning-job-types";
 import { ObjectNamespaces } from "../../lib/storage/object-namespace";
 import {
+  clampInlineDiagnosticText,
   hydrateJsonField,
   hydrateTextField,
   offloadJsonField,
@@ -445,7 +446,7 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
       ? Promise.resolve(null)
       : forceInlineError
         ? Promise.resolve({
-            value: data.error,
+            value: data.error === null ? null : clampInlineDiagnosticText(data.error),
             storage: "inline" as const,
             key: null,
           })
@@ -456,6 +457,9 @@ async function prepareJobPayload<T extends Partial<Job> | Partial<NewJob>>(
             field: "error",
             createdAt,
             value: data.error,
+            // A failure reason is a diagnostic string: bound it rather than let
+            // a full dump land in the text column when offload is unavailable.
+            oversizeInline: "clamp",
           }),
   ]);
 
@@ -727,6 +731,23 @@ export class JobsRepository {
     const insertData = await prepareJobInsertData(jobData);
     const [job] = await dbWrite.insert(jobs).values(insertData).returning();
     return await hydrateJob(job);
+  }
+
+  /** Inserts a deterministic job id once and reconstructs the committed row on retry. */
+  async createOrGetById(jobData: NewJob & { id: string }): Promise<Job> {
+    const insertData = await prepareJobInsertData({ ...jobData, data_storage: "inline" });
+    const [created] = await dbWrite
+      .insert(jobs)
+      .values(insertData)
+      .onConflictDoNothing({ target: jobs.id })
+      .returning();
+    if (created) return await hydrateJob(created);
+
+    const existing = await this.findByIdForWrite(jobData.id);
+    if (!existing) {
+      throw new Error(`Idempotent job ${jobData.id} conflicted but could not be reconstructed`);
+    }
+    return existing;
   }
 
   /**
@@ -1466,7 +1487,8 @@ export class JobsRepository {
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
     executionOwnerId?: string,
-  ): Promise<void> {
+    additionalFence?: SQL,
+  ): Promise<boolean> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
@@ -1484,7 +1506,7 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, claimedJob);
     }
 
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(
@@ -1522,6 +1544,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(additionalFence ? [additionalFence] : []),
             sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
@@ -1533,7 +1556,10 @@ export class JobsRepository {
           ),
         )
         .returning({ id: jobs.id });
-      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      if (!updated) {
+        if (additionalFence) return false;
+        throw new StaleJobExecutionError(claimedJob.id);
+      }
 
       await tx
         .delete(jobExecutionLeases)
@@ -1561,6 +1587,7 @@ export class JobsRepository {
             ),
           );
       }
+      return true;
     });
   }
 
@@ -1583,6 +1610,9 @@ export class JobsRepository {
    * @param onFailedInTx - Optional callback run in-transaction when the job
    *   flips to `failed`. Receives the transaction handle and the hydrated job.
    *   Throwing rolls back BOTH the job-status flip and the dependent write.
+   * @param additionalFence - Optional caller-owned CAS predicate evaluated in
+   *   the terminal transition. It lets a stronger durable command invalidate
+   *   a stale execution failure without weakening the standard lease fences.
    * @returns Updated job record or undefined if not found.
    */
   async incrementAttempt(
@@ -1592,6 +1622,7 @@ export class JobsRepository {
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
     expectedExecutionGeneration?: string,
     expectedExecutionOwnerId?: string,
+    additionalFence?: SQL,
   ): Promise<Job | undefined> {
     if (expectedExecutionGeneration && !expectedExecutionOwnerId) {
       throw new Error(`Execution owner is required to retry claimed job ${id}`);
@@ -1662,6 +1693,7 @@ export class JobsRepository {
             eq(jobs.id, id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, job.attempts),
+            ...(additionalFence ? [additionalFence] : []),
             ...(expectedExecutionGeneration
               ? [
                   eq(jobs.execution_generation, expectedExecutionGeneration),
@@ -1930,6 +1962,24 @@ export class JobsRepository {
       .orderBy(desc(jobs.created_at))
       .limit(1);
     return rows[0]?.created_at ?? null;
+  }
+
+  /**
+   * Outcome census of jobs of `type` created since `since`, grouped by
+   * status. Powers the fleet-liveness monitor's provisioning success rate
+   * (#22548): provisioning health is measured on the `jobs` ledger itself
+   * (`type='agent_provision'`), not on sandbox `status`, which is written at
+   * INSERT and therefore cannot testify to provisioning success.
+   */
+  async summarizeOutcomesByTypeSince(
+    type: string,
+    since: Date,
+  ): Promise<Array<{ status: string; count: number }>> {
+    return dbRead
+      .select({ status: jobs.status, count: sql<number>`count(*)::int` })
+      .from(jobs)
+      .where(and(eq(jobs.type, type), sql`${jobs.created_at} >= ${since}`))
+      .groupBy(jobs.status);
   }
 }
 

@@ -14,6 +14,23 @@ import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
 
+const DISCORD_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Discord bot / webhook hop so a hung or rate-limited API cannot
+ * pin the publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function discordApiFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface DiscordMessage {
   id: string;
   channel_id: string;
@@ -48,7 +65,7 @@ async function discordApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
-      fetch(`${DISCORD_API_BASE}${endpoint}`, {
+      discordApiFetch(`${DISCORD_API_BASE}${endpoint}`, {
         ...options,
         headers: {
           ...discordBotHeaders(botToken),
@@ -69,7 +86,7 @@ async function webhookRequest<T>(webhookUrl: string, payload: Record<string, unk
   const url = webhookUrl.includes("?") ? `${webhookUrl}&wait=true` : `${webhookUrl}?wait=true`;
   const { data } = await withRetry<T>(
     () =>
-      fetch(url, {
+      discordApiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -91,7 +108,7 @@ export const discordProvider: SocialMediaProvider = {
     // Webhook validation
     if (credentials.webhookUrl) {
       try {
-        const response = await fetch(credentials.webhookUrl);
+        const response = await discordApiFetch(credentials.webhookUrl);
         if (!response.ok) {
           return { valid: false, error: "Invalid webhook URL" };
         }

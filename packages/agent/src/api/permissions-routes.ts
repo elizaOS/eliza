@@ -8,7 +8,9 @@
  * closed) before persisting. A `PUT /state` also auto-enables capability
  * plugins whose required permissions are now granted and can schedule a
  * runtime restart. Shell access is surfaced as a synthetic permission derived
- * from config, never probed.
+ * from config, never probed. `GET /native-projection` additionally projects
+ * the personal-data permissions through the shared native capability
+ * contract (metadata only; personal payloads never leave the device).
  */
 import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
 import type {
@@ -20,11 +22,13 @@ import type {
   Platform,
 } from "@elizaos/shared";
 import {
+  assertNativePersonalDataProjectionMetadataOnly,
   getMacPermissionDeepLink,
   isPermissionId,
   PERMISSION_IDS,
   PutPermissionsShellRequestSchema,
   PutPermissionsStateRequestSchema,
+  projectNativePersonalDataCapabilities,
 } from "@elizaos/shared";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
@@ -326,6 +330,27 @@ export async function handlePermissionRoutes(
 
   if (method === "GET" && pathname === "/api/permissions") {
     json(res, await buildPermissionsPayload(state));
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/permissions/native-projection") {
+    // Project the on-device personal-data bridges through the shared
+    // capability contract. Metadata only: permission and availability state,
+    // never contact rows, message bodies, or coordinates. The agent host
+    // process is by definition foregrounded and evaluates its own local
+    // stores, so the runtime context is the host's, not a mobile shell's;
+    // native apps compute the same projection client-side with live app state.
+    const payload = await buildPermissionsPayload(state);
+    const states: PermissionState[] = PERMISSION_IDS.map(
+      (id) => payload[id],
+    ).filter((entry): entry is PermissionState => entry !== undefined);
+    const projection = projectNativePersonalDataCapabilities(
+      states,
+      { platform: currentPlatform(), online: true, appState: "foreground" },
+      new Date().toISOString(),
+    );
+    assertNativePersonalDataProjectionMetadataOnly(projection);
+    json(res, projection);
     return true;
   }
 

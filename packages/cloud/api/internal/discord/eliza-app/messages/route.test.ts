@@ -42,6 +42,13 @@ const personalSharedFetch = mock(async (request: Request) => {
     service: "discord-gateway",
   });
   expect(request.headers.get("authorization")).toBeNull();
+  await expect(request.json()).resolves.toEqual({
+    platform: "discord",
+    discordUserId: "666666666666666666",
+    discordUsername: "tester",
+    messageId: "discord:555555555555555555",
+    message: "hello",
+  });
   return new Response(
     JSON.stringify({
       success: true,
@@ -81,7 +88,7 @@ beforeEach(() => {
   personalSharedFetch.mockClear();
 });
 
-test("forwards the Personal Shared account, prewarm, and runtime split", async () => {
+test("forwards a first Discord DM to Personal Shared account creation", async () => {
   const response = await app.request(
     "http://localhost/",
     {

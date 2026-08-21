@@ -11,6 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isTruthyEnvValue, logger, sendJsonError } from "@elizaos/core";
 import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
+import { serializeInlineScriptValue } from "./inline-script-serialization.ts";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import {
   isPathWithinRoot,
@@ -174,7 +175,7 @@ export function injectApiBaseIntoHtml(
     // transport, and the native web shims resolve this reverse-proxy base
     // through one accessor instead of a bespoke API-base window global.
     parts.push(
-      `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,${JSON.stringify(bootOverrides)});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`,
+      `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,${serializeInlineScriptValue(bootOverrides)});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`,
     );
   }
   if (trimmedToken) {
@@ -208,7 +209,7 @@ export function injectApiBaseIntoHtml(
     // suppressing onboarding off the back of it would strand a partially
     // configured self-hosted deployment.
     parts.push(
-      `(function(){var t=${JSON.stringify(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{var sk="elizaos:active-server",sp=null;try{sp=JSON.parse(localStorage.getItem(sk)||"null");}catch(e){sp=null;}if(!sp||typeof sp!=="object"){localStorage.setItem(sk,JSON.stringify({id:"local:embedded",kind:"local",label:"This device",accessToken:t}));}else if(sp.kind==="local"){localStorage.setItem(sk,JSON.stringify(Object.assign({},sp,{accessToken:t})));}}catch(e){}})();`,
+      `(function(){var t=${serializeInlineScriptValue(trimmedToken)},k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiToken:t});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w[k]={current:next};w.__ELIZA_API_TOKEN__=t;try{var sk="elizaos:active-server",sp=null;try{sp=JSON.parse(localStorage.getItem(sk)||"null");}catch(e){sp=null;}if(!sp||typeof sp!=="object"){localStorage.setItem(sk,JSON.stringify({id:"local:embedded",kind:"local",label:"This device",accessToken:t}));}else if(sp.kind==="local"){localStorage.setItem(sk,JSON.stringify(Object.assign({},sp,{accessToken:t})));}}catch(e){}})();`,
     );
   }
   const injection = Buffer.from(`<script>${parts.join("")}</script>`);

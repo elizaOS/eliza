@@ -23,7 +23,7 @@ enum ElizaWidgetDeepLink {
     }
 
     /// Live Activity tap/button target: opens the voice surface tagged
-    /// `source=ios-live-activity` with the given action (`open`/`stop`/`save`)
+    /// `source=ios-live-activity` with the given action (`open`/`stop-voice`)
     /// so the app can act on the button and logs prove the entry point.
     static func dictation(action: String) -> URL {
         url(
