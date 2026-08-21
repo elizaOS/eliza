@@ -12,6 +12,7 @@
  */
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
+  ElizaError,
   type IAgentRuntime,
   type RemotePluginModuleManifest,
 } from "@elizaos/core";
@@ -35,6 +36,8 @@ import {
 
 const DEFAULT_REMOTE_ENDPOINT_ID = "direct";
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+export const REMOTE_CAPABILITY_ENDPOINT_URL_INVALID =
+  "REMOTE_CAPABILITY_ENDPOINT_URL_INVALID";
 
 export type RemoteCapabilityEndpointProviderId =
   | "direct"
@@ -375,22 +378,49 @@ function normalizeEndpoint(
   };
 }
 
-function normalizeBaseUrl(value: string): string {
+function invalidBaseUrl(
+  reason: "type" | "empty" | "malformed" | "protocol",
+  value: unknown,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(
+    reason === "protocol"
+      ? "Remote capability endpoint baseUrl must be http(s)."
+      : "Remote capability endpoint baseUrl must be a valid URL.",
+    {
+      code: REMOTE_CAPABILITY_ENDPOINT_URL_INVALID,
+      ...(cause === undefined ? {} : { cause }),
+      context: {
+        field: "baseUrl",
+        reason,
+        valueType: value === null ? "null" : typeof value,
+        ...(reason === "protocol" && value instanceof URL
+          ? { protocol: value.protocol }
+          : {}),
+      },
+      severity: "fatal",
+    },
+  );
+}
+
+function normalizeBaseUrl(value: unknown): string {
+  if (typeof value !== "string") {
+    throw invalidBaseUrl("type", value);
+  }
   const trimmed = value.trim();
   if (!trimmed) {
-    throw new Error("Remote capability endpoint baseUrl must be a valid URL.");
+    throw invalidBaseUrl("empty", value);
   }
   let url: URL;
   try {
     url = new URL(trimmed);
-  } catch {
-    // error-policy:J3 untrusted endpoint baseUrl tokens. `new URL` throws
-    // TypeError on raw invalid input; map that to a structured boundary so
-    // provision/install cannot 500 a capability-router connect.
-    throw new Error("Remote capability endpoint baseUrl must be a valid URL.");
+  } catch (cause) {
+    // error-policy:J2 untrusted URL-parser failures gain a stable domain code
+    // while retaining the original WHATWG TypeError for diagnosis.
+    throw invalidBaseUrl("malformed", value, cause);
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error("Remote capability endpoint baseUrl must be http(s).");
+    throw invalidBaseUrl("protocol", url);
   }
   url.hash = "";
   url.search = "";
