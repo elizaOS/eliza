@@ -26,6 +26,8 @@ import {
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -328,7 +330,8 @@ function parseAgentPrefix(
 
 function labelFrom(task: string, index: number): string {
   const cleaned = task.replace(/\s+/g, " ").trim();
-  return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed ? truncateWellFormed(wellFormed, 80) : `task-${index + 1}`;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -1888,7 +1891,7 @@ async function runSpawnAgent(
     const labelParam = pickString(params, content, "label");
     const label = labelParam
       ? userReferenceLogView(labelParam)
-      : task.slice(0, 80);
+      : truncateWellFormed(toWellFormedUnicode(task), 80);
     const originConnectorMessageId = connectorMessageIdFromMemory(
       message,
       content,
