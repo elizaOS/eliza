@@ -9,10 +9,16 @@
  *
  * Safety invariants: before any destructive SQL, the direct target must return
  * the operator's unique disposable-target identity from a server-side custom
- * setting; aliases and tunnels therefore cannot bypass the guard. Isolation is
- * proven by authenticating as every restored tenant role through both direct
- * Postgres and the isolated pgbouncer. DSNs, credentials, and tenant names
- * never reach reports or logs (reports reference truncated dump ids only).
+ * setting; aliases and tunnels therefore cannot bypass the guard, and the
+ * setting is consumed (ALTER SYSTEM RESET) in that same guarded session, so
+ * a second run with the same identity fails closed rather than replaying it.
+ * Isolation is proven by authenticating as every restored tenant role through
+ * both direct Postgres and the isolated pgbouncer; a cross-tenant probe may
+ * be refused either by Postgres's own CONNECT-privilege denial or by
+ * pgbouncer's unlisted-database denial, depending on which layer sees it
+ * first — both are treated as the isolation guarantee holding. DSNs,
+ * credentials, and tenant names never reach reports or logs (reports
+ * reference truncated dump ids only).
  *
  * Usage (operator drill, needs openssl + tar + psql client tools):
  *   bun packages/cloud/scripts/admin/apps-tenant-db-recovery.ts \
@@ -344,6 +350,23 @@ DO $$ BEGIN RAISE EXCEPTION 'restore target identity mismatch'; END $$;
 /** Guard one psql session before its first destructive statement. */
 export function guardPsqlScript(sql: string): string {
   return `${TARGET_GUARD_SQL}${sql}`;
+}
+
+const CONSUME_TARGET_IDENTITY_SQL = `ALTER SYSTEM RESET eliza.restore_target_id;
+SELECT pg_reload_conf();
+`;
+
+/**
+ * Guarded script that spends the disposable target identity: it re-checks
+ * the nonce through the same guard used for every destructive statement,
+ * then clears it in that same session. "One-use" was previously operator
+ * convention only — nothing consumed the setting, so a second run (a re-drill
+ * against a stale downloaded set, an operator mistake, or a racing process)
+ * could replay the same identity. After this runs, `current_setting` returns
+ * unset and the very next authority read fails closed.
+ */
+export function guardedConsumeTargetIdentitySql(): string {
+  return guardPsqlScript(CONSUME_TARGET_IDENTITY_SQL);
 }
 
 /** Quote an archive-provided PostgreSQL identifier for generated drill SQL. */
@@ -731,6 +754,22 @@ function run(
   return result.stdout;
 }
 
+/**
+ * True when `stderr` carries a recognized cross-tenant connection denial.
+ * Two shapes are both correct, depending on which layer sees the probe
+ * first: direct Postgres always answers with its own REVOKE-CONNECT denial
+ * ("permission denied for database"); through pgbouncer, a database absent
+ * from the pooler's own config is refused by pgbouncer itself before the
+ * request ever reaches Postgres ("no such database"). Accepting only the
+ * first shape makes a correctly-configured pgbouncer probe surface as
+ * TOOL_FAILED instead of a clean pass — both shapes prove the probed
+ * database was never reachable, so both count as the isolation guarantee
+ * holding.
+ */
+export function isCrossTenantDenial(stderr: string): boolean {
+  return /permission denied for database|no such database/i.test(stderr);
+}
+
 function expectCommandFailure(
   command: string,
   args: string[],
@@ -753,10 +792,10 @@ function expectCommandFailure(
       "cross-tenant authentication unexpectedly succeeded",
     );
   }
-  if (!/permission denied for database/i.test(result.stderr)) {
+  if (!isCrossTenantDenial(result.stderr)) {
     throw new RecoveryDrillError(
       "TOOL_FAILED",
-      "cross-tenant probe failed without a database CONNECT denial",
+      "cross-tenant probe failed without a recognized cross-tenant denial (expected a Postgres CONNECT-privilege denial or a pgbouncer unlisted-database denial)",
     );
   }
 }
@@ -789,10 +828,14 @@ interface DrillReport {
   objectives: ObjectiveEvaluation & RecoveryObjectives;
 }
 
-/** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
-function executeDrill(options: CliOptions): DrillReport {
-  const targetUrl = assertDirectTarget(options.targetDsn);
-  const authority = parseRestoreTargetAuthority(
+/**
+ * Read the server-side target authority for one guarded session. Split out
+ * so the initial read and the immediately-following consume step
+ * (`consumeRestoreTargetIdentity`) are visibly one verify-then-spend
+ * sequence rather than an unconsumed read.
+ */
+function readRestoreTargetAuthority(targetDsn: string): RestoreTargetAuthority {
+  return parseRestoreTargetAuthority(
     run("psql", [
       "--no-psqlrc",
       "--tuples-only",
@@ -800,37 +843,90 @@ function executeDrill(options: CliOptions): DrillReport {
       "--set",
       "ON_ERROR_STOP=1",
       "--dbname",
-      options.targetDsn,
+      targetDsn,
       "--command",
       "SELECT json_build_object('target_id', current_setting('eliza.restore_target_id', true), 'existing_roles', (SELECT json_agg(rolname ORDER BY rolname) FROM pg_roles))::text",
     ]).trim(),
   );
-  assertRestoreTargetIdentity(options.targetId, authority.targetId);
-  const startedAt = new Date();
+}
 
-  const sidecar = parseBackupSidecar(
-    readFileSync(join(options.setDir, "backup.json"), "utf-8"),
-  );
-  const archivePath = join(options.setDir, sidecar.archive);
-  const archiveBytes = statSync(archivePath).size;
-  if (archiveBytes !== sidecar.archiveBytes) {
-    throw new RecoveryDrillError(
-      "ARCHIVE_SIZE_MISMATCH",
-      "downloaded archive size differs from sidecar",
-    );
-  }
-  const actualSha = createHash("sha256")
-    .update(readFileSync(archivePath))
-    .digest("hex");
-  if (actualSha !== sidecar.archiveSha256) {
-    throw new RecoveryDrillError(
-      "ARCHIVE_CHECKSUM_MISMATCH",
-      "downloaded archive sha256 differs from sidecar",
-    );
-  }
+/**
+ * Spend the one-use nonce: the guard re-verifies it server-side, then clears
+ * it in the same session (see `guardedConsumeTargetIdentitySql`). Runs
+ * before any destructive statement, immediately after the identity is
+ * confirmed, so the window in which the nonce is valid but not yet consumed
+ * is exactly one guarded round trip.
+ */
+function consumeRestoreTargetIdentity(
+  targetDsn: string,
+  targetId: string,
+  work: string,
+): void {
+  const script = join(work, "consume-target-identity.sql");
+  writeFileSync(script, guardedConsumeTargetIdentitySql());
+  run("psql", [
+    "--no-psqlrc",
+    "--set",
+    `expected_target_id=${targetId}`,
+    "--dbname",
+    targetDsn,
+    "--file",
+    script,
+  ]);
+}
 
+/**
+ * Verify the disposable target identity and consume it atomically as one
+ * guarded sequence. Exported so the reuse-rejection behavior is directly
+ * testable against a scripted psql double (see the "restore target nonce"
+ * describe block): a second call with the same target id observes the
+ * cleared setting and fails REFUSED_TARGET_AUTHORITY, not TOOL_FAILED —
+ * matching the refusal shape a genuine unauthorized target already gets.
+ */
+export function verifyAndConsumeRestoreTargetIdentity(
+  targetDsn: string,
+  targetId: string,
+  work: string,
+): RestoreTargetAuthority {
+  const authority = readRestoreTargetAuthority(targetDsn);
+  assertRestoreTargetIdentity(targetId, authority.targetId);
+  consumeRestoreTargetIdentity(targetDsn, targetId, work);
+  return authority;
+}
+
+/** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
+function executeDrill(options: CliOptions): DrillReport {
+  const targetUrl = assertDirectTarget(options.targetDsn);
   const work = mkdtempSync(join(tmpdir(), "tenant-db-drill-"));
   try {
+    const authority = verifyAndConsumeRestoreTargetIdentity(
+      options.targetDsn,
+      options.targetId,
+      work,
+    );
+    const startedAt = new Date();
+
+    const sidecar = parseBackupSidecar(
+      readFileSync(join(options.setDir, "backup.json"), "utf-8"),
+    );
+    const archivePath = join(options.setDir, sidecar.archive);
+    const archiveBytes = statSync(archivePath).size;
+    if (archiveBytes !== sidecar.archiveBytes) {
+      throw new RecoveryDrillError(
+        "ARCHIVE_SIZE_MISMATCH",
+        "downloaded archive size differs from sidecar",
+      );
+    }
+    const actualSha = createHash("sha256")
+      .update(readFileSync(archivePath))
+      .digest("hex");
+    if (actualSha !== sidecar.archiveSha256) {
+      throw new RecoveryDrillError(
+        "ARCHIVE_CHECKSUM_MISMATCH",
+        "downloaded archive sha256 differs from sidecar",
+      );
+    }
+
     run("openssl", [
       "enc",
       "-d",

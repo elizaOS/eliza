@@ -193,8 +193,13 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
    database's rendered pg_restore SQL. Restore sessions use `--no-psqlrc`, and
    the harness renders without pg_restore `--create`, so no unguarded reconnect
    exists. A DNS alias, alternate address, or SSH tunnel cannot redirect a
-   later destructive connection to another server. Never reuse an identity;
-   destroy the target after the drill.
+   later destructive connection to another server. The identity is genuinely
+   one-use: the harness's very first guarded session both verifies it and
+   clears it (`ALTER SYSTEM RESET` + `pg_reload_conf()`), so a second run —
+   accidental re-invocation or a racing process — observes an unset setting
+   and fails closed with `REFUSED_TARGET_AUTHORITY` rather than replaying the
+   same nonce. Still generate a fresh identity per drill and destroy the
+   target afterward.
 
 3. Prepare a root-readable `tenant-probes.json` that covers every opaque dump
    id in `dbmap.tsv` and references password environment variables rather

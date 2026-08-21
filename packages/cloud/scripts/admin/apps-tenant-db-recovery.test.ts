@@ -23,7 +23,9 @@ import {
   assertRestoreTargetIdentity,
   buildIsolationChecks,
   evaluateObjectives,
+  guardedConsumeTargetIdentitySql,
   guardPsqlScript,
+  isCrossTenantDenial,
   parseBackupManifest,
   parseBackupSidecar,
   parseChecksumFile,
@@ -217,6 +219,34 @@ describe("restore target authority", () => {
       ),
     ).toBe("postgresql://restore:pw@127.0.0.1:5433/tenant%2Fa%20b");
   });
+
+  test("consuming the nonce re-verifies inside the same guard, then resets and reloads", () => {
+    const script = guardedConsumeTargetIdentitySql();
+    // Same guard as every other destructive statement — a mismatched setting
+    // raises before ALTER SYSTEM is ever reached.
+    expect(script.startsWith(guardPsqlScript(""))).toBe(true);
+    expect(script).toContain("ALTER SYSTEM RESET eliza.restore_target_id;");
+    expect(script).toContain("SELECT pg_reload_conf();");
+    expect(script.indexOf("current_setting")).toBeLessThan(
+      script.indexOf("ALTER SYSTEM RESET"),
+    );
+    expect(script.indexOf("ALTER SYSTEM RESET")).toBeLessThan(
+      script.indexOf("SELECT pg_reload_conf();"),
+    );
+  });
+});
+
+describe("isCrossTenantDenial", () => {
+  test("accepts both the direct-Postgres and pgbouncer cross-tenant denial shapes", () => {
+    expect(
+      isCrossTenantDenial(
+        'psql: error: FATAL:  permission denied for database "tenant_b"',
+      ),
+    ).toBe(true);
+    expect(isCrossTenantDenial("FATAL: No such database: tenant_b")).toBe(true);
+    expect(isCrossTenantDenial("psql: error: connection refused")).toBe(false);
+    expect(isCrossTenantDenial("")).toBe(false);
+  });
 });
 
 describe("checksum verification", () => {
@@ -397,7 +427,7 @@ describe("root-sourced backup environment", () => {
     expect(decodeAt).toBeGreaterThan(sourceAt);
     expect(recoverySource).not.toContain('"ON_ERROR_STOP=0"');
     expect(recoverySource).toContain(
-      "/permission denied for database/i.test(result.stderr)",
+      "/permission denied for database|no such database/i.test(stderr)",
     );
   });
 });

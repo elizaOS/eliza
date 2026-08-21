@@ -335,6 +335,21 @@ write_files:
       : "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_BUCKET" "$BACKUP_S3_PREFIX" \
         "$BACKUP_S3_ACCESS_KEY_ID" "$BACKUP_S3_SECRET_ACCESS_KEY" \
         "$BACKUP_ENCRYPTION_PASSPHRASE" "$BACKUP_RETENTION_DAYS"
+      # --- begin BACKUP_S3_PREFIX validation (fail closed before any retention purge; #21729 hardening) ---
+      # Every S3 call below scopes to "$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" —
+      # an empty, oversized, or unsafe prefix would widen the retention purge
+      # loop's delete sweep to the bucket root (or an unintended path) instead
+      # of this node's own dated-set namespace. The character class already
+      # excludes whitespace and most shell/glob metacharacters, so a leading
+      # alnum plus this set can't be empty, blank, or an absolute path; the
+      # explicit ".." and trailing-slash checks close the remaining traversal
+      # and empty-segment cases the class alone doesn't rule out.
+      if ! [[ "$BACKUP_S3_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] || \
+         [[ "$BACKUP_S3_PREFIX" == *..* ]] || [[ "$BACKUP_S3_PREFIX" == */ ]]; then
+        log "BACKUP_S3_PREFIX is empty, unbounded, or unsafe; refusing before any retention purge."
+        exit 1
+      fi
+      # --- end BACKUP_S3_PREFIX validation ---
       if ! runuser -u postgres -- pg_isready -q; then
         log "postgres not ready; aborting."
         exit 1
