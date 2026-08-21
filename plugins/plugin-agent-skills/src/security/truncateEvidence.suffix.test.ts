@@ -48,4 +48,26 @@ describe("truncateEvidence suffix-reserve", () => {
     expect(truncateEvidence("hello world", 2)).toBe("h…");
     expect(truncateEvidence("hello world", 2).length).toBe(2);
   });
+
+  it("never splits surrogate pairs at the truncation boundary", () => {
+    const text = `${"a".repeat(118)}🦊${"b".repeat(50)}`;
+    const truncated = truncateEvidence(text, 120);
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated).toBe(`${"a".repeat(118)}…`);
+    expect(truncated.length).toBe(119);
+  });
+
+  it("sanitizes lone surrogates before truncation", () => {
+    const text = `bad ${String.fromCharCode(0xd800)} evidence`;
+    const truncated = truncateEvidence(text, 120);
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated).toBe("bad \uFFFD evidence");
+  });
+
+  it("preserves fitting emoji without truncation", () => {
+    const text = "safe 🦊";
+    const truncated = truncateEvidence(text, 120);
+    expect(truncated).toBe("safe 🦊");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
 });

@@ -11,6 +11,13 @@ Infrastructure-as-code and local-dev tooling for the elizaOS Cloud stack: Kubern
 
 Nothing in this package is imported by TypeScript code. The YAML/Terraform/shell files are consumed directly by `kubectl`, `helm`, `terraform`, `docker compose`, and the chainsaw integration-test runner.
 
+## Documentation
+
+- Internal: package Markdown, including `README.md`, `STAGING_AUTHORITY.md`,
+  `cloud/RAILWAY.md`, and the Terraform root READMEs.
+- External: none.
+- Format: Markdown.
+
 ## Layout
 
 ```

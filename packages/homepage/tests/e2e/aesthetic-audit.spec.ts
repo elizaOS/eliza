@@ -35,7 +35,7 @@ const VIEWPORTS = [
 const ARTIFACT_DIR = path.resolve(process.cwd(), "test-results/aesthetic");
 
 const mockUser = {
-  id: "user_aesthetic_audit",
+  id: "user_siws_audit",
   telegram_id: "1",
   telegram_username: "audit_user",
   telegram_first_name: "Audit",
@@ -48,7 +48,7 @@ const mockUser = {
   phone_number: "+15555550100",
   name: "Audit User",
   avatar: null,
-  organization_id: "org_aesthetic_audit",
+  organization_id: "org_siws_audit",
   created_at: "2026-01-01T00:00:00.000Z",
 };
 
@@ -60,7 +60,7 @@ async function installCloudMocks(page: Page) {
         json: {
           user: mockUser,
           organization: {
-            id: "org_aesthetic_audit",
+            id: "org_siws_audit",
             name: "Audit Org",
             credit_balance: "12.34",
           },
@@ -69,14 +69,14 @@ async function installCloudMocks(page: Page) {
     }
     return route.fulfill({ status: 404, json: { error: "Unhandled mock" } });
   });
-  await page.route("https://elizacloud.ai/api/auth/siws/**", async (route) => {
+  await page.route("https://api.eliza.app/api/auth/siws/**", async (route) => {
     const u = new URL(route.request().url());
     if (u.pathname === "/api/auth/siws/nonce") {
       return route.fulfill({
         json: {
-          nonce: "test-nonce-abcdef",
-          domain: "www.elizacloud.ai",
-          uri: "https://www.elizacloud.ai",
+          nonce: "0123456789abcdef0123456789abcdef",
+          domain: "cloud.eliza.app",
+          uri: "https://cloud.eliza.app",
           chainId: "solana:mainnet",
           version: "1",
           statement: "Sign in to Eliza Cloud",
@@ -194,7 +194,11 @@ for (const viewport of VIEWPORTS) {
         );
 
         // ── Logo presence on the chrome'd pages (not the marketing landing). ──
-        if (route.name !== "landing" && settledPath !== "/") {
+        if (
+          route.name !== "landing" &&
+          route.name !== "leaderboard" &&
+          settledPath !== "/"
+        ) {
           const logo = page
             .locator(
               'header img[alt*="Eliza" i], header svg[aria-label*="Eliza" i], [aria-label="Eliza"]',
@@ -222,6 +226,12 @@ for (const viewport of VIEWPORTS) {
             document.body.querySelectorAll<HTMLElement>("*"),
           );
           for (const el of all) {
+            // The landing phone deliberately reproduces native iOS geometry:
+            // device shells, message bubbles, the composer, and keyboard keys
+            // use Apple's larger continuous radii rather than the web app's
+            // 3px surface token. Audit the surrounding web UI, not the native
+            // facsimile rendered inside it.
+            if (el.closest(".landing-iphone")) continue;
             const cs = getComputedStyle(el);
             const rect = el.getBoundingClientRect();
             if (rect.width < 8 || rect.height < 8) continue;
@@ -394,37 +404,41 @@ test.describe("brand chrome consistency", () => {
 });
 
 // ── SIWS Playwright flow: simulated wallet sign + verify roundtrip. ──
-test.describe("Sign-In With Solana", () => {
-  test.use({ viewport: { width: 1440, height: 900 } });
+for (const viewport of VIEWPORTS) {
+  test.describe(`Sign-In With Solana (${viewport.name})`, () => {
+    test.use({ viewport });
 
-  test("Solana button signs in and routes to /connected", async ({ page }) => {
-    test.setTimeout(45_000);
-    await installCloudMocks(page);
+    test("Solana button signs in and routes to /connected", async ({
+      page,
+    }) => {
+      test.setTimeout(45_000);
+      await installCloudMocks(page);
 
-    // Inject a deterministic test signer before the page boots.
-    await page.addInitScript(() => {
-      const SIG = new Uint8Array(64);
-      for (let i = 0; i < 64; i++) SIG[i] = i + 1;
-      window.__siwsTestSigner = {
-        publicKey: "11111111111111111111111111111111",
-        sign: () => SIG,
-      };
+      // Inject a deterministic test signer before the page boots.
+      await page.addInitScript(() => {
+        const SIG = new Uint8Array(64);
+        for (let i = 0; i < 64; i++) SIG[i] = i + 1;
+        window.__siwsTestSigner = {
+          publicKey: "11111111111111111111111111111111",
+          sign: () => SIG,
+        };
+      });
+
+      await page.goto("/get-started", { waitUntil: "domcontentloaded" });
+      await settle(page, "/get-started");
+
+      const button = page.getByTestId("solana-signin");
+      await expect(button).toBeVisible();
+      await button.click();
+
+      // Explicit navigation wait: after the SIWS verify roundtrip completes the
+      // auth context sets isAuthenticated=true, which triggers navigate("/connected")
+      // both from handleSolanaConnect directly and from the auth-guard effect.
+      await page.waitForURL(/\/connected$/, { timeout: 15_000 });
+      await expect(page).toHaveURL(/\/connected$/);
+      await expect(
+        page.getByRole("heading", { name: /Connected\./i }),
+      ).toBeVisible();
     });
-
-    await page.goto("/get-started", { waitUntil: "domcontentloaded" });
-    await settle(page, "/get-started");
-
-    const button = page.getByTestId("solana-signin");
-    await expect(button).toBeVisible();
-    await button.click();
-
-    // Explicit navigation wait: after the SIWS verify roundtrip completes the
-    // auth context sets isAuthenticated=true, which triggers navigate("/connected")
-    // both from handleSolanaConnect directly and from the auth-guard effect.
-    await page.waitForURL(/\/connected$/, { timeout: 15_000 });
-    await expect(page).toHaveURL(/\/connected$/);
-    await expect(
-      page.getByRole("heading", { name: /Connected\./i }),
-    ).toBeVisible();
   });
-});
+}

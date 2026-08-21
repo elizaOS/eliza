@@ -35,6 +35,7 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRevisionReplaceParams,
   decryptedCharacter,
   documentMutationSnapshotMatches,
   documentRoleHasGlobalVisibility,
@@ -80,6 +81,7 @@ import {
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
+  validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
   type World,
 } from "@elizaos/core";
@@ -2163,6 +2165,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         validDocumentRevision(fragment.metadata),
         sql`${documentRevisionExpression(fragment.metadata)}
           = ${documentRevisionExpression(parent.metadata)}`,
+        // When the parent commits an update attempt token, only fragments
+        // staged by that attempt are readable; concurrent losing attempts
+        // stage the same revision number but a different token.
+        sql`(
+          NOT (${parent.metadata} ? 'revisionAttemptId')
+          OR ${fragment.metadata}->>'revisionAttemptId'
+            = ${parent.metadata}->>'revisionAttemptId'
+        )`,
         documentVisibilityCondition(params, parent.metadata),
       ];
       if (!hasGlobalVisibility) {
@@ -2254,6 +2264,107 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       return updated[0]
         ? { status: "updated", document: memoryFromRow(updated[0]) }
         : { status: "conflict" };
+    });
+  }
+
+  async replaceDocumentRevision(
+    params: DocumentRevisionReplaceParams
+  ): Promise<DocumentMutationResult & { removedFragmentIds?: UUID[] }> {
+    validateDocumentRevisionReplacement(params);
+    this.validateMemoryBatchEmbeddings(
+      params.fragments.map((memory) => ({ memory, tableName: "document_fragments" }))
+    );
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+
+      const oldFragments = await tx
+        .select({ id: memoryTable.id })
+        .from(memoryTable)
+        .where(
+          and(
+            eq(memoryTable.type, "document_fragments"),
+            eq(memoryTable.agentId, params.agentId),
+            sql`${memoryTable.metadata}->>'type' = 'fragment'`,
+            sql`${memoryTable.metadata}->>'documentId' = ${params.documentId}`
+          )
+        );
+      const oldFragmentIds = new Set(oldFragments.map(({ id }) => String(id)));
+      const reusedFragment = params.fragments.find(({ id }) => oldFragmentIds.has(String(id)));
+      if (reusedFragment) {
+        throw new ElizaError("Atomic document fragment id already exists", {
+          code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+          context: { documentId: params.documentId, fragmentId: reusedFragment.id },
+        });
+      }
+      if (oldFragments.length > 0) {
+        const deleted = await tx
+          .delete(memoryTable)
+          .where(
+            inArray(
+              memoryTable.id,
+              oldFragments.map(({ id }) => id)
+            )
+          )
+          .returning();
+        if (deleted.length !== oldFragments.length) {
+          throw new ElizaError("Atomic document replacement did not delete every old fragment", {
+            code: "DOCUMENT_REVISION_DELETE_INCOMPLETE",
+            context: {
+              documentId: params.documentId,
+              expected: oldFragments.length,
+              deleted: deleted.length,
+            },
+          });
+        }
+      }
+      for (const fragment of params.fragments) {
+        await this.insertMemoryInTransaction(
+          tx,
+          fragment,
+          "document_fragments",
+          fragment.id as UUID,
+          true
+        );
+      }
+      const replacement = params.replacement;
+      const updated = await tx
+        .update(memoryTable)
+        .set({
+          content: replacement.content,
+          entityId: replacement.entityId,
+          roomId: replacement.roomId,
+          worldId: replacement.worldId,
+          unique: replacement.unique ?? row.unique,
+          metadata: replacement.metadata ?? {},
+        })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      if (updated.length !== 1) {
+        throw new ElizaError("Atomic document replacement did not update its parent", {
+          code: "DOCUMENT_REVISION_PARENT_UPDATE_INCOMPLETE",
+          context: { documentId: params.documentId, updated: updated.length },
+        });
+      }
+      return {
+        status: "updated",
+        document: memoryFromRow(updated[0]),
+        removedFragmentIds: oldFragments.map(({ id }) => id),
+      };
     });
   }
 
@@ -3577,7 +3688,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     tx: DrizzleDatabase,
     memory: Memory & { metadata?: MemoryMetadata },
     tableName: string,
-    memoryId: UUID
+    memoryId: UUID,
+    requireInserted = false
   ): Promise<void> {
     // Ensure we always pass a JSON string to the SQL bind parameter; if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
@@ -3607,6 +3719,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       .returning();
 
     if (inserted.length === 0) {
+      if (requireInserted) {
+        throw new ElizaError("Atomic memory insert collided with an existing id", {
+          code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+          context: { memoryId },
+        });
+      }
       return;
     }
 

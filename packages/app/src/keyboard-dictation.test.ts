@@ -136,7 +136,42 @@ describe("startKeyboardDictationSession", () => {
       backend: "browser",
     });
     await expect(session.done).resolves.toBe("ready");
-    expect(liveActivity.end).toHaveBeenCalledOnce();
+    expect(liveActivity.end).toHaveBeenCalledWith({
+      activityId: "activity-1",
+      phase: "ended",
+    });
+  });
+
+  it("ends a pending Live Activity start when dictation is cancelled", async () => {
+    const bridge = makeBridge();
+    let resolveStart!: (result: { activityId: string }) => void;
+    const liveActivity = {
+      start: vi.fn(
+        () =>
+          new Promise<{ activityId: string }>((resolve) => {
+            resolveStart = resolve;
+          }),
+      ),
+      end: vi.fn(async () => ({ ended: true })),
+    };
+    const { deps } = makeDeps(bridge);
+    deps.getLiveActivity = () => liveActivity;
+
+    const session = startKeyboardDictationSession(
+      new URLSearchParams("session=s-pending-activity"),
+      deps,
+    );
+    await flush();
+    session.cancel();
+    await expect(session.done).resolves.toBe("cancelled");
+    expect(liveActivity.end).not.toHaveBeenCalled();
+
+    resolveStart({ activityId: "activity-late" });
+    await flush();
+    expect(liveActivity.end).toHaveBeenCalledWith({
+      activityId: "activity-late",
+      phase: "ended",
+    });
   });
 
   it("writes recording, then publishes the final transcript as ready with the session id", async () => {

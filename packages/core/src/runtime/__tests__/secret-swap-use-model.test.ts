@@ -8,6 +8,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
+import {
+	MAX_SECRET_SWAP_WALK_NODES,
+	SECRET_SWAP_UNBOUNDED,
+} from "../../security/secret-swap";
 import { type Character, ModelType } from "../../types";
 
 function makeRuntime(enabled: boolean): AgentRuntime {
@@ -66,6 +70,67 @@ describe("AgentRuntime.useModel secret swap", () => {
 
 		expect(seenPrompt).toContain("whsec_1234567890abcdef");
 		expect(seenPrompt).not.toContain("__ELIZA_SECRET_");
+	});
+
+	it("rejects an unbounded sparse graph before model-provider dispatch", async () => {
+		const runtime = makeRuntime(true);
+		const handler = vi.fn(async () => "must not run");
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+
+		await expect(
+			runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "bounded prompt",
+				payload: new Array(MAX_SECRET_SWAP_WALK_NODES),
+			}),
+		).rejects.toMatchObject({ code: SECRET_SWAP_UNBOUNDED });
+		expect(handler).not.toHaveBeenCalled();
+	});
+
+	it("swaps structured records regardless of their prototype before dispatch", async () => {
+		const runtime = makeRuntime(true);
+		const secret = "whsec_1234567890abcdef";
+		class Payload {
+			token = secret;
+		}
+		let prototypeCalls = 0;
+		const hostilePrototype = new Proxy(
+			{ token: secret },
+			{
+				getPrototypeOf() {
+					prototypeCalls += 1;
+					throw new Error("prototype trap");
+				},
+			},
+		);
+		const seen: unknown[] = [];
+		const handler = vi.fn(async (_runtime, params: { payload: unknown }) => {
+			seen.push(params.payload);
+			return "ok";
+		});
+		runtime.registerModel(ModelType.TEXT_SMALL, handler, "test");
+
+		const records = [
+			Object.assign(Object.create(null), { token: secret }),
+			new Payload(),
+			Object.assign(Object.create({ inherited: secret }), { token: secret }),
+			hostilePrototype,
+		];
+		for (const payload of records) {
+			await runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt: "structured payload",
+				payload,
+			});
+		}
+
+		expect(handler).toHaveBeenCalledTimes(records.length);
+		expect(prototypeCalls).toBe(0);
+		for (const payload of seen) {
+			expect(JSON.stringify(payload)).not.toContain(secret);
+			expect((payload as Record<string, string>).token).toMatch(
+				/__ELIZA_SECRET_[0-9a-f]{8,}_\d+__/,
+			);
+			expect(Object.hasOwn(payload as object, "inherited")).toBe(false);
+		}
 	});
 
 	it("swaps secrets added by pre_model hooks before provider execution", async () => {

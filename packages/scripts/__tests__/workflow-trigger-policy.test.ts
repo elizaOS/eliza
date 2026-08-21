@@ -1,4 +1,4 @@
-/** Exercises the repository policy that excludes pull-request workflow runs, reserves merge-queue admission, and restricts branch pushes to develop. */
+/** Exercises the policy that permits one canonical PR/merge aggregate, reserves other PR-adjacent triggers, and restricts branch pushes to develop. */
 
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -13,9 +13,8 @@ function buildRepo(workflows: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), "workflow-trigger-policy-"));
   const directory = join(root, ".github", "workflows");
   mkdirSync(directory, { recursive: true });
-  for (const [name, source] of Object.entries(workflows)) {
+  for (const [name, source] of Object.entries(workflows))
     writeFileSync(join(directory, name), source);
-  }
   return root;
 }
 
@@ -29,6 +28,18 @@ function validateFixture(
     rmSync(root, { recursive: true, force: true });
   }
 }
+
+const canonicalCi = `name: CI
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  push:
+    branches: [develop]
+  merge_group:
+    types: [checks_requested]
+jobs: {}
+`;
 
 describe("workflow trigger policy", () => {
   test("accepts develop pushes alongside manual and scheduled operations", () => {
@@ -61,7 +72,6 @@ jobs: {}
   });
 
   test.each([
-    "pull_request",
     "pull_request_target",
     "issue_comment",
     "pull_request_review",
@@ -74,15 +84,57 @@ jobs: {}
     ).toThrow(/forbidden pull-request event trigger/);
   });
 
-  test("reserves merge_group for the candidate Biome workflow", () => {
+  test("reserves pull_request for the canonical CI workflow", () => {
     expect(() =>
       validateFixture(
-        `on:\n  push:\n    branches: [develop]\n  merge_group:\njobs: {}\n`,
+        "on:\n  push:\n    branches: [develop]\n  pull_request:\n    branches: [develop, main]\n    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]\njobs: {}\n",
       ),
-    ).toThrow(/merge_group is reserved for merge-candidate-biome\.yml/);
+    ).toThrow(/pull_request is reserved for ci\.yml/);
+  });
 
+  test("accepts the exact canonical PR and merge-group aggregate", () => {
+    const root = buildRepo({ "ci.yml": canonicalCi });
+    try {
+      expect(validateWorkflowTriggerPolicy(root)).toEqual({
+        developPushWorkflows: 1,
+        files: 1,
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed when canonical CI loses either admission trigger", () => {
+    const variants = [
+      canonicalCi.replace(
+        /  pull_request:\n    branches: \[develop, main\]\n    types: \[opened, synchronize, reopened, ready_for_review, labeled, unlabeled\]\n/,
+        "",
+      ),
+      canonicalCi.replace(
+        /  merge_group:\n    types: \[checks_requested\]\n/,
+        "",
+      ),
+    ];
+    for (const workflow of variants) {
+      const root = buildRepo({ "ci.yml": workflow });
+      try {
+        expect(() => validateWorkflowTriggerPolicy(root)).toThrow(
+          /canonical (pull_request|merge_group) trigger is absent or invalid/,
+        );
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("reserves merge_group for canonical CI and candidate Biome", () => {
+    expect(() =>
+      validateFixture(
+        `on:\n  push:\n    branches: [develop]\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
+      ),
+    ).toThrow(/merge_group is reserved/);
     const root = buildRepo({
-      "develop.yml": `on:\n  push:\n    branches: [develop]\njobs: {}\n`,
+      "ci.yml": canonicalCi,
       "merge-candidate-biome.yml": `on:\n  merge_group:\n    types: [checks_requested]\njobs: {}\n`,
     });
     try {
@@ -109,7 +161,7 @@ jobs: {}
     }
   });
 
-  test("the checked-in workflow set has no PR triggers or non-develop branch pushes", () => {
+  test("the checked-in workflows expose only the canonical aggregate and develop pushes", () => {
     const result = validateWorkflowTriggerPolicy(REAL_REPO_ROOT);
     expect(result.files).toBeGreaterThan(40);
     expect(result.developPushWorkflows).toBeGreaterThan(15);

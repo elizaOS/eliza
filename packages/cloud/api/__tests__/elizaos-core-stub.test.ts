@@ -1,4 +1,4 @@
-// Exercises cloud API tests elizaos core stub.test behavior with deterministic Worker route fixtures.
+/** Exercises Worker-safe core stub behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -10,6 +10,8 @@ import {
   runWithTrajectoryPurpose,
   SsrfBlockedError,
   stripAugmentationForPersistence,
+  stripHtmlRawTextElements,
+  toWellFormedUnicode,
 } from "../src/stubs/elizaos-core";
 
 describe("elizaos-core Worker stub", () => {
@@ -25,6 +27,15 @@ describe("elizaos-core Worker stub", () => {
     await expect(
       runWithTrajectoryPurpose("inbox_triage", async () => "ok"),
     ).resolves.toBe("ok");
+  });
+
+  test("re-exports canonical pure text sanitizers used by Worker consumers", () => {
+    expect(
+      stripHtmlRawTextElements(
+        "before<script><!--<script>hidden</script>still-hidden</script>after",
+      ),
+    ).toBe("before after");
+    expect(toWellFormedUnicode("before\ud83dafter")).toBe("before�after");
   });
 
   test("strips document augmentation before Worker-side persistence", () => {

@@ -10,6 +10,7 @@ import { stringToUuid } from "@elizaos/core/edge";
 import type {
   InsertSharedAgentMemoryInput,
   MergeSharedAgentMessageMemoryInput,
+  SharedAgentMemoriesReader,
   SharedAgentMemoriesWriter,
 } from "../../../db/repositories/shared-agent-memories";
 import {
@@ -202,5 +203,118 @@ describe("SharedMemoryStore.recordTurnPair", () => {
     ).rejects.toThrow("scripted storage failure");
     // Sequential writes: the user row landed before the failure surfaced.
     expect(failing.inserts).toHaveLength(2);
+  });
+});
+
+function scriptedReader(rows: Array<Record<string, unknown>>): {
+  reader: SharedAgentMemoriesReader;
+  calls: Array<{ scope: unknown; type: string; limit: number }>;
+} {
+  const calls: Array<{ scope: unknown; type: string; limit: number }> = [];
+  const reader = {
+    async listRecentByType(scope: unknown, type: string, limit: number) {
+      calls.push({ scope, type, limit });
+      return rows;
+    },
+  } as unknown as SharedAgentMemoriesReader;
+  return { reader, calls };
+}
+
+describe("SharedMemoryStore facts (P4)", () => {
+  test("recordFacts writes tenant-pinned facts rows with normalized deterministic ids", async () => {
+    const { writer, inserts } = scriptedWriter();
+    const storage = sharedTodoStorageScope({ sourceAgentId: AGENT_KEY, ownerId: USER });
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY, storage },
+      writer,
+    );
+    await store.recordFacts(["The user has a dog", "  ", "The user lives in Lisbon."]);
+
+    expect(inserts).toHaveLength(2);
+    for (const row of inserts) {
+      expect(row.type).toBe("facts");
+      expect(row.scope).toEqual({ organizationId: ORG, userId: USER, agentId: storage.agentId });
+      expect(row.entityId).toBe(storage.entityId);
+      expect(row.roomId).toBe(sharedRuntimeConversationRoomId(AGENT_KEY));
+      expect(row.worldId).toBe(sharedRuntimeWorldId(AGENT_KEY));
+    }
+    expect(inserts[0]?.content).toEqual({
+      text: "The user has a dog",
+      source: "shared-facts-extraction",
+    });
+    // The row id derives from the NORMALIZED fact text: an alternate spelling
+    // of the same fact replays the same id instead of duplicating.
+    expect(inserts[1]?.id).toBe(stringToUuid(`${AGENT_KEY}:fact:the user lives in lisbon`));
+  });
+
+  test("recordFacts batches embeddings once and degrades to vector-less rows on sidecar failure", async () => {
+    const embedded = scriptedWriter();
+    let embedCalls = 0;
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      embedded.writer,
+      undefined,
+      {
+        embedTexts: async (texts) => {
+          embedCalls += 1;
+          return texts.map(() => [0.1, 0.2]);
+        },
+        model: "bge-small-en-v1.5",
+      },
+    );
+    await store.recordFacts(["A", "B"]);
+    expect(embedCalls).toBe(1);
+    expect(embedded.inserts[0]?.embedding).toEqual([0.1, 0.2]);
+    expect(embedded.inserts[0]?.embeddingModel).toBe("bge-small-en-v1.5");
+
+    const degraded = scriptedWriter();
+    const failingStore = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      degraded.writer,
+      undefined,
+      {
+        embedTexts: async () => {
+          throw new Error("sidecar down");
+        },
+        model: "bge-small-en-v1.5",
+      },
+    );
+    await failingStore.recordFacts(["Still lands"]);
+    expect(degraded.inserts).toHaveLength(1);
+    expect(degraded.inserts[0]?.embedding).toBeUndefined();
+  });
+
+  test("recordFacts skips writer and embed calls entirely for nothing renderable", async () => {
+    const { writer, inserts } = scriptedWriter();
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      writer,
+    );
+    await store.recordFacts([]);
+    await store.recordFacts(["  ", ""]);
+    expect(inserts).toHaveLength(0);
+  });
+
+  test("listFacts queries the facts discriminator in scope and returns only textual rows", async () => {
+    const { reader, calls } = scriptedReader([
+      { content: { text: "The user has a dog" } },
+      { content: { text: "   " } },
+      { content: {} },
+      { content: { text: "The user lives in Lisbon" } },
+    ]);
+    const store = new SharedMemoryStore(
+      { organizationId: ORG, userId: USER, agentKey: AGENT_KEY },
+      scriptedWriter().writer,
+      reader,
+    );
+    const facts = await store.listFacts(10);
+    expect(facts).toEqual(["The user has a dog", "The user lives in Lisbon"]);
+    expect(calls).toEqual([
+      {
+        scope: { organizationId: ORG, userId: USER, agentId: stringToUuid(AGENT_KEY) },
+        type: "facts",
+        limit: 10,
+      },
+    ]);
   });
 });

@@ -133,4 +133,21 @@ describe("userReferenceLogView", () => {
 		expect(clamped.endsWith("…")).toBe(true);
 		expect(clamped.slice(0, 119)).toBe("b".repeat(119));
 	});
+
+	it("keeps surrogate pairs intact when truncating at 120-char boundary", () => {
+		const text = `${"a".repeat(118)}🦊${"b".repeat(50)}`;
+		const clamped = userReferenceLogView(text);
+		expect(clamped.length).toBeLessThanOrEqual(120);
+		expect(clamped.isWellFormed?.() ?? true).toBe(true);
+		expect(clamped.endsWith("…")).toBe(true);
+		expect(clamped).not.toContain("\uD83E");
+	});
+
+	it("sanitizes lone surrogates before clamping", () => {
+		const lone = `bad \uD800 ${"c".repeat(200)}`;
+		const clamped = userReferenceLogView(lone);
+		expect(clamped).toContain("\uFFFD");
+		expect(clamped.isWellFormed?.() ?? true).toBe(true);
+		expect(clamped.length).toBeLessThanOrEqual(120);
+	});
 });

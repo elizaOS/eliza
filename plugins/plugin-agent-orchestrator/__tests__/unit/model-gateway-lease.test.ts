@@ -19,7 +19,8 @@
  *   broker whose mint fails) refuses the spawn rather than hand out a static
  *   long-lived token.
  * - HTTP REFERENCE BROKER: drives a real loopback HTTP broker end-to-end
- *   (mint + revoke over the wire, through the SSRF guard).
+ *   (mint + revoke over the wire, through the SSRF guard). Hung mint/revoke
+ *   fail closed instead of waiting forever.
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -126,6 +127,7 @@ vi.mock("node:child_process", () => ({
 import { AcpService } from "../../src/services/acp-service.js";
 import {
   configureModelGatewayLease,
+  HttpModelGatewayLeaseBroker,
   isLeaseExpired,
   type LeaseMintRequest,
   type ModelGatewayLease,
@@ -739,5 +741,63 @@ describe("HTTP reference broker — real loopback mint + revoke over the wire", 
     expect(revoke?.url).toBe("/lease/http-lease-1/revoke");
     expect(revoke?.auth).toBe(`Bearer ${GATEWAY_TOKEN}`);
     await service.stop();
+  });
+});
+
+describe("HTTP reference broker — hung lease URL fail-closed", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    server = createServer((_req, _res) => {
+      // accept-and-hold: never write a response
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const addr = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${addr.port}/lease`;
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  function shortTimeoutSignal(): AbortSignal {
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort(
+        Object.assign(new Error("The operation was aborted due to timeout"), {
+          name: "TimeoutError",
+        }),
+      );
+    }, 50);
+    return controller.signal;
+  }
+
+  it("fails closed on a hung mint instead of waiting forever", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(shortTimeoutSignal);
+    const broker = new HttpModelGatewayLeaseBroker(baseUrl, GATEWAY_TOKEN);
+    const started = Date.now();
+    await expect(
+      broker.mint({
+        sessionId: "session-hung",
+        scope: "model-invoke",
+        ttlMs: 45_000,
+        agentType: "claude",
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("fails closed on a hung revoke instead of waiting forever", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(shortTimeoutSignal);
+    const broker = new HttpModelGatewayLeaseBroker(baseUrl, GATEWAY_TOKEN);
+    const started = Date.now();
+    await expect(broker.revoke("lease-hung")).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
   });
 });

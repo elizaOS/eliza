@@ -96,6 +96,7 @@ export async function desktopHttpRequest(params: unknown): Promise<{
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  bodyBase64?: string | null;
 }> {
   const request = normalizeDesktopHttpRequest(params);
   const abortController = new AbortController();
@@ -106,12 +107,31 @@ export async function desktopHttpRequest(params: unknown): Promise<{
       body: request.body,
       signal: abortController.signal,
     });
+    const contentType = response.headers.get("content-type") ?? "";
+    const isBinary =
+      contentType.startsWith("audio/") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/") ||
+      contentType.startsWith("application/octet-stream") ||
+      contentType.startsWith("application/wasm");
+    if (isBinary) {
+      const buf = await response.arrayBuffer();
+      const bodyBase64 = Buffer.from(buf).toString("base64");
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeadersToRecord(response.headers),
+        body: null,
+        bodyBase64,
+      };
+    }
     const body = await response.text();
     return {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeadersToRecord(response.headers),
       body,
+      bodyBase64: null,
     };
   })();
 

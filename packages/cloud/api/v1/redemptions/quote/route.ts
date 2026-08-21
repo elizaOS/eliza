@@ -28,6 +28,12 @@ import { secureTokenRedemptionService } from "@/lib/services/token-redemption-se
 import { twapPriceOracle } from "@/lib/services/twap-price-oracle";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import {
+  REDEMPTION_MAX_POINTS,
+  REDEMPTION_MIN_POINTS,
+  REDEMPTION_NETWORKS,
+  type RedemptionQuoteSuccessResponse,
+} from "@/types/redemption-contract";
 
 const app = new Hono<AppEnv>();
 
@@ -36,8 +42,9 @@ export const DEFAULT_QUOTE_POINTS_AMOUNT = 100;
 /**
  * Canonical redemption-quote `pointsAmount` at the HTTP boundary.
  * Missing or empty defaults to 100. Any other token must be a complete
- * ASCII decimal safe integer ≥ 1 — no sign, zero, fraction, hex, scientific
- * notation, leading zeros, whitespace, junk, or unsafe integers.
+ * ASCII decimal safe integer within the same min/max bounds as POST — no sign,
+ * zero, fraction, hex, scientific notation, leading zeros, whitespace, junk,
+ * or unsafe integers.
  */
 export function parseRedemptionQuotePointsAmount(
   raw: string | undefined,
@@ -49,19 +56,18 @@ export function parseRedemptionQuotePointsAmount(
     return { ok: false };
   }
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isSafeInteger(parsed) || String(parsed) !== raw || parsed < 1) {
+  if (
+    !Number.isSafeInteger(parsed) ||
+    String(parsed) !== raw ||
+    parsed < REDEMPTION_MIN_POINTS ||
+    parsed > REDEMPTION_MAX_POINTS
+  ) {
     return { ok: false };
   }
   return { ok: true, pointsAmount: parsed };
 }
 
-const validNetworkParams = [
-  "ethereum",
-  "base",
-  "bnb",
-  "bsc",
-  "solana",
-] as const;
+const validNetworkParams = REDEMPTION_NETWORKS;
 type NetworkParam = (typeof validNetworkParams)[number];
 
 function normalizeNetworkParam(network: NetworkParam) {
@@ -187,9 +193,10 @@ app.get("/", async (c) => {
       userId: user.id,
     });
 
-    return c.json({
+    const response = {
       success: true,
       quote: {
+        asset: "eliza",
         network,
         tokenAddress: ELIZA_TOKEN_ADDRESSES[network],
         pointsAmount,
@@ -224,7 +231,9 @@ app.get("/", async (c) => {
         ? `You will receive approximately ${effectiveElizaAmount.toFixed(4)} elizaOS tokens for ${pointsAmount} points ($${usdValue.toFixed(2)}). A ${(ARBITRAGE_PROTECTION.SAFETY_SPREAD * 100).toFixed(0)}% safety spread is applied.`
         : `Sorry, we don't have enough elizaOS tokens available on ${network} right now. Please try again later.`,
       canRedeem: availability.available && quoteResult.success,
-    });
+    } satisfies RedemptionQuoteSuccessResponse;
+
+    return c.json(response);
   } catch (error) {
     // failureResponse maps unknown throws to a generic 500 and does NOT log;
     // a thrown TWAP-oracle / payout-status failure would otherwise be invisible.

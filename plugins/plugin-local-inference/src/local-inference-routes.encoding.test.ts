@@ -1,8 +1,8 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 
-import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import type http from "node:http";
+import { describe, expect, test } from "vitest";
 import { handleLocalInferenceRoutes } from "./local-inference-routes.ts";
 
 function makeReq(method: string, url: string): http.IncomingMessage {

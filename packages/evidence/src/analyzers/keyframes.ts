@@ -23,6 +23,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { EvidenceError } from "../errors.ts";
 import { resolveFfmpegBinary } from "../ffmpeg-binaries.ts";
+import { trimBoundaryCharacters } from "../string-boundaries.ts";
 import type {
   Analyzer,
   AnalyzerContext,
@@ -145,9 +146,10 @@ export async function extractKeyframes(
  * can never write keyframes into each other's directory.
  */
 export function slugForVideo(bundlePath: string): string {
-  const slug = bundlePath
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const slug = trimBoundaryCharacters(
+    bundlePath.replace(/[^a-zA-Z0-9]+/g, "-"),
+    "-",
+  );
   const hash = createHash("sha256")
     .update(bundlePath)
     .digest("hex")

@@ -15,6 +15,7 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
     processing: boolean;
     plan: string[] | null;
     chunks: Map<number, TelegramDeliveryState>;
+    providerMessageIds: Map<number, string>;
   };
 } {
   const state = {
@@ -22,6 +23,7 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
     processing: false,
     plan: null as string[] | null,
     chunks: new Map<number, TelegramDeliveryState>(),
+    providerMessageIds: new Map<number, string>(),
   };
   return {
     state,
@@ -57,8 +59,11 @@ function memoryLedger(initial: TelegramDeliveryState | null = null): {
       async releaseChunk(index) {
         state.chunks.delete(index);
       },
-      async markChunkDelivered(index) {
+      async markChunkDelivered(index, _digest, providerMessageId) {
         state.chunks.set(index, "delivered");
+        if (providerMessageId) {
+          state.providerMessageIds.set(index, providerMessageId);
+        }
       },
       async markDelivered() {
         state.delivery = "delivered";
@@ -84,6 +89,7 @@ describe("executeTelegramDelivery", () => {
     expect(outcome).toBe("delivered");
     expect(claimObserved).toBe(true);
     expect(memory.state.chunks.get(0)).toBe("delivered");
+    expect(memory.state.providerMessageIds.get(0)).toBe("provider-1");
     expect(memory.state.delivery).toBe("delivered");
   });
 

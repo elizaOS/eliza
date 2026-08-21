@@ -44,6 +44,7 @@ export interface SandboxCommandResult {
 	stdout: string;
 	stderr: string;
 	error?: string;
+	timedOut?: boolean;
 }
 
 export interface SandboxFileCapability {

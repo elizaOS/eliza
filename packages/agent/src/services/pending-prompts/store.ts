@@ -15,12 +15,61 @@
  * to defend against unbounded growth in a noisy chat.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 type RuntimeCacheLike = Pick<
   IAgentRuntime,
   "getCache" | "setCache" | "deleteCache"
 >;
+
+/**
+ * Serializes mutating store operations per runtime so a concurrent
+ * read-modify-write (two `record()` calls racing on the same room, for
+ * example) can't read a stale snapshot and clobber the other's write.
+ * `createPendingPromptsStore` builds a fresh store object on every call
+ * (see `PendingPromptsService.getStore()`), so the lock must live outside
+ * any single store instance — keyed by the runtime's cache identity — for
+ * concurrent callers to actually share it.
+ */
+const MUTATION_LOCK_KEY = "mutation";
+type LockRunner = <T>(key: string, task: () => Promise<T>) => Promise<T>;
+const lockRunners = new WeakMap<RuntimeCacheLike, LockRunner>();
+
+function createLockRunner(): LockRunner {
+  const tails = new Map<string, Promise<void>>();
+  return async <T>(key: string, task: () => Promise<T>): Promise<T> => {
+    const previous = tails.get(key);
+    const run = async (): Promise<T> => {
+      if (previous) await previous.catch(() => undefined);
+      return task();
+    };
+    const result = run();
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    tails.set(key, tail);
+    try {
+      return await result;
+    } finally {
+      if (tails.get(key) === tail) {
+        tails.delete(key);
+      }
+    }
+  };
+}
+
+function getLockRunner(cache: RuntimeCacheLike): LockRunner {
+  const existing = lockRunners.get(cache);
+  if (existing) return existing;
+  const created = createLockRunner();
+  lockRunners.set(cache, created);
+  return created;
+}
 
 export type ExpectedReplyKind = "any" | "yes_no" | "approval" | "free_form";
 
@@ -89,11 +138,11 @@ function roomCacheKey(roomId: string): string {
 }
 
 function clampSnippet(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= PROMPT_SNIPPET_MAX_LENGTH) {
-    return trimmed;
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length <= PROMPT_SNIPPET_MAX_LENGTH) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, PROMPT_SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
+  return `${truncateWellFormed(wellFormed, PROMPT_SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function isValidIso(value: unknown): value is string {
@@ -152,6 +201,7 @@ export function createPendingPromptsStore(
   runtime: IAgentRuntime,
 ): PendingPromptsStore {
   const cache: RuntimeCacheLike = runtime;
+  const withLock = getLockRunner(cache);
 
   const store: PendingPromptsStore = {
     async record(
@@ -189,17 +239,19 @@ export function createPendingPromptsStore(
       if (input.expiresAt !== undefined) {
         recorded.expiresAt = input.expiresAt;
       }
-      const existing = await loadRoom(cache, input.roomId);
-      const filtered = existing.filter(
-        (entry) => entry.taskId !== input.taskId,
-      );
-      filtered.push(recorded);
-      // Bound per-room growth: keep newest N entries (FIFO eviction).
-      const trimmed =
-        filtered.length > PER_ROOM_MAX_PROMPTS
-          ? filtered.slice(-PER_ROOM_MAX_PROMPTS)
-          : filtered;
-      await saveRoom(cache, input.roomId, trimmed);
+      await withLock(MUTATION_LOCK_KEY, async () => {
+        const existing = await loadRoom(cache, input.roomId);
+        const filtered = existing.filter(
+          (entry) => entry.taskId !== input.taskId,
+        );
+        filtered.push(recorded);
+        // Bound per-room growth: keep newest N entries (FIFO eviction).
+        const trimmed =
+          filtered.length > PER_ROOM_MAX_PROMPTS
+            ? filtered.slice(-PER_ROOM_MAX_PROMPTS)
+            : filtered;
+        await saveRoom(cache, input.roomId, trimmed);
+      });
       return recorded;
     },
 
@@ -213,20 +265,23 @@ export function createPendingPromptsStore(
           ? now.getTime() - opts.lookbackMinutes * 60_000
           : null;
 
-      const stored = await loadRoom(cache, roomId);
-      let mutated = false;
-      const live: RecordedPendingPrompt[] = [];
-      for (const entry of stored) {
-        const retainMs = Date.parse(entry.retainUntilIso);
-        if (Number.isFinite(retainMs) && retainMs <= now.getTime()) {
-          mutated = true;
-          continue;
+      const live = await withLock(MUTATION_LOCK_KEY, async () => {
+        const stored = await loadRoom(cache, roomId);
+        let mutated = false;
+        const kept: RecordedPendingPrompt[] = [];
+        for (const entry of stored) {
+          const retainMs = Date.parse(entry.retainUntilIso);
+          if (Number.isFinite(retainMs) && retainMs <= now.getTime()) {
+            mutated = true;
+            continue;
+          }
+          kept.push(entry);
         }
-        live.push(entry);
-      }
-      if (mutated) {
-        await saveRoom(cache, roomId, live);
-      }
+        if (mutated) {
+          await saveRoom(cache, roomId, kept);
+        }
+        return kept;
+      });
 
       const visible = live.filter((entry) => {
         if (lookbackCutoffMs === null) return true;
@@ -269,42 +324,47 @@ export function createPendingPromptsStore(
     },
 
     async resolve(roomId: string, taskId: string): Promise<void> {
-      const existing = await loadRoom(cache, roomId);
-      const next = existing.filter((entry) => entry.taskId !== taskId);
-      if (next.length === existing.length) {
-        return;
-      }
-      await saveRoom(cache, roomId, next);
-    },
-
-    async forgetTask(taskId: string): Promise<void> {
-      const rooms = await listRooms(cache);
-      for (const roomId of rooms) {
+      await withLock(MUTATION_LOCK_KEY, async () => {
         const existing = await loadRoom(cache, roomId);
         const next = existing.filter((entry) => entry.taskId !== taskId);
         if (next.length !== existing.length) {
           await saveRoom(cache, roomId, next);
         }
-      }
+      });
+    },
+
+    async forgetTask(taskId: string): Promise<void> {
+      await withLock(MUTATION_LOCK_KEY, async () => {
+        const rooms = await listRooms(cache);
+        for (const roomId of rooms) {
+          const existing = await loadRoom(cache, roomId);
+          const next = existing.filter((entry) => entry.taskId !== taskId);
+          if (next.length !== existing.length) {
+            await saveRoom(cache, roomId, next);
+          }
+        }
+      });
     },
 
     async clearAll(): Promise<void> {
-      const rooms = await listRooms(cache);
-      for (const roomId of rooms) {
-        if (typeof cache.deleteCache === "function") {
-          await cache.deleteCache(roomCacheKey(roomId));
-        } else {
-          await cache.setCache<RecordedPendingPrompt[]>(
-            roomCacheKey(roomId),
-            [],
-          );
+      await withLock(MUTATION_LOCK_KEY, async () => {
+        const rooms = await listRooms(cache);
+        for (const roomId of rooms) {
+          if (typeof cache.deleteCache === "function") {
+            await cache.deleteCache(roomCacheKey(roomId));
+          } else {
+            await cache.setCache<RecordedPendingPrompt[]>(
+              roomCacheKey(roomId),
+              [],
+            );
+          }
         }
-      }
-      if (typeof cache.deleteCache === "function") {
-        await cache.deleteCache(ROOM_INDEX_KEY);
-      } else {
-        await cache.setCache<string[]>(ROOM_INDEX_KEY, []);
-      }
+        if (typeof cache.deleteCache === "function") {
+          await cache.deleteCache(ROOM_INDEX_KEY);
+        } else {
+          await cache.setCache<string[]>(ROOM_INDEX_KEY, []);
+        }
+      });
     },
   };
   return store;

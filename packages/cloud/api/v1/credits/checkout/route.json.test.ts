@@ -51,6 +51,8 @@ mock.module("@/lib/stripe", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: {} },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 
 mock.module("@/lib/utils/logger", () => ({

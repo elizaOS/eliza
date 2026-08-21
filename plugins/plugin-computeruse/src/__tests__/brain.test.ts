@@ -119,6 +119,12 @@ describe("parseBrainOutput", () => {
     expect(out.proposed_action.kind).toBe("wait");
   });
 
+  it("rejects a 100k unterminated fence without backtracking", () => {
+    expect(() =>
+      parseBrainOutput(`\`\`\`json\n${"x".repeat(100_000)}`),
+    ).toThrow(BrainParseError);
+  });
+
   it("tolerates leading prose before the first brace", () => {
     const raw =
       "Sure! Here's the JSON: " +

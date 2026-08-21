@@ -65,6 +65,24 @@ afterEach(() => {
 });
 
 describe("LoginPage accessibility", () => {
+  it("owns a dark full-viewport canvas instead of leaking the light document background", async () => {
+    await act(async () => {
+      render(
+        <MemoryRouter>
+          <LoginPage />
+        </MemoryRouter>,
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const fill = screen.getByTestId("login-safe-area-fill");
+    expect(fill.className).toContain("z-0");
+    expect(fill.className).toContain("bg-bg");
+    expect(fill.parentElement?.className).toContain("isolate");
+    expect(fill.parentElement?.className).toContain("bg-bg");
+  });
+
   it("exposes a main landmark and touch-sized legal links", async () => {
     await act(async () => {
       render(

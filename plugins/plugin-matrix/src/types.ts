@@ -274,8 +274,8 @@ export function getMatrixLocalpart(matrixId: string): string {
  * Extract the server part from a Matrix ID.
  */
 export function getMatrixServerpart(matrixId: string): string {
-  const match = matrixId.match(/:(.+)$/);
-  return match ? match[1] : "";
+  const separator = matrixId.indexOf(":");
+  return separator >= 0 ? matrixId.slice(separator + 1) : "";
 }
 
 /**

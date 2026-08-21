@@ -13,6 +13,7 @@ import {
   type gmail_v1,
   google,
   type meet_v2,
+  type people_v1,
   type sheets_v4,
 } from "googleapis";
 import { MissingGoogleCredentialResolver } from "./auth.js";
@@ -92,6 +93,15 @@ export class GoogleApiClientFactory {
   ): Promise<sheets_v4.Sheets> {
     const auth = await this.resolveAuthClient(account, capabilities, reason);
     return google.sheets(this.apiOptions("v4", auth) as sheets_v4.Options);
+  }
+
+  async people(
+    account: GoogleAccountRef,
+    capabilities: readonly GoogleCapability[],
+    reason: string
+  ): Promise<people_v1.People> {
+    const auth = await this.resolveAuthClient(account, capabilities, reason);
+    return google.people(this.apiOptions("v1", auth) as people_v1.Options);
   }
 
   async meet(

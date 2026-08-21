@@ -273,6 +273,78 @@ describe("coding remote runner HTTP runner", () => {
     expect(ran).toBe(false);
   });
 
+  it("logs but does not return unexpected command-runner exception text", async () => {
+    const marker = "<script>secret /workspace/private.ts:17</script>";
+    const run = handler(async () => {
+      const error = new Error(marker);
+      error.stack = `Error: ${marker}\n    at /workspace/private.ts:17:3`;
+      throw error;
+    });
+
+    const response = await run(
+      request("/v1/processes/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "/bin/true", timeoutMs: 5000 }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "remote runner request failed",
+    });
+  });
+
+  it("survives a thrown proxy whose prototype and properties are hostile", async () => {
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    const run = handler(async () => {
+      throw hostile;
+    });
+
+    const response = await run(
+      request("/v1/processes/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ command: "/bin/true", timeoutMs: 5000 }),
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: "remote runner request failed",
+    });
+  });
+
+  it("does not reflect an attacker-controlled environment key in a 400", async () => {
+    const marker = `${"x".repeat(8_192)}\u202e<script>`;
+    const run = handler(async () => {
+      throw new Error("command runner must not run");
+    });
+    const response = await run(
+      request("/v1/processes/run", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          command: "/bin/true",
+          env: { [marker]: false },
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    const body = await response.text();
+    expect(body).toContain("env entries must be strings");
+    expect(body).not.toContain(marker);
+    expect(body.length).toBeLessThan(256);
+  });
+
   it("blocks unauthenticated workspace writes even with the escape hatch on", async () => {
     const config = loadConfig({
       ELIZA_CODING_WORKSPACE: workspaceRoot,

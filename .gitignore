@@ -577,7 +577,6 @@ research/even-realities/
 # Build artifacts from old ios-native-deps location (moved to packages/native/ios-deps/)
 packages/ios-native-deps/
 test/mocks/mockoon/.mockoon-pids/
-lifeops_bench_results/
 reports/ai-qa/
 reports/apps-manual-qa/
 reports/porting/

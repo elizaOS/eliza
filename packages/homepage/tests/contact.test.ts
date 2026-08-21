@@ -7,6 +7,7 @@ import {
   buildElizaDiscordHref,
   buildElizaSmsHref,
   buildElizaTelegramHref,
+  buildElizaTelHref,
   buildElizaWhatsAppHref,
   canOpenElizaSmsLink,
   ELIZA_DISCORD_APPLICATION_ID,
@@ -16,6 +17,7 @@ import {
   getDiscordBotApplicationId,
   getTelegramBotId,
   getWhatsAppNumber,
+  openOrCopyElizaCall,
   openOrCopyElizaMessage,
   resolveWhatsAppNumber,
 } from "../src/lib/contact";
@@ -32,6 +34,10 @@ describe("Eliza contact links", () => {
     expect(buildElizaSmsHref()).not.toContain("14159611510");
     expect(buildElizaSmsHref()).not.toContain("4153024399");
     expect(buildElizaSmsHref()).not.toContain("415-302-4399");
+  });
+
+  test("builds a call link to the hosted Blooio number", () => {
+    expect(buildElizaTelHref()).toBe(`tel:${ELIZA_PHONE_NUMBER}`);
   });
 
   test("keeps the WhatsApp fallback separate from the Blooio number", () => {
@@ -106,6 +112,38 @@ describe("Eliza contact links", () => {
 
     await expect(
       openOrCopyElizaMessage({
+        location: { href: "https://eliza.app/" },
+        navigator: { platform: "Linux x86_64" },
+      }),
+    ).rejects.toThrow("Clipboard access is unavailable");
+  });
+
+  test("opens native calling when supported and copies the number otherwise", async () => {
+    const nativeLocation = { href: "https://eliza.app/" };
+    await expect(
+      openOrCopyElizaCall({
+        location: nativeLocation,
+        navigator: { platform: "MacIntel" },
+      }),
+    ).resolves.toBe("handoff");
+    expect(nativeLocation.href).toBe(buildElizaTelHref());
+
+    const clipboardWrites: string[] = [];
+    await expect(
+      openOrCopyElizaCall({
+        location: { href: "https://eliza.app/" },
+        navigator: {
+          platform: "Win32",
+          clipboard: {
+            writeText: async (value) => clipboardWrites.push(value),
+          },
+        },
+      }),
+    ).resolves.toBe("copied");
+    expect(clipboardWrites).toEqual([ELIZA_PHONE_NUMBER]);
+
+    await expect(
+      openOrCopyElizaCall({
         location: { href: "https://eliza.app/" },
         navigator: { platform: "Linux x86_64" },
       }),

@@ -589,6 +589,7 @@ export interface InstallDependencyResult {
  */
 export type SkillSource =
 	| "workspace" // 5 - highest precedence
+	| "marketplace" // 4.5 - workspace-local repository installs
 	| "managed" // 4
 	| "bundled" // 3
 	| "plugin" // 2
@@ -599,6 +600,7 @@ export type SkillSource =
  */
 export const SKILL_SOURCE_PRECEDENCE: Record<SkillSource, number> = {
 	workspace: 5,
+	marketplace: 4.5,
 	managed: 4,
 	bundled: 3,
 	plugin: 2,

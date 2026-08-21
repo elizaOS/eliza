@@ -162,6 +162,34 @@ describe("Telegram message connector adapter", () => {
     );
   });
 
+  it("rejects sends to an unrecognized accountId instead of falling back to the default bot", async () => {
+    const runtime = createRuntime();
+    const managerA = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const managerB = { sendMessage: vi.fn().mockResolvedValue([]) };
+    const service = createTelegramService({
+      bot: {},
+      messageManager: managerA,
+      defaultAccountId: "acct-a",
+      accountStates: new Map([
+        ["acct-a", { accountId: "acct-a", messageManager: managerA, bot: {} }],
+        ["acct-b", { accountId: "acct-b", messageManager: managerB, bot: {} }],
+      ]),
+    });
+
+    await expect(
+      service.handleSendMessage(
+        runtime,
+        { source: "telegram", accountId: "acct-ghost", channelId: "-100123" },
+        { text: "hello" },
+      ),
+    ).rejects.toThrow(
+      "Telegram account acct-ghost is not configured or active",
+    );
+
+    expect(managerA.sendMessage).not.toHaveBeenCalled();
+    expect(managerB.sendMessage).not.toHaveBeenCalled();
+  });
+
   it("rejects sends without a resolvable Telegram target", async () => {
     const runtime = createRuntime();
     const manager = { sendMessage: vi.fn().mockResolvedValue([]) };

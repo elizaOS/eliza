@@ -4,13 +4,22 @@
  * The Durable Object absorbs repeat Postgres/Hyperdrive bootstrap while the
  * account still routes to Shared. Dedicated targets are deliberately never
  * cached: their lifecycle and bridge fields remain authoritative in Postgres.
- * Identity writers and tier cutover explicitly delete the sender projection;
- * a one-hour hard expiry is the final safety bound, not the coherence model.
+ * Projection reads remain disabled in every checked-in environment until every
+ * identity writer and tier cutover participates in the durable mutation-fence
+ * protocol. A fence survives a writer crash, forces canonical resolution, and
+ * prevents a concurrent read from repopulating stale durable authority.
+ *
+ * The projection is an accelerator, never a gate: a slow, failed, or
+ * malformed projection read degrades to the canonical database resolver in
+ * the same request, and only a both-path failure surfaces as the typed
+ * `PersonalDeliveryAccountResolutionError`.
  */
 
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import {
+  PERSONAL_DELIVERY_PROJECTION_FENCE_PATH,
   PERSONAL_DELIVERY_PROJECTION_INVALIDATE_PATH,
+  PERSONAL_DELIVERY_PROJECTION_RELEASE_PATH,
   PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH,
   personalDeliveryProjectionObjectName,
 } from "@/lib/services/eliza-app/personal-delivery-projection-contract";
@@ -22,7 +31,43 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CACHE_KEY = "shared-account";
+const MUTATION_FENCES_KEY = "mutation-fences";
 const CACHE_TTL_MS = 60 * 60_000;
+// A projection read slower than this bound is worse than the canonical
+// indexed Postgres statement it replaces, so the caller stops waiting and
+// resolves directly instead of letting a slow Durable Object own the tail.
+const PROJECTION_RESOLVE_TIMEOUT_MS = 1_500;
+
+const SAFE_PROJECTION_FAILURE_NAMES = new Set([
+  "AbortError",
+  "ApiError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeProjectionFailureName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_PROJECTION_FAILURE_NAMES.has(name) ? name : "OtherError";
+}
+
+/**
+ * Raised when both the sender projection and the canonical database resolver
+ * failed for one turn. Carries only tenant-safe classification (never SQL or
+ * provider payloads) so the internal route can emit an actionable failure
+ * name instead of a bare `Error`.
+ */
+export class PersonalDeliveryAccountResolutionError extends Error {
+  readonly projectionFailure: string;
+
+  constructor(projectionFailure: string, cause: unknown) {
+    super("Personal delivery account resolution failed", { cause });
+    this.name = "PersonalDeliveryAccountResolutionError";
+    this.projectionFailure = projectionFailure;
+  }
+}
 
 interface SharedAccountProjection {
   profileKey: string;
@@ -45,6 +90,10 @@ function optionalText(value: unknown, max = 512): boolean {
   return (
     value === undefined || (typeof value === "string" && value.length <= max)
   );
+}
+
+function isMutationFenceToken(value: unknown): value is string {
+  return boundedText(value, 128) && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value);
 }
 
 export function isPersonalDeliveryInput(
@@ -70,13 +119,21 @@ export function isPersonalDeliveryInput(
       (candidate.avatarUrl === null || optionalText(candidate.avatarUrl, 2_048))
     );
   }
+  if (candidate.platform === "phone") {
+    return (
+      boundedText(candidate.phoneNumber, 16) &&
+      /^\+[1-9]\d{6,14}$/.test(candidate.phoneNumber)
+    );
+  }
   return false;
 }
 
 function senderId(input: PersonalDeliveryInput): string {
   return input.platform === "telegram"
     ? input.telegramId.trim()
-    : input.discordId.trim();
+    : input.platform === "discord"
+      ? input.discordId.trim()
+      : input.phoneNumber.trim();
 }
 
 function profileKey(input: PersonalDeliveryInput): string {
@@ -87,16 +144,22 @@ function profileKey(input: PersonalDeliveryInput): string {
         username: input.username?.trim() || null,
         firstName: input.firstName?.trim() || null,
       })
-    : JSON.stringify({
-        platform: input.platform,
-        senderId: senderId(input),
-        username: input.username.trim(),
-        globalName:
-          input.globalName === undefined
-            ? undefined
-            : input.globalName?.trim() || null,
-        avatarUrl: input.avatarUrl === undefined ? undefined : input.avatarUrl,
-      });
+    : input.platform === "discord"
+      ? JSON.stringify({
+          platform: input.platform,
+          senderId: senderId(input),
+          username: input.username.trim(),
+          globalName:
+            input.globalName === undefined
+              ? undefined
+              : input.globalName?.trim() || null,
+          avatarUrl:
+            input.avatarUrl === undefined ? undefined : input.avatarUrl,
+        })
+      : JSON.stringify({
+          platform: input.platform,
+          senderId: senderId(input),
+        });
 }
 
 function isPersonalDeliveryResult(
@@ -137,25 +200,50 @@ export async function resolvePersonalDeliveryProjection(
     return fallback.resolvePersonalDelivery(input);
   }
 
-  const response = await namespace
-    .getByName(
-      personalDeliveryProjectionObjectName(input.platform, senderId(input)),
-    )
-    .fetch(
-      `https://personal-delivery-projection${PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      },
-    );
-  const body: unknown = await response.json();
-  if (!response.ok || !isPersonalDeliveryResult(body)) {
-    throw new Error(
-      `Personal delivery projection failed with status ${response.status}`,
-    );
+  let projectionFailure: string;
+  try {
+    const response = await namespace
+      .getByName(
+        personalDeliveryProjectionObjectName(input.platform, senderId(input)),
+      )
+      .fetch(
+        `https://personal-delivery-projection${PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(PROJECTION_RESOLVE_TIMEOUT_MS),
+        },
+      );
+    const body: unknown = await response.json();
+    if (response.ok && isPersonalDeliveryResult(body)) return body;
+    const upstreamName =
+      body !== null &&
+      typeof body === "object" &&
+      typeof (body as Record<string, unknown>).failureName === "string"
+        ? ((body as Record<string, unknown>).failureName as string)
+        : undefined;
+    projectionFailure = response.ok
+      ? "malformed-projection-result"
+      : `status-${response.status}${upstreamName ? `:${upstreamName}` : ""}`;
+  } catch (error) {
+    // error-policy:J4 a projection transport failure (timeout, DO restart,
+    // isolate teardown) degrades to the canonical database resolver below; it
+    // never fabricates account state and both-path failure still throws.
+    projectionFailure = safeProjectionFailureName(error);
   }
-  return body;
+
+  logger.warn(
+    "[PersonalDeliveryProjection] projection read degraded to canonical resolver",
+    { platform: input.platform, projectionFailure },
+  );
+  try {
+    return await fallback.resolvePersonalDelivery(input);
+  } catch (error) {
+    // error-policy:J2 both the projection and the canonical resolver failed;
+    // rethrow typed with tenant-safe classification and the original cause.
+    throw new PersonalDeliveryAccountResolutionError(projectionFailure, error);
+  }
 }
 
 export class PersonalDeliveryProjection {
@@ -164,6 +252,7 @@ export class PersonalDeliveryProjection {
   private readonly resolver: PersonalDeliveryResolver | undefined;
   private entry: SharedAccountProjection | undefined;
   private entryLoaded = false;
+  private mutationFences: Set<string> | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
 
   constructor(
@@ -205,9 +294,63 @@ export class PersonalDeliveryProjection {
     this.entryLoaded = true;
   }
 
+  private async loadMutationFences(): Promise<Set<string>> {
+    if (!this.mutationFences) {
+      const stored =
+        await this.state.storage.get<string[]>(MUTATION_FENCES_KEY);
+      this.mutationFences = new Set(
+        Array.isArray(stored) ? stored.filter(isMutationFenceToken) : [],
+      );
+    }
+    return this.mutationFences;
+  }
+
+  private async persistMutationFences(): Promise<void> {
+    const fences = await this.loadMutationFences();
+    if (fences.size === 0) {
+      await this.state.storage.delete(MUTATION_FENCES_KEY);
+      return;
+    }
+    await this.state.storage.put(MUTATION_FENCES_KEY, [...fences].sort());
+  }
+
+  private async fenceMutation(token: string): Promise<void> {
+    await this.invalidate();
+    const fences = await this.loadMutationFences();
+    fences.add(token);
+    await this.persistMutationFences();
+  }
+
+  private async releaseMutationFence(token: string): Promise<void> {
+    // A release always drops any entry defensively. Fenced resolves never cache,
+    // but this keeps retries and older object revisions safe during rollout.
+    await this.invalidate();
+    const fences = await this.loadMutationFences();
+    fences.delete(token);
+    await this.persistMutationFences();
+  }
+
+  private async resolveCanonical(
+    input: PersonalDeliveryInput,
+  ): Promise<PersonalDeliveryResult> {
+    return runWithCloudBindingsAsync(this.env, async () => {
+      const resolver =
+        this.resolver ??
+        (await import("@/lib/services/eliza-app/user-service"))
+          .elizaAppUserService;
+      return resolver.resolvePersonalDelivery(input);
+    });
+  }
+
   private async resolve(
     input: PersonalDeliveryInput,
   ): Promise<PersonalDeliveryResult> {
+    const mutationFences = await this.loadMutationFences();
+    if (mutationFences.size > 0) {
+      await this.invalidate();
+      return this.resolveCanonical(input);
+    }
+
     const now = Date.now();
     const expectedProfile = profileKey(input);
     const cached = await this.loadEntry();
@@ -226,13 +369,7 @@ export class PersonalDeliveryProjection {
     }
     if (cached) await this.invalidate();
 
-    const resolved = await runWithCloudBindingsAsync(this.env, async () => {
-      const resolver =
-        this.resolver ??
-        (await import("@/lib/services/eliza-app/user-service"))
-          .elizaAppUserService;
-      return resolver.resolvePersonalDelivery(input);
-    });
+    const resolved = await this.resolveCanonical(input);
     if (resolved.dedicatedTarget === null) {
       const projection: SharedAccountProjection = {
         profileKey: expectedProfile,
@@ -260,6 +397,31 @@ export class PersonalDeliveryProjection {
           await this.invalidate();
           return Response.json({ success: true });
         }
+        if (
+          path === PERSONAL_DELIVERY_PROJECTION_FENCE_PATH ||
+          path === PERSONAL_DELIVERY_PROJECTION_RELEASE_PATH
+        ) {
+          const body: unknown = await request.json();
+          const token =
+            body && typeof body === "object"
+              ? (body as Record<string, unknown>).token
+              : undefined;
+          if (!isMutationFenceToken(token)) {
+            return Response.json(
+              { error: "Invalid mutation fence token" },
+              { status: 400 },
+            );
+          }
+          if (path === PERSONAL_DELIVERY_PROJECTION_FENCE_PATH) {
+            await this.fenceMutation(token);
+          } else {
+            await this.releaseMutationFence(token);
+          }
+          return Response.json({
+            success: true,
+            fenced: (await this.loadMutationFences()).size > 0,
+          });
+        }
         if (path !== PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH) {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
@@ -278,7 +440,10 @@ export class PersonalDeliveryProjection {
           error: error instanceof Error ? error.message : String(error),
         });
         return Response.json(
-          { error: "Personal delivery resolution failed" },
+          {
+            error: "Personal delivery resolution failed",
+            failureName: safeProjectionFailureName(error),
+          },
           { status: 502 },
         );
       }

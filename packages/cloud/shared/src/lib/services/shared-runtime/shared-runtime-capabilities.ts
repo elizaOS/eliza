@@ -14,6 +14,17 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core/edge";
+import {
+  type AgentCapabilityDescriptor,
+  type AgentCapabilityId,
+  type AgentCapabilityTransport,
+  type CapabilityHandoffRequest,
+  findAgentCapability,
+} from "@elizaos/shared";
+import {
+  buildSharedCapabilityCatalog,
+  formatSharedCapabilityCatalogForPrompt,
+} from "./shared-capability-catalog";
 
 export const SHARED_RUNTIME_CAPABILITIES_PROVIDER = "SHARED_RUNTIME_CAPABILITIES";
 export const REQUEST_DEDICATED_UPGRADE_ACTION = "REQUEST_DEDICATED_UPGRADE";
@@ -70,26 +81,8 @@ export interface SharedRuntimeCapabilityOptions {
   reminders: boolean;
   todos: boolean;
   media: boolean;
+  transport?: AgentCapabilityTransport;
 }
-
-function availableCapabilities(options: SharedRuntimeCapabilityOptions): string[] {
-  return [
-    "conversation and reasoning",
-    "conversation memory",
-    ...(options.webSearch ? ["public web search"] : []),
-    ...(options.reminders ? ["private reminders"] : []),
-    ...(options.todos ? ["persistent todos"] : []),
-    ...(options.media ? ["image generation"] : []),
-  ];
-}
-
-const DEDICATED_CAPABILITIES = [
-  "coding and sub-agents",
-  "shell and filesystem",
-  "browser or computer control",
-  "connected private accounts",
-  "arbitrary outbound communications",
-] as const;
 
 export function createSharedRuntimeCapabilitiesProvider(
   options: SharedRuntimeCapabilityOptions,
@@ -102,26 +95,83 @@ export function createSharedRuntimeCapabilitiesProvider(
     cacheScope: "turn",
     roleGate: { minRole: "GUEST" },
     get: async (): Promise<ProviderResult> => {
-      const available = availableCapabilities(options);
+      const catalog = buildSharedCapabilityCatalog(options);
+      const available = catalog.capabilities
+        .filter((capability) => capability.availability === "available")
+        .map((capability) => capability.label);
+      const dedicatedRequired = catalog.capabilities
+        .filter((capability) => capability.requiredTier === "personal")
+        .map((capability) => capability.label);
       return {
         text: [
           "# Runtime capabilities",
           "",
-          "This agent is running on Shared, stateless edge compute.",
-          `Available now: ${available.join(", ")}.`,
-          `Dedicated required: ${DEDICATED_CAPABILITIES.join(", ")}.`,
+          formatSharedCapabilityCatalogForPrompt(catalog),
           `Use ${REQUEST_DEDICATED_UPGRADE_ACTION} only when the user asks to review upgrading for a capability Shared cannot perform. It opens a review flow and never starts paid compute by itself.`,
         ].join("\n"),
+        values: {
+          capabilityTier: catalog.tier,
+          capabilityTransport: catalog.transport,
+        },
         data: {
           runtimeMode: "shared",
           agentId: options.agentId,
           available,
-          dedicatedRequired: [...DEDICATED_CAPABILITIES],
+          dedicatedRequired,
+          agentCapabilityCatalog: catalog,
           canRequestDedicatedReview: true,
           canActivateDedicatedWithoutConfirmation: false,
         },
       };
     },
+  };
+}
+
+function boundedString(value: unknown, maximum: number): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, maximum) : undefined;
+}
+
+function handoffFor(
+  options: SharedRuntimeCapabilityOptions,
+  capability: AgentCapabilityDescriptor,
+  message: Memory,
+): CapabilityHandoffRequest {
+  if (capability.availability === "available") {
+    throw new Error(`Capability ${capability.id} does not need setup`);
+  }
+  const originalIntent = boundedString(message.content?.text, 4_000);
+  const idempotency = message.content?.chatIdempotency;
+  const clientMessageId =
+    idempotency && typeof idempotency === "object" && "clientMessageId" in idempotency
+      ? boundedString(idempotency.clientMessageId, 128)
+      : undefined;
+  return {
+    version: 1,
+    kind: "capability_handoff",
+    capabilityId: capability.id,
+    label: capability.label,
+    availability: capability.availability,
+    reason: `${capability.label} needs setup before it can be used safely.`,
+    currentTier: capability.currentTier,
+    requiredTier: capability.requiredTier,
+    nextAction: capability.nextAction === "none" ? "retry" : capability.nextAction,
+    // A workspace upgrade is itself consequential even when the requested
+    // capability (for example research) would not require confirmation.
+    requiresConfirmation: true,
+    cta: {
+      label: "Set up personal workspace",
+      href: `/cloud/agents/${encodeURIComponent(options.agentId)}`,
+    },
+    ...(originalIntent || clientMessageId
+      ? {
+          continuation: {
+            ...(originalIntent ? { originalIntent } : {}),
+            ...(clientMessageId ? { clientMessageId } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -133,7 +183,13 @@ function readParameters(options: unknown): Record<string, unknown> {
     : record;
 }
 
-export function createRequestDedicatedUpgradeAction(agentId: string): Action {
+export function createRequestDedicatedUpgradeAction(
+  options: SharedRuntimeCapabilityOptions,
+): Action {
+  const catalog = buildSharedCapabilityCatalog(options);
+  const dedicatedIds = catalog.capabilities
+    .filter((capability) => capability.requiredTier === "personal")
+    .map((capability) => capability.id);
   return {
     name: REQUEST_DEDICATED_UPGRADE_ACTION,
     similes: ["UPGRADE_AGENT", "ENABLE_ADVANCED_CAPABILITIES", "GET_DEDICATED"],
@@ -141,43 +197,52 @@ export function createRequestDedicatedUpgradeAction(agentId: string): Action {
     contexts: ["general"],
     roleGate: { minRole: "GUEST" },
     suppressEarlyReply: true,
-    suppressPostActionContinuation: true,
     description:
-      "Give the user the explicit review link for moving this Shared agent to Dedicated when they ask for coding, shell, browser control, connected accounts, or another unavailable advanced capability. This action does not purchase, provision, or activate anything.",
+      "Return the explicit review link for moving this Shared agent to Dedicated when the user asks for coding, shell, browser control, connected accounts, or another unavailable advanced capability. After this action, explain the result naturally in the agent's voice. This action does not purchase, provision, or activate anything.",
     parameters: [
       {
-        name: "capability",
-        description: "The unavailable capability that motivated the user's upgrade request.",
-        required: false,
-        schema: { type: "string", maxLength: 160 },
+        name: "capabilityId",
+        description: "The unavailable capability id from the runtime capability provider.",
+        required: true,
+        schema: { type: "string", enum: dedicatedIds },
       },
     ],
     validate: async () => true,
     handler: async (
       _runtime: IAgentRuntime,
-      _message: Memory,
+      message: Memory,
       _state?: State,
       handlerOptions?: unknown,
-      callback?: HandlerCallback,
+      _callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const parameters = readParameters(handlerOptions);
-      const capability =
-        typeof parameters.capability === "string" && parameters.capability.trim()
-          ? parameters.capability.trim().slice(0, 160)
-          : "advanced capabilities";
-      const upgradePath = `/cloud/agents/${encodeURIComponent(agentId)}`;
-      const text = `Shared can't perform ${capability}. You can review Dedicated capabilities, price, and confirmation here: ${upgradePath}. Nothing has been activated or charged.`;
-      await callback?.({ text });
+      const capabilityId = boundedString(parameters.capabilityId, 64) as
+        | AgentCapabilityId
+        | undefined;
+      const capability = capabilityId ? findAgentCapability(catalog, capabilityId) : undefined;
+      if (!capability || capability.availability === "available") {
+        return {
+          success: false,
+          text: "The requested capability does not need a personal-workspace handoff.",
+          error: new Error("Unknown or already available capability"),
+        };
+      }
+      const capabilityHandoff = handoffFor(options, capability, message);
+      // This is a structured tool receipt, not end-user copy. The normal
+      // post-action model continuation turns it into an in-character response.
+      const text = `Personal-workspace review is available for ${capability.label}; no mutation or charge was performed.`;
       return {
         success: true,
         text,
         data: {
           actionName: REQUEST_DEDICATED_UPGRADE_ACTION,
-          capability,
-          upgradePath,
+          capabilityId: capability.id,
+          capabilityHandoff,
+          upgradePath: capabilityHandoff.cta.href,
           mutationPerformed: false,
           requiresUserConfirmation: true,
         },
+        values: { capabilityHandoff },
       };
     },
   };
@@ -190,6 +255,6 @@ export function createSharedRuntimeCapabilitiesPlugin(
     name: "shared-runtime-capabilities",
     description: "Shared runtime capability context and safe Dedicated review handoff.",
     providers: [createSharedRuntimeCapabilitiesProvider(options)],
-    actions: [createRequestDedicatedUpgradeAction(options.agentId)],
+    actions: [createRequestDedicatedUpgradeAction(options)],
   };
 }

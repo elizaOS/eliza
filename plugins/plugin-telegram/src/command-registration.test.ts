@@ -160,6 +160,53 @@ describe("buildTelegramCommandDescriptors", () => {
     expect(commands.some((c) => c.target.kind === "agent")).toBe(true);
     expect(commands.some((c) => c.target.kind === "navigate")).toBe(true);
   });
+
+  it("keeps UTF-16 surrogate pairs intact when clamping description to 256", () => {
+    const emojiDesc = `${"a".repeat(255)}🦊${"b".repeat(100)}`;
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "emoji_desc",
+        description: emojiDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor).toBeDefined();
+    expect(descriptor.description.isWellFormed()).toBe(true);
+    expect(descriptor.description.length).toBeLessThanOrEqual(256);
+    expect(descriptor.description.length).toBe(255);
+    expect(descriptor.description).toBe("a".repeat(255));
+  });
+
+  it("sanitizes lone surrogates in description before clamping", () => {
+    const loneDesc = "a\ud800bc";
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "lone_desc",
+        description: loneDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor).toBeDefined();
+    expect(descriptor.description).toBe("a\ufffdbc");
+    expect(descriptor.description.isWellFormed()).toBe(true);
+  });
+
+  it("preserves an emoji that fits entirely under the 256 cap", () => {
+    const fittingDesc = `${"a".repeat(254)}🦊`;
+    pluginCommandsMock.getConnectorCommands.mockReturnValueOnce([
+      {
+        name: "fitting_desc",
+        description: fittingDesc,
+        target: { kind: "agent" },
+      },
+    ]);
+    const [descriptor] = buildTelegramCommandDescriptors();
+    expect(descriptor.description).toBe(fittingDesc);
+    expect(descriptor.description.isWellFormed()).toBe(true);
+    expect(descriptor.description.length).toBe(256);
+  });
 });
 
 describe("registerTelegramCommandHandlers", () => {

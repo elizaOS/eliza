@@ -5,7 +5,12 @@
  * SQL tables.
  */
 
-import type { UUID } from "@elizaos/core";
+import {
+  type DocumentRevisionReplaceParams,
+  type Memory,
+  MemoryType,
+  type UUID,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BaseDrizzleAdapter } from "../base";
 import { PgliteDatabaseAdapter } from "../pglite/adapter";
@@ -17,6 +22,8 @@ const worldId = "00000000-0000-4000-8000-000000000004" as UUID;
 const memoryId = "00000000-0000-4000-8000-000000000005" as UUID;
 const relationshipId = "00000000-0000-4000-8000-000000000006" as UUID;
 const taskId = "00000000-0000-4000-8000-000000000007" as UUID;
+const documentId = "00000000-0000-4000-8000-000000000008" as UUID;
+const fragmentId = "00000000-0000-4000-8000-000000000009" as UUID;
 
 function makeAdapter() {
   const rawConnection = {
@@ -44,6 +51,7 @@ function makeAdapter() {
     ensureSync: vi.fn(async () => undefined),
     getConnection: vi.fn(() => rawConnection),
     getDataDir: vi.fn(() => "/tmp/pglite-test"),
+    getWriteBack: vi.fn(() => null),
     initialize: vi.fn(async () => undefined),
     isInitialized: vi.fn(() => true),
     isShuttingDown: vi.fn(() => false),
@@ -201,5 +209,78 @@ describe("PgliteDatabaseAdapter liveness", () => {
         ["tasks", "insert"],
       ])
     );
+  });
+
+  it("notifies a complete document revision only after the local commit", async () => {
+    const { adapter, manager } = makeAdapter();
+    manager.getWriteBack.mockReturnValue({} as never);
+    const replacement: Memory = {
+      id: documentId,
+      agentId,
+      entityId,
+      roomId,
+      worldId,
+      content: { text: "new body" },
+      metadata: {
+        type: MemoryType.DOCUMENT,
+        documentId,
+        documentRevision: 1,
+        scope: "global",
+      },
+    };
+    const fragment: Memory = {
+      ...replacement,
+      id: fragmentId,
+      content: { text: "new fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId,
+        documentRevision: 1,
+        position: 0,
+      },
+    };
+    const params: DocumentRevisionReplaceParams = {
+      agentId,
+      requesterEntityId: entityId,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER",
+      documentId,
+      expected: {
+        scope: "global",
+        roomId,
+        entityId,
+        revision: 0,
+      },
+      replacement,
+      fragments: [fragment],
+    };
+    const replace = vi
+      .spyOn(BaseDrizzleAdapter.prototype, "replaceDocumentRevision")
+      .mockResolvedValue({
+        status: "updated",
+        document: replacement,
+        removedFragmentIds: [memoryId],
+      });
+
+    await expect(adapter.replaceDocumentRevision(params)).resolves.toMatchObject({
+      status: "updated",
+    });
+
+    expect(replace).toHaveBeenCalledWith(params);
+    expect(manager.notifyWrite.mock.calls).toEqual([
+      ["memories", "upsert", expect.objectContaining({ id: fragmentId })],
+      ["memories", "upsert", expect.objectContaining({ id: documentId })],
+      ["memories", "delete", { id: memoryId }],
+    ]);
+    expect(replace.mock.invocationCallOrder[0]).toBeLessThan(
+      manager.notifyWrite.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+    );
+
+    manager.notifyWrite.mockClear();
+    replace.mockResolvedValueOnce({ status: "conflict" });
+    await expect(adapter.replaceDocumentRevision(params)).resolves.toEqual({
+      status: "conflict",
+    });
+    expect(manager.notifyWrite).not.toHaveBeenCalled();
   });
 });

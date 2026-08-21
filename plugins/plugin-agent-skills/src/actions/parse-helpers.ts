@@ -3,6 +3,7 @@
  *
  * Extracts skill slugs and intent from natural language messages.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Words to strip when extracting a skill slug from a message. */
 const FILLER_WORDS =
@@ -63,7 +64,10 @@ export function describeSkillReference(
  */
 export function skillReferenceLogView(reference: string): string {
 	const collapsed = reference.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 120)}…` : collapsed;
+	const wellFormed = toWellFormedUnicode(collapsed);
+	return wellFormed.length > 120
+		? `${truncateWellFormed(wellFormed, 120)}…`
+		: wellFormed;
 }
 
 /**

@@ -8,11 +8,12 @@
  *     refund keyed only on the caller-supplied `reservedAmount` — credit with
  *     no corresponding debit. It must now throw ReservationNotFoundError and
  *     write nothing.
- *  2. The legacy (no-reservation-id) lane's retry loop used to swallow a
- *     persistent settlement failure and return a success-shaped result
- *     (`adjustmentType: "none"`), making a lost refund indistinguishable from
- *     a clean settle. It must now surface the failure.
- *  3. Negative/non-finite settlement costs must fail before any ledger read or
+ *  2. A positive refund without any reservation id used to trust the caller's
+ *     `reservedAmount`, so serial replays and concurrent calls could mint
+ *     arbitrary credit. Every attempt must now reject before ledger mutation.
+ *  3. Exact/no-op and charge-only legacy reconciliation remain compatible;
+ *     the latter can debit credit but must never create it.
+ *  4. Negative/non-finite settlement costs must fail before any ledger read or
  *     write, so provider sentinel values cannot become unbacked refunds.
  *
  * The actual reconcile/refund/deduct SQL runs against an
@@ -30,12 +31,13 @@ process.env.CREDIT_COST_BUFFER = "1.5";
 const PGLITE_TIMEOUT = 60000;
 
 const ORG_ID = "00000000-0000-0000-0000-0000000000f6";
-const MISSING_ORG_ID = "00000000-0000-0000-0000-0000000000f7";
+const OTHER_ORG_ID = "00000000-0000-0000-0000-0000000000f7";
 const MISSING_RESERVATION_ID = "00000000-0000-0000-0000-0000000000f9";
 
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
+let EPSILON: typeof import("../credits").EPSILON;
 let ReservationNotFoundError: typeof import("../credits").ReservationNotFoundError;
 let assertCreditRefundWithinReservation: typeof import("../credits").assertCreditRefundWithinReservation;
 let pgliteReady = true;
@@ -55,8 +57,10 @@ async function countTransactions(orgId: string): Promise<number> {
 }
 
 async function seedOrg(balance: string): Promise<void> {
-  await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_ID}';`);
-  await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_ID}';`);
+  await dbWrite.execute(
+    `DELETE FROM credit_transactions WHERE organization_id IN ('${ORG_ID}', '${OTHER_ORG_ID}');`,
+  );
+  await dbWrite.execute(`DELETE FROM organizations WHERE id IN ('${ORG_ID}', '${OTHER_ORG_ID}');`);
   await dbWrite.execute(
     `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_ID}', '${balance}');`,
   );
@@ -67,6 +71,7 @@ beforeAll(async () => {
     ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
     const credits = await import("../credits");
     creditsService = credits.creditsService;
+    EPSILON = credits.EPSILON;
     ReservationNotFoundError = credits.ReservationNotFoundError;
     assertCreditRefundWithinReservation = credits.assertCreditRefundWithinReservation;
 
@@ -150,9 +155,49 @@ describe("reconcile with a reservation id that matches no row", () => {
     },
     PGLITE_TIMEOUT,
   );
+
+  test(
+    "treats another organization's real reservation as unbacked",
+    async () => {
+      await dbWrite.execute(
+        `INSERT INTO organizations (id, credit_balance) VALUES ('${OTHER_ORG_ID}', '50.00');`,
+      );
+      const inserted = await dbWrite.execute(
+        `INSERT INTO credit_transactions (
+          organization_id,
+          amount,
+          type,
+          description,
+          metadata
+        ) VALUES (
+          '${OTHER_ORG_ID}',
+          '-10.00',
+          'debit',
+          'other organization reservation',
+          '{"type":"reservation"}'::jsonb
+        ) RETURNING id;`,
+      );
+      const reservationTransactionId = (inserted.rows[0] as { id: string }).id;
+
+      await expect(
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: 10,
+          actualCost: 4,
+          description: "cross-organization refund attempt",
+          metadata: { reservation_transaction_id: reservationTransactionId },
+        }),
+      ).rejects.toBeInstanceOf(ReservationNotFoundError);
+
+      expect(await getBalance()).toBe(100);
+      expect(await countTransactions(ORG_ID)).toBe(0);
+      expect(await countTransactions(OTHER_ORG_ID)).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
 });
 
-describe("legacy-lane persistent settlement failure", () => {
+describe("legacy reconciliation without authoritative reservation backing", () => {
   test("classifies a refund larger than its backing reservation as a fatal invariant failure", () => {
     let thrown: unknown;
     try {
@@ -207,35 +252,88 @@ describe("legacy-lane persistent settlement failure", () => {
   });
 
   test(
-    "surfaces the failure instead of returning a success-shaped result",
+    "rejects serial replays and concurrent unbacked refunds without mutation",
     async () => {
-      // No reservation_transaction_id → legacy lane. The org row does not
-      // exist, so refundCredits fails on every retry. The old catch returned
-      // `adjustmentType: "none"` here — a fabricated clean settle.
-      await expect(
+      const attempt = () =>
         creditsService.reconcile({
-          organizationId: MISSING_ORG_ID,
-          reservedAmount: 25,
-          actualCost: 5,
-          description: "legacy settle against missing org",
-        }),
-      ).rejects.toThrow();
-      expect(await countTransactions(MISSING_ORG_ID)).toBe(0);
+          organizationId: ORG_ID,
+          reservedAmount: 10,
+          actualCost: 4,
+          description: "unbacked legacy refund",
+        });
+
+      await expect(attempt()).rejects.toMatchObject({
+        code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+      });
+      await expect(attempt()).rejects.toMatchObject({
+        code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+      });
+
+      const concurrent = await Promise.allSettled([attempt(), attempt(), attempt(), attempt()]);
+      expect(concurrent).toHaveLength(4);
+      for (const result of concurrent) {
+        expect(result.status).toBe("rejected");
+        if (result.status === "rejected") {
+          expect(result.reason).toMatchObject({
+            code: "CREDIT_REFUND_RESERVATION_REQUIRED",
+          });
+        }
+      }
+
+      expect(await getBalance()).toBe(100);
+      expect(await countTransactions(ORG_ID)).toBe(0);
     },
     PGLITE_TIMEOUT,
   );
 
   test(
-    "still settles a healthy legacy refund (regression guard)",
+    "rejects an unbacked refund exactly at the reconciliation threshold",
+    async () => {
+      await expect(
+        creditsService.reconcile({
+          organizationId: ORG_ID,
+          reservedAmount: EPSILON,
+          actualCost: 0,
+          description: "exact-threshold unbacked refund",
+        }),
+      ).rejects.toMatchObject({ code: "CREDIT_REFUND_RESERVATION_REQUIRED" });
+
+      expect(await getBalance()).toBe(100);
+      expect(await countTransactions(ORG_ID)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "keeps an exact no-op compatible without creating a ledger row",
     async () => {
       const result = await creditsService.reconcile({
         organizationId: ORG_ID,
         reservedAmount: 10,
-        actualCost: 4,
-        description: "legacy refund settle",
+        actualCost: 10,
+        description: "legacy exact settle",
       });
-      expect(result.adjustmentType).toBe("refund");
-      expect(await getBalance()).toBe(106);
+
+      expect(result.adjustmentType).toBe("none");
+      expect(await getBalance()).toBe(100);
+      expect(await countTransactions(ORG_ID)).toBe(0);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "keeps charge-only legacy reconciliation compatible without creating credit",
+    async () => {
+      const result = await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 4,
+        actualCost: 10,
+        description: "legacy overage settle",
+      });
+
+      expect(result.adjustmentType).toBe("overage");
+      expect(await getBalance()).toBe(94);
+      expect(await countTransactions(ORG_ID)).toBe(1);
     },
     PGLITE_TIMEOUT,
   );

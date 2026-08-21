@@ -28,8 +28,8 @@
   </description>
 
   <url type="homepage">https://cloud.eliza.app</url>
-  <url type="bugtracker">https://github.com/elizaos/elizaos-app/issues</url>
-  <url type="vcs-browser">https://github.com/elizaos/elizaos-app</url>
+  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>
+  <url type="vcs-browser">https://github.com/elizaOS/eliza</url>
   <url type="help">https://docs.elizaos.ai</url>
 
   <provides>

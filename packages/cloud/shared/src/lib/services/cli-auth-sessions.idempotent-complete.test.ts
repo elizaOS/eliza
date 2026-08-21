@@ -305,12 +305,18 @@ describe("cliAuthSessionsService lifecycle", () => {
     expect(markExpired).toHaveBeenCalledWith(SESSION_ID);
   });
 
-  test("delegates expired-session cleanup to the repository", async () => {
-    const removeExpired = track(
-      spyOn(cliAuthSessionsRepository, "deleteExpiredSessions").mockResolvedValue(undefined),
+  test("delegates expired-session reaping to the repository and reports counts", async () => {
+    const reap = track(
+      spyOn(cliAuthSessionsRepository, "reapExpiredSessions").mockResolvedValue({
+        deletedSessions: 3,
+        revokedOrphanKeys: [],
+      }),
     );
 
-    await cliAuthSessionsService.cleanupExpiredSessions();
-    expect(removeExpired).toHaveBeenCalledTimes(1);
+    await expect(cliAuthSessionsService.cleanupExpiredSessions()).resolves.toEqual({
+      deletedSessions: 3,
+      revokedOrphanKeys: 0,
+    });
+    expect(reap).toHaveBeenCalledTimes(1);
   });
 });

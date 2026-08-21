@@ -28,6 +28,8 @@ import {
   type MessageConnectorTarget,
   type SendHandlerOutcome,
   type TargetInfo,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { GOOGLE_SERVICE_NAME } from "./types.js";
@@ -210,14 +212,16 @@ function subjectFromContent(content: Content): string {
       ? (metadata as Record<string, unknown>).subject
       : undefined;
   if (typeof explicit === "string" && explicit.trim().length > 0) {
-    return explicit.trim();
+    return toWellFormedUnicode(explicit.trim());
   }
-  const firstLine = String(content.text ?? "")
-    .split("\n", 1)[0]
-    .trim();
+  const firstLine = toWellFormedUnicode(
+    String(content.text ?? "")
+      .split("\n", 1)[0]
+      .trim()
+  );
   return firstLine.length <= SUBJECT_MAX_LENGTH
     ? firstLine
-    : `${firstLine.slice(0, SUBJECT_MAX_LENGTH - 3)}...`;
+    : `${truncateWellFormed(firstLine, SUBJECT_MAX_LENGTH - 3)}...`;
 }
 
 async function sendGmailFromTarget(

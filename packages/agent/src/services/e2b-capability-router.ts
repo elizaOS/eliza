@@ -22,6 +22,7 @@ import {
   type E2BSandboxClient,
   type E2BSandboxFactoryService,
   type ElizaCapabilityRouter,
+  ElizaError,
   type FileListParams,
   type FileListResult,
   type FileReadTextParams,
@@ -36,6 +37,8 @@ import {
   type GitStatusParams,
   type GitStatusResult,
   type IAgentRuntime,
+  isBlockedHostname,
+  isPrivateIpAddress,
   type JsonObject,
   type LocalModelStatusResult,
   logger,
@@ -63,6 +66,9 @@ const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
+const MAX_REMOTE_JSON_BYTES = 1024 * 1024;
+const MAX_REMOTE_ERROR_BYTES = 16 * 1024;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 function truncateUtf8(text: string, maxBytes: number): string {
   const prefix = Buffer.from(text, "utf8").subarray(0, maxBytes);
@@ -170,23 +176,44 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
         `${config.provider} runner requires a remote runner URL.`,
       );
     }
-    const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
+    const apiBase = normalizeHttpBaseUrl(
+      config.remoteHttpBaseUrl,
+      `${config.provider} remote runner URL`,
+    );
     const headers = authHeaders(config.remoteHttpToken);
-    const response = await fetch(`${apiBase}/v1/health`, { headers });
-    if (!response.ok) throw new Error(await response.text());
-    return new RemoteRunnerHttpClient(config.provider, apiBase, headers);
+    const result = await fetchBounded(
+      `${apiBase}/v1/health`,
+      { headers },
+      {
+        timeoutMs: config.requestTimeoutMs,
+        maxResponseBytes: MAX_REMOTE_ERROR_BYTES,
+      },
+    );
+    if (!result.response.ok) {
+      throw remoteHttpStatusError("health check", result.response.status);
+    }
+    return new RemoteRunnerHttpClient(
+      config.provider,
+      apiBase,
+      headers,
+      config.requestTimeoutMs,
+    );
   }
 }
 
 class RemoteRunnerHttpClient implements E2BSandboxClient {
   readonly workspacePrepared = true;
   readonly files = {
-    list: (path: string) => this.list(path),
+    list: (
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ) => this.list(path, opts),
     read: (
       path: string,
       opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
     ) => this.read(path, opts),
-    write: (path: string, data: string) => this.write(path, data),
+    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
+      this.write(path, data, opts),
   };
   readonly commands = {
     run: (cmd: string, opts?: SandboxCommandRunOptions) =>
@@ -197,43 +224,85 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     readonly sandboxId: string,
     private readonly apiBase: string,
     private readonly headers: Record<string, string>,
+    private readonly requestTimeoutMs: number,
   ) {}
 
   async kill(): Promise<void> {}
 
-  private async list(path: string): Promise<SandboxEntryInfo[]> {
+  private async list(
+    path: string,
+    opts?: { depth?: number; requestTimeoutMs?: number },
+  ): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, { headers: this.headers });
-    if (!response.ok) throw new Error(await response.text());
-    const payload = await response.json();
+    const result = await fetchBounded(
+      url,
+      { headers: this.headers },
+      {
+        timeoutMs: opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+        maxResponseBytes: MAX_REMOTE_JSON_BYTES,
+      },
+    );
+    if (!result.response.ok) {
+      throw remoteHttpStatusError("file listing", result.response.status);
+    }
+    const payload = decodeJson(
+      result.body,
+      "Remote runner fs entries response",
+    );
     const entries = Array.isArray(payload)
       ? payload
       : isObject(payload) && Array.isArray(payload.entries)
         ? payload.entries
         : null;
     if (!entries) {
-      throw new Error("Remote runner fs entries response was not an array.");
+      throw remoteProtocolError(
+        "REMOTE_FS_RESPONSE_INVALID",
+        "Remote runner fs entries response was not an array.",
+      );
     }
     return entries.map((entry) => {
       if (!isObject(entry)) {
-        throw new Error("Remote runner fs entry was not an object.");
+        throw remoteProtocolError(
+          "REMOTE_FS_ENTRY_INVALID",
+          "Remote runner fs entry was not an object.",
+        );
       }
-      const pathValue = String(entry.path ?? "");
+      const pathValue = requiredNonEmptyString(
+        entry.path,
+        "Remote runner fs entry path",
+      );
+      const name =
+        entry.name === undefined
+          ? nodePath.posix.basename(pathValue)
+          : requiredNonEmptyString(entry.name, "Remote runner fs entry name");
+      const size = requiredNonNegativeSafeInteger(
+        entry.size,
+        "Remote runner fs entry size",
+      );
+      const modifiedValue = entry.modifiedAt ?? entry.modified;
+      const modified =
+        modifiedValue === undefined || modifiedValue === null
+          ? undefined
+          : requiredNonEmptyString(
+              modifiedValue,
+              "Remote runner fs entry modified time",
+            );
       const stat: SandboxEntryInfo = {
         path: pathValue,
-        name: String(entry.name ?? nodePath.posix.basename(pathValue)),
+        name,
         type: remoteEntryType(entry),
-        size: typeof entry.size === "number" ? entry.size : 0,
+        size,
       };
-      const modified =
-        typeof entry.modifiedAt === "string"
-          ? entry.modifiedAt
-          : typeof entry.modified === "string"
-            ? entry.modified
-            : null;
       if (modified) {
-        stat.modifiedTime = new Date(modified);
+        const modifiedTime = new Date(modified);
+        if (Number.isNaN(modifiedTime.getTime())) {
+          throw remoteProtocolError(
+            "REMOTE_FS_ENTRY_INVALID",
+            "Remote runner fs entry modified time was not a valid date.",
+          );
+        }
+        stat.modifiedTime = modifiedTime;
       }
       return stat;
     });
@@ -243,44 +312,56 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     path: string,
     opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
   ): Promise<string | Uint8Array> {
-    const timeout = timeoutSignal(opts?.requestTimeoutMs);
-    try {
-      const url = new URL(`${this.apiBase}/v1/fs/file`);
-      url.searchParams.set("path", path);
-      const response = await fetch(url, {
+    const url = new URL(`${this.apiBase}/v1/fs/file`);
+    url.searchParams.set("path", path);
+    const result = await fetchBounded(
+      url,
+      {
         headers: this.headers,
-        signal: timeout.signal,
-      });
-      if (response.status === 404) {
-        const error = new Error(`File not found: ${path}`);
-        error.name = "FileNotFoundError";
-        throw error;
-      }
-      if (!response.ok) throw new Error(await response.text());
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      return opts?.format === "bytes"
-        ? bytes
-        : Buffer.from(bytes).toString("utf8");
-    } finally {
-      timeout.dispose();
+      },
+      {
+        timeoutMs: opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+        maxResponseBytes: MAX_READ_BYTES,
+      },
+    );
+    if (result.response.status === 404) {
+      const error = new Error(`File not found: ${path}`);
+      error.name = "FileNotFoundError";
+      throw error;
     }
+    if (!result.response.ok) {
+      throw remoteHttpStatusError("file read", result.response.status);
+    }
+    return opts?.format === "bytes"
+      ? result.body
+      : decodeUtf8(result.body, "Remote runner file response");
   }
 
   private async write(
     path: string,
     data: string,
+    opts?: { requestTimeoutMs?: number },
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        ...this.headers,
-        "content-type": "text/plain",
+    const result = await fetchBounded(
+      url,
+      {
+        method: "PUT",
+        headers: {
+          ...this.headers,
+          "content-type": "text/plain",
+        },
+        body: data,
       },
-      body: data,
-    });
-    if (!response.ok) throw new Error(await response.text());
+      {
+        timeoutMs: opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+        maxResponseBytes: MAX_REMOTE_ERROR_BYTES,
+      },
+    );
+    if (!result.response.ok) {
+      throw remoteHttpStatusError("file write", result.response.status);
+    }
     return { path, name: nodePath.posix.basename(path) };
   }
 
@@ -288,9 +369,11 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     cmd: string,
     opts: SandboxCommandRunOptions = {},
   ): Promise<SandboxCommandResult> {
-    const timeout = timeoutSignal(opts.timeoutMs ?? opts.requestTimeoutMs);
-    try {
-      const response = await fetch(`${this.apiBase}/v1/processes/run`, {
+    const effectiveTimeoutMs =
+      opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs;
+    const result = await fetchBounded(
+      `${this.apiBase}/v1/processes/run`,
+      {
         method: "POST",
         headers: {
           ...this.headers,
@@ -303,33 +386,41 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
           env: opts.envs,
           timeoutMs: opts.timeoutMs,
         }),
-        signal: timeout.signal,
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const payload = await response.json();
-      if (!isObject(payload)) {
-        throw new Error("Remote runner process response was not an object.");
-      }
-      const exitCode =
-        typeof payload.exitCode === "number"
-          ? payload.exitCode
-          : payload.timedOut === true
-            ? 124
-            : 0;
-      const stdout =
-        typeof payload.stdout === "string"
-          ? payload.stdout
-          : typeof payload.output === "string"
-            ? payload.output
-            : "";
-      return {
-        exitCode,
-        stdout,
-        stderr: typeof payload.stderr === "string" ? payload.stderr : "",
-      };
-    } finally {
-      timeout.dispose();
+      },
+      {
+        timeoutMs: effectiveTimeoutMs,
+        maxResponseBytes: MAX_REMOTE_JSON_BYTES,
+      },
+    );
+    if (!result.response.ok) {
+      throw remoteHttpStatusError("process execution", result.response.status);
     }
+    const payload = decodeJson(result.body, "Remote runner process response");
+    if (!isObject(payload)) {
+      throw remoteProtocolError(
+        "REMOTE_PROCESS_RESPONSE_INVALID",
+        "Remote runner process response was not an object.",
+      );
+    }
+    const exitCode = parseRemoteExitCode(payload);
+    const stdout = optionalStringAlias(
+      payload,
+      ["stdout", "output"],
+      "Remote runner process stdout",
+      true,
+    );
+    const stderr = optionalStringAlias(
+      payload,
+      ["stderr"],
+      "Remote runner process stderr",
+      true,
+    );
+    return {
+      exitCode,
+      stdout: stdout ?? "",
+      stderr: stderr ?? "",
+      ...(payload.timedOut === true ? { timedOut: true } : {}),
+    };
   }
 }
 
@@ -356,7 +447,12 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
       );
     }
     const remoteToken = randomUUID();
-    const session = await this.requestCodingContainer(config, remoteToken);
+    const deadline = deadlineFromNow(Math.min(config.timeoutMs, 120_000));
+    const session = await this.requestCodingContainer(
+      config,
+      remoteToken,
+      deadline,
+    );
     if (!session.url) {
       throw new Error(
         `Eliza Cloud coding container ${session.containerId} did not return a remote runner URL.`,
@@ -364,7 +460,10 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
     }
     return this.remoteHttpFactory.create({
       ...config,
-      remoteHttpBaseUrl: session.url,
+      remoteHttpBaseUrl: normalizeProvisionedRunnerUrl(
+        session.url,
+        config.cloudApiBaseUrl,
+      ),
       remoteHttpToken: remoteToken,
     });
   }
@@ -372,8 +471,9 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
   private async requestCodingContainer(
     config: E2BRemoteRunnerConfig,
     remoteToken: string,
+    deadline: number,
   ): Promise<CloudCodingContainerSession> {
-    const response = await fetch(
+    const result = await fetchBounded(
       `${config.cloudApiBaseUrl}/coding-containers`,
       {
         method: "POST",
@@ -400,34 +500,50 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
           metadata: config.metadata,
         }),
       },
+      {
+        timeoutMs: requestTimeoutWithinDeadline(
+          deadline,
+          config.requestTimeoutMs,
+        ),
+        maxResponseBytes: MAX_REMOTE_JSON_BYTES,
+      },
     );
-    const payload = await readCloudEnvelope(response);
-    if (!response.ok) {
-      throw new Error(cloudErrorMessage(payload, response.statusText));
+    const payload = readCloudEnvelope(result.body);
+    if (!result.response.ok) {
+      throw cloudHttpStatusError("provisioning", result.response.status);
     }
     const session = parseCloudCodingContainerSession(payload);
     return session.url
       ? session
-      : await this.pollCodingContainer(config, session);
+      : await this.pollCodingContainer(config, session, deadline);
   }
 
   private async pollCodingContainer(
     config: E2BRemoteRunnerConfig,
     session: CloudCodingContainerSession,
+    deadline: number,
   ): Promise<CloudCodingContainerSession> {
-    const deadline = Date.now() + Math.min(config.timeoutMs, 120_000);
     let current = session;
     while (!current.url && Date.now() < deadline) {
-      await sleep(5000);
-      const response = await fetch(
+      await sleep(Math.min(5000, Math.max(0, deadline - Date.now())));
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
+      const result = await fetchBounded(
         `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
         {
           headers: { authorization: `Bearer ${config.cloudApiToken}` },
         },
+        {
+          timeoutMs: requestTimeoutWithinDeadline(
+            deadline,
+            config.requestTimeoutMs,
+          ),
+          maxResponseBytes: MAX_REMOTE_JSON_BYTES,
+        },
       );
-      const payload = await readCloudEnvelope(response);
-      if (!response.ok) {
-        throw new Error(cloudErrorMessage(payload, response.statusText));
+      const payload = readCloudEnvelope(result.body);
+      if (!result.response.ok) {
+        throw cloudHttpStatusError("status polling", result.response.status);
       }
       current = parseCloudCodingContainerSession(payload);
       if (current.status === "failed" || current.status === "stopped") {
@@ -667,12 +783,14 @@ export class E2BRemoteCapabilityRouterService
     };
     try {
       const result = await sandbox.commands.run(command, opts);
-      return commandRunResult(result, false);
+      return commandRunResult(result, result.timedOut === true);
     } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       const commandResult = commandResultFromError(normalized);
-      if (commandResult) return commandRunResult(commandResult, false);
+      if (commandResult) {
+        return commandRunResult(commandResult, commandResult.timedOut === true);
+      }
       if (isTimeoutError(normalized)) {
         return {
           output: normalized.message,
@@ -1057,51 +1175,265 @@ function authHeaders(apiKey: string | undefined): Record<string, string> {
 }
 
 function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
-  const value =
-    typeof entry.type === "string"
-      ? entry.type
-      : typeof entry.entryType === "string"
-        ? entry.entryType
-        : typeof entry.kind === "string"
-          ? entry.kind
-          : undefined;
+  const value = optionalStringAlias(
+    entry,
+    ["type", "entryType", "kind"],
+    "Remote runner fs entry type",
+  );
+  if (value === undefined) {
+    throw remoteProtocolError(
+      "REMOTE_FS_ENTRY_INVALID",
+      "Remote runner fs entry type was missing.",
+    );
+  }
   return normalizeSandboxEntryType(value);
 }
 
-function timeoutSignal(ms: number | undefined): {
-  signal: AbortSignal | undefined;
-  dispose(): void;
-} {
-  if (!ms) return { signal: undefined, dispose: () => {} };
+type BoundedFetchResult = {
+  response: Response;
+  body: Uint8Array;
+};
+
+class RemoteResponseProtocolError extends ElizaError {
+  override readonly name: string = "RemoteResponseProtocolError";
+}
+
+class RemoteResponseTooLargeError extends RemoteResponseProtocolError {
+  override readonly name = "RemoteResponseTooLargeError";
+}
+
+async function fetchBounded(
+  input: string | URL,
+  init: RequestInit,
+  options: { timeoutMs: number; maxResponseBytes: number },
+): Promise<BoundedFetchResult> {
+  if (
+    !Number.isInteger(options.timeoutMs) ||
+    options.timeoutMs <= 0 ||
+    options.timeoutMs > MAX_TIMER_DELAY_MS
+  ) {
+    throw new RangeError(
+      `Duration must be an integer between 1 and ${MAX_TIMER_DELAY_MS}ms.`,
+    );
+  }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return {
-    signal: controller.signal,
-    dispose: () => clearTimeout(timer),
-  };
+  const timeoutError = new DOMException(
+    `Remote runner request timed out after ${options.timeoutMs}ms.`,
+    "TimeoutError",
+  );
+  const timer = setTimeout(
+    () => controller.abort(timeoutError),
+    options.timeoutMs,
+  );
+  timer.unref?.();
+  try {
+    const response = await fetch(input, {
+      ...init,
+      redirect: "error",
+      signal: controller.signal,
+    });
+    const declaredLength = response.headers.get("content-length");
+    if (declaredLength !== null) {
+      if (!/^(0|[1-9]\d*)$/.test(declaredLength)) {
+        throw remoteProtocolError(
+          "REMOTE_RESPONSE_LENGTH_INVALID",
+          "Remote response declared an invalid content length.",
+        );
+      }
+      const declaredBytes = Number(declaredLength);
+      if (
+        !Number.isSafeInteger(declaredBytes) ||
+        declaredBytes > options.maxResponseBytes
+      ) {
+        const error = responseTooLargeError(options.maxResponseBytes);
+        cancelResponseBody(response, error);
+        throw error;
+      }
+    }
+    return {
+      response,
+      body: await readBoundedBody(
+        response,
+        options.maxResponseBytes,
+        controller,
+      ),
+    };
+  } catch (error) {
+    // error-policy:J1 the outbound HTTP boundary preserves stable local
+    // protocol errors but translates implementation-specific network failures
+    // so an internal host, socket detail, or redirect target cannot escape.
+    if (
+      controller.signal.aborted &&
+      controller.signal.reason === timeoutError
+    ) {
+      throw timeoutError;
+    }
+    controller.abort();
+    if (error instanceof RemoteResponseProtocolError) throw error;
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    throw new ElizaError("Remote HTTP request failed.", {
+      code: "REMOTE_HTTP_REQUEST_FAILED",
+      severity: "ephemeral",
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readBoundedBody(
+  response: Response,
+  maxBytes: number,
+  controller: AbortController,
+): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        const error = responseTooLargeError(maxBytes);
+        controller.abort(error);
+        cancelReader(reader, error);
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
+function cancelResponseBody(response: Response, reason: Error): void {
+  if (!response.body) return;
+  try {
+    // error-policy:J6 cancellation is teardown after a rejected response; its
+    // rejection is logged by the attached diagnostic handler, while a
+    // hostile stream cannot delay the primary size-limit failure.
+    void response.body.cancel(reason).catch((error: unknown) => {
+      logger.debug(
+        { ...LOG_CONTEXT, error },
+        "[E2BRemoteCapabilityRouter] Failed to cancel rejected response body",
+      );
+    });
+  } catch (error) {
+    // error-policy:J6 cancellation is teardown after a rejected response.
+    logger.debug(
+      { ...LOG_CONTEXT, error },
+      "[E2BRemoteCapabilityRouter] Failed to cancel rejected response body",
+    );
+  }
+}
+
+function cancelReader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: Error,
+): void {
+  try {
+    // error-policy:J6 cancellation is teardown after a rejected response; its
+    // rejection is logged by the attached diagnostic handler, while a
+    // hostile stream cannot delay the primary size-limit failure.
+    void reader.cancel(reason).catch((error: unknown) => {
+      logger.debug(
+        { ...LOG_CONTEXT, error },
+        "[E2BRemoteCapabilityRouter] Failed to cancel oversized response stream",
+      );
+    });
+  } catch (error) {
+    // error-policy:J6 cancellation is teardown after the response exceeded its cap.
+    logger.debug(
+      { ...LOG_CONTEXT, error },
+      "[E2BRemoteCapabilityRouter] Failed to cancel oversized response stream",
+    );
+  }
+}
+
+function responseTooLargeError(maxBytes: number): RemoteResponseTooLargeError {
+  return new RemoteResponseTooLargeError(
+    `Remote response exceeded the ${maxBytes}-byte safety limit.`,
+    {
+      code: "REMOTE_RESPONSE_TOO_LARGE",
+      context: { maxBytes },
+    },
+  );
+}
+
+function remoteHttpStatusError(operation: string, status: number): ElizaError {
+  return new ElizaError(
+    `Remote runner ${operation} failed with HTTP ${status}.`,
+    {
+      code: "REMOTE_HTTP_STATUS_FAILED",
+      context: { operation, status },
+      severity: status >= 500 ? "ephemeral" : "fatal",
+    },
+  );
+}
+
+function cloudHttpStatusError(operation: string, status: number): ElizaError {
+  return new ElizaError(
+    `Eliza Cloud coding-container ${operation} failed with HTTP ${status}.`,
+    {
+      code: "CLOUD_CODING_CONTAINER_HTTP_STATUS_FAILED",
+      context: { operation, status },
+      severity: status >= 500 ? "ephemeral" : "fatal",
+    },
+  );
+}
+
+function decodeUtf8(body: Uint8Array, context: string): string {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(body);
+  } catch {
+    // error-policy:J1 malformed upstream bytes are translated without retaining
+    // an implementation error that may quote attacker-controlled content.
+    throw remoteProtocolError(
+      "REMOTE_RESPONSE_UTF8_INVALID",
+      `${context} was not valid UTF-8.`,
+    );
+  }
+}
+
+function decodeJson(body: Uint8Array, context: string): unknown {
+  const text = decodeUtf8(body, context);
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    // error-policy:J1 JSON parser diagnostics may quote the untrusted response,
+    // so the boundary exposes only a stable protocol failure.
+    throw remoteProtocolError(
+      "REMOTE_RESPONSE_JSON_INVALID",
+      `${context} was not valid JSON.`,
+    );
+  }
 }
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function readCloudEnvelope(response: Response): Promise<CloudEnvelope> {
-  const text = await response.text();
+function readCloudEnvelope(body: Uint8Array): CloudEnvelope {
+  const text = decodeUtf8(body, "Eliza Cloud coding-container response");
   if (!text.trim()) return {};
-  try {
-    const parsed = JSON.parse(text) as unknown;
-    return isObject(parsed) ? parsed : {};
-  } catch {
-    return { data: { error: text } };
+  const parsed = decodeJson(body, "Eliza Cloud coding-container response");
+  if (!isObject(parsed)) {
+    throw remoteProtocolError(
+      "CLOUD_CODING_CONTAINER_RESPONSE_INVALID",
+      "Eliza Cloud coding-container response was not a JSON object.",
+    );
   }
-}
-
-function cloudErrorMessage(payload: CloudEnvelope, fallback: string): string {
-  const body: JsonObject = isObject(payload.data)
-    ? payload.data
-    : (payload as JsonObject);
-  const error = body.error ?? body.message;
-  return typeof error === "string" && error.trim() ? error.trim() : fallback;
+  return parsed;
 }
 
 function parseCloudCodingContainerSession(
@@ -1110,33 +1442,100 @@ function parseCloudCodingContainerSession(
   const data: JsonObject = isObject(payload.data)
     ? payload.data
     : (payload as JsonObject);
-  const containerId = stringValue(data, ["containerId", "id"]);
+  const containerId = optionalStringAlias(
+    data,
+    ["containerId", "id"],
+    "Eliza Cloud coding-container id",
+  );
   if (!containerId) {
-    throw new Error(
+    throw remoteProtocolError(
+      "CLOUD_CODING_CONTAINER_RESPONSE_INVALID",
       "Eliza Cloud coding-container response omitted container id.",
     );
   }
   return {
     containerId,
-    status: stringValue(data, ["status"]),
-    url: stringValue(data, [
-      "url",
-      "publicUrl",
-      "load_balancer_url",
-      "bridge_url",
-    ]),
+    status: optionalStringAlias(
+      data,
+      ["status"],
+      "Eliza Cloud coding-container status",
+    ),
+    url: optionalStringAlias(
+      data,
+      ["url", "publicUrl", "load_balancer_url", "bridge_url"],
+      "Eliza Cloud coding-container runner URL",
+    ),
   };
 }
 
-function stringValue(
+function optionalStringAlias(
   record: JsonObject,
   keys: readonly string[],
+  context: string,
+  allowEmpty = false,
 ): string | undefined {
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && (allowEmpty || value.trim())) {
+      return allowEmpty ? value : value.trim();
+    }
+    throw remoteProtocolError(
+      "REMOTE_RESPONSE_SCHEMA_INVALID",
+      `${context} was not a non-empty string.`,
+    );
   }
   return undefined;
+}
+
+function requiredNonEmptyString(value: unknown, context: string): string {
+  if (typeof value === "string" && value.trim()) return value;
+  throw remoteProtocolError(
+    "REMOTE_RESPONSE_SCHEMA_INVALID",
+    `${context} was not a non-empty string.`,
+  );
+}
+
+function requiredNonNegativeSafeInteger(
+  value: unknown,
+  context: string,
+): number {
+  if (Number.isSafeInteger(value) && (value as number) >= 0) {
+    return value as number;
+  }
+  throw remoteProtocolError(
+    "REMOTE_RESPONSE_SCHEMA_INVALID",
+    `${context} was not a non-negative safe integer.`,
+  );
+}
+
+function parseRemoteExitCode(payload: JsonObject): number {
+  if (Number.isSafeInteger(payload.exitCode)) {
+    return payload.exitCode as number;
+  }
+  if (payload.exitCode !== undefined && payload.exitCode !== null) {
+    throw remoteProtocolError(
+      "REMOTE_PROCESS_RESPONSE_INVALID",
+      "Remote runner process exit code was not a safe integer.",
+    );
+  }
+  if (payload.timedOut === true) return 124;
+  throw remoteProtocolError(
+    "REMOTE_PROCESS_RESPONSE_INVALID",
+    "Remote runner process response omitted exit code.",
+  );
+}
+
+function remoteProtocolError(
+  code: string,
+  message: string,
+  cause?: unknown,
+): RemoteResponseProtocolError {
+  return new RemoteResponseProtocolError(message, {
+    code,
+    ...(cause === undefined ? {} : { cause }),
+    severity: "fatal",
+  });
 }
 
 function toCloudCodingAgent(value: CodingAgentRunner): CloudCodingAgent {
@@ -1145,6 +1544,24 @@ function toCloudCodingAgent(value: CodingAgentRunner): CloudCodingAgent {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function deadlineFromNow(timeoutMs: number): number {
+  return Date.now() + timeoutMs;
+}
+
+function requestTimeoutWithinDeadline(
+  deadline: number,
+  requestTimeoutMs: number,
+): number {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) {
+    throw new DOMException(
+      "Eliza Cloud coding-container provisioning timed out.",
+      "TimeoutError",
+    );
+  }
+  return Math.max(1, Math.min(requestTimeoutMs, remainingMs));
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -1305,9 +1722,76 @@ function remoteHttpToken(
 }
 
 function normalizeCloudApiBaseUrl(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, "");
+  const trimmed = normalizeHttpBaseUrl(value, "Eliza Cloud API base URL");
   if (trimmed.endsWith("/api/v1")) return trimmed;
   return `${trimmed}/api/v1`;
+}
+
+function normalizeHttpBaseUrl(value: string, context: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    // error-policy:J3 configured and upstream endpoint text is validated before use.
+    throw new ElizaError(`${context} must be a valid HTTP(S) URL.`, {
+      code: "REMOTE_HTTP_URL_INVALID",
+      context: { field: context },
+      severity: "fatal",
+    });
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new ElizaError(`${context} must use HTTP or HTTPS.`, {
+      code: "REMOTE_HTTP_URL_INVALID",
+      context: { field: context, protocol: parsed.protocol },
+      severity: "fatal",
+    });
+  }
+  if (parsed.username || parsed.password) {
+    throw new ElizaError(`${context} must not contain embedded credentials.`, {
+      code: "REMOTE_HTTP_URL_CREDENTIALS_REJECTED",
+      context: { field: context },
+      severity: "fatal",
+    });
+  }
+  if (parsed.search || parsed.hash) {
+    throw new ElizaError(`${context} must not contain a query or fragment.`, {
+      code: "REMOTE_HTTP_URL_INVALID",
+      context: { field: context },
+      severity: "fatal",
+    });
+  }
+  parsed.pathname = parsed.pathname.replace(/\/+$/, "");
+  return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeProvisionedRunnerUrl(
+  value: string,
+  cloudApiBaseUrl: string,
+): string {
+  const normalized = normalizeHttpBaseUrl(
+    value,
+    "Eliza Cloud coding-container runner URL",
+  );
+  const runnerUrl = new URL(normalized);
+  const cloudApiUrl = new URL(cloudApiBaseUrl);
+  const cloudApiUsesPrivateAuthority =
+    isBlockedHostname(cloudApiUrl.hostname) ||
+    isPrivateIpAddress(cloudApiUrl.hostname);
+  if (
+    !cloudApiUsesPrivateAuthority &&
+    (runnerUrl.protocol !== "https:" ||
+      isBlockedHostname(runnerUrl.hostname) ||
+      isPrivateIpAddress(runnerUrl.hostname))
+  ) {
+    throw new ElizaError(
+      "Eliza Cloud coding-container runner URL must use a public HTTPS authority.",
+      {
+        code: "CLOUD_CODING_CONTAINER_RUNNER_URL_REJECTED",
+        severity: "fatal",
+      },
+    );
+  }
+  return normalized;
 }
 
 function remoteAccessUrl(
@@ -1333,9 +1817,28 @@ function positiveIntSetting(
 ): number {
   const value = readSetting(runtime, key);
   if (value === undefined) return fallback;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new ElizaError(
+      `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
+      {
+        code: "REMOTE_RUNNER_CONFIG_INVALID",
+        context: { key },
+        severity: "fatal",
+      },
+    );
+  }
   const parsed = Number(value);
-  if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  throw new Error(`${key} must be a positive integer.`);
+  if (Number.isSafeInteger(parsed) && parsed <= MAX_TIMER_DELAY_MS) {
+    return parsed;
+  }
+  throw new ElizaError(
+    `${key} must be an integer between 1 and ${MAX_TIMER_DELAY_MS}.`,
+    {
+      code: "REMOTE_RUNNER_CONFIG_INVALID",
+      context: { key },
+      severity: "fatal",
+    },
+  );
 }
 
 function agentRunnersSetting(

@@ -22,6 +22,7 @@ import type {
 	Memory,
 } from "../../../types/index.ts";
 import { asUUID, MemoryType, ModelType } from "../../../types/index.ts";
+import { stripHtmlRawTextElements } from "../../../utils/html-raw-text.ts";
 import { truncateWellFormed } from "../../../utils/well-formed.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
@@ -128,19 +129,22 @@ function extractTitle(html: string): string {
 }
 
 function decodeHtmlEntities(value: string): string {
-	return value
-		.replace(/&amp;/gi, "&")
-		.replace(/&lt;/gi, "<")
-		.replace(/&gt;/gi, ">")
-		.replace(/&quot;/gi, '"')
-		.replace(/&#39;/gi, "'")
-		.replace(/&nbsp;/gi, " ");
+	const namedEntities: Record<string, string> = {
+		amp: "&",
+		gt: ">",
+		lt: "<",
+		nbsp: " ",
+		quot: '"',
+		"#39": "'",
+	};
+	return value.replace(
+		/&(amp|lt|gt|quot|#39|nbsp);/gi,
+		(entity, name: string) => namedEntities[name.toLowerCase()] ?? entity,
+	);
 }
 
 function stripTags(html: string): string {
-	return html
-		.replace(/<script[\s\S]*?<\/script>/gi, " ")
-		.replace(/<style[\s\S]*?<\/style>/gi, " ")
+	return stripHtmlRawTextElements(html)
 		.replace(/<[^>]+>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();

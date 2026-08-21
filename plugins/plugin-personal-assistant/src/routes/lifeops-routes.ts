@@ -2524,8 +2524,10 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "sourceId required", 400);
       return true;
     }
+    const decodedSourceId = ctx.decodePathComponent(sourceId, res, "sourceId");
+    if (!decodedSourceId) return true;
     return runFinancesRoute(ctx, async (service) => {
-      await service.deletePaymentSource(decodeURIComponent(sourceId));
+      await service.deletePaymentSource(decodedSourceId);
       json(res, { ok: true });
     });
   }

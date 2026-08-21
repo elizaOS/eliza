@@ -127,13 +127,32 @@ describe("default agent character seed", () => {
   });
 
   test("completes the legacy first-run request that supplied only the default preset bio", () => {
-    const legacyBio = [...getDefaultStylePreset().bio];
+    const legacyBio = [
+      "Helps with the day: plans, reminders, writing, research, decisions.",
+      "Answers short. Goes long only when it's worth it.",
+      "Does the thing, then says what happened.",
+      'Says "I don\'t know" instead of guessing.',
+      "Will tell you a plan has a hole in it.",
+      "No emoji, no filler, no fake enthusiasm.",
+      "Eliza is made by Eliza Research in San Francisco.",
+      "Open source and self-hostable: https://github.com/elizaOS/eliza",
+      "Named after the 1966 original. A fair bit has changed.",
+    ];
     const seeded = withDefaultAgentCharacter({ bio: legacyBio });
     const canonical = buildCloudElizaPersona();
 
     expect(seeded.system).toBe(canonical.system);
     expect(seeded.bio).toEqual(canonical.bio);
     expect(seeded.style).toEqual(canonical.style);
+  });
+
+  test("never mistakes an edited legacy bio for the stock default", () => {
+    const customizedBio = [
+      "Helps with the day: plans, reminders, writing, research, decisions.",
+      "This sentence is mine.",
+    ];
+
+    expect(withDefaultAgentCharacter({ bio: customizedBio })).toEqual({ bio: customizedBio });
   });
 
   test("agentConfigHasCharacter distinguishes a persona from unrelated config", () => {

@@ -185,7 +185,6 @@
   "homepage_eliza.phoneInput.phoneAria": "Phone number",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Four hours of your time back every week.",
-  "homepage_eliza.landing.heroLede": "Hey, I'm Eliza — your personal assistant. I'm here to save you time and take things off your plate.",
   "homepage_eliza.landing.ctaText": "Text Eliza",
   "homepage_eliza.landing.copyPhone": "Copy Eliza's phone number",
   "homepage_eliza.landing.phoneCopied": "Copied!",

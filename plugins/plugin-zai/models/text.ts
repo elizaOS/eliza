@@ -13,7 +13,7 @@ import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger, ModelType } from "@elizaos/core";
 import { generateText } from "ai";
 import { createZaiClient, type ZaiFetch } from "../providers";
-import { createModelName, type ModelName, type ModelSize, type ProviderOptions } from "../types";
+import { createModelName, type ModelName, type ModelSize } from "../types";
 import {
   getApiKey,
   getExperimentalTelemetry,
@@ -24,6 +24,7 @@ import {
   type ZaiThinkingConfig,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
+import { type ProviderOptions, readProviderOptions } from "./zai-provider-options";
 
 interface ResolvedTextParams {
   readonly prompt: string;
@@ -62,10 +63,9 @@ function resolveTextParams(
   const defaultMaxTokens = modelName.includes("air") || modelName.includes("flash") ? 4096 : 8192;
   const maxTokens = params.omitMaxTokens ? undefined : (params.maxTokens ?? defaultMaxTokens);
 
-  const rawProviderOptions = rawParams.providerOptions as ProviderOptions | undefined;
-  const providerOptions: ProviderOptions = rawProviderOptions
-    ? JSON.parse(JSON.stringify(rawProviderOptions))
-    : {};
+  const rawProviderOptions = rawParams.providerOptions;
+  const providerOptions: ProviderOptions =
+    rawProviderOptions === undefined ? {} : readProviderOptions(rawProviderOptions);
 
   return {
     prompt,
@@ -121,12 +121,11 @@ async function generateTextWithModel(
   }
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const thinking = getThinkingConfig(runtime, modelSize);
+  const resolved = resolveTextParams(params, modelName, thinking);
   const requestFetch = createZaiRequestFetch(thinking, (runtime.fetch ?? fetch) as ZaiFetch);
   const zai = createZaiClient(runtime, { fetch: requestFetch });
 
   logger.log(`[z.ai] Using ${modelType} model: ${modelName}`);
-
-  const resolved = resolveTextParams(params, modelName, thinking);
 
   const agentName = resolved.providerOptions.agentName;
   const telemetryConfig = {

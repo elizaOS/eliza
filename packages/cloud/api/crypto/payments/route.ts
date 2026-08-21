@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -40,7 +41,7 @@ const createPaymentSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
 
