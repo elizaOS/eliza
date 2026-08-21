@@ -18,7 +18,6 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
-  FAILED_TOOL_FALLBACK_MESSAGE,
   logger,
   Service,
   SWARM_COORDINATOR_SERVICE_TYPE,
@@ -299,7 +298,7 @@ export class SwarmCoordinatorService
   // the synthesis dedupe slot this never re-arms on resume: once a create/edit
   // task has publicly passed, its eventual teardown `stopped` is plumbing and
   // must not synthesize a false "<label> — stopped before completion."
-  private readonly validatorPassSessions = new Set<string>();
+  private readonly validatorTerminalSessions = new Set<string>();
   // Sessions whose latest terminal event was ceded to the sub-agent-router
   // (the router-owned skip in `runSwarmComplete`). The one-shot runners
   // (runPromptAndClose / runPromptViaSmithers in actions/tasks.ts) ALWAYS stop
@@ -422,7 +421,7 @@ export class SwarmCoordinatorService
     this.swarmCompleteCallback = null;
     this.inFlightDecisionSessions.clear();
     this.synthesizedCompletionSessions.clear();
-    this.validatorPassSessions.clear();
+    this.validatorTerminalSessions.clear();
     this.routerCededTerminalSessions.clear();
     this.terminalCompletionChains.clear();
     this.enrichmentMetadataCache.clear();
@@ -773,7 +772,7 @@ export class SwarmCoordinatorService
       // verified; new work on the reused session re-arms both the stop notice
       // and the bare-pass feedback.
       this.routerCededTerminalSessions.delete(sessionId);
-      this.validatorPassSessions.delete(sessionId);
+      this.validatorTerminalSessions.delete(sessionId);
     }
 
     const enrichedData = this.shouldEnrichEvent(event)
@@ -1001,7 +1000,7 @@ export class SwarmCoordinatorService
     }
 
     if (event === "stopped") {
-      if (this.validatorPassSessions.has(sessionId)) {
+      if (this.validatorTerminalSessions.has(sessionId)) {
         return;
       }
       // One store re-read serves every stopped-guard below (the fresh read
@@ -1038,7 +1037,7 @@ export class SwarmCoordinatorService
       if (
         retryOf &&
         (this.synthesizedCompletionSessions.has(retryOf) ||
-          this.validatorPassSessions.has(retryOf))
+          this.validatorTerminalSessions.has(retryOf))
       ) {
         return;
       }
@@ -1076,13 +1075,11 @@ export class SwarmCoordinatorService
     // serializes all terminal events for a session so the second observes the
     // first's completed decision.
     //
-    // Exempt coordinator-generated validated completions: the app-verification
-    // / custom-validator path (dispatchCustomValidatorResult) synthesizes a
-    // `task_complete` the router never receives or posts — the raw ACP
-    // completion was withheld until validation, and only this result carries
-    // the verdict ("App verification passed."). Ceding it to the router would
-    // drop it entirely, so synthesis must stay its poster even on a
-    // router-owned session.
+    // Coordinator-generated validator results are delivered by app-control's
+    // verification-room bridge. That bridge also registers/launches apps and
+    // knows the final URL, so a separate swarm-complete synthesis here would
+    // expose provisional child narration before the clean link and duplicate
+    // the terminal chat message.
     // Observability for the cede decision: when synthesis double-posts next to
     // the router relay, the answer is always one of these four gates — log them
     // so a live incident is diagnosable from the log instead of a code dive.
@@ -1100,9 +1097,12 @@ export class SwarmCoordinatorService
         `routerOwnedEvent=${cedeGates.routerOwnedEvent}, customValidator=${cedeGates.customValidator}, ` +
         `hasRouterOrigin=${cedeGates.hasRouterOrigin}, routerActive=${cedeGates.routerActive})`,
     );
+    if (cedeGates.customValidator) {
+      this.validatorTerminalSessions.add(sessionId);
+      return;
+    }
     if (
       cedeGates.routerOwnedEvent &&
-      !cedeGates.customValidator &&
       cedeGates.hasRouterOrigin &&
       cedeGates.routerActive
     ) {
@@ -1160,55 +1160,11 @@ export class SwarmCoordinatorService
       readString(record, "summary") ??
       readString(record, "message") ??
       readString(record, "text");
-    // A custom-validator completion carries its user-facing verdict in
-    // `summary` ("App verification passed.") while `response` still holds the
-    // raw ACP finalText spread from enrichedData. The verdict exists ONLY on
-    // this record (the raw task_complete was withheld until validation), so it
-    // must not be shadowed by `response` in the read ladder: lead with it,
-    // then append the sanitized deliverable, budgeted so the combined text
-    // still fits the relay cap (buildTaskResultLine re-sanitizes defensively).
-    const validatorVerdict = isCustomValidatorResult(record)
-      ? (readString(record, "summary")?.trim() ?? "")
+    const sanitizedBody = rawSummary
+      ? sanitizeCompletionRelay(rawSummary, DEFAULT_MAX_RELAY_CHARS)
       : "";
-    const bodyBudget = validatorVerdict
-      ? DEFAULT_MAX_RELAY_CHARS - validatorVerdict.length - 2
-      : DEFAULT_MAX_RELAY_CHARS;
-    let sanitizedBody = rawSummary
-      ? sanitizeCompletionRelay(rawSummary, bodyBudget)
-      : "";
-    // A retried lineage can leave the planner's generic failed-tool apology as
-    // the root session's finalText; next to a pass verdict it contradicts the
-    // outcome ("verification passed" + "the runtime step failed"). Identity
-    // match on the exported constant — the same recognition the message
-    // service uses to drop it as redundant.
-    if (validatorVerdict && sanitizedBody === FAILED_TOOL_FALLBACK_MESSAGE) {
-      sanitizedBody = "";
-    }
-    // A PASS verdict never prefixes the deliverable: the body ("live at
-    // <url>") IS the user's proof, and the verifier status line is plumbing.
-    // Fail verdicts keep the explicit verdict text — there the status is the
-    // actionable content.
-    const isPassVerdict =
-      validatorVerdict.length > 0 && terminalStatus === "completed";
-    const sanitizedSummary = validatorVerdict
-      ? sanitizedBody && sanitizedBody !== validatorVerdict
-        ? isPassVerdict
-          ? sanitizedBody
-          : `${validatorVerdict}\n\n${sanitizedBody}`
-        : validatorVerdict
-      : sanitizedBody;
-    if (validatorVerdict && terminalStatus === "completed") {
-      this.validatorPassSessions.add(sessionId);
-      // A body-less pass is machine plumbing — the user asked for an outcome,
-      // not a verifier status line. The deliverable-carrying completion (the
-      // "live at <url>" summary) is the sole chat post; fail verdicts still
-      // escalate below.
-      if (!sanitizedBody) {
-        return;
-      }
-    }
     const completionSummary =
-      sanitizedSummary ||
+      sanitizedBody ||
       (terminalStatus === "completed"
         ? "Task completed."
         : `${label} ${terminalStatus}.`);
@@ -1248,19 +1204,8 @@ export class SwarmCoordinatorService
     if (event === "task_complete") return "completed";
     if (event === "stopped") return "stopped";
     if (event === "error") return "errored";
-    // A custom-validator FAIL is dispatched as `escalation` (only
-    // dispatchCustomValidatorResult produces this event) and carries the
-    // actionable verdict ("App verification failed: lint") plus the enriched
-    // deliverable. Dropping it here meant origin chat never saw the fail
-    // verdict — only the verification room did (plugin-app-control's
-    // VerificationRoomBridgeService writes its verdict as a room memory, not
-    // a connector send, so origin CHAT still had nothing) — and the teardown
-    // `stopped` then synthesized a false "<label> stopped before completion"
-    // for a task whose deliverable may be registered and live. Treating the
-    // escalation as an errored terminal posts the verdict to origin chat, and
-    // its dedupe-slot claim marks the terminal as delivered — the fail-side
-    // analog of validatorPassSessions — so the trailing teardown `stopped` is
-    // recognized as plumbing and suppressed.
+    // Custom-validator FAIL uses `escalation`; classify it as terminal so the
+    // bridge can deliver it and the later teardown `stopped` is suppressed.
     if (event === "escalation") return "errored";
     return null;
   }

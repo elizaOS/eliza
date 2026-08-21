@@ -646,7 +646,7 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
-  it("fires swarm-complete synthesis after app-verification passes", async () => {
+  it("broadcasts app-verification pass without duplicate swarm synthesis", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
       workdir: "/tmp/wd",
@@ -673,27 +673,20 @@ describe("SwarmCoordinatorService", () => {
 
     const fired = vi.fn(async () => {});
     coordinator.setSwarmCompleteCallback(fired);
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((event) => received.push(event));
 
     acp.emit("sess-validated", "task_complete", { response: "deployed" });
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(fired).toHaveBeenCalledTimes(1);
-    expect(fired.mock.calls[0][0]).toMatchObject({
-      total: 1,
-      completed: 1,
-      tasks: [
-        {
-          sessionId: "sess-validated",
-          label: "build-site",
-          status: "completed",
-          // A PASS verdict is plumbing — the agent's own deliverable is the
-          // user's proof and posts alone. (Fail verdicts keep the explicit
-          // verdict text; the verdict still exists on the validator record.)
-          completionSummary: "deployed",
-          roomId: "origin-room-7",
-          replyToExternalMessageId: "discord-msg-7",
-        },
-      ],
+    expect(fired).not.toHaveBeenCalled();
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      type: "task_complete",
+      data: {
+        originRoomId: "origin-room-7",
+        verification: { verdict: "pass" },
+      },
     });
     await coordinator.stop();
   });
@@ -1041,7 +1034,7 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
-  it("posts the validated verdict plus the deliverable head when finalText exceeds the relay cap (#11605)", async () => {
+  it("does not synthesize oversized provisional app output before the bridge verdict", async () => {
     const acp = makeAcpStub({
       agentType: "codex",
       workdir: "/tmp/wd",
@@ -1066,6 +1059,8 @@ describe("SwarmCoordinatorService", () => {
 
     const fired = vi.fn(async () => {});
     coordinator.setSwarmCompleteCallback(fired);
+    const received: SwarmEvent[] = [];
+    coordinator.subscribe((event) => received.push(event));
 
     // Raw ACP finalText over the 2KB cap. Pre-fix the read ladder took
     // `response` first and the sanitizer hard-replaced it, so the user saw
@@ -1075,14 +1070,12 @@ describe("SwarmCoordinatorService", () => {
     acp.emit("sess-verified-long", "task_complete", { response: longFinal });
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(fired).toHaveBeenCalledTimes(1);
-    const summary = fired.mock.calls[0][0].tasks[0].completionSummary;
-    // Pass verdicts no longer prefix the deliverable; the head of the
-    // deliverable itself must survive the cap.
-    expect(summary).not.toContain("App verification passed.");
-    expect(summary).toContain("Built the demo app end to end.");
-    expect(summary).not.toContain("[output elided");
-    expect(summary.length).toBeLessThanOrEqual(2000);
+    expect(fired).not.toHaveBeenCalled();
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      type: "task_complete",
+      data: { verification: { verdict: "pass" } },
+    });
     await coordinator.stop();
   });
 
@@ -1757,11 +1750,10 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
-  it("STILL fires swarm-complete for a custom-validator task_complete on a router-origin active session", async () => {
-    // The app-verification / custom-validator result is synthesized by the
-    // coordinator (dispatchCustomValidatorResult); the router never receives or
-    // posts it, so synthesis must remain its poster even on a router-owned
-    // active session, or the validated verdict would vanish.
+  it("leaves custom-validator chat delivery to the verification-room bridge", async () => {
+    // The bridge consumes the coordinator event, registers/launches the app,
+    // and posts the final link. Swarm synthesis would otherwise post the raw
+    // child summary first and duplicate the terminal result.
     const acp = makeAcpStub({
       agentType: "codex",
       workdir: "/tmp/wd",
@@ -1793,12 +1785,7 @@ describe("SwarmCoordinatorService", () => {
     });
     await new Promise((r) => setTimeout(r, 0));
 
-    expect(fired).toHaveBeenCalledTimes(1);
-    expect(fired.mock.calls[0][0]).toMatchObject({
-      total: 1,
-      completed: 1,
-      tasks: [{ sessionId: "sess-validated", status: "completed" }],
-    });
+    expect(fired).not.toHaveBeenCalled();
     await coordinator.stop();
   });
 
