@@ -173,7 +173,7 @@ export class PlaidManagedClient {
   async createLinkToken(): Promise<PlaidLinkTokenResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/plaid/link-token`,
+      `${config.apiBaseUrl}/eliza/plaid/link-token`,
       {
         method: "POST",
         headers: {
@@ -192,7 +192,7 @@ export class PlaidManagedClient {
   }): Promise<PlaidExchangeResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/plaid/exchange`,
+      `${config.apiBaseUrl}/eliza/plaid/exchange`,
       {
         method: "POST",
         headers: {
@@ -212,7 +212,7 @@ export class PlaidManagedClient {
     count?: number;
   }): Promise<PlaidSyncResponse> {
     const config = this.requireConfig();
-    const response = await fetch(`${config.apiBaseUrl}/v1/eliza/plaid/sync`, {
+    const response = await fetch(`${config.apiBaseUrl}/eliza/plaid/sync`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey}`,
@@ -297,7 +297,7 @@ export class PaypalManagedClient {
   }): Promise<PaypalAuthorizeUrlResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/paypal/authorize`,
+      `${config.apiBaseUrl}/eliza/paypal/authorize`,
       {
         method: "POST",
         headers: {
@@ -314,7 +314,7 @@ export class PaypalManagedClient {
   async exchangeCode(args: { code: string }): Promise<PaypalCallbackResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/paypal/callback`,
+      `${config.apiBaseUrl}/eliza/paypal/callback`,
       {
         method: "POST",
         headers: {
@@ -336,7 +336,7 @@ export class PaypalManagedClient {
   }> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/paypal/refresh`,
+      `${config.apiBaseUrl}/eliza/paypal/refresh`,
       {
         method: "POST",
         headers: {
@@ -358,7 +358,7 @@ export class PaypalManagedClient {
   }): Promise<PaypalTransactionsResponse> {
     const config = this.requireConfig();
     const response = await fetch(
-      `${config.apiBaseUrl}/v1/eliza/paypal/transactions`,
+      `${config.apiBaseUrl}/eliza/paypal/transactions`,
       {
         method: "POST",
         headers: {
