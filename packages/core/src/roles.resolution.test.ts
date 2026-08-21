@@ -23,6 +23,9 @@ type FakeRuntimeOptions = {
 	relationships?: Relationship[];
 	ownerBindingEvaluation?: OwnerBindingEvaluation;
 	canonicalPrincipalId?: UUID;
+	canonicalAgentId?: UUID;
+	canonicalRequestedPrincipalId?: UUID;
+	canonicalGeneration?: number;
 };
 
 function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
@@ -37,15 +40,18 @@ function makeRuntime(options: FakeRuntimeOptions = {}): IAgentRuntime {
 			options.ownerBindingEvaluation
 				? {
 						resolveCanonicalPrincipal: async () => ({
-							agentId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID,
-							requestedPrincipalId: SENDER_ID as UUID,
+							agentId:
+								options.canonicalAgentId ??
+								("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" as UUID),
+							requestedPrincipalId:
+								options.canonicalRequestedPrincipalId ?? (SENDER_ID as UUID),
 							canonicalPrincipalId:
 								options.canonicalPrincipalId ??
 								(options.ownerBindingEvaluation?.decision === "bound"
 									? options.ownerBindingEvaluation.actorCanonicalPrincipalId
 									: (SENDER_ID as UUID)),
 							redirectIds: [],
-							generation: 1,
+							generation: options.canonicalGeneration ?? 1,
 						}),
 						evaluateOwnerBinding: async () => options.ownerBindingEvaluation,
 					}
@@ -146,6 +152,52 @@ describe("resolveEntityRole — connector identity binding (owner pairing)", () 
 				generation: 1,
 				reason: "verified_owner_binding",
 			},
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
+	const boundToOwner: OwnerBindingEvaluation = {
+		decision: "bound",
+		actorCanonicalPrincipalId: OWNER_ID as UUID,
+		ownerPrincipalId: OWNER_ID as UUID,
+		claimId: "dddddddd-dddd-dddd-dddd-dddddddddddd" as UUID,
+		ownerBindingId: "binding-1",
+		generation: 1,
+		reason: "verified_owner_binding",
+	};
+
+	it("rejects a canonical resolution echoed for a different agent", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			canonicalAgentId: "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee" as UUID,
+			ownerBindingEvaluation: boundToOwner,
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
+	it("rejects a canonical resolution echoed for a different requested actor", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			canonicalRequestedPrincipalId: OWNER_ID as UUID,
+			ownerBindingEvaluation: boundToOwner,
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
+	it("rejects a binding evaluated at a different generation than the canonical read", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			canonicalGeneration: 2,
+			ownerBindingEvaluation: boundToOwner,
+		});
+		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
+	});
+
+	it("rejects a malformed negative canonical generation", async () => {
+		const runtime = makeRuntime({
+			settings: { ELIZA_ADMIN_ENTITY_ID: OWNER_ID },
+			canonicalGeneration: -1,
+			ownerBindingEvaluation: { ...boundToOwner, generation: -1 },
 		});
 		expect(await resolveEntityRole(runtime, null, {}, SENDER_ID)).toBe("GUEST");
 	});

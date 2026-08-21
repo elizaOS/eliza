@@ -522,12 +522,24 @@ async function resolveIdentityOwnerBinding(
 			runtime.agentId,
 			entityId,
 		);
+		// The canonical read must echo exactly the request it resolved; a
+		// misrouted response for another agent or actor must not authorize.
+		if (
+			canonical.agentId !== runtime.agentId ||
+			canonical.requestedPrincipalId !== entityId ||
+			!Number.isSafeInteger(canonical.generation) ||
+			canonical.generation < 0
+		) {
+			return false;
+		}
 		const evaluation = await service.evaluateOwnerBinding({
 			agentId: runtime.agentId,
 			actorPrincipalId: entityId,
 			candidateOwnerPrincipalIds: ownerIds,
 			purpose: "role_resolution",
 		});
+		// Both reads must observe the same identity-graph generation; a merge
+		// or split between the two awaits invalidates the binding decision.
 		return (
 			evaluation.decision === "bound" &&
 			evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId &&
@@ -537,9 +549,11 @@ async function resolveIdentityOwnerBinding(
 			typeof evaluation.ownerBindingId === "string" &&
 			evaluation.ownerBindingId.length > 0 &&
 			Number.isSafeInteger(evaluation.generation) &&
-			evaluation.generation >= 0
+			evaluation.generation === canonical.generation
 		);
 	} catch (error) {
+		// error-policy:J4 authority read failure is reported and degrades to a
+		// fail-closed non-owner decision instead of falling back to weaker paths.
 		runtime.reportError("Roles.evaluateOwnerBinding", error, { entityId });
 		return false;
 	}
