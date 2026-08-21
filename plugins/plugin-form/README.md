@@ -129,6 +129,7 @@ When all subfields are filled the evaluator automatically calls `activateExterna
 | `askPrompt` | string | Custom agent prompt for this field |
 | `extractHints` | string[] | Keywords to improve LLM extraction accuracy |
 | `confirmThreshold` | number | Confidence below this triggers confirmation (default 0.8) |
+| `pattern` | string | Bounded linear-time format pattern. Supports anchors, character classes, escapes, fixed repetitions, and at most one variable repetition; groups, alternation, lookaround, and backreferences fail as invalid format. Pattern and subject ceilings are shared with `@elizaos/shared`. |
 | `dependsOn` | FormControlDependency | Conditional display based on another field's value |
 | `dbbind` | string | Column name for `mappedValues` in submission |
 | `options` | FormControlOption[] | For `select` type |

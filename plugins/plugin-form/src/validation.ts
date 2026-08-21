@@ -46,6 +46,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import { matchesSafeUntrustedRegexPattern } from "@elizaos/shared/config/config-catalog";
 import { strictEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
@@ -207,10 +208,9 @@ function validateText(
   const strValue = String(value);
 
   // Pattern validation
-  // WHY regex: Flexible, powerful, user-defined patterns
+  // Agent-authored patterns use the shared bounded linear-time dialect.
   if (control.pattern) {
-    const regex = new RegExp(control.pattern);
-    if (!regex.test(strValue)) {
+    if (!matchesSafeUntrustedRegexPattern(control.pattern, strValue)) {
       return {
         valid: false,
         error: `${control.label || control.key} has invalid format`,

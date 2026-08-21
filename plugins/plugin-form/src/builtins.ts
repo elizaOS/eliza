@@ -63,6 +63,7 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import { matchesSafeUntrustedRegexPattern } from "@elizaos/shared/config/config-catalog";
 import { basicEmailValid } from "./email";
 import type { ControlType, FormControl, ValidationResult } from "./types";
 
@@ -129,8 +130,7 @@ const textType: ControlType = {
 
     // Check pattern if specified
     if (control.pattern) {
-      const regex = new RegExp(control.pattern);
-      if (!regex.test(str)) {
+      if (!matchesSafeUntrustedRegexPattern(control.pattern, str)) {
         return { valid: false, error: "Invalid format" };
       }
     }

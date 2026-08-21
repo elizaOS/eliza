@@ -110,6 +110,7 @@ await formService.startSession('onboard', entityId, roomId, { context: { tier: '
 - **`restore` intent must go through the FORM action**, not the evaluator, so the provider has fresh context before the agent reply.
 - **Effort-based TTL.** Sessions don't expire at a fixed time; more user interaction extends retention (min 14 days, max 90 days, configurable per form via `FormDefinition.ttl`).
 - **Sensitive fields** (`sensitive: true`) are never echoed back in provider context — only a masked placeholder is shown.
+- **Agent-authored `pattern` values use the shared bounded regex dialect.** Both legacy `validateField` and the built-in text control reject unsupported syntax or over-budget subjects as the normal invalid-format field result; never compile form patterns directly with `RegExp`.
 - **Hook workers** are resolved via `runtime.getTaskWorker(name)`. If the worker is missing the hook silently no-ops with a warning log — it does not throw.
 - **External types** require three steps: subfields fill → `FORM_SUBCONTROLS_FILLED` emitted → evaluator calls `activateExternalField()` → consuming plugin calls `confirmExternalField()` on success or `cancelExternalField()` on failure.
 - See [CLAUDE.md](../../CLAUDE.md) at repo root for architecture rules, naming, logger conventions, and ESM requirements.
