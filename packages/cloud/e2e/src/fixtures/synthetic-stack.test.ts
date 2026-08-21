@@ -30,8 +30,8 @@ describe("Cloud synthetic stack manifest", () => {
             },
           ],
         },
-        agentCount: 0,
-        connectors: [],
+        agentCount: 1,
+        connectors: ["cloud-agent-bridge"],
         backgroundWorkers: ["cloud-api", "container-control-plane"],
         frontendTargets: [],
         providers: [
@@ -46,6 +46,12 @@ describe("Cloud synthetic stack manifest", () => {
                 response: { status: 200, body: { items: [{ id: "item-1" }] } },
               },
             ],
+            productionProbe: {
+              client: "cloud-sdk",
+              method: "GET",
+              path: "/v1/items",
+              expectedBody: { items: [{ id: "item-1" }] },
+            },
           },
         ],
         faultScript: [],
@@ -58,6 +64,24 @@ describe("Cloud synthetic stack manifest", () => {
     const provider = stack.providers.get("fixture-provider");
     if (!provider) throw new Error("fixture provider did not boot");
     const initialProvider = await provider.control.snapshot();
+    const initialLedger = stack.world.ledger.all();
+    expect(stack.runtimes).toHaveLength(1);
+    expect(stack.runtimeReadiness).toHaveLength(1);
+    expect(stack.providerReadiness).toEqual([
+      expect.objectContaining({
+        providerId: "fixture-provider",
+        client: "cloud-sdk",
+        method: "GET",
+        path: "/v1/items",
+        ledgerRequestCount: 1,
+      }),
+    ]);
+    await stack.runtimes[0]?.setCache("synthetic-reset-probe", {
+      leaked: true,
+    });
+    expect(await stack.runtimes[0]?.getCache("synthetic-reset-probe")).toEqual({
+      leaked: true,
+    });
     const dataOnlyHash = stack.world.stateHash;
     await stack.world.clock.advanceBy(1_000);
     expect(stack.world.stateHash).toBe(dataOnlyHash);
@@ -75,7 +99,7 @@ describe("Cloud synthetic stack manifest", () => {
       }),
     });
     expect(modelResponse.status).toBe(200);
-    expect(model.requestCount()).toBe(1);
+    expect(model.requestCount()).toBe(2);
     expect(await stack.executionStateHash()).not.toBe(
       stack.initialExecutionStateHash,
     );
@@ -88,8 +112,13 @@ describe("Cloud synthetic stack manifest", () => {
     await stack.reset();
 
     expect(stack.world.stateHash).toBe(stack.initialStateHash);
-    expect(stack.world.ledger.all()).toEqual([]);
-    expect(model.requestCount()).toBe(0);
+    expect(stack.world.ledger.all()).toEqual(initialLedger);
+    expect(model.requestCount()).toBe(1);
+    expect(stack.runtimes).toHaveLength(1);
+    expect(
+      await stack.runtimes[0]?.getCache("synthetic-reset-probe"),
+    ).toBeUndefined();
+    expect(stack.providerReadiness[0]?.ledgerRequestCount).toBe(1);
     const resetProvider = await provider.control.snapshot();
     expect(await stack.executionStateHash()).toBe(
       stack.initialExecutionStateHash,
@@ -119,6 +148,24 @@ describe("Cloud synthetic stack manifest", () => {
         "missing-model-fixtures",
       ),
     ).rejects.toThrow("requires strict model fixtures");
+  });
+
+  test("fails closed when real model routing is declared but not wired", async () => {
+    await expect(
+      startSyntheticStack(
+        {
+          world: testManifest(),
+          model: { mode: "real", provider: "openai", model: "gpt-5.6" },
+          agentCount: 0,
+          connectors: [],
+          backgroundWorkers: ["cloud-api", "container-control-plane"],
+          frontendTargets: [],
+          providers: [],
+          faultScript: [],
+        },
+        "unwired-real-model",
+      ),
+    ).rejects.toThrow("real model mode is not wired yet");
   });
 
   test("transactionally releases parent env ownership and resources after startup failure", async () => {

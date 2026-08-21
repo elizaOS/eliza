@@ -81,7 +81,7 @@ bun run cloud:login:test-wallet --base <local-stack-url>
   `frontend: false` have no `stack.urls.frontend`; the fixture `test.skip`s
   instead of crashing.
 - **Serial only.** `workers: 1`, `fullyParallel: false`; one stack boot per
-  worker (worker-scoped `stack` fixture, 240s boot timeout, 120s per-test).
+  worker (worker-scoped `stack` fixture, 360s boot timeout, 120s per-test).
 - **Env layering.** The config loads `packages/cloud/shared/.env[.local]` into
   `process.env` without overriding shell values, so provider keys (e.g.
   `CEREBRAS_API_KEY` for real-LLM lanes) reach both the runner and the worker.

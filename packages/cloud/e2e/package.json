@@ -15,9 +15,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/cloud-test-mocks": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/ui": "workspace:*"
   },
   "devDependencies": {

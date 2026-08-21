@@ -503,9 +503,11 @@
       "name": "@elizaos/cloud-e2e",
       "version": "0.0.0",
       "dependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/cloud-test-mocks": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/ui": "workspace:*",
       },
       "devDependencies": {

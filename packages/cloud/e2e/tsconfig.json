@@ -7,17 +7,23 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node", "bun-types"],
     "ignoreDeprecations": "5.0",
     "paths": {
+      "@elizaos/cloud-sdk": ["../sdk/src/index.ts"],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../../plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
       "@elizaos/cloud-shared/*": ["../../cloud/shared/src/*"],
       "@elizaos/cloud-test-mocks/*": ["../cloud-mocks/src/*"],
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/core/edge": ["../../../packages/core/src/index.edge.ts"],
+      "@elizaos/plugin-openai": ["../../../plugins/plugin-openai/index.ts"],
       "@elizaos/plugin-scheduling/edge": [
         "../../../plugins/plugin-scheduling/src/edge.ts"
       ],
@@ -28,7 +34,12 @@
       "@elizaos/plugin-sql/*": ["../../../plugins/plugin-sql/src/*"],
       "@elizaos/plugin-web-search/edge": [
         "../../../plugins/plugin-web-search/src/edge.ts"
-      ]
+      ],
+      "@elizaos/shared": ["../../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../shared/src/*"],
+      "@elizaos/ui/api": ["../../ui/src/api/index.ts"],
+      "@elizaos/ui/api/*": ["../../ui/src/api/*"],
+      "@elizaos/ui/config": ["../../ui/src/config/index.ts"]
     },
     // Matches the repository base. This package typechecks cloud-shared through
     // the path mappings above, and that code targets a newer library than

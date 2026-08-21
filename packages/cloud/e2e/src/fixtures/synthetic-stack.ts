@@ -1,10 +1,17 @@
 /** Boots the manifest-owned synthetic world and its strict model/provider sidecars for Cloud E2E. */
 
+import { CloudApiClient } from "@elizaos/cloud-sdk";
 import {
   type ProviderProtocolFixture,
   type RunningFakeProvider,
   startFakeProvider,
 } from "@elizaos/cloud-test-mocks/provider-contract";
+import {
+  AgentRuntime,
+  type JsonValue as CoreJsonValue,
+  InMemoryDatabaseAdapter,
+  ModelType,
+} from "@elizaos/core";
 import type { DeterministicModelFixture } from "@elizaos/core/testing";
 import {
   bootInProcessWorld,
@@ -24,6 +31,30 @@ export interface CloudSyntheticProviderBinding {
   apiKeyEnv?: string;
   apiKey?: string;
   fixtures: ProviderProtocolFixture[];
+  /** Executable readiness through the production Cloud SDK client. */
+  productionProbe?: {
+    client: "cloud-sdk";
+    method: "GET";
+    path: string;
+    expectedBody: JsonValue;
+  };
+}
+
+export type CloudSyntheticConnector = "cloud-agent-bridge";
+
+export interface SyntheticRuntimeReadinessReceipt {
+  agentId: string;
+  modelType: typeof ModelType.TEXT_LARGE;
+  responseHash: string;
+}
+
+export interface SyntheticProviderReadinessReceipt {
+  providerId: string;
+  client: "cloud-sdk";
+  method: "GET";
+  path: string;
+  responseHash: string;
+  ledgerRequestCount: number;
 }
 
 export interface CloudSyntheticStackManifest {
@@ -36,7 +67,7 @@ export interface CloudSyntheticStackManifest {
       }
     | { mode: "real"; provider: string; model: string };
   agentCount: number;
-  connectors: string[];
+  connectors: CloudSyntheticConnector[];
   backgroundWorkers: Array<"cloud-api" | "container-control-plane">;
   frontendTargets: Array<"app">;
   providers: CloudSyntheticProviderBinding[];
@@ -47,6 +78,9 @@ export interface RunningSyntheticStack {
   world: SyntheticWorld;
   model?: RunningMockLlm;
   providers: ReadonlyMap<string, RunningFakeProvider>;
+  runtimes: readonly AgentRuntime[];
+  runtimeReadiness: readonly SyntheticRuntimeReadinessReceipt[];
+  providerReadiness: readonly SyntheticProviderReadinessReceipt[];
   bootstrap: string;
   processEnv: Readonly<Record<string, string>>;
   initialStateHash: string;
@@ -72,6 +106,10 @@ export async function startSyntheticStack(
   });
   const providers = new Map<string, RunningFakeProvider>();
   let model: RunningMockLlm | undefined;
+  let runtimes: AgentRuntime[] = [];
+  let runtimeReadiness: SyntheticRuntimeReadinessReceipt[] = [];
+  let providerReadiness: SyntheticProviderReadinessReceipt[] = [];
+  const runtimeProbePrompt = `cloud synthetic runtime readiness:${manifest.worldId}`;
   try {
     for (const binding of input.providers) {
       providers.set(
@@ -88,7 +126,22 @@ export async function startSyntheticStack(
         scenarioId: `cloud-e2e:${manifest.worldId}`,
         attemptId: runId,
         worldId: manifest.worldId,
-        fixtures: input.model.fixtures,
+        fixtures: [
+          ...(input.agentCount > 0
+            ? [
+                {
+                  name: "__cloud_runtime_readiness__",
+                  match: {
+                    modelType: ModelType.TEXT_LARGE,
+                    input: runtimeProbePrompt,
+                  },
+                  response: "cloud synthetic runtime ready",
+                  times: input.agentCount,
+                } satisfies DeterministicModelFixture,
+              ]
+            : []),
+          ...input.model.fixtures,
+        ],
       });
     }
   } catch (error) {
@@ -125,6 +178,117 @@ export async function startSyntheticStack(
     processEnv.OPENAI_BASE_URL = model.url;
   }
 
+  const stopRuntimes = async (): Promise<Error[]> => {
+    const current = runtimes;
+    runtimes = [];
+    runtimeReadiness = [];
+    const results = await Promise.allSettled(
+      current.map(async (runtime) => {
+        await runtime.stop();
+        await runtime.close();
+      }),
+    );
+    return results.flatMap((result) =>
+      result.status === "rejected"
+        ? [
+            result.reason instanceof Error
+              ? result.reason
+              : new Error(String(result.reason)),
+          ]
+        : [],
+    );
+  };
+
+  const bootRuntimes = async (): Promise<void> => {
+    if (input.agentCount === 0) return;
+    if (!model)
+      throw new Error("synthetic runtime boot requires the strict model wire");
+    const { default: openaiPlugin } = await import("@elizaos/plugin-openai");
+    const booted: AgentRuntime[] = [];
+    const receipts: SyntheticRuntimeReadinessReceipt[] = [];
+    try {
+      for (let index = 0; index < input.agentCount; index += 1) {
+        const runtime = new AgentRuntime({
+          character: { name: `CloudSyntheticAgent${index + 1}` },
+          adapter: new InMemoryDatabaseAdapter(),
+          logLevel: "fatal",
+          enableAutonomy: false,
+        });
+        runtime.setSetting("SECRET_SALT", `cloud-synthetic-${manifest.seed}`);
+        runtime.setSetting("OPENAI_API_KEY", "synthetic-model-key", true);
+        runtime.setSetting("OPENAI_BASE_URL", model.url);
+        runtime.setSetting("OPENAI_LARGE_MODEL", "synthetic-readiness-model");
+        booted.push(runtime);
+        await runtime.registerPlugin(openaiPlugin);
+        await runtime.initialize();
+        const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: runtimeProbePrompt,
+        });
+        if (response !== "cloud synthetic runtime ready") {
+          throw new Error(
+            `synthetic runtime ${runtime.agentId} returned an invalid readiness response`,
+          );
+        }
+        receipts.push({
+          agentId: runtime.agentId,
+          modelType: ModelType.TEXT_LARGE,
+          responseHash: payloadHash(response),
+        });
+      }
+    } catch (error) {
+      await Promise.allSettled(
+        booted.map(async (runtime) => {
+          await runtime.stop();
+          await runtime.close();
+        }),
+      );
+      throw error;
+    }
+    runtimes = booted;
+    runtimeReadiness = receipts;
+  };
+
+  const runProviderProbes = async (): Promise<void> => {
+    const receipts: SyntheticProviderReadinessReceipt[] = [];
+    for (const binding of input.providers) {
+      const probe = binding.productionProbe;
+      if (!probe) continue;
+      const provider = providers.get(binding.id);
+      if (!provider) throw new Error(`missing booted provider ${binding.id}`);
+      const client = new CloudApiClient(
+        provider.url,
+        binding.apiKey ?? "synthetic-provider-key",
+      );
+      const body = await client.get<CoreJsonValue>(probe.path);
+      const responseHash = payloadHash(body as JsonValue);
+      if (responseHash !== payloadHash(probe.expectedBody)) {
+        throw new Error(
+          `production probe for ${binding.id} returned an unexpected body`,
+        );
+      }
+      const snapshot = await provider.control.snapshot();
+      const ledger = snapshot.state.ledger as
+        | { requests?: Array<{ method?: string; path?: string }> }
+        | undefined;
+      const requests = ledger?.requests ?? [];
+      const observed = requests.at(-1);
+      if (observed?.method !== probe.method || observed.path !== probe.path) {
+        throw new Error(
+          `production probe for ${binding.id} was not observed in the provider ledger`,
+        );
+      }
+      receipts.push({
+        providerId: binding.id,
+        client: probe.client,
+        method: probe.method,
+        path: probe.path,
+        responseHash,
+        ledgerRequestCount: requests.length,
+      });
+    }
+    providerReadiness = receipts;
+  };
+
   const executionStateHash = async (): Promise<string> => {
     const providerStates = await Promise.all(
       [...providers.entries()]
@@ -153,12 +317,26 @@ export async function startSyntheticStack(
             diagnostics: model.diagnostics(),
           }
         : { mode: "real" },
+      runtimes: runtimeReadiness,
+      providerReadiness,
     } as unknown as JsonValue);
   };
   const firstProvider = providers.values().next().value;
-  if (firstProvider) await firstProvider.control.resetWorld();
-  else world.reset();
-  model?.resetFixtures();
+  try {
+    if (firstProvider) await firstProvider.control.resetWorld();
+    else world.reset();
+    model?.resetFixtures();
+    await bootRuntimes();
+    await runProviderProbes();
+  } catch (error) {
+    await Promise.allSettled([
+      stopRuntimes(),
+      ...(model ? [model.stop()] : []),
+      ...[...providers.values()].map((provider) => provider.stop()),
+    ]);
+    world.teardown();
+    throw error;
+  }
   const initialStateHash = world.stateHash;
   const initialExecutionStateHash = await executionStateHash();
   const assertModelConsumptionAtStop =
@@ -169,6 +347,15 @@ export async function startSyntheticStack(
     world,
     model,
     providers,
+    get runtimes() {
+      return runtimes;
+    },
+    get runtimeReadiness() {
+      return runtimeReadiness;
+    },
+    get providerReadiness() {
+      return providerReadiness;
+    },
     bootstrap: processEnv.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP,
     processEnv,
     initialStateHash,
@@ -178,9 +365,18 @@ export async function startSyntheticStack(
       input.model.assertConsumption === "per-test",
     executionStateHash,
     async reset(): Promise<void> {
+      const runtimeErrors = await stopRuntimes();
+      if (runtimeErrors.length > 0) {
+        throw new AggregateError(
+          runtimeErrors,
+          "synthetic runtime reset teardown failed",
+        );
+      }
       if (firstProvider) await firstProvider.control.resetWorld();
       else world.reset();
       model?.resetFixtures();
+      await bootRuntimes();
+      await runProviderProbes();
       if (
         world.stateHash !== initialStateHash ||
         (await executionStateHash()) !== initialExecutionStateHash
@@ -204,6 +400,14 @@ export async function startSyntheticStack(
         }
       }
       const results = await Promise.allSettled([
+        stopRuntimes().then((errors) => {
+          if (errors.length > 0) {
+            throw new AggregateError(
+              errors,
+              "synthetic runtime teardown failed",
+            );
+          }
+        }),
         ...(model ? [model.stop()] : []),
         ...[...providers.values()].map((provider) => provider.stop()),
       ]);
@@ -233,11 +437,10 @@ function assertStackManifest(input: CloudSyntheticStackManifest): void {
       "synthetic Cloud stack agentCount must be a non-negative integer",
     );
   }
-  if (input.agentCount !== 0) {
-    throw new Error("synthetic Cloud stack agent processes are not wired yet");
-  }
-  if (input.connectors.length !== 0) {
-    throw new Error("synthetic Cloud stack connectors are not wired yet");
+  if (new Set(input.connectors).size !== input.connectors.length) {
+    throw new Error(
+      "synthetic Cloud stack connector declarations must be unique",
+    );
   }
   if (
     [...input.backgroundWorkers].sort().join(",") !==
@@ -260,6 +463,26 @@ function assertStackManifest(input: CloudSyntheticStackManifest): void {
       throw new Error("synthetic provider ids must be unique and non-empty");
     }
     ids.add(provider.id);
+    if (provider.productionProbe) {
+      if (
+        !provider.productionProbe.path.startsWith("/") ||
+        provider.productionProbe.path.includes("?")
+      ) {
+        throw new Error(
+          "synthetic production probe paths must be absolute and query-free",
+        );
+      }
+      const fixture = provider.fixtures.find(
+        (candidate) =>
+          candidate.method === provider.productionProbe?.method &&
+          candidate.path === provider.productionProbe.path,
+      );
+      if (!fixture) {
+        throw new Error(
+          `synthetic production probe for ${provider.id} has no matching fixture`,
+        );
+      }
+    }
     for (const name of [provider.baseUrlEnv, provider.apiKeyEnv].filter(
       Boolean,
     ) as string[]) {

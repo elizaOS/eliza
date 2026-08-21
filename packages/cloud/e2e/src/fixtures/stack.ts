@@ -194,7 +194,7 @@ async function assertSyntheticCloudReadiness(
       JSON.stringify(expectedBindings)
   ) {
     throw new Error(
-      "cloud-api readiness did not acknowledge the synthetic bootstrap and provider bindings",
+      "cloud-api readiness did not receive the synthetic metadata and provider binding names",
     );
   }
   const controlResponse = await fetch(`${controlPlaneUrl}/health`, {
@@ -208,7 +208,7 @@ async function assertSyntheticCloudReadiness(
       JSON.stringify(expectedBindings)
   ) {
     throw new Error(
-      "control-plane readiness did not acknowledge the synthetic bootstrap and provider bindings",
+      "control-plane readiness did not receive the synthetic metadata and provider binding names",
     );
   }
   synthetic.world.ledger.append({

@@ -60,7 +60,7 @@ export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
         await handle.stop();
       }
     },
-    { scope: "worker", timeout: 240_000 },
+    { scope: "worker", timeout: 360_000 },
   ],
 
   syntheticAttempt: [

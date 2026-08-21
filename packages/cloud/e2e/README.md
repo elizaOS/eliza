@@ -87,18 +87,25 @@ cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
   cancellation. Fixed/echo replies remain compatibility fixtures for existing
   journeys; new tests should pass named fixtures and assert their consumption.
 - `stackOptions.synthetic` accepts the typed Cloud synthetic manifest. It
-  selects mock-strict or real model mode, agent count, connectors, background
+  declares model mode, agent count, connectors, background
   workers, frontend targets, named provider URL/auth environment bindings, and
-  the fault script. The worker receives the canonical world bootstrap and real
-  production clients receive the named loopback base URLs; control credentials
-  remain harness-only. Per-test reset checks the composite world, provider, and
-  model execution hash. CI Playwright retries are disabled so product failures
-  cannot become green on an unclassified retry.
-  The readiness receipt proves the Cloud Worker and control plane received the
-  bootstrap and routing bindings; it does not prove a production client called
-  a provider. The current composite hash covers observable data, clock, ledger,
-  provider state, model consumption, and the canonical world execution hash,
-  including clock, timers, RNG, fault progression, and ledger state.
+  the fault script. The worker process receives value-free bootstrap metadata
+  and named loopback base URLs are injected into its environment; control
+  credentials remain harness-only. Per-test reset checks the composite world,
+  provider, and model execution hash. CI Playwright retries are disabled so
+  product failures cannot become green on an unclassified retry.
+  The Cloud Worker and control plane readiness receipts prove receipt of the
+  metadata and routing-binding names. Declared agents are real initialized
+  `AgentRuntime` instances: their production OpenAI plugin must complete a
+  strict-wire model call before readiness. A provider binding may also require
+  a real `CloudApiClient` probe whose response and sanitized mock request ledger
+  are verified. Cloud subprocesses do not yet share the in-process world's
+  mutable state. The current foundation accepts only `mock-strict`; `real`
+  fails closed until a named production model binding and three-attempt
+  executor are wired. Reset destroys and recreates runtime adapters and checks
+  the composite provider, model, runtime-readiness, and canonical world
+  execution hash, including clock, timers, RNG, fault progression, and ledger
+  state.
 - The memory sandbox provider is guarded by `NODE_ENV=test` or `CLOUD_E2E=1`;
   it is not selectable in production.
 - The cloud-api adapter avoids Wrangler in CI while still exercising the real
