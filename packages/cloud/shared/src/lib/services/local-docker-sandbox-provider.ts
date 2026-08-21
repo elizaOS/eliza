@@ -8,32 +8,18 @@
  * host-published port in [LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX).
  */
 
+import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
 import { existsSync, rmSync } from "node:fs";
 import { promisify } from "node:util";
 
+import { ElizaError } from "@elizaos/core";
+import { fetchWithSsrfGuard } from "@elizaos/core/network";
+
 import { containersEnv } from "../config/containers-env";
 import { logger } from "../utils/logger";
 import { isContainerAbsentMessage } from "./docker-error-classifier";
-
-const SANDBOX_BRIDGE_TIMEOUT_MS = 30_000;
-
-/**
- * Bound every local-sandbox bridge hop so a wedged container cannot pin the
- * caller indefinitely. A caller-provided abort signal wins.
- */
-export function sandboxBridgeFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  timeoutMs: number = SANDBOX_BRIDGE_TIMEOUT_MS,
-): Promise<Response> {
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
-  });
-}
-
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
@@ -54,6 +40,215 @@ import type {
 } from "./sandbox-provider-types";
 
 const execFileAsync = promisify(execFile);
+
+const SANDBOX_BRIDGE_TIMEOUT_MS = 30_000;
+const SANDBOX_BRIDGE_MAX_REQUEST_BYTES = 1024 * 1024;
+const SANDBOX_BRIDGE_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
+function bridgeError(
+  message: string,
+  code: string,
+  context?: Record<string, unknown>,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(`${LOG_PREFIX} ${message}`, {
+    code,
+    context,
+    cause,
+    severity: "ephemeral",
+  });
+}
+
+function assertLocalBridgeUrl(input: string | URL): string {
+  let url: URL;
+  try {
+    url = input instanceof URL ? input : new URL(input);
+  } catch (cause) {
+    // error-policy:J3 The bridge URL is a provider-handle boundary; invalid
+    // input is rejected explicitly before it reaches the network transport.
+    throw bridgeError("Invalid local bridge URL", "LOCAL_SANDBOX_BRIDGE_URL_INVALID", {}, cause);
+  }
+
+  const port = Number(url.port);
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "127.0.0.1" ||
+    !Number.isInteger(port) ||
+    port < LOCAL_BRIDGE_PORT_MIN ||
+    port >= LOCAL_BRIDGE_PORT_MAX
+  ) {
+    throw bridgeError(
+      "Local bridge URL must target the provider-owned loopback port range",
+      "LOCAL_SANDBOX_BRIDGE_URL_REJECTED",
+      { protocol: url.protocol, hostname: url.hostname, port: url.port },
+    );
+  }
+  return url.toString();
+}
+
+function assertBoundedRequestBody(body: BodyInit | null | undefined): void {
+  if (body == null) return;
+  if (typeof body !== "string") {
+    throw bridgeError(
+      "Local bridge requests require a bounded JSON string body",
+      "LOCAL_SANDBOX_BRIDGE_BODY_INVALID",
+    );
+  }
+  const byteLength = Buffer.byteLength(body, "utf8");
+  if (byteLength > SANDBOX_BRIDGE_MAX_REQUEST_BYTES) {
+    throw bridgeError(
+      "Local bridge request body exceeds the byte limit",
+      "LOCAL_SANDBOX_BRIDGE_REQUEST_TOO_LARGE",
+      { byteLength, maxBytes: SANDBOX_BRIDGE_MAX_REQUEST_BYTES },
+    );
+  }
+}
+
+async function cancelBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch (error) {
+    // error-policy:J6 The bridge request is already failing; response-body
+    // cancellation is best-effort transport teardown.
+    logger.warn({ error }, `${LOG_PREFIX} Failed to cancel bridge response body`);
+  }
+}
+
+async function responseWithBoundedBody(
+  response: Response,
+  release: () => Promise<void>,
+): Promise<Response> {
+  if (!response.body) {
+    await release();
+    return response;
+  }
+
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > SANDBOX_BRIDGE_MAX_RESPONSE_BYTES) {
+    await cancelBody(response);
+    await release();
+    throw bridgeError(
+      "Local bridge response exceeds the byte limit",
+      "LOCAL_SANDBOX_BRIDGE_RESPONSE_TOO_LARGE",
+      { byteLength: declaredLength, maxBytes: SANDBOX_BRIDGE_MAX_RESPONSE_BYTES },
+    );
+  }
+
+  const reader = response.body.getReader();
+  let byteLength = 0;
+  let finished = false;
+  const finish = async (): Promise<void> => {
+    if (finished) return;
+    finished = true;
+    reader.releaseLock();
+    await release();
+  };
+  const body = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          await finish();
+          controller.close();
+          return;
+        }
+        byteLength += chunk.value.byteLength;
+        if (byteLength > SANDBOX_BRIDGE_MAX_RESPONSE_BYTES) {
+          await reader.cancel("Local bridge response exceeded the byte limit");
+          await finish();
+          controller.error(
+            bridgeError(
+              "Local bridge response exceeds the byte limit",
+              "LOCAL_SANDBOX_BRIDGE_RESPONSE_TOO_LARGE",
+              { byteLength, maxBytes: SANDBOX_BRIDGE_MAX_RESPONSE_BYTES },
+            ),
+          );
+          return;
+        }
+        controller.enqueue(chunk.value);
+      } catch (cause) {
+        await finish();
+        // error-policy:J2 Preserve stream failures while classifying the bridge boundary.
+        controller.error(
+          bridgeError(
+            "Failed while reading the local bridge response",
+            "LOCAL_SANDBOX_BRIDGE_RESPONSE_FAILED",
+            undefined,
+            cause,
+          ),
+        );
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason);
+      } finally {
+        await finish();
+      }
+    },
+  });
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
+/**
+ * Sends one bounded request to a provider-owned local Docker bridge. The
+ * canonical SSRF guard enforces protocol, loopback policy, redirect rejection,
+ * caller cancellation, and the deadline; response resources remain owned by
+ * the guard until the returned body is consumed or cancelled.
+ */
+export async function sandboxBridgeFetch(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs: number = SANDBOX_BRIDGE_TIMEOUT_MS,
+): Promise<Response> {
+  const url = assertLocalBridgeUrl(input);
+  assertBoundedRequestBody(init.body);
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    throw bridgeError(
+      "Local bridge timeout must be a positive 32-bit integer",
+      "LOCAL_SANDBOX_BRIDGE_TIMEOUT_INVALID",
+      { timeoutMs },
+    );
+  }
+
+  const { signal, ...requestInit } = init;
+  let guarded: Awaited<ReturnType<typeof fetchWithSsrfGuard>>;
+  try {
+    guarded = await fetchWithSsrfGuard({
+      url,
+      init: requestInit,
+      fetchImpl: globalThis.fetch,
+      maxRedirects: 0,
+      policy: { allowedHostnames: ["127.0.0.1"] },
+      signal: signal ?? undefined,
+      timeoutMs,
+    });
+  } catch (cause) {
+    // error-policy:J2 Classify transport failures while preserving the exact cause.
+    throw bridgeError(
+      "Local bridge request failed",
+      "LOCAL_SANDBOX_BRIDGE_FETCH_FAILED",
+      { url },
+      cause,
+    );
+  }
+
+  if (!guarded.response.ok) {
+    await cancelBody(guarded.response);
+    await guarded.release();
+    throw bridgeError(
+      `Local bridge returned HTTP ${guarded.response.status}`,
+      "LOCAL_SANDBOX_BRIDGE_HTTP_ERROR",
+      { status: guarded.response.status, url },
+    );
+  }
+
+  return await responseWithBoundedBody(guarded.response, guarded.release);
+}
 
 // ---------------------------------------------------------------------------
 // Local-only port range — chosen to NOT overlap the remote range (18790-19790)

@@ -189,6 +189,19 @@ function isRedirectStatus(status: number): boolean {
 	);
 }
 
+async function cancelResponseBody(response: Response): Promise<void> {
+	try {
+		await response.body?.cancel();
+	} catch (error) {
+		// error-policy:J6 The request has already failed; body cancellation is
+		// best-effort transport teardown and must not replace the primary error.
+		logger.warn(
+			{ error },
+			"[FetchGuard] Failed to cancel rejected response body",
+		);
+	}
+}
+
 function buildAbortSignal(params: {
 	timeoutMs?: number;
 	signal?: AbortSignal;
@@ -386,6 +399,7 @@ export async function fetchWithSsrfGuard(
 			if (isRedirectStatus(response.status)) {
 				const location = response.headers.get("location");
 				if (!location) {
+					await cancelResponseBody(response);
 					await release();
 					throw new Error(
 						`Redirect missing location header (${response.status})`,
@@ -393,9 +407,14 @@ export async function fetchWithSsrfGuard(
 				}
 				redirectCount += 1;
 				if (redirectCount > maxRedirects) {
+					await cancelResponseBody(response);
 					await release();
 					throw new Error(`Too many redirects (limit: ${maxRedirects})`);
 				}
+				// No redirect response body is consumed by this guard. Dispose it
+				// before parsing or validating the next hop so malformed Location
+				// values cannot retain the response socket on the failure path.
+				await cancelResponseBody(response);
 				const nextParsedUrl = new URL(location, parsedUrl);
 				const nextUrl = nextParsedUrl.toString();
 				if (visited.has(nextUrl)) {
@@ -422,7 +441,6 @@ export async function fetchWithSsrfGuard(
 				if (parsedUrl.origin !== nextParsedUrl.origin) {
 					hopHeaders = stripCredentialHeaders(hopHeaders);
 				}
-				void response.body?.cancel();
 				currentUrl = nextUrl;
 				continue;
 			}
