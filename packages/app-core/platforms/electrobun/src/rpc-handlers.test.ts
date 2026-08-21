@@ -102,12 +102,12 @@ describe("window RPC handlers", () => {
 
     await handlers.desktopOpenWorkspaceWindow({
       routePath: "/notes",
-      fullScreen: true,
+      maximize: true,
     });
 
     expect(desktop.openWorkspace).toHaveBeenCalledWith({
       routePath: "/notes",
-      fullScreen: true,
+      maximize: true,
     });
   });
 

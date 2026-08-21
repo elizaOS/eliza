@@ -28,7 +28,7 @@ export interface ManagedWindowFrame {
 
 export interface ManagedWindowLike {
   focus(): void;
-  setFullScreen?: (fullScreen: boolean) => void;
+  maximize?: () => void;
   setAlwaysOnTop(flag: boolean): void;
   on(
     event: "close" | "focus" | "blur" | "resize" | "move",
@@ -298,7 +298,7 @@ export class SurfaceWindowManager {
   async openWorkspaceWindow(
     routePath = "/",
     section?: string,
-    fullScreen = false,
+    maximize = false,
   ): Promise<ManagedWindowSnapshot> {
     const existing = Array.from(this.windows.values()).find(
       (entry) => entry.surface === "workspace",
@@ -310,7 +310,7 @@ export class SurfaceWindowManager {
           buildWorkspaceWindowRendererUrl(rendererUrl, routePath, section),
         );
       }
-      if (fullScreen) existing.window.setFullScreen?.(true);
+      if (maximize) this.maximizeWorkspaceWhenReady(existing.window);
       existing.window.focus();
       return this.toSnapshot(existing);
     }
@@ -325,14 +325,33 @@ export class SurfaceWindowManager {
       undefined,
       section,
     );
-    if (fullScreen) {
+    if (maximize) {
       const created = Array.from(this.windows.values()).find(
         (entry) => entry.id === snapshot.id,
       );
-      created?.window.setFullScreen?.(true);
-      created?.window.focus();
+      if (created) {
+        this.maximizeWorkspaceWhenReady(created.window);
+        created.window.focus();
+      }
     }
     return snapshot;
+  }
+
+  /**
+   * Electrobun can accept maximize before WKWebView attachment without macOS
+   * applying the zoom. Apply it immediately, then reinforce it once after the
+   * renderer reaches dom-ready so Workspace reliably fills the work area while
+   * retaining ordinary traffic lights and window switching.
+   */
+  private maximizeWorkspaceWhenReady(window: ManagedWindowLike): void {
+    window.maximize?.();
+    let reinforced = false;
+    window.webview.on("dom-ready", () => {
+      if (reinforced) return;
+      reinforced = true;
+      window.maximize?.();
+      window.focus();
+    });
   }
 
   async openSurfaceWindow(
