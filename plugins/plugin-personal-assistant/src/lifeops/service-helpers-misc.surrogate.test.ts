@@ -27,7 +27,7 @@ function isWellFormed(s: string): boolean {
 
 describe("service-helpers-misc surrogate handling", () => {
   it("277 backs off at surrogate (276+fox->276 before ...)", () => {
-    const input = "a".repeat(276) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(276)}🦊${"b".repeat(50)}`;
     const out = normalizeGeneratedLifeOpsAssistantText(input)!;
     expect(isWellFormed(out)).toBe(true);
     const core = out.slice(0, -3).trimEnd();
@@ -35,10 +35,10 @@ describe("service-helpers-misc surrogate handling", () => {
   });
 
   it("277 preserves fitting emoji (275+fox intact)", () => {
-    const input = "a".repeat(275) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(275)}🦊${"b".repeat(50)}`;
     const out = normalizeGeneratedLifeOpsAssistantText(input)!;
     expect(isWellFormed(out)).toBe(true);
-    expect(out.slice(0, -3).trimEnd()).toBe("a".repeat(275) + "🦊");
+    expect(out.slice(0, -3).trimEnd()).toBe(`${"a".repeat(275)}🦊`);
   });
 
   it("short cleaned passes through well-formed", () => {
@@ -49,8 +49,7 @@ describe("service-helpers-misc surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `text ${String.fromCharCode(0xd800)} content ` + "a".repeat(500);
+    const lone = `text ${String.fromCharCode(0xd800)} content ${"a".repeat(500)}`;
     const out = normalizeGeneratedLifeOpsAssistantText(lone)!;
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

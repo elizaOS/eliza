@@ -27,7 +27,7 @@ function isWellFormed(s: string): boolean {
 
 describe("owner-send-policy surrogate handling", () => {
   it("237 backs off at surrogate (236+fox->236 before ...)", () => {
-    const input = "a".repeat(236) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(236)}🦊${"b".repeat(50)}`;
     const out = preview237(input);
     expect(isWellFormed(out)).toBe(true);
     // 236 + "..." = 239 total, but core is 236
@@ -35,14 +35,14 @@ describe("owner-send-policy surrogate handling", () => {
   });
 
   it("237 preserves fitting emoji (235+fox intact)", () => {
-    const input = "a".repeat(235) + "🦊" + "b".repeat(100);
+    const input = `${"a".repeat(235)}🦊${"b".repeat(100)}`;
     const out = preview237(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.slice(0, -3)).toBe("a".repeat(235) + "🦊");
+    expect(out.slice(0, -3)).toBe(`${"a".repeat(235)}🦊`);
   });
 
   it("197 backs off at surrogate", () => {
-    const input = "a".repeat(196) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(196)}🦊${"b".repeat(50)}`;
     const out = preview197(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.slice(0, -3).length).toBe(196);
@@ -55,7 +55,7 @@ describe("owner-send-policy surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone = `body ${String.fromCharCode(0xd800)} text ` + "a".repeat(500);
+    const lone = `body ${String.fromCharCode(0xd800)} text ${"a".repeat(500)}`;
     const out237 = preview237(lone);
     const out197 = preview197(lone);
     expect(isWellFormed(out237)).toBe(true);

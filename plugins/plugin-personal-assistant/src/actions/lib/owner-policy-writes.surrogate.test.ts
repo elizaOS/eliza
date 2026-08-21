@@ -18,7 +18,7 @@ function isWellFormed(s: string): boolean {
 
 describe("owner-policy-writes surrogate handling", () => {
   it("200 backs off at surrogate (199+fox->199)", () => {
-    const input = "a".repeat(199) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(199)}🦊${"b".repeat(50)}`;
     const out = truncate200(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(200);
@@ -26,10 +26,10 @@ describe("owner-policy-writes surrogate handling", () => {
   });
 
   it("200 preserves fitting emoji (198+fox intact)", () => {
-    const input = "a".repeat(198) + "🦊";
+    const input = `${"a".repeat(198)}🦊`;
     const out = truncate200(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(198) + "🦊");
+    expect(out).toBe(`${"a".repeat(198)}🦊`);
   });
 
   it("short intent passes through", () => {
@@ -40,8 +40,7 @@ describe("owner-policy-writes surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `intent ${String.fromCharCode(0xd800)} value ` + "a".repeat(300);
+    const lone = `intent ${String.fromCharCode(0xd800)} value ${"a".repeat(300)}`;
     const out = truncate200(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

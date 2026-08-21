@@ -14,6 +14,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { usdFromPoints } from "@/lib/services/earnings-units";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import { normalizeRedemptionClientIp } from "@/lib/services/redemption-client-ip";
 import {
@@ -34,7 +35,6 @@ import {
   REDEMPTION_MIN_POINTS,
   REDEMPTION_NETWORKS,
 } from "@/types/redemption-contract";
-import { usdFromPoints } from "@/lib/services/earnings-units";
 
 const CreateRedemptionSchema = z.object({
   appId: z.string().uuid().optional(),

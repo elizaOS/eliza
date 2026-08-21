@@ -331,7 +331,7 @@ function normalizeCerebrasModelId(modelName: string): string {
     .replace(/:(?!free$).+$/, "");
 }
 
-function isCerebrasReasoningModel(modelName: string | undefined): boolean {
+function _isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
   const id = normalizeCerebrasModelId(modelName);
   // gemma-4-31b accepts reasoning_effort but does NOT reason unless the field

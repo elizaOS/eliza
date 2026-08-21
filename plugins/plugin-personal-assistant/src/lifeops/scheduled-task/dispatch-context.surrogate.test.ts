@@ -22,25 +22,25 @@ function isWellFormed(s: string): boolean {
 
 describe("dispatch-context surrogate handling", () => {
   it("1000 backs off at surrogate (999+fox->999)", () => {
-    const input = "🦊";
+    const _input = "🦊";
     const prefix = "Owner: ";
     // Need total length 999 before fox -> use filler
-    const fillerLen = 999 - prefix.length - 1; // 1 for fox's 2 code units? Wait fox is 2 code units, so need careful
+    const _fillerLen = 999 - prefix.length - 1; // 1 for fox's 2 code units? Wait fox is 2 code units, so need careful
     // Simpler: construct string length 999 then add fox at boundary
     const base = "a".repeat(999);
-    const out = truncateWellFormed(
-      toWellFormedUnicode(base + "🦊" + "b".repeat(50)),
+    const _out = truncateWellFormed(
+      toWellFormedUnicode(`${base}🦊${"b".repeat(50)}`),
       1000,
     );
     // Use helper
-    const text = "a".repeat(995) + "🦊" + "b".repeat(50);
+    const text = `${"a".repeat(995)}🦊${"b".repeat(50)}`;
     const out2 = line1000("Owner", text);
     expect(isWellFormed(out2)).toBe(true);
     expect(out2.length).toBeLessThanOrEqual(1000);
   });
 
   it("1000 preserves fitting emoji", () => {
-    const text = "a".repeat(990) + "🦊";
+    const text = `${"a".repeat(990)}🦊`;
     const out = line1000("Owner", text);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("🦊")).toBe(true);
@@ -53,8 +53,7 @@ describe("dispatch-context surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `text ${String.fromCharCode(0xd800)} content ` + "a".repeat(2000);
+    const lone = `text ${String.fromCharCode(0xd800)} content ${"a".repeat(2000)}`;
     const out = line1000("Owner", lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

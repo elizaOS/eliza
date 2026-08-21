@@ -83,7 +83,7 @@ describe("lastProofBlockOutput", () => {
   it("skips truncated blocks and oversized outputs", () => {
     expect(lastProofBlockOutput("```bash\n$ ls\n...\n```")).toBeUndefined();
     expect(
-      lastProofBlockOutput("```bash\n$ run\n" + "x".repeat(500) + "\n```"),
+      lastProofBlockOutput(`\`\`\`bash\n$ run\n${"x".repeat(500)}\n\`\`\``),
     ).toBeUndefined();
   });
 

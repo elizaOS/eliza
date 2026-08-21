@@ -22,7 +22,7 @@ function isWellFormed(s: string): boolean {
 
 describe("screen-context surrogate handling", () => {
   it("1024 backs off at surrogate (1023+fox->1023)", () => {
-    const input = "a".repeat(1023) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(1023)}🦊${"b".repeat(50)}`;
     const out = normalizeText(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(1024);
@@ -30,10 +30,10 @@ describe("screen-context surrogate handling", () => {
   });
 
   it("1024 preserves fitting emoji (1022+fox intact)", () => {
-    const input = "a".repeat(1022) + "🦊";
+    const input = `${"a".repeat(1022)}🦊`;
     const out = normalizeText(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(1022) + "🦊");
+    expect(out).toBe(`${"a".repeat(1022)}🦊`);
   });
 
   it("normalizes whitespace and trims", () => {
@@ -43,8 +43,7 @@ describe("screen-context surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `text ${String.fromCharCode(0xd800)} content ` + "a".repeat(2000);
+    const lone = `text ${String.fromCharCode(0xd800)} content ${"a".repeat(2000)}`;
     const out = normalizeText(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

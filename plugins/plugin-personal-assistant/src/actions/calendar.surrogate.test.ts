@@ -27,7 +27,7 @@ function isWellFormed(s: string): boolean {
 
 describe("calendar surrogate handling", () => {
   it("160 backs off at surrogate (159+fox->159)", () => {
-    const input = "a".repeat(159) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(159)}🦊${"b".repeat(50)}`;
     const out = approvalSafeLabel(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(160);
@@ -35,10 +35,10 @@ describe("calendar surrogate handling", () => {
   });
 
   it("160 preserves fitting emoji (158+fox intact)", () => {
-    const input = "a".repeat(158) + "🦊";
+    const input = `${"a".repeat(158)}🦊`;
     const out = approvalSafeLabel(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(158) + "🦊");
+    expect(out).toBe(`${"a".repeat(158)}🦊`);
   });
 
   it("normalizes whitespace and brackets", () => {
@@ -48,8 +48,7 @@ describe("calendar surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `title ${String.fromCharCode(0xd800)} value ` + "a".repeat(300);
+    const lone = `title ${String.fromCharCode(0xd800)} value ${"a".repeat(300)}`;
     const out = approvalSafeLabel(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

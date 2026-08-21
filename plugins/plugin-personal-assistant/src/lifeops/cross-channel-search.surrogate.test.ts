@@ -24,7 +24,7 @@ function isWellFormed(s: string): boolean {
 
 describe("cross-channel-search surrogate handling", () => {
   it("label 80 backs off at surrogate boundary", () => {
-    const snippet = "a".repeat(79) + "🦊" + "b".repeat(20);
+    const snippet = `${"a".repeat(79)}🦊${"b".repeat(20)}`;
     const out = truncateLabel(snippet);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(80);
@@ -32,15 +32,15 @@ describe("cross-channel-search surrogate handling", () => {
   });
 
   it("label 80 preserves fitting emoji", () => {
-    const snippet = "a".repeat(78) + "🦊";
+    const snippet = `${"a".repeat(78)}🦊`;
     const out = truncateLabel(snippet);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(78) + "🦊");
+    expect(out).toBe(`${"a".repeat(78)}🦊`);
   });
 
   it("text 600 caps and stays well-formed sweep", () => {
     for (let off = 0; off < 20; off++) {
-      const input = "a".repeat(590 + off) + "🦊😀" + "b".repeat(50);
+      const input = `${"a".repeat(590 + off)}🦊😀${"b".repeat(50)}`;
       const out = truncateText(input);
       expect(isWellFormed(out)).toBe(true);
       expect(out.length).toBeLessThanOrEqual(600);
@@ -48,12 +48,12 @@ describe("cross-channel-search surrogate handling", () => {
   });
 
   it("sourceRef 48 backs off and sanitizes lone surrogate", () => {
-    const lone = "ok \ud800 end " + "a".repeat(100);
+    const lone = `ok \ud800 end ${"a".repeat(100)}`;
     const out = truncateSourceRef(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);
     expect(out.length).toBeLessThanOrEqual(48);
-    const emoji = "a".repeat(47) + "🦊" + "b".repeat(20);
+    const emoji = `${"a".repeat(47)}🦊${"b".repeat(20)}`;
     const out2 = truncateSourceRef(emoji);
     expect(isWellFormed(out2)).toBe(true);
     expect(out2.length).toBeLessThanOrEqual(48);

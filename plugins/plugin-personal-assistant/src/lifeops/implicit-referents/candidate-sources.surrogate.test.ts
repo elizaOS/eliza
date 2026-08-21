@@ -21,7 +21,7 @@ function isWellFormed(s: string): boolean {
 
 describe("candidate-sources surrogate handling", () => {
   it("59 backs off at surrogate (58+fox->58 before …)", () => {
-    const input = "a".repeat(58) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(58)}🦊${"b".repeat(50)}`;
     const out = label59(input);
     expect(isWellFormed(out)).toBe(true);
     const core = out.slice(0, -1).trimEnd();
@@ -29,10 +29,10 @@ describe("candidate-sources surrogate handling", () => {
   });
 
   it("59 preserves fitting emoji (57+fox intact before …)", () => {
-    const input = "a".repeat(57) + "🦊" + "b".repeat(50);
+    const input = `${"a".repeat(57)}🦊${"b".repeat(50)}`;
     const out = label59(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out.slice(0, -1).trimEnd()).toBe("a".repeat(57) + "🦊");
+    expect(out.slice(0, -1).trimEnd()).toBe(`${"a".repeat(57)}🦊`);
   });
 
   it("short summary passes through", () => {
@@ -43,8 +43,7 @@ describe("candidate-sources surrogate handling", () => {
   });
 
   it("sanitizes lone high surrogate", () => {
-    const lone =
-      `summary ${String.fromCharCode(0xd800)} text ` + "a".repeat(100);
+    const lone = `summary ${String.fromCharCode(0xd800)} text ${"a".repeat(100)}`;
     const out = label59(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);

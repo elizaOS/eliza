@@ -24,9 +24,9 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CSRF_HEADER_NAME,
   createBrowserSession,
   createMachineSession,
-  CSRF_HEADER_NAME,
   SESSION_COOKIE_NAME,
 } from "../api/auth/sessions";
 import { _resetAuthRateLimiter } from "../api/auth.ts";

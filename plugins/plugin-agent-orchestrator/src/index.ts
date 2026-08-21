@@ -913,7 +913,7 @@ export const SPAWN_ACK_FALLBACK = "On it.";
 const SPAWN_ACK_MAX_CHARS = 120;
 const SPAWN_ACK_TIMEOUT_MS = 750;
 
-function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+function _withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), SPAWN_ACK_TIMEOUT_MS);

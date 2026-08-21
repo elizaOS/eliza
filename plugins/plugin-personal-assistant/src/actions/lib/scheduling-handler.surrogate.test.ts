@@ -21,7 +21,7 @@ function isWellFormed(s: string): boolean {
 
 describe("scheduling-handler surrogate handling", () => {
   it("4096 backs off at surrogate", () => {
-    const input = "a".repeat(4095) + "🦊" + "b".repeat(20);
+    const input = `${"a".repeat(4095)}🦊${"b".repeat(20)}`;
     const out = truncate4096(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(4096);
@@ -29,14 +29,14 @@ describe("scheduling-handler surrogate handling", () => {
   });
 
   it("4096 preserves fitting emoji", () => {
-    const input = "a".repeat(4094) + "🦊";
+    const input = `${"a".repeat(4094)}🦊`;
     const out = truncate4096(input);
     expect(isWellFormed(out)).toBe(true);
-    expect(out).toBe("a".repeat(4094) + "🦊");
+    expect(out).toBe(`${"a".repeat(4094)}🦊`);
   });
 
   it("1024 backs off at surrogate", () => {
-    const input = "a".repeat(1023) + "🦊" + "b".repeat(20);
+    const input = `${"a".repeat(1023)}🦊${"b".repeat(20)}`;
     const out = truncate1024(input);
     expect(isWellFormed(out)).toBe(true);
     expect(out.length).toBeLessThanOrEqual(1024);
@@ -44,7 +44,7 @@ describe("scheduling-handler surrogate handling", () => {
   });
 
   it("sanitizes lone surrogate", () => {
-    const lone = "ok \ud800 value " + "a".repeat(5000);
+    const lone = `ok \ud800 value ${"a".repeat(5000)}`;
     const out = truncate4096(lone);
     expect(isWellFormed(out)).toBe(true);
     expect(out.includes("�")).toBe(true);
