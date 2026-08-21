@@ -262,12 +262,22 @@ credits and makes later runs look less like a first run. Before rerunning
 the lanes, reconcile the org with the cleanup lane from the repo root:
 
 ```bash
-bun run cloud:e2e:agents:cleanup                 # dry run: list + selection
-bun run cloud:e2e:agents:cleanup -- --apply --wait   # delete leaked agents
+bun run cloud:e2e:agents:cleanup -- --report /tmp/cloud-agent-dry-run.json
+
+# Review the dry-run identity and candidate rows, then bind mutation to them:
+bun run cloud:e2e:agents:cleanup -- \
+  --apply --wait \
+  --candidate <reviewed-agent-id> \
+  --expected-address <siwe-wallet-address> \
+  --expected-org <organization-id> \
+  --report /tmp/cloud-agent-cleanup-receipt.json
 ```
 
-It only selects `dedicated-always` agents with a valid creation time, keeps the
-newest eligible agent, and never touches eligible agents younger than 30
-minutes (so it cannot race an in-flight onboarding run). It also supports
-`--protect <agentId>`, `--keep <n>`, and `--report <path>`. See
+The dry run proposes only dated `dedicated-always` rows older than 30 minutes.
+Age is not mutation authority: `--apply` requires every reviewed candidate ID,
+the expected SIWE wallet and organization, `--wait`, and a receipt path. Each
+request is conditionally bound to the listed name, creation timestamp, and
+execution tier; success also requires a fresh list proving absence. Omit an
+active run's ID or pass `--protect <agentId>`. `--keep <n>` retains the newest
+eligible rows when preparing the candidate set. See
 `scripts/cloud/e2e-agent-cleanup.mjs`.
