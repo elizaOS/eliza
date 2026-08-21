@@ -65,6 +65,7 @@ export interface ScenarioStabilityExecutionAdapter {
     attemptNumber: ScenarioStabilityAttemptNumber;
     attemptId: string;
     outputDir: string;
+    signal: AbortSignal;
   }): Promise<void>;
 }
 
@@ -223,6 +224,7 @@ async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   controller: AbortController,
+  phase = "attempt",
 ): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -230,7 +232,7 @@ async function withTimeout<T>(
       promise,
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          const error = new Error(`stability attempt exceeded ${timeoutMs}ms`);
+          const error = new Error(`stability ${phase} exceeded ${timeoutMs}ms`);
           controller.abort(error);
           reject(error);
         }, timeoutMs);
@@ -379,13 +381,20 @@ export async function executeScenarioStability(input: {
         );
       } finally {
         controller.abort();
+        const teardownController = new AbortController();
         try {
-          await input.adapter.terminate({
-            target,
-            attemptNumber: attempt.attemptNumber,
-            attemptId,
-            outputDir,
-          });
+          await withTimeout(
+            input.adapter.terminate({
+              target,
+              attemptNumber: attempt.attemptNumber,
+              attemptId,
+              outputDir,
+              signal: teardownController.signal,
+            }),
+            input.budgets.timeoutMs,
+            teardownController,
+            "attempt teardown",
+          );
         } catch (error) {
           failureClassification = "harness-failure";
           const teardownError = `attempt teardown failed: ${error instanceof Error ? error.message : String(error)}`;
@@ -395,6 +404,8 @@ export async function executeScenarioStability(input: {
               : teardownError,
             execution,
           );
+        } finally {
+          teardownController.abort();
         }
       }
       const result = execution ?? failedExecution("attempt produced no result");
