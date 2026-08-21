@@ -496,6 +496,10 @@ export function ChatView({
   // never prepend into the newly active one.
   const loadOlderConversationIdRef = useRef(activeConversationId);
   loadOlderConversationIdRef.current = activeConversationId;
+  const loadOlderResumeRef = useRef<{
+    conversationId: string | null;
+    before?: number;
+  }>({ conversationId: activeConversationId });
   // Keep a ref to conversationMessages so fetchOlder reads the latest value at
   // call-time without carrying it as a dep. conversationMessages changes on
   // every streaming token, which would give fetchOlder a new identity every
@@ -505,16 +509,27 @@ export function ChatView({
   const fetchOlder = useCallback(async () => {
     const conversationId = activeConversationId;
     if (!conversationId) return { hasMore: false, prependedCount: 0 };
-    return await loadOlderConversationMessages({
+    if (loadOlderResumeRef.current.conversationId !== conversationId) {
+      loadOlderResumeRef.current = { conversationId };
+    }
+    const result = await loadOlderConversationMessages({
       client,
       conversationId,
       currentMessages: conversationMessagesRef.current,
+      before: loadOlderResumeRef.current.before,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
         }
       },
     });
+    if (loadOlderConversationIdRef.current === conversationId) {
+      loadOlderResumeRef.current = {
+        conversationId,
+        before: result.resumeBefore,
+      };
+    }
+    return result;
   }, [activeConversationId, prependConversationMessages]);
 
   // Bound the mounted DOM to the newest window of loaded turns (#15281): the

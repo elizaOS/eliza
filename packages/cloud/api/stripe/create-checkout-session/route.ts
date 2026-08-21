@@ -23,6 +23,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
+const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
 
 const checkoutRequestSchema = z
   .object({
@@ -423,21 +424,28 @@ function canonicalCredits(value: string | number): string {
   return `${match[1]}.${(match[2] ?? "").padEnd(6, "0")}`;
 }
 
-async function findCheckoutSessionForOrder(
+export async function findCheckoutSessionForOrder(
   stripe: Stripe,
   order: {
     id: string;
     stripe_customer_id: string | null;
     updated_at: Date;
   },
+  now: () => number = Date.now,
 ): Promise<Stripe.Checkout.Session | null> {
   if (!order.stripe_customer_id) {
     throw new Error("Checkout order has no pinned Stripe customer");
   }
   const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
+  const deadlineAt = now() + CHECKOUT_RECONCILIATION_TIMEOUT_MS;
   let startingAfter: string | undefined;
   const seenCursors = new Set<string>();
   while (true) {
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const sessions = await stripe.checkout.sessions.list({
       customer: order.stripe_customer_id,
       created: {
@@ -447,6 +455,11 @@ async function findCheckoutSessionForOrder(
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const match = sessions.data.find(
       (session) =>
         session.client_reference_id === order.id &&

@@ -35,6 +35,12 @@ export interface LoadOlderConversationMessagesDeps {
   /** Page size hint; the server may clamp it. */
   limit?: number;
   signal?: AbortSignal;
+  /** Cursor returned by a prior time-sliced filtered-page traversal. */
+  before?: number;
+  /** Wall-clock budget for one scroll action; traversal resumes on the next action. */
+  maxDurationMs?: number;
+  /** Deterministic clock seam for tests. */
+  now?: () => number;
 }
 
 export interface LoadOlderResult {
@@ -42,7 +48,11 @@ export interface LoadOlderResult {
   hasMore: boolean;
   /** How many renderable turns were prepended. */
   prependedCount: number;
+  /** Continuation for filtered pages when the current operation time slice ends. */
+  resumeBefore?: number;
 }
+
+const DEFAULT_FILTERED_TRAVERSAL_DURATION_MS = 1_000;
 
 export async function loadOlderConversationMessages(
   deps: LoadOlderConversationMessagesDeps,
@@ -61,9 +71,18 @@ export async function loadOlderConversationMessages(
     return { hasMore: false, prependedCount: 0 };
   }
 
-  let cursor = oldest.timestamp;
+  const now = deps.now ?? Date.now;
+  const maxDurationMs =
+    typeof deps.maxDurationMs === "number" && deps.maxDurationMs > 0
+      ? deps.maxDurationMs
+      : DEFAULT_FILTERED_TRAVERSAL_DURATION_MS;
+  const deadlineAt = now() + maxDurationMs;
+  let cursor = deps.before ?? oldest.timestamp;
   const seenCursors = new Set<number>([cursor]);
   while (true) {
+    if (now() >= deadlineAt) {
+      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+    }
     const response = await client.getConversationMessages(conversationId, {
       before: cursor,
       ...(limit !== undefined ? { limit } : {}),
@@ -99,5 +118,8 @@ export async function loadOlderConversationMessages(
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
+    if (now() >= deadlineAt) {
+      return { hasMore: true, prependedCount: 0, resumeBefore: cursor };
+    }
   }
 }

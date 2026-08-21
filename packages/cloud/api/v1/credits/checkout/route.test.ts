@@ -157,7 +157,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   },
 }));
 
-const { default: app } = await import("./route");
+const { default: app, findCheckoutSessionForOrder } = await import("./route");
 
 describe("credits checkout service-key agent bridge", () => {
   beforeEach(() => {
@@ -395,6 +395,34 @@ describe("credits checkout service-key agent bridge", () => {
       url: "https://checkout.stripe.test/recovered-late",
       sessionId: "cs_recovered_late",
     });
+  });
+
+  test("bounds endlessly advancing Stripe cursors by one reconciliation deadline", async () => {
+    const orderId = "30000000-0000-4000-8000-000000000001";
+    let clock = 0;
+    const list = mock(async () => {
+      clock += 5_000;
+      return {
+        data: [{ id: `cs_unique_${clock}` }],
+        has_more: true,
+      };
+    });
+    const stripe = { checkout: { sessions: { list } } } as never;
+
+    await expect(
+      findCheckoutSessionForOrder(
+        stripe,
+        {
+          id: orderId,
+          stripe_customer_id: "cus_order_winner",
+          updated_at: new Date("2026-08-21T00:00:00.000Z"),
+        },
+        () => clock,
+      ),
+    ).rejects.toThrow(
+      "Stripe Checkout reconciliation exceeded its operation deadline",
+    );
+    expect(list).toHaveBeenCalledTimes(2);
   });
 
   test("uses shared durable customer authority when the organization is unbound", async () => {

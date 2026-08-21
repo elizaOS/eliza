@@ -317,6 +317,42 @@ describe("NotionClient.getPageContent", () => {
     expect(error).toBeInstanceOf(ElizaError);
     expect((error as ElizaError).code).toBe("NOTION_MALFORMED_RESPONSE");
   });
+
+  it("bounds endlessly advancing block cursors by one operation deadline", async () => {
+    const pageId = "11111111-2222-3333-4444-555555555555";
+    let clock = 0;
+    let blockPage = 0;
+    const { fetchImpl } = fakeNotion((request) => {
+      if (request.url.includes("/v1/pages/")) {
+        return { status: 200, body: page(pageId, "Endless Doc") };
+      }
+      blockPage += 1;
+      clock += 1;
+      return {
+        status: 200,
+        body: {
+          object: "list",
+          results: [],
+          next_cursor: `unique-${blockPage}`,
+          has_more: true,
+        },
+      };
+    });
+    const notion = new NotionClient(resolver, {
+      baseUrl: "https://notion.test",
+      fetchImpl,
+      operationTimeoutMs: 3,
+      now: () => clock,
+    });
+
+    const error = await notion
+      .getPageContent({ accountId: "acct", pageId })
+      .catch((cause: unknown) => cause);
+
+    expect(error).toBeInstanceOf(ElizaError);
+    expect((error as ElizaError).code).toBe("NOTION_UPSTREAM_FAILURE");
+    expect(blockPage).toBe(3);
+  });
 });
 
 describe("NotionClient writes", () => {

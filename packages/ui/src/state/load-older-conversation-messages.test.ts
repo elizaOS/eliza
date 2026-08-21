@@ -189,6 +189,51 @@ describe("loadOlderConversationMessages", () => {
     ).rejects.toThrow("Conversation pagination did not return an older cursor");
   });
 
+  it("time-slices endlessly advancing filtered cursors and returns a resume point", async () => {
+    const calls: number[] = [];
+    let clock = 0;
+    const client: LoadOlderClient = {
+      getConversationMessages: vi.fn(async (_id, options) => {
+        calls.push(options?.before ?? -1);
+        clock += 1;
+        return {
+          messages: [
+            blankAssistant(`silent-${clock}`, (options?.before ?? 0) - 1),
+          ],
+          hasMore: true,
+        };
+      }),
+    };
+
+    const result = await loadOlderConversationMessages({
+      client,
+      conversationId: "conv-1",
+      currentMessages: [userMsg("current", 100)],
+      prependMessages: () => {},
+      maxDurationMs: 3,
+      now: () => clock,
+    });
+
+    expect(calls).toEqual([100, 99, 98]);
+    expect(result).toEqual({
+      hasMore: true,
+      prependedCount: 0,
+      resumeBefore: 97,
+    });
+
+    clock = 0;
+    await loadOlderConversationMessages({
+      client,
+      conversationId: "conv-1",
+      currentMessages: [userMsg("current", 100)],
+      prependMessages: () => {},
+      before: result.resumeBefore,
+      maxDurationMs: 1,
+      now: () => clock,
+    });
+    expect(calls.at(-1)).toBe(97);
+  });
+
   it("propagates fetch failures so the caller can retry", async () => {
     const client: LoadOlderClient = {
       getConversationMessages: vi.fn(async () => {
