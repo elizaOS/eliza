@@ -73,6 +73,82 @@ function matchTag(
 	return findTagEnd(value, afterName);
 }
 
+function hasDelimitedTagName(
+	value: string,
+	nameIndex: number,
+	tagName: (typeof RAW_TEXT_TAGS)[number],
+): boolean {
+	return (
+		matchesAsciiCaseInsensitive(value, nameIndex, tagName) &&
+		isTagNameDelimiter(value[nameIndex + tagName.length])
+	);
+}
+
+function findRawTextClosingEnd(
+	value: string,
+	index: number,
+	tagName: (typeof RAW_TEXT_TAGS)[number],
+): number | null {
+	for (let cursor = index; cursor < value.length; cursor += 1) {
+		if (value[cursor] !== "<" || value[cursor + 1] !== "/") continue;
+		const closingEnd = matchTag(value, cursor, tagName, true);
+		if (closingEnd !== null) return closingEnd;
+	}
+	return null;
+}
+
+type ScriptTextState = "data" | "escaped" | "double-escaped";
+
+/**
+ * Find the end of script data while preserving the browser tokenizer's escape
+ * transitions. A script end-tag token seen while double-escaped only returns
+ * the tokenizer to the escaped state; a later appropriate token closes it.
+ */
+function findScriptClosingEnd(value: string, index: number): number | null {
+	let state: ScriptTextState = "data";
+	let cursor = index;
+
+	while (cursor < value.length) {
+		if (value.startsWith("-->", cursor)) {
+			state = "data";
+			cursor += 3;
+			continue;
+		}
+
+		if (state === "data" && value.startsWith("<!--", cursor)) {
+			state = "escaped";
+			cursor += 4;
+			continue;
+		}
+
+		if (value[cursor] === "<" && value[cursor + 1] === "/") {
+			const nameIndex = cursor + 2;
+			if (hasDelimitedTagName(value, nameIndex, "script")) {
+				if (state === "double-escaped") {
+					state = "escaped";
+					cursor = nameIndex + "script".length;
+					continue;
+				}
+				return findTagEnd(value, nameIndex + "script".length);
+			}
+		}
+
+		if (
+			state === "escaped" &&
+			value[cursor] === "<" &&
+			hasDelimitedTagName(value, cursor + 1, "script")
+		) {
+			state = "double-escaped";
+			cursor += 1 + "script".length;
+			continue;
+		}
+
+		cursor += 1;
+	}
+
+	return null;
+}
+
 /** Remove script/style elements, including parser-accepted malformed end tags. */
 export function stripHtmlRawTextElements(value: string): string {
 	const output: string[] = [];
@@ -102,14 +178,10 @@ export function stripHtmlRawTextElements(value: string): string {
 
 		output.push(value.slice(copiedThrough, cursor), " ");
 		cursor = openingEnd;
-		let closingEnd: number | null = null;
-		while (cursor < value.length) {
-			if (value[cursor] === "<" && value[cursor + 1] === "/") {
-				closingEnd = matchTag(value, cursor, matchedTag, true);
-				if (closingEnd !== null) break;
-			}
-			cursor += 1;
-		}
+		const closingEnd =
+			matchedTag === "script"
+				? findScriptClosingEnd(value, cursor)
+				: findRawTextClosingEnd(value, cursor, matchedTag);
 		if (closingEnd === null) {
 			copiedThrough = value.length;
 			cursor = value.length;
