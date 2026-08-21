@@ -1,8 +1,7 @@
 /** Surrogate safety for task shortId in choice.ts — exercises system under test. */
 import { describe, expect, test } from "vitest";
-import { formatTaskShortId } from "./choice.ts";
-import { choiceAction } from "./choice.ts";
 import type { IAgentRuntime, Memory, State } from "../../../types/index.ts";
+import { choiceAction, formatTaskShortId } from "./choice.ts";
 
 function isWellFormed(value: string): boolean {
 	if (!value) return true;
@@ -43,8 +42,16 @@ describe("choice action task id surrogate safety", () => {
 		const taskIdShort = `${"b".repeat(6)}${fox}`;
 		// Mock runtime with minimal pending tasks
 		const pendingTasks = [
-			{ id: taskIdAstral, name: "Deploy Task", metadata: { options: ["opt1", "opt2"] } },
-			{ id: taskIdShort, name: "Choice Task", metadata: { options: ["yes", "no"] } },
+			{
+				id: taskIdAstral,
+				name: "Deploy Task",
+				metadata: { options: ["opt1", "opt2"] },
+			},
+			{
+				id: taskIdShort,
+				name: "Choice Task",
+				metadata: { options: ["yes", "no"] },
+			},
 		];
 		const runtime = {
 			agentId: "agent-1",
@@ -57,7 +64,9 @@ describe("choice action task id surrogate safety", () => {
 			roomId: "room-1",
 			content: { source: "test" },
 		} as unknown as Memory;
-		const state = { data: { room: { messageServerId: "server-1" } } } as unknown as State;
+		const state = {
+			data: { room: { messageServerId: "server-1" } },
+		} as unknown as State;
 		let capturedText = "";
 		const callback = async (opts: { text: string }) => {
 			capturedText = opts.text;
