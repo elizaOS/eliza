@@ -1429,7 +1429,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		).toMatchObject({ tool: { name: "VIEWS", success: true } });
 	});
 
-	it("runs one grounded small-model response after a deterministic navigation action", async () => {
+	it("lets the canonical planner write the final reply after deterministic navigation", async () => {
 		let viewCalls = 0;
 		const views = makeMockAction({
 			name: "VIEWS",
@@ -1485,8 +1485,8 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					}),
 				},
 				{
-					expectModelType: ModelType.TEXT_SMALL,
-					body: '{"response":"Notes is open."}',
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: { text: "Notes is open.", toolCalls: [] },
 				},
 			],
 		});
@@ -1506,16 +1506,14 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
 			ModelType.RESPONSE_HANDLER,
-			ModelType.TEXT_SMALL,
+			ModelType.ACTION_PLANNER,
 		]);
-		const presentationCall = getCalls(runtime)[1];
-		expect(presentationCall).toBeDefined();
-		const presentationPrompt = (
-			presentationCall?.params as { prompt?: string } | undefined
-		)?.prompt;
-		expect(presentationPrompt).toContain('User request: "open notes"');
-		expect(presentationPrompt).toContain('"viewId":"notes"');
-		expect(presentationPrompt).toContain('"label":"Notes"');
+		expect(
+			(getCalls(runtime)[1]?.params as Record<string, unknown>)?.tools,
+		).toBeUndefined();
+		expect(JSON.stringify(getCalls(runtime)[1]?.params)).toContain(
+			"already settled and complete",
+		);
 		expect(runtime.composeState).not.toHaveBeenCalled();
 		const trajectory = readRecordedTrajectories(String(AGENT_ID))[0] as {
 			stages: Array<{ kind: string }>;

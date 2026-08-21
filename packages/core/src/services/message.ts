@@ -9365,7 +9365,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				}
 
 				const reportableResultText = result.userFacingText?.trim();
-				let finalMessage =
+				const finalMessage =
 					!callbackDelivered &&
 					reportableResultText &&
 					(result.success === true || result.verifiedUserFacing === true)
@@ -9376,11 +9376,33 @@ export async function runV5MessageRuntimeStage1(args: {
 					result.success === true &&
 					result.modelReplyRequired === true
 				) {
-					finalMessage = await generateVerifiedUiActionReply({
-						runtime: args.runtime,
-						message: args.message,
-						actionName: toolCall.name,
-						result,
+					return runPlannerLoop({
+						runtime: plannerRuntime,
+						context: plannerContextAfterEarlyReply,
+						config: args.plannerLoopConfig,
+						postToolReplySeed: { toolCall, result },
+						executeToolCall: () => {
+							throw new Error(
+								"Post-tool reply synthesis cannot execute another tool",
+							);
+						},
+						evaluate: ({
+							runtime: plannerRuntimeForEval,
+							context,
+							trajectory,
+						}) =>
+							runEvaluator({
+								runtime: plannerRuntimeForEval,
+								context,
+								trajectory,
+								effects: evaluatorEffects,
+								recorder,
+								trajectoryId,
+							}),
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						providerAttributionState: plannerState,
 					});
 				}
 				return {
@@ -11858,91 +11880,6 @@ function shouldRewriteActionCallback(
 	);
 	if (!resolvedAction) return false;
 	return !PASSIVE_TURN_ACTIONS.has(resolvedAction);
-}
-
-/**
- * Write the natural final response for a verified local UI effect. This is a
- * presentation call, not another planning round: the action has already run,
- * no tools are exposed, and the model receives only the user's request plus a
- * compact structured receipt. If presentation fails, callers may end the UI
- * turn silently; the visible UI transition remains the authoritative result.
- */
-async function generateVerifiedUiActionReply(args: {
-	runtime: IAgentRuntime;
-	message: Pick<Memory, "content" | "roomId">;
-	actionName: string;
-	result: PlannerToolResult;
-}): Promise<string | undefined> {
-	if (typeof args.runtime.useModel !== "function") return undefined;
-
-	const character = args.runtime.character;
-	const characterVoice = {
-		name: character?.name,
-		system: character?.system,
-		bio: character?.bio,
-		adjectives: character?.adjectives,
-		style: character?.style,
-	};
-	const parsedTextReceipt =
-		typeof args.result.text === "string"
-			? parseJSONObjectFromText(args.result.text)
-			: null;
-	const receipt = {
-		action: args.actionName,
-		success: args.result.success,
-		...(parsedTextReceipt ? { effect: parsedTextReceipt } : {}),
-		...(args.result.effectReceipts
-			? { effectReceipts: args.result.effectReceipts }
-			: {}),
-		...(args.result.promptData ? { data: args.result.promptData } : {}),
-	};
-	const prompt = [
-		"Write the assistant's final response after a verified local UI action succeeded.",
-		'Return strict JSON only: {"response":"..."}.',
-		"",
-		"Rules:",
-		"- Respond naturally to the user's actual request in the character's voice.",
-		"- State the verified outcome rather than merely acknowledging the request.",
-		"- Ground every claim in the receipt. It is fine to name a destination proven by the receipt.",
-		"- Use one short sentence. Do not ask a follow-up question or announce future work.",
-		"- Do not mention tools, receipts, prompts, schemas, or internal UI plumbing.",
-		"",
-		`Character: ${JSON.stringify(characterVoice)}`,
-		`User request: ${JSON.stringify(args.message.content.text ?? "")}`,
-		`Verified receipt: ${JSON.stringify(receipt)}`,
-	].join("\n");
-
-	try {
-		const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
-			prompt,
-			maxTokens: 120,
-			providerOptions: { eliza: { thinking: "off" } },
-		})) as string | GenerateTextResult;
-		const cleaned = stripReasoningBlocks(getV5ModelText(raw)).trim();
-		const parsed = parseJSONObjectFromText(cleaned) as {
-			response?: unknown;
-		} | null;
-		const response =
-			typeof parsed?.response === "string" ? parsed.response.trim() : "";
-		if (!response) return undefined;
-		const visible = sanitizeUserVisibleModelOutput(response);
-		return visible.kind === "text" && visible.format === "plain"
-			? visible.text
-			: undefined;
-	} catch (error) {
-		// error-policy:J4 optional presentation failure — the verified local UI
-		// effect already happened and remains visible, so never replace it with a
-		// canned or speculative chat response.
-		args.runtime.logger.debug(
-			{
-				src: "service:message",
-				actionName: args.actionName,
-				error: error instanceof Error ? error.message : String(error),
-			},
-			"Failed to generate verified UI action response",
-		);
-		return undefined;
-	}
 }
 
 async function rewriteActionCallbackInCharacter(args: {

@@ -373,9 +373,37 @@ async function runPlannerLoopIterations(
 				}
 			: merged;
 	})();
+	const postToolReplySeed = params.postToolReplySeed;
+	if (
+		postToolReplySeed &&
+		(postToolReplySeed.result.success !== true ||
+			postToolReplySeed.result.modelReplyRequired !== true)
+	) {
+		throw new Error(
+			"postToolReplySeed requires a successful result with modelReplyRequired",
+		);
+	}
+	const trajectoryContext = postToolReplySeed
+		? appendContextEvent(plannerContext, {
+				id: "post-tool-model-reply",
+				type: "instruction",
+				source: "planner-loop",
+				createdAt: Date.now(),
+				content:
+					"The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Do not expose internal IDs or raw tool data.",
+			})
+		: plannerContext;
 	const trajectory: PlannerTrajectory = {
-		context: plannerContext,
-		steps: [],
+		context: trajectoryContext,
+		steps: postToolReplySeed
+			? [
+					{
+						iteration: 0,
+						toolCall: postToolReplySeed.toolCall,
+						result: postToolReplySeed.result,
+					},
+				]
+			: [],
 		archivedSteps: [],
 		plannedQueue: [],
 		evaluatorOutputs: [],
@@ -486,7 +514,7 @@ async function runPlannerLoopIterations(
 	// reply after its effect completes. This is deliberately narrower than the
 	// evaluator's general CONTINUE path: only an explicit final-scope tool call
 	// can arm it, and any subsequent tool call disarms it.
-	let pendingRequiredModelReply = false;
+	let pendingRequiredModelReply = postToolReplySeed !== undefined;
 	// Captures the most recent terminal-only refusal text the planner produced
 	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
 	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
