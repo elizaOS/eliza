@@ -13,6 +13,7 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { logger } from "@elizaos/logger";
 import {
   useCallback,
@@ -1032,8 +1033,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           name: error instanceof Error ? error.name : "Error",
           reason:
             error instanceof Error
-              ? error.message.slice(0, 80)
-              : String(error).slice(0, 80),
+              ? truncateWellFormed(toWellFormedUnicode(error.message), 80)
+              : truncateWellFormed(toWellFormedUnicode(String(error)), 80),
         });
         localAsrRecorderRef.current = null;
         return false;
@@ -1071,8 +1072,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           name: error instanceof Error ? error.name : "Error",
           reason:
             error instanceof Error
-              ? error.message.slice(0, 80)
-              : String(error).slice(0, 80),
+              ? truncateWellFormed(toWellFormedUnicode(error.message), 80)
+              : truncateWellFormed(toWellFormedUnicode(String(error)), 80),
         });
         localAsrRecorderRef.current = null;
         return false;
@@ -1447,8 +1448,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 name: error instanceof Error ? error.name : "Error",
                 reason:
                   error instanceof Error
-                    ? error.message.slice(0, 80)
-                    : String(error).slice(0, 80),
+                    ? truncateWellFormed(toWellFormedUnicode(error.message), 80)
+                    : truncateWellFormed(
+                        toWellFormedUnicode(String(error)),
+                        80,
+                      ),
               });
             }
             ttsDebug("asr:cloud:error", {
@@ -1744,9 +1748,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             status: res.status,
             ttsTarget: describeTtsCloudFetchTargetForDebug(),
             hadBearer: Boolean(apiToken),
-            bodyPreview: body.slice(0, 120),
+            bodyPreview: truncateWellFormed(toWellFormedUnicode(body), 120),
           });
-          throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 200)}`);
+          throw new Error(
+            `ElevenLabs ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
+          );
         }
 
         const audioData = await res.arrayBuffer();
@@ -1938,7 +1944,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               if (!directRes.ok) {
                 const preview = await directRes.text().catch(() => "");
                 throw new Error(
-                  `direct cloud TTS ${directRes.status}: ${preview.slice(0, 120)}`,
+                  `direct cloud TTS ${directRes.status}: ${truncateWellFormed(toWellFormedUnicode(preview), 120)}`,
                 );
               }
               res = directRes;
@@ -1976,10 +1982,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             status: res.status,
             ttsTarget: describeTtsFetchTargetForDebug(fetchedTtsUrl),
             hadBearer: Boolean(getElizaApiToken()?.trim()),
-            bodyPreview: body.slice(0, 120),
+            bodyPreview: truncateWellFormed(toWellFormedUnicode(body), 120),
           });
           throw new Error(
-            `Eliza Cloud TTS ${res.status}: ${body.slice(0, 200)}`,
+            `Eliza Cloud TTS ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
           );
         }
 
@@ -2079,7 +2085,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         if (!res.ok) {
           const body = await res.text().catch(() => "");
           throw new Error(
-            `Local inference TTS ${res.status}: ${body.slice(0, 200)}`,
+            `Local inference TTS ${res.status}: ${truncateWellFormed(toWellFormedUnicode(body), 200)}`,
           );
         }
 
@@ -2192,8 +2198,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               preview: ttsDebugTextPreview(text),
               err:
                 err instanceof Error
-                  ? `${err.name}: ${err.message.slice(0, 200)}`
-                  : String(err).slice(0, 200),
+                  ? `${err.name}: ${truncateWellFormed(toWellFormedUnicode(err.message), 200)}`
+                  : truncateWellFormed(toWellFormedUnicode(String(err)), 200),
             });
           });
           emitPlaybackStart({
@@ -2436,8 +2442,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:native-talkmode-failed", {
                 err:
                   error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                    ? `${error.name}: ${truncateWellFormed(toWellFormedUnicode(error.message), 200)}`
+                    : truncateWellFormed(
+                        toWellFormedUnicode(String(error)),
+                        200,
+                      ),
               });
               failClosed("native-talkmode", error);
               break;
@@ -2462,8 +2471,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:eliza-cloud-failed", {
                 err:
                   error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                    ? `${error.name}: ${truncateWellFormed(toWellFormedUnicode(error.message), 200)}`
+                    : truncateWellFormed(
+                        toWellFormedUnicode(String(error)),
+                        200,
+                      ),
                 ttsTarget: describeTtsCloudFetchTargetForDebug(),
                 hadBearer: Boolean(getElizaApiToken()?.trim()),
               });
@@ -2494,8 +2506,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:local-inference-failed", {
                 err:
                   error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                    ? `${error.name}: ${truncateWellFormed(toWellFormedUnicode(error.message), 200)}`
+                    : truncateWellFormed(
+                        toWellFormedUnicode(String(error)),
+                        200,
+                      ),
               });
               // FAIL CLOSED (#12253): local-inference (Kokoro) is the configured
               // voice. Do not silently swap to browser SpeechSynthesis — stop the
@@ -2527,8 +2542,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:elevenlabs-failed", {
                 err:
                   error instanceof Error
-                    ? `${error.name}: ${error.message.slice(0, 200)}`
-                    : String(error).slice(0, 200),
+                    ? `${error.name}: ${truncateWellFormed(toWellFormedUnicode(error.message), 200)}`
+                    : truncateWellFormed(
+                        toWellFormedUnicode(String(error)),
+                        200,
+                      ),
                 ttsTarget: describeTtsCloudFetchTargetForDebug(),
                 hadBearer: Boolean(getElizaApiToken()?.trim()),
               });
@@ -2564,8 +2582,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         ttsDebug("processQueue:error", {
           err:
             error instanceof Error
-              ? `${error.name}: ${error.message.slice(0, 200)}`
-              : String(error).slice(0, 200),
+              ? `${error.name}: ${truncateWellFormed(toWellFormedUnicode(error.message), 200)}`
+              : truncateWellFormed(toWellFormedUnicode(String(error)), 200),
         });
       } finally {
         queueWorkerRunningRef.current = false;
