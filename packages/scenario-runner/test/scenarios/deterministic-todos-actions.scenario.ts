@@ -2,8 +2,7 @@
  * Keyless coverage for the plugin-todos action surface and the CURRENT_TODOS
  * provider. Runs on the pr-deterministic lane under the model provider.
  */
-import { ModelType, stringToUuid } from "@elizaos/core";
-import { matchesScenarioInput } from "@elizaos/core/testing";
+import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -27,6 +26,7 @@ let scenarioAgentId: string | null = null;
 let scenarioOwnerId: string | null = null;
 let scenarioRoomId: string | null = null;
 let scenarioRuntime: RuntimeWithPlugins | null = null;
+let previousEvaluators: IAgentRuntime["evaluators"] | null = null;
 
 type JsonRecord = Record<string, unknown>;
 type ScenarioTodoInput = {
@@ -94,6 +94,7 @@ const WRONG_OWNER_PARAMETERS: JsonRecord = {
 
 type RuntimeWithPlugins = {
   agentId?: string;
+  evaluators: IAgentRuntime["evaluators"];
   adapter?: {
     runPluginMigrations?: (
       plugins: Array<{ name: string; schema?: Record<string, unknown> }>,
@@ -104,9 +105,6 @@ type RuntimeWithPlugins = {
   getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
   plugins?: Array<{ name?: unknown }>;
   registerPlugin?: (plugin: unknown) => Promise<void>;
-  scenarioModelFixtures?: {
-    register: (...fixtures: Array<Record<string, unknown>>) => void;
-  };
 };
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -182,52 +180,6 @@ function expectTodoNotFound(
   };
 }
 
-function handleResponseFixture(input: string) {
-  return {
-    name: `route-todo-stage1-${input}`,
-    match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesScenarioInput(input),
-      toolName: "HANDLE_RESPONSE",
-    },
-    response: {
-      contexts: ["todos"],
-      intents: [input.toLowerCase()],
-      replyText: "On it.",
-      threadOps: [],
-      candidateActionNames: ["TODO"],
-    },
-    times: 1,
-  };
-}
-
-function plannerFixture(input: string, args: Record<string, unknown>) {
-  return {
-    name: `route-todo-planner-${input}`,
-    match: {
-      modelType: ModelType.ACTION_PLANNER,
-      input: matchesScenarioInput(input),
-      toolName: "TODO",
-    },
-    response: {
-      text: "",
-      thought: `Call TODO for ${input}.`,
-      messageToUser: "Added TODO scenario natural-language coverage.",
-      completed: true,
-      finishReason: "tool-calls",
-      toolCalls: [
-        {
-          id: "call-todo-create-nl",
-          name: "TODO",
-          type: "function",
-          arguments: args,
-        },
-      ],
-    },
-    times: 1,
-  };
-}
-
 async function ensureTodosPlugin(runtime: RuntimeWithPlugins): Promise<void> {
   const registered = (runtime.plugins ?? []).some(
     (plugin) => plugin.name === todosPlugin.name,
@@ -257,19 +209,15 @@ async function seedTodos(ctx: ScenarioContext): Promise<string | undefined> {
     if (!scenarioAgentId || !scenarioOwnerId || !scenarioRoomId) {
       return "scenario runtime did not expose the agent, owner, and room identity";
     }
+    // This scenario owns TODO routing and persistence, not semantic recall or
+    // post-turn reflection. Isolate the runtime's public evaluator registry to
+    // prevent unrelated background model calls, then restore it in cleanup.
+    previousEvaluators = [...runtime.evaluators];
+    runtime.evaluators.length = 0;
     await ensureTodosPlugin(runtime);
     await runtime.adapter?.runPluginMigrations?.([todosPlugin], {
       verbose: false,
     });
-    runtime.scenarioModelFixtures?.register(
-      handleResponseFixture("Add a todo to cover natural language routing"),
-      plannerFixture("Add a todo to cover natural language routing", {
-        action: "create",
-        content: "Prove TODO natural language routing",
-        activeForm: "Proving TODO natural language routing",
-        status: "pending",
-      }),
-    );
     const service = runtime.getService?.(TodosService.serviceType) as
       | TodosService
       | null
@@ -385,6 +333,78 @@ async function finalTodosCheck(
 export default scenario({
   id: "deterministic-todos-actions",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      {
+        name: "route-todo-stage1-natural-language-create",
+        match: {
+          modelType: "RESPONSE_HANDLER",
+          input: {
+            pattern:
+              "Add a todo to cover natural language routing(?![\\s\\S]*message:user:\\n)",
+          },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: ["todos"],
+            intents: ["add a todo to cover natural language routing"],
+            replyText: "On it.",
+            threadOps: [],
+            candidateActionNames: ["TODO"],
+          },
+        },
+      },
+      {
+        name: "route-todo-planner-natural-language-create",
+        match: {
+          modelType: "ACTION_PLANNER",
+          input: {
+            pattern:
+              "Add a todo to cover natural language routing(?![\\s\\S]*message:user:\\n)",
+          },
+          toolNames: [
+            "OWNER_TODOS",
+            "OWNER_TODOS_CREATE",
+            "OWNER_TODOS_UPDATE",
+            "OWNER_TODOS_DELETE",
+            "OWNER_TODOS_COMPLETE",
+            "OWNER_TODOS_SKIP",
+            "OWNER_TODOS_SNOOZE",
+            "OWNER_TODOS_REVIEW",
+            "TODO",
+            "REPLY",
+            "IGNORE",
+            "STOP",
+          ],
+        },
+        response: {
+          json: {
+            text: "",
+            thought:
+              "Call TODO for Add a todo to cover natural language routing.",
+            messageToUser: "Added TODO scenario natural-language coverage.",
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: "call-todo-create-nl",
+                name: "TODO",
+                type: "function",
+                arguments: {
+                  action: "create",
+                  content: "Prove TODO natural language routing",
+                  activeForm: "Proving TODO natural language routing",
+                  status: "pending",
+                },
+              },
+            ],
+          },
+        },
+      },
+    ],
+  },
   title: "Deterministic TODO action and CURRENT_TODOS provider coverage",
   domain: "todos",
   status: "active",
@@ -408,6 +428,24 @@ export default scenario({
       type: "custom",
       name: "register real todos plugin and seed through TodosService",
       apply: seedTodos,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: (ctx) => {
+        const runtime = ctx.runtime as RuntimeWithPlugins;
+        if (previousEvaluators !== null) {
+          runtime.evaluators.splice(
+            0,
+            runtime.evaluators.length,
+            ...previousEvaluators,
+          );
+          previousEvaluators = null;
+        }
+        return undefined;
+      },
     },
   ],
   turns: [
