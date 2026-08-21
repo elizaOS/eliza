@@ -4,7 +4,7 @@
  * turns execute the pending tool while an unrelated topic switch does not.
  */
 
-import { writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	ChannelType,
@@ -18,7 +18,13 @@ import {
 	createRealTestRuntime,
 	type RealTestRuntimeResult,
 } from "../testing/index.ts";
-import { readCompletedPlannerContinuationTrajectory } from "./planner-continuation-trajectory.ts";
+import {
+	type PlannerContinuationRunProgress,
+	readCompletedPlannerContinuationTrajectory,
+	serializePlannerContinuationEvidence,
+	serializePlannerContinuationEvidenceStarted,
+	writePlannerContinuationEvidenceArtifact,
+} from "./planner-continuation-trajectory.ts";
 
 interface LiveTrajectoryDetail {
 	metrics?: { finalStatus?: string };
@@ -31,14 +37,42 @@ interface LiveTrajectoryDetail {
 	}>;
 }
 
-const liveDescribe =
+const evidencePath = process.env.PR20227_EVIDENCE_PATH?.trim();
+const runId = randomUUID();
+const liveEnabled =
 	process.env.ELIZA_RUN_LIVE_TESTS === "1" &&
-	process.env.CEREBRAS_API_KEY?.trim()
-		? describe
-		: describe.skip;
+	Boolean(process.env.CEREBRAS_API_KEY?.trim());
+const liveDescribe = liveEnabled ? describe : describe.skip;
+
+// A skipped describe block never runs beforeAll/afterAll, so without this a
+// requested evidence path would silently keep whatever a previous *live* run
+// last wrote there — a stale `captured` artifact reading as this (skipped)
+// run's receipt. Write the honest status eagerly, at module load, before any
+// test framework hook would fire.
+if (!liveEnabled && evidencePath) {
+	await writePlannerContinuationEvidenceArtifact(
+		evidencePath,
+		serializePlannerContinuationEvidence({
+			runId,
+			harness: undefined,
+			evidence: [],
+			progress: { totalCases: 0, completedCases: 0 },
+			skipped: {
+				reason:
+					"live suite skipped: ELIZA_RUN_LIVE_TESTS=1 and CEREBRAS_API_KEY were not both set",
+			},
+		}),
+	);
+}
 
 liveDescribe("planner continuation — live Cerebras message loop", () => {
-	let harness: RealTestRuntimeResult;
+	let harness: RealTestRuntimeResult | undefined;
+	let setupError: unknown;
+	let testError: unknown;
+	const progress: PlannerContinuationRunProgress = {
+		totalCases: 3,
+		completedCases: 0,
+	};
 	const toolCalls = vi.fn(async (_runtime, _message, _state, _options) => ({
 		success: true,
 		text: "Filesystem usage: 42%",
@@ -50,73 +84,110 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 	const evidence: Array<Record<string, unknown>> = [];
 
 	beforeAll(async () => {
-		harness = await createRealTestRuntime({
-			characterName: "ContinuationProofAgent",
-			withLLM: true,
-			preferredProvider: "openai",
-		});
-		if (harness.providerConfig?.baseUrl !== "https://api.cerebras.ai/v1") {
-			throw new Error("Live continuation proof requires the Cerebras provider");
+		try {
+			harness = await createRealTestRuntime({
+				characterName: "ContinuationProofAgent",
+				withLLM: true,
+				preferredProvider: "openai",
+			});
+			if (harness.providerConfig?.baseUrl !== "https://api.cerebras.ai/v1") {
+				throw new Error(
+					"Live continuation proof requires the Cerebras provider",
+				);
+			}
+			harness.runtime.registerAction({
+				name: "SHELL",
+				similes: ["RUN_SHELL_COMMAND"],
+				description: "Run a local shell command and return its output.",
+				tags: ["shell-direct"],
+				contextGate: {},
+				roleGate: {},
+				parameters: [
+					{
+						name: "command",
+						description: "The shell command to run",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: toolCalls,
+			});
+			harness.runtime.registerAction({
+				name: "WEB_SEARCH",
+				similes: ["SEARCH_WEB"],
+				description: "Search the web for current information.",
+				tags: ["web-search"],
+				contextGate: {},
+				roleGate: {},
+				parameters: [
+					{
+						name: "query",
+						description: "The web search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: webCalls,
+			});
+			// Written only once setup fully succeeded (provider validated, both
+			// actions registered) and before any of the three cases has run, so
+			// an interrupted run leaves this — never a stale `captured` file, and
+			// never a half-written final artifact (the final write is atomic).
+			if (evidencePath) {
+				await writePlannerContinuationEvidenceArtifact(
+					evidencePath,
+					serializePlannerContinuationEvidenceStarted(runId, harness),
+				);
+			}
+		} catch (err) {
+			setupError = err;
+			throw err;
 		}
-		harness.runtime.registerAction({
-			name: "SHELL",
-			similes: ["RUN_SHELL_COMMAND"],
-			description: "Run a local shell command and return its output.",
-			tags: ["shell-direct"],
-			contextGate: {},
-			roleGate: {},
-			parameters: [
-				{
-					name: "command",
-					description: "The shell command to run",
-					required: true,
-					schema: { type: "string" },
-				},
-			],
-			examples: [],
-			validate: async () => true,
-			handler: toolCalls,
-		});
-		harness.runtime.registerAction({
-			name: "WEB_SEARCH",
-			similes: ["SEARCH_WEB"],
-			description: "Search the web for current information.",
-			tags: ["web-search"],
-			contextGate: {},
-			roleGate: {},
-			parameters: [
-				{
-					name: "query",
-					description: "The web search query",
-					required: true,
-					schema: { type: "string" },
-				},
-			],
-			examples: [],
-			validate: async () => true,
-			handler: webCalls,
-		});
 	}, 180_000);
 
 	afterAll(async () => {
-		const evidencePath = process.env.PR20227_EVIDENCE_PATH?.trim();
 		if (evidencePath) {
-			await writeFile(
+			await writePlannerContinuationEvidenceArtifact(
 				evidencePath,
-				`${JSON.stringify(
-					{
-						provider: harness.providerName,
-						baseUrl: harness.providerConfig?.baseUrl,
-						smallModel: harness.providerConfig?.smallModel,
-						largeModel: harness.providerConfig?.largeModel,
-						evidence,
-					},
-					null,
-					2,
-				)}\n`,
+				serializePlannerContinuationEvidence({
+					runId,
+					harness,
+					evidence,
+					progress,
+					setupError,
+					testError,
+				}),
 			);
 		}
-		await harness?.cleanup();
+		try {
+			await harness?.cleanup();
+		} catch (cleanupError) {
+			// A would-be `captured` run whose teardown then fails is downgraded to
+			// `cleanup-failed` so the artifact does not read as a fully clean run;
+			// a run that already failed on its own terms keeps that more specific
+			// status instead of being overwritten by the later teardown failure —
+			// this is the same "don't let a second failure mask the first" defect
+			// this file exists to fix, just one step later in the sequence.
+			if (evidencePath) {
+				await writePlannerContinuationEvidenceArtifact(
+					evidencePath,
+					serializePlannerContinuationEvidence({
+						runId,
+						harness,
+						evidence,
+						progress,
+						setupError,
+						testError,
+						cleanupError,
+					}),
+				);
+			}
+			throw cleanupError;
+		}
 	});
 
 	async function runTurn(params: {
@@ -230,37 +301,47 @@ liveDescribe("planner continuation — live Cerebras message loop", () => {
 			trajectoryStatus: trajectory.metrics?.finalStatus,
 			modelResponses,
 		};
+		// Recorded at the moment this case actually produced evidence — not
+		// inferred later from `harness` or from the `it` body's own assertions —
+		// so a `partial`/`test-failed` verdict reflects real progress even if a
+		// later case or a later assertion in the same test throws.
 		evidence.push(record);
+		progress.completedCases += 1;
 		return record;
 	}
 
 	it("executes directive and STOP-approved continuations without replaying on a topic switch", async () => {
-		const directive = await runTurn({
-			caseName: "directive",
-			currentText: "finish my request",
-		});
-		expect(directive.trajectoryStatus).toBe("completed");
-		expect(directive.modelResponses.length).toBeGreaterThan(0);
-		expect(directive.shellToolCalls).toBe(1);
-		expect(directive.webToolCalls).toBe(0);
+		try {
+			const directive = await runTurn({
+				caseName: "directive",
+				currentText: "finish my request",
+			});
+			expect(directive.trajectoryStatus).toBe("completed");
+			expect(directive.modelResponses.length).toBeGreaterThan(0);
+			expect(directive.shellToolCalls).toBe(1);
+			expect(directive.webToolCalls).toBe(0);
 
-		const approvalAfterStop = await runTurn({
-			caseName: "approval-after-stop",
-			assistantActions: ["STOP"],
-			currentText: "that is good",
-		});
-		expect(approvalAfterStop.trajectoryStatus).toBe("completed");
-		expect(approvalAfterStop.modelResponses.length).toBeGreaterThan(0);
-		expect(approvalAfterStop.shellToolCalls).toBe(1);
-		expect(approvalAfterStop.webToolCalls).toBe(0);
+			const approvalAfterStop = await runTurn({
+				caseName: "approval-after-stop",
+				assistantActions: ["STOP"],
+				currentText: "that is good",
+			});
+			expect(approvalAfterStop.trajectoryStatus).toBe("completed");
+			expect(approvalAfterStop.modelResponses.length).toBeGreaterThan(0);
+			expect(approvalAfterStop.shellToolCalls).toBe(1);
+			expect(approvalAfterStop.webToolCalls).toBe(0);
 
-		const topicSwitch = await runTurn({
-			caseName: "topic-switch",
-			currentText: "What is the weather in Tokyo right now?",
-		});
-		expect(topicSwitch.trajectoryStatus).toBe("completed");
-		expect(topicSwitch.modelResponses.length).toBeGreaterThan(0);
-		expect(topicSwitch.shellToolCalls).toBe(0);
-		expect(topicSwitch.webToolCalls).toBe(1);
+			const topicSwitch = await runTurn({
+				caseName: "topic-switch",
+				currentText: "What is the weather in Tokyo right now?",
+			});
+			expect(topicSwitch.trajectoryStatus).toBe("completed");
+			expect(topicSwitch.modelResponses.length).toBeGreaterThan(0);
+			expect(topicSwitch.shellToolCalls).toBe(0);
+			expect(topicSwitch.webToolCalls).toBe(1);
+		} catch (err) {
+			testError = err;
+			throw err;
+		}
 	}, 300_000);
 });
