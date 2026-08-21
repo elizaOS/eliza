@@ -308,16 +308,6 @@ function capabilityIds(object, context) {
 function isPluginObject(object) {
   const isPluginType = (type) =>
     /(?:^|\W)Plugin(?:<.*>)?(?:$|\W)/.test(type?.getText() ?? "");
-  const declaresViews = object.properties.some(
-    (property) => propertyName(property) === "views",
-  );
-  if (
-    declaresViews &&
-    objectProperty(object, "name") &&
-    objectProperty(object, "description")
-  ) {
-    return true;
-  }
   let current = object;
   let typedAsPlugin = false;
   while (

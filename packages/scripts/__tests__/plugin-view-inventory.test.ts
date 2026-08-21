@@ -250,6 +250,60 @@ export default { name: "spread", description: "fixture", ...base } satisfies Plu
     );
   });
 
+  test("inventories only the runtime plugin when a full-shaped helper is spread", () => {
+    const explicitAfterRoot = makeRoot();
+    const explicitAfter = addPluginSource(
+      explicitAfterRoot,
+      "plugin-explicit-after",
+      `const base = {
+  name: "base",
+  description: "helper",
+  views: [${view("base-before-override")}],
+};
+export default {
+  ...base,
+  name: "explicit-after",
+  views: [${view("explicit-after")}],
+} satisfies Plugin;\n`,
+    );
+    const explicitAfterInventory = discover(explicitAfterRoot, [explicitAfter]);
+    expect(
+      explicitAfterInventory.views.map((entry) => entry.id),
+    ).toEqual(["builtin", "explicit-after"]);
+    expect(
+      explicitAfterInventory.sources.filter(
+        (source) => source.kind === "plugin-manifest",
+      ),
+    ).toHaveLength(1);
+
+    const spreadAfterRoot = makeRoot();
+    const spreadAfter = addPluginSource(
+      spreadAfterRoot,
+      "plugin-spread-after",
+      `const base = {
+  name: "spread-after",
+  description: "helper",
+  views: [${view("spread-after")}],
+};
+export default {
+  name: "explicit-before",
+  description: "fixture",
+  views: [${view("explicit-before-spread")}],
+  ...base,
+} satisfies Plugin;\n`,
+    );
+    const spreadAfterInventory = discover(spreadAfterRoot, [spreadAfter]);
+    expect(spreadAfterInventory.views.map((entry) => entry.id)).toEqual([
+      "builtin",
+      "spread-after",
+    ]);
+    expect(
+      spreadAfterInventory.sources.filter(
+        (source) => source.kind === "plugin-manifest",
+      ),
+    ).toHaveLength(1);
+  });
+
   test("rejects plugin composition that could hide runtime views", () => {
     const root = makeRoot();
     const source = addPluginSource(
