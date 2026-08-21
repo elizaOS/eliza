@@ -2,6 +2,7 @@
  * Desktop browser workspace client for forwarding commands to the embedded BrowserView.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
@@ -42,7 +43,10 @@ async function assertDesktopBrowserWorkspaceCanAccessProfileSecrets(
 
 async function readErrorBody(response: Response): Promise<string> {
   try {
-    return (await response.text()).trim().slice(0, 240);
+    return truncateWellFormed(
+      toWellFormedUnicode((await response.text()).trim()),
+      240,
+    );
   } catch {
     return "";
   }
@@ -539,7 +543,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
   const snapshot = () => ({
     title: document.title,
     url: location.href,
-    bodyText: normalize(document.body?.textContent).slice(0, 800),
+    bodyText: truncateWellFormed(toWellFormedUnicode(normalize(document.body?.textContent ?? "")), 800),
     elements: inspect(),
   });
   const setInputValue = (appendMode, target) => {
