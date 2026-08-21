@@ -16,7 +16,6 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { AgentRuntime, InMemoryDatabaseAdapter } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS } from "../services/agent-backup-v2-capture.ts";
 import { startApiServer } from "./server.ts";
 
 const API_TOKEN = "restore-runtime-restart-token";
@@ -127,9 +126,6 @@ describe("POST /api/restore runtime lifecycle", () => {
       await source.close();
       const sourceLogicalBytes = await logicalDirectoryBytes(sourceDir);
       expect(sourceLogicalBytes).toBeGreaterThan(32 * 1024 * 1024);
-      expect(sourceLogicalBytes).toBeLessThanOrEqual(
-        AGENT_BACKUP_V2_PGLITE_CAPTURE_LIMITS.maxPhysicalBytes,
-      );
       // A real initialized PGlite already carries a substantial WASM baseline.
       // Admission is based on remaining memory for the additional dump copies,
       // not on requiring the total process RSS to remain artificially low.

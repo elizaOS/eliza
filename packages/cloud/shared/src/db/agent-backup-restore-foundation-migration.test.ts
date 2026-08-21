@@ -425,8 +425,14 @@ describe("0237-0245 restore and vault foundation migrations", () => {
       expect(inserted.rows[0]!.expires_at.getTime() - inserted.rows[0]!.created_at.getTime()).toBe(
         10 * 60 * 1_000,
       );
+      // error-policy:J6 rollback is teardown for a failed transaction proof.
     } catch (error) {
-      await database.exec("ROLLBACK").catch(() => undefined);
+      try {
+        await database.exec("ROLLBACK");
+        // error-policy:J6 rollback failure is reported without replacing the test failure.
+      } catch (rollbackError) {
+        console.warn("[restore migration test] rollback teardown failed", rollbackError);
+      }
       throw error;
     } finally {
       await database.close();

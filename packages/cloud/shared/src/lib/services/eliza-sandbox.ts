@@ -1947,7 +1947,10 @@ export class ElizaSandboxService {
   async deleteAgent(
     agentId: string,
     orgId: string,
-    options: { authorization?: DeleteAuthorization } = {},
+    options: {
+      authorization?: DeleteAuthorization;
+      stateLossAcknowledged?: boolean;
+    } = {},
   ): Promise<DeleteAgentResult> {
     // Phase 0 — fail-closed pre-deletion capture (#18517), the discipline
     // shutdown() applies before stopping: a live dedicated container is never
@@ -1959,7 +1962,7 @@ export class ElizaSandboxService {
     // its bridge intact, the capture happens before any teardown, and a
     // refusal leaves a recoverable tombstone the next attempt retries.
     let captureWaiverAlreadyPersisted = false;
-    let captureUnsupportedGeneration: {
+    let captureWaiverGeneration: {
       bridgeUrl: string;
       environmentRevision: number;
       sandboxId: string | null;
@@ -2032,7 +2035,7 @@ export class ElizaSandboxService {
           // an image that cannot snapshot by construction proceeds.
           const message = error instanceof Error ? error.message : String(error);
           if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
-            captureUnsupportedGeneration = {
+            captureWaiverGeneration = {
               bridgeUrl: snapshotSource.bridge_url,
               environmentRevision: snapshotSource.environment_revision,
               sandboxId: snapshotSource.sandbox_id,
@@ -2040,6 +2043,20 @@ export class ElizaSandboxService {
             logger.warn(
               "[agent-sandbox] Delete proceeding without capture: image has no snapshot endpoint",
               { agentId },
+            );
+          } else if (options.stateLossAcknowledged) {
+            // Explicit customer/operator recovery path: a capture failure can
+            // otherwise make a data-bearing agent undeletable forever. Bind the
+            // waiver to this exact deletion/container generation and persist it
+            // under the lifecycle lock before any destructive work begins.
+            captureWaiverGeneration = {
+              bridgeUrl: snapshotSource.bridge_url,
+              environmentRevision: snapshotSource.environment_revision,
+              sandboxId: snapshotSource.sandbox_id,
+            };
+            logger.error(
+              "[agent-sandbox] Delete proceeding WITHOUT pre-deletion capture: state loss acknowledged",
+              { agentId, captureError: message },
             );
           } else if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
             logger.warn(
@@ -2075,7 +2092,7 @@ export class ElizaSandboxService {
     // same agent/org. The lock + transaction are released the moment this returns.
     const precheck = await this.prepareAgentDelete(agentId, orgId, options.authorization, {
       snapshot: preDeleteSnapshot,
-      captureUnsupportedGeneration,
+      captureWaiverGeneration,
       captureWaiverAlreadyPersisted,
       existingBackup: preDeleteBackupCandidate,
     });
@@ -2351,7 +2368,7 @@ export class ElizaSandboxService {
         sizeBytes: number;
         bridgeUrl: string;
       } | null;
-      captureUnsupportedGeneration: {
+      captureWaiverGeneration: {
         bridgeUrl: string;
         environmentRevision: number;
         sandboxId: string | null;
@@ -2442,12 +2459,12 @@ export class ElizaSandboxService {
           preDeleteCapture?.captureWaiverAlreadyPersisted === true &&
           this.hasCurrentPreDeleteCaptureWaiver(rec);
         if (preDeleteBackupId === null && !captureWaiverIsCurrent) {
-          const unsupported = preDeleteCapture?.captureUnsupportedGeneration ?? null;
-          if (unsupported) {
+          const waiver = preDeleteCapture?.captureWaiverGeneration ?? null;
+          if (waiver) {
             if (
-              rec.bridge_url !== unsupported.bridgeUrl ||
-              rec.environment_revision !== unsupported.environmentRevision ||
-              rec.sandbox_id !== unsupported.sandboxId
+              rec.bridge_url !== waiver.bridgeUrl ||
+              rec.environment_revision !== waiver.environmentRevision ||
+              rec.sandbox_id !== waiver.sandboxId
             ) {
               return {
                 ok: false as const,
@@ -2455,7 +2472,7 @@ export class ElizaSandboxService {
                   "Refusing to delete: the agent's lifecycle generation moved after the pre-deletion capture; retry the delete.",
               };
             }
-            captureWaiverToPersist = unsupported;
+            captureWaiverToPersist = waiver;
           } else {
             const snapshot = preDeleteCapture?.snapshot ?? null;
             // The capture must be OF THIS generation (shutdown's rule): a
@@ -2930,6 +2947,7 @@ export class ElizaSandboxService {
     agentId: string,
     orgId: string,
     authorization?: DeleteAuthorization,
+    stateLossAcknowledged?: boolean,
   ): Promise<{
     success: boolean;
     containerStopped: boolean;
@@ -2937,7 +2955,10 @@ export class ElizaSandboxService {
     error?: string;
     retryable?: true;
   }> {
-    const result = await this.deleteAgent(agentId, orgId, { authorization });
+    const result = await this.deleteAgent(agentId, orgId, {
+      authorization,
+      stateLossAcknowledged,
+    });
     if (!result.success) {
       // If the row is already gone, treat as success. This covers the retry
       // case where a prior attempt deleted the row but failed before updating

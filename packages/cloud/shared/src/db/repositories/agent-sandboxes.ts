@@ -2722,6 +2722,21 @@ export class AgentSandboxesRepository {
       nodeId,
       and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.node_id, nodeId)) as SQL,
     );
+    // The reaper has proved this workload absent on the named node. A retained
+    // bridge/health locator would make the recovery delete try to capture from
+    // that dead generation again, permanently stranding the tombstone. Clear
+    // only the network locators, fenced to the same node and terminal delete
+    // states; the remaining container/node identity stays available for audit.
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ bridge_url: null, health_url: null, updated_at: new Date() })
+      .where(
+        and(
+          eq(agentSandboxes.id, agentId),
+          eq(agentSandboxes.node_id, nodeId),
+          inArray(agentSandboxes.status, ["deletion_pending", "deletion_failed"]),
+        ),
+      );
     return result.outcome;
   }
 }

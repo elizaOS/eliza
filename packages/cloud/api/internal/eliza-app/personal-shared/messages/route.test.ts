@@ -452,6 +452,54 @@ describe("personal Shared messaging deliveries", () => {
     });
   });
 
+  test("classifies a both-path account resolution failure as a retryable 503", async () => {
+    const { PersonalDeliveryAccountResolutionError } = await import(
+      "@/api-app/personal-delivery-projection"
+    );
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    resolvePersonalDelivery.mockImplementationOnce(async () => {
+      throw new PersonalDeliveryAccountResolutionError(
+        "status-502:TypeError",
+        new Error("private SQL detail"),
+      );
+    });
+
+    try {
+      const response = await request(valid);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(response.headers.get("x-eliza-failure-stage")).toBe(
+        "account_resolution",
+      );
+      expect(response.headers.get("x-eliza-failure-name")).toBe(
+        "PersonalDeliveryAccountResolutionError",
+      );
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error:
+          "Account resolution is temporarily unavailable. Retry this turn shortly.",
+        code: "service_unavailable",
+        retryable: true,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        expect.objectContaining({
+          stage: "account_resolution",
+          errorName: "PersonalDeliveryAccountResolutionError",
+          projectionFailure: "status-502:TypeError",
+        }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "private SQL detail",
+      );
+    } finally {
+      logger.error = originalError;
+    }
+  });
+
   test("redacts an unrecognized error name from headers and logs", async () => {
     const errorLog = mock(() => undefined);
     const originalError = logger.error;

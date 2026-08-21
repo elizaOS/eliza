@@ -3,8 +3,10 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { platform } from "node:os";
+import { mkdtemp, open, rm, writeFile } from "node:fs/promises";
+import { homedir, platform, tmpdir } from "node:os";
+import { extname, isAbsolute, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
   ChannelType,
@@ -12,13 +14,16 @@ import {
   ContentType,
   checkPairingAllowed,
   createUniqueUuid,
+  DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
   type Entity,
   type EventPayload,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
+  type IFileStorageService,
   lifeOpsPassiveConnectorsEnabled,
   logger,
+  type Media,
   type Memory,
   MemoryType,
   type MessageConnectorChatContext,
@@ -26,8 +31,12 @@ import {
   type MessageConnectorRegistration,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  readResponseWithLimit,
+  resolveAttachmentBytes,
   Service,
+  ServiceType,
   type TargetInfo,
+  trustedLocalMediaUrl,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -62,7 +71,6 @@ import {
   IMESSAGE_SERVICE_NAME,
   type IMessageChat,
   type IMessageChatType,
-  IMessageCliError,
   IMessageConfigurationError,
   IMessageEventTypes,
   type IMessageListMessagesOptions,
@@ -136,6 +144,79 @@ function resolveInteractionAppBaseUrl(runtime: IAgentRuntime): string | undefine
 
 function appleScriptStringLiteral(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function appleScriptTargetBlock(to: string): string {
+  if (to.startsWith("chat_id:")) {
+    return `set targetRef to chat id ${appleScriptStringLiteral(to.slice(8))}`;
+  }
+  return `
+    set targetService to 1st account whose service type = iMessage
+    set targetRef to participant ${appleScriptStringLiteral(to)} of targetService
+  `;
+}
+
+type ResolvedOutboundMedia = {
+  path: string;
+  cleanup: () => Promise<void>;
+};
+
+function normalizeOutboundMediaMaxBytes(raw: number | undefined): number {
+  if (raw === undefined) return DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES;
+  if (!Number.isSafeInteger(raw) || raw <= 0) {
+    throw new Error("iMessage media maxBytes must be a positive safe integer");
+  }
+  return Math.min(raw, DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES);
+}
+
+function safeTemporaryMediaExtension(fileName: string | undefined): string {
+  const extension = extname(fileName ?? "").toLowerCase();
+  return /^\.[a-z0-9]{1,8}$/.test(extension) ? extension : ".bin";
+}
+
+function resolveMessagesAttachmentPath(rawPath: string): string {
+  if (rawPath.startsWith("file:")) return fileURLToPath(new URL(rawPath));
+  if (rawPath === "~") return homedir();
+  if (rawPath.startsWith("~/")) return join(homedir(), rawPath.slice(2));
+  return rawPath;
+}
+
+function attachmentMimeType(attachment: ChatDbMessage["attachments"][number]): string {
+  const explicit = attachment.mimeType?.trim();
+  if (explicit) return explicit;
+  const uti = attachment.uti?.toLowerCase() ?? "";
+  if (uti.includes("jpeg") || uti.includes("jpg")) return "image/jpeg";
+  if (uti.includes("png")) return "image/png";
+  if (uti.includes("gif")) return "image/gif";
+  if (uti.includes("heic")) return "image/heic";
+  if (uti.includes("quicktime")) return "video/quicktime";
+  if (uti.includes("mpeg-4") || uti.includes("mp4")) return "video/mp4";
+  if (uti.includes("audio")) return "audio/mpeg";
+  if (uti.includes("pdf")) return "application/pdf";
+  return "application/octet-stream";
+}
+
+async function readBoundedRegularFile(filePath: string, maxBytes: number): Promise<Buffer> {
+  const file = await open(filePath, "r");
+  try {
+    const fileStat = await file.stat();
+    if (!fileStat.isFile()) {
+      throw new Error("attachment path is not a regular file");
+    }
+    if (fileStat.size > maxBytes) {
+      throw new Error(`attachment exceeds maxBytes ${maxBytes}`);
+    }
+    const bytes = Buffer.alloc(fileStat.size);
+    let offset = 0;
+    while (offset < bytes.byteLength) {
+      const { bytesRead } = await file.read(bytes, offset, bytes.byteLength - offset, offset);
+      if (bytesRead === 0) break;
+      offset += bytesRead;
+    }
+    return offset === bytes.byteLength ? bytes : bytes.subarray(0, offset);
+  } finally {
+    await file.close();
+  }
 }
 
 type RuntimeWithOptionalConnectorRegistry = IAgentRuntime & {
@@ -613,7 +694,10 @@ export class IMessageService extends Service implements IIMessageService {
       description:
         "Send SMS/iMessage through macOS Messages using phone numbers, emails, contacts, or chat ids.",
       metadata: {
-        aliases: ["imessage", "sms", "text", "messages"],
+        // `sms` is the canonical source owned by the Android Messages plugin.
+        // Keeping the local bridge on its iMessage/Messages names makes source
+        // selection deterministic when both first-party plugins are loaded.
+        aliases: ["imessage", "messages"],
         accountId: IMESSAGE_LOCAL_ACCOUNT_ID,
         bridge: "macos-messages",
         accountSemantics: "local-macos-messages-single-account",
@@ -935,14 +1019,43 @@ export class IMessageService extends Service implements IIMessageService {
     // Format phone number if needed
     const target = isPhoneNumber(to) ? formatPhoneNumber(to) : to;
 
+    let media: ResolvedOutboundMedia | null = null;
+    if (options?.mediaUrl) {
+      try {
+        // Resolve and bound every byte before the first external send. Invalid,
+        // inaccessible, oversized, or SSRF-blocked media must fail fast instead
+        // of delivering the caption and only then discovering the attachment is
+        // unusable.
+        media = await this.resolveOutboundMedia(options.mediaUrl, options.maxBytes);
+      } catch (error) {
+        // error-policy:J1 Outbound connector boundary translates attachment
+        // resolution failures into an explicit failed delivery.
+        return {
+          success: false,
+          error: `iMessage attachment resolution error: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+
     // Split message if too long
     const chunks = splitMessageForIMessage(text);
-
-    for (const chunk of chunks) {
-      const result = await this.sendSingleMessage(target, chunk, options);
-      if (!result.success) {
-        return result;
+    try {
+      for (const chunk of chunks) {
+        const result = await this.sendSingleMessage(target, chunk);
+        if (!result.success) {
+          return result;
+        }
       }
+
+      // An attachment is one external effect, independent of text chunking.
+      if (media) {
+        const mediaResult = await this.sendResolvedAttachment(target, media.path);
+        if (!mediaResult.success) {
+          return mediaResult;
+        }
+      }
+    } finally {
+      await media?.cleanup();
     }
 
     // Emit sent events — both the plugin-namespaced form (for iMessage-
@@ -1176,7 +1289,6 @@ export class IMessageService extends Service implements IIMessageService {
       return process.env[envKey] || defaultValue;
     };
 
-    const cliPath = getStringSetting("IMESSAGE_CLI_PATH", "IMESSAGE_CLI_PATH", "imsg");
     const dbPath = getStringSetting("IMESSAGE_DB_PATH", "IMESSAGE_DB_PATH") || undefined;
 
     const pollIntervalRaw = getStringSetting(
@@ -1220,7 +1332,6 @@ export class IMessageService extends Service implements IIMessageService {
     const enabled = enabledRaw !== "false";
 
     return {
-      cliPath,
       dbPath,
       pollIntervalMs,
       heartbeatIntervalMs,
@@ -1236,83 +1347,21 @@ export class IMessageService extends Service implements IIMessageService {
       throw new IMessageConfigurationError("Settings not loaded");
     }
 
-    // Check if CLI tool exists (if specified and not default)
-    if (this.settings.cliPath !== "imsg") {
-      if (!existsSync(this.settings.cliPath)) {
-        logger.warn(`iMessage CLI not found at ${this.settings.cliPath}, will use AppleScript`);
-      }
-    }
-
-    // Check if Messages app is accessible
-    try {
-      await this.runAppleScript('tell application "Messages" to return 1');
-    } catch (_error) {
-      throw new IMessageConfigurationError(
-        "Cannot access Messages app. Ensure Full Disk Access is granted."
-      );
-    }
+    // Do not probe Messages.app during service startup. Sending is gated by
+    // Apple Automation while chat.db reads are gated by Full Disk Access;
+    // coupling them prevented receive-only operation and could trigger an
+    // unrelated TCC prompt merely by enabling inbound messages.
   }
 
-  private async sendSingleMessage(
-    to: string,
-    text: string,
-    options?: IMessageSendOptions
-  ): Promise<IMessageSendResult> {
-    // Try CLI first if available
-    if (this.settings?.cliPath && this.settings.cliPath !== "imsg") {
-      try {
-        return await this.sendViaCli(to, text, options);
-      } catch (error) {
-        logger.debug(`CLI send failed, falling back to AppleScript: ${error}`);
-      }
-    }
-
-    // Fall back to AppleScript
-    return await this.sendViaAppleScript(to, text, options);
+  private async sendSingleMessage(to: string, text: string): Promise<IMessageSendResult> {
+    // Outbound delivery stays on Apple's local Messages automation surface.
+    // No third-party CLI, daemon, network service, or fallback transport is
+    // invoked from the native connector.
+    return await this.sendViaAppleScript(to, text);
   }
 
-  private async sendViaCli(
-    to: string,
-    text: string,
-    options?: IMessageSendOptions
-  ): Promise<IMessageSendResult> {
-    if (!this.settings) {
-      return { success: false, error: "Service not initialized" };
-    }
-
-    const args = [to, text];
-    if (options?.mediaUrl) {
-      args.push("--attachment", options.mediaUrl);
-    }
-
-    try {
-      await execFileAsync(this.settings.cliPath, args);
-      return { success: true, messageId: Date.now().toString(), chatId: to };
-    } catch (error) {
-      const err = error as { code?: number; message?: string };
-      throw new IMessageCliError(err.message || "CLI command failed", err.code);
-    }
-  }
-
-  private async sendViaAppleScript(
-    to: string,
-    text: string,
-    options?: IMessageSendOptions
-  ): Promise<IMessageSendResult> {
-    const isChatTarget = to.startsWith("chat_id:");
-    const chatId = isChatTarget ? to.slice(8) : null;
-    const targetLiteral = appleScriptStringLiteral(chatId ?? to);
-
-    // Build the `set target...` clause once — used by both the text
-    // send and the (optional) attachment send below.
-    const targetBlock = isChatTarget
-      ? `set targetRef to chat id ${targetLiteral}`
-      : `
-        set targetService to 1st account whose service type = iMessage
-        set targetRef to participant ${targetLiteral} of targetService
-      `;
-
-    // Text body (possibly empty if caller is attachment-only).
+  private async sendViaAppleScript(to: string, text: string): Promise<IMessageSendResult> {
+    const targetBlock = appleScriptTargetBlock(to);
     if (text && text.length > 0) {
       const textScript = `
         tell application "Messages"
@@ -1327,32 +1376,106 @@ export class IMessageService extends Service implements IIMessageService {
       }
     }
 
-    // Attachment, if any. Messages.app's scripting dictionary accepts a
-    // file as the direct-parameter of `send`, so we resolve the media
-    // path to a POSIX file and hand it to the same `send` verb. Works
-    // for images, video, audio, PDFs, anything Messages.app would let
-    // you drag into the compose area.
-    if (options?.mediaUrl) {
-      const mediaPath = options.mediaUrl.startsWith("file://")
-        ? options.mediaUrl.slice(7)
-        : options.mediaUrl;
-      const attachmentScript = `
-        tell application "Messages"
-          ${targetBlock}
-          send (POSIX file ${appleScriptStringLiteral(mediaPath)}) to targetRef
-        end tell
-      `;
-      try {
-        await this.runAppleScript(attachmentScript);
-      } catch (error) {
-        return {
-          success: false,
-          error: `AppleScript attachment error: ${error}`,
-        };
+    return { success: true, messageId: Date.now().toString(), chatId: to };
+  }
+
+  private async sendResolvedAttachment(to: string, mediaPath: string): Promise<IMessageSendResult> {
+    const attachmentScript = `
+      tell application "Messages"
+        ${appleScriptTargetBlock(to)}
+        send (POSIX file ${appleScriptStringLiteral(mediaPath)}) to targetRef
+      end tell
+    `;
+    try {
+      await this.runAppleScript(attachmentScript);
+      return { success: true, messageId: Date.now().toString(), chatId: to };
+    } catch (error) {
+      // error-policy:J1 Apple Automation is the outbound process boundary.
+      return {
+        success: false,
+        error: `AppleScript attachment error: ${error}`,
+      };
+    }
+  }
+
+  /**
+   * Resolve an outbound attachment to a bounded local file Messages.app can
+   * consume. Canonical media-store handles use the runtime-authenticated local
+   * fetch; remote URLs use the shared SSRF-guarded connector resolver. Explicit
+   * absolute/file URLs preserve the service API for trusted native callers but
+   * are checked for regular-file type and size before AppleScript sees them.
+   */
+  private async resolveOutboundMedia(
+    rawUrl: string,
+    requestedMaxBytes?: number
+  ): Promise<ResolvedOutboundMedia> {
+    const mediaUrl = rawUrl.trim();
+    if (!mediaUrl) {
+      throw new Error("iMessage mediaUrl is empty");
+    }
+    const maxBytes = normalizeOutboundMediaMaxBytes(requestedMaxBytes);
+
+    let explicitPath: string | null = null;
+    if (mediaUrl.startsWith("file:")) {
+      const fileUrl = new URL(mediaUrl);
+      if (fileUrl.protocol !== "file:" || fileUrl.hostname) {
+        throw new Error("iMessage file URL must reference a local file");
       }
+      explicitPath = fileURLToPath(fileUrl);
+    } else if (isAbsolute(mediaUrl) && !mediaUrl.startsWith("/api/media/")) {
+      explicitPath = mediaUrl;
     }
 
-    return { success: true, messageId: Date.now().toString(), chatId: to };
+    let buffer: Buffer;
+    let fileName: string | undefined;
+    const localUrl = explicitPath ? null : trustedLocalMediaUrl(mediaUrl);
+    if (explicitPath) {
+      buffer = await readBoundedRegularFile(explicitPath, maxBytes);
+      fileName = explicitPath.split("/").pop();
+    } else if (localUrl) {
+      const runtimeFetch = this.runtime.fetch ?? globalThis.fetch;
+      const response = await runtimeFetch(localUrl.href, {
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) {
+        throw new Error(`local media fetch failed with HTTP ${response.status}`);
+      }
+      const contentLength = Number(response.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        throw new Error(`iMessage attachment exceeds maxBytes ${maxBytes}`);
+      }
+      buffer = await readResponseWithLimit(response, maxBytes);
+      fileName = localUrl.pathname.split("/").pop();
+    } else {
+      const resolved = await resolveAttachmentBytes(mediaUrl, { maxBytes });
+      buffer = resolved.buffer;
+      fileName = resolved.fileName;
+    }
+
+    const tempDirectory = await mkdtemp(join(tmpdir(), "eliza-imessage-"));
+    const mediaPath = join(tempDirectory, `attachment${safeTemporaryMediaExtension(fileName)}`);
+    try {
+      await writeFile(mediaPath, buffer, { mode: 0o600 });
+    } catch (error) {
+      // error-policy:J6 A failed staging write owns no durable data; clean the
+      // dedicated temporary directory before preserving the write failure.
+      await rm(tempDirectory, { recursive: true, force: true });
+      throw error;
+    }
+    return {
+      path: mediaPath,
+      cleanup: async () => {
+        try {
+          await rm(tempDirectory, { recursive: true, force: true });
+        } catch (error) {
+          // error-policy:J6 Messages already consumed the attachment; teardown
+          // failure is diagnostic and must not manufacture a failed delivery.
+          logger.warn(
+            `[imessage] Failed to remove outbound attachment staging directory: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      },
+    };
   }
 
   private async runAppleScript(script: string): Promise<string> {
@@ -1486,12 +1609,12 @@ export class IMessageService extends Service implements IIMessageService {
         continue;
       }
 
-      // Undecodable text (attributedBody decode miss) would produce an
-      // empty-string turn the agent has nothing to do with. Skip with a
-      // debug log so the cursor still advances.
-      if (row.text.trim().length === 0) {
+      // Undecodable text with no attachment would produce an empty turn the
+      // agent has nothing to do with. Attachment-only messages are real user
+      // input and must continue into the media rehosting + dispatch path.
+      if (row.text.trim().length === 0 && row.attachments.length === 0) {
         logger.debug(
-          `[imessage] skipping ROWID=${row.rowId} — text column and attributedBody both empty after decode`
+          `[imessage] skipping ROWID=${row.rowId} — text and attachments are both empty after decode`
         );
         continue;
       }
@@ -1510,6 +1633,69 @@ export class IMessageService extends Service implements IIMessageService {
       }
     }
     logger.debug(`[imessage][poll-end] done. lastRowId=${this.lastRowId}`);
+  }
+
+  /**
+   * Copy downloaded Messages attachments into the runtime's single
+   * content-addressed media store before constructing the inbound Memory. Raw
+   * paths under ~/Library/Messages are never exposed as attachment URLs: the
+   * agent and UI receive only canonical /api/media capability handles.
+   */
+  private async rehostInboundAttachments(
+    attachments: ChatDbMessage["attachments"]
+  ): Promise<Media[]> {
+    if (!this.runtime || attachments.length === 0) return [];
+    const storage = this.runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES);
+    if (!storage) {
+      logger.warn(
+        "[imessage] Inbound attachments are unavailable because the runtime file-storage service is missing"
+      );
+      return [];
+    }
+
+    const media: Media[] = [];
+    let remainingBytes = DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES;
+    for (const attachment of attachments) {
+      if (!attachment.path) {
+        logger.debug(
+          `[imessage] Attachment ${attachment.guid} has not downloaded locally; preserving the message without bytes`
+        );
+        continue;
+      }
+      try {
+        const attachmentPath = resolveMessagesAttachmentPath(attachment.path);
+        const bytes = await readBoundedRegularFile(attachmentPath, remainingBytes);
+        remainingBytes -= bytes.byteLength;
+        const mimeType = attachmentMimeType(attachment);
+        const stored = await storage.store(bytes, mimeType);
+        media.push({
+          id: attachment.guid,
+          url: stored.url,
+          title: attachment.filename ?? stored.fileName,
+          filename: attachment.filename ?? stored.fileName,
+          mimeType,
+          size: stored.size,
+          contentType: mimeToContentType(attachment.mimeType, attachment.uti),
+          source: "imessage",
+          description: attachment.isSticker
+            ? "sticker"
+            : (attachment.filename ?? attachment.mimeType ?? attachment.uti ?? ""),
+          text: "",
+        });
+      } catch (error) {
+        // error-policy:J4 An individual unavailable/oversized attachment is an
+        // explicit degraded message, while its text and other attachments still
+        // dispatch. Report the diagnostic without leaking the local file path.
+        logger.warn(
+          `[imessage] Failed to import inbound attachment ${attachment.guid}: ${error instanceof Error ? error.message : String(error)}`
+        );
+        this.runtime.reportError("IMessageService.inboundAttachment", error, {
+          attachmentGuid: attachment.guid,
+          rowSource: "imessage",
+        });
+      }
+    }
+    return media;
   }
 
   /**
@@ -1663,24 +1849,13 @@ export class IMessageService extends Service implements IIMessageService {
       ? createUniqueUuid(this.runtime, `imessage-guid-${row.replyToGuid}`)
       : undefined;
 
+    const rehostedAttachments = await this.rehostInboundAttachments(row.attachments);
     const memoryContent: Content = {
       text: row.text,
       source: "imessage",
       channelType,
       ...(inReplyTo ? { inReplyTo } : {}),
-      ...(row.attachments.length > 0
-        ? {
-            attachments: row.attachments.map((a) => ({
-              id: a.guid,
-              url: "",
-              title: a.filename ?? a.guid,
-              contentType: mimeToContentType(a.mimeType, a.uti),
-              source: "imessage",
-              description: a.isSticker ? "sticker" : (a.filename ?? a.mimeType ?? a.uti ?? ""),
-              text: "",
-            })),
-          }
-        : {}),
+      ...(rehostedAttachments.length > 0 ? { attachments: rehostedAttachments } : {}),
     };
 
     const memory: Memory = {
@@ -2155,8 +2330,8 @@ export function chatDbMessageToPublicShape(row: ChatDbMessage): IMessageMessage 
     ...(row.attachments.length > 0
       ? {
           attachmentPaths: row.attachments
-            .map((attachment) => attachment.filename)
-            .filter((filename): filename is string => Boolean(filename)),
+            .map((attachment) => attachment.path)
+            .filter((path): path is string => Boolean(path)),
         }
       : {}),
   };

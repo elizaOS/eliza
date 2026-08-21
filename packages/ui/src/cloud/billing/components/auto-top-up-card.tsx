@@ -422,7 +422,7 @@ export function AutoTopUpCard() {
           <p className="text-pretty text-xs font-mono text-muted">
             {t("cloud.autoTopUp.description", {
               defaultValue:
-                "Automatically charge your saved card when credits dip below the threshold. Earnings auto-fund runs first, so this only fires if earnings can't cover the gap.",
+                "Automatically charge your saved card when credits dip below the threshold.",
             })}
           </p>
         </div>

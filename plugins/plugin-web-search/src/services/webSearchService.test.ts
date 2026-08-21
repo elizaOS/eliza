@@ -349,6 +349,18 @@ describe("WebSearchService", () => {
         expect(pageInfo.title).toBe("😀 🚀 &#0; &#xD800; &#1114112;");
     });
 
+    it("decodes each HTML entity exactly once", async () => {
+        const html = `<title>&amp;lt;literal&amp;gt; &amp;#65;</title>`;
+        setPageInfoHttpTransportForTests({
+            fetchImpl: vi.fn(async () => new Response(html)),
+        });
+        const service = await WebSearchService.start(runtime({ TAVILY_API_KEY: "tvly-test" }));
+
+        const pageInfo = await service.getPageInfo("https://example.test/entities-once");
+
+        expect(pageInfo.title).toBe("&lt;literal&gt; &#65;");
+    });
+
     it("accepts page HTML exactly at the byte limit", async () => {
         const exactLimitHtml = "a".repeat(1024 * 1024);
         setPageInfoHttpTransportForTests({

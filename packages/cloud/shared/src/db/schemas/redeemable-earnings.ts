@@ -220,6 +220,7 @@ export const redeemableEarningsLedger = pgTable(
         ip_address?: string;
         user_agent?: string;
         idempotency_key?: string;
+        asset?: "eliza" | "usdc";
         completed_at?: string;
         network?: string;
         tx_hash?: string;

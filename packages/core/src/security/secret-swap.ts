@@ -16,6 +16,7 @@
  * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
  * silently leak.
  */
+import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
 import { detectPii } from "./pii-detectors";
 import { getDefaultRedactPatterns } from "./redact";
@@ -23,6 +24,45 @@ import { getDefaultRedactPatterns } from "./redact";
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
 	"ELIZA_SECRET_SWAP_EXEMPT_VALUES";
+
+/**
+ * Honest model-param graphs are a handful of objects deep. JSON.parse still
+ * admits a 20k-deep nest that then RangeError'd `substituteInValue` on
+ * origin develop.
+ */
+export const MAX_SECRET_SWAP_WALK_DEPTH = 64;
+export const MAX_SECRET_SWAP_WALK_NODES = 100_000;
+export const SECRET_SWAP_UNBOUNDED = "SECRET_SWAP_UNBOUNDED";
+
+type SecretSwapWalkContext = {
+	visits: number;
+	visiting: WeakSet<object>;
+};
+
+function failSecretSwapUnbounded(
+	context: Record<string, unknown>,
+	cause?: unknown,
+): never {
+	throw new ElizaError("Secret-swap value exceeds the walk budget", {
+		code: SECRET_SWAP_UNBOUNDED,
+		cause,
+		context,
+		severity: "fatal",
+	});
+}
+
+export function isSecretSwapUnbounded(error: unknown): boolean {
+	return error instanceof ElizaError && error.code === SECRET_SWAP_UNBOUNDED;
+}
+
+function inspectSwap<T>(operation: string, inspect: () => T): T {
+	try {
+		return inspect();
+	} catch (cause) {
+		// error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
+		failSecretSwapUnbounded({ inspection: operation }, cause);
+	}
+}
 
 export class SecretSwapUnresolvedPlaceholderError extends Error {
 	readonly placeholders: string[];
@@ -135,12 +175,149 @@ function collectMatches(
 	return values;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		Object.getPrototypeOf(value) === Object.prototype
+function createSecretSwapWalkContext(): SecretSwapWalkContext {
+	return { visits: 0, visiting: new WeakSet<object>() };
+}
+
+function reserveSecretSwapVisits(ctx: SecretSwapWalkContext, count = 1): void {
+	if (
+		!Number.isSafeInteger(count) ||
+		count < 0 ||
+		count > MAX_SECRET_SWAP_WALK_NODES - ctx.visits
+	) {
+		failSecretSwapUnbounded({
+			visits: ctx.visits,
+			requestedVisits: count,
+			maxNodes: MAX_SECRET_SWAP_WALK_NODES,
+		});
+	}
+	ctx.visits += count;
+}
+
+function ownValueDescriptor(
+	value: object,
+	key: string | number,
+): PropertyDescriptor | undefined {
+	const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, key),
 	);
+	if (!descriptor) return undefined;
+	if (!("value" in descriptor)) {
+		failSecretSwapUnbounded({
+			accessor: true,
+			numericKey: typeof key === "number",
+		});
+	}
+	return descriptor;
+}
+
+function isSecretSwapArray(value: object): boolean {
+	return inspectSwap("isArray", () => Array.isArray(value));
+}
+
+function ownArrayLength(value: object): number {
+	const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+		Object.getOwnPropertyDescriptor(value, "length"),
+	);
+	if (
+		!descriptor ||
+		!("value" in descriptor) ||
+		typeof descriptor.value !== "number" ||
+		!Number.isSafeInteger(descriptor.value) ||
+		descriptor.value < 0
+	) {
+		failSecretSwapUnbounded({ invalidArrayLength: true });
+	}
+	return descriptor.value;
+}
+
+function defineSecretSwapValue(
+	target: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): void {
+	Object.defineProperty(target, key, {
+		configurable: true,
+		enumerable: true,
+		value,
+		writable: true,
+	});
+}
+
+function walkSecretSwapValue(
+	value: unknown,
+	depth: number,
+	ctx: SecretSwapWalkContext,
+	mapString: (text: string) => string,
+): unknown {
+	if (typeof value === "string") {
+		return mapString(value);
+	}
+	if (value === null || typeof value !== "object") {
+		return value;
+	}
+	if (depth > MAX_SECRET_SWAP_WALK_DEPTH) {
+		failSecretSwapUnbounded({
+			depth,
+			maxDepth: MAX_SECRET_SWAP_WALK_DEPTH,
+		});
+	}
+	if (ctx.visiting.has(value)) {
+		failSecretSwapUnbounded({ cycle: true });
+	}
+	reserveSecretSwapVisits(ctx);
+	ctx.visiting.add(value);
+	try {
+		if (isSecretSwapArray(value)) {
+			const size = ownArrayLength(value);
+			// Reserve every logical slot before scanning descriptors or allocating the
+			// output. Sparse arrays otherwise bypass a per-value visit counter.
+			reserveSecretSwapVisits(ctx, size);
+			const next = new Array<unknown>(size);
+			for (let index = 0; index < size; index += 1) {
+				const descriptor = ownValueDescriptor(value, index);
+				if (!descriptor) continue;
+				next[index] = walkSecretSwapValue(
+					descriptor.value,
+					depth + 1,
+					ctx,
+					mapString,
+				);
+			}
+			return next;
+		}
+		// Deliberately normalize every non-array object from its own enumerable
+		// data descriptors. The pre-boundary implementation used Object.entries
+		// for this whole class, so limiting the safe walk to Object.prototype
+		// records would let null-prototype dictionaries and class/custom-prototype
+		// data records carry unswapped secrets to providers. Do not reflect the
+		// prototype: it is irrelevant to the wire value and may itself be a hostile
+		// Proxy trap. Reconstructing a plain data record preserves the established
+		// boundary behavior without executing getters or inherited properties.
+		const next: Record<string, unknown> = {};
+		const keys = inspectSwap("ownKeys", () => Reflect.ownKeys(value));
+		// Charge reflection work up front, including symbols and non-enumerable
+		// keys that still require inspection before they can be skipped.
+		reserveSecretSwapVisits(ctx, keys.length);
+		for (const key of keys) {
+			if (typeof key !== "string") continue;
+			const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
+				Object.getOwnPropertyDescriptor(value, key),
+			);
+			if (!descriptor?.enumerable) continue;
+			if (!("value" in descriptor)) {
+				failSecretSwapUnbounded({ accessor: true });
+			}
+			defineSecretSwapValue(
+				next,
+				key,
+				walkSecretSwapValue(descriptor.value, depth + 1, ctx, mapString),
+			);
+		}
+		return next;
+	} finally {
+		ctx.visiting.delete(value);
+	}
 }
 
 export class SecretSwapSession {
@@ -238,20 +415,12 @@ export class SecretSwapSession {
 	}
 
 	substituteInValue<T>(value: T): T {
-		if (typeof value === "string") {
-			return this.substituteText(value) as T;
-		}
-		if (Array.isArray(value)) {
-			return value.map((item) => this.substituteInValue(item)) as T;
-		}
-		if (isPlainObject(value)) {
-			const next: Record<string, unknown> = {};
-			for (const [key, child] of Object.entries(value)) {
-				next[key] = this.substituteInValue(child);
-			}
-			return next as T;
-		}
-		return value;
+		return walkSecretSwapValue(
+			value,
+			0,
+			createSecretSwapWalkContext(),
+			(text) => this.substituteText(text),
+		) as T;
 	}
 
 	restoreText(
@@ -275,20 +444,12 @@ export class SecretSwapSession {
 	}
 
 	restoreInValue<T>(value: T, options: { failOnUnresolved?: boolean } = {}): T {
-		if (typeof value === "string") {
-			return this.restoreText(value, options) as T;
-		}
-		if (Array.isArray(value)) {
-			return value.map((item) => this.restoreInValue(item, options)) as T;
-		}
-		if (isPlainObject(value)) {
-			const next: Record<string, unknown> = {};
-			for (const [key, child] of Object.entries(value)) {
-				next[key] = this.restoreInValue(child, options);
-			}
-			return next as T;
-		}
-		return value;
+		return walkSecretSwapValue(
+			value,
+			0,
+			createSecretSwapWalkContext(),
+			(text) => this.restoreText(text, options),
+		) as T;
 	}
 
 	assertNoUnresolvedPlaceholders(value: unknown): void {

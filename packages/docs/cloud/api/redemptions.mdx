@@ -75,6 +75,7 @@ Get redemption history.
       "usdValue": 100,
       "elizaAmount": 1234.5,
       "elizaPriceUsd": 0.081,
+      "asset": "eliza",
       "network": "base",
       "payoutAddress": "0x1234...abcd",
       "status": "completed",
@@ -112,19 +113,34 @@ Get a token quote before creating a redemption.
 {
   "success": true,
   "quote": {
+    "asset": "eliza",
     "network": "base",
     "tokenAddress": "0x...",
     "pointsAmount": 10000,
     "usdValue": 100,
-    "twapPriceUsd": 0.081,
-    "spotPriceUsd": 0.08,
+    "twapPriceUsd": 0.08,
+    "spotPriceUsd": 0.081,
     "priceMethod": "TWAP",
-    "elizaAmount": 1234.5,
-    "safetySpreadPercent": 5,
+    "elizaAmount": 1225,
+    "safetySpreadPercent": 2,
+    "sampleCount": 12,
+    "volatilityPercent": "1.20",
+    "tokensAvailable": true,
+    "hotWalletBalance": 50000,
     "validUntil": "2026-05-05T10:35:00Z",
-    "validitySeconds": 300,
-    "requiresAdminApproval": false
+    "validitySeconds": 120,
+    "requiresDelay": false,
+    "requiresAdminApproval": true,
+    "limits": {
+      "minRedemptionUsd": 1,
+      "maxRedemptionUsd": 1000,
+      "userDailyLimitUsd": 5000,
+      "userHourlyLimitUsd": 1000,
+      "largeRedemptionThresholdUsd": 500,
+      "adminApprovalThresholdUsd": 0
+    }
   },
+  "message": "You will receive approximately 1225.0000 elizaOS tokens for 10000 points ($100.00). A 2% safety spread is applied.",
   "canRedeem": true
 }
 ```
@@ -146,6 +162,7 @@ Create a redemption request.
 {
   "pointsAmount": 10000,
   "network": "base",
+  "asset": "eliza",
   "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678",
   "idempotencyKey": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -156,6 +173,7 @@ Create a redemption request.
 | `appId` | Optional app UUID for attribution. |
 | `pointsAmount` | Required integer, 100-100000. 100 points equals $1.00. |
 | `network` | Required: `ethereum`, `base`, `bnb`, or `solana`. |
+| `asset` | Payout asset. Send it explicitly; use `eliza` for the elizaOS-token quote flow. Legacy omission defaults to `usdc`. |
 | `payoutAddress` | Required wallet address. |
 | `signature` | Optional wallet signature. |
 | `idempotencyKey` | Optional UUID for safe retries. |
@@ -167,11 +185,17 @@ Create a redemption request.
   "success": true,
   "redemptionId": "red_abc123",
   "quote": {
-    "usdValue": 100,
-    "elizaAmount": 1234.5,
-    "requiresReview": false
+    "pointsAmount": 10000,
+    "usdValue": "100",
+    "elizaPriceUsd": "0.08",
+    "elizaAmount": "1225",
+    "asset": "eliza",
+    "network": "base",
+    "payoutAddress": "0x1234567890abcdef1234567890abcdef12345678",
+    "expiresAt": "2026-05-05T10:35:00.000Z",
+    "requiresReview": true
   },
-  "message": "Redemption created and will be processed shortly."
+  "message": "Redemption created. An admin will review the payout request before tokens are sent."
 }
 ```
 

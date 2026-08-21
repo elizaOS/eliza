@@ -377,6 +377,123 @@ describe("logger", () => {
   });
 });
 
+// #23217: `maxMemoryLogs` on LoggerBindings must resize the shared in-memory
+// ring buffer in place instead of destructively clearing it. Prior code only
+// called `.clear()` (never resized), so the documented option wiped every other
+// logger's recent-log history and left retention hardcoded at 100. The buffer
+// is a process-wide singleton, so these assertions cover both the sizing
+// contract and the no-wipe invariant.
+describe("in-memory buffer retention (maxMemoryLogs)", () => {
+  const lineCount = (s: string): number =>
+    s === "" ? 0 : s.split("\n").length;
+
+  afterEach(() => {
+    // Restore the process-wide default cap and empty the shared singleton so
+    // later suites observe the original 100-entry buffer.
+    createLogger({ level: "info", maxMemoryLogs: 100 });
+    createLogger({ level: "info" }).clear();
+    vi.restoreAllMocks();
+  });
+
+  it("bounds retention to the requested cap and evicts oldest entries", () => {
+    const logger = createLogger({ level: "info", maxMemoryLogs: 3 });
+    logger.clear();
+    for (let i = 0; i < 8; i++) logger.info(`entry-${i}`);
+    const logs = recentLogs();
+    expect(lineCount(logs)).toBeLessThanOrEqual(3);
+    expect(logs).toContain("entry-7");
+    expect(logs).not.toContain("entry-0");
+  });
+
+  it("does not wipe the shared buffer when a sized logger is constructed", () => {
+    const base = createLogger({ level: "info", maxMemoryLogs: 100 });
+    base.clear();
+    base.info("prior-A");
+    base.info("prior-B");
+    const before = recentLogs();
+    expect(before).toContain("prior-A");
+    expect(before).toContain("prior-B");
+
+    // Constructing a sized logger must preserve the earlier history.
+    createLogger({ level: "info", maxMemoryLogs: 5 });
+    const after = recentLogs();
+    expect(after).toContain("prior-A");
+    expect(after).toContain("prior-B");
+  });
+
+  it("raising the cap retains all entries up to the new size", () => {
+    const logger = createLogger({ level: "info", maxMemoryLogs: 200 });
+    logger.clear();
+    for (let i = 0; i < 150; i++) logger.info(`n-${i}`);
+    expect(lineCount(recentLogs())).toBe(150);
+  });
+
+  it("keeps the default 100 cap when maxMemoryLogs is omitted", () => {
+    // Reset to the documented default, then build a logger that omits the field.
+    createLogger({ level: "info", maxMemoryLogs: 100 });
+    const logger = createLogger({ level: "info" });
+    logger.clear();
+    for (let i = 0; i < 130; i++) logger.info(`d-${i}`);
+    expect(lineCount(recentLogs())).toBe(100);
+  });
+
+  it("ignores invalid caps without clearing the buffer or disabling retention", () => {
+    const logger = createLogger({ level: "info", maxMemoryLogs: 4 });
+    logger.clear();
+    for (let i = 0; i < 4; i++) logger.info(`keep-${i}`);
+    const before = recentLogs();
+    expect(lineCount(before)).toBe(4);
+
+    // Every invalid shape must be ignored so the prior cap (4) and the retained
+    // history both stand. A fractional value such as 0.5 is the specific
+    // fail-open guarded here: floored it would become 0 and empty the ring.
+    const invalidCaps = [
+      0,
+      -10,
+      0.5,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ];
+    for (const cap of invalidCaps) {
+      createLogger({ level: "info", maxMemoryLogs: cap });
+      const after = recentLogs();
+      expect(after).toBe(before);
+      expect(lineCount(after)).toBe(4);
+    }
+
+    // The prior cap remains 4, not silenced: a fifth write still evicts the
+    // oldest entry rather than growing unbounded or dropping everything.
+    logger.info("keep-4");
+    const grown = recentLogs();
+    expect(lineCount(grown)).toBe(4);
+    expect(grown).toContain("keep-4");
+    expect(grown).not.toContain("keep-0");
+  });
+
+  it("an invalid cap on one logger cannot wipe another logger's shared history", () => {
+    // The in-memory destination is a process-wide singleton, so a bad binding
+    // on any constructed logger must not perturb an unrelated logger's view.
+    const base = createLogger({ level: "info", maxMemoryLogs: 100 });
+    base.clear();
+    base.info("shared-A");
+    base.info("shared-B");
+    const before = recentLogs();
+
+    createLogger({ level: "info", maxMemoryLogs: 0.5 });
+    createLogger({ level: "info", maxMemoryLogs: Number.POSITIVE_INFINITY });
+
+    // A second, unrelated logger reads the same untouched shared buffer.
+    createLogger({ level: "info" });
+    const after = recentLogs();
+    expect(after).toBe(before);
+    expect(after).toContain("shared-A");
+    expect(after).toContain("shared-B");
+  });
+});
+
 // #16356: the file-log path's stripAnsi built an invalid regex (an extra escape
 // level made `\\(B` an unterminated group), so `new RegExp` threw on every call
 // and output.log silently stayed empty. Guard the regex compiles and strips.

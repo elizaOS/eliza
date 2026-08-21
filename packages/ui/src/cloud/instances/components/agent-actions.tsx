@@ -1,5 +1,5 @@
 /**
- * ElizaAgentActions — start/stop/deactivate/reactivate/snapshot/upgrade/delete
+ * ElizaAgentActions — start/stop/deactivate/reactivate/upgrade/delete
  * controls on the agent detail page.
  *
  * **Upgrade to Dedicated** (shared-tier agents only, #15355) drives the whole
@@ -38,10 +38,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   BrandButton,
-  BrandCard,
 } from "@elizaos/ui/cloud-ui";
+import { useQuery } from "@tanstack/react-query";
 import {
-  Camera,
   ExternalLink,
   Loader2,
   Moon,
@@ -184,6 +183,25 @@ export function ElizaAgentActions({
   // Tier upgrade is a shared-agent-only promotion (#15355); a dedicated agent
   // already runs on its own container.
   const canUpgrade = isRunning && !isDedicated && !upgradeTargetId;
+  const upgradeQuoteQuery = useQuery({
+    queryKey: ["agent-dedicated-upgrade-quote", agentId],
+    queryFn: async () => {
+      const { status: httpStatus, data } = await apiWithStatus<{
+        success?: boolean;
+        data?: DedicatedActivationQuote;
+        error?: string;
+      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
+        method: "GET",
+      });
+      if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
+        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      }
+      return data.data;
+    },
+    enabled: canUpgrade,
+    staleTime: 15_000,
+    retry: false,
+  });
   const upgradeJob = upgradePoller.getStatus(agentId);
   const isStopped = ["stopped", "error", "pending", "disconnected"].includes(
     effectiveStatus,
@@ -200,8 +218,6 @@ export function ElizaAgentActions({
         url = `/api/v1/eliza/agents/${agentId}/resume`;
       } else if (action === "provision") {
         url = `/api/v1/eliza/agents/${agentId}/provision`;
-      } else if (action === "snapshot") {
-        url = `/api/v1/eliza/agents/${agentId}/snapshot`;
       } else if (action === "sleep") {
         url = `/api/v1/eliza/agents/${agentId}/sleep`;
       } else if (action === "wake") {
@@ -250,9 +266,6 @@ export function ElizaAgentActions({
           resume: t("cloud.containers.agentActions.resumeQueued", {
             defaultValue: "Agent resume queued",
           }),
-          snapshot: t("cloud.containers.agentActions.snapshotQueued", {
-            defaultValue: "Snapshot queued",
-          }),
           suspend: t("cloud.containers.agentActions.suspendQueued", {
             defaultValue: "Suspend queued",
           }),
@@ -260,11 +273,11 @@ export function ElizaAgentActions({
             defaultValue: "Suspend queued",
           }),
           sleep: t("cloud.containers.agentActions.deactivateQueued", {
-            defaultValue: "Deactivation queued — saving an encrypted backup",
+            defaultValue: "Deactivation queued — retaining your agent data",
           }),
           wake: t("cloud.containers.agentActions.reactivateQueued", {
             defaultValue:
-              "Reactivation queued — restoring from backup (this can take a few minutes)",
+              "Reactivation queued — restoring your agent data (this can take a few minutes)",
           }),
           delete: t("cloud.containers.agentActions.deleteQueued", {
             defaultValue: "Delete queued",
@@ -295,14 +308,11 @@ export function ElizaAgentActions({
         provision: t("cloud.containers.agentActions.provisioningStarted", {
           defaultValue: "Agent provisioning started",
         }),
-        resume: t("cloud.containers.agentActions.resumingSnapshot", {
-          defaultValue: "Agent resuming from snapshot",
-        }),
-        snapshot: t("cloud.containers.agentActions.snapshotSaved", {
-          defaultValue: "Snapshot saved",
+        resume: t("cloud.containers.agentActions.resuming", {
+          defaultValue: "Agent resuming",
         }),
         suspend: t("cloud.containers.agentActions.suspended", {
-          defaultValue: "Agent suspended (snapshot saved)",
+          defaultValue: "Agent suspended",
         }),
         sleep: t("cloud.containers.agentActions.deactivated", {
           defaultValue: "Agent deactivated — hourly billing stopped",
@@ -331,17 +341,14 @@ export function ElizaAgentActions({
   async function reviewDedicatedQuote() {
     setLoading("upgrade-quote");
     try {
-      const { status: httpStatus, data } = await apiWithStatus<{
-        success?: boolean;
-        data?: DedicatedActivationQuote;
-        error?: string;
-      }>(`/api/v1/eliza/agents/${encodeURIComponent(agentId)}/upgrade-tier`, {
-        method: "GET",
-      });
-      if (httpStatus < 200 || httpStatus >= 300 || !data?.data) {
-        throw new Error(data?.error ?? `HTTP ${httpStatus}`);
+      const quote =
+        upgradeQuoteQuery.data ?? (await upgradeQuoteQuery.refetch()).data;
+      if (!quote) {
+        throw (
+          upgradeQuoteQuery.error ?? new Error("Dedicated quote unavailable")
+        );
       }
-      setUpgradeQuote(data.data);
+      setUpgradeQuote(quote);
       setShowUpgradeConfirm(true);
     } catch (err) {
       toast.error(
@@ -466,12 +473,13 @@ export function ElizaAgentActions({
           }),
         );
         if (outcome.sourceCleanup === "not-cleaned") {
-          // The user is switched either way; a leaked shared row is only a
-          // duplicate list entry, so tell them instead of hiding it.
+          // The user is switched either way. Keep the still-authoritative row
+          // visible and describe the cleanup failure without offering a Shared
+          // delete control that the product intentionally does not expose.
           toast.info(
             t("cloud.containers.agentActions.upgradeSharedLeftBehind", {
               defaultValue:
-                "The old shared agent entry could not be removed automatically — you can delete it from your agents list.",
+                "The Shared Agent remains visible because automatic cleanup did not complete. Try again later or contact support.",
             }),
           );
         }
@@ -499,20 +507,8 @@ export function ElizaAgentActions({
   }
 
   return (
-    <BrandCard className="relative" cornerSize="md">
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-2 pb-4 border-b border-white/10">
-          <span className="inline-block w-2 h-2 rounded-full bg-muted" />
-          <h2
-            className="text-xl font-normal text-white"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
-            {t("cloud.containers.agentActions.title", {
-              defaultValue: "Agent Actions",
-            })}
-          </h2>
-        </div>
-
+    <>
+      <div className="space-y-4">
         {isSleeping && (
           <div
             className="flex items-start gap-3 rounded-sm border border-white/10 bg-white/5 p-3"
@@ -525,7 +521,7 @@ export function ElizaAgentActions({
             >
               {t("cloud.containers.agentActions.deactivatedPanel", {
                 defaultValue:
-                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is kept in an encrypted backup. Reactivation restores the backup and requires available credits.",
+                  "This agent is deactivated. It is not running and is not consuming hourly credits; its data is retained. Reactivation can take a few minutes and requires available credits.",
               })}
             </p>
           </div>
@@ -555,7 +551,7 @@ export function ElizaAgentActions({
                 data-testid="agent-upgrade-tier-button"
                 title={t("cloud.containers.agentActions.upgradeHint", {
                   defaultValue:
-                    "Move this agent to its own always-on container. Your conversation moves with it.",
+                    "Move to a private, always-on Dedicated Agent. Your conversation moves with it.",
                 })}
               >
                 {loading === "upgrade-tier" || loading === "upgrade-quote" ? (
@@ -563,9 +559,13 @@ export function ElizaAgentActions({
                 ) : (
                   <Rocket className="h-4 w-4" />
                 )}
-                {t("cloud.containers.agentActions.upgrade", {
-                  defaultValue: "Upgrade to Dedicated",
-                })}
+                {upgradeQuoteQuery.data?.canActivate === false
+                  ? t("cloud.containers.agentActions.addCredits", {
+                      defaultValue: "Add funds to upgrade",
+                    })
+                  : t("cloud.containers.agentActions.upgrade", {
+                      defaultValue: "Upgrade to Dedicated",
+                    })}
               </BrandButton>
             )}
 
@@ -595,7 +595,7 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.reactivateHint", {
                   defaultValue:
-                    "Restores the agent from its encrypted backup and starts it again. This can take a few minutes.",
+                    "Restores the agent's retained data and starts it again. This can take a few minutes.",
                 })}
               >
                 {loading === "wake" ? (
@@ -609,25 +609,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {isRunning && (
-              <BrandButton
-                variant="outline"
-                size="sm"
-                onClick={() => doAction("snapshot")}
-                disabled={!!loading || isBusy}
-              >
-                {loading === "snapshot" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Camera className="h-4 w-4" />
-                )}
-                {t("cloud.containers.agentActions.saveSnapshot", {
-                  defaultValue: "Save Snapshot",
-                })}
-              </BrandButton>
-            )}
-
-            {isRunning && (
+            {isRunning && isDedicated && (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -655,7 +637,7 @@ export function ElizaAgentActions({
                 disabled={!!loading || isBusy}
                 title={t("cloud.containers.agentActions.deactivateHint", {
                   defaultValue:
-                    "Stops the agent and its hourly billing. Data is kept in an encrypted backup; reactivate anytime.",
+                    "Stops the agent and its hourly billing while retaining its data; reactivate anytime.",
                 })}
               >
                 {loading === "sleep" ? (
@@ -669,7 +651,7 @@ export function ElizaAgentActions({
               </BrandButton>
             )}
 
-            {!showDeleteConfirm ? (
+            {isDedicated && !showDeleteConfirm ? (
               <BrandButton
                 variant="outline"
                 size="sm"
@@ -682,7 +664,7 @@ export function ElizaAgentActions({
                   defaultValue: "Delete Agent",
                 })}
               </BrandButton>
-            ) : (
+            ) : isDedicated ? (
               <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
                 <span
                   className="text-sm text-red-400"
@@ -717,7 +699,7 @@ export function ElizaAgentActions({
                   })}
                 </BrandButton>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -762,14 +744,14 @@ export function ElizaAgentActions({
                 : trackedAction === "sleep"
                   ? t("cloud.containers.agentActions.deactivateProgressHint", {
                       defaultValue:
-                        "Deactivating — saving an encrypted backup and releasing compute. This page will refresh when the job finishes.",
+                        "Deactivating — retaining your agent data and stopping dedicated hosting. This page will refresh when the job finishes.",
                     })
                   : trackedAction === "wake"
                     ? t(
                         "cloud.containers.agentActions.reactivateProgressHint",
                         {
                           defaultValue:
-                            "Reactivating — restoring your agent from its backup. This can take a few minutes; the page will refresh when it finishes.",
+                            "Reactivating — restoring your agent data. This can take a few minutes; the page will refresh when it finishes.",
                         },
                       )
                     : t("cloud.containers.agentActions.provisioningHint", {
@@ -802,7 +784,7 @@ export function ElizaAgentActions({
           <AlertDialogHeader>
             <AlertDialogTitle className="text-txt-strong">
               {t("cloud.containers.agentActions.upgradeTitle", {
-                defaultValue: "Upgrade to a dedicated agent?",
+                defaultValue: "Upgrade to a Dedicated Agent?",
               })}
             </AlertDialogTitle>
             {upgradeQuote ? (
@@ -810,7 +792,7 @@ export function ElizaAgentActions({
                 <span className="block">
                   {t("cloud.containers.agentActions.upgradeBody1", {
                     defaultValue:
-                      "Your Eliza moves to private, always-on compute. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
+                      "Your Shared Agent becomes a private, always-on Dedicated Agent. Dedicated hosting uses {{daily}} per day ({{rate}}) while running.",
                     daily: formatUSD(upgradeQuote.dailyRateUsd),
                     rate: formatHourlyRate(upgradeQuote.hourlyRateUsd),
                   })}
@@ -878,7 +860,7 @@ export function ElizaAgentActions({
                 }}
               >
                 {t("cloud.containers.agentActions.addCredits", {
-                  defaultValue: "Add credits",
+                  defaultValue: "Add funds to upgrade",
                 })}
               </Button>
             )}
@@ -910,13 +892,13 @@ export function ElizaAgentActions({
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody2", {
                   defaultValue:
-                    "Before deactivation, Eliza saves an encrypted backup. If the backup cannot be saved, the agent stays running and billing continues.",
+                    "Eliza retains your agent data during deactivation. If deactivation cannot complete, the agent stays running and billing continues.",
                 })}
               </span>
               <span className="block mt-2">
                 {t("cloud.containers.agentActions.deactivateBody3", {
                   defaultValue:
-                    "Reactivation restores the backup and can take a few minutes; it requires available credits.",
+                    "Reactivation restores the agent's retained data and can take a few minutes; it requires available credits.",
                 })}
               </span>
             </AlertDialogDescription>
@@ -944,6 +926,6 @@ export function ElizaAgentActions({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </BrandCard>
+    </>
   );
 }

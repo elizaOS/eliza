@@ -20,7 +20,10 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
+import {
+  cloneRequestWithScheduledCronMetadata,
+  makeCronHandler,
+} from "@/lib/cron/cloudflare-cron";
 import {
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
@@ -33,7 +36,7 @@ import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
-import { isThinStewardPublicPath } from "./steward/public-paths";
+import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { isThinCliSessionPath } from "./cli-session-paths";
@@ -43,7 +46,11 @@ export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
-export { isThinStewardPublicPath } from "./steward/public-paths";
+export {
+  isThinStewardEmailAuthPath,
+  isThinStewardPath,
+  isThinStewardPublicPath,
+} from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
@@ -226,22 +233,26 @@ export function decorateFullAppDispatchResponse(
   });
 }
 
-async function dispatchFullApp(
+export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext | HonoExecutionContext,
+  loadFullApp: () => Promise<Hono<AppEnv>> = getApp,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const moduleWasInitialized = appPromise !== undefined;
+  const moduleWasInitialized =
+    loadFullApp === getApp ? appPromise !== undefined : true;
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
-  const tracedRequest = new Request(request, { headers });
+  const tracedRequest = cloneRequestWithScheduledCronMetadata(request, {
+    headers,
+  });
   let moduleInitMs: number | null = null;
   let status: number | null = null;
 
   try {
-    const app = await getApp();
+    const app = await loadFullApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;
@@ -461,12 +472,8 @@ async function dispatchThinSteward(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  const method = request.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    return null;
-  }
   const pathname = new URL(request.url).pathname;
-  if (!isThinStewardPublicPath(pathname)) return null;
+  if (!isThinStewardPath(request.method, pathname)) return null;
 
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = stewardThinAppPromise !== undefined;

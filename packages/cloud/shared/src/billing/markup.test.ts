@@ -92,6 +92,12 @@ describe("Twilio SMS billing", () => {
     expect(resolveTwilioSmsCostPerSegment("0x10")).toBe(DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD);
   });
 
+  test("rejects an adversarial failed decimal suffix without backtracking", () => {
+    expect(resolveTwilioSmsCostPerSegment(`${"1".repeat(100_000)}x`)).toBe(
+      DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD,
+    );
+  });
+
   test("rejects negative or non-finite SMS costs", () => {
     expect(calculateTwilioSmsBilling("hello", 0).billedCost).toBe(0);
     expect(() => calculateTwilioSmsBilling("hello", -0.01)).toThrow(RangeError);

@@ -2829,6 +2829,10 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(cloudSdkSrcDir, "index.ts"),
           },
           {
+            find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+            replacement: path.join(cloudSdkSrcDir, "redemption-contract.ts"),
+          },
+          {
             find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
             replacement: path.join(
               cloudSdkSrcDir,
@@ -2946,6 +2950,16 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(
               appCoreSrcRoot,
               "platform/empty-node-module.ts",
+            ),
+          },
+          // Shared browser facades import this duplicate-safe leaf directly.
+          // Bind it to source before the bare-core alias so fast-dist builds do
+          // not fall through to the package's Node/default compatibility shim.
+          {
+            find: /^@elizaos\/core\/client-public$/,
+            replacement: path.resolve(
+              elizaRoot,
+              "packages/core/src/client-public.ts",
             ),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins

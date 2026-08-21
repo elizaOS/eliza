@@ -41,6 +41,7 @@ export {
 	SERVICE_ROUTE_ACCOUNT_STRATEGIES,
 } from "./contracts/service-routing-types";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";

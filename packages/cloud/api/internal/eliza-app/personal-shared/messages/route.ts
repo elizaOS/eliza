@@ -2,7 +2,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { resolvePersonalDeliveryProjection } from "@/api-app/personal-delivery-projection";
+import {
+  PersonalDeliveryAccountResolutionError,
+  resolvePersonalDeliveryProjection,
+} from "@/api-app/personal-delivery-projection";
 import type { AgentSandbox } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
@@ -50,6 +53,7 @@ const SAFE_ERROR_NAMES = new Set([
   "Error",
   "HTTPException",
   "InsufficientCreditsError",
+  "PersonalDeliveryAccountResolutionError",
   "RangeError",
   "RateLimitError",
   "SharedRuntimeCacheWarmingError",
@@ -681,12 +685,31 @@ app.post("/", async (c) => {
       traceId,
       stage,
       errorName,
+      ...(error instanceof PersonalDeliveryAccountResolutionError
+        ? { projectionFailure: error.projectionFailure }
+        : {}),
     });
     // This route is internal-authenticated. Safe classification headers let
     // the connector correlate a retry without exposing exception messages or
     // provider/SQL payloads in its logs.
     c.header(FAILURE_STAGE_HEADER, stage);
     c.header(FAILURE_NAME_HEADER, errorName);
+    if (error instanceof PersonalDeliveryAccountResolutionError) {
+      // Account resolution only fails here after both the projection and the
+      // canonical resolver failed — a transient storage condition the
+      // connector should retry, not an opaque terminal 500.
+      return c.json(
+        {
+          success: false,
+          error:
+            "Account resolution is temporarily unavailable. Retry this turn shortly.",
+          code: "service_unavailable",
+          retryable: true,
+        },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     if (error instanceof SharedRuntimeCacheWarmingError) {
       return c.json(
         {
