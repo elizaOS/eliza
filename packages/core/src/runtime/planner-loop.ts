@@ -61,7 +61,11 @@ import {
 } from "../utils/reasoning-tags";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
-import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
+import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed";
 import {
 	computePrefixHashes,
 	hashString,
@@ -4909,7 +4913,7 @@ async function rescueReplyFromSuccessfulResults(
 		successfulExcerpts.push(
 			[
 				`<tool_result name="${step.toolCall.name}">`,
-				text.slice(0, RESCUE_EXCERPT_MAX_CHARS),
+				truncateWellFormed(toWellFormedUnicode(text), RESCUE_EXCERPT_MAX_CHARS),
 				"</tool_result>",
 			].join("\n"),
 		);
