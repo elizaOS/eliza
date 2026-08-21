@@ -202,19 +202,29 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 }
 
 /**
- * Shared resolution: the retained `metadata.userPayloadText` stamp when
- * present (the trusted copy taken before wrapping); otherwise, ONLY when the
+ * Shared resolution: the connector's `content.currentMessageText` when present
+ * (the raw human message — connectors render `content.text` with a context
+ * header such as "[Discord #general | server] @user (ts):" before it reaches
+ * this boundary, so the retained copy of `text` still carries that header and
+ * every consumer that echoed or titled from it shipped the header, live
+ * 2026-08-21); otherwise the retained `metadata.userPayloadText` stamp (the
+ * trusted copy taken before wrapping); otherwise, ONLY when the
  * `externalContentWrapped` stamp attests the envelope came from this module, a
  * marker parse of `content.text` (legacy messages persisted before the
  * retained field existed); otherwise the raw text. Unstamped marker-shaped
  * text is never parsed — the stamp is the authenticity proof, and extracting a
  * "payload" from an unauthenticated envelope would let injected marker text
  * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
- * consumers read the user's words.
+ * consumers read the user's words. The same precedence as core's
+ * `getUserMessageText`.
  */
 function resolveRetainedCandidate(message: Memory): string {
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
+	const connectorText = message.content?.currentMessageText;
+	if (typeof connectorText === "string" && connectorText.trim().length > 0) {
+		return connectorText.trim();
+	}
 	const metadata = readMessageMetadata(message);
 	const retained = metadata.userPayloadText;
 	if (typeof retained === "string" && retained.trim().length > 0) {
@@ -295,10 +305,16 @@ export function registerCoreIncomingMessageSecurityHook(
 			if (text) {
 				ctx.message.content.text = scrubIncomingMessageTextForStorage(text);
 			}
-			// The retained payload persists to memory alongside content.text and is
-			// what unwrapUserMessageText prefers, so it must pass through the same
-			// storage scrub — otherwise a pasted secret the text scrub removed
-			// survives in metadata and re-echoes through every payload consumer.
+			// The retained payload and the connector's raw text persist to memory
+			// alongside content.text and are what unwrapUserMessageText prefers,
+			// so they must pass through the same storage scrub — otherwise a
+			// pasted secret the text scrub removed survives in content/metadata
+			// and re-echoes through every payload consumer.
+			const connectorText = ctx.message.content.currentMessageText;
+			if (typeof connectorText === "string" && connectorText) {
+				ctx.message.content.currentMessageText =
+					scrubIncomingMessageTextForStorage(connectorText);
+			}
 			const metadata = ctx.message.content.metadata;
 			if (typeof metadata === "object" && metadata !== null) {
 				const record = metadata as Record<string, unknown>;
