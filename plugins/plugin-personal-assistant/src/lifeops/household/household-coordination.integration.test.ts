@@ -2464,6 +2464,50 @@ describe("household coordination — real PGlite", () => {
     ).resolves.toMatchObject({ state: "approved" });
   });
 
+  it("requires a revocable schedule.approve grant for caregiver approval standing", async () => {
+    const childId = await person("approval-grant-child");
+    const caregiverId = await person("approval-grant-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const coordinator = service();
+    const proposal = await coordinator.createProposal({
+      coordinationId: `caregiver-approval-${randomUUID()}`,
+      terms: terms({
+        summary: "Caregiver handoff approval",
+        childEntityIds: [childId],
+      }),
+      affectedPartyEntityIds: [childId, caregiverId],
+      requiredApproverEntityIds: [caregiverId],
+      createdByEntityId: SELF_ENTITY_ID,
+    });
+    const link = (
+      await householdRepository.listApprovalLinks(
+        proposal.proposalId,
+        proposal.version,
+      )
+    ).find((candidate) => candidate.partyEntityId === caregiverId);
+    if (!link) throw new Error("caregiver approval link missing");
+    const respond = () =>
+      coordinator.respondToProposal({
+        proposalId: proposal.proposalId,
+        proposalVersion: proposal.version,
+        partyEntityId: caregiverId,
+        approvalRequestId: link.approvalRequestId,
+        decision: "approve",
+        reason: "I approve these exact proposal bytes.",
+      });
+    await expect(respond()).rejects.toMatchObject({
+      code: "HOUSEHOLD_ACCESS_DENIED",
+    });
+    await coordinator.issueGrant({
+      principalEntityId: caregiverId,
+      role: "caregiver",
+      subjectEntityIds: [childId],
+      scopes: ["schedule.approve"],
+      issuedByEntityId: SELF_ENTITY_ID,
+    });
+    await expect(respond()).resolves.toMatchObject({ state: "approved" });
+  });
+
   it("withholds the audit trail from principals without the household.export scope", async () => {
     const childId = await person("audit-scope-child");
     const caregiverId = await person("audit-scope-caregiver");

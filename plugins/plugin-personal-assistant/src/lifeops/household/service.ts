@@ -1687,9 +1687,12 @@ export class HouseholdCoordinationService {
 
   /**
    * Approval authority is revocable after a proposal is issued. A responder
-   * keeps standing either intrinsically — an active non-child role binding
-   * that still covers every affected child — or by delegation through an
-   * active `schedule.approve` grant covering those children. Without this
+   * keeps standing either intrinsically — an active owner, co-parent, or
+   * current-partner binding that still covers every affected child — or by
+   * delegation through an active `schedule.approve` grant covering those
+   * children. Caregiver and professional bindings identify household context
+   * but deliberately do not confer approval standing without a revocable
+   * grant. Without this
    * check, removing an adult from the household (or narrowing their
    * relationship to a child) would leave their queued approval requests
    * actionable.
@@ -1704,7 +1707,12 @@ export class HouseholdCoordinationService {
       (candidate) => candidate.entityId === partyEntityId,
     );
     const childEntityIds = proposal.terms.childEntityIds;
-    if (binding && binding.role !== "child") {
+    if (
+      binding &&
+      (binding.role === "owner" ||
+        binding.role === "co_parent" ||
+        binding.role === "current_partner")
+    ) {
       const uncovered =
         binding.role === "owner"
           ? []

@@ -338,6 +338,7 @@ export const ROLE_SCOPE_LIMITS: Readonly<
     "calendar.freebusy",
     "calendar.details",
     "schedule.propose",
+    "schedule.approve",
     "household.export",
   ],
   child: ["household.visibility", "calendar.freebusy"],
@@ -346,6 +347,7 @@ export const ROLE_SCOPE_LIMITS: Readonly<
     "calendar.freebusy",
     "calendar.details",
     "schedule.propose",
+    "schedule.approve",
     "household.export",
   ],
 };
