@@ -99,6 +99,9 @@ function harness(job: Job) {
   );
   const leaseSpy = spyOn(jobsRepository, "assertExecutionLease").mockResolvedValue(undefined);
   const renewLeaseSpy = spyOn(jobsRepository, "renewExecutionLease").mockResolvedValue("lost");
+  // agent_delete re-reads durable job data under the lease right before the
+  // destructive boundary; by default the durable row matches the claimed one.
+  const durableReadSpy = spyOn(jobsRepository, "findByIdForWrite").mockResolvedValue(job);
   const sharedClaimSpy = spyOn(
     jobsRepository,
     "claimPendingJobsWithinSharedRunningLimit",
@@ -110,6 +113,7 @@ function harness(job: Job) {
       sharedClaimSpy.mockRestore();
       leaseSpy.mockRestore();
       renewLeaseSpy.mockRestore();
+      durableReadSpy.mockRestore();
     },
   };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
@@ -131,6 +135,7 @@ function harness(job: Job) {
     claimSpy,
     leaseSpy,
     renewLeaseSpy,
+    durableReadSpy,
     recoverSpy,
     updateStatusSpy,
     updateSpy,
@@ -663,6 +668,61 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
       expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
       expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request", true);
       expect(completedCall(ctx)?.[2]?.result).toMatchObject({ stateLossAcknowledged: true });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete honors an acknowledgement upgraded after this execution was claimed", async () => {
+    // Race regression: the claimed in-memory job snapshot has no waiver, but a
+    // concurrent acknowledged DELETE upgraded the durable row via upgradeReuse.
+    // The pre-destructive durable re-read must observe and honor it.
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
+    ctx.durableReadSpy.mockResolvedValue({
+      ...ctx.job,
+      data: { ...ctx.job.data, stateLossAcknowledged: true },
+    });
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request", true);
+      expect(completedCall(ctx)?.[2]?.result).toMatchObject({ stateLossAcknowledged: true });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete stays unacknowledged when the durable row was deleted mid-execution", async () => {
+    const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE, { authorization: "user_request" }));
+    ctx.durableReadSpy.mockResolvedValue(undefined);
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request");
+      const result = completedCall(ctx)?.[2]?.result as Record<string, unknown> | undefined;
+      expect(result?.stateLossAcknowledged).toBeUndefined();
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();

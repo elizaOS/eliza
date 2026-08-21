@@ -5311,7 +5311,18 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const delResult = data.stateLossAcknowledged
+    // A concurrent acknowledged DELETE may have upgraded the durable job data
+    // after this worker claimed its in-memory snapshot (`upgradeReuse`). The
+    // claimed object cannot observe that write, so re-read the row from the
+    // primary under the execution lease immediately before the destructive
+    // boundary. Authority is monotonic: the durable read may strengthen the
+    // claimed snapshot, never weaken it.
+    const durableJob = await jobsRepository.findByIdForWrite(job.id);
+    const stateLossAcknowledged =
+      data.stateLossAcknowledged === true ||
+      (durableJob !== undefined &&
+        readAgentDeleteJobData(durableJob).stateLossAcknowledged === true);
+    const delResult = stateLossAcknowledged
       ? await elizaSandboxService.executeDeletion(
           data.agentId,
           data.organizationId,
@@ -5344,7 +5355,7 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
-          ...(data.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+          ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
           error: delResult.error,
           ...(captureRetryCount > 0 ? { captureRetryCount } : {}),
         }),
@@ -5384,7 +5395,7 @@ export class ProvisioningJobService {
       cloudAgentId: data.agentId,
       containerStopped: delResult.containerStopped,
       rowDeleted: delResult.rowDeleted,
-      ...(data.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+      ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
     };
 
     await this.settleClaimedExecution(job, "completed", {
