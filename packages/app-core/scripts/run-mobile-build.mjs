@@ -5779,6 +5779,7 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
   ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
+  ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],
   ["@elizaos/capacitor-websiteblocker", "elizaos-capacitor-websiteblocker"],
   ["@elizaos/capacitor-wifi", "elizaos-capacitor-wifi"],
   ["llama-cpp-capacitor", "llama-cpp-capacitor"],
@@ -5794,13 +5795,11 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/preferences",
   "@capacitor/share",
   "@capacitor/status-bar",
-  "@elizaos/capacitor-talkmode",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
   "android.permission.INTERNET",
-  "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.RECORD_AUDIO",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
@@ -6106,6 +6105,7 @@ ${cloudBrandUserAgentMarkerLines()}
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
+        registerPlugin(ElizaPlayVoicePlugin.class);
 
         super.onCreate(savedInstanceState);
 
@@ -6291,6 +6291,186 @@ public final class ElizaSecureCredentialsPlugin extends Plugin {
                 .build());
         return generator.generateKey();
     }
+}
+`;
+}
+
+/** Standard Android SpeechRecognizer + system TextToSpeech for Play builds. */
+export function cloudSafePlayVoicePluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.Manifest;
+import android.content.Intent;
+import android.os.Bundle;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
+import android.speech.tts.UtteranceProgressListener;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.UUID;
+
+@CapacitorPlugin(
+    name = "ElizaPlayVoice",
+    permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
+)
+public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+    private SpeechRecognizer recognizer;
+
+    @PluginMethod
+    public void requestPermission(PluginCall call) {
+        if (getPermissionState("microphone") == PermissionState.GRANTED) {
+            resolvePermission(call, true);
+            return;
+        }
+        requestPermissionForAlias("microphone", call, "microphonePermissionCallback");
+    }
+
+    @PermissionCallback
+    private void microphonePermissionCallback(PluginCall call) {
+        resolvePermission(call, getPermissionState("microphone") == PermissionState.GRANTED);
+    }
+
+    @PluginMethod
+    public void startDictation(PluginCall call) {
+        if (getPermissionState("microphone") != PermissionState.GRANTED) {
+            call.reject("Microphone permission is required.", "MICROPHONE_PERMISSION_REQUIRED");
+            return;
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
+            call.reject("Speech recognition is unavailable.", "SPEECH_RECOGNITION_UNAVAILABLE");
+            return;
+        }
+        stopRecognizer();
+        recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+        recognizer.setRecognitionListener(this);
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+        String language = call.getString("language");
+        if (language != null && !language.trim().isEmpty()) {
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
+        }
+        try {
+            recognizer.startListening(intent);
+            JSObject result = new JSObject();
+            result.put("started", true);
+            call.resolve(result);
+        } catch (RuntimeException error) {
+            stopRecognizer();
+            call.reject("Voice dictation could not start.", "SPEECH_RECOGNITION_START_FAILED", error);
+        }
+    }
+
+    @PluginMethod
+    public void stopDictation(PluginCall call) {
+        stopRecognizer();
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void speak(PluginCall call) {
+        String text = call.getString("text");
+        if (text == null || text.trim().isEmpty()) {
+            call.reject("Speech text is required.", "TTS_TEXT_REQUIRED");
+            return;
+        }
+        String language = call.getString("language", Locale.getDefault().toLanguageTag());
+        final TextToSpeech[] holder = new TextToSpeech[1];
+        holder[0] = new TextToSpeech(getContext(), status -> {
+            TextToSpeech tts = holder[0];
+            if (status != TextToSpeech.SUCCESS || tts == null) {
+                if (tts != null) tts.shutdown();
+                call.reject("System text to speech is unavailable.", "TTS_UNAVAILABLE");
+                return;
+            }
+            Locale locale = Locale.forLanguageTag(language == null ? "" : language);
+            if (tts.setLanguage(locale) < TextToSpeech.LANG_AVAILABLE) {
+                tts.shutdown();
+                call.reject("The selected speech language is unavailable.", "TTS_LANGUAGE_UNAVAILABLE");
+                return;
+            }
+            String utteranceId = UUID.randomUUID().toString();
+            tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                @Override public void onStart(String id) {}
+                @Override public void onDone(String id) { tts.shutdown(); }
+                @Override public void onError(String id) { tts.shutdown(); }
+            });
+            int accepted = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId);
+            if (accepted != TextToSpeech.SUCCESS) {
+                tts.shutdown();
+                call.reject("System text to speech could not start.", "TTS_START_FAILED");
+                return;
+            }
+            call.resolve();
+        });
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        stopRecognizer();
+        super.handleOnDestroy();
+    }
+
+    private void resolvePermission(PluginCall call, boolean granted) {
+        JSObject result = new JSObject();
+        result.put("granted", granted);
+        call.resolve(result);
+    }
+
+    private void stopRecognizer() {
+        if (recognizer == null) return;
+        try { recognizer.stopListening(); } catch (RuntimeException ignored) {}
+        recognizer.cancel();
+        recognizer.destroy();
+        recognizer = null;
+    }
+
+    private void publishTranscript(Bundle results, boolean isFinal) {
+        ArrayList<String> values = results == null
+                ? null
+                : results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+        if (values == null || values.isEmpty()) return;
+        String text = values.get(0) == null ? "" : values.get(0).trim();
+        if (text.isEmpty()) return;
+        JSObject event = new JSObject();
+        event.put("text", text);
+        event.put("isFinal", isFinal);
+        notifyListeners("transcript", event);
+    }
+
+    @Override public void onReadyForSpeech(Bundle params) {}
+    @Override public void onBeginningOfSpeech() {}
+    @Override public void onRmsChanged(float rmsdB) {}
+    @Override public void onBufferReceived(byte[] buffer) {}
+    @Override public void onEndOfSpeech() {}
+    @Override public void onError(int error) {
+        JSObject event = new JSObject();
+        event.put("code", error);
+        notifyListeners("error", event);
+        stopRecognizer();
+    }
+    @Override public void onResults(Bundle results) {
+        publishTranscript(results, true);
+        stopRecognizer();
+    }
+    @Override public void onPartialResults(Bundle partialResults) {
+        publishTranscript(partialResults, false);
+    }
+    @Override public void onEvent(int eventType, Bundle params) {}
 }
 `;
 }
@@ -6498,6 +6678,12 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
     fs.writeFileSync(
       path.join(root, "ElizaSecureCredentialsPlugin.java"),
       cloudSafeSecureCredentialsPluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
+    fs.writeFileSync(
+      path.join(root, "ElizaPlayVoicePlugin.java"),
+      cloudSafePlayVoicePluginJava(androidPackage),
       "utf8",
     );
     touched += 1;

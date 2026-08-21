@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cloudSafeMainActivityJava,
+  cloudSafePlayVoicePluginJava,
   cloudSafeSecureCredentialsPluginJava,
 } from "./run-mobile-build.mjs";
 
@@ -48,6 +49,7 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain(
       "registerPlugin(ElizaSecureCredentialsPlugin.class);",
     );
+    expect(source).toContain("registerPlugin(ElizaPlayVoicePlugin.class);");
     expect(coldCapture).toBeGreaterThanOrEqual(0);
     expect(coldCapture).toBeLessThan(bridgeCreation);
     expect(warmCapture).toBeGreaterThanOrEqual(0);
@@ -65,6 +67,18 @@ describe("cloudSafeMainActivityJava", () => {
     expect(source).toContain("KeyProperties.BLOCK_MODE_GCM");
     expect(source).toContain(".setRandomizedEncryptionRequired(true)");
     expect(source).not.toContain("uses-permission");
+    expect(source).not.toContain("http://");
+    expect(source).not.toContain("https://");
+  });
+
+  it("generates standard speech recognition and system TTS without local transports", () => {
+    const source = cloudSafePlayVoicePluginJava("ai.elizaos.app");
+
+    expect(source).toContain('@CapacitorPlugin(\n    name = "ElizaPlayVoice"');
+    expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
+    expect(source).toContain("new TextToSpeech(getContext()");
+    expect(source).toContain("Manifest.permission.RECORD_AUDIO");
+    expect(source).not.toMatch(/LocalSocket|HttpURLConnection|apiKey|bionic/i);
     expect(source).not.toContain("http://");
     expect(source).not.toContain("https://");
   });

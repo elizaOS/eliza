@@ -40,6 +40,8 @@ describe("Android Cloud renderer entry", () => {
       source.indexOf("interface SecureCredentialsPlugin"),
     );
     expect(source).toContain('"ElizaSecureCredentials"');
+    expect(source).toContain('"ElizaPlayVoice"');
+    expect(source).not.toContain("@elizaos/capacitor-talkmode");
     expect(source).toContain("credentialStore: androidSecureCredentialStore");
     expect(persistedKeys).not.toContain("STEWARD_TOKEN_KEY");
     expect(source).toContain("Preferences.remove({ key: STEWARD_TOKEN_KEY })");

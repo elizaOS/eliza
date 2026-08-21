@@ -143,7 +143,6 @@ describe("Android Play manifest policy", () => {
       "@capacitor/preferences",
       "@capacitor/share",
       "@capacitor/status-bar",
-      "@elizaos/capacitor-talkmode",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
@@ -152,6 +151,7 @@ describe("Android Play manifest policy", () => {
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-screencapture",
+        "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",
       ]),
     );

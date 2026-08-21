@@ -12,7 +12,6 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import { StatusBar, Style } from "@capacitor/status-bar";
-import { TalkMode } from "@elizaos/capacitor-talkmode";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import {
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
@@ -272,38 +271,41 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
 
 let activeTranscriptListener: { remove: () => Promise<void> } | null = null;
 
+interface PlayVoicePlugin {
+  requestPermission(): Promise<{ granted: boolean }>;
+  startDictation(options: {
+    language: string;
+  }): Promise<{ started: boolean; error?: string }>;
+  stopDictation(): Promise<void>;
+  speak(options: { text: string; language: string }): Promise<void>;
+  addListener(
+    eventName: "transcript",
+    listener: (event: { text: string; isFinal: boolean }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
+}
+
+const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
+
 const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript) {
     await activeTranscriptListener?.remove();
     activeTranscriptListener = null;
-    const permissions = await TalkMode.requestPermissions();
-    if (
-      permissions.microphone !== "granted" ||
-      permissions.speechRecognition === "denied" ||
-      permissions.speechRecognition === "not_supported"
-    ) {
-      throw new Error(
-        "Microphone and speech recognition permission are required for dictation.",
-      );
+    const permissions = await PlayVoice.requestPermission();
+    if (!permissions.granted) {
+      throw new Error("Microphone permission is required for voice dictation.");
     }
-    const transcriptListener = await TalkMode.addListener(
+    const transcriptListener = await PlayVoice.addListener(
       "transcript",
       (event) => {
         if (!event.isFinal) return;
-        const transcript = event.transcript.trim();
+        const transcript = event.text.trim();
         if (transcript) onFinalTranscript(transcript);
         void androidCloudVoice.stop();
       },
     );
     activeTranscriptListener = transcriptListener;
-    const result = await TalkMode.start({
-      config: {
-        mode: "compose",
-        stt: {
-          engine: "native",
-          language: navigator.language || "en-US",
-        },
-      },
+    const result = await PlayVoice.startDictation({
+      language: navigator.language || "en-US",
     });
     if (!result.started) {
       await transcriptListener.remove();
@@ -317,14 +319,13 @@ const androidCloudVoice: AndroidCloudVoiceAdapter = {
     const listener = activeTranscriptListener;
     activeTranscriptListener = null;
     try {
-      await TalkMode.stop();
+      await PlayVoice.stopDictation();
     } finally {
       await listener?.remove();
     }
   },
   async speak(text) {
-    const result = await TalkMode.speak({ text, useSystemTts: true });
-    if (result.error) throw new Error(result.error);
+    await PlayVoice.speak({ text, language: navigator.language || "en-US" });
   },
 };
 
