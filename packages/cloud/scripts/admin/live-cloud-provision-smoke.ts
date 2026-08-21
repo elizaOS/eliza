@@ -475,6 +475,7 @@ export async function runSharedStagingOnboardingSmoke(
         const text = await response.text();
         parsed = text ? JSON.parse(text) : {};
       } catch {
+        // error-policy:J3 Untrusted SSE responses fail closed on malformed JSON.
         throw new SharedSmokeFailure(
           "sse",
           `invalid_json_response_http_${response.status}`,

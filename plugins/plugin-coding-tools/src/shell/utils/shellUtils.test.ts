@@ -6,7 +6,7 @@
  * the real exported chunkString.
  */
 import { describe, expect, it } from "vitest";
-import { chunkString } from "./shellUtils";
+import { chunkString, deriveSessionName } from "./shellUtils";
 
 const CHUNK_LIMIT = 8 * 1024;
 
@@ -44,5 +44,37 @@ describe("chunkString surrogate-safe chunking", () => {
 
   it("returns the input unchanged when within the limit", () => {
     expect(chunkString("hello world")).toEqual(["hello world"]);
+  });
+});
+
+describe("deriveSessionName command tokenization", () => {
+  it("preserves quoted targets and embedded quoted segments", () => {
+    expect(deriveSessionName('node "path with spaces.js" --watch')).toBe(
+      "node path with spaces.js",
+    );
+    expect(deriveSessionName('git refs/heads/"feature branch"')).toBe(
+      'git refs/heads/"feature branch"',
+    );
+  });
+
+  it("handles long unmatched quoted input without regex backtracking", () => {
+    const escaped = "\\!".repeat(100_000);
+    const name = deriveSessionName(`run "${escaped}`);
+    expect(name?.startsWith("run \\!\\!")).toBe(true);
+    expect(name?.length).toBeLessThanOrEqual("run ".length + 48);
+  });
+
+  it("handles both quote styles in adversarial input", () => {
+    const escaped = "\\&".repeat(100_000);
+    const name = deriveSessionName(`run '${escaped}`);
+    expect(name?.startsWith("run \\&\\&")).toBe(true);
+  });
+
+  it("handles many unmatched quote delimiters in linear time", () => {
+    // Each quote's escape (\") consumes the next delimiter, so every
+    // unmatched-quote fallback used to rescan the remaining suffix and go
+    // quadratic; the bounded tokenization prefix caps that work.
+    const name = deriveSessionName(`run ${'"\\'.repeat(100_000)}`);
+    expect(name).toBe("run \\");
   });
 });

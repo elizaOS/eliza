@@ -213,14 +213,10 @@ describe("HomePill", () => {
     expect(mark.className).not.toContain("bg-white/95");
     const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
     expect(bars).toHaveLength(15);
-    // Center-weighted stagger: symmetric around the middle bar, not monotonic.
-    const delays = bars.map((b) => Number.parseInt(b.style.animationDelay, 10));
-    expect(delays).toEqual([...delays].reverse());
-    expect(Math.min(...delays)).toBe(delays[Math.floor(delays.length / 2)]);
-    for (const bar of bars) {
-      expect(bar.className).toContain("home-pill-wave-bar");
-      expect(bar.className).toContain("motion-reduce:animate-none");
-    }
+    // Center-weighted silhouette: heights symmetric around the middle bar.
+    const heights = bars.map((b) => Number.parseInt(b.style.height, 10));
+    expect(heights).toEqual([...heights].reverse());
+    expect(Math.max(...heights)).toBe(heights[Math.floor(heights.length / 2)]);
   });
 
   it("keeps listening compact until the native shallow host is ready", () => {
@@ -556,5 +552,158 @@ describe("HomePill hold-to-talk quasimode (#20483)", () => {
     expect(
       screen.getByRole("button", { name: /listening — release to send/i }),
     ).toBeTruthy();
+  });
+});
+
+describe("HomePill live-metered listening bars (#20483)", () => {
+  /** Fake AnalyserNode: hands the effect a controllable time-domain frame. */
+  function fakeAnalyser(fill: number): AnalyserNode {
+    return {
+      fftSize: 64,
+      getByteTimeDomainData(target: Uint8Array) {
+        target.fill(fill);
+      },
+    } as unknown as AnalyserNode;
+  }
+
+  /** Captures rAF callbacks so frames are stepped manually and synchronously. */
+  function stubRaf() {
+    const queue: FrameRequestCallback[] = [];
+    const raf = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((cb) => {
+        queue.push(cb);
+        return queue.length;
+      });
+    const caf = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const step = () => {
+      const frame = queue.shift();
+      if (frame) frame(performance.now());
+    };
+    return {
+      step,
+      framesRequested: () => raf.mock.calls.length,
+      restore: () => {
+        raf.mockRestore();
+        caf.mockRestore();
+      },
+    };
+  }
+
+  it("without an analyser the bars hold a static flatline (mic opening) — no decorative motion", () => {
+    const { framesRequested, restore } = stubRaf();
+    try {
+      render(
+        <HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />,
+      );
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        expect(bar.className).not.toContain("home-pill-wave-bar");
+        expect(bar.dataset.live).toBeUndefined();
+        expect(bar.style.animationDelay).toBe("");
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+      expect(framesRequested()).toBe(0);
+    } finally {
+      restore();
+    }
+  });
+
+  it("with an analyser silence still flatlines every bar", () => {
+    const { step, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(128)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      const bars = screen.getAllByTestId("shell-home-pill-wave-bar");
+      for (const bar of bars) {
+        expect(bar.className).not.toContain("home-pill-wave-bar");
+        expect(bar.dataset.live).toBe("true");
+        expect(bar.style.animationDelay).toBe("");
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("live audio lifts the bars above the flatline each frame", () => {
+    const { step, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        const scale = Number.parseFloat(
+          bar.style.transform.replace(/scaleY\(|\)/g, ""),
+        );
+        expect(scale).toBeGreaterThan(0.14);
+        expect(scale).toBeLessThanOrEqual(1);
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("losing the analyser mid-listen returns the bars to the flatline (device loss)", () => {
+    const { step, restore } = stubRaf();
+    try {
+      const { rerender } = render(
+        <HomePill
+          phase="listening"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      step();
+      rerender(
+        <HomePill
+          phase="listening"
+          analyser={null}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      for (const bar of screen.getAllByTestId("shell-home-pill-wave-bar")) {
+        expect(bar.dataset.live).toBeUndefined();
+        expect(bar.style.transform).toBe("scaleY(0.14)");
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("outside listening the analyser drives nothing (no rAF loop)", () => {
+    const { framesRequested, restore } = stubRaf();
+    try {
+      render(
+        <HomePill
+          phase="responding"
+          analyser={fakeAnalyser(255)}
+          onOpen={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      expect(framesRequested()).toBe(0);
+      expect(screen.queryAllByTestId("shell-home-pill-wave-bar")).toHaveLength(
+        0,
+      );
+    } finally {
+      restore();
+    }
   });
 });
