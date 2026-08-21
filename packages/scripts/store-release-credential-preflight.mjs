@@ -7,13 +7,19 @@
  * Default operation is offline: it prints the authored credential contract and
  * verifies it still matches the names the shipped workflows reference, which is
  * the drift guard for `.github/workflows/{snap,store-mobile,store-windows}`.
- * `--audit` additionally reads the live environment through `gh api` and lists
- * the names that a repository owner still has to provision. The GitHub API
- * never returns secret values, and this script only ever compares names, so a
- * `--audit` run is safe to paste into an issue.
+ * `--audit` additionally reads the live environment through `gh api`: the name
+ * inventory an owner still has to provision, the resolved required-reviewer
+ * principals, `prevent_self_review`, and the custom deployment branch/tag
+ * policy patterns, all validated against `RELEASE_ENVIRONMENT_POLICY`. A
+ * setting the API cannot prove is a blocker, never a pass. The GitHub API
+ * never returns secret values, and this script only ever compares names and
+ * policy metadata, so a `--audit` transcript is safe to paste into an issue.
+ * Name presence cannot prove a credential value is valid; that proof comes
+ * only from a real protected store publish.
  *
  * Exit codes: 0 ready, 1 contract drift or unreadable live state, 2 the live
- * environment is not yet fully provisioned.
+ * environment is not provisioned or its protection policy is unproven or
+ * violates the contract.
  */
 
 import { spawnSync } from "node:child_process";
@@ -77,18 +83,53 @@ function readLiveEnvironment() {
         environmentExists: false,
         secretNames: [],
         variableNames: [],
-        hasRequiredReviewers: false,
-        hasBranchPolicy: false,
+        reviewers: [],
+        preventSelfReview: null,
+        branchPolicy: undefined,
+        branchPolicyPatterns: null,
       };
     }
     return { error: environment.error };
   }
 
   const rules = environment.body.protection_rules ?? [];
-  const hasRequiredReviewers = rules.some(
-    (rule) => rule.type === "required_reviewers",
-  );
-  const hasBranchPolicy = Boolean(environment.body.deployment_branch_policy);
+  const reviewerRule = rules.find((rule) => rule.type === "required_reviewers");
+  // An absent rule is an empty reviewer list (a definite blocker); a present
+  // rule whose principals cannot be resolved stays null so the evaluation
+  // reports unreadable state instead of a healthy-looking empty list.
+  let reviewers = [];
+  if (reviewerRule) {
+    const resolved = (reviewerRule.reviewers ?? []).map((entry) => ({
+      type: entry.type ?? "unknown",
+      login: entry.reviewer?.login ?? entry.reviewer?.slug ?? null,
+    }));
+    reviewers = resolved.some((entry) => entry.login === null)
+      ? null
+      : resolved;
+  }
+  const preventSelfReview =
+    typeof reviewerRule?.prevent_self_review === "boolean"
+      ? reviewerRule.prevent_self_review
+      : null;
+
+  const rawBranchPolicy = environment.body.deployment_branch_policy;
+  const branchPolicy = rawBranchPolicy
+    ? {
+        protectedBranches: Boolean(rawBranchPolicy.protected_branches),
+        customBranchPolicies: Boolean(rawBranchPolicy.custom_branch_policies),
+      }
+    : null;
+
+  let branchPolicyPatterns = null;
+  if (branchPolicy?.customBranchPolicies) {
+    const policies = gh(
+      `repos/${slug}/environments/${RELEASE_ENVIRONMENT}/deployment-branch-policies?per_page=100`,
+    );
+    if (!policies.ok) return { error: policies.error };
+    branchPolicyPatterns = (policies.body.branch_policies ?? []).map(
+      (entry) => ({ name: entry.name, type: entry.type ?? "branch" }),
+    );
+  }
 
   const secrets = gh(
     `repos/${slug}/environments/${RELEASE_ENVIRONMENT}/secrets?per_page=100`,
@@ -103,8 +144,10 @@ function readLiveEnvironment() {
     environmentExists: true,
     secretNames: (secrets.body.secrets ?? []).map((entry) => entry.name),
     variableNames: (variables.body.variables ?? []).map((entry) => entry.name),
-    hasRequiredReviewers,
-    hasBranchPolicy,
+    reviewers,
+    preventSelfReview,
+    branchPolicy,
+    branchPolicyPatterns,
   };
 }
 
@@ -144,8 +187,10 @@ if (auditLive) {
     const readiness = evaluateEnvironmentReadiness(live);
     report.live = {
       environmentExists: live.environmentExists,
-      hasRequiredReviewers: live.hasRequiredReviewers,
-      hasBranchPolicy: live.hasBranchPolicy,
+      reviewers: live.reviewers,
+      preventSelfReview: live.preventSelfReview,
+      branchPolicy: live.branchPolicy,
+      branchPolicyPatterns: live.branchPolicyPatterns,
       ...readiness,
     };
     if (!readiness.ready && exitCode === 0) exitCode = 2;
@@ -188,9 +233,47 @@ if (jsonOutput) {
   } else if (report.live) {
     lines.push(
       "",
-      report.live.ready ? "Live audit: READY" : "Live audit: NOT PROVISIONED",
+      report.live.ready ? "Live audit: READY" : "Live audit: NOT READY",
     );
+    if (report.live.environmentExists) {
+      const reviewers = report.live.reviewers;
+      lines.push(
+        `  reviewers:           ${
+          reviewers === null
+            ? "(unreadable)"
+            : reviewers.length
+              ? reviewers
+                  .map((entry) => `${entry.login} (${entry.type})`)
+                  .join(", ")
+              : "(none)"
+        }`,
+      );
+      lines.push(
+        `  prevent self-review: ${report.live.preventSelfReview ?? "(unreadable)"}`,
+      );
+      const patterns = report.live.branchPolicyPatterns;
+      lines.push(
+        `  deployment policy:   ${
+          report.live.branchPolicy === undefined
+            ? "(unreadable)"
+            : report.live.branchPolicy === null
+              ? "any branch"
+              : report.live.branchPolicy.protectedBranches
+                ? "protected branches only"
+                : patterns === null
+                  ? "custom (patterns unreadable)"
+                  : `custom: ${
+                      patterns.length
+                        ? patterns
+                            .map((entry) => `${entry.type} ${entry.name}`)
+                            .join(", ")
+                        : "(no patterns)"
+                    }`
+        }`,
+      );
+    }
     for (const blocker of report.live.blockers) lines.push(`  - ${blocker}`);
+    lines.push(`  note: ${report.live.caveat}`);
   }
 
   process.stdout.write(`${lines.join("\n")}\n`);

@@ -26,6 +26,33 @@ export const NON_CREDENTIAL_VARIABLES = Object.freeze([
 ]);
 
 /**
+ * Repo-owned policy contract for the protected environment itself, checked by
+ * the live audit alongside the name inventory. Deployments to
+ * `production-release` legitimately originate from exactly two refs:
+ * `release.yaml` enforces that the canonical release transaction (and the
+ * reusable store legs it calls) runs on `refs/heads/develop`, and
+ * `release-electrobun.yml` runs on the pushed `v*` release tag. The
+ * environment's deployment policy must therefore use custom branch policies
+ * admitting exactly those two patterns — protected-branches-only, any-branch,
+ * and any additional pattern all violate the contract.
+ *
+ * `authorizedReviewers` is the allowlist of GitHub principals (user logins or
+ * `org/team` slugs) permitted to approve a production-release deployment. It
+ * is deliberately empty until a repository owner verifies and commits the
+ * list; while it is empty the live audit reports the resolved reviewer
+ * principals as an owner-verification blocker instead of READY, so an
+ * arbitrary reviewer can never satisfy the gate by existing.
+ */
+export const RELEASE_ENVIRONMENT_POLICY = Object.freeze({
+  deploymentRefs: Object.freeze([
+    Object.freeze({ type: "branch", name: "develop" }),
+    Object.freeze({ type: "tag", name: "v*" }),
+  ]),
+  preventSelfReview: true,
+  authorizedReviewers: Object.freeze([]),
+});
+
+/**
  * @typedef {object} StoreLane
  * @property {string} id Stable lane identifier used by the CLI and tests.
  * @property {string} provider Human name of the publisher portal.
@@ -217,16 +244,130 @@ export function auditWorkflowCoverage(workflowSources) {
 }
 
 /**
- * Reduce a live environment name inventory to the per-lane provisioning state.
+ * Evaluate the protection-rule and deployment-branch-policy details of the
+ * live environment against {@link RELEASE_ENVIRONMENT_POLICY}. Every setting
+ * the API could not prove (`null`) is a blocker, never a pass: the audit fails
+ * closed on unreadable state.
+ *
+ * @param {object} live See {@link evaluateEnvironmentReadiness}.
+ * @param {typeof RELEASE_ENVIRONMENT_POLICY} policy
+ * @returns {string[]} Policy blockers, empty when the policy is proven.
+ */
+function evaluatePolicy(live, policy) {
+  const blockers = [];
+
+  if (live.reviewers === null || live.reviewers === undefined) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT}: required reviewers could not be read; owner verification required.`,
+    );
+  } else if (live.reviewers.length === 0) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT} has no required reviewers.`,
+    );
+  } else if (policy.authorizedReviewers.length === 0) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT}: reviewer allowlist is empty in the contract; an owner must verify [${live.reviewers
+        .map((reviewer) => reviewer.login)
+        .join(", ")}] and commit RELEASE_ENVIRONMENT_POLICY.authorizedReviewers.`,
+    );
+  } else {
+    for (const reviewer of live.reviewers) {
+      if (!policy.authorizedReviewers.includes(reviewer.login)) {
+        blockers.push(
+          `Environment ${RELEASE_ENVIRONMENT}: reviewer ${reviewer.login} is not in the authorized reviewer allowlist.`,
+        );
+      }
+    }
+  }
+
+  if (live.preventSelfReview === null || live.preventSelfReview === undefined) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT}: prevent_self_review could not be read; owner verification required.`,
+    );
+  } else if (policy.preventSelfReview && live.preventSelfReview !== true) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT} does not prevent self-review of deployments.`,
+    );
+  }
+
+  const branchPolicy = live.branchPolicy;
+  if (branchPolicy === undefined) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT}: deployment branch policy could not be read; owner verification required.`,
+    );
+    return blockers;
+  }
+  if (branchPolicy === null) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT} admits deployments from any branch; restrict it to the canonical release ref.`,
+    );
+    return blockers;
+  }
+  if (branchPolicy.protectedBranches || !branchPolicy.customBranchPolicies) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT} uses a protected-branches-only deployment policy; the contract requires custom branch policies admitting only the canonical release ref.`,
+    );
+    return blockers;
+  }
+
+  const patterns = live.branchPolicyPatterns;
+  if (patterns === null || patterns === undefined) {
+    blockers.push(
+      `Environment ${RELEASE_ENVIRONMENT}: custom deployment branch policies could not be read; owner verification required.`,
+    );
+    return blockers;
+  }
+  const admits = (ref) =>
+    patterns.some(
+      (pattern) => pattern.type === ref.type && pattern.name === ref.name,
+    );
+  for (const ref of policy.deploymentRefs) {
+    if (!admits(ref)) {
+      blockers.push(
+        `Environment ${RELEASE_ENVIRONMENT}: deployment policy does not admit the canonical release ref ${ref.type} ${ref.name}.`,
+      );
+    }
+  }
+  const canonical = (pattern) =>
+    policy.deploymentRefs.some(
+      (ref) => ref.type === pattern.type && ref.name === pattern.name,
+    );
+  for (const pattern of patterns) {
+    if (!canonical(pattern)) {
+      blockers.push(
+        `Environment ${RELEASE_ENVIRONMENT}: deployment policy admits noncanonical ${pattern.type} pattern ${pattern.name}.`,
+      );
+    }
+  }
+  return blockers;
+}
+
+/**
+ * Reduce a live environment inspection to the per-lane provisioning state and
+ * the policy blockers. Name presence proves provisioning only; it cannot prove
+ * a credential value is nonempty, current, or bound to the right provider
+ * identity — that proof comes from a real protected store publish, and the
+ * returned `caveat` states so.
  *
  * @param {object} live
  * @param {boolean} live.environmentExists Whether `production-release` exists.
  * @param {string[]} live.secretNames Secret names present in the environment.
  * @param {string[]} live.variableNames Variable names present in the environment.
- * @param {boolean} [live.hasRequiredReviewers] Whether reviewers are configured.
- * @param {boolean} [live.hasBranchPolicy] Whether a deployment branch/tag policy is set.
+ * @param {{ login: string, type: string }[] | null} [live.reviewers] Resolved
+ *   required-reviewer principals, or null when unreadable.
+ * @param {boolean | null} [live.preventSelfReview] Whether self-review is
+ *   prevented, or null when unreadable.
+ * @param {{ protectedBranches: boolean, customBranchPolicies: boolean } | null} [live.branchPolicy]
+ *   The deployment branch policy object, null when the environment admits any
+ *   branch, undefined when unreadable.
+ * @param {{ name: string, type: string }[] | null} [live.branchPolicyPatterns]
+ *   Resolved custom branch/tag policy patterns, or null when unreadable.
+ * @param {typeof RELEASE_ENVIRONMENT_POLICY} [policy]
  */
-export function evaluateEnvironmentReadiness(live) {
+export function evaluateEnvironmentReadiness(
+  live,
+  policy = RELEASE_ENVIRONMENT_POLICY,
+) {
   const secretNames = new Set(live.secretNames ?? []);
   const variableNames = new Set(live.variableNames ?? []);
 
@@ -255,16 +396,7 @@ export function evaluateEnvironmentReadiness(live) {
       `Environment ${RELEASE_ENVIRONMENT} does not exist; every store job would be blocked at deployment.`,
     );
   } else {
-    if (live.hasRequiredReviewers === false) {
-      blockers.push(
-        `Environment ${RELEASE_ENVIRONMENT} has no required reviewers.`,
-      );
-    }
-    if (live.hasBranchPolicy === false) {
-      blockers.push(
-        `Environment ${RELEASE_ENVIRONMENT} has no deployment branch/tag policy.`,
-      );
-    }
+    blockers.push(...evaluatePolicy(live, policy));
   }
   for (const lane of lanes) {
     for (const name of lane.missingSecrets) {
@@ -275,5 +407,11 @@ export function evaluateEnvironmentReadiness(live) {
     }
   }
 
-  return { ready: blockers.length === 0, lanes, blockers };
+  return {
+    ready: blockers.length === 0,
+    lanes,
+    blockers,
+    caveat:
+      "Name and policy inventory only: credential validity is proven exclusively by a real protected store publish.",
+  };
 }

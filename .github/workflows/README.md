@@ -169,11 +169,21 @@ Representative examples:
   `bun run release:store-credentials` prints it and fails on drift between the
   contract and the names these workflows reference.
   `bun run release:store-credentials:audit` additionally reads the live
-  `production-release` environment through `gh api` and lists what a repository
-  owner still has to provision. Both operations compare names only; the GitHub
-  API never exposes secret values and the preflight never reads, prints, or
-  stores one. Exit codes are `0` ready, `1` contract drift or unreadable live
-  state, `2` live environment not yet provisioned.
+  `production-release` environment through `gh api`: the credential-name
+  inventory a repository owner still has to provision, plus the resolved
+  required-reviewer principals, `prevent_self_review`, and the custom
+  deployment branch/tag policy patterns, validated against the repo-owned
+  `RELEASE_ENVIRONMENT_POLICY` (reviewer allowlist, self-review prevention,
+  and only the `develop` branch and `v*` tag deployment patterns). Any
+  protection setting the API cannot prove is reported as an owner-verification
+  blocker, never a pass, and the reviewer allowlist ships empty so the audit
+  cannot report READY until an owner verifies and commits it. Both operations
+  compare names and policy metadata only; the GitHub API never exposes secret
+  values and the preflight never reads, prints, or stores one. Name presence
+  cannot prove a credential value is valid — only a real protected store
+  publish proves that. Exit codes are `0` ready, `1` contract drift or
+  unreadable live state, `2` live environment not provisioned or its
+  protection policy unproven or in violation.
 
   Creating `production-release`, selecting its required reviewers and
   deployment branch/tag policy, and adding any credential are owner-only

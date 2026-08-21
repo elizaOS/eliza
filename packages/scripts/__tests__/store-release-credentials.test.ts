@@ -14,6 +14,7 @@ import {
   extractWorkflowReferences,
   NON_CREDENTIAL_VARIABLES,
   RELEASE_ENVIRONMENT,
+  RELEASE_ENVIRONMENT_POLICY,
   requiredSecretNames,
   requiredVariableNames,
   STORE_LANES,
@@ -100,19 +101,45 @@ describe("store release credential contract", () => {
 });
 
 describe("environment readiness evaluation", () => {
+  const canonicalPatterns = RELEASE_ENVIRONMENT_POLICY.deploymentRefs.map(
+    (ref) => ({ ...ref }),
+  );
+  const allowlistedPolicy = {
+    ...RELEASE_ENVIRONMENT_POLICY,
+    authorizedReviewers: ["release-owner"],
+  };
   const fullyProvisioned = {
     environmentExists: true,
     secretNames: requiredSecretNames(),
     variableNames: requiredVariableNames(),
-    hasRequiredReviewers: true,
-    hasBranchPolicy: true,
+    reviewers: [{ login: "release-owner", type: "User" }],
+    preventSelfReview: true,
+    branchPolicy: { protectedBranches: false, customBranchPolicies: true },
+    branchPolicyPatterns: canonicalPatterns,
   };
 
-  test("is ready only when every lane name is present and the gates are set", () => {
-    const readiness = evaluateEnvironmentReadiness(fullyProvisioned);
+  test("is ready only when names, allowlisted reviewers, self-review prevention, and the canonical deployment policy are all proven", () => {
+    const readiness = evaluateEnvironmentReadiness(
+      fullyProvisioned,
+      allowlistedPolicy,
+    );
     expect(readiness.ready).toBe(true);
     expect(readiness.blockers).toEqual([]);
     expect(readiness.lanes.every((lane) => lane.ready)).toBe(true);
+    expect(readiness.caveat).toContain("real protected store publish");
+  });
+
+  test("ships with an empty reviewer allowlist that blocks READY pending owner verification", () => {
+    expect(RELEASE_ENVIRONMENT_POLICY.authorizedReviewers).toEqual([]);
+    const readiness = evaluateEnvironmentReadiness(fullyProvisioned);
+    expect(readiness.ready).toBe(false);
+    expect(
+      readiness.blockers.some(
+        (blocker) =>
+          blocker.includes("reviewer allowlist is empty") &&
+          blocker.includes("release-owner"),
+      ),
+    ).toBe(true);
   });
 
   test("blocks everything when the environment does not exist", () => {
@@ -127,15 +154,18 @@ describe("environment readiness evaluation", () => {
   });
 
   test("names each missing credential per provider without values", () => {
-    const readiness = evaluateEnvironmentReadiness({
-      ...fullyProvisioned,
-      secretNames: fullyProvisioned.secretNames.filter(
-        (name) => name !== "PLAY_STORE_SERVICE_ACCOUNT_JSON",
-      ),
-      variableNames: fullyProvisioned.variableNames.filter(
-        (name) => name !== "MICROSOFT_STORE_APPLICATION_ID",
-      ),
-    });
+    const readiness = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        secretNames: fullyProvisioned.secretNames.filter(
+          (name) => name !== "PLAY_STORE_SERVICE_ACCOUNT_JSON",
+        ),
+        variableNames: fullyProvisioned.variableNames.filter(
+          (name) => name !== "MICROSOFT_STORE_APPLICATION_ID",
+        ),
+      },
+      allowlistedPolicy,
+    );
     expect(readiness.ready).toBe(false);
     const play = readiness.lanes.find((lane) => lane.id === "google-play");
     expect(play?.missingSecrets).toEqual(["PLAY_STORE_SERVICE_ACCOUNT_JSON"]);
@@ -148,18 +178,131 @@ describe("environment readiness evaluation", () => {
     );
   });
 
-  test("flags a protected environment that lost its reviewers or branch policy", () => {
-    const readiness = evaluateEnvironmentReadiness({
-      ...fullyProvisioned,
-      hasRequiredReviewers: false,
-      hasBranchPolicy: false,
-    });
+  test("rejects a reviewer outside the authorized allowlist", () => {
+    const readiness = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        reviewers: [
+          { login: "release-owner", type: "User" },
+          { login: "mallory", type: "User" },
+        ],
+      },
+      allowlistedPolicy,
+    );
     expect(readiness.ready).toBe(false);
     expect(readiness.blockers).toContain(
+      `Environment ${RELEASE_ENVIRONMENT}: reviewer mallory is not in the authorized reviewer allowlist.`,
+    );
+  });
+
+  test("rejects an environment with no reviewers or with self-review enabled", () => {
+    const noReviewers = evaluateEnvironmentReadiness(
+      { ...fullyProvisioned, reviewers: [] },
+      allowlistedPolicy,
+    );
+    expect(noReviewers.ready).toBe(false);
+    expect(noReviewers.blockers).toContain(
       `Environment ${RELEASE_ENVIRONMENT} has no required reviewers.`,
     );
-    expect(readiness.blockers).toContain(
-      `Environment ${RELEASE_ENVIRONMENT} has no deployment branch/tag policy.`,
+
+    const selfReview = evaluateEnvironmentReadiness(
+      { ...fullyProvisioned, preventSelfReview: false },
+      allowlistedPolicy,
     );
+    expect(selfReview.ready).toBe(false);
+    expect(selfReview.blockers).toContain(
+      `Environment ${RELEASE_ENVIRONMENT} does not prevent self-review of deployments.`,
+    );
+  });
+
+  test("rejects any-branch and protected-branches-only deployment policies", () => {
+    const anyBranch = evaluateEnvironmentReadiness(
+      { ...fullyProvisioned, branchPolicy: null, branchPolicyPatterns: null },
+      allowlistedPolicy,
+    );
+    expect(anyBranch.ready).toBe(false);
+    expect(
+      anyBranch.blockers.some((blocker) =>
+        blocker.includes("admits deployments from any branch"),
+      ),
+    ).toBe(true);
+
+    const protectedOnly = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        branchPolicy: { protectedBranches: true, customBranchPolicies: false },
+        branchPolicyPatterns: null,
+      },
+      allowlistedPolicy,
+    );
+    expect(protectedOnly.ready).toBe(false);
+    expect(
+      protectedOnly.blockers.some((blocker) =>
+        blocker.includes("protected-branches-only"),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects a policy that admits a noncanonical ref or misses the canonical one", () => {
+    const noncanonical = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        branchPolicyPatterns: [
+          ...canonicalPatterns,
+          { name: "*", type: "tag" },
+        ],
+      },
+      allowlistedPolicy,
+    );
+    expect(noncanonical.ready).toBe(false);
+    expect(noncanonical.blockers).toContain(
+      `Environment ${RELEASE_ENVIRONMENT}: deployment policy admits noncanonical tag pattern *.`,
+    );
+
+    const missingCanonical = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        branchPolicyPatterns: [{ name: "main", type: "branch" }],
+      },
+      allowlistedPolicy,
+    );
+    expect(missingCanonical.ready).toBe(false);
+    expect(
+      missingCanonical.blockers.some((blocker) =>
+        blocker.includes("does not admit the canonical release ref"),
+      ),
+    ).toBe(true);
+  });
+
+  test("treats unreadable protection settings as blockers, never as passes", () => {
+    const readiness = evaluateEnvironmentReadiness(
+      {
+        ...fullyProvisioned,
+        reviewers: null,
+        preventSelfReview: null,
+        branchPolicy: undefined,
+        branchPolicyPatterns: null,
+      },
+      allowlistedPolicy,
+    );
+    expect(readiness.ready).toBe(false);
+    expect(
+      readiness.blockers.filter((blocker) =>
+        blocker.includes("owner verification required"),
+      ).length,
+    ).toBe(3);
+  });
+
+  test("treats unreadable custom policy patterns as a blocker", () => {
+    const readiness = evaluateEnvironmentReadiness(
+      { ...fullyProvisioned, branchPolicyPatterns: null },
+      allowlistedPolicy,
+    );
+    expect(readiness.ready).toBe(false);
+    expect(
+      readiness.blockers.some((blocker) =>
+        blocker.includes("custom deployment branch policies could not be read"),
+      ),
+    ).toBe(true);
   });
 });
