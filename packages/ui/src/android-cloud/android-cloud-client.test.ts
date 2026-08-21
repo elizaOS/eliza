@@ -233,4 +233,50 @@ describe("AndroidCloudClient", () => {
       }),
     );
   });
+
+  // A staging build must send users to the staging login: the session was
+  // minted against the staging API, and production cannot claim it.
+  it("pairs the sign-in origin with the API the session was minted against", async () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(SESSION_ID);
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json(200, { sessionId: SESSION_ID }));
+    const client = new AndroidCloudClient({
+      fetchImpl,
+      cloudApiBase: "https://api-staging.eliza.app",
+    });
+
+    const attempt = await client.beginLogin();
+
+    expect(attempt.browserUrl).toBe(
+      `https://cloud-staging.eliza.app/auth/cli-login?session=${SESSION_ID}`,
+    );
+  });
+
+  // A body that is present but unparsable is a broken endpoint, not "no
+  // session yet". Collapsing it to {} made pollLogin spin its full timeout.
+  it("reports an unreadable response instead of reading it as pending", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("<html>gateway error</html>", {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const client = new AndroidCloudClient({ fetchImpl });
+
+    await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
+      /could not be read/,
+    );
+  });
+
+  it("treats a genuinely empty body as empty rather than unreadable", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response("", { status: 200 }));
+    const client = new AndroidCloudClient({ fetchImpl });
+
+    await expect(client.pollLogin(SESSION_ID)).resolves.toEqual({
+      status: "pending",
+    });
+  });
 });

@@ -22,6 +22,18 @@ export const STAGING_DIRECT_CLOUD_APP_BASE_URL =
 export const STAGING_DIRECT_CLOUD_API_BASE_URL =
   ELIZA_DOMAIN_CONTRACTS.staging.cloudApiOrigin;
 
+/**
+ * The app origin that pairs with a resolved canonical API origin. Sign-in has
+ * to land on the app for the environment the session was minted against — a
+ * staging build sending users to the production login mints a session on
+ * staging that production cannot claim, so the flow fails with no useful error.
+ */
+export function directCloudAppBaseForApi(apiBaseUrl: string): string {
+  return apiBaseUrl === STAGING_DIRECT_CLOUD_API_BASE_URL
+    ? STAGING_DIRECT_CLOUD_APP_BASE_URL
+    : DEFAULT_DIRECT_CLOUD_APP_BASE_URL;
+}
+
 export const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["api.eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["eliza.app", DEFAULT_DIRECT_CLOUD_API_BASE_URL],

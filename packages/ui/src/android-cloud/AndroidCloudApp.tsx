@@ -40,7 +40,16 @@ function errorMessage(error: unknown): string {
 
 function defaultExternalOpen(url: string): void {
   const opened = window.open(url, "_system", "noopener,noreferrer");
-  if (!opened) window.location.assign(url);
+  if (!opened) {
+    // Deliberately NOT window.location.assign(url). That would load the Cloud
+    // sign-in page inside this app's own WebView, putting a credential-entry
+    // form on a surface the app controls and can read — which is exactly what
+    // opening in "_system" exists to avoid. Failing here surfaces a real error
+    // instead of silently downgrading to the unsafe path.
+    throw new Error(
+      "Unable to open the browser for sign-in. Check that a browser is installed and try again.",
+    );
+  }
 }
 
 export function AndroidCloudApp({

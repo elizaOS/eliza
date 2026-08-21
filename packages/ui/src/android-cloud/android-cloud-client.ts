@@ -13,7 +13,7 @@ import {
   writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import {
-  DEFAULT_DIRECT_CLOUD_APP_BASE_URL,
+  directCloudAppBaseForApi,
   resolveCanonicalDirectCloudApiBase,
 } from "../api/direct-cloud-endpoints";
 
@@ -67,7 +67,23 @@ function stringField(value: unknown): string | null {
 }
 
 async function responseJson(response: Response): Promise<JsonRecord> {
-  return record(await response.json().catch(() => null)) ?? {};
+  const text = await response.text();
+  // An empty body is legitimate (204, and some error responses); a body that
+  // is present but unparsable is a broken endpoint. Collapsing both to {} made
+  // a malformed 200 look like "no session yet", so pollLogin spun for its full
+  // ten minutes instead of reporting that Cloud returned something unusable.
+  if (text.trim().length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    // error-policy:J3 untrusted response body — an explicit failure, never a
+    // fabricated empty record that reads as a valid-but-pending answer.
+    throw new Error("Eliza Cloud returned a response that could not be read.", {
+      cause: error,
+    });
+  }
+  return record(parsed) ?? {};
 }
 
 function responseError(body: JsonRecord, fallback: string): string {
@@ -197,7 +213,13 @@ export class AndroidCloudClient {
     if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
       throw new Error("Eliza Cloud returned an invalid sign-in session.");
     }
-    const url = new URL("/auth/cli-login", DEFAULT_DIRECT_CLOUD_APP_BASE_URL);
+    // Pair the login origin with the API the session was minted against: a
+    // staging build must not send users to the production login, where the
+    // session it just created does not exist.
+    const url = new URL(
+      "/auth/cli-login",
+      directCloudAppBaseForApi(this.apiBase),
+    );
     url.searchParams.set("session", sessionId);
     return { sessionId, browserUrl: url.toString() };
   }
