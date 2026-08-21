@@ -75,6 +75,7 @@ describe("managed payment clients", () => {
       if (url.endsWith("/exchange")) {
         return Response.json({
           connectionId: "11111111-1111-4111-8111-111111111111",
+          connectionCreated: true,
           environment: "sandbox",
           institution: {
             institutionId: "ins-1",
