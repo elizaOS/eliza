@@ -9,6 +9,8 @@
  * no-ops as unavailable when the plugin is not loaded; `accountId` is carried
  * on each `MessageRef` via `worldId` so triage stays multi-account.
  */
+
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   type DraftRequest,
@@ -47,7 +49,10 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  const wellFormedValue = toWellFormedUnicode(value);
+  return wellFormedValue.length > maxLength
+    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
+    : wellFormedValue;
 }
 
 function refId(messageId: string): string {

@@ -194,10 +194,10 @@ describe("linkExtractionEvaluator", () => {
 		);
 	});
 
-	it("decodes title entities once and strips script/style tags with malformed closers", async () => {
+	it("decodes title entities once and strips browser-tokenized raw-text tags", async () => {
 		stubPreviewFetch(
 			makeFetchResponse(
-				'<title>&amp;lt;literal&amp;gt;</title><body>safe<script>steal()</script \t\n bar><style>hidden{}</style data-x="1"></body>',
+				"<title>&amp;lt;literal&amp;gt;</title><body>safe<script>steal()</sCrIpT data-x=1><style>hidden{}</style/ignored><p>after</p><script>unclosed",
 			),
 		);
 		const runtime = makeRuntime(async (_modelType, params) => {
@@ -206,6 +206,8 @@ describe("linkExtractionEvaluator", () => {
 			expect(prompt).toContain("safe");
 			expect(prompt).not.toContain("steal()");
 			expect(prompt).not.toContain("hidden{}");
+			expect(prompt).not.toContain("unclosed");
+			expect(prompt).toContain("after");
 			return "summary";
 		});
 		const context = {

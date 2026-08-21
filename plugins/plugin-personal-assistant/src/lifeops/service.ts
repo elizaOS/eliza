@@ -1584,7 +1584,11 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   runWorkflow(
     workflowId: string,
-    request: { now?: string; confirmBrowserActions?: boolean } = {},
+    request: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<LifeOpsWorkflowRun> {
     return this.workflowsDomain.runWorkflow(workflowId, request);
   }

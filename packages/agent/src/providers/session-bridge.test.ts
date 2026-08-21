@@ -10,7 +10,7 @@ vi.mock("@elizaos/core", () => {
     DM: "dm",
     SELF: "self",
     GROUP: "group",
-    CHANNEL: "channel",
+    FEED: "feed",
   };
   return {
     ChannelType,
@@ -75,9 +75,9 @@ describe("resolveSessionKeyFromRoom", () => {
     ).toBe("agent:a1:discord:group:real-group");
   });
 
-  it("maps a channel room to agent:{id}:{channel}:channel:{channelId}", () => {
+  it("maps a feed room to agent:{id}:{channel}:channel:{channelId}", () => {
     const room = makeRoom({
-      type: ChannelType.CHANNEL,
+      type: ChannelType.FEED,
       source: "slack",
       channelId: "c-42",
     });

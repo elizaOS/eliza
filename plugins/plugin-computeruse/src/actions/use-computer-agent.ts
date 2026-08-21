@@ -32,6 +32,8 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   type AgentMiddleware,
@@ -478,11 +480,11 @@ function errorMessage(err: unknown): string {
 }
 
 function truncateForStatus(value: string, maxLength = 180): string {
-  const compact = value.replace(/\s+/g, " ").trim();
+  const compact = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
   if (compact.length <= maxLength) {
     return compact;
   }
-  return `${compact.slice(0, maxLength - 3)}...`;
+  return `${truncateWellFormed(compact, maxLength - 3)}...`;
 }
 
 export const computerUseAgentAction: Action = {

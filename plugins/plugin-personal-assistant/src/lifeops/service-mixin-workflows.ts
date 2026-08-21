@@ -25,6 +25,11 @@ export interface LifeOpsWorkflowService {
   ): Promise<LifeOpsWorkflowRecord>;
   runWorkflow(
     workflowId: string,
-    request?: { now?: string; confirmBrowserActions?: boolean },
+    request?: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      /** Replay guard: a repeated call with the same key returns the prior run. */
+      idempotencyKey?: string;
+    },
   ): Promise<LifeOpsWorkflowRun>;
 }

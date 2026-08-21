@@ -87,6 +87,7 @@
     "test:live": "bun run test:e2e"
   },
   "dependencies": {
+    "@noble/hashes": "2.2.0",
     "@electric-sql/client": "1.0.14",
     "@electric-sql/experimental": "1.0.14",
     "@electric-sql/pglite": "^0.4.0",

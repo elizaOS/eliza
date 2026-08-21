@@ -22,6 +22,7 @@ import type {
 	Memory,
 } from "../../../types/index.ts";
 import { asUUID, MemoryType, ModelType } from "../../../types/index.ts";
+import { stripHtmlRawTextElements } from "../../../utils/html-raw-text.ts";
 import { truncateWellFormed } from "../../../utils/well-formed.ts";
 
 const EVALUATOR_NAME = "linkExtraction";
@@ -143,9 +144,7 @@ function decodeHtmlEntities(value: string): string {
 }
 
 function stripTags(html: string): string {
-	return html
-		.replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
-		.replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
+	return stripHtmlRawTextElements(html)
 		.replace(/<[^>]+>/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();

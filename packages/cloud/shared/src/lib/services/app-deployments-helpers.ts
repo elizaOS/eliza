@@ -58,7 +58,7 @@ export function deploymentIdFor(app: {
  * Greptile flagged on PR #7804.
  */
 export function assertDeployable(app: { deployment_status: AppDeploymentStatus }): void {
-  if (app.deployment_status === "building") {
+  if (app.deployment_status === "building" || app.deployment_status === "deploying") {
     throw new ApiError(
       409,
       "session_not_ready",

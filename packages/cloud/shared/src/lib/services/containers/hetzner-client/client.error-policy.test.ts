@@ -27,6 +27,12 @@ const deleteRow = mock(async (_id: string, _org: string): Promise<void> => {});
 const tryReleaseNodeSlot = mock(async (): Promise<void> => {});
 const updateRow = mock(async (): Promise<unknown> => null);
 const updateStatus = mock(async (): Promise<void> => {});
+const createWithProjectIntentAndQuotaCheck = mock(
+  async (): Promise<unknown> => ({
+    container: ROW,
+    created: false,
+  }),
+);
 
 const readMetadata = mock((_row: unknown): unknown => null);
 
@@ -34,6 +40,13 @@ const execMock = mock(async (_cmd: string, _timeout?: number): Promise<string> =
 const fakeSsh = { exec: execMock, execStream: mock(async () => {}) };
 const getClient = mock(() => fakeSsh);
 const findByNodeId = mock(async (_id: string): Promise<unknown> => null);
+const getOrCreateProjectVolume = mock(
+  async (): Promise<unknown> => ({
+    id: 11,
+    location: { name: "fsn1" },
+  }),
+);
+let volumesAvailable = false;
 
 mock.module("../../../../db/repositories/containers", () => ({
   ...realContainersRepo,
@@ -45,6 +58,7 @@ mock.module("../../../../db/repositories/containers", () => ({
     tryReleaseNodeSlot,
     update: updateRow,
     updateStatus,
+    createWithProjectIntentAndQuotaCheck,
   },
 }));
 
@@ -58,8 +72,8 @@ mock.module("../../../../db/repositories/docker-nodes", () => ({
 
 mock.module("../hetzner-volumes", () => ({
   ...realHetznerVolumes,
-  isHetznerVolumesAvailable: () => false,
-  getHetznerVolumeService: () => ({}),
+  isHetznerVolumesAvailable: () => volumesAvailable,
+  getHetznerVolumeService: () => ({ getOrCreateProjectVolume }),
 }));
 
 mock.module("../../docker-ssh", () => ({
@@ -86,9 +100,17 @@ const META = {
 
 const ROW = {
   id: "ct1",
+  name: "existing",
+  project_name: "project-one",
   organization_id: "org1",
   hcloud_volume_id: null,
   lifecycle_revision: 7,
+  status: "running",
+  load_balancer_url: "https://existing.example",
+  metadata: META,
+  error_message: null,
+  created_at: new Date("2026-08-20T12:00:00.000Z"),
+  updated_at: new Date("2026-08-20T12:00:00.000Z"),
 };
 
 afterAll(() => {
@@ -107,10 +129,12 @@ beforeEach(() => {
     tryReleaseNodeSlot,
     updateRow,
     updateStatus,
+    createWithProjectIntentAndQuotaCheck,
     readMetadata,
     execMock,
     getClient,
     findByNodeId,
+    getOrCreateProjectVolume,
   ]) {
     m.mockReset();
   }
@@ -120,10 +144,70 @@ beforeEach(() => {
   tryReleaseNodeSlot.mockResolvedValue(undefined);
   updateRow.mockResolvedValue(null);
   updateStatus.mockResolvedValue(undefined);
+  createWithProjectIntentAndQuotaCheck.mockResolvedValue({
+    container: ROW,
+    created: false,
+  });
   readMetadata.mockReturnValue(META);
   execMock.mockResolvedValue("");
   getClient.mockReturnValue(fakeSsh);
   findByNodeId.mockResolvedValue(null);
+  getOrCreateProjectVolume.mockResolvedValue({ id: 11, location: { name: "fsn1" } });
+  volumesAvailable = false;
+});
+
+describe("createContainer — primary project intent", () => {
+  test("returns the existing row without any provider-side effect", async () => {
+    const client = getHetznerContainersClient();
+    await expect(
+      client.createContainer({
+        name: "existing",
+        projectName: "project-one",
+        organizationId: "org1",
+        userId: "user1",
+        image: "ghcr.io/elizaos/eliza:stable",
+        port: 3000,
+        desiredCount: 1,
+        cpu: 1024,
+        memoryMb: 1024,
+      }),
+    ).resolves.toMatchObject({ id: "ct1", projectName: "project-one" });
+
+    expect(createWithProjectIntentAndQuotaCheck).toHaveBeenCalledTimes(1);
+    expect(getClient).not.toHaveBeenCalled();
+    expect(execMock).not.toHaveBeenCalled();
+    expect(updateRow).not.toHaveBeenCalled();
+  });
+
+  test("marks a newly admitted intent failed when provider preflight rejects", async () => {
+    createWithProjectIntentAndQuotaCheck.mockResolvedValue({
+      container: ROW,
+      created: true,
+    });
+    volumesAvailable = true;
+    getOrCreateProjectVolume.mockRejectedValue(new Error("volume preflight unavailable"));
+
+    const client = getHetznerContainersClient();
+    await expect(
+      client.createContainer({
+        name: "existing",
+        projectName: "project-one",
+        organizationId: "org1",
+        userId: "user1",
+        image: "ghcr.io/elizaos/eliza:stable",
+        port: 3000,
+        desiredCount: 1,
+        cpu: 1024,
+        memoryMb: 1024,
+        persistVolume: true,
+        useHetznerVolume: true,
+      }),
+    ).rejects.toMatchObject({ code: "container_create_failed" });
+
+    expect(updateStatus).toHaveBeenCalledWith("ct1", "failed", "volume preflight unavailable");
+    expect(getClient).not.toHaveBeenCalled();
+    expect(execMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("deleteContainer — fail-closed host teardown", () => {
