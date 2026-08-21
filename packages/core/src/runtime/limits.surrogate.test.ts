@@ -5,7 +5,11 @@
 import { describe, expect, it } from "vitest";
 
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
-import { getFailureSignature } from "./limits";
+import {
+	countRepeatedFailures,
+	type FailureLike,
+	getFailureSignature,
+} from "./limits";
 
 const LIMITS_TRUNCATE = 240;
 
@@ -18,6 +22,15 @@ function isWellFormed(s: string): boolean {
 	const w = s as unknown as { isWellFormed?: () => boolean };
 	if (typeof w.isWellFormed === "function") return w.isWellFormed();
 	return toWellFormedUnicode(s) === s;
+}
+
+function failure(repeatKey: string): FailureLike {
+	return {
+		toolName: "WEB_FETCH",
+		error: "ETIMEDOUT",
+		success: false,
+		repeatKey,
+	};
 }
 
 describe("limits well-formed", () => {
@@ -77,5 +90,21 @@ describe("getFailureSignature normalizes pre-existing lone surrogates", () => {
 		expect(signature).not.toBeNull();
 		expect(signature as string).toBe(toWellFormedUnicode(signature as string));
 		expect((signature as string).includes("\uD800")).toBe(false);
+	});
+});
+
+describe("repeat-key comparison normalizes malformed UTF-16", () => {
+	it("normalizes astral repeat keys before comparing their bounded prefix", () => {
+		const grinning = failure(`${"x".repeat(239)}😀-one`);
+		const fox = failure(`${"x".repeat(239)}🦊-two`);
+
+		expect(countRepeatedFailures([grinning, fox], grinning)).toBe(2);
+	});
+
+	it("normalizes lone surrogates before comparing repeat keys", () => {
+		const malformed = failure(`key-${String.fromCharCode(0xd800)}`);
+		const repaired = failure("key-�");
+
+		expect(countRepeatedFailures([malformed, repaired], repaired)).toBe(2);
 	});
 });

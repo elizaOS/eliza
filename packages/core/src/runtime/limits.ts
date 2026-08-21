@@ -264,7 +264,9 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
 	const signature = getFailureSignature(failure);
 	if (!signature) return null;
 	const repeatKey = failure.repeatKey?.trim();
-	return repeatKey ? `${signature}:${repeatKey.slice(0, 240)}` : signature;
+	return repeatKey
+		? `${signature}:${truncateWellFormed(toWellFormedUnicode(repeatKey), 240)}`
+		: signature;
 }
 
 export function assertRepeatedFailureLimit(params: {
