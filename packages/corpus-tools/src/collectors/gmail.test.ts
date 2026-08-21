@@ -5,13 +5,14 @@
  * manifest under a temp directory) with no network and no mocked module
  * collaborators; retries use an injected recording sleep.
  */
+import { type ChildProcess, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { promises as fs, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CORPUS_ANCHOR_MS, CORPUS_CUTOFF_MS } from "../schema.ts";
-import { validateCorpusTarget } from "../validator.ts";
+import { corpusAccountSegment, validateCorpusTarget } from "../validator.ts";
 import {
   collectGmail,
   type GmailTransport,
@@ -21,6 +22,7 @@ import {
 
 const ACCOUNT = "owner@example.com";
 const ALIAS = "owner.alias@example.com";
+const ACCOUNT_SEGMENT = corpusAccountSegment(ACCOUNT);
 
 const tempDirs: string[] = [];
 
@@ -118,10 +120,21 @@ function buildApiMessage(spec: FakeMessageSpec): {
   };
 }
 
+interface LabelChangeSpec {
+  id: string;
+  added?: string[];
+  removed?: string[];
+}
+
 interface HistoryDeltaSpec {
   added?: FakeMessageSpec[];
   deletedIds?: string[];
+  labelChanges?: LabelChangeSpec[];
   expired?: boolean;
+  /** Terminal `historyId` of the last history page, when it advanced. */
+  terminalHistoryId?: string;
+  /** Split the events across two pages to exercise history pagination. */
+  paginate?: boolean;
 }
 
 class FakeGmailTransport implements GmailTransport {
@@ -157,6 +170,11 @@ class FakeGmailTransport implements GmailTransport {
   removeMessage(id: string): void {
     this.messages.delete(id);
     this.order = this.order.filter((existing) => existing !== id);
+  }
+
+  /** Deletes the message body while the id stays in an already-served list page. */
+  vanishAfterListing(id: string): void {
+    this.messages.delete(id);
   }
 
   async getProfile(): Promise<unknown> {
@@ -215,11 +233,23 @@ class FakeGmailTransport implements GmailTransport {
     return new Uint8Array(bytes);
   }
 
+  /** Applies a label change to the stored message, as Gmail would. */
+  private applyLabelChange(change: LabelChangeSpec): string[] {
+    const message = this.messages.get(change.id);
+    const labels = new Set<string>(
+      Array.isArray(message?.labelIds) ? (message.labelIds as string[]) : [],
+    );
+    for (const label of change.added ?? []) labels.add(label);
+    for (const label of change.removed ?? []) labels.delete(label);
+    if (message) message.labelIds = [...labels];
+    return [...labels];
+  }
+
   async listHistory(
     startHistoryId: string,
-    _pageToken?: string,
+    pageToken?: string,
   ): Promise<unknown> {
-    this.calls.push(`history:${startHistoryId}`);
+    this.calls.push(`history:${startHistoryId}:${pageToken ?? "first"}`);
     const delta = this.historyDelta;
     if (!delta || delta.expired) {
       throw new GmailTransportError("history expired", { status: 404 });
@@ -227,18 +257,52 @@ class FakeGmailTransport implements GmailTransport {
     for (const spec of delta.added ?? []) {
       if (!this.messages.has(spec.id)) this.addMessage(spec);
     }
+    const labelRecords = (delta.labelChanges ?? []).map((change) => {
+      const labelIds = this.applyLabelChange(change);
+      return {
+        ...(change.added && change.added.length > 0
+          ? {
+              labelsAdded: [
+                {
+                  message: { id: change.id, labelIds },
+                  labelIds: change.added,
+                },
+              ],
+            }
+          : {}),
+        ...(change.removed && change.removed.length > 0
+          ? {
+              labelsRemoved: [
+                {
+                  message: { id: change.id, labelIds },
+                  labelIds: change.removed,
+                },
+              ],
+            }
+          : {}),
+      };
+    });
+    const messageRecord = {
+      messagesAdded: (delta.added ?? []).map((spec) => ({
+        message: { id: spec.id },
+      })),
+      messagesDeleted: (delta.deletedIds ?? []).map((id) => ({
+        message: { id },
+      })),
+    };
+    const terminal = delta.terminalHistoryId ?? this.historyId;
+    if (delta.paginate && pageToken === undefined) {
+      // The first page carries only the message events and a stale marker; the
+      // terminal marker must come from the last page.
+      return {
+        history: [messageRecord],
+        nextPageToken: "history-2",
+        historyId: startHistoryId,
+      };
+    }
     return {
-      history: [
-        {
-          messagesAdded: (delta.added ?? []).map((spec) => ({
-            message: { id: spec.id },
-          })),
-          messagesDeleted: (delta.deletedIds ?? []).map((id) => ({
-            message: { id },
-          })),
-        },
-      ],
-      historyId: this.historyId,
+      history: delta.paginate ? labelRecords : [messageRecord, ...labelRecords],
+      historyId: terminal,
     };
   }
 }
@@ -330,6 +394,59 @@ async function collect(
   });
 }
 
+function lockPathFor(outDir: string): string {
+  return path.join(outDir, ".state", `gmail-${ACCOUNT_SEGMENT}.lock`);
+}
+
+/**
+ * Runs a real second collector process that takes the account lease and then
+ * blocks forever inside the transport, so the parent can SIGKILL it and prove
+ * the abandoned lease is recoverable. `bun` is the repository-pinned runtime
+ * and executes the TypeScript entrypoint directly.
+ */
+function spawnLockHolder(outDir: string, readyPath: string): ChildProcess {
+  const script = path.join(outDir, "lock-holder.ts");
+  writeFileSync(
+    script,
+    [
+      `import { promises as fs } from "node:fs";`,
+      `import { collectGmail } from ${JSON.stringify(
+        path.join(import.meta.dirname, "gmail.ts"),
+      )};`,
+      `const transport = {`,
+      `  async getProfile() {`,
+      `    await fs.writeFile(${JSON.stringify(readyPath)}, "ready");`,
+      `    await new Promise(() => {});`,
+      `    return {};`,
+      `  },`,
+      `  async listMessageIds() { throw new Error("unreachable"); },`,
+      `  async getMessage() { throw new Error("unreachable"); },`,
+      `  async getAttachment() { throw new Error("unreachable"); },`,
+      `  async listHistory() { throw new Error("unreachable"); },`,
+      `};`,
+      `await collectGmail({`,
+      `  transport,`,
+      `  accountEmail: ${JSON.stringify(ACCOUNT)},`,
+      `  outDir: ${JSON.stringify(outDir)},`,
+      `});`,
+    ].join("\n"),
+    "utf8",
+  );
+  return spawn("bun", [script], { stdio: "ignore" });
+}
+
+async function waitForFile(filePath: string): Promise<void> {
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    try {
+      await fs.stat(filePath);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }
+  throw new Error(`child process never reported ready at ${filePath}`);
+}
+
 describe("collectGmail", () => {
   it("collects a full window with pagination, MIME, direction, and attachment hashes", async () => {
     const outDir = await makeTempDir();
@@ -351,7 +468,7 @@ describe("collectGmail", () => {
 
     const rows = (
       await fs.readFile(
-        path.join(outDir, "gmail", ACCOUNT, "2024-07.jsonl"),
+        path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-07.jsonl"),
         "utf8",
       )
     )
@@ -384,7 +501,7 @@ describe("collectGmail", () => {
     const august = JSON.parse(
       (
         await fs.readFile(
-          path.join(outDir, "gmail", ACCOUNT, "2024-08.jsonl"),
+          path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-08.jsonl"),
           "utf8",
         )
       ).trim(),
@@ -401,7 +518,12 @@ describe("collectGmail", () => {
     const outDir = await makeTempDir();
     const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
     await collect(transport, outDir);
-    const shardPath = path.join(outDir, "gmail", ACCOUNT, "2024-07.jsonl");
+    const shardPath = path.join(
+      outDir,
+      "gmail",
+      ACCOUNT_SEGMENT,
+      "2024-07.jsonl",
+    );
     const before = await fs.readFile(shardPath, "utf8");
     const statBefore = await fs.stat(shardPath);
 
@@ -477,17 +599,174 @@ describe("collectGmail", () => {
     expect(result.manifest.totals.messages).toBe(3);
 
     const july = await fs.readFile(
-      path.join(outDir, "gmail", ACCOUNT, "2024-07.jsonl"),
+      path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-07.jsonl"),
       "utf8",
     );
     expect(july).not.toContain(`gmail:${ACCOUNT}:m1`);
     expect(
       await fs.readFile(
-        path.join(outDir, "gmail", ACCOUNT, "2024-09.jsonl"),
+        path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-09.jsonl"),
         "utf8",
       ),
     ).toContain(`gmail:${ACCOUNT}:m7`);
     expect((await validateCorpusTarget(outDir)).ok).toBe(true);
+  });
+
+  it("re-evaluates label history: DRAFT removal, SENT addition, and CHAT addition", async () => {
+    const outDir = await makeTempDir();
+    const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const first = await collect(transport, outDir);
+    expect(first.summary.skippedDrafts).toBe(1);
+    expect(first.manifest.totals.messages).toBe(3);
+
+    // m6 leaves DRAFT and becomes real sent mail; m1 gains SENT (direction
+    // flips); m3 becomes a chat row and must leave the corpus. The events are
+    // paginated and arrive alongside an unrelated add and delete.
+    transport.historyDelta = {
+      added: [
+        {
+          id: "m7",
+          ts: T0 + 2 * MONTH,
+          from: "frank@example.net",
+          to: ACCOUNT,
+          subject: "Brand new",
+          textPlain: "new mail after first snapshot",
+        },
+      ],
+      deletedIds: ["m4"],
+      labelChanges: [
+        { id: "m6", removed: ["DRAFT"], added: ["SENT"] },
+        { id: "m1", added: ["SENT"] },
+        { id: "m3", added: ["CHAT"] },
+      ],
+      paginate: true,
+      terminalHistoryId: "2500",
+    };
+    const second = await collect(transport, outDir);
+    expect(second.summary.mode).toBe("incremental");
+    expect(second.summary.relabeledByHistory).toBe(3);
+    // Both history pages were consumed.
+    expect(
+      transport.calls.filter((call) => call.startsWith("history:")),
+    ).toEqual(["history:1000:first", "history:1000:history-2"]);
+    expect(second.summary.skippedChats).toBe(1);
+    expect(second.summary.skippedDrafts).toBe(0);
+
+    const july = (
+      await fs.readFile(
+        path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-07.jsonl"),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const byId = new Map(july.map((row) => [row.id, row]));
+    // The former draft is now collected instead of frozen in excludedIds.
+    expect(byId.has(`gmail:${ACCOUNT}:m6`)).toBe(true);
+    // A SENT label added after the fact flips a stale inbound verdict.
+    expect(byId.get(`gmail:${ACCOUNT}:m1`)?.direction).toBe("out");
+    // The message relabeled CHAT is gone from the August shard.
+    const augustPath = path.join(
+      outDir,
+      "gmail",
+      ACCOUNT_SEGMENT,
+      "2024-08.jsonl",
+    );
+    await expect(fs.stat(augustPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await validateCorpusTarget(outDir)).ok).toBe(true);
+  });
+
+  it("checkpoints the terminal history id from the response, never moving backwards", async () => {
+    const outDir = await makeTempDir();
+    const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const first = await collect(transport, outDir);
+    const readCheckpoint = async () =>
+      JSON.parse(await fs.readFile(first.checkpointPath, "utf8"));
+    expect((await readCheckpoint()).historyId).toBe("1000");
+
+    // The mailbox moved during reconciliation: the profile snapshot is stale
+    // and only the terminal marker of the applied pages is authoritative.
+    transport.historyDelta = { terminalHistoryId: "4242" };
+    await collect(transport, outDir);
+    expect((await readCheckpoint()).historyId).toBe("4242");
+
+    // A page that reports an older marker must never rewind the checkpoint.
+    transport.historyDelta = { terminalHistoryId: "17" };
+    await collect(transport, outDir);
+    expect((await readCheckpoint()).historyId).toBe("4242");
+  });
+
+  it("treats a message deleted between listing and fetch as a deletion, not a fatal error", async () => {
+    const outDir = await makeTempDir();
+    const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const listed = transport.listMessageIds.bind(transport);
+    transport.listMessageIds = async (query: string, pageToken?: string) => {
+      const page = await listed(query, pageToken);
+      // m2 vanishes right after it is listed, exactly as a concurrent delete
+      // between users.messages.list and users.messages.get would.
+      transport.vanishAfterListing("m2");
+      return page;
+    };
+    const result = await collect(transport, outDir);
+    expect(result.summary.missingAtFetch).toBe(1);
+    expect(result.manifest.totals.messages).toBe(2);
+    expect(
+      await fs.readFile(
+        path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-07.jsonl"),
+        "utf8",
+      ),
+    ).not.toContain(`gmail:${ACCOUNT}:m2`);
+    // The dead id is remembered so later runs never refetch it.
+    const checkpoint = JSON.parse(
+      await fs.readFile(result.checkpointPath, "utf8"),
+    );
+    expect(checkpoint.excludedIds).toContain("m2");
+    expect((await validateCorpusTarget(outDir)).ok).toBe(true);
+  });
+
+  it("keeps accounts in distinct directories inside outDir and rejects path-bearing addresses", async () => {
+    const outDir = await makeTempDir();
+    // Two distinct addresses whose sanitized spelling is identical.
+    const first = "a.b@example.com";
+    const second = "a-b@example.com";
+    expect(corpusAccountSegment(first)).not.toBe(corpusAccountSegment(second));
+
+    for (const account of [first, second]) {
+      const transport = new FakeGmailTransport(account, [
+        {
+          id: `${account}-m1`,
+          ts: T0,
+          from: "alice@example.net",
+          to: account,
+          subject: "Hello",
+          textPlain: "body",
+        },
+      ]);
+      const result = await collectGmail({
+        transport,
+        accountEmail: account,
+        outDir,
+        sleep: async () => {},
+      });
+      for (const shardPath of result.shardPaths) {
+        expect(path.relative(outDir, shardPath).startsWith("..")).toBe(false);
+      }
+    }
+    const accountDirs = await fs.readdir(path.join(outDir, "gmail"));
+    expect(accountDirs).toHaveLength(2);
+    expect((await validateCorpusTarget(outDir)).ok).toBe(true);
+
+    // A traversal payload never reaches path.join in the first place.
+    const escaping = "a@../../etc.x";
+    await expect(
+      collectGmail({
+        transport: new FakeGmailTransport(escaping, []),
+        accountEmail: escaping,
+        outDir,
+        sleep: async () => {},
+      }),
+    ).rejects.toMatchObject({ code: "GMAIL_COLLECT_BAD_ACCOUNT" });
   });
 
   it("falls back to a full rescan when the checkpointed history id has expired", async () => {
@@ -513,19 +792,61 @@ describe("collectGmail", () => {
     });
   });
 
-  it("fails closed when another collector holds the account lock", async () => {
+  it("fails closed when a live process holds the account lease", async () => {
     const outDir = await makeTempDir();
-    const lockPath = path.join(
-      outDir,
-      ".state",
-      "gmail-owner_example_com.lock",
+    await fs.mkdir(path.join(outDir, ".state"), { recursive: true });
+    // This very process is a provably live, identity-matching owner.
+    await fs.writeFile(
+      lockPathFor(outDir),
+      `${JSON.stringify({
+        pid: process.pid,
+        hostname: os.hostname(),
+        startTimeMs: null,
+        acquiredAtMs: Date.now(),
+      })}\n`,
     );
-    await fs.mkdir(lockPath, { recursive: true });
     const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
     await expect(collect(transport, outDir)).rejects.toMatchObject({
       code: "GMAIL_COLLECT_OUTPUT_BUSY",
     });
   });
+
+  it("recovers a lease abandoned by a killed collector process", async () => {
+    const outDir = await makeTempDir();
+    const readyPath = path.join(outDir, "child-ready");
+    const child = spawnLockHolder(outDir, readyPath);
+    try {
+      await waitForFile(readyPath);
+
+      // A live competing owner still blocks this account.
+      const blocked = new FakeGmailTransport(ACCOUNT, baseSpecs());
+      await expect(collect(blocked, outDir)).rejects.toMatchObject({
+        code: "GMAIL_COLLECT_OUTPUT_BUSY",
+      });
+
+      const exited = new Promise<void>((resolve) =>
+        child.once("exit", resolve),
+      );
+      child.kill("SIGKILL");
+      await exited;
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    // The killed process left its lease record behind; the next run must
+    // recover it instead of failing GMAIL_COLLECT_OUTPUT_BUSY forever.
+    expect(await fs.readFile(lockPathFor(outDir), "utf8")).toContain('"pid"');
+    const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const result = await collect(transport, outDir);
+    expect(result.manifest.totals.messages).toBe(3);
+    expect((await validateCorpusTarget(outDir)).ok).toBe(true);
+    // The lease is released on the normal path.
+    await expect(fs.stat(lockPathFor(outDir))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  }, 60_000);
 
   it("writes private modes on shards, checkpoints, and state directories", async () => {
     const outDir = await makeTempDir();
@@ -565,7 +886,7 @@ describe("collectGmail", () => {
     const stagingPath = path.join(
       outDir,
       ".state",
-      "gmail-owner_example_com-staging.ndjson",
+      `gmail-${ACCOUNT_SEGMENT}-staging.ndjson`,
     );
     const staged = await fs.readFile(stagingPath, "utf8");
     await fs.writeFile(stagingPath, `${staged.trimEnd().slice(0, -5)}\n`);

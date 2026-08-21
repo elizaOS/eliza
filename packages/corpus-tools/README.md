@@ -62,6 +62,14 @@ implements `getProfile`, `listMessageIds`, `getMessage` (`format: "full"`),
 `getAttachment`, and `listHistory`, translating HTTP failures into
 `GmailTransportError` with the upstream status and any `Retry-After` hint.
 
+The adapter must pass Gmail responses through unprojected. In particular
+`listHistory` has to forward `messagesAdded`, `messagesDeleted`,
+`labelsAdded`, `labelsRemoved`, `nextPageToken`, and the page's terminal
+`historyId`: labels decide both inclusion (`DRAFT`/`CHAT`) and direction
+(`SENT`), so an adapter that returns only add/delete events leaves stale
+verdicts frozen in the corpus. `getMessage` must surface a deleted message as
+`GmailTransportError` with status 404 rather than an empty object.
+
 ```ts
 import { collectGmail, type GmailTransport } from "@elizaos/corpus-tools";
 
@@ -83,8 +91,15 @@ Behavior contract:
   staging JSONL so an interrupted run resumes without refetching.
 - A completed checkpoint is never trusted indefinitely: the next run
   reconciles through `users.history.list` from the checkpointed history id,
-  applying additions and deletions; an expired/invalid history id (HTTP
-  404/400) triggers a full rescan.
+  applying additions, deletions, and label changes; a relabeled id drops its
+  cached exclusion/staging verdict and is refetched, so a draft that becomes
+  real mail enters the corpus and a message relabeled `CHAT` leaves it. The
+  checkpoint then advances to the terminal `historyId` of the pages actually
+  applied (never backwards), not to the pre-reconciliation profile snapshot.
+  An expired/invalid history id (HTTP 404/400) triggers a full rescan.
+- A message deleted between `messages.list` and `messages.get` (HTTP 404) is
+  recorded as a deletion in `missingAtFetch` and excluded, not treated as a
+  fatal transport failure.
 - 429/5xx transport failures retry with bounded exponential backoff,
   honoring the server retry hint.
 - Ids are account-namespaced (`gmail:<account>:<messageId>`); direction is
@@ -92,9 +107,17 @@ Behavior contract:
   label; text prefers `text/plain` and falls back to stripped `text/html`;
   attachment bytes are fetched only to compute SHA-256 and size, and
   attachment-only messages are counted, never given fabricated text.
-- Output is private (0600 files, 0700 directories), account-isolated under
-  `gmail/<account>/`, byte-stable on rerun, serialized by a per-account
-  fail-closed lock, and committed by a validated `manifest.json`.
+- Output is private (0600 files, 0700 directories) and account-isolated under
+  `gmail/<segment>/`, where `<segment>` is the sanitized, collision-free
+  account segment (`corpusAccountSegment`) rather than the raw address, so an
+  address can never steer writes or the stale-shard sweep outside `outDir`.
+  Shards are byte-stable on rerun and committed by a validated
+  `manifest.json`.
+- Concurrency is serialized by a per-account lease file recording PID,
+  hostname and process start time. A live owner fails the second run closed
+  with `GMAIL_COLLECT_OUTPUT_BUSY`; a lease abandoned by SIGKILL/OOM is
+  detected as dead and recovered on the next run, so crash resume never needs
+  manual filesystem repair.
 
 Live-run acceptance evidence (two owner-authorized accounts, refresh-token
 exercise, interruption/resume, quota behavior, manual shard inspection) is

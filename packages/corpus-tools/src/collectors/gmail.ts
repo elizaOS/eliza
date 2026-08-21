@@ -3,11 +3,13 @@
  * collector never holds OAuth material: callers inject a `GmailTransport`
  * (normally an adapter over the plugin-google account-scoped client) and this
  * module owns exhaustive pagination inside the frozen UTC corpus window,
- * bounded quota retries, durable per-account checkpoints with crash-safe
- * resume, real Gmail History reconciliation for completed checkpoints (an
- * expired history id triggers a full rescan rather than trusting the old
- * marker), alias/SENT-aware direction, MIME text extraction, attachment
- * SHA-256 hashing, and idempotent private monthly shards.
+ * bounded quota retries, durable per-account checkpoints guarded by a
+ * PID/start-time lease that a killed process cannot leave held forever, real
+ * Gmail History reconciliation for completed checkpoints (message, deletion and
+ * label events; an expired history id triggers a full rescan rather than
+ * trusting the old marker), alias/SENT-aware direction, MIME text extraction,
+ * attachment SHA-256 hashing, and idempotent private monthly shards written
+ * under a sanitized account segment.
  *
  * Compromises kept at this boundary: attachment-only messages carry no
  * fabricated text and are counted instead of emitted; `replyToId` is not
@@ -16,9 +18,12 @@
  * the local output tree, and all output is written mode 0600 under 0700
  * directories.
  */
+import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import {
@@ -34,6 +39,7 @@ import {
 import {
   buildCorpusManifest,
   type CorpusValidationIssue,
+  corpusAccountSegment,
 } from "../validator.ts";
 
 const PRIVATE_DIRECTORY_MODE = 0o700;
@@ -43,6 +49,13 @@ const DEFAULT_BACKOFF_BASE_MS = 1_000;
 const MAX_BACKOFF_MS = 64_000;
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const CHECKPOINT_SCHEMA_VERSION = 1;
+/**
+ * Only used when a lease cannot be identified (unparsable record, or a host
+ * whose process start times are unreadable). A lease whose owner process is
+ * provably gone is recovered immediately, without waiting out this bound.
+ */
+const LOCK_UNIDENTIFIED_STALE_MS = 6 * 60 * 60 * 1000;
+const LOCK_ACQUIRE_ATTEMPTS = 4;
 
 /** Typed transport failure; `status` drives retry and history-expiry logic. */
 export class GmailTransportError extends Error {
@@ -66,6 +79,12 @@ export class GmailTransportError extends Error {
  * (`format: "full"`), `users.messages.attachments.get`, and
  * `users.history.list`; adapters translate HTTP/auth failures into
  * `GmailTransportError` with the upstream status.
+ *
+ * `listHistory` must forward every history-record field the collector consumes
+ * — `messagesAdded`, `messagesDeleted`, `labelsAdded`, `labelsRemoved`, the
+ * page's terminal `historyId`, and `nextPageToken` — because labels decide both
+ * inclusion (DRAFT/CHAT) and direction (SENT). An adapter that projects the
+ * response down to add/delete events freezes stale verdicts in the corpus.
  */
 export interface GmailTransport {
   getProfile(): Promise<unknown>;
@@ -99,6 +118,10 @@ export interface GmailCollectSummary {
   fetched: number;
   reusedFromStaging: number;
   removedByHistory: number;
+  /** Ids re-evaluated because Gmail history reported a label change. */
+  relabeledByHistory: number;
+  /** Ids that vanished between listing and fetch; treated as deletions. */
+  missingAtFetch: number;
   skippedOutsideWindow: number;
   skippedDrafts: number;
   skippedChats: number;
@@ -165,6 +188,11 @@ const gmailMessageSchema = z.object({
   payload: gmailPartSchema,
 });
 
+const gmailLabelChangeSchema = z.object({
+  message: z.object({ id: z.string().min(1) }),
+  labelIds: z.array(z.string().min(1)).optional(),
+});
+
 const gmailHistoryPageSchema = z.object({
   history: z
     .array(
@@ -175,6 +203,8 @@ const gmailHistoryPageSchema = z.object({
         messagesDeleted: z
           .array(z.object({ message: z.object({ id: z.string().min(1) }) }))
           .optional(),
+        labelsAdded: z.array(gmailLabelChangeSchema).optional(),
+        labelsRemoved: z.array(gmailLabelChangeSchema).optional(),
       }),
     )
     .optional(),
@@ -248,7 +278,7 @@ export function gmailCorpusQuery(): string {
 
 function canonicalEmail(value: string, location: string): string {
   const email = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!/^[^\s@/\\]+@[^\s@/\\]+\.[^\s@/\\]+$/.test(email)) {
     throw collectError(
       "GMAIL_COLLECT_BAD_ACCOUNT",
       `${location} must be a canonical email address`,
@@ -259,7 +289,7 @@ function canonicalEmail(value: string, location: string): string {
 }
 
 function accountFileSlug(email: string): string {
-  return email.replace(/[^a-z0-9]+/g, "_");
+  return corpusAccountSegment(email);
 }
 
 function decodeBase64Url(data: string): Buffer {
@@ -405,6 +435,178 @@ async function readOptionalFile(filePath: string): Promise<string | undefined> {
       error,
     );
   }
+}
+
+const execFileAsync = promisify(execFile);
+
+const lockLeaseSchema = z.object({
+  pid: z.number().int().positive(),
+  hostname: z.string().min(1),
+  /** Owner process start time; `null` when the platform cannot report it. */
+  startTimeMs: z.number().int().nonnegative().nullable(),
+  acquiredAtMs: z.number().int().nonnegative(),
+});
+
+type LockLease = z.infer<typeof lockLeaseSchema>;
+
+/**
+ * Second-resolution start time of a live process, used to distinguish a real
+ * lease owner from a recycled PID. Returns `undefined` when the platform
+ * cannot answer, which makes the caller fall back to the age bound.
+ */
+async function processStartTimeMs(pid: number): Promise<number | undefined> {
+  if (process.platform === "linux") {
+    const raw = await readOptionalFile(`/proc/${pid}/stat`);
+    if (raw === undefined) return undefined;
+    // Field 22 (starttime, clock ticks since boot) follows the comm field,
+    // which may itself contain spaces inside parentheses.
+    const fields = raw.slice(raw.lastIndexOf(") ") + 2).split(" ");
+    const ticks = Number(fields[19]);
+    if (!Number.isFinite(ticks)) return undefined;
+    return Math.floor((ticks / 100) * 1000);
+  }
+  if (process.platform === "darwin") {
+    try {
+      const { stdout } = await execFileAsync("ps", [
+        "-p",
+        String(pid),
+        "-o",
+        "lstart=",
+      ]);
+      const parsed = Date.parse(stdout.trim());
+      return Number.isFinite(parsed) ? parsed : undefined;
+    } catch {
+      // error-policy:J3 an unreadable/absent process is an explicit "unknown"
+      // start time, never a fabricated identity match.
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    // error-policy:J3 EPERM means the pid exists under another user; only
+    // ESRCH proves the owner is gone.
+    return isRecord(error) && error.code === "EPERM";
+  }
+}
+
+/** Whether a lease record still names a live, identity-matching owner. */
+async function isLeaseHeld(lease: LockLease, nowMs: number): Promise<boolean> {
+  if (lease.hostname !== os.hostname()) {
+    // A foreign host's liveness is unknowable here; fail closed until the
+    // record ages out.
+    return nowMs - lease.acquiredAtMs < LOCK_UNIDENTIFIED_STALE_MS;
+  }
+  if (!isProcessAlive(lease.pid)) return false;
+  const startTimeMs = await processStartTimeMs(lease.pid);
+  if (startTimeMs === undefined || lease.startTimeMs === null) {
+    return nowMs - lease.acquiredAtMs < LOCK_UNIDENTIFIED_STALE_MS;
+  }
+  // A live pid whose start time moved is a recycled pid, not the owner.
+  return Math.abs(startTimeMs - lease.startTimeMs) <= 1_000;
+}
+
+/**
+ * Takes the per-account collector lease. The record carries PID, hostname and
+ * process start time so a lease abandoned by SIGKILL/OOM is recovered on the
+ * next run, while a lease whose owner is still running stays fail-closed.
+ */
+async function acquireAccountLock(lockPath: string): Promise<LockLease> {
+  const lease: LockLease = {
+    pid: process.pid,
+    hostname: os.hostname(),
+    startTimeMs: (await processStartTimeMs(process.pid)) ?? null,
+    acquiredAtMs: Date.now(),
+  };
+  const body = `${JSON.stringify(lease)}\n`;
+
+  for (let attempt = 1; attempt <= LOCK_ACQUIRE_ATTEMPTS; attempt += 1) {
+    try {
+      const handle = await fs.open(lockPath, "wx", PRIVATE_FILE_MODE);
+      try {
+        await handle.writeFile(body, "utf8");
+      } finally {
+        await handle.close();
+      }
+      return lease;
+    } catch (error) {
+      // error-policy:J2 only a contended lease is retried; anything else is a
+      // typed state-write failure for the caller.
+      if (!isRecord(error) || error.code !== "EEXIST") {
+        throw collectError(
+          "GMAIL_COLLECT_STATE_WRITE_FAILED",
+          "Gmail collector state lock could not be acquired",
+          { lockPath },
+          error,
+        );
+      }
+    }
+
+    const raw = await readOptionalFile(lockPath);
+    if (raw === undefined) continue; // the holder released between calls
+    const now = Date.now();
+    let held: boolean;
+    const parsed = (() => {
+      try {
+        return lockLeaseSchema.safeParse(JSON.parse(raw));
+      } catch {
+        // error-policy:J3 a torn lease record cannot identify an owner.
+        return undefined;
+      }
+    })();
+    if (parsed?.success) {
+      held = await isLeaseHeld(parsed.data, now);
+    } else {
+      const stat = await fs.stat(lockPath).catch(() => undefined);
+      held =
+        stat === undefined || now - stat.mtimeMs < LOCK_UNIDENTIFIED_STALE_MS;
+    }
+    if (held) {
+      throw collectError(
+        "GMAIL_COLLECT_OUTPUT_BUSY",
+        "Gmail collector state lock is held by a live collector for this account",
+        { lockPath, holder: parsed?.success ? parsed.data : "unidentified" },
+      );
+    }
+    await fs.rm(lockPath, { force: true });
+  }
+
+  throw collectError(
+    "GMAIL_COLLECT_OUTPUT_BUSY",
+    "Gmail collector state lock could not be acquired after stale recovery",
+    { lockPath, attempts: LOCK_ACQUIRE_ATTEMPTS },
+  );
+}
+
+/** Releases the lease only when this process still owns the record. */
+async function releaseAccountLock(
+  lockPath: string,
+  lease: LockLease,
+): Promise<void> {
+  const raw = await readOptionalFile(lockPath);
+  if (raw === undefined) return;
+  let current: unknown;
+  try {
+    current = JSON.parse(raw);
+  } catch {
+    // error-policy:J3 an unidentifiable record is not provably ours to remove.
+    return;
+  }
+  const parsed = lockLeaseSchema.safeParse(current);
+  if (
+    !parsed.success ||
+    parsed.data.pid !== lease.pid ||
+    parsed.data.hostname !== lease.hostname ||
+    parsed.data.acquiredAtMs !== lease.acquiredAtMs
+  ) {
+    return;
+  }
+  await fs.rm(lockPath, { force: true });
 }
 
 interface RunContext {
@@ -556,9 +758,25 @@ async function fetchAndNormalize(
   accountEmail: string,
   ownerAddresses: ReadonlySet<string>,
 ): Promise<CorpusMessage | undefined> {
-  const raw = await withRetry(ctx, `messages.get(${messageId})`, () =>
-    ctx.options.transport.getMessage(messageId),
-  );
+  let raw: unknown;
+  try {
+    raw = await withRetry(ctx, `messages.get(${messageId})`, () =>
+      ctx.options.transport.getMessage(messageId),
+    );
+  } catch (error) {
+    // error-policy:J4 a 404 means the message was deleted between listing and
+    // fetch; that is a mailbox state, not a run-fatal transport failure. It is
+    // recorded as an exclusion so later runs never refetch the dead id.
+    if (
+      error instanceof ElizaError &&
+      error.cause instanceof GmailTransportError &&
+      error.cause.status === 404
+    ) {
+      ctx.summary.missingAtFetch += 1;
+      return undefined;
+    }
+    throw error;
+  }
   const result = normalizeGmailMessage(
     raw,
     accountEmail,
@@ -673,6 +891,14 @@ async function listAllIds(
 interface HistoryDelta {
   added: Set<string>;
   deleted: Set<string>;
+  /**
+   * Ids whose label set changed. Labels decide both inclusion (DRAFT/CHAT) and
+   * direction (SENT), so these must be refetched and re-evaluated rather than
+   * left on their previous verdict.
+   */
+  relabeled: Set<string>;
+  /** Terminal marker from the last history page; the authoritative checkpoint. */
+  terminalHistoryId?: string;
   expired: boolean;
 }
 
@@ -682,6 +908,8 @@ async function listHistoryDelta(
 ): Promise<HistoryDelta> {
   const added = new Set<string>();
   const deleted = new Set<string>();
+  const relabeled = new Set<string>();
+  let terminalHistoryId: string | undefined;
   let pageToken: string | undefined;
   do {
     let raw: unknown;
@@ -697,7 +925,7 @@ async function listHistoryDelta(
         error.cause instanceof GmailTransportError &&
         (error.cause.status === 404 || error.cause.status === 400)
       ) {
-        return { added, deleted, expired: true };
+        return { added, deleted, relabeled, expired: true };
       }
       throw error;
     }
@@ -712,19 +940,36 @@ async function listHistoryDelta(
       for (const entry of record.messagesDeleted ?? []) {
         deleted.add(entry.message.id);
       }
+      for (const entry of [
+        ...(record.labelsAdded ?? []),
+        ...(record.labelsRemoved ?? []),
+      ]) {
+        relabeled.add(entry.message.id);
+      }
+    }
+    if (page.historyId !== undefined) {
+      terminalHistoryId = String(page.historyId);
     }
     pageToken = page.nextPageToken;
   } while (pageToken !== undefined);
-  return { added, deleted, expired: false };
+  return { added, deleted, relabeled, terminalHistoryId, expired: false };
+}
+
+/** Gmail history ids are monotonic; never move a checkpoint backwards. */
+function maxHistoryId(left: string, right: string): string {
+  return BigInt(left) >= BigInt(right) ? left : right;
 }
 
 /** Writes the desired Gmail shard set idempotently; unchanged shards are reused. */
 async function writeShards(
   messages: CorpusMessage[],
   outDir: string,
-  accountEmail: string,
+  accountSlug: string,
 ): Promise<{ paths: string[]; written: number; reused: number }> {
-  const shardDir = path.join(outDir, "gmail", accountEmail);
+  // The path segment is the sanitized slug, never the raw address: an address
+  // is untrusted input and a raw join would let it escape `outDir` and let the
+  // stale-shard sweep below unlink files outside the account directory.
+  const shardDir = path.join(outDir, "gmail", accountSlug);
   await ensurePrivateDir(path.join(outDir, "gmail"));
   await ensurePrivateDir(shardDir);
 
@@ -797,6 +1042,8 @@ export async function collectGmail(
       fetched: 0,
       reusedFromStaging: 0,
       removedByHistory: 0,
+      relabeledByHistory: 0,
+      missingAtFetch: 0,
       skippedOutsideWindow: 0,
       skippedDrafts: 0,
       skippedChats: 0,
@@ -818,29 +1065,17 @@ export async function collectGmail(
   const stagingPath = path.join(stateDir, `gmail-${slug}-staging.ndjson`);
   const lockPath = path.join(stateDir, `gmail-${slug}.lock`);
 
-  try {
-    await fs.mkdir(lockPath, { mode: PRIVATE_DIRECTORY_MODE });
-  } catch (error) {
-    // error-policy:J2 a held lock means another collector owns this account.
-    throw collectError(
-      isRecord(error) && error.code === "EEXIST"
-        ? "GMAIL_COLLECT_OUTPUT_BUSY"
-        : "GMAIL_COLLECT_STATE_WRITE_FAILED",
-      "Gmail collector state lock could not be acquired",
-      { lockPath },
-      error,
-    );
-  }
+  const lease = await acquireAccountLock(lockPath);
 
   const releaseLock = async (suppress: boolean): Promise<void> => {
     try {
-      await fs.rmdir(lockPath);
+      await releaseAccountLock(lockPath, lease);
     } catch (error) {
-      // error-policy:J6 lock teardown failure only leaves a stale lock behind;
-      // the next run fails closed with GMAIL_COLLECT_OUTPUT_BUSY. On the
+      // error-policy:J6 teardown failure only leaves a lease record behind;
+      // it names this dead process and the next run recovers it. On the
       // failure path the original collection error must not be masked.
       if (suppress) return;
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      throw error;
     }
   };
 
@@ -904,11 +1139,26 @@ export async function collectGmail(
         // A history-added id may have been excluded before (e.g. a sent
         // draft); it must be re-evaluated rather than stay excluded.
         for (const id of delta.added) excluded.delete(id);
+        // A label change can flip inclusion (DRAFT/CHAT) or direction (SENT)
+        // without any messagesAdded event, so drop every cached verdict for
+        // the affected ids and force a refetch.
+        for (const id of delta.relabeled) {
+          if (delta.deleted.has(id)) continue;
+          ids.add(id);
+          excluded.delete(id);
+          staging.delete(`gmail:${accountEmail}:${id}`);
+          ctx.summary.relabeledByHistory += 1;
+        }
         checkpoint = {
           ...checkpoint,
           ids: [...ids],
           excludedIds: [...excluded],
-          historyId: profileHistoryId,
+          // The authoritative marker is the terminal history id of the pages
+          // just applied, not the pre-reconciliation profile snapshot.
+          historyId: maxHistoryId(
+            checkpoint.historyId,
+            delta.terminalHistoryId ?? profileHistoryId,
+          ),
           completed: false,
         };
         await saveCheckpoint(checkpoint);
@@ -984,11 +1234,7 @@ export async function collectGmail(
       await writePrivateAtomic(stagingPath, body.length > 0 ? `${body}\n` : "");
     }
 
-    const shardResult = await writeShards(
-      collected,
-      options.outDir,
-      accountEmail,
-    );
+    const shardResult = await writeShards(collected, options.outDir, slug);
     ctx.summary.shardCount = shardResult.paths.length;
 
     const { manifest, issues } = await buildCorpusManifest(
@@ -1003,7 +1249,7 @@ export async function collectGmail(
       );
     }
     await writePrivateAtomic(
-      path.join(options.outDir, "gmail", accountEmail, "summary.json"),
+      path.join(options.outDir, "gmail", slug, "summary.json"),
       `${JSON.stringify(ctx.summary, null, 2)}\n`,
     );
     await writePrivateAtomic(
