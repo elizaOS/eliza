@@ -27,6 +27,7 @@ import {
   buildWriteReceipt,
   computeBudgetStatus,
   computeSourceBalances,
+  countDistinctSources,
   detectAnomalies,
   normalizeSubscriptions,
 } from "../finance-capabilities.ts";
@@ -488,14 +489,15 @@ async function runPaymentsActionInner(
         categoryColumn: params.categoryColumn,
       });
       const summary = `Imported ${result.inserted} transaction${result.inserted === 1 ? "" : "s"} (${result.skipped} already on file, ${result.errors.length} error${result.errors.length === 1 ? "" : "s"}).`;
-      const applied = result.errors.length === 0 || result.inserted > 0;
+      const succeeded = result.errors.length === 0 || result.inserted > 0;
       return {
-        success: applied,
+        success: succeeded,
         text: summary,
         data: {
           result,
-          // A receipt is only issued when the import actually changed state.
-          ...(applied
+          // A receipt is only issued when the import actually changed state;
+          // an all-duplicate replay (inserted=0) succeeds but mutates nothing.
+          ...(result.inserted > 0
             ? {
                 receipt: buildWriteReceipt({
                   capability: "finance.import_csv",
@@ -629,7 +631,7 @@ async function runPaymentsActionInner(
             capability: "finance.budget_status",
             now,
             transactions,
-            sourceCount: params.sourceId ? 1 : 0,
+            sourceCount: countDistinctSources(transactions),
             method: "user_supplied_input",
             windowDays,
             notes: [
@@ -650,6 +652,23 @@ async function runPaymentsActionInner(
         (total, sub) => total + sub.annualizedCostUsd,
         0,
       );
+      // Freshness reflects the transaction rows the recurring-charge
+      // aggregates were derived from, not a fabricated empty ledger.
+      let latestChargeDataAt: string | null = null;
+      let chargeTransactionCount = 0;
+      const chargeSourceIds = new Set<string>();
+      for (const charge of charges) {
+        if (
+          latestChargeDataAt === null ||
+          charge.latestSeenAt > latestChargeDataAt
+        ) {
+          latestChargeDataAt = charge.latestSeenAt;
+        }
+        chargeTransactionCount += charge.occurrenceCount;
+        for (const sourceId of charge.sourceIds) {
+          chargeSourceIds.add(sourceId);
+        }
+      }
       return {
         success: true,
         text:
@@ -662,7 +681,9 @@ async function runPaymentsActionInner(
             capability: "finance.subscriptions",
             now,
             transactions: [],
-            sourceCount: params.sourceId ? 1 : 0,
+            latestDataAt: latestChargeDataAt,
+            transactionCount: chargeTransactionCount,
+            sourceCount: chargeSourceIds.size,
             method: "derived_from_transactions",
             windowDays: params.sinceDays ?? null,
             notes: [
@@ -674,24 +695,20 @@ async function runPaymentsActionInner(
     }
     case "anomalies": {
       const now = new Date();
+      const windowDays = Math.max(
+        7,
+        Math.min(
+          365,
+          typeof params.sinceDays === "number" &&
+            Number.isFinite(params.sinceDays)
+            ? Math.trunc(params.sinceDays)
+            : 90,
+        ),
+      );
       const transactions = await service.listTransactions({
         sourceId: params.sourceId ?? null,
         sinceAt: new Date(
-          now.getTime() -
-            Math.max(
-              7,
-              Math.min(
-                365,
-                typeof params.sinceDays === "number" &&
-                  Number.isFinite(params.sinceDays)
-                  ? Math.trunc(params.sinceDays)
-                  : 90,
-              ),
-            ) *
-              24 *
-              60 *
-              60 *
-              1000,
+          now.getTime() - windowDays * 24 * 60 * 60 * 1000,
         ).toISOString(),
       });
       const anomalies = detectAnomalies(transactions);
@@ -707,8 +724,9 @@ async function runPaymentsActionInner(
             capability: "finance.anomalies",
             now,
             transactions,
-            sourceCount: params.sourceId ? 1 : 0,
+            sourceCount: countDistinctSources(transactions),
             method: "derived_from_transactions",
+            windowDays,
             notes: [
               "Heuristic detection over settled debits: same-merchant same-amount charges within 3 days, and debits >= 2.5x a merchant's prior average. Flags are candidates for human review, not confirmed errors.",
             ],

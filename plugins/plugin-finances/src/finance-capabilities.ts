@@ -53,6 +53,10 @@ export interface FinanceCapabilityMeta {
  * Receipt for a successful internal write (add/remove source, CSV import).
  * Describes what changed in `app_finances` without exposing row payloads or
  * credentials, so the planner and audit surfaces can cite the mutation.
+ * Receipts are non-authoritative response annotations minted per response —
+ * they are not persisted and carry no idempotency key, so a retried action
+ * yields a fresh `receiptId`; the underlying entity ids remain the stable
+ * handles for reconciliation.
  */
 export interface FinanceWriteReceipt {
   receiptId: string;
@@ -98,7 +102,13 @@ function latestPostedAt(
   return latest;
 }
 
-/** Builds the shared freshness/calculation metadata for one capability run. */
+/**
+ * Builds the shared freshness/calculation metadata for one capability run.
+ * Freshness defaults to the transaction rows the calculation consumed; a
+ * capability whose input is already an aggregate (e.g. recurring charges)
+ * passes explicit `latestDataAt`/`transactionCount` describing the rows that
+ * aggregate was derived from instead of fabricating an empty ledger.
+ */
 export function buildCapabilityMeta(args: {
   capability: string;
   now: Date;
@@ -107,14 +117,19 @@ export function buildCapabilityMeta(args: {
   method: FinanceCalculationMethod;
   windowDays?: number | null;
   notes?: readonly string[];
+  latestDataAt?: string | null;
+  transactionCount?: number;
 }): FinanceCapabilityMeta {
   return {
     capability: args.capability,
     provider: "plugin-finances",
     generatedAt: args.now.toISOString(),
     freshness: {
-      latestDataAt: latestPostedAt(args.transactions),
-      transactionCount: args.transactions.length,
+      latestDataAt:
+        args.latestDataAt !== undefined
+          ? args.latestDataAt
+          : latestPostedAt(args.transactions),
+      transactionCount: args.transactionCount ?? args.transactions.length,
       sourceCount: args.sourceCount,
     },
     calculation: {
@@ -123,6 +138,17 @@ export function buildCapabilityMeta(args: {
       notes: args.notes ?? [],
     },
   };
+}
+
+/** Number of distinct payment sources represented in a set of rows. */
+export function countDistinctSources(
+  transactions: readonly LifeOpsPaymentTransaction[],
+): number {
+  const sources = new Set<string>();
+  for (const tx of transactions) {
+    sources.add(tx.sourceId);
+  }
+  return sources.size;
 }
 
 /** True when the transaction is flagged pending by its originating provider. */

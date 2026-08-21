@@ -63,6 +63,7 @@ export {
   buildWriteReceipt,
   computeBudgetStatus,
   computeSourceBalances,
+  countDistinctSources,
   detectAnomalies,
   type FinanceAnomaly,
   type FinanceBudgetStatus,

@@ -352,6 +352,43 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       );
     });
 
+    it("import_csv issues a receipt only when rows were actually inserted", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "CSV receipt account",
+      });
+      const csvText =
+        "Date,Amount,Merchant\n2026-08-01,-12.50,Coffee Shop\n2026-08-02,-30.00,Grocer\n";
+      const first = await run({
+        subaction: "import_csv",
+        sourceId: source.id,
+        csvText,
+      });
+      expect(first.success).toBe(true);
+      const firstData = first.data as {
+        result: { inserted: number; skipped: number };
+        receipt?: { capability: string; counts: { inserted: number } | null };
+      };
+      expect(firstData.result.inserted).toBe(2);
+      expect(firstData.receipt?.capability).toBe("finance.import_csv");
+      expect(firstData.receipt?.counts?.inserted).toBe(2);
+
+      // An all-duplicate replay succeeds but mutates nothing: no receipt.
+      const replay = await run({
+        subaction: "import_csv",
+        sourceId: source.id,
+        csvText,
+      });
+      expect(replay.success).toBe(true);
+      const replayData = replay.data as {
+        result: { inserted: number; skipped: number };
+        receipt?: unknown;
+      };
+      expect(replayData.result.inserted).toBe(0);
+      expect(replayData.result.skipped).toBe(2);
+      expect(replayData.receipt).toBeUndefined();
+    });
+
     it("balances derives per-source figures with freshness metadata", async () => {
       const source = await service.addPaymentSource({
         kind: "manual",

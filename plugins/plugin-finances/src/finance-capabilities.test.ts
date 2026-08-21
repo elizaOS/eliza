@@ -14,6 +14,7 @@ import {
   buildWriteReceipt,
   computeBudgetStatus,
   computeSourceBalances,
+  countDistinctSources,
   detectAnomalies,
   isPendingTransaction,
   normalizeSubscriptions,
@@ -444,6 +445,55 @@ describe("buildCapabilityMeta / buildWriteReceipt / isPendingTransaction", () =>
     });
     expect(empty.freshness.latestDataAt).toBeNull();
     expect(empty.calculation.windowDays).toBeNull();
+  });
+
+  it("honors explicit freshness for aggregate-input capabilities", () => {
+    const meta = buildCapabilityMeta({
+      capability: "finance.subscriptions",
+      now: NOW,
+      transactions: [],
+      latestDataAt: "2026-08-10T00:00:00.000Z",
+      transactionCount: 12,
+      sourceCount: 2,
+      method: "derived_from_transactions",
+    });
+    expect(meta.freshness.latestDataAt).toBe("2026-08-10T00:00:00.000Z");
+    expect(meta.freshness.transactionCount).toBe(12);
+    expect(meta.freshness.sourceCount).toBe(2);
+
+    const explicitlyEmpty = buildCapabilityMeta({
+      capability: "finance.subscriptions",
+      now: NOW,
+      transactions: [],
+      latestDataAt: null,
+      transactionCount: 0,
+      sourceCount: 0,
+      method: "derived_from_transactions",
+    });
+    expect(explicitlyEmpty.freshness.latestDataAt).toBeNull();
+  });
+
+  it("counts distinct sources across consumed rows", () => {
+    expect(countDistinctSources([])).toBe(0);
+    expect(
+      countDistinctSources([
+        tx({
+          sourceId: "a",
+          postedAt: "2026-08-01T00:00:00.000Z",
+          amountUsd: 1,
+        }),
+        tx({
+          sourceId: "a",
+          postedAt: "2026-08-02T00:00:00.000Z",
+          amountUsd: 2,
+        }),
+        tx({
+          sourceId: "b",
+          postedAt: "2026-08-03T00:00:00.000Z",
+          amountUsd: 3,
+        }),
+      ]),
+    ).toBe(2);
   });
 
   it("issues unique receipts describing the write without payload data", () => {
