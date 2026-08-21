@@ -1604,7 +1604,6 @@ declare module "./client-base" {
       claimAttempt: number;
       hostId: string;
       hostToken: string;
-      claimAttempt: number;
       resultEnvelope: EncryptedRemoteCommand;
     }): Promise<void>;
     readCloudRemoteCommandResult(input: {
