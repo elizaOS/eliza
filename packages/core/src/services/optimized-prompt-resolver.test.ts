@@ -334,4 +334,3 @@ describe("trimDemonstrationInput surrogate handling", () => {
 		expect(parts[1].isWellFormed()).toBe(true);
 	});
 });
-
