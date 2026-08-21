@@ -75,7 +75,8 @@ fixture, research, example, and documentation trees are excluded.
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
 gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
-title check cover narrower contracts. None replaces the `CI / Required` status.
+title check cover narrower contracts. None replaces the required
+`All Tests Passed` aggregate.
 Representative examples:
 
 - `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
