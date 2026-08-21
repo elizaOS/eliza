@@ -24,6 +24,8 @@ import {
   registerRuntimeManagedInternalActor,
   ServiceType,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   buildTriggerMetadata,
@@ -661,7 +663,7 @@ export async function executeTriggerTask(
             : `Automation "${trigger.displayName}" failed`,
           body: workflowGone
             ? "Its workflow no longer exists, so the schedule was removed. Recreate the automation if you still need it."
-            : errorMessage.slice(0, 200),
+            : truncateWellFormed(toWellFormedUnicode(errorMessage), 200),
           category: "workflow",
           priority: "high",
           source: "trigger",
