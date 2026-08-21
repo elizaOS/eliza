@@ -15,10 +15,11 @@
  * `PATH`, `HOME` or `SHELL` is now dropped where it used to win.
  *
  * Only `USE_SKILL` in script mode reaches this. Shell blocks in a SKILL.md are
- * run by the agent's own shell tool, so extend the allowlist from what skill
- * SCRIPTS read, not from what SKILL.md prose mentions.
+ * run by the agent's own shell tool, so credentials are inherited only when a
+ * trusted bundled skill script declares them. A global credential allowlist
+ * would hand every admitted secret to every installed script.
  */
-import { sanitizeSpawnEnv } from "@elizaos/core";
+import { ElizaError, sanitizeSpawnEnv } from "@elizaos/core";
 
 /** Process-level keys a child needs to run. None carries authority. */
 const HOST_ENV_KEYS = [
@@ -38,66 +39,75 @@ const HOST_ENV_KEYS = [
 ] as const;
 
 /**
- * The group that carries authority, so the one to guard: **do not add a
- * fleet-scoped key here.**
- *
- * `ELIZAOS_CLOUD_API_KEY` is admitted despite being platform-reserved because
- * the platform mints it per agent (`apiKeysService.createForAgent` in
- * `managed-eliza-config`), so a skill reading it reads its own agent's key.
- * Both base-URL spellings are present because the platform injects
- * `ELIZAOS_CLOUD_BASE_URL` while the bundled `eliza-cloud` skill documents
- * `ELIZA_CLOUD_BASE_URL`.
+ * Credentials a bundled executable script may inherit when that same skill
+ * declares the key in `requires.env`. Guidance-only skills are deliberately
+ * absent: their shell examples run through a different, already-brokered tool.
  */
-const AGENT_SCOPED_ENV_KEYS = [
-  "ELIZAOS_CLOUD_API_KEY",
-  "ELIZAOS_CLOUD_BASE_URL",
-  "ELIZA_CLOUD_BASE_URL",
-  "ELIZA_CLOUD_PUBLIC_URL",
-  "ELIZA_CLOUD_URL",
-  "ELIZA_APP_ID",
-] as const;
-
-/**
- * Credentials a bundled skill script reads or declares in `requires.env`
- * (`nano-banana-pro`, `tmux`, `notion`, `trello`, `things-mac`). Every entry is
- * a real read or a real declaration — an entry justified only by prose admits a
- * credential nothing uses.
- */
-const SKILL_DECLARED_ENV_KEYS = [
+const APPROVED_BUNDLED_SCRIPT_ENV_KEYS = [
   "GEMINI_API_KEY",
-  "OTTO_TMUX_SOCKET_DIR",
-  "NOTION_API_KEY",
-  "TRELLO_API_KEY",
-  "TRELLO_TOKEN",
-  "THINGS_AUTH_TOKEN",
 ] as const;
 
-const INHERITABLE_ENV_KEYS: ReadonlySet<string> = new Set<string>([
-  ...HOST_ENV_KEYS,
-  ...AGENT_SCOPED_ENV_KEYS,
-  ...SKILL_DECLARED_ENV_KEYS,
-]);
+const HOST_ENV_KEY_SET: ReadonlySet<string> = new Set<string>(HOST_ENV_KEYS);
+const APPROVED_BUNDLED_SCRIPT_ENV_KEY_SET: ReadonlySet<string> =
+  new Set<string>(APPROVED_BUNDLED_SCRIPT_ENV_KEYS);
+
+function isCanonicalSkillEnvKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return (
+    HOST_ENV_KEY_SET.has(upper) ||
+    APPROVED_BUNDLED_SCRIPT_ENV_KEY_SET.has(upper)
+  );
+}
 
 /**
  * Also consulted by the eligibility check, so a skill requiring a variable this
  * filter will not pass reports blocked instead of running without it.
  */
-export function isInheritableSkillEnvKey(key: string): boolean {
-  return INHERITABLE_ENV_KEYS.has(key.toUpperCase());
+export function isInheritableSkillEnvKey(
+  key: string,
+  allowedCredentialKeys: readonly string[] = [],
+): boolean {
+  const upper = key.toUpperCase();
+  if (HOST_ENV_KEY_SET.has(upper)) return true;
+  return (
+    APPROVED_BUNDLED_SCRIPT_ENV_KEY_SET.has(upper) &&
+    allowedCredentialKeys.some((allowed) => allowed.toUpperCase() === upper)
+  );
 }
 
 /**
  * @param processEnv parent environment, filtered by allowlist
  * @param overlay per-skill configured env, filtered by the spawn denylist
+ * @param allowedCredentialKeys credentials declared by this trusted bundled skill
  */
 export function buildSkillExecutionEnv(
   processEnv: NodeJS.ProcessEnv,
   overlay: Record<string, string>,
+  allowedCredentialKeys: readonly string[] = [],
 ): Record<string, string> {
   const result: Record<string, string> = {};
+  // Emit the allowlist's canonical spelling. This matters on Windows, where
+  // the parent commonly exposes `Path`, and on POSIX, where a child reading
+  // the documented uppercase key cannot see a mixed-case spelling.
   for (const [key, value] of Object.entries(processEnv)) {
-    if (value !== undefined && isInheritableSkillEnvKey(key))
-      result[key] = value;
+    const canonicalKey = key.toUpperCase();
+    if (
+      value !== undefined &&
+      key === canonicalKey &&
+      isInheritableSkillEnvKey(canonicalKey, allowedCredentialKeys)
+    ) {
+      result[canonicalKey] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(processEnv)) {
+    const canonicalKey = key.toUpperCase();
+    if (
+      value !== undefined &&
+      result[canonicalKey] === undefined &&
+      isInheritableSkillEnvKey(canonicalKey, allowedCredentialKeys)
+    ) {
+      result[canonicalKey] = value;
+    }
   }
   for (const [key, value] of Object.entries(sanitizeSpawnEnv(overlay))) {
     if (value === undefined) continue;
@@ -106,10 +116,13 @@ export function buildSkillExecutionEnv(
     // exact-name overwrite would ship both and a child reading the documented
     // spelling would still get the ambient value — the opposite of overlay-wins.
     const upper = key.toUpperCase();
+    const emittedKey = isCanonicalSkillEnvKey(upper) ? upper : key;
     for (const existing of Object.keys(result)) {
-      if (existing !== key && existing.toUpperCase() === upper) delete result[existing];
+      if (existing !== emittedKey && existing.toUpperCase() === upper) {
+        delete result[existing];
+      }
     }
-    result[key] = value;
+    result[emittedKey] = value;
   }
 
   // Without PATH, execvp falls back to a system default and bash synthesizes one
@@ -117,8 +130,9 @@ export function buildSkillExecutionEnv(
   // same-named file from the working directory. A filter meant to remove
   // authority must not create that, so refuse rather than spawn.
   if (!result.PATH?.trim()) {
-    throw new Error(
+    throw new ElizaError(
       "[agent-skills] refusing to run a skill script with no PATH: the child would resolve bare command names against a synthesized default",
+      { code: "SKILL_SCRIPT_PATH_UNAVAILABLE", severity: "fatal" },
     );
   }
 

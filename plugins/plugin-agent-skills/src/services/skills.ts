@@ -131,6 +131,18 @@ function sanitizeSlug(slug: string): string {
 	return sanitized;
 }
 
+/**
+ * Only repository-bundled scripts may inherit an approved ambient credential.
+ * Installed, workspace, plugin, and extra skills must receive credentials
+ * through their own per-skill overlay instead of ambient process state.
+ */
+function inheritedCredentialKeysForSkill(
+	skill: LoadedSkillWithSource,
+): readonly string[] {
+	if (skill.source !== "bundled") return [];
+	return skill.frontmatter.metadata?.otto?.requires?.env ?? [];
+}
+
 async function fetchInstallResource(
 	url: string,
 	lifecycle: SkillDownloadLifecycle,
@@ -1002,18 +1014,24 @@ export class AgentSkillsService extends Service {
 			// Check required environment variables
 			if (requires.env && requires.env.length > 0) {
 				const skillEnv = this.getSkillEnv(skill.slug);
+				const inheritedCredentialKeys =
+					inheritedCredentialKeysForSkill(skill);
 				for (const envVar of requires.env) {
 					// Answer from what the script will ACTUALLY receive. Reading
 					// process.env directly would report a skill ready and then run it
 					// without the variable, surfacing as a third-party 401 deep inside
 					// the script rather than as a missing requirement here.
-					const inherited = isInheritableSkillEnvKey(envVar)
+					const inherited = isInheritableSkillEnvKey(
+						envVar,
+						inheritedCredentialKeys,
+					)
 						? process.env[envVar]
 						: undefined;
 					const value = inherited || skillEnv[envVar];
 					if (!value) {
 						const blocked =
-							!isInheritableSkillEnvKey(envVar) && Boolean(process.env[envVar]);
+							!isInheritableSkillEnvKey(envVar, inheritedCredentialKeys) &&
+							Boolean(process.env[envVar]);
 						reasons.push({
 							type: "env",
 							missing: envVar,
@@ -1733,12 +1751,20 @@ export class AgentSkillsService extends Service {
 	getSkillExecutionEnv(slug: string): Record<string, string> {
 		const skillEnv = this.getSkillEnv(slug);
 		const apiKey = this.getSkillApiKey(slug);
+		const skill = this.loadedSkills.get(sanitizeSlug(slug));
+		const inheritedCredentialKeys = skill
+			? inheritedCredentialKeysForSkill(skill)
+			: [];
 
 		// Inheriting process.env wholesale handed every skill script the agent's
 		// full credential set, which in a managed container is fleet-scoped and
 		// not tenant-scoped. buildSkillExecutionEnv allowlists what may be
 		// inherited and denylists what the per-skill overlay may inject.
-		const env = buildSkillExecutionEnv(process.env, skillEnv);
+		const env = buildSkillExecutionEnv(
+			process.env,
+			skillEnv,
+			inheritedCredentialKeys,
+		);
 
 		if (apiKey) {
 			// Inject API key with standard naming

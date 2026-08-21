@@ -1,3 +1,9 @@
+/**
+ * Skill-script environment tests pin credential filtering, canonical key
+ * emission, and the value observed by a real child process.
+ */
+
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   buildSkillExecutionEnv,
@@ -30,7 +36,7 @@ describe("buildSkillExecutionEnv", () => {
     expect(env.HOME).toBe("/root");
   });
 
-  it("keeps the agent-scoped cloud identity, which is minted per agent", () => {
+  it("does not pass Cloud identity used only by guidance-mode skills", () => {
     const env = buildSkillExecutionEnv(
       {
         ELIZAOS_CLOUD_API_KEY: "agent-own-key",
@@ -43,15 +49,37 @@ describe("buildSkillExecutionEnv", () => {
       {},
     );
 
-    expect(env.ELIZAOS_CLOUD_API_KEY).toBe("agent-own-key");
-    expect(env.ELIZAOS_CLOUD_BASE_URL).toBe("https://api.eliza.app");
-    expect(env.ELIZA_CLOUD_BASE_URL).toBe("https://api.eliza.app");
+    expect(env).not.toHaveProperty("ELIZAOS_CLOUD_API_KEY");
+    expect(env).not.toHaveProperty("ELIZAOS_CLOUD_BASE_URL");
+    expect(env).not.toHaveProperty("ELIZA_CLOUD_BASE_URL");
+  });
+
+  it("inherits only an approved credential declared by this bundled script", () => {
+    const env = buildSkillExecutionEnv(
+      {
+        PATH: "/usr/bin",
+        GEMINI_API_KEY: "image-key",
+        NOTION_API_KEY: "guidance-only-key",
+      },
+      {},
+      ["GEMINI_API_KEY", "NOTION_API_KEY"],
+    );
+
+    expect(env.GEMINI_API_KEY).toBe("image-key");
+    expect(env).not.toHaveProperty("NOTION_API_KEY");
   });
 
   it("passes the parent's own PATH through rather than a substitute", () => {
     const env = buildSkillExecutionEnv({ PATH: "/opt/custom/bin:/bin" }, {});
 
     expect(env.PATH).toBe("/opt/custom/bin:/bin");
+  });
+
+  it("canonicalizes a Windows-style Path spelling for the spawned child", () => {
+    const env = buildSkillExecutionEnv({ Path: "C:\\Tools" }, {});
+
+    expect(env.PATH).toBe("C:\\Tools");
+    expect(env).not.toHaveProperty("Path");
   });
 
   it("refuses to build an env with no PATH instead of letting bash synthesize one", () => {
@@ -92,25 +120,36 @@ describe("buildSkillExecutionEnv", () => {
     const env = buildSkillExecutionEnv(
       { PATH: "/usr/bin", GEMINI_API_KEY: "ambient" },
       { GEMINI_API_KEY: "from-skill-config" },
+      ["GEMINI_API_KEY"],
     );
 
     expect(env.GEMINI_API_KEY).toBe("from-skill-config");
   });
 
-  it("wins over an inherited entry that differs only in case", () => {
+  it("a real child reads the overlay value under the documented spelling", () => {
     // POSIX treats these as two variables. Writing only the exact name would
     // ship both, and a child reading the documented uppercase spelling would
     // still get the ambient value — silently using the wrong credential.
     const env = buildSkillExecutionEnv(
       { PATH: "/usr/bin", GEMINI_API_KEY: "ambient" },
       { Gemini_Api_Key: "from-skill-config" },
+      ["GEMINI_API_KEY"],
     );
 
     const spellings = Object.keys(env).filter(
       (key) => key.toUpperCase() === "GEMINI_API_KEY",
     );
     expect(spellings).toHaveLength(1);
-    expect(env[spellings[0]]).toBe("from-skill-config");
+    expect(spellings[0]).toBe("GEMINI_API_KEY");
+    expect(env.GEMINI_API_KEY).toBe("from-skill-config");
+
+    const child = spawnSync(
+      process.execPath,
+      ["-e", "process.stdout.write(process.env.GEMINI_API_KEY ?? '')"],
+      { encoding: "utf8", env },
+    );
+    expect(child.status).toBe(0);
+    expect(child.stdout).toBe("from-skill-config");
   });
 });
 
@@ -118,8 +157,10 @@ describe("isInheritableSkillEnvKey", () => {
   it("agrees with what the filter emits, so eligibility cannot report green then fail", () => {
     // The eligibility check calls this; if the two disagreed, a skill would be
     // reported ready and then spawned without the variable it declared.
-    expect(isInheritableSkillEnvKey("GEMINI_API_KEY")).toBe(true);
-    expect(isInheritableSkillEnvKey("gemini_api_key")).toBe(true);
+    expect(isInheritableSkillEnvKey("GEMINI_API_KEY")).toBe(false);
+    expect(
+      isInheritableSkillEnvKey("gemini_api_key", ["GEMINI_API_KEY"]),
+    ).toBe(true);
     expect(isInheritableSkillEnvKey("AGENT_SERVER_SHARED_SECRET")).toBe(false);
     expect(isInheritableSkillEnvKey("SOME_THIRD_PARTY_KEY")).toBe(false);
   });
