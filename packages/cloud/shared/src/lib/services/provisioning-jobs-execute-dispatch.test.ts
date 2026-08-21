@@ -46,6 +46,7 @@ function makeJob(
       organizationId: ORG,
       userId: USER,
       agentName: "Test Agent",
+      ...(type === JOB_TYPES.AGENT_SUSPEND ? { authorization: "user_request" } : {}),
       ...extraData,
     },
     data_storage: "inline",

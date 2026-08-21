@@ -1,4 +1,7 @@
-// Persists jobs records for cloud services through the shared DB boundary.
+/**
+ * Persists background-job state, execution generations, and renewable leases
+ * through the primary and read-intent cloud database boundaries.
+ */
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, lt, type SQL, sql } from "drizzle-orm";
 import {
@@ -72,6 +75,9 @@ export const JOB_EXECUTION_RECOVERY_GRACE_MS = 30_000;
 
 /** Atomic result of attempting to renew one claimed execution generation. */
 export type ExecutionLeaseRenewal = "renewed" | "settled" | "lost";
+
+/** Outcome of terminally rejecting one exact claimed execution generation. */
+export type ClaimedExecutionRejection = "rejected" | "already-terminal" | "stale" | "lost";
 
 const SETTLED_JOB_STATUSES = new Set(["completed", "failed", "cancelled"]);
 
@@ -988,6 +994,107 @@ export class JobsRepository {
       )
       .limit(1);
     if (!owned) throw new StaleJobExecutionError(claimedJob.id);
+  }
+
+  /**
+   * Terminally rejects an invalid claimed execution before it can acquire a
+   * resource fence. The exact generation and live owner lease are the only
+   * authority; no dependent-row callback or sandbox mutation participates in
+   * this pre-dispatch transition.
+   *
+   * A same-generation terminal row is classified before its lease is read so
+   * a retry after an ambiguous commit acknowledgement reconstructs success
+   * without incrementing attempts twice.
+   */
+  async rejectClaimedExecution(
+    claimedJob: Job,
+    error: string,
+    ownerId: string,
+  ): Promise<ClaimedExecutionRejection> {
+    const generation = requireExecutionGeneration(claimedJob);
+    if (!ownerId) {
+      throw new Error(`Execution owner is required to reject claimed job ${claimedJob.id}`);
+    }
+    const payload = await prepareJobPayload({ error }, claimedJob);
+
+    return await dbWrite.transaction(async (tx) => {
+      const [current] = await tx
+        .select({
+          status: jobs.status,
+          executionGeneration: jobs.execution_generation,
+          executionQuiescedAt: jobs.execution_quiesced_at,
+        })
+        .from(jobs)
+        .where(eq(jobs.id, claimedJob.id))
+        .for("update")
+        .limit(1);
+      if (!current) return "lost";
+      if (current.executionGeneration !== generation) return "stale";
+      if (SETTLED_JOB_STATUSES.has(current.status)) return "already-terminal";
+      if (current.status !== "in_progress" || current.executionQuiescedAt !== null) {
+        return "stale";
+      }
+
+      const [lease] = await tx
+        .select({ jobId: jobExecutionLeases.job_id })
+        .from(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+            sql`${jobExecutionLeases.expires_at} > NOW()`,
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!lease) return "lost";
+
+      const settledAt = new Date();
+      const [rejected] = await tx
+        .update(jobs)
+        .set({
+          status: "failed",
+          ...payload,
+          attempts: sql`${jobs.attempts} + 1`,
+          completed_at: settledAt,
+          execution_quiesced_at: settledAt,
+          updated_at: settledAt,
+        })
+        .where(
+          and(
+            eq(jobs.id, claimedJob.id),
+            eq(jobs.status, "in_progress"),
+            eq(jobs.execution_generation, generation),
+            sql`${jobs.execution_quiesced_at} IS NULL`,
+            sql`EXISTS (
+              SELECT 1
+              FROM ${jobExecutionLeases}
+              WHERE ${jobExecutionLeases.job_id} = ${claimedJob.id}
+                AND ${jobExecutionLeases.execution_generation} = ${generation}
+                AND ${jobExecutionLeases.owner_id} = ${ownerId}
+                AND ${jobExecutionLeases.expires_at} > NOW()
+            )`,
+          ),
+        )
+        .returning({ id: jobs.id });
+      if (!rejected) return "lost";
+
+      const [deletedLease] = await tx
+        .delete(jobExecutionLeases)
+        .where(
+          and(
+            eq(jobExecutionLeases.job_id, claimedJob.id),
+            eq(jobExecutionLeases.execution_generation, generation),
+            eq(jobExecutionLeases.owner_id, ownerId),
+          ),
+        )
+        .returning({ jobId: jobExecutionLeases.job_id });
+      if (!deletedLease) {
+        throw new Error(`Rejected job ${claimedJob.id} lost its exact execution lease`);
+      }
+      return "rejected";
+    });
   }
 
   /**
