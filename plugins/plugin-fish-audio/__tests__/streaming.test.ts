@@ -310,6 +310,29 @@ describe("fishAudioPlugin", () => {
     await expect(result.bytes).rejects.toThrow("Fish Audio TTS aborted");
   });
 
+  test("detaches the abort listener once synthesis finishes on its own", async () => {
+    Object.defineProperty(globalThis, "WebSocket", {
+      value: FakeFishSocket,
+      configurable: true,
+    });
+    const controller = new AbortController();
+    const remove = vi.spyOn(controller.signal, "removeEventListener");
+
+    const result = await handleFishAudioTextToSpeech(
+      runtime({
+        ELIZA_TTS_FISH_ENABLED: "true",
+        FISH_AUDIO_DATA_GOVERNANCE_APPROVED: "true",
+        FISH_AUDIO_API_KEY: "key",
+        FISH_AUDIO_REFERENCE_ID: "voice",
+      }),
+      { text: "hello", audioStream: true, signal: controller.signal },
+    );
+    if (!("bytes" in result)) throw new Error("Expected streaming result");
+    await result.bytes;
+
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+  });
+
   test("buffers bytes when audioStream is false", async () => {
     Object.defineProperty(globalThis, "WebSocket", {
       value: FakeFishSocket,

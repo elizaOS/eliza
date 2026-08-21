@@ -1,0 +1,259 @@
+.demo-review-page {
+  min-height: 100vh;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  background: #f5f5f7;
+  color: #111113;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.demo-review-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  width: min(100%, 92rem);
+  gap: 2rem;
+  margin: 0 auto 1.5rem;
+}
+
+.demo-review-header > div > a {
+  color: #6e6e73;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.demo-review-header p,
+.demo-review-room-header p {
+  margin: 1.25rem 0 0.2rem;
+  color: #76767c;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.demo-review-header h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 3.3rem);
+  letter-spacing: -0.045em;
+  line-height: 1;
+}
+
+.demo-review-subtitle,
+.demo-review-room-members {
+  display: block;
+  margin-top: 0.55rem;
+  color: #6e6e73;
+  font-size: 0.84rem;
+}
+
+.demo-review-editor-note {
+  display: block;
+  max-width: 42rem;
+  margin-top: 0.65rem;
+  color: #3a3a3c;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.demo-review-editor-note code {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 0.74rem;
+  overflow-wrap: anywhere;
+}
+
+.demo-review-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 0.45rem;
+}
+
+.demo-review-header nav a,
+.demo-review-capability {
+  border: 1px solid rgb(0 0 0 / 9%);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 75%);
+  color: #3a3a3c;
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.demo-review-header nav a {
+  padding: 0.48rem 0.72rem;
+}
+
+.demo-review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  width: min(100%, 92rem);
+  gap: 1rem;
+  margin: 0 auto;
+}
+
+.demo-review-room {
+  overflow: hidden;
+  border: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 1.35rem;
+  background: #fff;
+  box-shadow: 0 0.75rem 2.5rem rgb(0 0 0 / 4%);
+  scroll-margin-top: 1rem;
+}
+
+.demo-review-room-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-bottom: 1px solid rgb(0 0 0 / 6%);
+}
+
+.demo-review-room-header p {
+  margin-top: 0;
+}
+
+.demo-review-room-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+}
+
+.demo-review-room-header > strong {
+  align-self: start;
+  color: #76767c;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.demo-review-cast {
+  display: flex;
+  padding-left: 0.42rem;
+}
+
+.demo-review-cast img {
+  width: 2.15rem;
+  height: 2.15rem;
+  margin-left: -0.42rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.demo-review-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgb(0 0 0 / 6%);
+  background: #fafafa;
+}
+
+.demo-review-capability {
+  padding: 0.28rem 0.55rem;
+  background: #fff;
+}
+
+.demo-review-script {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-review-step {
+  display: grid;
+  grid-template-columns: 1.7rem 2rem minmax(0, 1fr);
+  gap: 0.55rem;
+  padding: 0.72rem 1rem;
+  border-bottom: 1px solid rgb(0 0 0 / 5%);
+}
+
+.demo-review-step:last-child {
+  border-bottom: 0;
+}
+
+.demo-review-number {
+  padding-top: 0.18rem;
+  color: #a0a0a5;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.demo-review-avatar-slot img {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.demo-review-step-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.demo-review-step-meta strong {
+  font-size: 0.78rem;
+}
+
+.demo-review-step-capability {
+  color: #7b7b80;
+  font-size: 0.68rem;
+  text-align: right;
+}
+
+.demo-review-step-body p {
+  margin: 0.18rem 0 0;
+  color: #303034;
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
+.demo-review-step--user .demo-review-step-body p {
+  color: #0064d9;
+}
+
+.demo-review-card-preview {
+  width: min(100%, 22rem);
+  margin-top: 0.35rem;
+}
+
+@media (max-width: 850px) {
+  .demo-review-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .demo-review-header nav {
+    justify-content: start;
+  }
+
+  .demo-review-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 440px) {
+  .demo-review-page {
+    padding: 0.75rem;
+  }
+
+  .demo-review-room-header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .demo-review-room-header > strong {
+    display: none;
+  }
+
+  .demo-review-step {
+    grid-template-columns: 1.25rem 1.75rem minmax(0, 1fr);
+    gap: 0.45rem;
+    padding-inline: 0.7rem;
+  }
+}

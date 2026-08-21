@@ -38,23 +38,24 @@ afterEach(async () => {
 
 describe("device-e2e bound-port publication", () => {
   it("rejects an invalid bound port before mutating runtime state", () => {
-    process.env.ELIZA_API_PORT = "43137";
-    process.env.ELIZA_UI_PORT = "43138";
-    process.env.ELIZA_PORT = "43139";
+    process.env.ELIZA_API_PORT = "previous-api";
+    process.env.ELIZA_UI_PORT = "previous-ui";
+    process.env.ELIZA_PORT = "previous-server";
 
     expect(() => publishBoundDeviceE2ePort(0)).toThrow(
       "Invalid bound device-e2e port: 0",
     );
-    expect(process.env.ELIZA_API_PORT).toBe("43137");
-    expect(process.env.ELIZA_UI_PORT).toBe("43138");
-    expect(process.env.ELIZA_PORT).toBe("43139");
+    expect(process.env.ELIZA_API_PORT).toBe("previous-api");
+    expect(process.env.ELIZA_UI_PORT).toBe("previous-ui");
+    expect(process.env.ELIZA_PORT).toBe("previous-server");
   });
 
   it("synchronizes env and cache before advertising the self-reported route", async () => {
-    process.env.ELIZA_API_PORT = "43137";
-    process.env.ELIZA_UI_PORT = "43138";
-    process.env.ELIZA_PORT = "43139";
-    expect(getCorsAllowedPorts().has("43137")).toBe(true);
+    const stalePort = String(30_000 + (process.pid % 10_000));
+    process.env.ELIZA_API_PORT = stalePort;
+    process.env.ELIZA_UI_PORT = stalePort;
+    process.env.ELIZA_PORT = stalePort;
+    expect(getCorsAllowedPorts().has(stalePort)).toBe(true);
     process.env.ELIZA_API_PORT = "0";
     process.env.ELIZA_UI_PORT = "0";
     process.env.ELIZA_PORT = "0";

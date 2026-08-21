@@ -154,6 +154,12 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
+    name: "maps app shell page",
+    path: "/maps",
+    selector: '[data-testid="maps-view"]',
+    timeoutMs: 90_000,
+  },
+  {
     // Pinned home tile → Settings.
     name: "settings view",
     path: "/settings",
@@ -188,6 +194,7 @@ const managerVisibleViewTileCases = [
   { viewId: "health", path: "/health" },
   { viewId: "inbox", path: "/inbox" },
   { viewId: "messages", path: "/messages" },
+  { viewId: "maps", path: "/maps" },
   { viewId: "orchestrator", path: "/orchestrator" },
   { viewId: "cloud", path: "/cloud" },
   { viewId: "phone", path: "/phone" },

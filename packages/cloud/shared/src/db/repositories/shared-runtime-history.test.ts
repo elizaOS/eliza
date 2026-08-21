@@ -54,23 +54,33 @@ describe("SharedRuntimeHistoryRepository.deleteByAgent", () => {
 });
 
 describe("SharedRuntimeHistoryRepository.listRecentlyActiveAgentIds", () => {
-  test("selects distinct agents strictly newer than the window start, capped", async () => {
+  test("selects the newest distinct agents with a deterministic capped order", async () => {
     let capturedRecency: SQL | undefined;
     let capturedLimit: number | undefined;
+    let capturedGroup: unknown;
+    let capturedOrder: unknown[] = [];
     const rows = [{ agentId: "agent-a" }, { agentId: "agent-b" }];
     const limitFn = mock((n: number) => {
       capturedLimit = n;
       return Promise.resolve(rows);
     });
-    const whereFn = mock((clause: SQL) => {
-      capturedRecency = clause;
+    const orderByFn = mock((...order: unknown[]) => {
+      capturedOrder = order;
       return { limit: limitFn };
     });
+    const groupByFn = mock((group: unknown) => {
+      capturedGroup = group;
+      return { orderBy: orderByFn };
+    });
+    const whereFn = mock((clause: SQL) => {
+      capturedRecency = clause;
+      return { groupBy: groupByFn };
+    });
     const fromFn = mock(() => ({ where: whereFn }));
-    const selectDistinct = mock(() => ({ from: fromFn }));
+    const select = mock(() => ({ from: fromFn }));
     const dbReadMock = new Proxy(realClient.dbRead as unknown as Record<PropertyKey, unknown>, {
       get(target, prop, receiver) {
-        if (prop === "selectDistinct") return selectDistinct;
+        if (prop === "select") return select;
         return Reflect.get(target, prop, receiver);
       },
     });
@@ -84,6 +94,14 @@ describe("SharedRuntimeHistoryRepository.listRecentlyActiveAgentIds", () => {
       const sql = new PgDialect().sqlToQuery(capturedRecency as SQL);
       expect(sql.sql).toContain('"updated_at" >');
       expect(sql.params).toContainEqual(since.toISOString());
+      expect(capturedGroup).toBeDefined();
+      expect(capturedOrder).toHaveLength(2);
+      const orderSql = capturedOrder
+        .map((part) => new PgDialect().sqlToQuery(part as SQL).sql)
+        .join(" ");
+      expect(orderSql).toContain("max(");
+      expect(orderSql).toContain("desc");
+      expect(orderSql).toContain('"agent_id" asc');
     } finally {
       mock.module("../client", () => realClient);
     }

@@ -11,6 +11,13 @@ let responseQueue: Response[];
 let requestedMethods: string[];
 let requestedUrls: string[];
 
+function serverListResponse(servers: Array<Record<string, unknown>>): Response {
+  return Response.json({
+    servers,
+    meta: { pagination: { next_page: null } },
+  });
+}
+
 beforeEach(() => {
   originalFetch = globalThis.fetch;
   responseQueue = [];
@@ -62,7 +69,7 @@ describe("Hetzner E2E reaper credential boundary", () => {
   });
 
   test("a successful empty sweep remains a real success", async () => {
-    responseQueue.push(Response.json({ servers: [] }));
+    responseQueue.push(serverListResponse([]));
 
     await expect(
       runHetznerE2eReaper("valid-ci-token"),
@@ -72,15 +79,13 @@ describe("Hetzner E2E reaper credential boundary", () => {
 
   test("deletes a stale server through the real client", async () => {
     responseQueue.push(
-      Response.json({
-        servers: [
-          {
-            id: 42,
-            name: "ci-hetzner-e2e-stale",
-            created: "2000-01-01T00:00:00.000Z",
-          },
-        ],
-      }),
+      serverListResponse([
+        {
+          id: 42,
+          name: "ci-hetzner-e2e-stale",
+          created: "2000-01-01T00:00:00.000Z",
+        },
+      ]),
       new Response(null, { status: 204 }),
     );
 
@@ -93,12 +98,10 @@ describe("Hetzner E2E reaper credential boundary", () => {
 
   test("continues the sweep but fails the process when any deletion fails", async () => {
     responseQueue.push(
-      Response.json({
-        servers: [
-          { id: 42, name: "first", created: "2000-01-01T00:00:00.000Z" },
-          { id: 43, name: "second", created: "2000-01-01T00:00:00.000Z" },
-        ],
-      }),
+      serverListResponse([
+        { id: 42, name: "first", created: "2000-01-01T00:00:00.000Z" },
+        { id: 43, name: "second", created: "2000-01-01T00:00:00.000Z" },
+      ]),
       Response.json(
         { error: { code: "conflict", message: "server locked" } },
         { status: 409 },

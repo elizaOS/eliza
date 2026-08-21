@@ -11,6 +11,7 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 import { Hono } from "hono";
 
 import type { UserCharacter } from "@/db/repositories/characters";
@@ -170,6 +171,7 @@ describe("clone character route — cross-tenant IDOR guard", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: CALLER_ID }),
+      { policy: { mode: "metered" } },
     );
   });
 
@@ -203,6 +205,32 @@ describe("clone character route — cross-tenant IDOR guard", () => {
     expect(create).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({ user_id: CALLER_ID }),
+      { policy: { mode: "metered" } },
     );
+  });
+
+  test("maps the central Cloud-character quota error canonically", async () => {
+    getById.mockResolvedValueOnce(
+      buildCharacter({
+        user_id: CALLER_ID,
+        is_public: false,
+        is_template: false,
+      }),
+    );
+    create.mockRejectedValueOnce(
+      new ElizaError("quota", {
+        code: "CLOUD_CHARACTER_QUOTA_EXCEEDED",
+        context: { current: 5, limit: 5 },
+      }),
+    );
+
+    const response = await postClone("00000000-0000-0000-0000-000000000001");
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "agent_quota_exceeded",
+      details: { current: 5, max: 5 },
+    });
   });
 });

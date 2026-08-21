@@ -17,7 +17,12 @@ export type SharedDedicatedCapability =
 export interface SharedCapabilityWall {
   capability: SharedDedicatedCapability;
   label: string;
-  reply: string;
+  /**
+   * Factual runtime constraint supplied to the model and action receipt. This
+   * is deliberately not end-user copy: the model must express it naturally in
+   * the agent's voice and in the context of the actual request.
+   */
+  constraint: string;
 }
 
 export type SharedCapabilityResolution =
@@ -37,93 +42,93 @@ const RULES: ReadonlyArray<SharedCapabilityWall & { pattern: RegExp }> = [
     label: "Reminders",
     pattern:
       /\b(?:remind\s+me|(?:set|create|add|schedule|cancel|delete|change|list|show)\b[\s\S]{0,36}\breminders?)\b/i,
-    reply:
-      "Reminders need Dedicated. I can still help you plan it here, but Shared can't schedule or deliver reminders.",
+    constraint:
+      "This transport has no trusted reminder delivery, so it cannot create, change, list, or deliver reminders.",
   },
   {
     capability: "todos",
     label: "Todos",
     pattern:
       /\b(?:add|create|make|write|show|list|get|update|edit|complete|finish|cancel|delete|remove|clear)\b[\s\S]{0,48}\b(?:to[ -]?dos?|task\s+list|checklist|my\s+tasks?)\b/i,
-    reply: "Todos are unavailable on this chat path right now. I didn't save or change anything.",
+    constraint:
+      "This chat path has no persistent todo storage, so it cannot read or change a checklist.",
   },
   {
     capability: "calendar",
     label: "Calendar",
     pattern:
       /\b(?:(?:add|create|book|schedule|cancel|delete|move|reschedule)\b[\s\S]{0,36}\b(?:calendar|events?|appointments?|meetings?)|(?:check|show|list|open)\b\s+(?:me\s+)?(?:(?:my|our|the|upcoming|next|today(?:'s)?|tomorrow(?:'s)?)\s+){0,2}(?:calendar|events?|appointments?|meetings?)|(?:check|show)\b\s+(?:me\s+)?(?:if|whether)\s+(?:(?:i|we)\s+have|there\s+(?:is|are))\s+(?:(?:any|some|an?)\s+)?(?:events?|appointments?|meetings?))\b/i,
-    reply:
-      "Calendar actions need Dedicated. I can help plan the event here, but Shared can't read or change your calendar.",
+    constraint:
+      "No calendar account or calendar action is available in this runtime, so it cannot read or change calendar data.",
   },
   {
     capability: "bookings",
     label: "Bookings",
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:(?:book|reserve)\s+(?:it|that|this)|(?:book|reserve)\b[\s\S]{0,48}\b(?:flights?|tables?|restaurants?|reservations?|hotels?|rooms?|tickets?|dinner|lunch|appointments?)|make\b[\s\S]{0,36}\b(?:reservations?|bookings?))\b/i,
-    reply:
-      "Bookings need Dedicated. I can research options and help you choose, but Shared can't make the reservation or purchase.",
+    constraint:
+      "No booking action is available in this runtime, so it cannot make or change a reservation.",
   },
   {
     capability: "communications",
     label: "Calls and messages",
     pattern:
       /(?:(?<=^|[.!?;,]\s*|\b(?:and\s+)?then\s+|\band\s+|\bto\s+|\bplease\s+|\b(?:can|could|would|will)\s+you\s+)(?:email|call|text|message|dm)\s+(?!(?:this|the|a|an)\s+(?:\w+\s+){0,2}(?:function|method|api|endpoint|class|variable|command)\b)|\bsend\b[\s\S]{0,32}\b(?:email|text|message|dm)\b)/i,
-    reply:
-      "I can talk with you and reply through Eliza's connected voice and messaging channels. I can't initiate a separate call, email, text, or DM to another person from this session.",
+    constraint:
+      "This session can reply in its current connected channel but cannot initiate a separate call, email, text, or DM to another person.",
   },
   {
     capability: "purchases",
     label: "Purchases",
     pattern:
       /\b(?:(?:can|could|would|will)\s+you\s+)?(?:order|buy|purchase)\b[\s\S]{0,48}\b(?:food|groceries|meal|dinner|lunch|breakfast|item|product|gift|flowers|bottle|coffee|pizza|tickets?)\b/i,
-    reply:
-      "Purchases need Dedicated. I can compare options here, but Shared can't place an order or buy anything.",
+    constraint:
+      "No purchasing action is available in this runtime, so it cannot place an order or buy anything.",
   },
   {
     capability: "notes",
     label: "Notes",
     pattern:
       /\b(?:create|save|add|store|write|read|show|list|open|delete|remove|update|edit)\b[\s\S]{0,28}\bnotes?\b/i,
-    reply:
-      "Persistent notes need Dedicated. I can remember this conversation, but Shared doesn't manage a separate notes store.",
+    constraint:
+      "This runtime has no separate persistent notes store, so it cannot read or change notes.",
   },
   {
     capability: "cloud-apps",
     label: "Cloud apps",
     pattern:
       /\b(?:connect|open|read|send|search|manage|update|upload|download)\b[\s\S]{0,36}\b(?:gmail|google\s+drive|google\s+docs?|slack|notion|dropbox|microsoft\s+365|outlook)\b/i,
-    reply: "Connected apps need Dedicated. Shared can't access or act inside external accounts.",
+    constraint:
+      "No external app account is connected in this runtime, so it cannot access or act inside one.",
   },
   {
     capability: "shell",
     label: "Shell",
     pattern:
       /\b(?:run|execute|start)\b[\s\S]{0,20}\b(?:a\s+)?(?:shell|terminal|command|script|npm|bun|git|docker)\b/i,
-    reply:
-      "Running commands needs Dedicated. I can reason about commands here, but Shared has no shell.",
+    constraint: "This runtime has no shell and cannot execute commands or scripts.",
   },
   {
     capability: "filesystem",
     label: "Files",
     pattern:
       /\b(?:read|open|edit|write|create|delete|remove|move|rename|upload|download|search)\b[\s\S]{0,28}\b(?:files?|folders?|directories|workspace|path)\b/i,
-    reply:
-      "File access needs Dedicated. Shared can use text you paste here, but it can't read or change a filesystem.",
+    constraint: "This runtime has no filesystem access and cannot read or change files.",
   },
   {
     capability: "browser-control",
     label: "Browser control",
     pattern:
       /\b(?:open|navigate|visit|click|fill|submit|scroll|control|log\s*in)\b[\s\S]{0,32}\b(?:browser|website|webpage|page|tab|form)\b/i,
-    reply: "Browser control needs Dedicated. Shared can't operate websites or a browser session.",
+    constraint: "This runtime has no browser control and cannot operate websites or browser tabs.",
   },
   {
     capability: "coding-runtime",
     label: "Coding workspace",
     pattern:
       /\b(?:run|execute|test|build|compile|deploy|debug|fix|refactor)\b[\s\S]{0,36}\b(?:repository|repo|codebase|project|workspace|tests?|build)\b/i,
-    reply:
-      "A coding workspace needs Dedicated. I can write and explain code here, but Shared can't execute or edit a repository.",
+    constraint:
+      "This runtime has no coding workspace and cannot execute, test, deploy, or edit a repository.",
   },
 ];
 
@@ -156,8 +161,8 @@ function isEnabled(
 }
 
 function wallFor(match: CapabilityMatch): SharedCapabilityWall {
-  const { capability, label, reply } = match.rule;
-  return { capability, label, reply };
+  const { capability, label, constraint } = match.rule;
+  return { capability, label, constraint };
 }
 
 function startsInNonExecutionClause(text: string, index: number): boolean {
@@ -235,7 +240,7 @@ export function capabilityWallActionResult(wall: SharedCapabilityWall) {
   return {
     actionName: "DEDICATED_CAPABILITY_REQUIRED" as const,
     success: false as const,
-    text: wall.reply,
+    text: wall.constraint,
     values: {
       capability: wall.capability,
       currentExecutionTier: "shared" as const,

@@ -137,17 +137,13 @@ describe("canonical cloud deployment environment contract", () => {
     expect(deploy.with?.envs).toContain("TARGET_SHA");
     expect(deploy.with?.script).toContain("apps-worker-deployed-sha");
     expect(deploy.with?.script).toContain("skipping redundant queued build");
-    expect(deploy.with?.script).toContain(
-      'deployed_head" = "$TARGET_SHA"',
-    );
+    expect(deploy.with?.script).toContain('deployed_head" = "$TARGET_SHA"');
     expect(deploy.with?.script).toContain('origin "$TARGET_SHA"');
     expect(health.with?.envs).toContain("TARGET_SHA");
     expect(health.with?.script).toContain(
       "sudo tee /var/lib/eliza/apps-worker-deployed-sha",
     );
-    expect(health.with?.script).toContain(
-      'deployed_head" != "$TARGET_SHA"',
-    );
+    expect(health.with?.script).toContain('deployed_head" != "$TARGET_SHA"');
   });
 
   test("runs genuine Shared Eliza in staging and production", () => {
@@ -159,8 +155,11 @@ describe("canonical cloud deployment environment contract", () => {
       cloudApiWranglerSource.indexOf("[env.production.vars]"),
     );
 
-    expect(staging).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
-    expect(production).toContain('SHARED_ELIZA_AGENT_RUNTIME = "true"');
+    for (const environment of [staging, production]) {
+      expect(environment).toContain('name = "SHARED_RUNTIME_CONVERSATIONS"');
+      expect(environment).toContain('class_name = "SharedRuntimeConversation"');
+      expect(environment).not.toContain("SHARED_ELIZA_AGENT_RUNTIME");
+    }
   });
 
   test("enables Shared semantic memory only in the staging prove-out", () => {

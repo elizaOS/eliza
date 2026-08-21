@@ -530,9 +530,15 @@ export class DiscordLocalService extends Service {
 		this.connected = false;
 		this.authenticated = false;
 		this.connectedIpcPath = null;
-		this.rejectPendingRequests(new Error("Discord local service stopped"));
-		this.socket?.destroy();
+		const error = new Error("Discord local service stopped");
+		this.rejectPendingRequests(error);
+		this.readyReject?.(error);
+		this.readyReject = null;
+		this.readyResolve = null;
+		this.readyPromise = null;
+		const socket = this.socket;
 		this.socket = null;
+		socket?.destroy();
 	}
 
 	isConnected(): boolean {
@@ -913,6 +919,7 @@ export class DiscordLocalService extends Service {
 		this.readBuffer = Buffer.alloc(0);
 
 		socket.on("connect", () => {
+			if (this.socket !== socket) return;
 			this.connectedIpcPath = ipcPath;
 			this.writeFrame(IPC_OP_HANDSHAKE, {
 				v: 1,
@@ -921,26 +928,34 @@ export class DiscordLocalService extends Service {
 		});
 
 		socket.on("data", (chunk: Buffer) => {
+			if (this.socket !== socket) return;
 			this.handleSocketData(chunk);
 		});
 
 		socket.on("close", () => {
+			if (this.socket !== socket) return;
 			const error = new Error("Discord local RPC connection closed");
 			this.connected = false;
 			this.authenticated = false;
 			this.connectedIpcPath = null;
-			this.socket = null;
 			this.rejectPendingRequests(error);
 			this.readyReject?.(error);
 			this.readyReject = null;
 			this.readyResolve = null;
 			this.readyPromise = null;
 			if (this.session?.accessToken) {
-				this.scheduleReconnect();
+				// Leave this.socket pointing at the dead socket until the reconnect
+				// timer's own identity check (scheduleReconnect) either fires or is
+				// superseded by a genuinely new connection -- nulling it here would
+				// make that check compare against null and never reconnect.
+				this.scheduleReconnect(socket);
+			} else {
+				this.socket = null;
 			}
 		});
 
 		socket.on("error", (error) => {
+			if (this.socket !== socket) return;
 			this.lastError = error.message;
 			this.connectedIpcPath = null;
 			this.readyReject?.(error);
@@ -953,16 +968,20 @@ export class DiscordLocalService extends Service {
 		await this.readyPromise;
 	}
 
-	private scheduleReconnect(): void {
+	private scheduleReconnect(expectedSocket: net.Socket): void {
 		if (this.reconnectTimer) {
 			clearTimeout(this.reconnectTimer);
 		}
-		this.reconnectTimer = setTimeout(() => {
+		const timer = setTimeout(() => {
+			if (this.reconnectTimer !== timer) return;
 			this.reconnectTimer = null;
+			if (this.socket !== expectedSocket) return;
+			this.socket = null;
 			void this.ensureAuthenticated().catch((error) => {
 				this.lastError = error instanceof Error ? error.message : String(error);
 			});
 		}, 3_000);
+		this.reconnectTimer = timer;
 	}
 
 	private handleSocketData(chunk: Buffer): void {

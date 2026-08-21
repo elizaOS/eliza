@@ -36,6 +36,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 
 // Real fake-device audio plus ui-smoke live-stack setup can exceed the default
 // smoke timeout on loaded developer machines.
@@ -829,6 +830,9 @@ async function prepareTranscriptTestPage(
   probes: TranscriptProbes,
 ): Promise<void> {
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  // Fresh pages skip the shared beforeEach, so re-seed the Steward session
+  // here — without it the cloud-only auth gate (#20483) parks the mic tap.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
   await installTranscriptBackendMocks(page, probes);
 }
@@ -904,6 +908,11 @@ async function captureTranscriptRecordViaControlPath(
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page, { "eliza:tutorial-autolaunched": "1" });
+  // The production web bundle brands itself cloud-only, and the shell auth
+  // gate (#20483) silently no-ops mic/transcription engagement without a
+  // usable Steward session — seed the canonical signed-in session so the
+  // real capture path under test can run.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
 });
 

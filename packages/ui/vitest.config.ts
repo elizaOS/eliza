@@ -202,6 +202,13 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+        replacement: resolve(
+          monorepoRoot,
+          "packages/cloud/sdk/src/redemption-contract.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
         replacement: resolve(
           monorepoRoot,

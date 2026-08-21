@@ -9,7 +9,13 @@
  * Falls back to a synchronous test signer at window.__siwsTestSigner so the
  * Playwright e2e suite can exercise the flow without a real wallet.
  */
-import { getElizacloudUrl } from "@/lib/api/client";
+import { getElizacloudUrl } from "./client";
+
+const SIWS_FETCH_TIMEOUT_MS = 15_000;
+const SIWS_RESPONSE_MAX_BYTES = 64 * 1024;
+const SIWS_FIELD_MAX_BYTES = 2_048;
+const SOLANA_ADDRESS_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 const BS58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -37,6 +43,312 @@ interface NonceResponse {
   chainId: string;
   version: string;
   statement: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isBoundedString(
+  value: unknown,
+  max = SIWS_FIELD_MAX_BYTES,
+): value is string {
+  return (
+    isNonEmptyString(value) && new TextEncoder().encode(value).byteLength <= max
+  );
+}
+
+function containsLineBreak(value: string): boolean {
+  return value.includes("\n") || value.includes("\r");
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (codePoint <= 0x1f || codePoint === 0x7f) return true;
+  }
+  return false;
+}
+
+function isOrganization(
+  value: unknown,
+): value is { id: string; name: string; slug: string } {
+  return (
+    isRecord(value) &&
+    isBoundedString(value.id, 256) &&
+    isBoundedString(value.name, 256) &&
+    isBoundedString(value.slug, 256)
+  );
+}
+
+function errorWithCause(message: string, cause: unknown): Error {
+  const error = new Error(message);
+  Object.defineProperty(error, "cause", {
+    configurable: true,
+    value: cause,
+  });
+  return error;
+}
+
+/**
+ * Relying-party origins the wallet may be asked to sign for. The Cloud API
+ * issues its own `NEXT_PUBLIC_APP_URL` origin (`https://cloud.eliza.app` in
+ * production, `https://cloud-staging.eliza.app` on staging) as the nonce
+ * `uri`, so those canonical origins are always trusted; the page's own origin
+ * is included for e2e doubles and preview deployments that mirror it.
+ */
+function expectedRelyingPartyOrigins(): ReadonlySet<string> {
+  const origins = new Set([
+    "https://cloud.eliza.app",
+    "https://cloud-staging.eliza.app",
+  ]);
+  if (typeof window !== "undefined" && window.location) {
+    origins.add(window.location.origin);
+  }
+  return origins;
+}
+
+function parseNonceResponse(
+  value: unknown,
+  allowedOrigins: ReadonlySet<string>,
+): NonceResponse {
+  if (
+    !isRecord(value) ||
+    typeof value.nonce !== "string" ||
+    !/^[a-f0-9]{32}$/.test(value.nonce) ||
+    !isBoundedString(value.domain, 253) ||
+    containsLineBreak(value.domain) ||
+    !isBoundedString(value.uri) ||
+    containsLineBreak(value.uri) ||
+    value.chainId !== "solana:mainnet" ||
+    value.version !== "1" ||
+    typeof value.statement !== "string" ||
+    new TextEncoder().encode(value.statement).byteLength > 512 ||
+    containsLineBreak(value.statement)
+  ) {
+    throw new Error("SIWS nonce response has an invalid shape");
+  }
+  let relyingParty: URL;
+  try {
+    relyingParty = new URL(value.uri);
+  } catch {
+    // error-policy:J3 malformed relying-party URIs are rejected before wallet signing.
+    throw new Error("SIWS nonce response has an invalid shape");
+  }
+  if (
+    relyingParty.host !== value.domain ||
+    relyingParty.username !== "" ||
+    relyingParty.password !== "" ||
+    relyingParty.hash !== "" ||
+    !(
+      (relyingParty.protocol === "https:" &&
+        allowedOrigins.has(relyingParty.origin)) ||
+      (relyingParty.protocol === "http:" &&
+        LOOPBACK_HOSTS.has(relyingParty.hostname))
+    )
+  ) {
+    throw new Error("SIWS nonce response has an invalid shape");
+  }
+  return {
+    nonce: value.nonce,
+    domain: value.domain,
+    uri: value.uri,
+    chainId: value.chainId,
+    version: value.version,
+    statement: value.statement,
+  };
+}
+
+function parseVerifyResponse(value: unknown): SiwsVerifyResponse {
+  if (
+    !isRecord(value) ||
+    !isBoundedString(value.apiKey, 8 * 1024) ||
+    containsControlCharacter(value.apiKey) ||
+    typeof value.address !== "string" ||
+    !SOLANA_ADDRESS_RE.test(value.address) ||
+    typeof value.isNewAccount !== "boolean" ||
+    !isRecord(value.user) ||
+    !isBoundedString(value.user.id, 256) ||
+    typeof value.user.wallet_address !== "string" ||
+    !SOLANA_ADDRESS_RE.test(value.user.wallet_address) ||
+    !isBoundedString(value.user.organization_id, 256) ||
+    !(value.organization === null || isOrganization(value.organization)) ||
+    (isRecord(value.organization) &&
+      value.organization.id !== value.user.organization_id)
+  ) {
+    throw new Error("SIWS verification response has an invalid shape");
+  }
+  const organization = value.organization;
+  return {
+    apiKey: value.apiKey,
+    address: value.address,
+    isNewAccount: value.isNewAccount,
+    user: {
+      id: value.user.id,
+      wallet_address: value.user.wallet_address,
+      organization_id: value.user.organization_id,
+    },
+    organization:
+      organization === null
+        ? null
+        : {
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+          },
+  };
+}
+
+function cancelResponseBody(response: Response, reason: string): void {
+  if (!response.body || response.bodyUsed) return;
+  try {
+    void Promise.resolve(response.body.cancel(reason)).catch(() => {
+      // error-policy:J6 response teardown must not mask the boundary failure.
+    });
+  } catch {
+    // error-policy:J6 a custom response stream may throw during teardown.
+  }
+}
+
+function waitForAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+}
+
+async function readBoundedJson(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const contentType = response.headers
+    .get("content-type")
+    ?.split(";", 1)[0]
+    ?.trim()
+    .toLowerCase();
+  if (!(contentType === "application/json" || contentType?.endsWith("+json"))) {
+    cancelResponseBody(response, "SIWS response media type rejected");
+    throw new Error("SIWS response is not JSON");
+  }
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength !== null) {
+    const length = /^\d+$/.test(declaredLength)
+      ? Number(declaredLength)
+      : Number.NaN;
+    if (
+      !Number.isSafeInteger(length) ||
+      length < 0 ||
+      length > SIWS_RESPONSE_MAX_BYTES
+    ) {
+      cancelResponseBody(response, "SIWS response length rejected");
+      throw new Error("SIWS response is too large");
+    }
+  }
+  if (!response.body) throw new Error("SIWS response has no body");
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  let fullyRead = false;
+  try {
+    while (true) {
+      const { done, value } = await waitForAbort(reader.read(), signal);
+      if (done) {
+        fullyRead = true;
+        break;
+      }
+      total += value.byteLength;
+      if (total > SIWS_RESPONSE_MAX_BYTES) {
+        throw new Error("SIWS response is too large");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    if (fullyRead) {
+      reader.releaseLock();
+    } else {
+      try {
+        const cancellation = reader.cancel(
+          signal.aborted ? signal.reason : "SIWS response consumption stopped",
+        );
+        void Promise.resolve(cancellation)
+          .catch(() => {
+            // error-policy:J6 response teardown must not mask the typed boundary failure.
+          })
+          .finally(() => {
+            try {
+              reader.releaseLock();
+            } catch {
+              // error-policy:J6 a still-pending custom stream may retain its lock off-path.
+            }
+          });
+      } catch {
+        // error-policy:J6 synchronous response cancellation is teardown-only.
+        try {
+          reader.releaseLock();
+        } catch {
+          // error-policy:J6 a pending read may keep the custom stream locked.
+        }
+      }
+    }
+  }
+
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  return JSON.parse(text) as unknown;
+}
+
+async function requestSiwsJson(
+  url: string,
+  operation: "nonce" | "verification",
+  init: RequestInit,
+): Promise<unknown> {
+  const signal = AbortSignal.timeout(SIWS_FETCH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, redirect: "error", signal });
+  } catch (cause) {
+    // error-policy:J2 Translate browser/network failures without exposing transport details.
+    const suffix = signal.aborted ? " timed out" : " failed";
+    throw errorWithCause(`SIWS ${operation} request${suffix}`, cause);
+  }
+  if (response.redirected || (response.url !== "" && response.url !== url)) {
+    cancelResponseBody(response, "SIWS redirected response rejected");
+    throw new Error(`SIWS ${operation} request failed`);
+  }
+  if (!response.ok) {
+    cancelResponseBody(response, "SIWS error response discarded");
+    throw new Error(`SIWS ${operation} request failed (${response.status})`);
+  }
+  try {
+    return await readBoundedJson(response, signal);
+  } catch (cause) {
+    // error-policy:J2 Keep body and decoding details out of the UI error path.
+    const suffix = signal.aborted
+      ? " timed out"
+      : " returned an invalid response";
+    throw errorWithCause(`SIWS ${operation} request${suffix}`, cause);
+  }
 }
 
 export interface SiwsVerifyResponse {
@@ -137,17 +449,19 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
     };
   }
 
-  const nonceRes = await fetch(
+  if (!SOLANA_ADDRESS_RE.test(address)) {
+    throw new Error("Wallet returned an invalid Solana address");
+  }
+
+  const nonceValue = await requestSiwsJson(
     `${base}/api/auth/siws/nonce?chainId=solana:mainnet`,
+    "nonce",
     {
       method: "GET",
       headers: { Accept: "application/json" },
     },
   );
-  if (!nonceRes.ok) {
-    throw new Error(`SIWS nonce request failed: ${nonceRes.status}`);
-  }
-  const nonce = (await nonceRes.json()) as NonceResponse;
+  const nonce = parseNonceResponse(nonceValue, expectedRelyingPartyOrigins());
 
   const message = buildSiwsMessage({
     domain: nonce.domain,
@@ -161,20 +475,31 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
   });
 
   const signatureBytes = await signBytes(new TextEncoder().encode(message));
-
-  const verifyRes = await fetch(`${base}/api/auth/siws/verify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify({
-      message,
-      signature: bs58Encode(signatureBytes),
-    }),
-  });
-  if (!verifyRes.ok) {
-    const detail = await verifyRes.text().catch(() => "");
-    throw new Error(
-      `SIWS verification failed (${verifyRes.status}): ${detail}`,
-    );
+  if (signatureBytes.byteLength !== 64) {
+    throw new Error("Wallet returned an invalid Solana signature");
   }
-  return (await verifyRes.json()) as SiwsVerifyResponse;
+
+  const verifyValue = await requestSiwsJson(
+    `${base}/api/auth/siws/verify`,
+    "verification",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        message,
+        signature: bs58Encode(signatureBytes),
+      }),
+    },
+  );
+  const verified = parseVerifyResponse(verifyValue);
+  if (
+    verified.address !== address ||
+    verified.user.wallet_address !== address
+  ) {
+    throw new Error("SIWS verification response does not match the signer");
+  }
+  return verified;
 }

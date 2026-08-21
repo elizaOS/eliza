@@ -15,6 +15,7 @@ import {
   resolveTelegramVoiceNote,
   sendTelegramReply,
   sendTelegramTyping,
+  TelegramApiResponseError,
   type TelegramConnectorConfig,
   type TelegramConnectorEvent,
   verifyTelegramWebhook,
@@ -63,7 +64,29 @@ interface LedgerResponse {
   state?: TelegramDeliveryState | null;
   claimed?: boolean;
   plan?: "prepared" | "conflict";
+  acceptedAt?: unknown;
+  providerMessageIds?: unknown;
 }
+
+export interface PersonalTelegramReminderDispatchInput {
+  project: string;
+  chatId: string;
+  text: string;
+  idempotencyKey: string;
+}
+
+export type PersonalTelegramReminderDispatchResult =
+  | {
+      ok: true;
+      acceptedAt: string;
+      providerMessageIds: string[];
+    }
+  | {
+      ok: false;
+      acceptance: "not_accepted" | "unknown";
+      message: string;
+      retryAfterMinutes?: number;
+    };
 
 function readEnvString(env: AppEnv["Bindings"], key: string): string | null {
   const value = env[key];
@@ -307,16 +330,115 @@ async function edgeLedger(
         chunkDigest,
       });
     },
-    async markChunkDelivered(chunkIndex, chunkDigest) {
+    async markChunkDelivered(chunkIndex, chunkDigest, providerMessageId) {
       await callLedger(stub, event.messageId, "mark_chunk_delivered", {
         chunkIndex,
         chunkDigest,
+        providerMessageId,
       });
     },
     async markDelivered() {
       await callLedger(stub, event.messageId, "mark_delivered");
     },
   };
+}
+
+async function readEdgeReceipt(
+  env: AppEnv["Bindings"],
+  project: string,
+  event: TelegramConnectorEvent,
+): Promise<{ acceptedAt: string; providerMessageIds: string[] } | null> {
+  const namespace = env.PERSONAL_TELEGRAM_DELIVERIES;
+  if (!namespace) return null;
+  const stub = namespace.getByName(
+    `telegram:${project}:personal-shared:${event.senderId}`,
+  );
+  const body = await callLedger(stub, event.messageId, "read_receipt");
+  const acceptedAt =
+    typeof body.acceptedAt === "string" &&
+    Number.isFinite(Date.parse(body.acceptedAt))
+      ? body.acceptedAt
+      : null;
+  const providerMessageIds = Array.isArray(body.providerMessageIds)
+    ? body.providerMessageIds.filter(
+        (value): value is string =>
+          typeof value === "string" && /^\d{1,32}$/.test(value),
+      )
+    : [];
+  return acceptedAt && providerMessageIds.length > 0
+    ? { acceptedAt, providerMessageIds }
+    : null;
+}
+
+/**
+ * Delivers a scheduled Personal Shared Telegram reminder with the same bot and
+ * exact-once Durable Object ledger as conversational edge replies.
+ */
+export async function dispatchPersonalTelegramReminder(
+  env: AppEnv["Bindings"],
+  input: PersonalTelegramReminderDispatchInput,
+): Promise<PersonalTelegramReminderDispatchResult> {
+  const botToken = readEnvString(env, "ELIZA_APP_TELEGRAM_BOT_TOKEN");
+  if (!botToken) {
+    return {
+      ok: false,
+      acceptance: "not_accepted",
+      message: "Telegram connector is not configured",
+    };
+  }
+  const event: TelegramConnectorEvent = {
+    platform: "telegram",
+    messageId: input.idempotencyKey,
+    platformRecordId: input.idempotencyKey,
+    chatId: input.chatId,
+    chatType: "private",
+    senderId: input.chatId,
+    text: "",
+    isCommand: false,
+    rawPayload: { source: "shared-reminder" },
+  };
+  try {
+    const ledger = await edgeLedger(env, input.project, event);
+    const outcome = await executeTelegramDelivery(ledger, async (hooks) => {
+      await sendTelegramReply({ botToken }, event, input.text, logger, hooks);
+    });
+    if (outcome === "uncertain" || outcome === "in_progress") {
+      return {
+        ok: false,
+        acceptance: "unknown",
+        message: `Telegram reminder delivery is ${outcome}`,
+      };
+    }
+    const receipt = await readEdgeReceipt(env, input.project, event);
+    return receipt
+      ? { ok: true, ...receipt }
+      : {
+          ok: false,
+          acceptance: "unknown",
+          message: "Telegram returned no durable provider receipt",
+        };
+  } catch (error) {
+    if (error instanceof TelegramApiResponseError) {
+      return {
+        ok: false,
+        acceptance: "not_accepted",
+        message: error.message,
+        ...(error.errorCode === 429 && error.retryAfterSeconds
+          ? {
+              retryAfterMinutes: Math.max(
+                1,
+                Math.ceil(error.retryAfterSeconds / 60),
+              ),
+            }
+          : {}),
+      };
+    }
+    return {
+      ok: false,
+      acceptance: "unknown",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function startTyping(

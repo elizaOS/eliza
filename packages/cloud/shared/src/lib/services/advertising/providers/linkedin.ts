@@ -338,7 +338,7 @@ function parseAnalyticsMetric(field: string, value: string | number | null | und
   if (value === null || value === undefined) return 0;
   if (
     (typeof value !== "string" && typeof value !== "number") ||
-    (typeof value === "string" && value.trim() === "")
+    (typeof value === "string" && !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value))
   ) {
     throw new ElizaError("LinkedIn returned an invalid analytics metric", {
       code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
@@ -355,30 +355,70 @@ function parseAnalyticsMetric(field: string, value: string | number | null | und
   return parsed;
 }
 
+function addAnalyticsMetric(total: number, field: string, value: number): number {
+  const next = total + value;
+  if (!Number.isFinite(next)) {
+    throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+      code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+      context: { field },
+    });
+  }
+  return next;
+}
+
 function sumAnalytics(elements: LinkedInAnalyticsElement[]): CampaignMetrics {
   let spend = 0;
   let impressions = 0;
   let clicks = 0;
   let conversions = 0;
   for (const element of elements) {
-    spend += parseAnalyticsMetric("costInLocalCurrency", element.costInLocalCurrency);
-    impressions += parseAnalyticsMetric("impressions", element.impressions);
-    clicks += parseAnalyticsMetric(
-      element.clicks === null || element.clicks === undefined ? "landingPageClicks" : "clicks",
-      element.clicks ?? element.landingPageClicks,
+    spend = addAnalyticsMetric(
+      spend,
+      "costInLocalCurrency",
+      parseAnalyticsMetric("costInLocalCurrency", element.costInLocalCurrency),
     );
-    conversions +=
-      parseAnalyticsMetric("externalWebsiteConversions", element.externalWebsiteConversions) +
-      parseAnalyticsMetric("oneClickLeads", element.oneClickLeads);
+    impressions = addAnalyticsMetric(
+      impressions,
+      "impressions",
+      parseAnalyticsMetric("impressions", element.impressions),
+    );
+    const clickField =
+      element.clicks === null || element.clicks === undefined ? "landingPageClicks" : "clicks";
+    clicks = addAnalyticsMetric(
+      clicks,
+      clickField,
+      parseAnalyticsMetric(clickField, element.clicks ?? element.landingPageClicks),
+    );
+    conversions = addAnalyticsMetric(
+      conversions,
+      "externalWebsiteConversions",
+      parseAnalyticsMetric("externalWebsiteConversions", element.externalWebsiteConversions),
+    );
+    conversions = addAnalyticsMetric(
+      conversions,
+      "oneClickLeads",
+      parseAnalyticsMetric("oneClickLeads", element.oneClickLeads),
+    );
+  }
+  const ctr = impressions > 0 ? clicks / impressions : 0;
+  const cpc = clicks > 0 ? spend / clicks : 0;
+  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+  for (const [field, value] of Object.entries({ ctr, cpc, cpm })) {
+    if (!Number.isFinite(value)) {
+      throw new ElizaError("LinkedIn returned an invalid analytics metric", {
+        code: "LINKEDIN_ANALYTICS_INVALID_METRIC",
+        context: { field },
+      });
+    }
   }
   return {
     spend,
     impressions,
     clicks,
     conversions,
-    ctr: impressions > 0 ? clicks / impressions : 0,
-    cpc: clicks > 0 ? spend / clicks : 0,
-    cpm: impressions > 0 ? (spend / impressions) * 1000 : 0,
+    ctr,
+    cpc,
+    cpm,
   };
 }
 

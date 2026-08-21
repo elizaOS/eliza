@@ -828,6 +828,21 @@ export function queryDocumentFragmentsInMemory(
 			) {
 				return false;
 			}
+			// Attempt fencing: a parent that committed an update attempt token
+			// only exposes fragments staged by that attempt (same rule as the
+			// SQL adapters), so losing concurrent generations stay invisible.
+			const parentAttempt = (
+				(parent.metadata ?? {}) as { revisionAttemptId?: unknown }
+			).revisionAttemptId;
+			const fragmentAttempt = (
+				(memory.metadata ?? {}) as unknown as { revisionAttemptId?: unknown }
+			).revisionAttemptId;
+			if (
+				typeof parentAttempt === "string" &&
+				fragmentAttempt !== parentAttempt
+			) {
+				return false;
+			}
 			if (params.roomId && parent.roomId !== params.roomId) return false;
 			if (params.worldId && parent.worldId !== params.worldId) return false;
 			if (params.entityId && parent.entityId !== params.entityId) return false;

@@ -78,7 +78,8 @@ import {
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
 } from "./direct-cloud-endpoints";
-import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
+import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
+import { fetchAgentTransport } from "./transport";
 
 // ---------------------------------------------------------------------------
 // Module-level constants
@@ -718,46 +719,80 @@ export async function refreshCloudStewardSession(opts?: {
   }
 
   if (typeof fetch === "undefined") return null;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    credentials: "include",
-  });
-  if (!response.ok) {
-    if (
-      opts?.throwOnTransientHttpFailure &&
-      (response.status === 429 || response.status >= 500)
-    ) {
+  // Cloud account reads can legitimately take longer than 15 seconds on a cold
+  // regional worker. Keep the request bounded at DIRECT_CLOUD_HTTP_TIMEOUT_MS,
+  // but use the portable helper — `AbortSignal.timeout` is missing on iOS
+  // 16.0-16.3 WKWebView and would throw TypeError before fetch is issued.
+  const { signal: stewardSignal, dispose: disposeStewardSignal } =
+    createTimeoutSignal(DIRECT_CLOUD_HTTP_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      credentials: "include",
+      signal: stewardSignal,
+    });
+    if (!response.ok) {
+      if (
+        opts?.throwOnTransientHttpFailure &&
+        (response.status === 429 || response.status >= 500)
+      ) {
+        throw new ElizaError(
+          "Steward session refresh is temporarily unavailable",
+          {
+            code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+            context: { endpoint, status: response.status },
+          },
+        );
+      }
+      return null;
+    }
+    // Keep the timeout signal alive through the body stream — headers may
+    // arrive quickly while `response.json()` stalls indefinitely, so the
+    // timeout must abort the body read too.
+    // error-policy:J3 an unparseable refresh body reads as "no refreshed
+    // session" (null) — callers keep/drop the stored token by its own expiry.
+    // Timeout aborts rethrow so the boundary catch below maps them.
+    const parsed = (await response.json().catch((err: unknown) => {
+      if (isTimeoutAbortError(err)) throw err;
+      return null;
+    })) as {
+      token?: string;
+      expiresAt?: number;
+      expiresIn?: number;
+    } | null;
+    if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
+      // A 2xx whose body carries no usable token is out of the endpoint's
+      // success contract (authoritative logout is a 401, never an empty 200):
+      // treat it as an outage artifact so cookie-only recovery preserves the
+      // shared-agent binding instead of tearing it down.
       throw new ElizaError(
-        "Steward session refresh is temporarily unavailable",
+        "Steward session refresh returned a success response without a token",
         {
           code: "STEWARD_SESSION_REFRESH_TRANSIENT",
           context: { endpoint, status: response.status },
         },
       );
     }
-    return null;
+    return parsed;
+  } catch (err) {
+    // error-policy:J2 a timeout abort becomes the typed transient-refresh
+    // error in throwOnTransient mode; otherwise it fails closed to null,
+    // matching every other refresh failure on this endpoint. Non-abort
+    // errors rethrow untouched.
+    if (isTimeoutAbortError(err)) {
+      if (opts?.throwOnTransientHttpFailure) {
+        throw new ElizaError("Steward session refresh timed out", {
+          code: "STEWARD_SESSION_REFRESH_TRANSIENT",
+          context: { endpoint },
+          cause: err,
+        });
+      }
+      return null;
+    }
+    throw err;
+  } finally {
+    disposeStewardSignal();
   }
-  // error-policy:J3 an unparseable refresh body reads as "no refreshed
-  // session" (null) — callers keep/drop the stored token by its own expiry.
-  const parsed = (await response.json().catch(() => null)) as {
-    token?: string;
-    expiresAt?: number;
-    expiresIn?: number;
-  } | null;
-  if (opts?.throwOnTransientHttpFailure && !parsed?.token?.trim()) {
-    // A 2xx whose body carries no usable token is out of the endpoint's
-    // success contract (authoritative logout is a 401, never an empty 200):
-    // treat it as an outage artifact so cookie-only recovery preserves the
-    // shared-agent binding instead of tearing it down.
-    throw new ElizaError(
-      "Steward session refresh returned a success response without a token",
-      {
-        code: "STEWARD_SESSION_REFRESH_TRANSIENT",
-        context: { endpoint, status: response.status },
-      },
-    );
-  }
-  return parsed;
 }
 
 function isDirectCloudAuthMissing(client: ElizaClient): boolean {
@@ -4758,13 +4793,22 @@ ElizaClient.prototype.deleteSharedBridgeAgent = async function (
             { method: "DELETE", url },
           )
         ).status
-      : (
-          await directCloudFetch(resolveBrowserCloudApiRequestUrl(url), {
-            method: "DELETE",
-            headers,
-            signal: AbortSignal.timeout(20_000),
-          })
-        ).status;
+      : await (async () => {
+          // Portable 20 s bound — `AbortSignal.timeout` throws on iOS 16.0-16.3;
+          // use the same helper as the steward/bridge/manifest paths.
+          const { signal, dispose } = createTimeoutSignal(20_000);
+          try {
+            return (
+              await directCloudFetch(resolveBrowserCloudApiRequestUrl(url), {
+                method: "DELETE",
+                headers,
+                signal,
+              })
+            ).status;
+          } finally {
+            dispose();
+          }
+        })();
     if (status < 200 || status >= 300) {
       return {
         success: false,

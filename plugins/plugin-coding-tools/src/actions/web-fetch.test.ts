@@ -284,6 +284,14 @@ describe("coding-tools WEB_FETCH", () => {
     expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
   });
 
+  it("removes browser-tokenized and unclosed script/style blocks", () => {
+    expect(
+      htmlToReadableText(
+        "<p>visible</p><script>steal()</sCrIpT data-x=1><style>hidden{}</style/ignored><p>after</p><script>unclosed",
+      ),
+    ).toBe("visible\n\nafter");
+  });
+
   it("degrades invalid numeric entities without throwing and keeps surrounding text", () => {
     // Invalid scalar values must remain literal instead of hard-failing the
     // fetch or introducing an unpaired UTF-16 surrogate into readable text.

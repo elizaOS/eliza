@@ -28,6 +28,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { seedStewardSession } from "./helpers/test-auth";
 import { selectVoiceTrajectory } from "./voice-live-trajectory";
 
 const EXPECTED_PHRASE = "what time is it";
@@ -427,6 +428,12 @@ async function installVoiceBackendMocks(page: Page): Promise<void> {
 
 test.beforeEach(async ({ page }) => {
   await seedAppStorage(page);
+  // The production web bundle this lane serves brands itself cloud-only, and
+  // the shell auth gate (#20483) silently parks every mic engagement behind
+  // Cloud sign-in when no usable Steward session exists — turning each tap
+  // into a dead no-op long before getUserMedia runs. These cells assert the
+  // signed-in voice pipeline, so seed the canonical session up front.
+  await seedStewardSession(page);
   await installDefaultAppRoutes(page);
   await installVoiceBackendMocks(page);
 });

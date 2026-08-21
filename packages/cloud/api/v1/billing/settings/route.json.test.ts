@@ -40,6 +40,8 @@ mock.module("@/lib/services/auto-top-up", () => ({
 mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   RateLimitPresets: { STANDARD: { windowMs: 60_000, maxRequests: 100 } },
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => next(),
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) =>
+    next(),
 }));
 
 mock.module("@/lib/utils/logger", () => ({

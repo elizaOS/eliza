@@ -8,7 +8,7 @@
  * MIME `parts` trees are bounded in `gmail-mime-parts.ts` so a hostile nest
  * cannot RangeError ingest.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import {
@@ -1036,9 +1036,7 @@ function extractGoogleGmailBodyByMime(
 
 function htmlToPlainText(value: string): string {
   return decodeHtmlEntities(
-    value
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
+    stripHtmlRawTextElements(value)
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
       .replace(/<(?:li)[^>]*>/gi, "- ")

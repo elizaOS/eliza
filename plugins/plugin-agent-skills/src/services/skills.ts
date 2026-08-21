@@ -30,6 +30,10 @@ import {
 	parseFrontmatter,
 	validateFrontmatter,
 } from "../parser";
+import {
+	buildSkillExecutionEnv,
+	isInheritableSkillEnvKey,
+} from "../security/skill-execution-env";
 import type { SkillScanReport, SkillScanStatus } from "../security/types";
 import {
 	createStorage,
@@ -997,14 +1001,28 @@ export class AgentSkillsService extends Service {
 
 			// Check required environment variables
 			if (requires.env && requires.env.length > 0) {
+				const skillEnv = this.getSkillEnv(skill.slug);
 				for (const envVar of requires.env) {
-					const value = process.env[envVar] || this.runtime.getSetting(envVar);
+					// Answer from what the script will ACTUALLY receive. Reading
+					// process.env directly would report a skill ready and then run it
+					// without the variable, surfacing as a third-party 401 deep inside
+					// the script rather than as a missing requirement here.
+					const inherited = isInheritableSkillEnvKey(envVar)
+						? process.env[envVar]
+						: undefined;
+					const value = inherited || skillEnv[envVar];
 					if (!value) {
+						const blocked =
+							!isInheritableSkillEnvKey(envVar) && Boolean(process.env[envVar]);
 						reasons.push({
 							type: "env",
 							missing: envVar,
-							message: `Required environment variable '${envVar}' is not set`,
-							suggestion: `Set ${envVar} in your environment or agent settings`,
+							message: blocked
+								? `Environment variable '${envVar}' is set but is not passed to skill scripts`
+								: `Required environment variable '${envVar}' is not set`,
+							suggestion: blocked
+								? `Configure ${envVar} for this skill specifically; the ambient value is withheld from skill scripts on purpose`
+								: `Set ${envVar} in your environment or agent settings`,
 						});
 					}
 				}
@@ -1716,10 +1734,11 @@ export class AgentSkillsService extends Service {
 		const skillEnv = this.getSkillEnv(slug);
 		const apiKey = this.getSkillApiKey(slug);
 
-		const env: Record<string, string> = {
-			...(process.env as Record<string, string>),
-			...skillEnv,
-		};
+		// Inheriting process.env wholesale handed every skill script the agent's
+		// full credential set, which in a managed container is fleet-scoped and
+		// not tenant-scoped. buildSkillExecutionEnv allowlists what may be
+		// inherited and denylists what the per-skill overlay may inject.
+		const env = buildSkillExecutionEnv(process.env, skillEnv);
 
 		if (apiKey) {
 			// Inject API key with standard naming

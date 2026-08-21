@@ -237,15 +237,12 @@ export function AppsSkeleton() {
 export function ContainersSkeleton() {
   return (
     <DashboardTableSkeleton
-      // Columns must mirror the real Agents table header (eliza-agents-table)
-      // so the loading skeleton doesn't flash stale labels ("Instances",
-      // "Port") before the live headers ("Agent", "Runtime", "Web UI") paint.
+      // Columns mirror the normal-user Agents table so loading never flashes
+      // implementation metadata that the settled product surface omits.
       columns={[
         { key: "agent", label: "Agent", skeletonClassName: "w-32" },
         { key: "status", label: "Status", skeletonClassName: "h-6 w-20" },
-        { key: "runtime", label: "Runtime", skeletonClassName: "w-20" },
         { key: "webui", label: "Web UI", skeletonClassName: "w-16" },
-        { key: "created", label: "Created", skeletonClassName: "w-24" },
         {
           key: "actions",
           label: "Actions",

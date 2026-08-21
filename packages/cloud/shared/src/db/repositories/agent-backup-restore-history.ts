@@ -1,6 +1,6 @@
 /** Appends and replays immutable restore authorities without wiring a production coordinator. */
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne } from "drizzle-orm";
 import {
   assertAgentBackupCatalogTransition,
   requireBoundedIdentity,
@@ -25,7 +25,7 @@ import {
 } from "../schemas/agent-backup-restore-history";
 import { agentSandboxBackups, agentSandboxes } from "../schemas/agent-sandboxes";
 import { agentVaultKeyBackupBindings } from "../schemas/agent-vault-key-authority";
-import { dockerNodes } from "../schemas/docker-nodes";
+import { type DockerNode, dockerNodes } from "../schemas/docker-nodes";
 import { AgentBackupCatalogConflictError } from "./agent-backup-catalog";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
@@ -40,6 +40,79 @@ function requireUuid(value: string, field: string): string {
 
 function conflict(message: string): never {
   throw new AgentBackupCatalogConflictError(message);
+}
+
+/**
+ * Prove that an already row-locked mutable node still names one exact,
+ * unambiguous append-only boot authority for that record.
+ *
+ * The history reads deliberately stay MVCC reads. The caller owns the node's
+ * `FOR UPDATE` lock, so no concurrent attestation can change that node while
+ * this proof runs; locking append-only history rows would only add an
+ * unnecessary lock class. This schema has no durable causal ordinal for
+ * histories, so timestamps or transaction ids cannot safely distinguish an
+ * old B -> A from an A -> B -> A replay. Restore therefore fails closed when
+ * this node record has ever carried any different incarnation. Such a record
+ * remains ineligible until a lifecycle/re-creation contract with durable row
+ * generations is migrated.
+ *
+ * A -> NULL -> A is intentionally not an A -> B -> A replay: while NULL, the
+ * mutable row fails this proof; an exact CAS re-attestation of the same Linux
+ * boot UUID under the same host-key authority may reuse its immutable A row.
+ * The created-at check catches ordinary exact-id delete/reinsert accidents, but
+ * it is only defense in depth and is never used to order immutable histories.
+ */
+export async function proveUnambiguousAgentNodeIncarnationForLockedNode(
+  tx: DbTransaction,
+  node: Readonly<DockerNode>,
+  expectedIncarnation: string,
+): Promise<void> {
+  if (
+    node.node_incarnation !== expectedIncarnation ||
+    (node.fleet_kind !== "robot" && node.fleet_kind !== "cloud") ||
+    node.infrastructure_provider !== "hetzner" ||
+    !node.host_key_fingerprint
+  ) {
+    conflict("Restore target lacks exact immutable node-incarnation history");
+  }
+
+  const [history] = await tx
+    .select()
+    .from(agentNodeIncarnationHistories)
+    .where(
+      and(
+        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
+        eq(agentNodeIncarnationHistories.node_incarnation, expectedIncarnation),
+      ),
+    )
+    .limit(1);
+  if (
+    !history ||
+    history.docker_node_record_id !== node.id ||
+    history.node_incarnation !== expectedIncarnation ||
+    history.node_id !== node.node_id ||
+    history.fleet_kind !== node.fleet_kind ||
+    history.infrastructure_provider !== node.infrastructure_provider ||
+    history.provider_server_id !== node.provider_server_id ||
+    history.host_key_fingerprint !== node.host_key_fingerprint ||
+    node.created_at > history.attested_at
+  ) {
+    conflict("Restore target lacks exact immutable node-incarnation history");
+  }
+
+  const [differentIncarnation] = await tx
+    .select({ id: agentNodeIncarnationHistories.id })
+    .from(agentNodeIncarnationHistories)
+    .where(
+      and(
+        eq(agentNodeIncarnationHistories.docker_node_record_id, node.id),
+        ne(agentNodeIncarnationHistories.node_incarnation, expectedIncarnation),
+      ),
+    )
+    .limit(1);
+  if (differentIncarnation) {
+    conflict("Restore target node record has ambiguous multi-incarnation history");
+  }
 }
 
 async function lockCurrentNodeHistory(
@@ -107,6 +180,7 @@ async function lockCurrentNodeHistory(
   ) {
     conflict("Target node incarnation conflicts with immutable history");
   }
+  await proveUnambiguousAgentNodeIncarnationForLockedNode(tx, node, input.nodeIncarnation);
   return history;
 }
 

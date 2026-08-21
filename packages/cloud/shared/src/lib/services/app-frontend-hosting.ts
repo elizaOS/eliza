@@ -26,6 +26,7 @@ import type {
 } from "../../db/schemas/app-frontend-deployments";
 import { ObjectNamespaces } from "../storage/object-namespace";
 import { getRuntimeR2Bucket } from "../storage/r2-runtime-binding";
+import { serializeInlineScriptValue } from "../utils/html";
 import { logger } from "../utils/logger";
 
 /** A file to publish. `content` is UTF-8 text unless `encoding: "base64"`. */
@@ -535,7 +536,7 @@ export function injectSeo(html: string, seo: FrontendSeo): string {
   }
   if (seo.jsonLd && !lower.includes("application/ld+json")) {
     tags.push(
-      `<script type="application/ld+json">${JSON.stringify(seo.jsonLd).replace(/</g, "\\u003c")}</script>`,
+      `<script type="application/ld+json">${serializeInlineScriptValue(seo.jsonLd)}</script>`,
     );
   }
 
@@ -560,7 +561,7 @@ export function injectBeacon(
   const bodyClose = /<\/body\s*>/i;
   if (!bodyClose.test(html)) return html;
   const url = `${(beaconBase ?? "").replace(/\/$/, "")}/api/v1/track/pageview`;
-  const script = `<script>(function(){var vk="eliza_visitor_id",sk="eliza_session_id";function id(){try{return crypto.randomUUID()}catch(e){return "v-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)}}function g(k,s,f){try{var x=s.getItem(k);if(!x){x=f||id();s.setItem(k,x)}return x}catch(e){return f||id()}}var v=g(vk,localStorage,${JSON.stringify(analytics?.visitorId ?? "")});var sid=g(sk,sessionStorage,${JSON.stringify(analytics?.sessionId ?? "")});function s(){try{var d={app_id:${JSON.stringify(appId)},visitor_id:v,session_id:sid,page_url:location.pathname+location.search,referrer:document.referrer,pathname:location.pathname,screen_width:screen.width,screen_height:screen.height};navigator.sendBeacon(${JSON.stringify(url)},new Blob([JSON.stringify(d)],{type:"text/plain"}));}catch(e){}}var p=history.pushState,r=history.replaceState;history.pushState=function(){p.apply(this,arguments);s();};history.replaceState=function(){r.apply(this,arguments);s();};addEventListener("popstate",s);})();</script>`;
+  const script = `<script>(function(){var vk="eliza_visitor_id",sk="eliza_session_id";function id(){try{return crypto.randomUUID()}catch(e){return "v-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)}}function g(k,s,f){try{var x=s.getItem(k);if(!x){x=f||id();s.setItem(k,x)}return x}catch(e){return f||id()}}var v=g(vk,localStorage,${serializeInlineScriptValue(analytics?.visitorId ?? "")});var sid=g(sk,sessionStorage,${serializeInlineScriptValue(analytics?.sessionId ?? "")});function s(){try{var d={app_id:${serializeInlineScriptValue(appId)},visitor_id:v,session_id:sid,page_url:location.pathname+location.search,referrer:document.referrer,pathname:location.pathname,screen_width:screen.width,screen_height:screen.height};navigator.sendBeacon(${serializeInlineScriptValue(url)},new Blob([JSON.stringify(d)],{type:"text/plain"}));}catch(e){}}var p=history.pushState,r=history.replaceState;history.pushState=function(){p.apply(this,arguments);s();};history.replaceState=function(){r.apply(this,arguments);s();};addEventListener("popstate",s);})();</script>`;
   return html.replace(bodyClose, `${script}</body>`);
 }
 

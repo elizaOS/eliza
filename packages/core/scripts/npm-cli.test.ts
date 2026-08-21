@@ -11,13 +11,29 @@ function windowsInstallation(root: string): Set<string> {
 }
 
 describe("resolveNpmCliInvocation", () => {
-	it("keeps the existing direct npm command off Windows", () => {
+	it("runs a discovered POSIX npm script through Node", () => {
+		const files = new Set(["/opt/node/bin/node", "/home/user/bin/npm"]);
+
 		expect(
 			resolveNpmCliInvocation(["pack", "package path"], {
 				platform: "linux",
-				pathValue: "",
+				pathValue: ':/home/user/bin:"/opt/node/bin":/missing',
+				fileExists: (filePath) => files.has(filePath),
 			}),
-		).toEqual({ command: "npm", args: ["pack", "package path"] });
+		).toEqual({
+			command: "/opt/node/bin/node",
+			args: ["/home/user/bin/npm", "pack", "package path"],
+		});
+	});
+
+	it("falls back to direct npm when POSIX PATH is incomplete", () => {
+		expect(
+			resolveNpmCliInvocation(["pack"], {
+				platform: "darwin",
+				pathValue: "/missing:/also-missing",
+				fileExists: () => false,
+			}),
+		).toEqual({ command: "npm", args: ["pack"] });
 	});
 
 	it("uses node.exe plus npm-cli.js from a complete quoted PATH entry", () => {

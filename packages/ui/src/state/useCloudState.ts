@@ -35,6 +35,7 @@ import {
   invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
 } from "../bridge";
+import { isAppModeHost } from "../cloud/app-mode/app-mode";
 import { publishCloudAuthComplete } from "../cloud/auth/cloud-auth-complete-signal";
 import { signOutFromSsoBridgedHost } from "../cloud/sso-bridge/sso-bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
@@ -1497,10 +1498,10 @@ export function useCloudState({
     // the backend connected, so a reload or fresh poll would resurface the same
     // account. Delegate to the real disconnect path (which clears the server
     // session) unless the runtime is locked. The account-only clear below is
-    // reserved for the locked mobile runtime, where handleCloudDisconnect
-    // refuses (Cloud is required in cloud mode) and only the account session
-    // can be dropped.
-    if (!(disconnectLocked || isElizaCloudRuntimeLocked())) {
+    // Locked mobile runtimes and hosted Cloud app-mode both require an account
+    // sign-out. A local backend disconnect either refuses (locked mode) or
+    // leaves the browser's SSO session intact (hosted app-mode).
+    if (!(disconnectLocked || isElizaCloudRuntimeLocked() || isAppModeHost())) {
       await handleCloudDisconnect({ skipConfirmation: true });
       return;
     }

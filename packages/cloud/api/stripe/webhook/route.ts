@@ -5,8 +5,8 @@ import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleto
 import type { StripeEventMessage } from "@/api-queue/types";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { enqueue } from "@/lib/queue/redis-queue";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
@@ -202,7 +202,7 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
   handleStripeWebhook(c),
 );
 export default app;

@@ -164,7 +164,7 @@ mock.module("./services/api-keys", () => ({
 
 mock.module("./services/characters/characters", () => ({
   charactersService: {
-    existsForOrganization: mock(async () => false),
+    hasHealthyCloudCharacterMirror: mock(async () => false),
     create: createCharacter,
   },
 }));

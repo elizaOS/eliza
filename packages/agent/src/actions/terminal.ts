@@ -8,6 +8,9 @@
  *   4. Captures the output for planner follow-up
  *   5. Stores the full output as a document attachment for follow-up actions
  *
+ * The loopback POST to `/api/terminal/run` uses
+ * `TERMINAL_RUN_FETCH_TIMEOUT_MS` so a hung API cannot stall TERMINAL_SHELL.
+ *
  * @module actions/terminal
  */
 
@@ -35,6 +38,8 @@ import { readAliasedEnv, resolveServerOnlyPort } from "@elizaos/shared";
 import { normalizeTerminalCommand } from "../utils/terminal-command.ts";
 
 const TERMINAL_ACTION_NAME = "TERMINAL_SHELL";
+/** HTTP bound for the loopback `/api/terminal/run` hop. Longer than the API's 30s command cap so honest `timedOut` JSON can still return. */
+export const TERMINAL_RUN_FETCH_TIMEOUT_MS = 60_000;
 const MAX_TERMINAL_DATA_CHARS = 16000;
 // Max sanitized stdout, in chars, that may be relayed verbatim as the user-facing
 // message. Small single-line results (a SHA, a count, a path) are useful to
@@ -464,19 +469,30 @@ export const terminalAction: Action = {
       headers["X-Eliza-Terminal-Token"] = terminalToken;
     }
 
-    const response = await fetch(
-      `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          command,
-          clientId: "runtime-terminal-action",
-          captureOutput: true,
-          ...(terminalToken ? { terminalToken } : {}),
-        }),
-      },
-    );
+    let response: Response;
+    try {
+      response = await fetch(
+        `http://localhost:${resolveServerOnlyPort(process.env)}/api/terminal/run`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            command,
+            clientId: "runtime-terminal-action",
+            captureOutput: true,
+            ...(terminalToken ? { terminalToken } : {}),
+          }),
+          signal: AbortSignal.timeout(TERMINAL_RUN_FETCH_TIMEOUT_MS),
+        },
+      );
+    } catch (error) {
+      // error-policy:J2 hung loopback terminal API is a request failure
+      throw new ElizaError("Terminal execution request failed", {
+        code: "TERMINAL_REQUEST_FAILED",
+        cause: error,
+        severity: "ephemeral",
+      });
+    }
 
     if (!response.ok) {
       throw new ElizaError("Terminal execution request was rejected", {

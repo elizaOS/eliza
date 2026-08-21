@@ -139,3 +139,16 @@ describe("OpenAI o-series selector metadata", () => {
     }
   });
 });
+
+describe("Anthropic selector names", () => {
+  test("title-cases the model id without an identity replacement", () => {
+    const selectorModel = toSelectorModel({
+      id: "anthropic/claude-sonnet-4-5",
+      object: "model",
+      created: 0,
+      owned_by: "anthropic",
+    });
+
+    expect(selectorModel.name).toBe("Claude Sonnet 4 5");
+  });
+});

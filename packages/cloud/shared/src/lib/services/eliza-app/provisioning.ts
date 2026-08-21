@@ -4,6 +4,7 @@ import { jobsRepository } from "../../../db/repositories/jobs";
 import type { AgentSandbox, AgentSandboxStatus } from "../../../db/schemas/agent-sandboxes";
 import { ApiError } from "../../api/cloud-worker-errors";
 import { containersEnv } from "../../config/containers-env";
+import { getMaxNonTerminalAgentsForOrg } from "../../constants/agent-sandbox-quota";
 import { logger } from "../../utils/logger";
 import { checkAgentCreditGate } from "../agent-billing-gate";
 import { elizaSandboxService } from "../eliza-sandbox";
@@ -214,6 +215,7 @@ export async function ensureElizaAppProvisioning(params: {
     agentName: DEFAULT_AGENT_NAME,
     dockerImage: DEFAULT_DOCKER_IMAGE,
     reuseExistingNonTerminal: true,
+    maxNonTerminalAgents: getMaxNonTerminalAgentsForOrg(creditGate.balance),
   });
 
   // The org-scoped guard reused an in-flight sandbox; its provision job is

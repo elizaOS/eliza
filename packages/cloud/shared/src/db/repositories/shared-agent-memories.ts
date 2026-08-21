@@ -273,6 +273,32 @@ export class SharedAgentMemoriesReader {
   }
 
   /**
+   * Most recent rows of one core table-name discriminator (e.g. "facts")
+   * within the tenant scope, newest first. Serves the Shared facts provider
+   * (parity P4) without scanning message rows.
+   */
+  async listRecentByType(
+    scope: SharedAgentMemoryScope,
+    type: string,
+    limit: number,
+  ): Promise<SharedAgentMemoryRow[]> {
+    requiredScope(scope);
+    assertLimit(limit);
+    if (typeof type !== "string" || type.trim().length === 0) {
+      throw new ElizaError("Shared agent memory type is required", {
+        code: SHARED_AGENT_MEMORY_INVALID_INPUT,
+        context: { field: "type" },
+      });
+    }
+    return await dbRead
+      .select()
+      .from(sharedAgentMemories)
+      .where(and(...tenantPins(scope), eq(sharedAgentMemories.type, type)))
+      .orderBy(desc(sharedAgentMemories.created_at), desc(sharedAgentMemories.id))
+      .limit(limit);
+  }
+
+  /**
    * Exact cosine-distance search over the tenant's most recent embedded rows
    * (bounded window; see module header). Only rows whose stored vector has the
    * query's dimensionality participate, so mixed-model histories cannot fail

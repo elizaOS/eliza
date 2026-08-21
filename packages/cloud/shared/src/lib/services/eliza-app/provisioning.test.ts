@@ -94,6 +94,7 @@ describe("ensureElizaAppProvisioning", () => {
       agentName: "Eliza",
       dockerImage: "ghcr.io/elizaos/eliza:stable",
       reuseExistingNonTerminal: true,
+      maxNonTerminalAgents: 20,
     });
     expect(enqueueAgentProvision).toHaveBeenCalledWith({
       agentId: "agent-1",
