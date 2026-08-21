@@ -588,6 +588,18 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
   });
 
+  it("rejects runner timeout settings that overflow the JavaScript timer range", () => {
+    expect(() =>
+      resolveE2BRemoteRunnerConfig(
+        makeRuntime({
+          ELIZA_CODING_REMOTE_RUNNER: "home",
+          ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+          ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS: "2147483648",
+        }),
+      ),
+    ).toThrow(/must be an integer between 1 and 2147483647/i);
+  });
+
   it("keeps Vercel, Cloudflare, and Rivet as disabled direct providers", () => {
     for (const provider of ["vercel", "cloudflare", "rivet"]) {
       expect(() =>
@@ -1007,6 +1019,95 @@ describe("E2BRemoteCapabilityRouterService", () => {
       replaceGlobalFetch(originalFetch);
     }
   });
+
+  it("preserves a structured timeout returned by the remote runner", async () => {
+    const originalFetch = globalThis.fetch;
+    replaceGlobalFetch(
+      healthThenProcessFetch(async () =>
+        jsonResponse(200, {
+          exitCode: 124,
+          stdout: "partial output",
+          stderr: "command deadline reached",
+          timedOut: true,
+        }),
+      ),
+    );
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      remoteCommandTimeoutConfig(),
+    );
+    try {
+      await expect(
+        service.pty.runCommand({ command: "sleep", args: ["30"] }),
+      ).resolves.toEqual({
+        output: "partial output\ncommand deadline reached",
+        exitCode: 124,
+        timedOut: true,
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("reports the timeout selected before command options are mutated", async () => {
+    const originalFetch = globalThis.fetch;
+    replaceGlobalFetch(healthThenProcessFetch(hungFetch));
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig({
+        provider: "home",
+        remoteHttpBaseUrl: "https://remote-runner.test",
+        remoteHttpToken: "token",
+        timeoutMs: 5_000,
+        requestTimeoutMs: 5_000,
+      }),
+    );
+    const sandbox = await (
+      service as unknown as { getSandbox(): Promise<E2BSandboxClient> }
+    ).getSandbox();
+    const options = { requestTimeoutMs: 50 };
+    try {
+      const command = sandbox.commands.run("sleep 30", options);
+      options.requestTimeoutMs = 5_000;
+      await expect(command).rejects.toMatchObject({
+        name: "TimeoutError",
+        message: expect.stringMatching(/timed out.*50ms/i),
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it.each([0, -1, Number.NaN, 2_147_483_648])(
+    "rejects an invalid explicit command timeout without dispatching it (%s)",
+    async (timeoutMs) => {
+      const originalFetch = globalThis.fetch;
+      let processCalls = 0;
+      replaceGlobalFetch(
+        healthThenProcessFetch(async () => {
+          processCalls += 1;
+          return jsonResponse(200, { exitCode: 0, stdout: "", stderr: "" });
+        }),
+      );
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        remoteCommandTimeoutConfig(),
+      );
+      try {
+        await expect(
+          service.pty.runCommand({ command: "echo", timeoutMs }),
+        ).rejects.toMatchObject({
+          code: "CAPABILITY_REQUEST_FAILED",
+          capability: "pty",
+          method: "pty.command.run",
+          message: expect.stringMatching(/duration must be an integer/i),
+        });
+        expect(processCalls).toBe(0);
+      } finally {
+        replaceGlobalFetch(originalFetch);
+      }
+    },
+  );
 
   it("returns timedOut from pty.runCommand when process headers arrive then the body stalls", async () => {
     const originalFetch = globalThis.fetch;
