@@ -3,7 +3,7 @@
  * success/failure phase reporting, and intent description.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createColdStrategy } from "./runtime/operations/cold-strategy.ts";
+import { createColdStrategy } from "./cold-strategy.ts";
 
 function makeCtx(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -53,7 +53,9 @@ describe("createColdStrategy", () => {
 
   it("describes a provider-switch intent in the restart reason", async () => {
     const restartRuntime = vi.fn(async () => ({ id: "rt" }));
-    const ctx = makeCtx({ intent: { kind: "provider-switch", provider: "anthropic" } });
+    const ctx = makeCtx({
+      intent: { kind: "provider-switch", provider: "anthropic" },
+    });
     const strategy = createColdStrategy({ restartRuntime });
     await strategy.apply(ctx);
     expect(restartRuntime).toHaveBeenCalledWith("provider switch to anthropic");
@@ -70,9 +72,13 @@ describe("createColdStrategy", () => {
   it("describes plugin enable/disable intents", async () => {
     const restartRuntime = vi.fn(async () => ({ id: "rt" }));
     const strategy = createColdStrategy({ restartRuntime });
-    await strategy.apply(makeCtx({ intent: { kind: "plugin-enable", pluginId: "p1" } }));
+    await strategy.apply(
+      makeCtx({ intent: { kind: "plugin-enable", pluginId: "p1" } }),
+    );
     expect(restartRuntime).toHaveBeenLastCalledWith("plugin enable: p1");
-    await strategy.apply(makeCtx({ intent: { kind: "plugin-disable", pluginId: "p2" } }));
+    await strategy.apply(
+      makeCtx({ intent: { kind: "plugin-disable", pluginId: "p2" } }),
+    );
     expect(restartRuntime).toHaveBeenLastCalledWith("plugin disable: p2");
   });
 
