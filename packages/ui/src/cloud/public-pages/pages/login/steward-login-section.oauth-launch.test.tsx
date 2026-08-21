@@ -231,6 +231,14 @@ describe("StewardLoginSection OAuth launch", () => {
     },
   );
 
+  it("keeps X as the accessible name without repeating it beside the logo", async () => {
+    renderSection();
+
+    const xButton = await screen.findByRole("button", { name: "X" });
+    expect(xButton.textContent).toBe("");
+    expect(xButton.querySelector("svg")).toBeTruthy();
+  });
+
   it("sends the PKCE challenge and a stashed OAuth state at authorize time", async () => {
     renderSection();
 

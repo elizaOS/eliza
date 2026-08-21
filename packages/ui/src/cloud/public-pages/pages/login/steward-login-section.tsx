@@ -53,6 +53,12 @@ import { DiscordIcon } from "../../../../cloud-ui/components/icons";
 import { Alert, AlertDescription } from "../../../../components/primitives";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from "../../../../components/ui/select";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
 import {
   configuredStewardTenantId,
@@ -1891,6 +1897,9 @@ export default function StewardLoginSection() {
   }
 
   const isLoading = loading !== null;
+  const selectedPhoneCountry =
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === phoneCountry) ??
+    PHONE_COUNTRY_OPTIONS.find((option) => option.code === "US");
 
   return (
     <div className="space-y-4">
@@ -1906,29 +1915,44 @@ export default function StewardLoginSection() {
           <div className="space-y-2">
             <label
               htmlFor="steward-login-phone"
-              className="block text-left text-sm font-medium text-txt"
+              className="block text-center text-sm font-medium text-txt"
             >
               {t("cloud.login.phoneLabel", { defaultValue: "Phone number" })}
             </label>
             <div className="flex w-full min-h-touch overflow-hidden rounded-md border border-input bg-bg-elevated transition-colors hover:border-border-strong focus-within:border-border-strong">
-              <select
-                aria-label={t("cloud.login.phoneCountryLabel", {
-                  defaultValue: "Country calling code",
-                })}
+              <Select
                 name="phone-country"
                 value={phoneCountry}
-                onChange={(event) =>
-                  setPhoneCountry(event.target.value as CountryCode)
-                }
+                onValueChange={(value) => setPhoneCountry(value as CountryCode)}
                 disabled={isLoading}
-                className="hosted-signin-focus-emphasis min-h-touch w-32 shrink-0 border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
               >
-                {PHONE_COUNTRY_OPTIONS.map((option) => (
-                  <option key={option.code} value={option.code}>
-                    {option.code} +{option.dialCode} — {option.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-label={t("cloud.login.phoneCountryLabel", {
+                    defaultValue: "Country calling code",
+                  })}
+                  className="hosted-signin-focus-emphasis h-auto min-h-touch w-24 shrink-0 rounded-none border-0 border-r border-input bg-bg-elevated px-3 text-sm font-medium text-txt outline-none disabled:opacity-50"
+                >
+                  <span className="truncate">
+                    {selectedPhoneCountry?.code ?? phoneCountry} +
+                    {selectedPhoneCountry?.dialCode ?? "1"}
+                  </span>
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  align="start"
+                  className="!max-h-72 !w-[min(20rem,calc(100vw-2rem))] border-input !bg-black text-white [&_[data-radix-select-viewport]]:!w-full [&_[data-radix-select-viewport]]:!max-w-none"
+                >
+                  {PHONE_COUNTRY_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.code}
+                      value={option.code}
+                      className="cursor-pointer data-[highlighted]:bg-bg-hover data-[highlighted]:text-txt-strong"
+                    >
+                      {option.code} +{option.dialCode} — {option.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Input
                 id="steward-login-phone"
                 type="tel"
@@ -1977,7 +2001,7 @@ export default function StewardLoginSection() {
       <div className="space-y-2">
         <label
           htmlFor="steward-login-email"
-          className="block text-left text-sm font-medium text-txt"
+          className="block text-center text-sm font-medium text-txt"
         >
           {t("cloud.login.emailLabel", { defaultValue: "Email" })}
         </label>
@@ -2104,12 +2128,13 @@ export default function StewardLoginSection() {
       )}
 
       {hasIdentityProviders && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2">
           {enabledOAuthProviders.map((provider) => (
             <Button
               key={provider}
               variant="ghost"
               type="button"
+              aria-label={stewardOAuthProviderLabel(provider)}
               onClick={() => handleOAuth(provider)}
               disabled={isLoading}
               className="hosted-signin-focus-emphasis flex min-h-touch items-center justify-center gap-2 rounded-md border border-border-strong bg-bg-elevated px-4 py-2.5 text-sm font-semibold text-txt transition-[background-color,border-color,transform] hover:border-border-hover hover:bg-bg-hover active:scale-[0.99] disabled:pointer-events-none disabled:border-border/60 disabled:text-muted-strong"
@@ -2118,8 +2143,10 @@ export default function StewardLoginSection() {
                 <Spinner />
               ) : (
                 <StewardOAuthIcon provider={provider} />
-              )}{" "}
-              {stewardOAuthProviderLabel(provider)}
+              )}
+              {provider === "twitter"
+                ? null
+                : ` ${stewardOAuthProviderLabel(provider)}`}
             </Button>
           ))}
           {showTelegram && (

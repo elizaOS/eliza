@@ -13,7 +13,22 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => undefined;
+  Element.prototype.releasePointerCapture = () => undefined;
+  Element.prototype.scrollIntoView = () => undefined;
+});
 
 const authSpies = vi.hoisted(() => ({
   storage: null as {
@@ -246,7 +261,19 @@ describe("StewardLoginSection phone login", () => {
     renderSection();
 
     const countrySelect = await screen.findByLabelText("Country calling code");
-    fireEvent.change(countrySelect, { target: { value: "GB" } });
+    expect(countrySelect.textContent).toContain("US +1");
+    expect(countrySelect.textContent).not.toContain("United States");
+    fireEvent.pointerDown(countrySelect, {
+      button: 0,
+      ctrlKey: false,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: "GB +44 — United Kingdom",
+      }),
+    );
     fireEvent.change(screen.getByLabelText("Phone number"), {
       target: { value: "020 7946 0018" },
     });
