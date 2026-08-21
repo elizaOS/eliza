@@ -15,7 +15,7 @@ import type {
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox-bridge";
-import { deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
 import type { SharedRuntimeChannel, SharedTurnMessage } from "./run-shared-agent-turn";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
@@ -212,7 +212,7 @@ function coordinatorName(agentId: string, rpc: BridgeRequest): string {
   return `${agentId}:${coordinatorRoom(rpc.params?.roomId, rpc.params?.userId)}`;
 }
 
-export { coordinatorFetch } from "./coordinator-fetch";
+export { coordinatorFetch };
 
 function coordinatorStub(
   namespace: RuntimeDurableObjectNamespace,
