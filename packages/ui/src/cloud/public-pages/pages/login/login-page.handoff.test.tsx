@@ -1,26 +1,23 @@
 /**
- * Managed-cloud login handoff tests use a deterministic jsdom navigation
- * boundary to prove the transient bridge screen always falls back to a usable
- * Steward login when initiation is blocked, rejected, or never navigates.
+ * Managed-host login routing tests use the real SSO hostname predicate to
+ * prove dedicated subdomains stay on the local Steward surface instead of
+ * entering a bridge that intentionally excludes user-content hosts.
  */
 // @vitest-environment jsdom
 // @vitest-environment-options {"url": "https://agent-1.cloud.eliza.app/login?intent=launch"}
 
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { StrictMode } from "react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-const bridge = vi.hoisted(() => ({
-  redirect: vi.fn<() => Promise<boolean>>(),
-  shouldAutoBridge: vi.fn<() => boolean>(),
-}));
+const realLocation = window.location;
 
-vi.mock("../../../sso-bridge/sso-bridge", () => ({
-  redirectToSsoBridge: bridge.redirect,
-  sanitizeBridgeReturnTo: (value: string | null) => value ?? "/",
-  shouldAutoBridgeToSso: bridge.shouldAutoBridge,
-}));
+function setLocation(hostname: string, origin: string): void {
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...realLocation, hostname, origin },
+  });
+}
 
 vi.mock("./steward-login-section", () => ({
   default: () => <div>Steward login options</div>,
@@ -33,80 +30,48 @@ vi.mock("../../../shell/CloudI18nProvider", () => ({
 
 vi.mock("../../lib/use-page-title", () => ({ usePageTitle: () => {} }));
 
+import { shouldAutoBridgeToSso } from "../../../sso-bridge/sso-bridge";
 import LoginPage from "./login-page";
-
-async function renderLogin(): Promise<void> {
-  await act(async () => {
-    render(
-      <StrictMode>
-        <MemoryRouter initialEntries={["/login?intent=launch"]}>
-          <LoginPage />
-        </MemoryRouter>
-      </StrictMode>,
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-  });
-}
-
-beforeEach(() => {
-  vi.useFakeTimers();
-  bridge.redirect.mockReset();
-  bridge.shouldAutoBridge.mockReset();
-  bridge.shouldAutoBridge.mockReturnValue(true);
-});
 
 afterEach(() => {
   cleanup();
-  vi.useRealTimers();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: realLocation,
+  });
 });
 
-describe("managed-cloud login handoff", () => {
-  it("renders one stable local sign-in surface when there is no auth-origin session to bridge", async () => {
-    bridge.shouldAutoBridge.mockReturnValue(false);
+describe("managed-cloud login routing", () => {
+  it("keeps a production dedicated-agent host on local Steward login", async () => {
+    expect(shouldAutoBridgeToSso("agent-1.cloud.eliza.app")).toBe(false);
+    render(
+      <MemoryRouter initialEntries={["/login?intent=launch"]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
 
-    await renderLogin();
-
-    expect(bridge.redirect).not.toHaveBeenCalled();
     expect(screen.queryByText("Taking you to Eliza sign in")).toBeNull();
     expect(
-      screen.getByRole("heading", { name: "Sign in to Eliza" }),
+      await screen.findByRole("heading", { name: "Sign in to Eliza" }),
     ).toBeTruthy();
   });
 
-  it("starts one handoff under StrictMode when an existing session is bridgeable", async () => {
-    bridge.redirect.mockResolvedValue(true);
-
-    await renderLogin();
-
-    expect(bridge.shouldAutoBridge).toHaveBeenCalledTimes(2);
-    expect(bridge.redirect).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Taking you to Eliza sign in")).toBeTruthy();
-  });
-
-  it("falls back when bridge initiation rejects", async () => {
-    bridge.redirect.mockRejectedValue(new Error("navigation unavailable"));
-
-    await renderLogin();
+  it("keeps a staging dedicated-agent host on local Steward login", async () => {
+    setLocation(
+      "agent-9.cloud-staging.eliza.app",
+      "https://agent-9.cloud-staging.eliza.app",
+    );
+    expect(shouldAutoBridgeToSso("agent-9.cloud-staging.eliza.app")).toBe(
+      false,
+    );
+    render(
+      <MemoryRouter initialEntries={["/login"]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
 
     expect(
-      screen.getByRole("heading", { name: "Sign in to Eliza" }),
-    ).toBeTruthy();
-  });
-
-  it("leaves the transient screen after a bounded stalled navigation", async () => {
-    bridge.redirect.mockResolvedValue(true);
-
-    await renderLogin();
-    expect(screen.getByText("Taking you to Eliza sign in")).toBeTruthy();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(5_000);
-    });
-
-    expect(bridge.redirect).toHaveBeenCalledTimes(1);
-    expect(
-      screen.getByRole("heading", { name: "Sign in to Eliza" }),
+      await screen.findByRole("heading", { name: "Sign in to Eliza" }),
     ).toBeTruthy();
   });
 });
