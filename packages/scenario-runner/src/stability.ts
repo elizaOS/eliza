@@ -188,16 +188,20 @@ export function readScenarioStabilityJsonArtifact(
   filePath: string,
   source: string,
 ): unknown {
-  const linkStat = lstatSync(filePath);
-  if (linkStat.isSymbolicLink() || !linkStat.isFile()) {
-    throw new Error(`${source} must be a regular file, not a symlink`);
-  }
-
   const descriptor = openSync(filePath, "r");
   try {
     const fileStat = fstatSync(descriptor);
-    if (!fileStat.isFile()) {
-      throw new Error(`${source} must be a regular file`);
+    const pathStat = lstatSync(filePath);
+    if (
+      pathStat.isSymbolicLink() ||
+      !pathStat.isFile() ||
+      !fileStat.isFile() ||
+      pathStat.dev !== fileStat.dev ||
+      pathStat.ino !== fileStat.ino
+    ) {
+      throw new Error(
+        `${source} must resolve directly to the opened regular file, not a symlink or replaced path`,
+      );
     }
     if (fileStat.size > SCENARIO_STABILITY_MAX_REPORT_BYTES) {
       throw new Error(
@@ -222,6 +226,14 @@ export function readScenarioStabilityJsonArtifact(
       offset += read;
     }
     if (offset !== fileStat.size) {
+      throw new Error(`${source} changed while it was being read`);
+    }
+    const finalStat = fstatSync(descriptor);
+    if (
+      finalStat.size !== fileStat.size ||
+      finalStat.mtimeMs !== fileStat.mtimeMs ||
+      finalStat.ctimeMs !== fileStat.ctimeMs
+    ) {
       throw new Error(`${source} changed while it was being read`);
     }
     return JSON.parse(bytes.subarray(0, offset).toString("utf8"));
