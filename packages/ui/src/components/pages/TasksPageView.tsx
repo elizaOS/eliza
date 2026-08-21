@@ -12,7 +12,7 @@
  * one header per view, no duplication.
  */
 import { Cloud } from "lucide-react";
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { navigateBrowserPath } from "../../app-navigate-view";
 import {
@@ -20,6 +20,7 @@ import {
   listAppShellPages,
   subscribeAppShellPages,
 } from "../../app-shell-registry";
+import { getWindowNavigationPath } from "../../navigation";
 import { CodingAgentTasksPanel } from "../../slots/task-coordinator-slots.js";
 import { useAppSelector } from "../../state";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
@@ -100,7 +101,7 @@ function ProjectsSegmentButton({
 export function TasksPageView() {
   const [segment, setSegment] = useState<ProjectsSegment>(() =>
     initialProjectsSegmentForPath(
-      typeof window === "undefined" ? "" : window.location.pathname,
+      typeof window === "undefined" ? "" : getWindowNavigationPath(),
     ),
   );
   const cloudStudioPath = useCloudAppsStudioPath();
@@ -109,6 +110,19 @@ export function TasksPageView() {
     { id: "tasks", label: "Tasks" },
     { id: "apps", label: "Apps" },
   ];
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const selectSegmentForRoute = () => {
+      setSegment(initialProjectsSegmentForPath(getWindowNavigationPath()));
+    };
+    window.addEventListener("hashchange", selectSegmentForRoute);
+    window.addEventListener("popstate", selectSegmentForRoute);
+    return () => {
+      window.removeEventListener("hashchange", selectSegmentForRoute);
+      window.removeEventListener("popstate", selectSegmentForRoute);
+    };
+  }, []);
   return (
     <ShellViewAgentSurface viewId="tasks">
       <div

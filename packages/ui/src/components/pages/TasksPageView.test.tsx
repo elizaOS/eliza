@@ -13,6 +13,7 @@
 // mocked to isolate the host's composition from the panel's data behavior; the
 // app catalog client is mocked to empty so renders are deterministic.
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -184,6 +185,25 @@ describe("TasksPageView", () => {
     render(<TasksPageView />);
     expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
     expect(screen.queryByTestId("coding-agent-tasks-panel-stub")).toBeNull();
+  });
+
+  it("pre-selects Apps for packaged hash routes and follows same-tab route changes", () => {
+    seedAppValue();
+    window.history.replaceState(null, "", "/?appWindow=1#/apps");
+    render(<TasksPageView />);
+    expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
+
+    act(() => {
+      window.location.hash = "#/apps/tasks";
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    expect(screen.getByTestId("coding-agent-tasks-panel-stub")).toBeTruthy();
+
+    act(() => {
+      window.location.hash = "#/apps/my-apps";
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    expect(screen.getByTestId("projects-apps-segment")).toBeTruthy();
   });
 
   it("maps retired and canonical paths to the right initial segment", () => {
