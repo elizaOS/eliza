@@ -8,7 +8,7 @@ export const PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH = "/resolve";
 export const PERSONAL_DELIVERY_PROJECTION_INVALIDATE_PATH = "/invalidate";
 
 export function personalDeliveryProjectionObjectName(
-  platform: "telegram" | "discord",
+  platform: "telegram" | "discord" | "phone",
   platformUserId: string,
 ): string {
   return `${platform}:${platformUserId.trim()}`;
@@ -16,7 +16,7 @@ export function personalDeliveryProjectionObjectName(
 
 export async function invalidatePersonalDeliveryProjection(
   namespace: RuntimeDurableObjectNamespace | undefined,
-  platform: "telegram" | "discord",
+  platform: "telegram" | "discord" | "phone",
   platformUserId: string | null | undefined,
 ): Promise<void> {
   if (!namespace || !platformUserId) return;
@@ -33,7 +33,7 @@ export async function invalidatePersonalDeliveryProjection(
 }
 
 export async function invalidateBoundPersonalDeliveryProjection(
-  platform: "telegram" | "discord",
+  platform: "telegram" | "discord" | "phone",
   platformUserId: string | null | undefined,
 ): Promise<void> {
   return invalidatePersonalDeliveryProjection(

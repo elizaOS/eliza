@@ -110,13 +110,21 @@ export function isPersonalDeliveryInput(
       (candidate.avatarUrl === null || optionalText(candidate.avatarUrl, 2_048))
     );
   }
+  if (candidate.platform === "phone") {
+    return (
+      boundedText(candidate.phoneNumber, 16) &&
+      /^\+[1-9]\d{6,14}$/.test(candidate.phoneNumber)
+    );
+  }
   return false;
 }
 
 function senderId(input: PersonalDeliveryInput): string {
   return input.platform === "telegram"
     ? input.telegramId.trim()
-    : input.discordId.trim();
+    : input.platform === "discord"
+      ? input.discordId.trim()
+      : input.phoneNumber.trim();
 }
 
 function profileKey(input: PersonalDeliveryInput): string {
@@ -127,16 +135,22 @@ function profileKey(input: PersonalDeliveryInput): string {
         username: input.username?.trim() || null,
         firstName: input.firstName?.trim() || null,
       })
-    : JSON.stringify({
-        platform: input.platform,
-        senderId: senderId(input),
-        username: input.username.trim(),
-        globalName:
-          input.globalName === undefined
-            ? undefined
-            : input.globalName?.trim() || null,
-        avatarUrl: input.avatarUrl === undefined ? undefined : input.avatarUrl,
-      });
+    : input.platform === "discord"
+      ? JSON.stringify({
+          platform: input.platform,
+          senderId: senderId(input),
+          username: input.username.trim(),
+          globalName:
+            input.globalName === undefined
+              ? undefined
+              : input.globalName?.trim() || null,
+          avatarUrl:
+            input.avatarUrl === undefined ? undefined : input.avatarUrl,
+        })
+      : JSON.stringify({
+          platform: input.platform,
+          senderId: senderId(input),
+        });
 }
 
 function isPersonalDeliveryResult(

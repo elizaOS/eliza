@@ -42,6 +42,10 @@ const TELEGRAM: PersonalDeliveryInput = {
   username: "nubs",
   displayName: "Nubs",
 };
+const PHONE: PersonalDeliveryInput = {
+  platform: "phone",
+  phoneNumber: "+15551234567",
+};
 
 function request(path: "/resolve" | "/invalidate", body?: unknown): Request {
   return new Request(`https://personal-delivery-projection${path}`, {
@@ -82,6 +86,25 @@ describe("PersonalDeliveryProjection", () => {
       dedicatedTarget: null,
       isNew: false,
       resolution: "sender-projection-hit",
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("shares one verified-phone projection across Blooio and Twilio", async () => {
+    const memory = state();
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery,
+    });
+
+    const cold = await object.fetch(request("/resolve", PHONE));
+    const warm = await object.fetch(request("/resolve", PHONE));
+
+    expect(cold.status).toBe(200);
+    expect(await warm.json()).toMatchObject({
+      resolution: "sender-projection-hit",
+      userId: "user-1",
+      organizationId: "org-1",
     });
     expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
   });
