@@ -1075,6 +1075,12 @@ export class SubAgentRouter extends Service {
     if (event === "message") {
       await this.maybeDispatchParentAgent(sessionId, data);
     }
+    if (event === "task_complete") {
+      this.log("warn", "handleEvent task_complete entry", {
+        sessionId,
+        releasing: this.releasingDeferredRelaySessions.has(sessionId),
+      });
+    }
     // Bound the per-session tracking collections. Each accrues one entry per
     // session (buffered parent-agent output, dispatch count, verify-retry
     // handoff marker) and only stop() cleared them, so a long-lived orchestrator
