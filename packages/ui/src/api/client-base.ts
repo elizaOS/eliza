@@ -54,6 +54,8 @@ import {
   mergeStreamingText,
 } from "../utils/streaming-text";
 import { androidNativeAgentTransportForUrl } from "./android-native-agent-transport";
+import { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+import { CSRF_HEADER_NAME } from "./auth/sessions";
 import type {
   AccountConnectRequest,
   ChatActionResultSummary,
@@ -98,6 +100,7 @@ const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 ]);
 const WS_EVENT_BACKLOG_LIMIT = 8;
+const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 type StreamChatEvent = {
   type?: string;
@@ -1735,6 +1738,7 @@ export class ElizaClient {
     requestAttempt: number,
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
+    const method = (init?.method ?? "GET").toUpperCase();
     const headers: Record<string, string> = {
       ...(!isDedicatedCloudRequest
         ? { "X-ElizaOS-Client-Id": this.clientId }
@@ -1745,6 +1749,17 @@ export class ElizaClient {
         : {}),
       ...requestHeadersToRecord(init?.headers),
     };
+    const hasCsrfHeader = Object.keys(headers).some(
+      (name) => name.toLowerCase() === CSRF_HEADER_NAME,
+    );
+    if (
+      !isDedicatedCloudRequest &&
+      !hasCsrfHeader &&
+      CSRF_REQUIRED_METHODS.has(method)
+    ) {
+      const csrfToken = readCsrfTokenFromCookie();
+      if (csrfToken) headers[CSRF_HEADER_NAME] = csrfToken;
+    }
     const correlation = headers[SHARED_TURN_CORRELATION_HEADER];
     if (correlation) {
       headers[SHARED_TURN_ATTEMPT_HEADER] = String(requestAttempt);
@@ -1758,6 +1773,9 @@ export class ElizaClient {
     }
     return {
       ...init,
+      credentials: isDedicatedCloudRequest
+        ? "omit"
+        : (init?.credentials ?? "include"),
       signal: abortController.signal,
       headers,
     };
