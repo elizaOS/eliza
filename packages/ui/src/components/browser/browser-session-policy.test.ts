@@ -306,4 +306,36 @@ describe("summarizeBrowserSessionReceipt", () => {
     expect(byKey.count.value).toBe("3");
     expect(byKey.detail.value).toBe('{"pages":[1,2,3]}');
   });
+
+  it("redacts credential-looking keys nested under benign keys", () => {
+    const entries = summarizeBrowserSessionReceipt(
+      session({
+        result: {
+          formData: {
+            username: "shaw",
+            password: "hunter2",
+            extra: [{ apiKey: "sk-nested" }, "plain"],
+          },
+        },
+      }),
+    );
+    const byKey = Object.fromEntries(entries.map((e) => [e.key, e]));
+    expect(byKey.formData.value).not.toContain("hunter2");
+    expect(byKey.formData.value).not.toContain("sk-nested");
+    expect(byKey.formData.value).toContain("shaw");
+    expect(byKey.formData.value).toContain("plain");
+    expect(byKey.formData.value).toContain("[redacted]");
+  });
+
+  it("collapses over-deep nested payloads to the redaction marker", () => {
+    let deep: Record<string, unknown> = { password: "leaky" };
+    for (let i = 0; i < 20; i += 1) {
+      deep = { wrap: deep };
+    }
+    const entries = summarizeBrowserSessionReceipt(
+      session({ result: { audit: deep } }),
+    );
+    expect(entries[0]?.value).not.toContain("leaky");
+    expect(entries[0]?.value).toContain("[redacted]");
+  });
 });

@@ -174,6 +174,30 @@ export interface BrowserSessionReceiptEntry {
 }
 
 const RECEIPT_VALUE_MAX_LENGTH = 200;
+const RECEIPT_REDACTION_MAX_DEPTH = 8;
+
+/**
+ * Recursively replaces values under credential-looking keys anywhere inside a
+ * nested result structure. Depth is bounded so a cyclic or absurdly deep
+ * payload collapses to the redaction marker instead of recursing forever —
+ * fail closed, never fail open.
+ */
+function redactNestedValue(value: unknown, depth: number): unknown {
+  if (depth >= RECEIPT_REDACTION_MAX_DEPTH) return "[redacted]";
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactNestedValue(entry, depth + 1));
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) =>
+        REDACTED_KEY_PATTERN.test(key)
+          ? [key, "[redacted]"]
+          : [key, redactNestedValue(nested, depth + 1)],
+      ),
+    );
+  }
+  return value;
+}
 
 function renderReceiptValue(value: unknown): string {
   if (typeof value === "string") {
@@ -188,7 +212,7 @@ function renderReceiptValue(value: unknown): string {
   ) {
     return String(value);
   }
-  const serialized = JSON.stringify(value) ?? "";
+  const serialized = JSON.stringify(redactNestedValue(value, 0)) ?? "";
   return serialized.length > RECEIPT_VALUE_MAX_LENGTH
     ? `${serialized.slice(0, RECEIPT_VALUE_MAX_LENGTH)}…`
     : serialized;
