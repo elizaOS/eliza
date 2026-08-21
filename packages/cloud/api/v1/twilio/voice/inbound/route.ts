@@ -21,7 +21,10 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";
-import { mintTwilioStreamToken } from "../lib/twilio-stream-token";
+import {
+  mintTwilioStreamToken,
+  prepareTwilioStreamToken,
+} from "../lib/twilio-stream-token";
 import {
   buildRealtimeVoiceTwiML,
   buildTerminalVoiceTwiML,
@@ -151,6 +154,15 @@ app.post("/", async (c) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
+  const tokenBootstrap = prepareTwilioStreamToken();
+  const sessionDirectoryStartedAt = Date.now();
+  const sessionDirectoryPromise = recordVoiceSessionJti({
+    organizationId: phoneNumber.organizationId,
+    userId: phoneNumber.userId,
+    sessionId: tokenBootstrap.sessionId,
+    jti: tokenBootstrap.jti,
+    expSeconds: tokenBootstrap.exp,
+  }).then(() => Date.now());
   const priorCallPromise = Promise.resolve(
     dbRead
       .select({
@@ -236,15 +248,6 @@ app.post("/", async (c) => {
         error: error instanceof Error ? error.message : String(error),
       });
     });
-  const [[priorCall], [priorConversation]] = await Promise.all([
-    priorCallPromise,
-    priorConversationPromise,
-  ]);
-  const previousInteractionAt = Math.max(
-    priorCall?.receivedAt?.getTime() ?? 0,
-    priorConversation?.updatedAt?.getTime() ?? 0,
-  );
-  const callerResolvedAt = Date.now();
   try {
     c.executionCtx.waitUntil(recordCall);
   } catch (error) {
@@ -255,7 +258,28 @@ app.post("/", async (c) => {
       error: error instanceof Error ? error.message : String(error),
     });
   }
-
+  const callerHistoryPromise = Promise.all([
+    priorCallPromise,
+    priorConversationPromise,
+  ]).then(([[priorCall], [priorConversation]]) => ({
+    priorCall,
+    priorConversation,
+    resolvedAt: Date.now(),
+  }));
+  const [callerHistory, sessionDirectoryResolvedAt] = await Promise.all([
+    callerHistoryPromise,
+    sessionDirectoryPromise,
+  ]);
+  const { priorCall, priorConversation } = callerHistory;
+  const previousInteractionAt = Math.max(
+    priorCall?.receivedAt?.getTime() ?? 0,
+    priorConversation?.updatedAt?.getTime() ?? 0,
+  );
+  const callerHistoryResolvedAt = callerHistory.resolvedAt;
+  const parallelSetupResolvedAt = Math.max(
+    callerHistoryResolvedAt,
+    sessionDirectoryResolvedAt,
+  );
   const minted = await mintTwilioStreamToken(
     {
       accountSid: event.AccountSid,
@@ -270,22 +294,22 @@ app.post("/", async (c) => {
         previousInteractionAt > 0 ? previousInteractionAt : undefined,
     },
     authToken,
+    Date.now,
+    tokenBootstrap,
   );
-  await recordVoiceSessionJti({
-    organizationId: phoneNumber.organizationId,
-    userId: phoneNumber.userId,
-    sessionId: minted.claims.sessionId,
-    jti: minted.claims.jti,
-    expSeconds: minted.claims.exp,
-  });
   const responseReadyAt = Date.now();
   logger.info("[twilio-voice-inbound] realtime TwiML ready", {
     callSid: event.CallSid,
     returningCaller: Boolean(priorCall || priorConversation),
     targetResolution: phoneNumber.resolution,
     targetMs: targetResolvedAt - requestStartedAt,
-    callerLookupMs: callerResolvedAt - targetResolvedAt,
-    tokenAndDirectoryMs: responseReadyAt - callerResolvedAt,
+    callerLookupMs: callerHistoryResolvedAt - targetResolvedAt,
+    sessionDirectoryMs: sessionDirectoryResolvedAt - sessionDirectoryStartedAt,
+    setupOverlapMs:
+      Math.min(callerHistoryResolvedAt, sessionDirectoryResolvedAt) -
+      sessionDirectoryStartedAt,
+    parallelSetupMs: parallelSetupResolvedAt - targetResolvedAt,
+    tokenMs: responseReadyAt - parallelSetupResolvedAt,
     totalMs: responseReadyAt - requestStartedAt,
   });
   publicUrl.pathname = "/api/v1/twilio/voice/media";
@@ -309,11 +333,15 @@ app.post("/", async (c) => {
     },
     {
       name: "voice_caller_history",
-      durationMs: callerResolvedAt - targetResolvedAt,
+      durationMs: callerHistoryResolvedAt - targetResolvedAt,
     },
     {
-      name: "voice_token_directory",
-      durationMs: responseReadyAt - callerResolvedAt,
+      name: "voice_session_directory",
+      durationMs: sessionDirectoryResolvedAt - sessionDirectoryStartedAt,
+    },
+    {
+      name: "voice_token",
+      durationMs: responseReadyAt - parallelSetupResolvedAt,
     },
   ]);
   return response;
