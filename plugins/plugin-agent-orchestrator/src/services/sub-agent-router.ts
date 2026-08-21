@@ -3453,10 +3453,24 @@ function normalizeFinishReason(
 // model-rendered (summarized) path rather than being dumped to the user.
 const MAX_VERBATIM_DELIVERABLE_BYTES = 2048;
 
-const EXACT_OUTPUT_REQUEST_RE =
-  /(?:\b(?:exact|exactly|verbatim)\b[\s\S]{0,80}\boutput\b|\boutput\b[\s\S]{0,80}\b(?:exact|exactly|verbatim)\b)/iu;
-const INTERNAL_ABSOLUTE_PATH_RE =
-  /(?:^|\s)\/(?:Users|home|root|var|tmp|opt|etc|usr|private|mnt|srv)\//mu;
+const OUTPUT_DELIVERABLE_REQUEST_RE =
+  /(?:\b(?:exact|exactly|verbatim)\b[\s\S]{0,80}\boutput\b|\boutput\b[\s\S]{0,80}\b(?:exact|exactly|verbatim)\b|\b(?:run|try|test)\s+(?:it|this|the\s+(?:code|program|script|file))\b|\b(?:show|tell|report|return|give)\b[\s\S]{0,80}\b(?:output|result)\b)/iu;
+const INTERNAL_ABSOLUTE_PATH_TOKEN_RE =
+  /\/(?:Users|home|root|var|tmp|opt|etc|usr|private|mnt|srv)\/[^\s`'"()[\]{}<>,]+/gmu;
+
+/**
+ * Keep a worker's natural final sentence while replacing internal absolute
+ * paths with the file name a person can actually recognize in chat. This is
+ * intentionally narrower than transcript sanitization: URLs and relative
+ * paths survive, while `/Users/.../primes.py` becomes `primes.py`.
+ */
+export function sanitizeWorkerFinalForChat(text: string): string {
+  return text.replace(INTERNAL_ABSOLUTE_PATH_TOKEN_RE, (absolutePath) => {
+    const trimmed = absolutePath.replace(/[.:;!?]+$/u, "");
+    const suffix = absolutePath.slice(trimmed.length);
+    return `${path.posix.basename(trimmed)}${suffix}`;
+  });
+}
 
 // Recover the deliverable when it is the sub-agent's printed/tool output and
 // composeNarration→stripToolTranscript has deleted it. Extracts the inner body
@@ -3506,15 +3520,16 @@ export function extractExactOutputDeliverable(
 ): string | undefined {
   const meta = session.metadata as Record<string, unknown> | undefined;
   const initialTask = pickPlainString(meta?.initialTask) ?? "";
-  if (!EXACT_OUTPUT_REQUEST_RE.test(initialTask)) return undefined;
+  if (!OUTPUT_DELIVERABLE_REQUEST_RE.test(initialTask)) return undefined;
   const response =
     pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
   if (!response) return undefined;
-  const cleaned = sanitizeCompletionRelay(response).trim();
+  const cleaned = sanitizeWorkerFinalForChat(
+    sanitizeCompletionRelay(response),
+  ).trim();
   if (
     !cleaned ||
-    Buffer.byteLength(cleaned, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES ||
-    INTERNAL_ABSOLUTE_PATH_RE.test(cleaned)
+    Buffer.byteLength(cleaned, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
   ) {
     return undefined;
   }

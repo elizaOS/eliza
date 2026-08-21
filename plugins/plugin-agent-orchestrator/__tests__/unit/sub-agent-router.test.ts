@@ -17,11 +17,13 @@ import {
   setPinnedTransport,
 } from "../../src/services/ssrf-guard.js";
 import {
+  extractExactOutputDeliverable,
   extractShortToolDeliverable,
   extractSubResources,
   normalizeUrlsInText,
   redactLoopbackUrls,
   SubAgentRouter,
+  sanitizeWorkerFinalForChat,
 } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
 
@@ -2662,6 +2664,42 @@ describe("extractShortToolDeliverable", () => {
   it("returns undefined when there is no captured response payload", () => {
     expect(extractShortToolDeliverable({})).toBeUndefined();
     expect(extractShortToolDeliverable(null)).toBeUndefined();
+  });
+});
+
+describe("normal-person run-result delivery", () => {
+  it("treats 'try it' as a request to return the worker's tested result", () => {
+    const session = makeSession({
+      metadata: {
+        initialTask:
+          "Can you make me a little program that shows the prime numbers from 1 to 20? Try it too so I know it works.",
+      },
+    });
+    const response =
+      "I created a Python script at `/Users/nubs/work/primes.py` and ran it. The prime numbers from 1 to 20 are:\n`[2, 3, 5, 7, 11, 13, 17, 19]`";
+
+    expect(extractExactOutputDeliverable(session, { response })).toBe(
+      "I created a Python script at `primes.py` and ran it. The prime numbers from 1 to 20 are:\n`[2, 3, 5, 7, 11, 13, 17, 19]`",
+    );
+  });
+
+  it("keeps ordinary prose while reducing internal paths to bare file names", () => {
+    expect(
+      sanitizeWorkerFinalForChat(
+        "Saved /tmp/private/build/result.txt, then checked https://example.test/result.",
+      ),
+    ).toBe("Saved result.txt, then checked https://example.test/result.");
+  });
+
+  it("does not capture ordinary file-edit prose when no run result was requested", () => {
+    const session = makeSession({
+      metadata: { initialTask: "Change the heading in index.html." },
+    });
+    expect(
+      extractExactOutputDeliverable(session, {
+        response: "Updated /Users/nubs/work/index.html.",
+      }),
+    ).toBeUndefined();
   });
 });
 
