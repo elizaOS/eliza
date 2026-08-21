@@ -101,6 +101,7 @@ import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
   ensureWindowTransparentBackground,
+  refreshWindowInteractiveMaterial,
   setNativeDragRegion,
   setWindowShadow,
   setWindowUserResizable,
@@ -468,6 +469,7 @@ function applyMacOSWindowEffects(
   trackAsMainWindow = true,
   continuousManagedDragStrip = false,
   nativeChromeInteractive = true,
+  detachedMovementInteractive = false,
 ): void {
   if (process.platform !== "darwin") return;
 
@@ -508,6 +510,11 @@ function applyMacOSWindowEffects(
 
   const alignChromeStructure = () => {
     if (nativeChromeInteractive) alignDragRegion();
+    if (detachedMovementInteractive) {
+      refreshWindowInteractiveMaterial(
+        ptr as Parameters<typeof refreshWindowInteractiveMaterial>[0],
+      );
+    }
     setWindowUserResizable(
       ptr as Parameters<typeof setWindowUserResizable>[0],
       nativeChromeInteractive,
@@ -1327,6 +1334,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       true,
       false,
       presentation.nativeChromeInteractive,
+      true,
     );
     // Keep the bar pinned to the primary display's bottom edge across display
     // plug/unplug + resolution changes (recompute on showWindow() + 5s poll).

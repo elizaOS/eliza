@@ -2781,6 +2781,29 @@ extern "C" bool setWindowInteractiveMaterialSize(void *windowPtr, double width,
 	return success;
 }
 
+/** Re-stack the detached host's saved movement strips above a late WKWebView. */
+extern "C" bool refreshWindowInteractiveMaterial(void *windowPtr) {
+	if (windowPtr == nullptr) return false;
+
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSWindow *window = (__bridge NSWindow *)windowPtr;
+		if (![window isKindOfClass:[NSWindow class]]) return;
+		ElizaWindowInteractiveMaterialController *controller =
+			objc_getAssociatedObject(
+				window, kElizaWindowInteractiveMaterialControllerKey);
+		if (controller == nil) return;
+		NSView *contentView = [window contentView];
+		elizaInstallFirstMouseAcceptance(contentView);
+		elizaLayoutBottomBarDragViews(window, contentView,
+									  controller.materialSize.width,
+									  controller.materialSize.height,
+									  controller.materialCornerRadius);
+		success = YES;
+	});
+	return success;
+}
+
 /** Consume one click that landed outside the painted interactive material. */
 extern "C" bool pollWindowOutsideClick(void *windowPtr) {
 	if (windowPtr == nullptr) return false;
