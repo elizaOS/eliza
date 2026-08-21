@@ -8,7 +8,6 @@ import CryptoKit
 import Darwin
 import Foundation
 import SafariServices
-import Security
 
 private enum NativeEnrollmentConstants {
     static let protocolVersion = 1
@@ -18,7 +17,7 @@ private enum NativeEnrollmentConstants {
     static let maximumMessageBytes = 65_536
     static let socketTimeoutSeconds = 3
     static let maximumPairingTokenLifetimeSeconds: TimeInterval = 300
-    static let keychainAccount = "native-enrollment-broker"
+    static let sharedSecretName = "s"
 }
 
 private enum NativeEnrollmentError: Error {
@@ -61,20 +60,12 @@ struct ValidatedEnrollmentRequest {
 
 private struct SafariNativeConfiguration {
     let appGroup: String
-    let keychainAccessGroup: String
-    let keychainService: String
     let socketName: String
 
     static func load() throws -> SafariNativeConfiguration {
         guard
             let appGroup = Bundle.main.object(forInfoDictionaryKey: "BrowserBridgeAppGroup") as? String,
             appGroup.hasPrefix("group."),
-            let keychainAccessGroup = Bundle.main.object(
-                forInfoDictionaryKey: "BrowserBridgeKeychainAccessGroup"
-            ) as? String,
-            !keychainAccessGroup.isEmpty,
-            let keychainService = Bundle.main.object(forInfoDictionaryKey: "BrowserBridgeKeychainService") as? String,
-            !keychainService.isEmpty,
             let socketName = Bundle.main.object(forInfoDictionaryKey: "BrowserBridgeBrokerSocketName") as? String,
             !socketName.isEmpty,
             !socketName.contains("/")
@@ -83,8 +74,6 @@ private struct SafariNativeConfiguration {
         }
         return SafariNativeConfiguration(
             appGroup: appGroup,
-            keychainAccessGroup: keychainAccessGroup,
-            keychainService: keychainService,
             socketName: socketName
         )
     }
@@ -220,7 +209,7 @@ enum SafariBrokerAuthentication {
         timestampMs: Int64,
         secret: Data
     ) throws -> String {
-        guard secret.count >= 32 else {
+        guard secret.count == 32 else {
             throw NativeEnrollmentError.appNotAuthenticated
         }
         let authenticationCode = HMAC<SHA256>.authenticationCode(
@@ -235,8 +224,8 @@ enum SafariBrokerAuthentication {
     }
 }
 
-private enum DesktopBrokerRelay {
-    static func send(
+enum DesktopBrokerRelay {
+    fileprivate static func send(
         request: ValidatedEnrollmentRequest,
         configuration: SafariNativeConfiguration
     ) throws -> [String: Any] {
@@ -246,6 +235,15 @@ private enum DesktopBrokerRelay {
             )
         else {
             throw NativeEnrollmentError.brokerUnavailable
+        }
+        let containerPath = containerUrl.path
+        var containerMetadata = stat()
+        guard
+            lstat(containerPath, &containerMetadata) == 0,
+            (containerMetadata.st_mode & S_IFMT) == S_IFDIR,
+            containerMetadata.st_uid == getuid()
+        else {
+            throw NativeEnrollmentError.appNotAuthenticated
         }
         let socketPath = containerUrl.appendingPathComponent(configuration.socketName).path
         var socketMetadata = stat()
@@ -258,8 +256,7 @@ private enum DesktopBrokerRelay {
             throw NativeEnrollmentError.appNotRunning
         }
         let credential = try readBrokerCredential(
-            service: configuration.keychainService,
-            accessGroup: configuration.keychainAccessGroup
+            path: containerUrl.appendingPathComponent(NativeEnrollmentConstants.sharedSecretName).path
         )
         let timestampMs = Int64(Date().timeIntervalSince1970 * 1_000)
         let relayEnvelope: [String: Any] = [
@@ -289,21 +286,59 @@ private enum DesktopBrokerRelay {
         return try SafariNativeResponseValidator.validate(response, request: request)
     }
 
-    private static func readBrokerCredential(service: String, accessGroup: String) throws -> Data {
-        let query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: service,
-            kSecAttrAccount: NativeEnrollmentConstants.keychainAccount,
-            kSecAttrAccessGroup: accessGroup,
-            kSecMatchLimit: kSecMatchLimitOne,
-            kSecReturnData: true,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data, data.count >= 32, data.count <= 128 else {
+    static func readBrokerCredential(path: String, expectedUid: uid_t = getuid()) throws -> Data {
+        var pathMetadata = stat()
+        guard
+            lstat(path, &pathMetadata) == 0,
+            (pathMetadata.st_mode & S_IFMT) == S_IFREG,
+            pathMetadata.st_uid == expectedUid,
+            (pathMetadata.st_mode & 0o777) == 0o600,
+            pathMetadata.st_size == 32
+        else {
             throw NativeEnrollmentError.appNotAuthenticated
         }
-        return data
+        let descriptor = Darwin.open(path, O_RDONLY | O_NOFOLLOW)
+        guard descriptor >= 0 else {
+            throw NativeEnrollmentError.appNotAuthenticated
+        }
+        defer { Darwin.close(descriptor) }
+
+        var descriptorMetadata = stat()
+        guard
+            fstat(descriptor, &descriptorMetadata) == 0,
+            (descriptorMetadata.st_mode & S_IFMT) == S_IFREG,
+            descriptorMetadata.st_dev == pathMetadata.st_dev,
+            descriptorMetadata.st_ino == pathMetadata.st_ino,
+            descriptorMetadata.st_uid == expectedUid,
+            (descriptorMetadata.st_mode & 0o777) == 0o600,
+            descriptorMetadata.st_size == 32
+        else {
+            throw NativeEnrollmentError.appNotAuthenticated
+        }
+
+        var credential = Data(count: 32)
+        var offset = 0
+        try credential.withUnsafeMutableBytes { bytes in
+            guard let baseAddress = bytes.baseAddress else {
+                throw NativeEnrollmentError.appNotAuthenticated
+            }
+            while offset < 32 {
+                let count = Darwin.read(descriptor, baseAddress.advanced(by: offset), 32 - offset)
+                if count < 0 && errno == EINTR {
+                    continue
+                }
+                guard count > 0 else {
+                    throw NativeEnrollmentError.appNotAuthenticated
+                }
+                offset += count
+            }
+        }
+        var extraByte: UInt8 = 0
+        let extraCount = Darwin.read(descriptor, &extraByte, 1)
+        guard extraCount == 0 else {
+            throw NativeEnrollmentError.appNotAuthenticated
+        }
+        return credential
     }
 
     private static func exchange(socketPath: String, payload: Data) throws -> Data {
