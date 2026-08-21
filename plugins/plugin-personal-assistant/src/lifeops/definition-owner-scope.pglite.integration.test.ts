@@ -348,6 +348,22 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     expect(completed.map((item) => item.title)).not.toContain(
       foreignDefinition.title,
     );
+    await repository.deleteDefinition(agentId, ownDefinition.id, {
+      scope: {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: ownerA,
+      },
+      expectedUpdatedAt: ownDefinition.updatedAt,
+    });
+    await repository.deleteDefinition(agentId, foreignDefinition.id, {
+      scope: {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: OWNER_B,
+      },
+      expectedUpdatedAt: foreignDefinition.updatedAt,
+    });
   });
 
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {
