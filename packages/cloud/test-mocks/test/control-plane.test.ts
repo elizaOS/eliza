@@ -85,6 +85,26 @@ describe("control-plane mock auth", () => {
     const res = await fetch(`${controlPlane.url}/health`);
     expect(res.ok).toBe(true);
   });
+
+  test("health acknowledges synthetic bootstrap and provider bindings", async () => {
+    const synthetic = await startControlPlaneMock({
+      token: TOKEN,
+      hetznerUrl: hetzner.url,
+      syntheticBootstrapHash: "manifest-hash",
+      syntheticProviderBindings: ["FIXTURE_BASE_URL", "FIXTURE_API_KEY"],
+    });
+    try {
+      const response = await fetch(`${synthetic.url}/health`);
+      expect(await response.json()).toMatchObject({
+        syntheticWorld: {
+          bootstrapHash: "manifest-hash",
+          providerBindings: ["FIXTURE_API_KEY", "FIXTURE_BASE_URL"],
+        },
+      });
+    } finally {
+      await synthetic.stop();
+    }
+  });
 });
 
 describe("control-plane mock provision flow", () => {

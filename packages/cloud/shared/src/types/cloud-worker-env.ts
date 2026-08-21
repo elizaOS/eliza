@@ -30,6 +30,10 @@ export interface Bindings {
    * (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Test-only manifest hash proving a spawned Cloud Worker consumed its synthetic bootstrap. */
+  ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH?: string;
+  /** Test-only comma-delimited provider env names forwarded into the spawned Worker. */
+  ELIZA_SYNTHETIC_PROVIDER_BINDINGS?: string;
   /** Public eliza.app agent used only when its exact Twilio line is called. */
   ELIZA_APP_DEFAULT_AGENT_ID?: string;
   /** Exact E.164 Twilio number allowed to route to the public default agent. */

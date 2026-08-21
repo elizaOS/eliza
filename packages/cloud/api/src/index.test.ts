@@ -983,6 +983,24 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
+  test("acknowledges synthetic bootstrap metadata only in test mode", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://local.example/api/health"),
+      {
+        NODE_ENV: "test",
+        ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH: "manifest-hash",
+        ELIZA_SYNTHETIC_PROVIDER_BINDINGS: "FIXTURE_API_KEY,FIXTURE_BASE_URL",
+      } as never,
+      {} as never,
+    );
+    expect(await response.json()).toMatchObject({
+      syntheticWorld: {
+        bootstrapHash: "manifest-hash",
+        providerBindings: ["FIXTURE_API_KEY", "FIXTURE_BASE_URL"],
+      },
+    });
+  });
+
   test("reports only the served Personal Shared Telegram edge gate state", async () => {
     const response = await cloudApiWorker.fetch(
       new Request("https://api-staging.eliza.app/api/health", {

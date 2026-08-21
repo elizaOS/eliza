@@ -86,8 +86,16 @@ bun run cloud:login:test-wallet --base <local-stack-url>
   `process.env` without overriding shell values, so provider keys (e.g.
   `CEREBRAS_API_KEY` for real-LLM lanes) reach both the runner and the worker.
 - **Per-run logs and recordings are gitignored.** Subprocess stdout/stderr
-  stream to `.logs/`; Playwright artifacts go to `test-results/` (or, with
+  stream to a unique `.logs/<run-id>/`; Playwright artifacts go to `test-results/` (or, with
   `E2E_RECORD`, to `e2e-recordings/cloud-e2e/`).
+- **Synthetic mode is manifest-owned.** `stackOptions.synthetic` explicitly
+  declares model mode, agent count, connector set, background workers,
+  frontend targets, named provider environment bindings, and fault script.
+  Test boundaries reset and compare the composite execution hash. Do not pass
+  mock administrative credentials to production clients or subprocesses.
+- **CI does not retry product failures.** Playwright `retries` is zero. Any
+  future infrastructure retry belongs in a separately classified wrapper with
+  evidence from the failed attempt.
 - **Keep product fixes in their owning package.** This harness may expose bugs
   in `packages/cloud/api` or `packages/app`, but changes belong under those
   packages and must follow their local guides.

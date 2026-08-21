@@ -52,6 +52,10 @@ export interface ControlPlaneMockOptions {
   containerActionMs?: number;
   /** ms between SSE events on the bridge stream. Default 5. */
   bridgeStreamIntervalMs?: number;
+  /** Test-only hash acknowledged by readiness when this service joins a synthetic world. */
+  syntheticBootstrapHash?: string;
+  /** Test-only production-client environment bindings acknowledged by readiness. */
+  syntheticProviderBindings?: string[];
   /**
    * When set, requests must also include `x-container-control-plane-token` with this value
    * in addition to the bearer token. Mirrors the real impl's dual-token auth, which is
@@ -614,7 +618,18 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   }
 
   app.get("/health", (c) =>
-    c.json({ success: true, service: "control-plane-mock" }),
+    c.json({
+      success: true,
+      service: "control-plane-mock",
+      syntheticWorld: options.syntheticBootstrapHash
+        ? {
+            bootstrapHash: options.syntheticBootstrapHash,
+            providerBindings: [
+              ...(options.syntheticProviderBindings ?? []),
+            ].sort(),
+          }
+        : null,
+    }),
   );
   app.get("/api/health", (c) =>
     c.json({ success: true, status: "ok", ready: true }),

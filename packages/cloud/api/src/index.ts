@@ -607,6 +607,18 @@ function healthResponse(env: AppEnv["Bindings"]): Response {
       // the beacon the cross-environment routing verifier probes
       // (packages/cloud/scripts/verify-environment-routing.mjs).
       environment: env.ENVIRONMENT ?? null,
+      syntheticWorld:
+        env.NODE_ENV === "test" &&
+        env.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH?.trim()
+          ? {
+              bootstrapHash: env.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH.trim(),
+              providerBindings: (env.ELIZA_SYNTHETIC_PROVIDER_BINDINGS ?? "")
+                .split(",")
+                .map((name) => name.trim())
+                .filter((name) => /^[A-Z][A-Z0-9_]*$/.test(name))
+                .sort(),
+            }
+          : null,
       // The protected Telegram cutover uses a secret binding to override the
       // tracked false default without changing code. This value-free beacon
       // lets the release workflow prove the served state and fail closed when

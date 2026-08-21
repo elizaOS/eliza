@@ -16,7 +16,7 @@ import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { type AddressInfo, createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { basename, delimiter, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   type RunningControlPlaneMock,
@@ -28,6 +28,11 @@ import {
 } from "@elizaos/cloud-test-mocks/hetzner";
 import { buildSharedEnv } from "./env";
 import { type RunningMockLlm, startMockLlm } from "./mock-llm";
+import {
+  type CloudSyntheticStackManifest,
+  type RunningSyntheticStack,
+  startSyntheticStack,
+} from "./synthetic-stack";
 
 /**
  * Resolve the bun executable for `child_process.spawn`. On Windows, Node cannot
@@ -67,6 +72,8 @@ export interface StackHandle {
     pglite: string;
     /** Mock LLM `/v1` base URL — present only when started with `mockLlm`. */
     mockLlm?: string;
+    /** Named provider sidecars owned by the synthetic manifest. */
+    providers?: Readonly<Record<string, string>>;
   };
   /**
    * True when the frontend Vite dev was NOT booted (API-only stacks started
@@ -81,7 +88,9 @@ export interface StackHandle {
     hetzner: RunningHetznerMock;
     controlPlane: RunningControlPlaneMock;
     mockLlm?: RunningMockLlm;
+    providers?: RunningSyntheticStack["providers"];
   };
+  synthetic?: RunningSyntheticStack;
   dataDir: string;
   logDir: string;
 }
@@ -158,6 +167,59 @@ async function waitForHttpOk(
   );
 }
 
+async function assertSyntheticCloudReadiness(
+  apiUrl: string,
+  controlPlaneUrl: string,
+  synthetic: RunningSyntheticStack,
+): Promise<void> {
+  const response = await fetch(`${apiUrl}/api/health`, {
+    signal: AbortSignal.timeout(2_000),
+  });
+  const body = (await response.json()) as {
+    syntheticWorld?: {
+      bootstrapHash?: string;
+      providerBindings?: string[];
+    } | null;
+  };
+  const expectedBindings = (
+    synthetic.processEnv.ELIZA_SYNTHETIC_PROVIDER_BINDINGS ?? ""
+  )
+    .split(",")
+    .filter(Boolean)
+    .sort();
+  if (
+    body.syntheticWorld?.bootstrapHash !==
+      synthetic.processEnv.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH ||
+    JSON.stringify(body.syntheticWorld.providerBindings) !==
+      JSON.stringify(expectedBindings)
+  ) {
+    throw new Error(
+      "cloud-api readiness did not acknowledge the synthetic bootstrap and provider bindings",
+    );
+  }
+  const controlResponse = await fetch(`${controlPlaneUrl}/health`, {
+    signal: AbortSignal.timeout(2_000),
+  });
+  const controlBody = (await controlResponse.json()) as typeof body;
+  if (
+    controlBody.syntheticWorld?.bootstrapHash !==
+      synthetic.processEnv.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH ||
+    JSON.stringify(controlBody.syntheticWorld.providerBindings) !==
+      JSON.stringify(expectedBindings)
+  ) {
+    throw new Error(
+      "control-plane readiness did not acknowledge the synthetic bootstrap and provider bindings",
+    );
+  }
+  synthetic.world.ledger.append({
+    kind: "lifecycle",
+    status: "observed",
+    target: "cloud-api.synthetic-readiness",
+    attempt: 1,
+    payloadHash: body.syntheticWorld.bootstrapHash,
+  });
+}
+
 interface SpawnedProc {
   child: ChildProcess;
   log: WriteStream;
@@ -215,15 +277,16 @@ async function runLoggedStep(
 }
 
 async function killProc(proc: SpawnedProc): Promise<void> {
-  if (proc.child.exitCode !== null || proc.child.signalCode !== null) return;
-  proc.child.kill("SIGTERM");
-  const deadline = Date.now() + 5_000;
-  while (proc.child.exitCode === null && proc.child.signalCode === null) {
-    if (Date.now() > deadline) {
-      proc.child.kill("SIGKILL");
-      break;
+  if (proc.child.exitCode === null && proc.child.signalCode === null) {
+    proc.child.kill("SIGTERM");
+    const deadline = Date.now() + 5_000;
+    while (proc.child.exitCode === null && proc.child.signalCode === null) {
+      if (Date.now() > deadline) {
+        proc.child.kill("SIGKILL");
+        break;
+      }
+      await delay(100);
     }
-    await delay(100);
   }
   await new Promise<void>((r) => proc.log.end(() => r()));
 }
@@ -233,6 +296,27 @@ async function closeCloudSharedDatabaseConnections(): Promise<void> {
     "@elizaos/cloud-shared/db/client"
   );
   await closeDatabaseConnectionsForTests();
+}
+
+async function boundedTeardown(
+  label: string,
+  teardown: () => Promise<void>,
+  timeoutMs = 10_000,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      teardown(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} teardown exceeded ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export interface StartCloudStackOptions {
@@ -269,7 +353,11 @@ export interface StartCloudStackOptions {
    * another worker's fixture contract.
    */
   env?: Readonly<Record<string, string>>;
+  /** Boot one canonical manifest-owned world with strict model/provider sidecars. */
+  synthetic?: CloudSyntheticStackManifest;
 }
+
+let parentDatabaseEnvOwner: symbol | undefined;
 
 /**
  * Start the full cloud test stack. Heavy — only call once per worker.
@@ -277,245 +365,371 @@ export interface StartCloudStackOptions {
 export async function startCloudStack(
   opts: StartCloudStackOptions = {},
 ): Promise<StackHandle> {
-  await mkdir(LOG_DIR, { recursive: true });
-  const dataDir = await mkdtemp(join(tmpdir(), "cloud-e2e-"));
-  const pgDataDir = join(dataDir, "pgdata");
-  await mkdir(pgDataDir, { recursive: true });
-
-  const hetznerPort = await pickFreePort();
-  const controlPlanePort = await pickFreePort();
-  const pglitePort = await pickFreePort();
-  const apiPort = opts.apiPort ?? (await pickFreePort());
-  const frontendPort = opts.frontendPort ?? (await pickFreePort());
-
-  // 1. In-process mocks
-  const hetzner = await startHetznerMock({
-    port: hetznerPort,
-    actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
-  });
-  const controlPlane = await startControlPlaneMock({
-    port: controlPlanePort,
-    hetznerUrl: hetzner.url,
-    tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
-  });
-  const mockLlm =
-    opts.mockLlm || opts.mockLlmEchoContext
-      ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
-      : undefined;
-  const mockLlmEnv: Record<string, string> = mockLlm
-    ? {
-        OPENAI_API_KEY: "mock-llm-key",
-        OPENAI_BASE_URL: mockLlm.url,
-      }
-    : {};
-
-  const sharedEnv = buildSharedEnv(
-    {
-      hetzner: hetzner.url,
-      controlPlane: controlPlane.url,
-      pgliteHost: "127.0.0.1",
-      pglitePort,
-    },
-    {
-      DATABASE_URL: `pglite://${pgDataDir}`,
-      TEST_DATABASE_URL: "",
-      PGLITE_DATA_DIR: pgDataDir,
-      DEV_CLOUD_PGLITE_DATA_DIR: pgDataDir,
-      DEV_CLOUD_PGLITE_PORT: String(pglitePort),
-      API_DEV_PORT: String(apiPort),
-      PORT: String(frontendPort),
-      ...opts.env,
-    },
-  );
-
-  const procs: SpawnedProc[] = [];
-
-  const pgliteEnv = {
-    ...sharedEnv,
-    PGLITE_HOST: "127.0.0.1",
-    PGLITE_PORT: String(pglitePort),
-    PGLITE_DATA_DIR: pgDataDir,
-    PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
-  };
-  procs.push(
-    spawnLogged(
-      "pglite",
-      BUN,
-      ["run", "packages/cloud/scripts/admin/dev/pglite-server.ts"],
-      {
-        env: pgliteEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "pglite.log"),
-      },
-    ),
-  );
-  await waitForTcp("127.0.0.1", pglitePort, {
-    timeoutMs: 60_000,
-    label: "pglite",
-  });
-
-  const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
-  const stackEnv = {
-    ...sharedEnv,
-    DATABASE_URL: databaseUrl,
-    TEST_DATABASE_URL: databaseUrl,
-    // Provider override → the cloud-api dev wrapper syncs OPENAI_API_KEY/
-    // OPENAI_BASE_URL into .dev.vars (providerOverrideKeys), so the worker's
-    // getOpenAIClient() targets the in-process mock for `openai/<model>` ids.
-    ...mockLlmEnv,
-  };
-  const previousDatabaseUrl = process.env.DATABASE_URL;
-  const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
-  process.env.DATABASE_URL = databaseUrl;
-  process.env.TEST_DATABASE_URL = databaseUrl;
-
-  if (!opts.skipMigrate) {
-    await runLoggedStep(
-      "cloud-migrate",
-      BUN,
-      ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
-      {
-        env: stackEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-migrate.log"),
-      },
+  const envOwner = Symbol("cloud-e2e-stack");
+  if (parentDatabaseEnvOwner) {
+    throw new Error(
+      "another Cloud E2E stack owns the parent database environment",
     );
   }
+  parentDatabaseEnvOwner = envOwner;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
+  const procs: SpawnedProc[] = [];
+  const startupTeardowns: Array<() => Promise<void>> = [
+    async () => {
+      for (const proc of [...procs].reverse()) await killProc(proc);
+    },
+  ];
+  try {
+    await mkdir(LOG_DIR, { recursive: true });
+    const dataDir = await mkdtemp(join(tmpdir(), "cloud-e2e-"));
+    startupTeardowns.push(() => rm(dataDir, { recursive: true, force: true }));
+    const runId = basename(dataDir);
+    const logDir = join(LOG_DIR, runId);
+    await mkdir(logDir, { recursive: true });
+    const pgDataDir = join(dataDir, "pgdata");
+    await mkdir(pgDataDir, { recursive: true });
 
-  // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
-  // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
-  // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
-  // source, which neither node (it can't load the extensionless `.ts` relative
-  // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
-  // that tsgo forbids) can resolve — only wrangler/esbuild bundling does. The
-  // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
-  // bun-spawned context. wrangler pre-bundles, so requests are fast.
-  procs.push(
-    spawnLogged(
-      "cloud-api",
-      BUN,
-      ["run", "--cwd", "packages/cloud/api", "dev"],
+    const hetznerPort = await pickFreePort();
+    const controlPlanePort = await pickFreePort();
+    const pglitePort = await pickFreePort();
+    const apiPort = opts.apiPort ?? (await pickFreePort());
+    const frontendPort = opts.frontendPort ?? (await pickFreePort());
+
+    // 1. In-process mocks
+    const hetzner = await startHetznerMock({
+      port: hetznerPort,
+      actionMs: Number(process.env.MOCK_HETZNER_ACTION_MS ?? "30"),
+    });
+    startupTeardowns.push(() => hetzner.stop());
+    const synthetic = opts.synthetic
+      ? await startSyntheticStack(opts.synthetic, runId)
+      : undefined;
+    const mockLlm =
+      synthetic?.model ??
+      (opts.mockLlm || opts.mockLlmEchoContext
+        ? await startMockLlm({ echoContext: opts.mockLlmEchoContext ?? false })
+        : undefined);
+    if (synthetic) startupTeardowns.push(() => synthetic.stop());
+    else if (mockLlm) startupTeardowns.push(() => mockLlm.stop());
+    const syntheticProviderBindings = (
+      synthetic?.processEnv.ELIZA_SYNTHETIC_PROVIDER_BINDINGS ?? ""
+    )
+      .split(",")
+      .filter(Boolean)
+      .sort();
+    const controlPlane = await startControlPlaneMock({
+      port: controlPlanePort,
+      hetznerUrl: hetzner.url,
+      tickMs: Number(process.env.CONTROL_PLANE_TICK_MS ?? "50"),
+      syntheticBootstrapHash:
+        synthetic?.processEnv.ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH,
+      syntheticProviderBindings,
+    });
+    startupTeardowns.push(() => controlPlane.stop());
+    const mockLlmEnv: Record<string, string> = mockLlm
+      ? {
+          OPENAI_API_KEY: "mock-llm-key",
+          OPENAI_BASE_URL: mockLlm.url,
+        }
+      : {};
+
+    const sharedEnv = buildSharedEnv(
       {
-        env: stackEnv,
-        cwd: REPO_ROOT,
-        logFile: join(LOG_DIR, "cloud-api.log"),
+        hetzner: hetzner.url,
+        controlPlane: controlPlane.url,
+        pgliteHost: "127.0.0.1",
+        pglitePort,
       },
-    ),
-  );
+      {
+        DATABASE_URL: `pglite://${pgDataDir}`,
+        TEST_DATABASE_URL: "",
+        PGLITE_DATA_DIR: pgDataDir,
+        DEV_CLOUD_PGLITE_DATA_DIR: pgDataDir,
+        DEV_CLOUD_PGLITE_PORT: String(pglitePort),
+        API_DEV_PORT: String(apiPort),
+        PORT: String(frontendPort),
+        ...opts.env,
+        ...synthetic?.processEnv,
+      },
+    );
 
-  const apiUrl = `http://127.0.0.1:${apiPort}`;
-  await waitForHttpOk(`${apiUrl}/api/health`, {
-    timeoutMs: 180_000,
-    label: "cloud-api",
-  });
-
-  // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
-  // The apex moved to packages/app in the cloud-frontend→packages/app cutover.
-  // packages/app's vite dev does NOT honour VITE_API_PROXY_TARGET; it computes
-  // its own ports from ELIZA_API_PORT/ELIZA_PORT (the /api + /ws proxy target)
-  // and ELIZA_UI_PORT (the dev server listen port). Inject those so the dev
-  // server listens on `frontendPort` and proxies /api at this stack's cloud-api.
-  let frontendUrl = "";
-  let frontendSkipReason: string | undefined;
-  const frontendDir = join(REPO_ROOT, "packages", "app");
-  if (opts.frontend !== false) {
-    if (!existsSync(frontendDir)) {
-      throw new Error(
-        `[stack] frontend boot requested but ${frontendDir} is missing — ` +
-          "the cloud-e2e harness expects packages/app (the apex web dev). " +
-          "Pass { frontend: false } for API-only stacks.",
-      );
-    }
-    const frontendEnv = {
-      ...stackEnv,
-      // packages/app vite dev: UI listen port + /api proxy target.
-      ELIZA_UI_PORT: String(frontendPort),
-      ELIZA_API_PORT: String(apiPort),
-      ELIZA_PORT: String(apiPort),
-      VITE_API_BASE_URL: apiUrl,
-      NEXT_PUBLIC_API_BASE_URL: apiUrl,
+    const pgliteEnv = {
+      ...sharedEnv,
+      PGLITE_HOST: "127.0.0.1",
+      PGLITE_PORT: String(pglitePort),
+      PGLITE_DATA_DIR: pgDataDir,
+      PGLITE_MAX_CONNECTIONS: process.env.PGLITE_MAX_CONNECTIONS ?? "16",
     };
     procs.push(
       spawnLogged(
-        "frontend",
+        "pglite",
         BUN,
-        ["run", "dev", "--", "--host", "127.0.0.1"],
+        ["run", "packages/cloud/scripts/admin/dev/pglite-server.ts"],
         {
-          env: frontendEnv,
-          cwd: frontendDir,
-          logFile: join(LOG_DIR, "frontend.log"),
+          env: pgliteEnv,
+          cwd: REPO_ROOT,
+          logFile: join(logDir, "pglite.log"),
+        },
+      ),
+    );
+    await waitForTcp("127.0.0.1", pglitePort, {
+      timeoutMs: 60_000,
+      label: "pglite",
+    });
+
+    const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
+    const stackEnv = {
+      ...sharedEnv,
+      DATABASE_URL: databaseUrl,
+      TEST_DATABASE_URL: databaseUrl,
+      // Provider override → the cloud-api dev wrapper syncs OPENAI_API_KEY/
+      // OPENAI_BASE_URL into .dev.vars (providerOverrideKeys), so the worker's
+      // getOpenAIClient() targets the in-process mock for `openai/<model>` ids.
+      ...mockLlmEnv,
+    };
+    process.env.DATABASE_URL = databaseUrl;
+    process.env.TEST_DATABASE_URL = databaseUrl;
+
+    if (!opts.skipMigrate) {
+      await runLoggedStep(
+        "cloud-migrate",
+        BUN,
+        ["run", "--cwd", "packages/cloud/shared", "db:migrate"],
+        {
+          env: stackEnv,
+          cwd: REPO_ROOT,
+          logFile: join(logDir, "cloud-migrate.log"),
+        },
+      );
+    }
+
+    // Boot cloud-api through its wrangler dev launcher — the same entrypoint the
+    // cloud:mock stack uses (`bun run --cwd packages/cloud/api dev`). The earlier
+    // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
+    // source, which neither node (it can't load the extensionless `.ts` relative
+    // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
+    // that tsgo forbids) can resolve — only wrangler/esbuild bundling does. The
+    // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
+    // bun-spawned context. wrangler pre-bundles, so requests are fast.
+    procs.push(
+      spawnLogged(
+        "cloud-api",
+        BUN,
+        ["run", "--cwd", "packages/cloud/api", "dev"],
+        {
+          env: stackEnv,
+          cwd: REPO_ROOT,
+          logFile: join(logDir, "cloud-api.log"),
         },
       ),
     );
 
-    frontendUrl = `http://127.0.0.1:${frontendPort}`;
-    await waitForHttpOk(frontendUrl, {
-      timeoutMs: 120_000,
-      label: "frontend",
+    const apiUrl = `http://127.0.0.1:${apiPort}`;
+    await waitForHttpOk(`${apiUrl}/api/health`, {
+      timeoutMs: 180_000,
+      label: "cloud-api",
     });
-  } else {
-    // API-only stack: no frontend booted. Record why so the handle's
-    // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
-    // fixtures (authenticatedPage) skip explicitly rather than reading an empty
-    // `urls.frontend` as a pass.
-    frontendSkipReason =
-      "frontend boot disabled (stack started with { frontend: false }).";
-  }
+    if (synthetic) {
+      await assertSyntheticCloudReadiness(apiUrl, controlPlane.url, synthetic);
+    }
 
-  let stopped = false;
-  const stop = async () => {
-    if (stopped) return;
-    stopped = true;
-    let dbCloseError: Error | undefined;
-    try {
-      await closeCloudSharedDatabaseConnections();
-    } catch (error) {
-      dbCloseError = error instanceof Error ? error : new Error(String(error));
-    }
-    // Reverse order: frontend, api, then mocks
-    for (const proc of [...procs].reverse()) {
-      await killProc(proc).catch(() => undefined);
-    }
-    if (previousDatabaseUrl === undefined) {
-      delete process.env.DATABASE_URL;
+    // 3. console (apex) frontend Vite dev (skipped for API-only stacks).
+    // The apex moved to packages/app in the cloud-frontend→packages/app cutover.
+    // packages/app's vite dev does NOT honour VITE_API_PROXY_TARGET; it computes
+    // its own ports from ELIZA_API_PORT/ELIZA_PORT (the /api + /ws proxy target)
+    // and ELIZA_UI_PORT (the dev server listen port). Inject those so the dev
+    // server listens on `frontendPort` and proxies /api at this stack's cloud-api.
+    let frontendUrl = "";
+    let frontendSkipReason: string | undefined;
+    const frontendDir = join(REPO_ROOT, "packages", "app");
+    const frontendEnabled = opts.synthetic
+      ? opts.synthetic.frontendTargets.includes("app")
+      : opts.frontend !== false;
+    if (frontendEnabled) {
+      if (!existsSync(frontendDir)) {
+        throw new Error(
+          `[stack] frontend boot requested but ${frontendDir} is missing — ` +
+            "the cloud-e2e harness expects packages/app (the apex web dev). " +
+            "Pass { frontend: false } for API-only stacks.",
+        );
+      }
+      const frontendEnv = {
+        ...stackEnv,
+        // packages/app vite dev: UI listen port + /api proxy target.
+        ELIZA_UI_PORT: String(frontendPort),
+        ELIZA_API_PORT: String(apiPort),
+        ELIZA_PORT: String(apiPort),
+        VITE_API_BASE_URL: apiUrl,
+        NEXT_PUBLIC_API_BASE_URL: apiUrl,
+      };
+      procs.push(
+        spawnLogged(
+          "frontend",
+          BUN,
+          ["run", "dev", "--", "--host", "127.0.0.1"],
+          {
+            env: frontendEnv,
+            cwd: frontendDir,
+            logFile: join(logDir, "frontend.log"),
+          },
+        ),
+      );
+
+      frontendUrl = `http://127.0.0.1:${frontendPort}`;
+      await waitForHttpOk(frontendUrl, {
+        timeoutMs: 120_000,
+        label: "frontend",
+      });
     } else {
-      process.env.DATABASE_URL = previousDatabaseUrl;
+      // API-only stack: no frontend booted. Record why so the handle's
+      // frontendSkipped/frontendSkipReason stay coherent and frontend-dependent
+      // fixtures (authenticatedPage) skip explicitly rather than reading an empty
+      // `urls.frontend` as a pass.
+      frontendSkipReason =
+        "frontend boot disabled (stack started with { frontend: false }).";
     }
-    if (previousTestDatabaseUrl === undefined) {
+
+    let stopPromise: Promise<void> | undefined;
+    const stop = (): Promise<void> => {
+      if (stopPromise) return stopPromise;
+      stopPromise = (async () => {
+        const errors: Error[] = [];
+        const processResults = await Promise.allSettled([
+          boundedTeardown("cloud database connections", () =>
+            closeCloudSharedDatabaseConnections(),
+          ),
+          ...[...procs]
+            .reverse()
+            .map((proc) => boundedTeardown(proc.name, () => killProc(proc))),
+        ]);
+        for (const result of processResults) {
+          if (result.status === "rejected") {
+            // error-policy:J6 Teardown aggregates every component failure below.
+            errors.push(
+              result.reason instanceof Error
+                ? result.reason
+                : new Error(String(result.reason)),
+            );
+          }
+        }
+        if (previousDatabaseUrl === undefined) {
+          delete process.env.DATABASE_URL;
+        } else {
+          process.env.DATABASE_URL = previousDatabaseUrl;
+        }
+        if (previousTestDatabaseUrl === undefined) {
+          delete process.env.TEST_DATABASE_URL;
+        } else {
+          process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
+        }
+        const componentResults = await Promise.allSettled([
+          boundedTeardown("control-plane", () => controlPlane.stop()),
+          boundedTeardown("hetzner", () => hetzner.stop()),
+          ...(synthetic
+            ? [boundedTeardown("synthetic services", () => synthetic.stop())]
+            : mockLlm
+              ? [boundedTeardown("mock model", () => mockLlm.stop())]
+              : []),
+          boundedTeardown("temporary data", () =>
+            rm(dataDir, { recursive: true, force: true }),
+          ),
+        ]);
+        for (const result of componentResults) {
+          if (result.status === "rejected") {
+            // error-policy:J6 Teardown aggregates every component failure below.
+            errors.push(
+              result.reason instanceof Error
+                ? result.reason
+                : new Error(String(result.reason)),
+            );
+          }
+        }
+        process.removeListener("SIGINT", handler);
+        process.removeListener("SIGTERM", handler);
+        if (parentDatabaseEnvOwner === envOwner)
+          parentDatabaseEnvOwner = undefined;
+        if (errors.length > 0)
+          throw new AggregateError(errors, "Cloud E2E stack teardown failed");
+      })();
+      return stopPromise;
+    };
+
+    // Best-effort cleanup if a test runner SIGINTs us
+    const handler = () => {
+      stop().catch(() => {
+        // error-policy:J5 The same rejection remains observable through handle.stop().
+        process.exitCode = 1;
+      });
+    };
+    process.once("SIGINT", handler);
+    process.once("SIGTERM", handler);
+
+    const handle: StackHandle = {
+      stop,
+      urls: {
+        api: apiUrl,
+        frontend: frontendUrl,
+        hetzner: hetzner.url,
+        controlPlane: controlPlane.url,
+        pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
+        ...(mockLlm ? { mockLlm: mockLlm.url } : {}),
+        ...(synthetic
+          ? {
+              providers: Object.fromEntries(
+                [...synthetic.providers].map(([id, provider]) => [
+                  id,
+                  provider.url,
+                ]),
+              ),
+            }
+          : {}),
+      },
+      frontendSkipped: frontendSkipReason !== undefined,
+      frontendSkipReason,
+      mocks: {
+        hetzner,
+        controlPlane,
+        ...(mockLlm ? { mockLlm } : {}),
+        ...(synthetic ? { providers: synthetic.providers } : {}),
+      },
+      synthetic,
+      dataDir,
+      logDir,
+    };
+    return handle;
+  } catch (error) {
+    const cleanupResults = await Promise.allSettled(
+      [...startupTeardowns]
+        .reverse()
+        .map((teardown, index) =>
+          boundedTeardown(`startup resource ${index + 1}`, teardown),
+        ),
+    );
+    if (previousDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = previousDatabaseUrl;
+    if (previousTestDatabaseUrl === undefined)
       delete process.env.TEST_DATABASE_URL;
-    } else {
-      process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
+    else process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
+    if (parentDatabaseEnvOwner === envOwner) parentDatabaseEnvOwner = undefined;
+    const cleanupErrors = cleanupResults.flatMap((result) =>
+      result.status === "rejected"
+        ? [
+            result.reason instanceof Error
+              ? result.reason
+              : new Error(String(result.reason)),
+          ]
+        : [],
+    );
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [
+          error instanceof Error ? error : new Error(String(error)),
+          ...cleanupErrors,
+        ],
+        "Cloud E2E stack startup and cleanup failed",
+      );
     }
-    await controlPlane.stop().catch(() => undefined);
-    await hetzner.stop().catch(() => undefined);
-    await mockLlm?.stop().catch(() => undefined);
-    await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
-    if (dbCloseError) {
-      throw dbCloseError;
-    }
-  };
-
-  // Best-effort cleanup if a test runner SIGINTs us
-  const handler = () => {
-    void stop();
-  };
-  process.once("SIGINT", handler);
-  process.once("SIGTERM", handler);
-
-  return {
-    stop,
-    urls: {
-      api: apiUrl,
-      frontend: frontendUrl,
-      hetzner: hetzner.url,
-      controlPlane: controlPlane.url,
-      pglite: `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`,
-      ...(mockLlm ? { mockLlm: mockLlm.url } : {}),
-    },
-    frontendSkipped: frontendSkipReason !== undefined,
-    frontendSkipReason,
-    mocks: { hetzner, controlPlane, ...(mockLlm ? { mockLlm } : {}) },
-    dataDir,
-    logDir: LOG_DIR,
-  };
+    throw error;
+  }
 }

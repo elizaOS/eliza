@@ -45,6 +45,7 @@ export interface CloudStackFixtures {
 export interface CloudTestFixtures {
   seededUser: SeededUser;
   authenticatedPage: Page;
+  syntheticAttempt: undefined;
 }
 
 export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
@@ -60,6 +61,27 @@ export const test = base.extend<CloudTestFixtures, CloudStackFixtures>({
       }
     },
     { scope: "worker", timeout: 240_000 },
+  ],
+
+  syntheticAttempt: [
+    async ({ stack }, use) => {
+      if (stack.synthetic) await stack.synthetic.reset();
+      await use(undefined);
+      if (stack.synthetic) {
+        if (stack.synthetic.assertModelConsumptionPerTest) {
+          stack.synthetic.model?.assertFixturesConsumed();
+        }
+        await stack.synthetic.reset();
+        if (
+          stack.synthetic.world.stateHash !== stack.synthetic.initialStateHash
+        ) {
+          throw new Error(
+            "synthetic Cloud E2E reset did not restore the initial state hash",
+          );
+        }
+      }
+    },
+    { auto: false },
   ],
 
   seededUser: async ({ stack }, use) => {

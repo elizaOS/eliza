@@ -29,6 +29,7 @@ export interface RunningMockLlm {
   requestCount: () => number;
   diagnostics: () => DeterministicModelDiagnostics;
   assertFixturesConsumed: () => void;
+  resetFixtures: () => void;
   stop: () => Promise<void>;
 }
 
@@ -479,6 +480,10 @@ export async function startMockLlm(
     requestCount: () => requestCount,
     diagnostics: () => registry.diagnostics(),
     assertFixturesConsumed: () => registry.assertConsumed(),
+    resetFixtures: () => {
+      registry.resetConsumption();
+      requestCount = 0;
+    },
     stop: () => {
       if (stopPromise) return stopPromise;
       for (const controller of activeControllers) {

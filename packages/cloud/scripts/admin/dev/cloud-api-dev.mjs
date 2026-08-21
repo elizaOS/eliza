@@ -277,6 +277,20 @@ async function main() {
     const value = process.env[key];
     return value ? ["--var", `${key}:${value}`] : [];
   });
+  const syntheticProviderBindingNames = (
+    process.env.ELIZA_SYNTHETIC_PROVIDER_BINDINGS || ""
+  )
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => /^[A-Z][A-Z0-9_]*$/.test(name));
+  const syntheticDevVars = [
+    "ELIZA_SYNTHETIC_WORLD_BOOTSTRAP_HASH",
+    "ELIZA_SYNTHETIC_PROVIDER_BINDINGS",
+    ...syntheticProviderBindingNames,
+  ].flatMap((key) => {
+    const value = process.env[key];
+    return value ? ["--var", `${key}:${value}`] : [];
+  });
 
   const wranglerArgs =
     args.length > 0
@@ -291,6 +305,7 @@ async function main() {
           ...testModeVars,
           ...redisDevVars,
           ...appDeployDevVars,
+          ...syntheticDevVars,
         ];
 
   const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
