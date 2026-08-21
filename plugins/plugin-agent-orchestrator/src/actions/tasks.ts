@@ -3818,10 +3818,15 @@ async function runSend(
         {
           ...params,
           action: "create",
+          // Follow-up FIRST: leading with the original task made the child
+          // re-execute it verbatim — "Write a python script…" re-wrote the
+          // existing file (tripping the read-first guard) when the user only
+          // asked to run it again (live 2026-08-21).
           task: priorTask
-            ? `${priorTask}
+            ? `${textInput}
 
-Follow-up from the user on the FINISHED deliverable above (build on it, do not redo it from scratch): ${textInput}`
+Context: this continues a FINISHED task whose deliverable already exists in the workdir. The original task was: ${priorTask}
+Build on the existing files; do not recreate them.`
             : textInput,
           ...(target.session.workdir
             ? { workdir: target.session.workdir }

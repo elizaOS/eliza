@@ -3651,6 +3651,15 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// A tool-declared COACHING failure (read-before-write guard) steers the
+		// model and leaves no broken state either — same authority rule.
+		if (
+			step.result.success === false &&
+			(step.result.data as { coachingFailure?: unknown } | undefined)
+				?.coachingFailure === true
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
