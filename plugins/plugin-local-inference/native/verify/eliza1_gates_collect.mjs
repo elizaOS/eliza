@@ -27,6 +27,7 @@
  *     [--tier 2b|4b|9b|27b|27b-256k] [--bundle PATH] \
  *     [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]
  */
+import { encodeMarkdownTableCell } from "../../../../packages/scripts/markdown-table-cell.mjs";
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -603,9 +604,7 @@ function statusText(row) {
 }
 
 function escapeCell(value) {
-  return String(value ?? "")
-    .replace(/\|/g, "\\|")
-    .replace(/\n/g, " ");
+  return encodeMarkdownTableCell(value);
 }
 
 function renderMarkdownReport(report) {
