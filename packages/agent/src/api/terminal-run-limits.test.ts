@@ -2,24 +2,9 @@
  * Unit coverage for resolveTerminalRunLimits — env-driven concurrency and
  * duration guardrails with clamping to defaults and hard caps.
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const ORIG_ENV = { ...process.env };
-
-// Mock @elizaos/shared's parseClampedInteger: fallback for unset, clamp to
-// [min, max], throw/fallback on non-integer. Mirror the real contract.
-vi.mock("@elizaos/shared", () => {
-  const parseClampedInteger = (
-    raw: string | undefined,
-    opts: { fallback: number; min: number; max: number },
-  ): number => {
-    if (raw === undefined || raw.trim() === "") return opts.fallback;
-    const n = Number(raw);
-    if (!Number.isFinite(n) || !Number.isInteger(n)) return opts.fallback;
-    return Math.min(opts.max, Math.max(opts.min, n));
-  };
-  return { parseClampedInteger };
-});
 
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
@@ -48,6 +33,15 @@ describe("resolveTerminalRunLimits", () => {
     expect(r.maxDurationMs).toBe(600000);
   });
 
+  it("uses the shared parser's canonical whitespace and sign handling", () => {
+    process.env.ELIZA_TERMINAL_MAX_CONCURRENT = " +4 ";
+    process.env.ELIZA_TERMINAL_MAX_DURATION_MS = " 600000 ";
+    expect(resolveTerminalRunLimits()).toEqual({
+      maxConcurrent: 4,
+      maxDurationMs: 600000,
+    });
+  });
+
   it("clamps concurrency to the hard cap", () => {
     process.env.ELIZA_TERMINAL_MAX_CONCURRENT = "999";
     expect(resolveTerminalRunLimits().maxConcurrent).toBe(16);
@@ -74,6 +68,17 @@ describe("resolveTerminalRunLimits", () => {
     const r = resolveTerminalRunLimits();
     expect(r.maxConcurrent).toBe(2);
     expect(r.maxDurationMs).toBe(5 * 60 * 1000);
+  });
+
+  it("rejects non-canonical numeric forms and unsafe integers", () => {
+    for (const value of ["1.5", "1e2", "0x10", "9007199254740993"]) {
+      process.env.ELIZA_TERMINAL_MAX_CONCURRENT = value;
+      process.env.ELIZA_TERMINAL_MAX_DURATION_MS = value;
+      expect(resolveTerminalRunLimits()).toEqual({
+        maxConcurrent: 2,
+        maxDurationMs: 5 * 60 * 1000,
+      });
+    }
   });
 
   it("falls back to defaults on empty string input", () => {
