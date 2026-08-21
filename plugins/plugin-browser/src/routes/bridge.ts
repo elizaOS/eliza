@@ -8,7 +8,7 @@
  * call into the LifeOps route service because that app owns workflow-scoped
  * browser sessions.
  *
- * Companion/auto-pair/sync authentication uses the
+ * Companion sync authentication uses the
  * `X-Browser-Bridge-Companion-Id` header paired with a bearer pairing
  * token. The old `X-LifeOps-Browser-Companion-Id` and legacy
  * `x-eliza-browser-companion-id` aliases were deliberately removed.
@@ -19,9 +19,14 @@ import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
+  BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type BrowserBridgeCompanionAuthErrorCode,
-  type CreateBrowserBridgeCompanionAutoPairRequest,
+  type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionSessionBeginRequest,
+  type BrowserBridgeCompanionSessionProgressRequest,
+  type BrowserBridgeCompanionSyncRequest,
+  type BrowserBridgeKind,
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
@@ -43,6 +48,10 @@ import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
 } from "../service.js";
+
+function isBrowserBridgeKind(value: string): value is BrowserBridgeKind {
+  return BROWSER_BRIDGE_KINDS.some((kind) => kind === value);
+}
 
 export interface BrowserBridgeRouteContext {
   req: http.IncomingMessage;
@@ -119,23 +128,6 @@ function getBrowserCompanionAuth(
     companionId,
     pairingToken,
   };
-}
-
-function browserAutoPairOriginAllowed(ctx: BrowserBridgeRouteContext): boolean {
-  const originHeader =
-    typeof ctx.req.headers.origin === "string"
-      ? ctx.req.headers.origin.trim()
-      : "";
-  if (!originHeader) {
-    return requestIsLoopback(ctx);
-  }
-  if (originHeader === ctx.url.origin) {
-    return true;
-  }
-  return (
-    originHeader.startsWith("chrome-extension://") ||
-    originHeader.startsWith("safari-web-extension://")
-  );
 }
 
 function requestIsLoopback(ctx: BrowserBridgeRouteContext): boolean {
@@ -564,34 +556,12 @@ export async function handleBrowserBridgeRoutes(
     method === "POST" &&
     pathname === "/api/browser-bridge/companions/auto-pair"
   ) {
-    if (rateLimitRequest(ctx, "companions:auto-pair")) {
-      return true;
-    }
-    if (!browserAutoPairOriginAllowed(ctx)) {
-      ctx.error(
-        res,
-        "browser auto-pair must come from the agent app or a browser extension",
-        403,
-      );
-      return true;
-    }
-    const body =
-      await readJsonBody<CreateBrowserBridgeCompanionAutoPairRequest>(req, res);
-    if (!body) return true;
-    if (!isBrowserBridgeRouteBodyObject(body)) {
-      return rejectMalformedBrowserBridgePayload(ctx);
-    }
-    return runRoute(ctx, async (service) => {
-      json(
-        res,
-        await service.autoPairBrowserCompanion(
-          body,
-          ctx.url.origin,
-          ctx.state.adminEntityId,
-        ),
-        201,
-      );
-    });
+    ctx.error(
+      res,
+      "Automatic browser pairing is disabled. Create an authenticated pairing in Eliza and import its pairing JSON in the extension.",
+      410,
+    );
+    return true;
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/companions") {
@@ -701,6 +671,35 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/browser-bridge/companions/preflight"
+  ) {
+    if (rateLimitRequest(ctx, "companions:preflight")) return true;
+    return runRoute(ctx, async (service) => {
+      const auth = getBrowserCompanionAuth(ctx);
+      if (!auth) return;
+      const body = await readJsonBody<BrowserBridgeCompanionPreflightRequest>(
+        req,
+        res,
+      );
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
+        return;
+      }
+      json(
+        res,
+        await service.preflightBrowserCompanion(
+          auth.companionId,
+          auth.pairingToken,
+          body,
+          ctx.state.adminEntityId,
+        ),
+      );
+    });
+  }
+
   if (method === "POST" && pathname === "/api/browser-bridge/companions/sync") {
     if (rateLimitRequest(ctx, "companions:sync")) {
       return true;
@@ -710,7 +709,10 @@ export async function handleBrowserBridgeRoutes(
       if (!auth) {
         return;
       }
-      const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
+      const body = await readJsonBody<BrowserBridgeCompanionSyncRequest>(
+        req,
+        res,
+      );
       if (!body) return;
       if (!isBrowserBridgeRouteBodyObject(body)) {
         rejectMalformedBrowserBridgePayload(ctx);
@@ -748,8 +750,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -779,8 +785,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -800,8 +810,12 @@ export async function handleBrowserBridgeRoutes(
       "browser package target",
     );
     if (!browser) return true;
-    if (browser !== "chrome" && browser !== "safari") {
-      ctx.error(res, "browser must be chrome or safari", 400);
+    if (!isBrowserBridgeKind(browser)) {
+      ctx.error(
+        res,
+        `browser must be one of: ${BROWSER_BRIDGE_KINDS.join(", ")}`,
+        400,
+      );
       return true;
     }
     return runStatelessRoute(ctx, async () => {
@@ -981,6 +995,43 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
+  const browserCompanionBeginMatch = pathname.match(
+    /^\/api\/browser-bridge\/companions\/sessions\/([^/]+)\/actions\/begin$/,
+  );
+  if (method === "POST" && browserCompanionBeginMatch) {
+    if (rateLimitRequest(ctx, "companions:session-action-begin")) {
+      return true;
+    }
+    const sessionId = decodeMatchedPathComponent(
+      ctx,
+      browserCompanionBeginMatch,
+      1,
+      res,
+      "browser session id",
+    );
+    if (!sessionId) return true;
+    return runRoute(ctx, async (service) => {
+      const auth = getBrowserCompanionAuth(ctx);
+      if (!auth) return;
+      const body =
+        await readJsonBody<BrowserBridgeCompanionSessionBeginRequest>(req, res);
+      if (!body) return;
+      if (!isBrowserBridgeRouteBodyObject(body)) {
+        rejectMalformedBrowserBridgePayload(ctx);
+        return;
+      }
+      json(res, {
+        session: await service.beginBrowserSessionActionFromCompanion(
+          auth.companionId,
+          auth.pairingToken,
+          sessionId,
+          body,
+          ctx.state.adminEntityId,
+        ),
+      });
+    });
+  }
+
   const browserCompanionProgressMatch = pathname.match(
     /^\/api\/browser-bridge\/companions\/sessions\/([^/]+)\/progress$/,
   );
@@ -1002,7 +1053,10 @@ export async function handleBrowserBridgeRoutes(
         return;
       }
       const body =
-        await readJsonBody<UpdateBrowserBridgeSessionProgressRequest>(req, res);
+        await readJsonBody<BrowserBridgeCompanionSessionProgressRequest>(
+          req,
+          res,
+        );
       if (!body) return;
       if (!isBrowserBridgeRouteBodyObject(body)) {
         rejectMalformedBrowserBridgePayload(ctx);

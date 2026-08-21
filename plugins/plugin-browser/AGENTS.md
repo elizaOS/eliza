@@ -4,14 +4,14 @@ Adds browser automation and companion bridge management to an Eliza agent.
 
 ## Purpose / role
 
-Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile) and the Chrome/Safari Agent Browser Bridge companion extension surface. Loaded by the elizaOS runtime via the `browserPlugin` export. Auto-enabled when `config.features.browser` is truthy (checked by `auto-enable.ts`); disabled by default unless that config key is set.
+Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, JSDOM fallback on web/mobile) and the Chrome, Firefox, and Safari Agent Browser Bridge companion extension surface. Loaded by the elizaOS runtime via the `browserPlugin` export. Auto-enabled when `config.features.browser` is truthy (checked by `auto-enable.ts`); disabled by default unless that config key is set.
 
 ## Plugin surface
 
 ### Actions
 
 - **BROWSER** (`src/actions/browser.ts`) — Core browser control. Dispatches to the active `BrowserService` target. Subactions: `open`, `navigate`, `click`, `type`, `fill`, `clear`, `press`, `scroll`, `scroll_into`, `hover`, `drag`, `get`, `state`, `snapshot`, `screenshot`, `reload`, `back`, `forward`, `close`, `show`, `hide`, `wait`, `wait_for_url`, `tab`, `realistic-click`, `realistic-fill`, `realistic-type`, `realistic-press`, `cursor-move`, `cursor-hide`, `autofill_login`. Role-gated OWNER only. `wait_for_url` (pure predicate + poll loop in `src/actions/wait-for-url*.ts`) optionally opens a `url`, then polls the current tab URL against a `pattern` (substring, or a `/regex/` literal — invalid regex falls back to substring), streaming a `HandlerCallback` status each poll and resolving with a typed match/timeout result (never throws on timeout). Tunables: `timeoutMs` (default 300000) and `pollIntervalMs` (default 2000).
-- **MANAGE_BROWSER_BRIDGE** (`src/actions/manage-browser-bridge.ts`) — Companion extension lifecycle for Chrome/Safari. Subactions: `install`, `reveal_folder`, `open_manager`, `refresh`. Role-gated OWNER only.
+- **MANAGE_BROWSER_BRIDGE** (`src/actions/manage-browser-bridge.ts`) — Companion extension lifecycle for Chrome, Firefox, and Safari. Subactions: `install`, `reveal_folder`, `open_manager`, `refresh`. Role-gated OWNER only.
 
 ### Providers
 
@@ -30,9 +30,11 @@ Owns the Eliza browser workspace (electrobun-embedded `BrowserView` on desktop, 
 
 All under `/api/browser-bridge/` — defined in `src/plugin.ts` and handled by `src/routes/bridge.ts`:
 
-Static: `GET /sessions`, `GET /settings`, `POST /settings`, `POST /companions/pair`, `POST /companions/auto-pair`, `GET /companions`, `POST /companions/revoke` (public), `GET /packages`, `POST /packages/open-path`, `POST /companions/sync` (public), `GET /tabs`, `GET /current-page`, `POST /sync`, `POST /sessions`.
+Static: `GET /sessions`, `GET /settings`, `POST /settings`, `POST /companions/pair`, retired `POST /companions/auto-pair` (`410 Gone`), `GET /companions`, `POST /companions/revoke` (public), `GET /packages`, `POST /packages/open-path`, `POST /companions/preflight` (public), `POST /companions/sync` (public), `GET /tabs`, `GET /current-page`, `POST /sync`, `POST /sessions`.
 
-Dynamic: `GET /sessions/:id`, `POST /sessions/:id/confirm`, `POST /sessions/:id/progress`, `POST /sessions/:id/complete`, `POST /companions/:id/revoke`, `POST /companions/sessions/:id/progress` (public), `POST /companions/sessions/:id/complete` (public), `GET|POST /packages/:browser/build|open-manager|download`.
+Dynamic: `GET /sessions/:id`, `POST /sessions/:id/confirm`, `POST /sessions/:id/progress`, `POST /sessions/:id/complete`, `POST /companions/:id/revoke`, `POST /companions/sessions/:id/actions/begin` (public), `POST /companions/sessions/:id/progress` (public), `POST /companions/sessions/:id/complete` (public), `GET|POST /packages/:browser/build|open-manager|download`.
+
+The public companion callbacks authenticate on the companion id plus pairing token rather than the local gate. `POST /companions/sessions/:id/actions/begin` claims the durable action-attempt lease that every side effect must hold; `POST /companions/preflight` reports companion and settings-version staleness before a sync heartbeat.
 
 Workspace setup routes: `src/routes/workspace-setup.ts` + `src/routes/workspace.ts`.
 
@@ -79,7 +81,7 @@ src/
     browser-matrix.ts              Machine-checkable BROWSER action parity matrix (#9476)
     index.ts                       Parity tooling barrel
   targets/
-    bridge-target.ts               `bridge` BrowserTarget — dispatches to Chrome/Safari companion
+    bridge-target.ts               `bridge` BrowserTarget — dispatches to paired browser companions
     stagehand-target.ts            `stagehand` BrowserTarget — Playwright/Stagehand fallback
   workspace/
     browser-workspace.ts           Public API surface and main command router (executeBrowserWorkspaceCommand)
@@ -134,6 +136,7 @@ bun run --cwd plugins/plugin-browser test                            # run packa
 | `ELIZA_MOBILE_PLATFORM` / `ELIZA_PLATFORM` / `CAPACITOR_PLATFORM` | no | Platform hint (`ios`/`android`/`mobile`) — changes target scoring |
 | `ELIZA_BROWSER_BRIDGE_COMPANION_TOKEN_TTL_MS` | no | Overrides the default companion pairing token TTL (milliseconds) |
 | `ELIZA_BROWSER_BRIDGE_CHROME_STORE_URL` | no | Custom Chrome Web Store URL for the companion extension |
+| `ELIZA_BROWSER_BRIDGE_FIREFOX_ADDONS_URL` | no | Custom Firefox Add-ons listing URL for the companion extension |
 | `ELIZA_BROWSER_BRIDGE_SAFARI_STORE_URL` | no | Custom Safari App Store URL for the companion extension |
 
 Autofill-login vault keys (set by user via Settings → Vault → Logins, not env vars):

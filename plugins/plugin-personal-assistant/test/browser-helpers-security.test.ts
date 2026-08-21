@@ -84,6 +84,18 @@ describe("browserOriginFromUrl / browserUrlAllowedBySettings", () => {
         settings({ blockedOrigins: ["https://bad.com"] }),
       ),
     ).toBe(false);
+    expect(
+      browserUrlAllowedBySettings(
+        "http://pay.bad.com:8443/",
+        settings({ blockedOrigins: ["https://bad.com"] }),
+      ),
+    ).toBe(false);
+    expect(
+      browserUrlAllowedBySettings(
+        "https://evil-bad.com/",
+        settings({ blockedOrigins: ["bad.com"] }),
+      ),
+    ).toBe(true);
     // granted_sites mode: only listed origins pass.
     expect(
       browserUrlAllowedBySettings(

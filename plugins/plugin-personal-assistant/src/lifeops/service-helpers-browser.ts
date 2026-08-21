@@ -152,17 +152,20 @@ export function normalizeBrowserSessionActionIndex(
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     fail(400, "currentActionIndex must be a non-negative integer");
   }
-  if (maxActions <= 0) {
-    return 0;
+  if (value > maxActions) {
+    fail(400, "currentActionIndex cannot exceed the action count");
   }
-  return Math.min(value, maxActions - 1);
+  return value;
 }
 
 export function resolveAwaitingBrowserActionId(
   actions: BrowserBridgeAction[],
+  requireConfirmationForAccountAffecting = true,
 ): string | null {
   const next = actions.find(
-    (action) => action.accountAffecting || action.requiresConfirmation,
+    (action) =>
+      action.requiresConfirmation ||
+      (requireConfirmationForAccountAffecting && action.accountAffecting),
   );
   return next?.id ?? null;
 }
@@ -261,17 +264,46 @@ export function browserOriginFromUrl(url: string): string | null {
   }
 }
 
+function browserUrlMatchesBlockedEntry(url: URL, entry: string): boolean {
+  const candidate = entry.trim().toLowerCase();
+  if (!candidate) return false;
+  try {
+    const parsed = new URL(
+      /^[a-z][a-z0-9+.-]*:\/\//.test(candidate)
+        ? candidate
+        : `https://${candidate.replace(/^\*\./, "")}`,
+    );
+    const blockedHost = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+    const targetHost = url.hostname.toLowerCase().replace(/\.+$/, "");
+    return (
+      blockedHost.length > 0 &&
+      (targetHost === blockedHost || targetHost.endsWith(`.${blockedHost}`))
+    );
+  } catch {
+    // error-policy:J3 Invalid persisted block entries do not match a URL.
+    return false;
+  }
+}
+
 export function browserUrlAllowedBySettings(
   url: string,
   settings: BrowserBridgeSettings,
 ): boolean {
-  const origin = browserOriginFromUrl(url);
-  if (!origin) {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    // error-policy:J3 Invalid browser URLs are not allowed by policy.
     return false;
   }
-  if (settings.blockedOrigins.includes(origin)) {
+  if (
+    settings.blockedOrigins.some((entry) =>
+      browserUrlMatchesBlockedEntry(parsed, entry),
+    )
+  ) {
     return false;
   }
+  const origin = parsed.origin;
   if (settings.siteAccessMode === "granted_sites") {
     return settings.grantedOrigins.includes(origin);
   }
