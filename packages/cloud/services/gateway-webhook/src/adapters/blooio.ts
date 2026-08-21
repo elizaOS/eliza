@@ -103,6 +103,18 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
   };
 }
 
+function providerSentAtMs(event: BlooioWebhookEvent): number | undefined {
+  const timestamp = event.received_at ?? event.timestamp;
+  if (timestamp == null || !Number.isFinite(timestamp) || timestamp <= 0) {
+    return undefined;
+  }
+  // Blooio v4 uses epoch milliseconds. Older v2 payloads have appeared with
+  // epoch seconds, so normalize both before gateway latency is calculated.
+  const milliseconds =
+    timestamp < 100_000_000_000 ? timestamp * 1_000 : timestamp;
+  return Number.isSafeInteger(milliseconds) ? milliseconds : undefined;
+}
+
 const ALLOWED_MEDIA_DOMAINS = [
   "blooio.com",
   "backend.blooio.com",
@@ -344,6 +356,7 @@ export const blooioAdapter: PlatformAdapter = {
           ? `[media: ${mediaUrls.join(", ")}]`
           : text,
       replyToMessageId: event.reply_to_message_id ?? undefined,
+      providerSentAtMs: providerSentAtMs(event),
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       rawPayload: data,
     };

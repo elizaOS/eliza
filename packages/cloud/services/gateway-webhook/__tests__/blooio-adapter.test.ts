@@ -186,7 +186,16 @@ describe("blooio extractEvent", () => {
     expect(event?.channelType).toBe("blooio");
     expect(event?.protocol).toBe("imessage");
     expect(event?.text).toBe("hey from v4");
+    expect(event?.providerSentAtMs).toBe(1_786_244_262_331);
     expect(event?.rawPayload).toEqual(JSON.parse(body));
+  });
+
+  test("normalizes a legacy v2 epoch-seconds timestamp for ingress timing", async () => {
+    const event = await blooioAdapter.extractEvent(
+      inboundPayload({ timestamp: 1_786_244_262 }),
+    );
+
+    expect(event?.providerSentAtMs).toBe(1_786_244_262_000);
   });
 
   test("uses the v4 contact identity when sender is absent", async () => {
