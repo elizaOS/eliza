@@ -7,6 +7,7 @@
  */
 import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
 import { dispatchOpenNotificationCenter } from "@elizaos/ui/events";
+import { navigateBrowserPath } from "@elizaos/ui/app-navigate-view";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { useEffect } from "react";
 import type { Tab } from "../../../../ui/src/navigation";
@@ -59,6 +60,25 @@ export function DesktopSurfaceNavigationRuntime() {
       },
     });
   }, [setTab, switchShellView]);
+
+  useEffect(() => {
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopWorkspaceNavigate",
+      ipcChannel: "desktop:workspaceNavigate",
+      listener: (payload) => {
+        const detail = payload as
+          | { routePath?: string; section?: string }
+          | null
+          | undefined;
+        if (!detail?.routePath?.startsWith("/")) return;
+        navigateBrowserPath(
+          detail.section
+            ? `${detail.routePath}#${encodeURIComponent(detail.section)}`
+            : detail.routePath,
+        );
+      },
+    });
+  }, []);
 
   return null;
 }

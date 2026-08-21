@@ -85,6 +85,11 @@ interface SurfaceWindowManagerOptions {
   readPreload: () => string;
   wireRpc: (window: ManagedWindowLike) => void;
   injectApiBase: (window: ManagedWindowLike) => void;
+  navigateWindow?: (
+    window: ManagedWindowLike,
+    routePath: string,
+    section?: string,
+  ) => boolean;
   onWindowFocused?: (
     window: ManagedWindowLike,
     surface: ManagedSurface,
@@ -249,6 +254,7 @@ export class SurfaceWindowManager {
   private readonly readPreloadFn: SurfaceWindowManagerOptions["readPreload"];
   private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
+  private readonly navigateWindow?: SurfaceWindowManagerOptions["navigateWindow"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
   private readonly onWindowBlurred?: SurfaceWindowManagerOptions["onWindowBlurred"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
@@ -266,6 +272,7 @@ export class SurfaceWindowManager {
     this.readPreloadFn = options.readPreload;
     this.wireRpcFn = options.wireRpc;
     this.injectApiBaseFn = options.injectApiBase;
+    this.navigateWindow = options.navigateWindow;
     this.onWindowFocused = options.onWindowFocused;
     this.onWindowBlurred = options.onWindowBlurred;
     this.onRegistryChanged = options.onRegistryChanged;
@@ -313,6 +320,14 @@ export class SurfaceWindowManager {
     );
     if (existing) {
       if ((routePath !== "/" || section) && existing.window.webview.loadURL) {
+        if (
+          !existing.revealFrame &&
+          this.navigateWindow?.(existing.window, routePath, section)
+        ) {
+          if (maximize) existing.window.maximize?.();
+          existing.window.focus();
+          return this.toSnapshot(existing);
+        }
         this.stageWorkspaceWindow(existing);
         existing.pendingMaximize ||= maximize;
         const rendererUrl = await this.resolveRendererUrlFn();

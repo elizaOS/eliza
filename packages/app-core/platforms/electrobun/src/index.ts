@@ -2872,11 +2872,12 @@ async function main(): Promise<void> {
   // RPC built up front via createDesktopRpc, baked into the BrowserWindow
   // constructor, then "wired" post-hoc by wireSettingsRpcAfterCreate.
   const surfaceRpcs = new WeakMap<ManagedWindowLike, ElizaDesktopRpc>();
+  const surfaceSenders = new WeakMap<ManagedWindowLike, SendToWebview>();
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
       let managedWindow: (BrowserWindow & ManagedWindowLike) | undefined;
-      const { rpc, releaseShellSync } = createDesktopRpc(
+      const { rpc, sendToWebview, releaseShellSync } = createDesktopRpc(
         "surface",
         () => {
           managedWindow?.close();
@@ -2901,6 +2902,7 @@ async function main(): Promise<void> {
         applyMacOSWindowEffects(window, true, false, true);
       }
       surfaceRpcs.set(window, rpc);
+      surfaceSenders.set(window, sendToWebview);
       // Drop this window's relay endpoint when it closes so a churned detached
       // surface does not leak (#16442).
       window.on("close", releaseShellSync);
@@ -2923,6 +2925,12 @@ async function main(): Promise<void> {
     },
     injectApiBase: (window) =>
       injectApiBase(window as BrowserWindow & ManagedWindowLike),
+    navigateWindow: (window, routePath, section) => {
+      const send = surfaceSenders.get(window);
+      if (!send) return false;
+      send("desktopWorkspaceNavigate", { routePath, section });
+      return true;
+    },
     onWindowFocused: (window, surface) => {
       lastFocusedWindow = window;
       if (surface === "workspace") {

@@ -2308,6 +2308,8 @@ export type ElizaDesktopRPCSchema = {
       /** Workspace took visual ownership; reset the hidden detached assistant
        * to its resting pill before it can be restored over another app. */
       desktopWorkspaceHandoff: undefined;
+      /** Change the route inside the existing singleton Workspace. */
+      desktopWorkspaceNavigate: { routePath: string; section?: string };
       desktopShutdownStarted: { reason: string };
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
@@ -2547,6 +2549,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openWorkspaceWindow": "desktopOpenWorkspaceWindow",
   "desktop:rendererReady": "desktopRendererReady",
+  "desktop:workspaceNavigate": "desktopWorkspaceNavigate",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
   "desktop:openAppWindow": "desktopOpenAppWindow",

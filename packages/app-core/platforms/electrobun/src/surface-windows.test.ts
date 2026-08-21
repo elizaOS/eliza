@@ -95,6 +95,7 @@ function createFixture(
   const blurred = vi.fn();
   const wired = vi.fn();
   const injected = vi.fn();
+  const navigated = vi.fn(() => true);
   const manager = new SurfaceWindowManager({
     createWindow: (windowOptions) => {
       const window = new FakeManagedWindow(windowOptions);
@@ -107,6 +108,7 @@ function createFixture(
     readPreload: () => "// preload",
     wireRpc: wired,
     injectApiBase: injected,
+    navigateWindow: navigated,
     onWindowFocused: focused,
     onWindowBlurred: blurred,
     onRegistryChanged: registryChanged,
@@ -118,6 +120,7 @@ function createFixture(
     focused,
     injected,
     manager,
+    navigated,
     registryChanged,
     wired,
   };
@@ -226,21 +229,16 @@ describe("SurfaceWindowManager app windows", () => {
 
     await fixture.manager.openWorkspaceWindow();
     const window = fixture.created[0];
+    fixture.manager.revealWindow(window!);
     await fixture.manager.openWorkspaceWindow("/notes", undefined, true);
 
-    expect(window?.setFrame).toHaveBeenLastCalledWith(
-      -20_000,
-      -20_000,
-      1440,
-      960,
+    expect(fixture.navigated).toHaveBeenCalledWith(
+      window,
+      "/notes",
+      undefined,
     );
-    expect(window?.webview.loadURL).toHaveBeenCalledWith(
-      "http://127.0.0.1:5173/notes?desktopSurface=workspace",
-    );
-    expect(window?.maximize).not.toHaveBeenCalled();
-    fixture.manager.revealWindow(window!);
     expect(window?.maximize).toHaveBeenCalledTimes(1);
-    expect(window?.focus).toHaveBeenCalledTimes(1);
+    expect(window?.focus).toHaveBeenCalledTimes(2);
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {
