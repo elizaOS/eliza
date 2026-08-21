@@ -42,27 +42,28 @@
  * `decisionFromAudience` allows (see the parity tests).
  */
 import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience";
-import type { ArtifactShareGrant, MemoryScope, UUID } from "../types";
+import type {
+	AccessContext,
+	DisclosureSubject,
+	MemoryScope,
+	UUID,
+} from "../types";
 import type {
 	ArtifactDisclosure,
 	ArtifactDisclosureRecord,
 } from "./artifact-disclosure";
+import { resolveArtifactDisclosure } from "./artifact-disclosure";
+
+// The subject shape lives in the types layer so the `DisclosureGate` contract
+// (also in the types layer) can reference it without a barrel cycle. Re-export
+// it here so this module's original public surface is unchanged.
+export type { DisclosureSubject } from "../types";
 
 /**
  * The universal disclosure level. Deliberately the SAME type as the artifact
  * read-side answer — one vocabulary, no parallel enum to drift.
  */
 export type DisclosureLevel = ArtifactDisclosure;
-
-/** What a sensitive span/surface requires of each viewer. */
-export interface DisclosureSubject {
-	/** Stored visibility scope; `owner-private` is the fail-closed default. */
-	scope: MemoryScope;
-	/** Entity the subject is scoped to (owner/speaker), for entity-scoped tiers. */
-	scopedEntityId?: UUID;
-	/** Explicit per-entity grants; a grant beats the ladder in both directions. */
-	grants?: readonly ArtifactShareGrant[];
-}
 
 /** The admission decision for one subject over one attested audience. */
 export interface AudienceAdmission {
@@ -235,4 +236,69 @@ export function resolveAudienceAdmission(
 		blockingEntityIds: Object.freeze(blocking),
 		resolverFailureEntityIds: Object.freeze(resolverFailures),
 	});
+}
+
+/**
+ * Build the per-viewer resolver a gate must use over an ATTESTED audience,
+ * derived ONLY from the attestation — never from caller-supplied role fields.
+ * Each member's `AccessContext` is minted from the census: the attested
+ * `agentEntityId` is the agent self-read, the attested `canonicalOwnerEntityId`
+ * is the sole OWNER, and every other participant is a bare USER (no role, no
+ * `isOwner`) so the artifact scope ladder fails closed. The resolver then runs
+ * `resolveArtifactDisclosure` over `disclosureSubjectRecord(subject)`, so gate
+ * admission inherits the exact artifact tier order (agent/OWNER full → grant
+ * beats ladder both directions → owner-private fails closed) with zero I/O.
+ */
+export function attestedAudienceViewerResolver(
+	subject: DisclosureSubject,
+	audience: TrustedDeliveryAudience,
+): (entityId: UUID) => DisclosureLevel {
+	const record = disclosureSubjectRecord(subject);
+	const agentId = audience.agentEntityId;
+	const ownerId = audience.canonicalOwnerEntityId;
+	return (entityId) => {
+		const ctx: AccessContext =
+			ownerId !== null && entityId === ownerId
+				? { requesterEntityId: entityId, role: "OWNER", isOwner: true }
+				: { requesterEntityId: entityId };
+		return resolveArtifactDisclosure(record, ctx, agentId);
+	};
+}
+
+/**
+ * Gate-side evaluation of the `audience_admission` disclosure policy: the
+ * component is admitted only when the ATTESTED audience as a whole earns FULL
+ * disclosure for `subject`. Returns `undefined` when admitted, or a
+ * human-readable failure reason (mirroring `disclosureGateFailure`'s contract)
+ * when the room caps below full — the reason names the capped level and the
+ * count of blocking members so the denial is diagnosable without leaking who.
+ *
+ * Fail-closed by construction: a missing/unattested audience is passed straight
+ * to `resolveAudienceAdmission`, which returns `none` for unusable evidence;
+ * one ungranted non-agent member caps the room. This never widens access
+ * relative to the owner-exclusive gate — an owner-private grant-free subject
+ * admits full only in the degenerate two-party owner DM.
+ */
+export function audienceAdmissionGateFailure(
+	subject: DisclosureSubject,
+	audience: TrustedDeliveryAudience | undefined,
+): string | undefined {
+	if (!audience) {
+		return "Audience-admission disclosure denied: missing_attestation";
+	}
+	const admission = resolveAudienceAdmission(
+		subject,
+		audience,
+		attestedAudienceViewerResolver(subject, audience),
+	);
+	if (admission.level === "full") return undefined;
+	// Surface a broken viewer lookup distinctly from a deliberate deny (PR1
+	// follow-up recorded it on the admission for exactly this caller): a resolver
+	// failure means the gate could not evaluate the room, not that policy denied
+	// it — either way access is capped, but the reason must not read as a settled
+	// policy decision.
+	if (admission.resolverFailureEntityIds.length > 0) {
+		return `Audience-admission disclosure denied: viewer resolution failed for ${admission.resolverFailureEntityIds.length} member(s) (capped at ${admission.level})`;
+	}
+	return `Audience-admission disclosure denied: capped at ${admission.level} by ${admission.blockingEntityIds.length} member(s)`;
 }

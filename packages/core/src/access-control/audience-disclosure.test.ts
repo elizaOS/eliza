@@ -23,6 +23,8 @@ import type {
 import { ChannelType } from "../types";
 import { resolveArtifactDisclosure } from "./artifact-disclosure";
 import {
+	attestedAudienceViewerResolver,
+	audienceAdmissionGateFailure,
 	type DisclosureLevel,
 	type DisclosureSubject,
 	disclosureSubjectRecord,
@@ -406,5 +408,135 @@ describe("resolver failures are distinguishable from denials", () => {
 
 		expect(admission.level).toBe("none");
 		expect(admission.resolverFailureEntityIds).toEqual([]);
+	});
+});
+
+/**
+ * Gate-wiring proof (split-disclosure PR2): the `audience_admission` gate
+ * consults the min-over-members policy core over the ATTESTED audience, with
+ * the per-viewer resolver derived ONLY from the attestation (agent self-read /
+ * canonical owner / bare-USER rest). This is the seam PR1 anticipated; the
+ * pre-wiring gate had no `audience_admission` variant and never called
+ * `resolveAudienceAdmission`, so these assertions fail without the wiring.
+ */
+describe("audience_admission gate wiring", () => {
+	function attestHarness(type: ChannelType, participants: UUID[]) {
+		return {
+			agentId: AGENT,
+			getRoom: vi.fn(async (roomId: UUID) =>
+				roomId === ROOM
+					? ({ id: ROOM, agentId: AGENT, type, source: "test" } as Room)
+					: null,
+			),
+			getParticipantsForRoom: vi.fn(async () => [...participants]),
+			getSetting: vi.fn((key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : undefined,
+			),
+			reportError: vi.fn(),
+			logger: {
+				debug: vi.fn(),
+				info: vi.fn(),
+				warn: vi.fn(),
+				error: vi.fn(),
+			},
+		} as unknown as IAgentRuntime;
+	}
+
+	function gateTurn(actor: UUID): Memory {
+		return {
+			id: "66666666-6666-6666-6666-666666666666" as UUID,
+			entityId: actor,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "surface owner-private artifact", source: "discord" },
+		} as Memory;
+	}
+
+	async function attestGate(
+		type: ChannelType,
+		participants: UUID[],
+		actor: UUID,
+	): Promise<TrustedDeliveryAudience> {
+		const runtime = attestHarness(type, participants);
+		const msg = gateTurn(actor);
+		await attestDeliveryAudienceFromCanonicalRoom(runtime, msg, {
+			nowMs: 1_000,
+		});
+		const audience = getTrustedDeliveryAudience(msg);
+		if (!audience) throw new Error("attestation did not bind");
+		return audience;
+	}
+
+	it("admits an owner-private subject only in the two-party owner DM (undefined failure)", async () => {
+		const audience = await attestGate(ChannelType.DM, [OWNER, AGENT], OWNER);
+		expect(
+			audienceAdmissionGateFailure(OWNER_PRIVATE_SUBJECT, audience),
+		).toBeUndefined();
+	});
+
+	it("denies when an ungranted third member is in the room, naming the capped level", async () => {
+		const audience = await attestGate(
+			ChannelType.GROUP,
+			[OWNER, AGENT, GUEST],
+			OWNER,
+		);
+		const failure = audienceAdmissionGateFailure(
+			OWNER_PRIVATE_SUBJECT,
+			audience,
+		);
+		expect(failure).toContain("Audience-admission disclosure denied");
+		expect(failure).toContain("capped at none");
+		expect(failure).toContain("1 member");
+	});
+
+	it("a full grant to the third member lifts the gate to admitted", async () => {
+		const audience = await attestGate(
+			ChannelType.GROUP,
+			[OWNER, AGENT, GUEST],
+			OWNER,
+		);
+		const granted: DisclosureSubject = {
+			...OWNER_PRIVATE_SUBJECT,
+			grants: [{ entityId: GUEST, mode: "full" }],
+		};
+		expect(audienceAdmissionGateFailure(granted, audience)).toBeUndefined();
+	});
+
+	it("a redacted grant caps the room below full → gate denies (fail closed)", async () => {
+		const audience = await attestGate(
+			ChannelType.GROUP,
+			[OWNER, AGENT, GUEST],
+			OWNER,
+		);
+		const redacted: DisclosureSubject = {
+			...OWNER_PRIVATE_SUBJECT,
+			grants: [{ entityId: GUEST, mode: "redacted" }],
+		};
+		expect(audienceAdmissionGateFailure(redacted, audience)).toContain(
+			"capped at redacted",
+		);
+	});
+
+	it("missing attestation fails closed with missing_attestation", () => {
+		expect(
+			audienceAdmissionGateFailure(OWNER_PRIVATE_SUBJECT, undefined),
+		).toContain("missing_attestation");
+	});
+
+	it("the resolver derives roles from the attestation, not caller fields", async () => {
+		const audience = await attestGate(
+			ChannelType.GROUP,
+			[OWNER, AGENT, GUEST],
+			OWNER,
+		);
+		const resolve = attestedAudienceViewerResolver(
+			OWNER_PRIVATE_SUBJECT,
+			audience,
+		);
+		// Owner is the attested canonicalOwnerEntityId → full; the guest is a bare
+		// USER against an owner-private subject → none; the agent self-reads full.
+		expect(resolve(OWNER)).toBe("full");
+		expect(resolve(GUEST)).toBe("none");
+		expect(resolve(AGENT)).toBe("full");
 	});
 });

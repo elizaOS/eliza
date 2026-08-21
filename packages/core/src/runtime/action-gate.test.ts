@@ -3,6 +3,12 @@
  * `actionGateFailure`) — synthetic in-process actions, no live model or DB.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import {
+	attestDeliveryAudienceFromCanonicalRoom,
+	getTrustedDeliveryAudience,
+} from "../security/trusted-delivery-audience";
+import type { IAgentRuntime, Room, UUID } from "../types";
+import { ChannelType } from "../types";
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -187,5 +193,100 @@ describe("canActionRun — contextGate", () => {
 		expect(
 			canActionRun(coding, ctx({ activeContexts: ["coding" as AgentContext] })),
 		).toBe(true);
+	});
+});
+
+/**
+ * Gate-routing proof (split-disclosure PR2): the unified action gate routes the
+ * `audience_admission` disclosure variant through the min-over-members policy
+ * over the ATTESTED audience. The pre-wiring gate had no such variant and
+ * `disclosureGateFailure` returned undefined for anything but `owner_exclusive`
+ * — so a component carrying this policy would have been ALLOWED into a group
+ * room (a leak). These assertions fail without the wiring and pass with it.
+ */
+describe("actionGateRejection — audience_admission disclosure variant", () => {
+	const OWNER = "11111111-1111-1111-1111-111111111111" as UUID;
+	const AGENT = "22222222-2222-2222-2222-222222222222" as UUID;
+	const GUEST = "33333333-3333-3333-3333-333333333333" as UUID;
+	const ROOM = "44444444-4444-4444-4444-444444444444" as UUID;
+
+	function attestRuntime(type: ChannelType, participants: UUID[]) {
+		return {
+			agentId: AGENT,
+			getRoom: async (roomId: UUID) =>
+				roomId === ROOM
+					? ({ id: ROOM, agentId: AGENT, type, source: "test" } as Room)
+					: null,
+			getParticipantsForRoom: async () => [...participants],
+			getSetting: (key: string) =>
+				key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER : undefined,
+			reportError: () => {},
+			logger: {
+				debug: () => {},
+				info: () => {},
+				warn: () => {},
+				error: () => {},
+			},
+		} as unknown as IAgentRuntime;
+	}
+
+	async function attestedTurn(
+		type: ChannelType,
+		participants: UUID[],
+	): Promise<Memory> {
+		const msg = {
+			id: "66666666-6666-6666-6666-666666666666" as UUID,
+			entityId: OWNER,
+			agentId: AGENT,
+			roomId: ROOM,
+			content: { text: "surface owner-private artifact", source: "discord" },
+		} as Memory;
+		await attestDeliveryAudienceFromCanonicalRoom(
+			attestRuntime(type, participants),
+			msg,
+			{ nowMs: 1_000 },
+		);
+		if (!getTrustedDeliveryAudience(msg)) {
+			throw new Error("attestation did not bind");
+		}
+		return msg;
+	}
+
+	const gated = action({
+		name: "OWNER_ARTIFACT",
+		disclosureGate: {
+			require: "audience_admission",
+			subject: { scope: "owner-private", scopedEntityId: OWNER },
+		},
+	});
+
+	it("allows the component in a two-party owner DM", async () => {
+		const message = await attestedTurn(ChannelType.DM, [OWNER, AGENT]);
+		expect(canActionRun(gated, ctx({ message, userRoles: ["OWNER"] }))).toBe(
+			true,
+		);
+	});
+
+	it("denies the component when an ungranted third member is present", async () => {
+		const message = await attestedTurn(ChannelType.GROUP, [
+			OWNER,
+			AGENT,
+			GUEST,
+		]);
+		const rej = actionGateRejection(
+			gated,
+			ctx({ message, userRoles: ["OWNER"] }),
+		);
+		expect(rej?.kind).toBe("disclosure");
+		expect(rej?.reason).toContain("Audience-admission disclosure denied");
+	});
+
+	it("denies fail-closed when the turn carries no attestation", () => {
+		const rej = actionGateRejection(
+			gated,
+			ctx({ message: userTurn, userRoles: ["OWNER"] }),
+		);
+		expect(rej?.kind).toBe("disclosure");
+		expect(rej?.reason).toContain("missing_attestation");
 	});
 });

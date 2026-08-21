@@ -5,7 +5,11 @@
  * top-level role gate in a fixed precedence.
  */
 
-import { disclosureGateFailure } from "../security/trusted-delivery-audience";
+import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure";
+import {
+	disclosureGateFailure,
+	getTrustedDeliveryAudience,
+} from "../security/trusted-delivery-audience";
 import type { Action } from "../types/components";
 import type { AgentContext, RoleGate, RoleGateRole } from "../types/contexts";
 import type { Memory } from "../types/memory";
@@ -90,10 +94,14 @@ export function actionGateRejection(
 		};
 	}
 
-	const disclosureFailure = disclosureGateFailure(
-		action.disclosureGate,
-		ctx.message,
-	);
+	const gate = action.disclosureGate;
+	const disclosureFailure =
+		gate?.require === "audience_admission"
+			? audienceAdmissionGateFailure(
+					gate.subject,
+					getTrustedDeliveryAudience(ctx.message),
+				)
+			: disclosureGateFailure(gate, ctx.message);
 	if (disclosureFailure) {
 		return {
 			kind: "disclosure",
