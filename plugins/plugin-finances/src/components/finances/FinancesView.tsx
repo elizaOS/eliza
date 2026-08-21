@@ -17,9 +17,14 @@
  *
  * The client DISPLAYS, never COMPUTES: every total, sign, and currency amount is
  * resolved HERE into a pre-formatted string and handed to the spatial view as a
- * snapshot. The owner actions are `connect` (route a connect-a-source request
- * through the assistant chat — no fabricated balances) and `retry` (reload after
- * an error). This plugin MUST NOT import from @elizaos/plugin-personal-assistant;
+ * snapshot. The owner actions are `connect` / `reconnect-<id>` (routed through
+ * the assistant chat — no fabricated balances, no in-view credential flow),
+ * `retry` (reload after an error), and the local `filter-*` chips (display
+ * narrowing of already-loaded rows). When every non-disconnected source needs
+ * re-authentication the view renders the distinct `reauth` state instead of
+ * balances that can no longer refresh, and a failed quiet poll marks the data
+ * stale instead of faking freshness.
+ * This plugin MUST NOT import from @elizaos/plugin-personal-assistant;
  * the wire DTOs below are declared locally to match the JSON shape PA emits.
  */
 
@@ -35,7 +40,9 @@ import type {
 import {
   EMPTY_FINANCES_SNAPSHOT,
   type FinanceBalanceCard,
+  type FinanceFilterChip,
   type FinanceRecurringCard,
+  type FinanceSourceCard,
   type FinancesSnapshot,
   FinancesSpatialView,
   type FinanceTransactionCard,
@@ -136,11 +143,29 @@ const defaultFetchers: FinancesFetchers = {
     getJson<MoneyRecurringChargesWire>("/api/lifeops/money/recurring"),
 };
 
+/**
+ * Client-side display filters over the loaded transaction list. `windowDays`
+ * limits rows to the last N days; `category` matches the wire category exactly.
+ * Both are DISPLAY narrowing of already-loaded rows — never a re-fetch and
+ * never an input to any total.
+ */
+export interface FinanceViewFilters {
+  windowDays: number | null;
+  category: string | null;
+}
+
+const NO_FILTERS: FinanceViewFilters = { windowDays: null, category: null };
+
 export interface FinancesViewProps {
   /** Owner display name (host injection seam). */
   ownerName?: string;
   /** Test/host injection seam. Defaults to real `/api/lifeops/money/*` GETs. */
   fetchers?: FinancesFetchers;
+  /**
+   * Filtered-view handoff seam: a host (e.g. a chat deep link) can open the
+   * dashboard pre-narrowed to a date window and/or category.
+   */
+  initialFilters?: Partial<FinanceViewFilters>;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,8 +337,30 @@ function toRecurringCard(row: RecurringChargeDTO): FinanceRecurringCard {
 
 const POLL_INTERVAL_MS = 30_000;
 
+const SOURCE_STATUS_LABELS: Record<MoneySourceStatusWire, string> = {
+  active: "Connected",
+  needs_attention: "Needs reconnect",
+  disconnected: "Disconnected",
+};
+
+function toSourceCard(source: MoneySourceWire): FinanceSourceCard {
+  const meta = source.institution
+    ? `${source.institution} • ${source.kind}`
+    : source.kind;
+  return {
+    id: source.id,
+    label: source.label,
+    meta,
+    statusLabel: SOURCE_STATUS_LABELS[source.status],
+    needsReauth: source.status === "needs_attention",
+  };
+}
+
 interface FinancesData {
   hasSource: boolean;
+  /** True when every non-disconnected source needs re-authentication. */
+  needsReauth: boolean;
+  sources: MoneySourceWire[];
   balance: FinanceBalanceSummaryDTO;
   transactions: FinanceTransactionDTO[];
   recurring: RecurringChargeDTO[];
@@ -322,7 +369,69 @@ interface FinancesData {
 type LoadState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; data: FinancesData };
+  | { kind: "ready"; data: FinancesData; stale: boolean };
+
+const FILTER_WINDOWS_DAYS = [7, 30, 90] as const;
+/** Category chips stay a one-row scan; deeper slicing goes through chat. */
+const MAX_CATEGORY_CHIPS = 5;
+
+function applyFilters(
+  transactions: FinanceTransactionDTO[],
+  filters: FinanceViewFilters,
+  now: number = Date.now(),
+): FinanceTransactionDTO[] {
+  const cutoff =
+    filters.windowDays === null
+      ? null
+      : now - filters.windowDays * 24 * 60 * 60 * 1000;
+  return transactions.filter((tx) => {
+    if (filters.category !== null && tx.category !== filters.category) {
+      return false;
+    }
+    if (cutoff !== null) {
+      const at = new Date(tx.occurredAt).getTime();
+      if (Number.isNaN(at) || at < cutoff) return false;
+    }
+    return true;
+  });
+}
+
+function buildFilterChips(
+  transactions: FinanceTransactionDTO[],
+  filters: FinanceViewFilters,
+): FinanceFilterChip[] {
+  const chips: FinanceFilterChip[] = [
+    {
+      action: "filter-clear",
+      label: "All",
+      active: filters.windowDays === null && filters.category === null,
+    },
+  ];
+  for (const days of FILTER_WINDOWS_DAYS) {
+    chips.push({
+      action: `filter-window-${days}`,
+      label: `${days}d`,
+      active: filters.windowDays === days,
+    });
+  }
+  const categories = [
+    ...new Set(
+      transactions
+        .map((tx) => tx.category)
+        .filter((category): category is string => category !== null),
+    ),
+  ]
+    .sort()
+    .slice(0, MAX_CATEGORY_CHIPS);
+  for (const category of categories) {
+    chips.push({
+      action: `filter-category-${category}`,
+      label: category,
+      active: filters.category === category,
+    });
+  }
+  return chips;
+}
 
 function requestConnectSource(): void {
   // The connect-a-source affordance routes through the assistant chat. `client`
@@ -339,6 +448,10 @@ function requestConnectSource(): void {
 export function FinancesView(props: FinancesViewProps = {}): ReactNode {
   const fetchers = props.fetchers ?? defaultFetchers;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const [filters, setFilters] = useState<FinanceViewFilters>(() => ({
+    ...NO_FILTERS,
+    ...props.initialFilters,
+  }));
 
   const fetchersRef = useRef(fetchers);
   fetchersRef.current = fetchers;
@@ -354,13 +467,21 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
     ])
       .then(([dashboard, sources, transactions, recurring]) => {
         if (cancelled) return;
-        const connected = sources.sources.some(
+        const connectedSources = sources.sources.filter(
           (source) => source.status !== "disconnected",
         );
+        const needsReauth =
+          connectedSources.length > 0 &&
+          connectedSources.every(
+            (source) => source.status === "needs_attention",
+          );
         setState({
           kind: "ready",
+          stale: false,
           data: {
-            hasSource: connected,
+            hasSource: connectedSources.length > 0,
+            needsReauth,
+            sources: sources.sources,
             balance: mapBalance(dashboard),
             transactions: transactions.transactions.map(mapTransaction),
             recurring: recurring.charges.map(mapRecurring),
@@ -368,7 +489,16 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         });
       })
       .catch((error: unknown) => {
-        if (cancelled || quiet) return;
+        // error-policy:J4 — a fetch failure becomes the visibly distinct error
+        // state; a failed QUIET refresh keeps the last good data but marks it
+        // stale so the dashboard never fakes freshness.
+        if (cancelled) return;
+        if (quiet) {
+          setState((prev) =>
+            prev.kind === "ready" ? { ...prev, stale: true } : prev,
+          );
+          return;
+        }
         setState({
           kind: "error",
           message:
@@ -401,18 +531,40 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         error: state.message,
       };
     }
-    const { hasSource, balance, transactions, recurring } = state.data;
+    const {
+      hasSource,
+      needsReauth,
+      sources,
+      balance,
+      transactions,
+      recurring,
+    } = state.data;
     if (!hasSource) {
       return { ...EMPTY_FINANCES_SNAPSHOT, state: "empty" };
     }
+    const sourceCards = sources.map(toSourceCard);
+    if (needsReauth) {
+      // Provider auth is broken everywhere: render the reauth state, never the
+      // stale balances as healthy success.
+      return {
+        ...EMPTY_FINANCES_SNAPSHOT,
+        state: "reauth",
+        sources: sourceCards,
+      };
+    }
+    const visible = applyFilters(transactions, filters);
     return {
       state: "ready",
       balance: toBalanceCard(balance),
-      transactions: transactions.map(toTransactionCard),
+      transactions: visible.map(toTransactionCard),
+      transactionsTotal: transactions.length,
       recurring: recurring.map(toRecurringCard),
+      sources: sourceCards,
+      filters: buildFilterChips(transactions, filters),
       note: proactiveNote(balance, recurring),
+      stale: state.stale,
     };
-  }, [state]);
+  }, [state, filters]);
 
   const onAction = useCallback(
     (action: string) => {
@@ -424,6 +576,44 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         requestConnectSource();
         return;
       }
+      // Filter chips narrow the already-loaded rows locally; no re-fetch.
+      if (action === "filter-clear") {
+        setFilters(NO_FILTERS);
+        return;
+      }
+      if (action.startsWith("filter-window-")) {
+        const days = Number(action.slice("filter-window-".length));
+        setFilters((prev) => ({
+          ...prev,
+          windowDays: prev.windowDays === days ? null : days,
+        }));
+        return;
+      }
+      if (action.startsWith("filter-category-")) {
+        const category = action.slice("filter-category-".length);
+        setFilters((prev) => ({
+          ...prev,
+          category: prev.category === category ? null : category,
+        }));
+        return;
+      }
+      // Re-authentication routes through the assistant chat; this view never
+      // hosts a credential flow itself.
+      if (action.startsWith("reconnect-")) {
+        const sourceId = action.slice("reconnect-".length);
+        const label =
+          state.kind === "ready"
+            ? (state.data.sources.find((source) => source.id === sourceId)
+                ?.label ?? sourceId)
+            : sourceId;
+        const chatClient = client as {
+          sendChatMessage?: (text: string) => void;
+        };
+        chatClient.sendChatMessage?.(
+          `Reconnect my "${label}" payment source — it needs re-authentication.`,
+        );
+        return;
+      }
       // `txn-<id>` / `bill-<id>` open affordances route to chat; PA owns the
       // detail surface, so this view never fabricates a drill-down.
       if (action.startsWith("txn-") || action.startsWith("bill-")) {
@@ -433,7 +623,7 @@ export function FinancesView(props: FinancesViewProps = {}): ReactNode {
         chatClient.sendChatMessage?.(`Show me the details for ${action}.`);
       }
     },
-    [load],
+    [load, state],
   );
 
   return <FinancesSpatialView snapshot={snapshot} onAction={onAction} />;

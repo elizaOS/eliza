@@ -13,7 +13,13 @@
  * background poll.
  */
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // FinancesView only touches base URL and chat affordances from the UI client.
@@ -286,5 +292,174 @@ describe("FinancesView — states", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("marks the data stale when a quiet poll fails instead of faking freshness", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const fetchDashboard = async () => {
+        calls += 1;
+        if (calls > 1) throw new Error("provider down");
+        return dashboard();
+      };
+      render(<FinancesView fetchers={makeFetchers({ fetchDashboard })} />);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(screen.getByText("Latte")).toBeTruthy();
+      expect(screen.queryByText(/out of date/)).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      // Last good data stays rendered, visibly marked stale — never an error
+      // wipe and never silent fake freshness.
+      expect(screen.getByText("Latte")).toBeTruthy();
+      expect(screen.getByText(/out of date/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders the distinct reauth state when every source needs attention (no healthy balances)", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({
+          fetchSources: async () => ({
+            sources: [
+              {
+                id: "src-1",
+                kind: "plaid",
+                label: "Checking",
+                institution: "Acme Bank",
+                status: "needs_attention" as const,
+              },
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByText("Reconnect needed");
+    expect(agent("reconnect-src-1")).toBeTruthy();
+    // Balances that cannot refresh never render as healthy success.
+    expect(screen.queryByText("$2,765.50")).toBeNull();
+    fireEvent.click(agent("reconnect-src-1"));
+    expect(sendChatMessage).toHaveBeenCalledTimes(1);
+    expect(sendChatMessage.mock.calls[0][0]).toContain("Checking");
+  });
+
+  it("shows sources with status and a reconnect affordance in the ready state", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({
+          fetchSources: async () => ({
+            sources: [
+              {
+                id: "src-1",
+                kind: "plaid",
+                label: "Checking",
+                institution: "Acme Bank",
+                status: "active" as const,
+              },
+              {
+                id: "src-2",
+                kind: "paypal",
+                label: "PayPal",
+                institution: null,
+                status: "needs_attention" as const,
+              },
+            ],
+          }),
+        })}
+      />,
+    );
+    await screen.findByText("Latte");
+    expect(screen.getByText("Connected")).toBeTruthy();
+    expect(screen.getByText("Needs reconnect")).toBeTruthy();
+    // Only the broken source gets a reconnect affordance.
+    expect(agent("reconnect-src-2")).toBeTruthy();
+    expect(
+      document.querySelector('[data-agent-id="reconnect-src-1"]'),
+    ).toBeNull();
+  });
+});
+
+describe("FinancesView — filters", () => {
+  const twoTransactions = async () => ({
+    transactions: [
+      {
+        id: "tx-old",
+        postedAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        amountUsd: 10,
+        direction: "debit" as const,
+        merchantDisplay: "Old Shop",
+        merchantNormalized: "old-shop",
+        merchantRaw: "OLD SHOP",
+        description: "Old purchase",
+        category: "shopping",
+        currency: "USD",
+      },
+      {
+        id: "tx-new",
+        postedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        amountUsd: 42.5,
+        direction: "debit" as const,
+        merchantDisplay: "Coffee Bar",
+        merchantNormalized: "coffee-bar",
+        merchantRaw: "COFFEE BAR #12",
+        description: "Latte",
+        category: "dining",
+        currency: "USD",
+      },
+    ],
+  });
+
+  it("narrows to a date window, shows the filtered-of-total count, and clears back", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({ fetchTransactions: twoTransactions })}
+      />,
+    );
+    await screen.findByText("Latte");
+    expect(screen.getByText("Old purchase")).toBeTruthy();
+
+    fireEvent.click(agent("filter-window-7"));
+    expect(screen.getByText("Latte")).toBeTruthy();
+    expect(screen.queryByText("Old purchase")).toBeNull();
+    expect(screen.getByText("Transactions (1 of 2)")).toBeTruthy();
+
+    fireEvent.click(agent("filter-clear"));
+    expect(screen.getByText("Old purchase")).toBeTruthy();
+  });
+
+  it("narrows by category and renders the designed-empty filter result when nothing matches", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({ fetchTransactions: twoTransactions })}
+      />,
+    );
+    await screen.findByText("Latte");
+
+    fireEvent.click(agent("filter-category-dining"));
+    expect(screen.queryByText("Old purchase")).toBeNull();
+    expect(screen.getByText("Latte")).toBeTruthy();
+
+    // Stack the 7d window on top: dining + old window would still match Latte;
+    // toggle to the shopping category instead so nothing matches.
+    fireEvent.click(agent("filter-category-shopping"));
+    fireEvent.click(agent("filter-window-7"));
+    expect(screen.getByText("No transactions match the filter")).toBeTruthy();
+    expect(screen.getByText("Transactions (0 of 2)")).toBeTruthy();
+  });
+
+  it("honors the filtered-view handoff seam (initialFilters)", async () => {
+    render(
+      <FinancesView
+        fetchers={makeFetchers({ fetchTransactions: twoTransactions })}
+        initialFilters={{ category: "shopping" }}
+      />,
+    );
+    await screen.findByText("Old purchase");
+    expect(screen.queryByText("Latte")).toBeNull();
+    expect(screen.getByText("Transactions (1 of 2)")).toBeTruthy();
   });
 });
