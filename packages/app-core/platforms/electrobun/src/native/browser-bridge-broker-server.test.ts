@@ -101,7 +101,7 @@ describe("browser bridge broker IPC", () => {
     expect(fs.existsSync(descriptor.socketPath)).toBe(false);
   });
 
-  it("creates Windows pipes through the CurrentUserOnly helper instead of Node defaults", async () => {
+  it("creates Windows pipes with an at-creation DACL and remote-client rejection", async () => {
     const descriptor = createWindowsBrokerTransportDescriptor(
       "S-1-5-21-111-222-333-1001",
       Buffer.alloc(32, 9),
@@ -123,7 +123,25 @@ describe("browser bridge broker IPC", () => {
       ),
       "utf8",
     );
-    expect(helper).toContain("PipeOptions]::CurrentUserOnly");
-    expect(helper).toContain("NamedPipeServerStream]::new");
+    expect(helper).not.toContain(
+      "[System.IO.Pipes.PipeOptions]::CurrentUserOnly",
+    );
+    expect(helper).toContain("PIPE_REJECT_REMOTE_CLIENTS = 0x00000008");
+    expect(helper).toContain("FILE_FLAG_FIRST_PIPE_INSTANCE");
+    expect(helper).toContain("CreateNamedPipeW(");
+    expect(helper).toContain('sid.Value.StartsWith("S-1-5-5-"');
+    expect(helper).toContain('"D:P(A;;GA;;;SY)(A;;GA;;;"');
+    expect(helper).toContain("new NamedPipeServerStream(");
+    const executableProbe = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../scripts/test-browser-bridge-windows-security.ps1",
+      ),
+      "utf8",
+    );
+    expect(executableProbe).toContain("NamedPipeClientStream");
+    expect(executableProbe).toContain("Invoke-SecurePipeRoundTrip");
+    expect(executableProbe).toContain("StandardOutput.BaseStream");
+    expect(executableProbe).toContain("StandardInput.BaseStream");
   });
 });

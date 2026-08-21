@@ -341,6 +341,34 @@ export function ensureMacBuildAppIcon(
   return true;
 }
 
+export function embedBrowserBridgeProvisioningProfile(
+  bundlePath: string,
+): boolean {
+  const resources = joinPortable(bundlePath, "Contents", "Resources");
+  const candidates = [
+    joinPortable(resources, "app", "browser-bridge.provisionprofile"),
+    joinPortable(resources, "browser-bridge.provisionprofile"),
+  ];
+  const source = candidates.find((candidate) => fs.existsSync(candidate));
+  const metadataPresent = [
+    joinPortable(resources, "app", "browser-bridge-signing.json"),
+    joinPortable(resources, "browser-bridge-signing.json"),
+  ].some((candidate) => fs.existsSync(candidate));
+  if (!source) {
+    if (metadataPresent) {
+      throw new Error(
+        "browser bridge signing metadata has no provisioning profile",
+      );
+    }
+    return false;
+  }
+  fs.copyFileSync(
+    source,
+    joinPortable(bundlePath, "Contents", "embedded.provisionprofile"),
+  );
+  return true;
+}
+
 function main(): void {
   const bundlePath = resolveBuildBundlePath(process.env);
   if (bundlePath) {
@@ -348,6 +376,11 @@ function main(): void {
     if (inserted.length > 0) {
       console.log(
         `[runtime-sign] added macOS Info.plist entries: ${inserted.join(", ")}`,
+      );
+    }
+    if (embedBrowserBridgeProvisioningProfile(bundlePath)) {
+      console.log(
+        "[runtime-sign] embedded browser bridge provisioning profile",
       );
     }
   }

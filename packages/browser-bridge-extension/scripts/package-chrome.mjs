@@ -28,6 +28,10 @@ const versionedArtifactPath = path.join(
 
 await run("bun", [path.join(scriptDir, "build.mjs"), "chrome"], {
   cwd: extensionRoot,
+  env: {
+    ...process.env,
+    ELIZA_BROWSER_BRIDGE_RELEASE_PACKAGING: "1",
+  },
 });
 
 await fs.mkdir(artifactsDir, { recursive: true });

@@ -14,9 +14,6 @@ import { resolveStateDir } from "./auth-bridge";
 export const BROWSER_BRIDGE_BROKER_SOCKET_NAME = "b.sock";
 export const BROWSER_BRIDGE_BROKER_SOCKET_DIRECTORY = "bb";
 export const MAC_BROWSER_BRIDGE_APP_GROUP = "group.ai.elizaos.browserbridge";
-export const MAC_BROWSER_BRIDGE_KEYCHAIN_SERVICE =
-  "ai.elizaos.browserbridge.native-enrollment";
-export const MAC_BROWSER_BRIDGE_KEYCHAIN_ACCOUNT = "native-enrollment-broker";
 export const WINDOWS_PIPE_SDDL_SYSTEM_AND_USER =
   "O:{CURRENT_USER_SID}D:P(A;;GA;;;SY)(A;;GA;;;{CURRENT_USER_SID})";
 

@@ -9,6 +9,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveChromeExtensionIdentity } from "./chrome-identity.mjs";
 import {
   buildChromeExtensionVersion,
   resolveBrowserBridgeReleaseVersion,
@@ -48,6 +49,10 @@ const publicDir = path.join(extensionRoot, "public");
 const extensionIdentity = JSON.parse(
   await fs.readFile(path.join(extensionRoot, "identity.json"), "utf8"),
 );
+const chromeIdentity = resolveChromeExtensionIdentity({
+  identity: extensionIdentity,
+  release: process.env.ELIZA_BROWSER_BRIDGE_RELEASE_PACKAGING === "1",
+});
 const cleanupHelper = path.resolve(
   extensionRoot,
   "..",
@@ -123,7 +128,7 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
     version_name: release.raw,
     description:
       "Agent Browser Bridge pairs your personal browser profile with an Eliza agent so the agent can read the current page and run owner-approved browser actions.",
-    ...(kind === "chrome" ? { key: extensionIdentity.chromeManifestKey } : {}),
+    ...(kind === "chrome" ? { key: chromeIdentity.manifestKey } : {}),
     permissions: [
       "tabs",
       "storage",

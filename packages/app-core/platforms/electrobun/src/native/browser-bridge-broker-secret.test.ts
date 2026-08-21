@@ -8,6 +8,7 @@ import {
   loadBrowserBridgeBrokerSecret,
   loadOrCreateBrowserBridgeBrokerSecret,
   resolveBrowserBridgeBrokerSecretPath,
+  windowsBrowserBridgeSecretInvocation,
 } from "./browser-bridge-broker-secret";
 
 const roots: string[] = [];
@@ -59,9 +60,7 @@ describe("browser bridge broker secret", () => {
     const env = { ELIZA_STATE_DIR: stateDir };
     const directory = path.dirname(resolveBrowserBridgeBrokerSecretPath(env));
     fs.symlinkSync(target, directory);
-    expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow(
-      "real mode-0700 directory",
-    );
+    expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow("symlink");
     fs.unlinkSync(directory);
     fs.mkdirSync(directory, { mode: 0o755 });
     expect(() => loadOrCreateBrowserBridgeBrokerSecret(env)).toThrow(
@@ -76,5 +75,125 @@ describe("browser bridge broker secret", () => {
         currentUid + 1,
       ),
     ).toThrow("not owned by the current user");
+  });
+
+  it("rejects symlink traversal above the private secret directory", () => {
+    const realStateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "browser-secret-real-"),
+    );
+    const linkRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "browser-secret-link-"),
+    );
+    roots.push(realStateDir, linkRoot);
+    const stateLink = path.join(linkRoot, "state");
+    fs.symlinkSync(realStateDir, stateLink);
+    expect(() =>
+      loadOrCreateBrowserBridgeBrokerSecret(
+        { ELIZA_STATE_DIR: stateLink },
+        () => Buffer.alloc(32, 1),
+      ),
+    ).toThrow("traverses a symlink");
+  });
+
+  it("routes Windows secrets through the DPAPI helper without POSIX mode checks", () => {
+    const expected = Buffer.alloc(32, 17);
+    const calls: Array<{ command: string; args: string[] }> = [];
+    expect(
+      loadOrCreateBrowserBridgeBrokerSecret(
+        { ELIZA_STATE_DIR: "C:\\Users\\alice\\eliza-state" },
+        () => Buffer.alloc(32, 99),
+        -1,
+        {
+          platform: "win32",
+          windowsHelperPath: "C:\\Eliza\\browser-bridge-secret.ps1",
+          runWindowsHelper: (command, args) => {
+            calls.push({ command, args });
+            return { status: 0, stdout: expected.toString("base64") };
+          },
+        },
+      ),
+    ).toEqual(expected);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.command).toBe("powershell.exe");
+    expect(calls[0]?.args).toContain("get-or-create");
+  });
+
+  it("builds a fail-closed Windows helper invocation", () => {
+    expect(
+      windowsBrowserBridgeSecretInvocation(
+        "read",
+        "C:\\Users\\alice\\broker-secret",
+        "C:\\Eliza\\browser-bridge-secret.ps1",
+      ),
+    ).toEqual({
+      command: "powershell.exe",
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "C:\\Eliza\\browser-bridge-secret.ps1",
+        "-Operation",
+        "read",
+        "-Path",
+        "C:\\Users\\alice\\broker-secret",
+      ],
+    });
+    expect(() =>
+      windowsBrowserBridgeSecretInvocation(
+        "read",
+        "C:\\Users\\alice\\broker-secret",
+        "relative.ps1",
+      ),
+    ).toThrow("helper path is invalid");
+  });
+
+  it("rejects failed or malformed Windows DPAPI helper output", () => {
+    const options = {
+      platform: "win32" as const,
+      windowsHelperPath: "C:\\Eliza\\browser-bridge-secret.ps1",
+    };
+    expect(() =>
+      loadOrCreateBrowserBridgeBrokerSecret({}, undefined, -1, {
+        ...options,
+        runWindowsHelper: () => ({ status: 1, stdout: "" }),
+      }),
+    ).toThrow("helper failed");
+    expect(() =>
+      loadOrCreateBrowserBridgeBrokerSecret({}, undefined, -1, {
+        ...options,
+        runWindowsHelper: () => ({
+          status: 0,
+          stdout: Buffer.alloc(31).toString("base64"),
+        }),
+      }),
+    ).toThrow("invalid length");
+  });
+
+  it("uses DPAPI CurrentUser, atomic creation, protected DACLs, and reparse rejection", () => {
+    const helper = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        "../../scripts/browser-bridge-secret.ps1",
+      ),
+      "utf8",
+    );
+    expect(helper).toContain("ProtectedData]::Protect");
+    expect(helper).toContain("DataProtectionScope]::CurrentUser");
+    expect(helper).toContain("RandomNumberGenerator]::Create()");
+    expect(helper).toContain("$rng.GetBytes($secret)");
+    expect(helper).not.toContain("RandomNumberGenerator]::Fill");
+    expect(helper).toContain("FileMode]::CreateNew");
+    expect(helper).toContain(
+      "Directory]::CreateDirectory($directory, $directoryAcl)",
+    );
+    expect(helper).toContain("FileSystemRights]::Write");
+    expect(helper).toContain("SetAccessRuleProtection($true, $false)");
+    expect(helper).toContain("Assert-CurrentUserAcl $directory $true");
+    expect(helper).toContain("Assert-CurrentUserAcl $fullPath $false");
+    expect(helper).toContain("Get-ChildItem -LiteralPath $parent -Force");
+    expect(helper).toContain("FileAttributes]::ReparsePoint");
   });
 });
