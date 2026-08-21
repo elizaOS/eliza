@@ -27,26 +27,16 @@ describe("Android cloud-onboarding command", () => {
     expect(command).toMatch(/cloud-onboarding\.android\.spec\.ts/);
   });
 
-  it("keeps the browser-handoff smoke distinct from authenticated onboarding", () => {
-    const command =
-      packageJson.scripts["test:e2e:android:cloud-browser-handoff"];
-
-    expect(command).toMatch(/build:android:cloud:debug/);
-    expect(command).toMatch(/ELIZA_ANDROID_REQUIRE_AGENT=0/);
-    expect(command).toMatch(/ELIZA_ANDROID_CLEAR_APP_DATA=1/);
-    expect(command).toMatch(/cloud-browser-handoff\.android\.spec\.ts/);
-  });
-
-  it("uses only the documented Keystore-backed live-device credential", () => {
+  it("keeps browser-handoff smoke and authenticated onboarding distinct in the live spec", () => {
     const spec = fs.readFileSync(
       path.join(appRoot, "test/android/cloud-onboarding.android.spec.ts"),
       "utf8",
     );
 
+    expect(spec).toContain("browser-handoff smoke");
+    expect(spec).toContain("authenticated browser return");
     expect(spec).toContain("ELIZA_CLOUD_AUTH_TOKEN");
-    expect(spec).toContain("ElizaSecureCredentials");
+    expect(spec).toContain("buildAndroidCloudLoginCompletionRequest");
     expect(spec).toContain('trace: "off"');
-    expect(spec).not.toContain("ELIZA_E2E_WALLET_PK");
-    expect(spec).not.toContain("eliza:e2e-wallet:pk");
   });
 });

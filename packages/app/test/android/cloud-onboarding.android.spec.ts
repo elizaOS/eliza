@@ -1,17 +1,31 @@
 /**
- * Proves authenticated Google Play Cloud chat in the real Android WebView.
+ * Production Google Play Cloud sign-in checks on the real Android WebView.
  *
- * The opt-in lane accepts only the documented device Cloud bearer, writes it
- * through the app's Keystore-backed credential bridge, and requires a live
- * run-bound reply plus reload persistence. Playwright tracing stays disabled
- * because evaluation arguments can contain the bearer.
+ * The Play shell deliberately has no embedded wallet, private-key autologin,
+ * local-agent setup, or in-WebView account authentication. Authentication is
+ * delegated to the system browser through a short-lived Cloud CLI session.
  */
 
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { APP_ID } from "../../scripts/lib/android-device.mjs";
+import {
+  assertLiveChallengeReply,
+  buildLivenessChallenge,
+  extractLivenessChallengeToken,
+} from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
-import { buildAndroidCloudOnboardingJpegArtifact } from "./cloud-onboarding-evidence";
+import {
+  buildAndroidCloudLoginCompletionRequest,
+  buildAndroidCloudOnboardingJpegArtifact,
+  extractAndroidCloudLoginHandoff,
+  isTrustedAndroidCloudResponseUrl,
+} from "./cloud-onboarding-evidence";
+import {
+  ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY,
+  resumedAndroidActivityComponent,
+} from "./resumed-android-activity";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -19,175 +33,366 @@ const ARTIFACT_DIR = path.join(
   "android-cloud-onboarding",
 );
 
+// This live lane passes a credential to the Cloud completion endpoint. Disable
+// Playwright tracing so evaluation/network metadata cannot serialize it; the
+// required review artifacts are the explicit JPG and Android MP4 captures.
 test.use({ trace: "off" });
 
-async function writeSecureCredential(
-  page: import("@playwright/test").Page,
-  token: string,
-) {
-  await page.evaluate(async (value) => {
-    const plugins = (
-      window as Window & {
-        Capacitor?: {
-          Plugins?: {
-            ElizaSecureCredentials?: {
-              set(options: { value: string }): Promise<void>;
-            };
-          };
-        };
-      }
-    ).Capacitor?.Plugins;
-    if (!plugins?.ElizaSecureCredentials) {
-      throw new Error("Android Keystore credential bridge is unavailable");
-    }
-    await plugins.ElizaSecureCredentials.set({ value });
-  }, token);
-}
-
-async function removeSecureCredential(page: import("@playwright/test").Page) {
+async function clearBrowserState(page: import("@playwright/test").Page) {
   await page.evaluate(async () => {
-    const plugin = (
-      window as Window & {
-        Capacitor?: {
-          Plugins?: {
-            ElizaSecureCredentials?: { remove(): Promise<void> };
-          };
-        };
-      }
-    ).Capacitor?.Plugins?.ElizaSecureCredentials;
-    await plugin?.remove();
-  });
-}
-
-async function readCredentialPlacement(page: import("@playwright/test").Page) {
-  return page.evaluate(async () => {
+    localStorage.clear();
     const plugins = (
       window as Window & {
         Capacitor?: {
           Plugins?: {
-            Preferences?: {
-              get(options: { key: string }): Promise<{ value: string | null }>;
-            };
-            ElizaSecureCredentials?: {
-              get(): Promise<{ value: string | null }>;
-            };
+            Preferences?: { clear(): Promise<void> };
           };
         };
       }
     ).Capacitor?.Plugins;
-    if (!plugins?.Preferences || !plugins.ElizaSecureCredentials) {
-      throw new Error("Android Cloud credential plugins are unavailable");
+    if (!plugins?.Preferences) {
+      throw new Error("Android Cloud Preferences plugin is unavailable");
     }
-    const [preference, secure] = await Promise.all([
-      plugins.Preferences.get({ key: "steward_session_token" }),
-      plugins.ElizaSecureCredentials.get(),
-    ]);
-    return {
-      localStoragePresent: Boolean(
-        localStorage.getItem("steward_session_token"),
-      ),
-      preferencePresent: Boolean(preference.value),
-      securePresent: Boolean(secure.value?.trim()),
-    };
+    await plugins.Preferences.clear();
   });
+}
+
+async function seedStaleBrowserState(page: import("@playwright/test").Page) {
+  // Reserved shell keys are realm-guarded after the renderer boots. Seed the
+  // adversarial legacy state at document start so this exercises hydration
+  // instead of being rejected by the view-storage facade before navigation.
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "elizaos:active-server",
+      JSON.stringify({
+        id: "local:android",
+        kind: "remote",
+        apiBase: "eliza-local-agent://ipc",
+      }),
+    );
+    localStorage.setItem("eliza:e2e-wallet:autologin", "1");
+    localStorage.setItem("eliza:e2e-wallet:pk", "legacy-test-wallet-key");
+  });
+}
+
+async function loadSignedOutShell(page: import("@playwright/test").Page) {
+  await page.goto(`${ORIGIN}/?androidPlayCloudSignIn=1`, {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("button", { name: /^Sign in$/ })).toBeVisible();
+}
+
+interface CloudResponseEvidence {
+  method: string;
+  pathname: string;
+  status: number;
+}
+
+function observeCloudResponses(page: import("@playwright/test").Page) {
+  const responses: CloudResponseEvidence[] = [];
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (!isTrustedAndroidCloudResponseUrl(url)) return;
+    responses.push({
+      method: response.request().method(),
+      pathname: url.pathname,
+      status: response.status(),
+    });
+  });
+  return responses;
+}
+
+async function attachJpeg(
+  page: import("@playwright/test").Page,
+  testInfo: import("@playwright/test").TestInfo,
+  name: Parameters<typeof buildAndroidCloudOnboardingJpegArtifact>[1],
+) {
+  const artifact = buildAndroidCloudOnboardingJpegArtifact(
+    path.join(ARTIFACT_DIR, "authenticated-browser-return"),
+    name,
+  );
+  await page.screenshot(artifact.screenshot);
+  await testInfo.attach(name, artifact.attachment);
 }
 
 test.describe
-  .serial("Android Google Play authenticated Cloud onboarding", () => {
+  .serial("Android Google Play Cloud sign-in", () => {
     test.skip(
       process.env.ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE !== "1",
-      "Set ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 to run the real Cloud device lane.",
+      "Set ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 to exercise the live Cloud sign-in handoff.",
     );
 
-    test("restores a Keystore session, chats, and restores the reply after reload", async ({
+    test("stale local and embedded-wallet state cannot bypass Cloud sign-in", async ({
+      page,
+      device,
+    }, testInfo) => {
+      await clearBrowserState(page);
+      await seedStaleBrowserState(page);
+
+      await loadSignedOutShell(page);
+      await expect(page.getByTestId("home-launcher-surface")).toHaveCount(0);
+      await expect(page.getByText(/where should your agent run/i)).toHaveCount(
+        0,
+      );
+
+      const packageState = (
+        await device.shell("dumpsys package ai.elizaos.app")
+      ).toString();
+      expect(packageState).toContain(
+        "android.permission.RECORD_AUDIO: granted=false",
+      );
+
+      const screenshotPath = path.join(ARTIFACT_DIR, "play-signed-out.png");
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      await testInfo.attach("Play signed-out shell", {
+        path: screenshotPath,
+        contentType: "image/png",
+      });
+    });
+
+    test("browser-handoff smoke creates a short-lived Cloud session and opens the system browser", async ({
+      page,
+      device,
+    }) => {
+      await clearBrowserState(page);
+      await loadSignedOutShell(page);
+      await device.shell("logcat -c");
+
+      await page.getByRole("button", { name: /^Sign in$/ }).click();
+      await expect(
+        page.getByRole("button", { name: "Cancel sign-in" }),
+      ).toBeVisible({ timeout: 30_000 });
+
+      await expect
+        .poll(
+          async () => (await device.shell("logcat -d -v brief")).toString(),
+          { timeout: 30_000 },
+        )
+        .toMatch(
+          /pluginId: Browser[\s\S]*https:\\?\/\\?\/cloud\.eliza\.app\\?\/auth\\?\/cli-login\?session=[0-9a-f-]{36}/i,
+        );
+
+      await expect
+        .poll(
+          async () =>
+            resumedAndroidActivityComponent(
+              (await device.shell("dumpsys activity activities")).toString(),
+            ),
+          { timeout: 15_000 },
+        )
+        .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
+
+      await device.shell("input keyevent BACK");
+      await page.getByRole("button", { name: "Cancel sign-in" }).click();
+      await expect(
+        page.getByRole("button", { name: /^Sign in$/ }),
+      ).toBeVisible();
+    });
+
+    test("authenticated browser return provisions Cloud and reaches live chat", async ({
       page,
       device,
     }, testInfo) => {
       test.setTimeout(420_000);
-      const cloudToken = process.env.ELIZA_CLOUD_AUTH_TOKEN?.trim();
-      expect(
-        cloudToken,
-        "ELIZA_CLOUD_AUTH_TOKEN is required by the documented real Cloud device lane",
-      ).toBeTruthy();
+      const authToken = process.env.ELIZA_CLOUD_AUTH_TOKEN;
+      // Resolve before recording or navigation so a misconfigured operator run
+      // fails visibly without producing evidence that looks like a live pass.
+      buildAndroidCloudLoginCompletionRequest(
+        {
+          browserUrl:
+            "https://cloud.eliza.app/auth/cli-login?session=123e4567-e89b-42d3-a456-426614174000",
+          sessionId: "123e4567-e89b-42d3-a456-426614174000",
+          apiBase: "https://api.eliza.app",
+        },
+        authToken,
+      );
 
+      const evidenceResponses = observeCloudResponses(page);
       const recording = await startChunkedAndroidScreenRecord({
         serial: device.serial(),
-        artifactDir: ARTIFACT_DIR,
-        filename: "cloud-onboarding-authenticated.mp4",
+        artifactDir: path.join(ARTIFACT_DIR, "authenticated-browser-return"),
+        filename: "cloud-onboarding-authenticated-browser-return.mp4",
         requireComplete: true,
       });
       let videoPath: string | null = null;
 
       try {
-        await writeSecureCredential(page, cloudToken as string);
-        await page.goto(`${ORIGIN}/?androidCloudAuthenticatedE2E=1`, {
-          waitUntil: "domcontentloaded",
-          timeout: 60_000,
-        });
+        await clearBrowserState(page);
+        await loadSignedOutShell(page);
+        await attachJpeg(page, testInfo, "sign-in-greeting");
+        await device.shell("logcat -c");
 
-        await expect(page.getByPlaceholder("Message Eliza")).toBeVisible({
-          timeout: 150_000,
-        });
+        await page.getByRole("button", { name: /^Sign in$/ }).click();
+        await expect(
+          page.getByRole("button", { name: "Cancel sign-in" }),
+        ).toBeVisible({ timeout: 30_000 });
+
+        let handoff: ReturnType<typeof extractAndroidCloudLoginHandoff> = null;
+        await expect
+          .poll(
+            async () => {
+              handoff = extractAndroidCloudLoginHandoff(
+                (await device.shell("logcat -d -v brief")).toString(),
+              );
+              return handoff;
+            },
+            { timeout: 30_000 },
+          )
+          .not.toBeNull();
+        if (!handoff) throw new Error("Cloud browser handoff was not captured");
+
+        await expect
+          .poll(
+            async () =>
+              resumedAndroidActivityComponent(
+                (await device.shell("dumpsys activity activities")).toString(),
+              ),
+            { timeout: 15_000 },
+          )
+          .toMatch(ANDROID_CLOUD_SIGN_IN_RESUMED_ACTIVITY);
+
+        const completion = buildAndroidCloudLoginCompletionRequest(
+          handoff,
+          authToken,
+        );
+        const completionResponse = await fetch(completion.url, completion.init);
+        if (!completionResponse.ok) {
+          throw new Error(
+            `Cloud login completion failed (${completionResponse.status})`,
+          );
+        }
+
+        // Return from the authenticated system-browser handoff. Foregrounding
+        // the app is required on devices that suspend WebView timers while the
+        // Custom Tab owns the resumed activity; the resumed poll must then
+        // consume this exact completed session and close the browser adapter.
+        await device.shell("input keyevent BACK");
+        await expect
+          .poll(
+            async () =>
+              resumedAndroidActivityComponent(
+                (await device.shell("dumpsys activity activities")).toString(),
+              ),
+            { timeout: 30_000 },
+          )
+          .toBe(`${APP_ID}/.MainActivity`);
+
         await expect(
           page.getByRole("button", { name: "Sign out" }),
-        ).toBeVisible();
-        await expect(readCredentialPlacement(page)).resolves.toEqual({
-          localStoragePresent: false,
-          preferencePresent: false,
-          securePresent: true,
+        ).toBeVisible({
+          timeout: 180_000,
         });
+        await expect(page.getByPlaceholder("Message Eliza")).toBeVisible();
+        await expect
+          .poll(
+            () =>
+              evidenceResponses.filter(
+                (response) =>
+                  response.method === "GET" &&
+                  response.pathname === "/api/v1/eliza/personal" &&
+                  response.status === 200,
+              ).length,
+            { timeout: 30_000 },
+          )
+          .toBeGreaterThanOrEqual(1);
 
-        const homeArtifact = buildAndroidCloudOnboardingJpegArtifact(
-          ARTIFACT_DIR,
-          "home-landing",
-        );
-        await page.screenshot(homeArtifact.screenshot);
-        await testInfo.attach("authenticated home", homeArtifact.attachment);
+        await attachJpeg(page, testInfo, "home-landing");
 
-        const challenge = `ANDROID_CLOUD_E2E_${randomBytes(5)
-          .toString("hex")
-          .toUpperCase()}`;
-        await page
-          .getByPlaceholder("Message Eliza")
-          .fill(`Reply with exactly ${challenge} and no other text.`);
-        await page.getByRole("button", { name: "Send" }).click();
-
-        const assistantReply = page
-          .getByRole("button", { name: "Play" })
-          .last()
-          .locator("..");
-        await expect(assistantReply).toContainText(challenge, {
-          timeout: 300_000,
-        });
-
-        const replyArtifact = buildAndroidCloudOnboardingJpegArtifact(
-          ARTIFACT_DIR,
-          "reply-liveness",
-        );
-        await page.screenshot(replyArtifact.screenshot);
-        await testInfo.attach(
-          "run-bound Cloud reply",
-          replyArtifact.attachment,
-        );
-
+        // A reload can only recover through the Keystore-backed credential
+        // written by pollLogin; this guards token persistence independently of
+        // the first in-memory ready state.
         await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-        await expect(page.getByPlaceholder("Message Eliza")).toBeVisible({
-          timeout: 150_000,
-        });
         await expect(
-          page.getByRole("button", { name: "Play" }).last().locator(".."),
-        ).toContainText(challenge, { timeout: 150_000 });
+          page.getByRole("button", { name: "Sign out" }),
+        ).toBeVisible({
+          timeout: 90_000,
+        });
+        await expect
+          .poll(
+            () =>
+              evidenceResponses.filter(
+                (response) =>
+                  response.method === "GET" &&
+                  response.pathname === "/api/v1/eliza/personal" &&
+                  response.status === 200,
+              ).length,
+            { timeout: 30_000 },
+          )
+          .toBeGreaterThanOrEqual(2);
+
+        const challenge = buildLivenessChallenge(
+          randomBytes(4).toString("hex"),
+        );
+        const challengeToken = extractLivenessChallengeToken(challenge);
+        const composer = page.getByPlaceholder("Message Eliza");
+        await composer.fill(challenge);
+        await page.getByRole("button", { name: /^Send$/ }).click();
+        const userRow = page
+          .locator("ol > li")
+          .filter({ hasText: challenge })
+          .last();
+        await expect(userRow).toBeVisible();
+        const assistantText = userRow
+          .locator("xpath=following-sibling::li[1]")
+          .locator("p");
+        let reply: string | null = null;
+        await expect
+          .poll(
+            async () => {
+              const candidate = await assistantText
+                .textContent()
+                .catch(() => null);
+              try {
+                reply = assertLiveChallengeReply(candidate, {
+                  challengeToken,
+                  label: "android-cloud-onboarding",
+                });
+              } catch {
+                reply = null;
+              }
+              return reply;
+            },
+            { timeout: 300_000 },
+          )
+          .not.toBeNull();
+        if (!reply) throw new Error("Cloud liveness reply was not captured");
+        assertLiveChallengeReply(reply, {
+          challengeToken,
+          label: "android-cloud-onboarding",
+        });
+
+        await expect
+          .poll(
+            () =>
+              evidenceResponses.some(
+                (response) =>
+                  response.method === "POST" &&
+                  /\/api\/conversations\/[^/]+\/messages$/.test(
+                    response.pathname,
+                  ) &&
+                  response.status >= 200 &&
+                  response.status < 300,
+              ),
+            { timeout: 30_000 },
+          )
+          .toBe(true);
+        await testInfo.attach("liveness reply", {
+          body: reply,
+          contentType: "text/plain",
+        });
+        await testInfo.attach("Cloud response evidence", {
+          body: JSON.stringify(evidenceResponses, null, 2),
+          contentType: "application/json",
+        });
+        await attachJpeg(page, testInfo, "reply-liveness");
       } finally {
         videoPath = await recording.stop();
-        try {
-          await removeSecureCredential(page);
-        } catch (error) {
-          // error-policy:J6 cleanup failure is reported without hiding the
-          // authoritative test result or exposing credential contents.
-          console.warn("Android Cloud credential cleanup failed", error);
-        }
         if (videoPath) {
-          await testInfo.attach("authenticated Cloud walkthrough", {
+          await testInfo.attach("authenticated browser return walkthrough", {
             path: videoPath,
             contentType: "video/mp4",
           });
@@ -196,7 +401,7 @@ test.describe
 
       if (!videoPath) {
         throw new Error(
-          "Android Cloud onboarding passed without a complete MP4 walkthrough",
+          "Android Cloud onboarding passed without the required MP4 walkthrough",
         );
       }
     });

@@ -129,9 +129,7 @@ bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provis
 ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:ios:cloud-onboarding
                                                        # iOS sim fresh cloud sign-in + e2e SIWE wallet, tap + autologin
 ELIZA_CLOUD_AUTH_TOKEN=<live-token> bun run --cwd packages/app test:e2e:android:cloud-onboarding
-                                                       # Android emu Keystore session + authenticated chat/reload proof
-bun run --cwd packages/app test:e2e:android:cloud-browser-handoff
-                                                       # Android system-browser launch/cancel smoke; not login proof
+                                                       # Android system-browser smoke + Keystore-backed authenticated chat/reload proof
 bun run --cwd packages/app test:sim:local-chat        # iOS simulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:local-chat:android # Android emulator local-chat smoke; requires installed app
 bun run --cwd packages/app test:sim:auth:ios         # auth/callback deep-link DELIVERY + in-app handler classification (not login)
