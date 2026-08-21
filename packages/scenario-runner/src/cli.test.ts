@@ -368,11 +368,11 @@ describe("scenario-runner CLI", () => {
   });
 
   it.each([
-    [undefined, "missing"],
-    ["   ", "blank"],
+    ["missing", undefined],
+    ["blank", "   "],
   ] as const)(
     "fails before runtime construction when the requested provider credential is %s",
-    async (openaiKey) => {
+    async (_credentialState, openaiKey) => {
       writeScenario(tempDir, "provider-exact-key", { lane: "live-only" });
       const createScenarioRuntime = vi.fn();
       process.env.CEREBRAS_API_KEY = "judge-key";

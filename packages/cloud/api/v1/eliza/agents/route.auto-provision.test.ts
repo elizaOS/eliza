@@ -60,6 +60,7 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: { delete: mock(async () => undefined) },
 }));
 mock.module("@/lib/services/eliza-agent-config", () => ({
+  readPersonalElizaCutover: () => undefined,
   stripReservedElizaConfigKeys: (config: unknown) => config ?? {},
   withReusedElizaCharacterOwnership: (config: unknown) => config,
 }));

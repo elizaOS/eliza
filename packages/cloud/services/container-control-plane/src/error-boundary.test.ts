@@ -24,11 +24,11 @@ describe("container control-plane error boundary", () => {
   });
 
   test("derives status and message from the stable API error code", () => {
-    const error = new ApiError(
-      599,
-      "access_denied",
-      "password=secret /srv/private.ts:9",
-    );
+    const error = new ApiError({
+      status: 599,
+      code: "access_denied",
+      message: "password=secret /srv/private.ts:9",
+    });
 
     expect(containerControlPlaneErrorResponse(error)).toEqual({
       status: 403,
