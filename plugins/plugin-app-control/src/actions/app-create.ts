@@ -49,6 +49,7 @@ const DISPLAY_NAME_PLACEHOLDER = "__APP_DISPLAY_NAME__";
 export interface IntentTaskMetadata {
 	roomId: string;
 	intent: string;
+	openWhenReady?: boolean;
 	choices: Array<{ key: string; label: string; appName?: string }>;
 	/** ISO-8601 timestamp; stored as a string so it round-trips through TaskMetadata. */
 	intentCreatedAt: string;
@@ -729,6 +730,8 @@ async function findExistingIntentTask(
 		metadata: {
 			roomId,
 			intent: meta.intent,
+			openWhenReady:
+				meta.openWhenReady === true || shouldOpenAppWhenReady(meta.intent),
 			choices,
 			intentCreatedAt:
 				typeof meta.intentCreatedAt === "string"
@@ -762,6 +765,7 @@ async function persistIntentTask(
 		metadata: {
 			roomId: metadata.roomId,
 			intent: metadata.intent,
+			...(metadata.openWhenReady ? { openWhenReady: true } : {}),
 			choices: metadata.choices,
 			intentCreatedAt: metadata.intentCreatedAt,
 			options: metadata.choices.map((choice) => ({
@@ -855,6 +859,7 @@ async function createNewApp({
 	repoRoot,
 	originRoomId,
 	originSource,
+	openWhenReady,
 	callback,
 }: {
 	runtime: IAgentRuntime;
@@ -862,6 +867,7 @@ async function createNewApp({
 	repoRoot: string;
 	originRoomId: string;
 	originSource?: string;
+	openWhenReady: boolean;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	// Preflight orchestrator + coding-CLI availability BEFORE scaffolding so a
@@ -927,7 +933,7 @@ async function createNewApp({
 		acceptanceCriteria: appAcceptanceCriteria(name, publish),
 		originRoomId,
 		originSource,
-		openWhenReady: shouldOpenAppWhenReady(intent),
+		openWhenReady,
 		callback,
 	});
 
@@ -987,6 +993,7 @@ async function editExistingApp({
 	repoRoot,
 	originRoomId,
 	originSource,
+	openWhenReady,
 	explicitWorkdir,
 	callback,
 }: {
@@ -996,6 +1003,7 @@ async function editExistingApp({
 	repoRoot: string;
 	originRoomId: string;
 	originSource?: string;
+	openWhenReady: boolean;
 	explicitWorkdir?: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
@@ -1041,7 +1049,7 @@ async function editExistingApp({
 		acceptanceCriteria: appAcceptanceCriteria(app.name, null),
 		originRoomId,
 		originSource,
-		openWhenReady: shouldOpenAppWhenReady(intent),
+		openWhenReady,
 		callback,
 	});
 
@@ -1171,6 +1179,7 @@ export async function runCreate({
 				repoRoot,
 				originRoomId: roomId,
 				originSource,
+				openWhenReady: existing.metadata.openWhenReady === true,
 				callback,
 			});
 		}
@@ -1200,6 +1209,7 @@ export async function runCreate({
 			repoRoot,
 			originRoomId: roomId,
 			originSource,
+			openWhenReady: existing.metadata.openWhenReady === true,
 			explicitWorkdir,
 			callback,
 		});
@@ -1229,6 +1239,8 @@ export async function runCreate({
 			verifiedUserFacing: true,
 		};
 	}
+	const openWhenReady =
+		shouldOpenAppWhenReady(userText) || shouldOpenAppWhenReady(intent);
 
 	// Explicit edit hint short-circuits the picker.
 	if (explicitEditTarget) {
@@ -1246,6 +1258,7 @@ export async function runCreate({
 			repoRoot,
 			originRoomId: roomId,
 			originSource,
+			openWhenReady,
 			explicitWorkdir,
 			callback,
 		});
@@ -1277,6 +1290,7 @@ export async function runCreate({
 			repoRoot,
 			originRoomId: roomId,
 			originSource,
+			openWhenReady,
 			callback,
 		});
 	}
@@ -1296,6 +1310,7 @@ export async function runCreate({
 	await persistIntentTask(runtime, {
 		roomId,
 		intent,
+		openWhenReady,
 		choices,
 		intentCreatedAt: new Date().toISOString(),
 	});
