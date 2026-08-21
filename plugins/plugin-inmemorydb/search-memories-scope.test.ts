@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import type { Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
-import { EphemeralHNSW } from "./hnsw";
+import { EphemeralHNSW, type IVectorStorage, type VectorSearchResult } from "./index";
 import { MemoryStorage } from "./storage-memory";
 
 const DIM = 384;
@@ -326,6 +326,28 @@ describe("searchMemories applies scope before the top-K cut", () => {
 });
 
 describe("EphemeralHNSW exact top-K boundaries", () => {
+  it("preserves the public legacy vector-storage contract and size inspection", async () => {
+    const legacyStorage: IVectorStorage = {
+      async init(): Promise<void> {},
+      async add(): Promise<void> {},
+      async remove(): Promise<void> {},
+      async search(): Promise<VectorSearchResult[]> {
+        return [];
+      },
+      async clear(): Promise<void> {},
+    };
+
+    await expect(legacyStorage.search([1, 0, 0], 1)).resolves.toEqual([]);
+
+    const index = new EphemeralHNSW();
+    await index.init(3);
+    expect(index.size()).toBe(0);
+    await index.add("one", [1, 0, 0]);
+    expect(index.size()).toBe(1);
+    await index.remove("one");
+    expect(index.size()).toBe(0);
+  });
+
   it("keeps a bounded, ordered result for a larger corpus", async () => {
     const index = new EphemeralHNSW();
     await index.init(3);

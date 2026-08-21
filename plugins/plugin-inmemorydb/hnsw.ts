@@ -385,4 +385,9 @@ export class EphemeralHNSW implements IVectorStorage {
     this.entryPoint = null;
     this.maxLevel = 0;
   }
+
+  /** Number of vectors currently held by this ephemeral index. */
+  size(): number {
+    return this.nodes.size;
+  }
 }
