@@ -28,6 +28,8 @@ const getElizaAppProvisioningStatus = mock(async () => ({
   bridgeUrl: null,
   sandbox: null,
 }));
+const publicElizaAppProvisioningPayload =
+  provisioningObservation.publicElizaAppProvisioningPayload;
 
 const sessionCache = new Map<string, unknown>();
 
@@ -43,8 +45,7 @@ mock.module("@/lib/cache/client", () => ({
 mock.module("@/lib/services/eliza-app/provisioning", () => ({
   ...provisioningObservation,
   getElizaAppProvisioningStatus,
-  publicElizaAppProvisioningPayload:
-    provisioningObservation.publicElizaAppProvisioningPayload,
+  publicElizaAppProvisioningPayload,
 }));
 
 mock.module("@/lib/services/eliza-app/eliza-managed-launch", () => ({
