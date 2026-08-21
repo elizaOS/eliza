@@ -380,4 +380,66 @@ describe("form persistence staging", () => {
     expect(getter).not.toHaveBeenCalled();
     expectNoPersistence(runtime);
   });
+
+  it("revalidates the exact byte-limit snapshot after FormService adds updatedAt", async () => {
+    const runtime = makePersistenceRuntime();
+    const service = (await FormService.start(
+      runtime as unknown as IAgentRuntime,
+    )) as FormService;
+    const session = makeSession("byte-limit") as FormSession &
+      Record<string, unknown>;
+    delete session.updatedAt;
+    session.meta = { padding: "" };
+    const encoder = new TextEncoder();
+    const emptyBytes = encoder.encode(
+      JSON.stringify(toComponentData(session)),
+    ).byteLength;
+    (session.meta as Record<string, JsonValue>).padding = "x".repeat(
+      MAX_FORM_COMPONENT_DATA_BYTES - emptyBytes,
+    );
+    expect(
+      encoder.encode(JSON.stringify(toComponentData(session))).byteLength,
+    ).toBe(MAX_FORM_COMPONENT_DATA_BYTES);
+
+    await expect(service.saveSession(session)).rejects.toMatchObject({
+      code: FORM_COMPONENT_DATA_UNBOUNDED,
+      context: expect.objectContaining({ reason: "bytes" }),
+    });
+    expectNoPersistence(runtime);
+  });
+
+  it("revalidates the exact node-limit snapshot after FormService adds updatedAt", async () => {
+    const runtime = makePersistenceRuntime();
+    const service = (await FormService.start(
+      runtime as unknown as IAgentRuntime,
+    )) as FormService;
+    const session = makeSession("node-limit") as FormSession &
+      Record<string, unknown>;
+    delete session.updatedAt;
+    let accepted = 0;
+    let rejected = MAX_FORM_COMPONENT_DATA_NODES;
+    while (accepted + 1 < rejected) {
+      const candidate = Math.floor((accepted + rejected) / 2);
+      session.history = new Array(candidate);
+      try {
+        toComponentData(session);
+        accepted = candidate;
+      } catch {
+        rejected = candidate;
+      }
+    }
+    session.history = new Array(accepted);
+    expect(() => toComponentData(session)).not.toThrow();
+    session.history = new Array(accepted + 1);
+    expect(() => toComponentData(session)).toThrow(
+      expect.objectContaining({ code: FORM_COMPONENT_DATA_UNBOUNDED }),
+    );
+    session.history = new Array(accepted);
+
+    await expect(service.saveSession(session)).rejects.toMatchObject({
+      code: FORM_COMPONENT_DATA_UNBOUNDED,
+      context: expect.objectContaining({ reason: "nodes" }),
+    });
+    expectNoPersistence(runtime);
+  });
 });
