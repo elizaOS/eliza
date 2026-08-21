@@ -134,6 +134,50 @@ describe("injectApiBaseIntoHtml token embedding", () => {
     expect(out).toContain("__ELIZA_API_TOKEN__");
   });
 
+  it("keeps script-shaped configuration inside the generated JavaScript literal", () => {
+    const externalBase =
+      'https://agent.example.test/</script><script data-owned="no">alert(1)</script>?x=&';
+    const token =
+      'token</script><script data-owned="no">alert(2)</script>&A\u2028\u2029B';
+    const out = injectApiBaseIntoHtml(Buffer.from(html), externalBase, {
+      apiToken: token,
+      webPushVapidPublicKey: 'vapid</script><img src=x onerror="alert(3)">&',
+    }).toString("utf-8");
+
+    expect(out.match(/<script>/g)).toHaveLength(1);
+    expect(out.match(/<\/script>/g)).toHaveLength(1);
+    expect(out).not.toContain('</script><script data-owned="no">');
+    expect(out).toContain("\\u003c/script\\u003e");
+    expect(out).toContain("\\u0026");
+    expect(out).toContain("\\u2028\\u2029");
+
+    const script = out.slice(
+      out.indexOf("<script>") + "<script>".length,
+      out.indexOf("</script>"),
+    );
+    const store = new Map<string, string>();
+    const localStorage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => store.set(key, value),
+    };
+    const win: Record<PropertyKey, unknown> = {};
+    new Function("window", "localStorage", script)(win, localStorage);
+
+    expect(
+      (
+        win.__ELIZAOS_APP_BOOT_CONFIG__ as {
+          apiBase: string;
+          apiToken: string;
+          webPushVapidPublicKey: string;
+        }
+      ).apiBase,
+    ).toBe(externalBase);
+    expect(
+      (win.__ELIZAOS_APP_BOOT_CONFIG__ as { apiToken: string }).apiToken,
+    ).toBe(token);
+    expect(win.__ELIZA_API_TOKEN__).toBe(token);
+  });
+
   // String matching cannot tell a working seed from a syntactically broken one.
   // Run the injected script against a stubbed browser global and assert the
   // state every reader actually consults.
