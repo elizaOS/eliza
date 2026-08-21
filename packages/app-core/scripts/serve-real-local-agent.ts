@@ -16,11 +16,11 @@ import { backgroundUploadImageRoute } from "../../agent/src/api/background-route
 import { startApiServer } from "../src/api/server.ts";
 import { useIsolatedConfigEnv } from "../test/helpers/isolated-config.ts";
 import { createRealTestRuntime } from "../test/helpers/real-runtime.ts";
-import { publishBoundDeviceE2ePort } from "./lib/device-e2e-port-advertisement.ts";
 import {
   deviceE2eEmbeddingPlugin,
   resolveDeviceE2eModelCall,
 } from "./device-e2e-model-fixtures.ts";
+import { publishBoundDeviceE2ePort } from "./lib/device-e2e-port-advertisement.ts";
 
 const deviceE2eUploadImageRoute = {
   ...backgroundUploadImageRoute,

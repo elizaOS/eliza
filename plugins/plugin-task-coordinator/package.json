@@ -28,6 +28,7 @@
     }
   },
   "dependencies": {
+    "@capacitor/core": "8.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-commands": "workspace:*",
     "@elizaos/shared": "workspace:*",

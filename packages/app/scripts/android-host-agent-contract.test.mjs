@@ -108,8 +108,8 @@ describe("Android device-e2e host-agent contract", () => {
     expect(runner).toContain('has("--start-host-agent")');
     expect(runner).toContain("startDeviceE2eHostAgent({");
     expect(runner).toContain("artifactDir: bundle.logsDir");
-    expect(runner).toContain(
-      'requestedPort: val(\n            "--host-agent-port",\n            process.env.ELIZA_ANDROID_HOST_AGENT_PORT',
+    expect(runner).toMatch(
+      /requestedPort:\s*val\(\s*"--host-agent-port",\s*process\.env\.ELIZA_ANDROID_HOST_AGENT_PORT/,
     );
     expect(runner).toContain(
       "process.env.ELIZA_ANDROID_HOST_AGENT_PORT = String(hostAgent.port)",
@@ -199,8 +199,8 @@ describe("Android device-e2e host-agent contract", () => {
       'localStorage.setItem("eliza:developerMode", "1")',
     );
     expect(reload).toBeGreaterThan(seed);
-    expect(routeCoverageSpec).not.toContain(
-      "page.evaluate(() => {\n      localStorage.setItem",
+    expect(routeCoverageSpec).not.toMatch(
+      /page\.evaluate\([^)]*\)?\s*=>\s*\{\s*localStorage\.setItem/,
     );
   });
 
