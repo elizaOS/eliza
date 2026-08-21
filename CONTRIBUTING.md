@@ -70,10 +70,10 @@ change is ready for full validation.
 
 ## Contribution Provenance
 
-Every AI-assisted contribution records the exact provider and model identifier
-reported by the active runtime. The pull request body must preserve and complete
-the `Contribution provenance` block from the repository template. Every
-AI-authored issue comment, pull request comment, and review body must end with:
+Provider, model, and agent-tooling disclosure is optional. Contributors must
+not be blocked, prompted, or asked to reveal runtime metadata in order to open
+an issue, comment, review, or pull request. When a contributor voluntarily
+includes machine provenance, use the following interoperable footer:
 
 ```text
 AI provider/model: <provider> / <exact-model-id>
@@ -84,38 +84,12 @@ Attribution status: self-reported
 <!-- eliza-computer-attribution:v1 {"provider":"<provider-slug>","model":"<exact-model-id>","client":"<client>","skill_revision":"elizaOS/eliza@<full-commit-sha>:packages/skills/skills/contribute-to-eliza"} -->
 ```
 
-Do not infer or abbreviate the model, and do not substitute a model family such
-as `GPT`, `Claude`, or `Gemini`. If the runtime cannot expose its exact provider
-and model identifier, stop before posting and ask the operator to supply it.
-The hidden marker contains valid JSON and matches the visible fields.
-The lane signature is required immediately before the hidden marker.
-AI-assisted issue bodies fill the visible provenance rows once, then append
-only that signature and the matching marker at the end of the body; repeating
-the visible footer fields is invalid. Human-only work says so explicitly in the
-PR or issue template.
-
-Attribution is self-reported provenance, not a verified attestation and not a
-request for chain-of-thought. Never publish hidden reasoning, private prompts,
-session IDs, credentials, access tokens, or other secrets as attribution.
-When no generative model participated, say `no - human-only contribution` or
-`no - deterministic workflow` and use a matching `None - <specific reason>` for
-both model and client rows. Do not attribute deterministic automation to a
-fictional model or describe it as human work.
-
-New and edited `CLAIMING:`, `CLAIMING REVIEW:`, and `CLAIMING LEVER:` comments
-on issues, pull requests, and Discussions are mechanically checked. New and
-edited issue bodies are checked as well. A human claim with no AI assistance
-ends with:
-
-```text
-AI assistance: no - human-only claim
-Attribution status: self-reported
-```
-
-Ordinary human discussion does not need an attribution footer. Reviews and
-comments that declare AI provenance are also checked for a terminal,
-internally-consistent JSON marker; the public leaderboard reports missing or
-invalid disclosure across every eligible non-bot source.
+Voluntary attribution is self-reported provenance, not a verified attestation
+or a request for chain-of-thought. If supplied, it must be concrete,
+internally consistent, and free of hidden reasoning, private prompts, session
+IDs, credentials, access tokens, and other secrets. Repository validators
+accept contributions with no attribution and validate only an attribution
+block that an author chooses to provide.
 
 ## Evidence
 

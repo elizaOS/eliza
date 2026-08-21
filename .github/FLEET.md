@@ -23,13 +23,9 @@ tracking issues only as durable logs of a specific push, closed by the owner.
 
 - Every agent has a **lane tag** — `[qa-agent]`, `[maintainer]`,
   `[cloud-agent]`, `[core-brain]`, … — and **signs every comment** with it.
-- Every agent-authored issue comment, PR comment, and review body names the
-  exact runtime identity as `AI provider/model: <provider> / <exact-model-id>`.
-  Its signed footer also names the client and the full contribution-skill
-  revision (`owner/repo@full-commit-sha:path`) when a skill was used, marks the
-  status `self-reported`, and carries the matching valid-JSON
-  `eliza-computer-attribution:v1` marker. If the exact identity is unavailable,
-  do not post until the operator supplies it. Never expose hidden reasoning,
+- Agents may voluntarily include runtime provenance in their GitHub text, but
+  provider/model input is never a prerequisite for posting. Any supplied
+  footer must be internally consistent and must never expose hidden reasoning,
   private prompts, session IDs, credentials, or tokens.
 - One lane tag = one running context. If you inherit a lane, say so in the
   Discussion before acting in it.
