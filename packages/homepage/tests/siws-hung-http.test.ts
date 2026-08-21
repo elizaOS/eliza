@@ -4,7 +4,10 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { signInWithSolana } from "../src/lib/api/siws";
-import { confirmSiwsSession } from "../src/lib/context/siws-session";
+import {
+  assertCanonicalSiwsIdentity,
+  confirmSiwsSession,
+} from "../src/lib/context/siws-session";
 
 const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
 const originalTimeoutDescriptor = Object.getOwnPropertyDescriptor(
@@ -92,24 +95,75 @@ afterEach(() => {
 });
 
 describe("SIWS HTTP boundary", () => {
-  test("rolls back an issued bearer when canonical session loading fails", async () => {
-    const stored: Array<string | null> = [];
-    let cleared = 0;
+  test("does not publish a candidate bearer while canonical loading is pending", async () => {
+    let visibleToken = "prior-token";
+    let resolveCanonical!: (value: typeof verified) => void;
+    const canonical = new Promise<typeof verified>((resolve) => {
+      resolveCanonical = resolve;
+    });
+
+    const confirmation = confirmSiwsSession("issued-token", {
+      loadCanonicalUser: async () => canonical,
+      validateCanonicalUser: (value) => {
+        expect(value.user.id).toBe("user-1");
+      },
+      commitSession: (token) => {
+        visibleToken = token;
+      },
+    });
+
+    await Promise.resolve();
+    expect(visibleToken).toBe("prior-token");
+    resolveCanonical(verified);
+    await confirmation;
+    expect(visibleToken).toBe("issued-token");
+  });
+
+  test("preserves a prior session when canonical loading fails", async () => {
+    let visibleToken = "prior-token";
+    let commits = 0;
     const failure = new Error("canonical session rejected");
 
     await expect(
       confirmSiwsSession("issued-token", {
-        storeToken: (token) => stored.push(token),
         loadCanonicalUser: async () => {
           throw failure;
         },
-        clearIdentity: () => {
-          cleared += 1;
+        validateCanonicalUser: () => {
+          throw new Error("validation must not run");
+        },
+        commitSession: (token) => {
+          visibleToken = token;
+          commits += 1;
         },
       }),
     ).rejects.toBe(failure);
-    expect(stored).toEqual(["issued-token", null]);
-    expect(cleared).toBe(1);
+    expect(visibleToken).toBe("prior-token");
+    expect(commits).toBe(0);
+  });
+
+  test("preserves a prior session when canonical identity validation fails", async () => {
+    let visibleToken = "prior-token";
+    let commits = 0;
+    const mismatched = {
+      user: { id: "other-user", organization_id: "org-1" },
+      organization: { id: "org-1" },
+    };
+
+    await expect(
+      confirmSiwsSession("issued-token", {
+        loadCanonicalUser: async () => mismatched,
+        validateCanonicalUser: (value) => {
+          assertCanonicalSiwsIdentity(verified, value);
+        },
+        commitSession: (token) => {
+          visibleToken = token;
+          commits += 1;
+        },
+      }),
+    ).rejects.toThrow("Canonical SIWS identity does not match verification");
+    expect(visibleToken).toBe("prior-token");
+    expect(commits).toBe(0);
   });
 
   test("times out while consuming the nonce response body", async () => {
@@ -362,6 +416,36 @@ describe("SIWS HTTP boundary", () => {
     await expect(signInWithSolana()).rejects.toThrow(
       "SIWS verification response has an invalid shape",
     );
+  });
+
+  test("rejects missing organizations and control characters in identity fields", async () => {
+    const invalidResponses = [
+      { ...verified, organization: null },
+      { ...verified, user: { ...verified.user, id: "user-1\nadmin" } },
+      {
+        ...verified,
+        user: { ...verified.user, organization_id: "org-1\tother" },
+      },
+      {
+        ...verified,
+        organization: { ...verified.organization, id: "org-1\u007f" },
+      },
+      {
+        ...verified,
+        organization: { ...verified.organization, slug: "org\radmin" },
+      },
+    ];
+
+    for (const invalid of invalidResponses) {
+      let request = 0;
+      installBrowserDoubles(async () => {
+        request += 1;
+        return jsonResponse(request === 1 ? nonce : invalid);
+      });
+      await expect(signInWithSolana()).rejects.toThrow(
+        "SIWS verification response has an invalid shape",
+      );
+    }
   });
 
   test("rejects malformed wallet outputs before verification", async () => {

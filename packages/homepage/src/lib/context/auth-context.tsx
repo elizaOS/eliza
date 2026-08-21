@@ -12,7 +12,10 @@ import {
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
 import { signInWithSolana as siwsSignIn } from "@/lib/api/siws";
-import { confirmSiwsSession } from "@/lib/context/siws-session";
+import {
+  assertCanonicalSiwsIdentity,
+  confirmSiwsSession,
+} from "@/lib/context/siws-session";
 
 export interface TelegramAuthData {
   id: number;
@@ -194,27 +197,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadUserInfo = useCallback(
+    async (token: string): Promise<UserInfoResponse> =>
+      elizacloudFetch<UserInfoResponse>("/api/eliza-app/user/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+    [],
+  );
+
+  const commitUserInfo = useCallback((data: UserInfoResponse) => {
+    setUser(data.user);
+    setOrganization(data.organization);
+  }, []);
+
   const fetchUserInfo = useCallback(
     async (tokenOverride?: string): Promise<boolean> => {
       const token = tokenOverride || getAuthToken();
-      if (!token) {
-        return false;
-      }
+      if (!token) return false;
 
-      const data = await elizacloudFetch<UserInfoResponse>(
-        "/api/eliza-app/user/me",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      setUser(data.user);
-      setOrganization(data.organization);
+      const data = await loadUserInfo(token);
+      commitUserInfo(data);
       return true;
     },
-    [],
+    [loadUserInfo, commitUserInfo],
   );
 
   useEffect(() => {
@@ -457,11 +464,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const result = await siwsSignIn();
       await confirmSiwsSession(result.apiKey, {
-        storeToken: setSessionToken,
-        loadCanonicalUser: fetchUserInfo,
-        clearIdentity: () => {
-          setUser(null);
-          setOrganization(null);
+        loadCanonicalUser: loadUserInfo,
+        validateCanonicalUser: (canonicalUser) => {
+          assertCanonicalSiwsIdentity(result, canonicalUser);
+        },
+        commitSession: (token, canonicalUser) => {
+          commitUserInfo(canonicalUser);
+          setSessionToken(token);
         },
       });
       return { success: true, address: result.address };
@@ -472,7 +481,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [setSessionToken, fetchUserInfo]);
+  }, [setSessionToken, loadUserInfo, commitUserInfo]);
 
   const logout = useCallback(() => {
     setSessionToken(null);

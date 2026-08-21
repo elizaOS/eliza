@@ -74,14 +74,18 @@ function containsControlCharacter(value: string): boolean {
   return false;
 }
 
+function isSafeIdentifier(value: unknown): value is string {
+  return isBoundedString(value, 256) && !containsControlCharacter(value);
+}
+
 function isOrganization(
   value: unknown,
 ): value is { id: string; name: string; slug: string } {
   return (
     isRecord(value) &&
-    isBoundedString(value.id, 256) &&
+    isSafeIdentifier(value.id) &&
     isBoundedString(value.name, 256) &&
-    isBoundedString(value.slug, 256)
+    isSafeIdentifier(value.slug)
   );
 }
 
@@ -172,13 +176,12 @@ function parseVerifyResponse(value: unknown): SiwsVerifyResponse {
     !SOLANA_ADDRESS_RE.test(value.address) ||
     typeof value.isNewAccount !== "boolean" ||
     !isRecord(value.user) ||
-    !isBoundedString(value.user.id, 256) ||
+    !isSafeIdentifier(value.user.id) ||
     typeof value.user.wallet_address !== "string" ||
     !SOLANA_ADDRESS_RE.test(value.user.wallet_address) ||
-    !isBoundedString(value.user.organization_id, 256) ||
-    !(value.organization === null || isOrganization(value.organization)) ||
-    (isRecord(value.organization) &&
-      value.organization.id !== value.user.organization_id)
+    !isSafeIdentifier(value.user.organization_id) ||
+    !isOrganization(value.organization) ||
+    value.organization.id !== value.user.organization_id
   ) {
     throw new Error("SIWS verification response has an invalid shape");
   }
@@ -192,14 +195,11 @@ function parseVerifyResponse(value: unknown): SiwsVerifyResponse {
       wallet_address: value.user.wallet_address,
       organization_id: value.user.organization_id,
     },
-    organization:
-      organization === null
-        ? null
-        : {
-            id: organization.id,
-            name: organization.name,
-            slug: organization.slug,
-          },
+    organization: {
+      id: organization.id,
+      name: organization.name,
+      slug: organization.slug,
+    },
   };
 }
 
