@@ -645,7 +645,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("rejects non-canonical request timeouts and values outside the platform timer range", () => {
-    for (const value of ["0", "01", "+1", "1.0", "1e3", "2147483648"]) {
+    // Two distinct rejections: a value that is not a canonical decimal integer
+    // never reaches the range check, while a canonical value above the timer
+    // ceiling passes the shape check and is rejected on range.
+    for (const value of ["0", "01", "+1", "1.0", "1e3"]) {
       expect(() =>
         resolveE2BRemoteRunnerConfig(
           makeRuntime({
@@ -658,6 +661,18 @@ describe("E2BRemoteCapabilityRouterService", () => {
         "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be a canonical integer from 1 to 2147483647.",
       );
     }
+
+    expect(() =>
+      resolveE2BRemoteRunnerConfig(
+        makeRuntime({
+          ELIZA_CODING_REMOTE_RUNNER: "home",
+          ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+          ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS: "2147483648",
+        }),
+      ),
+    ).toThrow(
+      "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be an integer between 1 and 2147483647.",
+    );
   });
 
   it("reports structured unavailable when credentials are missing", async () => {

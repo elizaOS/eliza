@@ -1819,7 +1819,7 @@ function positiveIntSetting(
   if (value === undefined) return fallback;
   if (!/^[1-9]\d*$/.test(value)) {
     throw new ElizaError(
-      `${key} must be an integer between 1 and ${MAX_TIMER_DELAY_MS}.`,
+      `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
       {
         code: "REMOTE_RUNNER_CONFIG_INVALID",
         context: { key },
