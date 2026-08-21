@@ -38,16 +38,14 @@ async function getRegistry(path = "/", env: Record<string, string> = {}) {
   });
 }
 
-test("reports DoorDash live only when its Cloud upstream is configured", async () => {
+test("reports DoorDash live when either managed browser or Cloud upstream is configured", async () => {
   listPublic.mockResolvedValue([]);
 
   const unavailableResponse = await getRegistry("/?search=DoorDash");
   const unavailable = (await unavailableResponse.json()) as {
     registry: Array<{ id: string; status: string }>;
   };
-  expect(unavailable.registry).toEqual([
-    expect.objectContaining({ id: "doordash", status: "coming_soon" }),
-  ]);
+  expect(unavailable.registry).toEqual([]);
 
   const availableResponse = await getRegistry("/?search=DoorDash", {
     MCP_DOORDASH_STREAMABLE_HTTP_URL: "https://doordash-mcp.example.test/mcp",
@@ -56,6 +54,16 @@ test("reports DoorDash live only when its Cloud upstream is configured", async (
     registry: Array<{ id: string; status: string }>;
   };
   expect(available.registry).toEqual([
+    expect.objectContaining({ id: "doordash", status: "live" }),
+  ]);
+
+  const managedResponse = await getRegistry("/?search=DoorDash", {
+    FIRECRAWL_API_KEY: "firecrawl-test-key",
+  });
+  const managed = (await managedResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(managed.registry).toEqual([
     expect.objectContaining({ id: "doordash", status: "live" }),
   ]);
 });

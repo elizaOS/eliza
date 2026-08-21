@@ -139,6 +139,22 @@ test("availability derives from the transport contract", () => {
   ).toBe("unconfigured");
   expect(
     resolveIntegrationAvailability(
+      { FIRECRAWL_API_KEY: "managed-browser-key" },
+      "doordash",
+      "/api/mcps/doordash/streamable-http",
+    ),
+  ).toBe("available");
+  expect(
+    resolveIntegrationAvailability(
+      {
+        MCP_DOORDASH_STREAMABLE_HTTP_URL: "https://mcp.example.test/doordash",
+      },
+      "doordash",
+      "/api/mcps/doordash/streamable-http",
+    ),
+  ).toBe("available");
+  expect(
+    resolveIntegrationAvailability(
       { MCP_KILL_SWITCH: "time" },
       "time-server",
       "/api/mcps/time/streamable-http",

@@ -93,8 +93,10 @@ export function getConnectedMcpPlatforms(context: UserContext): string[] {
     (platform) =>
       connected.has(platform) ||
       (platform === "doordash" &&
-        typeof process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL === "string" &&
-        process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL.trim().length > 0),
+        ((typeof process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL === "string" &&
+          process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL.trim().length > 0) ||
+          (typeof process.env.FIRECRAWL_API_KEY === "string" &&
+            process.env.FIRECRAWL_API_KEY.trim().length > 0))),
   );
 }
 

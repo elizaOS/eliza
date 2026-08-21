@@ -135,6 +135,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -194,6 +198,10 @@ storage = "sqlite"
 [exports.DoorDashCheckoutGate]
 type = "durable-object"
 state = "deleted"
+
+[[migrations]]
+tag = "doordash-checkout-gates-v1"
+new_sqlite_classes = ["DoorDashCheckoutGate"]
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
@@ -730,6 +738,10 @@ name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
 
 [[env.staging.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
+
+[[env.staging.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"
 class_name = "AnonymousChatGate"
 
@@ -980,6 +992,10 @@ class_name = "SharedRuntimeConversation"
 [[env.production.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+
+[[env.production.durable_objects.bindings]]
+name = "DOORDASH_CHECKOUT_GATES"
+class_name = "DoorDashCheckoutGate"
 
 [[env.production.durable_objects.bindings]]
 name = "ANONYMOUS_CHAT_GATES"

@@ -8,9 +8,11 @@ Reviewed on 2026-08-21 at these immutable commits:
 ## Decision
 
 elizaOS uses neither repository as an embedded dependency. The first-party
-plugin is a narrow facade over `@elizaos/plugin-mcp`, and Cloud forwards to an
-operator-controlled streamable-HTTP adapter. This keeps one stable agent action
-while allowing the browser implementation to be replaced when DoorDash changes.
+plugin is a narrow facade over `@elizaos/plugin-mcp`. Cloud runs its own
+authenticated adapter on the existing Firecrawl hosted-browser boundary and
+retains an operator-controlled streamable-HTTP override. This keeps one stable
+agent action while allowing the browser implementation to be replaced when
+DoorDash changes.
 
 DoorDash's documented APIs are merchant-facing: Marketplace APIs integrate a
 merchant's menus and orders, while Drive APIs request delivery fulfillment and
@@ -39,20 +41,22 @@ subject to website changes and DoorDash policy.
 
 - Local users may run either adapter after reviewing and accepting its browser
   behavior. The facade normalizes both tool vocabularies.
-- Cloud must use a separately deployed adapter that authenticates each request,
-  isolates and encrypts each user's browser state, supports revocation, and
-  never returns cookies to the agent.
+- Cloud authenticates each request, binds the hosted browser to the exact user,
+  supports revocation, and never returns cookies to the agent. Credentials are
+  entered only in Firecrawl's interactive provider view.
 - Raw DoorDash MCP tools are not registered as agent actions in Cloud. This
   prevents a model from bypassing the first-party checkout gate.
 - `place_order` always refreshes the cart and non-purchasing preview, binds the
   exact state to the user's next-turn confirmation, and rejects missing or
   timestamp-generated order identifiers.
-- A production upstream must additionally provide atomic checkout idempotency;
-  the facade cannot manufacture that guarantee around a browser click.
+- On the managed Cloud path, a per-user Durable Object atomically claims the
+  fresh checkout state before the hosted browser can submit it, preventing
+  concurrent duplicate attempts. An external override must provide an
+  equivalent guarantee.
 
-## Acceptance still required for a Cloud upstream
+## Acceptance still required for Cloud
 
-Before enabling a production upstream, verify all of the following against the
+Before declaring the integration live, verify all of the following against the
 deployed service and a dedicated test account:
 
 1. Two users in the same organization cannot list, read, invoke, or delete each

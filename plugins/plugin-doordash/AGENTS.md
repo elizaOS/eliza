@@ -1,13 +1,13 @@
 # @elizaos/plugin-doordash
 
-First-party agent facade for DoorDash consumer ordering. It does not automate
-DoorDash directly: it requires `@elizaos/plugin-mcp` and normalizes a connected
-DoorDash MCP adapter into the stable `DOORDASH` action.
+First-party agent facade for DoorDash consumer ordering. It requires
+`@elizaos/plugin-mcp` and normalizes the managed Cloud service or a connected
+self-hosted MCP adapter into the stable `DOORDASH` action.
 
 ## Boundaries
 
 - The plugin never stores DoorDash credentials, passwords, browser profiles, or
-  cookies. Authentication belongs to the configured MCP adapter.
+  cookies. Cloud authentication stays in a user-bound hosted browser session.
 - The plugin supports the tool dialects exposed by
   `markswendsen-code/mcp-doordash` and `SpunkySarb/doordash-mcp`; do not import or
   copy their browser automation into this package.

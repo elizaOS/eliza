@@ -289,7 +289,8 @@ export function resolveIntegrationAvailability(
   const upstream = env[upstreamEnvKeyForProvider(providerSlug)];
   if (providerSlug === "doordash") {
     const firecrawlKey = env.FIRECRAWL_API_KEY;
-    return (typeof firecrawlKey === "string" && firecrawlKey.trim().length > 0) ||
+    return (typeof firecrawlKey === "string" &&
+      firecrawlKey.trim().length > 0) ||
       (typeof upstream === "string" && upstream.trim().length > 0)
       ? "available"
       : "unconfigured";

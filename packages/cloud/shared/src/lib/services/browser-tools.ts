@@ -1,6 +1,7 @@
 // Coordinates cloud service browser tools behavior behind route handlers.
 import { cache } from "../cache/client";
 import { logger } from "../utils/logger";
+import { isHostedBrowserSessionOwner } from "./browser-session-ownership";
 import { usageService } from "./usage";
 
 export interface HostedBrowserAuthContext {
@@ -417,10 +418,10 @@ async function assertHostedBrowserSessionAccess(
   sessionId: string,
   auth?: HostedBrowserAuthContext,
 ): Promise<HostedBrowserSessionAccess> {
-  const organizationId = requireHostedBrowserOrganizationId(auth);
+  requireHostedBrowserOrganizationId(auth);
   const access = await getStoredHostedBrowserSessionAccess(sessionId);
 
-  if (!access || access.organizationId !== organizationId) {
+  if (!access || !isHostedBrowserSessionOwner(access, auth)) {
     throw new Error("Hosted browser session not found");
   }
 
@@ -723,7 +724,8 @@ export async function listHostedBrowserSessions(
         const { tab } = await loadAuthorizedHostedBrowserTab(sessionId, auth);
         return tab;
       } catch {
-        await removeHostedBrowserSessionAccess(sessionId, organizationId);
+        // A same-organization session may belong to another user. Do not delete
+        // its access record merely because it is intentionally invisible here.
         return null;
       }
     }),

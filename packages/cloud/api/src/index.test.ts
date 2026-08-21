@@ -1276,6 +1276,36 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
+  test("binds the DoorDash checkout gate in every Worker environment", async () => {
+    type DurableBinding = { name?: string; class_name?: string };
+    type DurableConfig = { bindings?: DurableBinding[] };
+    const config = Bun.TOML.parse(
+      await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
+    ) as {
+      durable_objects?: DurableConfig;
+      env?: {
+        staging?: { durable_objects?: DurableConfig };
+        production?: { durable_objects?: DurableConfig };
+      };
+      migrations?: Array<{ tag?: string; new_sqlite_classes?: string[] }>;
+    };
+
+    for (const durableObjects of [
+      config.durable_objects,
+      config.env?.staging?.durable_objects,
+      config.env?.production?.durable_objects,
+    ]) {
+      expect(durableObjects?.bindings).toContainEqual({
+        name: "DOORDASH_CHECKOUT_GATES",
+        class_name: "DoorDashCheckoutGate",
+      });
+    }
+    expect(config.migrations).toContainEqual({
+      tag: "doordash-checkout-gates-v1",
+      new_sqlite_classes: ["DoorDashCheckoutGate"],
+    });
+  });
+
   test("binds the global native limiter in every Worker environment and keeps inference routes gate-free", async () => {
     type RateLimitBinding = {
       name?: string;

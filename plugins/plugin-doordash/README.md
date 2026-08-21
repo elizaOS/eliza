@@ -24,10 +24,10 @@ The plugin recognizes both reviewed community adapters:
 See [ADAPTER_REVIEW.md](./ADAPTER_REVIEW.md) for the pinned-source comparison,
 security findings, integration decision, and Cloud acceptance checklist.
 
-It does not embed either adapter. The adapters automate DoorDash's consumer web
-application because DoorDash has no generally available consumer ordering API.
-They can break when DoorDash changes and may be incompatible with DoorDash's
-terms. Review and operate your chosen adapter yourself.
+It does not embed either community adapter. Eliza Cloud uses its existing
+Firecrawl hosted-browser boundary; self-hosted agents can configure either
+reviewed adapter. All browser-based consumer automation can break when
+DoorDash changes and may be incompatible with DoorDash's terms.
 
 ## Configure a local adapter
 
@@ -63,9 +63,12 @@ MCP_SERVER_DOORDASH_URL=https://adapter.example.com/mcp
 MCP_SERVER_DOORDASH_TYPE=streamable-http
 ```
 
-Eliza Cloud exposes the same transport at
-`/api/mcps/doordash/streamable-http` when the operator configures
-`MCP_DOORDASH_STREAMABLE_HTTP_URL`.
+Eliza Cloud exposes the same authenticated transport at
+`/api/mcps/doordash/streamable-http`. When `FIRECRAWL_API_KEY` is configured,
+the route creates a short-lived browser session bound to the exact Cloud user
+and returns an interactive login view through `status`. DoorDash credentials
+and cookies remain inside that provider session. An operator can instead set
+`MCP_DOORDASH_STREAMABLE_HTTP_URL` to use a reviewed external implementation.
 
 ## Checkout safety
 
@@ -79,19 +82,20 @@ unverified.
 Community adapters may not meet this contract. Search, menus, carts, and history
 can still work while checkout fails closed.
 
-## Cloud adapter requirements
+## Cloud managed adapter
 
-A cloud upstream is not a single shared browser process. It must:
+The first-party Cloud path:
 
-- authenticate every request and isolate session state per Eliza user;
-- encrypt browser/session material at rest and never return cookies through MCP;
-- provide bounded concurrency and idempotency for checkout;
-- implement `confirm=false` as a non-purchasing preview;
-- return an authoritative provider order ID after `confirm=true`;
-- support session revocation and deletion;
-- retain only redacted audit metadata.
+- authenticates every MCP request and isolates hosted sessions per Eliza user;
+- returns an interactive provider login view without accepting credentials;
+- never returns or persists browser cookies through MCP;
+- makes `confirm=false` non-purchasing and guards a confirmed checkout state
+  against duplicate submission;
+- rejects a missing or ambiguous provider order ID;
+- supports confirmed session revocation through `clear_session`.
 
-Neither reviewed repository currently satisfies this multi-user cloud contract.
+Neither reviewed community repository currently satisfies this multi-user
+Cloud contract by itself.
 
 ## Development
 

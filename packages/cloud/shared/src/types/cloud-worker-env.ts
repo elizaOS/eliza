@@ -102,6 +102,9 @@ export interface Bindings {
    */
   INFERENCE_ADMISSION_GATES?: RuntimeDurableObjectNamespace;
 
+  /** Atomic per-user ledger preventing duplicate confirmed DoorDash checkout submissions. */
+  DOORDASH_CHECKOUT_GATES?: RuntimeDurableObjectNamespace;
+
   /**
    * One strongly ordered identity/quota cache per anonymous chat session.
    * Postgres hydration and counter mirrors run only outside the response path.

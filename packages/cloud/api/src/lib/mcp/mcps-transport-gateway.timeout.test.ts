@@ -10,6 +10,8 @@ const upstreamCalls: Array<{
   upstreamUrl: string;
   options: { timeoutMs?: number } | undefined;
 }> = [];
+let authCalls = 0;
+const managedCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
   forwardMcpUpstreamRequest: async (
@@ -19,6 +21,30 @@ mock.module("@/lib/mcp/mcp-upstream-forward", () => ({
   ) => {
     upstreamCalls.push({ upstreamUrl, options });
     return new Response("mocked upstream", { status: 200 });
+  },
+}));
+
+mock.module("@/lib/auth", () => ({
+  requireAuthOrApiKeyWithOrg: async () => {
+    authCalls += 1;
+    return { user: { id: "user-1", organization_id: "org-1" } };
+  },
+}));
+
+mock.module("@/lib/services/doordash-managed", () => ({
+  DOORDASH_MANAGED_TOOLS: [
+    {
+      name: "doordash_auth_check",
+      description: "status",
+      inputSchema: { type: "object" },
+    },
+  ],
+  callManagedDoorDashTool: async (
+    name: string,
+    args: Record<string, unknown>,
+  ) => {
+    managedCalls.push({ name, args });
+    return { success: true };
   },
 }));
 
@@ -42,6 +68,8 @@ describe("MCP built-in provider timeout", () => {
     timeoutCalls = [];
     fetchedSignals = [];
     upstreamCalls.length = 0;
+    authCalls = 0;
+    managedCalls.length = 0;
   });
 
   afterEach(() => {
@@ -81,6 +109,23 @@ describe("MCP built-in provider timeout", () => {
         options: { timeoutMs: 120_000 },
       },
     ]);
+  });
+
+  test("DoorDash uses the authenticated managed provider without an override", async () => {
+    const { createMcpsTransportApp } = await import("./mcps-transport-gateway");
+    const { Hono } = await import("hono");
+    const bridge = createMcpsTransportApp("doordash");
+    const parent = new Hono();
+    parent.route("/:transport", bridge);
+    const req = new Request("http://example.test/streamable-http", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(jsonRpcCall("doordash_auth_check", {})),
+    });
+    const res = await parent.fetch(req, {} as never);
+    expect(res.status).toBe(200);
+    expect(authCalls).toBe(1);
+    expect(managedCalls).toEqual([{ name: "doordash_auth_check", args: {} }]);
   });
 
   test("weather search_location wires deadline to geocoding fetch", async () => {
