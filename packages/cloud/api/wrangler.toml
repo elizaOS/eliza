@@ -188,6 +188,13 @@ storage = "sqlite"
 type = "durable-object"
 storage = "sqlite"
 
+# The class was removed after its namespace had already been provisioned.
+# Declarative exports require an explicit tombstone so Wrangler can retire the
+# orphaned namespace instead of rejecting every subsequent deployment.
+[exports.DoorDashCheckoutGate]
+type = "durable-object"
+state = "deleted"
+
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
 # Durable Objects serialize organization/anonymous quotas, and CACHE_KV serves
