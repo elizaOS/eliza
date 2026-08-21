@@ -282,7 +282,7 @@ function buildVerdictMarkdown({ runId, model, lane, totals, results }) {
           .join("; ")
           .slice(0, 200) || "—";
     lines.push(
-      `| ${r.stepN} ${r.stepId} | ${r.viewport} | ${badge} | ${notes.replace(/\|/g, "\\|")} |`,
+      `| ${r.stepN} ${r.stepId} | ${r.viewport} | ${badge} | ${notes.replace(/\\/g, "\\\\").replace(/\|/g, "\\|")} |`,
     );
   }
   lines.push("");

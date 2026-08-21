@@ -166,6 +166,7 @@ import {
 } from "./shell-state";
 import { ShellTopicChipsBar } from "./TopicChipsBar";
 import { TopicGroup } from "./TopicGroup";
+import { findTopicElement } from "./topic-element";
 import {
   deriveChannelTopics,
   groupMessagesByTopic,
@@ -2377,11 +2378,7 @@ export function ChatOverlay({
     });
     if (typeof requestAnimationFrame === "undefined") return;
     requestAnimationFrame(() => {
-      const escaped =
-        typeof CSS !== "undefined" && typeof CSS.escape === "function"
-          ? CSS.escape(topic)
-          : topic.replace(/"/g, '\\"');
-      const el = threadRef.current?.querySelector(`[data-topic="${escaped}"]`);
+      const el = findTopicElement(threadRef.current, topic);
       el?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }, []);

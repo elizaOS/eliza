@@ -4,6 +4,7 @@
  * Converts endpoint catalog to OpenAPI specification for export and documentation
  */
 
+import { stringify as stringifyYAML } from "yaml";
 import {
   API_ENDPOINTS,
   type ApiEndpoint,
@@ -354,52 +355,12 @@ export function generateOpenAPIJSON(baseUrl?: string): string {
 }
 
 export function generateOpenAPIYAML(baseUrl?: string): string {
-  const spec = generateOpenAPISpec(baseUrl);
-  return convertToYAML(spec);
+  return serializeOpenAPIYAML(generateOpenAPISpec(baseUrl));
 }
 
-function convertToYAML(obj: unknown, indent = 0): string {
-  const spaces = "  ".repeat(indent);
-
-  if (obj === null || obj === undefined) {
-    return "null";
-  }
-
-  if (typeof obj === "string") {
-    if (obj.includes("\n") || obj.includes(":") || obj.includes("#")) {
-      return `"${obj.replace(/"/g, '\\"')}"`;
-    }
-    return obj;
-  }
-
-  if (typeof obj === "number" || typeof obj === "boolean") {
-    return String(obj);
-  }
-
-  if (Array.isArray(obj)) {
-    if (obj.length === 0) return "[]";
-    return "\n" + obj.map((item) => `${spaces}- ${convertToYAML(item, indent + 1)}`).join("\n");
-  }
-
-  if (typeof obj === "object") {
-    const entries = Object.entries(obj);
-    if (entries.length === 0) return "{}";
-
-    return (
-      "\n" +
-      entries
-        .map(([key, value]) => {
-          const yamlValue = convertToYAML(value, indent + 1);
-          if (yamlValue.startsWith("\n") || (typeof value === "object" && value !== null)) {
-            return `${spaces}${key}:${yamlValue}`;
-          }
-          return `${spaces}${key}: ${yamlValue}`;
-        })
-        .join("\n")
-    );
-  }
-
-  return String(obj);
+/** Serialize arbitrary OpenAPI-compatible data without hand-built YAML escaping. */
+export function serializeOpenAPIYAML(value: unknown): string {
+  return stringifyYAML(value);
 }
 
 export function downloadOpenAPISpec(format: "json" | "yaml", baseUrl?: string) {

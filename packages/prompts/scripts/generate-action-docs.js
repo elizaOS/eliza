@@ -470,7 +470,10 @@ function markdownText(value) {
  * @returns {string}
  */
 function markdownCell(value) {
-  return markdownText(value).replace(/\|/g, "\\|").replace(/\r?\n/g, "<br />");
+  return markdownText(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, "<br />");
 }
 
 /**

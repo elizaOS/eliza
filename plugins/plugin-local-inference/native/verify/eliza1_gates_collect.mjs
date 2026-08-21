@@ -604,8 +604,9 @@ function statusText(row) {
 
 function escapeCell(value) {
   return String(value ?? "")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
-    .replace(/\n/g, " ");
+    .replace(/\r?\n/g, " ");
 }
 
 function renderMarkdownReport(report) {

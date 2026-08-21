@@ -248,8 +248,9 @@ function maxNumber(values) {
 
 function escapeCell(value) {
   return String(value ?? "")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
-    .replace(/\n/g, " ");
+    .replace(/\r?\n/g, " ");
 }
 
 function buildScorecard({

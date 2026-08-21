@@ -368,7 +368,7 @@ export const formatJsonScalar = (value: unknown): string => {
   if (/^[A-Za-z0-9._/@:+-]+$/.test(normalized)) {
     return normalized;
   }
-  return `"${normalized.replace(/"/g, '\\"')}"`;
+  return JSON.stringify(normalized);
 };
 
 export const formatJsonTable = (

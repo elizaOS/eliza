@@ -1,11 +1,12 @@
 /**
  * Birdeye analytics formatting + intent extraction. These render financial
  * figures shown to the user and parse the result limit from free text, so the
- * suffix thresholds, sign handling, and clamping are pinned.
+ * suffix thresholds, sign handling, clamping, and scalar escaping are pinned.
  */
 import { describe, expect, it } from "vitest";
 import {
   extractLimit,
+  formatJsonScalar,
   formatPercentChange,
   formatPrice,
   formatValue,
@@ -64,5 +65,12 @@ describe("extractLimit", () => {
     expect(extractLimit("analyze the trend")).toBe(24);
     expect(extractLimit("historical data")).toBe(50);
     expect(extractLimit("hello")).toBe(10);
+  });
+});
+
+describe("formatJsonScalar", () => {
+  it("emits a JSON-decodable quoted scalar", () => {
+    const input = String.raw`wallet "label" \ path`;
+    expect(JSON.parse(formatJsonScalar(input))).toBe(input);
   });
 });

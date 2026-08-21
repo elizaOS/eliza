@@ -415,4 +415,18 @@ describe("formatLocalModelLifecycleMatrixMarkdown", () => {
 		expect(markdown).toContain("tier publish status is pending");
 		expect(markdown).toContain("## Blockers");
 	});
+
+	it("escapes backslashes before markdown table delimiters", () => {
+		const matrix = buildLocalModelLifecycleMatrix({
+			catalog: [catalogModel({ id: String.raw`model\|spoof` })],
+			installed: [],
+			assignments: {},
+			hardware: hardware(),
+			observedAt: "2026-07-01T00:00:00.000Z",
+		});
+
+		expect(formatLocalModelLifecycleMatrixMarkdown(matrix)).toContain(
+			String.raw`model\\\|spoof`,
+		);
+	});
 });
