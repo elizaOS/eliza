@@ -6,6 +6,8 @@
  * irrelevant action params to reduce context window usage.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 // ---------------------------------------------------------------------------
 // Prompt compaction helpers
 // ---------------------------------------------------------------------------
@@ -150,26 +152,56 @@ export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
  */
 const OPTIONAL_PLUGIN_ACTIONS = new Set(["TASKS"]);
 
+/**
+ * Narrow seam: extracts the <task> body for intent matching without splitting
+ * surrogate pairs. The previous `.slice(0, 2000)` could cut a surrogate pair
+ * (e.g. an astral emoji at the boundary) and leave a lone surrogate; the
+ * well-formed clamp backs off one unit so the result is always `isWellFormed`.
+ * Exported for mutation-sensitive surrogate regression coverage: restoring the
+ * naive `.slice(0, 2000)` makes `extractTaskTextForIntent` leave a lone
+ * surrogate and fail the boundary `isWellFormed` assertions.
+ */
+export function extractTaskTextForIntent(prompt: string, limit = 2000): string {
+  const wellFormedPrompt = toWellFormedUnicode(prompt);
+  const taskMatch = wellFormedPrompt.match(/<task>([\s\S]*?)<\/task>/i);
+  const raw = taskMatch?.[1] ?? "";
+  return raw.length > limit ? truncateWellFormed(raw, limit) : raw;
+}
+
+/**
+ * Narrow seam: extracts the user-message segment after "# Received Message"
+ * for intent matching. When no section delimiter follows the header the
+ * segment is capped at `limit` without splitting surrogate pairs.
+ * Exported for mutation-sensitive surrogate regression coverage: restoring the
+ * naive `.slice(0, 500)` makes `extractMessageTextForIntent` leave a lone
+ * surrogate at the 500 boundary.
+ */
+export function extractMessageTextForIntent(
+  prompt: string,
+  limit = 500,
+): string {
+  const wellFormedPrompt = toWellFormedUnicode(prompt);
+  const msgSection = wellFormedPrompt.indexOf("# Received Message");
+  if (msgSection === -1) return "";
+  const afterHeader = wellFormedPrompt.slice(
+    msgSection + "# Received Message".length,
+  );
+  const nextSection = afterHeader.search(/\n#|\n<|\n\n\n/);
+  const raw =
+    nextSection !== -1 ? afterHeader.slice(0, nextSection) : afterHeader;
+  const clamped =
+    nextSection === -1 && raw.length > limit
+      ? truncateWellFormed(raw, limit)
+      : raw;
+  return clamped.trim();
+}
+
 export function hasIntent(prompt: string, keywords: RegExp): boolean {
-  const taskMatch = prompt.match(/<task>([\s\S]*?)<\/task>/i);
-  const taskText = (taskMatch?.[1] ?? "").slice(0, 2000);
+  const taskText = extractTaskTextForIntent(prompt, 2000);
   if (keywords.test(taskText)) return true;
 
-  // Extract just the user's message line(s) from "# Received Message".
-  // The section also contains instructions with generic words like "execute",
-  // "run", "command" — only match against the actual user text.
-  const msgSection = prompt.indexOf("# Received Message");
-  if (msgSection !== -1) {
-    const afterHeader = prompt.slice(msgSection + "# Received Message".length);
-    // User message is between the header and the next section marker (# or <)
-    const nextSection = afterHeader.search(/\n#|\n<|\n\n\n/);
-    const userMsg = (
-      nextSection !== -1
-        ? afterHeader.slice(0, nextSection)
-        : afterHeader.slice(0, 500)
-    ).trim();
-    if (keywords.test(userMsg)) return true;
-  }
+  const userMsg = extractMessageTextForIntent(prompt, 500);
+  if (userMsg && keywords.test(userMsg)) return true;
 
   return false;
 }
