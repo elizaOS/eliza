@@ -6740,7 +6740,7 @@
   "cloud.cliLogin.metaTitle": "Sign in | Eliza Cloud",
   "cloud.cliLogin.redirecting": "Taking you to sign in…",
   "cloud.cliLogin.redirectingTitle": "Signing in",
-  "cloud.login.signIn": "Sign in to Eliza",
+  "cloud.login.signIn": "Sign in",
   "cloud.login.tagline": "Build and run agents from anywhere.",
   "cloud.login.agreePrefix": "By signing in, you agree to the",
   "cloud.login.and": "and",

@@ -252,7 +252,7 @@ for (const surface of SURFACES) {
       });
 
       await page.goto(`${managedOrigin}${entryPath}`);
-      const heading = page.getByRole("heading", { name: "Sign in to Eliza" });
+      const heading = page.getByRole("heading", { name: "Sign in" });
       await expect(heading).toBeVisible();
       await expect(page.getByText("Taking you to Eliza sign in")).toHaveCount(
         0,
