@@ -41,4 +41,30 @@ describe("chunkText", () => {
 			"aaaaa",
 		]);
 	});
+
+	it("never splits a surrogate pair on a hard break", () => {
+		// An unbroken run of non-BMP characters (emoji) longer than the limit hits
+		// the hard-break path. A UTF-16 slice at the limit would bisect a pair,
+		// emitting lone surrogates that render as U+FFFD in each delivered chunk.
+		const input = "😀".repeat(20); // 40 UTF-16 units, no break points
+		const chunks = chunkText(input, 7);
+		for (const c of chunks) {
+			expect(isWellFormed(c)).toBe(true);
+		}
+		expect(chunks.join("")).toBe(input);
+	});
 });
+
+function isWellFormed(s: string): boolean {
+	for (let i = 0; i < s.length; i++) {
+		const code = s.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			const next = s.charCodeAt(i + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+			i++;
+		} else if (code >= 0xdc00 && code <= 0xdfff) {
+			return false;
+		}
+	}
+	return true;
+}
