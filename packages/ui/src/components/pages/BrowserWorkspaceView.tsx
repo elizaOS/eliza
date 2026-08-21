@@ -353,6 +353,17 @@ function readBrowserWorkspaceQueryParam(name: string): string | null {
   return value ? value : null;
 }
 
+function readBrowserWorkspaceBrowseUrl(t: TranslateFn): string | null {
+  const browseParam = readBrowserWorkspaceQueryParam("browse");
+  try {
+    return browseParam
+      ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   if (url === "about:blank") {
     return t("browserworkspace.NewTab", {
@@ -587,8 +598,11 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [mobileRuntimeMode, setMobileRuntimeMode] = useState(
     readPersistedMobileRuntimeMode,
   );
-  const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
-  const initialBrowseHandledRef = useRef(false);
+  const [browseRequest, setBrowseRequest] = useState(() => ({
+    sequence: 0,
+    url: readBrowserWorkspaceBrowseUrl(t),
+  }));
+  const handledBrowseRequestSequenceRef = useRef(-1);
   const workspaceRootRef = useRef<HTMLElement | null>(null);
   const workspaceSnapshotRef = useRef<BrowserWorkspaceSnapshot>(workspace);
   // Polls are slower than their cadence when the API is unhealthy. Keep them
@@ -652,16 +666,20 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const walletConfigRef = useRef(walletConfig);
   const previousSelectedTabIdRef = useRef<string | null>(null);
 
-  if (typeof initialBrowseUrlRef.current === "undefined") {
-    const browseParam = readBrowserWorkspaceQueryParam("browse");
-    try {
-      initialBrowseUrlRef.current = browseParam
-        ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
-        : null;
-    } catch {
-      initialBrowseUrlRef.current = null;
-    }
-  }
+  useEffect(() => {
+    const syncBrowseRequest = () => {
+      setBrowseRequest((current) => ({
+        sequence: current.sequence + 1,
+        url: readBrowserWorkspaceBrowseUrl(t),
+      }));
+    };
+    window.addEventListener("popstate", syncBrowseRequest);
+    window.addEventListener("hashchange", syncBrowseRequest);
+    return () => {
+      window.removeEventListener("popstate", syncBrowseRequest);
+      window.removeEventListener("hashchange", syncBrowseRequest);
+    };
+  }, [t]);
 
   // A Capacitor native shell (iOS/Android), distinct from the mobile web browser
   // which also reports `mode: "web"` — so the resolver cannot infer it from mode
@@ -2315,16 +2333,16 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   useEffect(() => {
     if (
-      !initialBrowseUrlRef.current ||
-      initialBrowseHandledRef.current ||
+      !browseRequest.url ||
+      handledBrowseRequestSequenceRef.current === browseRequest.sequence ||
       loading
     ) {
       return;
     }
 
-    initialBrowseHandledRef.current = true;
+    handledBrowseRequestSequenceRef.current = browseRequest.sequence;
     const existing = workspace.tabs.find(
-      (tab) => tab.url === initialBrowseUrlRef.current,
+      (tab) => tab.url === browseRequest.url,
     );
     if (existing) {
       void runBrowserWorkspaceAction(
@@ -2340,9 +2358,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     }
 
     void runBrowserWorkspaceAction(
-      "open:initial-browse",
+      "open:requested-browse",
       async () => {
-        await openNewBrowserWorkspaceTab(initialBrowseUrlRef.current ?? "");
+        await openNewBrowserWorkspaceTab(browseRequest.url ?? "");
       },
       t("browserworkspace.OpenInitialBrowseFailed", {
         defaultValue: "Failed to open the requested browser tab.",
@@ -2350,6 +2368,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
   }, [
     activateBrowserWorkspaceTab,
+    browseRequest,
     loading,
     openNewBrowserWorkspaceTab,
     runBrowserWorkspaceAction,

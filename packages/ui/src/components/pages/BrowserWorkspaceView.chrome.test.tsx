@@ -210,6 +210,43 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
     }
   });
 
+  it("opens a requested preview when an already-mounted browser receives a new route", async () => {
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(GOOGLE_WORKSPACE);
+    const previewPath = "/api/apps/local/nubs-color-pebble/";
+    const previewUrl = `${window.location.origin}${previewPath}`;
+    vi.mocked(client.openBrowserWorkspaceTab).mockResolvedValue({
+      tab: {
+        ...GOOGLE_WORKSPACE.tabs[0],
+        id: "tab-preview",
+        title: "Nubs Color Pebble",
+        url: previewUrl,
+      },
+    });
+    window.history.replaceState({}, "", "/browser");
+
+    try {
+      render(<BrowserWorkspaceView />);
+      expect(
+        await screen.findByDisplayValue(GOOGLE_WORKSPACE.tabs[0].url),
+      ).not.toBeNull();
+
+      window.history.pushState(
+        {},
+        "",
+        `/browser?browse=${encodeURIComponent(previewPath)}`,
+      );
+      window.dispatchEvent(new PopStateEvent("popstate"));
+
+      await waitFor(() =>
+        expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
+          expect.objectContaining({ url: previewUrl }),
+        ),
+      );
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
   it("floats the navigation toolbar as its own glass panel above the web surface", async () => {
     render(<BrowserWorkspaceView />);
     expect(await screen.findByText("No page open")).not.toBeNull();
