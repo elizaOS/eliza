@@ -2913,21 +2913,43 @@ async function main(): Promise<void> {
     },
     injectApiBase: (window) =>
       injectApiBase(window as BrowserWindow & ManagedWindowLike),
-    onWindowFocused: (window) => {
+    onWindowFocused: (window, surface) => {
       lastFocusedWindow = window;
+      if (surface === "workspace") {
+        void getDesktopManager()
+          .setMainWindowSuppressedByWorkspace(true)
+          .catch((error: unknown) => {
+            logger.warn(
+              `[surface-windows] Failed to suppress pill for focused Workspace: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      }
+    },
+    onWindowBlurred: (_window, surface) => {
+      if (surface === "workspace") {
+        void getDesktopManager()
+          .setMainWindowSuppressedByWorkspace(false)
+          .catch((error: unknown) => {
+            logger.warn(
+              `[surface-windows] Failed to restore pill after Workspace blur: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      }
     },
     onRegistryChanged: () => {
       sendManagedWindowsChanged();
       setupApplicationMenu();
       const workspacePresent =
         (surfaceWindowManager?.listWindows("workspace").length ?? 0) > 0;
-      void getDesktopManager()
-        .setMainWindowSuppressedByWorkspace(workspacePresent)
-        .catch((error: unknown) => {
-          logger.warn(
-            `[surface-windows] Failed to synchronize pill visibility with Workspace: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
+      if (!workspacePresent) {
+        void getDesktopManager()
+          .setMainWindowSuppressedByWorkspace(false)
+          .catch((error: unknown) => {
+            logger.warn(
+              `[surface-windows] Failed to restore pill after Workspace close: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
+      }
       // Dockless mode: any open managed window (dashboard/surface/settings/app)
       // reveals the Dock icon; closing the last one hides it again.
       getDesktopManager().setManagedWindowsPresent(

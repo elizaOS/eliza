@@ -35,7 +35,10 @@ class FakeManagedWindow implements ManagedWindowLike {
     this.frame = options.frame;
   }
 
-  on(event: "close" | "focus" | "resize" | "move", handler: () => void) {
+  on(
+    event: "close" | "focus" | "blur" | "resize" | "move",
+    handler: () => void,
+  ) {
     const handlers = this.handlers.get(event) ?? [];
     handlers.push(handler);
     this.handlers.set(event, handlers);
@@ -45,7 +48,9 @@ class FakeManagedWindow implements ManagedWindowLike {
     return this.frame;
   }
 
-  emit(event: "close" | "focus" | "resize" | "move" | "dom-ready") {
+  emit(
+    event: "close" | "focus" | "blur" | "resize" | "move" | "dom-ready",
+  ) {
     if (event === "dom-ready") {
       for (const handler of this.webview.handlers.get(event) ?? []) {
         handler();
@@ -81,6 +86,7 @@ function createFixture(
   const created: FakeManagedWindow[] = [];
   const registryChanged = vi.fn();
   const focused = vi.fn();
+  const blurred = vi.fn();
   const wired = vi.fn();
   const injected = vi.fn();
   const manager = new SurfaceWindowManager({
@@ -96,10 +102,19 @@ function createFixture(
     wireRpc: wired,
     injectApiBase: injected,
     onWindowFocused: focused,
+    onWindowBlurred: blurred,
     onRegistryChanged: registryChanged,
     boundsStore: options.boundsStore,
   });
-  return { created, focused, injected, manager, registryChanged, wired };
+  return {
+    blurred,
+    created,
+    focused,
+    injected,
+    manager,
+    registryChanged,
+    wired,
+  };
 }
 
 describe("SurfaceWindowManager app windows", () => {
@@ -182,6 +197,12 @@ describe("SurfaceWindowManager app windows", () => {
     });
     expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
     expect(fixture.manager.listWindows("workspace")).toEqual([first]);
+
+    fixture.created[0]?.emit("blur");
+    expect(fixture.blurred).toHaveBeenCalledWith(
+      fixture.created[0],
+      "workspace",
+    );
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {

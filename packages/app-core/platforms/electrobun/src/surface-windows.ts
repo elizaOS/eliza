@@ -29,7 +29,10 @@ export interface ManagedWindowFrame {
 export interface ManagedWindowLike {
   focus(): void;
   setAlwaysOnTop(flag: boolean): void;
-  on(event: "close" | "focus" | "resize" | "move", handler: () => void): void;
+  on(
+    event: "close" | "focus" | "blur" | "resize" | "move",
+    handler: () => void,
+  ): void;
   /**
    * Optional — when present, used to capture window position+size for
    * per-slug bounds persistence. Mocks may omit this.
@@ -75,7 +78,14 @@ interface SurfaceWindowManagerOptions {
   readPreload: () => string;
   wireRpc: (window: ManagedWindowLike) => void;
   injectApiBase: (window: ManagedWindowLike) => void;
-  onWindowFocused?: (window: ManagedWindowLike) => void;
+  onWindowFocused?: (
+    window: ManagedWindowLike,
+    surface: ManagedSurface,
+  ) => void;
+  onWindowBlurred?: (
+    window: ManagedWindowLike,
+    surface: ManagedSurface,
+  ) => void;
   onRegistryChanged?: () => void;
   /**
    * Optional per-slug bounds persistence. When supplied, slug-keyed
@@ -231,6 +241,7 @@ export class SurfaceWindowManager {
   private readonly wireRpcFn: SurfaceWindowManagerOptions["wireRpc"];
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
+  private readonly onWindowBlurred?: SurfaceWindowManagerOptions["onWindowBlurred"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
   private readonly boundsStore?: BoundsStore;
   private readonly windows = new Map<string, ManagedWindowRecord>();
@@ -247,6 +258,7 @@ export class SurfaceWindowManager {
     this.wireRpcFn = options.wireRpc;
     this.injectApiBaseFn = options.injectApiBase;
     this.onWindowFocused = options.onWindowFocused;
+    this.onWindowBlurred = options.onWindowBlurred;
     this.onRegistryChanged = options.onRegistryChanged;
     this.boundsStore = options.boundsStore;
   }
@@ -515,7 +527,7 @@ export class SurfaceWindowManager {
 
     this.windows.set(id, record);
     this.wireRpcFn(window);
-    this.onWindowFocused?.(window);
+    this.onWindowFocused?.(window, surface);
     window.webview.on("dom-ready", () => {
       this.injectApiBaseFn(window);
     });
@@ -527,8 +539,11 @@ export class SurfaceWindowManager {
       this.notifyRegistryChanged();
     });
     window.on("focus", () => {
-      this.onWindowFocused?.(window);
+      this.onWindowFocused?.(window, surface);
       this.notifyRegistryChanged();
+    });
+    window.on("blur", () => {
+      this.onWindowBlurred?.(window, surface);
     });
 
     // Per-slug bounds persistence. WHY: getFrame() polls the OS, so we

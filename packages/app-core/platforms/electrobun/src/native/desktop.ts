@@ -375,7 +375,7 @@ export class DesktopManager {
   private sendToWebview: SendToWebview | null = null;
   private _windowFocused = true;
   private _windowHidden = false;
-  /** Workspace owns the shared ChatOverlay while open, so the pill stays out. */
+  /** Workspace owns the shared ChatOverlay only while it is the key window. */
   private mainWindowSuppressedByWorkspace = false;
   /** User/tray/shortcut intent retained while Workspace suppresses rendering. */
   private mainWindowVisibilityRequested = true;
@@ -1142,11 +1142,11 @@ export class DesktopManager {
           return;
         }
         if (this.mainWindowSuppressedByWorkspace) {
-          if (this.mainWindowVisibilityRequested) {
-            await this.hideWindow();
-          } else {
-            await this.showWindow();
-          }
+          // An explicit global summon always escapes Workspace ownership. Do
+          // not mutate restore intent while the pill is invisibly suppressed.
+          await this.setMainWindowSuppressedByWorkspace(false);
+          await this.showWindow();
+          await this.focusWindow();
           return;
         }
         const visible = (await this.isWindowVisible()).visible;
@@ -1493,10 +1493,11 @@ X-GNOME-Autostart-enabled=true
   }
 
   /**
-   * Suppress the detached pill while Workspace renders the same ChatOverlay.
+   * Suppress the detached pill while the focused Workspace renders the same
+   * ChatOverlay.
    * This is native window ownership—not renderer hiding—so there is never a
    * second visible/click-blocking surface over the workstation. Visibility
-   * intent is preserved and applied when the last Workspace window closes.
+   * intent is preserved and applied when Workspace blurs or closes.
    */
   async setMainWindowSuppressedByWorkspace(
     suppressed: boolean,

@@ -705,7 +705,7 @@ describe("DesktopManager main window controls", () => {
     });
   });
 
-  it("suppresses the pill while Workspace owns the shared ChatOverlay", async () => {
+  it("suppresses the pill only while focused Workspace owns the shared ChatOverlay", async () => {
     const { manager, window } = createManagerWithWindow();
     Object.assign(window, { ptr: { id: "pill-window" } });
 
