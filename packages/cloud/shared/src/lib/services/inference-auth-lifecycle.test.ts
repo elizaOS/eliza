@@ -70,6 +70,12 @@ mock.module("./inference-credential-revocation", () => ({
   },
 }));
 
+mock.module("./eliza-app/personal-delivery-projection-contract", () => ({
+  invalidateBoundPersonalDeliveryProjection: async (platform: string, platformUserId: string) => {
+    lifecycleEvents.push(`projection:${platform}:${platformUserId}`);
+  },
+}));
+
 mock.module("../../db/repositories", () => ({
   apiKeysRepository: {
     listByUser: async (_userId: string) => {
@@ -86,7 +92,14 @@ mock.module("../../db/repositories", () => ({
       useReadUserRecordOverride ? readUserRecordOverride : userRecord,
     findByIdForWrite: async (_id: string) => userRecord,
     findIdentityByUserIdForWrite: async () =>
-      userRecord?.steward_user_id ? { steward_user_id: userRecord.steward_user_id } : undefined,
+      userRecord?.steward_user_id
+        ? {
+            steward_user_id: userRecord.steward_user_id,
+            telegram_id: userRecord.telegram_id ?? null,
+            discord_id: userRecord.discord_id ?? null,
+            phone_number: userRecord.phone_number ?? null,
+          }
+        : undefined,
     upsertStewardIdentity: async (id: string, stewardUserId: string) => {
       lifecycleEvents.push(`identity-upsert:${id}:${stewardUserId}`);
       if (userRecord) userRecord.steward_user_id = stewardUserId;
@@ -104,6 +117,7 @@ mock.module("../../db/repositories", () => ({
     },
     delete: async (id: string) => {
       userDeleteCalls.push(id);
+      lifecycleEvents.push(`user-delete:${id}`);
       // Simulate the row (and its keys) being gone after delete so a test can
       // prove the key hashes were resolved BEFORE this call.
       userApiKeys = [];
@@ -159,6 +173,9 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       organization_id: "o1",
       email: null,
       steward_user_id: "steward-u1",
+      telegram_id: "123456",
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
     userApiKeys = [{ key_hash: "uh1" }, { key_hash: "uh2" }];
 
@@ -167,6 +184,11 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
 
     expect(invalidatedHashBatches).toEqual([["uh1", "uh2"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
+    expect(lifecycleEvents.slice(-3)).toEqual([
+      "projection:telegram:123456",
+      "projection:discord:987654",
+      "projection:phone:+15551234567",
+    ]);
   });
 
   test("update without an is_active=false transition does NOT invalidate", async () => {
@@ -193,6 +215,9 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       role: "member",
       steward_user_id: "steward-u1",
       is_active: true,
+      telegram_id: "123456",
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
 
     const { usersService } = await import("./users");
@@ -206,6 +231,28 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       "user-update:u1",
       "subject:o2:u1:true:account",
       "subject:o2:u1:true:membership",
+      "projection:telegram:123456",
+      "projection:discord:987654",
+      "projection:phone:+15551234567",
+    ]);
+  });
+
+  test("identity update evicts both the old and new sender projections", async () => {
+    userRecord = {
+      id: "u1",
+      organization_id: "o1",
+      email: null,
+      steward_user_id: "steward-u1",
+      phone_number: "+15551234567",
+    };
+
+    const { usersService } = await import("./users");
+    await usersService.update("u1", { phone_number: "+15557654321" });
+
+    expect(lifecycleEvents).toEqual([
+      "user-update:u1",
+      "projection:phone:+15551234567",
+      "projection:phone:+15557654321",
     ]);
   });
 
@@ -386,6 +433,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       organization_id: null,
       email: null,
       steward_user_id: "steward-u1",
+      telegram_id: "123456",
+      phone_number: "+15551234567",
     };
     userApiKeys = [{ key_hash: "uh1" }];
 
@@ -396,6 +445,11 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
     // The row is wiped on delete; a non-empty batch proves resolution happened first.
     expect(invalidatedHashBatches).toEqual([["uh1"]]);
     expect(invalidatedSessionBatches).toContainEqual(["steward-u1"]);
+    expect(lifecycleEvents).toEqual([
+      "user-delete:u1",
+      "projection:telegram:123456",
+      "projection:phone:+15551234567",
+    ]);
   });
 
   test("delete fences the primary organization when the read replica lags", async () => {
@@ -425,6 +479,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       role: "member",
       steward_user_id: "steward-u1",
       is_active: true,
+      discord_id: "987654",
+      phone_number: "+15551234567",
     };
     useReadUserRecordOverride = true;
     readUserRecordOverride = undefined;
@@ -438,6 +494,8 @@ describe("UsersService — IAC invalidation on lifecycle", () => {
       "subject:o1:u1:false:membership",
       "user-update:u1",
       "api-keys-deactivate:u1:o1",
+      "projection:discord:987654",
+      "projection:phone:+15551234567",
     ]);
   });
 
