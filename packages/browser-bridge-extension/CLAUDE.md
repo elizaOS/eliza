@@ -141,12 +141,24 @@ Triggered by `BrowserBridgeAction` objects delivered in the sync response's `ses
 
 ## Config / env
 
-No environment variables. Configuration is stored in `chrome.storage.local` under two keys:
+Browser companion configuration is stored in `chrome.storage.local` under two keys:
 
 - `browserBridgeCompanionConfig` — `CompanionConfig` (apiBaseUrl, companionId, pairingToken, browser, profileId, profileLabel, label)
 - `browserBridgeBackgroundState` — `BackgroundState` (persisted across service worker restarts)
 
 Default `apiBaseUrl` is `http://127.0.0.1:31337`. Auto-discovery also probes `http://127.0.0.1:2138`, `http://localhost:2138`, `http://localhost:31337`.
+
+Safari packaging replaces the converter echo handler with
+`safari/native/SafariWebExtensionHandler.swift`. Unsigned development packages
+use deterministic app-group, Keychain-group, Keychain-service, and broker-socket
+defaults. A development-signed package supplies
+`ELIZA_SAFARI_SIGNING_TEAM` and `ELIZA_SAFARI_SIGNING_IDENTITY` together. A
+distribution package sets `ELIZA_SAFARI_RELEASE=1` and must explicitly supply
+both signing values, `ELIZA_SAFARI_APP_GROUP`, `ELIZA_SAFARI_KEYCHAIN_GROUP`,
+`ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER`, and
+`ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`. Optional
+`ELIZA_SAFARI_KEYCHAIN_SERVICE` and `ELIZA_SAFARI_BROKER_SOCKET_NAME` overrides
+must match the desktop broker configuration.
 
 ## How to extend
 

@@ -128,3 +128,22 @@ bun run --cwd packages/browser-bridge-extension package:firefox  # → determini
 bun run --cwd packages/browser-bridge-extension package:safari   # → xcrun Safari Web Extension
 bun run --cwd packages/browser-bridge-extension package:release  # → all formats
 ```
+
+Safari packaging replaces the converter's generated message-echo handler with
+the committed native-enrollment handler in `safari/native/`. The handler accepts
+only the versioned `browser_bridge.enroll` request, limits both request and
+response frames to 64 KiB, and relays over the containing app's private app-group
+Unix socket using HMAC-SHA256 with a broker key held in the explicit shared
+Keychain access group. The key itself never crosses the socket, and the handler
+never logs native request or response content.
+
+Unsigned local builds use deterministic app-group, Keychain, and socket names.
+Development-signed builds set `ELIZA_SAFARI_SIGNING_TEAM` and
+`ELIZA_SAFARI_SIGNING_IDENTITY` together. Release packaging must additionally set
+`ELIZA_SAFARI_RELEASE=1`, `ELIZA_SAFARI_APP_GROUP`,
+`ELIZA_SAFARI_KEYCHAIN_GROUP`,
+`ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER`, and
+`ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`; missing or malformed
+release signing inputs fail before conversion. `ELIZA_SAFARI_KEYCHAIN_SERVICE`
+and `ELIZA_SAFARI_BROKER_SOCKET_NAME` override their deterministic defaults when
+the containing app uses a different broker registration.

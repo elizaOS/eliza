@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 /**
  * Wraps dist/safari into a Safari Web Extension via xcrun, producing the
- * versioned app bundle for the Safari release. Release/source archives are
- * unsigned and deterministic for a fixed converter/build output; the
- * installed-browser smoke supplies an exact Apple Development identity and
- * team for a trusted local build.
+ * versioned app bundle for the Safari release. Source-project patching and its
+ * archive are deterministic for fixed converter output; Xcode owns compiled app
+ * serialization. The installed-browser smoke supplies an exact Apple
+ * Development identity and team for a trusted local build.
  */
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -16,6 +16,10 @@ import {
   resolveBrowserBridgeReleaseVersion,
   versionedArtifactName,
 } from "./release-version.mjs";
+import {
+  patchGeneratedSafariProject,
+  resolveSafariNativeConfiguration,
+} from "./safari-project.mjs";
 import { findFileWithExtension, run } from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -34,45 +38,18 @@ const cleanupHelper = path.resolve(
 );
 const appName = "Agent Browser Bridge";
 const bundleIdentifier = "ai.elizaos.browserbridge.app";
+const deploymentTarget = "14.0";
 const release = resolveBrowserBridgeReleaseVersion();
 const metadata = buildBrowserBridgeReleaseMetadata(release);
 const safariVersions = buildSafariExtensionVersions(release);
-const signingTeam = process.env.ELIZA_SAFARI_SIGNING_TEAM?.trim() || null;
-const signingIdentity =
-  process.env.ELIZA_SAFARI_SIGNING_IDENTITY?.trim() || null;
-
-if (Boolean(signingTeam) !== Boolean(signingIdentity)) {
-  throw new Error(
-    "ELIZA_SAFARI_SIGNING_TEAM and ELIZA_SAFARI_SIGNING_IDENTITY must be supplied together.",
-  );
-}
-
-async function patchGeneratedSafariProjectVersions(projectPath) {
-  const projectFile = path.join(projectPath, "project.pbxproj");
-  let source = await fs.readFile(projectFile, "utf8");
-  source = source.replace(
-    /MARKETING_VERSION = [^;]+;/g,
-    `MARKETING_VERSION = ${safariVersions.marketingVersion};`,
-  );
-  source = source.replace(
-    /CURRENT_PROJECT_VERSION = [^;]+;/g,
-    `CURRENT_PROJECT_VERSION = ${safariVersions.buildVersion};`,
-  );
-  source = source.replace(
-    /PRODUCT_BUNDLE_IDENTIFIER = "ai\.elizaos\.browserbridge\.Agent-Browser-Bridge";/g,
-    `PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier};`,
-  );
-  source = source.replace(
-    /PRODUCT_BUNDLE_IDENTIFIER = "ai\.elizaos\.browserbridge\.Agent-Browser-Bridge\.Extension";/g,
-    `PRODUCT_BUNDLE_IDENTIFIER = ${bundleIdentifier}.Extension;`,
-  );
-  const projectIds = [...new Set(source.match(/\b[A-F0-9]{24}\b/g) ?? [])];
-  for (const [index, projectId] of projectIds.entries()) {
-    const deterministicId = index.toString(16).toUpperCase().padStart(24, "0");
-    source = source.replaceAll(projectId, deterministicId);
-  }
-  await fs.writeFile(projectFile, source);
-}
+const nativeConfiguration = resolveSafariNativeConfiguration();
+const signingTeam = nativeConfiguration.signingTeam;
+const signingIdentity = nativeConfiguration.signingIdentity;
+const handlerTemplatePath = path.join(
+  safariWorkDir,
+  "native",
+  "SafariWebExtensionHandler.swift",
+);
 
 await run("bun", [path.join(scriptDir, "build.mjs"), "safari"], {
   cwd: extensionRoot,
@@ -108,7 +85,16 @@ const projectPath = await findFileWithExtension(
 if (!projectPath) {
   throw new Error("Failed to locate generated Safari Xcode project");
 }
-await patchGeneratedSafariProjectVersions(projectPath);
+await patchGeneratedSafariProject({
+  projectPath,
+  appName,
+  bundleIdentifier,
+  marketingVersion: safariVersions.marketingVersion,
+  buildVersion: safariVersions.buildVersion,
+  deploymentTarget,
+  configuration: nativeConfiguration,
+  handlerTemplatePath,
+});
 
 const signingArgs =
   signingTeam && signingIdentity
