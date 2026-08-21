@@ -1,5 +1,10 @@
 /** Implements Electrobun desktop desktop http request ts behavior for app-core shell integration. */
-import { isLoopbackBindHost, isWildcardBindHost } from "@elizaos/shared";
+import {
+  isElizaCloudControlPlaneHostname,
+  isElizaDedicatedAgentHostname,
+  isLoopbackBindHost,
+  isWildcardBindHost,
+} from "@elizaos/shared";
 import { resolveExternalApiBase } from "./api-base";
 
 function isExternalPlainHttpUrl(parsed: URL): boolean {
@@ -16,6 +21,21 @@ function isConfiguredExternalApiBaseUrl(parsed: URL): boolean {
     process.env as Record<string, string | undefined>,
   ).base;
   return Boolean(configured && parsed.origin === configured);
+}
+
+/**
+ * Trusted Eliza Cloud HTTPS origins whose CORS policy does not allowlist
+ * loopback renderer origins (e.g. http://127.0.0.1:5174). The desktop main
+ * process (bun) can reach these directly, so the renderer proxies through
+ * desktopHttpRequest to bypass the WKWebView CORS block.
+ */
+function isTrustedElizaCloudHttpsUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "https:") return false;
+  const hostname = parsed.hostname.toLowerCase();
+  return (
+    isElizaCloudControlPlaneHostname(hostname) ||
+    isElizaDedicatedAgentHostname(hostname)
+  );
 }
 
 export function normalizeDesktopHttpRequest(params: unknown): {
@@ -35,10 +55,11 @@ export function normalizeDesktopHttpRequest(params: unknown): {
   const parsed = new URL(record.url);
   if (
     !isExternalPlainHttpUrl(parsed) &&
-    !isConfiguredExternalApiBaseUrl(parsed)
+    !isConfiguredExternalApiBaseUrl(parsed) &&
+    !isTrustedElizaCloudHttpsUrl(parsed)
   ) {
     throw new Error(
-      "desktopHttpRequest supports only external or configured desktop API plain HTTP URLs.",
+      "desktopHttpRequest supports only external or configured desktop API plain HTTP URLs, or trusted Eliza Cloud HTTPS URLs.",
     );
   }
   const method = typeof record.method === "string" ? record.method : "GET";
@@ -75,6 +96,7 @@ export async function desktopHttpRequest(params: unknown): Promise<{
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  bodyBase64?: string | null;
 }> {
   const request = normalizeDesktopHttpRequest(params);
   const abortController = new AbortController();
@@ -85,12 +107,31 @@ export async function desktopHttpRequest(params: unknown): Promise<{
       body: request.body,
       signal: abortController.signal,
     });
+    const contentType = response.headers.get("content-type") ?? "";
+    const isBinary =
+      contentType.startsWith("audio/") ||
+      contentType.startsWith("image/") ||
+      contentType.startsWith("video/") ||
+      contentType.startsWith("application/octet-stream") ||
+      contentType.startsWith("application/wasm");
+    if (isBinary) {
+      const buf = await response.arrayBuffer();
+      const bodyBase64 = Buffer.from(buf).toString("base64");
+      return {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeadersToRecord(response.headers),
+        body: null,
+        bodyBase64,
+      };
+    }
     const body = await response.text();
     return {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeadersToRecord(response.headers),
       body,
+      bodyBase64: null,
     };
   })();
 

@@ -61,6 +61,7 @@ import type {
   VoiceSessionLike,
 } from "@/lib/voice-session/ws-handler";
 import {
+  CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
   type CartesiaInkRealtimeEvent,
   type CartesiaInkRealtimeSession,
   type CartesiaInkWebSocketFactory,
@@ -244,6 +245,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private currentTraceId: string | null = null;
   private currentVoiceTurnId: string | null = null;
   private activeSttTurn = false;
+  private sttTurnStartedAtMs: number | null = null;
+  private sttFirstTranscriptAtMs: number | null = null;
+  private sttLastTranscriptAtMs: number | null = null;
+  private sttEagerEndAtMs: number | null = null;
   private pendingSttPartial: { text: string; traceId: string } | null = null;
   private lastSttPartialText = "";
   private lastSttPartialSentAtMs = Number.NEGATIVE_INFINITY;
@@ -629,17 +634,29 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // Wait for a transcript update/final below, then interrupt immediately.
         this.resetSttPartialDelivery();
         this.activeSttTurn = true;
+        this.sttTurnStartedAtMs = this.now();
+        this.sttFirstTranscriptAtMs = null;
+        this.sttLastTranscriptAtMs = null;
+        this.sttEagerEndAtMs = null;
         this.state = "transcribing";
         break;
       }
       case "transcript-update": {
         if (this.activeSttTurn && event.transcript) {
+          const transcriptAt = this.now();
+          this.sttFirstTranscriptAtMs ??= transcriptAt;
+          this.sttLastTranscriptAtMs = transcriptAt;
           this.interruptForConfirmedSpeech(event.transcript);
           this.queueSttPartial(event.transcript);
         }
         break;
       }
       case "eager-end-of-turn": {
+        this.sttEagerEndAtMs = this.now();
+        if (event.transcript) {
+          this.sttFirstTranscriptAtMs ??= this.sttEagerEndAtMs;
+          this.sttLastTranscriptAtMs = this.sttEagerEndAtMs;
+        }
         this.interruptForConfirmedSpeech(event.transcript);
         this.flushSttPartial();
         this.send({
@@ -650,6 +667,33 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       case "end-of-turn": {
         if (!this.activeSttTurn) return;
+        const finalizedAt = this.now();
+        if (event.transcript) {
+          this.sttFirstTranscriptAtMs ??= finalizedAt;
+          this.sttLastTranscriptAtMs ??= finalizedAt;
+        }
+        logger.info("[voice-session] end-of-turn latency", {
+          traceId: this.currentTraceId,
+          transcriptChars: event.transcript?.length ?? 0,
+          configuredEndTimeoutMs: CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
+          turnActiveMs:
+            this.sttTurnStartedAtMs === null
+              ? null
+              : finalizedAt - this.sttTurnStartedAtMs,
+          firstTranscriptOffsetMs:
+            this.sttTurnStartedAtMs === null ||
+            this.sttFirstTranscriptAtMs === null
+              ? null
+              : this.sttFirstTranscriptAtMs - this.sttTurnStartedAtMs,
+          lastTranscriptToFinalMs:
+            this.sttLastTranscriptAtMs === null
+              ? null
+              : finalizedAt - this.sttLastTranscriptAtMs,
+          eagerEndToFinalMs:
+            this.sttEagerEndAtMs === null
+              ? null
+              : finalizedAt - this.sttEagerEndAtMs,
+        });
         this.interruptForConfirmedSpeech(event.transcript);
         this.activeSttTurn = false;
         this.resetSttPartialDelivery();
@@ -661,6 +705,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       case "turn-resumed": {
         // The user kept talking; the eager EOT was speculative. Stay listening.
+        this.sttEagerEndAtMs = null;
         break;
       }
       case "error": {

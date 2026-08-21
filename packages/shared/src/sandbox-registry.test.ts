@@ -79,6 +79,14 @@ function installFetch(): void {
         json: async () => ({ result: cmd.length - 1 }),
       } as unknown as Response;
     }
+    if (cmd[0] === "EVAL") {
+      // Simulates the registry's compare-and-delete script: EVAL, script,
+      // numkeys, key1, key2, expected1, expected2.
+      const [, , , key1, key2, expected1, expected2] = cmd;
+      if (store.get(key1) === expected1) store.delete(key1);
+      if (store.get(key2) === expected2) store.delete(key2);
+      return { ok: true, json: async () => ({ result: 1 }) } as Response;
+    }
     return { ok: true, json: async () => ({ result: null }) } as Response;
   }) as unknown as typeof fetch;
 }
@@ -146,6 +154,31 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     store.set("agent:char-123:server", "sandbox-other");
     store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
     await reg.unregister();
+    expect(store.get("agent:char-123:server")).toBe("sandbox-other");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
+  });
+
+  it("unregister() does not delete keys another sandbox claims in the same instant it decides to delete", async () => {
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    // Wrap fetch so a concurrent register() from another sandbox lands right
+    // as this unregister() call reaches the command that actually decides
+    // what to delete (the old two-step implementation's DEL, or the atomic
+    // implementation's EVAL) -- the exact TOCTOU window a read-then-delete
+    // race would fall into.
+    const realFetch = global.fetch as unknown as typeof fetch;
+    global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      const verb = Array.isArray(body) ? body[0] : undefined;
+      if (verb === "DEL" || verb === "EVAL") {
+        store.set("agent:char-123:server", "sandbox-other");
+        store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+      }
+      return realFetch(input, init);
+    }) as unknown as typeof fetch;
+
+    await reg.unregister();
+
     expect(store.get("agent:char-123:server")).toBe("sandbox-other");
     expect(store.get("server:sandbox-abc:url")).toBe("http://9.9.9.9:1/api");
   });
@@ -364,6 +397,13 @@ async function startFakeRedis(opts?: {
           let n = 0;
           for (const k of cmd.slice(1)) if (store.delete(k)) n++;
           send(`:${n}\r\n`);
+        } else if (verb === "EVAL") {
+          // Simulates the registry's compare-and-delete script: EVAL, script,
+          // numkeys, key1, key2, expected1, expected2.
+          const [, , , key1, key2, expected1, expected2] = cmd;
+          if (store.get(key1) === expected1) store.delete(key1);
+          if (store.get(key2) === expected2) store.delete(key2);
+          send(":1\r\n");
         } else {
           send("-ERR unknown command\r\n");
         }

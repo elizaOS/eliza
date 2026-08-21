@@ -94,6 +94,20 @@ describe("character preset resolution with a shared avatarIndex", () => {
 describe("default Eliza persona safety", () => {
   const definition = CHARACTER_DEFINITIONS.find(({ id }) => id === "eliza");
 
+  it("attributes Eliza to Eliza Research in San Francisco without personal handles", () => {
+    expect(definition).toBeDefined();
+    const identity = [
+      definition?.system,
+      ...(definition?.bio ?? []),
+      ...(definition?.messageExamples ?? []).flatMap((conversation) =>
+        conversation.map(({ content }) => content.text),
+      ),
+    ].join("\n");
+    expect(identity).toContain("Eliza Research");
+    expect(identity).toContain("San Francisco");
+    expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
+  });
+
   it("keeps consequential ambiguity and side-effect claims receipt-bound", () => {
     expect(definition).toBeDefined();
     expect(definition?.system).toContain(

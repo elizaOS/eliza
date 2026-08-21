@@ -116,7 +116,20 @@ export function parseGmailDateBoundary(value: string): number | null {
   ) {
     return null;
   }
-  return Date.UTC(year, month - 1, day, 0, 0, 0, 0);
+  // Date.UTC overflows impossible days (Feb 31 → Mar 3) and remaps years
+  // 0–99 onto 1900–1999. Set the full year explicitly before round-tripping
+  // so every accepted four-digit year keeps its literal UTC meaning.
+  const parsed = new Date(0);
+  parsed.setUTCFullYear(year, month - 1, day);
+  const utc = parsed.getTime();
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return utc;
 }
 
 export function splitMailboxLikeList(value: string): string[] {

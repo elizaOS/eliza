@@ -9,6 +9,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -36,7 +37,7 @@ app.get("/config", rateLimit(RateLimitPresets.STANDARD), (c) => {
   return c.json(directWalletPaymentsService.getConfig(c.env));
 });
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     // Wallet is NOT required on the account — OAuth-only users (Google /

@@ -183,6 +183,32 @@ export class X402PaymentRequestError extends Error {
   }
 }
 
+function parseStoredPaymentAmount(params: {
+  paymentId: string;
+  field: string;
+  value: unknown;
+  allowZero?: boolean;
+}): number {
+  const canonicalString =
+    typeof params.value !== "string" || /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(params.value);
+  const parsed =
+    canonicalString && (typeof params.value === "number" || typeof params.value === "string")
+      ? Number(params.value)
+      : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 0 || (!params.allowZero && parsed === 0)) {
+    logger.error("[x402-payment-requests] refusing to project corrupt payment amount", {
+      paymentRequestId: params.paymentId,
+      field: params.field,
+    });
+    throw new X402PaymentRequestError(
+      `Payment request ${params.paymentId} has a corrupt ${params.field}`,
+      500,
+      "corrupt_amount",
+    );
+  }
+  return parsed;
+}
+
 function normalizeNetwork(raw?: string): NetworkConfig {
   const env = getCloudAwareEnv();
   const value = raw?.trim() || env.X402_NETWORK || "base";
@@ -381,7 +407,11 @@ async function triggerChannelCallback(
   });
   if (!authorized) return;
 
-  const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add ?? 0);
+  const amountUsd = parseStoredPaymentAmount({
+    paymentId: payment.id,
+    field: "amountUsd",
+    value: metadata.amountUsd ?? payment.credits_to_add,
+  });
   const source = stringValue(channel, "source") ?? "payment";
   const text =
     status === "paid"
@@ -702,25 +732,21 @@ class X402PaymentRequestsService {
       throw new X402PaymentRequestError("Payment request is missing requirements", 500);
     }
 
-    // Validate the USD amount BEFORE the facilitator moves funds on-chain.
-    // create() guarantees a finite positive amountUsd in metadata, so a
-    // non-finite or non-positive value here means the stored request is
-    // corrupt; settling it would take the payer's money and then credit
-    // earnings from NaN (Number(undefined) is NaN, and NaN survives the old
-    // `<= 0` guard because NaN comparisons are false).
-    const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
-    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
-      logger.error("[x402-payment-requests] refusing to settle request with corrupt amount", {
-        paymentRequestId: payment.id,
-        metadataAmountUsd: metadata.amountUsd,
-        creditsToAdd: payment.credits_to_add,
+    // Validate the canonical stored USD amount BEFORE the facilitator moves
+    // funds on-chain. The public projection uses the same boundary, but settle
+    // must not rely on a caller having projected the record first.
+    let amountUsd: number;
+    try {
+      amountUsd = parseStoredPaymentAmount({
+        paymentId: payment.id,
+        field: "amountUsd",
+        value: metadata.amountUsd ?? payment.credits_to_add,
       });
+    } catch (error) {
+      // error-policy:J1 boundary — preserve the typed corrupt-amount failure
+      // after recording the failed payment callback.
       await this.triggerFailureCallback(payment, "corrupt_amount");
-      throw new X402PaymentRequestError(
-        `Payment request ${payment.id} has a corrupt amount and cannot be settled`,
-        500,
-        "corrupt_amount",
-      );
+      throw error;
     }
 
     let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];
@@ -830,14 +856,36 @@ class X402PaymentRequestsService {
 
   toView(payment: CryptoPayment): X402PaymentRequestView {
     const metadata = metadataOf(payment);
+    const amountUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "amountUsd",
+      value: metadata.amountUsd ?? payment.credits_to_add,
+    });
+    const platformFeeUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "platformFeeUsd",
+      value: metadata.platformFeeUsd ?? 0,
+      allowZero: true,
+    });
+    const serviceFeeUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "serviceFeeUsd",
+      value: metadata.serviceFeeUsd ?? 0,
+      allowZero: true,
+    });
+    const totalChargedUsd = parseStoredPaymentAmount({
+      paymentId: payment.id,
+      field: "totalChargedUsd",
+      value: metadata.totalChargedUsd ?? amountUsd + platformFeeUsd + serviceFeeUsd,
+    });
     return {
       id: payment.id,
       status: payment.status,
       paid: payment.status === "confirmed",
-      amountUsd: Number(metadata.amountUsd ?? payment.credits_to_add ?? 0),
-      platformFeeUsd: Number(metadata.platformFeeUsd ?? 0),
-      serviceFeeUsd: Number(metadata.serviceFeeUsd ?? 0),
-      totalChargedUsd: Number(metadata.totalChargedUsd ?? 0),
+      amountUsd,
+      platformFeeUsd,
+      serviceFeeUsd,
+      totalChargedUsd,
       network: payment.network,
       asset: payment.token_address ?? "",
       payTo: payment.payment_address,

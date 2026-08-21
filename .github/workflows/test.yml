@@ -567,7 +567,7 @@ jobs:
         run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts
+        run: bun run --cwd packages/scenario-runner test:unit -- src/executor.test.ts src/runtime-factory.test.ts
 
       - name: Deterministic model provider unit coverage
         run: bun run --cwd packages/core test -- src/testing/deterministic-model-plugin.test.ts
@@ -628,8 +628,8 @@ jobs:
       - name: Actual app assistant pill browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures first-run, assistant home, chat suppression, and view pill states"
 
-      - name: Actual app assistant voice browser coverage
-        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
+      - name: Actual app assistant composer browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "morphs the home mic into send and submits a typed turn"
 
       - name: Actual app TTS and STT browser coverage
         run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
@@ -713,7 +713,7 @@ jobs:
         run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
 
       - name: App screenshot quality diagnostics coverage
-        run: bun run --cwd packages/app test -- test/screenshot-quality.test.ts
+        run: bunx vitest run --config packages/app/vitest.config.ts packages/app/test/screenshot-quality.test.ts
 
       - name: App-core screenshot quality diagnostics coverage
         run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts

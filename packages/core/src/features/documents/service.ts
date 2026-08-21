@@ -2292,6 +2292,9 @@ export class DocumentService extends Service {
 			timestamp: Date.now(),
 			editedAt: Date.now(),
 			documentRevision: snapshot.revision + 1,
+			// Fences this attempt's staged fragments: concurrent updates stage the
+			// same revision number, so readers additionally match this token.
+			revisionAttemptId: this.runtime.createRunId(),
 		};
 
 		const replacement: Memory = {
@@ -2304,44 +2307,11 @@ export class DocumentService extends Service {
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
 		};
-		const mutation = await this.runtime.adapter.compareAndSwapDocument({
-			...requestContext,
-			documentId: options.documentId,
-			expected: snapshot,
-			replacement,
-		});
-		if (mutation.status !== "updated") {
-			throw new ElizaError("Document authorization changed before update", {
-				code:
-					mutation.status === "forbidden"
-						? "DOCUMENT_MUTATION_FORBIDDEN"
-						: mutation.status === "not_found"
-							? "DOCUMENT_NOT_FOUND"
-							: "DOCUMENT_MUTATION_CONFLICT",
-				context: { documentId: options.documentId, status: mutation.status },
-			});
-		}
-
-		const existingFragments = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
-			agentId: this.runtime.agentId,
-			roomId: existingDocument.roomId,
-			count: 10_000,
-		});
-		const relatedFragments = existingFragments.filter((fragment) => {
-			const metadata = fragment.metadata as Record<string, unknown> | undefined;
-			return (
-				this.isDocumentFragmentMemory(fragment) &&
-				metadata?.documentId === options.documentId
-			);
-		});
-
-		for (const fragment of relatedFragments) {
-			if (typeof fragment.id === "string") {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
-		}
-
+		// Stage the complete replacement generation BEFORE touching the parent.
+		// Fragments inherit documentRevision R+1 from updatedMetadata while the
+		// parent still publishes revision R, and the adapter's fragment reader
+		// joins on matching fragment/parent documentRevision, so staged fragments
+		// stay invisible to concurrent readers until the CAS commit below.
 		const fragments = await this.splitAndCreateFragments(
 			{
 				id: options.documentId,
@@ -2356,15 +2326,139 @@ export class DocumentService extends Service {
 				entityId: existingDocument.entityId,
 			},
 		);
+		try {
+			await this.processDocumentFragmentsBatched(fragments, {
+				continueOnError: false,
+			});
+		} catch (stagingError) {
+			// error-policy:J2 Discard the partially staged (reader-invisible)
+			// generation, then rethrow with document identity; the committed
+			// revision R parent and its fragments are untouched.
+			await this.discardStagedFragments(options.documentId, fragments);
+			throw new ElizaError(
+				`Failed to stage replacement fragments for document ${options.documentId}`,
+				{
+					code: "DOCUMENT_UPDATE_STAGING_FAILED",
+					context: {
+						documentId: options.documentId,
+						stagedFragmentCount: fragments.length,
+					},
+					cause: stagingError,
+				},
+			);
+		}
 
-		await this.processDocumentFragmentsBatched(fragments, {
-			continueOnError: false,
+		// The single-statement compare-and-swap is the atomic commit point on
+		// real SQL adapters: it flips the parent from revision R to R+1, which
+		// simultaneously hides the old generation and exposes the staged one.
+		const mutation = await this.runtime.adapter.compareAndSwapDocument({
+			...requestContext,
+			documentId: options.documentId,
+			expected: snapshot,
+			replacement,
+		});
+		if (mutation.status !== "updated") {
+			await this.discardStagedFragments(options.documentId, fragments);
+			throw new ElizaError("Document authorization changed before update", {
+				code:
+					mutation.status === "forbidden"
+						? "DOCUMENT_MUTATION_FORBIDDEN"
+						: mutation.status === "not_found"
+							? "DOCUMENT_NOT_FOUND"
+							: "DOCUMENT_MUTATION_CONFLICT",
+				context: { documentId: options.documentId, status: mutation.status },
+			});
+		}
+
+		await this.removeSupersededFragments(options.documentId, fragments, {
+			roomId: existingDocument.roomId,
 		});
 
 		return {
 			documentId: options.documentId,
 			fragmentCount: fragments.length,
 		};
+	}
+
+	/**
+	 * Delete a staged-but-never-committed fragment generation. Callers invoke
+	 * this only while the parent still publishes the prior revision, so every
+	 * row removed here was reader-invisible; any row this pass fails to delete
+	 * stays invisible and is swept by the next successful update's
+	 * {@link removeSupersededFragments} pass.
+	 */
+	private async discardStagedFragments(
+		documentId: UUID,
+		fragments: Memory[],
+	): Promise<void> {
+		for (const fragment of fragments) {
+			if (typeof fragment.id !== "string") continue;
+			try {
+				await this.runtime.deleteMemory(fragment.id as UUID);
+			} catch (cleanupError) {
+				// error-policy:J7 Discard is best effort and must not mask the
+				// staging or CAS failure being propagated; the leftover row is
+				// reader-invisible (revision mismatch) and swept later.
+				this.runtime.reportError(
+					"DocumentService.discardStagedFragments",
+					cleanupError instanceof Error
+						? cleanupError
+						: new Error(String(cleanupError)),
+					{ documentId, fragmentId: fragment.id },
+				);
+			}
+		}
+	}
+
+	/**
+	 * Remove every fragment of a document that is not part of the just-committed
+	 * generation. Runs only after the parent CAS commit, so every row deleted
+	 * here is already invisible to readers (its documentRevision no longer
+	 * matches the parent); failure is storage garbage, not data exposure.
+	 */
+	private async removeSupersededFragments(
+		documentId: UUID,
+		committedFragments: Memory[],
+		scope: { roomId: UUID },
+	): Promise<void> {
+		const committedIds = new Set(
+			committedFragments
+				.map((fragment) => fragment.id)
+				.filter((id): id is UUID => typeof id === "string"),
+		);
+		try {
+			const existingFragments = await this.runtime.getMemories({
+				tableName: DOCUMENT_FRAGMENTS_TABLE,
+				agentId: this.runtime.agentId,
+				roomId: scope.roomId,
+				count: 10_000,
+			});
+			for (const fragment of existingFragments) {
+				const metadata = fragment.metadata as
+					| Record<string, unknown>
+					| undefined;
+				if (
+					!this.isDocumentFragmentMemory(fragment) ||
+					metadata?.documentId !== documentId ||
+					typeof fragment.id !== "string" ||
+					committedIds.has(fragment.id as UUID)
+				) {
+					continue;
+				}
+				await this.runtime.deleteMemory(fragment.id as UUID);
+			}
+		} catch (cleanupError) {
+			// error-policy:J7 The update already committed; superseded rows are
+			// reader-invisible and the next successful update sweeps them again,
+			// so cleanup failure is reported instead of failing the update.
+			this.runtime.reportError(
+				"DocumentService.removeSupersededFragments",
+				cleanupError instanceof Error
+					? cleanupError
+					: new Error(String(cleanupError)),
+				{ documentId },
+			);
+		}
 	}
 
 	async _internalAddDocument(

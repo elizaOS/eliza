@@ -2,15 +2,24 @@
 import { describe, expect, mock, test } from "bun:test";
 
 const createCharacter = mock(async (input: Record<string, unknown>) => ({
-  id: "character-1",
-  name: input.name,
-  username: "smoke-agent",
-  bio: input.bio,
-  created_at: new Date("2026-01-01T00:00:00.000Z"),
-  token_address: null,
-  token_chain: null,
-  token_name: null,
-  token_ticker: null,
+  character: {
+    id: "character-1",
+    name: input.name,
+    username: "smoke-agent",
+    bio: input.bio,
+    created_at: new Date("2026-01-01T00:00:00.000Z"),
+    token_address: null,
+    token_chain: null,
+    token_name: null,
+    token_ticker: null,
+  },
+  created: true,
+  quota: {
+    currentBefore: 0,
+    currentAfter: 1,
+    limit: 5,
+    limitSource: "organizations.credit_balance",
+  },
 }));
 
 const countAgents = mock(async () => [{ count: 0 }]);
@@ -60,7 +69,7 @@ mock.module("@/db/repositories/agent-sandboxes", () => ({
 }));
 
 mock.module("@/lib/services/characters/characters", () => ({
-  charactersService: { create: createCharacter },
+  charactersService: { createWithReceipt: createCharacter },
 }));
 
 mock.module("@/lib/utils/logger", () => ({

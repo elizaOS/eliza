@@ -161,8 +161,12 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
   });
 
   test("the weekly schedule spends only Android while calls and dispatches retain iOS", () => {
-    expect(androidJob?.if).toBeUndefined();
-    expect(iosJob?.if).toContain("github.event_name != 'schedule'");
+    expect(androidJob?.if).toBe(
+      "github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'",
+    );
+    expect(iosJob?.if).toBe(
+      "github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')",
+    );
     expect(workflowReadme).toContain(
       "scheduled runs do not allocate the macOS/iOS job",
     );
@@ -227,7 +231,9 @@ describe("device-e2e workflow trigger reaches both bundle producers (#19640)", (
 
   test("the iOS job invokes ios-e2e.mjs with --output inside the artifact root", () => {
     const job = requireJob(iosJob, "ios-simulator-bundle");
-    expect(job.if).toBe("github.event_name != 'schedule'");
+    expect(job.if).toBe(
+      "github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'ios')",
+    );
     expect(String(job["runs-on"])).toMatch(/^macos-/);
     const runner = findStep(
       job,

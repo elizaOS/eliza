@@ -1,12 +1,13 @@
 /**
- * eliza.app landing page: a single-viewport, personal-feeling lander.
+ * eliza.app landing page: a single-viewport, social-agent lander.
  *
  * The first action opens a native message handler where supported and copies
  * the number elsewhere; account and app setup stay out of the way until someone
- * wants the richer companion experience. The phone demo stays within the
- * immediately available product: bounded conversation memory.
- * It is decorative and intentionally English-only. Reduced motion shows its
- * settled intro, which keeps screenshots deterministic.
+ * wants the richer companion experience. The phone demo shows Eliza inside a
+ * group conversation. Advanced examples name the connected source, room scope,
+ * or permission behind them instead of implying silent external access. It is
+ * decorative and intentionally English-only. Reduced motion shows its settled
+ * first room while keeping the five-room contract in the DOM.
  */
 
 import {
@@ -22,16 +23,20 @@ import {
   useRef,
   useState,
 } from "react";
+import { LandingDemoCardBubble } from "@/components/landing-demo-card";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
   ELIZA_PHONE_NUMBER,
+  openOrCopyElizaCall,
   openOrCopyElizaMessage,
 } from "@/lib/contact";
 import {
-  LANDING_DEMO_INTRO,
-  LANDING_DEMO_LOOP,
+  LANDING_DEMO_MEMBER_AVATARS,
+  LANDING_DEMO_SCENARIOS,
   type LandingDemoCard,
+  type LandingDemoScenario,
+  type LandingDemoScenarioId,
   type LandingDemoStep,
 } from "@/lib/landing-demo";
 import { resolveHomepageProductNavigation } from "@/lib/product-navigation";
@@ -68,29 +73,110 @@ function DeferredShaderBackground(): React.JSX.Element | null {
 type DemoCard = LandingDemoCard;
 type DemoStep = LandingDemoStep;
 
-type DemoItemInput =
-  | { from: "eliza" | "user"; kind: "text"; text: string }
-  | { from: "eliza"; kind: "card"; card: DemoCard };
+type DemoItem =
+  | {
+      from: "eliza" | "member" | "user";
+      id: number;
+      kind: "text";
+      name?: string;
+      text: string;
+    }
+  | { from: "eliza"; id: number; kind: "card"; card: DemoCard };
 
-type DemoItem = DemoItemInput & { id: number };
+interface DemoSender {
+  avatar: string;
+  name: string;
+}
 
-const DEMO_INTRO: readonly DemoStep[] = LANDING_DEMO_INTRO;
-const DEMO_LOOP: readonly DemoStep[] = LANDING_DEMO_LOOP;
+const DEMO_SENDERS: Record<string, DemoSender> = {
+  Eliza: {
+    avatar: "/brand/logos/logo_white_orangebg.svg",
+    name: "Eliza",
+  },
+  ...Object.fromEntries(
+    Object.entries(LANDING_DEMO_MEMBER_AVATARS).map(([name, avatar]) => [
+      name,
+      { avatar, name },
+    ]),
+  ),
+};
 
-// Keep only the most recent messages in the DOM; the thread stays pinned to
-// the bottom so pruning older rows is invisible.
-const MAX_RENDERED_ITEMS = 14;
-// The phone should read as an ongoing relationship on first paint, especially
-// in a tall mobile viewport. Playback continues from this truthful context
-// instead of leaving either end of the thread visibly empty.
-const INITIAL_RENDERED_ITEMS = 10;
-const USER_KEYSTROKE_MS = 62;
-const ELIZA_TYPING_MS = 2275;
-const BEAT_PAUSE_MS = 1465;
-const PRE_USER_MS = 815;
-const PRE_ELIZA_MS = 815;
-const PRE_CARD_MS = 975;
-const SEND_HOLD_MS = 650;
+const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
+const PREFILLED_INTRO_ITEMS = 4;
+const USER_KEYSTROKE_MS = 34;
+const HUMAN_REPLY_BASE_MS = 950;
+const HUMAN_REPLY_PER_CHARACTER_MS = 16;
+const HUMAN_REPLY_MAX_MS = 1_650;
+const ELIZA_TYPING_MS = 420;
+const BEAT_PAUSE_MS = 270;
+const PRE_USER_MS = 560;
+const PRE_ELIZA_MS = 150;
+const PRE_CARD_MS = 300;
+const SEND_HOLD_MS = 260;
+const SCENARIO_OPENING_PAUSE_MS = 2_000;
+const SCENARIO_READING_HOLD_MS = 6_500;
+const SCENARIO_SWITCH_MS = 450;
+
+type LandingAudioWindow = Window &
+  typeof globalThis & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+
+/** Play a quiet original welcome shimmer after a deliberate user gesture. */
+function playLandingAura(): void {
+  const audioWindow = window as LandingAudioWindow;
+  const AudioContextConstructor =
+    audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+  if (!AudioContextConstructor) return;
+
+  try {
+    const audioContext = new AudioContextConstructor();
+    void audioContext
+      .resume()
+      .then(() => {
+        const startedAt = audioContext.currentTime + 0.015;
+        const master = audioContext.createGain();
+        master.gain.setValueAtTime(0.0001, startedAt);
+        master.gain.exponentialRampToValueAtTime(0.16, startedAt + 0.06);
+        master.gain.exponentialRampToValueAtTime(0.0001, startedAt + 1.55);
+        master.connect(audioContext.destination);
+
+        const notes = [
+          { delay: 0, frequency: 293.66, type: "sine" },
+          { delay: 0.08, frequency: 440, type: "sine" },
+          { delay: 0.17, frequency: 554.37, type: "triangle" },
+          { delay: 0.27, frequency: 659.25, type: "sine" },
+        ] as const;
+
+        for (const note of notes) {
+          const oscillator = audioContext.createOscillator();
+          const envelope = audioContext.createGain();
+          const noteStart = startedAt + note.delay;
+          oscillator.type = note.type;
+          oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+          envelope.gain.setValueAtTime(0.0001, noteStart);
+          envelope.gain.exponentialRampToValueAtTime(0.32, noteStart + 0.05);
+          envelope.gain.exponentialRampToValueAtTime(0.0001, noteStart + 1.05);
+          oscillator.connect(envelope);
+          envelope.connect(master);
+          oscillator.start(noteStart);
+          oscillator.stop(noteStart + 1.1);
+        }
+
+        window.setTimeout(() => void audioContext.close(), 1_750);
+      })
+      .catch(() => void audioContext.close());
+  } catch {
+    // Audio is decorative. Unsupported or blocked audio must never affect UX.
+  }
+}
+
+function humanReplyDelay(text: string): number {
+  return Math.min(
+    HUMAN_REPLY_MAX_MS,
+    HUMAN_REPLY_BASE_MS + text.length * HUMAN_REPLY_PER_CHARACTER_MS,
+  );
+}
 
 const LOCAL_CLOCK_FORMATTER = new Intl.DateTimeFormat(undefined, {
   hour: "numeric",
@@ -106,55 +192,72 @@ function localClock(date: Date, includeDayPeriod: boolean): string {
     .trim();
 }
 
-function settledIntroItems(): DemoItem[] {
-  return DEMO_INTRO.map((step, index) =>
+function scenarioItems(
+  scenario: LandingDemoScenario,
+  scenarioIndex: number,
+): DemoItem[] {
+  return scenario.steps.map((step, index) =>
     step.kind === "card"
-      ? { id: index, from: "eliza", kind: "card", card: step.card }
-      : { id: index, from: step.kind, kind: "text", text: step.text },
+      ? {
+          id: scenarioIndex * 100 + index,
+          from: "eliza",
+          kind: "card",
+          card: step.card,
+        }
+      : {
+          id: scenarioIndex * 100 + index,
+          from: step.kind,
+          kind: "text",
+          name: step.kind === "member" ? step.name : undefined,
+          text: step.text,
+        },
   );
 }
 
-function DemoCardBubble({ card }: { card: DemoCard }) {
+function senderForItem(item: DemoItem | undefined): DemoSender | null {
+  if (!item || item.from === "user") return null;
+  if (item.from === "eliza") {
+    return DEMO_SENDERS.Eliza;
+  }
+  return item.name ? (DEMO_SENDERS[item.name] ?? null) : null;
+}
+
+function sameSender(a: DemoItem | undefined, b: DemoItem | undefined): boolean {
+  const first = senderForItem(a);
+  const second = senderForItem(b);
+  return first !== null && second !== null && first.name === second.name;
+}
+
+function DemoProfilePhoto({ sender }: { sender: DemoSender }) {
   return (
-    <div className="landing-demo-card">
-      <span className="landing-demo-card-label">{card.label}</span>
-      <strong>{card.title}</strong>
-      {card.rows.map((row) => (
-        <span className="landing-demo-card-row" key={row}>
-          {row}
-        </span>
-      ))}
-      {card.status ? (
-        <span className="landing-demo-card-status">
-          <svg
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m3 8.3 3 3L13 4.7" />
-          </svg>
-          {card.status}
-        </span>
-      ) : null}
-    </div>
+    <img
+      className={`landing-message-avatar landing-message-avatar--${sender.name.toLowerCase()}`}
+      src={sender.avatar}
+      alt=""
+      width={192}
+      height={192}
+    />
   );
 }
 
 function PhoneMockup() {
   const t = useT();
   const [clock, setClock] = useState(() => new Date());
+  const [scenarioIndex, setScenarioIndex] = useState(0);
   const [items, setItems] = useState<DemoItem[]>(() =>
-    settledIntroItems().slice(0, INITIAL_RENDERED_ITEMS),
+    scenarioItems(DEMO_SCENARIOS[0], 0).slice(0, PREFILLED_INTRO_ITEMS),
   );
-  const [phase, setPhase] = useState<"intro" | "looping" | "settled">("intro");
-  const [elizaTyping, setElizaTyping] = useState(false);
+  const [phase, setPhase] = useState<"playing" | "settled" | "switching">(
+    "playing",
+  );
+  const [visitedScenarioIds, setVisitedScenarioIds] = useState<
+    LandingDemoScenarioId[]
+  >([DEMO_SCENARIOS[0].id]);
+  const [cycle, setCycle] = useState(0);
+  const [typingSenders, setTypingSenders] = useState<DemoSender[]>([]);
   const [composerText, setComposerText] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
-  const nextIdRef = useRef(DEMO_INTRO.length);
+  const scenario = DEMO_SCENARIOS[scenarioIndex];
 
   useEffect(() => {
     const interval = window.setInterval(() => setClock(new Date()), 30_000);
@@ -163,7 +266,8 @@ function PhoneMockup() {
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setItems(settledIntroItems());
+      setItems(scenarioItems(DEMO_SCENARIOS[0], 0));
+      setVisitedScenarioIds(DEMO_SCENARIOS.map(({ id }) => id));
       setPhase("settled");
       return;
     }
@@ -171,18 +275,14 @@ function PhoneMockup() {
     let cancelled = false;
     const sleep = (ms: number) =>
       new Promise<void>((resolve) => setTimeout(resolve, ms));
-    const append = (item: DemoItemInput) => {
-      const id = nextIdRef.current;
-      nextIdRef.current += 1;
-      setItems((prev) => [
-        ...prev.slice(-(MAX_RENDERED_ITEMS - 1)),
-        { ...item, id },
-      ]);
-    };
-
-    const play = async (steps: readonly DemoStep[]) => {
+    const play = async (
+      steps: readonly DemoStep[],
+      activeScenarioIndex: number,
+    ) => {
       for (const [index, step] of steps.entries()) {
         if (cancelled) return;
+        const id = activeScenarioIndex * 100 + PREFILLED_INTRO_ITEMS + index;
+        const nextStep = steps[index + 1];
         if (step.kind === "user") {
           await sleep(PRE_USER_MS);
           for (let i = 1; i <= step.text.length; i++) {
@@ -193,23 +293,56 @@ function PhoneMockup() {
           await sleep(SEND_HOLD_MS);
           if (cancelled) return;
           setComposerText("");
-          append({ from: "user", kind: "text", text: step.text });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "user", kind: "text", text: step.text },
+          ]);
+        } else if (step.kind === "member") {
+          const humanTypers: DemoSender[] = [];
+          const currentSender = DEMO_SENDERS[step.name];
+          const nextSender =
+            nextStep?.kind === "member"
+              ? DEMO_SENDERS[nextStep.name]
+              : undefined;
+          if (currentSender) humanTypers.push(currentSender);
+          if (nextSender && nextSender.name !== currentSender?.name) {
+            humanTypers.push(nextSender);
+          }
+          setTypingSenders(humanTypers);
+          await sleep(humanReplyDelay(step.text));
+          if (cancelled) return;
+          setTypingSenders(nextSender ? [nextSender] : []);
+          setItems((previous) => [
+            ...previous,
+            {
+              id,
+              from: "member",
+              kind: "text",
+              name: step.name,
+              text: step.text,
+            },
+          ]);
         } else if (step.kind === "eliza") {
           await sleep(step.continuation ? 360 : PRE_ELIZA_MS);
+          if (cancelled) return;
           if (!step.continuation) {
-            if (cancelled) return;
-            setElizaTyping(true);
+            setTypingSenders([DEMO_SENDERS.Eliza]);
             await sleep(ELIZA_TYPING_MS);
             if (cancelled) return;
-            setElizaTyping(false);
+            setTypingSenders([]);
           }
-          append({ from: "eliza", kind: "text", text: step.text });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "eliza", kind: "text", text: step.text },
+          ]);
         } else {
           await sleep(PRE_CARD_MS);
           if (cancelled) return;
-          append({ from: "eliza", kind: "card", card: step.card });
+          setItems((previous) => [
+            ...previous,
+            { id, from: "eliza", kind: "card", card: step.card },
+          ]);
         }
-        const nextStep = steps[index + 1];
         await sleep(
           nextStep?.kind === "eliza" && nextStep.continuation
             ? 280
@@ -219,11 +352,40 @@ function PhoneMockup() {
     };
 
     (async () => {
-      await play(DEMO_INTRO.slice(INITIAL_RENDERED_ITEMS));
-      if (cancelled) return;
-      setPhase("looping");
+      let completedCycles = 0;
       while (!cancelled) {
-        await play(DEMO_LOOP);
+        for (const [index, nextScenario] of DEMO_SCENARIOS.entries()) {
+          const firstRoom = completedCycles === 0 && index === 0;
+          if (!firstRoom) {
+            setPhase("switching");
+            setTypingSenders([]);
+            setComposerText("");
+            await sleep(SCENARIO_SWITCH_MS);
+            if (cancelled) return;
+            setScenarioIndex(index);
+            setItems(
+              scenarioItems(nextScenario, index).slice(
+                0,
+                PREFILLED_INTRO_ITEMS,
+              ),
+            );
+            setVisitedScenarioIds((previous) =>
+              previous.includes(nextScenario.id)
+                ? previous
+                : [...previous, nextScenario.id],
+            );
+            setPhase("playing");
+          }
+          await sleep(SCENARIO_OPENING_PAUSE_MS);
+          if (cancelled) return;
+          await play(nextScenario.steps.slice(PREFILLED_INTRO_ITEMS), index);
+          if (cancelled) return;
+          setPhase("settled");
+          await sleep(SCENARIO_READING_HOLD_MS);
+          if (cancelled) return;
+        }
+        completedCycles += 1;
+        setCycle(completedCycles);
       }
     })();
 
@@ -240,13 +402,27 @@ function PhoneMockup() {
     thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
     // composerText opens/closes the keyboard, which changes the thread's
     // height; re-pin so the newest message stays visible.
-  }, [items, elizaTyping, composerText]);
+  }, [items, typingSenders, composerText]);
+
+  const typingSenderKind =
+    typingSenders.length === 1 &&
+    typingSenders[0]?.name === DEMO_SENDERS.Eliza.name
+      ? "eliza"
+      : "member";
+  const typingSenderNames = typingSenders.map(({ name }) => name).join(" and ");
+  const typingAccessibilityLabel = `${typingSenderNames} ${typingSenders.length === 1 ? "is" : "are"} typing`;
 
   return (
     <div
       className="landing-iphone"
       data-demo-phase={phase}
       data-demo-messages={items.length}
+      data-demo-scenario={scenario.id}
+      data-demo-scenario-index={scenarioIndex + 1}
+      data-demo-scenarios={DEMO_SCENARIOS.length}
+      data-demo-visited={visitedScenarioIds.join(",")}
+      data-demo-cycle={cycle}
+      data-demo-typing={typingSenders.map(({ name }) => name).join(",")}
     >
       <div className="landing-iphone-screen">
         <div className="landing-phone-top">
@@ -282,17 +458,46 @@ function PhoneMockup() {
               </svg>
             </span>
           </div>
-          <div className="landing-phone-header">
-            <span className="landing-phone-contact">
-              <img
-                className="landing-phone-avatar"
-                src="/brand/logos/logo_white_orangebg.svg"
-                alt=""
-                width={423}
-                height={423}
-              />
-              <span className="landing-phone-name">
-                Eliza
+          <div className="landing-phone-header landing-phone-header--group">
+            <span className="sr-only">
+              {`Illustrative ${scenario.label.toLowerCase()} group conversation in ${scenario.roomName} with ${scenario.members.join(", ")}, and Eliza`}
+            </span>
+            <span className="landing-phone-back" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m15 19-7-7 7-7" />
+              </svg>
+            </span>
+            <span className="landing-phone-contact landing-phone-contact--group">
+              <span className="landing-group-avatars" aria-hidden="true">
+                {scenario.members.slice(0, 3).map((member) => (
+                  <img
+                    key={member}
+                    className="landing-group-avatar"
+                    src={DEMO_SENDERS[member].avatar}
+                    alt=""
+                  />
+                ))}
+                <img
+                  className="landing-group-avatar"
+                  src={DEMO_SENDERS.Eliza.avatar}
+                  alt=""
+                  width={423}
+                  height={423}
+                />
+              </span>
+              <span className="landing-phone-name landing-phone-name--group">
+                <span>
+                  <strong>{scenario.roomName}</strong>
+                  <small>{`${scenario.members.length + 2} people`}</small>
+                </span>
                 <svg
                   viewBox="0 0 24 24"
                   fill="none"
@@ -306,10 +511,24 @@ function PhoneMockup() {
                 </svg>
               </span>
             </span>
+            <span className="landing-phone-video" aria-hidden="true">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.9"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="6" width="12" height="12" rx="3" />
+                <path d="m15 10 5-3v10l-5-3" />
+              </svg>
+            </span>
           </div>
         </div>
         <div
-          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:64px]"
+          className="landing-phone-thread scroll-fade scroll-fade-[1.6rem] [--scroll-fade-reveal:96px]"
           ref={threadRef}
         >
           <div className="landing-thread-preamble">
@@ -317,25 +536,68 @@ function PhoneMockup() {
               Today {localClock(clock, true)}
             </span>
           </div>
-          {items.map((item) =>
-            item.kind === "card" ? (
-              <div key={item.id} className="landing-bubble-card">
-                <DemoCardBubble card={item.card} />
-              </div>
-            ) : (
-              <p
+          {items.map((item, index) => {
+            const sender = senderForItem(item);
+            const showAuthor =
+              sender !== null && !sameSender(items[index - 1], item);
+            const showAvatar =
+              sender !== null && !sameSender(item, items[index + 1]);
+            return (
+              <div
                 key={item.id}
-                className={`landing-bubble landing-bubble--${item.from}`}
+                data-demo-item="true"
+                className={`landing-message landing-message--${item.from}${item.kind === "card" ? " landing-message--card" : ""}`}
               >
-                {item.text}
-              </p>
-            ),
-          )}
-          {elizaTyping ? (
-            <div className="landing-bubble landing-bubble--eliza landing-typing">
-              <span />
-              <span />
-              <span />
+                {sender ? (
+                  <span className="landing-message-avatar-slot">
+                    {showAvatar ? <DemoProfilePhoto sender={sender} /> : null}
+                  </span>
+                ) : null}
+                <div className="landing-message-body">
+                  {showAuthor ? (
+                    <span className="landing-message-author">
+                      {sender.name}
+                    </span>
+                  ) : null}
+                  {item.kind === "card" ? (
+                    <div className="landing-bubble-card">
+                      <LandingDemoCardBubble card={item.card} />
+                    </div>
+                  ) : (
+                    <p
+                      className={`landing-bubble landing-bubble--${item.from}`}
+                    >
+                      {item.text}
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {typingSenders.length > 0 ? (
+            <div
+              className={`landing-message landing-message--${typingSenderKind} landing-message--typing${typingSenders.length > 1 ? " landing-message--typing-multiple" : ""}`}
+              data-demo-typing-indicator={typingSenderNames}
+            >
+              <span className="landing-message-avatar-slot">
+                {typingSenders.map((sender) => (
+                  <DemoProfilePhoto key={sender.name} sender={sender} />
+                ))}
+              </span>
+              <div className="landing-message-body">
+                <span className="landing-message-author">
+                  {typingSenderNames}
+                </span>
+                <div
+                  className={`landing-bubble landing-bubble--${typingSenderKind} landing-typing`}
+                  aria-label={typingAccessibilityLabel}
+                  role="status"
+                >
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
+                  <span aria-hidden="true" />
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -523,12 +785,14 @@ function ContactSheet({
   open,
   onClose,
   onText,
+  onCall,
   accountHref,
   accountLabel,
 }: {
   open: boolean;
   onClose: () => void;
   onText: () => void;
+  onCall: () => void;
   accountHref: string;
   accountLabel: string;
 }) {
@@ -577,7 +841,7 @@ function ContactSheet({
               defaultValue: "Text Eliza on iMessage",
             })}
           </button>
-          <a className="landing-sheet-row" href={`tel:${ELIZA_PHONE_NUMBER}`}>
+          <button type="button" className="landing-sheet-row" onClick={onCall}>
             <svg
               viewBox="0 0 24 24"
               fill="currentColor"
@@ -589,7 +853,7 @@ function ContactSheet({
             {t("homepage_eliza.landing.channelPhone", {
               defaultValue: "Call Eliza",
             })}
-          </a>
+          </button>
           <a
             className="landing-sheet-row"
             href={buildElizaTelegramHref()}
@@ -642,12 +906,17 @@ function ContactSheet({
 }
 
 const SESSION_STORAGE_KEY = "eliza_app_session";
+const COPY_CONFIRMATION_MS = 2_200;
+const HANDOFF_RECOVERY_MS = 5_000;
 
 export default function LandingPage() {
   const t = useT();
   const [phoneCopyState, setPhoneCopyState] = useState<
     "idle" | "handoff" | "copied" | "error"
   >("idle");
+  const [contactHandoff, setContactHandoff] = useState<"message" | "call">(
+    "message",
+  );
   const phoneCopyOperation = useRef(0);
   const browserWindow = typeof window === "undefined" ? null : window;
   const signedIn =
@@ -657,10 +926,29 @@ export default function LandingPage() {
     browserWindow?.location.hostname ?? "",
   );
   const [contactSheetOpen, setContactSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const dismissAfter =
+      phoneCopyState === "copied"
+        ? COPY_CONFIRMATION_MS
+        : phoneCopyState === "handoff"
+          ? HANDOFF_RECOVERY_MS
+          : null;
+    if (dismissAfter === null) return;
+    const timeout = window.setTimeout(
+      () => setPhoneCopyState("idle"),
+      dismissAfter,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [phoneCopyState]);
+
   const channels = [
     {
       key: "telegram",
       href: buildElizaTelegramHref(),
+      shortLabel: t("homepage_eliza.getStarted.btnTelegram", {
+        defaultValue: "Telegram",
+      }),
       label: t("homepage_eliza.landing.channelTelegram", {
         defaultValue: "Message Eliza on Telegram",
       }),
@@ -669,6 +957,9 @@ export default function LandingPage() {
     {
       key: "discord",
       href: buildElizaDiscordHref(),
+      shortLabel: t("homepage_eliza.getStarted.btnDiscord", {
+        defaultValue: "Discord",
+      }),
       label: t("homepage_eliza.landing.channelDiscord", {
         defaultValue: "Message Eliza on Discord",
       }),
@@ -678,8 +969,21 @@ export default function LandingPage() {
 
   const handleMessageEliza = async () => {
     const operation = ++phoneCopyOperation.current;
+    setContactHandoff("message");
     try {
       const outcome = await openOrCopyElizaMessage(window);
+      if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
+    } catch {
+      // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
+      if (operation === phoneCopyOperation.current) setPhoneCopyState("error");
+    }
+  };
+
+  const handleCallEliza = async () => {
+    const operation = ++phoneCopyOperation.current;
+    setContactHandoff("call");
+    try {
+      const outcome = await openOrCopyElizaCall(window);
       if (operation === phoneCopyOperation.current) setPhoneCopyState(outcome);
     } catch {
       // error-policy:J4 Clipboard rejection stays visible as a distinct UI error.
@@ -698,16 +1002,24 @@ export default function LandingPage() {
     }
   };
 
+  const handleOpenContactSheet = () => {
+    setContactSheetOpen(true);
+    playLandingAura();
+  };
+
   const phoneCopyLabel =
     phoneCopyState === "copied"
       ? t("homepage_eliza.landing.phoneCopied", {
           defaultValue: "Copied!",
         })
       : phoneCopyState === "handoff"
-        ? t("homepage_eliza.common.messageHandoff", {
-            defaultValue:
-              "Opening Messages. If nothing happens, copy the number.",
-          })
+        ? contactHandoff === "call"
+          ? t("homepage_eliza.common.callHandoff", {
+              defaultValue: "Phone didn't open?",
+            })
+          : t("homepage_eliza.landing.messageHandoffShort", {
+              defaultValue: "Messages didn't open?",
+            })
         : t("homepage_eliza.landing.phoneCopyFailed", {
             defaultValue: "Couldn't copy",
           });
@@ -767,9 +1079,10 @@ export default function LandingPage() {
                 defaultValue: "Text Eliza",
               })}
             </button>
-            <a
+            <button
+              type="button"
               className="landing-cta landing-cta--white"
-              href={`tel:${ELIZA_PHONE_NUMBER}`}
+              onClick={() => void handleCallEliza()}
             >
               <svg
                 viewBox="0 0 24 24"
@@ -782,7 +1095,7 @@ export default function LandingPage() {
               {t("homepage_eliza.landing.ctaCall", {
                 defaultValue: "Call",
               })}
-            </a>
+            </button>
           </div>
           <div className="landing-secondary-channels">
             {channels.map((channel) => (
@@ -796,6 +1109,7 @@ export default function LandingPage() {
                 rel="noreferrer"
               >
                 {channel.icon}
+                <span>{channel.shortLabel}</span>
               </a>
             ))}
           </div>
@@ -814,9 +1128,12 @@ export default function LandingPage() {
                   type="button"
                   className="landing-copy-notice-action"
                   onClick={() => void handleCopyPhone()}
-                >
-                  {t("homepage_eliza.connected.copyPhoneAria", {
+                  aria-label={t("homepage_eliza.connected.copyPhoneAria", {
                     defaultValue: "Copy phone number",
+                  })}
+                >
+                  {t("homepage_eliza.landing.copyPhoneShort", {
+                    defaultValue: "Copy number",
                   })}
                 </button>
               )}
@@ -827,7 +1144,7 @@ export default function LandingPage() {
         <button
           type="button"
           className="landing-tap-target"
-          onClick={() => setContactSheetOpen(true)}
+          onClick={handleOpenContactSheet}
           aria-label={t("homepage_eliza.landing.contactSheetOpen", {
             defaultValue: "All the ways to reach Eliza",
           })}
@@ -839,6 +1156,10 @@ export default function LandingPage() {
         onText={() => {
           setContactSheetOpen(false);
           void handleMessageEliza();
+        }}
+        onCall={() => {
+          setContactSheetOpen(false);
+          void handleCallEliza();
         }}
         accountHref={
           signedIn

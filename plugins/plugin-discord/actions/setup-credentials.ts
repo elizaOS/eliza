@@ -1,7 +1,9 @@
 /**
  * Credential preset definitions and loader for the connector `/setup` flow.
  * Describes the fields each credential preset requires and reads their values
- * from disk.
+ * from disk. Preset `validate` probes honor `SETUP_CREDENTIAL_FETCH_TIMEOUT_MS`
+ * so a hung GitHub / Vercel / Cloudflare / Anthropic / OpenAI / fal.ai hop
+ * cannot stall `/setup`.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -26,6 +28,16 @@ export interface CredentialField {
 
 const SAFE_PRESET_NAME_RE = /^[A-Za-z0-9_-]+$/;
 const presets = new Map<string, CredentialPreset>();
+
+/** Bound for untrusted credential-probe HTTP so `/setup` cannot hang forever. */
+export const SETUP_CREDENTIAL_FETCH_TIMEOUT_MS = 15_000;
+
+function probeFetch(input: string, init: RequestInit): Promise<Response> {
+	return fetch(input, {
+		...init,
+		signal: AbortSignal.timeout(SETUP_CREDENTIAL_FETCH_TIMEOUT_MS),
+	});
+}
 
 function getCredentialsDir(): string {
 	const configured = process.env.CREDENTIALS_DIR?.trim();
@@ -69,7 +81,7 @@ registerPreset({
 		"Create a fine-grained PAT at the link above. Give it the repository permissions you need.",
 	async validate(credentials) {
 		try {
-			const response = await fetch("https://api.github.com/user", {
+			const response = await probeFetch("https://api.github.com/user", {
 				headers: {
 					Authorization: `Bearer ${credentials.token}`,
 					Accept: "application/vnd.github+json",
@@ -87,6 +99,7 @@ registerPreset({
 				identity: data.login ? `@${data.login}` : "verified",
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -103,7 +116,7 @@ registerPreset({
 	helpText: "Create a token at the link above. Full Account scope works best.",
 	async validate(credentials) {
 		try {
-			const response = await fetch("https://api.vercel.com/v9/projects", {
+			const response = await probeFetch("https://api.vercel.com/v9/projects", {
 				headers: { Authorization: `Bearer ${credentials.token}` },
 			});
 			if (!response.ok) {
@@ -120,6 +133,7 @@ registerPreset({
 				identity: `${data.projects?.length ?? 0} project(s) accessible`,
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -140,7 +154,7 @@ registerPreset({
 		'Go to Cloudflare > Profile > API Tokens > "Global API Key". You will also need your account email.',
 	async validate(credentials) {
 		try {
-			const response = await fetch(
+			const response = await probeFetch(
 				"https://api.cloudflare.com/client/v4/zones",
 				{
 					headers: {
@@ -166,6 +180,7 @@ registerPreset({
 						: "verified",
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -183,19 +198,22 @@ registerPreset({
 	async validate(credentials) {
 		try {
 			// @duplicate-component-audit-allow: credential probe validates the key; response content is ignored.
-			const response = await fetch("https://api.anthropic.com/v1/messages", {
-				method: "POST",
-				headers: {
-					"x-api-key": credentials.apiKey,
-					"anthropic-version": "2023-06-01",
-					"Content-Type": "application/json",
+			const response = await probeFetch(
+				"https://api.anthropic.com/v1/messages",
+				{
+					method: "POST",
+					headers: {
+						"x-api-key": credentials.apiKey,
+						"anthropic-version": "2023-06-01",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						model: "claude-3-5-haiku-20241022",
+						max_tokens: 1,
+						messages: [{ role: "user", content: "hi" }],
+					}),
 				},
-				body: JSON.stringify({
-					model: "claude-3-5-haiku-20241022",
-					max_tokens: 1,
-					messages: [{ role: "user", content: "hi" }],
-				}),
-			});
+			);
 			if (response.ok || response.status === 429) {
 				return { valid: true, identity: "key verified" };
 			}
@@ -204,6 +222,7 @@ registerPreset({
 				error: `Anthropic returned ${response.status}`,
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -220,7 +239,7 @@ registerPreset({
 	helpText: "Create an API key at the OpenAI platform link above.",
 	async validate(credentials) {
 		try {
-			const response = await fetch("https://api.openai.com/v1/models", {
+			const response = await probeFetch("https://api.openai.com/v1/models", {
 				headers: { Authorization: `Bearer ${credentials.apiKey}` },
 			});
 			if (response.ok || response.status === 429) {
@@ -231,6 +250,7 @@ registerPreset({
 				error: `OpenAI returned ${response.status}`,
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),
@@ -247,18 +267,21 @@ registerPreset({
 	helpText: "Generate an API key from your fal.ai dashboard.",
 	async validate(credentials) {
 		try {
-			const response = await fetch("https://rest.fal.run/fal-ai/fast-sdxl", {
-				method: "POST",
-				headers: {
-					Authorization: `Key ${credentials.apiKey}`,
-					"Content-Type": "application/json",
+			const response = await probeFetch(
+				"https://rest.fal.run/fal-ai/fast-sdxl",
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Key ${credentials.apiKey}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						prompt: "test",
+						image_size: { width: 64, height: 64 },
+						num_images: 1,
+					}),
 				},
-				body: JSON.stringify({
-					prompt: "test",
-					image_size: { width: 64, height: 64 },
-					num_images: 1,
-				}),
-			});
+			);
 			if (response.ok || response.status === 422 || response.status === 429) {
 				return { valid: true, identity: "key verified" };
 			}
@@ -267,6 +290,7 @@ registerPreset({
 				error: `fal.ai returned ${response.status}`,
 			};
 		} catch (error) {
+			// error-policy:J1 hung or failed credential probe is invalid, never a hang
 			return {
 				valid: false,
 				error: error instanceof Error ? error.message : String(error),

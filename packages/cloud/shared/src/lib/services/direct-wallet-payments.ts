@@ -1,4 +1,5 @@
 /** Coordinates verified direct-wallet settlement, crediting, invoicing, and durable sweeping. */
+import { ElizaError } from "@elizaos/core";
 import {
   createAssociatedTokenAccountInstruction,
   createTransferCheckedInstruction,
@@ -147,6 +148,8 @@ const NATIVE_SLIPPAGE_BPS = 200;
  * pass verification.
  */
 const MAX_DIRECT_SLIPPAGE_BPS = NATIVE_SLIPPAGE_BPS;
+const CANONICAL_NONNEGATIVE_INTEGER_PATTERN = /^(?:0|[1-9]\d*)$/;
+const CANONICAL_NONNEGATIVE_DECIMAL_PATTERN = /^(?:0|[1-9]\d*)(?:\.\d+)?$/;
 
 /**
  * Thrown when a stored `slippage_bps` metadata value cannot be trusted to
@@ -182,7 +185,12 @@ export class CorruptDirectWalletSlippageError extends Error {
  */
 export function parseDirectWalletSlippageBps(rawValue: unknown): number {
   if (rawValue === undefined || rawValue === null) return 0;
-  const numeric = typeof rawValue === "number" ? rawValue : Number(rawValue);
+  const numeric =
+    typeof rawValue === "number"
+      ? rawValue
+      : typeof rawValue === "string" && CANONICAL_NONNEGATIVE_INTEGER_PATTERN.test(rawValue)
+        ? Number(rawValue)
+        : Number.NaN;
   if (
     !Number.isFinite(numeric) ||
     !Number.isInteger(numeric) ||
@@ -585,6 +593,40 @@ function payerProofTypedDataOf(
   };
 }
 
+export function parseDirectWalletMetadataNumber(params: {
+  paymentId: string;
+  field: string;
+  value: unknown;
+  defaultValue?: number;
+  integer?: boolean;
+  max?: number;
+}): number {
+  const value = params.value ?? params.defaultValue;
+  const canonicalString =
+    typeof value !== "string" ||
+    (params.integer
+      ? CANONICAL_NONNEGATIVE_INTEGER_PATTERN
+      : CANONICAL_NONNEGATIVE_DECIMAL_PATTERN
+    ).test(value);
+  const parsed =
+    canonicalString && (typeof value === "number" || typeof value === "string")
+      ? Number(value)
+      : Number.NaN;
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    (params.integer && !Number.isSafeInteger(parsed)) ||
+    (params.max !== undefined && parsed > params.max)
+  ) {
+    throw new ElizaError("Direct wallet payment has corrupt numeric metadata", {
+      code: "DIRECT_WALLET_CORRUPT_NUMERIC_METADATA",
+      context: { paymentId: params.paymentId, field: params.field },
+      severity: "fatal",
+    });
+  }
+  return parsed;
+}
+
 function directMetadata(payment: CryptoPayment): {
   metadata: Record<string, unknown>;
   network: DirectWalletNetwork;
@@ -634,9 +676,20 @@ function directMetadata(payment: CryptoPayment): {
         ? (rawTokenAddress as Hex)
         : null,
     tokenMint: typeof metadata.token_mint === "string" ? metadata.token_mint : null,
-    tokenDecimals: Number(metadata.token_decimals ?? 0),
+    tokenDecimals: parseDirectWalletMetadataNumber({
+      paymentId: payment.id,
+      field: "token_decimals",
+      value: metadata.token_decimals,
+      integer: true,
+      max: 255,
+    }),
     expectedTokenUnits: BigInt(String(metadata.expected_token_units ?? "0")),
-    bonusCredits: Number(metadata.bonus_credits ?? 0),
+    bonusCredits: parseDirectWalletMetadataNumber({
+      paymentId: payment.id,
+      field: "bonus_credits",
+      value: metadata.bonus_credits,
+      defaultValue: 0,
+    }),
     slippageBps: parseDirectWalletSlippageBps(metadata.slippage_bps),
     payerProofMessage: String(metadata.payer_proof_message ?? ""),
     payerProofTypedData: payerProofTypedDataOf(metadata),
@@ -1746,7 +1799,12 @@ export class DirectWalletPaymentsService {
       blockNumber: payment.block_number,
       expectedAmount: payment.expected_amount,
       creditsToAdd: payment.credits_to_add,
-      bonusCredits: Number(metadata.bonus_credits ?? 0),
+      bonusCredits: parseDirectWalletMetadataNumber({
+        paymentId: payment.id,
+        field: "bonus_credits",
+        value: metadata.bonus_credits,
+        defaultValue: 0,
+      }),
       expiresAt: payment.expires_at.toISOString(),
       confirmedAt: payment.confirmed_at?.toISOString() ?? null,
       explorerUrl,
@@ -2370,7 +2428,14 @@ export class DirectWalletPaymentsService {
           /not found|not yet|pending|TransactionReceiptNotFoundError|could not be found/i.test(msg);
 
         const attempts =
-          Number((metadataOf(payment) as Record<string, unknown>).verify_attempts ?? 0) + 1;
+          parseDirectWalletMetadataNumber({
+            paymentId: payment.id,
+            field: "verify_attempts",
+            value: (metadataOf(payment) as Record<string, unknown>).verify_attempts,
+            defaultValue: 0,
+            integer: true,
+            max: Number.MAX_SAFE_INTEGER - 1,
+          }) + 1;
 
         const bumpVerifyAttempts = () =>
           dbWrite

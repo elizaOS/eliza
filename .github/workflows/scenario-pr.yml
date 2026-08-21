@@ -89,7 +89,7 @@ jobs:
         run: bun run --cwd packages/core build
 
       - name: Scenario runner unit coverage
-        run: bun run --cwd packages/scenario-runner test -- src/executor.test.ts src/runtime-factory.test.ts src/scenario-pr-workflow.test.ts src/__tests__/deterministic-action-coverage.test.ts
+        run: bun run --cwd packages/scenario-runner test:unit -- src/executor.test.ts src/runtime-factory.test.ts src/__tests__/deterministic-action-coverage.test.ts
 
       - name: Real local agent provisioning (no model, no secret)
         run: bun run --cwd packages/app-core test:local-provisioning

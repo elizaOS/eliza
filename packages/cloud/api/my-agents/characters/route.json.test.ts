@@ -1,5 +1,6 @@
 /** Exercises malformed request input with deterministic route collaborators. */
 import { describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
 
 const created = {
   id: "00000000-0000-4000-8000-0000000000ee",
@@ -76,6 +77,30 @@ describe("POST /api/my-agents/characters request validation", () => {
       body: JSON.stringify({ name: "demo" }),
     });
     expect(response.status).toBe(200);
-    expect(create).toHaveBeenCalled();
+    expect(create).toHaveBeenCalledWith(expect.any(Object), {
+      policy: { mode: "metered" },
+    });
+  });
+
+  test("maps the central Cloud-character quota error canonically", async () => {
+    create.mockRejectedValueOnce(
+      new ElizaError("quota", {
+        code: "CLOUD_CHARACTER_QUOTA_EXCEEDED",
+        context: { current: 5, limit: 5 },
+      }),
+    );
+
+    const response = await app.request("/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "capped" }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      code: "agent_quota_exceeded",
+      details: { current: 5, max: 5 },
+    });
   });
 });

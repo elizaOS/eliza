@@ -8,6 +8,9 @@
  *
  * Source of truth is `character.settings.bluebubbles` plus env-var fallbacks
  * (BLUEBUBBLES_SERVER_URL, BLUEBUBBLES_PASSWORD, BLUEBUBBLES_DM_POLICY, ...).
+ * Only the implicit `default` account may inherit owner env / top-level
+ * identity and transport. Named or unrecognized accountIds fail closed: they
+ * cannot inherit the owner's server URL, password, webhook, or auto-start.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
@@ -245,8 +248,9 @@ function getAccountConfig(
  * Resolves a complete BlueBubbles account configuration as a
  * `BlueBubblesConfig` (the shape consumed by the existing service code).
  *
- * Returns `null` if neither account-specific nor base config / env defaults
- * provide a complete (`serverUrl`, `password`) pair.
+ * Returns `null` if neither account-specific nor (for the implicit default
+ * account only) base config / env defaults provide a complete (`serverUrl`,
+ * `password`) pair. Ghost / named accountIds cannot inherit owner credentials.
  */
 export function resolveBlueBubblesAccount(
 	runtime: IAgentRuntime,
@@ -274,44 +278,55 @@ export function resolveBlueBubblesAccount(
 	const accountEnabled = accountConfig.enabled !== false;
 	const enabled = baseEnabled && accountEnabled;
 
+	// Only the implicit default account may inherit owner env / top-level
+	// identity and transport. A ghost or named accountId cannot send as the
+	// owner's BlueBubbles server.
+	const allowOwnerBind = normalizedAccountId === DEFAULT_ACCOUNT_ID;
+
 	const serverUrl =
 		firstNonEmptyString(
 			accountConfig.serverUrl,
-			multiConfig.serverUrl,
-			envServerUrl,
+			allowOwnerBind ? multiConfig.serverUrl : undefined,
+			allowOwnerBind ? envServerUrl : undefined,
 		) ?? "";
 	const password =
 		firstNonEmptyString(
 			accountConfig.password,
-			multiConfig.password,
-			envPassword,
+			allowOwnerBind ? multiConfig.password : undefined,
+			allowOwnerBind ? envPassword : undefined,
 		) ?? "";
 
 	const configured = Boolean(serverUrl && password);
-	const webhookPath =
-		accountConfig.webhookPath ??
-		multiConfig.webhookPath ??
-		getStringSetting(runtime, "BLUEBUBBLES_WEBHOOK_PATH") ??
-		undefined;
-	const autoStartCommand =
-		accountConfig.autoStartCommand ??
-		multiConfig.autoStartCommand ??
-		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND");
-	const autoStartArgs =
-		accountConfig.autoStartArgs ??
-		multiConfig.autoStartArgs ??
-		envAutoStartArgs;
-	const autoStartCwd =
-		accountConfig.autoStartCwd ??
-		multiConfig.autoStartCwd ??
-		getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_CWD");
+	const webhookPath = allowOwnerBind
+		? (accountConfig.webhookPath ??
+			multiConfig.webhookPath ??
+			getStringSetting(runtime, "BLUEBUBBLES_WEBHOOK_PATH") ??
+			undefined)
+		: accountConfig.webhookPath;
+	const autoStartCommand = allowOwnerBind
+		? (accountConfig.autoStartCommand ??
+			multiConfig.autoStartCommand ??
+			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_COMMAND"))
+		: accountConfig.autoStartCommand;
+	const autoStartArgs = allowOwnerBind
+		? (accountConfig.autoStartArgs ??
+			multiConfig.autoStartArgs ??
+			envAutoStartArgs)
+		: accountConfig.autoStartArgs;
+	const autoStartCwd = allowOwnerBind
+		? (accountConfig.autoStartCwd ??
+			multiConfig.autoStartCwd ??
+			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_CWD"))
+		: accountConfig.autoStartCwd;
 	const autoStartWaitMs =
 		accountConfig.autoStartWaitMs ??
-		multiConfig.autoStartWaitMs ??
-		parseNonNegativeInt(
-			getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_WAIT_MS"),
-			15000,
-		);
+		(allowOwnerBind
+			? (multiConfig.autoStartWaitMs ??
+				parseNonNegativeInt(
+					getStringSetting(runtime, "BLUEBUBBLES_AUTOSTART_WAIT_MS"),
+					15000,
+				))
+			: 15000);
 	const dmPolicy =
 		accountConfig.dmPolicy ??
 		multiConfig.dmPolicy ??

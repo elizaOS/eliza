@@ -29,6 +29,34 @@ afterEach(() => {
 });
 
 describe("Anthropic native text plumbing", () => {
+  it("forwards nested __proto__ provider data without changing prototypes", async () => {
+    const generateText = vi.fn(async () => ({
+      text: "ok",
+      finishReason: "stop",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    }));
+    vi.doMock("ai", () => ({ generateText, streamText: vi.fn() }));
+    vi.doMock("../providers/anthropic", () => ({
+      createAnthropicClientWithTopPSupport: () => (modelName: string) => ({ modelId: modelName }),
+    }));
+
+    const { handleTextSmall } = await import("../models/text");
+    const anthropic = Object.fromEntries([["__proto__", { inert: true }]]);
+    await handleTextSmall(createRuntime(), {
+      prompt: "hello",
+      providerOptions: { anthropic },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as {
+      providerOptions: { anthropic: Record<string, unknown> };
+    };
+    expect(Object.getPrototypeOf(call.providerOptions.anthropic)).toBe(Object.prototype);
+    expect(Object.hasOwn(call.providerOptions.anthropic, "__proto__")).toBe(true);
+    expect(
+      Object.getOwnPropertyDescriptor(call.providerOptions.anthropic, "__proto__")?.value
+    ).toEqual({ inert: true });
+  }, 60_000);
+
   it("uses generateText for streaming tool requests so tool-only responses are preserved", async () => {
     const generateText = vi.fn(async () => ({
       text: "",

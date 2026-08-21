@@ -2829,6 +2829,10 @@ export const INVALID_TRACER_PROVIDER = {};
             replacement: path.join(cloudSdkSrcDir, "index.ts"),
           },
           {
+            find: /^@elizaos\/cloud-sdk\/redemption-contract$/,
+            replacement: path.join(cloudSdkSrcDir, "redemption-contract.ts"),
+          },
+          {
             find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
             replacement: path.join(
               cloudSdkSrcDir,
@@ -2977,6 +2981,10 @@ export const INVALID_TRACER_PROVIDER = {};
       // Three.js core + all subpath imports must be pre-bundled together so
       // the optimizer shares a single module identity.
       "three",
+      // The marketing homepage imports the fiber renderer directly. With
+      // noDiscovery enabled, serving it raw exposes scheduler's CommonJS
+      // default import to the browser and breaks the local marketing preview.
+      "@react-three/fiber",
       "three/examples/jsm/controls/OrbitControls.js",
       "three/examples/jsm/libs/meshopt_decoder.module.js",
       "three/examples/jsm/loaders/DRACOLoader.js",

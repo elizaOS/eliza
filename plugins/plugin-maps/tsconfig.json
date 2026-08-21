@@ -6,7 +6,8 @@
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["node"],
+    "types": ["node", "react", "react-dom"],
+    "jsx": "react-jsx",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "declaration": false,
@@ -23,6 +24,13 @@
       "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "vitest.config.ts",
+    "vite.config.views.ts"
+  ],
   "exclude": []
 }

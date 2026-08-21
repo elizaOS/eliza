@@ -357,7 +357,11 @@ export async function processAttachments(
 			let imageUrl = url;
 
 			if (!isRemote) {
-				const res = await fetch(url);
+				// Local media-server hops can hang without a bound — use the same
+				// fail-closed timeout as the remote attachment path so a stalled
+				// local server rejects instead of leaving the
+				// attachment-processing turn pending forever.
+				const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 				if (!res.ok) {
 					throw new Error(`Failed to fetch image: ${res.statusText}`);
 				}
@@ -403,7 +407,9 @@ export async function processAttachments(
 			attachment.contentType === ContentType.DOCUMENT &&
 			!attachment.text
 		) {
-			const res = await fetch(url);
+			// Same fail-closed bound as the image branch: a stalled local
+			// media-server hop must not hang the attachment-processing turn.
+			const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
 			if (!res.ok) {
 				throw new Error(`Failed to fetch document: ${res.statusText}`);
 			}

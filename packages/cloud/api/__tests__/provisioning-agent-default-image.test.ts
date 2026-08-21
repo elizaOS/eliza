@@ -91,6 +91,7 @@ interface CreateAgentTestParams {
   userId: string;
   agentName: string;
   dockerImage: string;
+  maxNonTerminalAgents: number;
 }
 
 /** Extract the first argument of the first `createAgent` call, or null. */
@@ -129,6 +130,9 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
     const call = firstCreateAgentCall();
     expect(call).toBeDefined();
     expect(call!.dockerImage).toBe("ghcr.io/elizaos/eliza:stable");
+    // $10 balance resolves to the existing 100-agent tier. The shared create
+    // authority, not this route's stale preflight, enforces it at insertion.
+    expect(call!.maxNonTerminalAgents).toBe(100);
   });
 
   test("rejects the legacy bare image name (no ghcr.io prefix)", async () => {
@@ -198,6 +202,40 @@ describe("provisioning-agent DEFAULT_DOCKER_IMAGE", () => {
     expect(await res.json()).toMatchObject({ code: "insufficient_credits" });
     // The gate fires BEFORE any dedicated agent is minted/provisioned.
     expect(mockCreateAgent).not.toHaveBeenCalled();
+    expect(mockEnqueueAgentProvision).not.toHaveBeenCalled();
+  });
+
+  test("maps an atomic quota refusal to the canonical 429 envelope", async () => {
+    mockListByOrganization.mockResolvedValue([]);
+    mockCreateAgent.mockClear();
+    mockEnqueueAgentProvision.mockClear();
+    mockCheckAgentCreditGate.mockResolvedValueOnce({
+      allowed: true,
+      balance: 10,
+      error: undefined,
+    });
+    mockCreateAgent.mockRejectedValueOnce(
+      new elizaSandboxActual.AgentQuotaExceededError(100, 100),
+    );
+
+    const response = await app.fetch(
+      new Request("http://localhost/", {
+        method: "POST",
+        headers: { Authorization: "Bearer valid-session-token" },
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect((await response.json()) as unknown).toEqual({
+      success: false,
+      error:
+        "Agent quota exceeded: your organization already has 100 active agents (limit 100). Delete or stop an agent, or add credits to raise the limit.",
+      code: "agent_quota_exceeded",
+      details: {
+        currentAgents: 100,
+        maxAgents: 100,
+      },
+    });
     expect(mockEnqueueAgentProvision).not.toHaveBeenCalled();
   });
 });

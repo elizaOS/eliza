@@ -22,6 +22,17 @@ branch; it does not replace the merge-candidate admission check above.
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
 
+`develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
+Push-triggered develop runs supersede each other during merge waves, so this
+lane runs the repository verify gate on the live develop tip four times a day
+(and on manual dispatch) from a single hosted runner, in a fixed
+never-cancelled concurrency group, and publishes the outcome as a
+`develop-health` commit status on the exact SHA it measured. A missing status
+means no measurement concluded; a red status means develop is actually red —
+the lane exists to keep those two states distinguishable while the fleet is
+saturated.
+[![develop health](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml/badge.svg?branch=develop)](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml)
+
 ## Scheduled security analysis
 
 `codeql.yml` runs JavaScript/TypeScript CodeQL analysis only on its weekly
@@ -85,7 +96,11 @@ Representative examples:
 ## Manual operations
 
 - `live-smoke.yml` is the general credential-backed dispatcher. Its input
-  selects `app`, `scenarios`, `cloud`, `voice`, `dedicated`, or `all`. The
+  selects `app`, `scenarios`, `live-information`, `cloud`, `voice`,
+  `dedicated`, or `all`. The `live-information` route runs the focused current
+  information matrix against the selected OpenAI, Anthropic, or OpenRouter
+  planner with an independent judge requirement, a five-minute per-turn budget,
+  and an always-uploaded evidence bundle. The
   `dedicated` suite owns the managed dedicated staging canary and exact
   stale-canary recovery. Specialized app and voice evidence also flows through
   `app-live-e2e.yml` and `voice-live-e2e.yml`, which run on schedule or

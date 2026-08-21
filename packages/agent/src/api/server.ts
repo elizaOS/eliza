@@ -4662,12 +4662,17 @@ export async function startApiServer(opts?: {
   wireModelRegistrationBroadcast(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
+  state.broadcastWsToClientId = (clientId: string, data: object) =>
+    eventHub.sendToClient(clientId, data);
 
   // View interactions originate outside HTTP requests and share the same event
   // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        state.broadcastWsToClientId ?? null,
+      );
     })
     .catch((err) => {
       logger.error(
@@ -4675,8 +4680,6 @@ export async function startApiServer(opts?: {
       );
     });
 
-  state.broadcastWsToClientId = (clientId: string, data: object) =>
-    eventHub.sendToClient(clientId, data);
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins

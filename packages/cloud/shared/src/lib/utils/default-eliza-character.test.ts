@@ -161,6 +161,8 @@ describe("default Eliza voice", () => {
     for (const name of ["eliza research", "elizaos"]) {
       expect(identity).toContain(name);
     }
+    expect(identity).toContain("san francisco");
+    expect(identity).not.toMatch(/\b(?:shaw|nubs|shad0w)\b/i);
     expect(identity).toContain("github.com/elizaos/eliza");
   });
 

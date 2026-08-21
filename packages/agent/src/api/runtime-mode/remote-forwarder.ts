@@ -51,6 +51,19 @@ export function shouldForwardToRemoteTarget(
   );
 }
 
+/** Build a target URL without allowing request-controlled text to select its origin. */
+export function buildRemoteTargetUrl(
+  requestUrl: string,
+  remoteApiBase: string,
+): URL {
+  const incoming = new URL(requestUrl, "http://controller.invalid");
+  const target = new URL(remoteApiBase);
+  target.pathname = incoming.pathname;
+  target.search = incoming.search;
+  target.hash = "";
+  return target;
+}
+
 // Per RFC 7230 §6.1, hop-by-hop headers MUST NOT be forwarded by an
 // intermediary. Re-using an upstream `Connection: keep-alive` or stale
 // `Transfer-Encoding` against the target's connection corrupts framing.
@@ -131,8 +144,8 @@ export async function forwardRemoteCloudMutation(
     return true;
   }
 
-  const targetUrl = new URL(
-    `${url.pathname}${url.search}`,
+  const targetUrl = buildRemoteTargetUrl(
+    req.url ?? "/",
     snapshot.remoteApiBase,
   );
   // The raw target URL above remains authoritative for compatibility, but any

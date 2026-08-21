@@ -142,6 +142,7 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
     {
       method: "GET",
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
     },
   );
   if (!nonceRes.ok) {
@@ -169,6 +170,7 @@ export async function signInWithSolana(): Promise<SiwsVerifyResponse> {
       message,
       signature: bs58Encode(signatureBytes),
     }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!verifyRes.ok) {
     const detail = await verifyRes.text().catch(() => "");

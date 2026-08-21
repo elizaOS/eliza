@@ -30,6 +30,7 @@
  */
 
 import crypto from "node:crypto";
+import { ElizaError } from "@elizaos/core";
 import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
@@ -61,6 +62,22 @@ const BYPASS_MODELS: ReadonlySet<string> = new Set([
   "eleven_flash_v2_5_realtime",
   "eleven_multilingual_v2_realtime",
 ]);
+
+export function parseTtsCacheByteAggregate(value: unknown): number {
+  const canonicalString = typeof value !== "string" || /^(?:0|[1-9]\d*)$/.test(value);
+  const parsed =
+    canonicalString && (typeof value === "number" || typeof value === "string")
+      ? Number(value)
+      : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new ElizaError("TTS first-line cache returned a corrupt byte aggregate", {
+      code: "TTS_CACHE_CORRUPT_BYTE_AGGREGATE",
+      context: { field: "total_bytes" },
+      severity: "fatal",
+    });
+  }
+  return parsed;
+}
 
 // ---------------------------------------------------------------------------
 // Types — must mirror the local cache's `FirstLineCacheKey` exactly so the
@@ -419,7 +436,7 @@ export class CloudFirstLineCacheService {
       .select({ total: sql<number>`COALESCE(SUM(${ttsFirstLineCache.byteSize}), 0)` })
       .from(ttsFirstLineCache)
       .where(eq(ttsFirstLineCache.scope, scope));
-    const currentBytes = Number(total?.total ?? 0);
+    const currentBytes = parseTtsCacheByteAggregate(total?.total ?? 0);
     if (currentBytes <= this.maxBytesPerScope) return 0;
 
     // Pull the oldest-accessed rows and remove them until we're under budget.

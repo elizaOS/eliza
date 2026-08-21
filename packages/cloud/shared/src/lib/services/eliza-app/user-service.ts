@@ -521,6 +521,33 @@ class ElizaAppUserService {
       throw new Error("Trusted phone transport supplied an invalid phone number");
     }
 
+    // Repeat calls are the dominant voice path. Do not put them behind the
+    // first-contact advisory lock and its repair writes: the identity
+    // projection, canonical phone, verification bit, and active organization
+    // together form a consistency-checked read receipt. Any incomplete or
+    // conflicting shape falls through to the locked repair/create boundary.
+    const existing = await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone);
+    if (
+      existing &&
+      existing.phone_number === normalizedPhone &&
+      existing.phone_verified === true &&
+      existing.is_active &&
+      !existing.deleted_at &&
+      existing.organization?.is_active
+    ) {
+      logger.info("[ElizaAppUserService] Reused phone-first personal account", {
+        userId: existing.id,
+        organizationId: existing.organization.id,
+        phone: `***${normalizedPhone.slice(-4)}`,
+        resolution: "verified-read-fast-path",
+      });
+      return {
+        user: existing,
+        organization: existing.organization,
+        isNew: false,
+      };
+    }
+
     const lastFour = normalizedPhone.slice(-4);
     const displayName = `User ***${lastFour}`;
     const organizationName = `User ***${lastFour}'s Workspace`;

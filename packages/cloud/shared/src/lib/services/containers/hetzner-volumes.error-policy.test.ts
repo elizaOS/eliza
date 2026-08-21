@@ -25,7 +25,9 @@ const VOLUME_ID = 7777;
 let sshExec: ExecFn;
 let mkfsCommands: string[];
 let mountCommands: string[];
+let waitCommands: string[];
 let getVolumeCalls: number;
+let linuxDevice: string;
 
 const fakeApi = {
   getVolume: async (_id: number) => {
@@ -38,7 +40,7 @@ const fakeApi = {
     return {
       id: VOLUME_ID,
       server: HCLOUD_SERVER_ID,
-      linux_device: "/dev/disk/by-id/scsi-0HC_Volume_7777",
+      linux_device: linuxDevice,
       location: { name: "fsn1" },
     };
   },
@@ -87,6 +89,7 @@ function makeExec(blkid: () => Promise<string>): ExecFn {
       mountCommands.push(cmd);
       return "";
     }
+    if (cmd.includes("seq 1 30")) waitCommands.push(cmd);
     // waitScript ([ -b ... ]) and mkdir -p both resolve cleanly.
     return "";
   };
@@ -96,7 +99,9 @@ describe("HetznerVolumeService.attachToNode filesystem probe (#13415)", () => {
   beforeEach(() => {
     mkfsCommands = [];
     mountCommands = [];
+    waitCommands = [];
     getVolumeCalls = 0;
+    linuxDevice = "/dev/disk/by-id/scsi-0HC_Volume_7777";
   });
 
   afterEach(() => {
@@ -143,5 +148,19 @@ describe("HetznerVolumeService.attachToNode filesystem probe (#13415)", () => {
     // The critical assertion: the failed probe did NOT fall through to mkfs.
     expect(mkfsCommands.length).toBe(0);
     expect(mountCommands.length).toBe(0);
+  });
+
+  it("shell-quotes an API-returned device path in the wait diagnostic", async () => {
+    linuxDevice = "/dev/x'; touch /tmp/provider-command-injection; #";
+    sshExec = makeExec(async () => "ext4\n");
+    const svc = new HetznerVolumeService();
+
+    await svc.attachToNode(VOLUME_ID, node, key);
+
+    expect(waitCommands).toHaveLength(1);
+    expect(waitCommands[0]).toContain(
+      `'device /dev/x'"'"'; touch /tmp/provider-command-injection; # did not appear'`,
+    );
+    expect(waitCommands[0]).not.toContain('echo "device');
   });
 });

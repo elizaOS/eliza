@@ -17,6 +17,7 @@ import { MAX_PAYMENT_REQUEST_LEDGER_CENTS } from "@/db/schemas/payment-requests"
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -77,8 +78,6 @@ const ListQuerySchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.use("*", rateLimit(RateLimitPresets.STANDARD));
-
 function paymentContext(value: z.infer<typeof PaymentContextSchema>) {
   return { kind: value } as const;
 }
@@ -97,7 +96,7 @@ function paymentMetadata(input: z.infer<typeof CreatePaymentRequestSchema>) {
   };
 }
 
-app.post("/", async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
@@ -155,7 +154,7 @@ app.post("/", async (c) => {
   }
 });
 
-app.get("/", async (c) => {
+app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 

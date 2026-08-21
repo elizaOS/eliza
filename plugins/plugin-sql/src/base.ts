@@ -2163,6 +2163,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         validDocumentRevision(fragment.metadata),
         sql`${documentRevisionExpression(fragment.metadata)}
           = ${documentRevisionExpression(parent.metadata)}`,
+        // When the parent commits an update attempt token, only fragments
+        // staged by that attempt are readable; concurrent losing attempts
+        // stage the same revision number but a different token.
+        sql`(
+          NOT (${parent.metadata} ? 'revisionAttemptId')
+          OR ${fragment.metadata}->>'revisionAttemptId'
+            = ${parent.metadata}->>'revisionAttemptId'
+        )`,
         documentVisibilityCondition(params, parent.metadata),
       ];
       if (!hasGlobalVisibility) {

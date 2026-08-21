@@ -8,16 +8,16 @@ export const ELIZA_DISCORD_APPLICATION_ID = "1468649258654630063";
 const DEFAULT_WHATSAPP_PHONE_NUMBER = "+14159611510";
 const IMESSAGE_GREETING = "Hey Eliza, what can you do?";
 
-interface MessageNavigator {
+interface ContactNavigator {
   clipboard?: Pick<Clipboard, "writeText">;
   platform?: string;
   userAgent?: string;
   userAgentData?: { platform?: string };
 }
 
-interface MessageWindow {
+interface ContactWindow {
   location: Pick<Location, "href">;
-  navigator: MessageNavigator;
+  navigator: ContactNavigator;
 }
 
 function normalizeWhatsAppNumber(value: string): string | null {
@@ -62,21 +62,45 @@ export function buildElizaSmsHref(message: string = IMESSAGE_GREETING): string {
   return `sms:${ELIZA_PHONE_NUMBER}?&body=${encodeURIComponent(message)}`;
 }
 
-/** Whether this browser runs on a platform with a dependable native SMS handler. */
-export function canOpenElizaSmsLink(navigatorValue: MessageNavigator): boolean {
+export function buildElizaTelHref(): string {
+  return `tel:${ELIZA_PHONE_NUMBER}`;
+}
+
+function canOpenNativeContactLink(navigatorValue: ContactNavigator): boolean {
   const platform =
     navigatorValue.userAgentData?.platform ?? navigatorValue.platform ?? "";
   const browserIdentity = `${platform} ${navigatorValue.userAgent ?? ""}`;
   return /Android|iPhone|iPad|iPod|Mac/i.test(browserIdentity);
 }
 
+/** Whether this browser runs on a platform with a dependable native SMS handler. */
+export function canOpenElizaSmsLink(navigatorValue: ContactNavigator): boolean {
+  return canOpenNativeContactLink(navigatorValue);
+}
+
 /** Open Messages where supported, otherwise copy the sender for manual use. */
 export async function openOrCopyElizaMessage(
-  windowValue: MessageWindow,
+  windowValue: ContactWindow,
   message: string = IMESSAGE_GREETING,
 ): Promise<"handoff" | "copied"> {
   if (canOpenElizaSmsLink(windowValue.navigator)) {
     windowValue.location.href = buildElizaSmsHref(message);
+    return "handoff";
+  }
+
+  if (!windowValue.navigator.clipboard) {
+    throw new Error("Clipboard access is unavailable");
+  }
+  await windowValue.navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
+  return "copied";
+}
+
+/** Open Phone where supported, otherwise copy the number for manual use. */
+export async function openOrCopyElizaCall(
+  windowValue: ContactWindow,
+): Promise<"handoff" | "copied"> {
+  if (canOpenNativeContactLink(windowValue.navigator)) {
+    windowValue.location.href = buildElizaTelHref();
     return "handoff";
   }
 
