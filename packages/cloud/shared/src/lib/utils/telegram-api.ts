@@ -6,6 +6,23 @@
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org";
 
+const TELEGRAM_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Telegram Bot API hop so a hung API cannot pin the caller
+ * indefinitely. A caller-provided abort signal wins.
+ */
+export function telegramApiFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = TELEGRAM_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface TelegramApiResponse<T> {
   ok: boolean;
   result?: T;
@@ -23,7 +40,7 @@ export async function telegramBotApiRequest<T>(
 ): Promise<T> {
   const url = `${TELEGRAM_API_BASE}/bot${botToken}/${method}`;
 
-  const response = await fetch(url, {
+  const response = await telegramApiFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: params ? JSON.stringify(params) : undefined,
@@ -56,7 +73,7 @@ export async function telegramBotApiGet<T>(
     });
   }
 
-  const response = await fetch(url.toString());
+  const response = await telegramApiFetch(url.toString());
   const data = (await response.json()) as TelegramApiResponse<T>;
 
   if (!data.ok) {
