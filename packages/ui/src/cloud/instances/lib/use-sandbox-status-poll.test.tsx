@@ -283,6 +283,24 @@ describe("useSandboxStatusPoll", () => {
     unmount();
   });
 
+  it("reports why a status poll failed instead of leaving the reason blank", async () => {
+    // The !res.ok branch reports `HTTP <status>`, but a rejected request had no
+    // status and previously left `error` null — indistinguishable from a status
+    // that simply has not loaded yet.
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new TypeError("network down"),
+    );
+
+    const { result, unmount } = renderHook(() =>
+      useSandboxStatusPoll("agent-a", { intervalMs: 60_000 }),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.status).not.toBe("running");
+    unmount();
+  });
+
   it("starts polling a replacement agent after the previous agent reached a terminal state", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
