@@ -12,7 +12,10 @@
 
 import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
-import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
+import {
+  registerStewardTokenRemoval,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../first-run/mobile-runtime-mode";
 import { runAsPrivilegedShell } from "../surface-realm-channel";
 import {
@@ -115,11 +118,48 @@ const PROTECTED_STORAGE_KIND = new Map<string, DesktopSecureStoreKind>([
 
 const protectedStorageCache = new Map<string, string>();
 const protectedStorageMutationVersion = new Map<string, number>();
+const protectedStorageMutationTail = new Map<string, Promise<void>>();
 
 function markProtectedStorageMutation(key: string): number {
   const version = (protectedStorageMutationVersion.get(key) ?? 0) + 1;
   protectedStorageMutationVersion.set(key, version);
   return version;
+}
+
+/** Orders native mutations for one logical credential without coupling keys. */
+function serializeProtectedStorageMutation<T>(
+  key: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const predecessor =
+    protectedStorageMutationTail.get(key) ?? Promise.resolve();
+  const result = predecessor.catch(() => undefined).then(operation);
+  const tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  protectedStorageMutationTail.set(key, tail);
+  void tail.then(() => {
+    if (protectedStorageMutationTail.get(key) === tail) {
+      protectedStorageMutationTail.delete(key);
+    }
+  });
+  return result;
+}
+
+function serializedProtectedStoreSet(
+  key: string,
+  value: string,
+): Promise<boolean> {
+  return serializeProtectedStorageMutation(key, () =>
+    protectedStoreSet(key, value),
+  );
+}
+
+function serializedProtectedStoreDelete(key: string): Promise<void> {
+  return serializeProtectedStorageMutation(key, () =>
+    protectedStoreDelete(key),
+  );
 }
 
 function isProtectedStorageHost(): boolean {
@@ -444,7 +484,7 @@ function setupStorageProxy(): void {
       protectedStorageCache.set(key, value);
       originalRemoveItem(key);
       setTimeout(() => {
-        protectedStoreSet(key, value)
+        serializedProtectedStoreSet(key, value)
           .then((stored) => {
             if (!stored) {
               logger.error(
@@ -504,7 +544,7 @@ function setupStorageProxy(): void {
     if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
       const removalVersion = markProtectedStorageMutation(key);
       setTimeout(() => {
-        protectedStoreDelete(key)
+        serializedProtectedStoreDelete(key)
           .then(() => {
             if (protectedStorageMutationVersion.get(key) === removalVersion) {
               protectedStorageCache.delete(key);
@@ -606,7 +646,7 @@ export async function setStorageValue(
     const previousValue = protectedStorageCache.get(key);
     protectedStorageCache.set(key, value);
     try {
-      if (!(await protectedStoreSet(key, value))) {
+      if (!(await serializedProtectedStoreSet(key, value))) {
         throw new Error(`Protected storage rejected write for ${key}`);
       }
     } catch (error) {
@@ -638,7 +678,7 @@ export async function setStorageValue(
 export async function removeStorageValue(key: string): Promise<void> {
   if (isProtectedStorageHost() && PROTECTED_STORAGE_KIND.has(key)) {
     const removalVersion = markProtectedStorageMutation(key);
-    await protectedStoreDelete(key);
+    await serializedProtectedStoreDelete(key);
     if (protectedStorageMutationVersion.get(key) === removalVersion) {
       protectedStorageCache.delete(key);
     }
@@ -665,3 +705,5 @@ export function registerSyncedKey(key: string): void {
 export function isStorageBridgeInitialized(): boolean {
   return initialized;
 }
+
+registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));

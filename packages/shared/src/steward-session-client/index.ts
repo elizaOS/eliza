@@ -29,6 +29,23 @@ export interface StewardSessionChangeDetail {
 
 let sessionEpoch = 0;
 
+type StewardTokenRemoval = () => Promise<void>;
+
+let stewardTokenRemoval: StewardTokenRemoval | null = null;
+
+/** Distinguishes a failed canonical token removal from legacy-key cleanup. */
+export class StewardTokenRemovalError extends Error {
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : "Could not remove the protected Steward token",
+      { cause },
+    );
+    this.name = "StewardTokenRemovalError";
+  }
+}
+
 /** Publish a credential-domain-specific transition without exposing the token. */
 export function dispatchStewardSessionChange(
   state: StewardSessionChangeDetail["state"],
@@ -40,6 +57,20 @@ export function dispatchStewardSessionChange(
       detail: { state, sessionEpoch },
     }),
   );
+}
+
+/**
+ * Installs the host-owned durable removal boundary for the Steward token.
+ * Browser-only consumers fall back to localStorage; native shells register
+ * their awaited secure-store implementation while the storage bridge is live.
+ */
+export function registerStewardTokenRemoval(
+  removal: StewardTokenRemoval,
+): () => void {
+  stewardTokenRemoval = removal;
+  return () => {
+    if (stewardTokenRemoval === removal) stewardTokenRemoval = null;
+  };
 }
 
 /**
@@ -245,9 +276,19 @@ export function writeStoredStewardToken(token: string): void {
  * Once the canonical removal succeeds, invalidation is published even if the
  * legacy cleanup fails; either storage failure remains observable to callers.
  */
-export function clearStoredStewardToken(): void {
+export async function clearStoredStewardToken(): Promise<void> {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+  try {
+    if (stewardTokenRemoval) {
+      await stewardTokenRemoval();
+    } else {
+      window.localStorage.removeItem(STEWARD_TOKEN_KEY);
+    }
+  } catch (error) {
+    // error-policy:J2 callers must distinguish canonical removal failure from
+    // obsolete refresh-key cleanup so they never publish a false logout.
+    throw new StewardTokenRemovalError(error);
+  }
   dispatchStewardSessionChange("cleared");
   window.localStorage.removeItem(STEWARD_REFRESH_TOKEN_KEY);
 }

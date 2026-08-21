@@ -679,7 +679,7 @@ export function useCloudState({
         // resolve without opening a real sign-in, then reload into the same
         // rejected session. Drain only the canonical Cloud credential here;
         // `client` may hold the separate agent bearer needed by the proxy.
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
@@ -826,7 +826,7 @@ export function useCloudState({
       // cannot shadow the device-code credentials in subsequent authed calls
       // (this mirrors what launchStewardLogin would have done before throwing).
       if (readStoredStewardToken()?.trim()) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
       }
 
       // Legacy device-code fallback (retired for Cloud; preserved for the
@@ -1432,7 +1432,11 @@ export function useCloudState({
             }),
           ]);
         }
-
+        // Confirm the protected credential is durably absent before any
+        // signed-out UI or logical account state is published. A denied native
+        // deletion stays in the connected/error path and cannot rehydrate a
+        // token after the UI claimed a successful disconnect.
+        await clearStoredStewardToken();
         setElizaCloudEnabled(false);
         setElizaCloudConnected(false);
         publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
@@ -1463,7 +1467,6 @@ export function useCloudState({
         // persists its session token) and (b) per-agent-profile accessToken
         // copies. Clear both on an explicit disconnect so no usable credential
         // survives at rest / in memory (XSS / same-origin plugin views).
-        clearStoredStewardToken();
         scrubPersistedAgentProfileTokens();
         // The durable cloud-pair API token (localStorage + sessionStorage,
         // written by CloudPairRelay and re-adopted at every boot) is a third

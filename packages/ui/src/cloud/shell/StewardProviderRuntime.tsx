@@ -173,7 +173,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
             });
             lastSyncedToken.current = null;
             wasAuthenticated.current = false;
-            clearStaleStewardSession();
+            await clearStaleStewardSession();
             return;
           }
           // Same stale-proxy guard as the refresh path: a still-valid token that
@@ -203,7 +203,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
           });
           lastSyncedToken.current = null;
           wasAuthenticated.current = false;
-          clearStaleStewardSession();
+          await clearStaleStewardSession();
         })
         .catch((error) => {
           reportRendererDiagnostic({
@@ -268,7 +268,7 @@ function AuthTokenSync({ children }: { children: ReactNode }) {
                 lastSyncedToken.current = null;
                 wasAuthenticated.current = false;
               }
-              clearStaleStewardSession();
+              await clearStaleStewardSession();
             } else {
               reportRendererDiagnostic({
                 scope: "steward.refresh-stale-proxy",

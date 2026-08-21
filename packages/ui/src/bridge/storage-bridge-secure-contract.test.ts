@@ -3,6 +3,11 @@
 /** Exercises native credential migration and fail-closed storage behavior. */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  clearStoredStewardToken,
+  STEWARD_SESSION_CHANGE_EVENT,
+  STEWARD_TOKEN_KEY,
+} from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeStores = vi.hoisted(() => ({
@@ -11,6 +16,9 @@ const nativeStores = vi.hoisted(() => ({
   secureAvailable: true,
   secureSetError: null as null | "rejected" | "thrown",
   secureDeleteError: null as null | "denied" | "unavailable" | "native_error",
+  secureSetWait: null as Promise<void> | null,
+  secureDeleteWait: null as Promise<void> | null,
+  operations: [] as string[],
 }));
 
 vi.mock("@capacitor/core", () => ({
@@ -38,10 +46,6 @@ vi.mock("@elizaos/logger", () => ({
   logger: { error: () => undefined },
 }));
 
-vi.mock("@elizaos/shared/steward-session-client", () => ({
-  STEWARD_TOKEN_KEY: "eliza.cloud.steward-token",
-}));
-
 vi.mock("../first-run/mobile-runtime-mode", () => ({
   MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
 }));
@@ -55,6 +59,8 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
         : { ok: false, error: "not_found" };
     },
     set: async ({ key, value }: { key: string; value: string }) => {
+      nativeStores.operations.push(`set:start:${key}`);
+      await nativeStores.secureSetWait;
       if (!nativeStores.secureAvailable) throw new Error("bridge cold");
       if (nativeStores.secureSetError === "thrown")
         throw new Error("bridge failed");
@@ -62,14 +68,18 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
         return { ok: false, error: "denied" };
       }
       nativeStores.secure.set(key, value);
+      nativeStores.operations.push(`set:done:${key}`);
       return { ok: true };
     },
     remove: async ({ key }: { key: string }) => {
+      nativeStores.operations.push(`delete:start:${key}`);
+      await nativeStores.secureDeleteWait;
       if (!nativeStores.secureAvailable) throw new Error("bridge cold");
       if (nativeStores.secureDeleteError) {
         return { ok: false, error: nativeStores.secureDeleteError };
       }
       const deleted = nativeStores.secure.delete(key);
+      nativeStores.operations.push(`delete:done:${key}`);
       return { ok: true, deleted };
     },
   },
@@ -101,6 +111,9 @@ describe("native protected-storage bridge contract", () => {
     nativeStores.secureAvailable = true;
     nativeStores.secureSetError = null;
     nativeStores.secureDeleteError = null;
+    nativeStores.secureSetWait = null;
+    nativeStores.secureDeleteWait = null;
+    nativeStores.operations.length = 0;
     window.localStorage.clear();
     window.sessionStorage.clear();
   });
@@ -136,7 +149,9 @@ describe("native protected-storage bridge contract", () => {
       branchStart,
       source.indexOf("// Always set in localStorage first", branchStart),
     );
-    expect(protectedBranch).toContain("protectedStoreSet(key, value)");
+    expect(protectedBranch).toContain(
+      "serializedProtectedStoreSet(key, value)",
+    );
     expect(protectedBranch).not.toContain("originalSetItem(key, value)");
   });
 
@@ -226,4 +241,98 @@ describe("native protected-storage bridge contract", () => {
       );
     },
   );
+
+  it("publishes logout only after secure deletion and preserves the restart credential on denial", async () => {
+    const bridge = await import("./storage-bridge");
+    await bridge.setStorageValue(STEWARD_TOKEN_KEY, "durable-steward-token");
+    const transitions: string[] = [];
+    const listener = (event: Event) => {
+      transitions.push((event as CustomEvent<{ state: string }>).detail.state);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    nativeStores.secureDeleteError = "denied";
+
+    try {
+      await expect(clearStoredStewardToken()).rejects.toThrow(
+        "Native protected storage rejected deletion",
+      );
+      expect(transitions).toEqual([]);
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "durable-steward-token",
+      );
+      expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBe(
+        "durable-steward-token",
+      );
+
+      nativeStores.secureDeleteError = null;
+      await clearStoredStewardToken();
+      expect(transitions).toEqual(["cleared"]);
+      expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+      expect(await bridge.getStorageValue(STEWARD_TOKEN_KEY)).toBeNull();
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
+  });
+
+  it("serializes set then delete so a late set cannot resurrect a token", async () => {
+    const bridge = await import("./storage-bridge");
+    let releaseSet: () => void = () => {};
+    nativeStores.secureSetWait = new Promise<void>((resolve) => {
+      releaseSet = resolve;
+    });
+
+    const write = bridge.setStorageValue("eliza.device.auth", "new-token");
+    await vi.waitFor(() => {
+      expect(nativeStores.operations).toContain(
+        "set:start:session.device_auth",
+      );
+    });
+    const removal = bridge.removeStorageValue("eliza.device.auth");
+    expect(nativeStores.operations).not.toContain(
+      "delete:start:session.device_auth",
+    );
+
+    releaseSet();
+    await Promise.all([write, removal]);
+    expect(nativeStores.operations).toEqual([
+      "set:start:session.device_auth",
+      "set:done:session.device_auth",
+      "delete:start:session.device_auth",
+      "delete:done:session.device_auth",
+    ]);
+    expect(await bridge.getStorageValue("eliza.device.auth")).toBeNull();
+  });
+
+  it("serializes delete then set so a late delete cannot erase a new token", async () => {
+    const bridge = await import("./storage-bridge");
+    await bridge.setStorageValue("elizaos:active-server", "old-token");
+    nativeStores.operations.length = 0;
+    let releaseDelete: () => void = () => {};
+    nativeStores.secureDeleteWait = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+
+    const removal = bridge.removeStorageValue("elizaos:active-server");
+    await vi.waitFor(() => {
+      expect(nativeStores.operations).toContain(
+        "delete:start:runtime.active_server",
+      );
+    });
+    const write = bridge.setStorageValue("elizaos:active-server", "new-token");
+    expect(nativeStores.operations).not.toContain(
+      "set:start:runtime.active_server",
+    );
+
+    releaseDelete();
+    await Promise.all([removal, write]);
+    expect(nativeStores.operations).toEqual([
+      "delete:start:runtime.active_server",
+      "delete:done:runtime.active_server",
+      "set:start:runtime.active_server",
+      "set:done:runtime.active_server",
+    ]);
+    expect(await bridge.getStorageValue("elizaos:active-server")).toBe(
+      "new-token",
+    );
+  });
 });

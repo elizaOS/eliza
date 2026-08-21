@@ -606,9 +606,9 @@ export function getCloudAuthToken(client?: ElizaClient): string | null {
   return clientToken || null;
 }
 
-function clearStoredStewardTokenIfCurrent(token: string): void {
+async function clearStoredStewardTokenIfCurrent(token: string): Promise<void> {
   if (readStoredStewardToken()?.trim() !== token) return;
-  clearStoredStewardToken();
+  await clearStoredStewardToken();
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("steward-token-sync"));
   }
@@ -1026,7 +1026,7 @@ async function directCloudRequest<T>(
       { method, url },
     );
     if (res.status === 401) {
-      clearStoredStewardTokenIfCurrent(token);
+      await clearStoredStewardTokenIfCurrent(token);
     }
     const parsed = parseDirectCloudJson(res.data) as T;
     if (!isAcceptableDirectCloudResponse(res.status, parsed)) {
@@ -1050,7 +1050,7 @@ async function directCloudRequest<T>(
     { method, url },
   );
   if (res.status === 401) {
-    clearStoredStewardTokenIfCurrent(token);
+    await clearStoredStewardTokenIfCurrent(token);
   }
   const data = await res.json().catch(async () => ({
     error: await res.text().catch(() => res.statusText),

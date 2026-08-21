@@ -507,7 +507,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   // Refresh failed / timed out. A truly-expired token is a dead credential —
   // drop it so we restore unauthenticated instead of a guaranteed-401 dial.
   if (secs <= 0) {
-    clearStoredStewardToken();
+    await clearStoredStewardToken();
     clearSharedCloudAccountBinding();
     return null;
   }

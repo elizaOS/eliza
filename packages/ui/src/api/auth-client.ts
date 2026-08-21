@@ -362,7 +362,7 @@ export async function authMe(): Promise<AuthMeResult> {
         token = undefined;
       }
       if (!token) {
-        clearStoredStewardToken();
+        await clearStoredStewardToken();
         clearSharedCloudAccountBinding();
       }
     }

@@ -59,7 +59,7 @@ function buildSpyDeps(overrides: Partial<CompleteResetLocalStateDeps> = {}): {
     clearPersistedAvatarIndex: trace("clearPersistedAvatarIndex"),
     setClientBaseUrl: trace("setClientBaseUrl"),
     setClientToken: trace("setClientToken"),
-    clearElizaCloudSessionUi: trace("clearElizaCloudSessionUi"),
+    clearElizaCloudSessionUi: traceAsync("clearElizaCloudSessionUi", undefined),
     markFirstRunReset: trace("markFirstRunReset"),
     resetAvatarSelection: trace("resetAvatarSelection"),
     clearConversationLists: trace("clearConversationLists"),

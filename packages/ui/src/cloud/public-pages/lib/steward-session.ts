@@ -482,7 +482,7 @@ async function clearRejectedCookieSession(): Promise<void> {
       body.code ?? null,
     );
   }
-  clearStoredStewardToken();
+  await clearStoredStewardToken();
 }
 
 /**

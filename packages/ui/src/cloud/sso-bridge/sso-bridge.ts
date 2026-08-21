@@ -626,6 +626,6 @@ export async function signOutFromSsoBridgedHost(
     : // error-policy:J6 best-effort server teardown — the local marker is
       // already set and the local scrub below always runs.
       Promise.resolve(undefined);
-  clearStaleStewardSession();
+  await clearStaleStewardSession();
   await serverLogout;
 }
