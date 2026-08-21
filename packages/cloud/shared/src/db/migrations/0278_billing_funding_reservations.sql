@@ -1,0 +1,37 @@
+CREATE TABLE "billing_funding_reservations" (
+  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE RESTRICT,
+  "logical_operation_id" text NOT NULL,
+  "funding_class" text NOT NULL,
+  "requested_amount" numeric(16,6) NOT NULL,
+  "allowance_amount" numeric(16,6) NOT NULL,
+  "purchased_credit_amount" numeric(16,6) NOT NULL,
+  "allowance_period_id" uuid,
+  "settled_allowance_amount" numeric(16,6) NOT NULL DEFAULT 0.000000,
+  "settled_purchased_credit_amount" numeric(16,6) NOT NULL DEFAULT 0.000000,
+  "refunded_allowance_amount" numeric(16,6) NOT NULL DEFAULT 0.000000,
+  "refunded_purchased_credit_amount" numeric(16,6) NOT NULL DEFAULT 0.000000,
+  "purchased_credit_reservation_transaction_id" uuid,
+  "purchased_credit_settlement_transaction_id" uuid,
+  "purchased_credit_refund_transaction_id" uuid,
+  "status" text NOT NULL DEFAULT 'reserved',
+  "expires_at" timestamptz NOT NULL,
+  "settled_at" timestamptz,
+  "closed_at" timestamptz,
+  "created_at" timestamptz NOT NULL DEFAULT now(),
+  "updated_at" timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT "billing_funding_reservations_allowance_period_tenant_fk" FOREIGN KEY (allowance_period_id, organization_id) REFERENCES subscription_allowance_periods(id, organization_id) ON DELETE RESTRICT,
+  CONSTRAINT "billing_funding_reservations_credit_reserve_tenant_fk" FOREIGN KEY (purchased_credit_reservation_transaction_id, organization_id) REFERENCES credit_transactions(id, organization_id) ON DELETE RESTRICT,
+  CONSTRAINT "billing_funding_reservations_credit_settle_tenant_fk" FOREIGN KEY (purchased_credit_settlement_transaction_id, organization_id) REFERENCES credit_transactions(id, organization_id) ON DELETE RESTRICT,
+  CONSTRAINT "billing_funding_reservations_credit_refund_tenant_fk" FOREIGN KEY (purchased_credit_refund_transaction_id, organization_id) REFERENCES credit_transactions(id, organization_id) ON DELETE RESTRICT,
+  CONSTRAINT "billing_funding_reservations_operation_id_check" CHECK (logical_operation_id ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$'),
+  CONSTRAINT "billing_funding_reservations_status_check" CHECK (status IN ('reserved','settled','partially_refunded','refunded','canceled') AND funding_class IN ('allowance_eligible','cash_only')),
+  CONSTRAINT "billing_funding_reservations_allocation_check" CHECK (requested_amount > 0 AND allowance_amount >= 0 AND purchased_credit_amount >= 0 AND allowance_amount + purchased_credit_amount = requested_amount AND ((allowance_amount = 0 AND allowance_period_id IS NULL) OR (allowance_amount > 0 AND allowance_period_id IS NOT NULL)) AND (funding_class = 'allowance_eligible' OR (funding_class = 'cash_only' AND allowance_amount = 0))),
+  CONSTRAINT "billing_funding_reservations_settlement_amounts_check" CHECK (settled_allowance_amount >= 0 AND settled_purchased_credit_amount >= 0 AND refunded_allowance_amount >= 0 AND refunded_purchased_credit_amount >= 0 AND refunded_allowance_amount <= settled_allowance_amount AND settled_allowance_amount <= allowance_amount AND refunded_purchased_credit_amount <= settled_purchased_credit_amount AND settled_purchased_credit_amount <= purchased_credit_amount),
+  CONSTRAINT "billing_funding_reservations_credit_reference_check" CHECK (((purchased_credit_amount = 0 AND purchased_credit_reservation_transaction_id IS NULL) OR (purchased_credit_amount > 0 AND purchased_credit_reservation_transaction_id IS NOT NULL)) AND ((settled_purchased_credit_amount = 0 AND purchased_credit_settlement_transaction_id IS NULL) OR (settled_purchased_credit_amount > 0 AND purchased_credit_settlement_transaction_id IS NOT NULL)) AND ((refunded_purchased_credit_amount = 0 AND purchased_credit_refund_transaction_id IS NULL) OR (refunded_purchased_credit_amount > 0 AND purchased_credit_refund_transaction_id IS NOT NULL))),
+  CONSTRAINT "billing_funding_reservations_terminal_shape_check" CHECK ((status = 'reserved' AND settled_at IS NULL AND closed_at IS NULL AND settled_allowance_amount = 0 AND settled_purchased_credit_amount = 0 AND refunded_allowance_amount = 0 AND refunded_purchased_credit_amount = 0) OR (status = 'settled' AND settled_at IS NOT NULL AND closed_at IS NULL AND settled_allowance_amount + settled_purchased_credit_amount > 0 AND refunded_allowance_amount = 0 AND refunded_purchased_credit_amount = 0) OR (status = 'partially_refunded' AND settled_at IS NOT NULL AND closed_at IS NULL AND refunded_allowance_amount + refunded_purchased_credit_amount > 0 AND (refunded_allowance_amount < settled_allowance_amount OR refunded_purchased_credit_amount < settled_purchased_credit_amount)) OR (status = 'refunded' AND settled_at IS NOT NULL AND closed_at IS NOT NULL AND refunded_allowance_amount = settled_allowance_amount AND refunded_purchased_credit_amount = settled_purchased_credit_amount AND refunded_allowance_amount + refunded_purchased_credit_amount > 0) OR (status = 'canceled' AND settled_at IS NULL AND closed_at IS NOT NULL AND settled_allowance_amount = 0 AND settled_purchased_credit_amount = 0 AND refunded_allowance_amount = 0 AND refunded_purchased_credit_amount = 0)),
+  CONSTRAINT "billing_funding_reservations_expiry_check" CHECK (expires_at > created_at)
+);
+CREATE UNIQUE INDEX "billing_funding_reservations_id_org_idx" ON "billing_funding_reservations" (id, organization_id);
+CREATE UNIQUE INDEX "billing_funding_reservations_org_operation_idx" ON "billing_funding_reservations" (organization_id, logical_operation_id);
+CREATE INDEX "billing_funding_reservations_org_status_expiry_idx" ON "billing_funding_reservations" (organization_id, status, expires_at);

@@ -124,6 +124,13 @@ export * from "./seo-provider-calls";
 export * from "./seo-requests";
 export * from "./service-pricing";
 // ============================================
+// Subscription Billing Authority
+// ============================================
+export * from "./subscription-allowance";
+export * from "./subscription-authority";
+export * from "./subscription-entitlements";
+export * from "./subscription-funding-reservations";
+// ============================================
 // Token Redemptions (elizaOS payouts)
 // ============================================
 export * from "./token-redemptions";

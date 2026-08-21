@@ -1884,6 +1884,41 @@
       "when": 1792699200000,
       "tag": "0274_agent_billing_run_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 269,
+      "version": "7",
+      "when": 1792785600000,
+      "tag": "0275_subscription_lifecycle_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1792872000000,
+      "tag": "0276_organization_entitlement_projection",
+      "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1792958400000,
+      "tag": "0277_subscription_allowance_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1793044800000,
+      "tag": "0278_billing_funding_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1793131200000,
+      "tag": "0279_subscription_allowance_transactions",
+      "breakpoints": true
     }
   ]
 }
