@@ -75,12 +75,23 @@ const summarizeOutcomesByTypeSince = mock(
   async (): Promise<Array<{ status: string; count: number }>> => [],
 );
 
+const agentSandboxesActual = await import("@/db/repositories/agent-sandboxes");
+const jobsActual = await import("@/db/repositories/jobs");
+
 mock.module("@/db/repositories/agent-sandboxes", () => ({
-  agentSandboxesRepository: { summarizeDedicatedFleet },
+  ...agentSandboxesActual,
+  agentSandboxesRepository: {
+    ...agentSandboxesActual.agentSandboxesRepository,
+    summarizeDedicatedFleet,
+  },
 }));
 
 mock.module("@/db/repositories/jobs", () => ({
-  jobsRepository: { summarizeOutcomesByTypeSince },
+  ...jobsActual,
+  jobsRepository: {
+    ...jobsActual.jobsRepository,
+    summarizeOutcomesByTypeSince,
+  },
 }));
 
 mock.module("@/lib/utils/logger", () => ({
