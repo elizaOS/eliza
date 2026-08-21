@@ -20,7 +20,6 @@ export const BILLING_FUNDING_RESERVATION_STATUSES = [
   "settled",
   "partially_refunded",
   "refunded",
-  "canceled",
 ] as const;
 export type BillingFundingReservationStatus = (typeof BILLING_FUNDING_RESERVATION_STATUSES)[number];
 export const BILLING_FUNDING_CLASSES = ["allowance_eligible", "cash_only"] as const;
@@ -121,7 +120,7 @@ export const billingFundingReservations = pgTable(
     ),
     status_check: check(
       "billing_funding_reservations_status_check",
-      sql`${table.status} IN ('reserved','settled','partially_refunded','refunded','canceled') AND ${table.funding_class} IN ('allowance_eligible','cash_only')`,
+      sql`${table.status} IN ('reserved','settled','partially_refunded','refunded') AND ${table.funding_class} IN ('allowance_eligible','cash_only')`,
     ),
     allocation_check: check(
       "billing_funding_reservations_allocation_check",
@@ -137,7 +136,7 @@ export const billingFundingReservations = pgTable(
     ),
     terminal_shape_check: check(
       "billing_funding_reservations_terminal_shape_check",
-      sql`(${table.status} = 'reserved' AND ${table.settled_at} IS NULL AND ${table.closed_at} IS NULL AND ${table.settled_allowance_amount} = 0 AND ${table.settled_purchased_credit_amount} = 0 AND ${table.refunded_allowance_amount} = 0 AND ${table.refunded_purchased_credit_amount} = 0) OR (${table.status} = 'settled' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NULL AND ${table.settled_allowance_amount} + ${table.settled_purchased_credit_amount} > 0 AND ${table.refunded_allowance_amount} = 0 AND ${table.refunded_purchased_credit_amount} = 0) OR (${table.status} = 'partially_refunded' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NULL AND ${table.refunded_allowance_amount} + ${table.refunded_purchased_credit_amount} > 0 AND (${table.refunded_allowance_amount} < ${table.settled_allowance_amount} OR ${table.refunded_purchased_credit_amount} < ${table.settled_purchased_credit_amount})) OR (${table.status} = 'refunded' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NOT NULL AND ${table.refunded_allowance_amount} = ${table.settled_allowance_amount} AND ${table.refunded_purchased_credit_amount} = ${table.settled_purchased_credit_amount} AND ${table.refunded_allowance_amount} + ${table.refunded_purchased_credit_amount} > 0) OR (${table.status} = 'canceled' AND ${table.settled_at} IS NULL AND ${table.closed_at} IS NOT NULL AND ${table.settled_allowance_amount} = 0 AND ${table.settled_purchased_credit_amount} = 0 AND ${table.refunded_allowance_amount} = 0 AND ${table.refunded_purchased_credit_amount} = 0)`,
+      sql`(${table.status} = 'reserved' AND ${table.settled_at} IS NULL AND ${table.closed_at} IS NULL AND ${table.settled_allowance_amount} = 0 AND ${table.settled_purchased_credit_amount} = 0 AND ${table.refunded_allowance_amount} = 0 AND ${table.refunded_purchased_credit_amount} = 0) OR (${table.status} = 'settled' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NULL AND ${table.settled_allowance_amount} + ${table.settled_purchased_credit_amount} > 0 AND ${table.refunded_allowance_amount} = 0 AND ${table.refunded_purchased_credit_amount} = 0) OR (${table.status} = 'partially_refunded' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NULL AND ${table.refunded_allowance_amount} + ${table.refunded_purchased_credit_amount} > 0 AND (${table.refunded_allowance_amount} < ${table.settled_allowance_amount} OR ${table.refunded_purchased_credit_amount} < ${table.settled_purchased_credit_amount})) OR (${table.status} = 'refunded' AND ${table.settled_at} IS NOT NULL AND ${table.closed_at} IS NOT NULL AND ${table.refunded_allowance_amount} = ${table.settled_allowance_amount} AND ${table.refunded_purchased_credit_amount} = ${table.settled_purchased_credit_amount} AND ${table.refunded_allowance_amount} + ${table.refunded_purchased_credit_amount} > 0)`,
     ),
     expiry_check: check(
       "billing_funding_reservations_expiry_check",

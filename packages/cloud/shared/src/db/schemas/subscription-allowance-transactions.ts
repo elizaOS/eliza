@@ -1,6 +1,7 @@
 /** Defines the append-only audit ledger for subscription allowance mutations. */
 import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   foreignKey,
   index,
@@ -14,6 +15,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { billingFundingReservations } from "./billing-funding-reservations";
+import { billingSubscriptionRevisions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
 import { subscriptionAllowancePeriods } from "./subscription-allowance-periods";
 
@@ -24,6 +26,7 @@ export const SUBSCRIPTION_ALLOWANCE_TRANSACTION_KINDS = [
   "refund",
   "expire",
   "clawback",
+  "grant_adjustment",
   "close",
 ] as const;
 export type SubscriptionAllowanceTransactionKind =
@@ -38,6 +41,11 @@ export const subscriptionAllowanceTransactions = pgTable(
       .references(() => organizations.id, { onDelete: "restrict" }),
     allowance_period_id: uuid("allowance_period_id").notNull(),
     funding_reservation_id: uuid("funding_reservation_id"),
+    source_subscription_id: uuid("source_subscription_id"),
+    source_subscription_revision: bigint("source_subscription_revision", { mode: "number" }),
+    source_invoice_id: text("source_invoice_id"),
+    source_plan_key: text("source_plan_key").$type<"plus_monthly" | "pro_monthly">(),
+    source_catalog_version: text("source_catalog_version"),
     sequence: integer("sequence").notNull(),
     kind: text("kind").$type<SubscriptionAllowanceTransactionKind>().notNull(),
     amount: numeric("amount", { precision: 16, scale: 6 }).notNull(),
@@ -66,6 +74,19 @@ export const subscriptionAllowanceTransactions = pgTable(
       foreignColumns: [billingFundingReservations.id, billingFundingReservations.organization_id],
       name: "subscription_allowance_transactions_reservation_tenant_fk",
     }).onDelete("restrict"),
+    source_revision_tenant_fk: foreignKey({
+      columns: [
+        table.source_subscription_id,
+        table.organization_id,
+        table.source_subscription_revision,
+      ],
+      foreignColumns: [
+        billingSubscriptionRevisions.subscription_id,
+        billingSubscriptionRevisions.organization_id,
+        billingSubscriptionRevisions.revision,
+      ],
+      name: "subscription_allowance_transactions_source_revision_tenant_fk",
+    }).onDelete("restrict"),
     organization_idempotency_unique: uniqueIndex(
       "subscription_allowance_transactions_org_idempotency_idx",
     ).on(table.organization_id, table.idempotency_key),
@@ -75,6 +96,9 @@ export const subscriptionAllowanceTransactions = pgTable(
     one_grant_per_period: uniqueIndex("subscription_allowance_transactions_period_grant_idx")
       .on(table.allowance_period_id)
       .where(sql`${table.kind} = 'grant'`),
+    source_invoice_unique: uniqueIndex("subscription_allowance_transactions_source_invoice_idx")
+      .on(table.source_invoice_id)
+      .where(sql`${table.source_invoice_id} IS NOT NULL`),
     period_occurred_idx: index("subscription_allowance_transactions_period_occurred_idx").on(
       table.allowance_period_id,
       table.occurred_at,
@@ -82,7 +106,7 @@ export const subscriptionAllowanceTransactions = pgTable(
     ),
     kind_check: check(
       "subscription_allowance_transactions_kind_check",
-      sql`${table.kind} IN ('grant','reserve','settle','refund','expire','clawback','close')`,
+      sql`${table.kind} IN ('grant','reserve','settle','refund','expire','clawback','grant_adjustment','close')`,
     ),
     amount_check: check(
       "subscription_allowance_transactions_amount_check",
@@ -94,11 +118,15 @@ export const subscriptionAllowanceTransactions = pgTable(
     ),
     reservation_shape_check: check(
       "subscription_allowance_transactions_reservation_shape_check",
-      sql`(${table.kind} IN ('reserve','settle','refund') AND ${table.funding_reservation_id} IS NOT NULL) OR (${table.kind} IN ('grant','expire','clawback','close') AND ${table.funding_reservation_id} IS NULL)`,
+      sql`(${table.kind} IN ('reserve','settle','refund') AND ${table.funding_reservation_id} IS NOT NULL) OR (${table.kind} IN ('grant','expire','clawback','grant_adjustment','close') AND ${table.funding_reservation_id} IS NULL)`,
+    ),
+    adjustment_source_check: check(
+      "subscription_allowance_transactions_adjustment_source_check",
+      sql`(${table.kind} = 'grant_adjustment' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND ${table.source_invoice_id} ~ '^in_[A-Za-z0-9]+$' AND ${table.source_plan_key} IN ('plus_monthly','pro_monthly') AND length(btrim(${table.source_catalog_version})) > 0) OR (${table.kind} <> 'grant_adjustment' AND ${table.source_subscription_id} IS NULL AND ${table.source_subscription_revision} IS NULL AND ${table.source_invoice_id} IS NULL AND ${table.source_plan_key} IS NULL AND ${table.source_catalog_version} IS NULL)`,
     ),
     snapshot_transition_check: check(
       "subscription_allowance_transactions_snapshot_transition_check",
-      sql`(${table.kind} = 'grant' AND ${table.remaining_before} = 0 AND ${table.remaining_after} = ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'reserve' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'settle' AND ${table.remaining_after} = ${table.remaining_before} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'refund' AND (((${table.remaining_after} = ${table.remaining_before} + ${table.amount}) AND ${table.expired_before} = ${table.expired_after}) OR (${table.remaining_after} = ${table.remaining_before} AND ${table.expired_after} = ${table.expired_before} + ${table.amount})) AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expire' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'clawback' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.clawed_back_after} = ${table.clawed_back_before} + ${table.amount} AND ${table.expired_before} = ${table.expired_after}) OR (${table.kind} = 'close' AND ${table.remaining_after} = ${table.remaining_before} AND ${table.remaining_before} = 0 AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after})`,
+      sql`(${table.kind} = 'grant' AND ${table.remaining_before} = 0 AND ${table.remaining_after} = ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'grant_adjustment' AND ${table.remaining_after} = ${table.remaining_before} + ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'reserve' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'settle' AND ${table.remaining_after} = ${table.remaining_before} AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'refund' AND (((${table.remaining_after} = ${table.remaining_before} + ${table.amount}) AND ${table.expired_before} = ${table.expired_after}) OR (${table.remaining_after} = ${table.remaining_before} AND ${table.expired_after} = ${table.expired_before} + ${table.amount})) AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'expire' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.expired_after} = ${table.expired_before} + ${table.amount} AND ${table.clawed_back_before} = ${table.clawed_back_after}) OR (${table.kind} = 'clawback' AND ${table.remaining_after} = ${table.remaining_before} - ${table.amount} AND ${table.clawed_back_after} = ${table.clawed_back_before} + ${table.amount} AND ${table.expired_before} = ${table.expired_after}) OR (${table.kind} = 'close' AND ${table.remaining_after} = ${table.remaining_before} AND ${table.remaining_before} = 0 AND ${table.expired_before} = ${table.expired_after} AND ${table.clawed_back_before} = ${table.clawed_back_after})`,
     ),
   }),
 );

@@ -10,7 +10,6 @@ import {
   type BillingFundingReservation,
   type BillingFundingReservationStatus,
   billingFundingReservations,
-  type NewBillingFundingReservation,
 } from "../schemas/billing-funding-reservations";
 import { billingSubscriptions } from "../schemas/billing-subscriptions";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -20,10 +19,18 @@ import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-
 export const SUBSCRIPTION_FUNDING_CONFLICT = "SUBSCRIPTION_FUNDING_CONFLICT";
 export const SUBSCRIPTION_FUNDING_NOT_FOUND = "SUBSCRIPTION_FUNDING_NOT_FOUND";
 
-type CreateFundingReservation = Omit<
-  NewBillingFundingReservation,
-  "id" | "created_at" | "updated_at"
-> & { id?: string };
+interface CreateFundingReservation {
+  id?: string;
+  organization_id: string;
+  logical_operation_id: string;
+  funding_class: BillingFundingReservation["funding_class"];
+  requested_amount: string;
+  allowance_amount: string;
+  purchased_credit_amount: string;
+  allowance_period_id: string | null;
+  purchased_credit_reservation_transaction_id: string | null;
+  expires_at: Date;
+}
 
 type FundingTransitionValues =
   | {
@@ -41,12 +48,15 @@ type FundingTransitionValues =
     }
   | {
       status: "refunded";
+      settled_allowance_amount: string;
+      settled_purchased_credit_amount: string;
       refunded_allowance_amount: string;
       refunded_purchased_credit_amount: string;
+      purchased_credit_settlement_transaction_id: string | null;
       purchased_credit_refund_transaction_id: string | null;
+      settled_at: Date;
       closed_at: Date;
-    }
-  | { status: "canceled"; closed_at: Date };
+    };
 
 export interface FundingReservationMutationResult {
   reservation: BillingFundingReservation;
@@ -66,6 +76,7 @@ function exactCreateReplay(
   input: CreateFundingReservation,
 ): boolean {
   return (
+    (input.id == null || row.id === input.id) &&
     row.funding_class === input.funding_class &&
     row.requested_amount === input.requested_amount &&
     row.allowance_amount === input.allowance_amount &&
@@ -94,11 +105,10 @@ function exactTransitionReplay(
 const ALLOWED_FUNDING_TRANSITIONS: Readonly<
   Record<BillingFundingReservationStatus, readonly BillingFundingReservationStatus[]>
 > = {
-  reserved: ["settled", "canceled"],
+  reserved: ["settled", "refunded"],
   settled: ["partially_refunded", "refunded"],
   partially_refunded: ["partially_refunded", "refunded"],
   refunded: [],
-  canceled: [],
 };
 
 export class SubscriptionFundingReservationsRepository {
@@ -150,6 +160,15 @@ export class SubscriptionFundingReservationsRepository {
           context: { organizationId: input.organization_id },
         });
       }
+      if (input.allowance_amount !== "0.000000" || input.allowance_period_id !== null) {
+        fundingConflict(
+          "Allowance-backed funding must use the atomic allowance reservation authority",
+          {
+            organizationId: input.organization_id,
+            logicalOperationId: input.logical_operation_id,
+          },
+        );
+      }
       if (input.allowance_period_id != null) {
         const [periodHint] = await tx
           .select({ subscriptionId: subscriptionAllowancePeriods.subscription_id })
@@ -199,7 +218,18 @@ export class SubscriptionFundingReservationsRepository {
 
       const inserted = await tx
         .insert(billingFundingReservations)
-        .values(input)
+        .values({
+          ...input,
+          status: "reserved",
+          settled_allowance_amount: "0.000000",
+          settled_purchased_credit_amount: "0.000000",
+          refunded_allowance_amount: "0.000000",
+          refunded_purchased_credit_amount: "0.000000",
+          purchased_credit_settlement_transaction_id: null,
+          purchased_credit_refund_transaction_id: null,
+          settled_at: null,
+          closed_at: null,
+        })
         .onConflictDoNothing({
           target: [
             billingFundingReservations.organization_id,

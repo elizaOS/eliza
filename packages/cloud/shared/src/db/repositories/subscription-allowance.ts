@@ -4,7 +4,7 @@
  * subscription authority, and exact idempotent replays never append twice.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../helpers";
 import { billingFundingReservations } from "../schemas/billing-funding-reservations";
 import {
@@ -398,6 +398,47 @@ export class SubscriptionAllowanceRepository {
           expiresAt: period.expires_at.toISOString(),
         });
       }
+      if (input.kind === "grant_adjustment") {
+        if (period.state !== "open" || !beforeExpiry) {
+          allowanceConflict("Allowance can only be adjusted during its open billing period", {
+            periodId,
+            periodState: period.state,
+            expiresAt: period.expires_at.toISOString(),
+          });
+        }
+        const [sourceRevision] = await tx
+          .select()
+          .from(billingSubscriptionRevisions)
+          .where(
+            and(
+              eq(billingSubscriptionRevisions.organization_id, organizationId),
+              eq(billingSubscriptionRevisions.subscription_id, period.subscription_id),
+              eq(billingSubscriptionRevisions.revision, input.source_subscription_revision ?? -1),
+            ),
+          )
+          .limit(1);
+        if (
+          !sourceRevision ||
+          input.source_subscription_id !== period.subscription_id ||
+          sourceRevision.status !== "active" ||
+          sourceRevision.plan_key !== input.source_plan_key ||
+          sourceRevision.catalog_version !== input.source_catalog_version ||
+          sourceRevision.current_period_start.getTime() !== period.period_start.getTime() ||
+          sourceRevision.current_period_end.getTime() !== period.period_end.getTime() ||
+          sourceRevision.revision <= period.subscription_revision ||
+          period.plan_key !== "plus_monthly" ||
+          sourceRevision.plan_key !== "pro_monthly"
+        ) {
+          allowanceConflict(
+            "Allowance adjustment does not match a paid in-period upgrade revision",
+            {
+              organizationId,
+              periodId,
+              sourceSubscriptionRevision: input.source_subscription_revision,
+            },
+          );
+        }
+      }
       if (input.kind === "expire" && (period.state !== "open" || beforeExpiry)) {
         allowanceConflict("Allowance can only expire after its open period ends", {
           periodId,
@@ -467,6 +508,11 @@ export class SubscriptionAllowanceRepository {
       const [updatedPeriod] = await tx
         .update(subscriptionAllowancePeriods)
         .set({
+          ...(input.kind === "grant_adjustment"
+            ? {
+                granted_amount: sql`${subscriptionAllowancePeriods.granted_amount} + ${input.amount}`,
+              }
+            : {}),
           remaining_amount: input.remaining_after,
           expired_amount: input.expired_after,
           clawed_back_amount: input.clawed_back_after,

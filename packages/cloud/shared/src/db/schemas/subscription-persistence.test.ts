@@ -88,6 +88,7 @@ describe("subscription persistence schema", () => {
       "refund",
       "expire",
       "clawback",
+      "grant_adjustment",
       "close",
     ]);
     expect(checkNames(subscriptionAllowancePeriods)).toEqual(
@@ -107,6 +108,11 @@ describe("subscription persistence schema", () => {
         "expired_after",
         "clawed_back_before",
         "clawed_back_after",
+        "source_subscription_id",
+        "source_subscription_revision",
+        "source_invoice_id",
+        "source_plan_key",
+        "source_catalog_version",
       ]),
     );
     expect(checkNames(subscriptionAllowanceTransactions)).toContain(
@@ -121,7 +127,6 @@ describe("subscription persistence schema", () => {
       "settled",
       "partially_refunded",
       "refunded",
-      "canceled",
     ]);
     expect(checkNames(billingFundingReservations)).toEqual(
       expect.arrayContaining([
