@@ -2794,6 +2794,7 @@
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "1.3.14",
         "dotenv": "^17.2.3",
+        "fs-extra": "^11.4.0",
         "google-auth-library": "^10.0.0",
         "jsdom": "^29.0.0",
         "json5": "^2.2.3",

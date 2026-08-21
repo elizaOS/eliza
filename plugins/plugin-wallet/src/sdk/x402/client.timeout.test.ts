@@ -115,7 +115,7 @@ describe("X402Client fetch timeout (real server)", () => {
     const originalTimeout = AbortSignal.timeout.bind(AbortSignal);
     const timeoutSpy = vi
       .spyOn(AbortSignal, "timeout")
-      .mockImplementation(() => originalTimeout(10));
+      .mockImplementation(() => originalTimeout(250));
 
     try {
       const response = await client.fetch(`http://127.0.0.1:${addr.port}/data`);

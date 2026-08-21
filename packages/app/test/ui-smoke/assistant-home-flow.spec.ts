@@ -424,7 +424,9 @@ function assistantComposer(page: Page) {
 }
 
 function assistantMicButton(page: Page) {
-  return page.getByRole("button", { name: /^(talk|voice input)$/i });
+  return page
+    .getByRole("group", { name: "Chat composer" })
+    .getByRole("button", { name: /^(talk|voice input)$/i });
 }
 
 function launcherTile(page: Page, viewId: string) {
