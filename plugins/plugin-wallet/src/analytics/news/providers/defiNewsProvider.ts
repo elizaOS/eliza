@@ -87,6 +87,14 @@ interface SolanaTokenInfoService {
 }
 const DEFI_NEWS_TEXT_LIMIT = 4000;
 
+export function formatDefiNewsText(defiNewsInfo: string): string {
+  return truncateWellFormed(
+    toWellFormedUnicode(`${defiNewsInfo}
+`),
+    DEFI_NEWS_TEXT_LIMIT,
+  );
+}
+
 export const defiNewsProvider: Provider = {
   name: "DEFI_NEWS",
   description:
@@ -211,10 +219,7 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = truncateWellFormed(
-      toWellFormedUnicode(`${defiNewsInfo}\n`),
-      DEFI_NEWS_TEXT_LIMIT,
-    );
+    const text = formatDefiNewsText(defiNewsInfo);
 
     return {
       data,
