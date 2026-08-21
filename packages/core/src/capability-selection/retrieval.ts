@@ -112,11 +112,11 @@ function validateCatalog(catalog: readonly CapabilityCatalogEntry[]): void {
 		}
 		seen.add(entry.capabilityId);
 		if (
-			!Number.isInteger(entry.promptTokenEstimate) ||
+			!Number.isSafeInteger(entry.promptTokenEstimate) ||
 			entry.promptTokenEstimate <= 0
 		) {
 			invalidRetrievalInput(
-				"Capability catalog entry promptTokenEstimate must be a positive integer.",
+				"Capability catalog entry promptTokenEstimate must be a positive safe integer.",
 				{
 					capabilityId: entry.capabilityId,
 					promptTokenEstimate: entry.promptTokenEstimate,
@@ -190,16 +190,25 @@ export function retrieveCapabilities(
 		(sum, entry) => sum + entry.promptTokenEstimate,
 		0,
 	);
+	// Per-entry estimates are safe integers, but their sum can still exceed
+	// the safe range and corrupt the flood metrics; fail closed instead.
+	if (!Number.isSafeInteger(catalogPromptTokenEstimate)) {
+		invalidRetrievalInput(
+			"Capability catalog aggregate promptTokenEstimate exceeds the safe integer range.",
+			{ catalogSize: input.catalog.length },
+		);
+	}
 	const queryTokens = tokenizeCapabilityIntent(input.intentText);
 
 	const scored = input.catalog
 		.map((entry) => ({ entry, ...scoreEntry(entry, queryTokens) }))
 		.filter((candidate) => candidate.score > 0)
-		.sort((a, b) =>
-			b.score !== a.score
-				? b.score - a.score
-				: a.entry.capabilityId.localeCompare(b.entry.capabilityId),
-		)
+		.sort((a, b) => {
+			if (b.score !== a.score) return b.score - a.score;
+			// Code-unit comparison keeps the tie-breaker locale-independent.
+			if (a.entry.capabilityId === b.entry.capabilityId) return 0;
+			return a.entry.capabilityId < b.entry.capabilityId ? -1 : 1;
+		})
 		.slice(0, limit);
 
 	const results: CapabilityRetrievalMatch[] = scored.map(

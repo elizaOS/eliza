@@ -93,6 +93,80 @@ function invalidSelectionInput(
 	});
 }
 
+function isUnitCostMicros(value: number): boolean {
+	return Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * Fail-closed validation of policy, account, and signal facts. Malformed
+ * inputs (unknown risk level, non-finite or negative cost, unparseable
+ * `lastUsedAt`, duplicate capability grants, signals for unknown accounts)
+ * must throw rather than silently disable a policy check or perturb the
+ * documented total order.
+ */
+function validateSelectionFacts(
+	accounts: readonly ConnectedAccount[],
+	policy: AccountSelectionPolicy,
+	signals: readonly AccountSelectionSignal[],
+	signalsById: ReadonlyMap<string, AccountSelectionSignal>,
+): void {
+	if (!CAPABILITY_RISK_LEVELS.includes(policy.maxRiskLevel)) {
+		invalidSelectionInput("Account selection policy maxRiskLevel is invalid.", {
+			maxRiskLevel: policy.maxRiskLevel,
+		});
+	}
+	if (
+		policy.maxUnitCostMicros !== null &&
+		!isUnitCostMicros(policy.maxUnitCostMicros)
+	) {
+		invalidSelectionInput(
+			"Account selection policy maxUnitCostMicros must be a nonnegative safe integer.",
+			{ maxUnitCostMicros: policy.maxUnitCostMicros },
+		);
+	}
+	const accountIds = new Set(accounts.map((account) => account.accountId));
+	for (const signal of signals) {
+		if (!accountIds.has(signal.accountId)) {
+			invalidSelectionInput(
+				"Account selection signal references an unknown accountId.",
+				{ accountId: signal.accountId },
+			);
+		}
+		if (!isUnitCostMicros(signal.unitCostMicros)) {
+			invalidSelectionInput(
+				"Account selection signal unitCostMicros must be a nonnegative safe integer.",
+				{ accountId: signal.accountId, unitCostMicros: signal.unitCostMicros },
+			);
+		}
+	}
+	for (const account of accounts) {
+		if (!signalsById.has(account.accountId)) {
+			invalidSelectionInput(
+				"Every connected account requires a selection signal.",
+				{ accountId: account.accountId },
+			);
+		}
+		if (
+			account.lastUsedAt !== null &&
+			Number.isNaN(Date.parse(account.lastUsedAt))
+		) {
+			invalidSelectionInput(
+				"Connected account lastUsedAt must be a parseable timestamp or null.",
+				{ accountId: account.accountId, lastUsedAt: account.lastUsedAt },
+			);
+		}
+		const capabilityIds = new Set(
+			account.capabilities.map((entry) => entry.capabilityId),
+		);
+		if (capabilityIds.size !== account.capabilities.length) {
+			invalidSelectionInput(
+				"Connected account has a duplicate capability grant.",
+				{ accountId: account.accountId },
+			);
+		}
+	}
+}
+
 const ACCOUNT_STATUS_UNAVAILABILITY: Readonly<
 	Record<string, { code: CapabilityUnavailableCode; retryable: boolean }>
 > = Object.freeze({
@@ -221,7 +295,9 @@ function compareEligible(
 	const bUsed =
 		b.account.lastUsedAt === null ? 0 : Date.parse(b.account.lastUsedAt);
 	if (aUsed !== bUsed) return bUsed - aUsed;
-	return a.account.accountId.localeCompare(b.account.accountId);
+	// Code-unit comparison keeps the accountId tie-breaker locale-independent.
+	if (a.account.accountId === b.account.accountId) return 0;
+	return a.account.accountId < b.account.accountId ? -1 : 1;
 }
 
 /**
@@ -263,16 +339,7 @@ export function selectConnectedAccount(
 			{},
 		);
 	}
-	for (const account of accounts) {
-		if (!signalsById.has(account.accountId)) {
-			invalidSelectionInput(
-				"Every connected account requires a selection signal.",
-				{
-					accountId: account.accountId,
-				},
-			);
-		}
-	}
+	validateSelectionFacts(accounts, policy, signals, signalsById);
 
 	if (intent.requestedAccountId !== null) {
 		const account = accounts.find(

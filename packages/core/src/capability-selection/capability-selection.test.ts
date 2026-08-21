@@ -91,6 +91,21 @@ describe("capability retrieval", () => {
 			}),
 		).toThrowError(ElizaError);
 	});
+
+	it("rejects a catalog whose aggregate token estimate overflows the safe range", () => {
+		const base = CAPABILITY_EVALUATION_CATALOG[0];
+		const huge = (suffix: string) => ({
+			...base,
+			capabilityId: `${base.capabilityId}.${suffix}`,
+			promptTokenEstimate: Number.MAX_SAFE_INTEGER,
+		});
+		expect(() =>
+			retrieveCapabilities({
+				catalog: [huge("a"), huge("b")],
+				intentText: "email",
+			}),
+		).toThrowError(ElizaError);
+	});
 });
 
 describe("deterministic account selection", () => {
@@ -199,6 +214,161 @@ describe("deterministic account selection", () => {
 			code: "needs_scope",
 			retryable: false,
 		});
+	});
+
+	it("fails closed on an invalid policy maxRiskLevel instead of skipping the risk check", () => {
+		expect(() =>
+			selectConnectedAccount(
+				{ ...intent, riskLevel: "R2" },
+				[{ ...baseAccount, accountId: "acct-a" }],
+				{
+					...OPEN_POLICY,
+					maxRiskLevel:
+						"R9" as unknown as AccountSelectionPolicy["maxRiskLevel"],
+				},
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
+	it("rejects NaN, negative, fractional, and unsafe unitCostMicros signals", () => {
+		for (const unitCostMicros of [Number.NaN, -1, 2 ** 53, 0.5]) {
+			expect(() =>
+				selectConnectedAccount(
+					intent,
+					[{ ...baseAccount, accountId: "acct-a" }],
+					OPEN_POLICY,
+					[
+						{
+							accountId: "acct-a",
+							healthy: true,
+							region: "us",
+							unitCostMicros,
+						},
+					],
+				),
+			).toThrowError(ElizaError);
+		}
+	});
+
+	it("rejects an invalid policy maxUnitCostMicros instead of bypassing the ceiling", () => {
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[{ ...baseAccount, accountId: "acct-a" }],
+				{ ...OPEN_POLICY, maxUnitCostMicros: Number.NaN },
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
+	it("rejects an unparseable lastUsedAt timestamp", () => {
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[{ ...baseAccount, accountId: "acct-a", lastUsedAt: "not-a-date" }],
+				OPEN_POLICY,
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
+	it("rejects duplicate capability grants within one account", () => {
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[
+					{
+						...baseAccount,
+						accountId: "acct-a",
+						capabilities: [capability, capability],
+					},
+				],
+				OPEN_POLICY,
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
+	it("rejects a signal referencing an unknown account", () => {
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[{ ...baseAccount, accountId: "acct-a" }],
+				OPEN_POLICY,
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+					{
+						accountId: "acct-ghost",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+
+	it("selects the same account regardless of input order for equal candidates", () => {
+		const accounts = [
+			{ ...baseAccount, accountId: "acct-b" },
+			{ ...baseAccount, accountId: "acct-a" },
+		];
+		const signals = [
+			{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 },
+			{ accountId: "acct-b", healthy: true, region: "us", unitCostMicros: 1 },
+		];
+		const forward = selectConnectedAccount(
+			intent,
+			accounts,
+			OPEN_POLICY,
+			signals,
+		);
+		const reversed = selectConnectedAccount(
+			intent,
+			[...accounts].reverse(),
+			OPEN_POLICY,
+			[...signals].reverse(),
+		);
+		expect(forward.outcome).toBe("selected");
+		expect(reversed.outcome).toBe("selected");
+		if (forward.outcome === "selected" && reversed.outcome === "selected") {
+			expect(forward.account.accountId).toBe("acct-a");
+			expect(reversed.account.accountId).toBe("acct-a");
+		}
 	});
 
 	it("rejects missing signals and duplicate accounts as invalid input", () => {
