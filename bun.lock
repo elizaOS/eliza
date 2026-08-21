@@ -3023,6 +3023,20 @@
         "@elizaos/core": "workspace:*",
       },
     },
+    "plugins/plugin-spotify": {
+      "name": "@elizaos/plugin-spotify",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "vitest": "^4.1.10",
+      },
+    },
     "plugins/plugin-sql": {
       "name": "@elizaos/plugin-sql",
       "version": "2.0.3-beta.7",
@@ -4185,6 +4199,8 @@
     "@elizaos/plugin-signal": ["@elizaos/plugin-signal@workspace:plugins/plugin-signal"],
 
     "@elizaos/plugin-slack": ["@elizaos/plugin-slack@workspace:plugins/plugin-slack"],
+
+    "@elizaos/plugin-spotify": ["@elizaos/plugin-spotify@workspace:plugins/plugin-spotify"],
 
     "@elizaos/plugin-sql": ["@elizaos/plugin-sql@workspace:plugins/plugin-sql"],
 
