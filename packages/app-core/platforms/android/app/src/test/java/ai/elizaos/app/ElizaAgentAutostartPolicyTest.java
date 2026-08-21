@@ -31,6 +31,21 @@ public class ElizaAgentAutostartPolicyTest {
     private static final long RAM_3GB = 3L * (1L << 30);
 
     @Test
+    public void debugApiPortOverrideIsDebugOnly() {
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(true, null, "1"));
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(true, null, "true"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(false, null, "1"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(true, null, "0"));
+    }
+
+    @Test
+    public void inheritedApiPortOverrideRemainsAvailableToOperators() {
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(false, "1", null));
+        assertTrue(ElizaAgentService.shouldExposeAgentApiPort(false, "true", "0"));
+        assertFalse(ElizaAgentService.shouldExposeAgentApiPort(true, "false", null));
+    }
+
+    @Test
     public void brandedDevicesAlwaysStartTheBundledAgent() {
         assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, RAM_12GB));
         assertTrue(ElizaAgentService.shouldAutoStartForRuntimeMode(true, null, RAM_3GB));

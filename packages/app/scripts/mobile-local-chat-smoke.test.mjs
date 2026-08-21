@@ -145,10 +145,13 @@ beforeAll(() => {
       });
 
       if (url.pathname === "/api/health") {
+        return json({ ready: true });
+      }
+      if (url.pathname === "/api/status") {
         uptime += 1;
         return json({
-          ready: true,
-          agentState: "running",
+          state: "running",
+          canRespond: true,
           uptime,
           startup: { attempt: 1 },
         });
@@ -517,8 +520,8 @@ describe("mobile smoke failure states", () => {
       port: 0,
       fetch(request) {
         const url = new URL(request.url);
-        if (url.pathname === "/api/health") {
-          return json({ ready: false, agentState: "starting", uptime: null });
+        if (url.pathname === "/api/status") {
+          return json({ state: "starting", canRespond: false, uptime: null });
         }
         if (url.pathname === "/api/local-inference/hub") {
           return json({ active: { status: "error", error: "model failed" } });
