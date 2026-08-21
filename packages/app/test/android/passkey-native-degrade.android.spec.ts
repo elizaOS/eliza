@@ -30,7 +30,6 @@ const RESET_KEYS = [
 
 interface PasskeyDegradeProbe {
   webauthnCalls: number;
-  openedUrls: string[];
 }
 
 test("native sign-in routes to the external device-code flow with zero WebAuthn invocations", async ({
@@ -70,16 +69,10 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
   // Keep the observations in the Playwright process. Opening the real Custom
   // Tab can destroy the WebView execution context before an in-page probe can
   // be read back.
-  const probe: PasskeyDegradeProbe = { webauthnCalls: 0, openedUrls: [] };
+  const probe: PasskeyDegradeProbe = { webauthnCalls: 0 };
   await page.exposeBinding("__ELIZA_RECORD_WEBAUTHN__", () => {
     probe.webauthnCalls += 1;
   });
-  await page.exposeBinding(
-    "__ELIZA_RECORD_EXTERNAL_URL__",
-    (_source, url: string) => {
-      probe.openedUrls.push(url);
-    },
-  );
 
   const recording = await startAndroidScreenRecord({
     serial: device.serial(),
@@ -94,17 +87,17 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
       timeout: 60_000,
     });
 
-    await expect(page.getByText(/Sign in to Eliza Cloud/i)).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Eliza" })).toBeVisible({
       timeout: 90_000,
     });
+    const signInButton = page.getByRole("button", { name: /^Sign in$/ });
+    await expect(signInButton).toBeVisible();
 
-    // Instrument AFTER boot so the app's own plugin wiring is in place: count
-    // every WebAuthn ceremony and record every external-browser URL, calling
-    // through so the real Chrome custom tab still opens on the recording.
+    // Instrument AFTER boot so the app's own plugin wiring is in place and
+    // count every browser credential ceremony without altering auth routing.
     await page.evaluate(() => {
       const recorder = window as Window & {
         __ELIZA_RECORD_WEBAUTHN__(): Promise<void>;
-        __ELIZA_RECORD_EXTERNAL_URL__(url: string): Promise<void>;
       };
 
       const credentials = navigator.credentials;
@@ -124,35 +117,6 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
           }) as typeof credentials.create;
         }
       }
-
-      const capacitorBrowser = (
-        window as Window & {
-          Capacitor?: {
-            Plugins?: {
-              Browser?: {
-                open(options: { url: string }): Promise<void>;
-              };
-            };
-          };
-        }
-      ).Capacitor?.Plugins?.Browser;
-      if (capacitorBrowser?.open) {
-        const originalOpen = capacitorBrowser.open.bind(capacitorBrowser);
-        capacitorBrowser.open = async (options: { url: string }) => {
-          await recorder.__ELIZA_RECORD_EXTERNAL_URL__(options?.url ?? "");
-          return originalOpen(options);
-        };
-      }
-
-      const originalWindowOpen = window.open.bind(window);
-      window.open = ((
-        url?: string | URL,
-        target?: string,
-        features?: string,
-      ) => {
-        void recorder.__ELIZA_RECORD_EXTERNAL_URL__(String(url ?? ""));
-        return originalWindowOpen(url, target, features);
-      }) as typeof window.open;
     });
 
     const beforePath = path.join(ARTIFACT_DIR, "before-signin-tap.png");
@@ -162,23 +126,32 @@ test("native sign-in routes to the external device-code flow with zero WebAuthn 
       contentType: "image/png",
     });
 
-    await page.getByText(/Sign in to Eliza Cloud/i).click();
+    await device.shell("logcat -c");
+    await signInButton.click();
 
-    // The device-code flow surfaces as an external cli-login URL handed to the
-    // Capacitor Browser plugin (or window.open on engines without it).
+    // The imported Capacitor Browser object is not guaranteed to be the same
+    // object exposed at window.Capacitor.Plugins, so observe the native plugin
+    // dispatch and foreground Custom Tab instead of monkeypatching app code.
     await expect
-      .poll(() => probe.openedUrls, { timeout: 90_000 })
-      .toEqual(
-        expect.arrayContaining([expect.stringContaining("/auth/cli-login")]),
+      .poll(async () => (await device.shell("logcat -d -v brief")).toString(), {
+        timeout: 90_000,
+      })
+      .toMatch(
+        /pluginId: Browser[\s\S]*https:\\?\/\\?\/cloud\.eliza\.app\\?\/auth\\?\/cli-login\?session=[0-9a-f-]{36}/i,
       );
+
+    await expect
+      .poll(
+        async () =>
+          (await device.shell("dumpsys activity activities")).toString(),
+        { timeout: 15_000 },
+      )
+      .toMatch(/com\.android\.chrome|BrowserControllerActivity/);
 
     // Leave the custom tab on-screen briefly so the recording captures it.
     await new Promise((resolve) => setTimeout(resolve, 4_000));
 
     expect(probe.webauthnCalls).toBe(0);
-    expect(
-      probe.openedUrls.some((url) => url.includes("/auth/cli-login")),
-    ).toBe(true);
 
     // The external custom tab now owns the foreground and may have detached
     // the WebView's CDP target, so capture the device framebuffer instead —
