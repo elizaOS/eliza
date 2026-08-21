@@ -73,6 +73,20 @@ export interface TenantContentionSnapshot {
   clusterFreeCapacity: number;
 }
 
+/**
+ * Warm-pool slots the cluster may grant without dipping tenant-schedulable
+ * slack below `pendingTenantJobs + tenantReserveSlots`. Shared by the burst
+ * decision and by the per-create revalidation inside `replenish()`, so both
+ * apply the identical floor to whatever contention reading they hold.
+ */
+export function grantableWarmSlots(
+  contention: TenantContentionSnapshot,
+  policy: WarmPoolPolicy,
+): number {
+  const reservedForTenants = Math.max(0, contention.pendingTenantJobs) + policy.tenantReserveSlots;
+  return Math.max(0, contention.clusterFreeCapacity - reservedForTenants);
+}
+
 export function decideReplenish(
   state: PoolStateSnapshot,
   policy: WarmPoolPolicy,
@@ -86,8 +100,7 @@ export function decideReplenish(
   // Starvation guard: every queued tenant job needs a slot before the pool
   // may take one, and `tenantReserveSlots` stays free on top of that so an
   // arrival between two daemon polls never cold-queues behind warm fill.
-  const reservedForTenants = Math.max(0, contention.pendingTenantJobs) + policy.tenantReserveSlots;
-  const grantableSlots = Math.max(0, contention.clusterFreeCapacity - reservedForTenants);
+  const grantableSlots = grantableWarmSlots(contention, policy);
   const toCreate = Math.min(uncontended, grantableSlots);
 
   let reason: string;
@@ -301,6 +314,7 @@ export interface PoolContainerCreator {
 export interface ReplenishResult {
   decision: ReplenishDecision;
   state: PoolStateSnapshot;
+  /** The last contention reading the burst acted on, not the opening one. */
   contention: TenantContentionSnapshot;
   reconciliation: WarmPoolReconciliationResult;
   created: Array<{ id: string; nodeId: string | null }>;
@@ -422,7 +436,27 @@ export class WarmPoolManager {
     const failed: Array<{ error: string }> = [];
     if (targetDigest) immutableImageReference(image, targetDigest);
 
+    // A single pool create takes tens of seconds, so a burst decided from one
+    // snapshot would stay blind to tenant jobs queued mid-burst for minutes.
+    // Re-read contention before every create after the first and abandon the
+    // remainder the moment the tenant floor stops granting a slot. This
+    // narrows — but does not close — the window: placement itself is still
+    // non-transactional (see `docker-sandbox-provider` create path), so a warm
+    // and a tenant create can still select the same last slot concurrently.
+    let observedContention = contention;
     for (let i = 0; i < decision.toCreate; i++) {
+      if (i > 0) {
+        observedContention = await this.tenantContention();
+        if (grantableWarmSlots(observedContention, this.policy) < 1) {
+          logger.info("[warm-pool] replenish burst yielded to tenant demand mid-flight", {
+            createdSoFar: created.length,
+            plannedCreates: decision.toCreate,
+            pendingTenantJobs: observedContention.pendingTenantJobs,
+            clusterFreeCapacity: observedContention.clusterFreeCapacity,
+          });
+          break;
+        }
+      }
       try {
         const result = targetDigest
           ? await this.creator.createPoolContainer(image, targetDigest)
@@ -446,8 +480,8 @@ export class WarmPoolManager {
       ready: state.readyCount,
       provisioning: state.provisioningCount,
       target: state.targetPoolSize,
-      pendingTenantJobs: contention.pendingTenantJobs,
-      clusterFreeCapacity: contention.clusterFreeCapacity,
+      pendingTenantJobs: observedContention.pendingTenantJobs,
+      clusterFreeCapacity: observedContention.clusterFreeCapacity,
       created: created.length,
       failed: failed.length,
       reconciled: {
@@ -457,7 +491,7 @@ export class WarmPoolManager {
         failed: reconciliation.failed.length,
       },
     });
-    return { decision, state, contention, reconciliation, created, failed };
+    return { decision, state, contention: observedContention, reconciliation, created, failed };
   }
 
   async drainIdle(image: string): Promise<DrainResult> {
