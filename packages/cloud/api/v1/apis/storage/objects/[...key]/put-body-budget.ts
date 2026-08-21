@@ -73,7 +73,11 @@ export async function readRequestBodyWithinBudget(
   const declaredLength = parseTrustworthyContentLength(request);
   if (declaredLength !== null && declaredLength > maxBytes) {
     if (request.body) {
-      cancelBestEffort(request.body, "content-length-precheck", onCancelFailure);
+      cancelBestEffort(
+        request.body,
+        "content-length-precheck",
+        onCancelFailure,
+      );
     }
     return { ok: false, bytes: declaredLength };
   }
