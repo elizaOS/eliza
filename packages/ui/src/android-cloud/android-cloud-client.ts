@@ -52,7 +52,26 @@ export type AndroidCloudLoginPoll =
 export interface AndroidCloudClientOptions {
   cloudApiBase?: string;
   fetchImpl?: typeof fetch;
+  credentialStore?: AndroidCloudCredentialStore;
 }
+
+export interface AndroidCloudCredentialStore {
+  read(): Promise<string | null>;
+  write(token: string): Promise<void>;
+  clear(): Promise<void>;
+}
+
+const browserCredentialStore: AndroidCloudCredentialStore = {
+  async read() {
+    return readStoredStewardToken()?.trim() || null;
+  },
+  async write(token) {
+    writeStoredStewardToken(token);
+  },
+  async clear() {
+    clearStoredStewardToken();
+  },
+};
 
 type JsonRecord = Record<string, unknown>;
 
@@ -140,18 +159,20 @@ export function resolveAndroidCloudChatAuthority(
 export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly credentialStore: AndroidCloudCredentialStore;
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
     this.fetchImpl = options.fetchImpl ?? fetch;
+    this.credentialStore = options.credentialStore ?? browserCredentialStore;
   }
 
-  readToken(): string | null {
-    return readStoredStewardToken()?.trim() || null;
+  async readToken(): Promise<string | null> {
+    return (await this.credentialStore.read())?.trim() || null;
   }
 
   async restoreSession(): Promise<AndroidCloudSession | null> {
-    const token = this.readToken();
+    const token = await this.readToken();
     if (!token) return null;
     const response = await this.fetchImpl(
       `${this.apiBase}/api/v1/eliza/personal`,
@@ -160,7 +181,7 @@ export class AndroidCloudClient {
       },
     );
     if (response.status === 401) {
-      clearStoredStewardToken();
+      await this.credentialStore.clear();
       return null;
     }
     if (!response.ok) {
@@ -255,7 +276,7 @@ export class AndroidCloudClient {
         stringField(data.accessToken) ??
         stringField(data.access_token);
       if (!token) throw new Error("Sign-in completed without a session token.");
-      writeStoredStewardToken(token);
+      await this.credentialStore.write(token);
       return { status: "authenticated", token };
     }
     if (status === "expired" || status === "error") {
@@ -332,7 +353,7 @@ export class AndroidCloudClient {
   }
 
   async signOut(): Promise<void> {
-    const token = this.readToken();
+    const token = await this.readToken();
     try {
       if (token) {
         await this.fetchImpl(`${this.apiBase}/api/auth/logout`, {
@@ -346,7 +367,7 @@ export class AndroidCloudClient {
       // Remote logout is best-effort. Local credential removal is authoritative
       // for this device and must still complete while offline.
     } finally {
-      clearStoredStewardToken();
+      await this.credentialStore.clear();
     }
   }
 

@@ -6105,6 +6105,7 @@ ${cloudBrandUserAgentMarkerLines()}
 
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
+        registerPlugin(ElizaSecureCredentialsPlugin.class);
 
         super.onCreate(savedInstanceState);
 
@@ -6159,6 +6160,136 @@ ${cloudBrandUserAgentMarkerLines()}
             Log.w(TAG, "SystemProperties.get failed for " + key, e);
             return "";
         }
+    }
+}
+`;
+}
+
+/** Android Keystore-backed bearer storage for the minimal Play Cloud shell. */
+export function cloudSafeSecureCredentialsPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import android.util.Base64;
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.security.GeneralSecurityException;
+import java.security.KeyStore;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+
+import org.json.JSONObject;
+
+@CapacitorPlugin(name = "ElizaSecureCredentials")
+public final class ElizaSecureCredentialsPlugin extends Plugin {
+    private static final String ANDROID_KEYSTORE = "AndroidKeyStore";
+    private static final String KEY_ALIAS = "ai.elizaos.app.android_cloud_token_key_v1";
+    private static final String PREFERENCES = "eliza_secure_credentials_v1";
+    private static final String CIPHERTEXT = "steward_token_ciphertext";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_BITS = 128;
+    private static final int MAX_TOKEN_BYTES = 16 * 1024;
+
+    @PluginMethod
+    public synchronized void get(PluginCall call) {
+        String encoded = preferences().getString(CIPHERTEXT, null);
+        if (encoded == null) {
+            JSObject result = new JSObject();
+            result.put("value", JSONObject.NULL);
+            call.resolve(result);
+            return;
+        }
+        try {
+            String[] parts = encoded.split(":", -1);
+            if (parts.length != 2) throw new GeneralSecurityException("invalid ciphertext envelope");
+            byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+            byte[] ciphertext = Base64.decode(parts[1], Base64.NO_WRAP);
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, loadOrCreateKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            String value = new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+            JSObject result = new JSObject();
+            result.put("value", value);
+            call.resolve(result);
+        } catch (GeneralSecurityException | IllegalArgumentException error) {
+            preferences().edit().remove(CIPHERTEXT).apply();
+            call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void set(PluginCall call) {
+        String value = call.getString("value");
+        if (value == null || value.trim().isEmpty()) {
+            call.reject("A non-empty credential is required.", "SECURE_CREDENTIAL_INVALID");
+            return;
+        }
+        byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
+        if (plaintext.length > MAX_TOKEN_BYTES) {
+            call.reject("The credential is too large.", "SECURE_CREDENTIAL_INVALID");
+            return;
+        }
+        try {
+            Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+            cipher.init(Cipher.ENCRYPT_MODE, loadOrCreateKey());
+            String encoded = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP)
+                    + ":"
+                    + Base64.encodeToString(cipher.doFinal(plaintext), Base64.NO_WRAP);
+            if (!preferences().edit().putString(CIPHERTEXT, encoded).commit()) {
+                call.reject("Secure credential storage could not be committed.", "SECURE_CREDENTIAL_UNAVAILABLE");
+                return;
+            }
+            call.resolve();
+        } catch (GeneralSecurityException error) {
+            call.reject("Secure credential storage is unavailable.", "SECURE_CREDENTIAL_UNAVAILABLE", error);
+        }
+    }
+
+    @PluginMethod
+    public synchronized void remove(PluginCall call) {
+        if (!preferences().edit().remove(CIPHERTEXT).commit()) {
+            call.reject("Secure credential storage could not be cleared.", "SECURE_CREDENTIAL_UNAVAILABLE");
+            return;
+        }
+        call.resolve();
+    }
+
+    private SharedPreferences preferences() {
+        return getContext().getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE);
+    }
+
+    private SecretKey loadOrCreateKey() throws GeneralSecurityException {
+        KeyStore keyStore = KeyStore.getInstance(ANDROID_KEYSTORE);
+        try {
+            keyStore.load(null);
+        } catch (IOException error) {
+            throw new GeneralSecurityException("Android Keystore could not be loaded", error);
+        }
+        java.security.Key existing = keyStore.getKey(KEY_ALIAS, null);
+        if (existing instanceof SecretKey) return (SecretKey) existing;
+
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE);
+        generator.init(new KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setRandomizedEncryptionRequired(true)
+                .build());
+        return generator.generateKey();
     }
 }
 `;
@@ -6364,6 +6495,12 @@ function rewriteCloudJavaSources(javaRoots, androidPackage) {
       );
       touched += 1;
     }
+    fs.writeFileSync(
+      path.join(root, "ElizaSecureCredentialsPlugin.java"),
+      cloudSafeSecureCredentialsPluginJava(androidPackage),
+      "utf8",
+    );
+    touched += 1;
     const tasksWorker = path.join(root, "ElizaTasksWorker.java");
     if (fs.existsSync(tasksWorker)) {
       fs.writeFileSync(

@@ -33,4 +33,16 @@ describe("Android Cloud renderer entry", () => {
     expect(source).toContain('parsed.protocol !== "elizaos:"');
     expect(source).not.toMatch(/active-server|apiBase|127\.0\.0\.1|localhost/);
   });
+
+  it("keeps the bearer in Android Keystore-backed storage", () => {
+    const persistedKeys = source.slice(
+      source.indexOf("const CLOUD_PERSISTED_KEYS"),
+      source.indexOf("interface SecureCredentialsPlugin"),
+    );
+    expect(source).toContain('"ElizaSecureCredentials"');
+    expect(source).toContain("credentialStore: androidSecureCredentialStore");
+    expect(persistedKeys).not.toContain("STEWARD_TOKEN_KEY");
+    expect(source).toContain("Preferences.remove({ key: STEWARD_TOKEN_KEY })");
+    expect(source).toContain("localStorage.removeItem(STEWARD_TOKEN_KEY)");
+  });
 });

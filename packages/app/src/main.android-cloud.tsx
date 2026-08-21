@@ -8,7 +8,7 @@
  */
 import { App as CapacitorApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import { StatusBar, Style } from "@capacitor/status-bar";
@@ -19,6 +19,10 @@ import {
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "@elizaos/ui/android-cloud/AndroidCloudApp";
+import {
+  AndroidCloudClient,
+  type AndroidCloudCredentialStore,
+} from "@elizaos/ui/android-cloud/android-cloud-client";
 import { ErrorBoundary } from "@elizaos/ui/components/ui/error-boundary";
 import "@elizaos/ui/styles";
 import React from "react";
@@ -50,10 +54,35 @@ type AndroidCloudWindow = Window & {
 };
 
 const CLOUD_PERSISTED_KEYS = Object.freeze([
-  STEWARD_TOKEN_KEY,
   "eliza:first-run-complete",
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
 ]);
+
+interface SecureCredentialsPlugin {
+  get(): Promise<{ value: string | null }>;
+  set(options: { value: string }): Promise<void>;
+  remove(): Promise<void>;
+}
+
+const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
+  "ElizaSecureCredentials",
+);
+
+const androidSecureCredentialStore: AndroidCloudCredentialStore = {
+  async read() {
+    return (await SecureCredentials.get()).value?.trim() || null;
+  },
+  async write(token) {
+    await SecureCredentials.set({ value: token });
+  },
+  async clear() {
+    await SecureCredentials.remove();
+  },
+};
+
+const androidCloudClient = new AndroidCloudClient({
+  credentialStore: androidSecureCredentialStore,
+});
 
 function logOptionalPluginFailure(plugin: string, error: unknown): void {
   console.warn(
@@ -74,9 +103,24 @@ export async function hydrateAndroidCloudStorage(): Promise<void> {
       if (value !== null) window.localStorage.setItem(key, value);
     } catch (error) {
       logOptionalPluginFailure("Preferences", error);
-      return;
     }
   }
+
+  // One-time migration from the previous sandboxed Preferences/localStorage
+  // token mirror. The credential is written to Android Keystore-backed storage
+  // before both plaintext copies are removed. A secure-store failure aborts
+  // boot instead of silently retaining or downgrading the bearer.
+  const legacyPreference = await Preferences.get({ key: STEWARD_TOKEN_KEY });
+  const legacyToken =
+    legacyPreference.value?.trim() ||
+    window.localStorage.getItem(STEWARD_TOKEN_KEY)?.trim() ||
+    null;
+  const secureToken = await androidSecureCredentialStore.read();
+  if (!secureToken && legacyToken) {
+    await androidSecureCredentialStore.write(legacyToken);
+  }
+  await Preferences.remove({ key: STEWARD_TOKEN_KEY });
+  window.localStorage.removeItem(STEWARD_TOKEN_KEY);
 }
 
 /** Mirrors the same minimal allowlist on backgrounding; no runtime endpoints. */
@@ -310,6 +354,7 @@ export async function bootAndroidCloudApp(): Promise<void> {
     <React.StrictMode>
       <ErrorBoundary>
         <AndroidCloudApp
+          client={androidCloudClient}
           closeExternal={() => Browser.close()}
           openExternal={openExternal}
           voice={androidCloudVoice}

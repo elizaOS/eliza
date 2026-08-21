@@ -144,6 +144,29 @@ describe("AndroidCloudClient", () => {
     expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
   });
 
+  it("uses an injected secure credential store without touching localStorage", async () => {
+    let secureToken: string | null = "secure-token";
+    const credentialStore = {
+      read: vi.fn(async () => secureToken),
+      write: vi.fn(async (token: string) => {
+        secureToken = token;
+      }),
+      clear: vi.fn(async () => {
+        secureToken = null;
+      }),
+    };
+    const client = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValueOnce(json(401, {})),
+    });
+
+    await expect(client.restoreSession()).resolves.toBeNull();
+    expect(credentialStore.read).toHaveBeenCalledOnce();
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(secureToken).toBeNull();
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+  });
+
   it("restores only valid visible user and assistant transcript messages", async () => {
     const client = new AndroidCloudClient({
       fetchImpl: vi.fn<typeof fetch>().mockResolvedValueOnce(
