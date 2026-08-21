@@ -330,9 +330,9 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     cmd: string,
     opts: SandboxCommandRunOptions = {},
   ): Promise<SandboxCommandResult> {
-    const timeout = timeoutSignal(
-      opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs,
-    );
+    const effectiveTimeoutMs =
+      opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs;
+    const timeout = timeoutSignal(effectiveTimeoutMs);
     try {
       const response = await fetch(`${this.apiBase}/v1/processes/run`, {
         method: "POST",
@@ -373,9 +373,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
       };
     } catch (error) {
       if (timeout.timedOut()) {
-        throw createTimeoutError(
-          opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs,
-        );
+        throw createTimeoutError(effectiveTimeoutMs);
       }
       throw error;
     } finally {
