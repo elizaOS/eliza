@@ -26,6 +26,8 @@ import {
   describeUserReference,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
   unwrapUserMessageText,
   userReferenceLogView,
 } from "@elizaos/core";
@@ -3446,7 +3448,23 @@ function extractCalendarGroundedMatchIds(
   return [...new Set(ids)];
 }
 
-function formatCalendarCandidateForGrounding(
+/**
+ * Narrow, exported description clamps so the 240- and 120-code-unit sites are
+ * independently testable through production seams.
+ */
+export function formatCalendarDescriptionForGrounding(
+  description: string,
+): string {
+  return truncateWellFormed(toWellFormedUnicode(description), 240);
+}
+
+export function formatCalendarDescriptionForSearchPreview(
+  description: string,
+): string {
+  return truncateWellFormed(toWellFormedUnicode(description), 120);
+}
+
+export function formatCalendarCandidateForGrounding(
   candidate: RankedCalendarSearchCandidate,
 ): string {
   const attendees = candidate.event.attendees
@@ -3459,7 +3477,7 @@ function formatCalendarCandidateForGrounding(
     `title: ${candidate.event.title}`,
     `startAt: ${candidate.event.startAt}`,
     `location: ${candidate.event.location}`,
-    `description: ${(candidate.event.description).slice(0, 240)}`,
+    `description: ${formatCalendarDescriptionForGrounding(candidate.event.description)}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -3631,7 +3649,9 @@ export function formatCalendarSearchResults(
       lines.push(`  Location: ${event.location}`);
     }
     if (event.description) {
-      lines.push(`  ${event.description.slice(0, 120)}`);
+      lines.push(
+        `  ${formatCalendarDescriptionForSearchPreview(event.description)}`,
+      );
     }
   }
   return lines.join("\n");
