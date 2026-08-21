@@ -283,8 +283,10 @@ export async function generateMigrationSQL(
 
   statements.push(...createTableStatements);
 
-  // Phase 3: add foreign keys after all tables exist, deduplicated by
-  // constraint name to avoid re-adding the same constraint twice.
+  // Collect foreign keys from new tables, but do not emit them until existing
+  // tables have received any new unique constraints or columns they reference.
+  // A new child table can otherwise attempt a composite FK before the parent
+  // table's matching unique constraint exists.
   const uniqueFKs = new Set<string>();
   const dedupedFKStatements: string[] = [];
 
@@ -301,9 +303,7 @@ export async function generateMigrationSQL(
     }
   }
 
-  statements.push(...dedupedFKStatements);
-
-  // Phase 4: table modifications — drops, then column/index/constraint/FK changes.
+  // Phase 3: table modifications — drops, then column/index/constraint changes.
   for (const tableName of diff.tables.deleted) {
     const [schema, name] = tableName.includes(".") ? tableName.split(".") : ["public", tableName];
     statements.push(`DROP TABLE IF EXISTS "${schema}"."${name}" CASCADE;`);
@@ -388,6 +388,10 @@ export async function generateMigrationSQL(
   for (const constraint of diff.checkConstraints.deleted) {
     statements.push(generateDropCheckConstraintSQL(constraint));
   }
+
+  // Phase 4: add foreign keys from newly-created tables only after referenced
+  // existing-table changes above are in place.
+  statements.push(...dedupedFKStatements);
 
   for (const fk of diff.foreignKeys.deleted) {
     statements.push(generateDropForeignKeySQL(fk));
