@@ -3,17 +3,17 @@
  * pr-deterministic lane under the model provider.
  */
 import { ModelType, type Plugin } from "@elizaos/core";
+import {
+  type RuntimeWithScenarioModelFixtures,
+  registerStrictActionRouteFixtures,
+} from "@elizaos/core/testing";
+import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
 import type {
   CapturedAction,
   ScenarioContext,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { generateMediaAction } from "@elizaos/plugin-local-inference/actions/generate-media";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 
 const transparentPngDataUrl =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lbJY7wAAAABJRU5ErkJggg==";
@@ -221,9 +221,6 @@ export default scenario({
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "media"],
   isolation: "shared-runtime",
-  requires: {
-    plugins: ["scenario-deterministic-media-actions"],
-  },
   seed: [
     {
       type: "custom",

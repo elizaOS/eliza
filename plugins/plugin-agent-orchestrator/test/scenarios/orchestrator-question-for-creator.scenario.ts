@@ -201,6 +201,11 @@ function questionScenarioPlugin(): Plugin {
 export default scenario({
   id: "orchestrator-question-for-creator",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Orchestrator routes a blocked sub-agent's question to the task creator's room",
   domain: "agent-orchestrator",

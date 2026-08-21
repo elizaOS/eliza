@@ -261,6 +261,11 @@ function expectMultiDisplayRouting(
 export default scenario({
   id: "deterministic-computeruse-multi-display",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Multi-display click routes to the right display in absolute coords",
   domain: "computeruse",
   tags: [
