@@ -183,6 +183,10 @@ export interface AgentDeleteJobData {
   authorization?: DeleteAuthorization;
   /** Explicit customer/operator acceptance that the current live delta may be lost. */
   stateLossAcknowledged?: boolean;
+  /** First authenticated user who supplied the acknowledgement. */
+  stateLossAcknowledgedByUserId?: string;
+  /** Server timestamp for the first durable acknowledgement. */
+  stateLossAcknowledgedAt?: string;
 }
 
 export interface AgentSuspendJobData {
@@ -322,6 +326,10 @@ export interface AgentDeleteJobResult {
   rowDeleted: boolean;
   /** The caller explicitly accepted loss of uncaptured state for this delete. */
   stateLossAcknowledged?: true;
+  /** Durable actor provenance for the explicit acknowledgement, when known. */
+  stateLossAcknowledgedByUserId?: string;
+  /** Durable server timestamp for the explicit acknowledgement, when known. */
+  stateLossAcknowledgedAt?: string;
   error?: string;
   /** Free (attempt-preserving) requeues this delete has spent waiting for a
    *  transient pre-deletion capture. Persisted on the job result because
@@ -544,6 +552,21 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     typeof value === "object" && value !== null
       ? (value as { stateLossAcknowledged?: unknown }).stateLossAcknowledged
       : undefined;
+  const acknowledgedByUserId =
+    typeof value === "object" && value !== null
+      ? (value as { stateLossAcknowledgedByUserId?: unknown }).stateLossAcknowledgedByUserId
+      : undefined;
+  const acknowledgedAt =
+    typeof value === "object" && value !== null
+      ? (value as { stateLossAcknowledgedAt?: unknown }).stateLossAcknowledgedAt
+      : undefined;
+  const provenanceAbsent = acknowledgedByUserId === undefined && acknowledgedAt === undefined;
+  const provenanceComplete =
+    typeof acknowledgedByUserId === "string" &&
+    acknowledgedByUserId.length > 0 &&
+    typeof acknowledgedAt === "string" &&
+    Number.isFinite(Date.parse(acknowledgedAt)) &&
+    new Date(acknowledgedAt).toISOString() === acknowledgedAt;
   return (
     typeof value === "object" &&
     value !== null &&
@@ -553,8 +576,59 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     (authorization === undefined ||
       authorization === "user_request" ||
       authorization === "billing_request") &&
-    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean")
+    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean") &&
+    (stateLossAcknowledged === true ? provenanceAbsent || provenanceComplete : provenanceAbsent)
   );
+}
+
+function agentDeleteAuthorityResult(
+  data: AgentDeleteJobData,
+): Pick<
+  AgentDeleteJobResult,
+  "stateLossAcknowledged" | "stateLossAcknowledgedByUserId" | "stateLossAcknowledgedAt"
+> {
+  if (!hasCompleteAgentDeleteAuthority(data)) return {};
+  return {
+    stateLossAcknowledged: true,
+    stateLossAcknowledgedByUserId: data.stateLossAcknowledgedByUserId,
+    stateLossAcknowledgedAt: data.stateLossAcknowledgedAt,
+  };
+}
+
+function hasCompleteAgentDeleteAuthority(
+  data: AgentDeleteJobData | undefined,
+): data is AgentDeleteJobData & {
+  stateLossAcknowledged: true;
+  stateLossAcknowledgedByUserId: string;
+  stateLossAcknowledgedAt: string;
+} {
+  if (
+    data?.stateLossAcknowledged !== true ||
+    typeof data.stateLossAcknowledgedByUserId !== "string" ||
+    data.stateLossAcknowledgedByUserId.length === 0 ||
+    typeof data.stateLossAcknowledgedAt !== "string"
+  ) {
+    return false;
+  }
+  const timestamp = Date.parse(data.stateLossAcknowledgedAt);
+  return (
+    Number.isFinite(timestamp) && new Date(timestamp).toISOString() === data.stateLossAcknowledgedAt
+  );
+}
+
+/** CAS the three authority fields together so settlement cannot miss an upgrade. */
+function agentDeleteAuthorityFence(data: AgentDeleteJobData): SQL {
+  return sql`
+    COALESCE(${jobs.data}->>'stateLossAcknowledged', '') = ${
+      data.stateLossAcknowledged === undefined ? "" : String(data.stateLossAcknowledged)
+    }
+    AND COALESCE(${jobs.data}->>'stateLossAcknowledgedByUserId', '') = ${
+      data.stateLossAcknowledgedByUserId ?? ""
+    }
+    AND COALESCE(${jobs.data}->>'stateLossAcknowledgedAt', '') = ${
+      data.stateLossAcknowledgedAt ?? ""
+    }
+  `;
 }
 
 function readAgentProvisionJobData(job: Job): AgentProvisionJobData {
@@ -1210,6 +1284,21 @@ class PreDeleteCaptureExhaustedError extends Error {
   }
 }
 
+/**
+ * A delete failed from an unacknowledged worker snapshot. Its terminal write
+ * must be fenced against a concurrent false-to-true authority upgrade so the
+ * API cannot durably accept state loss and then have this stale attempt win.
+ */
+class UnacknowledgedAgentDeleteError extends Error {
+  readonly retrySnapshot: Job;
+
+  constructor(message: string, retrySnapshot: Job) {
+    super(message);
+    this.name = "UnacknowledgedAgentDeleteError";
+    this.retrySnapshot = retrySnapshot;
+  }
+}
+
 class RetryableReplacementCleanupError extends Error {
   readonly retrySnapshot: Job;
   readonly maxRequeues = PROVISION_TRANSPORT_MAX_FREE_RETRIES;
@@ -1725,6 +1814,13 @@ export class ProvisioningJobService {
     if (expectedCreatedAt && !Number.isFinite(expectedCreatedAt.getTime())) {
       throw new ApiError(400, "validation_error", "Expected agent creation timestamp is invalid");
     }
+    const requestedAuthority = params.stateLossAcknowledged
+      ? {
+          stateLossAcknowledged: true as const,
+          stateLossAcknowledgedByUserId: params.userId,
+          stateLossAcknowledgedAt: new Date().toISOString(),
+        }
+      : {};
     return this.enqueueLifecycleJob<AgentDeleteJobData>({
       jobType: JOB_TYPES.AGENT_DELETE,
       jobData: {
@@ -1732,7 +1828,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
         authorization: params.authorization,
-        ...(params.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+        ...requestedAuthority,
       },
       toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
@@ -1748,13 +1844,22 @@ export class ProvisioningJobService {
       upgradeReuse: params.stateLossAcknowledged
         ? async (tx, existing) => {
             const existingData = readAgentDeleteJobData(existing);
-            if (existingData.stateLossAcknowledged === true) return existing;
+            if (
+              existingData.stateLossAcknowledged === true &&
+              existingData.stateLossAcknowledgedByUserId !== undefined
+            ) {
+              return existing;
+            }
+            // A legacy acknowledged row without persisted provenance is
+            // stamped with the current re-requesting user: the true first
+            // acknowledging actor was never recorded, so this best-effort
+            // attribution is the earliest authenticated actor we can prove.
             const [upgraded] = await tx
               .update(jobs)
               .set({
                 data: agentDeleteJobDataToRecord({
                   ...existingData,
-                  stateLossAcknowledged: true,
+                  ...requestedAuthority,
                 }),
                 data_storage: "inline",
                 data_key: null,
@@ -3343,6 +3448,97 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Settles a successful delete from the authority snapshot protected by the
+   * same lifecycle lock as acknowledgement upgrades. A lost data fence loops
+   * only while this exact execution generation still owns its renewable lease.
+   */
+  private async settleCompletedAgentDelete(
+    job: Job,
+    claimedData: AgentDeleteJobData,
+    result: { containerStopped: boolean; rowDeleted: boolean },
+  ): Promise<AgentDeleteJobResult> {
+    while (true) {
+      const current = await jobsRepository.findByIdForWrite(job.id);
+      if (
+        current?.status !== "in_progress" ||
+        current.execution_generation !== job.execution_generation
+      ) {
+        throw new StaleJobExecutionError(job.id);
+      }
+      const currentData = readAgentDeleteJobData(current);
+      const authorityData = hasCompleteAgentDeleteAuthority(currentData)
+        ? currentData
+        : hasCompleteAgentDeleteAuthority(claimedData)
+          ? claimedData
+          : currentData;
+      const jobResult: AgentDeleteJobResult = {
+        cloudAgentId: claimedData.agentId,
+        containerStopped: result.containerStopped,
+        rowDeleted: result.rowDeleted,
+        ...agentDeleteAuthorityResult(authorityData),
+      };
+      const settled = await jobsRepository.settleExecution(
+        job,
+        "completed",
+        {
+          result: agentDeleteJobResultToRecord(jobResult),
+          completed_at: new Date(),
+        },
+        this.executionOwnerId,
+        agentDeleteAuthorityFence(currentData),
+      );
+      if (settled) return jobResult;
+      await this.assertExecutionMutationLease(job);
+    }
+  }
+
+  /**
+   * Requeues the exact active delete after a concurrent request strengthened
+   * its durable state-loss authority. The fresh row is used as the retry CAS
+   * token, and the result records the actual first acknowledging actor before
+   * the execution lease is released.
+   */
+  private async requeueDeleteWithUpgradedAuthority(
+    claimedJob: Job,
+    error: string,
+  ): Promise<Job | undefined> {
+    const current = await jobsRepository.findByIdForWrite(claimedJob.id);
+    if (
+      current?.status !== "in_progress" ||
+      current.execution_generation !== claimedJob.execution_generation
+    ) {
+      return undefined;
+    }
+    const currentData = readAgentDeleteJobData(current);
+    if (!hasCompleteAgentDeleteAuthority(currentData)) return undefined;
+
+    const priorResult = current.result && typeof current.result === "object" ? current.result : {};
+    const authoritySnapshot = await this.retryOwnedWrite(
+      claimedJob,
+      "record-delete-authority",
+      () =>
+        jobsRepository.updateForExecution(
+          current,
+          {
+            result: {
+              ...priorResult,
+              ...agentDeleteAuthorityResult(currentData),
+            },
+          },
+          this.executionOwnerId,
+        ),
+    );
+    return await this.retryOwnedWrite(claimedJob, "retry-upgraded-delete-authority", () =>
+      jobsRepository.retryLaterWithoutIncrementingAttempts(
+        authoritySnapshot,
+        error,
+        0,
+        this.executionOwnerId,
+      ),
+    );
+  }
+
+  /**
    * Claim and process pending provisioning jobs.
    * Designed to be called by a cron route every minute.
    *
@@ -3556,7 +3752,7 @@ export class ProvisioningJobService {
     if (retryableTransportError) {
       const retrySnapshot = retryableTransportError.retrySnapshot;
       const onExhaustedInTx = this.buildPermanentFailureWriteback(retrySnapshot, errorMsg);
-      const transition = await this.retryOwnedWrite(job, "retry-later", () =>
+      let transition = await this.retryOwnedWrite(job, "retry-later", () =>
         jobsRepository.retryLaterWithoutIncrementingAttempts(
           retrySnapshot,
           errorMsg,
@@ -3565,6 +3761,13 @@ export class ProvisioningJobService {
           { maxRequeues: retryableTransportError.maxRequeues, onExhaustedInTx },
         ),
       );
+      if (
+        !transition &&
+        retrySnapshot.type === JOB_TYPES.AGENT_DELETE &&
+        readAgentDeleteJobData(retrySnapshot).stateLossAcknowledged !== true
+      ) {
+        transition = await this.requeueDeleteWithUpgradedAuthority(retrySnapshot, errorMsg);
+      }
       if (transition?.status === "pending") {
         if (result) result.retried++;
         logger.warn("[provisioning-jobs] Requeued retryable provision transport failure", {
@@ -3591,8 +3794,6 @@ export class ProvisioningJobService {
       return;
     }
 
-    if (result) result.failed++;
-
     // When retries are exhausted (permanent failure) the dependent
     // status row must flip too — and it must flip ATOMICALLY with the
     // job-status `failed` write, not in a best-effort follow-up that can
@@ -3607,6 +3808,9 @@ export class ProvisioningJobService {
     // (thrown as UpgradeFailedError). For every other job type this is
     // undefined and the writeback ignores it.
     const upgradeFailure = safeErrorKind(err, UpgradeFailedError) ? err : undefined;
+    const unacknowledgedDeleteFailure = safeErrorKind(err, UnacknowledgedAgentDeleteError)
+      ? err
+      : undefined;
     const onFailedInTx = this.buildPermanentFailureWriteback(job, errorMsg, upgradeFailure);
     const updated = await this.retryOwnedWrite(job, "increment-attempt", () =>
       jobsRepository.incrementAttempt(
@@ -3616,8 +3820,34 @@ export class ProvisioningJobService {
         onFailedInTx,
         job.execution_generation ?? undefined,
         this.executionOwnerId,
+        unacknowledgedDeleteFailure
+          ? sql`NOT (
+              COALESCE(${jobs.data}->>'stateLossAcknowledged', 'false') = 'true'
+              AND NULLIF(${jobs.data}->>'stateLossAcknowledgedByUserId', '') IS NOT NULL
+              AND NULLIF(${jobs.data}->>'stateLossAcknowledgedAt', '') IS NOT NULL
+            )`
+          : undefined,
       ),
     );
+    if (!updated && unacknowledgedDeleteFailure) {
+      const transition = await this.requeueDeleteWithUpgradedAuthority(
+        unacknowledgedDeleteFailure.retrySnapshot,
+        errorMsg,
+      );
+      if (transition?.status === "pending") {
+        if (result) result.retried++;
+        logger.warn(
+          "[provisioning-jobs] Requeued delete after in-flight state-loss authority upgrade",
+          {
+            jobId: job.id,
+            executionGeneration: job.execution_generation,
+            acknowledgingUserId: readAgentDeleteJobData(transition).stateLossAcknowledgedByUserId,
+          },
+        );
+        return;
+      }
+    }
+    if (result) result.failed++;
     if (appCacheError) {
       const context = {
         jobId: job.id,
@@ -5378,10 +5608,13 @@ export class ProvisioningJobService {
     // boundary. Authority is monotonic: the durable read may strengthen the
     // claimed snapshot, never weaken it.
     const durableJob = await jobsRepository.findByIdForWrite(job.id);
-    const stateLossAcknowledged =
-      data.stateLossAcknowledged === true ||
-      (durableJob !== undefined &&
-        readAgentDeleteJobData(durableJob).stateLossAcknowledged === true);
+    const durableData = durableJob ? readAgentDeleteJobData(durableJob) : undefined;
+    const authorityData = hasCompleteAgentDeleteAuthority(durableData)
+      ? durableData
+      : hasCompleteAgentDeleteAuthority(data)
+        ? data
+        : data;
+    const stateLossAcknowledged = hasCompleteAgentDeleteAuthority(authorityData);
     const delResult = stateLossAcknowledged
       ? await elizaSandboxService.executeDeletion(
           data.agentId,
@@ -5415,7 +5648,7 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
-          ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
+          ...agentDeleteAuthorityResult(authorityData),
           error: delResult.error,
           ...(captureRetryCount > 0 ? { captureRetryCount } : {}),
         }),
@@ -5442,26 +5675,22 @@ export class ProvisioningJobService {
             error: delResult.error,
           },
         );
-        throw new PreDeleteCaptureExhaustedError(
-          `Pre-deletion capture stayed unavailable across ${priorCaptureRetries} attempt-preserving retries: ${
-            delResult.error ?? "unknown capture failure"
-          }`,
-        );
+        const message = `Pre-deletion capture stayed unavailable across ${priorCaptureRetries} attempt-preserving retries: ${
+          delResult.error ?? "unknown capture failure"
+        }`;
+        if (!stateLossAcknowledged) {
+          throw new UnacknowledgedAgentDeleteError(message, retrySnapshot);
+        }
+        throw new PreDeleteCaptureExhaustedError(message);
       }
-      throw new Error(delResult.error ?? "Unknown agent_delete failure");
+      const message = delResult.error ?? "Unknown agent_delete failure";
+      if (!stateLossAcknowledged) {
+        throw new UnacknowledgedAgentDeleteError(message, retrySnapshot);
+      }
+      throw new Error(message);
     }
 
-    const jobResult: AgentDeleteJobResult = {
-      cloudAgentId: data.agentId,
-      containerStopped: delResult.containerStopped,
-      rowDeleted: delResult.rowDeleted,
-      ...(stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
-    };
-
-    await this.settleClaimedExecution(job, "completed", {
-      result: agentDeleteJobResultToRecord(jobResult),
-      completed_at: new Date(),
-    });
+    const jobResult = await this.settleCompletedAgentDelete(job, data, delResult);
 
     if (job.webhook_url) {
       await this.fireWebhook(job, jobResult);

@@ -1483,7 +1483,8 @@ export class JobsRepository {
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
     executionOwnerId?: string,
-  ): Promise<void> {
+    additionalFence?: SQL,
+  ): Promise<boolean> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
@@ -1501,7 +1502,7 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, claimedJob);
     }
 
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(
@@ -1539,6 +1540,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(additionalFence ? [additionalFence] : []),
             sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
@@ -1550,7 +1552,10 @@ export class JobsRepository {
           ),
         )
         .returning({ id: jobs.id });
-      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      if (!updated) {
+        if (additionalFence) return false;
+        throw new StaleJobExecutionError(claimedJob.id);
+      }
 
       await tx
         .delete(jobExecutionLeases)
@@ -1578,6 +1583,7 @@ export class JobsRepository {
             ),
           );
       }
+      return true;
     });
   }
 
@@ -1600,6 +1606,9 @@ export class JobsRepository {
    * @param onFailedInTx - Optional callback run in-transaction when the job
    *   flips to `failed`. Receives the transaction handle and the hydrated job.
    *   Throwing rolls back BOTH the job-status flip and the dependent write.
+   * @param additionalFence - Optional caller-owned CAS predicate evaluated in
+   *   the terminal transition. It lets a stronger durable command invalidate
+   *   a stale execution failure without weakening the standard lease fences.
    * @returns Updated job record or undefined if not found.
    */
   async incrementAttempt(
@@ -1609,6 +1618,7 @@ export class JobsRepository {
     onFailedInTx?: (tx: DbTransaction, job: Job) => Promise<void>,
     expectedExecutionGeneration?: string,
     expectedExecutionOwnerId?: string,
+    additionalFence?: SQL,
   ): Promise<Job | undefined> {
     if (expectedExecutionGeneration && !expectedExecutionOwnerId) {
       throw new Error(`Execution owner is required to retry claimed job ${id}`);
@@ -1679,6 +1689,7 @@ export class JobsRepository {
             eq(jobs.id, id),
             eq(jobs.status, "in_progress"),
             eq(jobs.attempts, job.attempts),
+            ...(additionalFence ? [additionalFence] : []),
             ...(expectedExecutionGeneration
               ? [
                   eq(jobs.execution_generation, expectedExecutionGeneration),
