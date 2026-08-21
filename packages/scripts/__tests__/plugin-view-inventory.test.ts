@@ -1,29 +1,30 @@
 /**
- * Exercises AST-derived runtime view inventory generation with synthetic
- * manifests and the real repository, including collision and missing-field
- * CI failures.
+ * Exercises AST-derived first-party view discovery, deterministic artifacts,
+ * and collision failures against synthetic manifests and the real repository.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { parsePluginViewInventoryArgs } from "../audit-plugin-view-inventory.mjs";
 import {
   discoverPluginViewInventory,
+  renderPluginViewInventoryMarkdown,
   serializePluginViewInventory,
 } from "../lib/plugin-view-inventory.mjs";
 
-const tempDirs: string[] = [];
+const tempDirectories: string[] = [];
 
 afterEach(() => {
-  for (const directory of tempDirs.splice(0)) {
+  for (const directory of tempDirectories.splice(0)) {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
 
 function makeRoot() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "plugin-view-inventory-"));
-  tempDirs.push(root);
+  tempDirectories.push(root);
   return root;
 }
 
@@ -33,153 +34,223 @@ function write(root: string, file: string, contents: string) {
   fs.writeFileSync(absolute, contents);
 }
 
-function addPlugin(root: string, name: string, declaration: string): string {
+function addBuiltin(root: string, declaration = view("builtin", "/builtin")) {
+  const source = "packages/agent/src/api/builtin-views.ts";
+  write(root, source, `export const BUILTIN_VIEWS = [${declaration}];\n`);
+  return source;
+}
+
+function addPlugin(
+  root: string,
+  name: string,
+  declaration: string,
+  extraSource = "",
+) {
   const directory = `plugins/${name}`;
   write(
     root,
     `${directory}/package.json`,
-    JSON.stringify({ name: `@fixture/${name}` }),
+    `${JSON.stringify({ name: `@fixture/${name}` })}\n`,
   );
   const source = `${directory}/src/plugin.ts`;
   write(
     root,
     source,
-    `export const plugin = { name: "fixture", description: "fixture", views: [${declaration}] };\n`,
+    `${extraSource}\nexport const plugin: Plugin = { name: "${name}", description: "fixture", views: [${declaration}] };\n`,
   );
   return source;
 }
 
-const view = (id: string, route = `/${id}`) => `{
-  id: "${id}",
-  label: "${id}",
-  path: "${route}",
-  modalities: ["gui"],
-  bundlePath: "dist/views/bundle.js",
-  componentExport: "FixtureView",
-}`;
+function view(id: string, route = `/${id}`, modalities = '["gui"]') {
+  return `{
+    id: "${id}",
+    label: "${id}",
+    path: "${route}",
+    modalities: ${modalities},
+    bundlePath: "dist/views/bundle.js",
+    componentExport: "FixtureView",
+  }`;
+}
 
-describe("plugin view declaration inventory", () => {
-  test("parses, classifies, and deterministically serializes declarations", () => {
-    const root = makeRoot();
-    const beta = addPlugin(
-      root,
-      "plugin-beta",
-      `${view("beta")}, {
-        id: "hidden",
-        label: "Hidden",
-        path: "/hidden",
-        viewType: "gui",
-        bundlePath: "dist/views/bundle.js",
-        componentExport: "HiddenView",
-        developerOnly: true,
-        roleGate: { minRole: "OWNER" },
-        surface: { capabilities: ["agent-surface"] },
-        relatedActions: ["HIDDEN_ACTION"],
-        capabilities: [{ id: "refresh" }],
-      }`,
-    );
-    const alpha = addPlugin(root, "plugin-alpha", view("alpha"));
-    const entries = discoverPluginViewInventory({
-      repoRoot: root,
-      repositoryFiles: [beta, alpha],
-    });
-    expect(entries.map((entry) => entry.id)).toEqual([
-      "alpha",
-      "beta",
-      "hidden",
-    ]);
-    expect(entries[2]).toMatchObject({
-      minRole: "OWNER",
-      developerOnly: true,
-      surfaceCapabilities: ["agent-surface"],
-      relatedActions: ["HIDDEN_ACTION"],
-      operationIds: ["refresh"],
-    });
-    expect(serializePluginViewInventory(entries)).toMatchObject({
-      schemaVersion: 1,
-      discoveredCount: 3,
-      pluginCount: 3,
-      builtinCount: 0,
-    });
+function discover(root: string, files: string[]) {
+  return discoverPluginViewInventory({
+    repoRoot: root,
+    files: [addBuiltin(root), ...files],
   });
+}
 
-  test("rejects duplicate ids and routes across owners", () => {
+describe("first-party runtime view inventory", () => {
+  test("parses runtime sources and deterministically renders JSON and Markdown", () => {
     const root = makeRoot();
-    const alpha = addPlugin(root, "plugin-alpha", view("shared", "/alpha"));
-    const beta = addPlugin(root, "plugin-beta", view("shared", "/beta"));
-    expect(() =>
-      discoverPluginViewInventory({
-        repoRoot: root,
-        repositoryFiles: [alpha, beta],
-      }),
-    ).toThrow(/duplicate id "shared"/);
-
+    const capabilitySource = "plugins/plugin-alpha/src/capabilities.ts";
     write(
       root,
-      beta,
-      `export const plugin = { name: "fixture", description: "fixture", views: [${view("beta", "/alpha")}] };`,
+      capabilitySource,
+      'export const VIEW_OPERATIONS = [{ id: "refresh" }, { id: "open" }];\n',
     );
-    expect(() =>
-      discoverPluginViewInventory({
-        repoRoot: root,
-        repositoryFiles: [alpha, beta],
-      }),
-    ).toThrow(/duplicate route "\/alpha"/);
+    const pluginSource = addPlugin(
+      root,
+      "plugin-alpha",
+      `{
+        id: "alpha",
+        label: "Alpha",
+        path: "/alpha",
+        modalities: ["gui"],
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "FixtureView",
+        roleGate: { minRole: "OWNER" },
+        surface: { capabilities: ["agent-surface"] },
+        relatedActions: ["ALPHA"],
+        capabilities: VIEW_OPERATIONS,
+        developerOnly: true,
+        visibleInManager: true,
+      }`,
+      'import { VIEW_OPERATIONS } from "./capabilities.js";',
+    );
+    const inventory = discover(root, [capabilitySource, pluginSource]);
+    const serialized = serializePluginViewInventory(inventory);
+
+    expect(serialized).toMatchObject({
+      schemaVersion: 1,
+      discoveredCount: 2,
+      builtinCount: 1,
+      pluginCount: 1,
+      declarationSourceCount: 2,
+    });
+    expect(serialized.views[1]).toMatchObject({
+      id: "alpha",
+      owner: "@fixture/plugin-alpha",
+      minRole: "OWNER",
+      operationIds: ["refresh", "open"],
+      relatedActions: ["ALPHA"],
+      surfaceCapabilities: ["agent-surface"],
+      developerOnly: true,
+      visibleInManager: true,
+    });
+    const markdown = renderPluginViewInventoryMarkdown(serialized);
+    expect(markdown).toContain("# First-party runtime view inventory");
+    expect(markdown).toContain(
+      "| @fixture/plugin-alpha | alpha | gui | /alpha |",
+    );
+    expect(markdown).toContain("refresh, open");
+    expect(markdown).toBe(renderPluginViewInventoryMarkdown(serialized));
   });
 
-  test("rejects incomplete literal declarations", () => {
+  test("rejects duplicate id/modality and normalized path/modality pairs", () => {
+    const idRoot = makeRoot();
+    const idAlpha = addPlugin(idRoot, "plugin-alpha", view("shared", "/alpha"));
+    const idBeta = addPlugin(idRoot, "plugin-beta", view("shared", "/beta"));
+    expect(() => discover(idRoot, [idAlpha, idBeta])).toThrow(
+      /duplicate id "shared" for gui/,
+    );
+
+    const pathRoot = makeRoot();
+    const pathAlpha = addPlugin(
+      pathRoot,
+      "plugin-alpha",
+      view("alpha", "/shared"),
+    );
+    const pathBeta = addPlugin(
+      pathRoot,
+      "plugin-beta",
+      view("beta", "/SHARED/"),
+    );
+    expect(() => discover(pathRoot, [pathAlpha, pathBeta])).toThrow(
+      /duplicate path "\/SHARED\/" for gui/,
+    );
+  });
+
+  test("rejects repeated modalities within one declaration", () => {
     const root = makeRoot();
     const source = addPlugin(
       root,
-      "plugin-incomplete",
-      '{ id: "incomplete", label: "Incomplete", componentExport: "View" }',
+      "plugin-alpha",
+      view("alpha", "/alpha", '["gui", "gui"]'),
     );
-    expect(() =>
-      discoverPluginViewInventory({
-        repoRoot: root,
-        repositoryFiles: [source],
-      }),
-    ).toThrow(/requires literal path, componentExport, and bundlePath/);
+    expect(() => discover(root, [source])).toThrow(/repeats modality gui/);
   });
 
-  test("rejects plugin manifests whose view list is not statically inspectable", () => {
+  test("allows one id and path to serve distinct modalities", () => {
     const root = makeRoot();
-    const source = addPlugin(root, "plugin-dynamic", view("dynamic"));
+    const alpha = addPlugin(
+      root,
+      "plugin-alpha",
+      view("shared", "/shared", '["gui"]'),
+    );
+    const beta = addPlugin(
+      root,
+      "plugin-beta",
+      view("shared", "/shared", '["xr"]'),
+    );
+    expect(discover(root, [alpha, beta]).views).toHaveLength(3);
+  });
+
+  test("rejects Plugin.views that cannot be statically audited", () => {
+    const root = makeRoot();
+    const directory = "plugins/plugin-dynamic";
+    write(
+      root,
+      `${directory}/package.json`,
+      '{"name":"@fixture/plugin-dynamic"}\n',
+    );
+    const source = `${directory}/src/plugin.ts`;
     write(
       root,
       source,
-      'export const plugin = { name: "dynamic", description: "dynamic", views: createViews() };',
+      'export const plugin: Plugin = { name: "dynamic", description: "fixture", views: createViews() };\n',
     );
-    expect(() =>
-      discoverPluginViewInventory({
-        repoRoot: root,
-        repositoryFiles: [source],
-      }),
-    ).toThrow(/plugin views must be a literal array/);
+    expect(() => discover(root, [source])).toThrow(
+      /Plugin\.views must resolve to an array literal/,
+    );
   });
 
-  test("the repository inventory is collision-free and includes both document surfaces", () => {
+  test("validates CLI output modes and report containment", () => {
+    expect(parsePluginViewInventoryArgs([])).toMatchObject({
+      stdout: "summary",
+      jsonOutput: "reports/plugin-view-inventory.json",
+      markdownOutput: "reports/plugin-view-inventory.md",
+    });
+    expect(
+      parsePluginViewInventoryArgs([
+        "--markdown",
+        "--output",
+        "reports/custom.json",
+        "--markdown-output",
+        "reports/custom.md",
+      ]),
+    ).toMatchObject({
+      stdout: "markdown",
+      jsonOutput: "reports/custom.json",
+      markdownOutput: "reports/custom.md",
+    });
+    expect(() =>
+      parsePluginViewInventoryArgs(["--json", "--markdown"]),
+    ).toThrow(/mutually exclusive/);
+    expect(() =>
+      parsePluginViewInventoryArgs(["--output", "../outside.json"]),
+    ).toThrow(/traversal segments/);
+  });
+
+  test("the repository inventory is collision-free and has one document view", () => {
     const repoRoot = path.resolve(import.meta.dirname, "../../..");
-    const inventory = serializePluginViewInventory(
+    const serialized = serializePluginViewInventory(
       discoverPluginViewInventory({ repoRoot }),
     );
-    expect(inventory.pluginCount).toBeGreaterThan(20);
-    expect(inventory.builtinCount).toBeGreaterThan(10);
+    expect(serialized.builtinCount).toBeGreaterThan(10);
+    expect(serialized.pluginCount).toBeGreaterThan(15);
+    expect(serialized.declarationSourceCount).toBeGreaterThan(15);
     expect(
-      inventory.views.filter((entry) =>
-        ["documents", "document-library"].includes(entry.id),
-      ),
+      serialized.views.filter((entry) => entry.id === "documents"),
     ).toEqual([
       expect.objectContaining({
-        id: "documents",
         owner: "@elizaos/builtin",
         route: "/character/documents",
       }),
-      expect.objectContaining({
-        id: "document-library",
-        owner: "@elizaos/plugin-documents",
-        route: "/documents",
-      }),
     ]);
-  });
+    expect(
+      serialized.declarationSources.some(
+        (source) => source.owner === "@elizaos/plugin-documents",
+      ),
+    ).toBe(false);
+  }, 30_000);
 });

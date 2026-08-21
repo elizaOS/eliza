@@ -38,13 +38,6 @@ const DECOMPOSED_PA_SPEC =
 const GUI_INTERACTION_OWNERS: Readonly<
   Record<string, readonly InteractionOwner[]>
 > = {
-  "document-library": [
-    {
-      spec: "plugins/plugin-documents/src/components/documents/DocumentsView.test.tsx",
-      proves: "Exercises document library loading, search, and error recovery.",
-      signals: ["runs a search", "Retry that refetches"],
-    },
-  ],
   calendar: [
     {
       spec: DECOMPOSED_PA_SPEC,
@@ -322,7 +315,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(23);
+    expect(visualCases.length).toBe(22);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

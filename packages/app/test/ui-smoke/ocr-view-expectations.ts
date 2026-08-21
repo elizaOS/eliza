@@ -271,11 +271,6 @@ export const VIEW_OCR_POLICIES = {
     requireAny: ["Sequence 12", "Cursor 640, 360", "Open floating"],
     forbid: ["Loading sessions", "unavailable"],
   }),
-  "plugin-documents-gui": exempt(
-    "unregistered-remote-bundle",
-    "The Documents plugin GUI has no remote bundle in the hermetic browser audit, so the view-registry fallback is the only observable surface.",
-    VIEW_REGISTRY_FALLBACK,
-  ),
   "plugin-finances-gui": expected({
     requireAny: ["Balance", "Transactions", "Recurring"],
     forbid: ["Loading"],
