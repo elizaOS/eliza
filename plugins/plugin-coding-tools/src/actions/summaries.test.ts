@@ -37,12 +37,13 @@ describe("coding tool planner summaries", () => {
       ),
     ).toBe("bun run test --filt…");
   });
-  it("keeps surrogate pairs intact at the truncation boundary", () => {
-    const s = `${"a".repeat(9)}🦊${"b".repeat(100)}`;
+  it("keeps a surrogate pair intact at the max-plus-one boundary", () => {
+    const s = `${"a".repeat(8)}🦊b`;
+    expect(s.length).toBe(11);
     const out = compactSummaryText(s, 10);
     expect(out.isWellFormed()).toBe(true);
     expect(out.length).toBeLessThanOrEqual(10);
-    expect(out).toBe(`${"a".repeat(9)}…`);
+    expect(out).toBe(`${"a".repeat(8)}…`);
   });
   it("preserves a fitting emoji under the cap", () => {
     const s = `${"a".repeat(8)}🦊`;
@@ -55,11 +56,12 @@ describe("coding tool planner summaries", () => {
     expect(out).toBe(`${"a\ufffdbc".slice(0, 3)}…`);
     expect(out.isWellFormed()).toBe(true);
   });
-  it("sanitizes lone surrogates without truncation when under the cap", () => {
-    const s = "a\ud800bc";
-    const out = compactSummaryText(s, 10);
-    expect(out).toBe("a\ufffdbc");
-    expect(out.isWellFormed()).toBe(true);
+  it("sanitizes either lone surrogate half without truncation", () => {
+    for (const s of ["a\ud800bc", "a\udc00bc"]) {
+      const out = compactSummaryText(s, 10);
+      expect(out).toBe("a\ufffdbc");
+      expect(out.isWellFormed()).toBe(true);
+    }
   });
   it("returns single ellipsis when maxLength is 1 and input is long", () => {
     const out = compactSummaryText("hello world", 1);
