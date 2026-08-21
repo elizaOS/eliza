@@ -32,6 +32,7 @@ import {
 } from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -2301,12 +2302,13 @@ function parseLabeledEvaluatorText(text: string): RawEvaluatorOutput | null {
 	return output;
 }
 
-function parseEvaluatorLabelLine(
-	line: string,
+export function parseEvaluatorLabelLine(
+	lineInput: string,
 ): { label: string; value: string } | null {
+	const line = toWellFormedUnicode(lineInput);
 	const colon = line.indexOf(":");
 	if (colon <= 0) return null;
-	const label = normalizeEvaluatorLabel(line.slice(0, colon));
+	const label = normalizeEvaluatorLabel(truncateWellFormed(line, colon));
 	if (!isKnownEvaluatorTextLabel(label)) return null;
 	return {
 		label,
