@@ -111,6 +111,41 @@ describe("mapMessage folded (RFC 5322 2.2.3) address headers", () => {
     const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
     expect(msg.to).toEqual([]);
   });
+
+  it("treats a line break without a WSP continuation as malformed, not a fold", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: "a@x.com\r\nb@y.com" },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to).toEqual([]);
+  });
+
+  it("drops a mailbox whose angle-addr is split by a bare line break", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "Jane\r\n<jane@corp.com>" },
+        { name: "To", value: "me@corp.com" },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.from).toBeUndefined();
+  });
+
+  it("unfolds tab continuations and consecutive obs-folds", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: "Jane\r\n\t Smith\r\n <jane@corp.com>" },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    // Unfolding removes only the CRLF; the retained WSP (tab, space) stays in
+    // the display name, matching the unfolded spelling with the same runs.
+    expect(msg.to).toEqual([{ email: "jane@corp.com", name: "Jane\t Smith" }]);
+  });
 });
 
 describe("mapRichMessage folded address headers", () => {
