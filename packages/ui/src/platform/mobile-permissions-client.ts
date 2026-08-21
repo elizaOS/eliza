@@ -331,21 +331,7 @@ function stateFromScreenTime(
     screenTime.coarseSummaryAvailable ||
     screenTime.thresholdEventsAvailable;
 
-  if (!screenTime.android && !hasUsableCapability) {
-    return defaultMobileState(
-      "screentime",
-      screenTime.supported ? "restricted" : "not-applicable",
-      {
-        canRequest: false,
-        restrictedReason: screenTime.supported
-          ? "os_policy"
-          : "platform_unsupported",
-        reason: screenTime.reason ?? action?.reason ?? undefined,
-      },
-    );
-  }
-
-  if (authorizationStatus === "approved") {
+  if (authorizationStatus === "approved" && hasUsableCapability) {
     return defaultMobileState("screentime", "granted", {
       canRequest: false,
       reason: screenTime.reason ?? action?.reason ?? undefined,
@@ -364,6 +350,20 @@ function stateFromScreenTime(
       canRequest: screenTime.authorization.canRequest,
       reason: screenTime.reason ?? action?.reason ?? undefined,
     });
+  }
+
+  if (!screenTime.android && !hasUsableCapability) {
+    return defaultMobileState(
+      "screentime",
+      screenTime.supported ? "restricted" : "not-applicable",
+      {
+        canRequest: false,
+        restrictedReason: screenTime.supported
+          ? "os_policy"
+          : "platform_unsupported",
+        reason: screenTime.reason ?? action?.reason ?? undefined,
+      },
+    );
   }
 
   return defaultMobileState(

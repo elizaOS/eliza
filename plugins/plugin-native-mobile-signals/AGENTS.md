@@ -104,7 +104,11 @@ Screen Time / DeviceActivity features require additional entitlements and Xcode 
 4. `DeviceActivityMonitorExtension` and `DeviceActivityReportExtension` app-extension targets exist and are embedded.
 5. `ElizaosCapacitorMobileSignals.podspec` links `FamilyControls` and `DeviceActivity` frameworks.
 
-Without these, `screenTime.supported` will be `false` and `screenTime.authorization.status` will be `"unavailable"`.
+On iOS, `screenTime.supported` means only that the process is a physical-device
+host whose entitlement is not conclusively missing. Use `availability`,
+`provisioning.status`, extension inspection, authorization, and
+`reportAvailable` for the actionable state; unsigned runtime inspection is
+reported as `unknown`, never fabricated as verified or missing.
 
 Apple provides DeviceActivity results only inside a sandboxed report extension.
 The host exposes `presentScreenTimeReport()` after Family Controls authorization;
@@ -113,6 +117,10 @@ the extension aggregates and renders category totals without exporting them.
 `thresholdEventsAvailable`, and `rawUsageExportAvailable` must remain `false`
 until a lawful host surface or a concrete scheduled threshold-event signal
 exists. Never move report data through app groups or the network.
+
+Android reports `host-summary-available` or `usage-access-required`; it never
+sets iOS-only `reportAvailable`. Its host-readable aggregate is represented by
+`coarseSummaryAvailable` and the nested `android` fields.
 
 ## Android requirements
 

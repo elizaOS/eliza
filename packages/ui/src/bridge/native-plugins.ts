@@ -301,6 +301,8 @@ export interface MobileSignalsScreenTimeStatus {
   availability:
     | "report-available"
     | "authorization-required"
+    | "host-summary-available"
+    | "usage-access-required"
     | "extension-missing"
     | "presenter-missing"
     | "provisioning-missing"

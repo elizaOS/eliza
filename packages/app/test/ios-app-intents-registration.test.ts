@@ -69,6 +69,13 @@ const screenTimeSupportSwift = readFileSync(
   path.join(mobileSignalsSwiftRoot, "ScreenTimeSupport.swift"),
   "utf8",
 );
+const mobileSignalsAndroid = readFileSync(
+  path.join(
+    repoRoot,
+    "plugins/plugin-native-mobile-signals/android/src/main/java/ai/eliza/plugins/mobilesignals/MobileSignalsPlugin.kt",
+  ),
+  "utf8",
+);
 interface StringCatalogEntry {
   localizations?: Record<
     string,
@@ -426,6 +433,20 @@ describe("native assistant entry contracts", () => {
     );
     expect(screenTimeSupportSwift).toContain(
       "DeviceActivityReport(.elizaScreenTimeSummary, filter: filter)",
+    );
+  });
+
+  it("keeps Android host summaries distinct from iOS DeviceActivity reports", () => {
+    expect(mobileSignalsAndroid).toContain(
+      'usageGranted -> "host-summary-available"',
+    );
+    expect(mobileSignalsAndroid).toContain('else -> "usage-access-required"');
+    expect(mobileSignalsAndroid).toContain('put("reportAvailable", false)');
+    expect(mobileSignalsAndroid).toContain(
+      'put("coarseSummaryAvailable", usageGranted)',
+    );
+    expect(mobileSignalsAndroid).toContain(
+      '!usagePermissionDeclared -> "provisioning-missing"',
     );
   });
 

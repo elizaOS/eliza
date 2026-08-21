@@ -94,6 +94,8 @@ export interface MobileSignalsScreenTimeStatus {
   availability:
     | "report-available"
     | "authorization-required"
+    | "host-summary-available"
+    | "usage-access-required"
     | "extension-missing"
     | "presenter-missing"
     | "provisioning-missing"
@@ -136,7 +138,7 @@ export interface MobileSignalsScreenTimeStatus {
       path: string;
     }>;
   };
-  /** A host-presented authorized report extension can render activity in its sandbox. */
+  /** An iOS host can present an authorized report extension. Always false on Android/web. */
   reportAvailable: boolean;
   /** Coarse category totals are available to the host process. False on current iOS. */
   coarseSummaryAvailable: boolean;

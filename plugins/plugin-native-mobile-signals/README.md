@@ -106,6 +106,11 @@ authorized physical-device host with the report extension and presenter.
 the app schedules a concrete `DeviceActivityEvent` and handles its callback
 through a typed signal path.
 
+Android does not expose a DeviceActivity report: `reportAvailable` stays false.
+Its permission state uses `usage-access-required` or `host-summary-available`,
+and a granted host-readable aggregate is exposed through
+`coarseSummaryAvailable` plus the nested `android` fields.
+
 Validate the iOS build wiring:
 
 ```bash

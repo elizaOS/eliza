@@ -137,6 +137,12 @@ class MobileSignalsPlugin : Plugin() {
             return
         }
         if (target == "screenTime") {
+            if (!isUsageStatsPermissionDeclared()) {
+                scope.launch {
+                    call.resolve(resolvePermissionResult("PACKAGE_USAGE_STATS is missing from the Android manifest."))
+                }
+                return
+            }
             val (_, intent) = settingsIntentFor("usageAccess")
             try {
                 val starter = activity
@@ -390,7 +396,7 @@ class MobileSignalsPlugin : Plugin() {
     private fun mobileSignalsCapabilities(sdkStatus: Int): JSObject {
         return JSObject().apply {
             put("health", sdkStatus == HealthConnectClient.SDK_AVAILABLE)
-            put("screenTime", true)
+            put("screenTime", isUsageStatsPermissionDeclared())
             put("notifications", true)
             put("settings", true)
         }
@@ -673,21 +679,33 @@ class MobileSignalsPlugin : Plugin() {
         reason: String = "Android Usage Access is required for app foreground-time summaries.",
     ): JSObject {
         val usageGranted = hasUsageStatsAccess()
+        val usagePermissionDeclared = isUsageStatsPermissionDeclared()
         val totalTimeForegroundMs = if (usageGranted) {
             collectUsageStatsSummary().totalTimeForegroundMs
         } else {
             null
         }
-        val status = if (usageGranted) "approved" else "not-determined"
-        val resolvedReason = if (usageGranted) {
-            null
-        } else {
-            reason
+        val status = when {
+            !usagePermissionDeclared -> "unavailable"
+            usageGranted -> "approved"
+            else -> "not-determined"
+        }
+        val resolvedReason = when {
+            !usagePermissionDeclared -> "PACKAGE_USAGE_STATS is missing from the Android manifest."
+            usageGranted -> null
+            else -> reason
         }
         return JSObject().apply {
-            put("supported", true)
+            put("supported", usagePermissionDeclared)
             put("hostEnvironment", "android")
-            put("availability", if (usageGranted) "report-available" else "authorization-required")
+            put(
+                "availability",
+                when {
+                    !usagePermissionDeclared -> "provisioning-missing"
+                    usageGranted -> "host-summary-available"
+                    else -> "usage-access-required"
+                },
+            )
             put("requirements", JSObject().apply {
                 put("entitlements", JSObject().apply {
                     put("familyControls", FAMILY_CONTROLS_ENTITLEMENT)
@@ -704,23 +722,23 @@ class MobileSignalsPlugin : Plugin() {
                 put("familyControls", false)
             })
             put("provisioning", JSObject().apply {
-                put("satisfied", usageGranted)
-                put("status", if (usageGranted) "verified" else "missing")
+                put("satisfied", usagePermissionDeclared)
+                put("status", if (usagePermissionDeclared) "verified" else "missing")
                 put("inspected", "not-inspectable")
-                put("reason", resolvedReason ?: JSONObject.NULL)
+                put("reason", if (usagePermissionDeclared) JSONObject.NULL else resolvedReason)
             })
             put("authorization", JSObject().apply {
                 put("status", status)
                 put("canRequest", false)
             })
-            put("reportAvailable", usageGranted)
+            put("reportAvailable", false)
             put("coarseSummaryAvailable", usageGranted)
             put("thresholdEventsAvailable", false)
             put("rawUsageExportAvailable", false)
             put("android", JSObject().apply {
                 put("usageAccessGranted", usageGranted)
-                put("packageUsageStatsPermissionDeclared", isUsageStatsPermissionDeclared())
-                put("canOpenUsageAccessSettings", true)
+                put("packageUsageStatsPermissionDeclared", usagePermissionDeclared)
+                put("canOpenUsageAccessSettings", usagePermissionDeclared)
                 put("foregroundEventsAvailable", usageGranted)
                 put("totalTimeForegroundMs", totalTimeForegroundMs ?: JSONObject.NULL)
             })
@@ -805,19 +823,27 @@ class MobileSignalsPlugin : Plugin() {
             )
         })
         val usageGranted = hasUsageStatsAccess()
+        val usagePermissionDeclared = isUsageStatsPermissionDeclared()
         actions.add(JSObject().apply {
             put("id", "android_usage_access")
             put("label", "Usage Access")
-            put("status", if (usageGranted) "ready" else "needs-action")
+            put(
+                "status",
+                when {
+                    !usagePermissionDeclared -> "unavailable"
+                    usageGranted -> "ready"
+                    else -> "needs-action"
+                },
+            )
             put("canRequest", false)
-            put("canOpenSettings", true)
-            put("settingsTarget", "usageAccess")
+            put("canOpenSettings", usagePermissionDeclared)
+            put("settingsTarget", if (usagePermissionDeclared) "usageAccess" else JSONObject.NULL)
             put(
                 "reason",
-                if (usageGranted) {
-                    JSONObject.NULL
-                } else {
-                    "Enable Usage Access so LifeOps can summarize foreground app usage for wake and bed inference."
+                when {
+                    !usagePermissionDeclared -> "PACKAGE_USAGE_STATS is missing from the Android manifest."
+                    usageGranted -> JSONObject.NULL
+                    else -> "Enable Usage Access so LifeOps can summarize foreground app usage for wake and bed inference."
                 },
             )
         })

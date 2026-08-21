@@ -171,6 +171,58 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     });
   });
 
+  it("preserves the iOS Screen Time authorization action before a report is available", async () => {
+    const native = plugin();
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    await expect(registry.check("screentime")).resolves.toMatchObject({
+      id: "screentime",
+      status: "not-determined",
+      canRequest: true,
+    });
+
+    await registry.request("screentime", {
+      reason: "Present the private Screen Time report.",
+      feature: { app: "lifeops", action: "screen-time.report" },
+    });
+
+    expect(native.requestPermissions).toHaveBeenCalledWith({
+      target: "screenTime",
+    });
+    expect(native.openSettings).not.toHaveBeenCalled();
+  });
+
+  it("distinguishes an Android host summary from an iOS report", async () => {
+    const native = plugin(
+      permissions({
+        screenTime: {
+          ...permissions().screenTime,
+          hostEnvironment: "android",
+          availability: "host-summary-available",
+          authorization: { status: "approved", canRequest: false },
+          reportAvailable: false,
+          coarseSummaryAvailable: true,
+          android: {
+            usageAccessGranted: true,
+            packageUsageStatsPermissionDeclared: true,
+            canOpenUsageAccessSettings: true,
+            foregroundEventsAvailable: true,
+            totalTimeForegroundMs: 42_000,
+          },
+          reason: null,
+        },
+      }),
+    );
+
+    await expect(
+      createMobileSignalsPermissionsRegistry(native).check("screentime"),
+    ).resolves.toMatchObject({
+      id: "screentime",
+      status: "granted",
+      canRequest: false,
+    });
+  });
+
   it("opens settings for Screen Time when it cannot be requested directly", async () => {
     const native = plugin(
       permissions({
