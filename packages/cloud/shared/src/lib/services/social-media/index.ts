@@ -383,14 +383,18 @@ class SocialMediaService {
     const successful = results.filter((r) => r.success);
     const failed = results.filter((r) => !r.success);
 
-    if (failed.length > 0) {
+    const refundableFailures = failed.filter((result) => result.creditDisposition !== "hold");
+
+    if (refundableFailures.length > 0) {
       await creditsService.refundCredits({
         organizationId,
-        amount: failed.length * POST_CREDIT_COST,
-        description: `Refund for failed posts: ${failed.map((f) => f.platform).join(", ")}`,
-        metadata: { userId, failedPlatforms: failed.map((f) => f.platform) },
+        amount: refundableFailures.length * POST_CREDIT_COST,
+        description: `Refund for failed posts: ${refundableFailures.map((f) => f.platform).join(", ")}`,
+        metadata: { userId, failedPlatforms: refundableFailures.map((f) => f.platform) },
       });
+    }
 
+    if (failed.length > 0) {
       alertOnPostFailure(
         organizationId,
         failed.map((f) => f.platform),

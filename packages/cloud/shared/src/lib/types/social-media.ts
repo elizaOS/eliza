@@ -203,6 +203,12 @@ export interface PostResult {
   errorCode?: string;
   rateLimited?: boolean;
   retryAfter?: number;
+  /**
+   * Controls settlement when a provider cannot yet prove whether an external
+   * side effect committed. Omitted failures retain the normal refund path;
+   * `hold` prevents a premature refund until provider reconciliation.
+   */
+  creditDisposition?: "hold";
   metadata?: Record<string, unknown>;
 }
 
@@ -566,13 +572,18 @@ export const NotificationPlatformSchema = z.enum(["discord", "telegram", "slack"
 export const SOCIAL_MEDIA_MEDIA_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * Ceiling for a video already buffered inside the Worker isolate. TikTok's
- * external API accepts larger videos, but an inline base64 string and its
- * decoded bytes coexist in the 128 MB isolate before upload. Keep enough
- * headroom for request parsing, provider state, and concurrent invocations;
- * larger videos must use the URL-backed transfer path.
+ * Ceiling for video bytes already materialized as a Buffer. Fetch adds one
+ * bounded chunk copy in workerd, so two overlapping maximum-size binary calls
+ * remain below the 128 MB isolate ceiling. Larger videos use URL transfer.
  */
 export const SOCIAL_MEDIA_VIDEO_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * Stricter ceiling for base64 video because its encoded string remains live
+ * beside decoded bytes and Fetch's request-body copy. Reusing the shared media
+ * limit keeps two overlapping maximum-size calls comfortably bounded.
+ */
+export const SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES = SOCIAL_MEDIA_MEDIA_MAX_BYTES;
 
 /**
  * Character ceiling of a base64 payload that can decode to

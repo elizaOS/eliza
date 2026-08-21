@@ -5,6 +5,7 @@
 
 import { ElizaError } from "@elizaos/core";
 
+import { safeFetch } from "../../../security/safe-fetch";
 import type {
   AccountAnalytics,
   MediaAttachment,
@@ -15,7 +16,10 @@ import type {
   SocialCredentials,
   SocialMediaProvider,
 } from "../../../types/social-media";
-import { SOCIAL_MEDIA_VIDEO_MAX_BYTES } from "../../../types/social-media";
+import {
+  SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES,
+  SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+} from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "../media-download";
@@ -25,6 +29,9 @@ const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
 
 const TIKTOK_REQUEST_TIMEOUT_MS = 30_000;
 const TIKTOK_UPLOAD_CHUNK_BYTES = 10_000_000;
+const TIKTOK_UPLOAD_MAX_RETRIES = 2;
+const TIKTOK_UPLOAD_RETRY_BASE_DELAY_MS = 100;
+const TIKTOK_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm"]);
 
 export interface TikTokUploadChunk {
   firstByte: number;
@@ -36,6 +43,73 @@ export interface TikTokUploadPlan {
   chunkSize: number;
   totalChunkCount: number;
   chunks: TikTokUploadChunk[];
+}
+
+function tiktokUploadError(
+  message: string,
+  code: string,
+  context: Record<string, unknown>,
+  cause?: unknown,
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    context,
+    severity: "ephemeral",
+    ...(cause === undefined ? {} : { cause }),
+  });
+}
+
+/** Normalizes the three video containers accepted by TikTok's upload API. */
+export function validateTikTokVideoMimeType(mimeType: string): string {
+  const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  if (!TIKTOK_VIDEO_MIME_TYPES.has(normalized)) {
+    throw tiktokUploadError(
+      "TikTok file uploads require MP4, QuickTime, or WebM video",
+      "TIKTOK_VIDEO_MIME_INVALID",
+      {
+        mimeType,
+      },
+    );
+  }
+  return normalized;
+}
+
+/**
+ * Restricts provider-returned upload capabilities to TikTok's documented
+ * HTTPS host family before the shared DNS/SSRF guard opens a connection.
+ */
+export function validateTikTokUploadUrl(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch (cause) {
+    throw tiktokUploadError(
+      "TikTok returned an invalid upload URL",
+      "TIKTOK_UPLOAD_URL_INVALID",
+      {},
+      cause,
+    );
+  }
+
+  const hostname = url.hostname.toLowerCase();
+  const allowedHost =
+    hostname === "open-upload.tiktokapis.com" ||
+    /^upload\.[a-z0-9-]+\.tiktokapis\.com$/.test(hostname);
+  if (
+    url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    (url.port !== "" && url.port !== "443") ||
+    !allowedHost
+  ) {
+    throw tiktokUploadError(
+      "TikTok returned an upload URL outside the allowed HTTPS host family",
+      "TIKTOK_UPLOAD_URL_INVALID",
+      { protocol: url.protocol, hostname, port: url.port || "443" },
+    );
+  }
+
+  return url.toString();
 }
 
 /**
@@ -80,30 +154,95 @@ function uploadBodyView(videoData: Buffer, chunk: TikTokUploadChunk): Uint8Array
   return Uint8Array.from(chunkView);
 }
 
+async function cancelTikTokUploadResponse(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // error-policy:J6 Upload response teardown is best-effort after its status
+    // has already supplied the authoritative transport result.
+  }
+}
+
+function waitBeforeTikTokUploadRetry(attempt: number): Promise<void> {
+  return new Promise((resolve) =>
+    setTimeout(resolve, TIKTOK_UPLOAD_RETRY_BASE_DELAY_MS * 2 ** attempt),
+  );
+}
+
 async function uploadTikTokVideo(
   uploadUrl: string,
   videoData: Buffer,
   plan: TikTokUploadPlan,
+  mimeType: string,
+  startChunkIndex = 0,
 ): Promise<void> {
-  for (const [index, chunk] of plan.chunks.entries()) {
+  for (let index = startChunkIndex; index < plan.chunks.length; index += 1) {
+    const chunk = plan.chunks[index];
+    if (!chunk) {
+      throw tiktokUploadError(
+        "TikTok upload plan is missing a requested chunk",
+        "TIKTOK_UPLOAD_PLAN_INVALID",
+        {
+          chunkIndex: index,
+          totalChunkCount: plan.totalChunkCount,
+        },
+      );
+    }
     const finalChunk = index === plan.chunks.length - 1;
     const expectedStatus = finalChunk ? 201 : 206;
-    const response = await tiktokFetch(uploadUrl, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "video/mp4",
-        "Content-Length": String(chunk.byteLength),
-        "Content-Range": `bytes ${chunk.firstByte}-${chunk.lastByte}/${videoData.length}`,
-      },
-      body: uploadBodyView(videoData, chunk),
-    });
+    for (let attempt = 0; attempt <= TIKTOK_UPLOAD_MAX_RETRIES; attempt += 1) {
+      let response: Response | undefined;
+      try {
+        response = await safeFetch(uploadUrl, {
+          method: "PUT",
+          redirect: "manual",
+          headers: {
+            "Content-Type": mimeType,
+            "Content-Length": String(chunk.byteLength),
+            "Content-Range": `bytes ${chunk.firstByte}-${chunk.lastByte}/${videoData.length}`,
+          },
+          body: uploadBodyView(videoData, chunk),
+          signal: AbortSignal.timeout(TIKTOK_REQUEST_TIMEOUT_MS),
+        });
+      } catch (cause) {
+        // error-policy:J2 Preserve the ambiguous transport failure: the remote
+        // side may have committed the range even though its response was lost.
+        // A final-chunk response loss is reconciled before any replay because
+        // it may be a lost 201. Intermediate ranges use bounded exact replay.
+        if (!finalChunk && attempt < TIKTOK_UPLOAD_MAX_RETRIES) {
+          await waitBeforeTikTokUploadRetry(attempt);
+          continue;
+        }
+        throw tiktokUploadError(
+          `TikTok upload chunk ${index + 1}/${plan.totalChunkCount} has an unknown remote outcome`,
+          "TIKTOK_UPLOAD_OUTCOME_UNKNOWN",
+          {
+            chunkIndex: index,
+            totalChunkCount: plan.totalChunkCount,
+            firstByte: chunk.firstByte,
+            lastByte: chunk.lastByte,
+            finalChunk,
+          },
+          cause,
+        );
+      }
 
-    if (response.status !== expectedStatus) {
-      throw new ElizaError(
-        `TikTok upload chunk ${index + 1}/${plan.totalChunkCount} returned ${response.status}; expected ${expectedStatus}`,
-        {
-          code: "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
-          context: {
+      try {
+        if (response.status === expectedStatus) break;
+
+        if (
+          response.status >= 500 &&
+          response.status <= 599 &&
+          attempt < TIKTOK_UPLOAD_MAX_RETRIES
+        ) {
+          await waitBeforeTikTokUploadRetry(attempt);
+          continue;
+        }
+
+        throw tiktokUploadError(
+          `TikTok upload chunk ${index + 1}/${plan.totalChunkCount} returned ${response.status}; expected ${expectedStatus}`,
+          "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
+          {
             chunkIndex: index,
             totalChunkCount: plan.totalChunkCount,
             firstByte: chunk.firstByte,
@@ -111,9 +250,10 @@ async function uploadTikTokVideo(
             actualStatus: response.status,
             expectedStatus,
           },
-          severity: "ephemeral",
-        },
-      );
+        );
+      } finally {
+        await cancelTikTokUploadResponse(response);
+      }
     }
   }
 }
@@ -204,28 +344,41 @@ async function waitForPublish(
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxWait) {
-    const status = await tiktokApiRequest<TikTokPublishStatus>(
-      `/post/publish/status/fetch/`,
-      accessToken,
-      {
-        method: "POST",
-        body: JSON.stringify({ publish_id: publishId }),
-      },
-    );
+    const status = await fetchPublishStatus(accessToken, publishId);
 
     if (status.status === "PUBLISH_COMPLETE") {
       return status;
     }
 
     if (status.status === "FAILED") {
-      throw new Error(status.fail_reason || "Publish failed");
+      throw tiktokUploadError(
+        status.fail_reason || "TikTok publish failed",
+        "TIKTOK_PUBLISH_FAILED",
+        {
+          publishId,
+        },
+      );
     }
 
     // Wait before checking again
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
-  throw new Error("Publish timeout");
+  throw tiktokUploadError(
+    "TikTok publish status is still unresolved",
+    "TIKTOK_PUBLISH_STATUS_UNKNOWN",
+    {
+      publishId,
+      maxWait,
+    },
+  );
+}
+
+function fetchPublishStatus(accessToken: string, publishId: string): Promise<TikTokPublishStatus> {
+  return tiktokApiRequest<TikTokPublishStatus>(`/post/publish/status/fetch/`, accessToken, {
+    method: "POST",
+    body: JSON.stringify({ publish_id: publishId }),
+  });
 }
 
 export const tiktokProvider: SocialMediaProvider = {
@@ -337,6 +490,7 @@ export const tiktokProvider: SocialMediaProvider = {
 
       // File upload method (requires chunked upload)
       if (video.data || video.base64) {
+        const videoMimeType = validateTikTokVideoMimeType(video.mimeType);
         // Bounded against the video ceiling rather than the image budget: the
         // decode is a single allocation inside the Worker isolate, so it needs
         // a bound even though 10 MiB would reject ordinary video posts.
@@ -350,7 +504,7 @@ export const tiktokProvider: SocialMediaProvider = {
           : decodeSocialMediaBase64(
               video.base64!,
               { platform: "tiktok" },
-              SOCIAL_MEDIA_VIDEO_MAX_BYTES,
+              SOCIAL_MEDIA_VIDEO_MAX_BASE64_BYTES,
             );
         const uploadPlan = createTikTokUploadPlan(videoData.length);
 
@@ -373,10 +527,124 @@ export const tiktokProvider: SocialMediaProvider = {
         );
 
         if (!initResponse.upload_url) {
-          throw new Error("No upload URL provided");
+          throw tiktokUploadError(
+            "TikTok did not provide an upload URL",
+            "TIKTOK_UPLOAD_URL_MISSING",
+            { publishId: initResponse.publish_id },
+          );
         }
 
-        await uploadTikTokVideo(initResponse.upload_url, videoData, uploadPlan);
+        const uploadUrl = validateTikTokUploadUrl(initResponse.upload_url);
+        try {
+          await uploadTikTokVideo(uploadUrl, videoData, uploadPlan, videoMimeType);
+        } catch (error) {
+          if (!(error instanceof ElizaError) || error.code !== "TIKTOK_UPLOAD_OUTCOME_UNKNOWN") {
+            throw error;
+          }
+
+          // error-policy:J4 A lost upload response is neither success nor a
+          // refund-safe failure. Query TikTok once: terminal state is
+          // authoritative; unresolved state is visibly returned with a credit
+          // hold so no duplicate post/refund is fabricated.
+          let reconciliation: TikTokPublishStatus | undefined;
+          try {
+            reconciliation = await fetchPublishStatus(
+              credentials.accessToken,
+              initResponse.publish_id,
+            );
+          } catch (reconciliationError) {
+            logger.warn("[TikTok] Upload outcome reconciliation request failed", {
+              publishId: initResponse.publish_id,
+              error: extractErrorMessage(reconciliationError),
+            });
+          }
+
+          if (reconciliation?.status === "PROCESSING_UPLOAD") {
+            const chunkIndex = error.context?.chunkIndex;
+            if (typeof chunkIndex === "number") {
+              try {
+                await uploadTikTokVideo(
+                  uploadUrl,
+                  videoData,
+                  uploadPlan,
+                  videoMimeType,
+                  chunkIndex,
+                );
+                reconciliation = await waitForPublish(
+                  credentials.accessToken,
+                  initResponse.publish_id,
+                );
+              } catch (replayError) {
+                if (
+                  !(replayError instanceof ElizaError) ||
+                  !["TIKTOK_UPLOAD_OUTCOME_UNKNOWN", "TIKTOK_PUBLISH_STATUS_UNKNOWN"].includes(
+                    replayError.code,
+                  )
+                ) {
+                  throw replayError;
+                }
+                logger.warn("[TikTok] Upload replay remains unresolved", {
+                  publishId: initResponse.publish_id,
+                  chunkIndex,
+                  error: extractErrorMessage(replayError),
+                });
+              }
+            }
+          } else if (
+            reconciliation?.status === "PROCESSING_DOWNLOAD" ||
+            reconciliation?.status === "SEND_TO_USER_INBOX"
+          ) {
+            try {
+              reconciliation = await waitForPublish(
+                credentials.accessToken,
+                initResponse.publish_id,
+              );
+            } catch (statusError) {
+              if (
+                !(statusError instanceof ElizaError) ||
+                statusError.code !== "TIKTOK_PUBLISH_STATUS_UNKNOWN"
+              ) {
+                throw statusError;
+              }
+              logger.warn("[TikTok] Advanced publish status remains unresolved", {
+                publishId: initResponse.publish_id,
+                error: extractErrorMessage(statusError),
+              });
+            }
+          }
+
+          if (reconciliation?.status === "PUBLISH_COMPLETE") {
+            const postId = reconciliation.publicaly_available_post_id?.[0];
+            return {
+              platform: "tiktok",
+              success: true,
+              postId: postId || initResponse.publish_id,
+              postUrl: postId ? `https://www.tiktok.com/@me/video/${postId}` : undefined,
+              metadata: { publishId: initResponse.publish_id, reconciled: true },
+            };
+          }
+
+          if (reconciliation?.status === "FAILED") {
+            throw tiktokUploadError(
+              reconciliation.fail_reason || "TikTok upload failed after an ambiguous response",
+              "TIKTOK_UPLOAD_FAILED_AFTER_RECONCILIATION",
+              { publishId: initResponse.publish_id },
+              error,
+            );
+          }
+
+          return {
+            platform: "tiktok",
+            success: false,
+            error: "TikTok upload outcome is still being reconciled",
+            errorCode: "TIKTOK_UPLOAD_OUTCOME_UNKNOWN",
+            creditDisposition: "hold",
+            metadata: {
+              publishId: initResponse.publish_id,
+              providerStatus: reconciliation?.status ?? "UNKNOWN",
+            },
+          };
+        }
 
         // Wait for publish to complete
         const status = await waitForPublish(credentials.accessToken, initResponse.publish_id);
@@ -405,6 +673,7 @@ export const tiktokProvider: SocialMediaProvider = {
         platform: "tiktok",
         success: false,
         error: extractErrorMessage(error),
+        errorCode: error instanceof ElizaError ? error.code : undefined,
       };
     }
   },
