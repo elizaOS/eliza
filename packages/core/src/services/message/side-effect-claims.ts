@@ -177,10 +177,12 @@ const NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN =
 /**
  * One locale's fabricated-completion claim tier. `claims` are the
  * perfective/completed assertion shapes (global regexes); a match counts only
- * when the containing sentence also names a `subjectNoun`, is not a question
- * (terminator, embedded `? ？ ¿`, or `questionTail` particle), and the
- * sentence prefix before the match does not end in a `nonAssertiveLead`
- * (negation, subordination, second-person subject, or offer scaffolding).
+ * when the containing sentence also names a `subjectNoun`, the claim's own
+ * clause is not a question (terminator, embedded `? ？ ¿`, or `questionTail`
+ * particle), the sentence prefix before the match does not end in a
+ * `nonAssertiveLead` (negation, subordination, second-person subject, or
+ * offer scaffolding), and the text right after the match does not continue
+ * into a `subordinateTail` that makes the completed verb non-factive.
  */
 interface LocaleSideEffectClaimShapes {
 	readonly locale: string;
@@ -188,12 +190,28 @@ interface LocaleSideEffectClaimShapes {
 	readonly claims: readonly RegExp[];
 	readonly nonAssertiveLead: RegExp;
 	readonly questionTail?: RegExp;
+	/**
+	 * Agglutinating locales attach conditional/embedded-question/quotative
+	 * endings directly to the same completed stem the claim matches, so the
+	 * claim shape alone cannot tell "설정했어요" (a report) from "설정했으면"
+	 * (a conditional). Matched against the text immediately following the
+	 * claim; a hit means the verb is not asserted as fact.
+	 */
+	readonly subordinateTail?: RegExp;
 }
 
 // Sentence terminators across the shipped locales: ASCII plus the full-width
 // CJK set. Commas (including 、，) deliberately do NOT split — the noun gate
 // should see the whole clause chain ("好了，提醒已保存。").
 const MULTILINGUAL_SENTENCE_TERMINATOR = /[.!?。！？\n]/u;
+
+// Boundary between a claim clause and a trailing tag ("…, ¿algo más?",
+// "…，还需要别的吗？", "… — mais alguma coisa?"). The English tier fires on
+// perfective claims "in any sentence shape — including tag questions", so the
+// locale tiers must scope interrogativity to the claim's OWN clause: a
+// question opening after this boundary is a separate follow-up and must not
+// launder the fabricated completion that precedes it.
+const MULTILINGUAL_CLAUSE_TAG_BOUNDARY = /[,，、;；—–]/u;
 
 const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 	[
@@ -249,6 +267,12 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			],
 			nonAssertiveLead: /(?:안|못)\s*$/u,
 			questionTail: /(?:까요|나요|가요|을까)$/u,
+			// Non-factive continuations of the same stem: conditionals
+			// ("설정했으면"), embedded questions ("설정했는지"), and quotative /
+			// hypothetical reports ("저장했다고 가정해"). Factive-but-subordinate
+			// endings (-지만, -으니까) are deliberately absent: "설정했지만 알림이
+			// 안 왔어요" still asserts the save.
+			subordinateTail: /^(?:으면|더라면|다면|라면|는지|은지|을지|다고|라고)/u,
 		},
 		{
 			locale: "tl",
@@ -344,9 +368,30 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 					claimIndex,
 				);
 				if (!shapes.subjectNoun.test(sentence)) continue;
-				if (terminator === "?" || terminator === "？") continue;
-				if (/[?？¿]/u.test(sentence)) continue;
-				if (shapes.questionTail?.test(sentence.trim())) continue;
+				const matchEnd = (match.index ?? 0) + match[0].length;
+				if (shapes.subordinateTail?.test(text.slice(matchEnd))) continue;
+
+				// Interrogativity is scoped to the claim's own clause. Everything
+				// from the sentence start up to the first tag boundary at/after the
+				// claim is what the question markers may legitimately govern; a
+				// question opening past that boundary is a trailing follow-up and
+				// leaves the completion assertion standing.
+				const sentenceEnd = start + sentence.length;
+				const tagOffset = text
+					.slice(matchEnd, sentenceEnd)
+					.search(MULTILINGUAL_CLAUSE_TAG_BOUNDARY);
+				const clauseEnd = tagOffset >= 0 ? matchEnd + tagOffset : sentenceEnd;
+				const claimClause = text.slice(start, clauseEnd);
+				const clauseReachesTerminator = clauseEnd === sentenceEnd;
+
+				// An inverted-question opener (`¿`) BEFORE the claim governs it; one
+				// after it opens the tag ("He creado tus recordatorios — ¿algo más?").
+				if (/¿/u.test(text.slice(start, claimIndex))) continue;
+				if (clauseReachesTerminator) {
+					if (terminator === "?" || terminator === "？") continue;
+					if (shapes.questionTail?.test(claimClause.trim())) continue;
+				}
+				if (/[?？]/u.test(claimClause)) continue;
 				if (shapes.nonAssertiveLead.test(text.slice(start, claimIndex))) {
 					continue;
 				}

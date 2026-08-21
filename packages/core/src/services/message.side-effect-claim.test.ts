@@ -1389,3 +1389,57 @@ describe("multilingual completed-side-effect claim tiers (#17027 AC7)", () => {
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 });
+
+describe("locale claim tiers: clause-scoped interrogativity and subordinate tails", () => {
+	// A fabricated completion followed by a courtesy tag question is still a
+	// fabricated completion. The English tier fires on this shape by design
+	// ("I've set your reminders — anything else?"); before clause scoping the
+	// locale tiers let any later `?`/`？`/`¿` in the clause chain suppress the
+	// whole claim, so a tag question laundered the fabrication.
+	it.each([
+		"He creado tus recordatorios — ¿algo más?",
+		"Ya he guardado el recordatorio, ¿necesitas algo más?",
+		"Criei o lembrete — mais alguma coisa?",
+		"提醒设置好了，还需要别的吗？",
+		"我已经把提醒设置好了，还要别的吗",
+		"알림을 설정했어요, 더 필요한 거 있나요?",
+		"Mình đã đặt lời nhắc, bạn cần gì nữa không?",
+	])("flags claim-plus-tag-question %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// The mirror must keep holding: when the question governs the claim's own
+	// clause it is an offer or a clarification, not a report.
+	it.each([
+		"¿He creado el recordatorio para las 9 a.m.?",
+		"¿Guardé bien tu recordatorio?",
+		"我把提醒设置好了吗？",
+		"提醒设置好了吧？",
+		"提醒设置好了吗",
+		"알림을 설정했어요?",
+		"알림 설정했나요",
+	])("passes claim-scoped question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Korean attaches conditional, embedded-question, and quotative endings to
+	// the same completed stem the claim shape matches, so `설정했` alone cannot
+	// distinguish a report from a hypothesis.
+	it.each([
+		"알림을 설정했으면 자동으로 알림이 올 거예요.",
+		"리마인더를 저장했다면 목록에 보일 거예요.",
+		"알림을 설정했는지 확인해 볼게요.",
+		"일정을 등록했는지 다시 봐야 해요.",
+		"알림을 저장했다고 가정해 볼게요.",
+	])("passes Korean subordinate-tail %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
+	// Factive subordination still asserts the save and must keep firing.
+	it.each([
+		"알림을 설정했지만 소리는 껐어요.",
+		"메모를 저장했으니까 걱정 마세요.",
+	])("still flags factive Korean subordination %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+});
