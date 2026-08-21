@@ -503,9 +503,10 @@ NODE_ENV = "production"
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "1"
-# Staging exercises the strongly invalidated sender projection while default
-# and production stay on canonical resolution until the live latency matrix passes.
-PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
+# Keep every environment on the indexed canonical resolver until every
+# identity/lifecycle writer participates in the durable mutation-fence protocol.
+# The bound Durable Object remains available for exact-head isolated proof.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
 # staging plaintext binding; either binding must be exactly true to opt in.
@@ -789,6 +790,9 @@ __filename = '"/worker.js"'
 NODE_ENV = "production"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
+# Keep production on the indexed canonical resolver. The Durable Object cannot
+# be activated until every identity/lifecycle/cutover writer participates in
+# the durable mutation-fence protocol and adversarial staging proof is complete.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # The protected production cutover owns
