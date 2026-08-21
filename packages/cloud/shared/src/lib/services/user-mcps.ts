@@ -1036,10 +1036,10 @@ class UserMcpsService {
     /** @deprecated Legacy MCP pricing points (100 points = $1). */
     totalCreditsEarned: number;
     /** Canonical base MCP prices. */
-    baseCloudCreditsCharged: number;
-    affiliateFeesCloudCreditsCharged: number;
-    platformFeesCloudCreditsCharged: number;
-    totalCloudCreditsCharged: number;
+    baseCloudCreditsCharged: string;
+    affiliateFeesCloudCreditsCharged: string;
+    platformFeesCloudCreditsCharged: string;
+    totalCloudCreditsCharged: string;
     feeComponentsKnown: boolean;
     creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
     totalX402EarnedUsd: number;

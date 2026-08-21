@@ -20,8 +20,11 @@ describe("formatCloudCreditUsd", () => {
   });
 
   test("renders the fee-inclusive persisted total instead of the base", () => {
-    expect(formatMcpUsageTotal({ totalCloudCreditsCharged: 0.013 })).toBe(
+    expect(formatMcpUsageTotal({ totalCloudCreditsCharged: "0.013000" })).toBe(
       "$0.013",
     );
+    expect(
+      formatMcpUsageTotal({ totalCloudCreditsCharged: "999999999999.999999" }),
+    ).toBe("$999,999,999,999.999999");
   });
 });

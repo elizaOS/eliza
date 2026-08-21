@@ -28,10 +28,10 @@ let idCounter: number;
 let usageStats: {
   totalRequests: number;
   totalCreditsCharged: number;
-  baseAmountUsd: number;
-  affiliateFeeUsd: number;
-  platformFeeUsd: number;
-  totalAmountUsd: number;
+  baseAmountUsd: string;
+  affiliateFeeUsd: string;
+  platformFeeUsd: string;
+  totalAmountUsd: string;
   feeComponentsKnown: boolean;
   totalX402Usd: number;
   uniqueOrgs: number;
@@ -186,10 +186,18 @@ mock.module("../../db/repositories", () => ({
     }) {
       usageStats.totalRequests += 1;
       usageStats.totalCreditsCharged += Number(data.credits_charged);
-      usageStats.baseAmountUsd += Number(data.base_amount_usd);
-      usageStats.affiliateFeeUsd += Number(data.affiliate_fee_usd);
-      usageStats.platformFeeUsd += Number(data.platform_fee_usd);
-      usageStats.totalAmountUsd += Number(data.total_amount_usd);
+      usageStats.baseAmountUsd = String(
+        Number(usageStats.baseAmountUsd) + Number(data.base_amount_usd),
+      );
+      usageStats.affiliateFeeUsd = String(
+        Number(usageStats.affiliateFeeUsd) + Number(data.affiliate_fee_usd),
+      );
+      usageStats.platformFeeUsd = String(
+        Number(usageStats.platformFeeUsd) + Number(data.platform_fee_usd),
+      );
+      usageStats.totalAmountUsd = String(
+        Number(usageStats.totalAmountUsd) + Number(data.total_amount_usd),
+      );
       usageStats.uniqueOrgs = 1;
       return { id: "usage-1" };
     },
@@ -255,10 +263,10 @@ beforeEach(() => {
   usageStats = {
     totalRequests: 0,
     totalCreditsCharged: 0,
-    baseAmountUsd: 0,
-    affiliateFeeUsd: 0,
-    platformFeeUsd: 0,
-    totalAmountUsd: 0,
+    baseAmountUsd: "0",
+    affiliateFeeUsd: "0",
+    platformFeeUsd: "0",
+    totalAmountUsd: "0",
     feeComponentsKnown: true,
     totalX402Usd: 0,
     uniqueOrgs: 0,
@@ -630,10 +638,10 @@ describe("userMcpsService fee-inclusive receipt stats", () => {
     const stats = await userMcpsService.getStats(mcp.id, ORG);
     expect(stats).toMatchObject({
       totalCreditsEarned: 100,
-      baseCloudCreditsCharged: 1,
-      affiliateFeesCloudCreditsCharged: 0.25,
-      platformFeesCloudCreditsCharged: 0.2,
-      totalCloudCreditsCharged: 1.45,
+      baseCloudCreditsCharged: "1",
+      affiliateFeesCloudCreditsCharged: "0.25",
+      platformFeesCloudCreditsCharged: "0.2",
+      totalCloudCreditsCharged: "1.45",
       feeComponentsKnown: true,
       creditUnit: "USD",
     });

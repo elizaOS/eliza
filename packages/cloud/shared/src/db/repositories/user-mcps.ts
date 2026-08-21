@@ -12,6 +12,7 @@ import {
   userMcps,
 } from "../schemas";
 import { escapeLikePattern } from "../utils/like-pattern";
+import { parseUsageMoneyAggregate } from "./usage-money";
 
 function parseUsageAggregate(value: unknown, field: string): number {
   const parsed = Number(value ?? 0);
@@ -322,10 +323,10 @@ export const mcpUsageRepository = {
     totalRequests: number;
     /** @deprecated Legacy base-price points (100 points = $1). */
     totalCreditsCharged: number;
-    baseAmountUsd: number;
-    affiliateFeeUsd: number;
-    platformFeeUsd: number;
-    totalAmountUsd: number;
+    baseAmountUsd: string;
+    affiliateFeeUsd: string;
+    platformFeeUsd: string;
+    totalAmountUsd: string;
     feeComponentsKnown: boolean;
     totalX402Usd: number;
     uniqueOrgs: number;
@@ -348,10 +349,10 @@ export const mcpUsageRepository = {
     return {
       totalRequests: parseUsageAggregate(result?.totalRequests, "totalRequests"),
       totalCreditsCharged: parseUsageAggregate(result?.totalCreditsCharged, "totalCreditsCharged"),
-      baseAmountUsd: parseUsageAggregate(result?.baseAmountUsd, "baseAmountUsd"),
-      affiliateFeeUsd: parseUsageAggregate(result?.affiliateFeeUsd, "affiliateFeeUsd"),
-      platformFeeUsd: parseUsageAggregate(result?.platformFeeUsd, "platformFeeUsd"),
-      totalAmountUsd: parseUsageAggregate(result?.totalAmountUsd, "totalAmountUsd"),
+      baseAmountUsd: parseUsageMoneyAggregate(result?.baseAmountUsd, "baseAmountUsd"),
+      affiliateFeeUsd: parseUsageMoneyAggregate(result?.affiliateFeeUsd, "affiliateFeeUsd"),
+      platformFeeUsd: parseUsageMoneyAggregate(result?.platformFeeUsd, "platformFeeUsd"),
+      totalAmountUsd: parseUsageMoneyAggregate(result?.totalAmountUsd, "totalAmountUsd"),
       feeComponentsKnown: result?.feeComponentsKnown ?? true,
       totalX402Usd: parseUsageAggregate(result?.totalX402Usd, "totalX402Usd"),
       uniqueOrgs: parseUsageAggregate(result?.uniqueOrgs, "uniqueOrgs"),
