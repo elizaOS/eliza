@@ -167,15 +167,17 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     // implementation's EVAL) -- the exact TOCTOU window a read-then-delete
     // race would fall into.
     const realFetch = global.fetch as unknown as typeof fetch;
-    global.fetch = vi.fn(async (input: unknown, init?: RequestInit) => {
-      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-      const verb = Array.isArray(body) ? body[0] : undefined;
-      if (verb === "DEL" || verb === "EVAL") {
-        store.set("agent:char-123:server", "sandbox-other");
-        store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
-      }
-      return realFetch(input, init);
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        const verb = Array.isArray(body) ? body[0] : undefined;
+        if (verb === "DEL" || verb === "EVAL") {
+          store.set("agent:char-123:server", "sandbox-other");
+          store.set("server:sandbox-abc:url", "http://9.9.9.9:1/api");
+        }
+        return realFetch(input, init);
+      },
+    ) as unknown as typeof fetch;
 
     await reg.unregister();
 
