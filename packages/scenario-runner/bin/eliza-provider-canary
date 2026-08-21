@@ -1,0 +1,5 @@
+#!/usr/bin/env node
+/** Invokes the compiled authorization-first external provider-canary runner. */
+import { runExternalProviderCanaryCliAndExit } from "../dist/provider-qualified/external-canary-cli.js";
+
+runExternalProviderCanaryCliAndExit();

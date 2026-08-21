@@ -1,0 +1,15 @@
+#!/usr/bin/env node
+/** Loads the built offline provider qualification readiness auditor. */
+
+const FAILURE = "eliza-provider-readiness: offline audit failed\n";
+
+try {
+  const { runProviderReadinessCli } = await import(
+    "../dist/provider-qualified/provider-readiness-cli.js"
+  );
+  const code = await runProviderReadinessCli(process.argv.slice(2));
+  process.exitCode = code;
+} catch {
+  process.stderr.write(FAILURE);
+  process.exitCode = 1;
+}

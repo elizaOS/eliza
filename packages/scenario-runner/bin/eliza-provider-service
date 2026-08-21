@@ -1,0 +1,12 @@
+#!/usr/bin/env node
+/** Starts one built, role-specific provider-canary service deployment. */
+
+try {
+  const { runProviderServiceDeploymentCli } = await import(
+    "../dist/provider-qualified/provider-service-entrypoint.js"
+  );
+  process.exitCode = await runProviderServiceDeploymentCli(process.argv.slice(2));
+} catch {
+  process.stderr.write("eliza-provider-service: deployment refused\n");
+  process.exitCode = 1;
+}

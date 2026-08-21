@@ -1,0 +1,21 @@
+#!/usr/bin/env node
+/** Loads and invokes the built, non-executing provider operator authoring CLI. */
+
+import process from "node:process";
+
+import("../dist/provider-qualified/operator-authoring-cli.js")
+  .then(({ runProviderOperatorCli }) =>
+    runProviderOperatorCli(process.argv.slice(2)),
+  )
+  .then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error) => {
+      // error-policy:J1 The executable boundary reports load or command refusal.
+      process.stderr.write(
+        `${error instanceof Error ? error.message : String(error)}\n`,
+      );
+      process.exitCode = 2;
+    },
+  );

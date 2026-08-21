@@ -133,6 +133,23 @@ An out-of-process controller can use the public primitives under
    observation/result multisets, independent semantic verdicts, provider
    acceptance, and required readback/idempotency.
 
+Use `provider-readiness` for the offline, no-secret preflight, `provider-operator`
+to author protected run material, `provider-service` to host the reviewed
+operator bundle, `provider-canary` for one authorized run, and
+`provider-canary:exact13` for the release-blocking catalog. The external canary
+config schema is `eliza.external-provider-canary-config.v3`; the offline
+qualification config schema is `eliza.provider-qualification-verify-config.v4`.
+Both require separately pinned deployment-attestation issuer keys in addition
+to manifest, observer, and semantic-judge authorities.
+
+Deployment attestations bind the exact repository revision, deployment
+revision, workload digest, run ID and nonce, subject, audience, and validity
+window. The portable verifier proves the signed binding; a provider-specific
+external verifier must validate platform-native identity evidence before
+signing. Release publication fails closed unless the protected release trust
+policy authorizes that issuer, statement, workload, and every other signer
+domain.
+
 The qualifier always records `exactlyOnce: false`; provider idempotency and
 readback reduce ambiguity but do not prove end-to-end exactly-once delivery.
 Action results, model prose, loopback fixtures, local PGlite, and unsigned
