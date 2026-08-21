@@ -31,6 +31,7 @@ import {
   type DocumentListQueryResult,
   type DocumentMutationResult,
   documentMutationSnapshotMatches,
+  ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
@@ -98,6 +99,30 @@ interface StoredMemory {
   metadata?: MemoryMetadata;
 }
 
+const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/;
+const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
+function patchPathSegments(path: string): string[] {
+  const parts = path.split(".");
+  if (!PATCH_PATH_PATTERN.test(path) || parts.some((part) => BLOCKED_PATCH_KEYS.has(part))) {
+    throw new ElizaError("Component patch path is invalid", {
+      code: "COMPONENT_PATCH_PATH_INVALID",
+      context: { path },
+      severity: "fatal",
+    });
+  }
+  return parts;
+}
+
+function definePatchValue(target: Record<string, unknown>, key: string, value: unknown): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+}
+
 interface StoredRelationship {
   id: string;
   sourceEntityId: string;
@@ -159,16 +184,16 @@ function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): R
  */
 function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
   if (!op.path) return;
-  const parts = op.path.split(".");
+  const parts = patchPathSegments(op.path);
   const last = parts.pop();
   if (last === undefined) return;
 
   let parent: Record<string, unknown> = target;
   for (const segment of parts) {
-    const next = parent[segment];
+    const next = Object.hasOwn(parent, segment) ? parent[segment] : undefined;
     if (next === null || typeof next !== "object") {
-      const created: Record<string, unknown> = {};
-      parent[segment] = created;
+      const created = Object.create(null) as Record<string, unknown>;
+      definePatchValue(parent, segment, created);
       parent = created;
     } else {
       parent = next as Record<string, unknown>;
@@ -177,7 +202,7 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
 
   switch (op.op) {
     case "set":
-      parent[last] = op.value;
+      definePatchValue(parent, last, op.value);
       break;
     case "remove":
       delete parent[last];
@@ -187,14 +212,14 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
       if (Array.isArray(existing)) {
         existing.push(op.value);
       } else {
-        parent[last] = [op.value];
+        definePatchValue(parent, last, [op.value]);
       }
       break;
     }
     case "increment": {
       const existing = parent[last];
       const delta = typeof op.value === "number" ? op.value : 1;
-      parent[last] = typeof existing === "number" ? existing + delta : delta;
+      definePatchValue(parent, last, typeof existing === "number" ? existing + delta : delta);
       break;
     }
   }
