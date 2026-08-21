@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   type DocumentsServiceLike,
   getDocumentsService,
+  getDocumentsServiceTimeoutMs,
 } from "./documents-service-loader.ts";
 
 const service = {} as DocumentsServiceLike;
@@ -149,5 +150,32 @@ describe("documents-service loader process lifecycle", () => {
       reason: "timeout",
     });
     expect(durationMs).toBeGreaterThanOrEqual(20);
+  });
+});
+
+describe("getDocumentsServiceTimeoutMs", () => {
+  it("ignores a trailing-garbage timeout instead of parsing its prefix", () => {
+    // parseInt("1junk") is 1 — a 1ms budget that makes every load report
+    // `timeout`, from a value nobody meant as a timeout.
+    vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "1junk");
+    expect(getDocumentsServiceTimeoutMs()).toBe(10_000);
+  });
+
+  it("still honours a clean timeout and its ceiling", () => {
+    vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "2500");
+    expect(getDocumentsServiceTimeoutMs()).toBe(2_500);
+    vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "999999");
+    expect(getDocumentsServiceTimeoutMs()).toBe(60_000);
+  });
+
+  it("still honours an explicitly signed positive timeout", () => {
+    // `Number.parseInt` accepted "+2500"; rejecting it would be a regression.
+    vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "+2500");
+    expect(getDocumentsServiceTimeoutMs()).toBe(2_500);
+  });
+
+  it("falls back for a timeout beyond the safe integer range", () => {
+    vi.stubEnv("DOCUMENTS_SERVICE_TIMEOUT_MS", "9007199254740993");
+    expect(getDocumentsServiceTimeoutMs()).toBe(10_000);
   });
 });

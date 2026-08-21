@@ -126,8 +126,13 @@ const MAX_TIMEOUT_MS = 60_000;
 export function getDocumentsServiceTimeoutMs(): number {
   const envVal = process.env.DOCUMENTS_SERVICE_TIMEOUT_MS;
   if (!envVal) return DEFAULT_TIMEOUT_MS;
-  const parsed = Number.parseInt(envVal, 10);
-  if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
+  // `Number.parseInt` stops at the first non-digit, so "1junk" parsed to a
+  // positive 1 and passed the guard below — a 1ms budget that makes every
+  // documents-service load report `timeout`, from a value nobody set as a
+  // timeout. Require the whole trimmed value to be decimal.
+  const trimmed = envVal.trim();
+  const parsed = /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }
 
