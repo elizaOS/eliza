@@ -17,6 +17,7 @@ export const CLOUD_CHARACTER_LIMITS = {
 } as const;
 
 export type CloudCharacterLimitSource =
+  | "subscription"
   | "organization.settings.max_agents"
   | "organizations.credit_balance"
   | "default_free_tier";

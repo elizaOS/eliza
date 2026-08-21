@@ -4,6 +4,7 @@
  * keys make its ambiguous outcomes recoverable by a strong R2 HEAD.
  */
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { subscriptionResourceLimitService } from "../../lib/services/subscription-resource-limits";
 import { sqlRows } from "../execute-helpers";
 import { dbWrite, writeTransaction } from "../helpers";
 import {
@@ -16,6 +17,7 @@ import {
   orgStoragePutOperations,
 } from "../schemas/org-storage-mutations";
 import { orgStorageQuota } from "../schemas/org-storage-quota";
+import { organizations } from "../schemas/organizations";
 import { DEFAULT_ORG_STORAGE_BYTES_LIMIT } from "./org-storage-quota";
 
 const GC_PIN_MS = 24 * 60 * 60 * 1000;
@@ -156,21 +158,29 @@ export class OrgStorageMutationsRepository {
 
       const quotaReserved =
         input.sizeBytes > object.size_bytes ? input.sizeBytes - object.size_bytes : 0n;
+      await tx.execute(
+        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${input.organizationId} FOR UPDATE`,
+      );
+      const bytesLimit = (await subscriptionResourceLimitService.requireReady(input.organizationId))
+        .limits.storageBytes;
       await tx
         .insert(orgStorageQuota)
         .values({
           organization_id: input.organizationId,
           bytes_used: 0n,
-          bytes_limit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
+          bytes_limit: bytesLimit,
         })
-        .onConflictDoNothing();
+        .onConflictDoUpdate({
+          target: orgStorageQuota.organization_id,
+          set: { bytes_limit: bytesLimit, updated_at: new Date() },
+        });
       const quotaRows = await sqlRows<{ bytes_used: bigint }>(
         tx,
         sql`UPDATE ${orgStorageQuota}
           SET bytes_used = ${orgStorageQuota.bytes_used} + ${quotaReserved},
               updated_at = NOW()
           WHERE ${orgStorageQuota.organization_id} = ${input.organizationId}
-            AND ${orgStorageQuota.bytes_used} + ${quotaReserved} <= ${orgStorageQuota.bytes_limit}
+            AND ${orgStorageQuota.bytes_used} + ${quotaReserved} <= ${bytesLimit}
           RETURNING ${orgStorageQuota.bytes_used}`,
       );
       if (quotaRows.length === 0) throw new StorageQuotaExceededError();

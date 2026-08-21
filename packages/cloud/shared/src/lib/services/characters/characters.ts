@@ -27,10 +27,7 @@ import { ValidationError } from "../../api/cloud-worker-errors";
 import { cache } from "../../cache/client";
 import { InMemoryLRUCache } from "../../cache/in-memory-lru-cache";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
-import {
-  type CloudCharacterLimitSource,
-  resolveMaxCloudCharactersForOrg,
-} from "../../constants/cloud-character-quota";
+import type { CloudCharacterLimitSource } from "../../constants/cloud-character-quota";
 import type { ElizaCharacter } from "../../types/eliza-character";
 import {
   generateUniqueUsername,
@@ -39,6 +36,7 @@ import {
   validateUsername,
 } from "../../utils/agent-username";
 import { logger } from "../../utils/logger";
+import { subscriptionResourceLimitService } from "../subscription-resource-limits";
 import { usersService } from "../users";
 
 // Cache key for character data (longer TTL since characters rarely change)
@@ -549,23 +547,21 @@ export class CharactersService {
 
       let quota: CharacterCreationQuotaReceipt | undefined;
       if (policy.mode === "metered") {
-        const resolution = resolveMaxCloudCharactersForOrg(
-          Number(organization.creditBalance),
-          organization.settings,
-        );
-        if (current >= resolution.limit) {
+        const snapshot = await subscriptionResourceLimitService.requireReady(data.organization_id);
+        const limit = snapshot.limits.cloudCharacters;
+        if (current >= limit) {
           throw new CloudCharacterQuotaExceededError({
             organizationId: data.organization_id,
             current,
-            limit: resolution.limit,
-            limitSource: resolution.source,
+            limit,
+            limitSource: "subscription",
           });
         }
         quota = {
           currentBefore: current,
           currentAfter: current + 1,
-          limit: resolution.limit,
-          limitSource: resolution.source,
+          limit,
+          limitSource: "subscription",
         };
       }
 

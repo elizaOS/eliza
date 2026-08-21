@@ -4,6 +4,7 @@ import { and, count, countDistinct, desc, eq, gte, lte, sql } from "drizzle-orm"
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
+import { subscriptionResourceLimitService } from "../../lib/services/subscription-resource-limits";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -527,11 +528,13 @@ export class AppsRepository {
    * The organization row lock serializes concurrent app creates for one org in
    * Postgres, so parallel requests cannot all observe the same pre-insert count.
    */
-  async createIfOrganizationBelowLimit(data: NewApp, maxApps: number): Promise<App | undefined> {
+  async createIfOrganizationBelowLimit(data: NewApp): Promise<App | undefined> {
     return dbWrite.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${data.organization_id} FOR UPDATE`,
       );
+      const maxApps = (await subscriptionResourceLimitService.requireReady(data.organization_id))
+        .limits.apps;
 
       const [row] = await tx
         .select({ count: count() })

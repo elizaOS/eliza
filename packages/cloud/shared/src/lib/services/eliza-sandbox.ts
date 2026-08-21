@@ -42,6 +42,7 @@ import {
 } from "../../db/schemas/agent-sandboxes";
 import { dockerNodes } from "../../db/schemas/docker-nodes";
 import { jobs } from "../../db/schemas/jobs";
+import { organizations } from "../../db/schemas/organizations";
 import { imageRepo, repinImageDigest } from "../../db/utils/docker-image-ref";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { ApiError } from "../api/cloud-worker-errors";
@@ -128,6 +129,7 @@ import {
   type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
+import { subscriptionResourceLimitService } from "./subscription-resource-limits";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
 import {
   formatWakeRestoreIntegrityError,
@@ -301,6 +303,29 @@ export async function assertOrgAgentQuota(
   if (count >= cap) {
     throw new AgentQuotaExceededError(count, cap);
   }
+}
+
+async function assertOrgAgentActivationQuota(organizationId: string): Promise<void> {
+  await dbWrite.transaction(async (tx) => {
+    await configureElizaLifecycleTransaction(tx);
+    await tx.execute(elizaAgentCreateAdvisoryLockSql(organizationId));
+    await tx.execute(
+      sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${organizationId} FOR UPDATE`,
+    );
+    const cap = (await subscriptionResourceLimitService.requireReady(organizationId)).limits
+      .agentSandboxes;
+    const [{ count } = { count: 0 }] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(agentSandboxes)
+      .where(
+        and(
+          eq(agentSandboxes.organization_id, organizationId),
+          sql`${agentSandboxes.pool_status} IS NULL`,
+          inArray(agentSandboxes.status, QUOTA_COUNTED_STATUSES),
+        ),
+      );
+    if (count > cap) throw new AgentQuotaExceededError(count, cap);
+  });
 }
 
 /**
@@ -1530,10 +1555,14 @@ export class ElizaSandboxService {
       // guard must still not mint unbounded dedicated containers. Count the org's
       // quota-holding sandboxes UNDER the same org advisory lock the reuse guard
       // uses and refuse past the cap.
-      const cap = params.maxNonTerminalAgents;
       return dbWrite.transaction(async (tx) => {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+        await tx.execute(
+          sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${params.organizationId} FOR UPDATE`,
+        );
+        const cap = (await subscriptionResourceLimitService.requireReady(params.organizationId))
+          .limits.agentSandboxes;
         await assertOrgAgentQuota(tx, params.organizationId, cap);
 
         const [created] = await tx
@@ -1552,6 +1581,9 @@ export class ElizaSandboxService {
     return dbWrite.transaction(async (tx) => {
       await configureElizaLifecycleTransaction(tx);
       await tx.execute(elizaAgentCreateAdvisoryLockSql(params.organizationId));
+      await tx.execute(
+        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${params.organizationId} FOR UPDATE`,
+      );
 
       const [existing] = await tx
         .select()
@@ -1579,7 +1611,9 @@ export class ElizaSandboxService {
       // (#11023 residual). Enforce the same per-org ceiling, still under the
       // org advisory lock.
       if (params.maxNonTerminalAgents !== undefined) {
-        await assertOrgAgentQuota(tx, params.organizationId, params.maxNonTerminalAgents);
+        const cap = (await subscriptionResourceLimitService.requireReady(params.organizationId))
+          .limits.agentSandboxes;
+        await assertOrgAgentQuota(tx, params.organizationId, cap);
       }
 
       const [created] = await tx
@@ -1621,6 +1655,9 @@ export class ElizaSandboxService {
       // path and createAgent (org lock only) can never deadlock. (#11023)
       await tx.execute(elizaAgentCreateAdvisoryLockSql(createParams.organizationId));
       await tx.execute(
+        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${createParams.organizationId} FOR UPDATE`,
+      );
+      await tx.execute(
         elizaCodingContainerImageAdvisoryLockSql(
           createParams.organizationId,
           createParams.dockerImage,
@@ -1654,11 +1691,10 @@ export class ElizaSandboxService {
       // the org lock so the count→insert is atomic against concurrent creates.
       // Trusted internal callers pass no cap and stay uncapped.
       if (createParams.maxNonTerminalAgents !== undefined) {
-        await assertOrgAgentQuota(
-          tx,
-          createParams.organizationId,
-          createParams.maxNonTerminalAgents,
-        );
+        const cap = (
+          await subscriptionResourceLimitService.requireReady(createParams.organizationId)
+        ).limits.agentSandboxes;
+        await assertOrgAgentQuota(tx, createParams.organizationId, cap);
       }
 
       const [created] = await tx
@@ -8502,6 +8538,8 @@ export class ElizaSandboxService {
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
 
+    await assertOrgAgentActivationQuota(orgId);
+
     const funding = await agentBillingRepository.settleAccruedBillingBeforeLifecycle(
       agentId,
       orgId,
@@ -8792,6 +8830,7 @@ export class ElizaSandboxService {
     if (rec.status === "running" && rec.bridge_url) {
       return { success: true, reprovisioned: false };
     }
+    await assertOrgAgentActivationQuota(orgId);
     if (opts?.restoreBackupId && opts?.forceFreshBoot) {
       // The route rejects this combination; enforced here too so a hand-crafted
       // job row cannot smuggle an ambiguous instruction past the gate.

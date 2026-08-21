@@ -28,6 +28,7 @@ import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { managedDomainsService } from "./managed-domains";
+import { subscriptionResourceLimitService } from "./subscription-resource-limits";
 
 const DEFAULT_MAX_APPS_PER_ORG = 25;
 const appByIdHydrations = new Map<string, Promise<void>>();
@@ -415,7 +416,8 @@ export class AppsService {
   }
 
   async assertCanCreateForOrganization(organizationId: string): Promise<{ limit: number }> {
-    const limit = getMaxAppsPerOrg();
+    const snapshot = await subscriptionResourceLimitService.requireReady(organizationId);
+    const limit = snapshot.limits.apps;
     const currentCount = await appsRepository.countByOrganization(organizationId);
 
     if (currentCount >= limit) {
@@ -455,7 +457,7 @@ export class AppsService {
       throw new Error("Failed to generate unique slug");
     }
 
-    const { limit } = await this.assertCanCreateForOrganization(data.organization_id);
+    await this.assertCanCreateForOrganization(data.organization_id);
 
     const { apiKey, plainKey } = await apiKeysService.create({
       name: `${data.name} - App API Key`,
@@ -467,22 +469,19 @@ export class AppsService {
 
     let app: App | undefined;
     try {
-      app = await appsRepository.createIfOrganizationBelowLimit(
-        {
-          name: data.name,
-          description: data.description,
-          slug,
-          organization_id: data.organization_id,
-          created_by_user_id: data.created_by_user_id,
-          app_url: data.app_url,
-          allowed_origins: data.allowed_origins || [data.app_url],
-          api_key_id: apiKey.id,
-          logo_url: data.logo_url,
-          website_url: data.website_url,
-          contact_email: data.contact_email,
-        },
-        limit,
-      );
+      app = await appsRepository.createIfOrganizationBelowLimit({
+        name: data.name,
+        description: data.description,
+        slug,
+        organization_id: data.organization_id,
+        created_by_user_id: data.created_by_user_id,
+        app_url: data.app_url,
+        allowed_origins: data.allowed_origins || [data.app_url],
+        api_key_id: apiKey.id,
+        logo_url: data.logo_url,
+        website_url: data.website_url,
+        contact_email: data.contact_email,
+      });
     } catch (error) {
       // error-policy:J2 — remove the provisional API key, then preserve the
       // original atomic app-create failure for the caller.

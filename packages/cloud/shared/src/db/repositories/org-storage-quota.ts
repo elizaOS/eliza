@@ -1,11 +1,13 @@
 // Persists org storage quota records for cloud services through the shared DB boundary.
 import { eq, sql } from "drizzle-orm";
+import { subscriptionResourceLimitService } from "../../lib/services/subscription-resource-limits";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type NewOrgStorageQuota,
   type OrgStorageQuota,
   orgStorageQuota,
 } from "../schemas/org-storage-quota";
+import { organizations } from "../schemas/organizations";
 
 export type { NewOrgStorageQuota, OrgStorageQuota };
 
@@ -45,30 +47,31 @@ export class OrgStorageQuotaRepository {
       throw new Error("OrgStorageQuotaRepository.tryReserveBytes: bytes must be non-negative");
     }
 
-    await dbWrite
-      .insert(orgStorageQuota)
-      .values({
-        organization_id: organizationId,
-        bytes_used: 0n,
-        bytes_limit: DEFAULT_ORG_STORAGE_BYTES_LIMIT,
-      })
-      .onConflictDoNothing();
-
-    const updated = await dbWrite
-      .update(orgStorageQuota)
-      .set({
-        bytes_used: sql`${orgStorageQuota.bytes_used} + ${bytes}`,
-        updated_at: new Date(),
-      })
-      .where(
-        sql`${orgStorageQuota.organization_id} = ${organizationId} AND ${orgStorageQuota.bytes_used} + ${bytes} <= ${orgStorageQuota.bytes_limit}`,
-      )
-      .returning({ bytes_used: orgStorageQuota.bytes_used });
-
-    if (updated.length === 0) {
-      return null;
-    }
-    return updated[0].bytes_used;
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT ${organizations.id} FROM ${organizations} WHERE ${organizations.id} = ${organizationId} FOR UPDATE`,
+      );
+      const bytesLimit = (await subscriptionResourceLimitService.requireReady(organizationId))
+        .limits.storageBytes;
+      await tx
+        .insert(orgStorageQuota)
+        .values({ organization_id: organizationId, bytes_used: 0n, bytes_limit: bytesLimit })
+        .onConflictDoUpdate({
+          target: orgStorageQuota.organization_id,
+          set: { bytes_limit: bytesLimit, updated_at: new Date() },
+        });
+      const updated = await tx
+        .update(orgStorageQuota)
+        .set({
+          bytes_used: sql`${orgStorageQuota.bytes_used} + ${bytes}`,
+          updated_at: new Date(),
+        })
+        .where(
+          sql`${orgStorageQuota.organization_id} = ${organizationId} AND ${orgStorageQuota.bytes_used} + ${bytes} <= ${bytesLimit}`,
+        )
+        .returning({ bytes_used: orgStorageQuota.bytes_used });
+      return updated[0]?.bytes_used ?? null;
+    });
   }
 
   /**
