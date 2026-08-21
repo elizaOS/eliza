@@ -124,8 +124,8 @@ function currentTurnInputPattern(input: string): string {
   return `${escaped}(?![\\s\\S]*message:user:\\n)`;
 }
 
-const codingToolModelFixtures: ScenarioModelFixture[] =
-  strictCodingToolRoutes.flatMap((route) => {
+const codingToolModelFixtures: ScenarioModelFixture[] = [
+  ...strictCodingToolRoutes.flatMap((route) => {
     const slug = route.actionName.toLowerCase();
     const replyText = route.messageToUser;
     return [
@@ -172,7 +172,40 @@ const codingToolModelFixtures: ScenarioModelFixture[] =
         },
       },
     ];
-  });
+  }),
+  {
+    name: "post-tool-reply-exit-worktree",
+    match: {
+      modelType: "ACTION_PLANNER",
+      input: {
+        pattern: currentTurnInputPattern(
+          "Exit and clean up the isolated repo worktree",
+        ),
+      },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        thought: "Report the completed worktree cleanup.",
+        messageToUser: "Exited and removed worktree",
+        completed: true,
+        finishReason: "stop",
+        toolCalls: [],
+      },
+    },
+  },
+  {
+    name: "tool-result-rescue-exit-worktree",
+    match: {
+      modelType: "TEXT_LARGE",
+      input: { includes: "Exited and removed worktree " },
+      toolNames: [],
+    },
+    response: { text: "Exited and removed worktree" },
+  },
+];
+
+let previousEvaluators: unknown[] | null = null;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -478,11 +511,17 @@ export default scenario({
               ensureConnection?: (
                 params: Record<string, unknown>,
               ) => Promise<void>;
+              evaluators: unknown[];
             }
           | undefined;
         if (!runtime?.registerPlugin) {
           return "runtime.registerPlugin unavailable";
         }
+        // Post-turn evaluators are outside the coding-tools execution contract.
+        // Isolate them so every model call owned by this scenario is strict,
+        // then restore the shared runtime in cleanup.
+        previousEvaluators = runtime.evaluators;
+        runtime.evaluators = [];
         if (
           !runtime.plugins?.some(
             (plugin) =>
@@ -526,6 +565,19 @@ export default scenario({
           },
         });
         return undefined;
+      },
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "restore shared runtime evaluators",
+      apply: (ctx) => {
+        const runtime = ctx.runtime as { evaluators: unknown[] };
+        if (previousEvaluators !== null) {
+          runtime.evaluators = previousEvaluators;
+          previousEvaluators = null;
+        }
       },
     },
   ],
