@@ -4873,6 +4873,10 @@ describe("view management actions", () => {
 		try {
 			const explicitWorkdir = path.join(repo.repoRoot, "custom-app-source");
 			mkdirSync(explicitWorkdir, { recursive: true });
+			writeFileSync(
+				path.join(explicitWorkdir, "package.json"),
+				JSON.stringify({ name: "proof-app" }),
+			);
 			const { runtime, codingHandler } = createRuntime();
 			const appClient = {
 				listInstalledApps: vi.fn(async () => [
@@ -4910,6 +4914,53 @@ describe("view management actions", () => {
 				workdir: explicitWorkdir,
 			});
 			expect(codingHandler).toHaveBeenCalledTimes(1);
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it("does not let a planner workdir hint override the selected app source", async () => {
+		const repo = createRepoFixture();
+		try {
+			const appDir = path.join(
+				repo.repoRoot,
+				"eliza",
+				"apps",
+				"nubs-color-pebble",
+			);
+			mkdirSync(appDir, { recursive: true });
+			const { runtime, codingHandler } = createRuntime();
+			const appClient = {
+				listInstalledApps: vi.fn(async () => [
+					{
+						name: "nubs-color-pebble",
+						displayName: "Nubs Color Pebble",
+						pluginName: "nubs-color-pebble",
+						version: "0.0.0",
+						installedAt: "2026-08-21T00:00:00.000Z",
+					},
+				]),
+			};
+
+			const result = await runCreate({
+				runtime: runtime as never,
+				client: appClient as never,
+				message: message("Update Nubs Color Pebble") as never,
+				options: {
+					action: "create",
+					editTarget: "nubs-color-pebble",
+					intent: "Update the heading and button.",
+					workdir: repo.repoRoot,
+				},
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values).toMatchObject({ workdir: appDir });
+			const handlerOptions = codingHandler.mock.calls[0][3] as {
+				parameters: Record<string, unknown>;
+			};
+			expect(handlerOptions.parameters.workdir).toBe(appDir);
 		} finally {
 			repo.cleanup();
 		}

@@ -778,9 +778,6 @@ async function locateInstalledAppWorkdir(
 ): Promise<string | null> {
 	const basename = app.pluginName.replace(/^@[^/]+\//, "").trim();
 	const candidates = [
-		...(explicitWorkdir && path.isAbsolute(explicitWorkdir)
-			? [explicitWorkdir]
-			: []),
 		path.join(resolveAppsLandingRoot(), `app-${app.name}`),
 		path.join(resolveAppsLandingRoot(), app.name),
 		path.join(resolveAppsLandingRoot(), basename),
@@ -790,11 +787,51 @@ async function locateInstalledAppWorkdir(
 		path.join(repoRoot, "eliza", "plugins", basename),
 		path.join(repoRoot, "plugins", basename),
 	];
+	if (
+		explicitWorkdir &&
+		path.isAbsolute(explicitWorkdir) &&
+		(await explicitWorkdirMatchesApp(explicitWorkdir, app))
+	) {
+		// Planner-authored workdir hints are advisory. Only use one when its
+		// package manifest identifies the selected app, and prefer the canonical
+		// registered/scaffold landing paths above it. This prevents a broad path
+		// such as the repository root from becoming a coding agent's edit target.
+		candidates.push(explicitWorkdir);
+	}
 	for (const candidate of candidates) {
 		const stat = await fs.stat(candidate).catch(() => null);
 		if (stat?.isDirectory()) return candidate;
 	}
 	return null;
+}
+
+function normalizedAppPackageName(value: string): string {
+	return value
+		.trim()
+		.toLowerCase()
+		.replace(/^@[^/]+\//, "")
+		.replace(/^(?:app|plugin)-/, "");
+}
+
+async function explicitWorkdirMatchesApp(
+	directory: string,
+	app: InstalledAppInfo,
+): Promise<boolean> {
+	const raw = await fs
+		.readFile(path.join(directory, "package.json"), "utf8")
+		.catch(() => null);
+	if (!raw) return false;
+
+	try {
+		const parsed = JSON.parse(raw) as { name?: unknown };
+		if (typeof parsed.name !== "string") return false;
+		const packageName = normalizedAppPackageName(parsed.name);
+		return [app.name, app.pluginName].some(
+			(reference) => normalizedAppPackageName(reference) === packageName,
+		);
+	} catch {
+		return false;
+	}
 }
 
 async function createNewApp({
