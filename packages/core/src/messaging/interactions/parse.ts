@@ -26,6 +26,10 @@ import type {
 	InteractionOption,
 	TaskInteraction,
 } from "../../types/interactions";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../utils/well-formed.ts";
 import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 
 /** Hard caps mirroring the dashboard parsers — keep a runaway template safe. */
@@ -408,12 +412,13 @@ function isUnclaimedMarkerLine(line: string): boolean {
 }
 
 function isUnclaimedOptionLine(line: string): boolean {
-	const value = line.trim();
+	const wellFormed = toWellFormedUnicode(line);
+	const value = wellFormed.trim();
 	const equals = value.indexOf("=");
 	if (equals < 1 || equals > 256 || equals === value.length - 1) return false;
 	const colon = value.indexOf(":");
 	if (colon >= 0 && colon < equals) {
-		const kind = value.slice(0, colon).trim().toLowerCase();
+		const kind = truncateWellFormed(value, colon).trim().toLowerCase();
 		if (
 			!["reply", "navigate", "prompt", "value", "action", "url"].includes(kind)
 		) {
@@ -506,23 +511,29 @@ function stripUnclaimedInteractionMarkupTail(text: string): string {
 			break;
 		}
 	}
-	if (opening < 0) return text;
-	return text.slice(0, lines[opening].start).trimEnd();
+	if (opening < 0) return toWellFormedUnicode(text);
+	return truncateWellFormed(
+		toWellFormedUnicode(text),
+		lines[opening].start,
+	).trimEnd();
 }
 
 /** Preserve claimable controls while removing a terminal unclaimed suffix. */
 export function stripUnclaimedInteractionMarkup(text: string): string {
-	const upper = text.toUpperCase();
+	const wellFormed = toWellFormedUnicode(text);
+	const upper = wellFormed.toUpperCase();
 	if (
 		!upper.includes("FOLLOWUPS") &&
 		!upper.includes("CHOICE") &&
 		!upper.includes("TASK")
 	)
-		return text;
-	const terminalClaim = findInteractionRegions(text).some(
-		(region) => text.slice(region.end).trim().length === 0,
+		return wellFormed;
+	const terminalClaim = findInteractionRegions(wellFormed).some(
+		(region) => wellFormed.slice(region.end).trim().length === 0,
 	);
-	return terminalClaim ? text : stripUnclaimedInteractionMarkupTail(text);
+	return terminalClaim
+		? wellFormed
+		: stripUnclaimedInteractionMarkupTail(wellFormed);
 }
 
 /**
