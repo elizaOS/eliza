@@ -8,11 +8,11 @@ feature.
 `.github/workflows/ci.yml` is the canonical required pull-request workflow. Its
 `Tests` and `Smoke` jobs call the repository-level package sweeps and
 deterministic E2E suite. Path classification can skip unaffected groups, while
-the stable `Required` job remains the only status intended for branch
-protection. Specialized branch-scoped and path-scoped PR gates such as
+the stable `All Tests Passed` aggregate remains the only status intended for
+branch protection. Specialized branch-scoped and path-scoped PR gates such as
 `develop-pr.yml`, `quality.yml`, `scenario-pr.yml`, `ui-e2e-gate.yml`,
 `ui-fixture-e2e.yml`, and `gitleaks.yml` run alongside it for specific
-surfaces; none replaces the `CI / Required` status.
+surfaces; none replaces the required `All Tests Passed` aggregate.
 
 The pull-request lane is credential-free. It uses deterministic model fixtures,
 local services, and checked-in browser fixtures. A test that requires a hosted
