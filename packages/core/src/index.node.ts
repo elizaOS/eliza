@@ -97,6 +97,7 @@ export {
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
