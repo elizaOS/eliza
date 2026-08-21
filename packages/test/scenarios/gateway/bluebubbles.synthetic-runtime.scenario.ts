@@ -59,6 +59,43 @@ let provider: RunningBlueBubblesMock | undefined;
 let webhookTarget: RunningFetchServer | undefined;
 let proof: BoundaryProof | undefined;
 
+function assertGetServiceBoundary(
+  surface: "bluebubblesservice",
+  running: boolean,
+): string | undefined {
+  if (surface !== "bluebubblesservice" || !running) {
+    return "BlueBubblesService boundary was not running";
+  }
+}
+
+function assertSendMessageBoundary(
+  surface: "source",
+  receipt: BoundaryProof["outbound"],
+): string | undefined {
+  if (
+    surface !== "source" ||
+    receipt.source !== "bluebubbles" ||
+    receipt.effectCount !== 1 ||
+    !receipt.messageGuid
+  ) {
+    return `invalid BlueBubbles egress receipt: ${JSON.stringify(receipt)}`;
+  }
+}
+
+function assertWebhookBoundary(
+  surface: "imessage",
+  receipt: BoundaryProof["inbound"],
+): string | undefined {
+  if (
+    surface !== "imessage" ||
+    receipt.source !== "bluebubbles" ||
+    receipt.messageGuid !== INBOUND_GUID ||
+    receipt.duplicateMemoryCount !== 1
+  ) {
+    return `invalid BlueBubbles ingress receipt: ${JSON.stringify(receipt)}`;
+  }
+}
+
 function chat() {
   return {
     guid: CHAT_GUID,
@@ -163,6 +200,11 @@ async function stopLoopbacks(): Promise<void> {
 
 export default scenario({
   lane: "pr-deterministic",
+  runtimeSurfaceIds: [
+    "@elizaos/plugin-bluebubbles:connector-egress:source",
+    "@elizaos/plugin-bluebubbles:connector-ingress:imessage",
+    "@elizaos/plugin-bluebubbles:service:bluebubblesservice",
+  ],
   executionProfile: "simulated",
   id: "bluebubbles.synthetic-runtime",
   title:
@@ -382,9 +424,14 @@ export default scenario({
           reset: { restoredExecutionState: true, ledgerEntries: 0 },
         };
         if (!proof) return "BlueBubbles boundary proof was not captured";
-        if (!proof.outbound.messageGuid) {
-          return "BlueBubbles egress receipt is missing the provider message GUID";
-        }
+        const boundaryFailure =
+          assertGetServiceBoundary(
+            "bluebubblesservice",
+            proof.serviceRunning,
+          ) ??
+          assertSendMessageBoundary("source", proof.outbound) ??
+          assertWebhookBoundary("imessage", proof.inbound);
+        if (boundaryFailure) return boundaryFailure;
         const comparable = {
           ...proof,
           outbound: {
