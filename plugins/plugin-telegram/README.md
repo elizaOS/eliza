@@ -118,6 +118,8 @@ The plugin registers a `/eliza_pair <code>` bot command that lets the Telegram u
 
 The default `mention_only` policy makes group use predictable: add the bot, grant it permission to read/send messages, then use a bot command, mention its exact username, or reply to one of its messages. Ambient messages remain available in that group's scoped history but do not trigger a reply. Operators can deliberately choose `ambient` for a conversational group or `disabled` for read-only ingestion. Telegram privacy mode can prevent the bot from receiving ambient messages at all; disable privacy in BotFather only when ambient history or replies are intended.
 
+Bot removal and re-add are lifecycle events, not new identities. `left`/`kicked` suspends the existing Telegram world; re-adding the bot reconnects the same world and scoped history. Membership/admin changes are retained in world metadata so a permissions failure can be explained and recovered without silently creating another room or agent.
+
 ## 409 Conflict errors
 
 The Telegram Bot API permits only one active long-poll connection per token. If two agent processes share the same token simultaneously, Telegram rejects the second with a 409 error. Full and standalone pollers share a process-local lock keyed by a fingerprint of the token; a live, starting, retrying, or merely quiet owner remains a hard launch failure. The lock becomes reclaimable only after that poller reaches an explicit terminal state. Across separate processes, operators must still ensure that only one process uses a given token at a time.

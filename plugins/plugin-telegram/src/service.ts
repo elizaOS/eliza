@@ -59,6 +59,10 @@ import {
 import { TELEGRAM_SERVICE_NAME } from "./constants";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "./dm-policy";
 import { resolveTelegramRuntimeEntityId } from "./identity";
+import {
+  classifyTelegramMembershipTransition,
+  type TelegramMembershipState,
+} from "./membership-lifecycle";
 import { MessageManager } from "./messageManager";
 import {
   claimTelegramPollerToken,
@@ -1012,7 +1016,13 @@ export class TelegramService extends Service {
           .launch(
             {
               dropPendingUpdates: false,
-              allowedUpdates: ["message", "message_reaction", "callback_query"],
+              allowedUpdates: [
+                "message",
+                "message_reaction",
+                "callback_query",
+                "my_chat_member",
+                "chat_member",
+              ],
             },
             () => {
               connectedAt = Date.now();
@@ -1299,6 +1309,133 @@ export class TelegramService extends Service {
         );
       }
     });
+
+    // Bot removal/re-add arrives as `my_chat_member`, not reliably as a
+    // left_chat_member service message. Preserve the world and its history,
+    // but mark it suspended while the bot cannot participate.
+    bot?.on("my_chat_member", async (ctx) => {
+      try {
+        const token = state?.account.botToken ?? this.botToken;
+        if (token) {
+          markTelegramPollerUpdate(token, bot);
+        }
+        await this.handleBotMembershipUpdate(ctx, accountId);
+      } catch (error) {
+        logger.error(
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            accountId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "Error handling bot membership update",
+        );
+      }
+    });
+  }
+
+  private async telegramWorldLifecyclePayload(
+    world: World,
+    chat: Chat,
+    accountId: string,
+  ): Promise<
+    TelegramWorldPayload & {
+      accountId: string;
+      metadata: { accountId: string };
+    }
+  > {
+    const rooms = await this.runtime.getRooms(world.id);
+    const entitiesById = new Map<UUID, Entity>();
+    for (const room of rooms) {
+      for (const entity of await this.runtime.getEntitiesForRoom(room.id)) {
+        entitiesById.set(entity.id, entity);
+      }
+    }
+    return {
+      runtime: this.runtime,
+      world,
+      rooms,
+      entities: Array.from(entitiesById.values()),
+      source: "telegram",
+      accountId,
+      metadata: { accountId },
+      chat,
+      botUsername: this.getAccountState(accountId)?.bot.botInfo?.username,
+    };
+  }
+
+  /** Suspend/reconnect a Telegram world from authoritative bot membership. */
+  private async handleBotMembershipUpdate(
+    ctx: Context,
+    accountId = this.defaultAccountId,
+  ): Promise<void> {
+    if (!("my_chat_member" in ctx.update)) return;
+    const update = ctx.update.my_chat_member;
+    const previous = update.old_chat_member.status as TelegramMembershipState;
+    const next = update.new_chat_member.status as TelegramMembershipState;
+    const transition = classifyTelegramMembershipTransition(previous, next);
+    if (!transition) return;
+
+    const chat = update.chat as Chat;
+    const chatId = String(chat.id);
+    const scopedChatId = this.scopedTelegramKey(chatId, accountId);
+    const worldId = createUniqueUuid(this.runtime, scopedChatId) as UUID;
+    const world = await this.runtime.getWorld(worldId);
+
+    if (transition === "left") {
+      this.knownChats.delete(scopedChatId);
+      if (!world) return;
+      world.metadata = {
+        ...world.metadata,
+        accountId,
+        telegramConnectionState: "suspended",
+        telegramMembershipStatus: next,
+        suspendedAt: Date.now(),
+      };
+      await this.runtime.updateWorld(world);
+      const payload = await this.telegramWorldLifecyclePayload(
+        world,
+        chat,
+        accountId,
+      );
+      await this.runtime.emitEvent(TelegramEventTypes.WORLD_LEFT, payload);
+      await this.runtime.emitEvent(EventType.WORLD_LEFT, payload);
+      return;
+    }
+
+    if (transition === "connected") {
+      this.knownChats.set(scopedChatId, chat);
+      if (!world) {
+        await this.handleNewChat(ctx, accountId);
+        return;
+      }
+      world.metadata = {
+        ...world.metadata,
+        accountId,
+        telegramConnectionState: "active",
+        telegramMembershipStatus: next,
+        reconnectedAt: Date.now(),
+      };
+      await this.runtime.updateWorld(world);
+      const payload = await this.telegramWorldLifecyclePayload(
+        world,
+        chat,
+        accountId,
+      );
+      await this.runtime.emitEvent(TelegramEventTypes.WORLD_CONNECTED, payload);
+      await this.runtime.emitEvent(EventType.WORLD_CONNECTED, payload);
+      return;
+    }
+
+    if (world) {
+      world.metadata = {
+        ...world.metadata,
+        accountId,
+        telegramMembershipStatus: next,
+        membershipUpdatedAt: Date.now(),
+      };
+      await this.runtime.updateWorld(world);
+    }
   }
 
   /**

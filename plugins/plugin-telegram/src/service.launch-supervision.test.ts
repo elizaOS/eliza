@@ -89,7 +89,13 @@ describe("TelegramService.launchPollerSupervised", () => {
     expect(bot.launch).toHaveBeenCalledTimes(1);
     expect(calls[0].config).toEqual({
       dropPendingUpdates: false,
-      allowedUpdates: ["message", "message_reaction", "callback_query"],
+      allowedUpdates: [
+        "message",
+        "message_reaction",
+        "callback_query",
+        "my_chat_member",
+        "chat_member",
+      ],
     });
 
     calls[0].onLaunch();

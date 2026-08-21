@@ -12,7 +12,7 @@ This plugin adds a `TelegramService` that polls Telegram for incoming messages a
 
 | Service class | `serviceType` | What it does |
 |---|---|---|
-| `TelegramService` | `"telegram"` | Launches a Telegraf long-poll bot, processes `message` + `message_reaction` events, manages multi-account state, registers the agent as a `MessageConnector` |
+| `TelegramService` | `"telegram"` | Launches a Telegraf long-poll bot, processes messages, reactions, callbacks, and bot/chat membership events, manages multi-account state, registers the agent as a `MessageConnector` |
 | `TelegramOwnerPairingServiceImpl` | `"OWNER_PAIRING_TELEGRAM"` | Registers `/eliza_pair <code>` bot command; provides `sendOwnerLoginDmLink` called by auth backend to DM login links |
 | `TelegramStandaloneService` | `"telegram-standalone"` | Opt-in standalone long-poll mode: a minimal Telegraf poller that routes inbound messages through the runtime message service. Self-gates — dormant unless LifeOps passive connectors are disabled AND `ELIZA_TELEGRAM_STANDALONE_BOT` is truthy |
 
@@ -141,6 +141,7 @@ Account resolution order (for the `default` account): `character.settings.telegr
 - **Sensitive request adapter**: `registerTelegramDmSensitiveRequestAdapter` (called in `init()`) wires Telegram DM delivery for secret / OAuth link-out requests, mirroring the Discord DM adapter.
 - **DM access fails closed by default.** With no `TELEGRAM_ALLOWED_CHATS` allowlist, private chats are gated by `TELEGRAM_DM_POLICY` (default `pairing` through the core PairingService; the code reply is issued at most once per sender per request TTL, and pending requests are rejected — never evicted — at the queue cap). `TELEGRAM_DM_POLICY=open` restores the legacy default-open behavior; non-private chats are unaffected because a bot only sees groups it was invited to. The standalone poller applies the same gate via `src/dm-policy.ts`.
 - **Group speech is explicit by default.** `TELEGRAM_GROUP_RESPONSE_POLICY=mention_only` stores ambient group traffic in scoped room history without speaking. Bot commands, structured `@bot` mentions, and replies to the bot respond. Set `ambient` only when every visible group message should invoke the agent, or `disabled` to ingest without group replies. Durable delivery markers still suppress redelivered updates.
+- **Removal preserves identity and history.** The poller subscribes to authoritative `my_chat_member`/`chat_member` updates. A `left`/`kicked` transition marks the existing world suspended and emits world-left events; re-add reconnects the same world and emits world-connected events instead of creating a second group identity. Administrator/member changes update membership metadata for actionable permission recovery.
 - **Inbound attachment URLs are token-free capability references.** `MessageManager` persists `telegram-file:<file_id>` on `content.attachments`, never the telegraf `getFileLink` URL (which embeds the operator's bot token). Bytes are resolved transiently at enrichment time (`enrichFileRefAttachments`, reply path only) and at outbound send time (`sendMedia` re-sends by bare file id); model handlers receive inline data URLs, never the token URL. Memories written before this change may still hold token URLs — rotate the bot token to remediate.
 - See repo root `CLAUDE.md` for architecture rules, logging standards, and git workflow.
 
