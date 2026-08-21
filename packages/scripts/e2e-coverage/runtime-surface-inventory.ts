@@ -18,6 +18,8 @@ export const RUNTIME_SURFACE_REPO_ROOT = path.resolve(
 );
 
 export const RUNTIME_SURFACE_SCHEMA = "eliza.synthetic-world-surfaces/v1";
+export const RUNTIME_DEPENDENCY_SCHEMA =
+  "eliza.synthetic-world-dependencies/v1";
 
 export const RUNTIME_SURFACE_STATUSES = [
   "covered",
@@ -55,6 +57,43 @@ export type RuntimeSurfaceKind = (typeof RUNTIME_SURFACE_KINDS)[number];
 export type MockAvailability = "available" | "partial" | "missing";
 export type ResetSupport = "supported" | "partial" | "missing";
 
+export interface ExternalServiceDependency {
+  id: string;
+  protocol: string;
+}
+
+export interface MockDependency {
+  serviceId: string;
+  availability: "available" | "missing";
+  owner: string | null;
+  source: string | null;
+  reason: string;
+}
+
+export interface RuntimeDependencyRule {
+  packageName: string;
+  kinds: RuntimeSurfaceKind[];
+  noExternalServiceReason?: string;
+  externalServices?: Array<{
+    id: string;
+    protocol: string;
+    mockOwner?: string;
+    mockSource?: string;
+    missingMockReason?: string;
+  }>;
+}
+
+export interface RuntimeDependencyCatalog {
+  schema: typeof RUNTIME_DEPENDENCY_SCHEMA;
+  upstreamCatalog: {
+    pullRequest: number;
+    head: string;
+    path: string;
+    relationship: string;
+  };
+  rules: RuntimeDependencyRule[];
+}
+
 export interface RuntimeSurfaceClassification {
   status: Exclude<RuntimeSurfaceStatus, "covered">;
   reason: string;
@@ -81,7 +120,10 @@ export interface RuntimeSurfaceRow {
   registrationField: string;
   runtimeRequirements: string[];
   platformRequirements: string[];
-  externalDependencies: string[];
+  packageDependencies: string[];
+  externalServiceDependencies: ExternalServiceDependency[];
+  mockDependencies: MockDependency[];
+  dependencyDisposition: "local-only" | "mock-owned" | "mock-missing";
   mockAvailability: MockAvailability;
   mockFidelity: string;
   resetSupport: ResetSupport;
@@ -113,10 +155,12 @@ export interface RuntimeSurfaceInventory {
     total: number;
     byKind: Record<string, number>;
     byStatus: Record<string, number>;
+    byDependencyDisposition: Record<string, number>;
   };
   gaps: {
     byOwner: Record<string, string[]>;
-    byExternalDependency: Record<string, string[]>;
+    byExternalService: Record<string, string[]>;
+    byMockOwner: Record<string, string[]>;
     byScenarioLane: Record<string, string[]>;
     byWorkstream: Record<string, string[]>;
   };
@@ -128,7 +172,7 @@ export interface RuntimePackageRecord {
   packageDir: string;
   runtimeRequirements: string[];
   platformRequirements: string[];
-  externalDependencies: string[];
+  packageDependencies: string[];
   registeredSurfaceIds: string[];
   registrationState: "registered-surfaces" | "no-runtime-registration";
   reason: string;
@@ -140,7 +184,7 @@ interface PackageContext {
   owner: string;
   runtimeRequirements: string[];
   platformRequirements: string[];
-  externalDependencies: string[];
+  packageDependencies: string[];
 }
 
 interface RawSurface {
@@ -205,6 +249,14 @@ const PLUGIN_FIELDS = new Map<string, RuntimeSurfaceKind>([
   ["views", "view"],
   ["models", "model-handler"],
   ["connectorSources", "connector-ingress"],
+]);
+
+const EXPLICIT_DEPENDENCY_KINDS = new Set<RuntimeSurfaceKind>([
+  "provider",
+  "connector-ingress",
+  "connector-egress",
+  "model-handler",
+  "route",
 ]);
 
 const NAME_KEYS: Record<RuntimeSurfaceKind, readonly string[]> = {
@@ -369,8 +421,191 @@ function packageContext(packageDir: string): PackageContext | null {
     owner: manifest.name,
     runtimeRequirements: [...runtime].sort(),
     platformRequirements: [...platforms].sort(),
-    externalDependencies: [...dependencies].sort(),
+    packageDependencies: [...dependencies].sort(),
   };
+}
+
+export function loadRuntimeDependencyCatalog(
+  file = path.join(
+    path.dirname(new URL(import.meta.url).pathname),
+    "runtime-surface-dependencies.json",
+  ),
+): RuntimeDependencyCatalog {
+  const parsed = readJson(file) as unknown as RuntimeDependencyCatalog;
+  if (
+    parsed.schema !== RUNTIME_DEPENDENCY_SCHEMA ||
+    !Array.isArray(parsed.rules) ||
+    !parsed.upstreamCatalog ||
+    typeof parsed.upstreamCatalog !== "object"
+  ) {
+    throw new Error(`Invalid runtime dependency catalog schema in ${file}`);
+  }
+  return parsed;
+}
+
+function validateDependencyRule(rule: RuntimeDependencyRule): void {
+  if (!rule.packageName || rule.kinds.length === 0) {
+    throw new Error(
+      "Runtime dependency rules require a package and at least one kind",
+    );
+  }
+  const hasLocalReason = typeof rule.noExternalServiceReason === "string";
+  const services = rule.externalServices ?? [];
+  if (hasLocalReason === services.length > 0) {
+    throw new Error(
+      `${rule.packageName} dependency rule must declare exactly one of noExternalServiceReason or externalServices`,
+    );
+  }
+  if (
+    hasLocalReason &&
+    (rule.noExternalServiceReason?.trim().length ?? 0) < 24
+  ) {
+    throw new Error(
+      `${rule.packageName} local-only dependency reason is not actionable`,
+    );
+  }
+  const serviceIds = new Set<string>();
+  for (const service of services) {
+    if (!service.id || !service.protocol || serviceIds.has(service.id)) {
+      throw new Error(
+        `${rule.packageName} has an invalid or duplicate service dependency`,
+      );
+    }
+    serviceIds.add(service.id);
+    const hasMock = Boolean(service.mockOwner || service.mockSource);
+    if (hasMock && (!service.mockOwner || !service.mockSource)) {
+      throw new Error(
+        `${service.id} must declare both mockOwner and mockSource`,
+      );
+    }
+    if (hasMock && service.missingMockReason) {
+      throw new Error(
+        `${service.id} cannot be both mock-owned and mock-missing`,
+      );
+    }
+    if (!hasMock && (service.missingMockReason?.trim().length ?? 0) < 24) {
+      throw new Error(`${service.id} requires an actionable missingMockReason`);
+    }
+    if (service.mockSource) {
+      const source = path.resolve(
+        RUNTIME_SURFACE_REPO_ROOT,
+        service.mockSource,
+      );
+      const relative = path.relative(RUNTIME_SURFACE_REPO_ROOT, source);
+      if (
+        relative.startsWith("..") ||
+        path.isAbsolute(relative) ||
+        !existsSync(source)
+      ) {
+        throw new Error(
+          `${service.id} mockSource is missing or escapes the repository`,
+        );
+      }
+    }
+  }
+}
+
+export function resolveRuntimeDependencies(
+  packageName: string,
+  kind: RuntimeSurfaceKind,
+  catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
+): {
+  externalServiceDependencies: ExternalServiceDependency[];
+  mockDependencies: MockDependency[];
+  dependencyDisposition: RuntimeSurfaceRow["dependencyDisposition"];
+} {
+  const matches = catalog.rules.filter(
+    (rule) => rule.packageName === packageName && rule.kinds.includes(kind),
+  );
+  if (matches.length !== 1) {
+    throw new Error(
+      `${packageName}:${kind} requires exactly one explicit runtime dependency rule; found ${matches.length}`,
+    );
+  }
+  const rule = matches[0];
+  validateDependencyRule(rule);
+  const services = rule.externalServices ?? [];
+  const mockDependencies: MockDependency[] = services.map((service) => {
+    if (service.mockOwner && service.mockSource) {
+      return {
+        serviceId: service.id,
+        availability: "available",
+        owner: service.mockOwner,
+        source: service.mockSource,
+        reason: `${service.mockOwner} owns the ${service.protocol} mock source at ${service.mockSource}; row-level reset proof remains separate.`,
+      };
+    }
+    if (!service.missingMockReason) {
+      throw new Error(`${service.id} requires an actionable missingMockReason`);
+    }
+    return {
+      serviceId: service.id,
+      availability: "missing",
+      owner: null,
+      source: null,
+      reason: service.missingMockReason,
+    };
+  });
+  return {
+    externalServiceDependencies: services.map(({ id, protocol }) => ({
+      id,
+      protocol,
+    })),
+    mockDependencies,
+    dependencyDisposition:
+      services.length === 0
+        ? "local-only"
+        : mockDependencies.every(
+              (dependency) => dependency.availability === "available",
+            )
+          ? "mock-owned"
+          : "mock-missing",
+  };
+}
+
+export function validateRuntimeDependencyCatalog(
+  surfaces: ReadonlyArray<{ packageName: string; kind: RuntimeSurfaceKind }>,
+  catalog: RuntimeDependencyCatalog = loadRuntimeDependencyCatalog(),
+): void {
+  const required = new Set(
+    surfaces
+      .filter((surface) => EXPLICIT_DEPENDENCY_KINDS.has(surface.kind))
+      .map((surface) => `${surface.packageName}:${surface.kind}`),
+  );
+  const declared = new Map<string, number>();
+  for (const rule of catalog.rules) {
+    validateDependencyRule(rule);
+    for (const kind of rule.kinds) {
+      if (!EXPLICIT_DEPENDENCY_KINDS.has(kind)) {
+        throw new Error(
+          `${rule.packageName}:${kind} is not dependency-accounted`,
+        );
+      }
+      const selector = `${rule.packageName}:${kind}`;
+      declared.set(selector, (declared.get(selector) ?? 0) + 1);
+    }
+  }
+  const duplicate = [...declared].filter(([, count]) => count !== 1);
+  const missing = [...required].filter((selector) => !declared.has(selector));
+  const stale = [...declared.keys()].filter(
+    (selector) => !required.has(selector),
+  );
+  if (duplicate.length > 0 || missing.length > 0 || stale.length > 0) {
+    throw new Error(
+      [
+        duplicate.length > 0
+          ? `duplicate=${duplicate
+              .map(([selector]) => selector)
+              .sort()
+              .join(",")}`
+          : null,
+        missing.length > 0 ? `missing=${missing.sort().join(",")}` : null,
+        stale.length > 0 ? `stale=${stale.sort().join(",")}` : null,
+      ]
+        .filter(Boolean)
+        .join("; "),
+    );
+  }
 }
 
 function resolveModule(from: string, specifier: string): string | null {
@@ -3039,6 +3274,14 @@ export function buildRuntimeSurfaceInventory(
   const scenarios = scenarioRecords();
   const cloudCells = cloudE2eFiles();
   const raw = discoverRuntimeSurfaces();
+  const dependencyCatalog = loadRuntimeDependencyCatalog();
+  validateRuntimeDependencyCatalog(
+    raw.map((surface) => ({
+      packageName: surface.package.packageName,
+      kind: surface.kind,
+    })),
+    dependencyCatalog,
+  );
   const rows = raw.map((surface): RuntimeSurfaceRow => {
     const id = runtimeSurfaceId(surface);
     const aliases = pluginAliases(surface);
@@ -3077,6 +3320,17 @@ export function buildRuntimeSurfaceInventory(
     const providerQualified = status === "provider-qualified-only";
     const mockAvailable = deterministic.length > 0;
     const partialMock = !mockAvailable && matchingCells.length > 0;
+    const runtimeDependencies = EXPLICIT_DEPENDENCY_KINDS.has(surface.kind)
+      ? resolveRuntimeDependencies(
+          surface.package.packageName,
+          surface.kind,
+          dependencyCatalog,
+        )
+      : {
+          externalServiceDependencies: [],
+          mockDependencies: [],
+          dependencyDisposition: "local-only" as const,
+        };
     return {
       id,
       kind: surface.kind,
@@ -3088,7 +3342,8 @@ export function buildRuntimeSurfaceInventory(
       registrationField: surface.registrationField,
       runtimeRequirements: surface.package.runtimeRequirements,
       platformRequirements: surface.package.platformRequirements,
-      externalDependencies: surface.package.externalDependencies,
+      packageDependencies: surface.package.packageDependencies,
+      ...runtimeDependencies,
       mockAvailability: mockAvailable
         ? "available"
         : partialMock
@@ -3119,9 +3374,11 @@ export function buildRuntimeSurfaceInventory(
   });
   const byKind: Record<string, number> = {};
   const byStatus: Record<string, number> = {};
+  const byDependencyDisposition: Record<string, number> = {};
   const gaps = {
     byOwner: {} as Record<string, string[]>,
-    byExternalDependency: {} as Record<string, string[]>,
+    byExternalService: {} as Record<string, string[]>,
+    byMockOwner: {} as Record<string, string[]>,
     byScenarioLane: {} as Record<string, string[]>,
     byWorkstream: {} as Record<string, string[]>,
   };
@@ -3137,19 +3394,33 @@ export function buildRuntimeSurfaceInventory(
   for (const row of rows) {
     byKind[row.kind] = (byKind[row.kind] ?? 0) + 1;
     byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+    byDependencyDisposition[row.dependencyDisposition] =
+      (byDependencyDisposition[row.dependencyDisposition] ?? 0) + 1;
     if (row.status === "covered") continue;
     appendGap(gaps.byOwner, row.owner, row.id);
-    const dependencies =
-      row.externalDependencies.length > 0 ? row.externalDependencies : ["none"];
-    for (const dependency of dependencies) {
-      appendGap(gaps.byExternalDependency, dependency, row.id);
+    const services =
+      row.externalServiceDependencies.length > 0
+        ? row.externalServiceDependencies.map((dependency) => dependency.id)
+        : ["none"];
+    for (const service of services) {
+      appendGap(gaps.byExternalService, service, row.id);
+    }
+    const mockOwners =
+      row.mockDependencies.length > 0
+        ? row.mockDependencies.map(
+            (dependency) => dependency.owner ?? "missing",
+          )
+        : ["not-applicable"];
+    for (const owner of mockOwners) {
+      appendGap(gaps.byMockOwner, owner, row.id);
     }
     appendGap(gaps.byScenarioLane, "missing-deterministic", row.id);
     appendGap(gaps.byWorkstream, row.workstream, row.id);
   }
   for (const group of [
     gaps.byOwner,
-    gaps.byExternalDependency,
+    gaps.byExternalService,
+    gaps.byMockOwner,
     gaps.byScenarioLane,
     gaps.byWorkstream,
   ]) {
@@ -3171,7 +3442,7 @@ export function buildRuntimeSurfaceInventory(
         packageDir: entry.dir,
         runtimeRequirements: entry.runtimeRequirements,
         platformRequirements: entry.platformRequirements,
-        externalDependencies: entry.externalDependencies,
+        packageDependencies: entry.packageDependencies,
         registeredSurfaceIds,
         registrationState: hasSurfaces
           ? "registered-surfaces"
@@ -3188,7 +3459,12 @@ export function buildRuntimeSurfaceInventory(
     sourceRevision: options.sourceRevision ?? baseline.generatedFrom,
     packages,
     rows,
-    summary: { total: rows.length, byKind, byStatus },
+    summary: {
+      total: rows.length,
+      byKind,
+      byStatus,
+      byDependencyDisposition,
+    },
     gaps,
   };
 }
