@@ -8,6 +8,7 @@ import {
   clearLocalGreetingQueue,
   drainDiscordProactiveGreetings,
   enqueueDiscordProactiveGreeting,
+  greetingFetch,
   peekLocalGreetingQueue,
 } from "./onboarding-proactive-greeting";
 
@@ -65,5 +66,38 @@ describe("local proactive greeting queue", () => {
         { sessionId, leaseId: leased[0]?.leaseId ?? "" },
       ]),
     ).toBe(1);
+  });
+});
+
+describe("greetingFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung coordinator hop at the timeout", async () => {
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    };
+    const start = Date.now();
+    await expect(
+      greetingFetch(hungStub, "https://onboarding.internal/enqueue-greeting", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return new Response("{}", { status: 200 });
+      },
+    };
+    const controller = new AbortController();
+    await greetingFetch(stub, "https://onboarding.internal/enqueue-greeting", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
