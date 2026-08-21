@@ -350,7 +350,12 @@ export class SurfaceWindowManager {
           ),
         );
       }
-      if (maximize) this.maximizeWorkspaceWhenReady(existing.window);
+      if (maximize) {
+        this.maximizeWorkspaceWhenReady(
+          existing.window,
+          presentation !== "content",
+        );
+      }
       existing.window.focus();
       return this.toSnapshot(existing);
     }
@@ -371,7 +376,10 @@ export class SurfaceWindowManager {
         (entry) => entry.id === snapshot.id,
       );
       if (created) {
-        this.maximizeWorkspaceWhenReady(created.window);
+        this.maximizeWorkspaceWhenReady(
+          created.window,
+          presentation !== "content",
+        );
         created.window.focus();
       }
     }
@@ -384,14 +392,20 @@ export class SurfaceWindowManager {
    * renderer reaches dom-ready so Workspace reliably fills the work area while
    * retaining ordinary traffic lights and window switching.
    */
-  private maximizeWorkspaceWhenReady(window: ManagedWindowLike): void {
+  private maximizeWorkspaceWhenReady(
+    window: ManagedWindowLike,
+    focusWhenReady = true,
+  ): void {
     window.maximize?.();
     let reinforced = false;
     window.webview.on("dom-ready", () => {
       if (reinforced) return;
       reinforced = true;
       window.maximize?.();
-      window.focus();
+      // A content Workspace is a canvas selected from the detached pill. Its
+      // late WKWebView dom-ready event must not steal key focus back after the
+      // native handoff has restored the pill/composer (or active Talk session).
+      if (focusWhenReady) window.focus();
     });
   }
 

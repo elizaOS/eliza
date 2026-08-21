@@ -253,6 +253,14 @@ describe("SurfaceWindowManager app windows", () => {
       "workspace",
       "content",
     );
+
+    const focusCountBeforeReady = fixture.created[0]?.focus.mock.calls.length;
+    fixture.created[0]?.emit("dom-ready");
+
+    expect(fixture.created[0]?.maximize).toHaveBeenCalledTimes(2);
+    expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(
+      focusCountBeforeReady ?? 0,
+    );
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {
