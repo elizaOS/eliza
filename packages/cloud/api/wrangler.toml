@@ -154,37 +154,39 @@ class_name = "PersonalDeliveryProjection"
 name = "PERSONAL_TELEGRAM_DELIVERIES"
 class_name = "PersonalTelegramDelivery"
 
-[[migrations]]
-tag = "shared-runtime-conversations-v1"
-new_sqlite_classes = ["SharedRuntimeConversation"]
+# Declarative exports preserve the existing namespaces without replaying the
+# Worker's historical migration tags. Do not mix this with `[[migrations]]`.
+[exports.SharedRuntimeConversation]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-admission-gates-v1"
-new_sqlite_classes = ["InferenceAdmissionGate"]
+[exports.InferenceAdmissionGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "anonymous-chat-gates-v1"
-new_sqlite_classes = ["AnonymousChatGate"]
+[exports.AnonymousChatGate]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "onboarding-session-coordinator-v1"
-new_sqlite_classes = ["OnboardingSessionCoordinator"]
+[exports.OnboardingSessionCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "twitter-oauth-refresh-coordinator-v1"
-new_sqlite_classes = ["TwitterOAuthRefreshCoordinator"]
+[exports.TwitterOAuthRefreshCoordinator]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-delivery-projection-v1"
-new_sqlite_classes = ["PersonalDeliveryProjection"]
+[exports.PersonalDeliveryProjection]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "personal-telegram-delivery-v1"
-new_sqlite_classes = ["PersonalTelegramDelivery"]
+[exports.PersonalTelegramDelivery]
+type = "durable-object"
+storage = "sqlite"
 
-[[migrations]]
-tag = "inference-rate-limit-v2-rollback-floor-v1"
-new_sqlite_classes = ["InferenceRateLimitV2RollbackFloor"]
+[exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
 
 # General API limits and queues may use Railway Redis via REDIS_URL. Inference
 # routes never connect to it: Cloudflare Rate Limiting bindings protect ingress,
