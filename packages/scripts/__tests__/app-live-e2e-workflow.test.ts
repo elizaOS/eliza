@@ -489,6 +489,11 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(spec.match(/assertOnboardingLivenessWithTiming\(/g)).toHaveLength(1);
     expect(spec).toContain("challengeLogicalChatSendCount).toBe(1)");
     expect(spec).toContain("unidentifiedChatSendAttemptCount).toBe(0)");
+    // Both the initial leg and the two history legs bind the accepted reply to
+    // the exact run-unique user row without requiring the model to echo it.
+    expect(spec).toContain("turnAnchorToken: challengeToken");
+    expect(spec).toContain("findAnchoredLiveTurn(");
+    expect(spec).toContain("isLiveReply(anchored.reply)");
     // The fresh-context leg must inherit nothing: no shared smoke seed, no
     // storageState hand-off, and no production service worker.
     expect(spec).not.toContain("seedAppStorage");

@@ -31,6 +31,9 @@ import {
   assertOnboardingLivenessWithTiming,
   buildLivenessChallenge,
   extractLivenessChallengeToken,
+  findAnchoredLiveTurn,
+  isLiveReply,
+  readLivenessThreadLines,
 } from "../liveness-contract";
 import { writeStagingCloudChatLatencyEvidence } from "../staging-cloud-chat-latency-evidence";
 import { openAppPath } from "./helpers";
@@ -190,18 +193,13 @@ async function proveChallengeHistory(
     .toBe(true);
   await expect
     .poll(
-      () =>
-        page.evaluate((token) => {
-          const hasToken = (role: "user" | "assistant") =>
-            Array.from(
-              document.querySelectorAll<HTMLElement>(
-                `[data-testid="thread-line"][data-role="${role}"]`,
-              ),
-            ).some((row) =>
-              (row.textContent ?? "").toLowerCase().includes(token),
-            );
-          return hasToken("user") && hasToken("assistant");
-        }, challengeToken.toLowerCase()),
+      async () => {
+        const anchored = findAnchoredLiveTurn(
+          await readLivenessThreadLines(page),
+          { anchorToken: challengeToken },
+        );
+        return Boolean(anchored && isLiveReply(anchored.reply));
+      },
       { timeout: 120_000 },
     )
     .toBe(true);
@@ -368,6 +366,9 @@ test.describe("real cloud login + personal identity + chat", () => {
 
     // Real chat turn against the resolved Personal Eliza agent — the liveness
     // contract (#14359) proves a real model answered (non-empty, no stub marker).
+    // The random token anchors the exact user row; transcript order pairs its
+    // following assistant row without treating verbatim code echo as a model
+    // liveness requirement.
     await openAppPath(page, "/chat");
     const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
     const challengeToken = extractLivenessChallengeToken(challenge);
@@ -385,7 +386,7 @@ test.describe("real cloud login + personal identity + chat", () => {
         return await assertOnboardingLivenessWithTiming(page, {
           label: "cloud-live",
           prompt: challenge,
-          challengeToken,
+          turnAnchorToken: challengeToken,
         });
       } catch (error) {
         // error-policy:J3 reduce the original assertion and live browser state
