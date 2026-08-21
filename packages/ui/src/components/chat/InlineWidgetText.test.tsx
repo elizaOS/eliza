@@ -114,7 +114,7 @@ describe("InlineWidgetText", () => {
     );
     const link = screen.getByRole("link", { name: "Open Notes" });
     expect(link.getAttribute("href")).toBe("/api/apps/local/notes/");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("target")).toBeNull();
   });
 
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {

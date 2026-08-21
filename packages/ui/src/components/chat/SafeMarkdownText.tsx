@@ -26,8 +26,6 @@ export function SafeMarkdownText({ text }: { text: string }): ReactNode {
         <a
           key={`link:${index}`}
           href={target}
-          target="_blank"
-          rel="noreferrer"
           className="pointer-events-auto text-accent underline underline-offset-2"
         >
           {label}

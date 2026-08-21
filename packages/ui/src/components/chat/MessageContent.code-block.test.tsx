@@ -97,7 +97,7 @@ describe("MessageContent code blocks", () => {
 
     const link = screen.getByRole("link", { name: "Open Notes" });
     expect(link.getAttribute("href")).toBe("/api/apps/local/notes/");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("target")).toBeNull();
     expect(screen.queryByRole("link", { name: "do not open" })).toBeNull();
     expect(screen.getByText(/\[do not open\]\(javascript:alert/)).toBeTruthy();
   });
