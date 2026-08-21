@@ -113,6 +113,18 @@ export type AgentBillingStatus = "active" | "warning" | "suspended" | "shutdown_
  * have containers. See services/shared-runtime/agent-tier.ts for derivation.
  */
 export type AgentExecutionTier = "shared" | "dedicated-lazy" | "dedicated-always" | "custom";
+
+/**
+ * Tiers that own a real container. Every tier except "shared" is here today,
+ * but the list is an explicit allowlist rather than a "not shared" test so
+ * that adding a tier is a deliberate decision at each container-scoped query
+ * (heartbeat dialing, fleet liveness) instead of a silent enrollment.
+ */
+export const CONTAINER_BACKED_EXECUTION_TIERS = [
+  "dedicated-lazy",
+  "dedicated-always",
+  "custom",
+] as const satisfies readonly AgentExecutionTier[];
 export type WarmClaimCredentialState = "pending" | "attested" | "ready" | "failed";
 export type AgentActivationPurpose = "provision" | "wake" | "restore" | "fresh_boot";
 export type AgentActivationPhase =
