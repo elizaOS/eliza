@@ -8,11 +8,10 @@ export async function confirmSiwsSession(
     clearIdentity: () => void;
   },
 ): Promise<void> {
-  dependencies.storeToken(apiKey);
   try {
     await dependencies.loadCanonicalUser(apiKey);
+    dependencies.storeToken(apiKey);
   } catch (error) {
-    dependencies.storeToken(null);
     dependencies.clearIdentity();
     throw error;
   }

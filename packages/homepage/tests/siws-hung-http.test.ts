@@ -92,7 +92,35 @@ afterEach(() => {
 });
 
 describe("SIWS HTTP boundary", () => {
-  test("rolls back an issued bearer when canonical session loading fails", async () => {
+  test("persists an issued bearer only after canonical session loading succeeds", async () => {
+    const events: string[] = [];
+    let acceptCanonicalUser!: () => void;
+    const canonicalUser = new Promise<void>((resolve) => {
+      acceptCanonicalUser = resolve;
+    });
+
+    const confirmation = confirmSiwsSession("issued-token", {
+      storeToken: (token) => events.push(`store:${String(token)}`),
+      loadCanonicalUser: async () => {
+        events.push("load:start");
+        await canonicalUser;
+        events.push("load:accepted");
+      },
+      clearIdentity: () => events.push("clear"),
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual(["load:start"]);
+    acceptCanonicalUser();
+    await confirmation;
+    expect(events).toEqual([
+      "load:start",
+      "load:accepted",
+      "store:issued-token",
+    ]);
+  });
+
+  test("never persists an issued bearer when canonical session loading fails", async () => {
     const stored: Array<string | null> = [];
     let cleared = 0;
     const failure = new Error("canonical session rejected");
@@ -108,8 +136,27 @@ describe("SIWS HTTP boundary", () => {
         },
       }),
     ).rejects.toBe(failure);
-    expect(stored).toEqual(["issued-token", null]);
+    expect(stored).toEqual([]);
     expect(cleared).toBe(1);
+  });
+
+  test("clears canonical identity when bearer persistence throws", async () => {
+    const events: string[] = [];
+    const failure = new Error("session storage unavailable");
+
+    await expect(
+      confirmSiwsSession("issued-token", {
+        storeToken: () => {
+          events.push("store");
+          throw failure;
+        },
+        loadCanonicalUser: async () => {
+          events.push("load");
+        },
+        clearIdentity: () => events.push("clear"),
+      }),
+    ).rejects.toBe(failure);
+    expect(events).toEqual(["load", "store", "clear"]);
   });
 
   test("times out while consuming the nonce response body", async () => {
