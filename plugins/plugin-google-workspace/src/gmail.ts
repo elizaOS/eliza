@@ -746,6 +746,16 @@ function splitAddressList(value: string): string[] {
     return [];
   }
 
+  // RFC 5322 2.2.3 folds long header lines as CRLF followed by WSP; the
+  // continuation is part of the same logical value, not a structural break.
+  // Unfold before scanning so a fold between a display name and its angle-addr
+  // (or inside a quoted string) cannot split the mailbox: `parseMailbox`'s
+  // address regex does not cross line breaks, so an unfolded fold silently
+  // dropped the whole mailbox. Only CRLF/LF directly followed by space or tab
+  // is a fold; a bare line break elsewhere stays malformed and fails closed
+  // below.
+  value = value.replace(/\r?\n(?=[ \t])/g, "");
+
   const tokens: string[] = [];
   let current = "";
   let inQuote = false;
