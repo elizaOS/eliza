@@ -2648,6 +2648,14 @@
       "source": "src/components/browser/index.ts"
     },
     {
+      "specifier": "@elizaos/ui/components/capabilities/connected-capability-presentation",
+      "source": "src/components/capabilities/connected-capability-presentation.ts"
+    },
+    {
+      "specifier": "@elizaos/ui/components/capabilities/ConnectedCapabilityChips",
+      "source": "src/components/capabilities/ConnectedCapabilityChips.tsx"
+    },
+    {
       "specifier": "@elizaos/ui/components/character/character-editor-helpers",
       "source": "src/components/character/character-editor-helpers.ts"
     },
@@ -3774,10 +3782,6 @@
     {
       "specifier": "@elizaos/ui/components/pages/MemoryViewerView",
       "source": "src/components/pages/MemoryViewerView.tsx"
-    },
-    {
-      "specifier": "@elizaos/ui/components/pages/MyAppsView",
-      "source": "src/components/pages/MyAppsView.tsx"
     },
     {
       "specifier": "@elizaos/ui/components/pages/page-scoped-conversations",
@@ -6132,5 +6136,356 @@
       "source": "src/views/view-interact-protocol.ts"
     }
   ],
-  "subpathCount": 1389
+  "subpathCount": 1390,
+  "explicitSubpathExports": [
+    {
+      "specifier": "@elizaos/ui/agent-surface",
+      "target": {
+        "types": "./dist/agent-surface/index.d.ts",
+        "import": "./dist/agent-surface/index.js",
+        "default": "./dist/agent-surface/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/api",
+      "target": {
+        "types": "./dist/api/index.d.ts",
+        "import": "./dist/api/index.js",
+        "default": "./dist/api/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/api/client-types-cloud",
+      "target": "./dist/api/client-types-cloud.js"
+    },
+    {
+      "specifier": "@elizaos/ui/App",
+      "target": {
+        "types": "./dist/App.d.ts",
+        "import": "./dist/App.js",
+        "default": "./dist/App.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/app-navigate-view",
+      "target": {
+        "types": "./dist/app-navigate-view.d.ts",
+        "import": "./dist/app-navigate-view.js",
+        "default": "./dist/app-navigate-view.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/app-shell-registry",
+      "target": {
+        "types": "./dist/app-shell-registry.d.ts",
+        "import": "./dist/app-shell-registry.js",
+        "default": "./dist/app-shell-registry.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/auth-status",
+      "target": {
+        "types": "./dist/auth-status.d.ts",
+        "import": "./dist/auth-status.js",
+        "default": "./dist/auth-status.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/bridge",
+      "target": {
+        "types": "./dist/bridge/index.d.ts",
+        "import": "./dist/bridge/index.js",
+        "default": "./dist/bridge/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/browser",
+      "target": {
+        "types": "./dist/browser.d.ts",
+        "import": "./dist/browser.js",
+        "default": "./dist/browser.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/build-variant",
+      "target": {
+        "types": "./dist/build-variant.d.ts",
+        "import": "./dist/build-variant.js",
+        "default": "./dist/build-variant.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/button",
+      "target": {
+        "types": "./dist/components/ui/button.d.ts",
+        "import": "./dist/components/ui/button.js",
+        "default": "./dist/components/ui/button.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/card",
+      "target": {
+        "types": "./dist/components/ui/card.d.ts",
+        "import": "./dist/components/ui/card.js",
+        "default": "./dist/components/ui/card.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/chat",
+      "target": {
+        "types": "./dist/chat/index.d.ts",
+        "import": "./dist/chat/index.js",
+        "default": "./dist/chat/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/cloud-ui",
+      "target": {
+        "types": "./dist/cloud-ui/index.d.ts",
+        "import": "./dist/cloud-ui/index.js",
+        "default": "./dist/cloud-ui/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/cloud-ui/index.css",
+      "target": "./dist/cloud-ui/index.css"
+    },
+    {
+      "specifier": "@elizaos/ui/cloud-ui/styles",
+      "target": "./dist/cloud-ui/index.css"
+    },
+    {
+      "specifier": "@elizaos/ui/components",
+      "target": {
+        "types": "./dist/components/index.d.ts",
+        "import": "./dist/components/index.js",
+        "default": "./dist/components/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/components/character/CharacterEditor",
+      "target": "./dist/components/character/CharacterEditor.js"
+    },
+    {
+      "specifier": "@elizaos/ui/components/chat/widgets/types",
+      "target": "./dist/components/chat/widgets/types.js"
+    },
+    {
+      "specifier": "@elizaos/ui/components/composites/page-panel",
+      "target": {
+        "types": "./dist/components/composites/page-panel/index.d.ts",
+        "import": "./dist/components/composites/page-panel/index.js",
+        "default": "./dist/components/composites/page-panel/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/config",
+      "target": {
+        "types": "./dist/config/index.d.ts",
+        "import": "./dist/config/index.js",
+        "default": "./dist/config/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/content-packs",
+      "target": {
+        "types": "./dist/content-packs/index.d.ts",
+        "import": "./dist/content-packs/index.js",
+        "default": "./dist/content-packs/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/dropdown-menu",
+      "target": {
+        "types": "./dist/components/ui/dropdown-menu.d.ts",
+        "import": "./dist/components/ui/dropdown-menu.js",
+        "default": "./dist/components/ui/dropdown-menu.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/events",
+      "target": {
+        "types": "./dist/events/index.d.ts",
+        "import": "./dist/events/index.js",
+        "default": "./dist/events/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/genui",
+      "target": {
+        "types": "./dist/genui/index.d.ts",
+        "import": "./dist/genui/index.js",
+        "default": "./dist/genui/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/hooks",
+      "target": {
+        "types": "./dist/hooks/index.d.ts",
+        "import": "./dist/hooks/index.js",
+        "default": "./dist/hooks/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/i18n",
+      "target": {
+        "types": "./dist/i18n/index.d.ts",
+        "import": "./dist/i18n/index.js",
+        "default": "./dist/i18n/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/i18n/region",
+      "target": {
+        "types": "./dist/i18n/region.d.ts",
+        "import": "./dist/i18n/region.js",
+        "default": "./dist/i18n/region.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/input",
+      "target": {
+        "types": "./dist/components/ui/input.d.ts",
+        "import": "./dist/components/ui/input.js",
+        "default": "./dist/components/ui/input.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/layouts",
+      "target": {
+        "types": "./dist/layouts/index.d.ts",
+        "import": "./dist/layouts/index.js",
+        "default": "./dist/layouts/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/lib/utils",
+      "target": {
+        "types": "./dist/lib/utils.d.ts",
+        "import": "./dist/lib/utils.js",
+        "default": "./dist/lib/utils.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/native-transcript",
+      "target": {
+        "types": "./dist/native-transcript/index.d.ts",
+        "import": "./dist/native-transcript/index.js",
+        "default": "./dist/native-transcript/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/native-transcript/core",
+      "target": {
+        "types": "./dist/native-transcript/core.d.ts",
+        "import": "./dist/native-transcript/core.js",
+        "default": "./dist/native-transcript/core.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/navigation",
+      "target": {
+        "types": "./dist/navigation/index.d.ts",
+        "import": "./dist/navigation/index.js",
+        "default": "./dist/navigation/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/os-intent",
+      "target": {
+        "types": "./dist/os-intent/index.d.ts",
+        "import": "./dist/os-intent/index.js",
+        "default": "./dist/os-intent/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/package.json",
+      "target": "./package.json"
+    },
+    {
+      "specifier": "@elizaos/ui/platform",
+      "target": {
+        "types": "./dist/platform/index.d.ts",
+        "import": "./dist/platform/index.js",
+        "default": "./dist/platform/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/providers",
+      "target": {
+        "types": "./dist/providers/index.d.ts",
+        "import": "./dist/providers/index.js",
+        "default": "./dist/providers/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/spatial",
+      "target": {
+        "types": "./dist/spatial/index.d.ts",
+        "import": "./dist/spatial/index.js",
+        "default": "./dist/spatial/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/spatial/tui",
+      "target": {
+        "types": "./dist/spatial/tui/index.d.ts",
+        "import": "./dist/spatial/tui/index.js",
+        "default": "./dist/spatial/tui/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/state",
+      "target": {
+        "types": "./dist/state/index.d.ts",
+        "import": "./dist/state/index.js",
+        "default": "./dist/state/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/styles",
+      "target": "./dist/styles.js"
+    },
+    {
+      "specifier": "@elizaos/ui/themes",
+      "target": {
+        "types": "./dist/themes/index.d.ts",
+        "import": "./dist/themes/index.js",
+        "default": "./dist/themes/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/types",
+      "target": {
+        "types": "./dist/types/index.d.ts",
+        "import": "./dist/types/index.js",
+        "default": "./dist/types/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/utils",
+      "target": {
+        "types": "./dist/utils/index.d.ts",
+        "import": "./dist/utils/index.js",
+        "default": "./dist/utils/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/voice",
+      "target": {
+        "types": "./dist/voice/index.d.ts",
+        "import": "./dist/voice/index.js",
+        "default": "./dist/voice/index.js"
+      }
+    },
+    {
+      "specifier": "@elizaos/ui/widgets",
+      "target": {
+        "types": "./dist/widgets/index.d.ts",
+        "import": "./dist/widgets/index.js",
+        "default": "./dist/widgets/index.js"
+      }
+    }
+  ],
+  "explicitSubpathCount": 47
 }
