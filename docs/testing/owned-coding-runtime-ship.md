@@ -1,6 +1,6 @@
 # Owned coding runtime: architecture, QA, and handoff
 
-Date: 2026-08-20
+Date: 2026-08-21
 
 ## Current local decision
 
@@ -10,8 +10,9 @@ explicit optional ACP backends, but neither is required for the owned path.
 
 This is a local candidate, not a claim of flawless behavior or a published
 release. Per the latest owner instruction, none of this coding-agent work is
-pushed. The latest live-tested behavior checkpoint is
-`e39d9ea7567497bc63ade376137898b23be34ce9`; the final documentation commit and
+pushed. The final exact-content app behavior is at
+`4d9ae562ae40996482a02f37c0136cab1764947e`; diagnostic-only log cleanup is at
+`afb43bdd92e38970c90c2a6c97af38e22e6c07ca`. The final documentation commit and
 annotated candidate tag are recorded in the checkpoint ledger.
 
 The earlier OpenRouter/Qwen diagnostic remains historical evidence only; it is
@@ -676,11 +677,88 @@ One diagnostic-only late LLM capture still occurs in the real child lifecycle.
 Direct PGlite inspection proved it targets the closed `TASKS_SPAWN_AGENT` action
 step and is not an exact retransmit: that action step has zero LLM calls, while
 the parent trajectory has three complete provider records and the child has its
-own complete correlated trajectory and completion bundle. Suppressing it would
-discard a genuinely new capture, so it remains an honest non-user-visible
-observability caveat rather than being hidden. A stream-timing hypothesis was
-tested and forward-reverted at `e39d9ea7567497bc63ade376137898b23be34ce9`
-after live QA disproved it.
+own complete correlated trajectory and completion bundle. The final repair does
+not discard it: `reportError` still records it in the bounded ring and emits the
+typed diagnostic event, but `diagnosticOnly` reports log at debug rather than
+error level and the trajectory bridge no longer prints a duplicate warning.
+Focused core and real-PGlite trajectory regressions pass. A fresh post-reload
+`hey` turn completed in 592 ms with no late-capture warning/error pair.
+
+### 2026-08-21 exact existing-app edit acceptance
+
+The final browser request used ordinary, nontechnical language:
+
+> Please update my Nubs Color Pebble site so the big heading says "Hello Nubs,
+> verified and ready!" and the button says "Pick another happy color". Then open
+> it for me when it is ready.
+
+This live run found and fixed four defects that unit-only acceptance had missed:
+
+- promoted `TASKS_SPAWN_AGENT` exposed unrelated umbrella parameters, allowing
+  Gemma to invent an invalid `ratio` argument;
+- existing-site language still lost to generic coding routing instead of APP;
+- APP required a byte-exact installed name and ignored the documented explicit
+  app workdir; and
+- APP kept a shortened `intent` while discarding the exact strings preserved in
+  `description`, so a build could pass without implementing the actual wording.
+
+The repaired parent trajectory is `tj-725d6662cbb025`. It selected APP through
+Cerebras `gemma-4-31b` and completed in 4.092 seconds. Child session
+`cad02a90-ac0c-4ff2-973b-a882930b3a12` ran in the registered
+`app-nubs-color-pebble` source directory with `originSource=client_chat` and the
+APP verification callback attached. Its correlated trajectory is:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/state/orchestrator/child-trajectories/pending-a437b1bd-903f-4b3c-905b-c90636bed35f/b850bc30-45f8-0041-a00a-83df46d8555d/tj-726df74f38dacc.json`
+
+Every child model stage records `provider=cerebras` and
+`modelName=gemma-4-31b`. The child wrote `src/index.tsx` and
+`tests/app.test.tsx`, then passed typecheck, lint, and four tests. Chat displayed
+one progress sentence and one safe clickable completion link; it did not expose
+the child transcript, absolute path, session id, provisional failure, or
+"final check" footer. The real browser followed the link and independently
+observed heading `Hello Nubs, verified and ready!` and button
+`Pick another happy color`; clicking the button changed the page background.
+The consolidated secret-free acceptance record is:
+
+`/Users/nubs/Documents/ChatGPT/eliza/work/qa-artifacts/user-coding-final-state-20260820/final-app-edit-acceptance-20260821.json`
+
+The first edit attempt at `tj-6d64c13eb4f29e` is retained as failed semantic
+acceptance: it built and passed tests but showed the old content. It is evidence
+for the exact-intent preservation regression, not a success that was silently
+rewritten.
+
+### Canonical local and Cloud app lifecycle
+
+There is one app lifecycle, with two deployment outcomes rather than duplicate
+"local app" and "monetized app" implementations:
+
+1. APP owns create/edit intent, exact source directory, coding child, verifier,
+   registry identity, and user-facing completion.
+2. Local QA builds and serves a real contained `dist` directory from
+   `/api/apps/local/<slug>/`; it does not impersonate a Cloud deployment.
+3. Cloud registration returns the canonical `appId`/slug. Later manifest,
+   domain, deployment, monetization, analytics, and database operations must
+   keep that identity instead of creating a second app record.
+4. Static frontends use Cloud's frontend-hosting/version path. Apps that need a
+   private server, same-origin AI proxy, long-running process, or app-scoped
+   database may deploy a backend container. A Hetzner container is therefore
+   available per app when needed, not mandatory for every static page.
+5. Explicit custom container images now travel through the public deploy schema,
+   SDK, deployment job, runner, and parent guidance without being replaced by a
+   default image. Focused schema/SDK/deployment tests cover that path.
+6. Monetized apps use the same canonical app identity. Users authenticate with
+   their Eliza Cloud account, paid inference/charges debit their Cloud balance,
+   markup/share attribution credits the creator, and settlement is awaited
+   before the journey asserts earnings. Optional app-scoped database/backend
+   resources remain attached to the same app.
+
+The first-party `build-monetized-app` and `eliza-cloud` skills describe this
+flow; they are instructions around the same product APIs, not separate runtime
+implementations. The focused custom-image and monetization-settlement changes
+are local commits `b355797e6a` and `6562906f72`. No live Cloud app, Hetzner
+container, billing mutation, or remote deployment was created in this lane,
+because this task explicitly forbids remote writes. Those remain authenticated
+staging/manual publication gates rather than claims made from local tests.
 
 ## Reproduce
 
@@ -737,19 +815,22 @@ for a normal handoff, and it should still be reviewed before publication.
   fallback while serving embeddings. It successfully encodes and persists
   vectors; the visible reset failure above was the deleted-memory race, not a
   degraded provider result.
-- A `TrajectoryStorage.lateCapture` diagnostic still arrives for one newly
+- A `TrajectoryStorage.lateCapture` diagnostic can still arrive for one newly
   observed LLM capture against the already-closed `TASKS_SPAWN_AGENT` action
-  step. It is marked `diagnosticOnly`; direct database inspection confirms the
-  sealed parent, child trajectory, FILE/SHELL receipts, validation result, and
-  completion bundle are complete. It is unresolved observability debt, not a
-  user-visible task failure; the runtime intentionally does not suppress this
-  non-duplicate capture.
+  step. It remains in the bounded diagnostic ring and typed event stream, while
+  the duplicate warning and error-level log noise are removed. Direct database
+  inspection confirms the sealed parent, child trajectory, FILE/SHELL receipts,
+  validation result, and completion bundle are complete.
 - Standalone embedding downloads now stream to `<model>.part` and rename only
   after the byte-count gate succeeds. Focused regression tests prove that an
   in-progress or short download is never published as an installed GGUF.
 - Eliza Code's compacted 24,987-token prime-script prompt is materially better
   than 32,634, but is still large enough to warrant later profiling before
   calling the coding UX polished.
+- The exact app-edit child used 12 planner iterations and 188,278 cumulative
+  prompt tokens because each tool round re-sent the coding context. It completed
+  in about 12 seconds on Cerebras and cost about $0.19, but prompt/tool-round
+  compaction remains the clearest performance follow-up.
 - The QA model/provider dominated latency: filesystem and shell actions usually
   completed in under one second, while individual model planning stages took
   roughly 5-40 seconds. A faster configured model/provider should improve the
@@ -802,8 +883,9 @@ runtime correctness patch.
 ## Test it yourself now
 
 The isolated browser instance uses UI `2638` and API `32637`. It is currently
-left on the clean accepted prime-number result at
-`http://127.0.0.1:2638/chat`. Suggested normal-person prompts are:
+left ready at `http://127.0.0.1:2638/chat`; the accepted app remains available
+at `http://127.0.0.1:2638/api/apps/local/nubs-color-pebble/`. Suggested
+normal-person prompts are:
 
 1. `Create a Python script named odds.py that prints the odd numbers from 1 through 15, then run it and tell me the exact output.`
 2. `Use a coding sub-agent to edit odds.py so it prints through 21, run it, and tell me the exact output.`
@@ -829,3 +911,9 @@ decision and one reviewed commit/tag from the checkpoint ledger. A VPS must use
 a private environment-secret mechanism for a live
 Cerebras rerun and must not copy a credential, local state directory, PGlite
 database, or unsanitized trajectory directory from the QA host.
+
+No `agent-home`, Nubilio, or Remilio deployment checkout was found under the
+available local Documents trees. To audit the personal VPS implementation
+without guessing, obtain its repository URL or a secret-free archive plus the
+deployed path and nonsecret runtime/config manifest from the VPS agent. Do not
+copy its credentials, database, or live state into this worktree.
