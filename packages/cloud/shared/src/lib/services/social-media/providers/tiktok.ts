@@ -169,12 +169,32 @@ function waitBeforeTikTokUploadRetry(attempt: number): Promise<void> {
   );
 }
 
+function uploadResponseProvesChunkCommitted(
+  response: Response,
+  chunk: TikTokUploadChunk,
+  videoSize: number,
+): boolean {
+  if (response.status !== 416) return false;
+  const progress = response.headers.get("content-range")?.match(/^bytes 0-(\d+)\/(\d+)$/i);
+  if (!progress) return false;
+  const receivedLastByte = Number(progress[1]);
+  const reportedVideoSize = Number(progress[2]);
+  return (
+    Number.isSafeInteger(receivedLastByte) &&
+    Number.isSafeInteger(reportedVideoSize) &&
+    reportedVideoSize === videoSize &&
+    receivedLastByte < reportedVideoSize &&
+    receivedLastByte === chunk.lastByte
+  );
+}
+
 async function uploadTikTokVideo(
   uploadUrl: string,
   videoData: Buffer,
   plan: TikTokUploadPlan,
   mimeType: string,
   startChunkIndex = 0,
+  reconciling = false,
 ): Promise<void> {
   for (let index = startChunkIndex; index < plan.chunks.length; index += 1) {
     const chunk = plan.chunks[index];
@@ -228,7 +248,12 @@ async function uploadTikTokVideo(
       }
 
       try {
-        if (response.status === expectedStatus) break;
+        if (
+          response.status === expectedStatus ||
+          uploadResponseProvesChunkCommitted(response, chunk, videoData.length)
+        ) {
+          break;
+        }
 
         if (
           response.status >= 500 &&
@@ -239,9 +264,13 @@ async function uploadTikTokVideo(
           continue;
         }
 
+        const outcomeUnknown =
+          reconciling ||
+          response.status === 416 ||
+          (response.status >= 500 && response.status <= 599);
         throw tiktokUploadError(
           `TikTok upload chunk ${index + 1}/${plan.totalChunkCount} returned ${response.status}; expected ${expectedStatus}`,
-          "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
+          outcomeUnknown ? "TIKTOK_UPLOAD_OUTCOME_UNKNOWN" : "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
           {
             chunkIndex: index,
             totalChunkCount: plan.totalChunkCount,
@@ -569,6 +598,7 @@ export const tiktokProvider: SocialMediaProvider = {
                   uploadPlan,
                   videoMimeType,
                   chunkIndex,
+                  true,
                 );
                 reconciliation = await waitForPublish(
                   credentials.accessToken,

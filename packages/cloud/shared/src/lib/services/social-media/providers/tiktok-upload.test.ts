@@ -389,9 +389,10 @@ describe("tiktokProvider file upload", () => {
 
     expect(result).toMatchObject({
       success: false,
-      errorCode: "TIKTOK_UPLOAD_CHUNK_STATUS_INVALID",
+      errorCode: "TIKTOK_UPLOAD_OUTCOME_UNKNOWN",
+      creditDisposition: "hold",
     });
-    expect(apiCallCount).toBe(1);
+    expect(apiCallCount).toBe(2);
     expect(putCount).toBe(3);
     expect(cancellations).toEqual([503, 503, 503]);
   });
@@ -455,6 +456,79 @@ describe("tiktokProvider file upload", () => {
     expect(putCalls).toHaveLength(2);
     expect(new Headers(putCalls[0]?.headers)).toEqual(new Headers(putCalls[1]?.headers));
     expect(putCalls[0]?.body).toEqual(putCalls[1]?.body);
+  });
+
+  test("accepts a 416 replay only when its progress proves the ambiguous range committed", async () => {
+    let apiCallCount = 0;
+    let putCount = 0;
+    const cancellations: number[] = [];
+    fetchImpl = async () => {
+      apiCallCount += 1;
+      if (apiCallCount === 1) {
+        return jsonResponse({
+          publish_id: "publish-416",
+          upload_url: "https://open-upload.tiktokapis.com/video?upload_id=416",
+        });
+      }
+      if (apiCallCount === 2) return jsonResponse({ status: "PROCESSING_UPLOAD" });
+      return jsonResponse({ status: "PUBLISH_COMPLETE" });
+    };
+    safeFetchImpl = async () => {
+      putCount += 1;
+      if (putCount === 1) throw new Error("response connection reset");
+      return new Response(
+        new ReadableStream({
+          cancel() {
+            cancellations.push(416);
+          },
+        }),
+        { status: 416, headers: { "content-range": "bytes 0-4/5" } },
+      );
+    };
+
+    const result = await tiktokProvider.createPost(credentials, {
+      text: "hello",
+      media: [{ type: "video", data: Buffer.from("video"), mimeType: "video/mp4" }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(putCount).toBe(2);
+    expect(cancellations).toEqual([416]);
+  });
+
+  test("keeps a mismatched 416 replay unresolved instead of refunding it", async () => {
+    let apiCallCount = 0;
+    let putCount = 0;
+    fetchImpl = async () => {
+      apiCallCount += 1;
+      if (apiCallCount === 1) {
+        return jsonResponse({
+          publish_id: "publish-416-mismatch",
+          upload_url: "https://open-upload.tiktokapis.com/video?upload_id=416-mismatch",
+        });
+      }
+      return jsonResponse({ status: "PROCESSING_UPLOAD" });
+    };
+    safeFetchImpl = async () => {
+      putCount += 1;
+      if (putCount === 1) throw new Error("response connection reset");
+      return new Response(null, {
+        status: 416,
+        headers: { "content-range": "bytes 0-3/5" },
+      });
+    };
+
+    const result = await tiktokProvider.createPost(credentials, {
+      text: "hello",
+      media: [{ type: "video", data: Buffer.from("video"), mimeType: "video/mp4" }],
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      errorCode: "TIKTOK_UPLOAD_OUTCOME_UNKNOWN",
+      creditDisposition: "hold",
+    });
+    expect(putCount).toBe(2);
   });
 
   test("returns an explicit credit hold when final transport and replay remain unresolved", async () => {
