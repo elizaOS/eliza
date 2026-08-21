@@ -39,6 +39,7 @@ import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
 import { readEnv } from "../utils/read-env";
 import { resolveStateDir } from "../utils/state-dir";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { stringifyForDiagnostics } from "./json-output";
 import {
 	resolveTraceCorrelationFromEnv,
@@ -796,12 +797,13 @@ const RECORD_SANITIZE_MAX_STRING_CHARS = 64 * 1024;
 const RECORD_SANITIZE_TRUNCATION_SUFFIX = "...[truncated]";
 
 function truncateRecordString(value: string): string {
-	if (value.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return value;
+	const wellFormed = toWellFormedUnicode(value);
+	if (wellFormed.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return wellFormed;
 	const previewLength = Math.max(
 		0,
 		RECORD_SANITIZE_MAX_STRING_CHARS - RECORD_SANITIZE_TRUNCATION_SUFFIX.length,
 	);
-	return `${value.slice(0, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
+	return `${truncateWellFormed(wellFormed, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
 }
 
 function sanitizeForRecord(
