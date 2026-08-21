@@ -376,6 +376,11 @@ export class SurfaceWindowManager {
     if (record.surface === "workspace" && record.revealFrame) {
       const frame = record.revealFrame;
       record.revealFrame = undefined;
+      // The staging window is technically visible off-screen so WebKit keeps
+      // running. Order it out before moving its AppKit frame; otherwise the
+      // move itself can expose one stale dark backing-layer frame before
+      // show() is called.
+      window.hide?.();
       window.setFrame?.(frame.x, frame.y, frame.width, frame.height);
       window.show?.();
       if (record.pendingMaximize) window.maximize?.();

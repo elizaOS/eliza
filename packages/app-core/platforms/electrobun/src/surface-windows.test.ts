@@ -208,6 +208,7 @@ describe("SurfaceWindowManager app windows", () => {
     });
     expect(fixture.created[0]?.focus).not.toHaveBeenCalled();
     fixture.manager.revealWindow(fixture.created[0]!);
+    expect(fixture.created[0]?.hide).toHaveBeenCalledTimes(1);
     expect(fixture.created[0]?.setFrame).toHaveBeenCalledWith(
       120,
       80,
