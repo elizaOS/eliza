@@ -39,6 +39,8 @@ import {
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
+captureHostExecutionBaseline();
+
 const SCENARIO_LANES: readonly ScenarioLane[] = [
   "pr-deterministic",
   "live-only",

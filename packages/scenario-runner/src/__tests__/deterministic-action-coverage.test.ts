@@ -74,11 +74,14 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
     "VIEWS",
   ],
   "@elizaos/plugin-coding-tools": [
+    "EDIT",
     "FILE",
+    "READ",
     "SHELL",
     "WEB_FETCH",
     "WEB_SEARCH",
     "WORKTREE",
+    "WRITE",
   ],
   "@elizaos/plugin-commands": [
     "ACCOUNTS_COMMAND",
@@ -195,6 +198,11 @@ const KNOWN_UNCOVERED: readonly string[] = [
   // current runtime action surface without registering them as top-level actions.
   "CLOSE_ALL_VIEWS",
   "CLOSE_VIEW",
+  // Direct coding-tools file aliases are registered alongside FILE but do not
+  // yet have their own strict keyless scenario turns.
+  "EDIT",
+  "READ",
+  "WRITE",
   // Coding-tools web actions are unit-covered but do not yet have a strict,
   // network-free scenario fixture. Keep them visible in the no-growth ledger.
   "WEB_FETCH",

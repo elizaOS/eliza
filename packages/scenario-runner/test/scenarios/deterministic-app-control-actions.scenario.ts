@@ -628,12 +628,18 @@ export default scenario({
       text: "Open the settings view",
       actionName: "VIEWS",
       options: { action: "show", view: "settings", viewType: "gui" },
-      responseIncludesAny: ["Opened Settings"],
+      responseIncludesAny: ['"effect":"view_navigation"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
           parameters: { action: "show", view: "settings", viewType: "gui" },
-          responseText: "Opened Settings.",
+          responseText: JSON.stringify({
+            effect: "view_navigation",
+            status: "accepted",
+            viewId: "settings",
+            label: "Settings",
+            path: "/settings",
+          }),
           resultFields: {
             "values.mode": "show",
             "values.viewId": "settings",
@@ -648,7 +654,7 @@ export default scenario({
       text: "Open the remote ledger view",
       actionName: "VIEWS",
       options: { action: "open", view: "remote-ledger", viewType: "gui" },
-      responseIncludesAny: ["Opened Remote Ledger"],
+      responseIncludesAny: ['"effect":"view_navigation"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -657,7 +663,13 @@ export default scenario({
             view: "remote-ledger",
             viewType: "gui",
           },
-          responseText: "Opened Remote Ledger.",
+          responseText: JSON.stringify({
+            effect: "view_navigation",
+            status: "accepted",
+            viewId: "remote-ledger",
+            label: "Remote Ledger",
+            path: "/remote-ledger",
+          }),
           resultFields: {
             "values.mode": "show",
             "values.viewId": "remote-ledger",
@@ -864,12 +876,15 @@ export default scenario({
       text: "Launch the feed app",
       actionName: "APP",
       options: { action: "launch", app: "feed" },
-      responseIncludesAny: ["Launched Feed", "run-feed-launch-1"],
+      responseIncludesAny: ['"effect":"app_launch"'],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "APP",
           parameters: { action: "launch", app: "feed" },
-          responseText: "Launched Feed. Run ID: run-feed-launch-1.",
+          responseText: JSON.stringify({
+            effect: "app_launch",
+            status: "completed",
+          }),
           resultFields: {
             "values.mode": "launch",
             "values.appName": "feed",
@@ -1137,7 +1152,6 @@ export default scenario({
         /"stop"/,
         /"load_from_directory"/,
         /"create"/,
-        /run-feed-launch-1/,
         /run-feed-relaunch-2/,
         /loaded-console/,
         /editTarget/,

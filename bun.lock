@@ -642,6 +642,7 @@
         "@discordjs/opus": "^0.10.0",
         "@discordjs/voice": "^0.19.2",
         "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@hono/node-server": "2.0.10",
         "@upstash/redis": "^1.37.0",
