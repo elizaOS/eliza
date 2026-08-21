@@ -108,4 +108,16 @@ export class MemoryStorage implements IStorage {
     this.assertReady();
     this.collections.clear();
   }
+
+  async applyBatch(batch: {
+    collection: string;
+    deletes: string[];
+    sets: Array<{ id: string; data: unknown }>;
+  }): Promise<void> {
+    const current = this.getCollection(batch.collection);
+    const replacement = new Map(current);
+    for (const id of batch.deletes) replacement.delete(id);
+    for (const { id, data } of batch.sets) replacement.set(id, data);
+    this.collections.set(batch.collection, replacement);
+  }
 }

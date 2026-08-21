@@ -9,6 +9,8 @@
 import type { PGlite } from "@electric-sql/pglite";
 import {
   type Agent,
+  type DocumentMutationResult,
+  type DocumentRevisionReplaceParams,
   type Entity,
   logger,
   type Memory,
@@ -172,6 +174,35 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
   // WriteBackService (Pattern 1 — Online Writes) can forward the change to the
   // cloud API. The row payload contains at minimum the primary key(s); for
   // inserts and upserts it includes the full data the caller provided.
+
+  async replaceDocumentRevision(
+    params: DocumentRevisionReplaceParams
+  ): Promise<DocumentMutationResult> {
+    const writeBackEnabled = this.manager.getWriteBack() !== null;
+    const result = await super.replaceDocumentRevision(params);
+    if (result.status !== "updated" || !writeBackEnabled) return result;
+
+    // Stage the new generation before advancing the parent revision. Remote
+    // readers therefore see either the complete old generation or the
+    // complete new one when asynchronous Electric write-back catches up.
+    for (const fragment of params.fragments) {
+      this.manager.notifyWrite("memories", "upsert", {
+        ...fragment,
+        id: fragment.id,
+      } as Record<string, unknown>);
+    }
+    this.manager.notifyWrite("memories", "upsert", {
+      ...params.replacement,
+      id: params.documentId,
+    } as Record<string, unknown>);
+    const replacementIds = new Set(params.fragments.map(({ id }) => String(id)));
+    for (const id of result.removedFragmentIds ?? []) {
+      if (!replacementIds.has(String(id))) {
+        this.manager.notifyWrite("memories", "delete", { id });
+      }
+    }
+    return result;
+  }
 
   async createAgent(agent: Agent): Promise<boolean> {
     const ok = await super.createAgent(agent);
