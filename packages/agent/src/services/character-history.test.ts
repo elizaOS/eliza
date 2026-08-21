@@ -106,4 +106,19 @@ describe("listCharacterHistory limit guard", () => {
     expect(zero).toHaveLength(1);
     expect(zero).not.toHaveLength(20);
   });
+
+  it("omits poisoned rows and fills the requested limit with adjacent valid history", async () => {
+    const poisoned = makeMemory(2000);
+    const cyclic: Record<string, unknown> = { name: "poisoned" };
+    cyclic.self = cyclic;
+    poisoned.metadata.before = cyclic;
+    const valid = [makeMemory(1999), makeMemory(1998), makeMemory(1997)];
+    const getMemories = vi.fn(async () => [poisoned, ...valid]);
+    const runtime = { agentId: "agent-123", getMemories } as never;
+
+    const result = await listCharacterHistory(runtime, 2);
+
+    expect(result.map((entry) => entry.id)).toEqual(["m-1999", "m-1998"]);
+    expect(result).toHaveLength(2);
+  });
 });

@@ -265,6 +265,25 @@ describe("character-history fail-closed walk", () => {
     expect(parsed).toBeNull();
   });
 
+  it("skips a poisoned stored snapshot instead of fabricating an empty one", () => {
+    const cyclic: Record<string, unknown> = { name: "Ada" };
+    cyclic.self = cyclic;
+    const parsed = parseCharacterHistoryEntry({
+      content: { text: "change" },
+      metadata: {
+        type: MemoryType.CUSTOM,
+        service: "character_history",
+        action: "character_updated",
+        timestamp: 1,
+        historySource: "manual",
+        changes: [{ field: "name", before: "a", after: "b" }],
+        before: cyclic,
+        after: { name: "b" },
+      },
+    } as never);
+    expect(parsed).toBeNull();
+  });
+
   it("wraps a revoked Array Proxy instead of leaking TypeError", () => {
     const { proxy, revoke } = Proxy.revocable(["leaf"], {});
     revoke();

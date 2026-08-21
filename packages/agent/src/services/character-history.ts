@@ -638,15 +638,15 @@ export async function recordCharacterHistory(
   };
 }
 
-function safeCloneSnapshot(
+function cloneSnapshotOrNull(
   value: Record<string, unknown>,
-): CharacterHistorySnapshot {
+): CharacterHistorySnapshot | null {
   try {
     return cloneJson(value) as CharacterHistorySnapshot;
   } catch (error) {
-    // error-policy:J3 stored snapshot poison should not 500 the list path.
+    // error-policy:J3 omit a poisoned stored row instead of fabricating a snapshot.
     if (isCharacterHistoryUnbounded(error)) {
-      return {};
+      return null;
     }
     throw error;
   }
@@ -714,6 +714,19 @@ export function parseCharacterHistoryEntry(
         ? memory.createdAt
         : 0;
 
+  const before = isRecord(metadata.before)
+    ? cloneSnapshotOrNull(metadata.before)
+    : {};
+  if (before === null) {
+    return null;
+  }
+  const after = isRecord(metadata.after)
+    ? cloneSnapshotOrNull(metadata.after)
+    : {};
+  if (after === null) {
+    return null;
+  }
+
   return {
     id: typeof memory.id === "string" ? memory.id : undefined,
     timestamp,
@@ -727,8 +740,8 @@ export function parseCharacterHistoryEntry(
           ),
     fieldsChanged,
     changes,
-    before: isRecord(metadata.before) ? safeCloneSnapshot(metadata.before) : {},
-    after: isRecord(metadata.after) ? safeCloneSnapshot(metadata.after) : {},
+    before,
+    after,
   };
 }
 
