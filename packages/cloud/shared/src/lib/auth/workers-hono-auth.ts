@@ -272,6 +272,47 @@ export async function requireUserWithOrg(c: AppContext): Promise<
   };
 }
 
+/**
+ * Requires a live browser session whose current tenant membership is OWNER or
+ * ADMIN. Billing mutations call this before constructing any provider command;
+ * the command authority repeats the membership check inside its transaction.
+ */
+export async function requireTenantAdminSession(c: AppContext): Promise<AuthedUserWithOrg> {
+  const sessionUser = await requireUserWithOrg(c);
+  if (c.get("authMethod") !== "session") {
+    throw ForbiddenError("A browser session is required for billing management");
+  }
+
+  let current: UserWithOrganization | undefined | null;
+  try {
+    const { usersService } = await import("../services/users");
+    current = await usersService.getWithOrganization(sessionUser.id);
+  } catch (error) {
+    // error-policy:J1 a membership-store outage is retryable and must never be
+    // translated into permission denial or a provider call with stale authority.
+    logger.error("[Auth] Tenant billing membership lookup unavailable", {
+      userId: sessionUser.id,
+      organizationId: sessionUser.organization_id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new ApiError(
+      503,
+      "service_unavailable",
+      "Billing authorization is temporarily unavailable. Please retry.",
+    );
+  }
+  if (
+    !current ||
+    !current.is_active ||
+    !current.organization?.is_active ||
+    current.organization_id !== sessionUser.organization_id ||
+    (current.role !== "owner" && current.role !== "admin")
+  ) {
+    throw ForbiddenError("Organization owner or admin access is required");
+  }
+  return toAuthedUser(current) as AuthedUserWithOrg;
+}
+
 type AuthedUserWithOrg = AuthedUser & {
   organization_id: string;
   organization: NonNullable<AuthedUser["organization"]>;

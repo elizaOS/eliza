@@ -97,6 +97,7 @@ const {
   getCurrentUser,
   requireAdmin,
   requireCronSecret,
+  requireTenantAdminSession,
   requireUser,
   requireUserOrApiKey,
   requireUserOrApiKeyWithOrg,
@@ -509,6 +510,59 @@ describe("Workers API-key auth", () => {
         contextWithHeaders({ authorization: "Bearer wrong" }, { CRON_SECRET: "cron-ok" }) as never,
       ),
     ).toThrow("Invalid cron secret");
+  });
+});
+
+describe("tenant billing administration auth", () => {
+  test("rejects API-key authority before re-reading membership", async () => {
+    const context = contextWithHeaders();
+    context.set("user", activeUser({ role: "owner" }));
+    context.set("authMethod", "api_key");
+
+    await expect(requireTenantAdminSession(context as never)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(getWithOrganization).not.toHaveBeenCalled();
+  });
+
+  test("rejects a member and a role downgraded after session hydration", async () => {
+    for (const cachedRole of ["member", "owner"]) {
+      const context = contextWithHeaders();
+      context.set("user", activeUser({ role: cachedRole }));
+      context.set("authMethod", "session");
+      userBehavior = async () => activeUser({ role: "member" });
+
+      await expect(requireTenantAdminSession(context as never)).rejects.toMatchObject({
+        status: 403,
+      });
+    }
+  });
+
+  test.each(["owner", "admin"])("accepts a current %s session", async (role) => {
+    const context = contextWithHeaders();
+    context.set("user", activeUser({ role }));
+    context.set("authMethod", "session");
+    userBehavior = async () => activeUser({ role });
+
+    await expect(requireTenantAdminSession(context as never)).resolves.toMatchObject({
+      id: "user-1",
+      organization_id: "org-1",
+      role,
+    });
+  });
+
+  test("fails retryably when current membership cannot be loaded", async () => {
+    const context = contextWithHeaders();
+    context.set("user", activeUser({ role: "owner" }));
+    context.set("authMethod", "session");
+    userBehavior = async () => {
+      throw new Error("membership database unavailable");
+    };
+
+    await expect(requireTenantAdminSession(context as never)).rejects.toMatchObject({
+      status: 503,
+      code: "service_unavailable",
+    });
   });
 });
 
