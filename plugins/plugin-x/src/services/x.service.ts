@@ -354,7 +354,10 @@ export class XService extends Service {
       }
 
       const defaultState = await resolveTwitterAccountConfig(runtime);
-      await validateTwitterConfig(runtime, defaultState);
+      const validatedDefaultState = {
+        ...defaultState,
+        ...(await validateTwitterConfig(runtime, defaultState)),
+      };
       service.defaultAccountId = resolveDefaultXAccountId(
         runtime,
         defaultState,
@@ -363,7 +366,7 @@ export class XService extends Service {
 
       service.twitterClient = await service.getTwitterClientForAccount(
         service.defaultAccountId,
-        { startAutonomousClients: true, state: defaultState },
+        { startAutonomousClients: true, state: validatedDefaultState },
       );
 
       logger.log("✅ Twitter service started successfully");
@@ -421,8 +424,11 @@ export class XService extends Service {
     }
 
     const startPromise = (async () => {
-      await validateTwitterConfig(runtime, state);
-      const instance = new TwitterClientInstance(runtime, state);
+      const validatedState = {
+        ...state,
+        ...(await validateTwitterConfig(runtime, state)),
+      };
+      const instance = new TwitterClientInstance(runtime, validatedState);
       await instance.client.init();
 
       if (options.startAutonomousClients) {

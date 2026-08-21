@@ -89,6 +89,12 @@ export async function serverInteract(
         : providerIdSchema.parse(values.provider);
     const service = getMapsService(context.runtime);
     switch (capability) {
+      case "maps-describe-providers":
+        return {
+          success: true,
+          text: "Loaded maps provider metadata.",
+          data: { providers: service.describeProviders() },
+        };
       case "maps-search-places": {
         const request = placeSearchRequestSchema.parse({
           query: requiredText(values.query, "query"),

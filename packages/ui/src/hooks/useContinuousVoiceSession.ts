@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useMemo } from "react";
+import { useVoiceLiveActivity } from "../voice/ios-live-activity";
 import type {
   VoiceContinuousStatus,
   VoiceSpeakerMetadata,
@@ -105,17 +106,27 @@ export function useContinuousVoiceSession(
     if (realtime.active) realtime.bargeIn();
   }, [realtime]);
 
-  return useMemo<ContinuousVoiceSessionState>(() => {
-    // Realtime wins the status surface while it is the active path; otherwise
-    // the batch status is shown verbatim (zero change to the existing flow).
-    const status: VoiceContinuousStatus = realtimeActive
-      ? realtime.status
-      : batch.status;
-    const interimTranscript = realtimeActive
-      ? realtime.transcriptPartial ||
-        (status === "thinking" ? realtime.transcriptFinal : "")
-      : batch.interimTranscript;
+  // ActivityKit must follow the SAME batch-versus-realtime winner as the
+  // composer. The old batch-hook placement could leave a live realtime voice
+  // session absent from the Lock Screen and Dynamic Island.
+  const status: VoiceContinuousStatus = realtimeActive
+    ? realtime.status
+    : batch.status;
+  const interimTranscript = realtimeActive
+    ? realtime.transcriptPartial ||
+      (status === "thinking" ? realtime.transcriptFinal : "")
+    : batch.interimTranscript;
+  const liveActivityActive = realtimeActive || batch.active;
+  const liveActivityError = liveActivityActive
+    ? Boolean(realtimeActive ? realtime.error : batch.ttsError)
+    : Boolean(realtime.error ?? batch.ttsError);
+  useVoiceLiveActivity({
+    active: liveActivityActive,
+    status,
+    error: liveActivityError,
+  });
 
+  return useMemo<ContinuousVoiceSessionState>(() => {
     return {
       realtimeActive,
       realtimeConnecting: realtime.available && realtime.connecting,
@@ -146,5 +157,14 @@ export function useContinuousVoiceSession(
       stop,
       bargeIn,
     };
-  }, [batch, realtime, realtimeActive, start, stop, bargeIn]);
+  }, [
+    batch,
+    realtime,
+    realtimeActive,
+    status,
+    interimTranscript,
+    start,
+    stop,
+    bargeIn,
+  ]);
 }

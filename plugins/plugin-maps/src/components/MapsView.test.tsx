@@ -68,6 +68,12 @@ function route(mode: TravelMode): RoutePlan {
 
 function transport(over: Partial<MapsViewTransport> = {}): MapsViewTransport {
   return {
+    describeProviders: vi.fn(async () => [
+      {
+        id: "fixture_maps",
+        attribution: "Map data © Fixture Maps",
+      },
+    ]),
     search: vi.fn(async () => ({ places: [FERRY, PLAZA], nextCursor: null })),
     getPlace: vi.fn(async (value) => value),
     planRoute: vi.fn(async (_origin, _destination, mode) => route(mode)),
@@ -107,7 +113,7 @@ describe("MapsView", () => {
       (await screen.findAllByText("Ferry Building")).length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
-    expect(screen.getByText("Place data: fixture_maps")).toBeTruthy();
+    expect(await screen.findByText("Map data © Fixture Maps")).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "park" }));
     expect(
@@ -117,6 +123,48 @@ describe("MapsView", () => {
     ).toBeNull();
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
   });
+
+  it("explicitly reports unavailable legal attribution", async () => {
+    const user = userEvent.setup();
+    render(
+      <MapsView
+        transport={transport({
+          describeProviders: vi.fn(async () => [
+            { id: "fixture_maps", attribution: null },
+          ]),
+        })}
+        online
+      />,
+    );
+
+    await searchFor(user, "waterfront");
+    expect(
+      await screen.findByText("Legal attribution unavailable for fixture_maps"),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    ["unsupported", undefined],
+    [
+      "failed",
+      vi.fn(async () => {
+        throw new Error("provider metadata unavailable");
+      }),
+    ],
+  ] as const)(
+    "degrades explicitly when provider metadata is %s",
+    async (_state, describeProviders) => {
+      const user = userEvent.setup();
+      render(<MapsView transport={transport({ describeProviders })} online />);
+
+      await searchFor(user, "waterfront");
+      expect(
+        await screen.findByText(
+          "Legal attribution unavailable for fixture_maps",
+        ),
+      ).toBeTruthy();
+    },
+  );
 
   it("gives every rendered control a unique collision-safe agent id", async () => {
     const collisionPlaces = [
@@ -193,6 +241,12 @@ describe("MapsView", () => {
       document.querySelector('[data-agent-id="maps-route-walk"]'),
     ).toBeTruthy();
     expect(screen.getByText(/Route geometry is not drawn/)).toBeTruthy();
+    expect(screen.getByTestId("maps-bottom-overlays").className).toContain(
+      "pointer-events-none",
+    );
+    expect(screen.getByTestId("maps-schematic-label").className).toContain(
+      "pointer-events-none",
+    );
     expect(fake.planRoute).toHaveBeenCalledTimes(4);
 
     await user.click(screen.getByRole("button", { name: "Save" }));

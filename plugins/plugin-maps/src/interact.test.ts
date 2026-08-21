@@ -48,6 +48,7 @@ function harness(over: Partial<MapsProviderAdapter> = {}) {
   const adapter: MapsProviderAdapter = {
     id: "fixture_maps",
     connectionId: "conn_fixture_maps_0001",
+    attribution: "Map data © Fixture Maps",
     searchPlaces: vi.fn(async () => ({
       places: [ORIGIN, DESTINATION],
       nextCursor: null,
@@ -64,6 +65,20 @@ function harness(over: Partial<MapsProviderAdapter> = {}) {
 describe("Maps view serverInteract", () => {
   it("dispatches normalized search, detail, and route reads", async () => {
     const { runtime, adapter } = harness();
+
+    await expect(
+      serverInteract("maps-describe-providers", {}, { runtime }),
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        providers: [
+          {
+            id: "fixture_maps",
+            attribution: "Map data © Fixture Maps",
+          },
+        ],
+      },
+    });
 
     await expect(
       serverInteract(

@@ -20,7 +20,7 @@ import path from "node:path";
 import { resolveStateDir } from "../../config/paths.ts";
 import { boundedWalk } from "./bounded-walk.ts";
 import { DiskStore } from "./disk-store.ts";
-import { buildCacheKey } from "./key.ts";
+import { type CacheKeyRejection, tryBuildCacheKey } from "./key.ts";
 import { Lru } from "./lru.ts";
 import { isRedactionDegraded } from "./redact.ts";
 import type {
@@ -40,6 +40,16 @@ export interface ToolCallCacheOptions {
   redact: PrivacyRedactor;
   /** Clock injection for tests. */
   now?: () => number;
+  /**
+   * Called when args could not be canonicalized inside the cache-key budget
+   * (over-deep, cyclic, over-wide, accessor-bearing or reflection-hostile).
+   * The call is served uncached rather than failing, so this hook is the only
+   * way that degradation is observable — it is never silent.
+   */
+  onUnkeyableArgs?: (info: {
+    toolName: string;
+    reason: CacheKeyRejection;
+  }) => void;
 }
 
 type CacheOutputValidator<T> = (output: unknown) => output is T & ToolOutput;
@@ -63,12 +73,33 @@ export class ToolCallCache {
   private readonly disk: DiskStore;
   private readonly now: () => number;
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly onUnkeyableArgs:
+    | ((info: { toolName: string; reason: CacheKeyRejection }) => void)
+    | undefined;
 
   constructor(options: ToolCallCacheOptions) {
     const root = options.diskRoot ?? path.join(resolveStateDir(), "tool-cache");
     this.memory = new Lru(options.memoryCapacity ?? 1000);
     this.disk = new DiskStore(root, options.redact);
     this.now = options.now ?? Date.now;
+    this.onUnkeyableArgs = options.onUnkeyableArgs;
+  }
+
+  /**
+   * Key (toolName, args) under the canonicalizer's budget.
+   *
+   * Args are model-emitted and untrusted; an over-deep, cyclic, over-wide,
+   * accessor-bearing or reflection-hostile argument tree used to overflow the
+   * stack here with a `RangeError` before anything else in the cache path ran.
+   * It now yields `undefined`, which every caller treats as "this call is not
+   * cacheable" — the tool still executes normally, nothing partial is hashed,
+   * and the degradation is reported through `onUnkeyableArgs`.
+   */
+  private keyFor(toolName: string, args: ToolArgs): string | undefined {
+    const result = tryBuildCacheKey(toolName, args);
+    if (result.ok) return result.key;
+    this.onUnkeyableArgs?.({ toolName, reason: result.reason });
+    return undefined;
   }
 
   /**
@@ -81,7 +112,8 @@ export class ToolCallCache {
     args: ToolArgs,
   ): ToolCacheEntry | undefined {
     if (!descriptor.cacheable) return undefined;
-    const key = buildCacheKey(descriptor.name, args);
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return undefined;
     const fromMemory = this.memory.get(key);
     const candidate = fromMemory ?? this.disk.read(key);
     if (!candidate) return undefined;
@@ -124,7 +156,8 @@ export class ToolCallCache {
   ): void {
     if (!descriptor.cacheable) return;
     if (!isCacheableToolOutput(output)) return;
-    const key = buildCacheKey(descriptor.name, args);
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return;
     const cachedAt = this.now();
     let cloned: ToolOutput;
     try {
@@ -209,7 +242,8 @@ export class ToolCallCache {
     if (hit) this.invalidate(descriptor.name, hit.key);
     if (!descriptor.cacheable) return execute();
 
-    const cacheKey = buildCacheKey(descriptor.name, args);
+    const cacheKey = this.keyFor(descriptor.name, args);
+    if (cacheKey === undefined) return execute();
     const inFlightKey = `${cacheKey}:${descriptor.version}`;
     const existing = this.inFlight.get(inFlightKey);
     if (existing) return existing;

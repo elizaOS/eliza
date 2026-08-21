@@ -234,13 +234,22 @@ describe("PostMarketplaceInstallRequestSchema", () => {
         githubUrl: "",
         repository: "  ",
       }),
-    ).toThrow(/at least one of/);
+    ).toThrow(/exactly one of/);
   });
 
   it("rejects when nothing is provided", () => {
     expect(() => PostMarketplaceInstallRequestSchema.parse({})).toThrow(
-      /at least one of/,
+      /exactly one of/,
     );
+  });
+
+  it("rejects ambiguous identifiers", () => {
+    expect(() =>
+      PostMarketplaceInstallRequestSchema.parse({
+        slug: "weather",
+        repository: "foo/weather",
+      }),
+    ).toThrow(/exactly one of/);
   });
 
   it("rejects unknown source value", () => {
