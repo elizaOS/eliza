@@ -6,13 +6,16 @@
  * every cached credential is additionally capped at a short TTL so a
  * broker-side rotation (owner reconnect, refresh-token rotate) propagates
  * without a restart. `invalidate()` drops the cache immediately on rejection.
- * Broker HTTP uses AbortSignal.timeout so a hung cloud token hop cannot stall
- * every X action that needs credentials.
+ * The credential boundary accepts only public HTTPS broker URLs, refuses
+ * redirects, bounds and validates the response before copying allowlisted
+ * fields, and coalesces concurrent refreshes without reviving invalidated data.
  */
 import {
+  ElizaError,
+  fetchWithSsrfGuard,
   type IAgentRuntime,
-  toWellFormedUnicode,
-  truncateWellFormed,
+  isBlockedHostname,
+  isPrivateIpAddress,
 } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
 import type { BrokerAuthCredentials, TwitterBrokerProvider } from "./types";
@@ -32,36 +35,283 @@ interface BrokerOAuth1Token {
 }
 
 type BrokerToken = BrokerOAuth1Token | BrokerOAuth2Token;
+type BrokerGuardedFetch = typeof fetchWithSsrfGuard;
+
+interface BrokerRequestContext {
+  baseUrl: string;
+  connectionRole: "agent" | "owner";
+  brokerCredential: string;
+  identity: string;
+}
 
 const BROKER_CACHE_MS = 5 * 60 * 1000;
 const OAUTH2_REFRESH_MARGIN_MS = 60 * 1000;
 export const BROKER_FETCH_TIMEOUT_MS = 30_000;
+export const BROKER_RESPONSE_MAX_BYTES = 16 * 1024;
+const BROKER_SECRET_MAX_CHARS = 8 * 1024;
+const BROKER_KEY_MAX_CHARS = 1024;
 
-function isBrokerToken(value: unknown): value is BrokerToken {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const token = value as Record<string, unknown>;
-  if (token.auth_mode === "oauth2") {
-    return (
-      typeof token.access_token === "string" && token.access_token.length > 0
-    );
+class BrokerResponseError extends ElizaError {}
+
+function brokerError(
+  message: string,
+  code: string,
+  cause?: unknown,
+): BrokerResponseError {
+  return new BrokerResponseError(message, {
+    code,
+    severity: "ephemeral",
+    ...(cause === undefined ? {} : { cause }),
+  });
+}
+
+function normalizeBrokerBaseUrl(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    // error-policy:J3 Broker configuration is untrusted input and must produce
+    // a generic invalid result without reflecting embedded credentials.
+    throw brokerError("Invalid X broker URL", "X_BROKER_URL_INVALID");
   }
-  if (token.auth_mode === "oauth1") {
-    return (
-      typeof token.consumer_key === "string" &&
-      typeof token.consumer_secret === "string" &&
-      typeof token.access_token === "string" &&
-      typeof token.access_token_secret === "string"
-    );
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.search !== "" ||
+    parsed.hash !== "" ||
+    isBlockedHostname(parsed.hostname) ||
+    isPrivateIpAddress(parsed.hostname)
+  ) {
+    throw brokerError("Invalid X broker URL", "X_BROKER_URL_INVALID");
+  }
+  return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+}
+
+function boundedString(value: unknown, maxChars: number): string | null {
+  return typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= maxChars &&
+    !containsControlCharacter(value)
+    ? value
+    : null;
+}
+
+function containsControlCharacter(value: string): boolean {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint !== undefined && (codePoint < 0x20 || codePoint === 0x7f)) {
+      return true;
+    }
   }
   return false;
 }
 
+function parseBrokerToken(value: unknown): BrokerToken | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const token = value as Record<string, unknown>;
+  if (token.auth_mode === "oauth2") {
+    const accessToken = boundedString(
+      token.access_token,
+      BROKER_SECRET_MAX_CHARS,
+    );
+    const expiresAt = token.expires_at;
+    if (!accessToken) return null;
+    if (
+      expiresAt !== undefined &&
+      (!Number.isSafeInteger(expiresAt) || (expiresAt as number) <= 0)
+    ) {
+      return null;
+    }
+    return expiresAt === undefined
+      ? { auth_mode: "oauth2", access_token: accessToken }
+      : {
+          auth_mode: "oauth2",
+          access_token: accessToken,
+          expires_at: expiresAt as number,
+        };
+  }
+  if (token.auth_mode === "oauth1") {
+    const consumerKey = boundedString(token.consumer_key, BROKER_KEY_MAX_CHARS);
+    const consumerSecret = boundedString(
+      token.consumer_secret,
+      BROKER_SECRET_MAX_CHARS,
+    );
+    const accessToken = boundedString(
+      token.access_token,
+      BROKER_SECRET_MAX_CHARS,
+    );
+    const accessTokenSecret = boundedString(
+      token.access_token_secret,
+      BROKER_SECRET_MAX_CHARS,
+    );
+    if (!consumerKey || !consumerSecret || !accessToken || !accessTokenSecret) {
+      return null;
+    }
+    return {
+      auth_mode: "oauth1",
+      consumer_key: consumerKey,
+      consumer_secret: consumerSecret,
+      access_token: accessToken,
+      access_token_secret: accessTokenSecret,
+    };
+  }
+  return null;
+}
+
+function declaredResponseLength(
+  response: Response,
+): { kind: "absent" } | { kind: "invalid" } | { kind: "valid"; bytes: number } {
+  const header = response.headers.get("content-length");
+  if (header === null) return { kind: "absent" };
+  if (!/^\d+$/.test(header)) {
+    return { kind: "invalid" };
+  }
+  const length = Number(header);
+  return Number.isSafeInteger(length)
+    ? { kind: "valid", bytes: length }
+    : { kind: "invalid" };
+}
+
+function abortReason(signal: AbortSignal): unknown {
+  return (
+    signal.reason ?? new DOMException("The operation was aborted", "AbortError")
+  );
+}
+
+async function cancelBrokerBody(
+  body: ReadableStream<Uint8Array> | null,
+  reason: string,
+): Promise<void> {
+  if (!body) return;
+  try {
+    await body.cancel(reason);
+  } catch {
+    // error-policy:J6 The primary broker boundary error remains authoritative;
+    // the request signal/release path still tears down the guarded transport.
+  }
+}
+
+async function readWithSignal(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  signal: AbortSignal,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  signal.throwIfAborted();
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(abortReason(signal));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([reader.read(), aborted]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+async function readBoundedJson(
+  response: Response,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const declaredLength = declaredResponseLength(response);
+  if (
+    declaredLength.kind === "invalid" ||
+    (declaredLength.kind === "valid" &&
+      declaredLength.bytes > BROKER_RESPONSE_MAX_BYTES)
+  ) {
+    await cancelBrokerBody(
+      response.body,
+      "X broker rejected the declared body length",
+    );
+    throw brokerError(
+      declaredLength.kind === "invalid"
+        ? "X broker returned an invalid response"
+        : "X broker response exceeded the size limit",
+      declaredLength.kind === "invalid"
+        ? "X_BROKER_RESPONSE_INVALID"
+        : "X_BROKER_RESPONSE_TOO_LARGE",
+    );
+  }
+  if (!response.body) {
+    throw brokerError(
+      "X broker returned an invalid response",
+      "X_BROKER_RESPONSE_INVALID",
+    );
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await readWithSignal(reader, signal);
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > BROKER_RESPONSE_MAX_BYTES) {
+        try {
+          await reader.cancel("X broker response exceeded the size limit");
+        } catch {
+          // error-policy:J6 The bounded-response failure remains authoritative;
+          // releasing the reader below permits guarded transport cleanup.
+        }
+        throw brokerError(
+          "X broker response exceeded the size limit",
+          "X_BROKER_RESPONSE_TOO_LARGE",
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    // error-policy:J3 Broker bytes must be valid UTF-8 before JSON parsing.
+    throw brokerError(
+      "X broker returned an invalid response",
+      "X_BROKER_RESPONSE_INVALID",
+    );
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    // error-policy:J3 Malformed broker JSON is an explicit invalid response.
+    throw brokerError(
+      "X broker returned an invalid response",
+      "X_BROKER_RESPONSE_INVALID",
+    );
+  }
+}
+
 export class BrokerAuthProvider implements TwitterBrokerProvider {
   readonly mode = "broker" as const;
-  private cached: { token: BrokerToken; expiresAt: number } | null = null;
-  private inflight: Promise<BrokerToken> | null = null;
+  private cached: {
+    token: BrokerToken;
+    expiresAt: number;
+    identity: string;
+  } | null = null;
+  private inflight: {
+    generation: number;
+    identity: string;
+    controller: AbortController;
+    promise: Promise<BrokerToken>;
+  } | null = null;
+  private cacheGeneration = 0;
 
-  constructor(private readonly runtime: IAgentRuntime) {}
+  constructor(
+    private readonly runtime: IAgentRuntime,
+    private readonly guardedFetch: BrokerGuardedFetch = fetchWithSsrfGuard,
+  ) {}
 
   async getAccessToken(): Promise<string> {
     return (await this.fetchToken()).access_token;
@@ -82,25 +332,52 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
   }
 
   invalidate(): void {
+    this.cacheGeneration += 1;
     this.cached = null;
+    this.inflight?.controller.abort(
+      new DOMException("X broker credential was invalidated", "AbortError"),
+    );
+    this.inflight = null;
   }
 
   private brokerUrl(): string {
     const explicit = getSetting(this.runtime, "TWITTER_BROKER_URL");
-    if (explicit) return explicit.replace(/\/+$/, "");
+    if (explicit) return normalizeBrokerBaseUrl(explicit);
     const cloudBase =
       getSetting(this.runtime, "ELIZAOS_CLOUD_BASE_URL") ??
-      "https://cloud.eliza.app/api/v1";
-    return `${cloudBase.replace(/\/+$/, "")}/twitter`;
+      "https://api.eliza.app/api/v1";
+    return `${normalizeBrokerBaseUrl(cloudBase)}/twitter`;
   }
 
-  private brokerToken(): string {
+  private brokerToken(baseUrl: string): string {
+    const explicit = getSetting(this.runtime, "TWITTER_BROKER_TOKEN");
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    const trustedCloudOrigin = new Set([
+      "api.eliza.app",
+      "api-staging.eliza.app",
+      "cloud.eliza.app",
+      "cloud-staging.eliza.app",
+    ]).has(hostname);
     const token =
-      getSetting(this.runtime, "TWITTER_BROKER_TOKEN") ??
-      getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY");
+      explicit ??
+      (trustedCloudOrigin
+        ? getSetting(this.runtime, "ELIZAOS_CLOUD_API_KEY")
+        : undefined);
     if (!token) {
-      throw new Error(
-        "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY",
+      throw brokerError(
+        trustedCloudOrigin
+          ? "TWITTER_AUTH_MODE=broker requires TWITTER_BROKER_TOKEN or ELIZAOS_CLOUD_API_KEY"
+          : "A custom X broker requires an explicit TWITTER_BROKER_TOKEN",
+        "X_BROKER_CREDENTIAL_MISSING",
+      );
+    }
+    if (
+      token.length > BROKER_SECRET_MAX_CHARS ||
+      containsControlCharacter(token)
+    ) {
+      throw brokerError(
+        "Invalid X broker credential",
+        "X_BROKER_CREDENTIAL_INVALID",
       );
     }
     return token;
@@ -111,73 +388,150 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
       getSetting(this.runtime, "TWITTER_BROKER_CONNECTION_ROLE") ?? "agent";
     const normalized = configured.trim().toLowerCase();
     if (normalized !== "agent" && normalized !== "owner") {
-      throw new Error(
+      throw brokerError(
         `Invalid TWITTER_BROKER_CONNECTION_ROLE=${configured}. Expected agent|owner.`,
+        "X_BROKER_CONNECTION_ROLE_INVALID",
       );
     }
     return normalized;
   }
 
+  private requestContext(): BrokerRequestContext {
+    const baseUrl = this.brokerUrl();
+    const connectionRole = this.connectionRole();
+    const brokerCredential = this.brokerToken(baseUrl);
+    return {
+      baseUrl,
+      connectionRole,
+      brokerCredential,
+      identity: `${baseUrl}\u0000${connectionRole}\u0000${brokerCredential}`,
+    };
+  }
+
   private async fetchToken(): Promise<BrokerToken> {
-    if (this.cached && Date.now() < this.cached.expiresAt) {
+    const context = this.requestContext();
+    if (
+      this.cached &&
+      this.cached.identity === context.identity &&
+      Date.now() < this.cached.expiresAt
+    ) {
       return this.cached.token;
     }
-    if (this.inflight) return this.inflight;
+    if (this.cached && this.cached.identity !== context.identity)
+      this.invalidate();
+    if (
+      this.inflight &&
+      (this.inflight.generation !== this.cacheGeneration ||
+        this.inflight.identity !== context.identity)
+    ) {
+      this.invalidate();
+    }
+    if (
+      this.inflight?.generation === this.cacheGeneration &&
+      this.inflight.identity === context.identity
+    ) {
+      return this.inflight.promise;
+    }
 
-    this.inflight = this.fetchFromBroker().then((token) => {
-      const cacheCap = Date.now() + BROKER_CACHE_MS;
-      const expiresAt =
-        token.auth_mode === "oauth2" && token.expires_at
-          ? Math.min(
-              token.expires_at * 1000 - OAUTH2_REFRESH_MARGIN_MS,
-              cacheCap,
-            )
-          : cacheCap;
-      this.cached = { token, expiresAt };
-      return token;
-    });
+    const generation = this.cacheGeneration;
+    const controller = new AbortController();
+    const promise = this.fetchFromBroker(context, controller.signal).then(
+      (token) => {
+        const cacheCap = Date.now() + BROKER_CACHE_MS;
+        const expiresAt =
+          token.auth_mode === "oauth2" && token.expires_at
+            ? Math.min(
+                token.expires_at * 1000 - OAUTH2_REFRESH_MARGIN_MS,
+                cacheCap,
+              )
+            : cacheCap;
+        if (generation === this.cacheGeneration) {
+          this.cached = { token, expiresAt, identity: context.identity };
+        }
+        return token;
+      },
+    );
+    const inflight = {
+      generation,
+      identity: context.identity,
+      controller,
+      promise,
+    };
+    this.inflight = inflight;
 
     try {
-      return await this.inflight;
+      return await promise;
     } finally {
-      this.inflight = null;
+      if (this.inflight === inflight) this.inflight = null;
     }
   }
 
-  private async fetchFromBroker(): Promise<BrokerToken> {
-    const response = await fetch(
-      `${this.brokerUrl()}/token?connectionRole=${this.connectionRole()}`,
-      {
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${this.brokerToken()}`,
+  private async fetchFromBroker(
+    context: BrokerRequestContext,
+    invalidationSignal: AbortSignal,
+  ): Promise<BrokerToken> {
+    const url = `${context.baseUrl}/token?connectionRole=${context.connectionRole}`;
+    const authorization = `Bearer ${context.brokerCredential}`;
+    const timeoutSignal = AbortSignal.timeout(BROKER_FETCH_TIMEOUT_MS);
+    const signal = AbortSignal.any([timeoutSignal, invalidationSignal]);
+    let release: (() => Promise<void>) | undefined;
+    try {
+      const guarded = await this.guardedFetch({
+        url,
+        maxRedirects: 0,
+        signal,
+        init: {
+          headers: {
+            Accept: "application/json",
+            Authorization: authorization,
+          },
         },
-        signal: AbortSignal.timeout(BROKER_FETCH_TIMEOUT_MS),
-      },
-    );
-    if (response.status === 401 || response.status === 403) {
-      this.invalidate();
-      throw new Error(
-        `X broker rejected the agent credential (${response.status})`,
-      );
-    }
-    if (!response.ok) {
-      let errorBodyPreview: string;
-      try {
-        const body = await response.text();
-        errorBodyPreview = truncateWellFormed(toWellFormedUnicode(body), 200);
-      } catch (_error) {
-        // error-policy:J1 translate body-read failure explicitly without fabricating an empty body.
-        errorBodyPreview = "[unreadable]";
+      });
+      release = guarded.release;
+      const response = guarded.response;
+      if (response.status === 401 || response.status === 403) {
+        this.cacheGeneration += 1;
+        this.cached = null;
+        await cancelBrokerBody(
+          response.body,
+          "X broker rejected the credential",
+        );
+        throw brokerError(
+          `X broker rejected the agent credential (${response.status})`,
+          "X_BROKER_CREDENTIAL_REJECTED",
+        );
       }
-      throw new Error(
-        `X broker request failed (${response.status}): ${errorBodyPreview}`,
+      if (!response.ok) {
+        await cancelBrokerBody(
+          response.body,
+          "X broker returned a non-success status",
+        );
+        throw brokerError(
+          `X broker request failed (${response.status})`,
+          "X_BROKER_HTTP_FAILED",
+        );
+      }
+      const value = await readBoundedJson(response, signal);
+      const token = parseBrokerToken(value);
+      if (!token) {
+        throw brokerError(
+          "X broker returned an invalid credential response",
+          "X_BROKER_RESPONSE_INVALID",
+        );
+      }
+      return token;
+    } catch (error) {
+      // error-policy:J1 This credential boundary preserves its own deadline
+      // while translating transport/parser failures without echoing secrets.
+      if (signal.aborted) throw abortReason(signal);
+      if (error instanceof BrokerResponseError) throw error;
+      throw brokerError(
+        "X broker request failed",
+        "X_BROKER_TRANSPORT_FAILED",
+        new Error("Broker transport or stream failed"),
       );
+    } finally {
+      await release?.();
     }
-    const token: unknown = await response.json();
-    if (!isBrokerToken(token)) {
-      throw new Error("X broker returned an invalid credential response");
-    }
-    return token;
   }
 }
