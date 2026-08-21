@@ -459,6 +459,7 @@ export async function ensureModel(
 	const safeRepo = sanitizeModelRepo(repo);
 	const safeFilename = sanitizeModelFilename(filename);
 	const modelPath = resolveModelPath(modelsDir, safeFilename);
+	const partialPath = `${modelPath}.part`;
 	if (force) safeUnlink(modelPath);
 
 	onProgress?.("checking", safeFilename);
@@ -491,7 +492,18 @@ export async function ensureModel(
 			}
 		: undefined;
 
-	await downloadFile(url, modelPath, 5, downloadOnProgress);
+	// Never stream directly into the path that boot treats as an installed
+	// model. If the process is interrupted mid-download, the `.part` file can be
+	// discarded on the next attempt instead of being mistaken for a complete
+	// GGUF merely because it exists.
+	safeUnlink(partialPath);
+	try {
+		await downloadFile(url, partialPath, 5, downloadOnProgress);
+		fs.renameSync(partialPath, modelPath);
+	} catch (error) {
+		safeUnlink(partialPath);
+		throw error;
+	}
 	log.info(`${getLogPrefix()} Embedding model downloaded: ${modelPath}`);
 	return modelPath;
 }
