@@ -120,6 +120,7 @@ function definitionRecord(args: {
     cadence: { kind: "unscheduled" },
     windowPolicy: { timezone: "UTC", windows: [] },
     progressionRule: { kind: "manual" },
+    checkInPolicy: null,
     websiteAccess: null,
     reminderPlanId: null,
     goalId: null,

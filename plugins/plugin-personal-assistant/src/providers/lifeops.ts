@@ -226,16 +226,28 @@ function summarizeCompletedToday(
 
 function summarizeOccurrences(
   title: string,
-  occurrences: Array<{ title: string; state: string }>,
+  occurrences: Array<{
+    title: string;
+    state: string;
+    progress?: {
+      completedCount: number;
+      targetCount: number;
+      remainingCount: number;
+      unit: string;
+    } | null;
+  }>,
 ): string[] {
   if (occurrences.length === 0) {
     return [];
   }
   return [
     title,
-    ...occurrences
-      .slice(0, 3)
-      .map((occurrence) => `- ${occurrence.title} (${occurrence.state})`),
+    ...occurrences.slice(0, 3).map((occurrence) => {
+      const progress = occurrence.progress;
+      return progress
+        ? `- ${occurrence.title} (${progress.completedCount}/${progress.targetCount} ${progress.unit}${progress.targetCount === 1 ? "" : "s"}; ${progress.remainingCount} remaining)`
+        : `- ${occurrence.title} (${occurrence.state})`;
+    }),
   ];
 }
 

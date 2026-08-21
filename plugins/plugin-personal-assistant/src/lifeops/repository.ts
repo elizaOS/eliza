@@ -83,6 +83,7 @@ import {
   type LifeOpsOccurrence,
   type LifeOpsOccurrenceView,
   type LifeOpsPersonalBaseline,
+  type LifeOpsProgressEvent,
   type LifeOpsProposalProposer,
   type LifeOpsProposalStatus,
   type LifeOpsRelationshipInteraction,
@@ -420,6 +421,12 @@ function parseTaskDefinition(
       row.progression_rule_json,
       { kind: "none" },
     ),
+    checkInPolicy: row.check_in_policy_json
+      ? parseJsonValue<LifeOpsTaskDefinition["checkInPolicy"]>(
+          row.check_in_policy_json,
+          null,
+        )
+      : null,
     websiteAccess: row.website_access_json
       ? parseJsonValue<LifeOpsTaskDefinition["websiteAccess"]>(
           row.website_access_json,
@@ -464,6 +471,31 @@ function parseOccurrence(row: Record<string, unknown>): LifeOpsOccurrence {
 function parseOccurrenceView(
   row: Record<string, unknown>,
 ): LifeOpsOccurrenceView {
+  const cadence = parseJsonRecord(
+    row.definition_cadence_json,
+  ) as LifeOpsOccurrenceView["cadence"];
+  const rawProgress = Number(row.progress_completed_count);
+  if (cadence.kind === "count_per_day" && !Number.isFinite(rawProgress)) {
+    throw new Error(
+      `LifeOpsRepository: invalid quota projection for occurrence ${toText(row.id)}`,
+    );
+  }
+  const progress =
+    cadence.kind === "count_per_day"
+      ? (() => {
+          const completedCount = Math.min(
+            Math.max(Math.trunc(rawProgress), 0),
+            cadence.targetCount,
+          );
+          return {
+            completedCount,
+            targetCount: cadence.targetCount,
+            remainingCount: Math.max(cadence.targetCount - completedCount, 0),
+            unit: cadence.unit,
+            perOccurrenceWork: cadence.perOccurrenceWork,
+          };
+        })()
+      : null;
   return {
     ...parseOccurrence(row),
     definitionKind: toText(
@@ -472,15 +504,14 @@ function parseOccurrenceView(
     definitionStatus: toText(
       row.definition_status,
     ) as LifeOpsOccurrenceView["definitionStatus"],
-    cadence: parseJsonRecord(
-      row.definition_cadence_json,
-    ) as LifeOpsOccurrenceView["cadence"],
+    cadence,
     title: toText(row.definition_title),
     description: toText(row.definition_description),
     priority: toNumber(row.definition_priority, 3),
     timezone: toText(row.definition_timezone),
     source: toText(row.definition_source, "manual"),
     goalId: row.definition_goal_id ? toText(row.definition_goal_id) : null,
+    progress,
   };
 }
 
@@ -3376,7 +3407,7 @@ export class LifeOpsRepository {
         id, agent_id, domain, subject_type, subject_id, visibility_scope,
         context_policy, kind, title, description, original_intent, timezone,
         status, priority, cadence_json, window_policy_json,
-        progression_rule_json, website_access_json, reminder_plan_id, goal_id, source,
+        progression_rule_json, check_in_policy_json, website_access_json, reminder_plan_id, goal_id, source,
         metadata_json, created_at, updated_at
       ) VALUES (
         ${sqlQuote(definition.id)},
@@ -3396,6 +3427,11 @@ export class LifeOpsRepository {
         ${sqlJson(definition.cadence)},
         ${sqlJson(definition.windowPolicy)},
         ${sqlJson(definition.progressionRule)},
+        ${sqlText(
+          definition.checkInPolicy
+            ? JSON.stringify(definition.checkInPolicy)
+            : null,
+        )},
         ${sqlText(
           definition.websiteAccess
             ? JSON.stringify(definition.websiteAccess)
@@ -3452,6 +3488,11 @@ export class LifeOpsRepository {
              cadence_json = ${sqlJson(definition.cadence)},
              window_policy_json = ${sqlJson(definition.windowPolicy)},
              progression_rule_json = ${sqlJson(definition.progressionRule)},
+             check_in_policy_json = ${sqlText(
+               definition.checkInPolicy
+                 ? JSON.stringify(definition.checkInPolicy)
+                 : null,
+             )},
              website_access_json = ${sqlText(
                definition.websiteAccess
                  ? JSON.stringify(definition.websiteAccess)
@@ -3642,9 +3683,30 @@ export class LifeOpsRepository {
         relevance_start_at = excluded.relevance_start_at,
         relevance_end_at = excluded.relevance_end_at,
         window_name = excluded.window_name,
-        state = excluded.state,
-        snoozed_until = excluded.snoozed_until,
-        completion_payload_json = excluded.completion_payload_json,
+        -- A re-materialization computed from a snapshot taken before a
+        -- concurrent completion must not resurrect the day: when the stored
+        -- row is already completed and the incoming row is non-terminal, the
+        -- completed state and its payload win. Real terminal transitions go
+        -- through completeOccurrenceIfNonTerminal / the skip and expire
+        -- writers, which always carry a terminal state here.
+        state = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.state
+          ELSE excluded.state
+        END,
+        snoozed_until = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN NULL
+          ELSE excluded.snoozed_until
+        END,
+        completion_payload_json = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.completion_payload_json
+          ELSE excluded.completion_payload_json
+        END,
         derived_target_json = excluded.derived_target_json,
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,
@@ -3724,6 +3786,10 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
@@ -3753,6 +3819,10 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
@@ -3810,6 +3880,10 @@ export class LifeOpsRepository {
               definition.timezone AS definition_timezone,
               definition.source AS definition_source,
               definition.goal_id AS definition_goal_id
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = occurrence.agent_id
+                   AND progress.occurrence_id = occurrence.id) AS progress_completed_count
          FROM app_lifeops.life_task_occurrences AS occurrence
          JOIN app_lifeops.life_task_definitions AS definition
            ON definition.id = occurrence.definition_id
@@ -3891,6 +3965,36 @@ export class LifeOpsRepository {
         },
       );
     }
+  }
+
+  /**
+   * Atomically wins one nonterminal-to-completed transition under the owning
+   * definition's current scope. Callers perform completion side effects only
+   * when this returns true, preventing duplicate rollups and grants when
+   * concurrent quota increments reach the target. Unlike updateOccurrence it
+   * deliberately carries no occurrence-revision guard: the terminal-state
+   * predicate is the race arbiter.
+   */
+  async completeOccurrenceIfNonTerminal(
+    occurrence: LifeOpsOccurrence,
+    options?: { definitionScope?: LifeOpsDefinitionScope },
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
+          SET state = 'completed',
+              snoozed_until = NULL,
+              completion_payload_json = ${occurrence.completionPayload ? sqlJson(occurrence.completionPayload) : "NULL"},
+              updated_at = ${sqlQuote(occurrence.updatedAt)}
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}
+          AND occurrence.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+      RETURNING occurrence.id`,
+    );
+    return rows.length === 1;
   }
 
   async pruneNonTerminalOccurrences(
@@ -4165,6 +4269,129 @@ export class LifeOpsRepository {
    * when the id already existed. Used by circadian event emission to dedupe
    * across runtime restarts (same state transition -> same id).
    */
+  /**
+   * Appends one quota progress increment under an occurrence-row lock. The
+   * transaction serializes the aggregate read with the append, while the
+   * unique idempotency key keeps message replays as no-ops.
+   */
+  async appendProgressEventIfNew(
+    event: LifeOpsProgressEvent,
+    targetCount: number,
+  ): Promise<number | null> {
+    return withTransaction(this.runtime, async (tx) => {
+      const locked = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_occurrences
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND id = ${sqlQuote(event.occurrenceId)}
+          FOR UPDATE`,
+      );
+      if (locked.length !== 1) return null;
+      const duplicate = await executeRawSqlTx(
+        tx,
+        `SELECT id
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}
+            AND idempotency_key = ${sqlQuote(event.idempotencyKey)}
+          LIMIT 1`,
+      );
+      if (duplicate.length > 0) return null;
+      const totals = await executeRawSqlTx(
+        tx,
+        `SELECT COALESCE(SUM(quantity), 0) AS total
+           FROM app_lifeops.life_task_progress_events
+          WHERE agent_id = ${sqlQuote(event.agentId)}
+            AND occurrence_id = ${sqlQuote(event.occurrenceId)}`,
+      );
+      const currentTotal = Number(totals[0]?.total);
+      if (!Number.isInteger(currentTotal) || currentTotal < 0) {
+        throw new Error(
+          `LifeOpsRepository: invalid progress total for occurrence ${event.occurrenceId}`,
+        );
+      }
+      const quantity = Math.min(
+        Math.trunc(event.quantity),
+        Math.max(Math.trunc(targetCount) - currentTotal, 0),
+      );
+      if (quantity <= 0) return null;
+      const rows = await executeRawSqlTx(
+        tx,
+        `INSERT INTO app_lifeops.life_task_progress_events (
+          id, agent_id, definition_id, occurrence_id, local_date_key,
+          idempotency_key, quantity, unit, note, actor, created_at
+        ) VALUES (
+          ${sqlQuote(event.id)},
+          ${sqlQuote(event.agentId)},
+          ${sqlQuote(event.definitionId)},
+          ${sqlQuote(event.occurrenceId)},
+          ${sqlQuote(event.localDateKey)},
+          ${sqlQuote(event.idempotencyKey)},
+          ${quantity},
+          ${sqlQuote(event.unit)},
+          ${event.note === null ? "NULL" : sqlQuote(event.note)},
+          ${sqlQuote(event.actor)},
+          ${sqlQuote(event.createdAt)}
+        )
+        ON CONFLICT (agent_id, occurrence_id, idempotency_key) DO NOTHING
+        RETURNING quantity`,
+      );
+      if (rows.length !== 1) return null;
+      return quantity;
+    });
+  }
+
+  /** Derived completed count for an occurrence: always summed from the append-only rows. */
+  async sumProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<number> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT COALESCE(SUM(quantity), 0) AS total
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}`,
+    );
+    const raw = rows[0]?.total;
+    const total = typeof raw === "number" ? raw : Number(raw);
+    if (!Number.isFinite(total)) {
+      throw new Error(
+        `LifeOpsRepository: non-numeric progress sum for occurrence ${occurrenceId}`,
+      );
+    }
+    return Math.trunc(total);
+  }
+
+  async listProgressEvents(
+    agentId: string,
+    occurrenceId: string,
+  ): Promise<LifeOpsProgressEvent[]> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_task_progress_events
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND occurrence_id = ${sqlQuote(occurrenceId)}
+        ORDER BY created_at ASC, id ASC`,
+    );
+    return rows.map((row) => ({
+      id: String(row.id),
+      agentId: String(row.agent_id),
+      definitionId: String(row.definition_id),
+      occurrenceId: String(row.occurrence_id),
+      localDateKey: String(row.local_date_key),
+      idempotencyKey: String(row.idempotency_key),
+      quantity: Number(row.quantity),
+      unit: String(row.unit),
+      note:
+        row.note === null || row.note === undefined ? null : String(row.note),
+      actor: String(row.actor),
+      createdAt: String(row.created_at),
+    }));
+  }
+
   async createAuditEventIfNew(event: LifeOpsAuditEvent): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
@@ -9213,11 +9440,16 @@ export class LifeOpsRepository {
 }
 
 export function createLifeOpsTaskDefinition(
-  params: Omit<LifeOpsTaskDefinition, "id" | "createdAt" | "updatedAt">,
+  params: Omit<
+    LifeOpsTaskDefinition,
+    "id" | "createdAt" | "updatedAt" | "checkInPolicy"
+  > &
+    Pick<Partial<LifeOpsTaskDefinition>, "checkInPolicy">,
 ): LifeOpsTaskDefinition {
   const timestamp = isoNow();
   return {
     ...params,
+    checkInPolicy: params.checkInPolicy ?? null,
     id: crypto.randomUUID(),
     createdAt: timestamp,
     updatedAt: timestamp,

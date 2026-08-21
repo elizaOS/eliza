@@ -265,6 +265,11 @@ function makeParams(
     timeOfDay: null,
     timeZone: null,
     everyMinutes: null,
+    quotaTargetCount: null,
+    quotaUnit: null,
+    perOccurrenceWork: null,
+    checkInRequested: null,
+    checkInWindows: null,
     timesPerDay: null,
     priority: null,
     durationMinutes: null,
@@ -476,6 +481,11 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
     weekdays: null,
     timeOfDay: null,
     everyMinutes: null,
+    quotaTargetCount: null,
+    quotaUnit: null,
+    perOccurrenceWork: null,
+    checkInRequested: null,
+    checkInWindows: null,
     priority: null,
     description: null,
     dueDate: null,
@@ -573,6 +583,45 @@ describe("buildCadenceFromUpdateFields (once reschedule)", () => {
       update: emptyUpdate,
     });
     expect(built).toBeNull();
+  });
+
+  it("updates quota target, unit work, and timing without fabricating slots", () => {
+    const built = buildCadenceFromUpdateFields({
+      currentCadence: {
+        kind: "count_per_day",
+        targetCount: 3,
+        unit: "set",
+        perOccurrenceWork: "25 pushups",
+        timing: { kind: "anytime" },
+      },
+      currentWindowPolicy: {
+        timezone: DENVER,
+        windows: [
+          {
+            name: "evening",
+            label: "Evening",
+            startMinute: 17 * 60,
+            endMinute: 22 * 60,
+          },
+        ],
+      },
+      timeZone: DENVER,
+      update: {
+        ...emptyUpdate,
+        cadenceKind: "count_per_day",
+        quotaTargetCount: 4,
+        perOccurrenceWork: "30 pushups",
+        windows: ["evening"],
+      },
+    });
+    expect(built?.cadence).toEqual({
+      kind: "count_per_day",
+      targetCount: 4,
+      unit: "set",
+      perOccurrenceWork: "30 pushups",
+      timing: { kind: "windows", windows: ["evening"] },
+    });
+    expect(built && "slots" in built.cadence).toBe(false);
   });
 
   // Date-level moves ("push it to Friday / tomorrow / april 17") must resolve

@@ -156,6 +156,8 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -1665,6 +1667,18 @@ export class LifeOpsService extends LifeOpsServiceBase {
     now?: Date,
   ): Promise<LifeOpsOccurrenceView> {
     return this.definitionsDomain.completeOccurrence(
+      occurrenceId,
+      request,
+      now,
+    );
+  }
+
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult> {
+    return this.definitionsDomain.recordOccurrenceProgress(
       occurrenceId,
       request,
       now,
