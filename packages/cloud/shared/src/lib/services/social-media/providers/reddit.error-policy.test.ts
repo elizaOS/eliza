@@ -182,6 +182,8 @@ describe("redditFetch — bounded hops fail closed and keep caller signals", () 
     await redditFetch("https://oauth.reddit.com/api/v1/me", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
   });
 });
