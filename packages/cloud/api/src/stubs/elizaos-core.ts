@@ -879,6 +879,11 @@ export async function timeInferenceSpan<T>(
   return fn();
 }
 
+/** Worker-safe `getInferenceTimer`: no timer context exists in the Worker. */
+export function getInferenceTimer(): undefined {
+  return undefined;
+}
+
 /** Worker-safe `recordInferenceSpan`: no active timer in the Worker, so no-op. */
 export function recordInferenceSpan(
   _name: string,
