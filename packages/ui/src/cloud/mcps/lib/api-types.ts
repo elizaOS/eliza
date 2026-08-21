@@ -133,8 +133,14 @@ export interface McpStats {
   totalRequests: number;
   /** @deprecated Legacy MCP pricing points (100 points = $1). */
   totalCreditsEarned: number;
-  /** Base MCP price only; excludes affiliate and platform surcharges. */
+  /** Canonical base MCP price. */
   baseCloudCreditsCharged: number;
+  affiliateFeesCloudCreditsCharged: number;
+  platformFeesCloudCreditsCharged: number;
+  /** Fee-inclusive amount actually debited. */
+  totalCloudCreditsCharged: number;
+  /** False when historical rows predate durable fee-component receipts. */
+  feeComponentsKnown: boolean;
   creditUnit: "USD";
   totalX402EarnedUsd: number;
   uniqueUsers: number;

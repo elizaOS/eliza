@@ -26,8 +26,9 @@ mock.module("@/lib/security/outbound-url", () => ({ assertSafeOutboundUrl }));
 const safeFetch = mock();
 mock.module("@/lib/security/safe-fetch", () => ({ safeFetch }));
 
+const getReferrer = mock();
 mock.module("@/lib/services/affiliates", () => ({
-  affiliatesService: { getReferrer: async () => null },
+  affiliatesService: { getReferrer },
 }));
 
 const containersGetById = mock();
@@ -42,10 +43,11 @@ mock.module("@/lib/services/credits", () => ({
 }));
 
 const getById = mock();
+const recordUsageWithoutDeduction = mock(async () => {});
 mock.module("@/lib/services/user-mcps", () => ({
   userMcpsService: {
     getById,
-    recordUsageWithoutDeduction: mock(async () => {}),
+    recordUsageWithoutDeduction,
   },
 }));
 
@@ -83,6 +85,9 @@ beforeEach(() => {
     organization_id: "org1",
   });
   getById.mockResolvedValue({ ...EXTERNAL_MCP });
+  getReferrer.mockReset();
+  getReferrer.mockResolvedValue(null);
+  recordUsageWithoutDeduction.mockClear();
   reserveAndDeductCredits.mockClear();
   reserveAndDeductCredits.mockResolvedValue({
     success: true,
@@ -207,4 +212,38 @@ test("successful call does NOT refund", async () => {
   const res = await post();
   expect(res.status).toBe(200);
   expect(refundCredits).not.toHaveBeenCalled();
+});
+
+test("affiliate surcharge uses one exact debit, persisted receipt, and refund authority", async () => {
+  getReferrer.mockResolvedValue({
+    user_id: "affiliate-user",
+    id: "affiliate-code",
+    markup_percent: "10",
+  });
+  safeFetch.mockResolvedValue(
+    new Response(JSON.stringify({ ok: true }), { status: 200 }),
+  );
+  const success = await post();
+  expect(success.status).toBe(200);
+  expect(reserveAndDeductCredits.mock.calls[0]?.[0].amount).toBe(0.065);
+  expect(recordUsageWithoutDeduction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      creditsCharged: 5,
+      affiliateFeeCredits: 0.5,
+      platformFeeCredits: 1,
+      chargeReceipt: {
+        creditUnit: "USD",
+        baseAmountUsd: 0.05,
+        affiliateFeeUsd: 0.005,
+        platformFeeUsd: 0.01,
+        totalAmountUsd: 0.065,
+        feeComponentsKnown: true,
+      },
+    }),
+  );
+
+  safeFetch.mockRejectedValue(new Error("offline"));
+  const failure = await post();
+  expect(failure.status).toBe(502);
+  expect(refundCredits.mock.calls[0]?.[0].amount).toBe(0.065);
 });

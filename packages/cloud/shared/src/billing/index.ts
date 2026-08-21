@@ -32,6 +32,8 @@ export {
   LEGACY_MCP_POINTS_FRACTION_DIGITS,
   LEGACY_MCP_POINTS_PER_DOLLAR,
   legacyMcpPointsToOrganizationCredits,
+  type McpUsageChargeReceipt,
+  mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_PRICING,
   ORGANIZATION_CREDIT_UNIT,
   ORGANIZATION_CREDIT_USD_PRECISION,

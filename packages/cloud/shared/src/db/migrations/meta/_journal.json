@@ -1954,6 +1954,13 @@
       "when": 1793736000001,
       "tag": "0295_phone_message_payload_jsonb",
       "breakpoints": true
+    },
+    {
+      "idx": 279,
+      "version": "7",
+      "when": 1793822400000,
+      "tag": "0296_mcp_usage_canonical_receipts",
+      "breakpoints": true
     }
   ]
 }

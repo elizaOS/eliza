@@ -1,4 +1,5 @@
 // Persists user mcps records for cloud services through the shared DB boundary.
+import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
@@ -11,6 +12,18 @@ import {
   userMcps,
 } from "../schemas";
 import { escapeLikePattern } from "../utils/like-pattern";
+
+function parseUsageAggregate(value: unknown, field: string): number {
+  const parsed = Number(value ?? 0);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new ElizaError("Stored MCP usage aggregate is corrupt.", {
+      code: "CORRUPT_MCP_USAGE_RECEIPT",
+      context: { field, value },
+      severity: "fatal",
+    });
+  }
+  return parsed;
+}
 
 /**
  * User MCPs Repository
@@ -307,7 +320,13 @@ export const mcpUsageRepository = {
    */
   async getStats(mcpId: string): Promise<{
     totalRequests: number;
+    /** @deprecated Legacy base-price points (100 points = $1). */
     totalCreditsCharged: number;
+    baseAmountUsd: number;
+    affiliateFeeUsd: number;
+    platformFeeUsd: number;
+    totalAmountUsd: number;
+    feeComponentsKnown: boolean;
     totalX402Usd: number;
     uniqueOrgs: number;
   }> {
@@ -315,6 +334,11 @@ export const mcpUsageRepository = {
       .select({
         totalRequests: sql<number>`sum(${mcpUsage.request_count})`,
         totalCreditsCharged: sql<number>`sum(${mcpUsage.credits_charged})`,
+        baseAmountUsd: sql<string>`sum(${mcpUsage.base_amount_usd})`,
+        affiliateFeeUsd: sql<string>`sum(${mcpUsage.affiliate_fee_usd})`,
+        platformFeeUsd: sql<string>`sum(${mcpUsage.platform_fee_usd})`,
+        totalAmountUsd: sql<string>`sum(${mcpUsage.total_amount_usd})`,
+        feeComponentsKnown: sql<boolean>`coalesce(bool_and(${mcpUsage.fee_components_known}), true)`,
         totalX402Usd: sql<number>`sum(${mcpUsage.x402_amount_usd})`,
         uniqueOrgs: sql<number>`count(distinct ${mcpUsage.organization_id})`,
       })
@@ -322,10 +346,15 @@ export const mcpUsageRepository = {
       .where(eq(mcpUsage.mcp_id, mcpId));
 
     return {
-      totalRequests: Number(result?.totalRequests ?? 0),
-      totalCreditsCharged: Number(result?.totalCreditsCharged ?? 0),
-      totalX402Usd: Number(result?.totalX402Usd ?? 0),
-      uniqueOrgs: Number(result?.uniqueOrgs ?? 0),
+      totalRequests: parseUsageAggregate(result?.totalRequests, "totalRequests"),
+      totalCreditsCharged: parseUsageAggregate(result?.totalCreditsCharged, "totalCreditsCharged"),
+      baseAmountUsd: parseUsageAggregate(result?.baseAmountUsd, "baseAmountUsd"),
+      affiliateFeeUsd: parseUsageAggregate(result?.affiliateFeeUsd, "affiliateFeeUsd"),
+      platformFeeUsd: parseUsageAggregate(result?.platformFeeUsd, "platformFeeUsd"),
+      totalAmountUsd: parseUsageAggregate(result?.totalAmountUsd, "totalAmountUsd"),
+      feeComponentsKnown: result?.feeComponentsKnown ?? true,
+      totalX402Usd: parseUsageAggregate(result?.totalX402Usd, "totalX402Usd"),
+      uniqueOrgs: parseUsageAggregate(result?.uniqueOrgs, "uniqueOrgs"),
     };
   },
 

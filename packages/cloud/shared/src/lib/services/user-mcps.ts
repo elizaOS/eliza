@@ -10,6 +10,8 @@ import crypto from "crypto";
 import {
   formatOrganizationCreditUsd,
   legacyMcpPointsToOrganizationCredits,
+  type McpUsageChargeReceipt,
+  mcpUsageChargeReceiptFromLegacyPoints,
   ORGANIZATION_CREDIT_UNIT,
   organizationCreditsToLegacyMcpPoints,
 } from "../../billing/organization-credits";
@@ -107,6 +109,8 @@ export interface UseMcpWithoutDeductionParams {
   creditsCharged: number;
   affiliateFeeCredits?: number;
   platformFeeCredits?: number;
+  /** Exact canonical receipt used by the caller's completed precharge. */
+  chargeReceipt?: McpUsageChargeReceipt;
   affiliateOwnerId?: string;
   affiliateCodeId?: string;
   metadata?: Record<string, unknown>;
@@ -118,6 +122,9 @@ export interface UseMcpResult {
   creditsCharged: number;
   /** Canonical base price; excludes affiliate and platform surcharges. */
   basePriceUsd: number;
+  affiliateFeeUsd: number;
+  platformFeeUsd: number;
+  totalPriceUsd: number;
   creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
   x402AmountUsd: number;
   creatorEarnings: number;
@@ -715,6 +722,11 @@ class UserMcpsService {
     }
 
     const totalCreditsToDeduct = creditsCharged + affiliateFeeCredits + platformFeeCredits;
+    const chargeReceipt = mcpUsageChargeReceiptFromLegacyPoints({
+      basePoints: creditsCharged,
+      affiliateFeePoints: affiliateFeeCredits,
+      platformFeePoints: platformFeeCredits,
+    });
 
     const creatorSharePct =
       parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
@@ -728,7 +740,7 @@ class UserMcpsService {
     if (params.paymentType === "credits" && totalCreditsToDeduct > 0) {
       const deductResult = await creditsService.deductCredits({
         organizationId: params.organizationId,
-        amount: legacyMcpPointsToOrganizationCredits(totalCreditsToDeduct),
+        amount: chargeReceipt.totalAmountUsd,
         description: `MCP: ${mcp.name} - ${params.toolName}`,
         metadata: {
           mcp_id: mcp.id,
@@ -738,7 +750,10 @@ class UserMcpsService {
           affiliate_fee: affiliateFeeCredits.toFixed(4),
           platform_fee: platformFeeCredits.toFixed(4),
           total_credits_charged: totalCreditsToDeduct.toFixed(4),
-          price_usd: legacyMcpPointsToOrganizationCredits(totalCreditsToDeduct).toString(),
+          base_amount_usd: formatOrganizationCreditUsd(chargeReceipt.baseAmountUsd),
+          affiliate_fee_usd: formatOrganizationCreditUsd(chargeReceipt.affiliateFeeUsd),
+          platform_fee_usd: formatOrganizationCreditUsd(chargeReceipt.platformFeeUsd),
+          total_amount_usd: formatOrganizationCreditUsd(chargeReceipt.totalAmountUsd),
           credit_unit: ORGANIZATION_CREDIT_UNIT,
         },
       });
@@ -815,6 +830,11 @@ class UserMcpsService {
       tool_name: params.toolName,
       request_count: 1,
       credits_charged: creditsCharged.toString(),
+      base_amount_usd: formatOrganizationCreditUsd(chargeReceipt.baseAmountUsd),
+      affiliate_fee_usd: formatOrganizationCreditUsd(chargeReceipt.affiliateFeeUsd),
+      platform_fee_usd: formatOrganizationCreditUsd(chargeReceipt.platformFeeUsd),
+      total_amount_usd: formatOrganizationCreditUsd(chargeReceipt.totalAmountUsd),
+      fee_components_known: true,
       x402_amount_usd: x402AmountUsd.toString(),
       payment_type: params.paymentType,
       creator_earnings: creatorEarnings.toString(),
@@ -836,6 +856,9 @@ class UserMcpsService {
       success: true,
       creditsCharged,
       basePriceUsd: legacyMcpPointsToOrganizationCredits(creditsCharged),
+      affiliateFeeUsd: chargeReceipt.affiliateFeeUsd,
+      platformFeeUsd: chargeReceipt.platformFeeUsd,
+      totalPriceUsd: chargeReceipt.totalAmountUsd,
       creditUnit: ORGANIZATION_CREDIT_UNIT,
       x402AmountUsd,
       creatorEarnings,
@@ -871,6 +894,13 @@ class UserMcpsService {
       "platformFeeCredits",
       0,
     );
+    const chargeReceipt =
+      params.chargeReceipt ??
+      mcpUsageChargeReceiptFromLegacyPoints({
+        basePoints: creditsCharged,
+        affiliateFeePoints: affiliateFeeCredits,
+        platformFeePoints: platformFeeCredits,
+      });
     const creatorSharePct =
       parseMcpSharePercentage(mcp.creator_share_percentage, "creator_share_percentage", 0) / 100;
     const platformSharePct =
@@ -958,6 +988,11 @@ class UserMcpsService {
       tool_name: params.toolName,
       request_count: 1,
       credits_charged: creditsCharged.toString(),
+      base_amount_usd: formatOrganizationCreditUsd(chargeReceipt.baseAmountUsd),
+      affiliate_fee_usd: formatOrganizationCreditUsd(chargeReceipt.affiliateFeeUsd),
+      platform_fee_usd: formatOrganizationCreditUsd(chargeReceipt.platformFeeUsd),
+      total_amount_usd: formatOrganizationCreditUsd(chargeReceipt.totalAmountUsd),
+      fee_components_known: true,
       x402_amount_usd: "0", // No x402 for pre-paid
       payment_type: "credits",
       creator_earnings: creatorEarnings.toString(),
@@ -979,6 +1014,9 @@ class UserMcpsService {
       success: true,
       creditsCharged,
       basePriceUsd: legacyMcpPointsToOrganizationCredits(creditsCharged),
+      affiliateFeeUsd: chargeReceipt.affiliateFeeUsd,
+      platformFeeUsd: chargeReceipt.platformFeeUsd,
+      totalPriceUsd: chargeReceipt.totalAmountUsd,
       creditUnit: ORGANIZATION_CREDIT_UNIT,
       x402AmountUsd: 0,
       creatorEarnings,
@@ -997,8 +1035,12 @@ class UserMcpsService {
     totalRequests: number;
     /** @deprecated Legacy MCP pricing points (100 points = $1). */
     totalCreditsEarned: number;
-    /** Base MCP prices only; excludes affiliate and platform surcharges. */
+    /** Canonical base MCP prices. */
     baseCloudCreditsCharged: number;
+    affiliateFeesCloudCreditsCharged: number;
+    platformFeesCloudCreditsCharged: number;
+    totalCloudCreditsCharged: number;
+    feeComponentsKnown: boolean;
     creditUnit: typeof ORGANIZATION_CREDIT_UNIT;
     totalX402EarnedUsd: number;
     uniqueUsers: number;
@@ -1015,7 +1057,11 @@ class UserMcpsService {
     return {
       totalRequests: stats.totalRequests,
       totalCreditsEarned: stats.totalCreditsCharged,
-      baseCloudCreditsCharged: legacyMcpPointsToOrganizationCredits(stats.totalCreditsCharged),
+      baseCloudCreditsCharged: stats.baseAmountUsd,
+      affiliateFeesCloudCreditsCharged: stats.affiliateFeeUsd,
+      platformFeesCloudCreditsCharged: stats.platformFeeUsd,
+      totalCloudCreditsCharged: stats.totalAmountUsd,
+      feeComponentsKnown: stats.feeComponentsKnown,
       creditUnit: ORGANIZATION_CREDIT_UNIT,
       totalX402EarnedUsd: stats.totalX402Usd,
       uniqueUsers: stats.uniqueOrgs,
