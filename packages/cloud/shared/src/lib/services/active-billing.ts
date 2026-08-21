@@ -1,6 +1,12 @@
-// Coordinates cloud service active billing behavior behind route handlers.
+/**
+ * Selects organization-scoped billable compute resources and coordinates
+ * their ledger and cancellation operations. Snapshot callers may supply an
+ * open read transaction so resource identity and canonical rate segments share
+ * one primary-database observation boundary.
+ */
+
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../db/client";
+import { type Database, dbRead, dbWrite } from "../../db/client";
 import { agentSandboxes } from "../../db/schemas/agent-sandboxes";
 import { containers } from "../../db/schemas/containers";
 import { creditTransactions } from "../../db/schemas/credit-transactions";
@@ -103,9 +109,17 @@ function detectLedgerResource(metadata: Record<string, unknown>): {
 }
 
 class ActiveBillingService {
-  async listActiveResources(organizationId: string): Promise<ActiveBillableResource[]> {
+  async listActiveResources(
+    organizationId: string,
+    /**
+     * Optional coherent read handle. The billing snapshot passes its open
+     * REPEATABLE READ transaction so this canonical selector is consumed
+     * without re-querying the primary outside the snapshot boundary.
+     */
+    database: Pick<Database, "select"> = dbRead,
+  ): Promise<ActiveBillableResource[]> {
     const [containerRows, agentRows] = await Promise.all([
-      dbRead
+      database
         .select()
         .from(containers)
         .where(
@@ -115,7 +129,7 @@ class ActiveBillingService {
             inArray(containers.billing_status, ["active", "warning", "shutdown_pending"]),
           ),
         ),
-      dbRead
+      database
         .select()
         .from(agentSandboxes)
         .where(
@@ -542,6 +556,8 @@ async function cancelContainerInfrastructure(
       message: "Container runtime was stopped and removed from the Docker node.",
     };
   } catch (error) {
+    // error-policy:J1 — cancellation translates infrastructure failure into a
+    // structured partial-success result after billing has already been stopped.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("[active-billing] Container infrastructure cancellation failed", {
       containerId,
@@ -609,6 +625,8 @@ async function cancelAgentInfrastructure(
           : "Managed agent stop queued; the orchestrator will shut down the container with a pre-shutdown snapshot when available.",
     };
   } catch (error) {
+    // error-policy:J1 — enqueue/cancellation failure is returned as the
+    // structured infrastructure-action result consumed by the route boundary.
     const message = error instanceof Error ? error.message : String(error);
     logger.warn("[active-billing] Agent infrastructure cancellation failed", {
       agentId,
