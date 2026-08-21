@@ -40,6 +40,10 @@ describe("app coding completion proof", () => {
 				displayName: "Nubs Garden",
 			} as Parameters<typeof buildEditPrompt>[1],
 			"/tmp/nubs-garden",
+			{
+				implementation: ["src/index.tsx"],
+				tests: ["tests/app.test.tsx"],
+			},
 		);
 
 		expect(prompt).toContain("sourceDir is already the exact app root");
@@ -48,6 +52,11 @@ describe("app coding completion proof", () => {
 		);
 		expect(prompt).toContain(
 			"batch related replacements into one FILE write/edit per changed file",
+		);
+		expect(prompt).toContain("knownImplementationPaths: src/index.tsx");
+		expect(prompt).toContain("knownTestPaths: tests/app.test.tsx");
+		expect(prompt).toContain(
+			"do not list directories, inspect index.html, or rediscover files",
 		);
 		expect(prompt).toContain(
 			"do not run `bun install` for an edit unless a validation command first fails specifically because dependencies are missing",

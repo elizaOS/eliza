@@ -648,15 +648,19 @@ export function buildEditPrompt(
 	intent: string,
 	app: InstalledAppInfo,
 	workdir: string,
+	knownPaths: {
+		implementation: readonly string[];
+		tests: readonly string[];
+	} = { implementation: [], tests: [] },
 ): string {
-	return [
+	const lines = [
 		"task: edit_eliza_app",
 		`appName: ${app.name}`,
 		`displayName: ${app.displayName}`,
 		`intent: ${intent}`,
 		`sourceDir: ${workdir}`,
 		"referenceDocs: read SCAFFOLD.md or AGENTS.md if present, otherwise README.md",
-		"editWorkflow: sourceDir is already the exact app root; try the conventional implementation and test paths named by its docs/package.json directly, and only list directories when those paths are absent",
+		"editWorkflow: sourceDir is already the exact app root",
 		"editWorkflow: read the relevant implementation and matching tests before editing so requested copy changes and test expectations are updated together",
 		"editWorkflow: batch related replacements into one FILE write/edit per changed file instead of one tool call per string",
 		"implementation: minimal requested change; no unrelated refactors",
@@ -671,7 +675,78 @@ export function buildEditPrompt(
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
 		`APP_CREATE_DONE {"appName":"${app.name}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
-	].join("\n");
+	];
+	if (knownPaths.implementation.length > 0) {
+		lines.splice(
+			6,
+			0,
+			`knownImplementationPaths: ${knownPaths.implementation.join(", ")}`,
+		);
+	}
+	if (knownPaths.tests.length > 0) {
+		lines.splice(7, 0, `knownTestPaths: ${knownPaths.tests.join(", ")}`);
+	}
+	if (knownPaths.implementation.length > 0 || knownPaths.tests.length > 0) {
+		lines.splice(
+			8,
+			0,
+			"editWorkflow: read the known paths directly; do not list directories, inspect index.html, or rediscover files unless a listed path is absent",
+		);
+	} else {
+		lines.splice(
+			6,
+			0,
+			"editWorkflow: try the conventional implementation and test paths named by the app docs/package.json directly, and only list directories when those paths are absent",
+		);
+	}
+	return lines.join("\n");
+}
+
+const EDIT_IMPLEMENTATION_CANDIDATES = [
+	"src/index.tsx",
+	"src/App.tsx",
+	"src/main.tsx",
+	"src/index.ts",
+	"src/App.jsx",
+	"src/main.jsx",
+	"src/index.jsx",
+] as const;
+
+const EDIT_TEST_CANDIDATES = [
+	"tests/app.test.tsx",
+	"src/App.test.tsx",
+	"src/index.test.tsx",
+	"tests/app.test.ts",
+	"src/App.test.ts",
+	"src/index.test.ts",
+] as const;
+
+async function existingRelativePaths(
+	workdir: string,
+	candidates: readonly string[],
+): Promise<string[]> {
+	const existence = await Promise.all(
+		candidates.map(async (relativePath) => {
+			const stat = await fs
+				.stat(path.join(workdir, relativePath))
+				.catch(() => null);
+			return stat?.isFile() ? relativePath : null;
+		}),
+	);
+	return existence.filter((relativePath): relativePath is string =>
+		Boolean(relativePath),
+	);
+}
+
+async function discoverEditTargetPaths(workdir: string): Promise<{
+	implementation: string[];
+	tests: string[];
+}> {
+	const [implementation, tests] = await Promise.all([
+		existingRelativePaths(workdir, EDIT_IMPLEMENTATION_CANDIDATES),
+		existingRelativePaths(workdir, EDIT_TEST_CANDIDATES),
+	]);
+	return { implementation, tests };
 }
 
 /** Whether the human explicitly requested the finished app to be shown. */
@@ -1030,7 +1105,8 @@ async function editExistingApp({
 	// Pre-edit snapshot so the edit can be rolled back via VIEWS rollback (#8915).
 	await snapshotAppWorkdir(runtime, workdir, app.name, false, originRoomId);
 
-	const prompt = buildEditPrompt(intent, app, workdir);
+	const knownPaths = await discoverEditTargetPaths(workdir);
+	const prompt = buildEditPrompt(intent, app, workdir, knownPaths);
 	// A workdir scaffolded by the create flow (SCAFFOLD.md marker) has no
 	// runtime launcher, so "full" verification (launch/browser) fails by
 	// design — the same loop the create path escaped. Installed launchable
