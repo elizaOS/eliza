@@ -5646,6 +5646,15 @@ export function ChatOverlay({
         return;
       }
       if (sheetOpen) {
+        // The detached companion has a strict three-step disclosure ladder.
+        // Its white bar always returns an open sheet to the visible composer,
+        // even when the textarea still owns focus. The generic focus restore
+        // below may return to a pre-focus pill, which made a physical click
+        // close twice while an AX click (no focused textarea) looked correct.
+        if (desktopOverlayHost) {
+          closeSheet();
+          return;
+        }
         if (composerFocusedAtPressRef.current) {
           composerFocusedAtPressRef.current = false;
           dismissKeyboardToPriorState();

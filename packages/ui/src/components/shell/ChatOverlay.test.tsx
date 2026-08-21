@@ -4426,6 +4426,39 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.getAttribute("data-chat-state")).toBe("INPUT");
   });
 
+  it("physical detached grabber click returns a focused open chat only to the composer", () => {
+    render(
+      <ChatOverlay
+        controller={makeSwipeController().controller}
+        desktopOverlayHost
+        initialMode="input"
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+    fireEvent.click(screen.getByTestId("chat-sheet-grabber"), { detail: 0 });
+    expect(sheet.dataset.detent).toBe("half");
+    act(() => input.focus());
+    expect(document.activeElement).toBe(input);
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, {
+      button: 0,
+      clientY: 120,
+      pointerId: 92,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(grabber, {
+      button: 0,
+      clientY: 120,
+      pointerId: 92,
+      pointerType: "mouse",
+    });
+
+    expect(sheet.dataset.detent).toBe("collapsed");
+    expect(sheet.dataset.chatState).toBe("INPUT");
+  });
+
   it("native click-away closes detached Mac history only to the visible composer", () => {
     let nativeBlur: ((payload: unknown) => void) | undefined;
     const rpc = {
