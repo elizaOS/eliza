@@ -2056,9 +2056,11 @@ export function resolveZeroDeliveryRecovery(args: {
 			.at(-1) ?? "";
 	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
 	const fallbackRecoveryText =
-		actionSuccessCount > 0
-			? "I finished working on that but could not compose a clean reply — ask again and I will retry."
-			: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+		actionSuccessCount > 0 && actionFailureCount > 0
+			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
+			: actionSuccessCount > 0
+				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
+				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
 	const text =
 		args.plannedText ||
 		lastActionUserFacingText ||

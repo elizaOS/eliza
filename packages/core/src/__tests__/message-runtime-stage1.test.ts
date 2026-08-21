@@ -5210,7 +5210,7 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(decision.actionFailureCount).toBe(2);
 			});
 
-			it("claims completion only when a tool actually succeeded", () => {
+			it("reports completion without inviting a blind replay after a tool succeeded", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",
 					actionResults: [{ success: true }],
@@ -5218,7 +5218,22 @@ describe("runV5MessageRuntimeStage1", () => {
 					earlyReplySent: false,
 				});
 				expect(decision.source).toBe("fallbackText");
-				expect(decision.text).toContain("finished");
+				expect(decision.text).toContain("completed");
+				expect(decision.text).toContain("Check the current state");
+				expect(decision.text).not.toContain("ask again");
+			});
+
+			it("reports mixed tool outcomes without presenting the turn as fully successful", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }, { success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).toContain("Check the current state");
+				expect(decision.text).not.toContain("finished");
 			});
 
 			it("declines to recover a successful early-ack turn with nothing grounded to say", () => {
