@@ -370,6 +370,19 @@ function publicPlans(): SubscriptionPlansDto {
   });
 }
 
+/** Returns one immutable server-owned plan without exposing provider bindings. */
+export function getSubscriptionCatalogPlan(planKey: SubscriptionPlanKey): SubscriptionPlanDto {
+  const plan = publicPlans().plans.find((candidate) => candidate.key === planKey);
+  if (!plan) {
+    throw new SubscriptionCatalogError(
+      "SUBSCRIPTION_CATALOG_PLAN_NOT_FOUND",
+      "Subscription catalog plan does not exist",
+      { planKey },
+    );
+  }
+  return plan;
+}
+
 function bindingCacheKey(bindings: SubscriptionCatalogBindings): string {
   return [
     CATALOG_VERSION,
