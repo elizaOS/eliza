@@ -32,10 +32,20 @@ type CancelAgentDeletionResult =
 const cancelAgentDeletion = mock(
   async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
 );
-const enqueueAgentDeleteOnce = mock(async () => ({
-  created: true,
-  job: { id: "delete-job-1", status: "pending" },
-}));
+type EnqueueAgentDeleteOnceResult = {
+  created: boolean;
+  job: {
+    id: string;
+    status: string;
+    data?: Record<string, unknown>;
+  };
+};
+const enqueueAgentDeleteOnce = mock(
+  async (): Promise<EnqueueAgentDeleteOnceResult> => ({
+    created: true,
+    job: { id: "delete-job-1", status: "pending" },
+  }),
+);
 const triggerImmediate = mock(async () => undefined);
 
 const loggerInfo = mock(() => undefined);
@@ -262,6 +272,67 @@ describe("agent deletion lifecycle", () => {
     expect(triggerImmediate).toHaveBeenCalledTimes(1);
   });
 
+  test("persists an explicit state-loss acknowledgement on the async delete job", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "delete-job-1",
+        status: "pending",
+        data: { stateLossAcknowledged: true },
+      },
+    });
+    const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        jobId: "delete-job-1",
+        stateLossAcknowledged: true,
+      },
+    });
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      authorization: "user_request",
+      stateLossAcknowledged: true,
+    });
+  });
+
+  test("fails closed instead of claiming a waiver when reuse did not persist authority", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: { id: "delete-job-1", status: "pending", data: {} },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("does not infer the waiver when stateLossAcknowledged is false", async () => {
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(202);
+    expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
+      agentId: "agent-1",
+      organizationId: "org-1",
+      userId: "user-1",
+      authorization: "user_request",
+    });
+  });
+
+  test("rejects partial conditional identity even when the waiver is explicit", async () => {
+    const response = await deleteRequest({
+      expectedAgentName: "Canary Agent",
+      stateLossAcknowledged: true,
+    });
+
+    expect(response.status).toBe(400);
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
   test("keeps the synchronous fast path for a sandbox-less shared delete", async () => {
     getAgent.mockResolvedValueOnce(sharedAgent({ sandbox_id: null }));
     deleteAgent.mockResolvedValueOnce({
@@ -437,6 +508,13 @@ describe("agent deletion lifecycle", () => {
       expectedCreatedAt: "not-a-timestamp",
       expectedExecutionTier: "dedicated-always",
     });
+
+    expect(response.status).toBe(400);
+    expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();
+  });
+
+  test("rejects a non-boolean state-loss acknowledgement", async () => {
+    const response = await deleteRequest({ stateLossAcknowledged: "true" });
 
     expect(response.status).toBe(400);
     expect(enqueueAgentDeleteOnce).not.toHaveBeenCalled();

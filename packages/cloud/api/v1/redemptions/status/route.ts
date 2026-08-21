@@ -10,6 +10,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import type { RedemptionStatusResponse } from "@/types/redemption-contract";
 
 const app = new Hono<AppEnv>();
 
@@ -58,7 +59,7 @@ app.get("/", async (c) => {
       message = "All payout networks are operational.";
     }
 
-    return c.json({
+    const response = {
       success: true,
       operational: status.operational,
       canRedeem,
@@ -85,7 +86,9 @@ app.get("/", async (c) => {
       })),
       warnings: status.warnings.filter((w) => !w.includes("balance")),
       lastChecked: status.lastChecked.toISOString(),
-    });
+    } satisfies RedemptionStatusResponse;
+
+    return c.json(response);
   } catch (error) {
     return failureResponse(c, error);
   }

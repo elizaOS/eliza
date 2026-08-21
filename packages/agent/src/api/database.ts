@@ -49,10 +49,7 @@ export {
   stripSqlDollarQuotedLiterals,
 } from "../shared/sql-sanitizers.ts";
 
-import {
-  stripSqlBlockComments,
-  stripSqlDollarQuotedLiterals,
-} from "../shared/sql-sanitizers.ts";
+import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -682,11 +679,13 @@ async function handleTestConnection(
     } satisfies ConnectionTestResult);
   } catch (err) {
     const durationMs = Date.now() - start;
-    const message = err instanceof Error ? err.message : String(err);
+    // error-policy:J1 retain driver diagnostics in structured logs without
+    // returning server paths, SQL, or connection internals to the caller.
+    logger.error({ err }, "[database-api] PostgreSQL connection test failed");
     sendJson(res, {
       success: false,
       serverVersion: null,
-      error: message,
+      error: "Database connection failed",
       durationMs,
     } satisfies ConnectionTestResult);
   } finally {
@@ -1097,25 +1096,14 @@ async function handleQuery(
   // query — not just the leading keyword. This prevents bypass via CTEs
   // (WITH ... AS (DELETE ...)) and other SQL constructs that nest mutations.
   if (body.readOnly !== false) {
-    // Strip block comments (/* ... */) and line comments (-- ...).
-    // Use empty-string replacement (not space) to mirror how PostgreSQL
-    // concatenates tokens across comments — e.g. DE/* */LETE → DELETE.
-    // A space replacement would turn it into "DE LETE", hiding the keyword.
-    const stripped = stripSqlBlockComments(sqlText)
-      .replace(/--.*$/gm, "")
-      .trim();
-
-    // Strip string literals so that mutation keywords/functions inside quoted
-    // strings are ignored. Handles single-quoted ('...'), dollar-quoted
-    // ($$...$$), and tagged dollar-quoted ($tag$...$tag$) strings.
-    const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
-      /'(?:[^']|'')*'/g,
-      " ",
-    );
-
-    // For keyword checks, also strip double-quoted identifiers to avoid
-    // matching words inside quoted table/column names.
-    const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
+    const scan = scanSqlForReadOnly(sqlText);
+    if (!scan.ok) {
+      sendJsonError(res, `Query rejected: ${scan.reason}`);
+      return;
+    }
+    const stripped = scan.structuralText.trim();
+    const noLiterals = scan.callableText;
+    const noStrings = scan.keywordText;
 
     // Reject PostgreSQL unicode-escaped quoted identifiers (`U&"s\0065tval"`)
     // in read-only mode: they decode to the real name only at parse time, so

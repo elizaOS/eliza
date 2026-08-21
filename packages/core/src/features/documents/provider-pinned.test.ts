@@ -41,11 +41,12 @@ function runtimeWithDocumentQuery(
 	return {
 		agentId,
 		adapter: {
-			documentListQueryCapability: 2,
+			documentListQueryCapability: 3,
 			queryDocuments,
 			queryDocumentFragments: vi.fn(async () => []),
 			getDocument: vi.fn(async () => null),
 			compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+			replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 			deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 		},
 		getMemories: vi.fn(async () => []),
@@ -218,11 +219,12 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const runtime = {
 			agentId,
 			adapter: {
-				documentListQueryCapability: 2,
+				documentListQueryCapability: 3,
 				queryDocuments: queryDocumentsMock,
 				queryDocumentFragments: vi.fn(async () => []),
 				getDocument: vi.fn(async () => null),
 				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 			},
 			getMemories: vi.fn(async () => []),
@@ -272,11 +274,12 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const runtime = {
 			agentId,
 			adapter: {
-				documentListQueryCapability: 2,
+				documentListQueryCapability: 3,
 				queryDocuments: queryDocumentsMock,
 				queryDocumentFragments: vi.fn(async () => []),
 				getDocument: vi.fn(async () => null),
 				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 			},
 			getMemories: vi.fn(async () => []),

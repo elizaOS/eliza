@@ -50,28 +50,58 @@ for (const viewport of [
   });
 }
 
-test("reduced motion renders the settled intro conversation", async ({
+test("reduced motion renders the settled household room without category labels", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
-  // This spec runs with reducedMotion: "reduce", so the demo must skip
-  // playback and render the whole intro at once: a stable snapshot for
-  // screenshot determinism.
+  // Reduced motion skips playback and renders one complete, stable
+  // household snapshot without adding category or numeric progress text.
   const demo = page.locator(".landing-iphone");
   await expect(demo).toHaveAttribute("data-demo-phase", "settled");
-  await expect(demo).toHaveAttribute("data-demo-messages", "17");
-  await expect(page.locator(".landing-demo-card")).toHaveCount(3);
+  await expect(demo).toHaveAttribute("data-demo-scenario", "household");
+  await expect(demo).toHaveAttribute("data-demo-scenarios", "5");
+  await expect(demo).toHaveAttribute(
+    "data-demo-visited",
+    "household,co-parenting,friends,trip,community",
+  );
+  await expect(demo).toHaveAttribute("data-demo-messages", "24");
+  await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(4);
+  await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);
 
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")
     .allTextContents();
-  expect(assistantMessages).toContain("Got it. Thursday dinner for four.");
-  expect(assistantMessages).toContain("Noted.");
   expect(assistantMessages).toContain(
-    "Then San Francisco Friday morning, but not too early.",
+    "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
   );
+  await expect(page.locator('[data-demo-source="memory"]').first()).toHaveText(
+    "Household memory · room only",
+  );
+  const messageAuthors = await page
+    .locator(".landing-message-author")
+    .allTextContents();
+  expect(new Set(messageAuthors)).toEqual(
+    new Set(["Noor", "Eli", "Jules", "Eliza"]),
+  );
+  await expect(page.locator(".landing-group-avatar")).toHaveCount(4);
+  await expect(page.locator(".landing-group-avatar").last()).toHaveAttribute(
+    "src",
+    "/brand/logos/logo_white_orangebg.svg",
+  );
+  await expect(page.locator('img[src="/elizapfp.webp"]')).toHaveCount(0);
+  expect(await page.locator(".landing-message-avatar").count()).toBeGreaterThan(
+    5,
+  );
+  await expect(page.locator(".landing-demo-card").first()).toHaveCSS(
+    "background-color",
+    "rgb(242, 242, 247)",
+  );
+  await expect(
+    page.locator(".landing-message-author", { hasText: "Eliza" }).first(),
+  ).toHaveCSS("color", "rgb(118, 118, 124)");
   expect(assistantMessages.join(" ")).not.toContain("—");
 });
 

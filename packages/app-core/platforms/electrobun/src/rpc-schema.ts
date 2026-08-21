@@ -185,6 +185,12 @@ export interface DesktopHttpRequestResult {
   statusText?: string;
   headers?: Record<string, string>;
   body?: string | null;
+  /**
+   * Base64-encoded binary response body. Set when the response Content-Type
+   * indicates a binary format (audio, image, etc.) so the renderer can
+   * reconstruct the original bytes without UTF-8 corruption.
+   */
+  bodyBase64?: string | null;
 }
 
 /**

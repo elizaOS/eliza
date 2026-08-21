@@ -18,9 +18,11 @@
 import path from "node:path";
 
 import { resolveStateDir } from "../../config/paths.ts";
+import { boundedWalk } from "./bounded-walk.ts";
 import { DiskStore } from "./disk-store.ts";
-import { buildCacheKey } from "./key.ts";
+import { type CacheKeyRejection, tryBuildCacheKey } from "./key.ts";
 import { Lru } from "./lru.ts";
+import { isRedactionDegraded } from "./redact.ts";
 import type {
   CacheableToolDescriptor,
   PrivacyRedactor,
@@ -38,29 +40,32 @@ export interface ToolCallCacheOptions {
   redact: PrivacyRedactor;
   /** Clock injection for tests. */
   now?: () => number;
+  /**
+   * Called when args could not be canonicalized inside the cache-key budget
+   * (over-deep, cyclic, over-wide, accessor-bearing or reflection-hostile).
+   * The call is served uncached rather than failing, so this hook is the only
+   * way that degradation is observable — it is never silent.
+   */
+  onUnkeyableArgs?: (info: {
+    toolName: string;
+    reason: CacheKeyRejection;
+  }) => void;
 }
 
 type CacheOutputValidator<T> = (output: unknown) => output is T & ToolOutput;
 
-function isToolOutput(
-  value: unknown,
-  seen = new WeakSet<object>(),
-): value is ToolOutput {
-  if (value === null) return true;
-  if (typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (typeof value !== "object") return false;
-  if (seen.has(value)) return false;
-  seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isToolOutput(entry, seen));
-  }
-  const prototype = Object.getPrototypeOf(value);
-  return (
-    (prototype === Object.prototype || prototype === null) &&
-    Object.values(value).every((entry) => isToolOutput(entry, seen))
-  );
+/**
+ * Fail-safe bound for anything that may enter either cache tier.
+ *
+ * Delegates to the shared descriptor-safe walker, so validation, cycle
+ * detection and redaction agree on what is walkable and all three reserve
+ * width (array length / own-key count) before per-entry work. A cyclic,
+ * accessor-bearing, reflection-hostile, over-wide, over-deep or oversize
+ * value is rejected without invoking a getter or a Proxy `get` trap and
+ * without allocating a values array.
+ */
+export function isCacheableToolOutput(value: unknown): value is ToolOutput {
+  return boundedWalk(value).ok;
 }
 
 export class ToolCallCache {
@@ -68,12 +73,33 @@ export class ToolCallCache {
   private readonly disk: DiskStore;
   private readonly now: () => number;
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly onUnkeyableArgs:
+    | ((info: { toolName: string; reason: CacheKeyRejection }) => void)
+    | undefined;
 
   constructor(options: ToolCallCacheOptions) {
     const root = options.diskRoot ?? path.join(resolveStateDir(), "tool-cache");
     this.memory = new Lru(options.memoryCapacity ?? 1000);
     this.disk = new DiskStore(root, options.redact);
     this.now = options.now ?? Date.now;
+    this.onUnkeyableArgs = options.onUnkeyableArgs;
+  }
+
+  /**
+   * Key (toolName, args) under the canonicalizer's budget.
+   *
+   * Args are model-emitted and untrusted; an over-deep, cyclic, over-wide,
+   * accessor-bearing or reflection-hostile argument tree used to overflow the
+   * stack here with a `RangeError` before anything else in the cache path ran.
+   * It now yields `undefined`, which every caller treats as "this call is not
+   * cacheable" — the tool still executes normally, nothing partial is hashed,
+   * and the degradation is reported through `onUnkeyableArgs`.
+   */
+  private keyFor(toolName: string, args: ToolArgs): string | undefined {
+    const result = tryBuildCacheKey(toolName, args);
+    if (result.ok) return result.key;
+    this.onUnkeyableArgs?.({ toolName, reason: result.reason });
+    return undefined;
   }
 
   /**
@@ -86,7 +112,8 @@ export class ToolCallCache {
     args: ToolArgs,
   ): ToolCacheEntry | undefined {
     if (!descriptor.cacheable) return undefined;
-    const key = buildCacheKey(descriptor.name, args);
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return undefined;
     const fromMemory = this.memory.get(key);
     const candidate = fromMemory ?? this.disk.read(key);
     if (!candidate) return undefined;
@@ -101,6 +128,11 @@ export class ToolCallCache {
       this.disk.delete(key);
       return undefined;
     }
+    if (isRedactionDegraded(candidate.output)) {
+      this.memory.delete(key);
+      this.disk.delete(key);
+      return undefined;
+    }
 
     if (!fromMemory) this.memory.set(key, candidate);
     return structuredClone(candidate);
@@ -110,6 +142,12 @@ export class ToolCallCache {
    * Record a fresh tool result. Returns immediately when the descriptor is not cacheable.
    * Both tiers are written synchronously; the disk tier runs through the
    * privacy redactor inside DiskStore.write.
+   *
+   * The bound is enforced here, independently of any caller-supplied
+   * `shouldCache` predicate, and BEFORE `structuredClone`: a lenient custom
+   * validator (or a direct `set()` caller) must not be able to push a cyclic,
+   * accessor-bearing, hostile-proxy or million-key value into either tier or
+   * through the clone/redaction work.
    */
   set(
     descriptor: CacheableToolDescriptor,
@@ -117,15 +155,29 @@ export class ToolCallCache {
     output: ToolOutput,
   ): void {
     if (!descriptor.cacheable) return;
-    const key = buildCacheKey(descriptor.name, args);
+    if (!isCacheableToolOutput(output)) return;
+    const key = this.keyFor(descriptor.name, args);
+    if (key === undefined) return;
     const cachedAt = this.now();
+    let cloned: ToolOutput;
+    try {
+      cloned = structuredClone(output);
+    } catch {
+      // Non-cloneable output (functions, etc.) cannot enter either tier.
+      return;
+    }
+    // An output that already equals a degradation sentinel must not become a
+    // memory-tier hit either — it would be indistinguishable from corruption.
+    if (isRedactionDegraded(cloned)) {
+      return;
+    }
     const entry: ToolCacheEntry = {
       key,
       toolName: descriptor.name,
       toolVersion: descriptor.version,
       cachedAt,
       expiresAt: cachedAt + descriptor.ttlMs,
-      output: structuredClone(output),
+      output: cloned,
     };
     this.memory.set(key, entry);
     this.disk.write(entry);
@@ -181,14 +233,17 @@ export class ToolCallCache {
     descriptor: CacheableToolDescriptor,
     args: ToolArgs,
     execute: () => Promise<unknown>,
-    shouldCache: (output: unknown) => output is ToolOutput = isToolOutput,
+    shouldCache: (
+      output: unknown,
+    ) => output is ToolOutput = isCacheableToolOutput,
   ): Promise<unknown> {
     const hit = this.get(descriptor, args);
     if (hit && shouldCache(hit.output)) return hit.output;
     if (hit) this.invalidate(descriptor.name, hit.key);
     if (!descriptor.cacheable) return execute();
 
-    const cacheKey = buildCacheKey(descriptor.name, args);
+    const cacheKey = this.keyFor(descriptor.name, args);
+    if (cacheKey === undefined) return execute();
     const inFlightKey = `${cacheKey}:${descriptor.version}`;
     const existing = this.inFlight.get(inFlightKey);
     if (existing) return existing;

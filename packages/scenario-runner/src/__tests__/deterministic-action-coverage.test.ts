@@ -711,6 +711,14 @@ const STRICT_LLM_ROUTING_SCENARIOS: Record<
     actionNames: ["GENERATE_MEDIA"],
     minMessageTurns: 2,
   },
+  "deterministic-lifeops-brief-recalibrate": {
+    actionNames: [
+      "BRIEF_RECALIBRATE",
+      "BRIEF_COMPOSE_MORNING",
+      "BRIEF_RESET_RECALIBRATION",
+    ],
+    minMessageTurns: 4,
+  },
   "deterministic-lifeops-multiday-journey": {
     actionNames: ["SCHEDULED_TASKS"],
     minMessageTurns: 5,
@@ -1204,6 +1212,30 @@ describe("deterministic action coverage", () => {
         `  actual:   ${actual.join(", ") || "(none)"}\n` +
         `  expected: ${expected.join(", ") || "(none)"}`,
     ).toEqual(expected);
+  });
+
+  it("keeps scenario-local active-view routes out of package preflight", async () => {
+    const loaded = await loadAllScenarios(scenarioDir);
+    for (const id of [
+      "deterministic-active-view-agent-surface",
+      "live-active-view-agent-surface",
+    ]) {
+      const scenario = loaded.find(
+        (entry) => entry.scenario.id === id,
+      )?.scenario;
+      expect(scenario, `missing active-view scenario ${id}`).toBeDefined();
+      expect(scenario?.requires?.plugins).toEqual([
+        "@elizaos/plugin-app-control",
+      ]);
+
+      const source = readFileSync(
+        resolve(scenarioDir, `${id}.scenario.ts`),
+        "utf8",
+      );
+      expect(source).toContain(
+        "runtime.registerPlugin(scenarioViewsRoutePlugin)",
+      );
+    }
   });
 
   it("strict LLM-routed scenarios declare planner/response fixtures for their routed actions", async () => {

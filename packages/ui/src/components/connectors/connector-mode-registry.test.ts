@@ -106,7 +106,7 @@ describe("connector mode registry seam", () => {
         elizaCloudConnected: true,
         cloudProvisioned: true,
       }).map((mode) => mode.id),
-    ).toEqual(["blooio", "cloud-bluebubbles", "bluebubbles"]);
+    ).toEqual(["blooio", "cloud-bluebubbles"]);
 
     expect(
       getConnectorModes("telegram", {
@@ -204,12 +204,12 @@ describe("connector mode registry seam", () => {
       getConnectorModes("imessage", { elizaCloudConnected: false }).map(
         (mode) => mode.id,
       ),
-    ).toEqual(["direct", "bluebubbles"]);
+    ).toEqual(["direct"]);
     expect(
       getConnectorModes("imessage", { elizaCloudConnected: true }).map(
         (mode) => mode.id,
       ),
-    ).toEqual(["blooio", "cloud-bluebubbles", "direct", "bluebubbles"]);
+    ).toEqual(["blooio", "cloud-bluebubbles", "direct"]);
     expect(
       getConnectorModeCloudGatewaySetup("imessage", "cloud-bluebubbles"),
     ).toBe("phone-registration");
@@ -219,7 +219,7 @@ describe("connector mode registry seam", () => {
     const offline = getConnectorModes("imessage", {
       elizaCloudConnected: false,
     });
-    expect(offline.map((mode) => mode.id)).toEqual(["direct", "bluebubbles"]);
+    expect(offline.map((mode) => mode.id)).toEqual(["direct"]);
     expect(getDefaultConnectorModeId("imessage", offline)).toBe("direct");
 
     const online = getConnectorModes("imessage", {
@@ -229,7 +229,6 @@ describe("connector mode registry seam", () => {
       "blooio",
       "cloud-bluebubbles",
       "direct",
-      "bluebubbles",
     ]);
     expect(getDefaultConnectorModeId("imessage", online)).toBe("blooio");
   });

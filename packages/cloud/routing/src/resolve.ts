@@ -50,7 +50,9 @@ export function cloudServiceApisBaseUrl(
 }
 
 function stripTrailingSlashes(url: string): string {
-  return url.replace(/\/+$/, "");
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
 }
 
 function normalizeCloudBaseUrl(rawUrl: string): string | null {
@@ -73,7 +75,12 @@ function normalizeCloudBaseUrl(rawUrl: string): string | null {
 }
 
 function normalizeServiceName(service: string): string | null {
-  const trimmed = service.trim().replace(/^\/+|\/+$/g, "");
+  const value = service.trim();
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 47) start++;
+  while (end > start && value.charCodeAt(end - 1) === 47) end--;
+  const trimmed = value.slice(start, end);
   if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
     return null;
   }

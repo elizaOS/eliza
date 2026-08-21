@@ -1,8 +1,9 @@
 # Eliza Cloud — Onboarding, Login, Provisioning, Sleep/Wake & Backups Review
 
-_Last updated: 2026-05-31. Scope: onboarding/login across all deployment
-topologies, cloud agent provisioning, inference routing, and the new
-sleep/wake + backup capabilities. Written against the `develop` branch._
+_Last updated: 2026-08-20 for the onboarding provisioning-authority boundary.
+The remaining review covers onboarding/login across all deployment topologies,
+cloud agent provisioning, inference routing, and sleep/wake + backup
+capabilities._
 
 This document is both a **review** of what exists and a **record** of what was
 added and verified in this pass. It is deliberately honest about what can be
@@ -46,25 +47,41 @@ fell through to the `steward` backend and every cloud-e2e run threw
 `NODE_ENV`/`ELIZA_KMS_BACKEND=memory` in `playwright.config.ts` before
 cloud-shared crypto is imported. The full suite now boots and is green.
 
-## 3. Onboarding default agent + non-blocking provisioning (reviewed)
+## 3. Onboarding default agent + observation-only provisioning status (reviewed)
 
-The product requirement — _while a cloud agent provisions, the user keeps
-chatting with an info-only onboarding agent_ — **is implemented for the cloud
-web flow**:
+The cloud web flow keeps the info-only onboarding chat available while it
+reports the state of an independently created non-Shared agent. Onboarding is
+not a compute lifecycle authority:
 
 - `cloud/shared/lib/services/eliza-app/onboarding-chat.ts#runOnboardingChat`
-  drives an info-only chat (Cerebras-backed, no actions/view-building), calls
-  `ensureElizaAppProvisioning()` (async, non-blocking), and reports
-  `pending → provisioning → running` inline.
-- On `running`, the onboarding transcript is copied into the managed agent's
-  memory (`copyTranscriptToManagedAgent` → `/api/memory/remember`).
+  drives the deterministic, model-free info-only chat and
+  calls `getElizaAppProvisioningStatus()`. It never creates or restarts an
+  agent, checks or debits credits, or enqueues provisioning work.
+- The status reader deterministically selects the newest target owned by the
+  authenticated user. It excludes Shared rows, warm-pool rows, deleted rows,
+  and rows being deleted; equal creation times are resolved by agent ID. Error,
+  disconnected, stopped, and sleeping targets remain visible so status reads
+  cannot hide a real lifecycle state.
+- A Shared-only account reports `status: "none"`. A bridge URL is returned only
+  for the selected target when it is `running`.
+- `GET /api/eliza-app/provisioning-agent` exposes this read. The historical
+  `POST` method is retained only as an observation-compatible alias and has the
+  same no-side-effect contract.
+- When an already-existing target reaches `running`, the onboarding transcript
+  is copied into its memory (`copyTranscriptToManagedAgent` →
+  `/api/memory/remember`).
 - The frontend polls non-blockingly (`use-sandbox-status-poll.ts`); the user is
-  never gated on provisioning.
+  never gated on the status read.
+
+Agent creation and lifecycle mutations remain separate, explicit product
+actions outside the onboarding conversation and its compatibility status
+route.
 
 **Gap (documented, not closed here):** the desktop/mobile first-run wizard is
 form-driven and has **no** local info-only agent to chat with during setup. The
-cloud path is the one the requirement targets and it works; the desktop gap is
-a follow-up.
+cloud path now provides an observation-only status conversation; creating or
+changing its Dedicated target remains an explicit lifecycle flow. The desktop
+conversation gap is a follow-up.
 
 ## 4. Provisioning (reviewed) — what's real
 

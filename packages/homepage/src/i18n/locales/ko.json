@@ -167,7 +167,6 @@
   "homepage_eliza.phoneInput.phoneAria": "전화번호",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "매주 4시간을 되돌려드립니다.",
-  "homepage_eliza.landing.heroLede": "안녕하세요, Eliza예요 — 당신의 개인 비서. 시간을 아껴드리고 할 일을 대신 처리해 드릴게요.",
   "homepage_eliza.landing.ctaText": "문자",
   "homepage_eliza.landing.copyPhone": "Eliza 전화번호 복사",
   "homepage_eliza.landing.phoneCopied": "복사됨!",

@@ -98,13 +98,15 @@ function normalizeConnectorBrowserWorkspaceSegment(
   value: string,
   fieldName: string,
 ): string {
-  const normalized = value
+  const slug = value
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .replace(/-{2,}/g, "-")
-    .slice(0, 64);
+    .replace(/[^a-z0-9]+/g, "-");
+  let start = 0;
+  let end = slug.length;
+  while (start < end && slug.charCodeAt(start) === 45) start += 1;
+  while (end > start && slug.charCodeAt(end - 1) === 45) end -= 1;
+  const normalized = slug.slice(start, end).slice(0, 64);
   if (!normalized) {
     throw new Error(`Eliza browser connector session requires ${fieldName}.`);
   }

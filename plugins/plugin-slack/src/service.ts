@@ -288,6 +288,15 @@ function isValidSlackEmojiName(emoji: string): boolean {
   return /^[A-Za-z0-9_+-]+(::skin-tone-[2-6])?$/.test(emoji);
 }
 
+function normalizeSlackEmojiName(emoji: string): string {
+  const value = emoji.trim();
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 58) start += 1;
+  while (end > start && value.charCodeAt(end - 1) === 58) end -= 1;
+  return value.slice(start, end);
+}
+
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -3310,7 +3319,9 @@ export class SlackService extends Service implements ISlackService {
       params,
     );
     const messageTs = params.messageTs ?? params.messageId;
-    const emoji = params.emoji?.trim().replace(/^:+|:+$/g, "");
+    const emoji = params.emoji
+      ? normalizeSlackEmojiName(params.emoji)
+      : undefined;
     if (
       !messageTs ||
       !isValidMessageTs(messageTs) ||
@@ -3728,7 +3739,7 @@ export class SlackService extends Service implements ISlackService {
     }
 
     // Remove colons if present
-    const cleanEmoji = emoji.trim().replace(/^:+|:+$/g, "");
+    const cleanEmoji = normalizeSlackEmojiName(emoji);
     if (
       !isValidChannelId(channelId) ||
       !isValidMessageTs(messageTs) ||
@@ -3758,7 +3769,7 @@ export class SlackService extends Service implements ISlackService {
       throw new Error("Slack client not initialized");
     }
 
-    const cleanEmoji = emoji.trim().replace(/^:+|:+$/g, "");
+    const cleanEmoji = normalizeSlackEmojiName(emoji);
     if (
       !isValidChannelId(channelId) ||
       !isValidMessageTs(messageTs) ||

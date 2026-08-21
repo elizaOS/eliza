@@ -5,6 +5,7 @@
 
 import { describe, expect, mock, test } from "bun:test";
 import type { OnboardingChatResult } from "@/lib/services/eliza-app/onboarding-chat";
+import * as provisioningObservation from "../../shared/src/lib/services/eliza-app/provisioning-observation";
 import type { OnboardingSessionCoordinator } from "../src/onboarding-session-coordinator";
 
 const noProvisioning = {
@@ -35,7 +36,7 @@ mock.module("../../shared/src/lib/services/eliza-app/user-service", () => ({
 }));
 
 mock.module("../../shared/src/lib/services/eliza-app/provisioning", () => ({
-  ensureElizaAppProvisioning: mock(async () => noProvisioning),
+  ...provisioningObservation,
   // Onboarding no longer provisions compute; the read-only status poll is the
   // remaining fallible provisioning step inside an authenticated turn, so it
   // is where a pre-commit outage is injected.

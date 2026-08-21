@@ -94,13 +94,13 @@ import {
   describeTtsCloudFetchTargetForDebug,
   describeTtsFetchTargetForDebug,
   getSpeechRecognitionCtor,
-  globalAudioCache,
   isAbortError,
   localePrefix,
-  MAX_CACHED_SEGMENTS,
   matchesVoiceLocale,
   normalizeSpeechLocale,
   type QueueAssistantSpeechOptions,
+  readCachedAudio,
+  rememberCachedAudio,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
@@ -561,11 +561,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const rememberCachedSegment = useCallback(
     (key: string, bytes: Uint8Array) => {
-      globalAudioCache.delete(key);
-      globalAudioCache.set(key, bytes);
-      if (globalAudioCache.size <= MAX_CACHED_SEGMENTS) return;
-      const oldest = globalAudioCache.keys().next().value;
-      if (oldest) globalAudioCache.delete(oldest);
+      rememberCachedAudio(key, bytes);
     },
     [],
   );
@@ -1574,12 +1570,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeElevenCacheKey(text, elConfig)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }
@@ -1810,12 +1805,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeElizaCloudCacheKey(text)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }
@@ -2047,12 +2041,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         (shouldCacheGeneratedSpeech(text, task.segment)
           ? makeLocalInferenceCacheKey(text)
           : undefined);
-      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      const cachedBytes = cacheKey ? readCachedAudio(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
       if (cacheKey && cachedBytes) {
-        rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
       }

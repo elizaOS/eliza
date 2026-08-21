@@ -657,12 +657,16 @@ export class SlackAccountPolicyResolver {
 }
 
 export function normalizeSlackSlug(value: string): string {
-  return value
+  const slug = value
     .trim()
     .toLowerCase()
     .replace(/^[#@]/, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/[^a-z0-9]+/g, "-");
+  let start = 0;
+  let end = slug.length;
+  while (start < end && slug.charCodeAt(start) === 45) start += 1;
+  while (end > start && slug.charCodeAt(end - 1) === 45) end -= 1;
+  return slug.slice(start, end);
 }
 
 export function isSlackChannelIdKey(key: string): boolean {

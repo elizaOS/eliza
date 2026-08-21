@@ -20,6 +20,8 @@
  * unchanged: the static gateway token is used (today's E2 behavior), fail-closed
  * ONLY under `ELIZA_MODEL_GATEWAY_STRICT=1`, which refuses to hand out a static
  * long-lived token when a broker is expected but absent.
+ * HTTP mint/revoke hops honor `MODEL_GATEWAY_LEASE_FETCH_TIMEOUT_MS` so a hung
+ * lease URL cannot stall spawn or teardown.
  *
  * @module services/model-gateway-lease
  */
@@ -40,6 +42,8 @@ export const MODEL_GATEWAY_LEASE_URL_KEY = "ELIZA_MODEL_GATEWAY_LEASE_URL";
  * layer). In the orchestrator it means: refuse to hand a sub-agent a static
  * long-lived gateway token — a broker lease is mandatory. */
 export const MODEL_GATEWAY_STRICT_KEY = "ELIZA_MODEL_GATEWAY_STRICT";
+/** Bound for HTTP lease mint/revoke so a hung broker cannot stall spawn. */
+export const MODEL_GATEWAY_LEASE_FETCH_TIMEOUT_MS = 15_000;
 
 /** A minted, scoped, short-lived model-invoke lease. */
 export interface ModelGatewayLease {
@@ -147,6 +151,7 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
         authorization: `Bearer ${this.authToken}`,
       },
       body: JSON.stringify(request),
+      signal: AbortSignal.timeout(MODEL_GATEWAY_LEASE_FETCH_TIMEOUT_MS),
     });
     if (!res.ok) {
       // error-policy:J3 best-effort read of untrusted error body for context; failure → empty detail, error still thrown below
@@ -173,6 +178,7 @@ export class HttpModelGatewayLeaseBroker implements ModelGatewayLeaseBroker {
       {
         method: "POST",
         headers: { authorization: `Bearer ${this.authToken}` },
+        signal: AbortSignal.timeout(MODEL_GATEWAY_LEASE_FETCH_TIMEOUT_MS),
       },
     );
     // A 404 means the lease is already gone (expired/revoked) — the desired

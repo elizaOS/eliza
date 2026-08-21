@@ -507,12 +507,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
 
   private validateSettings(settings: GoogleChatSettings): void {
     if (!settings.serviceAccount && !settings.serviceAccountFile) {
-      if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-        throw new GoogleChatConfigurationError(
-          "Google Chat requires service account credentials. Set GOOGLE_CHAT_SERVICE_ACCOUNT, GOOGLE_CHAT_SERVICE_ACCOUNT_FILE, or GOOGLE_APPLICATION_CREDENTIALS.",
-          "GOOGLE_CHAT_SERVICE_ACCOUNT"
-        );
-      }
+      throw new GoogleChatConfigurationError(
+        "Google Chat requires service account credentials. Set GOOGLE_CHAT_SERVICE_ACCOUNT, GOOGLE_CHAT_SERVICE_ACCOUNT_FILE, or GOOGLE_APPLICATION_CREDENTIALS.",
+        "GOOGLE_CHAT_SERVICE_ACCOUNT"
+      );
     }
 
     if (!settings.audience) {
@@ -545,9 +543,10 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       });
     }
 
-    return new GoogleAuth({
-      scopes: [CHAT_SCOPE],
-    });
+    throw new GoogleChatConfigurationError(
+      "Google Chat service account credentials were not resolved for this account.",
+      "GOOGLE_CHAT_SERVICE_ACCOUNT"
+    );
   }
 
   private async testConnection(state = this.getState()): Promise<void> {

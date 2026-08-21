@@ -2004,6 +2004,83 @@ export function answerlessToolTurnReport(args: {
 	return NO_REPORTABLE_TOOL_OUTCOME_MESSAGE;
 }
 
+/** Where the zero-delivery recovery sourced its terminal reply from. */
+export type ZeroDeliveryRecoverySource =
+	| "plannedText"
+	| "actionUserFacingText"
+	| "stageOneAck"
+	| "fallbackText";
+
+/**
+ * Decides whether — and with what text — a RESPOND turn that ran tools but
+ * delivered nothing terminal recovers instead of ending silent (#20083,
+ * corrected by #20086). Source precedence: the planner's surviving terminal
+ * text, then the last explicit action-owned `userFacingText`, then the
+ * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
+ * fallback whose wording is failure-aware — it claims completion only when at
+ * least one tool actually succeeded. After an early progress ack the turn
+ * recovers only when grounded text exists or any tool failed: a successful
+ * async handoff reports through a later completion relay, so manufacturing a
+ * "finished" line behind its ack would be a lie, while a failed handoff will
+ * never relay anything and the ack's promise must be corrected.
+ * `plannedText` must arrive pre-blanked when it merely repeats the early ack.
+ */
+export function resolveZeroDeliveryRecovery(args: {
+	plannedText: string;
+	actionResults: ReadonlyArray<
+		Pick<ActionResult, "success" | "userFacingText">
+	>;
+	stageOneAck: string;
+	earlyReplySent: boolean;
+}): {
+	recover: boolean;
+	text: string;
+	source: ZeroDeliveryRecoverySource;
+	actionSuccessCount: number;
+	actionFailureCount: number;
+} {
+	const actionSuccessCount = args.actionResults.filter(
+		(result) => result.success === true,
+	).length;
+	const actionFailureCount = args.actionResults.filter(
+		(result) => result.success === false,
+	).length;
+	const lastActionUserFacingText =
+		args.actionResults
+			.map((result) =>
+				typeof result.userFacingText === "string"
+					? result.userFacingText.trim()
+					: "",
+			)
+			.filter((ownedText) => ownedText.length > 0)
+			.at(-1) ?? "";
+	const ackRecoveryText = args.earlyReplySent ? "" : args.stageOneAck;
+	const fallbackRecoveryText =
+		actionSuccessCount > 0 && actionFailureCount > 0
+			? "Some steps completed and some failed, but I could not produce a reliable summary. Check the current state before deciding whether to retry."
+			: actionSuccessCount > 0
+				? "The requested steps completed, but I could not produce a reliable summary. Check the current state before retrying."
+				: "I ran the steps for that but they failed, and I could not compose a useful report — ask again and I will retry.";
+	const text =
+		args.plannedText ||
+		lastActionUserFacingText ||
+		ackRecoveryText ||
+		fallbackRecoveryText;
+	const source: ZeroDeliveryRecoverySource = args.plannedText
+		? "plannedText"
+		: lastActionUserFacingText
+			? "actionUserFacingText"
+			: ackRecoveryText
+				? "stageOneAck"
+				: "fallbackText";
+	const recover =
+		!args.earlyReplySent ||
+		Boolean(args.plannedText) ||
+		lastActionUserFacingText.length > 0 ||
+		actionFailureCount > 0;
+	return { recover, text, source, actionSuccessCount, actionFailureCount };
+}
+
 /** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
 const MEDIA_CONTENT_URL_RE =
 	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
@@ -5572,6 +5649,7 @@ export function messageHandlerFromFieldResult(
 		requestedPlanning &&
 		!modelCommittedToDelegation &&
 		!modelCommittedToPlanning &&
+		!looksLikeWebSearchRequest(currentMessageText) &&
 		shouldPreferCompleteDirectReply({
 			replyText: replyTextRaw,
 			candidateActions: runnableCandidateActions,
@@ -9861,49 +9939,57 @@ export async function runV5MessageRuntimeStage1(args: {
 		// produced a correct answer and the user got silence. Recover with the
 		// best grounded text available and name the failure in the log so the
 		// upstream emptying path is diagnosable instead of invisible.
-		// Two states are NOT recoverable silence: a synchronously delivered
+		// Three states are NOT recoverable silence: a synchronously delivered
 		// media deliverable is a delivery even though it never enters the
-		// visible-TEXT set, and deliberate silence (suppressPlannerReply
+		// visible-TEXT set; deliberate silence (suppressPlannerReply
 		// terminals, ambient IGNORE after tool work) is a contract this
-		// invariant must honor, not a failure for it to "fix" into filler.
+		// invariant must honor, not a failure for it to "fix" into filler;
+		// and a planned reply suppressed because the early ack ALREADY said it
+		// verbatim means the terminal content did reach the user. An early
+		// PROGRESS ack alone, however, is not a terminal answer — the turn
+		// still owes the user its outcome, so `earlyReplySent` by itself does
+		// not disarm the recovery; it only removes the ack (and any text that
+		// repeats it) from the pool of recovery sources so nothing delivers
+		// twice (#20086). One asymmetry is deliberate: the early ack only
+		// ships ahead of an async handoff, whose completion arrives through a
+		// later relay turn — after an ack, recover only when grounded terminal
+		// text exists or any tool failed (a failed handoff will never relay
+		// a completion, so the ack's promise must be corrected). A successful
+		// ack-then-background turn with nothing grounded to say stays silent.
+		const zeroDeliveryRecovery = resolveZeroDeliveryRecovery({
+			plannedText: plannedTextRepeatsEarlyReply
+				? ""
+				: effectiveDeliveredReplyText,
+			actionResults,
+			stageOneAck,
+			earlyReplySent,
+		});
 		if (
 			!shouldSendPlannedText &&
 			!permitsSilentVerifiedUiEffect &&
-			!earlyReplySent &&
 			!suppressesPlannerReply &&
+			!(earlyReplySent && plannedTextRepeatsEarlyReply) &&
+			zeroDeliveryRecovery.recover &&
 			deliveredVisibleTexts.size === 0 &&
 			deliveredMediaUrls.length === 0 &&
 			actionResults.length > 0
 		) {
-			const recoveredText =
-				effectiveDeliveredReplyText ||
-				stageOneAck ||
-				actionResults
-					.map((result) =>
-						typeof result.userFacingText === "string"
-							? result.userFacingText.trim()
-							: "",
-					)
-					.filter((ownedText) => ownedText.length > 0)
-					.at(-1) ||
-				"I finished working on that but could not compose a clean reply — ask again and I will retry.";
 			args.runtime.logger.warn(
 				{
 					src: "service:message",
 					emptyFinal: !effectiveReplyText,
+					earlyReplySent,
 					suppressedByEarlyReply: plannedTextRepeatsEarlyReply,
 					suppressedByActionReply: plannedTextRepeatsActionReply,
-					recoveredFrom: effectiveDeliveredReplyText
-						? "plannedText"
-						: stageOneAck
-							? "stageOneAck"
-							: "actionUserFacingText",
+					actionSuccessCount: zeroDeliveryRecovery.actionSuccessCount,
+					actionFailureCount: zeroDeliveryRecovery.actionFailureCount,
+					recoveredFrom: zeroDeliveryRecovery.source,
 				},
 				"RESPOND turn reached the reply gate with zero deliveries; recovering instead of ending silent",
 			);
-			effectiveReplyText = recoveredText;
-			strippedPlannedReplyText = recoveredText;
-			effectiveDeliveredReplyText = recoveredText;
+			effectiveReplyText = zeroDeliveryRecovery.text;
+			strippedPlannedReplyText = zeroDeliveryRecovery.text;
+			effectiveDeliveredReplyText = zeroDeliveryRecovery.text;
 			shouldSendPlannedText = true;
 		}
 		// Voice-gate provenance (#14873): the Stage-1 ack has unambiguous model
@@ -14534,11 +14620,10 @@ export class DefaultMessageService implements IMessageService {
 							// media-store URLs use the trusted runtime fetch.
 							const { buffer, contentType } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment.url,
+								attachment,
 								url,
 								isRemote,
 								byteBudget,
-								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -14582,11 +14667,10 @@ export class DefaultMessageService implements IMessageService {
 					) {
 						const { buffer, contentType } = await this.fetchAttachmentBytes(
 							runtime,
-							attachment.url,
+							attachment,
 							url,
 							isRemote,
 							byteBudget,
-							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -14666,11 +14750,10 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment.url,
+								attachment,
 								url,
 								isRemote,
 								byteBudget,
-								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14764,11 +14847,10 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment.url,
+								attachment,
 								url,
 								isRemote,
 								byteBudget,
-								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14906,11 +14988,10 @@ export class DefaultMessageService implements IMessageService {
 	 */
 	private async fetchAttachmentBytes(
 		runtime: IAgentRuntime,
-		rawUrl: string,
+		attachment: Media,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
 		budget: AttachmentByteBudget,
-		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
 		if (budget.remaining <= 0) {
 			throw new MediaFetchError(
@@ -14919,6 +15000,38 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
+		const inline = attachment as MediaWithInlineData;
+		if (
+			typeof inline._data === "string" &&
+			inline._data.trim() &&
+			typeof inline._mimeType === "string" &&
+			inline._mimeType.trim()
+		) {
+			if (!/^[A-Za-z0-9+/]*={0,2}$/.test(inline._data)) {
+				throw new MediaFetchError(
+					"invalid_response",
+					"Inline attachment data is not valid base64",
+				);
+			}
+			const buffer = Buffer.from(inline._data, "base64");
+			if (buffer.byteLength === 0) {
+				throw new MediaFetchError(
+					"invalid_response",
+					"Inline attachment data decodes to zero bytes",
+				);
+			}
+			if (buffer.byteLength > maxBytes) {
+				throw new MediaFetchError(
+					"max_bytes",
+					buffer.byteLength > budget.remaining
+						? "Attachment exceeds turn byte budget"
+						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
+				);
+			}
+			budget.remaining -= buffer.byteLength;
+			return { buffer, contentType: inline._mimeType };
+		}
+		const expectedBytes = attachment.size;
 		if (
 			typeof expectedBytes === "number" &&
 			Number.isFinite(expectedBytes) &&
@@ -14933,7 +15046,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
-				url: rawUrl,
+				url: attachment.url,
 				maxBytes,
 			});
 			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);

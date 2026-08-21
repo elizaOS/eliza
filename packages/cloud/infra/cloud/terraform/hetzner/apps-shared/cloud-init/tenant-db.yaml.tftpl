@@ -29,9 +29,20 @@
 # app-facing host at :6432 (see README + tenant_db_pooler_endpoint output);
 # admin/DDL keeps using :5432 directly.
 #
-# STAN: wire volume-snapshot backups; generate a server TLS cert for hostssl
-# (until then the pg_hba lines below stay 'host' and the admin DSN uses
-# sslmode=disable); tighten pgbouncer listen_addr to the private IP.
+# Off-host recovery (#21729): a nightly systemd timer (tenant-db-backup) takes
+# an application-consistent logical backup (pg_dumpall globals + per-database
+# pg_dump -Fc), encrypts the archive locally with AES-256 before it leaves the
+# node, ships it to an S3-compatible bucket outside the Hetzner failure domain
+# via rclone, and prunes sets older than the retention window. The pipeline is
+# INERT until terraform renders /etc/eliza/tenant-db-backup.env (all backup_*
+# variables set). Job logs carry counts/bytes/durations only — never DSNs,
+# credentials, or tenant database names (names live inside the encrypted
+# archive's dbmap). Restore drills run through
+# packages/cloud/scripts/admin/apps-tenant-db-recovery.ts.
+#
+# STAN: generate a server TLS cert for hostssl (until then the pg_hba lines
+# below stay 'host' and the admin DSN uses sslmode=disable); tighten pgbouncer
+# listen_addr to the private IP.
 
 hostname: ${hostname}
 manage_etc_hosts: true
@@ -58,6 +69,7 @@ packages:
   - postgresql-contrib
   - pgbouncer
   - jq
+  - rclone
 
 bootcmd:
   # Disable unattended-upgrades BEFORE cloud-init's package_update_upgrade_install
@@ -264,6 +276,161 @@ write_files:
 
       log "done."
 
+%{ if backup_enabled ~}
+  # Off-host backup credentials (#21729). Rendered ONLY when terraform has the
+  # full backup variable set; root-only so the deploy user and tenant roles
+  # can't read the bucket credential or the encryption passphrase.
+  - path: /etc/eliza/tenant-db-backup.env
+    owner: root:root
+    permissions: '0600'
+    content: |
+      BACKUP_S3_ENDPOINT=${backup_s3_endpoint}
+      BACKUP_S3_BUCKET=${backup_s3_bucket}
+      BACKUP_S3_PREFIX=${backup_s3_prefix}
+      BACKUP_S3_ACCESS_KEY_ID=${backup_s3_access_key}
+      BACKUP_S3_SECRET_ACCESS_KEY=${backup_s3_secret_key}
+      BACKUP_ENCRYPTION_PASSPHRASE=${backup_encryption_passphrase}
+      BACKUP_RETENTION_DAYS=${backup_retention_days}
+%{ endif ~}
+
+  - path: /usr/local/bin/tenant-db-backup.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      # Nightly application-consistent tenant-DB backup (#21729). Dumps role/
+      # tablespace globals plus every non-template database, writes a checksum
+      # manifest, encrypts the whole archive with AES-256 (PBKDF2) BEFORE it
+      # leaves the node, uploads it to the configured S3-compatible bucket, and
+      # prunes dated sets past retention. No-op (exit 0) when the env file is
+      # absent so the timer can stay enabled on unarmed nodes.
+      #
+      # Redaction contract: stdout/journal carry counts, byte sizes, and
+      # durations only. Tenant database names never hit the logs or object
+      # keys — dump files are keyed by a truncated sha256 of the name and the
+      # name<->hash map (dbmap.tsv) travels inside the encrypted archive.
+      set -euo pipefail
+      log() { echo "[tenant-db-backup] $*"; }
+      ENV_FILE=/etc/eliza/tenant-db-backup.env
+      if [ ! -f "$ENV_FILE" ]; then
+        log "off-host backup not configured; skipping."
+        exit 0
+      fi
+      set -a
+      . "$ENV_FILE"
+      set +a
+      : "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_BUCKET" "$BACKUP_S3_PREFIX" \
+        "$BACKUP_S3_ACCESS_KEY_ID" "$BACKUP_S3_SECRET_ACCESS_KEY" \
+        "$BACKUP_ENCRYPTION_PASSPHRASE" "$BACKUP_RETENTION_DAYS"
+      if ! runuser -u postgres -- pg_isready -q; then
+        log "postgres not ready; aborting."
+        exit 1
+      fi
+
+      START_EPOCH=$(date -u +%s)
+      STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+      # Work dir lives on the big data volume, root-only, always cleaned up.
+      WORK=$(mktemp -d /mnt/tenant-pgdata/backup-work.XXXXXX)
+      trap 'rm -rf "$WORK"' EXIT
+      chmod 700 "$WORK"
+      cd "$WORK"
+      mkdir -p dumps
+
+      # Globals (roles + grants) first: per-tenant ROLEs are the isolation
+      # boundary and must restore before the databases that reference them.
+      runuser -u postgres -- pg_dumpall --globals-only > globals.sql
+
+      COUNT=0
+      : > dbmap.tsv
+      chmod 600 dbmap.tsv
+      while IFS= read -r db; do
+        [ -n "$db" ] || continue
+        SAFE=$(printf '%s' "$db" | sha256sum | cut -c1-12)
+        runuser -u postgres -- pg_dump --format=custom --dbname="$db" > "dumps/$SAFE.dump"
+        printf '%s\t%s\n' "$SAFE" "$db" >> dbmap.tsv
+        COUNT=$((COUNT+1))
+      done < <(runuser -u postgres -- psql -tAc "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' ORDER BY datname")
+
+      sha256sum globals.sql dbmap.tsv dumps/* > checksums.sha256
+      jq -n \
+        --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --argjson database_count "$COUNT" \
+        '{schema_version: 1, kind: "tenant-db-backup", created_at: $created_at, database_count: $database_count, globals: "globals.sql", dbmap: "dbmap.tsv", checksums: "checksums.sha256"}' \
+        > manifest.json
+
+      tar -czf backup.tar.gz manifest.json checksums.sha256 globals.sql dbmap.tsv dumps
+      openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt \
+        -in backup.tar.gz -out backup.tar.gz.enc \
+        -pass env:BACKUP_ENCRYPTION_PASSPHRASE
+      ENC_SHA=$(sha256sum backup.tar.gz.enc | awk '{print $1}')
+      ENC_BYTES=$(stat -c%s backup.tar.gz.enc)
+      # Plaintext sidecar: freshness/integrity metadata only (no tenant data),
+      # so drills and alerting can verify the set without the passphrase.
+      jq -n \
+        --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --arg archive_sha256 "$ENC_SHA" \
+        --argjson archive_bytes "$ENC_BYTES" \
+        --argjson database_count "$COUNT" \
+        '{schema_version: 1, kind: "tenant-db-backup-sidecar", created_at: $created_at, archive: "backup.tar.gz.enc", archive_sha256: $archive_sha256, archive_bytes: $archive_bytes, database_count: $database_count, cipher: "aes-256-cbc-pbkdf2-210000"}' \
+        > backup.json
+
+      export RCLONE_S3_PROVIDER=Other
+      export RCLONE_S3_ENDPOINT="$BACKUP_S3_ENDPOINT"
+      export RCLONE_S3_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID"
+      export RCLONE_S3_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY"
+      DEST=":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$STAMP"
+      rclone copyto backup.tar.gz.enc "$DEST/backup.tar.gz.enc"
+      rclone copyto backup.json "$DEST/backup.json"
+
+      # Retention: dated set dirs sort lexicographically; purge anything older
+      # than the cutoff stamp. Never touches other prefixes in the bucket.
+      CUTOFF=$(date -u -d "-$BACKUP_RETENTION_DAYS days" +%Y%m%dT%H%M%SZ)
+      PRUNED=0
+      while IFS= read -r dir; do
+        dir=$(printf '%s' "$dir" | tr -d '/')
+        [ -n "$dir" ] || continue
+        if [[ "$dir" < "$CUTOFF" ]]; then
+          rclone purge ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$dir"
+          PRUNED=$((PRUNED+1))
+        fi
+      done < <(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true)
+
+      ELAPSED=$(( $(date -u +%s) - START_EPOCH ))
+      log "uploaded set $STAMP: $COUNT databases, $ENC_BYTES encrypted bytes, pruned $PRUNED expired sets, took $ELAPSED""s."
+
+  - path: /etc/systemd/system/tenant-db-backup.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Nightly encrypted off-host tenant DB backup (#21729)
+      After=postgresql.service network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/tenant-db-backup.sh
+      # Backups yield to tenant query traffic.
+      Nice=10
+      IOSchedulingClass=idle
+      StandardOutput=journal
+      StandardError=journal
+
+  - path: /etc/systemd/system/tenant-db-backup.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Nightly tenant DB backup schedule (#21729)
+
+      [Timer]
+      OnCalendar=*-*-* 02:15:00 UTC
+      RandomizedDelaySec=1800
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
   - path: /etc/systemd/system/tenant-db-init.service
     owner: root:root
     permissions: '0644'
@@ -298,3 +465,6 @@ runcmd:
   # instance and never runs again, but the unit does.
   - systemctl daemon-reload
   - systemctl enable --now tenant-db-init.service
+  # The backup timer is always enabled; the script itself no-ops until the
+  # backup env file exists, so unarmed nodes stay quiet.
+  - systemctl enable --now tenant-db-backup.timer

@@ -27,6 +27,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
  * the two cannot drift.
  */
 const MAX_BACKUP_BODY_BYTES = MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+const BACKUP_BODY_TOO_LARGE = "Agent backup request body is too large";
 
 import path from "node:path";
 import {
@@ -52,7 +53,7 @@ import type {
   AppsRouteActorRole,
   FavoriteAppsStore,
 } from "@elizaos/plugin-app-manager";
-import { readAliasedEnv } from "@elizaos/shared";
+import { formatError, readAliasedEnv } from "@elizaos/shared";
 import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "@elizaos/shared/agent-backup-limits";
 import {
   getStylePresets,
@@ -746,6 +747,7 @@ async function readBackupJsonBody(
   try {
     const raw = await readRequestBody(req, {
       maxBytes: MAX_BACKUP_BODY_BYTES,
+      tooLargeMessage: BACKUP_BODY_TOO_LARGE,
     });
     if (!raw) {
       error(res, "Request body is required", 400);
@@ -753,16 +755,22 @@ async function readBackupJsonBody(
     }
     return JSON.parse(raw);
   } catch (err) {
+    const tooLarge = formatError(err) === BACKUP_BODY_TOO_LARGE;
     error(
       res,
-      err instanceof Error ? err.message : "Invalid backup request body",
-      400,
+      tooLarge ? BACKUP_BODY_TOO_LARGE : "Invalid backup request body",
+      tooLarge ? 413 : 400,
     );
     return null;
   }
 }
 
 let activeTerminalRunCount = 0;
+const terminalRunIdReservations = new Map<string, number>();
+const TERMINAL_RUN_ID_RESERVATION_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_TERMINAL_RUN_ID_RESERVATIONS = 65_536;
+const TERMINAL_RUN_ID_SWEEP_INTERVAL_MS = 60_000;
+let lastTerminalRunIdSweepAt = 0;
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
@@ -1822,17 +1830,10 @@ async function handleRequest(
       const backups = await listLocalAgentBackups(state.runtime.agentId);
       json(res, { backups });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup list failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup list failed",
-        500,
-      );
+      // error-policy:J1 backup listing can surface filesystem paths in
+      // exceptions; keep the original diagnostic in the structured log.
+      logger.error({ err }, "[agent-backup] Local backup list failed");
+      error(res, "Backup list failed", 500);
     }
     return;
   }
@@ -1846,13 +1847,10 @@ async function handleRequest(
       const backup = await createLocalAgentBackup(state.runtime, state.config);
       json(res, { backup });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup failed",
-      );
-      error(res, err instanceof Error ? err.message : "Backup failed", 500);
+      // error-policy:J1 backup adapters can include filesystem and database
+      // diagnostics in exceptions; keep the original in the redacting logger.
+      logger.error({ err }, "[agent-backup] Local backup failed");
+      error(res, "Backup failed", 500);
     }
     return;
   }
@@ -1875,17 +1873,10 @@ async function handleRequest(
       const result = await restoreLocalAgentBackup(state.runtime, fileName);
       json(res, result);
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup restore failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup restore failed",
-        500,
-      );
+      // error-policy:J1 decryption, filesystem, and database diagnostics stay
+      // internal rather than becoming a public backup oracle.
+      logger.error({ err }, "[agent-backup] Local backup restore failed");
+      error(res, "Backup restore failed", 500);
     }
     return;
   }
@@ -1899,7 +1890,7 @@ async function handleRequest(
       const snapshot = await createAgentSnapshot(state.runtime, state.config);
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatError(err);
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500
@@ -1911,7 +1902,7 @@ async function handleRequest(
         json(
           res,
           {
-            error: message,
+            error: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT,
             code: PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT_CODE,
           },
           503,
@@ -1922,10 +1913,12 @@ async function handleRequest(
       if (res.headersSent) {
         // error-policy:J1 Streaming may fail after the response is committed;
         // terminate that transport instead of appending a false JSON error.
-        res.destroy(err instanceof Error ? err : new Error(message));
+        res.destroy(new Error("Snapshot stream failed", { cause: err }));
         return;
       }
-      error(res, message, 500);
+      // error-policy:J1 the snapshot boundary preserves diagnostics in the
+      // server log while exposing only a stable failure to the API caller.
+      error(res, "Snapshot failed", 500);
     }
     return;
   }
@@ -2503,11 +2496,10 @@ async function handleRequest(
       });
       json(res, { ok: result.unloaded, ...result });
     } catch (err) {
-      json(
-        res,
-        { ok: false, error: err instanceof Error ? err.message : String(err) },
-        422,
-      );
+      // error-policy:J1 plugin-loader diagnostics stay in structured logs;
+      // callers receive a stable boundary error rather than exception text.
+      logger.error({ err }, "[eliza-api] Plugin unload failed");
+      json(res, { ok: false, error: "Plugin could not be unloaded" }, 422);
     }
     return;
   }
@@ -3359,6 +3351,49 @@ async function handleRequest(
       activeTerminalRunCount,
       setActiveTerminalRunCount: (delta: number) => {
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
+      },
+      tryAcquireTerminalRunSlot: (
+        scopeId: string,
+        runId: string,
+        maxConcurrent: number,
+      ) => {
+        const now = Date.now();
+        if (
+          now - lastTerminalRunIdSweepAt >= TERMINAL_RUN_ID_SWEEP_INTERVAL_MS ||
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          for (const [reservedRunId, expiresAt] of terminalRunIdReservations) {
+            if (expiresAt <= now) {
+              terminalRunIdReservations.delete(reservedRunId);
+            }
+          }
+          lastTerminalRunIdSweepAt = now;
+        }
+        const reservationKey = `${scopeId}\0${runId}`;
+        if (terminalRunIdReservations.has(reservationKey)) {
+          return { rejection: "duplicate" as const };
+        }
+        if (activeTerminalRunCount >= maxConcurrent) {
+          return { rejection: "capacity" as const };
+        }
+        if (
+          terminalRunIdReservations.size >= MAX_TERMINAL_RUN_ID_RESERVATIONS
+        ) {
+          return { rejection: "registry-capacity" as const };
+        }
+        terminalRunIdReservations.set(
+          reservationKey,
+          now + TERMINAL_RUN_ID_RESERVATION_TTL_MS,
+        );
+        activeTerminalRunCount += 1;
+        let released = false;
+        return {
+          release: () => {
+            if (released) return;
+            released = true;
+            activeTerminalRunCount = Math.max(0, activeTerminalRunCount - 1);
+          },
+        };
       },
     })
   ) {
@@ -4662,12 +4697,17 @@ export async function startApiServer(opts?: {
   wireModelRegistrationBroadcast(state.runtime);
 
   state.broadcastWs = (data: object) => eventHub.broadcast(data);
+  state.broadcastWsToClientId = (clientId: string, data: object) =>
+    eventHub.sendToClient(clientId, data);
 
   // View interactions originate outside HTTP requests and share the same event
   // hub as route and runtime events.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        state.broadcastWsToClientId ?? null,
+      );
     })
     .catch((err) => {
       logger.error(
@@ -4675,8 +4715,6 @@ export async function startApiServer(opts?: {
       );
     });
 
-  state.broadcastWsToClientId = (clientId: string, data: object) =>
-    eventHub.sendToClient(clientId, data);
   state.broadcastWsToConversation = (conversationId: string, data: object) =>
     eventHub.sendToConversation(conversationId, data);
   // Wire up ConnectorSetupService broadcastWs so connector plugins

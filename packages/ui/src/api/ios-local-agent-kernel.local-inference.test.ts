@@ -2,7 +2,7 @@
  * Unit coverage for the iOS in-renderer kernel's local-inference routes.
  * In-process, no real device.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type KernelModule = Pick<
   typeof import("./ios-local-agent-kernel"),
@@ -334,6 +334,7 @@ describe("iOS local-agent local inference flow", () => {
     ).catch(() => undefined);
     vi.unstubAllGlobals();
     vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("answers with local model download status while queueing the recommended target", async () => {
@@ -400,6 +401,11 @@ describe("iOS local-agent local inference flow", () => {
   });
 
   it("fails an Eliza-1 bundle download when a native SHA256 check mismatches", async () => {
+    // The kernel logs the failed download through its logging boundary; spy
+    // and assert it so the console guard treats the output as intentional.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     const kernel = await loadKernel({
       hashFile: vi.fn(async (path: string) => ({
         sha256: path.endsWith(".manifest.json")
@@ -424,6 +430,38 @@ describe("iOS local-agent local inference flow", () => {
       };
       expect(payload.job?.state).toBe("failed");
       expect(payload.job?.error).toContain("SHA256 mismatch");
+    });
+    expect(consoleError).toHaveBeenCalled();
+  });
+
+  it("does not persist native download exception text", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const marker = "password=secret /private/native/downloader.mm:42";
+    const kernel = await loadKernel({
+      downloadModel: vi.fn(async () => {
+        throw new Error(marker);
+      }),
+    });
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-4b",
+    });
+
+    await eventually(async () => {
+      const response = await kernel.handleIosLocalAgentRequest(
+        new Request(
+          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-4b",
+        ),
+      );
+      const payload = (await response.json()) as {
+        job?: { state?: string; error?: string };
+      };
+      expect(payload.job).toMatchObject({
+        state: "failed",
+        error: "Model download failed",
+      });
+      expect(payload.job?.error).not.toContain(marker);
     });
   });
 
@@ -488,6 +526,45 @@ describe("iOS local-agent local inference flow", () => {
       }),
     );
     expect(load.mock.calls[0]?.[0]).not.toHaveProperty("draftModelPath");
+  });
+
+  it("persists a generic activation failure instead of native exception text", async () => {
+    const { logger } = await import("@elizaos/logger");
+    vi.spyOn(logger, "error").mockImplementation(() => undefined);
+    const marker = "secret /private/native/model.mm:42";
+    const kernel = await loadKernel({
+      load: vi.fn(async () => {
+        const error = new Error(marker);
+        error.stack = `Error: ${marker}\n    at /private/native/model.mm:42:1`;
+        throw error;
+      }),
+      availableModels: [
+        {
+          name: "eliza-1-2b-128k.gguf",
+          path: "/models/eliza-1-2b-128k.gguf",
+          size: 1_200_000_000,
+        },
+      ],
+      bundleRecords: [
+        verifiedEliza1BundleRecord(
+          "eliza-1-2b",
+          "/models/eliza-1-2b-128k.gguf",
+        ),
+      ],
+    });
+
+    const response = (await jsonRequest(
+      kernel,
+      "POST",
+      "/api/local-inference/active",
+      { modelId: "eliza-1-2b" },
+    )) as { status: string; error?: string };
+
+    expect(response).toMatchObject({
+      status: "error",
+      error: "Local model could not be loaded",
+    });
+    expect(response.error).not.toContain(marker);
   });
 
   it("reports bundled voice assets separately from TTS engine readiness", async () => {
@@ -583,5 +660,176 @@ describe("iOS local-agent local inference flow", () => {
       }),
     );
     expect(load.mock.calls[0]?.[0]).not.toHaveProperty("draftModelPath");
+  });
+});
+
+describe("Eliza-1 manifest download timeout (real route, portable fallback, fake timers)", () => {
+  let originalTimeout: unknown;
+
+  beforeEach(() => {
+    // Force the AbortController+setTimeout fallback so vi fake timers drive
+    // the 30 s manifest bound deterministically, proving the production
+    // download path stays bounded on runtimes without AbortSignal.timeout.
+    originalTimeout = (AbortSignal as unknown as { timeout?: unknown }).timeout;
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    Object.defineProperty(AbortSignal, "timeout", {
+      value: originalTimeout,
+      configurable: true,
+      writable: true,
+    });
+    await handleIosLocalAgentRequest(
+      new Request("http://127.0.0.1:31337/api/agent/reset", {
+        method: "POST",
+        body: "{}",
+      }),
+    ).catch(() => undefined);
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  async function jobFor(
+    kernel: KernelModule,
+    modelId: string,
+  ): Promise<{ state?: string; error?: string }> {
+    const response = await kernel.handleIosLocalAgentRequest(
+      new Request(
+        `http://127.0.0.1:31337/api/local-inference/downloads/${modelId}`,
+      ),
+    );
+    const payload = (await response.json()) as {
+      job?: { state?: string; error?: string };
+    };
+    return payload.job ?? {};
+  }
+
+  it("fails the download job when the manifest fetch stalls past 30 s", async () => {
+    const kernel = await loadKernel();
+    // Replace the harness manifest stub with a headers-stalled fetch that only
+    // settles when the kernel's timeout signal aborts it.
+    const fetchMock = vi.fn(
+      (_url: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal as AbortSignal | undefined;
+          if (signal?.aborted) {
+            reject(signal.reason ?? new DOMException("aborted", "AbortError"));
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () =>
+              reject(
+                signal.reason ?? new DOMException("aborted", "AbortError"),
+              ),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+
+    // The failed job is logged through the kernel's logging boundary; spy
+    // and assert it so the console guard treats the output as intentional.
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-4b",
+    });
+
+    // Let the queued job's async pipeline reach the manifest fetch.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit | undefined;
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+    expect((await jobFor(kernel, "eliza-1-4b")).state).toBe("downloading");
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const job = await jobFor(kernel, "eliza-1-4b");
+    expect(job.state).toBe("failed");
+    expect(job.error).toContain("Timed out fetching");
+    expect(job.error).toContain("manifest after 30 s");
+    expect(consoleError).toHaveBeenCalled();
+    // dispose() ran in the manifest boundary's finally — no leaked timer.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("fails the download job when manifest headers arrive but the body stalls past 30 s", async () => {
+    const kernel = await loadKernel();
+    const fetchMock = vi.fn(
+      async (_url: RequestInfo | URL, init?: RequestInit) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        return {
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_resolve, reject) => {
+              if (signal?.aborted) {
+                reject(
+                  signal.reason ?? new DOMException("aborted", "AbortError"),
+                );
+                return;
+              }
+              signal?.addEventListener(
+                "abort",
+                () =>
+                  reject(
+                    signal.reason ?? new DOMException("aborted", "AbortError"),
+                  ),
+                { once: true },
+              );
+            }),
+        } as Response;
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    vi.useFakeTimers();
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-4b",
+    });
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await jobFor(kernel, "eliza-1-4b")).state).toBe("downloading");
+
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    const job = await jobFor(kernel, "eliza-1-4b");
+    expect(job.state).toBe("failed");
+    expect(job.error).toContain("Timed out fetching");
+    expect(job.error).toContain("manifest after 30 s");
+    expect(consoleError).toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("completes the download and leaves no pending manifest timer when the fetch is fast", async () => {
+    const kernel = await loadKernel();
+    vi.useFakeTimers();
+
+    await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
+      modelId: "eliza-1-4b",
+    });
+
+    // Drain the bundle pipeline (manifest fetch + per-file downloads/hashes
+    // are all mocked microtasks) without ever reaching the 30 s deadline.
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const job = await jobFor(kernel, "eliza-1-4b");
+    expect(job.error).toBeUndefined();
+    expect(job.state).toBe("completed");
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -1333,6 +1333,305 @@ describe("executePlannedToolCall", () => {
 		);
 	});
 
+	it("bounds cyclic and deep handler results before completion diagnostics", async () => {
+		const cyclic: Record<string, unknown> = { label: "loop" };
+		cyclic.self = cyclic;
+		const cyclicDate = new Date("2026-08-20T00:00:00.000Z") as Date & {
+			apiKey?: string;
+			self?: unknown;
+		};
+		Object.defineProperties(cyclicDate, {
+			apiKey: { enumerable: true, value: "short-secret" },
+			self: { enumerable: true, value: cyclicDate },
+		});
+		const fallbackCanary = "sk-0123456789abcdefghij";
+		const fallbackValue = Symbol(fallbackCanary);
+		let deep: Record<string, unknown> = { leaf: "must-be-bounded" };
+		for (let depth = 0; depth < 12; depth += 1) {
+			deep = { child: deep };
+		}
+		const emitted: Array<{ type: EventType; payload: unknown }> = [];
+		const streamed: unknown[] = [];
+		let settledResult: unknown;
+		const action = makeAction({
+			name: "RETURN_DATA",
+			handler: async () => ({
+				success: true,
+				data: {
+					actionName: "RETURN_DATA",
+					cyclic,
+					cyclicDate,
+					deep,
+					fallbackValue,
+				},
+			}),
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent: async (type, payload) => {
+				emitted.push({ type, payload });
+			},
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: () => {},
+				onToolResult: (payload) => {
+					streamed.push(payload);
+				},
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "RETURN_DATA", params: {} },
+					{
+						onSettledResult: (settled) => {
+							settledResult = settled;
+						},
+					},
+				),
+		);
+
+		expect(result.success).toBe(true);
+		const rawCyclic = result.data?.cyclic;
+		expect(rawCyclic).toBe(cyclic);
+		expect((rawCyclic as Record<string, unknown>).self).toBe(cyclic);
+		expect(result.data?.cyclicDate).toBe(cyclicDate);
+		expect(cyclicDate.self).toBe(cyclicDate);
+		expect(result.data?.deep).toBe(deep);
+		expect(result.data?.fallbackValue).toBe(fallbackValue);
+		expect(settledResult).toBe(result);
+		const completedEvents = emitted.filter(
+			(entry) => entry.type === EventType.ACTION_COMPLETED,
+		);
+		expect(completedEvents).toHaveLength(1);
+		expect(streamed).toHaveLength(1);
+		const eventPayload = completedEvents[0]?.payload as
+			| { content?: { actionResult?: unknown } }
+			| undefined;
+		const eventActionResult = eventPayload?.content?.actionResult;
+		const streamedActionResult = (streamed[0] as { result?: unknown }).result;
+		for (const diagnosticSurface of [eventActionResult, streamedActionResult]) {
+			const diagnosticData = (
+				diagnosticSurface as { data?: Record<string, unknown> } | undefined
+			)?.data;
+			expect(diagnosticData?.cyclicDate).toEqual({
+				apiKey: "[REDACTED]",
+				self: "[REDACTED]",
+			});
+			const serialized = JSON.stringify(diagnosticSurface);
+			expect(serialized).toContain('"self":"[REDACTED]"');
+			expect(serialized).toContain('"deep":');
+			expect(serialized).toContain('"fallbackValue":');
+			expect(serialized).not.toContain("must-be-bounded");
+			expect(serialized).not.toContain(fallbackCanary);
+		}
+	});
+
+	it("masks callable diagnostics without changing or rejecting the settled result", async () => {
+		let settledResult: unknown;
+		let callableTraps = 0;
+		const callable = new Proxy(() => undefined, {
+			get() {
+				callableTraps += 1;
+				throw new Error("callable diagnostic trap escaped");
+			},
+		});
+		const action = makeAction({
+			name: "RETURN_HOSTILE_DATA",
+			handler: async () => ({
+				success: true,
+				data: { payload: callable },
+			}),
+		});
+		const emitted: unknown[] = [];
+		const streamed: unknown[] = [];
+		const runtime = makeRuntime([action], {
+			emitEvent: async (_type, payload) => emitted.push(payload),
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: () => {},
+				onToolResult: (payload) => streamed.push(payload),
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "RETURN_HOSTILE_DATA", params: {} },
+					{
+						onSettledResult: (result) => {
+							settledResult = result;
+						},
+					},
+				),
+		);
+		expect(result).toBe(settledResult);
+		expect(result.data?.payload).toBe(callable);
+		expect(callableTraps).toBe(0);
+		expect(JSON.stringify(emitted)).toContain('"payload":"[REDACTED]"');
+		expect(JSON.stringify(streamed)).toContain('"payload":"[REDACTED]"');
+	});
+
+	it("does not invoke accessors and bounds shallow diagnostic outputs", async () => {
+		let accessorCalls = 0;
+		const payload: Record<string, unknown> = {};
+		Object.defineProperty(payload, "value", {
+			enumerable: true,
+			get() {
+				accessorCalls += 1;
+				return "safe";
+			},
+		});
+		const wide = Array.from({ length: 10_000 }, () => "😀".repeat(100));
+		const emitted: unknown[] = [];
+		const streamed: unknown[] = [];
+		const action = makeAction({
+			name: "RETURN_WIDE_DATA",
+			handler: async () => ({ success: true, data: { payload, wide } }),
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent: async (_type, eventPayload) => {
+				emitted.push(eventPayload);
+			},
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: () => {},
+				onToolResult: (value) => streamed.push(value),
+			},
+			() =>
+				executePlannedToolCall(
+					runtime,
+					{ message: makeMessage() },
+					{ name: "RETURN_WIDE_DATA", params: {} },
+				),
+		);
+		expect(result.data?.payload).toBe(payload);
+		expect(result.data?.wide).toBe(wide);
+		expect(accessorCalls).toBe(0);
+		for (const diagnostic of [emitted, streamed]) {
+			const serialized = JSON.stringify(diagnostic);
+			expect(serialized).toContain('"value":"[REDACTED]"');
+			expect(serialized).toContain('"wide":"[REDACTED]"');
+			expect(new TextEncoder().encode(serialized).byteLength).toBeLessThan(
+				64 * 1_024,
+			);
+		}
+	});
+
+	it("masks revoked proxies after settlement without rejecting execution", async () => {
+		let settled = false;
+		const { proxy, revoke } = Proxy.revocable({}, {});
+		revoke();
+		const action = makeAction({
+			name: "RETURN_REVOKED_DATA",
+			handler: async () => ({ success: true, data: { proxy } }),
+		});
+		const runtime = makeRuntime([action], { emitEvent: async () => {} });
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "RETURN_REVOKED_DATA", params: {} },
+			{ onSettledResult: () => (settled = true) },
+		);
+		expect(result.data?.proxy).toBe(proxy);
+		expect(settled).toBe(true);
+	});
+
+	it("bounds UTF-8 strings and sparse arrays without coercion or prototype mutation", async () => {
+		let coercionCalls = 0;
+		const coercible = {
+			[Symbol.toPrimitive]() {
+				coercionCalls += 1;
+				return "must-not-coerce";
+			},
+			toString() {
+				coercionCalls += 1;
+				return "must-not-stringify";
+			},
+		};
+		const protoPayload: Record<string, unknown> = {};
+		Object.defineProperty(protoPayload, "__proto__", {
+			enumerable: true,
+			value: { polluted: "diagnostic-only" },
+		});
+		const sparse: unknown[] = [];
+		sparse.length = 10_000_000;
+		sparse[9_999_999] = "tail";
+		const emitted: unknown[] = [];
+		const action = makeAction({
+			name: "RETURN_BOUNDED_DATA",
+			handler: async () => ({
+				success: true,
+				data: {
+					coercible,
+					huge: "😀".repeat(100_000),
+					multibyte: "😀".repeat(3_000),
+					protoPayload,
+					sparse,
+				},
+			}),
+		});
+		const runtime = makeRuntime([action], {
+			emitEvent: async (_type, payload) => emitted.push(payload),
+		});
+
+		const result = await executePlannedToolCall(
+			runtime,
+			{ message: makeMessage() },
+			{ name: "RETURN_BOUNDED_DATA", params: {} },
+		);
+		expect(result.data?.coercible).toBe(coercible);
+		expect(result.data?.sparse).toBe(sparse);
+		expect(coercionCalls).toBe(0);
+
+		const completed = emitted.find(
+			(value) =>
+				(value as { content?: { actionResult?: unknown } }).content
+					?.actionResult !== undefined,
+		) as {
+			content?: {
+				actionResult?: {
+					data?: Record<string, unknown>;
+				};
+			};
+		};
+		const diagnosticData = completed.content?.actionResult?.data;
+		expect(diagnosticData?.sparse).toBe("[REDACTED]");
+		expect(diagnosticData?.coercible).toEqual({
+			toString: "[REDACTED]",
+		});
+		const projectedPrototype = diagnosticData?.protoPayload as Record<
+			string,
+			unknown
+		>;
+		expect(Object.getPrototypeOf(projectedPrototype)).toBe(Object.prototype);
+		expect(Object.hasOwn(projectedPrototype, "__proto__")).toBe(true);
+		expect(
+			Object.getOwnPropertyDescriptor(projectedPrototype, "__proto__")?.value,
+		).toEqual({
+			polluted: "diagnostic-only",
+		});
+		expect(
+			(Object.prototype as { polluted?: unknown }).polluted,
+		).toBeUndefined();
+		const projectedHuge = diagnosticData?.huge;
+		expect(projectedHuge).toBe("[REDACTED]");
+		const projectedMultibyte = diagnosticData?.multibyte as string;
+		expect(projectedMultibyte.endsWith("…")).toBe(true);
+		expect(projectedMultibyte).not.toContain("�");
+		expect(
+			new TextEncoder().encode(projectedMultibyte).byteLength,
+		).toBeLessThanOrEqual(8 * 1_024);
+		expect(
+			new TextEncoder().encode(JSON.stringify(diagnosticData)).byteLength,
+		).toBeLessThan(64 * 1_024);
+	});
+
 	it("suppresses sensitive action result data in ACTION_COMPLETED events", async () => {
 		const emitEvent = vi.fn(async () => {});
 		const onToolResult = vi.fn();

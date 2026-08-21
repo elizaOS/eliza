@@ -381,9 +381,10 @@ export interface AssistantSpeechState {
 export const DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5";
 export const DEFAULT_ELEVEN_VOICE = "EXAVITQu4vr4xnSDxMaL";
 export const MAX_SPOKEN_CHARS = 4000;
-export const MAX_CACHED_SEGMENTS = 128;
-/** Cache only short generated clips aggressively; common acknowledgements stay hot. */
-export const SHORT_AUDIO_CACHE_MAX_TOKENS = 10;
+/** Bound retained synthesized audio by bytes rather than utterance count. */
+export const MAX_CACHED_AUDIO_BYTES = 32 * 1024 * 1024;
+/** Secondary metadata bound for pathological streams of tiny audio payloads. */
+export const MAX_CACHED_AUDIO_ENTRIES = 4096;
 /** First assistant clip: start synthesis after this much speakable text (avoids one-word TTS). */
 export const ASSISTANT_TTS_FIRST_FLUSH_CHARS = 24;
 /** Later clips: batch for better prosody (avoid token-thin slices). */
@@ -397,6 +398,44 @@ export const REDACTED_SECRET = "[REDACTED]";
 export const MOUTH_OPEN_STEP = 0.02;
 
 export const globalAudioCache = new Map<string, Uint8Array>();
+
+function cachedAudioBytes(): number {
+  let total = 0;
+  for (const bytes of globalAudioCache.values()) {
+    total += bytes.byteLength;
+  }
+  return total;
+}
+
+/** Read and promote a retained synthesized response in LRU order. */
+export function readCachedAudio(key: string): Uint8Array | undefined {
+  const bytes = globalAudioCache.get(key);
+  if (!bytes) return undefined;
+  globalAudioCache.delete(key);
+  globalAudioCache.set(key, bytes);
+  return bytes;
+}
+
+/** Retain synthesized bytes while enforcing the process-wide byte LRU budget. */
+export function rememberCachedAudio(key: string, bytes: Uint8Array): void {
+  globalAudioCache.delete(key);
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_CACHED_AUDIO_BYTES) {
+    return;
+  }
+
+  globalAudioCache.set(key, bytes);
+  let totalBytes = cachedAudioBytes();
+  while (
+    totalBytes > MAX_CACHED_AUDIO_BYTES ||
+    globalAudioCache.size > MAX_CACHED_AUDIO_ENTRIES
+  ) {
+    const oldestKey = globalAudioCache.keys().next().value;
+    if (typeof oldestKey !== "string") break;
+    const oldestBytes = globalAudioCache.get(oldestKey);
+    globalAudioCache.delete(oldestKey);
+    totalBytes -= oldestBytes?.byteLength ?? 0;
+  }
+}
 
 // ── Voice config helpers ──────────────────────────────────────────────
 

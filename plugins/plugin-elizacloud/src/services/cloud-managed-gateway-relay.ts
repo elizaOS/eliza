@@ -116,12 +116,22 @@ function toJsonRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
-function toJsonMetadataRecord(value: unknown): Record<string, JsonValue> | undefined {
+export function toJsonMetadataRecord(
+  value: unknown,
+): Record<string, JsonValue> | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
+  try {
+    const parsed: unknown = JSON.parse(JSON.stringify(value));
+    // A hostile toJSON() can replace the record root with any JSON value; only
+    // a plain record may flow onward as sender/transport metadata.
+    return isRecord(parsed) ? (parsed as Record<string, JsonValue>) : undefined;
+  } catch {
+    // error-policy:J3 untrusted metadata may contain circular references or invalid JSON values; fail closed to undefined.
+    return undefined;
+  }
 }
 
 type GatewayMessagePayload = {

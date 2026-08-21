@@ -12,6 +12,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { stripHtmlRawTextElements } from "@elizaos/core";
 import {
   failureToActionResult,
   readStringParam,
@@ -70,10 +71,8 @@ function normalizeWhitespace(text: string): string {
 
 export function htmlToReadableText(html: string): string {
   const title = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
-  const withoutNoise = html
+  const withoutNoise = stripHtmlRawTextElements(html)
     .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ");
   const text = withoutNoise

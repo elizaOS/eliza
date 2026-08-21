@@ -250,14 +250,35 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bsk-[A-Za-z0-9_-]{20,}\b/g,
   /\bAKIA[A-Z0-9]{16}\b/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
   /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credential)\s*[:=]\s*["']?[^"'\s,;]+/gi,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
   /\b(?:\+?\d[\d .()-]{8,}\d)\b/g,
 ];
 
+function redactPrivateKeys(input: string): string {
+  const begin = "-----BEGIN ";
+  const end = "-----END ";
+  const keySuffix = "PRIVATE KEY-----";
+  const fragments: string[] = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const blockStart = input.indexOf(begin, cursor);
+    if (blockStart < 0) break;
+    const headerEnd = input.indexOf(keySuffix, blockStart + begin.length);
+    if (headerEnd < 0) break;
+    const blockFooter = input.indexOf(end, headerEnd + keySuffix.length);
+    if (blockFooter < 0) break;
+    const footerEnd = input.indexOf(keySuffix, blockFooter + end.length);
+    if (footerEnd < 0) break;
+    fragments.push(input.slice(cursor, blockStart), "[REDACTED]");
+    cursor = footerEnd + keySuffix.length;
+  }
+  fragments.push(input.slice(cursor));
+  return fragments.join("");
+}
+
 export function redactCodingMemoryText(input: string): string {
-  let text = input;
+  let text = redactPrivateKeys(input);
   for (const pattern of SECRET_PATTERNS) {
     text = text.replace(pattern, "[REDACTED]");
   }

@@ -6,6 +6,11 @@
  * cached: their lifecycle and bridge fields remain authoritative in Postgres.
  * Identity writers and tier cutover explicitly delete the sender projection;
  * a one-hour hard expiry is the final safety bound, not the coherence model.
+ *
+ * The projection is an accelerator, never a gate: a slow, failed, or
+ * malformed projection read degrades to the canonical database resolver in
+ * the same request, and only a both-path failure surfaces as the typed
+ * `PersonalDeliveryAccountResolutionError`.
  */
 
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
@@ -23,6 +28,41 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CACHE_KEY = "shared-account";
 const CACHE_TTL_MS = 60 * 60_000;
+// A projection read slower than this bound is worse than the canonical
+// indexed Postgres statement it replaces, so the caller stops waiting and
+// resolves directly instead of letting a slow Durable Object own the tail.
+const PROJECTION_RESOLVE_TIMEOUT_MS = 1_500;
+
+const SAFE_PROJECTION_FAILURE_NAMES = new Set([
+  "AbortError",
+  "ApiError",
+  "Error",
+  "RangeError",
+  "SyntaxError",
+  "TimeoutError",
+  "TypeError",
+]);
+
+function safeProjectionFailureName(error: unknown): string {
+  const name = error instanceof Error ? error.name : "";
+  return SAFE_PROJECTION_FAILURE_NAMES.has(name) ? name : "OtherError";
+}
+
+/**
+ * Raised when both the sender projection and the canonical database resolver
+ * failed for one turn. Carries only tenant-safe classification (never SQL or
+ * provider payloads) so the internal route can emit an actionable failure
+ * name instead of a bare `Error`.
+ */
+export class PersonalDeliveryAccountResolutionError extends Error {
+  readonly projectionFailure: string;
+
+  constructor(projectionFailure: string, cause: unknown) {
+    super("Personal delivery account resolution failed", { cause });
+    this.name = "PersonalDeliveryAccountResolutionError";
+    this.projectionFailure = projectionFailure;
+  }
+}
 
 interface SharedAccountProjection {
   profileKey: string;
@@ -137,25 +177,50 @@ export async function resolvePersonalDeliveryProjection(
     return fallback.resolvePersonalDelivery(input);
   }
 
-  const response = await namespace
-    .getByName(
-      personalDeliveryProjectionObjectName(input.platform, senderId(input)),
-    )
-    .fetch(
-      `https://personal-delivery-projection${PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      },
-    );
-  const body: unknown = await response.json();
-  if (!response.ok || !isPersonalDeliveryResult(body)) {
-    throw new Error(
-      `Personal delivery projection failed with status ${response.status}`,
-    );
+  let projectionFailure: string;
+  try {
+    const response = await namespace
+      .getByName(
+        personalDeliveryProjectionObjectName(input.platform, senderId(input)),
+      )
+      .fetch(
+        `https://personal-delivery-projection${PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+          signal: AbortSignal.timeout(PROJECTION_RESOLVE_TIMEOUT_MS),
+        },
+      );
+    const body: unknown = await response.json();
+    if (response.ok && isPersonalDeliveryResult(body)) return body;
+    const upstreamName =
+      body !== null &&
+      typeof body === "object" &&
+      typeof (body as Record<string, unknown>).failureName === "string"
+        ? ((body as Record<string, unknown>).failureName as string)
+        : undefined;
+    projectionFailure = response.ok
+      ? "malformed-projection-result"
+      : `status-${response.status}${upstreamName ? `:${upstreamName}` : ""}`;
+  } catch (error) {
+    // error-policy:J4 a projection transport failure (timeout, DO restart,
+    // isolate teardown) degrades to the canonical database resolver below; it
+    // never fabricates account state and both-path failure still throws.
+    projectionFailure = safeProjectionFailureName(error);
   }
-  return body;
+
+  logger.warn(
+    "[PersonalDeliveryProjection] projection read degraded to canonical resolver",
+    { platform: input.platform, projectionFailure },
+  );
+  try {
+    return await fallback.resolvePersonalDelivery(input);
+  } catch (error) {
+    // error-policy:J2 both the projection and the canonical resolver failed;
+    // rethrow typed with tenant-safe classification and the original cause.
+    throw new PersonalDeliveryAccountResolutionError(projectionFailure, error);
+  }
 }
 
 export class PersonalDeliveryProjection {
@@ -278,7 +343,10 @@ export class PersonalDeliveryProjection {
           error: error instanceof Error ? error.message : String(error),
         });
         return Response.json(
-          { error: "Personal delivery resolution failed" },
+          {
+            error: "Personal delivery resolution failed",
+            failureName: safeProjectionFailureName(error),
+          },
           { status: 502 },
         );
       }

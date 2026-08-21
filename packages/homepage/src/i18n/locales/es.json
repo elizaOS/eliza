@@ -167,7 +167,6 @@
   "homepage_eliza.phoneInput.phoneAria": "Número de teléfono",
   "homepage_eliza.phoneInput.optionFormat": "{{name}} (+{{dial}})",
   "homepage_eliza.landing.heroTitle": "Cuatro horas de tu tiempo de vuelta cada semana.",
-  "homepage_eliza.landing.heroLede": "Hola, soy Eliza — tu asistente personal. Estoy aquí para ahorrarte tiempo y quitarte cosas de encima.",
   "homepage_eliza.landing.ctaText": "Mensaje",
   "homepage_eliza.landing.copyPhone": "Copiar el número de Eliza",
   "homepage_eliza.landing.phoneCopied": "¡Copiado!",

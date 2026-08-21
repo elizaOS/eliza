@@ -69,6 +69,18 @@ import {
 } from "./run-shared-agent-turn";
 import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
+import {
+  parseSharedChatAttachments,
+  type SharedChatAttachment,
+  toSharedInlineMedia,
+} from "./shared-chat-attachments";
+import {
+  buildSharedFactsContext,
+  extractSharedTurnFacts,
+  SHARED_FACTS_CONTEXT_MAX_FACTS,
+  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
+  sharedFactsEnabled,
+} from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
 import {
   buildSharedRecallContext,
@@ -213,8 +225,12 @@ function turnActionResults(
   return results.length ? results : undefined;
 }
 
-function isProviderFreeTurn(turn: Pick<RunSharedAgentTurnResult, "capabilityWall">): boolean {
-  return Boolean(turn.capabilityWall);
+function isProviderFreeTurn(
+  turn: Pick<RunSharedAgentTurnResult, "capabilityWall" | "model">,
+): boolean {
+  // Capability refusals now run through the agent model so they stay in
+  // character. Retain compatibility for replayed legacy wall-only turns.
+  return Boolean(turn.capabilityWall && turn.model === "capability-wall");
 }
 
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
@@ -578,6 +594,100 @@ async function sharedTurnRecallContext(
   }
 }
 
+/**
+ * P4 knowledge parity: renders the known-facts provider block for one turn, or
+ * undefined while the flag is off, the memory store is absent, or the tenant
+ * has no facts yet. Facts are an enhancement — a typed read failure degrades
+ * to a facts-free turn rather than failing a healthy reply.
+ */
+async function sharedTurnFactsContext(
+  store: SharedMemoryStore | null,
+): Promise<string | undefined> {
+  if (!store || !sharedFactsEnabled()) return undefined;
+  try {
+    const facts = await store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS);
+    return buildSharedFactsContext(facts) ?? undefined;
+  } catch (error) {
+    // error-policy:J4 knowledge loss degrades to a facts-free turn; the warn is
+    // the visible signal and the reply itself stays healthy.
+    logger.warn(
+      `[shared-runtime-chat] facts context unavailable this turn: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return undefined;
+  }
+}
+
+/** Joins the facts and recall provider blocks into one runtime context block. */
+function combinedTurnContext(
+  factsContext: string | undefined,
+  recallContext: string | undefined,
+): string | undefined {
+  const parts = [factsContext, recallContext].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
+  return parts.length ? parts.join("\n\n") : undefined;
+}
+
+/**
+ * P4 post-turn facts extraction, strictly off the response path (same shape as
+ * the P5 trace recorder): one small extraction call through the SAME platform
+ * model path the turn used, deduped against known facts, written as durable
+ * `facts` rows. Runs only for landed user turns while the flag is on; any
+ * failure is warned and dropped so knowledge accumulation can never fail or
+ * slow a delivered reply.
+ */
+function extractSharedTurnFactsOffPath(
+  executionCtx: BridgeExecutionContext | undefined,
+  store: SharedMemoryStore | null,
+  character: SharedAgentCharacter,
+  userMessage: string,
+  assistantReply: string,
+): void {
+  if (!store || !sharedFactsEnabled()) return;
+  const model = resolveSharedAgentTurnModel(character.model);
+  if (!model) return;
+  void settleOffResponsePath(executionCtx, async () => {
+    try {
+      const [{ generateText }, { getInteractiveCerebrasLanguageModel }, knownFacts] =
+        await Promise.all([
+          import("ai"),
+          import("../../providers/language-model"),
+          store.listFacts(SHARED_FACTS_CONTEXT_MAX_FACTS),
+        ]);
+      const facts = await extractSharedTurnFacts({
+        agentName: character.name,
+        userMessage,
+        assistantReply,
+        knownFacts,
+        generate: async (prompt) => {
+          const result = await generateText({
+            model: getInteractiveCerebrasLanguageModel(model),
+            prompt,
+            temperature: 0,
+            maxOutputTokens: 512,
+            maxRetries: 0,
+            // A stalled provider request must not pin the waitUntil task open;
+            // the deadline surfaces as a distinct AbortError in the J7 warn.
+            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
+          });
+          return result.text;
+        },
+      });
+      if (facts.length) await store.recordFacts(facts);
+    } catch (error) {
+      // error-policy:J7 knowledge extraction is off-path enrichment; its
+      // failure must never surface into the already-delivered turn.
+      logger.warn(
+        `[shared-runtime-chat] facts extraction failed for this turn: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  });
+}
+
 function stableUuid(raw: string): string {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
     return raw;
@@ -586,9 +696,24 @@ function stableUuid(raw: string): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-/** Content identity for conflict detection: same key + different text is rejected. */
-function sharedTurnPayloadHash(text: string): string {
-  return crypto.createHash("sha256").update(text).digest("hex");
+/** Content identity for conflict detection: text and every attachment byte are bound. */
+function sharedTurnPayloadHash(text: string, attachments: readonly SharedChatAttachment[]): string {
+  const hash = crypto.createHash("sha256");
+  const add = (value: string): void => {
+    hash.update(String(Buffer.byteLength(value)));
+    hash.update(":");
+    hash.update(value);
+    hash.update(";");
+  };
+  add(text);
+  for (const attachment of attachments) {
+    add(attachment.name);
+    add(attachment.mimeType);
+    add(attachment.data);
+    add(attachment.thumbnail?.mimeType ?? "");
+    add(attachment.thumbnail?.data ?? "");
+  }
+  return hash.digest("hex");
 }
 
 /**
@@ -601,8 +726,9 @@ async function claimSharedTurn(
   claims: SharedTurnClaimStore,
   claimKey: string,
   text: string,
+  attachments: readonly SharedChatAttachment[],
 ): Promise<SharedTurnTerminalResult | undefined> {
-  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text));
+  const decision = await claims.claim(claimKey, sharedTurnPayloadHash(text, attachments));
   if (decision.state === "conflict") throw new SharedTurnConflictError();
   return decision.state === "replay" ? decision.result : undefined;
 }
@@ -1117,7 +1243,17 @@ export class SharedRuntimeChatService {
       };
     }
     const params = record(rpc.params) ?? {};
-    const text = stringValue(params.text);
+    const parsedAttachments = parseSharedChatAttachments(params.images);
+    if (!parsedAttachments.ok) {
+      return {
+        jsonrpc: "2.0",
+        id: rpc.id,
+        error: { code: -32602, message: parsedAttachments.error },
+      };
+    }
+    const text =
+      stringValue(params.text) ??
+      (parsedAttachments.attachments.length ? "Please review the attached file." : undefined);
     if (!text) {
       return {
         jsonrpc: "2.0",
@@ -1129,7 +1265,12 @@ export class SharedRuntimeChatService {
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        parsedAttachments.attachments,
+      );
       if (replay) {
         return {
           jsonrpc: "2.0",
@@ -1174,7 +1315,11 @@ export class SharedRuntimeChatService {
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
     const memoryStore = sharedTurnMemoryStore(agent);
-    const recallContext = await sharedTurnRecallContext(memoryStore, text, history);
+    const [factsContext, recallBlock] = await Promise.all([
+      sharedTurnFactsContext(memoryStore),
+      sharedTurnRecallContext(memoryStore, text, history),
+    ]);
+    const recallContext = combinedTurnContext(factsContext, recallBlock);
     const turnStartedAtEpochMs = Date.now();
     let terminalTiming: SharedRuntimeTimingReceipt | undefined;
     let turn: RunSharedAgentTurnResult;
@@ -1183,6 +1328,9 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(parsedAttachments.attachments.length
+          ? { attachments: toSharedInlineMedia(parsedAttachments.attachments) }
+          : {}),
         ...(recallContext ? { recallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
@@ -1233,6 +1381,9 @@ export class SharedRuntimeChatService {
       turn,
       terminalTiming,
     );
+    if (!turn.degraded && turn.responded !== false && messageRole === "user") {
+      extractSharedTurnFactsOffPath(options.executionCtx, memoryStore, character, text, turn.reply);
+    }
     let turnCompleted = false;
     let turnIsProvablyFree = false;
     try {
@@ -1307,14 +1458,23 @@ export class SharedRuntimeChatService {
   ): Promise<Response> {
     const timings: Record<string, number> = {};
     const params = record(rpc.params) ?? {};
-    const text = stringValue(params.text);
+    const parsedAttachments = parseSharedChatAttachments(params.images);
+    if (!parsedAttachments.ok) return sseError(parsedAttachments.error);
+    const text =
+      stringValue(params.text) ??
+      (parsedAttachments.attachments.length ? "Please review the attached file." : undefined);
     if (!text) return sseError("message.send requires params.text");
     const roomId = channelId(agent.id, params);
     const messageRole = options.trustedMessageRole ?? "user";
     const claimKey = options.turnClaims ? sharedTurnClientMessageId(params) : undefined;
     if (claimKey && options.turnClaims) {
       const claimStartedAt = performance.now();
-      const replay = await claimSharedTurn(options.turnClaims, claimKey, text);
+      const replay = await claimSharedTurn(
+        options.turnClaims,
+        claimKey,
+        text,
+        parsedAttachments.attachments,
+      );
       timings.turn_claim = elapsedTurnMs(claimStartedAt);
       if (replay) {
         return withTurnTimingHeaders(
@@ -1388,7 +1548,11 @@ export class SharedRuntimeChatService {
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
     const streamMemoryStore = sharedTurnMemoryStore(agent);
-    const streamRecallContext = await sharedTurnRecallContext(streamMemoryStore, text, history);
+    const [streamFactsContext, streamRecallBlock] = await Promise.all([
+      sharedTurnFactsContext(streamMemoryStore),
+      sharedTurnRecallContext(streamMemoryStore, text, history),
+    ]);
+    const streamRecallContext = combinedTurnContext(streamFactsContext, streamRecallBlock);
     const streamTurnStartedAtEpochMs = Date.now();
     let streamTerminalTiming: SharedRuntimeTimingReceipt | undefined;
     const providerSetupStartedAt = performance.now();
@@ -1398,6 +1562,9 @@ export class SharedRuntimeChatService {
         character,
         history,
         message: text,
+        ...(parsedAttachments.attachments.length
+          ? { attachments: toSharedInlineMedia(parsedAttachments.attachments) }
+          : {}),
         ...(streamRecallContext ? { recallContext: streamRecallContext } : {}),
         ...(options.trustedUserUtterance ? { capabilityText: options.trustedUserUtterance } : {}),
         messageRole,
@@ -1542,6 +1709,15 @@ export class SharedRuntimeChatService {
             interrupted,
             channel: options.channel,
           });
+        }
+        if (!interrupted && messageRole === "user" && reply.trim()) {
+          extractSharedTurnFactsOffPath(
+            options.executionCtx,
+            streamMemoryStore,
+            character,
+            text,
+            reply,
+          );
         }
         await afterWrite?.();
         finalized = true;

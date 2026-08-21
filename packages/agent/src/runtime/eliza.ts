@@ -2176,30 +2176,46 @@ export async function autoResolveDiscordAppId(
 }
 
 /**
- * Fetch GitHub OAuth token from cloud if available and no local token is set.
+ * Result of the cloud GitHub token fetch: the OAuth access token that the
+ * cloud minted for ONE managed agent, plus the GitHub login for boot logging.
+ * The token is agent identity material and must stay scoped to that agent —
+ * it is bound into the owning runtime's secrets via
+ * {@link bindCloudGithubTokenToRuntime}, never written to `process.env`
+ * (#15904: a process-global write leaks one agent's GitHub identity to every
+ * co-tenant agent in the host and lets a later fetch overwrite an earlier
+ * agent's credential).
+ */
+export interface CloudGithubTokenResult {
+  accessToken: string;
+  githubUsername: string | null;
+}
+
+/**
+ * Fetch the GitHub OAuth token the cloud holds for this managed agent, if any.
  * Called during async runtime init after cloud config is applied.
  *
- * Flow: If the agent has a managed GitHub connection in the cloud, and no
- * local GITHUB_TOKEN is set, fetch the OAuth token from the cloud API and
- * inject it into process.env so plugins (plugin-github, git-workspace-service)
- * can use it for API calls and git credential helpers.
+ * Returns the token instead of applying it anywhere: the caller binds it to
+ * the specific runtime that owns `agentId` with
+ * {@link bindCloudGithubTokenToRuntime}. A host-level GITHUB_TOKEN/GITHUB_PAT
+ * in the launch env still wins (it was folded into runtime settings at
+ * construction), so the fetch is skipped entirely in that case.
  */
 /** @internal Exported for testing. */
 export async function autoFetchCloudGithubToken(
   agentId?: string,
   timeoutMs = 3_000,
-): Promise<void> {
+): Promise<CloudGithubTokenResult | null> {
   // Skip if a local token is already configured
-  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return;
+  if (process.env.GITHUB_TOKEN || process.env.GITHUB_PAT) return null;
 
   // Need cloud credentials and an agent ID
   const cloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY?.trim();
   const cloudBaseUrl =
     process.env.ELIZAOS_CLOUD_BASE_URL?.trim() || "https://api.eliza.app";
-  if (!cloudApiKey || !agentId) return;
+  if (!cloudApiKey || !agentId) return null;
 
   const managedNs = readAliasedEnv("ELIZA_CLOUD_MANAGED_AGENTS_API_SEGMENT");
-  if (!managedNs) return;
+  if (!managedNs) return null;
 
   try {
     const url = `${cloudBaseUrl}/api/v1/${managedNs}/agents/${encodeURIComponent(agentId)}/github/token`;
@@ -2218,22 +2234,50 @@ export async function autoFetchCloudGithubToken(
           `[eliza] Failed to fetch cloud GitHub token: ${res.status}`,
         );
       }
-      return;
+      return null;
     }
 
     const body = (await res.json()) as {
       success?: boolean;
       data?: { accessToken?: string; githubUsername?: string };
     };
-    if (!body.success || !body.data?.accessToken) return;
+    if (!body.success || !body.data?.accessToken) return null;
 
-    process.env.GITHUB_TOKEN = body.data.accessToken;
     logger.info(
       `[eliza] Fetched GitHub token from cloud for @${body.data.githubUsername || "unknown"}`,
     );
+    return {
+      accessToken: body.data.accessToken,
+      githubUsername: body.data.githubUsername ?? null,
+    };
   } catch (err) {
+    // error-policy:J4 boot-time cloud probe is best-effort; a missing managed
+    // GitHub connection degrades to "no token bound" and the connect UI stays
+    // the recovery path.
     logger.info(`[eliza] Could not fetch cloud GitHub token: ${err}`);
+    return null;
   }
+}
+
+/**
+ * Bind a cloud-fetched GitHub token to the runtime that owns it, as an
+ * agent-scoped secret resolved by `runtime.getSetting("GITHUB_TOKEN")`.
+ * Idempotent, and a no-op when the runtime already resolves a token (an
+ * explicit host env or per-agent secret always wins over the cloud fetch).
+ * Deliberately never touches `process.env`: subprocess spawners must pass the
+ * agent's own resolved token explicitly (see workspace-service), so one
+ * agent's cloud GitHub identity can never leak to co-tenant agents (#15904).
+ */
+/** @internal Exported for testing. */
+export function bindCloudGithubTokenToRuntime(
+  runtime: Pick<IAgentRuntime, "getSetting" | "setSetting">,
+  result: CloudGithubTokenResult | null,
+): boolean {
+  if (!result?.accessToken) return false;
+  const existing = runtime.getSetting("GITHUB_TOKEN");
+  if (typeof existing === "string" && existing.trim()) return false;
+  runtime.setSetting("GITHUB_TOKEN", result.accessToken, true);
+  return true;
 }
 
 /**
@@ -4039,9 +4083,11 @@ export async function startEliza(
   applyCloudConfigToEnv(config);
 
   // Kick off the Discord App ID lookup and the cloud GitHub token fetch (both
-  // network, up to a 3s timeout each) without blocking. They only write
-  // DISCORD_APPLICATION_ID and GITHUB_TOKEN respectively — env vars that no
-  // BLOCKING_CORE_PLUGIN reads. The Discord connector and GitHub/git plugins
+  // network, up to a 3s timeout each) without blocking. The Discord lookup
+  // writes DISCORD_APPLICATION_ID (an env var no BLOCKING_CORE_PLUGIN reads);
+  // the GitHub fetch returns a token that is bound to the owning runtime's
+  // agent-scoped secrets at the join site — never process.env (#15904). The
+  // Discord connector and GitHub/git plugins
   // both live in the DEFERRED set, so these joins are awaited inside
   // runDeferredBoot() (before the deferred plugin waves register), not on the
   // gated blocking path. Firing them here lets the round-trips overlap the
@@ -5493,8 +5539,14 @@ export async function startEliza(
       requiredPluginNames: REQUIRED_BLOCKING_CORE_PLUGINS,
       waitForBlockingEnvironment: async () => {
         // In block-deferred mode the Discord/GitHub plugins register here (not
-        // in runDeferredBoot), so join the env-var lookups before this wave.
-        await Promise.all([discordAppIdPromise, cloudGithubTokenPromise]);
+        // in runDeferredBoot), so join the boot lookups before this wave. The
+        // cloud GitHub token binds to THIS runtime's secrets only — never
+        // process.env (#15904).
+        const [, cloudGithubToken] = await Promise.all([
+          discordAppIdPromise,
+          cloudGithubTokenPromise,
+        ]);
+        bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
       },
       initializeCoreRuntime,
       ...(opts?.abortSignal ? { abortSignal: opts.abortSignal } : {}),
@@ -5694,14 +5746,17 @@ export async function startEliza(
 
     // Join the boot-time network lookups (Discord App ID, cloud GitHub token)
     // before resolving the deferred plugin set — the Discord connector and the
-    // GitHub/git plugins live in this deferred wave and read the env vars these
-    // promises write. Also join the Claude Code OAuth probe (informational
-    // logging only). All self-handle their errors, so this only waits.
-    await Promise.all([
+    // GitHub/git plugins live in this deferred wave. The cloud GitHub token is
+    // bound to this runtime's agent-scoped secrets, never process.env, so a
+    // co-tenant agent can neither read nor overwrite it (#15904). Also join
+    // the Claude Code OAuth probe (informational logging only). All
+    // self-handle their errors, so this only waits.
+    const [, cloudGithubToken] = await Promise.all([
       discordAppIdPromise,
       cloudGithubTokenPromise,
       subscriptionCredentialsDeferredPromise,
     ]);
+    bindCloudGithubTokenToRuntime(runtime, cloudGithubToken);
     abortSignal.throwIfAborted();
     bootTimer.lap("deferred:env-lookups");
 

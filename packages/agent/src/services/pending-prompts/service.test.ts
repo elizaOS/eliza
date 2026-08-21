@@ -60,6 +60,77 @@ describe("PendingPromptsService", () => {
     await service.stop();
   });
 
+  it("does not drop a concurrent record() under a raced cache read", async () => {
+    const cache = new Map<string, unknown>();
+    let releaseFirstRead: (() => void) | undefined;
+    const firstReadGate = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
+    let roomReadCount = 0;
+    const runtime = {
+      agentId: "test-agent",
+      async getCache<T>(key: string): Promise<T | null> {
+        if (key.startsWith("eliza:lifeops:pending-prompts:room:")) {
+          roomReadCount += 1;
+          // Snapshot the value now (as a real round-trip would capture it at
+          // request time), then delay only the response -- so a concurrent
+          // write that lands during the delay is invisible to this read.
+          const snapshot = cache.get(key);
+          if (roomReadCount === 1) {
+            await firstReadGate;
+          }
+          return snapshot === undefined ? null : (snapshot as T);
+        }
+        const value = cache.get(key);
+        return value === undefined ? null : (value as T);
+      },
+      async setCache<T>(key: string, value: T): Promise<boolean> {
+        cache.set(key, value);
+        return true;
+      },
+      async deleteCache(key: string): Promise<boolean> {
+        return cache.delete(key);
+      },
+    } as unknown as IAgentRuntime;
+
+    const service = await PendingPromptsService.start(runtime);
+    const store = service.getStore();
+    const roomId = "room-race";
+    const firedAt = new Date().toISOString();
+
+    // Two concurrent record() calls for the same room: the first's room read
+    // is held open (simulating a slow/interleaved cache round-trip) while the
+    // second's own record() call runs to completion, then the first is
+    // released. Without a lock serializing the read-modify-write, the first
+    // call's stale (pre-second-write) snapshot overwrites the second's entry.
+    const first = store.record({
+      taskId: "task-a",
+      roomId,
+      promptSnippet: "first",
+      firedAt,
+    });
+    const second = store.record({
+      taskId: "task-b",
+      roomId,
+      promptSnippet: "second",
+      firedAt,
+    });
+    // Let second's unblocked read-modify-write chain fully drain (a macrotask
+    // boundary flushes every pending microtask) before releasing first's
+    // gated read.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    releaseFirstRead?.();
+    await Promise.all([first, second]);
+
+    const stored = await store.list(roomId);
+    expect(stored.map((entry) => entry.taskId).sort()).toEqual([
+      "task-a",
+      "task-b",
+    ]);
+
+    await service.stop();
+  });
+
   it("lists pending prompts across rooms as canonical pending user actions", async () => {
     const runtime = makeRuntime();
     const service = await PendingPromptsService.start(runtime);

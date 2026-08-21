@@ -304,6 +304,13 @@ export interface ChatMessageIdOutcome {
   accountConnect?: AccountConnectRequest;
   localInference?: LocalInferenceChatMetadata;
   noResponseReason?: "ignored";
+  /**
+   * The turn ended by explicit Stop/disconnect abort. `text` carries the
+   * partial reply that streamed before the abort (possibly empty for a
+   * zero-token Stop) and `messageId` its durable interrupted receipt, so a
+   * retried key adopts the interrupted outcome instead of regenerating.
+   */
+  interrupted?: boolean;
 }
 
 const chatIdempotency = createChatIdempotencyStore<ChatMessageIdOutcome>();
@@ -2926,6 +2933,41 @@ export async function persistAssistantConversationMemory(
   return memoryId
     ? await persistExactConversationMemory(runtime, memory, roomHandlerLease)
     : await persistConversationMemory(runtime, memory, roomHandlerLease);
+}
+
+/**
+ * Persist the terminal receipt for an aborted (Stop/disconnect) turn before
+ * the route releases it. Unlike `persistAssistantConversationMemory` this
+ * MUST persist even when no token streamed — a zero-token Stop still owns a
+ * durable `interrupted` assistant row, otherwise reload recovery finds a user
+ * turn with no terminal receipt and the transport is free to regenerate
+ * (#17216). The row carries `content.interrupted: true`, which the GET
+ * /messages DTO round-trips so the renderer shows the interrupted state
+ * instead of a healthy-looking reply.
+ */
+export async function persistInterruptedAssistantReceipt(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  partialText: string,
+  channelType: ChannelType,
+  inReplyTo: UUID | undefined,
+  memoryId: UUID,
+  roomHandlerLease?: RoomHandlerLease,
+): Promise<Memory> {
+  const memory = createMessageMemory({
+    id: memoryId,
+    entityId: runtime.agentId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: partialText,
+      interrupted: true,
+      source: MESSAGE_SOURCE_CLIENT_CHAT,
+      channelType,
+      ...(inReplyTo ? { inReplyTo } : {}),
+    } satisfies Content,
+  });
+  return persistExactConversationMemory(runtime, memory, roomHandlerLease);
 }
 
 // ---------------------------------------------------------------------------

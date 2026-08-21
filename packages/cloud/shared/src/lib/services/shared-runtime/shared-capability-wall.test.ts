@@ -166,8 +166,8 @@ describe("Shared capability wall", () => {
 
   test("does not falsely claim voice and messaging require Dedicated", () => {
     const wall = resolveSharedCapabilityWall("call Mom");
-    expect(wall?.reply).toContain("connected voice and messaging channels");
-    expect(wall?.reply).not.toContain("Dedicated");
+    expect(wall?.constraint).toContain("current connected channel");
+    expect(wall?.constraint).not.toContain("Dedicated");
   });
 
   test.each(["channel", "voice"])(

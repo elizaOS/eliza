@@ -104,8 +104,9 @@ import {
 } from "@/lib/services/inference-auth-context";
 import { InferenceBalanceCacheWarmingError } from "@/lib/services/inference-billing-fast-path";
 import {
+  createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
-  readPassthroughStreamTail,
+  type PassthroughStreamTail,
 } from "@/lib/services/inference-passthrough";
 import {
   isKnownUnacceptedProviderError,
@@ -2367,11 +2368,13 @@ function sanitizeProviderRequestId(value: string | null): string | undefined {
  * chat/completions directly with `stream: true` and return the response body
  * piped to the client byte-for-byte — no AI-SDK decode, no per-part
  * processing, no SSE re-encode (the measured ~1.5s TTFB / ~5s total gateway
- * overhead vs ~0.17s / ~0.6s direct). Billing parity comes from
- * `response.body.tee()`: one branch goes to the client untouched while the
- * other is read in the background (via the same settleOffResponsePath seam as
- * the SDK path) to extract the terminal usage frame + delivered text for the
- * EXISTING settle chain (billUsage → settleReservation → analytics → audit).
+ * overhead vs ~0.17s / ~0.6s direct). Billing parity comes from a push-based
+ * meter that observes every chunk as it is forwarded from the single upstream
+ * reader (no `tee()` — its slow-branch queue is unbounded, #20032); the
+ * stream's terminal event feeds the tail (via the same settleOffResponsePath
+ * seam as the SDK path) to extract the terminal usage frame + delivered text
+ * for the EXISTING settle chain (billUsage → settleReservation → analytics →
+ * audit).
  *
  * Returns null when the fast path does not apply (flag off, non-qualifying
  * request, no direct upstream) — callers fall through to streamText. Runs
@@ -2582,44 +2585,24 @@ async function tryPassthroughStreamingRequest(params: {
   const providerRequestId = sanitizeProviderRequestId(
     upstreamResponse.headers.get("x-request-id"),
   );
-  const [clientBranch, meterBranch] = upstreamResponse.body.tee();
-  const meterAbortController = new AbortController();
-  const clientReader = clientBranch.getReader();
-  const cancelAwareClientBranch = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const { done, value } = await clientReader.read();
-        if (done) {
-          controller.close();
-        } else {
-          controller.enqueue(value);
-        }
-      } catch (error) {
-        // error-policy:J1 translate upstream read failure to the client stream.
-        controller.error(error);
-      }
-    },
-    async cancel(reason) {
-      // A tee keeps the upstream alive until both branches stop. Explicitly
-      // stop the metering branch when the client disconnects so billing can
-      // settle the observed partial output inside Cloudflare's waitUntil window.
-      meterAbortController.abort(reason);
-      await clientReader.cancel(reason);
-    },
+  // Single-reader fan-out (#20032 defect 4): the client stream is the ONLY
+  // consumer of the upstream body, and the meter observes each chunk
+  // synchronously as it is forwarded. Upstream pulling is therefore bounded
+  // by the client's own backpressure — a slow or stalled client stalls the
+  // upstream instead of accumulating an unbounded tee queue in Worker memory.
+  const upstreamReader = upstreamResponse.body.getReader();
+  const meter = createPassthroughStreamMeter({
+    // #16079: milestones measured from the provider fetch dispatch.
+    startedAt: upstreamFetchStartedAt,
   });
   const billingPrompt = buildChatPromptForBilling(request);
-
-  // Meter + settle on the teed branch, OFF the response path when a Workers
-  // executionCtx exists (the same seam the SDK path defers its settlement
-  // through); inline for tests / non-Worker callers — tee buffers the client
-  // branch, so inline draining never deadlocks the response.
-  await settleOffResponsePath(params.executionCtx, async () => {
-    const tail = await readPassthroughStreamTail(
-      meterBranch,
-      meterAbortController.signal,
-      // #16079: milestones measured from the provider fetch dispatch.
-      { startedAt: upstreamFetchStartedAt },
-    );
+  // Settlement is triggered by the stream's terminal event (EOF, read error,
+  // or client cancel) — first terminal wins; the meter's own terminal guard
+  // makes the tail snapshot stable across a cancel racing an EOF.
+  let settlementStarted = false;
+  const settleFromTail = async (tail: PassthroughStreamTail) => {
+    if (settlementStarted) return;
+    settlementStarted = true;
     // Always-on correlated milestone record (#16079): the ring buffer is read
     // back via the admin cloud-observability endpoint, so unlike logger.info
     // it survives without VERBOSE_LOGGING. Bounded fields only.
@@ -2634,9 +2617,10 @@ async function tryPassthroughStreamingRequest(params: {
       firstReasoningMs: tail.milestones.firstReasoningMs,
       firstContentMs: tail.milestones.firstContentMs,
       completionMs: tail.milestones.completionMs,
-      // An in-stream SSE error frame is an upstream-reported failure: record
-      // it as not-completed rather than a healthy run (#16079).
-      aborted: tail.readError !== null || tail.sawErrorFrame,
+      // An in-stream SSE error frame is an upstream-reported failure, and a
+      // stream that ended without [DONE] is truncated: both are recorded as
+      // not-completed rather than a healthy run (#16079, #20032).
+      aborted: tail.readError !== null || tail.sawErrorFrame || !tail.sawDone,
       createdAt: new Date().toISOString(),
     });
     if (tail.usage) {
@@ -2748,6 +2732,60 @@ async function tryPassthroughStreamingRequest(params: {
       "[Chat Completions] Passthrough stream ended without usage frame; settled from estimates",
       { model, readAborted: tail.readError !== null, sawDone: tail.sawDone },
     );
+  };
+
+  // The settle chain runs OFF the response path when a Workers executionCtx
+  // exists (the same seam the SDK path defers through) and inline at the
+  // terminal event otherwise — for a non-Worker caller the final read (or the
+  // cancel acknowledgement) resolves only after settlement completes, so
+  // draining the response is a deterministic settlement barrier in tests.
+  const cancelAwareClientBranch = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let read: Awaited<ReturnType<typeof upstreamReader.read>>;
+      try {
+        read = await upstreamReader.read();
+      } catch (error) {
+        await settleOffResponsePath(params.executionCtx, () =>
+          settleFromTail(meter.fail(error)),
+        );
+        // error-policy:J1 translate upstream read failure to the client stream.
+        controller.error(error);
+        return;
+      }
+      if (read.done) {
+        await settleOffResponsePath(params.executionCtx, () =>
+          settleFromTail(meter.finish()),
+        );
+        controller.close();
+        return;
+      }
+      meter.observe(read.value);
+      controller.enqueue(read.value);
+    },
+    async cancel(reason) {
+      // The single upstream reader keeps the provider connection alive only
+      // while the client reads. On disconnect, stop the upstream and settle
+      // the observed partial output inside Cloudflare's waitUntil window.
+      const tail = meter.fail(
+        reason ??
+          new DOMException(
+            "The client stopped reading the stream",
+            "AbortError",
+          ),
+      );
+      // Register/run settlement before teardown: an upstream implementation
+      // may never resolve cancel(), but billing must still enter waitUntil (or
+      // start inline for non-Worker callers) as soon as the client disconnects.
+      const settlement = settleOffResponsePath(params.executionCtx, () =>
+        settleFromTail(tail),
+      );
+      // error-policy:J6 best-effort teardown — the upstream connection may
+      // already be errored/closed; settlement proceeds from the observed tail.
+      await Promise.all([
+        upstreamReader.cancel(reason).catch(() => undefined),
+        settlement,
+      ]);
+    },
   });
 
   return addCorsHeaders(

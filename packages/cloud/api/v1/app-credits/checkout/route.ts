@@ -10,6 +10,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
   assertAllowedAbsoluteRedirectUrl,
   getDefaultPlatformRedirectOrigins,
 } from "@/lib/security/redirect-validation";
@@ -28,7 +32,7 @@ const CheckoutSchema = z.object({
 
 const app = new Hono<AppEnv>();
 
-app.post("/", async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 

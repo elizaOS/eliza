@@ -1537,12 +1537,48 @@ function deriveParamsFromIntent(
 }
 
 function extractIntentTitle(intent: string): string | null {
-	const titled =
-		/\btitled?\s+["']?(.+?)(?:["']?\s+\b(?:with|on|at|for)\b|["']?$)/i.exec(
-			intent,
-		);
-	if (titled?.[1]?.trim()) {
-		return titled[1].trim();
+	const lower = intent.toLowerCase();
+	let markerEnd = -1;
+	for (const marker of ["titled", "title"]) {
+		let cursor = 0;
+		while (cursor < lower.length) {
+			const start = lower.indexOf(marker, cursor);
+			if (start < 0) break;
+			const before = lower[start - 1] ?? " ";
+			const after = lower[start + marker.length] ?? " ";
+			if (!/[a-z0-9_]/.test(before) && after.trim() === "") {
+				markerEnd = start + marker.length;
+				break;
+			}
+			cursor = start + 1;
+		}
+		if (markerEnd >= 0) break;
+	}
+	if (markerEnd >= 0) {
+		let titleStart = markerEnd;
+		while (titleStart < intent.length && intent[titleStart]?.trim() === "")
+			titleStart += 1;
+		if (intent[titleStart] === '"' || intent[titleStart] === "'")
+			titleStart += 1;
+		let titleEnd = intent.length;
+		for (const delimiter of ["with", "on", "at", "for"]) {
+			let cursor = titleStart;
+			while (cursor < lower.length) {
+				const start = lower.indexOf(delimiter, cursor);
+				if (start < 0) break;
+				const before = intent[start - 1] ?? "";
+				const after = intent[start + delimiter.length] ?? " ";
+				if (before.trim() === "" && !/[a-z0-9_]/.test(after)) {
+					titleEnd = Math.min(titleEnd, start);
+					break;
+				}
+				cursor = start + 1;
+			}
+		}
+		let title = intent.slice(titleStart, titleEnd).trim();
+		if (title.endsWith('"') || title.endsWith("'"))
+			title = title.slice(0, -1).trimEnd();
+		if (title) return title;
 	}
 	const quoted = /["']([^"']{1,160})["']/.exec(intent);
 	return quoted?.[1]?.trim() ?? null;

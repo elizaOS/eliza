@@ -1,10 +1,29 @@
 /** Splits Markdown text at fence, paragraph, and word-safe boundaries. */
 
+import { ElizaError } from "../errors.js";
 import {
 	findFenceSpanAt,
 	isSafeFenceBreak,
 	parseFenceSpans,
 } from "./fences.js";
+
+/** Stable classification for invalid public Markdown chunk limits. */
+export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID";
+
+/**
+ * Reject limits that cannot guarantee finite forward progress before any
+ * empty/within-limit fast path can hide the invalid caller input.
+ */
+export function assertValidMarkdownChunkLimit(limit: number): void {
+	if (Number.isSafeInteger(limit) && limit > 0) {
+		return;
+	}
+
+	throw new ElizaError("Markdown chunk limit must be a positive safe integer", {
+		code: MARKDOWN_CHUNK_LIMIT_INVALID,
+		context: { limit: describeInvalidLimit(limit) },
+	});
+}
 
 /**
  * Split text into chunks of maximum length.
@@ -19,11 +38,9 @@ import {
  * @returns Array of text chunks
  */
 export function chunkText(text: string, limit: number): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	if (text.length <= limit) {
 		return [text];
@@ -45,6 +62,8 @@ export function chunkText(text: string, limit: number): string[] {
 		if (breakIdx <= 0) {
 			breakIdx = limit;
 		}
+
+		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
 
 		const rawChunk = remaining.slice(0, breakIdx);
 		const chunk = rawChunk.trimEnd();
@@ -86,11 +105,9 @@ export function chunkByParagraph(
 	limit: number,
 	opts?: { splitLongParagraphs?: boolean },
 ): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	const splitLongParagraphs = opts?.splitLongParagraphs !== false;
 
@@ -156,11 +173,9 @@ export function chunkByParagraph(
  * @returns Array of text chunks
  */
 export function chunkMarkdownText(text: string, limit: number): string[] {
+	assertValidMarkdownChunkLimit(limit);
 	if (!text) {
 		return [];
-	}
-	if (limit <= 0) {
-		return [text];
 	}
 	if (text.length <= limit) {
 		return [text];
@@ -242,6 +257,8 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					: undefined;
 		}
 
+		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+
 		let rawChunk = remaining.slice(0, breakIdx);
 		if (!rawChunk) {
 			break;
@@ -273,6 +290,29 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 		chunks.push(remaining);
 	}
 	return chunks;
+}
+
+/**
+ * A hard break at an arbitrary UTF-16 index can land between the two halves of
+ * a surrogate pair (any non-BMP character: emoji, symbols, rare CJK), leaving a
+ * lone surrogate that renders as U+FFFD in the emitted chunk. Back the break
+ * off by one code unit so the pair stays whole. When backing off would yield an
+ * empty chunk (index 1, i.e. `limit === 1` on an astral-first run), advance
+ * past the pair instead: a one-unit cap cannot represent any astral scalar, so
+ * emitting one whole pair — exceeding the cap by a single code unit — is the
+ * contract, chosen over corrupting output or stalling the loop. Pre-existing
+ * lone surrogates in the input are passed through untouched.
+ */
+function avoidSurrogateSplit(text: string, index: number): number {
+	if (index <= 0 || index >= text.length) {
+		return index;
+	}
+	const high = text.charCodeAt(index - 1);
+	const low = text.charCodeAt(index);
+	if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
+		return index > 1 ? index - 1 : index + 1;
+	}
+	return index;
 }
 
 function stripLeadingNewlines(value: string): string {
@@ -333,4 +373,17 @@ function scanParenAwareBreakpoints(
 	}
 
 	return { lastNewline, lastWhitespace };
+}
+
+function describeInvalidLimit(limit: number): string {
+	if (Number.isNaN(limit)) {
+		return "NaN";
+	}
+	if (limit === Number.POSITIVE_INFINITY) {
+		return "+Infinity";
+	}
+	if (limit === Number.NEGATIVE_INFINITY) {
+		return "-Infinity";
+	}
+	return String(limit).slice(0, 32);
 }

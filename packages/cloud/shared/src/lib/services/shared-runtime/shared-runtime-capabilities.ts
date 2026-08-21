@@ -141,9 +141,8 @@ export function createRequestDedicatedUpgradeAction(agentId: string): Action {
     contexts: ["general"],
     roleGate: { minRole: "GUEST" },
     suppressEarlyReply: true,
-    suppressPostActionContinuation: true,
     description:
-      "Give the user the explicit review link for moving this Shared agent to Dedicated when they ask for coding, shell, browser control, connected accounts, or another unavailable advanced capability. This action does not purchase, provision, or activate anything.",
+      "Return the explicit review link for moving this Shared agent to Dedicated when the user asks for coding, shell, browser control, connected accounts, or another unavailable advanced capability. After this action, explain the result naturally in the agent's voice. This action does not purchase, provision, or activate anything.",
     parameters: [
       {
         name: "capability",
@@ -158,7 +157,7 @@ export function createRequestDedicatedUpgradeAction(agentId: string): Action {
       _message: Memory,
       _state?: State,
       handlerOptions?: unknown,
-      callback?: HandlerCallback,
+      _callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const parameters = readParameters(handlerOptions);
       const capability =
@@ -166,8 +165,9 @@ export function createRequestDedicatedUpgradeAction(agentId: string): Action {
           ? parameters.capability.trim().slice(0, 160)
           : "advanced capabilities";
       const upgradePath = `/cloud/agents/${encodeURIComponent(agentId)}`;
-      const text = `Shared can't perform ${capability}. You can review Dedicated capabilities, price, and confirmation here: ${upgradePath}. Nothing has been activated or charged.`;
-      await callback?.({ text });
+      // This is a structured tool receipt, not end-user copy. The normal
+      // post-action model continuation turns it into an in-character response.
+      const text = `Dedicated review available for ${capability} at ${upgradePath}; no mutation or charge was performed and explicit user confirmation is required.`;
       return {
         success: true,
         text,

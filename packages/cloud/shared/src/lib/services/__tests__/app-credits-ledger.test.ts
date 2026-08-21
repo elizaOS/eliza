@@ -574,6 +574,22 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     });
   });
 
+  test("keeps an unkeyed sub-threshold refund-shaped delta as a no-op", async () => {
+    const result = await freshService().reconcileCredits({
+      appId: APP_ID,
+      userId: USER_ID,
+      estimatedBaseCost: 1,
+      actualBaseCost: 0.9999995,
+      description: "sub-threshold recon",
+    });
+
+    expect(result.reconciled).toBe(false);
+    expect(result.action).toBe("none");
+    expect(refundCredits).not.toHaveBeenCalled();
+    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
+    expect(markReservationSettled).not.toHaveBeenCalled();
+  });
+
   test("no-op reconciliation fails closed on a corrupt org balance", async () => {
     findOrgById.mockResolvedValue({ id: ORG_ID, credit_balance: "42.50oops" });
 
@@ -609,19 +625,20 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     expect(refundCredits).not.toHaveBeenCalled();
   });
 
-  test("refunds the markup'd overcharge to the org when actual is below estimated", async () => {
-    const result = await freshService().reconcileCredits({
-      appId: APP_ID,
-      userId: USER_ID,
-      estimatedBaseCost: 2,
-      actualBaseCost: 1,
-      description: "recon",
-    });
-    expect(result.reconciled).toBe(true);
-    expect(result.action).toBe("refund");
-    expect(result.adjustedAmount).toBeCloseTo(1.1, 10);
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
+  test("rejects an unbacked refund before any app or ledger mutation", async () => {
+    await expect(
+      freshService().reconcileCredits({
+        appId: APP_ID,
+        userId: USER_ID,
+        estimatedBaseCost: 2,
+        actualBaseCost: 1,
+        description: "recon",
+      }),
+    ).rejects.toMatchObject({ code: "CREDIT_REFUND_RESERVATION_REQUIRED" });
+
+    expect(findAppById).not.toHaveBeenCalled();
+    expect(findUserById).not.toHaveBeenCalled();
+    expect(refundCredits).not.toHaveBeenCalled();
     expect(reserveAndDeductCredits).not.toHaveBeenCalled();
   });
 

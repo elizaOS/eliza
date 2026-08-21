@@ -2658,14 +2658,6 @@
           "help": "Enable or disable this feature",
           "advanced": false
         },
-        "IMESSAGE_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to CLI binary",
-          "advanced": false
-        },
         "IMESSAGE_DM_POLICY": {
           "type": "string",
           "required": false,
@@ -4725,6 +4717,72 @@
           "credentialKeys": [],
           "notes": "The agent's own Slack bot identity (xoxb-... bot token), installed into the workspace via Eliza Cloud OAuth. Posts, mentions, replies, and DMs flow through the bot user."
         }
+      }
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "description": "Spotify music integration: search, saved-track library, playlists, playback control, and device handoff with managed OAuth or a self-hosted Spotify app.",
+      "npmName": "@elizaos/plugin-spotify",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["connector", "music", "media", "spotify"],
+      "config": {
+        "SPOTIFY_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Client ID",
+          "help": "Spotify application client ID (only needed for self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Client Secret",
+          "help": "Spotify application client secret (self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_REFRESH_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Refresh Token",
+          "help": "Long-lived refresh token for local mode, obtained via a one-time authorization-code grant",
+          "advanced": true
+        },
+        "SPOTIFY_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Redirect URI",
+          "help": "OAuth redirect URI registered on the Spotify application",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "Music",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza",
+        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#spotify"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "streaming",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": []
       }
     },
     {

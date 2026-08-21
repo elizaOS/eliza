@@ -192,10 +192,14 @@ export function consumeStewardCodeFromQuery(): string | null {
   const hashCode = hashParams.get("code");
   if (!hashCode) return null;
   hashParams.delete("code");
+  const nextHash = hashParams.toString();
   if (snapshotted) {
-    delete stewardWindow.__stewardOAuthHash;
+    if (nextHash) {
+      stewardWindow.__stewardOAuthHash = `#${nextHash}`;
+    } else {
+      delete stewardWindow.__stewardOAuthHash;
+    }
   } else {
-    const nextHash = hashParams.toString();
     window.history.replaceState(
       null,
       "",
@@ -203,6 +207,55 @@ export function consumeStewardCodeFromQuery(): string | null {
     );
   }
   return hashCode;
+}
+
+/**
+ * Consume the app-owned OAuth `state` echo from either the query string or
+ * fragment. Steward's nonce-exchange callback intentionally returns `code`
+ * and `state` in the fragment, so reading React Router's query params alone
+ * rejects every otherwise-valid provider callback as a state mismatch.
+ */
+export function consumeStewardOAuthStateFromCallback(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const queryParams = new URLSearchParams(window.location.search);
+  const queryState = queryParams.get("state");
+  if (queryState) {
+    queryParams.delete("code");
+    queryParams.delete("state");
+    const query = queryParams.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+    );
+    return queryState;
+  }
+
+  const stewardWindow = window as Window & { __stewardOAuthHash?: string };
+  const snapshotted = stewardWindow.__stewardOAuthHash;
+  const hash = snapshotted || window.location.hash;
+  if (!hash || hash.length < 2) return null;
+  const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+  const hashState = hashParams.get("state");
+  if (!hashState) return null;
+  hashParams.delete("code");
+  hashParams.delete("state");
+  const nextHash = hashParams.toString();
+  if (snapshotted) {
+    if (nextHash) {
+      stewardWindow.__stewardOAuthHash = `#${nextHash}`;
+    } else {
+      delete stewardWindow.__stewardOAuthHash;
+    }
+  } else {
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${window.location.search}${nextHash ? `#${nextHash}` : ""}`,
+    );
+  }
+  return hashState;
 }
 
 /**

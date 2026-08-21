@@ -57,6 +57,12 @@ export interface QuotaCheckResult {
   error?: string;
 }
 
+/** Result of admitting one canonical project intent under the organization lock. */
+export interface ContainerProjectIntentResult {
+  container: Container;
+  created: boolean;
+}
+
 function resolveContainerLimitFromDatabaseSources(
   creditBalance: string | number | null | undefined,
   orgSettings: unknown,
@@ -728,6 +734,29 @@ export class ContainersRepository {
    * Uses row-level locking (FOR UPDATE) to ensure atomicity.
    */
   async createWithQuotaCheck(data: NewContainer, transaction?: Database): Promise<Container> {
+    const result = await this.createWithQuotaAndOptionalProjectIntent(data, false, transaction);
+    return result.container;
+  }
+
+  /**
+   * Atomically admits one active `(organization_id, project_name)` intent.
+   *
+   * The organization row lock is shared with quota enforcement, so a replica
+   * preflight can never authorize a second provider-bound create. A retry sees
+   * the primary row and returns it without consuming quota or inserting again.
+   */
+  async createWithProjectIntentAndQuotaCheck(
+    data: NewContainer,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
+    return await this.createWithQuotaAndOptionalProjectIntent(data, true, transaction);
+  }
+
+  private async createWithQuotaAndOptionalProjectIntent(
+    data: NewContainer,
+    enforceProjectIntent: boolean,
+    transaction?: Database,
+  ): Promise<ContainerProjectIntentResult> {
     const executeInTransaction = async (tx: Database) => {
       // 1. Lock the organization row to prevent concurrent quota checks
       const [org] = await tx
@@ -741,6 +770,27 @@ export class ContainersRepository {
 
       if (!org) {
         throw new Error("Organization not found");
+      }
+
+      if (enforceProjectIntent) {
+        const [existing] = await tx
+          .select()
+          .from(containers)
+          .where(
+            and(
+              eq(containers.organization_id, data.organization_id),
+              eq(containers.project_name, data.project_name),
+              notInArray(containers.status, ["stopped", "failed", "deleting", "deleted"]),
+            ),
+          )
+          .orderBy(desc(containers.created_at))
+          .limit(1);
+        if (existing) {
+          return {
+            container: await hydrateContainerDeploymentLog(existing),
+            created: false,
+          };
+        }
       }
 
       // Get organization config for settings
@@ -804,7 +854,10 @@ export class ContainersRepository {
 
       const [container] = await tx.insert(containers).values(values).returning();
 
-      return await hydrateContainerDeploymentLog(container);
+      return {
+        container: await hydrateContainerDeploymentLog(container),
+        created: true,
+      };
     };
 
     // Use external transaction if provided, otherwise create new one

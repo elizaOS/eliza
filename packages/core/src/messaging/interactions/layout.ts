@@ -14,6 +14,7 @@ import type {
 	InteractionOption,
 } from "../../types/interactions";
 import type { Content } from "../../types/primitives";
+import { trimEndCharacters } from "../../utils/string-boundaries";
 import { encodeReplyCallback } from "./callback";
 import { stripDashboardOnlyMarkers } from "./dashboard-markers";
 import { parseInteractionBlocks } from "./parse";
@@ -369,7 +370,7 @@ export function buildInteractionUrlResolver(
 	appBaseUrl: string | undefined | null,
 ): Pick<LayoutOptions, "resolveUrl" | "resolveNavigateUrl"> {
 	if (!appBaseUrl) return {};
-	const base = appBaseUrl.replace(/\/+$/, "");
+	const base = trimEndCharacters(appBaseUrl, "/");
 	return {
 		resolveUrl: (block) => {
 			switch (block.kind) {

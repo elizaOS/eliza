@@ -12,6 +12,7 @@ import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AccountPool,
+  type AccountPoolDeps,
   configureDefaultAccountPoolSelection,
   selectionForProvider,
 } from "./account-pool";
@@ -1174,5 +1175,169 @@ describe("AccountPool drain-soonest-reset selection", () => {
     expect(selectionForProvider("anthropic-subscription").strategy).toBe(
       "priority",
     );
+  });
+});
+
+describe("AccountPool.refreshUsage concurrent health-transition safety", () => {
+  // A mutable metadata store whose `writeAccount` REPLACES the whole account
+  // entry, faithful to the real persistAccount's full-bucket assignment at
+  // account-pool.ts (`store[providerId][id] = { ...fields }`): any field absent
+  // from the written object is dropped, which is exactly why writing back a
+  // pre-await snapshot clobbers a concurrent health transition (a lost update).
+  function mutableStore(seed: LinkedAccountConfig[]): {
+    store: Record<string, LinkedAccountConfig>;
+    deps: AccountPoolDeps;
+  } {
+    const key = (a: Pick<LinkedAccountConfig, "providerId" | "id">) =>
+      `${a.providerId}:${a.id}`;
+    const store: Record<string, LinkedAccountConfig> = {};
+    for (const acc of seed) store[key(acc)] = acc;
+    const deps: AccountPoolDeps = {
+      readAccounts: () => store,
+      writeAccount: async (acc) => {
+        // Full-bucket replacement, matching the real persistAccount.
+        store[key(acc)] = acc;
+      },
+    };
+    return { store, deps };
+  }
+
+  // A fetch that blocks on a caller-released gate so a test can deterministically
+  // open the network-await TOCTOU window in refreshUsage and interleave another
+  // mutator before the usage probe resolves.
+  function gatedAnthropicFetch(utilization: number): {
+    fetch: typeof fetch;
+    release: () => void;
+  } {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchImpl = (async () => {
+      await gate;
+      return new Response(JSON.stringify({ five_hour: { utilization } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    return { fetch: fetchImpl, release };
+  }
+
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+  it("preserves a rate-limit cooldown committed during the usage probe", async () => {
+    const seeded = account("anthropic-subscription", {
+      id: "acc",
+      email: "who@example.com",
+      health: "ok",
+    });
+    const { store, deps } = mutableStore([seeded]);
+    const pool = new AccountPool(deps);
+    const { fetch: gated, release } = gatedAnthropicFetch(25);
+
+    // (1) start the refresh; it suspends inside the gated usage probe.
+    const refreshing = pool.refreshUsage("acc", "token", {
+      providerId: "anthropic-subscription",
+      fetch: gated,
+    });
+    await tick();
+
+    // (2) a real 429 lands mid-probe and commits a cooldown atomically.
+    const until = Date.now() + 60_000;
+    await pool.markRateLimited("acc", until, "429 from provider", {
+      providerId: "anthropic-subscription",
+    });
+    expect(store["anthropic-subscription:acc"]?.health).toBe("rate-limited");
+
+    // (3) release the probe; the stale snapshot must NOT clobber the cooldown.
+    release();
+    await refreshing;
+
+    const final = store["anthropic-subscription:acc"];
+    expect(final?.health).toBe("rate-limited");
+    expect(final?.healthDetail?.until).toBe(until);
+    // The probe's usage result is orthogonal data and is still persisted.
+    expect(final?.usage?.sessionPct).toBe(25);
+  });
+
+  it("preserves a needs-reauth transition committed during the usage probe", async () => {
+    const seeded = account("anthropic-subscription", {
+      id: "acc",
+      email: "who@example.com",
+      health: "ok",
+    });
+    const { store, deps } = mutableStore([seeded]);
+    const pool = new AccountPool(deps);
+    const { fetch: gated, release } = gatedAnthropicFetch(40);
+
+    const refreshing = pool.refreshUsage("acc", "token", {
+      providerId: "anthropic-subscription",
+      fetch: gated,
+    });
+    await tick();
+
+    await pool.markNeedsReauth("acc", "401 revoked", {
+      providerId: "anthropic-subscription",
+    });
+    expect(store["anthropic-subscription:acc"]?.health).toBe("needs-reauth");
+
+    release();
+    await refreshing;
+
+    const final = store["anthropic-subscription:acc"];
+    expect(final?.health).toBe("needs-reauth");
+    expect(final?.healthDetail?.lastError).toBe("401 revoked");
+    expect(final?.usage?.sessionPct).toBe(40);
+  });
+
+  it("still admits the account as ok when no transition races the probe", async () => {
+    const seeded = account("anthropic-subscription", {
+      id: "acc",
+      email: "who@example.com",
+      health: "ok",
+    });
+    const { store, deps } = mutableStore([seeded]);
+    const pool = new AccountPool(deps);
+    const { fetch: gated, release } = gatedAnthropicFetch(10);
+
+    const refreshing = pool.refreshUsage("acc", "token", {
+      providerId: "anthropic-subscription",
+      fetch: gated,
+    });
+    await tick();
+    release();
+    await refreshing;
+
+    const final = store["anthropic-subscription:acc"];
+    expect(final?.health).toBe("ok");
+    expect(final?.usage?.sessionPct).toBe(10);
+  });
+
+  it("recovers a stale rate-limited account to ok when its window elapsed and no probe races it", async () => {
+    // refreshUsage is the sole recovery path back to "ok" for subscription
+    // accounts (a successful usage read proves the credential works). A non-ok
+    // state present BEFORE the probe and unchanged during it must still be
+    // cleared, so the fix must not conflate "pre-existing" with "raced".
+    const seeded = account("anthropic-subscription", {
+      id: "acc",
+      email: "who@example.com",
+      health: "rate-limited",
+      healthDetail: { until: Date.now() - 1_000, lastChecked: Date.now() },
+    });
+    const { store, deps } = mutableStore([seeded]);
+    const pool = new AccountPool(deps);
+    const { fetch: gated, release } = gatedAnthropicFetch(5);
+
+    const refreshing = pool.refreshUsage("acc", "token", {
+      providerId: "anthropic-subscription",
+      fetch: gated,
+    });
+    await tick();
+    release();
+    await refreshing;
+
+    const final = store["anthropic-subscription:acc"];
+    expect(final?.health).toBe("ok");
+    expect(final?.healthDetail).toBeUndefined();
+    expect(final?.usage?.sessionPct).toBe(5);
   });
 });

@@ -12,8 +12,8 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
 import { stripeCheckoutOrdersService } from "@/lib/services/stripe-checkout-orders";
@@ -49,7 +49,7 @@ const checkoutRequestSchema = z
 
 const app = new Hono<AppEnv>();
 
-app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
+app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserWithOrg(c);
 

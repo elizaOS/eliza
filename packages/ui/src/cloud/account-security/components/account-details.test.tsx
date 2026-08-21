@@ -1,6 +1,6 @@
 /**
- * Renders AccountDetails through SettingsRow and asserts labelled 1:1
- * readouts, verification badge, and omitted optional rows. jsdom, no backend.
+ * Renders AccountDetails through SettingsRow and asserts the concise,
+ * nonduplicated account readouts. jsdom, no backend.
  */
 // @vitest-environment jsdom
 
@@ -70,31 +70,15 @@ afterEach(() => {
 });
 
 describe("AccountDetails", () => {
-  it("renders labelled account id, verified email, and member since", () => {
+  it("renders account id and member since without repeating profile email", () => {
     render(<AccountDetails user={makeUser()} />);
 
     expect(screen.getByText("Account details")).toBeTruthy();
     expect(screen.getByText("Account ID")).toBeTruthy();
     expect(screen.getByText("user-1")).toBeTruthy();
-    expect(screen.getByText("Email")).toBeTruthy();
-    expect(screen.getByText("user@example.com")).toBeTruthy();
-    expect(screen.getByText("Verified")).toBeTruthy();
     expect(screen.getByText("Member since")).toBeTruthy();
-    expect(screen.queryByText("Unverified")).toBeNull();
-  });
-
-  it("shows unverified when email is present but not verified", () => {
-    render(<AccountDetails user={makeUser({ email_verified: false })} />);
-
-    expect(screen.getByText("Unverified")).toBeTruthy();
-    expect(screen.queryByText("Verified")).toBeNull();
-  });
-
-  it("omits the email row when the account has no email", () => {
-    render(<AccountDetails user={makeUser({ email: null })} />);
-
-    expect(screen.getByText("Account ID")).toBeTruthy();
     expect(screen.queryByText("Email")).toBeNull();
+    expect(screen.queryByText("user@example.com")).toBeNull();
     expect(screen.queryByText("Verified")).toBeNull();
     expect(screen.queryByText("Unverified")).toBeNull();
   });

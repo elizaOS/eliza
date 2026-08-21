@@ -667,3 +667,224 @@ describe("Microsoft connector account provider", () => {
     ).rejects.toBeInstanceOf(ElizaError);
   });
 });
+
+async function startFlowWith(harness: Harness, scopes: string[]) {
+  const flow = await harness.manager.startOAuth("microsoft", {
+    scopes,
+    metadata: { requestedRole: "OWNER" },
+  });
+  const metadata = flow.metadata as Record<string, unknown>;
+  harness.setReturnedNonce(String(metadata.nonce));
+  return flow;
+}
+
+describe("Microsoft Graph multi-domain incremental scopes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["microsoft.mail.triage", ["Mail.Read"]],
+    ["Mail.Read", ["Mail.Read"]],
+    ["microsoft.mail.manage", ["Mail.ReadWrite"]],
+    ["microsoft.mail.send", ["Mail.Send"]],
+    ["microsoft.contacts.read", ["Contacts.Read"]],
+    ["Contacts.Read", ["Contacts.Read"]],
+    ["microsoft.files.read", ["Files.Read"]],
+  ] as const)(
+    "requests identity plus only the %s permission and never a calendar scope",
+    async (capability, expectedScopes) => {
+      const harness = createHarness();
+      const provider = createMicrosoftConnectorAccountProvider(harness.runtime);
+      const started = await provider.startOAuth?.(
+        {
+          provider: "microsoft",
+          flow: unsignedFlow(),
+          scopes: [capability],
+        },
+        harness.manager,
+      );
+      const url = new URL(started?.authUrl ?? "");
+      const scopes = new Set(
+        (url.searchParams.get("scope") ?? "").split(" ").filter(Boolean),
+      );
+
+      expect(scopes).toEqual(
+        new Set([
+          "openid",
+          "profile",
+          "email",
+          "offline_access",
+          "User.Read",
+          ...expectedScopes,
+        ]),
+      );
+      expect([...scopes].some((scope) => scope.startsWith("Calendars."))).toBe(
+        false,
+      );
+    },
+  );
+
+  it("composes one consent request across calendar, mail, contacts, and files", async () => {
+    const harness = createHarness();
+    const provider = createMicrosoftConnectorAccountProvider(harness.runtime);
+    const started = await provider.startOAuth?.(
+      {
+        provider: "microsoft",
+        flow: unsignedFlow(),
+        scopes: [
+          "microsoft.calendar.read",
+          "microsoft.mail.manage",
+          "microsoft.mail.send",
+          "microsoft.contacts.read",
+          "microsoft.files.read",
+        ],
+      },
+      harness.manager,
+    );
+    const scopes = new Set(
+      (new URL(started?.authUrl ?? "").searchParams.get("scope") ?? "")
+        .split(" ")
+        .filter(Boolean),
+    );
+
+    expect(scopes).toEqual(
+      new Set([
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "User.Read",
+        "Calendars.Read",
+        "Mail.ReadWrite",
+        "Mail.Send",
+        "Contacts.Read",
+        "Files.Read",
+      ]),
+    );
+  });
+
+  it("still rejects scopes outside the supported Graph capability catalog", async () => {
+    const harness = createHarness();
+    const provider = createMicrosoftConnectorAccountProvider(harness.runtime);
+
+    for (const scope of ["Files.ReadWrite.All", "Mail.ReadWrite.Shared"]) {
+      await expect(
+        provider.startOAuth?.(
+          {
+            provider: "microsoft",
+            flow: unsignedFlow(),
+            scopes: [scope],
+          },
+          harness.manager,
+        ),
+      ).rejects.toMatchObject({ code: "MICROSOFT_OAUTH_SCOPE_UNRECOGNIZED" });
+    }
+  });
+
+  it("rejects a broader mail grant than the requested triage privilege", async () => {
+    const harness = createHarness({
+      returnedScope: "openid profile email User.Read Mail.ReadWrite",
+    });
+    const flow = await startFlowWith(harness, ["microsoft.mail.triage"]);
+
+    await expect(
+      harness.manager.completeOAuth("microsoft", {
+        state: flow.state,
+        code: "authorization-code",
+        query: { state: flow.state },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+      }),
+    });
+    expect(await harness.storage.listAccounts("microsoft")).toEqual([]);
+    expect(harness.vault.size).toBe(0);
+  });
+
+  it("rejects an unrequested cross-domain grant on a calendar-only flow", async () => {
+    const harness = createHarness({
+      returnedScope:
+        "openid profile email User.Read Calendars.Read Contacts.Read",
+    });
+    const flow = await startFlowWith(harness, ["microsoft.calendar.read"]);
+
+    await expect(
+      harness.manager.completeOAuth("microsoft", {
+        state: flow.state,
+        code: "authorization-code",
+        query: { state: flow.state },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_SCOPE_ESCALATION",
+      }),
+    });
+    expect(harness.vault.size).toBe(0);
+  });
+
+  it("rejects a completion whose token grant dropped a requested domain", async () => {
+    const harness = createHarness({
+      returnedScope: "openid profile email User.Read Mail.Read",
+    });
+    const flow = await startFlowWith(harness, [
+      "microsoft.mail.triage",
+      "microsoft.contacts.read",
+    ]);
+
+    await expect(
+      harness.manager.completeOAuth("microsoft", {
+        state: flow.state,
+        code: "authorization-code",
+        query: { state: flow.state },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONNECTOR_OAUTH_COMPLETION_FAILED",
+      cause: expect.objectContaining({
+        code: "MICROSOFT_OAUTH_GRANTED_SCOPE_MISSING",
+      }),
+    });
+    expect(harness.vault.size).toBe(0);
+  });
+
+  it("connects a mail-only account without any calendar grant", async () => {
+    const harness = createHarness({
+      returnedScope: "openid profile email User.Read Mail.Read Mail.Send",
+    });
+    const flow = await startFlowWith(harness, [
+      "microsoft.mail.triage",
+      "microsoft.mail.send",
+    ]);
+    const result = await harness.manager.completeOAuth("microsoft", {
+      state: flow.state,
+      code: "authorization-code",
+      query: { state: flow.state },
+    });
+
+    expect(result.flow.status).toBe("completed");
+    expect(result.account).toMatchObject({
+      provider: "microsoft",
+      status: "connected",
+      externalId: `${TENANT_ID}:${OBJECT_ID}`,
+    });
+    expect(result.account?.metadata).toMatchObject({
+      grantedScopes: [
+        "openid",
+        "profile",
+        "email",
+        "User.Read",
+        "Mail.Read",
+        "Mail.Send",
+      ],
+      hasRefreshToken: true,
+    });
+    expect(harness.vault.size).toBe(1);
+    const secret = JSON.parse([...harness.vault.values()][0] ?? "{}");
+    expect(secret.scope).toBe(
+      "openid profile email User.Read Mail.Read Mail.Send",
+    );
+  });
+});

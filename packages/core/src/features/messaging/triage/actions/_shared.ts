@@ -238,6 +238,80 @@ export interface DraftReplyParams {
 	lookup: MessageLookupHints;
 }
 
+const PLACEHOLDER_SIGNATURE_CLOSINGS = new Set([
+	"best",
+	"regards",
+	"sincerely",
+	"thanks",
+]);
+
+function isPlaceholderSignatureName(value: string): boolean {
+	const normalized = value.toLowerCase();
+	if (normalized === "[name]" || normalized === "[sender]") return true;
+	if (!normalized.startsWith("[your") || !normalized.endsWith("name]")) {
+		return false;
+	}
+	let cursor = "[your".length;
+	const whitespaceStart = cursor;
+	while (cursor < normalized.length && /\s/u.test(normalized[cursor]))
+		cursor += 1;
+	return cursor > whitespaceStart && normalized.slice(cursor) === "name]";
+}
+
+interface PlaceholderSignatureStrip {
+	text: string;
+	strippedClosing: boolean;
+}
+
+function stripPlaceholderSignatureOnce(
+	body: string,
+	allowClosing: boolean,
+): PlaceholderSignatureStrip {
+	let end = body.length;
+	while (end > 0 && /\s/u.test(body[end - 1])) end -= 1;
+	if (body[end - 1] !== "]") return { text: body, strippedClosing: false };
+	let open = end - 2;
+	while (open >= 0 && body[open] !== "[") open -= 1;
+	if (open < 0 || !isPlaceholderSignatureName(body.slice(open, end))) {
+		return { text: body, strippedClosing: false };
+	}
+
+	let removalStart = open;
+	let strippedClosing = false;
+	let closingEnd = open;
+	let sawNewline = false;
+	while (closingEnd > 0 && /\s/u.test(body[closingEnd - 1])) {
+		closingEnd -= 1;
+		if (body[closingEnd] === "\n") sawNewline = true;
+	}
+	if (allowClosing && sawNewline) {
+		if (body[closingEnd - 1] === ",") closingEnd -= 1;
+		for (const closing of PLACEHOLDER_SIGNATURE_CLOSINGS) {
+			const closingStart = closingEnd - closing.length;
+			if (
+				closingStart >= 0 &&
+				body.slice(closingStart, closingEnd).toLowerCase() === closing
+			) {
+				removalStart = closingStart;
+				strippedClosing = true;
+				break;
+			}
+		}
+	}
+	return { text: body.slice(0, removalStart), strippedClosing };
+}
+
+function stripPlaceholderSignature(body: string): string {
+	// The replaced regex grammar ran the closing-form strip and then the bare
+	// strip in sequence, so removing "Thanks,\n[Your Name]" must still expose
+	// and remove one further bare placeholder line beneath it.
+	const first = stripPlaceholderSignatureOnce(body, true);
+	const text = first.strippedClosing
+		? stripPlaceholderSignatureOnce(first.text, false).text
+		: first.text;
+	return text.trim();
+}
+
 function asReplyBody(params: Record<string, unknown>): string | undefined {
 	const body = asString(
 		params.body ??
@@ -258,13 +332,7 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
 	) {
 		return undefined;
 	}
-	return body
-		.replace(
-			/\n{0,2}(?:best|regards|sincerely|thanks),?\s*\n\s*\[(?:your\s+name|name|sender)\]\s*$/i,
-			"",
-		)
-		.replace(/\n{0,2}\[(?:your\s+name|name|sender)\]\s*$/i, "")
-		.trim();
+	return stripPlaceholderSignature(body);
 }
 
 export function parseDraftReplyParams(

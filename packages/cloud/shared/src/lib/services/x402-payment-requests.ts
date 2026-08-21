@@ -189,9 +189,10 @@ function parseStoredPaymentAmount(params: {
   value: unknown;
   allowZero?: boolean;
 }): number {
+  const canonicalString =
+    typeof params.value !== "string" || /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(params.value);
   const parsed =
-    (typeof params.value === "number" || typeof params.value === "string") &&
-    String(params.value).trim() !== ""
+    canonicalString && (typeof params.value === "number" || typeof params.value === "string")
       ? Number(params.value)
       : Number.NaN;
   if (!Number.isFinite(parsed) || parsed < 0 || (!params.allowZero && parsed === 0)) {
@@ -731,25 +732,21 @@ class X402PaymentRequestsService {
       throw new X402PaymentRequestError("Payment request is missing requirements", 500);
     }
 
-    // Validate the USD amount BEFORE the facilitator moves funds on-chain.
-    // create() guarantees a finite positive amountUsd in metadata, so a
-    // non-finite or non-positive value here means the stored request is
-    // corrupt; settling it would take the payer's money and then credit
-    // earnings from NaN (Number(undefined) is NaN, and NaN survives the old
-    // `<= 0` guard because NaN comparisons are false).
-    const amountUsd = Number(metadata.amountUsd ?? payment.credits_to_add);
-    if (!Number.isFinite(amountUsd) || amountUsd <= 0) {
-      logger.error("[x402-payment-requests] refusing to settle request with corrupt amount", {
-        paymentRequestId: payment.id,
-        metadataAmountUsd: metadata.amountUsd,
-        creditsToAdd: payment.credits_to_add,
+    // Validate the canonical stored USD amount BEFORE the facilitator moves
+    // funds on-chain. The public projection uses the same boundary, but settle
+    // must not rely on a caller having projected the record first.
+    let amountUsd: number;
+    try {
+      amountUsd = parseStoredPaymentAmount({
+        paymentId: payment.id,
+        field: "amountUsd",
+        value: metadata.amountUsd ?? payment.credits_to_add,
       });
+    } catch (error) {
+      // error-policy:J1 boundary — preserve the typed corrupt-amount failure
+      // after recording the failed payment callback.
       await this.triggerFailureCallback(payment, "corrupt_amount");
-      throw new X402PaymentRequestError(
-        `Payment request ${payment.id} has a corrupt amount and cannot be settled`,
-        500,
-        "corrupt_amount",
-      );
+      throw error;
     }
 
     let paymentPayload: Parameters<typeof x402FacilitatorService.settle>[0];

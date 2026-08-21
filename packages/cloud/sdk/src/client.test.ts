@@ -169,9 +169,12 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       amount: 25,
       idempotency_key: "idempotency-key-0001",
     });
+    await client.getRedemptionQuote({ network: "base", pointsAmount: 500 });
+    await client.getRedemptionQuote("solana");
     await client.createRedemption({
       pointsAmount: 500,
       network: "base",
+      asset: "eliza",
       payoutAddress: "0x0000000000000000000000000000000000000001",
     });
 
@@ -182,8 +185,16 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     ).toEqual([
       "POST /api/v1/affiliates",
       "POST /api/v1/apps/app_1/earnings/withdraw",
+      "GET /api/v1/redemptions/quote",
+      "GET /api/v1/redemptions/quote",
       "POST /api/v1/redemptions",
     ]);
+    expect(requests[2]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=base&pointsAmount=500",
+    );
+    expect(requests[3]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=solana",
+    );
   });
 });
 
@@ -317,6 +328,14 @@ describe("ElizaCloudClient.createContainer wire contract", () => {
 });
 
 describe("ElizaCloudClient path parameter encoding", () => {
+  it("normalizes 100k trailing API base-url slashes", () => {
+    const client = new ElizaCloudClient({
+      apiBaseUrl: `https://api.eliza.app/api/v1${"/".repeat(100_000)}`,
+    });
+
+    expect(client.apiBaseUrl).toBe("https://api.eliza.app/api/v1");
+  });
+
   it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
     const { client, requests } = createClientRecorder();
 
@@ -338,6 +357,22 @@ describe("ElizaCloudClient path parameter encoding", () => {
         skipAuth: true,
       }),
     ).toThrow("Missing path parameter: sessionId");
+  });
+
+  it("leaves 100k unmatched template openers unchanged without backtracking", async () => {
+    const { client, requests } = createClientRecorder();
+    const unmatched = "{".repeat(100_000);
+
+    await client.callEndpoint("GET", `/api/literal/${unmatched}`, {
+      pathParams: { unused: "value" },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(
+      decodeURIComponent(new URL(requests[0]?.url ?? "").pathname).endsWith(
+        unmatched,
+      ),
+    ).toBe(true);
   });
 });
 

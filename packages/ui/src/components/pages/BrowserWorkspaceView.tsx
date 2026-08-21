@@ -1,6 +1,8 @@
 /**
  * The Browser workspace view (`/browser`): a tabbed embedded-browser surface
- * whose tabs fold into a switcher sheet, with companion-bridge status.
+ * whose tabs fold into a switcher sheet, with companion-bridge status and the
+ * policy-controlled agent browser session panel (takeover, domain modes,
+ * receipts) when the bridge plugin is available.
  *
  * The builtin registry declares this view `header: "fullscreen"`, so the shell
  * mounts it edge-to-edge and the view owns its chrome: a floating glass
@@ -45,6 +47,7 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { BrowserSessionPolicyPanel } from "../browser/BrowserSessionPolicyPanel";
 import { PagePanel } from "../composites/page-panel";
 import { ViewBackButton } from "../shared/ViewHeader";
 import { Button } from "../ui/button";
@@ -2943,6 +2946,18 @@ export function BrowserWorkspaceView(): React.JSX.Element {
                       })}
                     </span>
                   </Button>
+                </div>
+              ) : null}
+              {workspace.mode === "web" &&
+              browserBridgeSupported &&
+              !browserBridgeUnsupportedInNativeLocalMode ? (
+                <div className="mt-4 flex w-full max-w-xl flex-col gap-2 px-6 pb-4">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted">
+                    {t("browserworkspace.AgentBrowserSessions", {
+                      defaultValue: "Agent browser sessions",
+                    })}
+                  </div>
+                  <BrowserSessionPolicyPanel api={client} />
                 </div>
               ) : null}
             </div>

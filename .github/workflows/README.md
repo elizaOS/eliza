@@ -6,21 +6,59 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`merge-candidate-biome.yml` is the pre-merge admission gate. GitHub's merge
-queue synthesizes its checkout SHA from the current `develop` tip and the
-queued pull requests, then the workflow runs the repository-pinned full lint
-and format contracts on that exact tree. Branch rules must require the stable
-`Merge Candidate Biome / Candidate tree` check for the queue to block a bad
-candidate; post-merge workflows remain health checks rather than admission.
+`ci.yml` is the canonical pull-request, merge-queue, and `develop` branch-health
+workflow. Pull requests targeting `develop` or `main` and every `merge_group`
+candidate run the same fail-closed job graph. Branch rules require only its stable
+`CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
+succeeds; individual lane names may evolve without silently weakening admission.
 
-`ci.yml` is the canonical post-merge branch-health workflow for `develop`. It
-classifies changed paths, runs repository quality checks, affected tests,
-deterministic smoke tests, a path-scoped Android release AAB audit, and a
-diff-scoped secret scan. Its stable `CI / Required` job diagnoses the integrated
-branch; it does not replace the merge-candidate admission check above.
+`merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
+GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
+format contracts, but it is not a separately required context because canonical
+CI already covers those contracts and publishes the single admission aggregate.
+
+`.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
+manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
+is read-only by default (`--check`) and requires explicit `--apply` authority to
+create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
+same semantic readback on a schedule, by manual dispatch, and through the
+`repository_ruleset_drift` external repository-dispatch event. A green readback
+proves configuration parity only; owner audit-log review plus red/green and
+direct-push canaries remain required after an authorized apply. Scheduled and
+external readback requires an owner-provisioned
+`REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
+`Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
+that repository permission and is never used for this readback.
+
+The manifest intentionally keeps Code Owner review disabled while
+`.github/CODEOWNERS` names placeholder teams. An organization owner must
+replace every placeholder, verify each team exists and can review the covered
+paths, then submit a separate reviewed manifest change enabling Code Owner
+review. The current ruleset still requires one approval, last-push approval,
+and review-thread resolution.
+
+The manifest allows squash and rebase only: linear history rejects merge commits.
+Required-signature enforcement is deferred because GitHub cannot generally
+produce a signed web squash for an external contributor unless the merger is
+also the pull-request author, while rebase admission requires every source
+commit to be signed. An owner may propose signature enforcement separately only
+after proving contributor-safe signed squash/rebase canaries; ordinary approval,
+last-push approval, thread resolution, status checks, linear history, and the
+force-push/deletion bans remain active here.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
+
+`develop-health.yml` is the canonical uncontended trunk-health lane (#19181).
+Push-triggered develop runs supersede each other during merge waves, so this
+lane runs the repository verify gate on the live develop tip four times a day
+(and on manual dispatch) from a single hosted runner, in a fixed
+never-cancelled concurrency group, and publishes the outcome as a
+`develop-health` commit status on the exact SHA it measured. A missing status
+means no measurement concluded; a red status means develop is actually red —
+the lane exists to keep those two states distinguishable while the fleet is
+saturated.
+[![develop health](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml/badge.svg?branch=develop)](https://github.com/elizaOS/eliza/actions/workflows/develop-health.yml)
 
 ## Scheduled security analysis
 
@@ -37,7 +75,8 @@ fixture, research, example, and documentation trees are excluded.
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
 gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
-title check cover narrower contracts. None replaces the `CI / Required` status.
+title check cover narrower contracts. None replaces the required
+`All Tests Passed` aggregate.
 Representative examples:
 
 - `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
@@ -85,7 +124,11 @@ Representative examples:
 ## Manual operations
 
 - `live-smoke.yml` is the general credential-backed dispatcher. Its input
-  selects `app`, `scenarios`, `cloud`, `voice`, `dedicated`, or `all`. The
+  selects `app`, `scenarios`, `live-information`, `cloud`, `voice`,
+  `dedicated`, or `all`. The `live-information` route runs the focused current
+  information matrix against the selected OpenAI, Anthropic, or OpenRouter
+  planner with an independent judge requirement, a five-minute per-turn budget,
+  and an always-uploaded evidence bundle. The
   `dedicated` suite owns the managed dedicated staging canary and exact
   stale-canary recovery. Specialized app and voice evidence also flows through
   `app-live-e2e.yml` and `voice-live-e2e.yml`, which run on schedule or

@@ -47,6 +47,7 @@ const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
 );
+const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
 const escapedAgentSourceRoot = agentSourceRoot.replace(
   /[.*+?^${}()|[\]\\]/g,
   "\\$&",
@@ -174,10 +175,7 @@ const reactDomRoot = resolveNodePackageRoot("react-dom");
 const adzeRoot = resolveNodePackageRoot("adze");
 const fastRedactRoot = resolveNodePackageRoot("fast-redact");
 const aiEntry = resolveCorePackageEntry("ai");
-const fsExtraEntry = path.join(
-  resolveNodePackageRoot("fs-extra"),
-  "lib/index.js",
-);
+const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
 const handlebarsEntry = resolveCorePackageEntry("handlebars");
 const mammothEntry = resolveCorePackageEntry("mammoth");
 const markdownItRoot = resolveCorePackageRoot("markdown-it");

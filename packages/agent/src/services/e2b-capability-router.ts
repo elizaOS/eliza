@@ -61,6 +61,7 @@ const DEFAULT_E2B_WORKDIR = "/home/user";
 const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
+const MAX_TIMER_TIMEOUT_MS = 2_147_483_647;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
 
@@ -172,21 +173,38 @@ class RemoteRunnerHttpFactory implements E2BSandboxFactory {
     }
     const apiBase = config.remoteHttpBaseUrl.replace(/\/+$/, "");
     const headers = authHeaders(config.remoteHttpToken);
-    const response = await fetch(`${apiBase}/v1/health`, { headers });
-    if (!response.ok) throw new Error(await response.text());
-    return new RemoteRunnerHttpClient(config.provider, apiBase, headers);
+    const timeout = timeoutSignal(config.requestTimeoutMs);
+    try {
+      const response = await fetch(`${apiBase}/v1/health`, {
+        headers,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+    } finally {
+      timeout.dispose();
+    }
+    return new RemoteRunnerHttpClient(
+      config.provider,
+      apiBase,
+      headers,
+      config.requestTimeoutMs,
+    );
   }
 }
 
 class RemoteRunnerHttpClient implements E2BSandboxClient {
   readonly workspacePrepared = true;
   readonly files = {
-    list: (path: string) => this.list(path),
+    list: (
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ) => this.list(path, opts),
     read: (
       path: string,
       opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
     ) => this.read(path, opts),
-    write: (path: string, data: string) => this.write(path, data),
+    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
+      this.write(path, data, opts),
   };
   readonly commands = {
     run: (cmd: string, opts?: SandboxCommandRunOptions) =>
@@ -197,53 +215,69 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     readonly sandboxId: string,
     private readonly apiBase: string,
     private readonly headers: Record<string, string>,
+    private readonly requestTimeoutMs: number,
   ) {}
 
   async kill(): Promise<void> {}
 
-  private async list(path: string): Promise<SandboxEntryInfo[]> {
+  private async list(
+    path: string,
+    opts?: { depth?: number; requestTimeoutMs?: number },
+  ): Promise<SandboxEntryInfo[]> {
     const url = new URL(`${this.apiBase}/v1/fs/entries`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, { headers: this.headers });
-    if (!response.ok) throw new Error(await response.text());
-    const payload = await response.json();
-    const entries = Array.isArray(payload)
-      ? payload
-      : isObject(payload) && Array.isArray(payload.entries)
-        ? payload.entries
-        : null;
-    if (!entries) {
-      throw new Error("Remote runner fs entries response was not an array.");
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
+    try {
+      const response = await fetch(url, {
+        headers: this.headers,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const payload = await response.json();
+      const entries = Array.isArray(payload)
+        ? payload
+        : isObject(payload) && Array.isArray(payload.entries)
+          ? payload.entries
+          : null;
+      if (!entries) {
+        throw new Error("Remote runner fs entries response was not an array.");
+      }
+      return entries.map((entry) => {
+        if (!isObject(entry)) {
+          throw new Error("Remote runner fs entry was not an object.");
+        }
+        const pathValue = String(entry.path ?? "");
+        const stat: SandboxEntryInfo = {
+          path: pathValue,
+          name: String(entry.name ?? nodePath.posix.basename(pathValue)),
+          type: remoteEntryType(entry),
+          size: typeof entry.size === "number" ? entry.size : 0,
+        };
+        const modified =
+          typeof entry.modifiedAt === "string"
+            ? entry.modifiedAt
+            : typeof entry.modified === "string"
+              ? entry.modified
+              : null;
+        if (modified) {
+          stat.modifiedTime = new Date(modified);
+        }
+        return stat;
+      });
+    } finally {
+      timeout.dispose();
     }
-    return entries.map((entry) => {
-      if (!isObject(entry)) {
-        throw new Error("Remote runner fs entry was not an object.");
-      }
-      const pathValue = String(entry.path ?? "");
-      const stat: SandboxEntryInfo = {
-        path: pathValue,
-        name: String(entry.name ?? nodePath.posix.basename(pathValue)),
-        type: remoteEntryType(entry),
-        size: typeof entry.size === "number" ? entry.size : 0,
-      };
-      const modified =
-        typeof entry.modifiedAt === "string"
-          ? entry.modifiedAt
-          : typeof entry.modified === "string"
-            ? entry.modified
-            : null;
-      if (modified) {
-        stat.modifiedTime = new Date(modified);
-      }
-      return stat;
-    });
   }
 
   private async read(
     path: string,
     opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
   ): Promise<string | Uint8Array> {
-    const timeout = timeoutSignal(opts?.requestTimeoutMs);
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
     try {
       const url = new URL(`${this.apiBase}/v1/fs/file`);
       url.searchParams.set("path", path);
@@ -269,26 +303,37 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
   private async write(
     path: string,
     data: string,
+    opts?: { requestTimeoutMs?: number },
   ): Promise<{ path: string; name: string }> {
     const url = new URL(`${this.apiBase}/v1/fs/file`);
     url.searchParams.set("path", path);
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        ...this.headers,
-        "content-type": "text/plain",
-      },
-      body: data,
-    });
-    if (!response.ok) throw new Error(await response.text());
-    return { path, name: nodePath.posix.basename(path) };
+    const timeout = timeoutSignal(
+      opts?.requestTimeoutMs ?? this.requestTimeoutMs,
+    );
+    try {
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          ...this.headers,
+          "content-type": "text/plain",
+        },
+        body: data,
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      return { path, name: nodePath.posix.basename(path) };
+    } finally {
+      timeout.dispose();
+    }
   }
 
   private async runCommand(
     cmd: string,
     opts: SandboxCommandRunOptions = {},
   ): Promise<SandboxCommandResult> {
-    const timeout = timeoutSignal(opts.timeoutMs ?? opts.requestTimeoutMs);
+    const effectiveTimeoutMs =
+      opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs;
+    const timeout = timeoutSignal(effectiveTimeoutMs);
     try {
       const response = await fetch(`${this.apiBase}/v1/processes/run`, {
         method: "POST",
@@ -326,7 +371,13 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
         exitCode,
         stdout,
         stderr: typeof payload.stderr === "string" ? payload.stderr : "",
+        ...(payload.timedOut === true ? { timedOut: true } : {}),
       };
+    } catch (error) {
+      if (timeout.timedOut()) {
+        throw createTimeoutError(effectiveTimeoutMs);
+      }
+      throw error;
     } finally {
       timeout.dispose();
     }
@@ -373,44 +424,50 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
     config: E2BRemoteRunnerConfig,
     remoteToken: string,
   ): Promise<CloudCodingContainerSession> {
-    const response = await fetch(
-      `${config.cloudApiBaseUrl}/coding-containers`,
-      {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${config.cloudApiToken}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          agent: toCloudCodingAgent(config.agentRunners[0] ?? "codex"),
-          workspacePath: config.workdir,
-          container: {
-            ...(config.cloudContainerImage
-              ? { image: config.cloudContainerImage }
-              : {}),
-            environmentVars: {
-              HOST: "0.0.0.0",
-              ELIZA_REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
-              REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
-              ELIZA_CODING_WORKSPACE: config.workdir,
-              ELIZA_SANDBOX_AGENT_RUNNERS: config.agentRunners.join(","),
-              ...config.envs,
-            },
+    const timeout = timeoutSignal(config.requestTimeoutMs);
+    try {
+      const response = await fetch(
+        `${config.cloudApiBaseUrl}/coding-containers`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${config.cloudApiToken}`,
+            "content-type": "application/json",
           },
-          metadata: config.metadata,
-        }),
-      },
-    );
-    const payload = await readCloudEnvelope(response);
-    if (!response.ok) {
-      throw new Error(cloudErrorMessage(payload, response.statusText));
-    }
-    const session = parseCloudCodingContainerSession(payload);
-    return session.url
-      ? session
-      : await this.pollCodingContainer(config, session);
-  }
+          body: JSON.stringify({
+            agent: toCloudCodingAgent(config.agentRunners[0] ?? "codex"),
+            workspacePath: config.workdir,
+            container: {
+              ...(config.cloudContainerImage
+                ? { image: config.cloudContainerImage }
+                : {}),
+              environmentVars: {
+                HOST: "0.0.0.0",
+                ELIZA_REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
+                REMOTE_RUNNER_HTTP_TOKEN: remoteToken,
+                ELIZA_CODING_WORKSPACE: config.workdir,
+                ELIZA_SANDBOX_AGENT_RUNNERS: config.agentRunners.join(","),
+                ...config.envs,
+              },
+            },
+            metadata: config.metadata,
+          }),
+          signal: timeout.signal,
+        },
+      );
+      const payload = await readCloudEnvelope(response);
+      if (!response.ok) {
+        throw new Error(cloudErrorMessage(payload, response.statusText));
+      }
 
+      const session = parseCloudCodingContainerSession(payload);
+      return session.url
+        ? session
+        : await this.pollCodingContainer(config, session);
+    } finally {
+      timeout.dispose();
+    }
+  }
   private async pollCodingContainer(
     config: E2BRemoteRunnerConfig,
     session: CloudCodingContainerSession,
@@ -419,17 +476,23 @@ class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
     let current = session;
     while (!current.url && Date.now() < deadline) {
       await sleep(5000);
-      const response = await fetch(
-        `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
-        {
-          headers: { authorization: `Bearer ${config.cloudApiToken}` },
-        },
-      );
-      const payload = await readCloudEnvelope(response);
-      if (!response.ok) {
-        throw new Error(cloudErrorMessage(payload, response.statusText));
+      const timeout = timeoutSignal(config.requestTimeoutMs);
+      try {
+        const response = await fetch(
+          `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
+          {
+            headers: { authorization: `Bearer ${config.cloudApiToken}` },
+            signal: timeout.signal,
+          },
+        );
+        const payload = await readCloudEnvelope(response);
+        if (!response.ok) {
+          throw new Error(cloudErrorMessage(payload, response.statusText));
+        }
+        current = parseCloudCodingContainerSession(payload);
+      } finally {
+        timeout.dispose();
       }
-      current = parseCloudCodingContainerSession(payload);
       if (current.status === "failed" || current.status === "stopped") {
         throw new Error(
           `Eliza Cloud coding container ${current.containerId} reached status ${current.status}.`,
@@ -1068,16 +1131,54 @@ function remoteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
   return normalizeSandboxEntryType(value);
 }
 
+function createTimeoutError(ms: number): Error {
+  const error = new Error(`The operation timed out after ${ms}ms.`);
+  error.name = "TimeoutError";
+  return error;
+}
+
+function isTimeoutErrorLike(value: unknown): boolean {
+  if (!(value instanceof Error)) return false;
+  if (
+    value.name === "TimeoutError" ||
+    /timed? out|timeout/i.test(value.message)
+  ) {
+    return true;
+  }
+  return isTimeoutErrorLike((value as Error & { cause?: unknown }).cause);
+}
+
 function timeoutSignal(ms: number | undefined): {
   signal: AbortSignal | undefined;
   dispose(): void;
+  timedOut(): boolean;
 } {
-  if (!ms) return { signal: undefined, dispose: () => {} };
+  if (ms === undefined) {
+    return {
+      signal: undefined,
+      dispose: () => {},
+      timedOut: () => false,
+    };
+  }
+  if (!Number.isSafeInteger(ms) || ms <= 0 || ms > MAX_TIMER_TIMEOUT_MS) {
+    throw new RangeError(
+      `Duration must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}ms.`,
+    );
+  }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
+  const reason = createTimeoutError(ms);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(reason);
+  }, ms);
   return {
     signal: controller.signal,
     dispose: () => clearTimeout(timer),
+    timedOut: () =>
+      timedOut ||
+      (controller.signal.aborted &&
+        isTimeoutErrorLike(controller.signal.reason)),
   };
 }
 
@@ -1334,8 +1435,16 @@ function positiveIntSetting(
   const value = readSetting(runtime, key);
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (Number.isInteger(parsed) && parsed > 0) return parsed;
-  throw new Error(`${key} must be a positive integer.`);
+  if (
+    Number.isSafeInteger(parsed) &&
+    parsed > 0 &&
+    parsed <= MAX_TIMER_TIMEOUT_MS
+  ) {
+    return parsed;
+  }
+  throw new Error(
+    `${key} must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}.`,
+  );
 }
 
 function agentRunnersSetting(
@@ -1391,7 +1500,7 @@ function commandRunResult(
   return {
     output: `${result.stdout}${stderr}`,
     exitCode: result.exitCode,
-    timedOut,
+    timedOut: timedOut || result.timedOut === true,
   };
 }
 
@@ -1415,9 +1524,7 @@ function commandResultFromError(error: Error): SandboxCommandResult | null {
 }
 
 function isTimeoutError(error: Error): boolean {
-  return (
-    error.name === "TimeoutError" || /timed? out|timeout/i.test(error.message)
-  );
+  return isTimeoutErrorLike(error);
 }
 
 function normalizeSandboxPath(input: string): string {

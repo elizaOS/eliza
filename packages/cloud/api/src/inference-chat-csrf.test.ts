@@ -20,7 +20,7 @@ import type { ExecutionContext as HonoExecutionContext } from "hono";
 
 process.env.NODE_ENV ||= "test";
 
-mock.module("@/db/schemas", () => ({}));
+mock.module("@/db/schemas", () => ({ organizations: {} }));
 mock.module("@/db/schemas/eliza", () => ({}));
 
 import { stewardCookieNames } from "@/lib/auth/steward-cookies";

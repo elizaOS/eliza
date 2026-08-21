@@ -338,6 +338,34 @@ describe("AppsRepository.update", () => {
   });
 });
 
+describe("AppsRepository.claimDeploymentStart", () => {
+  test("admits one active generation and allows a new generation after failure", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Single Flight Deploy",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+
+    const firstStartedAt = new Date("2026-08-20T12:00:00.000Z");
+    const [left, right] = await Promise.all([
+      appsRepository.claimDeploymentStart(created.id, { last_deployed_at: firstStartedAt }),
+      appsRepository.claimDeploymentStart(created.id, { last_deployed_at: firstStartedAt }),
+    ]);
+    expect([left, right].filter(Boolean)).toHaveLength(1);
+    expect((left ?? right)?.deployment_status).toBe("building");
+
+    await appsRepository.update(created.id, { deployment_status: "failed" });
+    const nextStartedAt = new Date("2026-08-20T12:01:00.000Z");
+    const next = await appsRepository.claimDeploymentStart(created.id, {
+      last_deployed_at: nextStartedAt,
+    });
+    expect(next?.deployment_status).toBe("building");
+    expect(next?.last_deployed_at?.toISOString()).toBe(nextStartedAt.toISOString());
+  });
+});
+
 describe("AppsRepository.delete", () => {
   test("delete removes the row (findById -> undefined) and evicts the cache", async () => {
     expect(pgliteReady).toBe(true);

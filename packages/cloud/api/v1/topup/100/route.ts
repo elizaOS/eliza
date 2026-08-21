@@ -9,8 +9,8 @@ import { Hono } from "hono";
 
 import {
   getIpKey,
+  moneyRateLimit,
   RateLimitPresets,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createTopupHandler } from "@/lib/services/topup-handler";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -26,10 +26,9 @@ const topup = createTopupHandler({
 // Money route: per-IP, fail-closed rate limit so a top-up flood is bounded
 // even during a Redis blip (M11).
 app.use(
-  rateLimit({
+  moneyRateLimit({
     ...RateLimitPresets.STRICT,
     keyGenerator: getIpKey,
-    failClosed: true,
   }),
 );
 

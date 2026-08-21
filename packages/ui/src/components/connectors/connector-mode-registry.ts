@@ -518,7 +518,7 @@ registerConnectorModes("imessage", [
   },
   {
     id: "direct",
-    label: "Direct (chat.db)",
+    label: "Messages on this Mac",
     labelKey: "connectormode.imessage.direct.label",
     description:
       "Read iMessage database directly on this Mac. Requires Full Disk Access.",
@@ -528,17 +528,6 @@ registerConnectorModes("imessage", [
     channelMode: "delegate",
     hideOnManagedCloud: true,
     defaultPriority: 2,
-  },
-  {
-    id: "bluebubbles",
-    label: "BlueBubbles",
-    labelKey: "connectormode.imessage.bluebubbles.label",
-    description:
-      "Bridge via BlueBubbles server app. Works locally or over network.",
-    descriptionKey: "connectormode.imessage.bluebubbles.description",
-    managementMode: "local-config",
-    setupPluginId: "bluebubbles",
-    channelMode: "delegate",
   },
 ]);
 

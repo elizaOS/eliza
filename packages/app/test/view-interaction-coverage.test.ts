@@ -151,6 +151,18 @@ const GUI_INTERACTION_OWNERS: Readonly<
       ],
     },
   ],
+  maps: [
+    {
+      spec: "plugins/plugin-maps/src/components/MapsView.test.tsx",
+      proves:
+        "Searches normalized places, filters and selects details, compares only provider-returned route alternatives, and hands persistent actions to the receipt-enforced agent boundary.",
+      signals: [
+        "shows only provider-returned route alternatives",
+        "MAPS_SAVE",
+        "Route geometry is not drawn",
+      ],
+    },
+  ],
   notes: [
     {
       spec: "plugins/plugin-notes/src/views/notes.e2e.test.tsx",
@@ -315,7 +327,7 @@ describe("plugin view interaction coverage", () => {
       return !hasInteractionOwner && !(viewKey(view) in INTERACTION_DEBT);
     });
 
-    expect(visualCases.length).toBe(22);
+    expect(visualCases.length).toBe(23);
     expect(
       unclassified.map((view) => `${viewKey(view)} ${view.path}`),
       "Add an interaction owner or an explicit debt reason for each view case.",

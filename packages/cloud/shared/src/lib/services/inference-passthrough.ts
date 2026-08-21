@@ -8,17 +8,18 @@
  * decode/re-encode pipeline, not the provider. For requests that need NO
  * transformation (plain streaming chat against an OpenAI-compatible upstream,
  * no tools / response_format / web search), the route can instead pipe the
- * upstream response body straight to the client and meter a teed copy in the
- * background.
+ * upstream response body straight to the client while a push-based meter
+ * observes the same chunks in-line (no `tee()` — a second branch would let a
+ * slow client accumulate an unbounded queue, #20032).
  *
  * This module owns the pieces that are independent of the route:
  *   - the `INFERENCE_PASSTHROUGH_STREAMING` flag (default OFF — same
  *     soak-then-cutover discipline as the #9899 INFERENCE_* flags; flag off is
  *     byte-identical to today),
- *   - the background meter: an SSE reader for the teed branch that extracts
- *     the terminal `stream_options.include_usage` usage frame plus the
- *     delivered text, which the route feeds into the EXISTING billing settle
- *     chain (billUsage → settleReservation → analytics → audit),
+ *   - the stream meter: an incremental SSE observer that extracts the
+ *     terminal `stream_options.include_usage` usage frame plus the delivered
+ *     text, which the route feeds into the EXISTING billing settle chain
+ *     (billUsage → settleReservation → analytics → audit),
  *   - stream milestone observation (#16079): the same reader records when the
  *     first SSE frame, the first reasoning delta, the first visible content
  *     delta, and stream completion were observed, so one correlated trace can
@@ -69,18 +70,28 @@ export interface PassthroughUsage {
 }
 
 /**
- * Stream milestones observed on the teed branch (#16079). `null` means the
+ * Stream milestones observed on the metered branch (#16079). `null` means the
  * boundary was never observed (no such frame arrived, or the read failed
  * first) — absence is reported as absence, never as zero.
  */
 export interface PassthroughStreamMilestones {
-  /** First successfully parsed JSON `data:` frame (malformed frames and `[DONE]` do not count). */
+  /**
+   * First non-empty SSE `data:` event, timed at receipt. Malformed payloads
+   * and `[DONE]` count: the upstream verifiably produced an event even when
+   * its payload cannot be parsed (#20032), so time-to-first-event stays
+   * truthful for degenerate streams.
+   */
   firstEventMs: number | null;
   /** First delta carrying reasoning (`reasoning`, `reasoning_content`, or `thinking`). */
   firstReasoningMs: number | null;
   /** First delta carrying visible `content` text. */
   firstContentMs: number | null;
-  /** Reader observed stream termination (upstream close or `[DONE]`). */
+  /**
+   * Protocol completion: the provider's `data: [DONE]` marker, timed when it
+   * was parsed. A clean EOF WITHOUT `[DONE]` is a truncated stream and leaves
+   * this null (#20032) — a cut connection must never look like a completed
+   * one.
+   */
   completionMs: number | null;
 }
 
@@ -152,35 +163,49 @@ function roundedElapsed(now: () => number, origin: number): number {
   return Math.round((now() - origin) * 100) / 100;
 }
 
+/** Injectable timing options shared by the meter and the reader wrapper. */
+export interface PassthroughMeterOptions {
+  /** Monotonic origin the milestone timestamps are measured from. */
+  startedAt?: number;
+  /** Injectable clock; defaults to a receiver-safe `performance.now()` call. */
+  now?: () => number;
+}
+
 /**
- * Drain one tee branch of the upstream SSE response and report what it
- * carried. This is the billing meter, so it must never throw: a read failure
- * (client abort propagated to the upstream fetch, upstream drop) is returned
- * as `readError` with everything observed up to that point intact, and the
- * route settles from it exactly like today's onAbort path. Malformed frames
- * are skipped — the meter reports only what the provider verifiably sent,
- * never fabricated tokens (error-policy: J3 — an unparseable frame yields "no
- * data", not fake-valid data).
+ * Push-based incremental SSE meter for the pass-through pipe. The route feeds
+ * it the exact chunks it forwards to the client (single upstream reader, no
+ * `tee()`), so upstream pulling stays bounded by the client's own
+ * backpressure and the meter can never accumulate an unbounded queue behind a
+ * slow consumer (#20032 defect 4).
  *
- * Milestone timestamps (#16079) are taken when a frame is PARSED, using
- * `startedAt` as the monotonic origin and the injectable `now` clock (tests
- * pin both). The tee delivers both branches at the reader's pace, so these
- * timestamps bound the upstream's frame availability; they are not proof of
- * exactly when the client branch delivered the same bytes.
+ * `observe` is synchronous and never throws — this is the billing meter, and
+ * a parsing defect must not corrupt the byte pipe (error-policy: J7, recorded
+ * as `readError`). `finish` (clean upstream EOF) and `fail` (read error /
+ * client abort) are terminal and idempotent; both return the tail snapshot
+ * the settle chain consumes.
  */
-export async function readPassthroughStreamTail(
-  stream: ReadableStream<Uint8Array>,
-  abortSignal?: AbortSignal,
-  options: {
-    /** Monotonic origin the milestone timestamps are measured from. */
-    startedAt?: number;
-    /** Injectable clock; defaults to `performance.now`. */
-    now?: () => number;
-  } = {},
-): Promise<PassthroughStreamTail> {
-  const now = options.now ?? performance.now;
+export interface PassthroughStreamMeter {
+  observe(chunk: Uint8Array): void;
+  finish(): PassthroughStreamTail;
+  fail(error: unknown): PassthroughStreamTail;
+}
+
+/**
+ * Build a stream meter. Milestone timestamps (#16079) are taken when a frame
+ * is observed, elapsed from `startedAt` against the injected `now` clock
+ * (tests pin both; the route pins `startedAt` to the provider fetch
+ * dispatch). The default clock closes over `performance` — never the unbound
+ * `performance.now` reference, which throws on receiver-enforcing runtimes
+ * (#20032 defect 1).
+ */
+export function createPassthroughStreamMeter(
+  options: PassthroughMeterOptions = {},
+): PassthroughStreamMeter {
+  const now = options.now ?? (() => performance.now());
   const startedAt = options.startedAt ?? now();
   const decoder = new TextDecoder();
+  let buffer = "";
+  let terminal = false;
   const tail: PassthroughStreamTail = {
     usage: null,
     deliveredText: "",
@@ -200,13 +225,17 @@ export async function readPassthroughStreamTail(
     if (!line.startsWith("data:")) return;
     const payload = line.slice("data:".length).trim();
     if (!payload) return;
+    // First-event is a receipt-time boundary (#20032 defect 2): the upstream
+    // verifiably emitted an event, so it counts even when the payload is
+    // malformed or is the bare `[DONE]` terminal.
+    tail.milestones.firstEventMs ??= roundedElapsed(now, startedAt);
     if (payload === "[DONE]") {
       tail.sawDone = true;
       // [DONE] IS the provider's completion marker (#16079): record it now
       // rather than at EOF, so a provider that delays the connection close
-      // after [DONE] (or drops it) cannot skew or lose the boundary. Gated on
-      // !sawErrorFrame: an error frame already parsed means the provider
-      // reported failure — [DONE] after it must not resurrect completion.
+      // after [DONE] cannot skew the boundary. Gated on !sawErrorFrame: an
+      // error frame already parsed means the provider reported failure —
+      // [DONE] after it must not resurrect completion.
       if (!tail.sawErrorFrame) {
         tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
       }
@@ -225,7 +254,6 @@ export async function readPassthroughStreamTail(
       usage?: SseUsageRecord | null;
       error?: unknown;
     };
-    tail.milestones.firstEventMs ??= roundedElapsed(now, startedAt);
     if (record.error !== undefined && record.error !== null) {
       tail.sawErrorFrame = true;
       // An error frame parsed AFTER [DONE] revokes that completion (#16079):
@@ -257,14 +285,80 @@ export async function readPassthroughStreamTail(
     }
   };
 
+  const consume = (text: string) => {
+    buffer += text;
+    let newlineAt = buffer.indexOf("\n");
+    while (newlineAt !== -1) {
+      handleLine(buffer.slice(0, newlineAt));
+      buffer = buffer.slice(newlineAt + 1);
+      newlineAt = buffer.indexOf("\n");
+    }
+  };
+
+  return {
+    observe(chunk: Uint8Array): void {
+      if (terminal) return;
+      try {
+        consume(decoder.decode(chunk, { stream: true }));
+      } catch (error) {
+        // error-policy:J7 metering must not corrupt the byte pipe — the route
+        // observes the failure via readError and settles conservatively.
+        tail.readError ??= error;
+      }
+    },
+    finish(): PassthroughStreamTail {
+      if (terminal) return tail;
+      terminal = true;
+      try {
+        consume(decoder.decode());
+        if (buffer) {
+          handleLine(buffer);
+          buffer = "";
+        }
+      } catch (error) {
+        // error-policy:J7 see observe().
+        tail.readError ??= error;
+      }
+      // A clean EOF does NOT fabricate completion: only [DONE] proves the
+      // provider finished its protocol (#20032 defect 3). A truncated stream
+      // (EOF without [DONE]) keeps completionMs null and sawDone false so
+      // telemetry and settlement see it as incomplete.
+      return tail;
+    },
+    fail(error: unknown): PassthroughStreamTail {
+      if (!terminal) {
+        terminal = true;
+        tail.readError ??=
+          error ?? new DOMException("The client stopped reading the stream", "AbortError");
+      }
+      return tail;
+    },
+  };
+}
+
+/**
+ * Drain a whole SSE stream through the meter and report what it carried —
+ * the pull-based wrapper for callers that own a dedicated branch (tests, any
+ * future non-piped consumer). Never throws: a read failure (client abort,
+ * upstream drop) is returned as `readError` with everything observed up to
+ * that point intact, and the route settles from it exactly like the onAbort
+ * path.
+ */
+export async function readPassthroughStreamTail(
+  stream: ReadableStream<Uint8Array>,
+  abortSignal?: AbortSignal,
+  options: PassthroughMeterOptions = {},
+): Promise<PassthroughStreamTail> {
+  const meter = createPassthroughStreamMeter(options);
   const reader = stream.getReader();
+  let abortError: unknown = null;
   const abortMeter = () => {
-    tail.readError ??=
+    abortError ??=
       abortSignal?.reason ??
       new DOMException("The client stopped reading the stream", "AbortError");
     // error-policy:J7 metering cancellation records failure for settlement.
-    void reader.cancel(tail.readError).catch((error) => {
-      tail.readError ??= error;
+    void reader.cancel(abortError).catch((error) => {
+      abortError ??= error;
     });
   };
   if (abortSignal?.aborted) {
@@ -273,38 +367,19 @@ export async function readPassthroughStreamTail(
     abortSignal?.addEventListener("abort", abortMeter, { once: true });
   }
   try {
-    let buffer = "";
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let newlineAt = buffer.indexOf("\n");
-      while (newlineAt !== -1) {
-        handleLine(buffer.slice(0, newlineAt));
-        buffer = buffer.slice(newlineAt + 1);
-        newlineAt = buffer.indexOf("\n");
-      }
+      meter.observe(value);
     }
-    buffer += decoder.decode();
-    if (buffer) handleLine(buffer);
-    // Normal termination (upstream close, with or without [DONE]) still counts
-    // as observed completion; abort/error paths fall through with the
-    // milestone left null so they cannot masquerade as a completed stream.
-    // `??=` — NOT assignment — so a completion already recorded at [DONE]
-    // parse time keeps the [DONE] boundary even when the provider delays the
-    // connection close after it (#16079). An in-stream SSE error frame is NOT
-    // completion: the provider reported failure mid-stream and the stream must
-    // not be recorded as if it ran to a healthy end.
-    if (tail.readError === null && !tail.sawErrorFrame) {
-      tail.milestones.completionMs ??= roundedElapsed(now, startedAt);
-    }
+    if (abortError !== null) return meter.fail(abortError);
+    return meter.finish();
   } catch (error) {
     // error-policy:J7 metering must not kill the settle chain — the route
     // observes the failure via readError and settles the delivered portion.
-    tail.readError = error;
+    return meter.fail(abortError ?? error);
   } finally {
     abortSignal?.removeEventListener("abort", abortMeter);
     reader.releaseLock();
   }
-  return tail;
 }

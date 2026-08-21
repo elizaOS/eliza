@@ -18,6 +18,12 @@ export interface IStorage {
     predicate?: (item: T) => boolean
   ): Promise<number>;
   clear(): Promise<void>;
+  /** Applies one collection mutation without exposing intermediate state. */
+  applyBatch?(batch: {
+    collection: string;
+    deletes: string[];
+    sets: Array<{ id: string; data: unknown }>;
+  }): Promise<void>;
 }
 
 export interface IVectorStorage {
@@ -25,6 +31,20 @@ export interface IVectorStorage {
   add(id: string, vector: number[]): Promise<void>;
   remove(id: string): Promise<void>;
   search(query: number[], k: number, threshold?: number): Promise<VectorSearchResult[]>;
+  /**
+   * Exhaustive nearest-neighbor scan over every indexed vector, ordered by
+   * ascending cosine distance. Unlike `search`, which navigates the
+   * approximate HNSW graph and may omit reachable-but-unvisited nodes, this
+   * considers the entire index so callers that apply their own scope filter
+   * afterwards get the true "top K among eligible" set instead of a global
+   * top-K that can be starved by closer out-of-scope vectors.
+   */
+  searchExact(
+    query: number[],
+    k: number,
+    threshold?: number,
+    eligibleIds?: ReadonlySet<string>
+  ): Promise<VectorSearchResult[]>;
   clear(): Promise<void>;
 }
 

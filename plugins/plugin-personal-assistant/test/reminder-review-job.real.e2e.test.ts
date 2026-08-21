@@ -212,6 +212,7 @@ describe("reminder review jobs real scenarios", () => {
       const { initialAttempt, occurrence } = await seedDueStretchReview({
         runtime,
         repository,
+        ownerEntityId: service.ownerEntityId(),
       });
 
       const existingAttempts = await repository.listReminderAttempts(
@@ -276,6 +277,7 @@ describe("reminder review jobs real scenarios", () => {
       const { initialAttempt, occurrence } = await seedDueStretchReview({
         runtime,
         repository,
+        ownerEntityId: service.ownerEntityId(),
       });
 
       const result = await service.processReminders({
@@ -310,6 +312,56 @@ describe("reminder review jobs real scenarios", () => {
       expect(reviewedAttempt?.deliveryMetadata).toMatchObject({
         [REMINDER_REVIEW_STATUS_METADATA_KEY]: "escalated",
       });
+    } finally {
+      await runtimeHandle.cleanup();
+    }
+  }, 30_000);
+
+  it("does not resolve a due review for another owner's completed occurrence", async () => {
+    const runtimeHandle = await createRealTestRuntime({
+      characterName: "lifeops-reminder-review-owner-scope-agent",
+    });
+    try {
+      const runtime = runtimeHandle.runtime;
+      await LifeOpsRepository.bootstrapSchema(runtime);
+      const repository = new LifeOpsRepository(runtime);
+      const service = new LifeOpsService(runtime);
+      const foreignOwnerId = stringToUuid("lifeops-reminder-foreign-owner");
+      const { initialAttempt, occurrence } = await seedDueStretchReview({
+        runtime,
+        repository,
+        ownerEntityId: foreignOwnerId,
+      });
+      await repository.updateOccurrence({
+        ...occurrence,
+        state: "completed",
+        updatedAt: addMinutes(baseAt, 4),
+      });
+
+      const result = await service.processDueReminderReviewJobs({
+        now: new Date(addMinutes(baseAt, 8)),
+        limit: 3,
+        attempts: await repository.listReminderAttempts(
+          String(runtime.agentId),
+        ),
+        policies: [],
+        activityProfile: null,
+        timezone: "UTC",
+        defaultIntensity: "normal",
+      });
+
+      expect(result).toEqual([]);
+      const persistedAttempts = await repository.listReminderAttempts(
+        String(runtime.agentId),
+        { ownerType: "occurrence", ownerId: occurrence.id },
+      );
+      const reviewedAttempt = persistedAttempts.find(
+        (attempt) => attempt.id === initialAttempt.id,
+      );
+      expect(reviewedAttempt?.reviewStatus).not.toBe("resolved");
+      expect(reviewedAttempt?.deliveryMetadata).not.toHaveProperty(
+        REMINDER_REVIEW_DECISION_METADATA_KEY,
+      );
     } finally {
       await runtimeHandle.cleanup();
     }
