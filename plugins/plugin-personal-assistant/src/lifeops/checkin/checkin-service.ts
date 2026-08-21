@@ -323,7 +323,7 @@ type HabitCollectorRow = {
   occurrence_progress_total: unknown;
 };
 
-type HabitOccurrence = {
+export type HabitOccurrence = {
   state: LifeOpsOccurrenceState;
   dueAtMs: number;
   updatedAtMs: number;
@@ -370,7 +370,13 @@ function resolvePausedUntil(
   return new Date(pauseUntilMs).toISOString();
 }
 
-function buildHabitSummary(args: {
+/**
+ * Projects one definition's occurrences into the client-facing `HabitSummary`.
+ * For `count_per_day` cadences the summary carries the server-derived quota
+ * progress for the current active day so clients render remaining counts
+ * instead of recomputing them; every other cadence gets `progress: null`.
+ */
+export function buildHabitSummary(args: {
   definitionId: string;
   title: string;
   kind: "habit" | "routine";

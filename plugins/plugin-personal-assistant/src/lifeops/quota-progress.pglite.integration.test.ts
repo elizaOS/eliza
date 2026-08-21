@@ -280,6 +280,34 @@ describe("count-per-day quota progress — real store", () => {
     });
   });
 
+  it("cannot resurrect a completed day from a stale re-materialization", async () => {
+    const { occurrenceId } = await createQuotaDefinition("stale upsert quota");
+    const stale = await repository.getOccurrence(agentId, occurrenceId);
+    expect(stale).toBeDefined();
+    if (!stale) throw new Error("quota occurrence missing");
+
+    await service.recordOccurrenceProgress(occurrenceId, {
+      idempotencyKey: "stale-1",
+      quantity: 3,
+    });
+    const completed = await repository.getOccurrenceView(agentId, occurrenceId);
+    expect(completed?.state).toBe("completed");
+
+    // The pre-completion snapshot is exactly what a concurrent
+    // `refreshDefinitionOccurrences` would write back.
+    await repository.upsertOccurrence({
+      ...stale,
+      state: "pending",
+      updatedAt: new Date().toISOString(),
+    });
+    const afterStaleWrite = await repository.getOccurrenceView(
+      agentId,
+      occurrenceId,
+    );
+    expect(afterStaleWrite?.state).toBe("completed");
+    expect(afterStaleWrite?.progress?.remainingCount).toBe(0);
+  });
+
   it("refuses increments from a skipped occurrence and on non-quota cadences", async () => {
     const { occurrenceId } = await createQuotaDefinition("plank");
     await service.skipOccurrence(occurrenceId);

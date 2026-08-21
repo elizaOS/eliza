@@ -3656,9 +3656,30 @@ export class LifeOpsRepository {
         relevance_start_at = excluded.relevance_start_at,
         relevance_end_at = excluded.relevance_end_at,
         window_name = excluded.window_name,
-        state = excluded.state,
-        snoozed_until = excluded.snoozed_until,
-        completion_payload_json = excluded.completion_payload_json,
+        -- A re-materialization computed from a snapshot taken before a
+        -- concurrent completion must not resurrect the day: when the stored
+        -- row is already completed and the incoming row is non-terminal, the
+        -- completed state and its payload win. Real terminal transitions go
+        -- through completeOccurrenceIfNonTerminal / the skip and expire
+        -- writers, which always carry a terminal state here.
+        state = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.state
+          ELSE excluded.state
+        END,
+        snoozed_until = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN NULL
+          ELSE excluded.snoozed_until
+        END,
+        completion_payload_json = CASE
+          WHEN life_task_occurrences.state = 'completed'
+            AND excluded.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+          THEN life_task_occurrences.completion_payload_json
+          ELSE excluded.completion_payload_json
+        END,
         derived_target_json = excluded.derived_target_json,
         metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at`,

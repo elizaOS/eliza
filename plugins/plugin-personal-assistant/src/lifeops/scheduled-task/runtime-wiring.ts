@@ -115,7 +115,15 @@ function quotaOccurrenceId(
   return metadataString(metadata, QUOTA_OCCURRENCE_METADATA_KEY);
 }
 
-function registerQuotaProgressContributions(args: {
+/**
+ * Contribute the quota check-in gate and completion check to the single
+ * ScheduledTask spine. `quota_incomplete` is the structural stop-when-complete
+ * / active-window / active-day gate for `count_per_day` check-in fires;
+ * `quota_complete` retires the scheduled item once the derived remaining count
+ * reaches zero. Both read server-derived progress from the LifeOps repository
+ * and branch only on typed fields — never on prompt prose.
+ */
+export function registerQuotaProgressContributions(args: {
   runtime: IAgentRuntime;
   agentId: string;
   gates: ReturnType<typeof createTaskGateRegistry>;
@@ -450,7 +458,7 @@ function metadataString(
  *   deterministic fallback; a present-but-failed model call is a typed,
  *   retryable dispatch failure.
  */
-async function composeOwnerFacingScheduledTaskText(
+export async function composeOwnerFacingScheduledTaskText(
   runtime: IAgentRuntime,
   record: ScheduledTaskDispatchRecord,
 ): Promise<string> {
