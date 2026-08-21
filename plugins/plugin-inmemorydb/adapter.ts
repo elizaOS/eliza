@@ -1190,30 +1190,33 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       // and can leave in-scope-but-unvisited vectors out of the ranking entirely
       // (a dense cluster of closer out-of-scope duplicates traps the beam), so
       // even requesting the full size does not guarantee the eligible set. The
-      // exact O(n) scan ranks every indexed vector, so the subsequent scope
-      // filter + slice yields the true top K among eligible memories. Threshold
+      // exact scan ranks every eligible indexed vector, so the bounded top-K
+      // heap yields the true top K among eligible memories. Threshold
       // stays outside scope filtering: it is monotone in the similarity ordering,
       // so applying it during ranking is identical to applying it after the cut.
+      const eligibleMemories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
+          (!params.roomId || memory.roomId === params.roomId) &&
+          (!params.worldId || memory.worldId === params.worldId) &&
+          (!params.entityId || memory.entityId === params.entityId) &&
+          (!params.unique || !!memory.unique)
+      );
+      const memoriesById = new Map(
+        eligibleMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
+      );
       const results = await this.vectorIndex.searchExact(
         params.embedding,
-        this.vectorIndex.size(),
-        threshold
+        limit,
+        threshold,
+        new Set(memoriesById.keys())
       );
 
-      const memories: Memory[] = [];
-      for (const result of results) {
-        if (memories.length >= limit) break;
-        const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
-        if (!memory) continue;
-        if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
-        if (params.roomId && memory.roomId !== params.roomId) continue;
-        if (params.worldId && memory.worldId !== params.worldId) continue;
-        if (params.entityId && memory.entityId !== params.entityId) continue;
-        if (params.unique && !memory.unique) continue;
-        memories.push({ ...toMemory(memory), similarity: result.similarity });
-      }
-
-      return memories;
+      return results.flatMap((result) => {
+        const memory = memoriesById.get(result.id);
+        return memory ? [{ ...toMemory(memory), similarity: result.similarity }] : [];
+      });
     });
   }
 

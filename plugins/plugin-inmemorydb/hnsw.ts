@@ -310,35 +310,79 @@ export class EphemeralHNSW implements IVectorStorage {
    * that must not miss any eligible vector — e.g. scope-filtered memory recall
    * that filters after ranking — use this instead. O(n) over the in-memory
    * node map, which matches this index's "speed over durability" mandate for
-   * the small corpora it serves.
+   * the small corpora it serves. The bounded max-heap keeps only the best K
+   * eligible results, making the scan O(n log K) time and O(K) result memory.
    */
-  async searchExact(query: number[], k: number, threshold = 0.5): Promise<VectorSearchResult[]> {
-    if (this.nodes.size === 0) return [];
+  async searchExact(
+    query: number[],
+    k: number,
+    threshold = 0.5,
+    eligibleIds?: ReadonlySet<string>
+  ): Promise<VectorSearchResult[]> {
+    const resultLimit = Math.max(0, Math.trunc(k));
+    if (this.nodes.size === 0 || resultLimit === 0) return [];
 
     if (query.length !== this.dimension) {
       throw new Error(`Query dimension mismatch: expected ${this.dimension}, got ${query.length}`);
     }
 
-    const scored: VectorSearchResult[] = [];
+    const best: VectorSearchResult[] = [];
+    const compare = (a: VectorSearchResult, b: VectorSearchResult): number =>
+      a.distance - b.distance || a.id.localeCompare(b.id);
+    const swap = (left: number, right: number): void => {
+      const value = best[left];
+      const replacement = best[right];
+      if (!value || !replacement) return;
+      best[left] = replacement;
+      best[right] = value;
+    };
+    const bubbleUp = (start: number): void => {
+      let index = start;
+      while (index > 0) {
+        const parent = Math.floor((index - 1) / 2);
+        const current = best[index];
+        const parentValue = best[parent];
+        if (!current || !parentValue || compare(current, parentValue) <= 0) break;
+        swap(index, parent);
+        index = parent;
+      }
+    };
+    const bubbleDown = (): void => {
+      let index = 0;
+      while (true) {
+        const left = index * 2 + 1;
+        const right = left + 1;
+        let worse = index;
+        if (best[left] && best[worse] && compare(best[left], best[worse]) > 0) worse = left;
+        if (best[right] && best[worse] && compare(best[right], best[worse]) > 0) worse = right;
+        if (worse === index) break;
+        swap(index, worse);
+        index = worse;
+      }
+    };
+
     for (const node of this.nodes.values()) {
+      if (eligibleIds && !eligibleIds.has(node.id)) continue;
       const distance = cosineDistance(query, node.vector);
       const similarity = 1 - distance;
       if (similarity >= threshold) {
-        scored.push({ id: node.id, distance, similarity });
+        const candidate = { id: node.id, distance, similarity };
+        if (best.length < resultLimit) {
+          best.push(candidate);
+          bubbleUp(best.length - 1);
+        } else if (best[0] && compare(candidate, best[0]) < 0) {
+          best[0] = candidate;
+          bubbleDown();
+        }
       }
     }
 
-    scored.sort((a, b) => a.distance - b.distance);
-    return k >= scored.length ? scored : scored.slice(0, k);
+    return best.sort(compare);
   }
 
   async clear(): Promise<void> {
     this.nodes.clear();
     this.entryPoint = null;
     this.maxLevel = 0;
-  }
-
-  size(): number {
-    return this.nodes.size;
   }
 }

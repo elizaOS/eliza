@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto";
 import type { Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
+import { EphemeralHNSW } from "./hnsw";
 import { MemoryStorage } from "./storage-memory";
 
 const DIM = 384;
@@ -244,5 +245,109 @@ describe("searchMemories applies scope before the top-K cut", () => {
     const sims = results.map((m) => m.similarity ?? 0);
     expect(sims[0]).toBeGreaterThan(sims[1] ?? 0);
     expect(sims[1]).toBeGreaterThan(sims[2] ?? 0);
+  });
+
+  it("returns the global top-K when no optional scope filter is supplied", async () => {
+    const memories: Memory[] = Array.from({ length: 8 }, (_, i) => ({
+      entityId: entityA,
+      roomId: i % 2 === 0 ? roomA : roomB,
+      content: { text: `global ${i}` },
+      embedding: offAxis(0.01 + i * 0.01),
+    }));
+    await seed(memories);
+
+    const results = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: onAxis(),
+      match_threshold: 0,
+      count: 3,
+    });
+
+    expect(results.map((memory) => memory.content.text)).toEqual([
+      "global 0",
+      "global 1",
+      "global 2",
+    ]);
+  });
+
+  it("orders equal-distance results deterministically by memory id", async () => {
+    const ids = [
+      "00000000-0000-4000-8000-000000000003",
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+    ] as UUID[];
+    await seed(
+      ids.map((id) => ({
+        id,
+        entityId: entityA,
+        roomId: roomA,
+        content: { text: id },
+        embedding: onAxis(),
+      }))
+    );
+
+    const results = await adapter.searchMemories({
+      tableName: "memories",
+      embedding: onAxis(),
+      match_threshold: 0,
+      count: 2,
+    });
+
+    expect(results.map((memory) => memory.id)).toEqual([ids[1], ids[2]]);
+  });
+
+  it("fails closed on a non-finite query and rejects a dimension mismatch", async () => {
+    await seed([
+      {
+        entityId: entityA,
+        roomId: roomA,
+        content: { text: "valid" },
+        embedding: onAxis(),
+      },
+    ]);
+
+    const nonFinite = onAxis();
+    nonFinite[0] = Number.NaN;
+    await expect(
+      adapter.searchMemories({
+        tableName: "memories",
+        embedding: nonFinite,
+        match_threshold: 0,
+      })
+    ).resolves.toEqual([]);
+    await expect(
+      adapter.searchMemories({
+        tableName: "memories",
+        embedding: [1, 0],
+        match_threshold: 0,
+      })
+    ).rejects.toThrow("Query dimension mismatch: expected 384, got 2");
+  });
+});
+
+describe("EphemeralHNSW exact top-K boundaries", () => {
+  it("keeps a bounded, ordered result for a larger corpus", async () => {
+    const index = new EphemeralHNSW();
+    await index.init(3);
+    for (let i = 0; i < 512; i += 1) {
+      const tilt = (i + 1) / 1_000;
+      await index.add(String(i).padStart(4, "0"), [1, tilt, 0]);
+    }
+
+    const results = await index.searchExact([1, 0, 0], 7, 0);
+
+    expect(results).toHaveLength(7);
+    expect(results.map((result) => result.id)).toEqual([
+      "0000",
+      "0001",
+      "0002",
+      "0003",
+      "0004",
+      "0005",
+      "0006",
+    ]);
+    for (let i = 1; i < results.length; i += 1) {
+      expect(results[i]?.distance).toBeGreaterThanOrEqual(results[i - 1]?.distance ?? 0);
+    }
   });
 });

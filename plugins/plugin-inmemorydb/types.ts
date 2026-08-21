@@ -39,8 +39,12 @@ export interface IVectorStorage {
    * afterwards get the true "top K among eligible" set instead of a global
    * top-K that can be starved by closer out-of-scope vectors.
    */
-  searchExact(query: number[], k: number, threshold?: number): Promise<VectorSearchResult[]>;
-  size(): number;
+  searchExact(
+    query: number[],
+    k: number,
+    threshold?: number,
+    eligibleIds?: ReadonlySet<string>
+  ): Promise<VectorSearchResult[]>;
   clear(): Promise<void>;
 }
 
