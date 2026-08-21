@@ -340,7 +340,7 @@ import {
 	extractFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -1909,9 +1909,9 @@ export function subAgentCompletionRelayBody(
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
 	const maxLength = 1500;
-	return body.length > maxLength
-		? `${body.slice(0, maxLength - 1).trimEnd()}…`
-		: body;
+	const wellFormed = toWellFormedUnicode(body);
+	if (wellFormed.length <= maxLength) return wellFormed;
+	return `${truncateWellFormed(wellFormed, maxLength - 1).trimEnd()}…`;
 }
 
 /**
