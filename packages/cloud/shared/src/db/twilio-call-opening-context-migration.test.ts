@@ -57,6 +57,7 @@ describe("0281 Twilio call opening context", () => {
     const entryIndex = journal.entries.findIndex(
       ({ tag }) => tag === "0281_twilio_call_opening_context",
     );
+    expect(entryIndex).toBeGreaterThan(0);
     const entry = journal.entries[entryIndex];
 
     expect(entry).toEqual({
@@ -66,9 +67,13 @@ describe("0281 Twilio call opening context", () => {
       tag: "0281_twilio_call_opening_context",
       breakpoints: true,
     });
-    expect(journal.entries[entryIndex - 1]?.tag).toBe(
-      "0280_mobile_app_auth_credential_tombstone_trigger",
-    );
+    expect(journal.entries[entryIndex - 1]).toEqual({
+      idx: 274,
+      version: "7",
+      when: 1793072800003,
+      tag: "0280_mobile_app_auth_credential_tombstone_trigger",
+      breakpoints: true,
+    });
     expect(new Set(journal.entries.map(({ idx }) => idx)).size).toBe(journal.entries.length);
     expect(new Set(journal.entries.map(({ tag }) => tag)).size).toBe(journal.entries.length);
     expect(filenames.filter((filename) => filename.startsWith("0281_"))).toEqual([
