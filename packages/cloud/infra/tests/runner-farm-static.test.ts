@@ -62,9 +62,21 @@ describe("repair-runner-slot.sh", () => {
     expect(repair).not.toMatch(/rm\s+-rf?\s+[^\n]*pages/);
   });
 
+  // Asserted against the script with comment lines stripped, so the header
+  // prose promising it never touches the fleet gate cannot satisfy the test
+  // that enforces it. The needles are the shortest real forms: matching only
+  // "HETZNER_FLEET_ONLINE=" would miss a read, and only "gh api" would miss
+  // "gh variable set" — the two ways this script could start steering the
+  // fleet rather than repairing one slot.
   test("never touches runner labels or the fleet gate", () => {
-    expect(repair).not.toContain("--labels");
-    expect(repair).not.toContain("HETZNER_FLEET_ONLINE=");
-    expect(repair).not.toContain("gh api");
+    const repairCode = repair
+      .split("\n")
+      .filter((line) => !/^\s*#/.test(line))
+      .join("\n");
+
+    expect(repairCode).not.toContain("--labels");
+    expect(repairCode).not.toContain("HETZNER_FLEET_ONLINE");
+    expect(repairCode).not.toContain("gh api");
+    expect(repairCode).not.toContain("gh variable");
   });
 });
