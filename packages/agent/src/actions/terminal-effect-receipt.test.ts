@@ -17,11 +17,6 @@ import {
   terminalAction,
 } from "./terminal.ts";
 
-vi.mock("node:crypto", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("node:crypto")>()),
-  randomUUID: () => "7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
-}));
-
 function runtime(): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-000000000001",
@@ -62,6 +57,15 @@ function terminalResponse(overrides: Record<string, unknown> = {}): Response {
   );
 }
 
+function terminalResponseForRequest(
+  init: RequestInit | undefined,
+  overrides: Record<string, unknown> = {},
+): Response {
+  const runId = new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id");
+  if (!runId) throw new Error("terminal action omitted its run identity");
+  return terminalResponse({ runId, ...overrides });
+}
+
 describe("terminal action effect proof", () => {
   beforeEach(() => {
     vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
@@ -73,9 +77,14 @@ describe("terminal action effect proof", () => {
   });
 
   it("returns an applied receipt bound to exact clean stdout", async () => {
+    let dispatchedRunId = "";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse()),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        return terminalResponseForRequest(init);
+      }),
     );
 
     const result = await terminalAction.handler(
@@ -89,17 +98,15 @@ describe("terminal action effect proof", () => {
       success: true,
       userFacingText: "hello",
       verifiedUserFacing: false,
-      userFacingEffectReceiptIds: [
-        "terminal-run:run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
-      ],
+      userFacingEffectReceiptIds: [`terminal-run:${dispatchedRunId}`],
       effectReceipts: [
         {
-          receiptId: "terminal-run:run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+          receiptId: `terminal-run:${dispatchedRunId}`,
           operation: "system.shell.execute",
           outcome: "applied",
           commit: {
             kind: "provider_accepted",
-            id: "run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+            id: dispatchedRunId,
           },
         },
       ],
@@ -109,8 +116,8 @@ describe("terminal action effect proof", () => {
   it("returns a failed non-retryable receipt for a nonzero exit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           exitCode: 7,
           stdout: "",
           stderr: "permission denied",
@@ -146,8 +153,8 @@ describe("terminal action effect proof", () => {
   it("does not stamp raw stdout as verified user-facing text", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           command:
             "git ls-remote --heads https://github.com/elizaOS/eliza develop",
           stdout:
@@ -179,7 +186,9 @@ describe("terminal action effect proof", () => {
   it("keeps the deterministic empty-stdout success sentence verified", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -198,7 +207,9 @@ describe("terminal action effect proof", () => {
   it("summarizes multiline stdout without marking it canonical", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "first\nsecond\n" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "first\nsecond\n" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -220,7 +231,9 @@ describe("terminal action effect proof", () => {
   it("summarizes carriage-return-delimited stdout", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "first\rsecond" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "first\rsecond" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -241,7 +254,9 @@ describe("terminal action effect proof", () => {
     const stdout = "x".repeat(201);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -263,7 +278,9 @@ describe("terminal action effect proof", () => {
     const stdout = "x".repeat(200);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -302,7 +319,9 @@ describe("terminal action effect proof", () => {
     for (const testCase of cases) {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => terminalResponse(testCase.override)),
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+          terminalResponseForRequest(init, testCase.override),
+        ),
       );
       const result = await terminalAction.handler(
         runtime(),
@@ -318,18 +337,17 @@ describe("terminal action effect proof", () => {
   });
 
   it("rejects a response that omits its exit code instead of fabricating zero", async () => {
-    const response = terminalResponse();
-    const payload = (await response.json()) as Record<string, unknown>;
-    delete payload.exitCode;
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-      ),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const response = terminalResponseForRequest(init);
+        const payload = (await response.json()) as Record<string, unknown>;
+        delete payload.exitCode;
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
     );
 
     await expect(
@@ -340,13 +358,16 @@ describe("terminal action effect proof", () => {
   });
 
   it("rejects execution proof for a different run identity", async () => {
+    let dispatchedRunId = "";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        return terminalResponse({
           runId: "run-00000000-0000-4000-8000-000000000001",
-        }),
-      ),
+        });
+      }),
     );
 
     await expect(
@@ -354,7 +375,7 @@ describe("terminal action effect proof", () => {
     ).rejects.toMatchObject({
       code: "TERMINAL_RESPONSE_INVALID",
       context: {
-        expectedRunId: "run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+        expectedRunId: dispatchedRunId,
         receivedRunId: "run-00000000-0000-4000-8000-000000000001",
       },
     });
@@ -491,8 +512,8 @@ describe("terminal secret hygiene", () => {
       `https://operator:${urlPassword}@api.example.com/${configuredSecret}`;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           command: leakyCommand,
           stdout: `result ${configuredSecret} ${bearerSecret}\n`,
           stderr: `postgres://service:${urlPassword}@db.example.com/app`,

@@ -671,6 +671,10 @@ export const terminalAction: Action = {
     }
 
     if (!response.ok) {
+      await cancelResponseBody(
+        response.body,
+        `Terminal request rejected with HTTP ${response.status}`,
+      );
       throw new ElizaError("Terminal execution request was rejected", {
         code: "TERMINAL_REQUEST_FAILED",
         context: { status: response.status },

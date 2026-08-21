@@ -231,6 +231,11 @@ export interface MiscRouteContext {
   isSharedTerminalClientId: (clientId: string) => boolean;
   activeTerminalRunCount: number;
   setActiveTerminalRunCount: (delta: number) => void;
+  /**
+   * Atomically reserves one process-wide terminal slot. Production supplies
+   * this instead of relying on the count snapshot captured before body parsing.
+   */
+  tryAcquireTerminalRunSlot?: (maxConcurrent: number) => (() => void) | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -481,16 +486,6 @@ export async function handleMiscRoutes(
       state.broadcastWsToClientId(targetClientId, payload);
     };
 
-    const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
-    if (ctx.activeTerminalRunCount >= maxConcurrent) {
-      error(
-        res,
-        `Too many active terminal runs (${maxConcurrent}). Wait for a command to finish.`,
-        429,
-      );
-      return true;
-    }
-
     const captureOutput = body.captureOutput === true;
     const MAX_CAPTURE_BYTES = 128 * 1024;
 
@@ -502,49 +497,89 @@ export async function handleMiscRoutes(
       return true;
     }
 
+    const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
+    const releaseTerminalRunSlot = ctx.tryAcquireTerminalRunSlot
+      ? ctx.tryAcquireTerminalRunSlot(maxConcurrent)
+      : ctx.activeTerminalRunCount < maxConcurrent
+        ? (() => {
+            ctx.setActiveTerminalRunCount(1);
+            let released = false;
+            return () => {
+              if (released) return;
+              released = true;
+              ctx.setActiveTerminalRunCount(-1);
+            };
+          })()
+        : null;
+    if (!releaseTerminalRunSlot) {
+      error(
+        res,
+        `Too many active terminal runs (${maxConcurrent}). Wait for a command to finish.`,
+        429,
+      );
+      return true;
+    }
+
     if (!captureOutput) {
       json(res, { ok: true, runId });
     }
 
-    emitTerminalEvent({
-      type: "terminal-output",
-      runId,
-      event: "start",
-      command,
-      maxDurationMs,
-    });
+    try {
+      emitTerminalEvent({
+        type: "terminal-output",
+        runId,
+        event: "start",
+        command,
+        maxDurationMs,
+      });
+    } catch (eventError) {
+      releaseTerminalRunSlot();
+      throw eventError;
+    }
 
-    ctx.setActiveTerminalRunCount(1);
     let finalized = false;
     let timedOut = false;
     let stdout = "";
     let stderr = "";
     let truncated = false;
 
+    let capturedBytes = 0;
     const appendOutput = (current: string, chunkText: string): string => {
       if (!captureOutput || truncated || !chunkText) {
         return current;
       }
-      const remaining = MAX_CAPTURE_BYTES - Buffer.byteLength(current, "utf8");
+      const remaining = MAX_CAPTURE_BYTES - capturedBytes;
       if (remaining <= 0) {
         truncated = true;
         return current;
       }
       const chunkBytes = Buffer.byteLength(chunkText, "utf8");
       if (chunkBytes <= remaining) {
+        capturedBytes += chunkBytes;
         return current + chunkText;
       }
       truncated = true;
-      return (
-        current +
-        Buffer.from(chunkText, "utf8").subarray(0, remaining).toString("utf8")
-      );
+      const bytes = Buffer.from(chunkText, "utf8");
+      let prefixBytes = remaining;
+      let prefix = "";
+      while (prefixBytes > 0) {
+        try {
+          prefix = new TextDecoder("utf-8", { fatal: true }).decode(
+            bytes.subarray(0, prefixBytes),
+          );
+          break;
+        } catch {
+          prefixBytes -= 1;
+        }
+      }
+      capturedBytes += prefixBytes;
+      return current + prefix;
     };
 
     const finalize = () => {
       if (finalized) return;
       finalized = true;
-      ctx.setActiveTerminalRunCount(-1);
+      releaseTerminalRunSlot();
       clearTimeout(timeoutHandle);
     };
 

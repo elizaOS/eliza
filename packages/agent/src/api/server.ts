@@ -3347,6 +3347,16 @@ async function handleRequest(
       setActiveTerminalRunCount: (delta: number) => {
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
       },
+      tryAcquireTerminalRunSlot: (maxConcurrent: number) => {
+        if (activeTerminalRunCount >= maxConcurrent) return null;
+        activeTerminalRunCount += 1;
+        let released = false;
+        return () => {
+          if (released) return;
+          released = true;
+          activeTerminalRunCount = Math.max(0, activeTerminalRunCount - 1);
+        };
+      },
     })
   ) {
     return;
