@@ -4067,12 +4067,31 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
       .replace(/^\[tool output:[^\]]*\]/, "")
       .replace(/\[\/tool output\]$/, "")
       .trim();
-    if (!inner) continue;
-    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+    // A write confirmation names an internal workspace path and is not what
+    // the user asked for; the deliverable is an earlier run's output.
+    if (!inner || WRITE_CONFIRMATION_RE.test(inner)) continue;
+    const deliverable = shellTranscriptStdout(inner) ?? inner;
+    return Buffer.byteLength(deliverable, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
       ? undefined
-      : inner;
+      : deliverable;
   }
   return undefined;
+}
+
+const WRITE_CONFIRMATION_RE = /^Wrote \d+ bytes? to \S+$/;
+
+/** The coding tools' SHELL transcript ("$ cmd", "[exit N] (cwd=…, took=…)",
+ *  "--- stdout ---", "--- stderr ---"): for a clean run the deliverable is
+ *  the stdout section, never the command line with its internal workspace
+ *  path (live 2026-08-21: the whole transcript reached chat). A failed run
+ *  keeps the transcript so the error stays visible. */
+export function shellTranscriptStdout(block: string): string | undefined {
+  if (!/^\$ .+\n\[exit 0\] \(/.test(block)) return undefined;
+  const match = block.match(
+    /\n--- stdout ---\n([\s\S]*?)(?:\n--- stderr ---\n[\s\S]*)?$/,
+  );
+  const stdout = match?.[1]?.trim();
+  return stdout && stdout !== "(empty)" ? stdout : undefined;
 }
 
 /** "run it and show me the output" asks: the answer is whatever the child
