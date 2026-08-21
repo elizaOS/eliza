@@ -107,7 +107,17 @@ export class ToolCallCache {
   private keyFor(toolName: string, args: ToolArgs): string | undefined {
     const result = tryBuildCacheKey(toolName, args);
     if (result.ok) return result.key;
-    this.onUnkeyableArgs?.({ toolName, reason: result.reason });
+    try {
+      this.onUnkeyableArgs?.({ toolName, reason: result.reason });
+    } catch (error) {
+      // error-policy:J7 the cache is optional degradation, not the tool call;
+      // a caller-supplied observer must never be able to abort a tool call
+      // that would otherwise have run uncached.
+      logger.warn(
+        { toolName, reason: result.reason, error },
+        "[ToolCallCache] onUnkeyableArgs observer threw; continuing uncached",
+      );
+    }
     return undefined;
   }
 

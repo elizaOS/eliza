@@ -64,6 +64,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { types as nodeUtilTypes } from "node:util";
 
 import { ElizaError } from "@elizaos/core";
 
@@ -294,6 +295,13 @@ function walkObject(
     if (!child.ok) return child;
     // A property whose value has no JSON text kept the literal `undefined`
     // token in the previous canonicalizer; preserved so keys do not move.
+    // The token itself is charged like any other emitted text — otherwise a
+    // wide object of function/symbol/undefined-valued properties emits
+    // "undefined" nine bytes at a time for free and the canonical text can
+    // exceed `maxBytes` despite every charge site appearing to enforce it.
+    if (child.text === undefined && !chargeAscii(state, 9)) {
+      return { ok: false, reason: "bytes" };
+    }
     parts.push(
       `${encodedKey}:${child.text === undefined ? "undefined" : child.text}`,
     );
@@ -348,6 +356,15 @@ function walkValue(
   const container = value as object;
   if (state.seen.has(container)) return { ok: false, reason: "cycle" };
   if (depth >= state.limits.maxDepth) return { ok: false, reason: "depth" };
+
+  // `util.types.isProxy` inspects the engine object directly and never
+  // invokes user traps, including for revoked proxies — the same guard
+  // `bounded-walk.ts`'s `describeContainer` applies (#23428), kept consistent
+  // here so both cache boundaries reject a hostile Proxy before any of
+  // `ownKeys`/`getOwnPropertyDescriptor`/`getPrototypeOf` can run its trap.
+  if (nodeUtilTypes.isProxy(container)) {
+    return { ok: false, reason: "reflection" };
+  }
 
   let isArray: boolean;
   try {

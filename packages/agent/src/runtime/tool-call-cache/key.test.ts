@@ -194,11 +194,10 @@ describe("canonicalizeJson bounds", () => {
       },
     });
 
-    const result = tryCanonicalizeJson({ arg: proxied });
-    expect(result).toEqual({
-      ok: true,
-      canonical: legacyCanonicalizeJson({ arg: target }),
-    });
+    // A Proxy is rejected outright before any reflection runs (#23428
+    // consistency, see below), so even a well-behaved proxy is uncacheable
+    // rather than transparently unwrapped — and its get trap never fires.
+    expect(reasonOf({ arg: proxied })).toBe("reflection");
     expect(getTraps).toBe(0);
   });
 
@@ -216,6 +215,44 @@ describe("canonicalizeJson bounds", () => {
     const revocable = Proxy.revocable({ a: 1 }, {});
     revocable.revoke();
     expect(reasonOf({ arg: revocable.proxy })).toBe("reflection");
+  });
+
+  it("rejects a Proxy before reflection, running none of its traps (mirrors #23428)", () => {
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
+    const hostile = new Proxy(
+      { payload: "value" },
+      {
+        get() {
+          trapCalls.get += 1;
+          throw new TypeError("hostile get trap");
+        },
+        getOwnPropertyDescriptor() {
+          trapCalls.getOwnPropertyDescriptor += 1;
+          throw new TypeError("hostile descriptor trap");
+        },
+        getPrototypeOf() {
+          trapCalls.getPrototypeOf += 1;
+          throw new TypeError("hostile prototype trap");
+        },
+        ownKeys() {
+          trapCalls.ownKeys += 1;
+          throw new TypeError("hostile ownKeys trap");
+        },
+      },
+    );
+
+    expect(reasonOf({ arg: hostile })).toBe("reflection");
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
   });
 
   it("bounds a single oversized string leaf", () => {
@@ -242,6 +279,22 @@ describe("canonicalizeJson bounds", () => {
     expect(tryCanonicalizeJson("é", { maxBytes: 4 })).toEqual({
       ok: true,
       canonical: '"é"',
+    });
+  });
+
+  it("charges the literal `undefined` token against the byte budget", () => {
+    // `{"a":undefined}` is 15 canonical bytes: 2 braces + `"a"` (3) + `:` (1)
+    // + the 9-byte `undefined` token. A budget one byte short of that must
+    // reject — if the token were unchosen for the walk instead of charged, it
+    // would still fit in 6 bytes and wrongly canonicalize.
+    const withFunction = { a: () => undefined };
+    expect(tryCanonicalizeJson(withFunction, { maxBytes: 14 })).toEqual({
+      ok: false,
+      reason: "bytes",
+    });
+    expect(tryCanonicalizeJson(withFunction, { maxBytes: 15 })).toEqual({
+      ok: true,
+      canonical: '{"a":undefined}',
     });
   });
 
@@ -415,5 +468,31 @@ describe("ToolCallCache with unkeyable arguments", () => {
     expect(cache.get(descriptor, deep)).toBeUndefined();
     expect(observed.every((entry) => entry.reason === "depth")).toBe(true);
     expect(observed.length).toBe(2);
+  });
+
+  it("runs the tool even when the onUnkeyableArgs observer itself throws", async () => {
+    const cache = new ToolCallCache({
+      diskRoot: "/dev/null/unused",
+      redact: passthrough,
+      onUnkeyableArgs: () => {
+        throw new Error("hostile observer");
+      },
+    });
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+
+    let executions = 0;
+    const execute = async () => {
+      executions += 1;
+      return { ok: true };
+    };
+
+    // The cache is optional degradation, not a gate on the tool call: a
+    // throwing custom observer must not abort execution or leak past `run`.
+    await expect(cache.run(descriptor, cyclic, execute)).resolves.toEqual({
+      ok: true,
+    });
+    expect(executions).toBe(1);
+    expect(() => cache.set(descriptor, cyclic, { ok: true })).not.toThrow();
   });
 });
