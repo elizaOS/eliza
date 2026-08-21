@@ -269,17 +269,24 @@ describe("AndroidCloudClient", () => {
     );
   });
 
-  it.each(["null", '"authenticated"', "[]"])(
-    "rejects a non-object JSON response (%s) instead of reading it as pending",
-    async (body) => {
+  it.each([
+    ["null", null],
+    ["an array", [{ status: "authenticated", token: "attacker-token" }]],
+    ["a string", "pending"],
+    ["a number", 0],
+    ["a boolean", false],
+  ])(
+    "rejects %s JSON body instead of reading it as pending",
+    async (_label, body) => {
       const fetchImpl = vi
         .fn<typeof fetch>()
-        .mockResolvedValueOnce(new Response(body, { status: 200 }));
+        .mockResolvedValueOnce(json(200, body));
       const client = new AndroidCloudClient({ fetchImpl });
 
       await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
-        /could not be read/,
+        /invalid JSON response/,
       );
+      expect(fetchImpl).toHaveBeenCalledOnce();
     },
   );
 

@@ -85,7 +85,7 @@ async function responseJson(response: Response): Promise<JsonRecord> {
   }
   const body = record(parsed);
   if (!body) {
-    throw new Error("Eliza Cloud returned a response that could not be read.");
+    throw new Error("Eliza Cloud returned an invalid JSON response.");
   }
   return body;
 }
@@ -128,6 +128,8 @@ export function resolveAndroidCloudChatAuthority(
       ? `${url.origin}${expectedSharedPath}`
       : url.origin;
   } catch (error) {
+    // error-policy:J3 untrusted Cloud authority input becomes an explicit
+    // invalid result instead of escaping URL parser details to the caller.
     if (error instanceof Error && error.message.includes("untrusted")) {
       throw error;
     }
@@ -339,6 +341,8 @@ export class AndroidCloudClient {
         });
       }
     } catch {
+      // error-policy:J6 remote logout is best-effort teardown; the authoritative
+      // local credential removal is awaited in the finally block below.
       // Remote logout is best-effort. Local credential removal is authoritative
       // for this device and must still complete while offline.
     } finally {
