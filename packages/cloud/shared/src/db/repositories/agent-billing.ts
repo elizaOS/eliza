@@ -110,6 +110,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.status, "running"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            isNull(agentSandboxes.deleted_at),
             // Defence in depth, aligned with the six sibling predicates here.
             // The charge itself is already safe: recordHourlyBillingWithOptions
             // claims the row with this same guard on its SELECT ... FOR UPDATE,
@@ -137,6 +138,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.status, "stopped"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
+            isNull(agentSandboxes.deleted_at),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
@@ -146,6 +148,27 @@ export class AgentBillingRepository {
     ]);
 
     return { runningSandboxes, stoppedWithBackups };
+  }
+
+  /** Stop failed agents' billing clocks before the hourly due-set is selected. */
+  async suspendFailedSandboxBilling(now: Date): Promise<number> {
+    const suspended = await dbWrite
+      .update(agentSandboxes)
+      .set({
+        billing_status: "suspended" as AgentBillingStatus,
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
+        updated_at: now,
+      })
+      .where(
+        and(
+          eq(agentSandboxes.status, "error"),
+          inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
+        ),
+      )
+      .returning({ id: agentSandboxes.id });
+
+    return suspended.length;
   }
 
   async listBillingOrganizations(organizationIds: string[]): Promise<AgentBillingOrganization[]> {
@@ -305,6 +328,7 @@ export class AgentBillingRepository {
           status: agentSandboxes.status,
           billing_status: agentSandboxes.billing_status,
           execution_tier: agentSandboxes.execution_tier,
+          last_backup_at: agentSandboxes.last_backup_at,
           last_billed_at: agentSandboxes.last_billed_at,
           created_at: agentSandboxes.created_at,
         })
@@ -313,6 +337,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
+            isNull(agentSandboxes.deleted_at),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
@@ -324,7 +349,10 @@ export class AgentBillingRepository {
         claimedSandbox.execution_tier === "shared" ||
         (!options.forceLifecycleSettlement &&
           (!BILLABLE_BILLING_STATUSES.includes(claimedSandbox.billing_status) ||
-            !(claimedSandbox.status === "running" || claimedSandbox.status === "stopped")))
+            !(
+              claimedSandbox.status === "running" ||
+              (claimedSandbox.status === "stopped" && claimedSandbox.last_backup_at !== null)
+            )))
       ) {
         return { status: "already_billed_recently" as const };
       }

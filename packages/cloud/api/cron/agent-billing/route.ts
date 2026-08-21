@@ -433,6 +433,13 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
     const appUrl = c.env.NEXT_PUBLIC_APP_URL || "https://cloud.eliza.app";
 
     logger.info("[Agent Billing] Starting hourly billing run");
+    const suspendedFailedSandboxes =
+      await agentBillingRepository.suspendFailedSandboxBilling(now);
+    if (suspendedFailedSandboxes > 0) {
+      logger.info("[Agent Billing] Suspended failed sandbox billing", {
+        sandboxesSuspended: suspendedFailedSandboxes,
+      });
+    }
     // ── 1. Running agents (always billed) ───────────────────────────
     const { runningSandboxes, stoppedWithBackups } =
       await agentBillingRepository.listBillableSandboxes(now, rebillCutoff);
