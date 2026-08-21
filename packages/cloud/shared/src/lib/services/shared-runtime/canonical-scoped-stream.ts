@@ -14,7 +14,6 @@ import type { BridgeRequest } from "../eliza-sandbox-bridge";
 import { applyCorsHeaders } from "../proxy/cors";
 import { coordinateSharedStream } from "./conversation-coordinator";
 import type { SharedRuntimeChannel } from "./run-shared-agent-turn";
-import { parseSharedChatAttachments } from "./shared-chat-attachments";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import type { BridgeExecutionContext } from "./shared-runtime-chat";
 import { sharedTurnClientMessageId } from "./shared-turn-client-message-id";
@@ -90,26 +89,9 @@ export async function handleCanonicalScopedAgentStream(
     typeof (request.body as { text?: unknown }).text === "string"
       ? (request.body as { text: string }).text
       : "";
-  const parsedAttachments = parseSharedChatAttachments(
-    request.body && typeof request.body === "object"
-      ? (request.body as { images?: unknown }).images
-      : undefined,
-  );
   const clientMessageId = sharedTurnClientMessageId(request.body);
   timings.parse = elapsedMs(parseStartedAt);
-  if (!parsedAttachments.ok) {
-    return applyCorsHeaders(
-      Response.json({ success: false, error: parsedAttachments.error }, { status: 400 }),
-      CORS_METHODS,
-      request.origin,
-    );
-  }
-  const normalizedText = text.trim()
-    ? text
-    : parsedAttachments.attachments.length
-      ? "Please review the attached file."
-      : "";
-  if (!normalizedText.trim()) {
+  if (!text.trim()) {
     return applyCorsHeaders(
       Response.json({ success: false, error: "text is required" }, { status: 400 }),
       CORS_METHODS,
@@ -124,11 +106,10 @@ export async function handleCanonicalScopedAgentStream(
     // params.clientMessageId marks the id as CLIENT-supplied: only those enter
     // the coordinator's durable claim/replay/conflict boundary (#18045).
     params: {
-      text: normalizedText,
+      text,
       roomId: request.conversationId,
       ...(clientMessageId ? { clientMessageId } : {}),
       ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
-      ...(parsedAttachments.attachments.length ? { images: parsedAttachments.attachments } : {}),
     },
   };
 

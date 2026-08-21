@@ -83,43 +83,6 @@ describe("handleCanonicalScopedAgentStream", () => {
     });
   });
 
-  test("forwards validated image and document bytes through the coordinator RPC", async () => {
-    const images = [
-      { name: "photo.png", mimeType: "image/png", data: Buffer.from("png").toString("base64") },
-      {
-        name: "brief.pdf",
-        mimeType: "application/pdf",
-        data: Buffer.from("pdf").toString("base64"),
-      },
-    ];
-    const res = await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { text: "review", images },
-    });
-
-    expect(res.status).toBe(200);
-    const rpc = coordinateSharedStream.mock.calls[0]?.[1] as { params: Record<string, unknown> };
-    expect(rpc.params.images).toEqual(images);
-  });
-
-  test("accepts attachment-only turns and rejects invalid attachments before coordination", async () => {
-    const data = Buffer.from("png").toString("base64");
-    await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { images: [{ name: "photo.png", mimeType: "image/png", data }] },
-    });
-    const rpc = coordinateSharedStream.mock.calls[0]?.[1] as { params: Record<string, unknown> };
-    expect(rpc.params.text).toBe("Please review the attached file.");
-
-    coordinateSharedStream.mockClear();
-    const invalid = await handleCanonicalScopedAgentStream({
-      ...BASE,
-      body: { text: "review", images: [{ name: "bad", mimeType: "image/png", data: "%%%" }] },
-    });
-    expect(invalid.status).toBe(400);
-    expect(coordinateSharedStream).not.toHaveBeenCalled();
-  });
-
   test("preserves an authenticated voice channel outside untrusted RPC params", async () => {
     const channel = { type: ChannelType.VOICE_DM, source: MESSAGE_SOURCE_CLIENT_CHAT };
     await handleCanonicalScopedAgentStream({ ...BASE, channel });

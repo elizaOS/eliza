@@ -14461,10 +14461,11 @@ export class DefaultMessageService implements IMessageService {
 							// media-store URLs use the trusted runtime fetch.
 							const { buffer, contentType } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -14508,10 +14509,11 @@ export class DefaultMessageService implements IMessageService {
 					) {
 						const { buffer, contentType } = await this.fetchAttachmentBytes(
 							runtime,
-							attachment,
+							attachment.url,
 							url,
 							isRemote,
 							byteBudget,
+							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -14591,10 +14593,11 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14688,10 +14691,11 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14829,10 +14833,11 @@ export class DefaultMessageService implements IMessageService {
 	 */
 	private async fetchAttachmentBytes(
 		runtime: IAgentRuntime,
-		attachment: Media,
+		rawUrl: string,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
 		budget: AttachmentByteBudget,
+		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
 		if (budget.remaining <= 0) {
 			throw new MediaFetchError(
@@ -14841,38 +14846,6 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
-		const inline = attachment as MediaWithInlineData;
-		if (
-			typeof inline._data === "string" &&
-			inline._data.trim() &&
-			typeof inline._mimeType === "string" &&
-			inline._mimeType.trim()
-		) {
-			if (!/^[A-Za-z0-9+/]*={0,2}$/.test(inline._data)) {
-				throw new MediaFetchError(
-					"invalid_response",
-					"Inline attachment data is not valid base64",
-				);
-			}
-			const buffer = Buffer.from(inline._data, "base64");
-			if (buffer.byteLength === 0) {
-				throw new MediaFetchError(
-					"invalid_response",
-					"Inline attachment data decodes to zero bytes",
-				);
-			}
-			if (buffer.byteLength > maxBytes) {
-				throw new MediaFetchError(
-					"max_bytes",
-					buffer.byteLength > budget.remaining
-						? "Attachment exceeds turn byte budget"
-						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
-				);
-			}
-			budget.remaining -= buffer.byteLength;
-			return { buffer, contentType: inline._mimeType };
-		}
-		const expectedBytes = attachment.size;
 		if (
 			typeof expectedBytes === "number" &&
 			Number.isFinite(expectedBytes) &&
@@ -14887,7 +14860,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
-				url: attachment.url,
+				url: rawUrl,
 				maxBytes,
 			});
 			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);

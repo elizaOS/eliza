@@ -129,29 +129,6 @@ describe("DefaultMessageService.processAttachments", () => {
 		expect(localFetch).toHaveBeenCalledTimes(1);
 	});
 
-	it("extracts an inline plain-text document without issuing a network request", async () => {
-		const localFetch = vi.fn();
-		const svc = new DefaultMessageService();
-		const runtime = mockRuntime(localFetch);
-		const data = Buffer.from("hello from inline upload", "utf8").toString(
-			"base64",
-		);
-
-		const out = await svc.processAttachments(runtime, [
-			{
-				id: "inline-doc",
-				url: "attachment:inline-0",
-				contentType: ContentType.DOCUMENT,
-				_data: data,
-				_mimeType: "text/plain",
-			},
-		]);
-
-		expect(out[0].text).toBe("hello from inline upload");
-		expect(localFetch).not.toHaveBeenCalled();
-		expect(fetchRemoteMedia).not.toHaveBeenCalled();
-	});
-
 	// #10714 — csv/markdown/pdf are on the chat upload allow-list but used to
 	// hit "Skipping non-plain-text document" here. They must now be readable.
 	function localDocFetch(bytes: Buffer, mime: string) {
