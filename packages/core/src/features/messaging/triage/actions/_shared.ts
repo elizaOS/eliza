@@ -16,6 +16,10 @@ import type {
 } from "../../../../types/index.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../../utils/well-formed.ts";
+import {
 	ALL_MESSAGE_SOURCES,
 	type ManageOperation,
 	type MessageSource,
@@ -332,7 +336,7 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
 	) {
 		return undefined;
 	}
-	return stripPlaceholderSignature(body);
+	return stripPlaceholderSignature(toWellFormedUnicode(body));
 }
 
 export function parseDraftReplyParams(
