@@ -577,15 +577,11 @@ function hasVerifiedCompletionReply(
 /** Matches OrchestratorTaskService.serviceType. String-referenced so this
  * planner-path module does not pull the whole task-service dependency tree. */
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
-const DEFAULT_VALIDATION_RELAY_WAIT_MS = 15_000;
-const MAX_VALIDATION_RELAY_WAIT_MS = 60_000;
 
-const VERIFICATION_PENDING_NOTE = "I'm doing one final check now.";
 const VERIFICATION_REENGAGED_NOTE =
   "That result needs another pass, so I'm fixing it now.";
 
 interface CompletionVerificationView {
-  pendingVerification: boolean;
   verificationFailed: boolean;
   /** Worker-disclosed residual risks from the completion-time gate snapshot.
    * Disclosure is deliberately non-blocking (blocking it teaches workers to
@@ -598,30 +594,6 @@ interface TaskRecordLookup {
     status: string;
     metadata: Record<string, unknown>;
   } | null>;
-  waitForTaskValidationResolution?(
-    sessionId: string,
-    timeoutMs: number,
-  ): Promise<{
-    status: string;
-    metadata: Record<string, unknown>;
-  } | null>;
-}
-
-function validationRelayWaitMs(runtime: IAgentRuntime): number {
-  const configured = runtime.getSetting?.(
-    "ELIZA_COMPLETION_RELAY_VALIDATION_WAIT_MS",
-  );
-  const parsed =
-    typeof configured === "number"
-      ? configured
-      : typeof configured === "string" && configured.trim().length > 0
-        ? Number(configured)
-        : DEFAULT_VALIDATION_RELAY_WAIT_MS;
-  if (!Number.isFinite(parsed)) return DEFAULT_VALIDATION_RELAY_WAIT_MS;
-  return Math.min(
-    MAX_VALIDATION_RELAY_WAIT_MS,
-    Math.max(0, Math.floor(parsed)),
-  );
 }
 
 async function verificationViewFor(
@@ -638,12 +610,7 @@ async function verificationViewFor(
     if (!service || typeof service.getTaskForSession !== "function") {
       return undefined;
     }
-    const task = service.waitForTaskValidationResolution
-      ? await service.waitForTaskValidationResolution(
-          sessionId,
-          validationRelayWaitMs(runtime),
-        )
-      : await service.getTaskForSession(sessionId);
+    const task = await service.getTaskForSession(sessionId);
     if (!task) return undefined;
     const attemptsRaw = task.metadata?.autoVerifyAttempts;
     const attempts =
@@ -653,7 +620,6 @@ async function verificationViewFor(
     const snapshot = asRecord(task.metadata?.completionResiduals);
     const disclosedRisks = stringArrayOf(snapshot?.disclosedRisks);
     return {
-      pendingVerification: task.status === "validating",
       // A `validating` task that fell back to `active` (re-engage) or parked
       // `waiting_on_user` with a non-zero attempt counter means verification
       // rejected the claim being relayed right now.
@@ -676,8 +642,7 @@ function frameReplyWithVerification(
 ): string {
   if (!view) return reply;
   const notes: string[] = [];
-  if (view.pendingVerification) notes.push(VERIFICATION_PENDING_NOTE);
-  else if (view.verificationFailed) notes.push(VERIFICATION_REENGAGED_NOTE);
+  if (view.verificationFailed) notes.push(VERIFICATION_REENGAGED_NOTE);
   if (view.disclosedRisks.length > 0) {
     notes.push(`One thing to know: ${view.disclosedRisks.join("; ")}.`);
   }
