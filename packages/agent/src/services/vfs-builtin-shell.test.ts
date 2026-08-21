@@ -83,6 +83,54 @@ describe("runVfsBuiltinShell", () => {
     ).rejects.toThrow("File not found");
   });
 
+  it("runs rm -Rf recursively and removes the target tree", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "rm-cluster" });
+    await vfs.initialize();
+    await vfs.writeFile("target/nested/file.txt", "bye");
+
+    const rm = await runVfsBuiltinShell({
+      cwdUri: "vfs://rm-cluster",
+      command: "rm",
+      args: ["-Rf", "target"],
+    });
+    expect(rm.exitCode).toBe(0);
+    await expect(vfs.readFile("target/nested/file.txt")).rejects.toThrow(
+      "File not found",
+    );
+  });
+
+  it("runs rm -fR recursively and removes the target tree", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "rm-cluster2" });
+    await vfs.initialize();
+    await vfs.writeFile("target/nested/file.txt", "bye");
+
+    const rm = await runVfsBuiltinShell({
+      cwdUri: "vfs://rm-cluster2",
+      command: "rm",
+      args: ["-fR", "target"],
+    });
+    expect(rm.exitCode).toBe(0);
+    await expect(vfs.readFile("target/nested/file.txt")).rejects.toThrow(
+      "File not found",
+    );
+  });
+
+  it("runs rm -rvf recursively and removes the target tree", async () => {
+    const vfs = createVirtualFilesystemService({ projectId: "rm-cluster3" });
+    await vfs.initialize();
+    await vfs.writeFile("target/nested/file.txt", "bye");
+
+    const rm = await runVfsBuiltinShell({
+      cwdUri: "vfs://rm-cluster3",
+      command: "rm",
+      args: ["-rvf", "target"],
+    });
+    expect(rm.exitCode).toBe(0);
+    await expect(vfs.readFile("target/nested/file.txt")).rejects.toThrow(
+      "File not found",
+    );
+  });
+
   it("runs grep and rg over VFS files without host ripgrep", async () => {
     const vfs = createVirtualFilesystemService({ projectId: "searchable" });
     await vfs.initialize();
