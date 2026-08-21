@@ -200,6 +200,13 @@ describe("StewardLoginSection phone login", () => {
     expect(authSpies.refreshSession).not.toHaveBeenCalled();
   });
 
+  it("renders only one method divider when phone and OAuth are available", async () => {
+    renderSection();
+
+    await screen.findByRole("button", { name: "Google" });
+    expect(screen.getAllByText("or continue with")).toHaveLength(1);
+  });
+
   it("normalizes E.164, sends a code, and exposes the cooldown before resend", async () => {
     renderSection();
 
@@ -224,18 +231,40 @@ describe("StewardLoginSection phone login", () => {
     expect(authSpies.sendSmsOtp).toHaveBeenLastCalledWith("+14155552671");
   });
 
-  it("rejects a phone number without an explicit country code", async () => {
+  it("normalizes a national number through the selected country", async () => {
     renderSection();
 
     const phoneInput = await screen.findByLabelText("Phone number");
     fireEvent.change(phoneInput, { target: { value: "415-555-2671" } });
     fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
 
-    expect(
-      await screen.findByText(
-        "Enter a complete phone number with country code, such as +1 415 555 2671.",
-      ),
-    ).toBeTruthy();
+    await screen.findByText("Enter the text code");
+    expect(authSpies.sendSmsOtp).toHaveBeenCalledWith("+14155552671");
+  });
+
+  it("lets the user override the locale-derived country", async () => {
+    renderSection();
+
+    const countrySelect = await screen.findByLabelText("Country calling code");
+    fireEvent.change(countrySelect, { target: { value: "GB" } });
+    fireEvent.change(screen.getByLabelText("Phone number"), {
+      target: { value: "020 7946 0018" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
+
+    await screen.findByText("Enter the text code");
+    expect(authSpies.sendSmsOtp).toHaveBeenCalledWith("+442079460018");
+  });
+
+  it("rejects an invalid national number without hiding other methods", async () => {
+    renderSection();
+
+    fireEvent.change(await screen.findByLabelText("Phone number"), {
+      target: { value: "555" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Text me a code" }));
+
+    expect(await screen.findByText(/Enter a valid phone number/)).toBeTruthy();
     expect(authSpies.sendSmsOtp).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Magic Link" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Google" })).toBeTruthy();

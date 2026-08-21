@@ -206,7 +206,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     // The toggle is an enabled disclosure with aria-expanded=true — focus is
     // never lost because the control does not get disabled on expansion.
     const toggleExpanded = screen.getByRole("button", {
-      name: /Continue with a wallet/i,
+      name: /Collapse wallet options/i,
     });
     expect(toggleExpanded.getAttribute("aria-expanded")).toBe("true");
     expect(toggleExpanded.hasAttribute("disabled")).toBe(false);
@@ -240,7 +240,7 @@ describe("StewardLoginSection wallet collapse (#19217)", () => {
     // Distinct post-intent state: toggle stays expanded but is now disabled
     // because collapse is no longer meaningful once the lazy stack is mounted.
     const lockedToggle = screen.getByRole("button", {
-      name: /Continue with a wallet/i,
+      name: /Wallet options/i,
     });
     expect(lockedToggle.getAttribute("aria-expanded")).toBe("true");
     expect(lockedToggle.hasAttribute("disabled")).toBe(true);
