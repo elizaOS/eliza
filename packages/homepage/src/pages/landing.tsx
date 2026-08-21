@@ -236,6 +236,7 @@ function DemoProfilePhoto({ sender }: { sender: DemoSender }) {
       alt=""
       width={192}
       height={192}
+      decoding="async"
     />
   );
 }
@@ -483,6 +484,9 @@ function PhoneMockup() {
                     className="landing-group-avatar"
                     src={DEMO_SENDERS[member].avatar}
                     alt=""
+                    width={256}
+                    height={256}
+                    decoding="async"
                   />
                 ))}
                 <img
@@ -491,6 +495,7 @@ function PhoneMockup() {
                   alt=""
                   width={423}
                   height={423}
+                  decoding="async"
                 />
               </span>
               <span className="landing-phone-name landing-phone-name--group">
@@ -826,6 +831,7 @@ function ContactSheet({
             alt=""
             width={423}
             height={423}
+            decoding="async"
           />
           <strong>Eliza</strong>
           <span>
@@ -1039,11 +1045,19 @@ export default function LandingPage() {
             className="landing-brand-mark"
             src="/brand/logos/logo_white_orangebg.svg"
             alt=""
+            width={423}
+            height={423}
+            decoding="async"
+            fetchPriority="high"
           />
           <img
             className="landing-brand-wordmark"
             src="/brand/logos/eliza_text_black.svg"
             alt=""
+            width={269}
+            height={99}
+            decoding="async"
+            fetchPriority="high"
           />
         </a>
         <a
