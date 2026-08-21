@@ -8,7 +8,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 79;
+const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 78;
 
 type ScenarioSourceClassification = {
   deterministic: boolean;
@@ -184,7 +184,7 @@ describe("scenario model fixture migration", () => {
       strictOrModelFree: deterministic.length - legacy.length,
       legacy: legacy.length,
       total: deterministic.length,
-    }).toEqual({ strictOrModelFree: 40, legacy: 79, total: 119 });
+    }).toEqual({ strictOrModelFree: 41, legacy: 78, total: 119 });
   }, 120_000);
 
   it("recognizes authored properties while ignoring comments and setup strings", () => {

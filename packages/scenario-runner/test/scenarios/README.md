@@ -36,8 +36,9 @@ provider always requires an exact fixture or explicit resolver:
 - `deterministic-mcp-actions-routes` covers the real `@elizaos/plugin-mcp`
   service against a committed stdio MCP fixture, the parent `MCP` router,
   `MCP_READ_RESOURCE`, `MCP_CALL_TOOL`, `MCP_SEARCH_ACTIONS`,
-  `MCP_LIST_CONNECTIONS`, strict deterministic LLM JSON for tool selection and
-  arguments, deterministic tool/resource response synthesis, and
+  `MCP_LIST_CONNECTIONS`, authored strict deterministic model fixtures for
+  routing, tool selection, arguments, and response synthesis, plus JSONL
+  request/response receipts and child-process teardown proof. It also covers
   `/api/mcp/status` route capability reporting for the discovered fixture tool
   and resource.
 - `deterministic-workflow-actions-routes` covers real embedded workflow services

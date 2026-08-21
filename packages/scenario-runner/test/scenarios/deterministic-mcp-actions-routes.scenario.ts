@@ -2,19 +2,16 @@
  * Keyless catalog coverage for the plugin-mcp action and route surface. Runs on
  * the pr-deterministic lane under the model provider.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import type http from "node:http";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
-import {
-  matchesScenarioInput,
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -45,6 +42,10 @@ const listConnectionsInput = "Fetch deterministic MCP connections.";
 const scenarioDir = dirname(fileURLToPath(import.meta.url));
 const fixturePath = resolve(scenarioDir, "../fixtures/mcp-stdio-fixture.mjs");
 const fixtureSource = readFileSync(fixturePath, "utf8");
+const receiptPath = resolve(
+  tmpdir(),
+  `eliza-scenario-mcp-${process.pid}.jsonl`,
+);
 
 type JsonRecord = Record<string, unknown>;
 
@@ -114,54 +115,177 @@ const strictMcpRoutes = [
   },
 ];
 
-function matchesUnsupportedMcpEvaluation(expectedInput: string) {
-  const matchesInput = matchesScenarioInput(expectedInput);
-  return (value: string) =>
-    matchesInput(value) &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
-    );
+const PLANNER_TOOL_NAMES = [
+  "MCP",
+  "MCP_CALL_TOOL",
+  "MCP_READ_RESOURCE",
+  "MCP_SEARCH_ACTIONS",
+  "MCP_LIST_CONNECTIONS",
+  "REPLY",
+  "IGNORE",
+  "STOP",
+] as const;
+
+function regexEscape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function unsupportedMcpEvaluationFixture(input: string, op: string) {
+function actionRouteModelFixtures(
+  route: (typeof strictMcpRoutes)[number],
+): ScenarioModelFixture[] {
+  const slug = route.actionName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return [
+    {
+      name: `route-${slug}-stage1-${route.input}`,
+      match: {
+        modelType: "RESPONSE_HANDLER",
+        input: { includes: route.input },
+        toolNames: ["HANDLE_RESPONSE"],
+      },
+      response: {
+        json: {
+          contexts: [...route.contextIds],
+          intents: [route.input.toLowerCase()],
+          replyText: route.messageToUser,
+          threadOps: [],
+          candidateActionNames: [route.actionName],
+        },
+      },
+    },
+    {
+      name: `route-${slug}-planner-${route.input}`,
+      match: {
+        modelType: "ACTION_PLANNER",
+        input: { includes: route.input },
+        toolNames: PLANNER_TOOL_NAMES,
+      },
+      response: {
+        json: {
+          text: "",
+          thought: `Call ${route.actionName} for ${route.input}.`,
+          messageToUser: route.messageToUser,
+          completed: true,
+          finishReason: "tool-calls",
+          toolCalls: [
+            {
+              id: `call-${slug}`,
+              name: route.actionName,
+              type: "function",
+              arguments: route.args,
+            },
+          ],
+        },
+      },
+    },
+  ];
+}
+
+function unsupportedMcpModelFixtures(
+  input: string,
+  op: "search_actions" | "list_connections",
+): ScenarioModelFixture[] {
   const text = `MCP op=${op} is only available in the cloud runtime.`;
-  return {
-    name: `mcp-unsupported-${op}-evaluator-${input}`,
+  return [
+    {
+      name: `mcp-unsupported-${op}-evaluator-${input}`,
+      match: {
+        modelType: "RESPONSE_HANDLER",
+        input: {
+          pattern: `^(?=[\\s\\S]*${regexEscape(input)})(?=[\\s\\S]*event:message_handler:)(?=[\\s\\S]*Stage 1 router marked this current turn as requiring a tool)[\\s\\S]*$`,
+        },
+        toolNames: [],
+      },
+      response: {
+        json: {
+          success: false,
+          decision: "FINISH",
+          thought: `The ${op} action reported the local-runtime boundary.`,
+          messageToUser: text,
+        },
+      },
+    },
+    {
+      name: `mcp-unsupported-${op}-failure-synthesis-${input}`,
+      match: {
+        modelType: "ACTION_PLANNER",
+        input: { includes: input },
+        toolNames: [],
+      },
+      response: {
+        json: {
+          text,
+          thought: `Report the ${op} local-runtime boundary.`,
+          messageToUser: text,
+          completed: true,
+          finishReason: "stop",
+          toolCalls: [],
+        },
+      },
+    },
+  ];
+}
+
+const modelFixtures: ScenarioModelFixture[] = [
+  ...strictMcpRoutes.flatMap(actionRouteModelFixtures),
+  {
+    name: "mcp-resource-analysis",
     match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesUnsupportedMcpEvaluation(input),
+      modelType: "TEXT_SMALL",
+      prompt: {
+        pattern: `^(?=[\\s\\S]*${regexEscape(RESOURCE_URI)})(?=[\\s\\S]*${regexEscape(RESOURCE_TEXT)})[\\s\\S]*$`,
+      },
+    },
+    response: { text: RESOURCE_ANALYSIS_TEXT },
+  },
+  {
+    name: "mcp-tool-selection-arguments",
+    match: {
+      modelType: "TEXT_LARGE",
+      prompt: {
+        pattern: `^(?=[\\s\\S]*# TASK: Generate Tool Arguments for Tool Execution)(?=[\\s\\S]*${TOOL_NAME})(?=[\\s\\S]*"code")[\\s\\S]*$`,
+      },
     },
     response: {
-      success: false,
-      decision: "FINISH",
-      thought: `The ${op} action reported the local-runtime boundary.`,
-      messageToUser: text,
+      json: {
+        toolArguments: { code: TOOL_CODE },
+        reasoning: "The requested code is alpha-42.",
+      },
     },
-    times: 1,
-  };
-}
+  },
+  {
+    name: "mcp-tool-reasoning",
+    match: {
+      modelType: "TEXT_SMALL",
+      prompt: {
+        pattern: `^(?=[\\s\\S]*Synthesize the result from the "${TOOL_NAME}" tool)(?=[\\s\\S]*${regexEscape(TOOL_OUTPUT)})[\\s\\S]*$`,
+      },
+    },
+    response: { text: TOOL_REASONING_TEXT },
+  },
+  ...unsupportedMcpModelFixtures(
+    parentListConnectionsInput,
+    "list_connections",
+  ),
+  ...unsupportedMcpModelFixtures(searchActionsInput, "search_actions"),
+  ...unsupportedMcpModelFixtures(listConnectionsInput, "list_connections"),
+];
 
-type RuntimeWithMcpScenario = IAgentRuntime &
-  RuntimeWithScenarioModelFixtures & {
-    plugins?: Plugin[];
-    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-    registerPlugin: (plugin: Plugin) => Promise<void>;
-    routes?: Array<{
-      type?: string;
-      path: string;
-      handler?: (
-        req: http.IncomingMessage,
-        res: http.ServerResponse,
-        runtime: unknown,
-      ) => Promise<void> | void;
-      __scenarioMcpRoute?: boolean;
-    }>;
-    scenarioModelFixtures?: {
-      register: (...fixtures: Array<Record<string, unknown>>) => void;
-    };
-    setSetting: (key: string, value: unknown, secret?: boolean) => void;
-  };
+type RuntimeWithMcpScenario = IAgentRuntime & {
+  plugins?: Plugin[];
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  registerPlugin: (plugin: Plugin) => Promise<void>;
+  routes?: Array<{
+    type?: string;
+    path: string;
+    handler?: (
+      req: http.IncomingMessage,
+      res: http.ServerResponse,
+      runtime: unknown,
+    ) => Promise<void> | void;
+    __scenarioMcpRoute?: boolean;
+  }>;
+  setSetting: (key: string, value: unknown, secret?: boolean) => void;
+};
 
 type RouteStatusBody = {
   ok?: unknown;
@@ -169,6 +293,8 @@ type RouteStatusBody = {
 };
 
 let scenarioRuntime: RuntimeWithMcpScenario | null = null;
+let previousEvaluators: IAgentRuntime["evaluators"] | null = null;
+let previousMcpSetting: unknown;
 
 function isRecord(value: unknown): value is JsonRecord {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -378,6 +504,7 @@ function mcpConfig(): McpRouteConfig {
           type: "stdio",
           command: "node",
           args: [fixturePath],
+          env: { SCENARIO_MCP_RECEIPT_PATH: receiptPath },
           timeoutInMillis: 5_000,
         },
       },
@@ -504,82 +631,18 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   const runtime = ctx.runtime as RuntimeWithMcpScenario | undefined;
   if (!runtime) return "scenario runtime was not available";
   scenarioRuntime = runtime;
+  rmSync(receiptPath, { force: true });
   if (!fixtureSource.includes(RESOURCE_TEXT)) {
     return `MCP fixture source does not contain ${RESOURCE_TEXT}`;
   }
 
+  previousMcpSetting = runtime.getSetting("mcp");
   runtime.setSetting("mcp", mcpConfig().mcp, false);
-  registerStrictActionRouteFixtures(runtime, strictMcpRoutes);
-  runtime.scenarioModelFixtures?.register(
-    {
-      name: "mcp-resource-analysis",
-      match: {
-        modelType: ModelType.TEXT_SMALL,
-        prompt: (prompt: string) =>
-          prompt.includes(RESOURCE_URI) && prompt.includes(RESOURCE_TEXT),
-      },
-      response: RESOURCE_ANALYSIS_TEXT,
-      times: 1,
-    },
-    // Optional since plugin-mcp's direct tool selection (#18218): when the
-    // planner already names the server/tool in the action parameters, the
-    // model selection call is skipped entirely.
-    {
-      name: "mcp-tool-selection-name",
-      match: {
-        modelType: ModelType.TEXT_LARGE,
-        prompt: (prompt: string) =>
-          prompt.includes(
-            "# TASK: Select the Most Appropriate Tool and Server",
-          ) &&
-          prompt.includes(MCP_SERVER_NAME) &&
-          prompt.includes(TOOL_NAME),
-      },
-      response: JSON.stringify({
-        serverName: MCP_SERVER_NAME,
-        toolName: TOOL_NAME,
-        reasoning:
-          "The user asked to echo alpha-42 through the deterministic MCP fixture.",
-        noToolAvailable: false,
-      }),
-      times: { min: 0, max: 1 },
-    },
-    {
-      name: "mcp-tool-selection-arguments",
-      match: {
-        modelType: ModelType.TEXT_LARGE,
-        prompt: (prompt: string) =>
-          prompt.includes(
-            "# TASK: Generate Tool Arguments for Tool Execution",
-          ) &&
-          prompt.includes(TOOL_NAME) &&
-          prompt.includes('"code"'),
-      },
-      response: JSON.stringify({
-        toolArguments: { code: TOOL_CODE },
-        reasoning: "The requested code is alpha-42.",
-      }),
-      times: 1,
-    },
-    {
-      name: "mcp-tool-reasoning",
-      match: {
-        modelType: ModelType.TEXT_SMALL,
-        prompt: (prompt: string) =>
-          prompt.includes(
-            `Synthesize the result from the "${TOOL_NAME}" tool`,
-          ) && prompt.includes(TOOL_OUTPUT),
-      },
-      response: TOOL_REASONING_TEXT,
-      times: 1,
-    },
-    unsupportedMcpEvaluationFixture(
-      parentListConnectionsInput,
-      "list_connections",
-    ),
-    unsupportedMcpEvaluationFixture(searchActionsInput, "search_actions"),
-    unsupportedMcpEvaluationFixture(listConnectionsInput, "list_connections"),
-  );
+  // Post-turn evaluators are outside this MCP contract. Keep the manifest
+  // limited to the message loop and MCP-owned model calls, then restore them in
+  // cleanup so a shared runtime cannot leak the isolation choice.
+  previousEvaluators = runtime.evaluators;
+  runtime.evaluators = [];
 
   const registered = (runtime.plugins ?? []).some(
     (plugin) => plugin.name === mcpPlugin.name,
@@ -598,6 +661,9 @@ async function seedMcp(ctx: ScenarioContext): Promise<string | undefined> {
   if (!server) return `MCP server ${MCP_SERVER_NAME} was not registered`;
   if (server.status !== "connected") {
     return `MCP server ${MCP_SERVER_NAME} status was ${server.status}`;
+  }
+  if (process.env.ELIZA_SCENARIO_MCP_FAIL_AFTER_CONNECT === "1") {
+    return "forced MCP post-connect failure for teardown verification";
   }
   registerMcpRoutes(runtime);
   return undefined;
@@ -653,25 +719,108 @@ async function finalMcpCheck(
   if (readPath(server.resources?.[0], "uri") !== RESOURCE_URI) {
     return `expected MCP resource uri ${RESOURCE_URI}, saw ${stableStringify(server.resources)}`;
   }
-  await service.stop();
+  const receiptFailure = expectMcpReceipts();
+  if (receiptFailure) return receiptFailure;
   return undefined;
+}
+
+type McpReceipt = {
+  direction?: unknown;
+  method?: unknown;
+  payload?: unknown;
+  pid?: unknown;
+};
+
+function readMcpReceipts(): McpReceipt[] {
+  if (!existsSync(receiptPath)) return [];
+  return readFileSync(receiptPath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as McpReceipt);
+}
+
+function expectMcpReceipts(): string | undefined {
+  const receipts = readMcpReceipts();
+  for (const method of [
+    "tools/list",
+    "resources/list",
+    "resources/templates/list",
+    "resources/read",
+    "tools/call",
+  ]) {
+    for (const direction of ["request", "response"]) {
+      if (
+        !receipts.some(
+          (receipt) =>
+            receipt.direction === direction && receipt.method === method,
+        )
+      ) {
+        return `missing MCP ${direction} receipt for ${method}: ${stableStringify(receipts)}`;
+      }
+    }
+  }
+  return undefined;
+}
+
+async function stopMcpAndProveNoOrphan(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
+  const runtime =
+    (ctx.runtime as RuntimeWithMcpScenario | undefined) ?? scenarioRuntime;
+  if (runtime && previousEvaluators) {
+    runtime.evaluators = previousEvaluators;
+    previousEvaluators = null;
+  }
+  runtime?.setSetting("mcp", previousMcpSetting, false);
+  previousMcpSetting = undefined;
+  const service = runtime?.getService<McpService>(MCP_SERVICE_NAME);
+  const started = readMcpReceipts().find(
+    (receipt) =>
+      receipt.direction === "lifecycle" && receipt.method === "started",
+  );
+  const pid = typeof started?.pid === "number" ? started.pid : null;
+  await service?.stop();
+  if (pid === null) return "MCP fixture did not record its child pid";
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ESRCH") return undefined;
+      return `MCP orphan probe failed for pid ${pid}: ${String(error)}`;
+    }
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+  return `MCP fixture process ${pid} remained alive after service.stop()`;
 }
 
 export default scenario({
   id: "deterministic-mcp-actions-routes",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [...modelFixtures],
+  },
   title: "Deterministic MCP action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "mcp", "routes"],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-mcp"],
+    services: [MCP_SERVICE_NAME],
   },
   seed: [
     {
       type: "custom",
       name: "start real stdio MCP fixture and register strict resource-analysis fixture",
       apply: seedMcp,
+    },
+  ],
+  cleanup: [
+    {
+      type: "custom",
+      name: "stop the MCP stdio fixture and prove its child process exited",
+      apply: stopMcpAndProveNoOrphan,
     },
   ],
   rooms: [
