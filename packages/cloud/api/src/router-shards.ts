@@ -16,7 +16,18 @@
  */
 
 export function routeShardKey(path: string): string | null {
-  const segments = path.split("/").filter(Boolean);
+  let routingPath = path;
+  try {
+    // Hono decodes URI-safe escapes before matching literal routes. The shard
+    // selector must use the same view or `/api/%66oo` would match `/api/foo`
+    // in a full router while loading a non-existent `%66oo` shard here.
+    // `decodeURI` deliberately preserves encoded slashes, matching Hono.
+    routingPath = decodeURI(path);
+  } catch {
+    // Malformed escapes are not valid literal aliases. Keep the raw path so
+    // they select no unrelated shard and reach the ordinary 404 boundary.
+  }
+  const segments = routingPath.split("/").filter(Boolean);
   if (segments[0] !== "api") return null;
   const first = segments[1];
   if (!first || first.startsWith(":") || first.includes("*")) return null;

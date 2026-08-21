@@ -34,6 +34,9 @@ const REQUEST_SAMPLES: ReadonlyArray<readonly [string, string | null]> = [
   ["/api/v1", null],
   ["/api/v1/", null],
   ["/api/v1/chat/completions", "v1/chat"],
+  ["/api/%61uth/cli-session/example", "auth"],
+  ["/api/%76%31/%63hat/completions", "v1/chat"],
+  ["/api/%zz", "%zz"],
   ["/api/v1/apps/123/chat", "v1/apps"],
   ["/api/.well-known/jwks.json", ".well-known"],
   ["/api/cron/agent-billing", "cron"],
@@ -131,6 +134,24 @@ describe("shard dispatch equivalence", () => {
       const shardRouter = buildStubRouter(routeShardKey(path));
       expect((await shardRouter.request(path)).status).toBe(404);
       expect((await fullRouter.request(path)).status).toBe(404);
+    }
+  });
+
+  test("encoded literal paths select the shard Hono actually matches", async () => {
+    const fullRouter = buildStubRouter("all");
+    for (const [path, expectedShard] of [
+      ["/api/%61uth/cli-session/concrete-value", "auth"],
+      ["/api/%76%31/%63hat/completions", "v1/chat"],
+    ] as const) {
+      const shardRouter = buildStubRouter(routeShardKey(path));
+      expect(routeShardKey(path)).toBe(expectedShard);
+      const [full, sharded] = await Promise.all([
+        fullRouter.request(path),
+        shardRouter.request(path),
+      ]);
+      expect(full.status).toBe(200);
+      expect(sharded.status).toBe(full.status);
+      expect(await sharded.text()).toBe(await full.text());
     }
   });
 });

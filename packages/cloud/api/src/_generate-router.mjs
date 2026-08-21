@@ -123,7 +123,15 @@ export async function isHonoConverted(filePath) {
  * no literal shard-determining segment; such mounts go into every shard.
  */
 export function routeShardKey(path) {
-  const segments = path.split("/").filter(Boolean);
+  let routingPath = path;
+  try {
+    // Hono decodes URI-safe escapes before matching literal routes. Preserve
+    // encoded slashes by using decodeURI rather than decodeURIComponent.
+    routingPath = decodeURI(path);
+  } catch {
+    // Malformed escapes retain their raw, non-matching shard identity.
+  }
+  const segments = routingPath.split("/").filter(Boolean);
   if (segments[0] !== "api") return null;
   const first = segments[1];
   if (!first || first.startsWith(":") || first.includes("*")) return null;
