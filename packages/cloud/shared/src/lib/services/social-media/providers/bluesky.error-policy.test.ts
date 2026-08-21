@@ -129,7 +129,7 @@ describe("blueskyProvider analytics error policy", () => {
 });
 
 describe("blueskyFetch — bounded hops fail closed and keep caller signals", () => {
-  test("aborts a hung Bluesky API hop at the timeout", async () => {
+  it("aborts a hung Bluesky API hop at the timeout", async () => {
     globalThis.fetch = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
@@ -146,7 +146,7 @@ describe("blueskyFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  it("preserves a caller-provided abort signal", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
