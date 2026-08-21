@@ -137,7 +137,9 @@ describe("0269-0276 subscription persistence migrations", () => {
       await readFile(new URL("meta/_journal.json", import.meta.url), "utf8"),
     ) as { entries: Array<{ idx: number; tag: string }> };
     expect(
-      journal.entries.slice(-migrationNames.length).map(({ idx, tag }) => ({ idx, tag })),
+      journal.entries
+        .filter(({ idx }) => idx >= 268 && idx < 268 + migrationNames.length)
+        .map(({ idx, tag }) => ({ idx, tag })),
     ).toEqual(
       migrationNames.map((name, offset) => ({ idx: 268 + offset, tag: name.slice(0, -4) })),
     );

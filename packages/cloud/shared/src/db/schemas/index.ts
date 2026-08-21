@@ -122,6 +122,7 @@ export * from "./stripe-connect-accounts";
 export * from "./stripe-customer-attempts";
 export * from "./subscription-allowance-periods";
 export * from "./subscription-allowance-transactions";
+export * from "./subscription-billing-operations";
 export * from "./telegram-chats";
 export * from "./tenant-db-clusters";
 export * from "./token-redemptions";
