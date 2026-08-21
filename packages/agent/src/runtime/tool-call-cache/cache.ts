@@ -80,6 +80,26 @@ export function isCacheableToolOutput(
   }
 }
 
+/** Path-scoped cycle walk. structuredClone supports cycles; this does not. */
+function containsCycle(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return true;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.some((item) => containsCycle(item, seen));
+    }
+    return Object.values(value as Record<string, unknown>).some((item) =>
+      containsCycle(item, seen),
+    );
+  } finally {
+    seen.delete(value);
+  }
+}
+
 export class ToolCallCache {
   private readonly memory: Lru<string, ToolCacheEntry>;
   private readonly disk: DiskStore;
@@ -145,7 +165,12 @@ export class ToolCallCache {
     try {
       cloned = structuredClone(output);
     } catch {
-      // Cyclic output cannot be cloned into either tier; return uncached.
+      // Non-cloneable output (functions, etc.) cannot enter either tier.
+      return;
+    }
+    // structuredClone supports cyclic graphs. Fail closed so a cycle or an
+    // already-degraded sentinel never becomes a memory-tier hit.
+    if (containsCycle(cloned) || isRedactionDegraded(cloned)) {
       return;
     }
     const entry: ToolCacheEntry = {

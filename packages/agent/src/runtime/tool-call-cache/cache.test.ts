@@ -456,7 +456,7 @@ describe("ToolCallCache", () => {
       redact: defaultPrivacyRedactor,
     });
     const desc = resolveToolDescriptor("web_search");
-    let deep: Record<string, unknown> = { bottom: "bottom-value" };
+    let deep: ToolOutput = { bottom: "bottom-value" };
     for (let i = 0; i < 12; i++) deep = { child: deep };
 
     const out = await cache.run(desc, { q: "deep" }, async () => deep);
@@ -502,11 +502,78 @@ describe("ToolCallCache", () => {
   it("returns deep-but-legal output through run without rejecting", async () => {
     const cache = makeCache();
     const desc = resolveToolDescriptor("web_search");
-    let deep: Record<string, unknown> = { v: 1 };
+    let deep: ToolOutput = { v: 1 };
     for (let i = 0; i < 64; i++) deep = { child: deep };
     await expect(
       cache.run(desc, { q: "legal-deep" }, async () => deep),
     ).resolves.toEqual(deep);
+  });
+
+  it("never stores cyclic output as a memory-tier hit via run or set", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const cyclic = { v: 1 } as ToolOutput & { self?: unknown };
+    cyclic.self = cyclic;
+
+    const defaultOut = await cache.run(
+      desc,
+      { q: "cycle-default" },
+      async () => cyclic,
+    );
+    expect(defaultOut).toBe(cyclic);
+    expect(cache.get(desc, { q: "cycle-default" })).toBeUndefined();
+
+    const lenient = (_output: unknown): _output is typeof cyclic => true;
+    let calls = 0;
+    const lenientOut = await cache.run(
+      desc,
+      { q: "cycle-lenient" },
+      async () => {
+        calls += 1;
+        return cyclic;
+      },
+      lenient,
+    );
+    expect(lenientOut).toBe(cyclic);
+    expect(cache.get(desc, { q: "cycle-lenient" })).toBeUndefined();
+    await cache.run(
+      desc,
+      { q: "cycle-lenient" },
+      async () => {
+        calls += 1;
+        return cyclic;
+      },
+      lenient,
+    );
+    expect(calls).toBe(2);
+
+    cache.set(desc, { q: "cycle-set" }, cyclic);
+    expect(cache.get(desc, { q: "cycle-set" })).toBeUndefined();
+  });
+
+  it("evicts a prior successful disk row when a later write is degraded", () => {
+    const cache = new ToolCallCache({
+      diskRoot: tempRoot,
+      redact: defaultPrivacyRedactor,
+    });
+    const desc = resolveToolDescriptor("web_search");
+    const args = { q: "flip" };
+
+    cache.set(desc, args, { ok: "t1" });
+    const key = buildCacheKey(desc.name, args);
+    const file = path.join(tempRoot, key.slice(0, 2), `${key}.json`);
+    expect(existsSync(file)).toBe(true);
+
+    let deep: ToolOutput = { bottom: "t2" };
+    for (let i = 0; i < 12; i++) deep = { child: deep };
+    cache.set(desc, args, deep);
+    expect(existsSync(file)).toBe(false);
+
+    const fresh = new ToolCallCache({
+      diskRoot: tempRoot,
+      redact: defaultPrivacyRedactor,
+    });
+    expect(fresh.get(desc, args)).toBeUndefined();
   });
 
   it("registry includes web_search, web_fetch, file_read, rag_search, knowledge_lookup", () => {

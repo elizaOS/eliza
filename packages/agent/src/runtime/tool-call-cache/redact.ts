@@ -13,6 +13,8 @@
  * subtrees / DAGs are fully redacted. True cycles emit [Circular]; containers
  * past the depth cap emit [MaxDepth]. DiskStore refuses to persist a degraded
  * value so a sentinel can never be served as a successful cross-process hit.
+ * Legitimate tool output that already equals a sentinel string is treated as
+ * degraded and is deliberately uncacheable (safe, re-executed every time).
  */
 
 import type { PrivacyRedactor } from "./types.ts";

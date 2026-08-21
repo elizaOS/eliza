@@ -48,7 +48,10 @@ export class DiskStore {
 
     const output = this.redact(entry.output);
     // A truncated or cyclic walk must not persist as a successful disk hit.
+    // Evict any existing row so a later degraded rewrite cannot leave the
+    // previous successful value to be served by a fresh process.
     if (isRedactionDegraded(output)) {
+      this.delete(entry.key);
       return;
     }
     const sanitized: ToolCacheEntry = {
