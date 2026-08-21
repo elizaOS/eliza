@@ -140,6 +140,9 @@ describe("createDynamicSkillProvider instructions well-formed Unicode", () => {
       {} as never,
     );
 
+    if (typeof result.text !== "string") {
+      throw new Error("expected provider result text to be a string");
+    }
     expect(isWellFormed(result.text)).toBe(true);
     expect(result.text).toContain(
       "[truncated — use USE_SKILL for full instructions]",
