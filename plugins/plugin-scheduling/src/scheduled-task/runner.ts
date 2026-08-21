@@ -49,6 +49,7 @@ import {
   type GateEvaluationContext,
   type GlobalPauseView,
   type OwnerFactsView,
+  SCHEDULED_TASK_EDIT_READONLY_KEYS,
   type ScheduledTask,
   type ScheduledTaskApplyResult,
   type ScheduledTaskFilter,
@@ -1372,11 +1373,14 @@ export function createScheduledTaskRunner(
     payload: Partial<Omit<ScheduledTask, "taskId" | "state">> | undefined,
   ): Promise<ScheduledTask> {
     if (!payload) return task;
-    // Cannot edit through state — that's what verbs are for.
-    const banned: Array<keyof ScheduledTask> = ["taskId", "state"];
-    for (const key of banned) {
-      if (key in (payload as Record<string, unknown>)) {
-        throw new Error(`edit: ${String(key)} is read-only`);
+    // Cannot edit through state — that's what verbs are for — and cannot edit
+    // through `__proto__`, which `Object.assign` would route to
+    // `Object.prototype`'s setter (see SCHEDULED_TASK_EDIT_READONLY_KEYS).
+    // `Object.hasOwn`, not `in`: `"__proto__" in payload` is true for every
+    // ordinary object.
+    for (const key of SCHEDULED_TASK_EDIT_READONLY_KEYS) {
+      if (Object.hasOwn(payload as Record<string, unknown>, key)) {
+        throw new Error(`edit: ${key} is read-only`);
       }
     }
     Object.assign(task, payload);
