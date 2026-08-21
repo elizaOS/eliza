@@ -8,6 +8,8 @@
  * MIME `parts` trees are bounded in `gmail-mime-parts.ts` so a hostile nest
  * cannot RangeError ingest.
  */
+
+import { Buffer } from "node:buffer";
 import { ElizaError, stripHtmlRawTextElements } from "@elizaos/core";
 import type { gmail_v1 } from "googleapis";
 import type { GoogleApiClientFactory } from "./client-factory.js";
@@ -734,7 +736,13 @@ const MAX_ADDRESSES_PER_HEADER = 2_048;
 // header exceeds explicit size/address-count limits, so malformed input can
 // never inflate the recipient count or allocate an unbounded DTO.
 function splitAddressList(value: string): string[] {
-  if (value.length > MAX_ADDRESS_HEADER_LENGTH) {
+  // UTF-8 bytes, not UTF-16 code units, are the resource boundary. The cheap
+  // length test prevents allocating an encoding buffer for obviously oversized
+  // ASCII input; byteLength then closes the multibyte bypass.
+  if (
+    value.length > MAX_ADDRESS_HEADER_LENGTH ||
+    Buffer.byteLength(value, "utf8") > MAX_ADDRESS_HEADER_LENGTH
+  ) {
     return [];
   }
 

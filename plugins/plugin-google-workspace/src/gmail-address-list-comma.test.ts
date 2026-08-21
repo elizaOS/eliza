@@ -10,6 +10,7 @@
  * real `GoogleGmailClient` with a stubbed client factory that returns a fixed
  * `messages.get` payload; deterministic, no network.
  */
+import { Buffer } from "node:buffer";
 import { describe, expect, it, vi } from "vitest";
 import type { GoogleApiClientFactory } from "./client-factory.js";
 import { GoogleGmailClient } from "./gmail.js";
@@ -323,6 +324,39 @@ describe("parseEmailAddresses top-level comma splitting", () => {
     await expect(tooLong.getMessage({ accountId: "a1", messageId: "m1" })).resolves.toMatchObject({
       to: [],
     });
+  });
+
+  it("enforces the address-header cap in UTF-8 bytes", async () => {
+    const maxBytes = 512 * 1024;
+    const prefix = "local@intranet (";
+    const suffix = ")";
+    const fixedBytes = Buffer.byteLength(prefix + suffix, "utf8");
+    const multibyte = "é".repeat(Math.floor((maxBytes - fixedBytes) / 2));
+    const asciiPadding = "x".repeat(maxBytes - fixedBytes - Buffer.byteLength(multibyte, "utf8"));
+    const exact = `${prefix}${multibyte}${asciiPadding}${suffix}`;
+    const over = `${prefix}${multibyte}${asciiPadding}y${suffix}`;
+    expect(Buffer.byteLength(exact, "utf8")).toBe(maxBytes);
+    expect(Buffer.byteLength(over, "utf8")).toBe(maxBytes + 1);
+
+    const exactClient = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: exact },
+      ])
+    );
+    const overClient = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: over },
+      ])
+    );
+
+    await expect(
+      exactClient.getMessage({ accountId: "a1", messageId: "m1" })
+    ).resolves.toMatchObject({ to: [{ email: "local@intranet" }] });
+    await expect(
+      overClient.getMessage({ accountId: "a1", messageId: "m1" })
+    ).resolves.toMatchObject({ to: [] });
   });
 });
 

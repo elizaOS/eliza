@@ -6,6 +6,8 @@
  */
 import { EventType, type IAgentRuntime } from "@elizaos/core/node";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GoogleApiClientFactory } from "./client-factory.js";
+import { GoogleGmailClient } from "./gmail.js";
 import { GoogleGmailAdapter } from "./lifeops-message-adapter.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -161,6 +163,54 @@ describe("GoogleGmailAdapter", () => {
         operation: "replied",
         domainEventId: "gmail_reply:acct_google_1:sent_1",
       })
+    );
+  });
+
+  it("sends a real-client mapped reply to Reply-To instead of From", async () => {
+    const list = vi.fn().mockResolvedValue({ data: { messages: [{ id: "msg_1" }] } });
+    const get = vi.fn().mockResolvedValue({
+      data: {
+        id: "msg_1",
+        threadId: "thread_1",
+        snippet: "Reply here",
+        labelIds: ["INBOX"],
+        internalDate: "0",
+        payload: {
+          headers: [
+            { name: "Subject", value: "Reply routing" },
+            { name: "From", value: "Sender <sender@example.com>" },
+            { name: "Reply-To", value: '"Support, West" <support@example.com>' },
+            { name: "To", value: "owner@example.com" },
+          ],
+        },
+      },
+    });
+    const client = new GoogleGmailClient({
+      gmail: vi.fn().mockResolvedValue({ users: { messages: { list, get } } }),
+    } as unknown as GoogleApiClientFactory);
+    const sendGmailReply = vi.fn(async () => ({ messageId: "sent_reply_to" }));
+    const runtime = runtimeWithGoogleService({
+      listGmailTriageMessages: client.listGmailTriageMessages.bind(client),
+      sendGmailReply,
+    });
+    const adapter = new GoogleGmailAdapter();
+
+    const [message] = await adapter.listMessages(runtime, {
+      worldIds: ["acct_google_1"],
+      limit: 1,
+    });
+    if (!message) throw new Error("expected mapped Gmail message");
+    expect(message.from.identifier).toBe("sender@example.com");
+    expect(message.metadata?.replyTo).toBe("support@example.com");
+
+    const draft = await adapter.createDraft(runtime, {
+      inReplyToId: message.id,
+      body: "Routed correctly.",
+    });
+    await adapter.sendDraft(runtime, draft.draftId);
+
+    expect(sendGmailReply).toHaveBeenCalledWith(
+      expect.objectContaining({ to: ["support@example.com"] })
     );
   });
 
