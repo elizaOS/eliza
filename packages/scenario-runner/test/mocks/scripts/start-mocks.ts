@@ -4593,8 +4593,15 @@ export async function startMocks(opts?: {
   corpusDir?: string;
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
-  const corpusDir =
-    opts?.corpusDir ?? process.env.ELIZA_CORPUS_DIR ?? undefined;
+  // A blank corpus dir is a configuration error, never a fixture-only boot: the
+  // corpus leg would silently not run and the suite would still pass green.
+  const requestedCorpusDir = opts?.corpusDir ?? process.env.ELIZA_CORPUS_DIR;
+  if (requestedCorpusDir !== undefined && requestedCorpusDir.trim() === "") {
+    throw new Error(
+      "corpus directory is set but empty; pass a shard tree path or unset ELIZA_CORPUS_DIR",
+    );
+  }
+  const corpusDir = requestedCorpusDir;
 
   const dataPaths = envs.map((e) => path.resolve(ENVS_DIR, `${e}.json`));
   const missing = dataPaths.filter((p) => !fs.existsSync(p));
@@ -4646,7 +4653,8 @@ export async function startMocks(opts?: {
 // CLI entrypoint — `bunx tsx test/mocks/scripts/start-mocks.ts --envs a,b,c`
 // ---------------------------------------------------------------------------
 
-function parseCliArgs(argv: readonly string[]): {
+/** Exported for the mock lane: the CLI seam must reject a blank corpus path. */
+export function parseCliArgs(argv: readonly string[]): {
   envs: readonly MockEnvironmentName[] | undefined;
   simulator: boolean;
   corpusDir: string | undefined;
@@ -4668,7 +4676,9 @@ function parseCliArgs(argv: readonly string[]): {
       continue;
     }
     if (arg.startsWith("--corpus-dir=")) {
-      corpusDir = arg.slice("--corpus-dir=".length);
+      const value = arg.slice("--corpus-dir=".length);
+      if (!value) throw new Error("--corpus-dir requires a directory path");
+      corpusDir = value;
       continue;
     }
     if (arg === "--envs" || arg === "-e") {

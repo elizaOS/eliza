@@ -13,7 +13,7 @@ import {
   CorpusSelectionError,
   loadCorpusMessages,
 } from "./loader.ts";
-import type { CorpusMessage } from "./schema.ts";
+import type { CorpusMessage, CorpusPlatform } from "./schema.ts";
 
 const SAMPLE_CORPUS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -169,6 +169,81 @@ describe("loadCorpusMessages", () => {
         minScrubState: "totally-clean" as never,
       }),
     ).rejects.toThrow(CorpusSelectionError);
+  });
+
+  it("rejects a scalar string where an array selection field is required", async () => {
+    // `"homework".includes("home")` is true, so a bare string would silently
+    // turn an account allowlist into a substring filter and widen the release.
+    const widened = await loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+      accountIds: ["work", "home"],
+    });
+    expect(widened.messages.length).toBeGreaterThan(1);
+
+    await expect(
+      loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+        accountIds: "homework" as unknown as readonly string[],
+      }),
+    ).rejects.toThrow(CorpusSelectionError);
+    await expect(
+      loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+        threadIds: "corpus-thr-atlas" as unknown as readonly string[],
+      }),
+    ).rejects.toThrow(CorpusSelectionError);
+    await expect(
+      loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+        platforms: "gmail" as unknown as readonly CorpusPlatform[],
+      }),
+    ).rejects.toThrow(CorpusSelectionError);
+    await expect(
+      loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+        platforms: ["gmailx"] as unknown as readonly CorpusPlatform[],
+      }),
+    ).rejects.toThrow(CorpusSelectionError);
+    await expect(
+      loadCorpusMessages(SAMPLE_CORPUS_DIR, {
+        accountIds: [7] as unknown as readonly string[],
+      }),
+    ).rejects.toThrow(CorpusSelectionError);
+  });
+
+  it("breaks ts ties by id, deciding which row a cap releases", async () => {
+    tempDir = await writeShards({
+      "gmail/home/2025-03.jsonl": [
+        row({ id: "zzz-home-row", accountId: "home", ts: MARCH }),
+      ],
+      "gmail/work/2025-03.jsonl": [row({ id: "aaa-work-row", ts: MARCH })],
+    });
+    const all = await loadCorpusMessages(tempDir);
+    expect(all.messages.map((m) => m.id)).toEqual([
+      "aaa-work-row",
+      "zzz-home-row",
+    ]);
+    // Without the id tiebreak the cap would keep whichever shard was walked
+    // first, so identical corpora could seed different mocks.
+    const capped = await loadCorpusMessages(tempDir, { maxMessages: 1 });
+    expect(capped.messages.map((m) => m.id)).toEqual(["aaa-work-row"]);
+  });
+
+  it("drops replyToId when selection did not release the parent", async () => {
+    tempDir = await writeShards({
+      "gmail/work/2025-03.jsonl": [
+        row({ id: "parent", ts: MARCH, scrubState: "raw" }),
+        row({ id: "child", ts: MARCH + 1_000, replyToId: "parent" }),
+      ],
+    });
+    const gated = await loadCorpusMessages(tempDir);
+    expect(gated.belowScrubFloor).toBe(1);
+    expect(gated.messages.map((m) => m.id)).toEqual(["child"]);
+    expect(gated.messages[0]?.replyToId).toBeUndefined();
+
+    // The handle survives whenever the parent is actually released.
+    const loosened = await loadCorpusMessages(tempDir, {
+      minScrubState: "raw",
+    });
+    expect(loosened.messages.map((m) => m.replyToId)).toEqual([
+      undefined,
+      "parent",
+    ]);
   });
 
   it("rejects malformed numeric selection bounds at the boundary", async () => {

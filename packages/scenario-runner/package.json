@@ -83,7 +83,6 @@
   "dependencies": {
     "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "@elizaos/corpus-tools": "workspace:*",
     "@elizaos/logger": "workspace:*",
     "@elizaos/plugin-agent-skills": "workspace:*",
     "@elizaos/plugin-app-control": "workspace:*",
@@ -108,6 +107,7 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/corpus-tools": "workspace:*",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"

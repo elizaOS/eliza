@@ -3,7 +3,8 @@
  * from the committed synthetic sample corpus in @elizaos/corpus-tools, no
  * network beyond loopback and no mocked collaborators. Covers manifest
  * publication, message retrieval, builtin-fixture preservation, and the
- * verified-scrub floor rejecting unscrubbed corpora.
+ * verified-scrub floor rejecting unscrubbed corpora, the unhostable-account
+ * rejection, and the blank-corpus-directory boot refusal.
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +15,11 @@ import {
   CORPUS_GMAIL_FIXTURE_SET,
   corpusGmailMockOptions,
 } from "../scripts/google-gmail-corpus.ts";
-import { type StartedMocks, startMocks } from "../scripts/start-mocks.ts";
+import {
+  parseCliArgs,
+  type StartedMocks,
+  startMocks,
+} from "../scripts/start-mocks.ts";
 
 const SAMPLE_CORPUS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -119,6 +124,56 @@ describe("corpus-loaded gmail mock", () => {
         },
       ]),
     ).toThrow(/non-gmail/);
+  });
+
+  it("rejects a corpus account the Gmail mock cannot host", () => {
+    // Otherwise the mock files these under its default account while a
+    // `corpus-gmail:<accountId>` set still advertises them under the corpus
+    // name — a silently wrong mapping instead of a boot failure.
+    expect(() =>
+      corpusGmailMockOptions([
+        {
+          id: "corpus-p",
+          platform: "gmail",
+          accountId: "personal",
+          threadId: "thr-p",
+          ts: Date.parse("2025-03-05T08:00:00.000Z"),
+          direction: "in",
+          senderId: "a@b.test",
+          senderDisplay: "A",
+          recipients: [],
+          text: "body",
+          labels: [],
+          attachments: [],
+          scrubState: "verified",
+        },
+      ]),
+    ).toThrow(/personal/);
+  });
+
+  it("refuses to boot on a blank corpus directory instead of running fixture-only", async () => {
+    // A mistyped `--corpus-dir=` or an unset shell variable must not produce a
+    // green run whose corpus leg silently never executed.
+    expect(() => parseCliArgs(["--corpus-dir="])).toThrow(
+      /--corpus-dir requires a directory path/,
+    );
+    expect(parseCliArgs(["--corpus-dir=/tmp/corpus"]).corpusDir).toBe(
+      "/tmp/corpus",
+    );
+    await expect(
+      startMocks({ envs: ["google"], corpusDir: "" }),
+    ).rejects.toThrow(/corpus directory is set but empty/);
+
+    const previous = process.env.ELIZA_CORPUS_DIR;
+    process.env.ELIZA_CORPUS_DIR = "";
+    try {
+      await expect(startMocks({ envs: ["google"] })).rejects.toThrow(
+        /corpus directory is set but empty/,
+      );
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_CORPUS_DIR;
+      else process.env.ELIZA_CORPUS_DIR = previous;
+    }
   });
 
   it("refuses to start when the corpus has no verified gmail rows", async () => {

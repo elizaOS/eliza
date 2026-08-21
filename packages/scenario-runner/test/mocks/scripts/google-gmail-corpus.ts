@@ -16,15 +16,13 @@ import {
   type CorpusMessage,
   loadCorpusMessages,
 } from "@elizaos/corpus-tools";
-import type {
-  GmailFixtureMessage,
-  GoogleMockStateOptions,
+import {
+  GMAIL_MOCK_ACCOUNT_IDS,
+  type GmailFixtureMessage,
+  type GoogleMockStateOptions,
 } from "./google-gmail-state.ts";
 
 export const CORPUS_GMAIL_FIXTURE_SET = "corpus-gmail";
-
-/** Gmail mock account ids a corpus accountId may map onto directly. */
-const GMAIL_MOCK_ACCOUNT_IDS = new Set(["work", "home"]);
 
 function emailAddressFor(id: string, address?: string): string {
   if (address) return address;
@@ -54,9 +52,7 @@ function corpusMessageToGmailFixture(
   return {
     id: message.id,
     threadId: message.threadId,
-    ...(GMAIL_MOCK_ACCOUNT_IDS.has(message.accountId)
-      ? { accountId: message.accountId }
-      : {}),
+    accountId: message.accountId,
     labelIds,
     snippet: message.snippet ?? message.text.slice(0, 120),
     internalDateOffsetMs: message.ts - CORPUS_ANCHOR_MS,
@@ -76,7 +72,7 @@ function corpusMessageToGmailFixture(
             attachment.dataBase64
               ? [
                   {
-                    attachmentId: `${message.id}-${attachment.sha256.slice(0, 12)}`,
+                    attachmentId: `${message.id}-${attachment.sha256}`,
                     filename: attachment.filename,
                     mimeType: attachment.mimeType,
                     data: attachment.dataBase64,
@@ -93,7 +89,10 @@ function corpusMessageToGmailFixture(
  * Maps already-loaded gmail-platform corpus rows into Google mock state
  * options. Non-gmail rows are rejected rather than silently dropped: cross
  * channel corpus rows belong to their own mock adapters, and passing them
- * here indicates a caller selection bug.
+ * here indicates a caller selection bug. A corpus accountId the mock cannot
+ * host is rejected for the same reason — the mock would file those messages
+ * under its default account while a `corpus-gmail:<accountId>` fixture set
+ * still advertised them under the corpus name.
  */
 export function corpusGmailMockOptions(
   messages: readonly CorpusMessage[],
@@ -108,13 +107,28 @@ export function corpusGmailMockOptions(
     );
   }
 
+  const unmappable = [
+    ...new Set(
+      messages
+        .map((message) => message.accountId)
+        .filter((accountId) => !GMAIL_MOCK_ACCOUNT_IDS.includes(accountId)),
+    ),
+  ];
+  if (unmappable.length > 0) {
+    throw new Error(
+      `corpusGmailMockOptions received corpus account(s) ${unmappable.join(", ")} the Gmail mock cannot host; supported accounts are ${GMAIL_MOCK_ACCOUNT_IDS.join(", ")}`,
+    );
+  }
+
   const fixtures = messages.map(corpusMessageToGmailFixture);
   const fixtureSets: Record<string, string[]> = {
     [CORPUS_GMAIL_FIXTURE_SET]: messages.map((message) => message.id),
   };
   for (const message of messages) {
     const key = `${CORPUS_GMAIL_FIXTURE_SET}:${message.accountId}`;
-    (fixtureSets[key] ??= []).push(message.id);
+    const bucket = fixtureSets[key] ?? [];
+    bucket.push(message.id);
+    fixtureSets[key] = bucket;
   }
   return {
     corpusGmailFixtures: fixtures,

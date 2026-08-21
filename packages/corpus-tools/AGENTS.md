@@ -28,7 +28,13 @@ source-archive collectors consumed by later PII and LifeOps mock-loader work.
   loader re-derives both across every collected row. It validates the caller's
   selection at that boundary rather than trusting the type system: an
   unrecognized `minScrubState` must abort, never compare against `undefined`
-  and release everything.
+  and release everything, and `platforms`/`accountIds`/`threadIds` must be
+  arrays, never a bare string that `String.prototype.includes` would widen
+  into a substring filter.
+- Corpus-wide identity is proven over the collected corpus; selection may
+  still cut a thread. A released row whose parent selection removed is emitted
+  with `replyToId` dropped, so a consumer never receives a handle it cannot
+  resolve.
 - Reviewed deletion is two-phase and derived-output-only. Never mutate raw
   shards; bind every owner decision to the exact queue/rules/source hashes and
   keep review contents local while exposing only sanitized counts and digests.

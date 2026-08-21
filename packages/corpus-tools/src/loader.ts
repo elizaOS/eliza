@@ -12,10 +12,16 @@
  *
  * It is also the single identity domain for a corpus: `readCorpusShard` scopes
  * duplicate-id detection and reply resolution to one shard, so this module
- * re-derives both across every collected row.
+ * re-derives both across every collected row. Corpus-wide reply resolution is
+ * an integrity check over the collected corpus, not a promise about the
+ * released slice: selection legitimately cuts threads (a parent below the
+ * scrub floor, outside the window, or past the cap), so a released row whose
+ * parent is not itself released is emitted with `replyToId` dropped rather
+ * than carrying a handle a consumer cannot resolve.
  */
+import { ElizaError } from "@elizaos/core";
 import type { CorpusMessage, CorpusPlatform, ScrubState } from "./schema.ts";
-import { scrubStateRank, scrubStates } from "./schema.ts";
+import { corpusPlatforms, scrubStateRank, scrubStates } from "./schema.ts";
 import {
   type CorpusValidationIssue,
   findCorpusShardFiles,
@@ -49,7 +55,8 @@ export interface CorpusLoadResult {
   byPlatform: Partial<Record<CorpusPlatform, number>>;
 }
 
-export class CorpusLoadError extends Error {
+export class CorpusLoadError extends ElizaError {
+  override readonly name = "CorpusLoadError";
   readonly issues: readonly CorpusValidationIssue[];
 
   constructor(rootDir: string, issues: readonly CorpusValidationIssue[]) {
@@ -59,8 +66,16 @@ export class CorpusLoadError extends Error {
       .join("; ");
     super(
       `corpus load from ${rootDir} failed with ${issues.length} validation issue(s): ${preview}`,
+      {
+        code: "CORPUS_LOAD_VALIDATION_FAILED",
+        context: {
+          rootDir,
+          issueCount: issues.length,
+          issueCodes: [...new Set(issues.map((issue) => issue.code))],
+          preview,
+        },
+      },
     );
-    this.name = "CorpusLoadError";
     this.issues = issues;
   }
 }
@@ -71,10 +86,16 @@ export class CorpusLoadError extends Error {
  * decoded configuration, a cast, or plain JavaScript — must abort the load
  * rather than silently comparing against `undefined` and releasing every row.
  */
-export class CorpusSelectionError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "CorpusSelectionError";
+export class CorpusSelectionError extends ElizaError {
+  override readonly name = "CorpusSelectionError";
+
+  constructor(
+    message: string,
+    field: string,
+    value: unknown,
+    code = "CORPUS_SELECTION_INVALID",
+  ) {
+    super(message, { code, context: { field, value } });
   }
 }
 
@@ -83,6 +104,42 @@ function assertFiniteInteger(value: number | undefined, field: string): void {
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
     throw new CorpusSelectionError(
       `corpus selection ${field} must be a finite integer, received ${String(value)}`,
+      field,
+      value,
+    );
+  }
+}
+
+/**
+ * Rejects the array selection fields unless they really are arrays of strings.
+ * A bare string passes TypeScript through a cast or a decoded config and then
+ * reaches `Array.prototype.includes`'s namesake on `String`, turning membership
+ * into substring matching: `accountIds: "homework"` would release both the
+ * `home` and the `work` account. On a release gate over personal data that is
+ * the wrong failure direction, so the shape is asserted here.
+ */
+function assertStringArray(
+  value: unknown,
+  field: string,
+  allowed?: readonly string[],
+): void {
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) {
+    throw new CorpusSelectionError(
+      `corpus selection ${field} must be an array of strings, received ${JSON.stringify(value)}`,
+      field,
+      value,
+    );
+  }
+  if (!allowed) return;
+  const unknownEntries = (value as string[]).filter(
+    (entry) => !allowed.includes(entry),
+  );
+  if (unknownEntries.length > 0) {
+    throw new CorpusSelectionError(
+      `corpus selection ${field} must contain only ${allowed.join(", ")}, received ${JSON.stringify(unknownEntries)}`,
+      field,
+      unknownEntries,
     );
   }
 }
@@ -97,8 +154,13 @@ function validateSelection(selection: CorpusLoadSelection): ScrubState {
   if (!scrubStates.includes(requested as ScrubState)) {
     throw new CorpusSelectionError(
       `corpus selection minScrubState must be one of ${scrubStates.join(", ")}, received ${JSON.stringify(requested)}`,
+      "minScrubState",
+      requested,
     );
   }
+  assertStringArray(selection.platforms, "platforms", corpusPlatforms);
+  assertStringArray(selection.accountIds, "accountIds");
+  assertStringArray(selection.threadIds, "threadIds");
   assertFiniteInteger(selection.fromTs, "fromTs");
   assertFiniteInteger(selection.toTs, "toTs");
   assertFiniteInteger(selection.maxMessages, "maxMessages");
@@ -109,11 +171,15 @@ function validateSelection(selection: CorpusLoadSelection): ScrubState {
   ) {
     throw new CorpusSelectionError(
       `corpus selection window is inverted: fromTs ${selection.fromTs} > toTs ${selection.toTs}`,
+      "fromTs",
+      selection.fromTs,
     );
   }
   if (selection.maxMessages !== undefined && selection.maxMessages < 0) {
     throw new CorpusSelectionError(
       `corpus selection maxMessages must not be negative, received ${selection.maxMessages}`,
+      "maxMessages",
+      selection.maxMessages,
     );
   }
   return requested as ScrubState;
@@ -153,6 +219,26 @@ function corpusWideIdentityIssues(
   return issues;
 }
 
+/**
+ * Drops `replyToId` from released rows whose parent selection removed. The
+ * corpus-wide check above proves the parent exists in the corpus; it cannot
+ * prove the parent survived the scrub floor, the time window, or the cap. A
+ * consumer only ever sees the released set, so a handle it cannot resolve is a
+ * dangling pointer and is removed rather than shipped.
+ */
+function withResolvableRepliesOnly(
+  released: readonly CorpusMessage[],
+): CorpusMessage[] {
+  const releasedIds = new Set(released.map((message) => message.id));
+  return released.map((message) => {
+    if (!message.replyToId || releasedIds.has(message.replyToId)) {
+      return message;
+    }
+    const { replyToId: _severed, ...rest } = message;
+    return rest;
+  });
+}
+
 function matchesSelection(
   message: CorpusMessage,
   selection: CorpusLoadSelection,
@@ -182,7 +268,8 @@ function matchesSelection(
  * Loads validated corpus messages from a shard tree rooted at `rootDir`
  * (`<platform>/<account>/<yyyy-mm>.jsonl`). Throws `CorpusLoadError` when any
  * shard fails validation — a corpus that cannot fully validate must never
- * partially seed a mock.
+ * partially seed a mock. Reply integrity is proven over the whole corpus;
+ * rows released without their parent are emitted with `replyToId` dropped.
  */
 export async function loadCorpusMessages(
   rootDir: string,
@@ -221,10 +308,11 @@ export async function loadCorpusMessages(
   });
 
   selected.sort((a, b) => a.ts - b.ts || a.id.localeCompare(b.id));
-  const messages =
+  const capped =
     selection.maxMessages !== undefined
       ? selected.slice(0, selection.maxMessages)
       : selected;
+  const messages = withResolvableRepliesOnly(capped);
 
   const byPlatform: Partial<Record<CorpusPlatform, number>> = {};
   for (const message of messages) {

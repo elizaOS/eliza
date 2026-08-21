@@ -142,6 +142,14 @@ const GMAIL_MOCK_ACCOUNTS: GmailMockAccount[] = [
   },
 ];
 
+/**
+ * Account ids this mock can host messages under. Fixtures naming anything else
+ * fall back to the default account, so corpus adapters check membership here
+ * instead of duplicating the list.
+ */
+export const GMAIL_MOCK_ACCOUNT_IDS: readonly string[] =
+  GMAIL_MOCK_ACCOUNTS.map((account) => account.id);
+
 const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
   {
     id: "msg-finance",
