@@ -31,9 +31,9 @@ function wrapperFor(cloudOnly: boolean) {
   };
 }
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
-  clearStoredStewardToken();
+  await clearStoredStewardToken();
   __resetAuthStatusForTests();
 });
 
@@ -75,7 +75,7 @@ describe("useShellAuthGate", () => {
     await act(() => writeStoredStewardToken("opaque-cloud-session"));
     expect(result.current).toEqual({ gated: true, phase: "checking" });
 
-    act(() => clearStoredStewardToken());
+    await act(() => clearStoredStewardToken());
     expect(result.current).toEqual({ gated: true, phase: "needs-auth" });
   });
 

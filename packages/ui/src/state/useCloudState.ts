@@ -1598,16 +1598,16 @@ export function useCloudState({
         result = await refreshCloudStewardSession({
           endpoint: resolveStewardRefreshEndpoint(),
         });
+        if (disposed) return;
+        if (result?.token) {
+          await writeStoredStewardToken(result.token);
+        }
       } catch (err: unknown) {
-        // error-policy:J4 pre-emptive token refresh; a resolution or transport
-        // failure is reported and keeps the stored token until the next authed
-        // call surfaces the re-auth path. No token rotation on failure.
+        // error-policy:J4 a pre-emptive refresh or protected persistence
+        // failure keeps the prior durable token until an auth boundary exposes
+        // the re-auth path. No rejected token is published.
         logger.warn({ err }, "[useCloudState] steward session refresh failed");
         return;
-      }
-      if (disposed) return;
-      if (result?.token) {
-        await writeStoredStewardToken(result.token);
       }
     };
 

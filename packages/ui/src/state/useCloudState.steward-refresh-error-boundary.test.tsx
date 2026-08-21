@@ -17,6 +17,14 @@ import { setBootConfig } from "../config/boot-config";
 const clientCloudMocks = vi.hoisted(() => ({
   refreshCloudStewardSession: vi.fn(),
   resolveDirectCloudAuthApiBase: vi.fn(),
+  writeStoredStewardToken: vi.fn(),
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@elizaos/shared/steward-session-client")
+  >()),
+  writeStoredStewardToken: clientCloudMocks.writeStoredStewardToken,
 }));
 
 vi.mock("../api/client-cloud", () => ({
@@ -56,6 +64,8 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
     clientCloudMocks.refreshCloudStewardSession.mockResolvedValue({
       token: "fresh",
     });
+    clientCloudMocks.writeStoredStewardToken.mockReset();
+    clientCloudMocks.writeStoredStewardToken.mockResolvedValue(undefined);
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockReset();
     clientCloudMocks.resolveDirectCloudAuthApiBase.mockImplementation(
       (base: string) => base,
@@ -107,5 +117,25 @@ describe("useCloudState — Steward refresh endpoint error boundary", () => {
       ),
     );
     expect(clientCloudMocks.refreshCloudStewardSession).not.toHaveBeenCalled();
+  });
+
+  it("observes protected persistence denial without publishing the refreshed token", async () => {
+    const persistenceFailure = new Error("native secure store denied");
+    clientCloudMocks.writeStoredStewardToken.mockRejectedValueOnce(
+      persistenceFailure,
+    );
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    armStewardRefresh();
+
+    await waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        { err: persistenceFailure },
+        "[useCloudState] steward session refresh failed",
+      ),
+    );
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe(
+      "near-expiry-steward-jwt",
+    );
   });
 });
