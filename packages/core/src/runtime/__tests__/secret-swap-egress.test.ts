@@ -173,4 +173,52 @@ describe("secret-swap egress at executePlannedToolCall", () => {
 		expect(String(result.error)).toContain("walk budget");
 		expect(handler).not.toHaveBeenCalled();
 	});
+
+	it("restores placeholders in non-standard records before action dispatch", async () => {
+		const { session, placeholder } = sessionWithSecret();
+		class Payload {
+			token = placeholder;
+		}
+		const records = [
+			Object.assign(Object.create(null), { token: placeholder }),
+			new Payload(),
+			Object.assign(Object.create({ inherited: placeholder }), {
+				token: placeholder,
+			}),
+		];
+
+		for (const [index, payload] of records.entries()) {
+			const received: { token?: unknown } = {};
+			const action = {
+				...makeWebhookAction(received),
+				parameters: [
+					{
+						name: "payload",
+						description: "Structured secret-bearing payload",
+						required: true,
+						schema: { type: "object", additionalProperties: true },
+					},
+				],
+				handler: vi.fn(async (_rt, _msg, _state, options) => {
+					const restoredPayload = options?.parameters?.payload;
+					if (restoredPayload && typeof restoredPayload === "object") {
+						received.token = (restoredPayload as Record<string, unknown>).token;
+					}
+					return { success: true };
+				}),
+			} as Action;
+			const result = await runWithTrajectoryContext(
+				{ runId: `run-record-${index}`, secretSwapSession: session },
+				() =>
+					executePlannedToolCall(
+						makeRuntime([action]),
+						{ message: makeMessage() },
+						{ name: action.name, params: { payload } },
+					),
+			);
+			expect(result.success, JSON.stringify(result)).toBe(true);
+			expect(received.token).toBe(SECRET);
+			expect(action.handler).toHaveBeenCalledTimes(1);
+		}
+	});
 });

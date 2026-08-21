@@ -215,15 +215,6 @@ function isSecretSwapArray(value: object): boolean {
 	return inspectSwap("isArray", () => Array.isArray(value));
 }
 
-function isSecretSwapPlainObject(
-	value: object,
-): value is Record<string, unknown> {
-	return (
-		inspectSwap("getPrototypeOf", () => Object.getPrototypeOf(value)) ===
-		Object.prototype
-	);
-}
-
 function ownArrayLength(value: object): number {
 	const descriptor = inspectSwap("getOwnPropertyDescriptor", () =>
 		Object.getOwnPropertyDescriptor(value, "length"),
@@ -295,9 +286,14 @@ function walkSecretSwapValue(
 			}
 			return next;
 		}
-		if (!isSecretSwapPlainObject(value)) {
-			return value;
-		}
+		// Deliberately normalize every non-array object from its own enumerable
+		// data descriptors. The pre-boundary implementation used Object.entries
+		// for this whole class, so limiting the safe walk to Object.prototype
+		// records would let null-prototype dictionaries and class/custom-prototype
+		// data records carry unswapped secrets to providers. Do not reflect the
+		// prototype: it is irrelevant to the wire value and may itself be a hostile
+		// Proxy trap. Reconstructing a plain data record preserves the established
+		// boundary behavior without executing getters or inherited properties.
 		const next: Record<string, unknown> = {};
 		const keys = inspectSwap("ownKeys", () => Reflect.ownKeys(value));
 		// Charge reflection work up front, including symbols and non-enumerable

@@ -126,22 +126,51 @@ describe("secret-swap walk bound", () => {
 		}
 	});
 
-	it("wraps hostile prototype reflection without leaking the raw error", () => {
-		const reflectionFailure = new Error("prototype trap");
+	it("does not invoke a hostile prototype trap", () => {
+		const secret = "sk-live_proto_trap_AbC123dEf456";
+		let prototypeCalls = 0;
 		const value = new Proxy(
-			{},
+			{ token: secret },
 			{
 				getPrototypeOf() {
-					throw reflectionFailure;
+					prototypeCalls += 1;
+					throw new Error("prototype trap");
 				},
 			},
 		);
-		try {
-			new SecretSwapSession().restoreInValue(value);
-			throw new Error("expected SECRET_SWAP_UNBOUNDED");
-		} catch (error) {
-			expect(isSecretSwapUnbounded(error)).toBe(true);
-			expect((error as Error).cause).toBe(reflectionFailure);
+		const swapped = new SecretSwapSession().substituteInValue(value) as Record<
+			string,
+			unknown
+		>;
+		expect(prototypeCalls).toBe(0);
+		expect(swapped.token).not.toBe(secret);
+	});
+
+	it("walks null-prototype, class, and custom-prototype data records", () => {
+		const secret = "sk-live_records_AbC123dEf456";
+		class Payload {
+			token = secret;
+		}
+		const nullPrototype = Object.assign(Object.create(null), { token: secret });
+		const customPrototype = Object.assign(
+			Object.create({ inherited: secret }),
+			{
+				token: secret,
+			},
+		);
+		const session = new SecretSwapSession();
+		for (const value of [nullPrototype, new Payload(), customPrototype]) {
+			const swapped = session.substituteInValue(value) as Record<
+				string,
+				unknown
+			>;
+			expect(swapped.token).not.toBe(secret);
+			expect(Object.hasOwn(swapped, "inherited")).toBe(false);
+			const restored = session.restoreInValue(swapped) as Record<
+				string,
+				unknown
+			>;
+			expect(restored.token).toBe(secret);
 		}
 	});
 
