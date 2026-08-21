@@ -58,6 +58,44 @@ describe("UnionFind", () => {
 		expect(groups.size).toBe(2);
 	});
 
+	it("resolves a chain-shaped component far deeper than the JS call stack", () => {
+		// `union()` has no union-by-rank heuristic, so edges arriving in this
+		// order re-root one level at a time and build a parent chain as deep as
+		// the component is large. This is the shape
+		// `RelationshipsService.buildIdentityUnionFind` produces for a path of
+		// confirmed identity links. A recursive `find()` needs one stack frame
+		// per link and throws RangeError here (measured threshold ~10.3k links
+		// on an empty stack); this must resolve instead.
+		const links = 50_000;
+		const uf = new UnionFind<string>();
+		for (let index = 0; index < links; index += 1) {
+			uf.union(`e${index + 1}`, `e${index}`);
+		}
+
+		const root = uf.find("e0");
+		expect(root).toBe(`e${links}`);
+		expect(uf.connected("e0", `e${links}`)).toBe(true);
+		expect(uf.size).toBe(links + 1);
+	});
+
+	it("compresses every node on the path to the root", () => {
+		const uf = new UnionFind<string>();
+		uf.union("b", "a");
+		uf.union("c", "b");
+		uf.union("d", "c");
+		// Chain before the lookup: a -> b -> c -> d.
+		expect(uf.find("d")).toBe("d");
+
+		const root = uf.find("a");
+		expect(root).toBe("d");
+		// Every node the walk passed through now points straight at the root,
+		// so a second lookup is a single hop.
+		for (const node of ["a", "b", "c"]) {
+			expect(uf.find(node)).toBe("d");
+		}
+		expect(uf.componentOf("a").sort()).toEqual(["a", "b", "c", "d"]);
+	});
+
 	it("clears elements and resets structure", () => {
 		const uf = new UnionFind(["x", "y", "z"]);
 		expect(uf.size).toBe(3);

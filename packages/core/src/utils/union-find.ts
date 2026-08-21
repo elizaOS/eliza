@@ -34,15 +34,36 @@ export class UnionFind<T> {
 		return this.parent.has(value);
 	}
 
-	/** Find the canonical root of `value`. Adds the node lazily. */
+	/**
+	 * Find the canonical root of `value`. Adds the node lazily.
+	 *
+	 * Deliberately iterative. `union()` carries no union-by-rank/size
+	 * heuristic, so a component whose edges arrive in a chain order
+	 * (`union(b, a)`, `union(c, b)`, ...) re-roots one level at a time and
+	 * leaves a parent chain as deep as the component is large — that is
+	 * exactly the shape `RelationshipsService.buildIdentityUnionFind`'s
+	 * frontier walk produces for a path of confirmed identity links. A
+	 * recursive walk of that chain costs one JS stack frame per link and
+	 * throws `RangeError: Maximum call stack size exceeded` past ~10k
+	 * members, so the first `find()`/`componentOf()` after the build — i.e.
+	 * `getMemberEntityIds()` — was the frame that died. The two passes below
+	 * compress exactly the same set of nodes the recursion did (every node
+	 * on the path is repointed at the root), so results are unchanged.
+	 */
 	find(value: T): T {
 		this.add(value);
-		const current = this.parent.get(value) ?? value;
-		if (current === value) {
-			return current;
+		let root = value;
+		let next = this.parent.get(root) ?? root;
+		while (next !== root) {
+			root = next;
+			next = this.parent.get(root) ?? root;
 		}
-		const root = this.find(current);
-		this.parent.set(value, root);
+		let node = value;
+		while (node !== root) {
+			const parent = this.parent.get(node) ?? root;
+			this.parent.set(node, root);
+			node = parent;
+		}
 		return root;
 	}
 
