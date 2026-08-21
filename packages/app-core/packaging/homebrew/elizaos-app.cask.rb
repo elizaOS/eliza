@@ -21,15 +21,15 @@ cask "elizaos-app" do
     sha256 "5a40d3a4f9e7a7302cf4f4102ed7dbd81c8cb57083d1ff8b94e167f214d4d9f6"
   end
 
-  url "https://github.com/elizaos/elizaos-app/releases/download/v#{version}/canary-macos-#{arch}-ElizaOSApp-canary.dmg",
-      verified: "github.com/elizaos/elizaos-app/"
+  url "https://github.com/elizaOS/eliza/releases/download/v#{version}/canary-macos-#{arch}-ElizaOSApp-canary.dmg",
+      verified: "github.com/elizaOS/eliza/"
 
   name "elizaOS App"
   desc "Personal AI assistant — cute agents for the acceleration"
-  homepage "https://github.com/elizaos/elizaos-app"
+  homepage "https://github.com/elizaOS/eliza"
 
   livecheck do
-    url "https://github.com/elizaos/elizaos-app/releases"
+    url "https://github.com/elizaOS/eliza/releases"
     strategy :github_latest
     regex(/v?(\d+(?:\.\d+)+(?:-[a-z]+\.\d+)?)/i)
   end
