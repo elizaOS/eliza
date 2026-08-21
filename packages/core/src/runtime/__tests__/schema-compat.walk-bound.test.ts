@@ -16,7 +16,9 @@ import { describe, expect, it } from "vitest";
 import { ElizaError } from "../../errors";
 import {
 	CEREBRAS_SCHEMA_UNBOUNDED,
+	cloneSchemaForBoundedTransport,
 	isCerebrasSchemaUnbounded,
+	MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
 	MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
 	MAX_CEREBRAS_SCHEMA_WALK_NODES,
 	normalizeSchemaForCerebras,
@@ -400,5 +402,187 @@ describe("normalizeSchemaForCerebras caller-path Shaw CR", () => {
 				(typed.context?.visits as number) > MAX_CEREBRAS_SCHEMA_WALK_NODES,
 			).toBe(true);
 		}
+	});
+});
+
+/**
+ * `cloneSchemaForBoundedTransport` is the safe pre-pass the production
+ * Cerebras path runs BEFORE `sanitizeJsonSchema`. It must carry the same
+ * budgets and descriptor-only reflection as the normalizer while applying
+ * zero Cerebras semantics — closing declared open maps here destroys the
+ * `__eliza_record_entries` reverse transform sanitization builds (#11249).
+ */
+describe("cloneSchemaForBoundedTransport", () => {
+	it("preserves declared open-map semantics verbatim", () => {
+		const declared = {
+			type: "object",
+			properties: {
+				customFields: {
+					type: "object",
+					additionalProperties: { type: "string" },
+				},
+				anything: { type: "object", additionalProperties: true },
+			},
+		};
+		const cloned = cloneSchemaForBoundedTransport(declared) as Record<
+			string,
+			Record<string, Record<string, unknown>>
+		>;
+		expect(cloned).toEqual(declared);
+		expect(cloned).not.toBe(declared);
+		expect(cloned.properties.customFields.additionalProperties).toEqual({
+			type: "string",
+		});
+		expect(cloned.properties.anything.additionalProperties).toBe(true);
+		// No Cerebras closure, no injected empty `properties`, no oneOf rewrite.
+		expect("properties" in cloned.properties.customFields).toBe(false);
+	});
+
+	it("keeps oneOf and a non-object root untouched", () => {
+		const declared = { oneOf: [{ type: "string" }, { type: "number" }] };
+		expect(cloneSchemaForBoundedTransport(declared)).toEqual(declared);
+		expect(cloneSchemaForBoundedTransport("nope")).toBe("nope");
+		expect(cloneSchemaForBoundedTransport(undefined)).toBeUndefined();
+		expect(cloneSchemaForBoundedTransport(null)).toBeNull();
+	});
+
+	it("clones deeply so sanitization cannot mutate the caller's schema", () => {
+		const inner = { type: "string" };
+		const declared = { type: "object", properties: { a: inner, b: inner } };
+		const cloned = cloneSchemaForBoundedTransport(declared) as {
+			properties: Record<string, unknown>;
+		};
+		expect(cloned.properties.a).toEqual({ type: "string" });
+		expect(cloned.properties.a).not.toBe(inner);
+		// Honest DAG: the same object under two keys is not a cycle.
+		expect(cloned.properties.b).toEqual({ type: "string" });
+	});
+
+	it("preserves array holes instead of materializing undefined", () => {
+		const prefixItems: unknown[] = [];
+		prefixItems[0] = { type: "string" };
+		prefixItems[2] = { type: "number" };
+		const cloned = cloneSchemaForBoundedTransport({
+			type: "array",
+			prefixItems,
+		}) as { prefixItems: unknown[] };
+		expect(cloned.prefixItems).toHaveLength(3);
+		expect(1 in cloned.prefixItems).toBe(false);
+		expect(cloned.prefixItems[2]).toEqual({ type: "number" });
+
+		const explicit = cloneSchemaForBoundedTransport({
+			anyOf: [undefined],
+		}) as { anyOf: unknown[] };
+		expect(0 in explicit.anyOf).toBe(true);
+		expect(explicit.anyOf[0]).toBeUndefined();
+	});
+
+	it("fails closed on a cyclic graph", () => {
+		const cyclic: Record<string, unknown> = { type: "object" };
+		cyclic.not = cyclic;
+		const started = Date.now();
+		try {
+			cloneSchemaForBoundedTransport(cyclic);
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			expect(Date.now() - started).toBeLessThan(250);
+			expect(expectUnbounded(error).context?.cycle).toBe(true);
+		}
+	});
+
+	it("accepts every schema the walk accepts and fails closed past its own budget", () => {
+		// `deepProperties(n)` is n schema levels = 2n raw levels, so the exact
+		// walk budget sits exactly on the clone budget. Nothing the normalizer
+		// accepts is rejected by the pre-pass.
+		expect(() =>
+			cloneSchemaForBoundedTransport(
+				deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH),
+			),
+		).not.toThrow();
+		expect(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH).toBe(
+			MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2,
+		);
+		try {
+			cloneSchemaForBoundedTransport(
+				deepProperties(MAX_CEREBRAS_SCHEMA_WALK_DEPTH + 1),
+			);
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			const typed = expectUnbounded(error);
+			expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+			expect(typed.context?.clone).toBe(true);
+		}
+	});
+
+	it("reserves array width before allocating a huge sparse array", () => {
+		const sparse: unknown[] = [];
+		sparse.length = MAX_CEREBRAS_SCHEMA_WALK_NODES + 1;
+		const started = Date.now();
+		try {
+			cloneSchemaForBoundedTransport({ anyOf: sparse });
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			expect(Date.now() - started).toBeLessThan(2000);
+			expect(expectUnbounded(error).context?.maxNodes).toBe(
+				MAX_CEREBRAS_SCHEMA_WALK_NODES,
+			);
+		}
+	});
+
+	it("fails closed on an accessor and on a revoked Proxy", () => {
+		const hostile: Record<string, unknown> = { type: "object" };
+		Object.defineProperty(hostile, "properties", {
+			enumerable: true,
+			get() {
+				throw new Error("getter invoked");
+			},
+		});
+		try {
+			cloneSchemaForBoundedTransport(hostile);
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			const typed = expectUnbounded(error);
+			expect(typed.context?.accessor).toBe(true);
+			expect(typed.message).not.toContain("getter invoked");
+		}
+
+		const { proxy, revoke } = Proxy.revocable([] as unknown[], {});
+		revoke();
+		try {
+			cloneSchemaForBoundedTransport(proxy);
+			throw new Error("expected unbounded throw");
+		} catch (error) {
+			expect(expectUnbounded(error).cause).toBeInstanceOf(TypeError);
+		}
+	});
+
+	it("never executes get/has/prototype traps", () => {
+		let getHits = 0;
+		let hasHits = 0;
+		let protoHits = 0;
+		const proxy = new Proxy(
+			{ type: "object", properties: { x: { type: "string" } } },
+			{
+				get(t, prop, r) {
+					getHits += 1;
+					return Reflect.get(t, prop, r);
+				},
+				has(t, prop) {
+					hasHits += 1;
+					return Reflect.has(t, prop);
+				},
+				getPrototypeOf(t) {
+					protoHits += 1;
+					return Reflect.getPrototypeOf(t);
+				},
+			},
+		);
+		expect(cloneSchemaForBoundedTransport(proxy)).toEqual({
+			type: "object",
+			properties: { x: { type: "string" } },
+		});
+		expect(getHits).toBe(0);
+		expect(hasHits).toBe(0);
+		expect(protoHits).toBe(0);
 	});
 });

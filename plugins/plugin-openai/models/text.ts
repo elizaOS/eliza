@@ -15,6 +15,7 @@ import {
   assertActiveTrajectoryForLlmCall,
   attestLlmInputSubstring,
   buildCanonicalSystemPrompt,
+  cloneSchemaForBoundedTransport,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
   ElizaError,
@@ -741,19 +742,19 @@ function normalizeNativeToolsForCall(
           ? functionTool.strict
           : undefined;
     const recordArgTransforms: RecordArgTransform[] = [];
-    // Shaw P1: the production strict Cerebras path used to call
-    // sanitizeJsonSchema (raw Array.isArray / object spread / Object.entries /
-    // .map / unbounded recursion) BEFORE the descriptor-safe walker. An
-    // 8k-deep, cyclic, revoked, or accessor-bearing schema RangeError'd or
-    // leaked a trap there. Run the bounded walk first so sanitization only
-    // ever sees a cloned, budgeted graph. Share the same walker after
-    // sanitization so Cerebras empty-object / oneOf rules still apply to
-    // nodes sanitize introduces.
+    // The production strict Cerebras path used to call sanitizeJsonSchema
+    // (raw Array.isArray / object spread / Object.entries / .map / unbounded
+    // recursion) BEFORE any descriptor-safe walker, so an 8k-deep, cyclic,
+    // revoked, or accessor-bearing schema RangeError'd or leaked a trap
+    // there. The pre-pass is a bounded, descriptor-only STRUCTURAL CLONE, not
+    // Cerebras normalization: running the normalizer here would close every
+    // declared open map with `additionalProperties: false` before
+    // sanitizeJsonSchema could read that declaration and build the
+    // `__eliza_record_entries` reverse transform (#11249). Provider semantics
+    // are applied by the normalizeSchemaForCerebras call after sanitization.
     let rawSchema: unknown = declaredSchema;
     if (options.cerebrasMode) {
-      rawSchema = normalizeSchemaForCerebras(rawSchema, true, {
-        strict: strict !== false,
-      });
+      rawSchema = cloneSchemaForBoundedTransport(rawSchema);
     }
     let inputSchema: JSONSchema7;
     if (strict === false) {

@@ -12,6 +12,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   isCerebrasSchemaUnbounded,
+  MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_DEPTH,
   MAX_CEREBRAS_SCHEMA_WALK_NODES,
 } from "@elizaos/core";
@@ -25,6 +26,7 @@ const aiMocks = vi.hoisted(() => ({
 import {
   handleTextSmall,
   __INTERNAL_normalizeNativeToolsForCall as normalizeNativeToolsForCall,
+  __INTERNAL_restoreRecordArgToolCalls as restoreRecordArgToolCalls,
 } from "../models/text";
 
 vi.mock("ai", () => ({
@@ -144,7 +146,10 @@ describe("normalizeNativeToolsForCall Cerebras walk bound (real caller)", () => 
     } catch (error) {
       expect(Date.now() - started).toBeLessThan(250);
       const typed = expectUnbounded(error);
-      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
+      // The bounded transport clone runs first, so the raw-object budget
+      // (two raw levels per schema level) is what rejects this input.
+      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+      expect(typed.context?.clone).toBe(true);
       expect(aiMocks.generateText).not.toHaveBeenCalled();
     }
   });
@@ -263,7 +268,10 @@ describe("normalizeNativeToolsForCall Cerebras walk bound (real caller)", () => 
       throw new Error("expected unbounded throw");
     } catch (error) {
       const typed = expectUnbounded(error);
-      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_WALK_DEPTH);
+      // The bounded transport clone runs first, so the raw-object budget
+      // (two raw levels per schema level) is what rejects this input.
+      expect(typed.context?.max).toBe(MAX_CEREBRAS_SCHEMA_CLONE_DEPTH);
+      expect(typed.context?.clone).toBe(true);
       expect(aiMocks.generateText).not.toHaveBeenCalled();
     }
   });
@@ -335,5 +343,139 @@ describe("handleTextSmall Cerebras path never dispatches on unbounded schema", (
       ],
     } as never);
     expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Shaw CR at 4854c203: the bounded pre-pass must NOT apply Cerebras closure
+ * before `sanitizeJsonSchema` runs, or every declared open map is rewritten to
+ * `additionalProperties: false` and the `__eliza_record_entries` reverse
+ * transform (#11249) is never built — the model then sees a closed empty
+ * object and the argument always arrives empty.
+ */
+describe("Cerebras mode preserves declared open-map semantics (#11249)", () => {
+  it("emits __eliza_record_entries and records the transform for a schema-valued map", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              customFields: { type: "object", additionalProperties: { type: "string" } },
+            },
+            required: ["customFields"],
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+
+    const tool = (
+      result.tools as Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>
+    ).probe;
+    const customFields = (
+      tool.inputSchema.jsonSchema.properties as Record<string, Record<string, unknown>>
+    ).customFields;
+    const entries = (customFields.properties as Record<string, Record<string, unknown>>)
+      .__eliza_record_entries;
+    expect(entries).toBeDefined();
+    expect(entries.type).toBe("array");
+    const entryItem = entries.items as Record<string, Record<string, unknown>>;
+    expect(entryItem.properties.key).toMatchObject({ type: "string" });
+    expect(entryItem.properties.value).toMatchObject({ type: "string" });
+    // Wire contract still closed for the grammar compiler.
+    expect(customFields.additionalProperties).toBe(false);
+    expect(typeof customFields.description).toBe("string");
+
+    const transforms = result.recordArgTransformsByTool.probe;
+    expect(transforms).toEqual([
+      { path: "$.customFields", entriesKey: "__eliza_record_entries", valueMode: "schema" },
+    ]);
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("uses json-string entry values for additionalProperties: true", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: { bag: { type: "object", additionalProperties: true } },
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+    expect(result.recordArgTransformsByTool.probe).toEqual([
+      { path: "$.bag", entriesKey: "__eliza_record_entries", valueMode: "json-string" },
+    ]);
+    expect(aiMocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("restores returned tool-call args through the recorded transform", () => {
+    const result = normalizeNativeToolsForCall(
+      [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              customFields: { type: "object", additionalProperties: { type: "string" } },
+            },
+          },
+        },
+      ],
+      { cerebrasMode: true }
+    );
+    const restored = restoreRecordArgToolCalls(
+      [
+        {
+          toolName: "probe",
+          input: {
+            customFields: {
+              __eliza_record_entries: [
+                { key: "team", value: "core" },
+                { key: "tier", value: "gold" },
+              ],
+            },
+          },
+        },
+      ],
+      result.recordArgTransformsByTool
+    ) as Array<{ input: { customFields: Record<string, unknown> } }>;
+    expect(restored[0].input.customFields).toEqual({ team: "core", tier: "gold" });
+  });
+
+  it("carries the open map all the way to the provider request in handleTextSmall", async () => {
+    await handleTextSmall(createRuntime(), {
+      prompt: "probe",
+      tools: [
+        {
+          name: "probe",
+          strict: true,
+          parameters: {
+            type: "object",
+            properties: {
+              customFields: { type: "object", additionalProperties: { type: "string" } },
+            },
+          },
+        },
+      ],
+    } as never);
+    expect(aiMocks.generateText).toHaveBeenCalledTimes(1);
+    const call = aiMocks.generateText.mock.calls[0][0] as {
+      tools: Record<string, { inputSchema: { jsonSchema: Record<string, unknown> } }>;
+    };
+    const customFields = (
+      call.tools.probe.inputSchema.jsonSchema.properties as Record<string, Record<string, unknown>>
+    ).customFields;
+    expect(
+      (customFields.properties as Record<string, unknown>).__eliza_record_entries
+    ).toBeDefined();
   });
 });

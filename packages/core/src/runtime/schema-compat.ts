@@ -29,6 +29,17 @@ export function sanitizeFunctionNameForCerebras(name: string): string {
  */
 export const MAX_CEREBRAS_SCHEMA_WALK_DEPTH = 64;
 export const MAX_CEREBRAS_SCHEMA_WALK_NODES = 100_000;
+/**
+ * Raw-object budget for the transport clone. The schema walk counts SCHEMA
+ * levels: a keyword container (`properties`, `anyOf`, ...) shares its parent's
+ * depth and only its entries cost a level. A structural clone cannot know
+ * which keys are keywords, so it counts raw object nesting, where one schema
+ * level costs at most two raw levels. Twice the schema budget is therefore the
+ * exact equivalent bound: no schema `normalizeSchemaForCerebras` accepts is
+ * rejected by the pre-pass, and recursion stays bounded either way.
+ */
+export const MAX_CEREBRAS_SCHEMA_CLONE_DEPTH =
+	MAX_CEREBRAS_SCHEMA_WALK_DEPTH * 2;
 export const CEREBRAS_SCHEMA_UNBOUNDED = "CEREBRAS_SCHEMA_UNBOUNDED";
 
 type SchemaWalkContext = {
@@ -182,6 +193,85 @@ function cloneOwnData(
 
 function createSchemaWalkContext(): SchemaWalkContext {
 	return { visits: 0, visiting: new WeakSet<object>() };
+}
+
+function cloneSchemaTransportWalk(
+	value: unknown,
+	depth: number,
+	ctx: SchemaWalkContext,
+): unknown {
+	if (!value || typeof value !== "object") return value;
+
+	if (depth > MAX_CEREBRAS_SCHEMA_CLONE_DEPTH) {
+		failCerebrasSchemaUnbounded({
+			depth,
+			max: MAX_CEREBRAS_SCHEMA_CLONE_DEPTH,
+			clone: true,
+		});
+	}
+	if (ctx.visiting.has(value)) {
+		failCerebrasSchemaUnbounded({ cycle: true, depth, clone: true });
+	}
+	ctx.visiting.add(value);
+	reserveSchemaVisits(ctx, 1);
+
+	try {
+		if (safeIsArray(value)) {
+			// Reserve the declared width BEFORE allocating or scanning, so a
+			// huge sparse array trips the aggregate budget instead of driving
+			// `length` descriptor calls and allocation first.
+			const length = ownArrayLength(value as unknown[]);
+			reserveSchemaVisits(ctx, length);
+			const out = new Array(length);
+			for (let index = 0; index < length; index += 1) {
+				const key = String(index);
+				const descriptor = ownValueDescriptor(value, key);
+				// A missing own index is a hole. Leave it a hole: JSON Schema
+				// tuple keywords (`prefixItems`, tuple `items`) distinguish an
+				// absent element from an explicit `undefined`.
+				if (!descriptor) continue;
+				Object.defineProperty(out, key, {
+					value: cloneSchemaTransportWalk(descriptor.value, depth + 1, ctx),
+					enumerable: true,
+					writable: true,
+					configurable: true,
+				});
+			}
+			return out;
+		}
+
+		const snapshot = cloneOwnData(value, ctx);
+		for (const key of Object.keys(snapshot)) {
+			snapshot[key] = cloneSchemaTransportWalk(snapshot[key], depth + 1, ctx);
+		}
+		return snapshot;
+	} finally {
+		ctx.visiting.delete(value);
+	}
+}
+
+/**
+ * Bounded, descriptor-only structural clone that applies NO Cerebras
+ * semantics.
+ *
+ * The strict Cerebras tool path is
+ * `normalizeNativeToolsForCall -> sanitizeJsonSchema -> normalizeSchemaForCerebras`,
+ * and `sanitizeJsonSchema` uses ordinary spread / `Object.entries` / `.map` /
+ * unbounded recursion, so it must never see a hostile or unbounded graph. But
+ * running the full Cerebras normalizer first is also wrong: it closes every
+ * declared open map (`additionalProperties: true` or a schema value) with
+ * `additionalProperties: false`, which is exactly the signal
+ * `sanitizeJsonSchema` needs to build the `__eliza_record_entries` reverse
+ * transform (#11249).
+ *
+ * This clone is the safe pre-pass: same depth / node / path-local-cycle /
+ * accessor budgets and the same descriptor-only reflection, but it copies
+ * declared shape verbatim (holes included). Sanitization then runs on a plain,
+ * budgeted graph with declared semantics intact, and
+ * `normalizeSchemaForCerebras` applies provider semantics afterwards.
+ */
+export function cloneSchemaForBoundedTransport(schema: unknown): unknown {
+	return cloneSchemaTransportWalk(schema, 0, createSchemaWalkContext());
 }
 
 function hasIllegalCerebrasRoot(node: Record<string, unknown>): boolean {
