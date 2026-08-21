@@ -211,6 +211,9 @@ function renderRuntimeMarkdown(
     `- Explicitly classified: ${
       inventory.summary.total - (inventory.summary.byStatus.covered ?? 0)
     }`,
+    `- External-service mock owned: ${inventory.summary.byDependencyDisposition["mock-owned"] ?? 0}`,
+    `- External-service mock missing: ${inventory.summary.byDependencyDisposition["mock-missing"] ?? 0}`,
+    `- No external service: ${inventory.summary.byDependencyDisposition["local-only"] ?? 0}`,
     "",
     "## Counts by kind",
     "",
@@ -224,7 +227,7 @@ function renderRuntimeMarkdown(
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([workstream, ids]) => `- ${workstream}: ${ids.length}`),
     "",
-    "The JSON artifact carries ownership, dependencies, scenarios, Cloud cells, mock/reset fidelity, boundary signals, and the written disposition for every row.",
+    "The JSON artifact separates package-manager dependencies from explicit external service protocols and resettable mock owners. It also carries scenarios, Cloud cells, mock/reset fidelity, boundary signals, and the written disposition for every row.",
     "",
   ];
   return lines.join("\n");

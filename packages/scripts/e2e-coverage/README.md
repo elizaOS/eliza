@@ -29,7 +29,9 @@ registrations. It does not infer a surface from a directory name such as
 Each generated row records:
 
 - owner, package, production source and registration field;
-- runtime/platform requirements and external dependency set;
+- runtime/platform requirements and package-manager dependencies;
+- explicit external service/protocol dependencies, their mock owner
+  and source, or an actionable missing-mock/local-only disposition;
 - mock availability/fidelity and reset support;
 - deterministic and live-model scenario ids and Cloud E2E cells;
 - evidence class, exact boundary artifacts/signals and owning #22896 workstream;
@@ -48,6 +50,18 @@ package. A package with no production runtime registration is retained as
 disappearing from the inventory. Canonical row ids use package, kind, and the
 registered boundary name; moving an implementation file does not expand or
 invalidate the baseline.
+
+`runtime-surface-dependencies.json` is the reviewed dependency authority for
+providers, connectors, model handlers, and routes. Exactly one package/kind
+rule must exist for every such production surface, and stale or duplicate rules
+also fail. Package imports such as React, Zod, SDKs, parsers, and database
+drivers remain visible under `packageDependencies`, but never imply an external
+service or mock. A service rule names its protocol and either a repository-local
+mock source plus owner or a concrete missing-mock reason. A claimed source must
+exist inside the repository; mock/reset evidence remains row-specific and is
+not inferred from catalog ownership. The catalog records its planned composition with
+the richer provider conformance catalog in PR #23185 without treating that
+unmerged stack as present evidence.
 
 `covered` is derived, never baselined. A deterministic scenario declares the
 full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare

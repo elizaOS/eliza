@@ -57,7 +57,10 @@ function row(
     registrationField: "actions",
     runtimeRequirements: [],
     platformRequirements: [],
-    externalDependencies: [],
+    packageDependencies: [],
+    externalServiceDependencies: [],
+    mockDependencies: [],
+    dependencyDisposition: "local-only",
     mockAvailability: status === "covered" ? "available" : "missing",
     mockFidelity: "deterministic fixture",
     resetSupport: status === "covered" ? "partial" : "missing",
@@ -85,10 +88,16 @@ function inventory(rows: RuntimeSurfaceRow[]): RuntimeSurfaceInventory {
     sourceRevision: "fixture",
     packages: [],
     rows,
-    summary: { total: rows.length, byKind: {}, byStatus: {} },
+    summary: {
+      total: rows.length,
+      byKind: {},
+      byStatus: {},
+      byDependencyDisposition: {},
+    },
     gaps: {
       byOwner: {},
-      byExternalDependency: {},
+      byExternalService: {},
+      byMockOwner: {},
       byScenarioLane: {},
       byWorkstream: {},
     },
@@ -405,7 +414,7 @@ describe("runtime-surface production inventory", () => {
   test("reports gaps by owner, dependency, lane, and synthetic-world workstream", () => {
     expect(Object.keys(realInventory.gaps.byOwner).length).toBeGreaterThan(0);
     expect(
-      Object.keys(realInventory.gaps.byExternalDependency).length,
+      Object.keys(realInventory.gaps.byExternalService).length,
     ).toBeGreaterThan(0);
     expect(
       realInventory.gaps.byScenarioLane["missing-deterministic"]?.length,
@@ -853,9 +862,25 @@ crons = ["0 * * * *", "30 * * * *"]
 
   test("rejects new, stale, silently covered, duplicate, and artifact-free rows", () => {
     const badCovered = row("covered", "covered", { boundarySignals: [] });
+    const coveredWithoutMockOwner = row("covered-without-mock", "covered", {
+      externalServiceDependencies: [
+        { id: "external-api", protocol: "External HTTP API" },
+      ],
+      mockDependencies: [
+        {
+          serviceId: "external-api",
+          availability: "missing",
+          owner: null,
+          source: null,
+          reason: "No resettable production-client mock is registered.",
+        },
+      ],
+      dependencyDisposition: "mock-missing",
+    });
     const result = evaluateRuntimeSurfaceCoverage(
       inventory([
         badCovered,
+        coveredWithoutMockOwner,
         row("new", "exempt"),
         row("duplicate", "exempt"),
         row("duplicate", "exempt"),
@@ -871,20 +896,36 @@ crons = ["0 * * * *", "30 * * * *"]
     expect(result.staleClassifications).toContain("stale");
     expect(result.silentlyCovered).toContain("covered");
     expect(result.invalidCoverage).toContain("covered");
+    expect(result.invalidDependencyOwnership).toContain("covered-without-mock");
     expect(result.duplicateRows).toContain("duplicate");
   });
 
   test("assigns dependency-correct candidate dispositions", () => {
     expect(
-      candidateClassification("native-bridge", ["native-host"], []).status,
+      candidateClassification("native-bridge", ["native-host"], [], []).status,
     ).toBe("platform-deferred");
-    expect(candidateClassification("model-handler", [], []).status).toBe(
-      "provider-qualified-only",
+    expect(candidateClassification("model-handler", [], [], []).status).toBe(
+      "uncovered",
     );
-    expect(candidateClassification("provider", [], ["googleapis"]).status).toBe(
-      "provider-qualified-only",
+    expect(
+      candidateClassification(
+        "provider",
+        [],
+        [{ id: "google-workspace-api", protocol: "Google APIs" }],
+        [
+          {
+            serviceId: "google-workspace-api",
+            availability: "missing",
+            owner: null,
+            source: null,
+            reason: "No resettable mock is registered for this fixture.",
+          },
+        ],
+      ).status,
+    ).toBe("provider-qualified-only");
+    expect(candidateClassification("action", [], [], []).status).toBe(
+      "uncovered",
     );
-    expect(candidateClassification("action", [], []).status).toBe("uncovered");
   });
 
   test("rejects blanket classification reasons reused across many surfaces", () => {
@@ -952,7 +993,7 @@ crons = ["0 * * * *", "30 * * * *"]
         packageDir: "plugins/plugin-test",
         runtimeRequirements: [],
         platformRequirements: [],
-        externalDependencies: [],
+        packageDependencies: [],
         registeredSurfaceIds: [],
         registrationState: "no-runtime-registration",
         reason: "UNCLASSIFIED",
