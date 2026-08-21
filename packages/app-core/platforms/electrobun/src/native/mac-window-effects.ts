@@ -25,6 +25,7 @@ type MacEffectsSymbols = {
   ): boolean;
   refreshWindowInteractiveMaterial(ptr: Pointer): boolean;
   prepareDetachedWebInspector(): boolean;
+  installTrustedMediaCaptureOrigin(origin: Pointer): boolean;
   pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
@@ -102,6 +103,10 @@ function loadLib(): MacEffectsLib {
       },
       prepareDetachedWebInspector: {
         args: [],
+        returns: FFIType.bool,
+      },
+      installTrustedMediaCaptureOrigin: {
+        args: [FFIType.ptr],
         returns: FFIType.bool,
       },
       pollWindowOutsideClick: {
@@ -236,6 +241,18 @@ export function refreshWindowInteractiveMaterial(ptr: Pointer): boolean {
 /** Persist WebKit's safe separate-window inspector presentation on macOS. */
 export function prepareDetachedWebInspector(): boolean {
   return getLib()?.symbols.prepareDetachedWebInspector() ?? false;
+}
+
+/**
+ * Trust exactly the app-owned loopback renderer origin for WKWebView media.
+ * macOS still enforces the signed app's TCC microphone grant; this removes only
+ * Electrobun's redundant page-level modal/cache for our own local UI.
+ */
+export function installTrustedMediaCaptureOrigin(origin: string): boolean {
+  const lib = getLib();
+  if (!lib || !origin.trim()) return false;
+  const originBuffer = cStringBuffer(origin);
+  return lib.symbols.installTrustedMediaCaptureOrigin(ptr(originBuffer));
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {

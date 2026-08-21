@@ -15,6 +15,7 @@
 #import <IOKit/hidsystem/IOLLEvent.h>
 #import <objc/runtime.h>
 #import <UserNotifications/UserNotifications.h>
+#import <WebKit/WebKit.h>
 #include <atomic>
 #include <math.h>
 #include <stdlib.h>
@@ -36,6 +37,88 @@ static NSString *const kElizaBottomBarDragRightIdentifier =
 	@"ElizaBottomBarDragRight";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
+
+// Electrobun deliberately asks for a second, page-level media decision after
+// macOS has already authorized the signed app. That is appropriate for an
+// arbitrary embedded website, but Eliza's renderer is an app-owned loopback
+// origin. A modal page prompt can appear behind the detached pill and a single
+// accidental dismissal is then cached for the whole native process, making a
+// granted OS microphone look denied until relaunch. Keep Electrobun's delegate
+// for every other origin and grant only the exact loopback renderer origin the
+// host supplies after its environment has loaded.
+static IMP elizaOriginalMediaCapturePermissionImp = NULL;
+static NSString *elizaTrustedMediaProtocol = nil;
+static NSString *elizaTrustedMediaHost = nil;
+static NSInteger elizaTrustedMediaPort = -1;
+static BOOL elizaMediaCaptureSwizzleInstalled = NO;
+
+static void elizaRequestMediaCapturePermission(
+	id delegate,
+	SEL selector,
+	WKWebView *webView,
+	WKSecurityOrigin *origin,
+	WKFrameInfo *frame,
+	WKMediaCaptureType type,
+	void (^decisionHandler)(WKPermissionDecision)) {
+	BOOL exactTrustedOrigin =
+		elizaTrustedMediaProtocol != nil &&
+		elizaTrustedMediaHost != nil &&
+		[origin.protocol isEqualToString:elizaTrustedMediaProtocol] &&
+		[origin.host isEqualToString:elizaTrustedMediaHost] &&
+		origin.port == elizaTrustedMediaPort;
+	if (exactTrustedOrigin) {
+		decisionHandler(WKPermissionDecisionGrant);
+		return;
+	}
+	if (elizaOriginalMediaCapturePermissionImp != NULL) {
+		using OriginalImplementation = void (*)(
+			id,
+			SEL,
+			WKWebView *,
+			WKSecurityOrigin *,
+			WKFrameInfo *,
+			WKMediaCaptureType,
+			void (^)(WKPermissionDecision));
+		reinterpret_cast<OriginalImplementation>(
+			elizaOriginalMediaCapturePermissionImp)(
+				delegate, selector, webView, origin, frame, type, decisionHandler);
+		return;
+	}
+	decisionHandler(WKPermissionDecisionDeny);
+}
+
+extern "C" bool installTrustedMediaCaptureOrigin(const char *originCString) {
+	if (originCString == NULL) return false;
+	NSString *originString = [NSString stringWithUTF8String:originCString];
+	NSURLComponents *components = [NSURLComponents componentsWithString:originString];
+	NSString *scheme = components.scheme.lowercaseString;
+	NSString *host = components.host.lowercaseString;
+	NSNumber *port = components.port;
+	BOOL loopback = [host isEqualToString:@"127.0.0.1"] ||
+		[host isEqualToString:@"localhost"];
+	if (!loopback || ![scheme isEqualToString:@"http"] || port == nil) {
+		return false;
+	}
+
+	elizaTrustedMediaProtocol = scheme;
+	elizaTrustedMediaHost = host;
+	elizaTrustedMediaPort = port.integerValue;
+	if (elizaMediaCaptureSwizzleInstalled) return true;
+
+	Class delegateClass = NSClassFromString(@"MyWebViewUIDelegate");
+	SEL selector = @selector(webView:requestMediaCapturePermissionForOrigin:initiatedByFrame:type:decisionHandler:);
+	Method method = delegateClass == Nil
+		? NULL
+		: class_getInstanceMethod(delegateClass, selector);
+	if (method == NULL) return false;
+
+	elizaOriginalMediaCapturePermissionImp = method_setImplementation(
+		method,
+		reinterpret_cast<IMP>(elizaRequestMediaCapturePermission));
+	elizaMediaCaptureSwizzleInstalled =
+		elizaOriginalMediaCapturePermissionImp != NULL;
+	return elizaMediaCaptureSwizzleInstalled;
+}
 
 @interface ElizaWindowInteractiveMaterialController : NSObject
 {

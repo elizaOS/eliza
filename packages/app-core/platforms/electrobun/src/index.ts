@@ -106,6 +106,7 @@ import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
   ensureWindowTransparentBackground,
+  installTrustedMediaCaptureOrigin,
   prepareDetachedWebInspector,
   refreshWindowInteractiveMaterial,
   setNativeDragRegion,
@@ -116,6 +117,7 @@ import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { getPersistedDeployment } from "./persisted-deployment";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
+import { resolveTrustedMediaCaptureOrigin } from "./trusted-media-origin";
 import {
   createRendererApiProxyRequestInit,
   isRendererApiProxyPath,
@@ -1143,6 +1145,17 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
   // Opt-in and mutually exclusive with kiosk.
   const bottomBar = presentation.mode === "bottom-bar";
   const baseRendererUrl = await resolveRendererUrlForCurrentRuntime();
+  if (process.platform === "darwin") {
+    const rendererOrigin = resolveTrustedMediaCaptureOrigin(baseRendererUrl);
+    if (
+      rendererOrigin &&
+      !installTrustedMediaCaptureOrigin(rendererOrigin)
+    ) {
+      logger.warn(
+        `[Main] Renderer media origin was not trusted: ${rendererOrigin}`,
+      );
+    }
+  }
   const requestedShellMode = readRendererShellMode();
   const rendererUrl = kiosk
     ? appendKioskShellModeParam(baseRendererUrl)

@@ -29,6 +29,7 @@ xcrun clang++ \
   -framework CoreGraphics \
   -framework CoreLocation \
   -framework EventKit \
+  -framework WebKit \
   -framework UserNotifications \
   "$SRC_FILE" \
   -o "$OUT_FILE"
