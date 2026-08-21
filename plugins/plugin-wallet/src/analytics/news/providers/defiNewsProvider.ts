@@ -6,7 +6,14 @@
  * Birdeye + on-chain lookup when available, falling back to a hardcoded
  * symbol-to-CoinGecko-id table for a short list of major tokens.
  */
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
 interface CoinGeckoDefiData {
@@ -204,7 +211,10 @@ export const defiNewsProvider: Provider = {
 
     const values = {};
 
-    const text = `${defiNewsInfo}\n`.slice(0, DEFI_NEWS_TEXT_LIMIT);
+    const text = truncateWellFormed(
+      toWellFormedUnicode(`${defiNewsInfo}\n`),
+      DEFI_NEWS_TEXT_LIMIT,
+    );
 
     return {
       data,
