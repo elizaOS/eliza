@@ -3,8 +3,15 @@
  * in the message and renders its strategy/token/metrics data into planner
  * context, with an LLM pass producing a short pool-health analysis.
  */
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type Provider,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type {
   KaminoLiquidityService,
   KaminoPoolByAddressResult,
@@ -97,7 +104,10 @@ export const kaminoPoolProvider: Provider = {
       kaminoPool: poolInfo,
     };
 
-    const text = `${poolInfo}\n`.slice(0, KAMINO_POOL_TEXT_LIMIT);
+    const text = truncateWellFormed(
+      toWellFormedUnicode(`${poolInfo}\n`),
+      KAMINO_POOL_TEXT_LIMIT,
+    );
 
     return {
       data,

@@ -3,8 +3,15 @@
  * (optionally scoped to a token address found in the message) into planner
  * context, using an LLM pass to turn raw pool stats into a readable report.
  */
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  type Memory,
+  ModelType,
+  type Provider,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type {
   KaminoLiquidityService,
   KaminoStrategy,
@@ -187,7 +194,10 @@ export const kaminoLiquidityProvider: Provider = {
       kaminoLiquidity: liquidityInfo,
     };
 
-    const text = `${liquidityInfo}\n`.slice(0, KAMINO_LIQUIDITY_TEXT_LIMIT);
+    const text = truncateWellFormed(
+      toWellFormedUnicode(`${liquidityInfo}\n`),
+      KAMINO_LIQUIDITY_TEXT_LIMIT,
+    );
 
     return {
       data,

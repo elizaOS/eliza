@@ -11,7 +11,11 @@ import type {
   Provider,
   State,
 } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import {
+  ModelType,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { KaminoService } from "../services/kaminoService";
 
 const KAMINO_LEND_PROGRAM_ID = "GzFgdRJXmawPhGeBsyRCDLx4jAKPsvbUqoqitzppkzkW";
@@ -206,7 +210,10 @@ export const kaminoProvider: Provider = {
           },
         );
 
-        kaminoInfo += enhancedReport.slice(0, MAX_KAMINO_REPORT_CHARS);
+        kaminoInfo += truncateWellFormed(
+          toWellFormedUnicode(enhancedReport),
+          MAX_KAMINO_REPORT_CHARS,
+        );
       } else {
         kaminoInfo =
           "Kamino lending protocol information is only available in private messages.";
@@ -220,7 +227,10 @@ export const kaminoProvider: Provider = {
       kaminoLending: kaminoInfo,
     };
 
-    const text = `${kaminoInfo}\n`.slice(0, MAX_KAMINO_REPORT_CHARS);
+    const text = truncateWellFormed(
+      toWellFormedUnicode(`${kaminoInfo}\n`),
+      MAX_KAMINO_REPORT_CHARS,
+    );
 
     return {
       data,
