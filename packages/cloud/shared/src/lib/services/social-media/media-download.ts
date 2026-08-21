@@ -75,6 +75,24 @@ export function decodeSocialMediaBase64(
   maxBytes: number = SOCIAL_MEDIA_MEDIA_MAX_BYTES,
 ): Buffer {
   const maxEncodedLength = Math.ceil(maxBytes / 3) * 4;
+  // RFC 2045 wraps base64 at 76 characters with CRLF. Bound the raw string to
+  // exactly that worst-case overhead before scanning it, so ignorable spaces
+  // cannot retain an arbitrarily large request beside the decoded allocation.
+  const maxMimeLineBreaks = Math.max(0, Math.ceil(maxEncodedLength / 76) - 1);
+  const maxRawEncodedLength = maxEncodedLength + maxMimeLineBreaks * 2;
+  if (base64.length > maxRawEncodedLength) {
+    throw downloadError(
+      "Media attachment exceeds the raw encoded media limit",
+      "SOCIAL_MEDIA_MEDIA_TOO_LARGE",
+      {
+        rawEncodedLength: base64.length,
+        maxRawEncodedLength,
+        maxEncodedLength,
+        maxBytes,
+        ...context,
+      },
+    );
+  }
   if (base64.length > maxEncodedLength) {
     let encodedLength = 0;
     for (let index = 0; index < base64.length; index += 1) {
