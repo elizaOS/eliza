@@ -94,6 +94,7 @@ async function seedSandbox(opts: SeedOpts = {}): Promise<string> {
       // Default to a due, reachable, user-owned running row so each test only
       // has to flip the one field it is exercising out of eligibility.
       status: (opts.status ?? "running") as never,
+      execution_tier: "dedicated-lazy",
       bridge_url: opts.bridgeUrl === undefined ? REACHABLE_BRIDGE : opts.bridgeUrl,
       pool_status: (opts.poolStatus ?? null) as never,
       last_backup_at: opts.lastBackupAt ?? null,
@@ -319,7 +320,7 @@ describe("enqueueAgent*Once — real lifecycle-job inserts", () => {
         user_id: userId,
         agent_name: uniq("agent"),
         status: (opts.status ?? "running") as never,
-        execution_tier: (opts.executionTier ?? "shared") as never,
+        execution_tier: (opts.executionTier ?? "dedicated-lazy") as never,
         bridge_url: REACHABLE_BRIDGE,
         last_heartbeat_at: opts.lastHeartbeatAt ?? null,
       })
