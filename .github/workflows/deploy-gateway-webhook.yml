@@ -196,6 +196,15 @@ jobs:
 
       - name: Verify canonical Railway variables and sensitive names
         shell: bash
+        env:
+          # The Cloudflare Worker receives these exact GitHub Environment
+          # secrets from cloud-cf-release.yml. Comparing them here is the only
+          # place both sides of the Blooio webhook contract are observable, so
+          # a Worker/Railway value divergence is caught before deploy instead
+          # of as a 401 on every live webhook.
+          WORKER_ELIZA_APP_BLOOIO_API_KEY: ${{ inputs.environment == 'staging' && secrets.ELIZA_APP_BLOOIO_API_KEY || '' }}
+          WORKER_ELIZA_APP_BLOOIO_PHONE_NUMBER: ${{ inputs.environment == 'staging' && secrets.ELIZA_APP_BLOOIO_PHONE_NUMBER || '' }}
+          WORKER_ELIZA_APP_BLOOIO_WEBHOOK_SECRET: ${{ inputs.environment == 'staging' && secrets.ELIZA_APP_BLOOIO_WEBHOOK_SECRET || '' }}
         run: |
           set -euo pipefail
           umask 077
@@ -226,6 +235,29 @@ jobs:
               .key
             ]
           }' "$variables_raw_path" > "$variables_path"
+
+          # A per-run salt makes every digest useless outside this process, so
+          # an equality proof never becomes an offline guessing oracle even if
+          # a digest were to escape into a log.
+          blooio_match_salt="$(openssl rand -hex 32)"
+          blooio_digest() {
+            printf '%s' "${1:-}" |
+              openssl dgst -sha256 -hmac "$blooio_match_salt" -r |
+              cut -d' ' -f1
+          }
+          declare -A railway_blooio_digests=()
+          if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
+              railway_value="$(jq -r --arg name "$name" \
+                'if (.[$name] | type) == "string" then .[$name] else "" end' \
+                "$variables_raw_path")"
+              railway_blooio_digests["$name"]="$(blooio_digest "$railway_value")"
+              railway_value=""
+            done
+          fi
           shred -u "$variables_raw_path"
 
           require_exact_variable() {
@@ -251,7 +283,7 @@ jobs:
             if ! jq -e --arg name "$name" \
               '.staging_blooio_nonblank_names | index($name) != null' \
               "$variables_path" >/dev/null; then
-              echo "::error::Required sensitive Railway variable name is absent or blank: $name"
+              echo "::error::Required staging Blooio Railway variable name is absent or blank: $name"
               exit 1
             fi
           }
@@ -273,6 +305,28 @@ jobs:
               ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
               require_staging_blooio_name "$name"
             done
+            # Name presence on both sides still permits Worker secret A and
+            # Railway secret B, which passes every names-only check and then
+            # 401s every live Blooio webhook. Compare salted digests so the
+            # values must actually agree without either value being read,
+            # printed, or written anywhere.
+            for name in \
+              ELIZA_APP_BLOOIO_API_KEY \
+              ELIZA_APP_BLOOIO_PHONE_NUMBER \
+              ELIZA_APP_BLOOIO_WEBHOOK_SECRET; do
+              worker_name="WORKER_$name"
+              worker_value="${!worker_name:-}"
+              if [ -z "${worker_value//[[:space:]]/}" ]; then
+                echo "::error::Required protected staging Blooio GitHub environment secret is absent or blank: $name"
+                exit 1
+              fi
+              if [ "$(blooio_digest "$worker_value")" != "${railway_blooio_digests[$name]:-}" ]; then
+                echo "::error::Protected staging Blooio value differs between the Cloudflare Worker GitHub environment secret and the Railway variable: $name (compared by salted digest; values were not printed)"
+                exit 1
+              fi
+              worker_value=""
+            done
+            echo "Verified 3 protected staging Blooio Worker/Railway value matches by salted digest; values were not printed."
           fi
           if ! jq -e '.nonblank_sensitive_names as $names |
             (($names | index("REDIS_URL")) != null or

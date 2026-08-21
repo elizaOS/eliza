@@ -123,8 +123,12 @@ keeps its existing contract. Provision staging values out of band through
 `railway variable set --stdin --skip-deploys` so an incomplete update cannot
 trigger a release, then use the protected dispatcher once all three names are
 present. Restore or remove only those staged names before dispatch if setup
-fails. The webhook secret must match the Worker protected-environment source;
-the workflows verify names without reading or comparing values. Staging is
+fails. All three staging values must match the Worker protected-environment
+source, so the gateway workflow compares each Railway value against the
+matching GitHub Environment secret through a per-run salted HMAC digest. Only
+the digests are compared and neither side's value is printed, logged, or
+written; a divergent-but-present pair now fails the deploy instead of passing a
+names-only check and then rejecting every live webhook with 401. Staging is
 branch/configuration gated but currently has no required reviewer; production
 retains reviewer approval.
 
