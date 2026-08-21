@@ -980,6 +980,34 @@ describe("E2BRemoteCapabilityRouterService", () => {
     }
   });
 
+  it("uses the configured request timeout when command options provide no timeout", async () => {
+    const originalFetch = globalThis.fetch;
+    replaceGlobalFetch(healthThenProcessFetch(hungFetch));
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig({
+        provider: "home",
+        remoteHttpBaseUrl: "https://remote-runner.test",
+        remoteHttpToken: "token",
+        timeoutMs: 5_000,
+        requestTimeoutMs: 50,
+      }),
+    );
+    const sandbox = await (
+      service as unknown as { getSandbox(): Promise<E2BSandboxClient> }
+    ).getSandbox();
+    const started = Date.now();
+    try {
+      await expect(sandbox.commands.run("sleep 30")).rejects.toMatchObject({
+        name: "TimeoutError",
+        message: expect.stringMatching(/timed out.*50ms/i),
+      });
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
   it("returns timedOut from pty.runCommand when process headers arrive then the body stalls", async () => {
     const originalFetch = globalThis.fetch;
     replaceGlobalFetch(
