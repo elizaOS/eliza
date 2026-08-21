@@ -209,7 +209,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
   test("production authorization is outside the release lock", () => {
     const authorize = jobBlock(cloudCf, "authorize-production");
     const release = jobBlock(cloudCf, "release");
-    expect(authorize).toContain("environment: production");
+    expect(authorize).toContain("environment: production-approval");
     expect(authorize).not.toContain("concurrency:");
     expect(release).toContain("uses: ./.github/workflows/cloud-cf-release.yml");
     expect(release).toContain("group: cloud-cf-release-v6-");

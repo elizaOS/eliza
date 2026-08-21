@@ -363,7 +363,7 @@ jobs:
     timeout-minutes: 2
     # Approval only. This job must not share a mutation concurrency group, or
     # a waiting reviewer holds the release lock (#18092).
-    environment: production
+    environment: production-approval
     steps:
       - name: Record production authorization
         run: echo "production environment authorized for this run"

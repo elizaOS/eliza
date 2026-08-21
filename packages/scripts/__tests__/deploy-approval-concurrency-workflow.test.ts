@@ -70,7 +70,7 @@ describe("cloud-cf-deploy approval/concurrency topology (#18092)", () => {
   it("keeps production approval outside every mutation lock", () => {
     const approval = cfDeploy.jobs?.["authorize-production"];
     expect(approval).toBeDefined();
-    expect(approval?.environment).toBe("production");
+    expect(approval?.environment).toBe("production-approval");
     expect(approval?.concurrency).toBeUndefined();
   });
 
