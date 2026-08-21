@@ -7,7 +7,7 @@
  * the fetchers on pull paths and the status probes on cache paths.
  */
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
   type GetLifeOpsGmailTriageRequest,
@@ -31,7 +31,37 @@ const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 const MAX_ROOMS_SCANNED = 200;
 const THREAD_CONTEXT_LIMIT = 5;
 const SNIPPET_MAX_LENGTH = 200;
+export const THREAD_PREVIEW_MAX_LENGTH = 100;
+export const INBOX_SNIPPET_MAX_LENGTH = SNIPPET_MAX_LENGTH;
 const INTERNAL_URL = new URL("http://127.0.0.1/");
+
+/**
+ * Truncate thread preview text without splitting surrogate pairs.
+ * Covers the 100-char thread context budget in `fetchChatMessages`.
+ */
+export function formatThreadPreview(text: string): string {
+  return truncateWellFormed(
+    toWellFormedUnicode(text),
+    THREAD_PREVIEW_MAX_LENGTH,
+  );
+}
+
+/**
+ * Truncate inbox snippet text without splitting surrogate pairs.
+ * Covers the 200-char snippet budget for chat, Gmail, and X DM paths.
+ */
+export function formatInboxSnippet(text: string): string {
+  return truncateWellFormed(
+    toWellFormedUnicode(text),
+    INBOX_SNIPPET_MAX_LENGTH,
+  );
+}
+
+/** Narrow aliases so each call site has a distinct export for mutation checks. */
+export const formatChatSnippet = formatInboxSnippet;
+export const formatGmailSnippet = formatInboxSnippet;
+export const formatXDmSnippet = formatInboxSnippet;
+export const formatChatThreadPreview = formatThreadPreview;
 
 const PHONE_BACKED_SOURCES = new Set([
   "imessage",
@@ -422,7 +452,7 @@ export async function fetchChatMessages(
       .slice(0, THREAD_CONTEXT_LIMIT)
       .map((m) => {
         const name = extractSenderName(m) ?? "Unknown";
-        return `${name}: ${extractText(m).slice(0, 100)}`;
+        return `${name}: ${formatThreadPreview(extractText(m))}`;
       });
 
     results.push({
@@ -434,7 +464,7 @@ export async function fetchChatMessages(
       channelName,
       channelType,
       text,
-      snippet: text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: formatChatSnippet(text),
       timestamp: createdAt,
       deepLink: deepLink ?? undefined,
       threadMessages: threadMessages.length > 0 ? threadMessages : undefined,
@@ -599,7 +629,7 @@ export async function fetchGmailMessages(
       channelName: `Email from ${from}`,
       channelType: "dm",
       text: msg.snippet || msg.subject || "",
-      snippet: (msg.snippet || msg.subject || "").slice(0, SNIPPET_MAX_LENGTH),
+      snippet: formatGmailSnippet(msg.snippet || msg.subject || ""),
       timestamp: receivedMs,
       deepLink: gmailLink,
       gmailMessageId: externalId,
@@ -680,7 +710,7 @@ export async function fetchXDmMessages(
       channelName: isGroup ? "X group DM" : `X DM from ${sender || "unknown"}`,
       channelType: isGroup ? "group" : "dm",
       text: dm.text,
-      snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
+      snippet: formatXDmSnippet(dm.text),
       timestamp: receivedMs,
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",
