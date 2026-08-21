@@ -74,8 +74,21 @@ export class SigningPolicyEvaluator {
     this.policy = clonePolicy(policy);
   }
 
+  /**
+   * `clonePolicy()` already isolates callers from the live arrays; freezing
+   * the snapshot additionally makes a mutation attempt throw immediately
+   * (in strict-mode/ESM code) rather than silently succeed on a copy that
+   * happens to have no effect — surfacing the caller bug instead of masking
+   * it (#23228).
+   */
   getPolicy(): SigningPolicy {
-    return clonePolicy(this.policy);
+    const snapshot = clonePolicy(this.policy);
+    for (const value of Object.values(snapshot)) {
+      if (Array.isArray(value)) {
+        Object.freeze(value);
+      }
+    }
+    return Object.freeze(snapshot);
   }
 
   evaluate(request: SigningRequest): PolicyDecision {
@@ -260,5 +273,38 @@ export class SigningPolicyEvaluator {
         this.processedRequestIds.delete(id);
       }
     }
+  }
+
+  /**
+   * Atomically evaluates `request` and, when the policy allows it, reserves
+   * the rate-limit slot and replay marker in the same synchronous step as
+   * the check. A separate `evaluate()` then later `recordRequest()` call is
+   * a TOCTOU race: two concurrent submissions can both call `evaluate()`
+   * (e.g. both observe 0/1 hourly) before either has recorded, so both pass
+   * a `maxTransactionsPerHour: 1` policy (#23228). JS execution is
+   * single-threaded, so doing the check and the record with no `await`
+   * between them — as this method does — makes the pair uninterruptible: no
+   * other `tryReserve` call can run in between and observe stale state.
+   * `evaluate()`/`recordRequest()` stay as separate primitives, unchanged,
+   * for read-only previews and for tests that seed history directly.
+   *
+   * The caller owns the reservation once this returns `allowed: true`; call
+   * `release(request.requestId)` on every path where the reservation is not
+   * consumed by an actual signed transaction — a failed sign, a rejected or
+   * expired human-confirmation request — or the slot and replay marker are
+   * gone from the pool forever.
+   */
+  tryReserve(request: SigningRequest): PolicyDecision {
+    const decision = this.evaluate(request);
+    if (decision.allowed) {
+      this.recordRequest(request.requestId);
+    }
+    return decision;
+  }
+
+  /** Undo a reservation made by `tryReserve()` that the caller did not follow through on. */
+  release(requestId: string): void {
+    this.processedRequestIds.delete(requestId);
+    this.requestLog = this.requestLog.filter((r) => r.requestId !== requestId);
   }
 }
