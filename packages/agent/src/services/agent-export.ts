@@ -272,19 +272,8 @@ function inspectCanonicalize<T>(operation: string, inspect: () => T): T {
   }
 }
 
-function ownEnumerableStringKeys(value: object): string[] {
-  const keys: string[] = [];
-  for (const key of inspectCanonicalize("ownKeys", () =>
-    Reflect.ownKeys(value),
-  )) {
-    if (typeof key !== "string") continue;
-    const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
-      Object.getOwnPropertyDescriptor(value, key),
-    );
-    if (!descriptor?.enumerable) continue;
-    keys.push(key);
-  }
-  return keys;
+function isCanonicalizeArray(value: object): boolean {
+  return inspectCanonicalize("isArray", () => Array.isArray(value));
 }
 
 function ownValueDescriptor(
@@ -301,10 +290,52 @@ function ownValueDescriptor(
   return descriptor;
 }
 
+function ownArrayLength(value: object): number {
+  const descriptor = ownValueDescriptor(value, "length");
+  if (
+    !descriptor ||
+    typeof descriptor.value !== "number" ||
+    !Number.isSafeInteger(descriptor.value) ||
+    descriptor.value < 0
+  ) {
+    failCanonicalizeUnbounded({ invalidArrayLength: true });
+  }
+  return descriptor.value as number;
+}
+
+type CanonicalizeDataSnapshot = {
+  key: string;
+  value: unknown;
+};
+
+/** One getOwnPropertyDescriptor per key. Prevents Proxy descriptor drift. */
+function ownEnumerableDataSnapshot(value: object): CanonicalizeDataSnapshot[] {
+  const snapshot: CanonicalizeDataSnapshot[] = [];
+  for (const key of inspectCanonicalize("ownKeys", () =>
+    Reflect.ownKeys(value),
+  )) {
+    if (typeof key !== "string") continue;
+    const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (!descriptor?.enumerable) continue;
+    if (!("value" in descriptor)) {
+      failCanonicalizeUnbounded({ accessor: true, key });
+    }
+    if (descriptor.value === undefined) continue;
+    snapshot.push({ key, value: descriptor.value });
+  }
+  snapshot.sort((left, right) =>
+    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
+  );
+  return snapshot;
+}
+
 function canonicalizeWalk(
   value: unknown,
   depth: number,
   ctx: CanonicalizeWalkContext,
+  visitAlreadyReserved = false,
 ): string {
   if (depth > MAX_AGENT_EXPORT_CANONICALIZE_DEPTH) {
     failCanonicalizeUnbounded({
@@ -312,30 +343,43 @@ function canonicalizeWalk(
       max: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
     });
   }
-  reserveCanonicalizeVisits(ctx, 1);
+  if (!visitAlreadyReserved) reserveCanonicalizeVisits(ctx, 1);
   if (value === null || typeof value !== "object") {
     return JSON.stringify(value ?? null);
   }
 
   enterCanonicalizeContainer(value, ctx);
   try {
-    if (Array.isArray(value)) {
-      return `[${value
-        .map((entry) => canonicalizeWalk(entry, depth + 1, ctx))
-        .join(",")}]`;
+    if (isCanonicalizeArray(value)) {
+      const length = ownArrayLength(value);
+      reserveCanonicalizeVisits(ctx, length);
+      // String-build so inherited Array.prototype index accessors cannot
+      // trap assignment into a preallocated parts array.
+      let body = "";
+      for (let index = 0; index < length; index += 1) {
+        if (index > 0) body += ",";
+        const descriptor = inspectCanonicalize(
+          "getOwnPropertyDescriptor",
+          () => Object.getOwnPropertyDescriptor(value, String(index)),
+        );
+        if (!descriptor) {
+          // Sparse hole: keep the prior map()+join() empty-slot string.
+          continue;
+        }
+        if (!("value" in descriptor)) {
+          failCanonicalizeUnbounded({ accessor: true, key: String(index) });
+        }
+        body += canonicalizeWalk(descriptor.value, depth + 1, ctx, true);
+      }
+      return `[${body}]`;
     }
 
-    const keys = ownEnumerableStringKeys(value)
-      .filter((key) => {
-        const descriptor = ownValueDescriptor(value, key);
-        return descriptor ? descriptor.value !== undefined : false;
-      })
-      .sort();
-    return `{${keys
-      .map((key) => {
-        const descriptor = ownValueDescriptor(value, key);
-        return `${JSON.stringify(key)}:${canonicalizeWalk(descriptor?.value, depth + 1, ctx)}`;
-      })
+    const snapshot = ownEnumerableDataSnapshot(value);
+    return `{${snapshot
+      .map(
+        (entry) =>
+          `${JSON.stringify(entry.key)}:${canonicalizeWalk(entry.value, depth + 1, ctx)}`,
+      )
       .join(",")}}`;
   } finally {
     ctx.visiting.delete(value);
@@ -354,12 +398,24 @@ function sha256Hex(input: string): string {
 }
 
 /** sha256 of a collection's canonical JSON, plus its length. */
-export function digestCollection(items: unknown[]): AgentExportComponentDigest {
-  const list = Array.isArray(items) ? items : [];
-  return { sha256: sha256Hex(canonicalize(list)), count: list.length };
-}
-
 const EMPTY_MANIFEST_COLLECTION: unknown[] = [];
+
+export function digestCollection(items: unknown[]): AgentExportComponentDigest {
+  if (
+    items != null &&
+    typeof items === "object" &&
+    isCanonicalizeArray(items)
+  ) {
+    return {
+      sha256: sha256Hex(canonicalize(items)),
+      count: ownArrayLength(items),
+    };
+  }
+  return {
+    sha256: sha256Hex(canonicalize(EMPTY_MANIFEST_COLLECTION)),
+    count: 0,
+  };
+}
 
 /** The collection arrays the manifest covers, read off a payload-like object. */
 function manifestCollectionsOf(
