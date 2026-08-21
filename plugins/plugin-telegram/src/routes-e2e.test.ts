@@ -89,9 +89,13 @@ function makeSetupService(state: FakeSetupServiceState) {
 }
 
 function makeRuntime(
-  options: { withService?: boolean; state?: FakeSetupServiceState } = {},
+  options: {
+    withService?: boolean;
+    state?: FakeSetupServiceState;
+    settings?: Record<string, string>;
+  } = {},
 ): AgentRuntime {
-  const { withService = true, state } = options;
+  const { withService = true, state, settings } = options;
   const setupState: FakeSetupServiceState = state ?? {
     // Shape a real connector-setup service returns: a `connectors` block with a
     // present-but-empty `telegram` sub-config (no saved token yet).
@@ -106,9 +110,10 @@ function makeRuntime(
     // state a freshly-configuring user is in.
     getService: (key: string) =>
       withService && key === "connector-setup" ? setupService : null,
-    // No persisted env settings — keeps the missing-phone / missing-token
-    // validation branches deterministic.
-    getSetting: () => null,
+    // No persisted env settings by default — keeps the missing-phone /
+    // missing-token validation branches deterministic. `settings` opts a test
+    // into the runtime-setting tier `readSavedToken` falls back to.
+    getSetting: (key: string) => settings?.[key] ?? null,
   } as unknown as AgentRuntime;
 }
 
@@ -224,6 +229,72 @@ describe("plugin-telegram setup routes (real dispatch)", () => {
     // degrades to runtime-only reads, so status must still resolve.
     const base = await startServer(makeRuntime({ withService: false }));
     const res = await fetch(`${base}/api/setup/telegram/status`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { connector: string; state: string };
+    expect(body.connector).toBe("telegram");
+    expect(body.state).toBe("idle");
+  });
+
+  it("serves status before any connector was ever configured (no connectors block)", async () => {
+    // A fresh install's persisted config has no `connectors` key at all —
+    // `handleStart` is what first creates `connectors.telegram`. Reading the
+    // saved token must treat that block as optional, exactly like the
+    // `config.connectors` lookup above it already does.
+    const state: FakeSetupServiceState = { config: {}, calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+    const res = await fetch(`${base}/api/setup/telegram/status`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      connector: string;
+      state: string;
+      detail: { hasToken: boolean; serviceConnected: boolean };
+    };
+    expect(body.connector).toBe("telegram");
+    expect(body.state).toBe("idle");
+    expect(body.detail.hasToken).toBe(false);
+  });
+
+  it("serves status when other connectors are configured but Telegram is not", async () => {
+    const state: FakeSetupServiceState = {
+      config: { connectors: { discord: { botToken: "123:abc" } } },
+      calls: [],
+    };
+    const base = await startServer(makeRuntime({ state }));
+    const res = await fetch(`${base}/api/setup/telegram/status`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      state: string;
+      detail: { hasToken: boolean };
+    };
+    expect(body.state).toBe("idle");
+    expect(body.detail.hasToken).toBe(false);
+  });
+
+  it("still reports the env-configured token when no connectors block exists", async () => {
+    // TELEGRAM_BOT_TOKEN is the documented single-account tier, and
+    // `readSavedToken` falls back to it — but only if the persisted-config
+    // lookup ahead of it returns instead of throwing.
+    const state: FakeSetupServiceState = { config: {}, calls: [] };
+    const base = await startServer(
+      makeRuntime({
+        state,
+        settings: { TELEGRAM_BOT_TOKEN: "123456:ABCDEF" },
+      }),
+    );
+    const res = await fetch(`${base}/api/setup/telegram/status`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      state: string;
+      detail: { hasToken: boolean };
+    };
+    expect(body.detail.hasToken).toBe(true);
+    expect(body.state).toBe("configuring");
+  });
+
+  it("cancels bot-token setup before any connector was configured (200)", async () => {
+    const state: FakeSetupServiceState = { config: {}, calls: [] };
+    const base = await startServer(makeRuntime({ state }));
+    const res = await postJson(base, "/api/setup/telegram/cancel", {});
     expect(res.status).toBe(200);
     const body = (await res.json()) as { connector: string; state: string };
     expect(body.connector).toBe("telegram");
