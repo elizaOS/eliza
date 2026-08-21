@@ -54,7 +54,6 @@ import {
   LazyLogsView,
   LazyMemoryViewerView,
   LazyMessagesPageView,
-  LazyMyAppsView,
   LazyPendantTranscriptView,
   LazyPhonePageView,
   LazyPluginsPageView,
@@ -1321,7 +1320,6 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<LazyMemoryViewerView />),
-    "my-apps": wrap(<LazyMyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">

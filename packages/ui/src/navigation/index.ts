@@ -75,7 +75,6 @@ export type BuiltinTab =
   | "experience"
   | "character-skills"
   | "memories"
-  | "my-apps"
   | "rolodex"
   | "runtime"
   | "database"
@@ -91,7 +90,6 @@ export type BuiltinTab =
 export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
-  "my-apps",
   "plugins",
   "skills",
   "trajectories",
@@ -384,10 +382,6 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   experience: "/character/experience",
   "character-skills": "/character/skills",
   memories: "/apps/memories",
-  // My Apps is the canonical `/apps` destination (the launcher grid lives at
-  // `/views`). Defined after `apps` so it wins the `PATH_TO_TAB` reverse lookup
-  // for the bare `/apps` path; `/apps/<slug>` still resolves to the app runtime.
-  "my-apps": "/apps",
   rolodex: "/rolodex",
   runtime: "/apps/runtime",
   database: "/apps/database",
@@ -507,6 +501,15 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /views — legacy launcher alias; renders the combined Home/Launcher.
   if (normalized === "/views" || normalized.startsWith("/views/")) {
     return "views";
+  }
+
+  // Retired My Apps routes (#17031): bare /apps (the old My Apps canonical
+  // path) and the /apps/my-apps app-window slug both resolve to the
+  // consolidated Projects surface, which pre-selects its Apps segment from
+  // these paths (initialProjectsSegmentForPath in TasksPageView). The launcher
+  // grid itself stays at /views.
+  if (normalized === "/apps" || normalized === "/apps/my-apps") {
+    return "tasks";
   }
 
   // /character/<sub> — resolve nested character paths. The character hub's
@@ -644,8 +647,6 @@ export function titleForTab(tab: Tab): string {
       return "Skills";
     case "memories":
       return "Memories";
-    case "my-apps":
-      return "My Apps";
     case "files":
       return "Files";
     case "rolodex":

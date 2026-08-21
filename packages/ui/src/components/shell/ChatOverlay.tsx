@@ -49,6 +49,7 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   type BackIntentEventDetail,
+  CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
@@ -4146,6 +4147,18 @@ export function ChatOverlay({
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [pinnedOpen, expand]);
+
+  // Control-heavy views can explicitly ask the ambient sheet to yield focus.
+  // Keep onboarding pinned: its chat choices are the active first-run UI and
+  // must not be dismissed by background navigation.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onClose = () => {
+      if (!pinnedOpen) collapse();
+    };
+    window.addEventListener(CHAT_CLOSE_EVENT, onClose);
+    return () => window.removeEventListener(CHAT_CLOSE_EVENT, onClose);
+  }, [pinnedOpen, collapse]);
 
   // The structural OS-intent authority routes untrusted launch text as a local
   // composer-prefill event (or targeted cross-window delivery), never as an

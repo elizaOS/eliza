@@ -1050,6 +1050,16 @@ describe("ChatOverlay", () => {
     expect(sheet.getAttribute("data-detent")).toBe("collapsed");
   });
 
+  it("collapses an open sheet when a control-heavy view requests focus", () => {
+    render(<ChatOverlay controller={makeController()} initialMode="half" />);
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    fireEvent(window, new CustomEvent("eliza:chat:close"));
+
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+  });
+
   it("opens a loading conversation on the first grabber tap", () => {
     render(
       <ChatOverlay

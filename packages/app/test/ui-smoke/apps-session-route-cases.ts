@@ -46,9 +46,14 @@ function launcherTileTestId(viewId: string): string {
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
-    name: "my-apps app window",
+    // Retired My Apps slug (#17031): resolves to the consolidated Projects
+    // surface with its Apps segment pre-selected.
+    name: "my-apps compat deep link",
     path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }],
+    readyChecks: [
+      { text: "Projects" },
+      { selector: '[data-testid="projects-apps-segment"]' },
+    ],
     timeoutMs: 90_000,
   },
   {
@@ -64,9 +69,11 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "my apps app window",
-    path: "/apps/my-apps",
-    readyChecks: [{ text: "My Apps" }, { text: "Install, create, and run" }],
+    // Retired bare My Apps route (#17031): same consolidated Projects surface,
+    // Apps segment pre-selected with the app-management copy visible.
+    name: "bare /apps compat deep link",
+    path: "/apps",
+    readyChecks: [{ text: "Projects" }, { text: "Install, create, and run" }],
     timeoutMs: 90_000,
   },
   {

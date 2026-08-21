@@ -1522,8 +1522,39 @@ export async function generateTypeScriptDeclarations(
 	console.log(`✅ TypeScript declarations generated in ${duration}s`);
 }
 
+/**
+ * `NODE_OPTIONS` for the packed-tarball consumer processes, with the workspace
+ * `--conditions=eliza-source` resolution stripped.
+ *
+ * Workspace lanes export that condition so source-only packages resolve to
+ * `src/*.ts` (see packages/app/scripts/run-ui-playwright.mjs). It leaks into
+ * every child process, including the builds those lanes prebuild. Inside this
+ * verification that is wrong twice over: the packed tarball ships no `src/`, so
+ * a consumer resolving `@elizaos/core/client-public` through `eliza-source`
+ * dies with ERR_MODULE_NOT_FOUND, and the contract under test is precisely how
+ * a published consumer resolves under DEFAULT conditions.
+ */
+export function packedConsumerNodeOptions(
+	nodeOptions: string | undefined,
+): string | undefined {
+	if (!nodeOptions) return nodeOptions;
+	const stripped = nodeOptions
+		// `--conditions eliza-source`, `--conditions=eliza-source`, and the `-C`
+		// short form, each optionally repeated.
+		.replace(/(?:--conditions|-C)[=\s]+eliza-source(?=\s|$)/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return stripped.length > 0 ? stripped : undefined;
+}
+
 async function verifyPackedEdgeContract(): Promise<void> {
 	const fs = await import("node:fs/promises");
+	const consumerNodeOptions = packedConsumerNodeOptions(
+		process.env.NODE_OPTIONS,
+	);
+	const consumerEnv: NodeJS.ProcessEnv = { ...process.env };
+	if (consumerNodeOptions === undefined) delete consumerEnv.NODE_OPTIONS;
+	else consumerEnv.NODE_OPTIONS = consumerNodeOptions;
 	const contractRoot = await fs.mkdtemp(
 		join(tmpdir(), "eliza-core-edge-package-"),
 	);
@@ -1581,7 +1612,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 				"--skipLibCheck",
 				"consumer.mts",
 			],
-			{ cwd: contractRoot },
+			{ cwd: contractRoot, env: consumerEnv },
 		);
 
 		await fs.writeFile(
@@ -1596,6 +1627,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		);
 		await execFileAsync(process.execPath, ["consumer.mjs"], {
 			cwd: contractRoot,
+			env: consumerEnv,
 		});
 		console.log(
 			"✅ Packed @elizaos/core/edge declarations and runtime import verified",
@@ -1629,6 +1661,7 @@ async function verifyPackedEdgeContract(): Promise<void> {
 		);
 		await execFileAsync("node", ["node-flat-consumer.mjs"], {
 			cwd: contractRoot,
+			env: consumerEnv,
 		});
 
 		const viteCli = join(
@@ -1682,10 +1715,11 @@ async function verifyPackedEdgeContract(): Promise<void> {
 			await execFileAsync(
 				"node",
 				[viteCli, "build", "--config", "vite.config.mjs"],
-				{ cwd: consumerRoot },
+				{ cwd: consumerRoot, env: consumerEnv },
 			);
 			await execFileAsync("node", ["dist/bundle.js"], {
 				cwd: consumerRoot,
+				env: consumerEnv,
 			});
 		}
 		console.log(

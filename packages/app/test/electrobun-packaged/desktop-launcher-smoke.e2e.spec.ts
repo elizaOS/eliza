@@ -42,7 +42,7 @@ interface SurfaceRead {
 
 /**
  * Route the shell to `/views`, the canonical Home/Launcher surface. `/apps`
- * is the My Apps destination and intentionally does not mount this rail. Drive
+ * is a retired My Apps deep link into Projects and does not mount this rail. Drive
  * the shell's public navigation event instead of raw History: active surfaces
  * are denied direct path-changing history writes by the surface-realm guard.
  */
