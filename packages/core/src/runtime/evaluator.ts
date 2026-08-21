@@ -32,6 +32,10 @@ import {
 } from "../utils/model-errors";
 import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.js";
 import { computePrefixHashes } from "./context-hash";
 import {
 	buildStageChatMessages,
@@ -2125,7 +2129,7 @@ function getStructuredEvaluatorObject(
 		if (!isEvaluatorShapedObject(raw.object)) {
 			return {
 				object: null,
-				parseError: `structured evaluator output is not evaluator-shaped: ${JSON.stringify(raw.object).slice(0, 200)}`,
+				parseError: `structured evaluator output is not evaluator-shaped: ${truncateWellFormed(toWellFormedUnicode(JSON.stringify(raw.object)), 200)}`,
 			};
 		}
 		return { object: raw.object as RawEvaluatorOutput };
