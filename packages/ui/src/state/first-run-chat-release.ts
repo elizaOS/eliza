@@ -7,9 +7,11 @@
 import type { StartupPhaseValue } from "./startup-coordinator";
 
 export interface FirstRunChatReleaseState {
-  observedIncomplete: boolean;
-  overlayMountedWhileIncomplete: boolean;
-  transcriptMountedWhileIncomplete: boolean;
+  incompleteActive: boolean;
+  incompleteEpoch: number;
+  authoritativeEpoch: number | null;
+  overlayMountedEpoch: number | null;
+  transcriptMountedEpoch: number | null;
   releasePending: boolean;
 }
 
@@ -17,33 +19,50 @@ export function createFirstRunChatReleaseState(
   firstRunComplete: boolean | null,
   startupPhase: StartupPhaseValue,
 ): FirstRunChatReleaseState {
+  const incompleteActive = firstRunComplete === false;
+  const incompleteEpoch = incompleteActive ? 1 : 0;
+  const authoritativeEpoch =
+    incompleteActive && startupPhase === "first-run-required"
+      ? incompleteEpoch
+      : null;
   return {
-    observedIncomplete:
-      firstRunComplete === false && startupPhase === "first-run-required",
-    overlayMountedWhileIncomplete: false,
-    transcriptMountedWhileIncomplete: false,
+    incompleteActive,
+    incompleteEpoch,
+    authoritativeEpoch,
+    overlayMountedEpoch: null,
+    transcriptMountedEpoch: null,
     releasePending: false,
   };
 }
 
-/** Records a committed overlay mount during an authoritative onboarding epoch. */
+/** Records a committed overlay mount during the current incomplete epoch. */
 export function recordMountedFirstRunOverlay(
   state: FirstRunChatReleaseState,
+  epoch: number,
 ): FirstRunChatReleaseState {
-  if (!state.observedIncomplete || state.overlayMountedWhileIncomplete) {
+  if (
+    !state.incompleteActive ||
+    epoch !== state.incompleteEpoch ||
+    state.overlayMountedEpoch === epoch
+  ) {
     return state;
   }
-  return { ...state, overlayMountedWhileIncomplete: true };
+  return { ...state, overlayMountedEpoch: epoch };
 }
 
 /** Records that the mounted conductor produced a real first-run transcript. */
 export function recordMountedFirstRunTranscript(
   state: FirstRunChatReleaseState,
+  epoch: number,
 ): FirstRunChatReleaseState {
-  if (!state.observedIncomplete || state.transcriptMountedWhileIncomplete) {
+  if (
+    !state.incompleteActive ||
+    epoch !== state.incompleteEpoch ||
+    state.transcriptMountedEpoch === epoch
+  ) {
     return state;
   }
-  return { ...state, transcriptMountedWhileIncomplete: true };
+  return { ...state, transcriptMountedEpoch: epoch };
 }
 
 /** Advances persisted first-run state without treating false probes as UI. */
@@ -53,29 +72,42 @@ export function observeFirstRunCompletion(
   startupPhase: StartupPhaseValue,
 ): FirstRunChatReleaseState {
   if (firstRunComplete === false) {
-    if (state.observedIncomplete) return state;
-    if (startupPhase !== "first-run-required") {
-      return state.releasePending ? { ...state, releasePending: false } : state;
+    if (!state.incompleteActive) {
+      const incompleteEpoch = state.incompleteEpoch + 1;
+      const authoritativeEpoch =
+        startupPhase === "first-run-required" ? incompleteEpoch : null;
+      return {
+        incompleteActive: true,
+        incompleteEpoch,
+        authoritativeEpoch,
+        overlayMountedEpoch: null,
+        transcriptMountedEpoch: null,
+        releasePending: false,
+      };
     }
-    // A new incomplete epoch invalidates an unconsumed release from the prior
-    // epoch. Otherwise a reset that hides the overlay before it acknowledges
-    // FULL can make a later probe-only false -> true transition reopen chat.
-    return {
-      observedIncomplete: true,
-      overlayMountedWhileIncomplete: false,
-      transcriptMountedWhileIncomplete: false,
-      releasePending: false,
-    };
+    if (
+      startupPhase === "first-run-required" &&
+      state.authoritativeEpoch !== state.incompleteEpoch
+    ) {
+      return {
+        ...state,
+        authoritativeEpoch: state.incompleteEpoch,
+      };
+    }
+    return state.releasePending ? { ...state, releasePending: false } : state;
   }
-  if (firstRunComplete !== true || !state.observedIncomplete) return state;
+  if (firstRunComplete !== true || !state.incompleteActive) return state;
+  const releaseAuthorized =
+    state.authoritativeEpoch === state.incompleteEpoch &&
+    state.overlayMountedEpoch === state.incompleteEpoch &&
+    state.transcriptMountedEpoch === state.incompleteEpoch;
   return {
-    observedIncomplete: false,
-    overlayMountedWhileIncomplete: false,
-    transcriptMountedWhileIncomplete: false,
-    releasePending:
-      state.releasePending ||
-      (state.overlayMountedWhileIncomplete &&
-        state.transcriptMountedWhileIncomplete),
+    incompleteActive: false,
+    incompleteEpoch: state.incompleteEpoch,
+    authoritativeEpoch: null,
+    overlayMountedEpoch: null,
+    transcriptMountedEpoch: null,
+    releasePending: state.releasePending || releaseAuthorized,
   };
 }
 

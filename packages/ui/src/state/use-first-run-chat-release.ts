@@ -17,8 +17,10 @@ import type { StartupPhaseValue } from "./startup-coordinator";
 export interface FirstRunChatReleaseController {
   releasePending: boolean;
   mountedOnboarding: boolean;
-  recordMountedOverlay: () => void;
-  recordMountedTranscript: () => void;
+  mountEpoch: number | null;
+  authorityEpoch: number | null;
+  recordMountedOverlay: (epoch: number) => void;
+  recordMountedTranscript: (epoch: number) => void;
   acknowledgeRelease: () => void;
 }
 
@@ -31,14 +33,26 @@ export function useFirstRunChatRelease(
   );
   const [releasePending, setReleasePending] = useState(false);
   const [mountedOnboarding, setMountedOnboarding] = useState(false);
+  const [mountEpoch, setMountEpoch] = useState<number | null>(
+    lifecycleRef.current.incompleteActive
+      ? lifecycleRef.current.incompleteEpoch
+      : null,
+  );
+  const [authorityEpoch, setAuthorityEpoch] = useState<number | null>(
+    lifecycleRef.current.authoritativeEpoch,
+  );
 
   const syncMountedOnboarding = useCallback(() => {
     const lifecycle = lifecycleRef.current;
     setMountedOnboarding(
-      lifecycle.observedIncomplete &&
-        lifecycle.overlayMountedWhileIncomplete &&
-        lifecycle.transcriptMountedWhileIncomplete,
+      lifecycle.authoritativeEpoch === lifecycle.incompleteEpoch &&
+        lifecycle.overlayMountedEpoch === lifecycle.incompleteEpoch &&
+        lifecycle.transcriptMountedEpoch === lifecycle.incompleteEpoch,
     );
+    setMountEpoch(
+      lifecycle.incompleteActive ? lifecycle.incompleteEpoch : null,
+    );
+    setAuthorityEpoch(lifecycle.authoritativeEpoch);
   }, []);
 
   useLayoutEffect(() => {
@@ -51,27 +65,37 @@ export function useFirstRunChatRelease(
     syncMountedOnboarding();
   }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
 
-  const recordMountedOverlay = useCallback(() => {
-    lifecycleRef.current = observeFirstRunCompletion(
-      lifecycleRef.current,
-      firstRunComplete,
-      startupPhase,
-    );
-    lifecycleRef.current = recordMountedFirstRunOverlay(lifecycleRef.current);
-    syncMountedOnboarding();
-  }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
+  const recordMountedOverlay = useCallback(
+    (epoch: number) => {
+      lifecycleRef.current = observeFirstRunCompletion(
+        lifecycleRef.current,
+        firstRunComplete,
+        startupPhase,
+      );
+      lifecycleRef.current = recordMountedFirstRunOverlay(
+        lifecycleRef.current,
+        epoch,
+      );
+      syncMountedOnboarding();
+    },
+    [firstRunComplete, startupPhase, syncMountedOnboarding],
+  );
 
-  const recordMountedTranscript = useCallback(() => {
-    lifecycleRef.current = observeFirstRunCompletion(
-      lifecycleRef.current,
-      firstRunComplete,
-      startupPhase,
-    );
-    lifecycleRef.current = recordMountedFirstRunTranscript(
-      lifecycleRef.current,
-    );
-    syncMountedOnboarding();
-  }, [firstRunComplete, startupPhase, syncMountedOnboarding]);
+  const recordMountedTranscript = useCallback(
+    (epoch: number) => {
+      lifecycleRef.current = observeFirstRunCompletion(
+        lifecycleRef.current,
+        firstRunComplete,
+        startupPhase,
+      );
+      lifecycleRef.current = recordMountedFirstRunTranscript(
+        lifecycleRef.current,
+        epoch,
+      );
+      syncMountedOnboarding();
+    },
+    [firstRunComplete, startupPhase, syncMountedOnboarding],
+  );
 
   const acknowledgeRelease = useCallback(() => {
     lifecycleRef.current = acknowledgeFirstRunChatRelease(lifecycleRef.current);
@@ -81,6 +105,8 @@ export function useFirstRunChatRelease(
   return {
     releasePending,
     mountedOnboarding,
+    mountEpoch,
+    authorityEpoch,
     recordMountedOverlay,
     recordMountedTranscript,
     acknowledgeRelease,

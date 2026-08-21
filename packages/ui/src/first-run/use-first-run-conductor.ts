@@ -1699,8 +1699,12 @@ export function useFirstRunConductor(): void {
  */
 export function FirstRunConductorMount({
   onFirstRunTranscriptMounted,
+  firstRunMountEpoch = null,
+  firstRunAuthorityEpoch = null,
 }: {
-  onFirstRunTranscriptMounted?: () => void;
+  onFirstRunTranscriptMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
+  firstRunAuthorityEpoch?: number | null;
 } = {}): null {
   useFirstRunConductor();
   const firstRunIncomplete = useAppSelector(
@@ -1717,9 +1721,21 @@ export function FirstRunConductorMount({
       conversationMessages,
       firstRunIncomplete,
     );
-    if (!transcriptWasMounted && transcriptEpochRef.current.transcriptMounted) {
-      onFirstRunTranscriptMounted?.();
+    if (
+      firstRunMountEpoch !== null &&
+      ((!transcriptWasMounted &&
+        transcriptEpochRef.current.transcriptMounted) ||
+        (firstRunAuthorityEpoch === firstRunMountEpoch &&
+          transcriptEpochRef.current.transcriptMounted))
+    ) {
+      onFirstRunTranscriptMounted?.(firstRunMountEpoch);
     }
-  }, [conversationMessages, firstRunIncomplete, onFirstRunTranscriptMounted]);
+  }, [
+    conversationMessages,
+    firstRunAuthorityEpoch,
+    firstRunIncomplete,
+    firstRunMountEpoch,
+    onFirstRunTranscriptMounted,
+  ]);
   return null;
 }

@@ -49,6 +49,7 @@ const conductorMock = vi.hoisted(() => ({
 
 const shellControllerMock = vi.hoisted(() => ({
   current: null as Record<string, unknown> | null,
+  generation: 0,
 }));
 
 const overlayMock = vi.hoisted(() => ({
@@ -62,18 +63,22 @@ const overlayMock = vi.hoisted(() => ({
 vi.mock("./first-run/use-first-run-conductor", () => ({
   FirstRunConductorMount: ({
     onFirstRunTranscriptMounted,
+    firstRunMountEpoch,
   }: {
-    onFirstRunTranscriptMounted?: () => void;
+    onFirstRunTranscriptMounted?: (epoch: number) => void;
+    firstRunMountEpoch?: number | null;
   }) => {
     conductorMock.mount();
     useLayoutEffect(() => {
       if (
         conductorMock.transcriptMounted &&
-        appState.firstRunComplete === false
+        appState.firstRunComplete === false &&
+        firstRunMountEpoch !== null &&
+        firstRunMountEpoch !== undefined
       ) {
-        onFirstRunTranscriptMounted?.();
+        onFirstRunTranscriptMounted?.(firstRunMountEpoch);
       }
-    }, [onFirstRunTranscriptMounted]);
+    }, [firstRunMountEpoch, onFirstRunTranscriptMounted]);
     return <div data-testid="first-run-conductor-mount" />;
   },
   useFirstRunConductor: (): void => {
@@ -213,7 +218,12 @@ vi.mock("./config/boot-config-react.hooks", () => ({
 
 vi.mock("./components/shell/ShellControllerContext", () => ({
   ShellControllerProvider: ({ children }: { children: ReactNode }) => (
-    <div data-testid="shell-controller-provider">{children}</div>
+    <div
+      key={shellControllerMock.generation}
+      data-testid="shell-controller-provider"
+    >
+      {children}
+    </div>
   ),
 }));
 
@@ -329,6 +339,7 @@ describe("App chat-overlay first-run composition", () => {
     conductorMock.mount.mockClear();
     conductorMock.transcriptMounted = true;
     shellControllerMock.current = null;
+    shellControllerMock.generation = 0;
     overlayMock.handledReleases = 0;
     notificationMock.init.mockClear();
   });
@@ -548,6 +559,50 @@ describe("App chat-overlay first-run composition", () => {
     );
     expect(overlayMock.handledReleases).toBe(1);
 
+    shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(1);
+  });
+
+  it("releases polling-mounted onboarding once the startup phase authorizes its epoch", () => {
+    appState.firstRunComplete = false;
+    appState.startupPhase = "polling-backend";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(overlayMock.handledReleases).toBe(0);
+
+    appState.startupPhase = "first-run-required";
+    shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(0);
+
+    appState.firstRunComplete = true;
+    appState.startupPhase = "starting-runtime";
+    shell.rerender(<App />);
+
+    expect(overlayMock.handledReleases).toBe(1);
+    shell.rerender(<App />);
+    expect(overlayMock.handledReleases).toBe(1);
+  });
+
+  it("retains polling transcript authority across a provider parent remount", () => {
+    appState.firstRunComplete = false;
+    appState.startupPhase = "polling-backend";
+    appState.authPhase = "authenticated";
+    shellControllerMock.current = {};
+
+    const shell = render(<App />);
+    expect(conductorMock.mount).toHaveBeenCalled();
+
+    shellControllerMock.generation += 1;
+    shell.rerender(<App />);
+    appState.startupPhase = "first-run-required";
+    shell.rerender(<App />);
+    appState.firstRunComplete = true;
+    appState.startupPhase = "starting-runtime";
+    shell.rerender(<App />);
+
+    expect(overlayMock.handledReleases).toBe(1);
     shell.rerender(<App />);
     expect(overlayMock.handledReleases).toBe(1);
   });
