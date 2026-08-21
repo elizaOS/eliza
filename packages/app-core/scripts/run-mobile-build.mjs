@@ -6302,6 +6302,8 @@ export function cloudSafePlayVoicePluginJava(androidPackage) {
 import android.Manifest;
 import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -6326,6 +6328,7 @@ import java.util.UUID;
     permissions = @Permission(alias = "microphone", strings = { Manifest.permission.RECORD_AUDIO })
 )
 public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionListener {
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private SpeechRecognizer recognizer;
 
     @PluginMethod
@@ -6348,6 +6351,11 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             call.reject("Microphone permission is required.", "MICROPHONE_PERMISSION_REQUIRED");
             return;
         }
+        String language = call.getString("language");
+        runOnMainThread(() -> startDictationOnMainThread(call, language));
+    }
+
+    private void startDictationOnMainThread(PluginCall call, String language) {
         if (!SpeechRecognizer.isRecognitionAvailable(getContext())) {
             call.reject("Speech recognition is unavailable.", "SPEECH_RECOGNITION_UNAVAILABLE");
             return;
@@ -6358,18 +6366,17 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             call.reject("Previous voice dictation could not be stopped.", "SPEECH_RECOGNITION_STOP_FAILED", error);
             return;
         }
-        recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
-        recognizer.setRecognitionListener(this);
-        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-        intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
-        intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
-        intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
-        String language = call.getString("language");
-        if (language != null && !language.trim().isEmpty()) {
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
-        }
         try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(getContext());
+            recognizer.setRecognitionListener(this);
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            intent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+            intent.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getContext().getPackageName());
+            if (language != null && !language.trim().isEmpty()) {
+                intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, language.trim());
+            }
             recognizer.startListening(intent);
             JSObject result = new JSObject();
             result.put("started", true);
@@ -6386,12 +6393,14 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
 
     @PluginMethod
     public void stopDictation(PluginCall call) {
-        try {
-            stopRecognizer();
-            call.resolve();
-        } catch (RuntimeException error) {
-            call.reject("Voice dictation could not be stopped.", "SPEECH_RECOGNITION_STOP_FAILED", error);
-        }
+        runOnMainThread(() -> {
+            try {
+                stopRecognizer();
+                call.resolve();
+            } catch (RuntimeException error) {
+                call.reject("Voice dictation could not be stopped.", "SPEECH_RECOGNITION_STOP_FAILED", error);
+            }
+        });
     }
 
     @PluginMethod
@@ -6402,6 +6411,10 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
             return;
         }
         String language = call.getString("language", Locale.getDefault().toLanguageTag());
+        runOnMainThread(() -> speakOnMainThread(call, text, language));
+    }
+
+    private void speakOnMainThread(PluginCall call, String text, String language) {
         final TextToSpeech[] holder = new TextToSpeech[1];
         holder[0] = new TextToSpeech(getContext(), status -> {
             TextToSpeech tts = holder[0];
@@ -6434,11 +6447,13 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
 
     @Override
     protected void handleOnDestroy() {
-        try {
-            stopRecognizer();
-        } catch (RuntimeException ignored) {
-            // error-policy:J6 Android process teardown has no remaining caller.
-        }
+        runOnMainThread(() -> {
+            try {
+                stopRecognizer();
+            } catch (RuntimeException ignored) {
+                // error-policy:J6 Android process teardown has no remaining caller.
+            }
+        });
         super.handleOnDestroy();
     }
 
@@ -6446,6 +6461,14 @@ public final class ElizaPlayVoicePlugin extends Plugin implements RecognitionLis
         JSObject result = new JSObject();
         result.put("granted", granted);
         call.resolve(result);
+    }
+
+    private void runOnMainThread(Runnable action) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action.run();
+        } else {
+            mainHandler.post(action);
+        }
     }
 
     private void stopRecognizer() {

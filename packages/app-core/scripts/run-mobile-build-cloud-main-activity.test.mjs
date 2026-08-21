@@ -76,6 +76,20 @@ describe("cloudSafeMainActivityJava", () => {
 
     expect(source).toContain('@CapacitorPlugin(\n    name = "ElizaPlayVoice"');
     expect(source).toContain("SpeechRecognizer.createSpeechRecognizer");
+    expect(source).toContain(
+      "private final Handler mainHandler = new Handler(Looper.getMainLooper());",
+    );
+    expect(source).toContain(
+      "runOnMainThread(() -> startDictationOnMainThread(call, language));",
+    );
+    expect(source).toContain("runOnMainThread(() -> {");
+    expect(source).toContain(
+      "runOnMainThread(() -> speakOnMainThread(call, text, language));",
+    );
+    expect(source).toContain(
+      "if (Looper.myLooper() == Looper.getMainLooper())",
+    );
+    expect(source).toContain("mainHandler.post(action);");
     expect(source).toContain("new TextToSpeech(getContext()");
     expect(source).toContain("Manifest.permission.RECORD_AUDIO");
     expect(source).toContain("SpeechRecognizer current = recognizer;");
