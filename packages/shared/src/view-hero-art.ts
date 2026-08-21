@@ -17,6 +17,7 @@
  * from the runtime-agnostic `@elizaos/shared` barrel (browser + server).
  */
 
+import { trimBoundaryCharacters } from "./utils/string-boundaries.js";
 import { hashString } from "./utils/string-hash.js";
 
 const W = 1024;
@@ -362,10 +363,10 @@ export function pickViewHeroIcon(source: ViewHeroSource): ViewHeroIconKind {
 
 /** Lowercase slug safe to embed in SVG element ids. */
 function slugifyViewId(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const slug = trimBoundaryCharacters(
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    "-",
+  );
   return slug || "view";
 }
 

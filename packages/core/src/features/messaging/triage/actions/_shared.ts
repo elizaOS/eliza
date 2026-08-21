@@ -238,6 +238,37 @@ export interface DraftReplyParams {
 	lookup: MessageLookupHints;
 }
 
+const PLACEHOLDER_SIGNATURE_NAMES = new Set([
+	"[your name]",
+	"[name]",
+	"[sender]",
+]);
+const PLACEHOLDER_SIGNATURE_CLOSINGS = new Set([
+	"best",
+	"regards",
+	"sincerely",
+	"thanks",
+]);
+
+function stripPlaceholderSignature(body: string): string {
+	const lines = body.split("\n");
+	let last = lines.length - 1;
+	while (last >= 0 && lines[last].trim() === "") last -= 1;
+	if (
+		!PLACEHOLDER_SIGNATURE_NAMES.has(lines[last]?.trim().toLowerCase() ?? "")
+	) {
+		return body;
+	}
+	last -= 1;
+	while (last >= 0 && lines[last].trim() === "") last -= 1;
+	const closing = lines[last]?.trim().replace(/,$/, "").toLowerCase();
+	if (closing && PLACEHOLDER_SIGNATURE_CLOSINGS.has(closing)) last -= 1;
+	return lines
+		.slice(0, last + 1)
+		.join("\n")
+		.trim();
+}
+
 function asReplyBody(params: Record<string, unknown>): string | undefined {
 	const body = asString(
 		params.body ??
@@ -258,13 +289,7 @@ function asReplyBody(params: Record<string, unknown>): string | undefined {
 	) {
 		return undefined;
 	}
-	return body
-		.replace(
-			/\n{0,2}(?:best|regards|sincerely|thanks),?\s*\n\s*\[(?:your\s+name|name|sender)\]\s*$/i,
-			"",
-		)
-		.replace(/\n{0,2}\[(?:your\s+name|name|sender)\]\s*$/i, "")
-		.trim();
+	return stripPlaceholderSignature(body);
 }
 
 export function parseDraftReplyParams(

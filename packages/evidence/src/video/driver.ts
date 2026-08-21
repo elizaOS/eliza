@@ -23,6 +23,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { EvidenceError } from "../errors.ts";
+import { trimBoundaryCharacters } from "../string-boundaries.ts";
 import type { WalkthroughDef, WalkthroughStep } from "./walkthrough-schema.ts";
 
 // Playwright's public types are not depended on at compile time (devDependency,
@@ -384,10 +385,10 @@ function slugStep(step: WalkthroughStep): string {
       ? step.selector
       : step.action);
   return (
-    base
-      .replace(/[^a-zA-Z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 40) || step.action
+    trimBoundaryCharacters(base.replace(/[^a-zA-Z0-9]+/g, "-"), "-").slice(
+      0,
+      40,
+    ) || step.action
   );
 }
 
