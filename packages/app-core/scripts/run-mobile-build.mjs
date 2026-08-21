@@ -7824,10 +7824,50 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
     requireAgent: true,
     label: "android",
   });
+  const fusedEntry = entries.find((entry) =>
+    /(?:^|\/)lib\/arm64-v8a\/libelizainference\.so$/i.test(
+      entry.replaceAll("\\", "/"),
+    ),
+  );
+  if (fusedEntry) {
+    const [fusedBytes] = readAndroidArtifactEntryBuffers(
+      artifact,
+      [fusedEntry],
+      javaHome,
+      {
+        label: "Android bionic fused inference audit",
+        maxEntryBytes: 128 * 1024 * 1024,
+        maxTotalBytes: 128 * 1024 * 1024,
+      },
+    );
+    const offenders = findAndroidBionicInferenceOffenders(fusedBytes);
+    if (offenders.length > 0) {
+      throw mobileBuildError(
+        `[mobile-build] android sideload artifact contains a Linux/musl fused inference library that Android's bionic loader cannot load: ${offenders.join(", ")}. Rebuild and stage it with \`node packages/app-core/scripts/stage-elizavoice-lib.mjs --abi arm64-v8a --variant cpu\` (or the Vulkan variant with its required host tooling).`,
+        {
+          code: "ANDROID_BIONIC_INFERENCE_INCOMPATIBLE",
+          context: { artifact, fusedEntry, offenders },
+        },
+      );
+    }
+  }
   console.log(
     `[mobile-build] android sideload artifact audit passed: ${artifact}`,
   );
   return artifact;
+}
+
+/**
+ * Detect libc ABI markers that are valid for Linux/musl builds but unresolved
+ * on Android. The bionic host dlopens this library inside the app process, so
+ * accepting one of these symbols would defer a deterministic packaging defect
+ * until device startup.
+ */
+export function findAndroidBionicInferenceOffenders(bytes) {
+  const binary = Buffer.from(bytes);
+  return ["__errno_location"].filter((symbol) =>
+    binary.includes(Buffer.from(symbol, "utf8")),
+  );
 }
 
 /** Audit the hosted-emulator debug APK without requiring a local agent payload. */
