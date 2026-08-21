@@ -377,6 +377,7 @@ export const spotifyAction: Action = {
   description:
     "Control Spotify: search for music, manage the saved-track library, list/create/extend playlists, inspect and control playback, and hand playback off between devices.",
   similes: ["MUSIC", "PLAY_MUSIC", "SPOTIFY_CONTROL"],
+  tags: ["domain:music", "capability:read", "capability:write", "effect:receipt-required"],
   parameters: [
     {
       name: "action",
@@ -493,7 +494,8 @@ export const spotifyAction: Action = {
       result = await execute(runtime, subaction, params);
     } catch (error) {
       // error-policy:J1 the action boundary returns a structured failure the
-      // planner can act on instead of crashing the message loop.
+      // planner can act on; unexpected programming failures keep throwing.
+      if (!(error instanceof ElizaError)) throw error;
       result = failureFromError(subaction, error);
     }
     await callback?.({ text: result.userFacingText ?? result.text, actions: ["SPOTIFY"] });

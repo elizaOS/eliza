@@ -272,36 +272,29 @@ export class SpotifyService extends Service {
     tokens: SpotifyTokens
   ): Promise<void> {
     const runtime = this.requireRuntime();
-    try {
-      await persistSpotifyCredentialRefs({
-        runtime,
-        manager,
-        provider: SPOTIFY_SERVICE_NAME,
-        accountId,
-        caller: "plugin-spotify",
-        credentials: [
-          {
-            credentialType: OAUTH_TOKENS_CREDENTIAL_TYPE,
-            value: JSON.stringify({
-              access_token: tokens.accessToken,
-              ...(tokens.refreshToken ? { refresh_token: tokens.refreshToken } : {}),
-              expiry_date: tokens.expiresAt,
-              scope: tokens.scope,
-            }),
-            expiresAt: tokens.expiresAt,
-            metadata: { provider: SPOTIFY_SERVICE_NAME },
-          },
-        ],
-      });
-    } catch (error) {
-      // error-policy:J7 the refreshed token still serves this request; a
-      // persistence failure is reported so operators see the durable gap.
-      runtime.reportError?.(
-        "plugin-spotify:token-persist",
-        error instanceof Error ? error : new Error(String(error)),
-        { accountId }
-      );
-    }
+    // A provider may rotate the refresh token. Do not serve the new access
+    // token until the complete token set is durable, or restart can resurrect
+    // a now-invalid grant and turn a successful write into a latent outage.
+    await persistSpotifyCredentialRefs({
+      runtime,
+      manager,
+      provider: SPOTIFY_SERVICE_NAME,
+      accountId,
+      caller: "plugin-spotify",
+      credentials: [
+        {
+          credentialType: OAUTH_TOKENS_CREDENTIAL_TYPE,
+          value: JSON.stringify({
+            access_token: tokens.accessToken,
+            ...(tokens.refreshToken ? { refresh_token: tokens.refreshToken } : {}),
+            expiry_date: tokens.expiresAt,
+            scope: tokens.scope,
+          }),
+          expiresAt: tokens.expiresAt,
+          metadata: { provider: SPOTIFY_SERVICE_NAME },
+        },
+      ],
+    });
   }
 
   private tryGetManager(runtime: IAgentRuntime): ConnectorAccountManager | undefined {

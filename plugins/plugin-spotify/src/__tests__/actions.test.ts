@@ -64,6 +64,12 @@ async function run(runtime: IAgentRuntime, parameters: Record<string, unknown>) 
 }
 
 describe("SPOTIFY action", () => {
+  it("declares the mixed read/write and effect-receipt contract", () => {
+    expect(spotifyAction.tags).toEqual(
+      expect.arrayContaining(["capability:read", "capability:write", "effect:receipt-required"])
+    );
+  });
+
   it("rejects a missing/unknown subaction with the allowed list", async () => {
     const runtime = makeRuntime(new MockSpotify());
     const { result } = await run(runtime, {});
@@ -185,5 +191,19 @@ describe("SPOTIFY action", () => {
     expect(await spotifyAction.validate(runtime, message)).toBe(true);
     const bare = { getService: () => null } as unknown as IAgentRuntime;
     expect(await spotifyAction.validate(bare, message)).toBe(false);
+  });
+
+  it("does not translate unexpected programming failures into provider results", async () => {
+    const bug = new TypeError("implementation bug");
+    const runtime = {
+      getService: () => ({
+        resolveAccountId: async () => "acct",
+        search: async () => {
+          throw bug;
+        },
+      }),
+    } as unknown as IAgentRuntime;
+
+    await expect(run(runtime, { action: "search", query: "song" })).rejects.toBe(bug);
   });
 });
