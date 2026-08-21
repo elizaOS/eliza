@@ -14,7 +14,7 @@
  * with `DROPBOX_FILE_NOT_TEXT` / `DROPBOX_FILE_TOO_LARGE` instead of returning
  * garbage, so callers can point the user at the temporary link instead.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { readBoundedResponse } from "./bounded-response.js";
 import type {
   DropboxAccountRef,
@@ -370,10 +370,18 @@ async function dropboxHttpError(
     );
   }
   if (response.status === 400) {
-    return new ElizaError(
-      `DropboxClient: request rejected: ${summary ?? (bodyText.slice(0, 200) || "bad input")}`,
-      { code: "DROPBOX_INVALID_REQUEST", context: base }
-    );
+    // Preserve existing contract: parsed error_summary is unbounded diagnostic
+    // text (sanitized only), while the raw-body fallback remains capped at 200.
+    // Both paths are sanitized to well-formed Unicode so a .slice() at the
+    // boundary never leaves a lone surrogate in the ElizaError message.
+    const safeDetail =
+      summary !== undefined
+        ? toWellFormedUnicode(summary)
+        : truncateWellFormed(toWellFormedUnicode(bodyText || "bad input"), 200);
+    return new ElizaError(`DropboxClient: request rejected: ${safeDetail}`, {
+      code: "DROPBOX_INVALID_REQUEST",
+      context: base,
+    });
   }
   return new ElizaError(`DropboxClient: Dropbox request failed with status ${response.status}.`, {
     code: "DROPBOX_UPSTREAM_FAILURE",
