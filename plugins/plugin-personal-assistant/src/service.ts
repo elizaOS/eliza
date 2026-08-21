@@ -7,16 +7,19 @@
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
-  type BrowserBridgeCompanionAutoPairResponse,
   type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionPreflightRequest,
+  type BrowserBridgeCompanionPreflightResponse,
   type BrowserBridgeCompanionRevokeResponse,
+  type BrowserBridgeCompanionSessionBeginRequest,
+  type BrowserBridgeCompanionSessionProgressRequest,
   type BrowserBridgeCompanionStatus,
+  type BrowserBridgeCompanionSyncRequest,
   type BrowserBridgeCompanionSyncResponse,
   type BrowserBridgePageContext,
   type BrowserBridgeRouteService,
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
-  type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
@@ -100,17 +103,6 @@ export class BrowserBridgePluginService
     return this.lifeOps(ownerEntityId).createBrowserCompanionPairing(request);
   }
 
-  async autoPairBrowserCompanion(
-    request: CreateBrowserBridgeCompanionAutoPairRequest,
-    apiBaseUrl: string,
-    ownerEntityId?: UUID | null,
-  ): Promise<BrowserBridgeCompanionAutoPairResponse> {
-    return this.lifeOps(ownerEntityId).autoPairBrowserCompanion(
-      request,
-      apiBaseUrl,
-    );
-  }
-
   async revokeBrowserCompanion(
     companionId: string,
     ownerEntityId?: UUID | null,
@@ -132,10 +124,23 @@ export class BrowserBridgePluginService
   async syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionSyncResponse> {
     return this.lifeOps(ownerEntityId).syncBrowserCompanion(
+      companionId,
+      pairingToken,
+      request,
+    );
+  }
+
+  async preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    return this.lifeOps(ownerEntityId).preflightBrowserCompanion(
       companionId,
       pairingToken,
       request,
@@ -199,12 +204,27 @@ export class BrowserBridgePluginService
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateBrowserBridgeSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
     ownerEntityId?: UUID | null,
   ): Promise<LifeOpsBrowserSession> {
     return this.lifeOps(
       ownerEntityId,
     ).updateBrowserSessionProgressFromCompanion(
+      companionId,
+      pairingToken,
+      sessionId,
+      request,
+    );
+  }
+
+  async beginBrowserSessionActionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: BrowserBridgeCompanionSessionBeginRequest,
+    ownerEntityId?: UUID | null,
+  ): Promise<LifeOpsBrowserSession> {
+    return this.lifeOps(ownerEntityId).beginBrowserSessionActionFromCompanion(
       companionId,
       pairingToken,
       sessionId,

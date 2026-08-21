@@ -152,17 +152,20 @@ export function normalizeBrowserSessionActionIndex(
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     fail(400, "currentActionIndex must be a non-negative integer");
   }
-  if (maxActions <= 0) {
-    return 0;
+  if (value > maxActions) {
+    fail(400, "currentActionIndex cannot exceed the action count");
   }
-  return Math.min(value, maxActions - 1);
+  return value;
 }
 
 export function resolveAwaitingBrowserActionId(
   actions: BrowserBridgeAction[],
+  requireConfirmationForAccountAffecting = true,
 ): string | null {
   const next = actions.find(
-    (action) => action.accountAffecting || action.requiresConfirmation,
+    (action) =>
+      action.requiresConfirmation ||
+      (requireConfirmationForAccountAffecting && action.accountAffecting),
   );
   return next?.id ?? null;
 }

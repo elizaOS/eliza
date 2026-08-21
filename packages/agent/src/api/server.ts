@@ -137,6 +137,8 @@ const EMPTY_BROWSER_BRIDGE_PACKAGE_STATUS = {
   extensionPath: null,
   chromeBuildPath: null,
   chromePackagePath: null,
+  firefoxBuildPath: null,
+  firefoxPackagePath: null,
   safariWebExtensionPath: null,
   safariAppPath: null,
   safariPackagePath: null,
