@@ -118,6 +118,45 @@ describe("homepage SIWS hung HTTP", () => {
     expect(AbortSignal.timeout).toBe(originalAbortSignalTimeout);
   });
 
+  test("fails closed on a hung verify hop after receiving a nonce", async () => {
+    installTestSigner();
+    const timeoutSpy = mock(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    AbortSignal.timeout = timeoutSpy as typeof AbortSignal.timeout;
+    let fetchCalls = 0;
+    globalThis.fetch = (async (input, init) => {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return Response.json({
+          nonce: "n1",
+          domain: "eliza.app",
+          uri: "https://eliza.app",
+          chainId: "solana:mainnet",
+          version: "1",
+          statement: "Sign in",
+        });
+      }
+      return await hungFetch(input, init);
+    }) as typeof fetch;
+
+    const started = Date.now();
+    await expect(signInWithSolana()).rejects.toMatchObject({
+      name: "TimeoutError",
+    });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(fetchCalls).toBe(2);
+    expect(timeoutSpy).toHaveBeenCalledTimes(2);
+  });
+
   test("does not leak the 50ms AbortSignal.timeout spy into later tests", () => {
     expect(AbortSignal.timeout).toBe(originalAbortSignalTimeout);
   });
