@@ -88,19 +88,27 @@ describe("processBody edge handling", () => {
     expect(JSON.stringify(parsed)).not.toContain("hidden");
   });
 
-  it("strips a large collection of thinking fields without regex rescans", () => {
-    const thinking = Array.from({ length: 20_000 }, (_, index) => ({
-      thinking: { index },
-      visible: index,
-    }));
-    const { parsed, stats } = parseProcessed({ messages: [], items: thinking });
-    expect(stats.thinkingParamsStripped).toBe(20_000);
-    expect(JSON.stringify(parsed)).not.toContain('"thinking"');
+  it("strips only the top-level thinking config and preserves nested application data", () => {
+    const nestedThinking = [
+      { thinking: "tool input field" },
+      { thinking: ["domain", "values"] },
+      { thinking: { approved: true } },
+    ];
+    const { parsed, stats } = parseProcessed({
+      thinking: { type: "enabled", budget_tokens: 1024 },
+      messages: [{ role: "user", content: "hello" }],
+      toolInput: nestedThinking,
+    });
+
+    expect(stats.thinkingParamsStripped).toBe(1);
+    expect(parsed).not.toHaveProperty("thinking");
+    expect(parsed.toolInput).toEqual(nestedThinking);
   });
 
   it("fails closed when a sanitized deeply nested body cannot be serialized", () => {
     const depth = 100_000;
-    const body = `${'{"nested":'.repeat(depth)}{"thinking":{"enabled":true}}${"}".repeat(depth)}`;
+    const nested = `${'{"nested":'.repeat(depth)}{}${"}".repeat(depth)}`;
+    const body = `{"thinking":{"enabled":true},"payload":${nested}}`;
     expect(() => processBody(body, baseConfig)).toThrow();
   });
 });
