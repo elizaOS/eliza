@@ -89,6 +89,7 @@ const appMock = vi.hoisted(() => ({
       role: string;
       text: string;
       timestamp: number;
+      interrupted?: boolean;
       failureKind?: string;
     }>,
     chatSending: false,
@@ -458,6 +459,28 @@ describe("useShellController", () => {
 
     expect(appMock.value.sendChatText).toHaveBeenCalledTimes(1);
     expect(appMock.value.sendChatText.mock.calls[0]?.[0]).toBe("hi");
+  });
+
+  it("propagates an interrupted turn through the cached shell projection", () => {
+    const baseMessage = {
+      id: "assistant-interrupted",
+      role: "assistant",
+      text: "Partial answer",
+      timestamp: 1,
+    };
+    appMock.value.conversationMessages = [baseMessage];
+    const { result, rerender } = renderHook(() => useShellController());
+    const beforeInterruption = result.current.messages[0];
+
+    expect(beforeInterruption?.interrupted).toBeUndefined();
+
+    appMock.value.conversationMessages = [
+      { ...baseMessage, interrupted: true },
+    ];
+    rerender();
+
+    expect(result.current.messages[0]?.interrupted).toBe(true);
+    expect(result.current.messages[0]).not.toBe(beforeInterruption);
   });
 
   // Regression: a steady-state empty active conversation (greeting generation
