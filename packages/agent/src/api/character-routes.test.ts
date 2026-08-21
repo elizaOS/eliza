@@ -3,6 +3,7 @@
  * a mocked route context; no HTTP server, database, or live model is used.
  */
 import { describe, expect, it, vi } from "vitest";
+import { MAX_CHARACTER_HISTORY_WALK_DEPTH } from "../services/character-history.ts";
 import {
   handleCharacterRoutes,
   parseCharacterHistoryLimit,
@@ -107,5 +108,156 @@ describe("PUT /api/character history walk", () => {
     );
     expect(updateAgent).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
+  });
+});
+
+function nestArr(depth: number): unknown {
+  let value: unknown = "leaf";
+  for (let i = 0; i < depth; i += 1) value = [value];
+  return value;
+}
+
+function makePutRuntime(character: Record<string, unknown>) {
+  const updateAgent = vi.fn(async () => undefined);
+  const createMemory = vi.fn(async () => undefined);
+  return {
+    character,
+    updateAgent,
+    createMemory,
+    runtime: {
+      agentId: "agent",
+      character,
+      updateAgent,
+      createMemory,
+    } as never,
+  };
+}
+
+describe("PUT /api/character stage-then-commit", () => {
+
+  it("keeps runtime/update/history/topology untouched when the second bound fails", async () => {
+    const character = {
+      name: "Ada",
+      bio: ["honest"],
+      messageExamples: [[{ name: "Ada", content: { text: "hi" } }]],
+    };
+    const original = structuredClone(character);
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const json = vi.fn();
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: {
+        agentName: "Ada",
+        runtime,
+      },
+      json,
+      error,
+      readJsonBody: vi.fn(async () => {
+        const cyclic: Record<string, unknown> = {
+          text: "hi",
+          extra: nestArr(80),
+        };
+        cyclic.self = cyclic;
+        return {
+          name: "Eve",
+          bio: ["mutated"],
+          messageExamples: [{ examples: [{ name: "Eve", content: cyclic }] }],
+        };
+      }),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      {},
+      "Character payload exceeds the history walk budget",
+      400,
+    );
+    expect(character).toEqual(original);
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("does not mutate runtime when a revoked Array Proxy is submitted", async () => {
+    const { proxy, revoke } = Proxy.revocable(
+      [[{ name: "Eve", content: { text: "hi" } }]],
+      {},
+    );
+    revoke();
+    const character = {
+      name: "Ada",
+      messageExamples: [[{ name: "Ada", content: { text: "hi" } }]],
+    };
+    const original = structuredClone(character);
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime },
+      json: vi.fn(),
+      error,
+      readJsonBody: vi.fn(async () => ({
+        name: "Eve",
+        messageExamples: proxy,
+      })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      {},
+      "Character payload exceeds the history walk budget",
+      400,
+    );
+    expect(character).toEqual(original);
+    expect(updateAgent).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+  });
+
+  it("commits runtime mutation only after both history bounds succeed", async () => {
+    const character = {
+      name: "Ada",
+      bio: ["old"],
+      messageExamples: [[{ name: "Ada", content: { text: "hi" } }]],
+    };
+    const { updateAgent, createMemory, runtime } = makePutRuntime(character);
+    const json = vi.fn();
+    const error = vi.fn();
+    const handled = await handleCharacterRoutes({
+      req: {} as never,
+      res: {} as never,
+      method: "PUT",
+      pathname: "/api/character",
+      state: { agentName: "Ada", runtime },
+      json,
+      error,
+      readJsonBody: vi.fn(async () => ({
+        name: "Eve",
+        bio: ["new"],
+      })),
+      pickRandomNames: vi.fn(),
+      validateCharacter: vi.fn(() => ({ success: true })),
+    } as never);
+
+    expect(handled).toBe(true);
+    expect(error).not.toHaveBeenCalled();
+    expect(character.name).toBe("Eve");
+    expect(character.bio).toEqual(["new"]);
+    expect(updateAgent).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(json).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ ok: true, agentName: "Eve" }),
+    );
   });
 });

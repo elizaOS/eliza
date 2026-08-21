@@ -13,6 +13,8 @@ import { ModelType } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
 import {
+  CHARACTER_HISTORY_UNBOUNDED,
+  CharacterHistoryError,
   buildCharacterHistorySnapshot,
   isCharacterHistoryUnbounded,
   listCharacterHistory,
@@ -147,12 +149,12 @@ function normalizeCharacterMessageExamplesForName(
   nextName: string,
   previousName?: string,
 ): CharacterMessageExampleGroup[] | undefined {
-  if (!Array.isArray(messageExamples)) {
+  if (!isArrayOrUnbounded(messageExamples)) {
     return undefined;
   }
 
   return messageExamples.map((group) => {
-    const examples = Array.isArray(
+    const examples = isArrayOrUnbounded(
       (group as CharacterMessageExampleGroup | null)?.examples,
     )
       ? (group as CharacterMessageExampleGroup).examples
@@ -171,6 +173,77 @@ function normalizeCharacterMessageExamplesForName(
       })),
     };
   });
+}
+
+
+
+function isArrayOrUnbounded(value: unknown): value is unknown[] {
+  try {
+    return Array.isArray(value);
+  } catch (cause) {
+    const error = new CharacterHistoryError(
+      "Character history value exceeds the walk budget",
+      CHARACTER_HISTORY_UNBOUNDED,
+    );
+    (error as Error & { cause?: unknown }).cause = cause;
+    throw error;
+  }
+}
+
+type CharacterPutTarget = {
+  name?: string;
+  username?: string;
+  bio?: string | string[];
+  system?: string;
+  adjectives?: string[];
+  topics?: string[];
+  style?: unknown;
+  messageExamples?: unknown;
+  postExamples?: string[];
+};
+
+function overlayCharacterPutBody(
+  target: CharacterPutTarget,
+  body: Record<string, unknown>,
+  nextCharacterName: string,
+  previousCharacterName?: string,
+): void {
+  if (body.name != null) target.name = String(body.name);
+  if (body.username != null) target.username = String(body.username);
+  if (body.bio != null) {
+    target.bio = Array.isArray(body.bio)
+      ? (body.bio as string[])
+      : [String(body.bio)];
+  }
+  if (body.system != null) target.system = String(body.system);
+  if (body.adjectives != null) {
+    target.adjectives = body.adjectives as string[];
+  }
+  if (body.topics != null) {
+    target.topics = body.topics as string[];
+  }
+  if (body.style != null) {
+    target.style = body.style;
+  }
+  if (body.messageExamples != null) {
+    target.messageExamples = normalizeCharacterMessageExamplesForName(
+      body.messageExamples,
+      nextCharacterName,
+      previousCharacterName,
+    );
+  } else if (body.name != null) {
+    const normalizedExamples = normalizeCharacterMessageExamplesForName(
+      target.messageExamples,
+      nextCharacterName,
+      previousCharacterName,
+    );
+    if (normalizedExamples) {
+      target.messageExamples = normalizedExamples;
+    }
+  }
+  if (body.postExamples != null) {
+    target.postExamples = body.postExamples as string[];
+  }
 }
 
 function syncRuntimeCharacterToConfig(
@@ -460,57 +533,54 @@ export async function handleCharacterRoutes(
             ? character.name.trim()
             : state.agentName;
 
+      const stagedCharacter: RuntimeCharacterLike = {
+        name: typeof character.name === "string" ? character.name : undefined,
+        username:
+          typeof character.username === "string"
+            ? character.username
+            : undefined,
+        bio: character.bio as RuntimeCharacterLike["bio"],
+        system:
+          typeof character.system === "string" ? character.system : undefined,
+        adjectives: character.adjectives,
+        topics: (character as { topics?: string[] }).topics,
+        style: character.style,
+        messageExamples: character.messageExamples,
+        postExamples: character.postExamples,
+      };
+      let charData;
+      try {
+        overlayCharacterPutBody(
+          stagedCharacter,
+          body,
+          nextCharacterName,
+          previousCharacterName,
+        );
+        charData = buildCharacterHistorySnapshot(stagedCharacter);
+      } catch (err) {
+        // error-policy:J3 Zod-accepted passthrough extras can still overflow.
+        if (isCharacterHistoryUnbounded(err)) {
+          error(res, "Character payload exceeds the history walk budget", 400);
+          return true;
+        }
+        throw err;
+      }
+
       if (
         nextStoredCharacterName !== undefined &&
         nextStoredCharacterName !== previousCharacterName
       ) {
         invalidateConversationConnectionTopology(runtime);
       }
-      if (body.name != null) character.name = String(body.name);
-      if (body.username != null) character.username = String(body.username);
-      if (body.bio != null) {
-        character.bio = Array.isArray(body.bio)
-          ? (body.bio as string[])
-          : [String(body.bio)];
-      }
-      if (body.system != null) character.system = String(body.system);
-      if (body.adjectives != null) {
-        character.adjectives = body.adjectives as string[];
-      }
-      if (body.topics != null) {
-        (character as { topics?: string[] }).topics = body.topics as string[];
-      }
-      if (body.style != null) {
-        character.style = body.style as NonNullable<typeof character.style>;
-      }
-      if (body.messageExamples != null) {
-        character.messageExamples = normalizeCharacterMessageExamplesForName(
-          body.messageExamples,
-          nextCharacterName,
-          previousCharacterName,
-        ) as NonNullable<typeof character.messageExamples>;
-      } else if (body.name != null) {
-        const normalizedExamples = normalizeCharacterMessageExamplesForName(
-          character.messageExamples,
-          nextCharacterName,
-          previousCharacterName,
-        );
-        if (normalizedExamples) {
-          character.messageExamples = normalizedExamples as NonNullable<
-            typeof character.messageExamples
-          >;
-        }
-      }
-      if (body.postExamples != null) {
-        character.postExamples = body.postExamples as string[];
-      }
+      overlayCharacterPutBody(
+        character as CharacterPutTarget,
+        body,
+        nextCharacterName,
+        previousCharacterName,
+      );
 
       // Persist character fields to DB so edits survive restarts
-      let charData;
       try {
-        charData = buildCharacterHistorySnapshot(
-          character as RuntimeCharacterLike,
-        );
         await runtime.updateAgent(runtime.agentId, {
           name: character.name,
           metadata: {

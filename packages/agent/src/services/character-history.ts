@@ -108,6 +108,49 @@ function ownValueDescriptor(
   return descriptor;
 }
 
+
+function isArrayValue(value: object): boolean {
+  return inspectHistory("isArray", () => Array.isArray(value));
+}
+
+function createHistoryRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
+
+function ownArrayLength(value: object): number {
+  const descriptor = ownValueDescriptor(value, "length");
+  const length = descriptor?.value;
+  if (
+    typeof length !== "number" ||
+    !Number.isSafeInteger(length) ||
+    length < 0 ||
+    length > MAX_CHARACTER_HISTORY_WALK_NODES
+  ) {
+    failHistoryUnbounded({ arrayLength: length });
+  }
+  return length;
+}
+
+function mapOwnArrayData<T>(
+  value: object,
+  mapEntry: (entry: unknown) => T,
+): T[] {
+  const length = ownArrayLength(value);
+  const mapped: T[] = [];
+  mapped.length = length;
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = inspectHistory("getOwnPropertyDescriptor", () =>
+      Object.getOwnPropertyDescriptor(value, String(index)),
+    );
+    if (!descriptor) continue;
+    if (!("value" in descriptor)) {
+      failHistoryUnbounded({ accessor: true, key: String(index) });
+    }
+    mapped[index] = mapEntry(descriptor.value);
+  }
+  return mapped;
+}
+
 function createHistoryWalkContext(): HistoryWalkContext {
   return { visits: 0, visiting: new WeakSet<object>() };
 }
@@ -241,10 +284,12 @@ function normalizeForCompare(
   }
   enterHistoryContainer(value, ctx);
   try {
-    if (Array.isArray(value)) {
-      return value.map((entry) => normalizeForCompare(entry, depth + 1, ctx));
+    if (isArrayValue(value)) {
+      return mapOwnArrayData(value, (entry) =>
+        normalizeForCompare(entry, depth + 1, ctx),
+      );
     }
-    const normalized: Record<string, unknown> = {};
+    const normalized = createHistoryRecord<unknown>();
     for (const key of ownEnumerableStringKeys(value).sort()) {
       const descriptor = ownValueDescriptor(value, key);
       if (!descriptor) continue;
@@ -326,12 +371,13 @@ function toCharacterHistoryValue(
   }
   enterHistoryContainer(value, ctx);
   try {
-    if (Array.isArray(value)) {
-      return value.map(
+    if (isArrayValue(value)) {
+      return mapOwnArrayData(
+        value,
         (entry) => toCharacterHistoryValue(entry, depth + 1, ctx) ?? null,
       ) as CharacterHistoryValue[];
     }
-    const normalized: Record<string, CharacterHistoryValue | undefined> = {};
+    const normalized = createHistoryRecord<CharacterHistoryValue | undefined>();
     for (const key of ownEnumerableStringKeys(value)) {
       const descriptor = ownValueDescriptor(value, key);
       if (!descriptor) continue;
@@ -391,7 +437,11 @@ export function buildCharacterHistorySnapshot(
       snapshot.style = style;
     }
   }
-  if (Array.isArray(character.messageExamples)) {
+  if (
+    character.messageExamples !== null &&
+    typeof character.messageExamples === "object" &&
+    isArrayValue(character.messageExamples)
+  ) {
     const messageExamples = toCharacterHistoryValue(character.messageExamples);
     if (Array.isArray(messageExamples)) {
       snapshot.messageExamples = messageExamples;
