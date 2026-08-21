@@ -79,11 +79,11 @@ The following paths are blocked by default (plus platform-specific system direct
 - `~/pvt`, `~/Library`
 - `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.docker`, `~/.kube`, `~/.netrc`
 
-`/dev/{zero,random,urandom,stdin,stdout,stderr}` and Linux
-`/proc/<pid>/fd/*` are unconditional pseudo-path exclusions, including symlink
-aliases. `CODING_TOOLS_BLOCKED_PATHS` replaces the configurable default list;
-it does not disable those exclusions. Use `CODING_TOOLS_BLOCKED_PATHS_ADD` to
-extend the configurable list.
+`/dev/{zero,random,urandom,stdin,stdout,stderr}`, `/dev/fd/*`, and Linux
+process/thread descriptor namespaces under `/proc` are unconditional
+pseudo-path exclusions, including symlink aliases. `CODING_TOOLS_BLOCKED_PATHS`
+replaces the configurable default list; it does not disable those exclusions.
+Use `CODING_TOOLS_BLOCKED_PATHS_ADD` to extend the configurable list.
 
 ## Requirements
 

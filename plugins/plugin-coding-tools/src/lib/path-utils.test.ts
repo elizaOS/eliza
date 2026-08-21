@@ -12,6 +12,7 @@ import {
   normalizeAbsolute,
   relativeFromRoot,
   resolveRealPath,
+  traversesBlockedPath,
 } from "./path-utils.js";
 
 /** Sandbox path validation — prevents traversal/escape, so the matching is pinned. */
@@ -37,10 +38,48 @@ describe("isBlockedPath", () => {
   it("blocks special device files and /proc fd paths", () => {
     expect(isBlockedPath("/dev/zero")).toBe(true);
     expect(isBlockedPath("/dev/urandom")).toBe(true);
+    expect(isBlockedPath("/dev/fd")).toBe(true);
+    expect(isBlockedPath("/dev/fd/0")).toBe(true);
+    expect(isBlockedPath("/proc/123/fd")).toBe(true);
     expect(isBlockedPath("/proc/123/fd/4")).toBe(true);
+    expect(isBlockedPath("/proc/self/fd/4")).toBe(true);
+    expect(isBlockedPath("/proc/123/task/456/fd/4")).toBe(true);
+    expect(isBlockedPath("/proc/self/task/456/fd/4")).toBe(true);
+    expect(isBlockedPath("/proc/thread-self/fd/4")).toBe(true);
     expect(isBlockedPath("/home/user/file.txt")).toBe(false);
     expect(isBlockedPath("/proc/cpuinfo")).toBe(false);
+    expect(isBlockedPath("/proc/123/fdinfo/4")).toBe(false);
+    expect(isBlockedPath("/proc/123/task/456/status")).toBe(false);
   });
+});
+
+describe("traversesBlockedPath", () => {
+  const itSymlink = process.platform === "win32" ? it.skip : it;
+
+  itSymlink(
+    "checks the target produced by the fortieth symlink hop",
+    async () => {
+      const root = mkdtempSync(path.join(tmpdir(), "eliza-coding-hops-"));
+      try {
+        // macOS exposes /var through /private/var. Build below the canonical root so
+        // that platform alias does not consume one of the 40 tested symlink hops.
+        const canonicalRoot = await resolveRealPath(root);
+        for (let hop = 40; hop >= 1; hop -= 1) {
+          symlinkSync(
+            hop === 40 ? "/dev/urandom" : `hop-${String(hop + 1)}`,
+            path.join(canonicalRoot, `hop-${String(hop)}`),
+            "file",
+          );
+        }
+
+        expect(
+          await traversesBlockedPath(path.join(canonicalRoot, "hop-1")),
+        ).toBe(true);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("isWithin — traversal containment", () => {

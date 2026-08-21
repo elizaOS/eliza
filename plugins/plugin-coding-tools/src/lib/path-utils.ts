@@ -25,7 +25,9 @@ const BLOCKED_PATHS = new Set([
   "/dev/stderr",
 ]);
 
-const BLOCKED_PROC_FD = /^\/proc\/\d+\/fd\//;
+const BLOCKED_DEVICE_FD = /^\/dev\/fd(?:\/|$)/;
+const BLOCKED_PROC_FD =
+  /^\/proc\/(?:(?:\d+|self)(?:\/task\/\d+)?|thread-self)\/fd(?:\/|$)/;
 
 type SessionCwdReader = Service & Pick<SessionCwdService, "getCwd">;
 
@@ -45,6 +47,7 @@ export function isAbsolutePath(p: string): boolean {
 
 export function isBlockedPath(p: string): boolean {
   if (BLOCKED_PATHS.has(p)) return true;
+  if (BLOCKED_DEVICE_FD.test(p)) return true;
   if (BLOCKED_PROC_FD.test(p)) return true;
   return false;
 }
@@ -95,7 +98,10 @@ export async function traversesBlockedPath(p: string): Promise<boolean> {
 
     if (!followedLink) return false;
   }
-  return false;
+  // The final iteration may have expanded the fortieth (OS-maximum) symlink
+  // directly to a blocked target. Inspect that target before returning rather
+  // than dropping its identity at the traversal bound.
+  return isBlockedPath(candidate);
 }
 
 export function normalizeAbsolute(p: string): string {
