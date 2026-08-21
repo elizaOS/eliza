@@ -137,6 +137,39 @@ describe("TASKS:spawn_agent", () => {
     });
   });
 
+  it("drops guided-decoding empty placeholders from optional spawn fields", async () => {
+    const svc = serviceMock();
+    const workdir = process.cwd();
+
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "make and run a small program" }),
+      state,
+      {
+        parameters: {
+          action: "spawn_agent",
+          task: "make and run a small program",
+          workdir,
+          taskRoomId: "{}",
+          worktreeRoomId: "{}",
+          memoryContent: "{}",
+          taskId: "{}",
+        },
+      },
+      callback(),
+    );
+
+    expect(result?.success).toBe(true);
+    const options = svc.spawnSession.mock.calls[0]?.[0] as {
+      memoryContent?: string;
+      metadata?: Record<string, unknown>;
+    };
+    expect(options.memoryContent).toBeUndefined();
+    expect(options.metadata?.taskRoomId).toBe("room1");
+    expect(options.metadata?.worktreeRoomId).toBeUndefined();
+    expect(options.metadata?.taskRoomId).not.toBe("{}");
+  });
+
   it("refuses a missing explicit workdir before spawning", async () => {
     const svc = serviceMock();
     const missing = path.join(

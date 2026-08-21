@@ -175,9 +175,16 @@ export function pickString(
   name: string,
 ): string | undefined {
   const value = params[name] ?? content[name];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  // Guided decoding can fill an omitted optional string with the serialized
+  // empty value for its neighboring object/array field. Those placeholders
+  // are absence, not user intent: accepting taskRoomId="{}" bypasses room
+  // minting, and accepting memoryContent="{}" injects junk into the child.
+  // An actually useful JSON string is non-empty and survives this narrow gate.
+  if (/^(?:\{\}|\[\]|null|undefined)$/iu.test(trimmed)) return undefined;
+  return trimmed;
 }
 
 export function pickBoolean(
