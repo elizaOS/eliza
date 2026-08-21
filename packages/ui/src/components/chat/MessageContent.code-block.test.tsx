@@ -85,4 +85,20 @@ describe("MessageContent code blocks", () => {
     expect(screen.queryByTestId("code-block")).toBeNull();
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
+
+  it("renders safe completion links and leaves unsafe markdown inert", () => {
+    withApp(
+      <MessageContent
+        message={message(
+          "Ready: [Open Notes](/api/apps/local/notes/). Unsafe: [do not open](javascript:alert(1)).",
+        )}
+      />,
+    );
+
+    const link = screen.getByRole("link", { name: "Open Notes" });
+    expect(link.getAttribute("href")).toBe("/api/apps/local/notes/");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.queryByRole("link", { name: "do not open" })).toBeNull();
+    expect(screen.getByText(/\[do not open\]\(javascript:alert/)).toBeTruthy();
+  });
 });

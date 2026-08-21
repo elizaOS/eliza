@@ -108,8 +108,49 @@ function isHttpsAuthorizationUrl(url: unknown): url is string {
   }
 }
 
+function safeChatLinkTarget(raw: string): string | null {
+  if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  try {
+    const url = new URL(raw);
+    return url.protocol === "https:" || url.protocol === "http:" ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderLinkedText(text: string, keyPrefix: string): ReactNode {
+  const linkPattern = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(linkPattern)) {
+    const index = match.index ?? 0;
+    const [raw, label, rawTarget] = match;
+    if (index > cursor) nodes.push(text.slice(cursor, index));
+    const target = safeChatLinkTarget(rawTarget);
+    nodes.push(
+      target ? (
+        <a
+          key={`${keyPrefix}:link:${index}`}
+          href={target}
+          target="_blank"
+          rel="noreferrer"
+          className="text-accent underline underline-offset-2"
+        >
+          {label}
+        </a>
+      ) : (
+        raw
+      ),
+    );
+    cursor = index + raw.length;
+  }
+  if (cursor === 0) return text;
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return nodes;
+}
+
 function renderInlineText(text: string): ReactNode {
-  if (!text.includes("`")) return text;
+  if (!text.includes("`")) return renderLinkedText(text, "text");
   const parts = splitInlineCode(text);
   if (parts.length === 1 && parts[0].kind === "text") return text;
   // Key by the part's character offset in the source run (not the array index)
@@ -127,7 +168,7 @@ function renderInlineText(text: string): ReactNode {
         data-testid="inline-code"
       />
     ) : (
-      <span key={key}>{part.text}</span>
+      <span key={key}>{renderLinkedText(part.text, key)}</span>
     );
   });
 }
