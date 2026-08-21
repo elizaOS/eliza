@@ -398,10 +398,12 @@ export class AppAnalyticsService {
       throw new Error("App not found");
     }
 
-    const avgRequestsPerDay = Math.round(app.total_requests / days);
+    const effectiveDays = Math.max(1, Math.floor(Number.isFinite(days) ? days : 30));
+    const avgRequestsPerDay = Math.round(app.total_requests / effectiveDays);
     const totalCreditsUsed = app.total_credits_used ?? "0.00";
     const totalCostNum = parseFloat(totalCreditsUsed);
-    const avgCostPerDay = (totalCostNum / days).toFixed(2);
+    const safeCost = Number.isFinite(totalCostNum) ? totalCostNum : 0;
+    const avgCostPerDay = (safeCost / effectiveDays).toFixed(2);
 
     return {
       totalRequests: app.total_requests,
