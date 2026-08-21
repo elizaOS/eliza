@@ -30,14 +30,20 @@ import {
 const id = (s: string) => s as UUID;
 
 describe("createMessageMemory", () => {
-	it("stamps MESSAGE metadata and scope by agentId presence", () => {
-		const shared = createMessageMemory({
+	it("fails closed: no explicit scope and no agentId stamps owner-private, never shared", () => {
+		// Leak canary. This exact shape is what POST /api/memory/remember builds
+		// for hash-memory notes. The old default (`shared`) made every unscoped
+		// note readable by any USER/GUEST on the scope ladder — an unstamped
+		// personal note must never be world-readable by omission.
+		const unstamped = createMessageMemory({
 			entityId: id("e1"),
 			roomId: id("r1"),
 			content: { text: "hi" },
 		});
-		expect(shared.metadata?.type).toBe(MemoryType.MESSAGE);
-		expect((shared.metadata as { scope?: string }).scope).toBe("shared");
+		expect(unstamped.metadata?.type).toBe(MemoryType.MESSAGE);
+		expect((unstamped.metadata as { scope?: string }).scope).toBe(
+			"owner-private",
+		);
 
 		const priv = createMessageMemory({
 			entityId: id("e1"),
@@ -46,6 +52,32 @@ describe("createMessageMemory", () => {
 			content: { text: "hi" },
 		});
 		expect((priv.metadata as { scope?: string }).scope).toBe("private");
+	});
+
+	it("honors an explicit scope: shared must be opted into, never inherited", () => {
+		const explicitShared = createMessageMemory({
+			entityId: id("e1"),
+			roomId: id("r1"),
+			content: { text: "hi" },
+			scope: "shared",
+		});
+		expect((explicitShared.metadata as { scope?: string }).scope).toBe(
+			"shared",
+		);
+		// The scope param must not leak onto the memory record itself — it only
+		// belongs in metadata, where the access-control ladder reads it.
+		expect("scope" in explicitShared).toBe(false);
+
+		const explicitOwner = createMessageMemory({
+			entityId: id("e1"),
+			agentId: id("a1"),
+			roomId: id("r1"),
+			content: { text: "hi" },
+			scope: "owner-private",
+		});
+		expect((explicitOwner.metadata as { scope?: string }).scope).toBe(
+			"owner-private",
+		);
 	});
 });
 

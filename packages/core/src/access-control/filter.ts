@@ -118,10 +118,13 @@ export function canReadScope(
  * Filter retrieval records down to those `ctx`'s requester may read. A pure,
  * strictly subtractive `.filter()`: it composes with (never duplicates)
  * Postgres RLS, which gates on `entity_id`/`server_id` while this gates on
- * `metadata.scope`. Scope defaults to `global` only when absent; malformed
- * scopes fail closed. The owning entity is taken from
- * `metadata.scopedToEntityId`, else `metadata.addedBy`, else `entityId`
- * (mirroring the documents plugin).
+ * `metadata.scope`. An ABSENT scope fails CLOSED to `owner-private` (the most
+ * restrictive tier), matching `normalizeScope` in artifact-disclosure.ts: an
+ * unstamped legacy row must never be treated as globally readable, because a
+ * write path that forgot to stamp a scope would otherwise silently publish
+ * private data to every actor. Malformed scopes also fail closed. The owning
+ * entity is taken from `metadata.scopedToEntityId`, else `metadata.addedBy`,
+ * else `entityId` (mirroring the documents plugin).
  */
 export function filterByAccessContext<T extends AccessScopedRecord>(
 	memories: T[],
@@ -134,7 +137,10 @@ export function filterByAccessContext<T extends AccessScopedRecord>(
 		if (rawScope !== undefined && !isMemoryScope(rawScope)) {
 			return false;
 		}
-		const scope = rawScope ?? "global";
+		// Fail closed: no stamp = owner-private, never `global`. Keep in lockstep
+		// with normalizeScope (artifact-disclosure.ts), which already defaults
+		// unknown/absent scopes to owner-private.
+		const scope = rawScope ?? "owner-private";
 		const meta = memory.metadata;
 		const scopedTo = meta?.scopedToEntityId;
 		const addedBy = meta?.addedBy;

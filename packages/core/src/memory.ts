@@ -1,9 +1,9 @@
 /**
  * Factory and type guards for {@link Memory} records: `createMessageMemory`
- * stamps a MESSAGE-metadata memory (scope derived from whether an `agentId` is
- * present), and the `is*Metadata` / `is*Memory` guards discriminate a record's
- * kind by its `MemoryType` tag so storage, embedding, and retrieval can branch
- * on it. `isCustomMetadata` is the catch-all for any type outside the four known
+ * stamps a MESSAGE-metadata memory (scope from the explicit `scope` param,
+ * else a fail-closed default), and the `is*Metadata` / `is*Memory` guards
+ * discriminate a record's kind by its `MemoryType` tag so storage, embedding,
+ * and retrieval can branch on it. `isCustomMetadata` is the catch-all for any type outside the four known
  * kinds. The types come from `./types` (`types/memory.ts`); this module holds
  * only the runtime helpers over them.
  */
@@ -16,12 +16,22 @@ import {
 	type FragmentMetadata,
 	type Memory,
 	type MemoryMetadata,
+	type MemoryScope,
 	MemoryType,
 	type MessageMemory,
 	type MessageMetadata,
 	type UUID,
 } from "./types";
 
+/**
+ * Build a MESSAGE-metadata memory. Scope is FAIL-CLOSED by default: an
+ * unspecified scope stamps `private` when an `agentId` is present (unchanged
+ * historical behavior) and `owner-private` otherwise. It used to default to
+ * `shared` — readable by every actor on the scope ladder — which meant any
+ * writer that forgot to think about scope (e.g. the `/api/memory/remember`
+ * hash-memory route) published its rows to strangers. A caller that truly
+ * wants a world-readable memory must now say so explicitly via `scope`.
+ */
 export function createMessageMemory(params: {
 	id?: UUID;
 	entityId: UUID;
@@ -29,15 +39,17 @@ export function createMessageMemory(params: {
 	roomId: UUID;
 	content: Content & { text: string };
 	embedding?: number[];
+	scope?: MemoryScope;
 }): MessageMemory {
+	const { scope, ...memoryFields } = params;
 	const now = Date.now();
 	return {
-		...params,
+		...memoryFields,
 		createdAt: now,
 		metadata: {
 			type: MemoryType.MESSAGE,
 			timestamp: now,
-			scope: params.agentId ? "private" : "shared",
+			scope: scope ?? (params.agentId ? "private" : "owner-private"),
 		},
 	};
 }

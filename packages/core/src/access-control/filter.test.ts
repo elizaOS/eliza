@@ -250,14 +250,52 @@ describe("filterByAccessContext", () => {
 		expect(twice).toEqual(once);
 	});
 
-	it("defaults a memory with no scope to global (readable)", () => {
+	describe("absent scope fails closed to owner-private", () => {
+		// Leak canary: an UNSTAMPED row (no metadata.scope at all, the shape of
+		// legacy rows and of any writer that forgot to stamp) must NOT be visible
+		// to a non-owner viewer. Under the old `?? "global"` default the
+		// USER/GUEST cases here FAIL (the stranger reads the row); with the
+		// fail-closed default they pass.
 		const noScope = {
 			entityId: OTHER,
 			roomId: SELF,
-			content: { text: "m" },
+			content: { text: "private note that was never stamped" },
 		} as Memory;
-		const ctx: AccessContext = { requesterEntityId: SELF, role: "USER" };
-		expect(filterByAccessContext([noScope], ctx, AGENT)).toHaveLength(1);
+		const noScopeEmptyMeta = {
+			entityId: OTHER,
+			roomId: SELF,
+			content: { text: "m" },
+			metadata: { type: "custom" },
+		} as Memory;
+
+		it("hides an unstamped row from a USER (stranger in a group)", () => {
+			const ctx: AccessContext = { requesterEntityId: SELF, role: "USER" };
+			expect(filterByAccessContext([noScope], ctx, AGENT)).toEqual([]);
+			expect(filterByAccessContext([noScopeEmptyMeta], ctx, AGENT)).toEqual([]);
+		});
+
+		it("hides an unstamped row from a GUEST and an unresolved role", () => {
+			const guest: AccessContext = { requesterEntityId: SELF, role: "GUEST" };
+			const unresolved: AccessContext = { requesterEntityId: SELF };
+			expect(filterByAccessContext([noScope], guest, AGENT)).toEqual([]);
+			expect(filterByAccessContext([noScope], unresolved, AGENT)).toEqual([]);
+		});
+
+		it("still lets the OWNER read an unstamped row (owner-private tier)", () => {
+			const ctx: AccessContext = {
+				requesterEntityId: SELF,
+				role: "OWNER",
+				isOwner: true,
+			};
+			expect(filterByAccessContext([noScope], ctx, AGENT)).toHaveLength(1);
+		});
+
+		it("matches normalizeScope's owner-private default: AGENT self-read is also denied", () => {
+			// owner-private is OWNER/RUNTIME only on the ladder, so even the agent
+			// tier does not read an unstamped row through this filter.
+			const ctx: AccessContext = { requesterEntityId: AGENT };
+			expect(filterByAccessContext([noScope], ctx, AGENT)).toEqual([]);
+		});
 	});
 
 	it("preserves the concrete shape of document-search results", () => {
