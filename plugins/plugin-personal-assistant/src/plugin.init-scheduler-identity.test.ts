@@ -4,8 +4,10 @@
  * ELIZA_DISABLE_LIFEOPS_SCHEDULER (issue: preserve disabled scheduler worker
  * identity). A recording stub runtime captures every registerTaskWorker call so
  * the disabled-path behavior is asserted against the real init wiring rather
- * than a hand-rolled fragment. The dynamic Google connector import is stubbed so
- * init runs without the optional third-party plugin present.
+ * than a hand-rolled fragment. Also proves the deferred scheduler-task ensure
+ * awaits the workflow-run claim schema install before ensuring the scheduler
+ * task (#23835). The dynamic Google connector import is stubbed so init runs
+ * without the optional third-party plugin present.
  */
 import {
   getDirectActionRoutingRules,
@@ -45,8 +47,16 @@ vi.mock("@elizaos/plugin-scheduling", async (importOriginal) => ({
   waitForScheduledTaskRunnerService:
     schedulingMocks.waitForScheduledTaskRunnerService,
 }));
+// Replace only the deferred scheduler-task ensure so the boot-ordering test
+// below can observe when init reaches it; worker registration stays real.
+vi.mock("./lifeops/runtime.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ensureLifeOpsSchedulerTask: vi.fn(async () => undefined),
+}));
 
 import { areLifeOpsActivitySignalsActive } from "./lifeops/activity-signal-lifecycle.js";
+import { LifeOpsRepository } from "./lifeops/repository.js";
+import { ensureLifeOpsSchedulerTask } from "./lifeops/runtime.js";
 import { personalAssistantPlugin } from "./plugin.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ab" as UUID;
@@ -191,6 +201,38 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
       .calls) {
       expect(call).toHaveLength(1);
       expect(call[0]).toBe(runtime);
+    }
+  });
+
+  it("installs the workflow-run claim schema before ensuring the scheduler task", async () => {
+    delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    const { runtime } = createRecordingRuntime();
+
+    // The bootstrap spy resolves on a later tick so a scheduler ensure that
+    // does not await the index install would record its event first (#23835).
+    const events: string[] = [];
+    const bootstrapSpy = vi
+      .spyOn(LifeOpsRepository, "bootstrapSchema")
+      .mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        events.push("bootstrap-schema");
+      });
+    vi.mocked(ensureLifeOpsSchedulerTask).mockImplementation(async () => {
+      events.push("scheduler-task");
+      return undefined;
+    });
+
+    try {
+      await personalAssistantPlugin.init?.({}, runtime);
+      await vi.waitFor(() => {
+        expect(events).toContain("scheduler-task");
+      });
+      expect(events.indexOf("bootstrap-schema")).toBeGreaterThanOrEqual(0);
+      expect(events.indexOf("bootstrap-schema")).toBeLessThan(
+        events.indexOf("scheduler-task"),
+      );
+    } finally {
+      bootstrapSpy.mockRestore();
     }
   });
 });

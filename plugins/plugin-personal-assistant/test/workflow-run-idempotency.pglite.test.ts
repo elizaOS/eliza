@@ -249,6 +249,66 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
     expect(temporaryIndexes.rows).toEqual([]);
   });
 
+  it("fails a keyed claim closed when the partial unique index is absent", async () => {
+    // Cold-worker shape: the ordinary drizzle migration creates the
+    // idempotency_key column but NOT the partial unique index, which only the
+    // bootstrapSchema compat repair installs. A claim here must raise, not
+    // silently let every claimant insert-win (#23835).
+    await pg.exec(`
+      ALTER TABLE app_lifeops.life_workflow_runs
+        ADD COLUMN idempotency_key TEXT;
+    `);
+
+    const contenders = Array.from({ length: 4 }, (_, index) =>
+      runningRun({ id: `cold-${index}`, idempotencyKey: "cold-key" }),
+    );
+    for (const run of contenders) {
+      await expect(repository.claimWorkflowRun(run)).rejects.toThrow(
+        /ON CONFLICT|unique or exclusion constraint/i,
+      );
+    }
+
+    const persisted = await pg.query<{ id: string }>(`
+      SELECT id FROM app_lifeops.life_workflow_runs
+    `);
+    expect(persisted.rows).toEqual([]);
+
+    // After the production repair runs, the same claims elect one winner.
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+    const outcomes = await Promise.all(
+      contenders.map((run) => repository.claimWorkflowRun(run)),
+    );
+    expect(outcomes.filter(Boolean)).toHaveLength(1);
+  });
+
+  it("refuses to stamp the completion marker over a foreign index with the reserved name", async () => {
+    await pg.exec(`
+      CREATE INDEX idx_life_workflow_runs_idempotency
+        ON app_lifeops.life_workflow_runs (agent_id);
+    `);
+
+    await expect(
+      LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime),
+    ).rejects.toThrow(/not the expected partial unique index/i);
+
+    const marker = await pg.query<{ description: string }>(`
+      SELECT description.description
+        FROM pg_catalog.pg_description AS description
+        JOIN pg_catalog.pg_class AS index_class
+          ON index_class.oid = description.objoid
+       WHERE index_class.relname = 'idx_life_workflow_runs_idempotency'
+    `);
+    expect(marker.rows).toEqual([]);
+
+    // The foreign index is not a valid arbiter, so claims stay fail-closed
+    // instead of treating the impostor as an election.
+    await expect(
+      repository.claimWorkflowRun(
+        runningRun({ id: "impostor-claim", idempotencyKey: "impostor-key" }),
+      ),
+    ).rejects.toThrow(/ON CONFLICT|unique or exclusion constraint/i);
+  });
+
   it("elects one concurrent keyed claimant, scopes keys, and CAS-finalizes only the winner", async () => {
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     const contenders = Array.from({ length: 8 }, (_, index) =>

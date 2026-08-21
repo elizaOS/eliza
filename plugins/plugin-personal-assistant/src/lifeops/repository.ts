@@ -2876,6 +2876,37 @@ export class LifeOpsRepository {
          )
         WHERE idempotency_key IS NOT NULL`,
       );
+      // `IF NOT EXISTS` silently accepts any pre-existing index with this
+      // name. A foreign non-unique (or wrong-column/predicate) index would
+      // pass creation and then be stamped as the durable completion marker
+      // while electing nothing. Verify the live definition before stamping;
+      // the transaction rolls back on mismatch so a later boot retries after
+      // the operator drops or renames the conflicting index.
+      const indexDefinitionRows = await executeRawSqlTx(
+        tx,
+        `SELECT indexdef
+           FROM pg_catalog.pg_indexes
+          WHERE schemaname = 'app_lifeops'
+            AND tablename = 'life_workflow_runs'
+            AND indexname = 'idx_life_workflow_runs_idempotency'`,
+      );
+      const indexDefinition =
+        typeof indexDefinitionRows[0]?.indexdef === "string"
+          ? indexDefinitionRows[0].indexdef
+          : "";
+      const indexDefinitionIsExpected =
+        /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
+        /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
+        /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
+      if (!indexDefinitionIsExpected) {
+        throw new ElizaError(
+          "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index — drop or rename the conflicting index so the workflow-run claim election can be installed",
+          {
+            code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+            context: { indexDefinition },
+          },
+        );
+      }
       await executeRawSqlTx(
         tx,
         `COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
@@ -6807,7 +6838,10 @@ export class LifeOpsRepository {
    * Atomically reserve a workflow run before any workflow step can perform a
    * side effect. The unique `(agent, workflow, idempotency key)` index elects
    * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
-   * independent.
+   * independent. The conflict target names that partial index explicitly so a
+   * table missing the index raises ("no unique or exclusion constraint
+   * matching the ON CONFLICT specification") instead of letting every
+   * claimant insert-win and duplicate external workflow execution.
    */
   async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
     assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
@@ -6840,7 +6874,9 @@ export class LifeOpsRepository {
         ${sqlJson(run.result)},
         ${sqlText(run.auditRef)}
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+      DO NOTHING
       RETURNING id`,
     );
     return rows.length === 1;
