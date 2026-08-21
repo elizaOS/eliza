@@ -251,6 +251,31 @@ describe("truncateText", () => {
     expect(truncateText("short", 10)).toBe("short");
     expect(truncateText("abcdefghij", 5)).toBe("abcd…");
   });
+
+  it("keeps UTF-16 surrogate pairs intact across the truncation boundary", () => {
+    // 5 single-unit chars + 2-unit emoji (🦊 \uD83E\uDD8A) + trailing chars
+    // maxLength 7, ellipsis length 1 -> budget 6.
+    // Index 5-6 is 🦊. Slicing at 6 would split the surrogate pair.
+    // truncateWellFormed backs off to 5 ("hello") so the emoji is not split.
+    const text = "hello🦊world";
+    const truncated = truncateText(text, 7);
+
+    expect(truncated).toBe("hello…");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes pre-existing lone surrogates before truncating", () => {
+    const text = "a\ud800bcdef";
+    const truncated = truncateText(text, 4);
+
+    expect(truncated).toBe("a\ufffdb…");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
+
+  it("handles custom ellipsis string and boundaries", () => {
+    expect(truncateText("hello world", 8, "...")).toBe("hello...");
+    expect(truncateText("hello world", 2, "...")).toBe("...");
+  });
 });
 
 describe("permalink build/parse round-trip", () => {
