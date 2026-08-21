@@ -162,6 +162,8 @@ export interface AgentDeleteJobData {
   organizationId: string;
   userId: string;
   authorization?: DeleteAuthorization;
+  /** Explicit customer/operator acceptance that the current live delta may be lost. */
+  stateLossAcknowledged?: boolean;
 }
 
 export interface AgentSuspendJobData {
@@ -299,6 +301,8 @@ export interface AgentDeleteJobResult {
   cloudAgentId: string;
   containerStopped: boolean;
   rowDeleted: boolean;
+  /** The caller explicitly accepted loss of uncaptured state for this delete. */
+  stateLossAcknowledged?: true;
   error?: string;
   /** Free (attempt-preserving) requeues this delete has spent waiting for a
    *  transient pre-deletion capture. Persisted on the job result because
@@ -515,6 +519,10 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     typeof value === "object" && value !== null
       ? (value as { authorization?: unknown }).authorization
       : undefined;
+  const stateLossAcknowledged =
+    typeof value === "object" && value !== null
+      ? (value as { stateLossAcknowledged?: unknown }).stateLossAcknowledged
+      : undefined;
   return (
     typeof value === "object" &&
     value !== null &&
@@ -523,7 +531,8 @@ function isAgentDeleteJobData(value: unknown): value is AgentDeleteJobData {
     typeof (value as { userId?: unknown }).userId === "string" &&
     (authorization === undefined ||
       authorization === "user_request" ||
-      authorization === "billing_request")
+      authorization === "billing_request") &&
+    (stateLossAcknowledged === undefined || typeof stateLossAcknowledged === "boolean")
   );
 }
 
@@ -921,6 +930,11 @@ interface LifecycleJobOptions<TData extends object> {
    * either match the in-flight job or be rejected loudly (#15603 B6).
    */
   validateReuse?: (existing: Job) => void;
+  /**
+   * Monotonically strengthens durable authority on a reused in-flight job.
+   * Runs under the same lifecycle transaction and advisory lock as lookup.
+   */
+  upgradeReuse?: (tx: DbTransaction, existing: Job) => Promise<Job>;
   /**
    * Called inside the transaction after the "no existing job" check
    * and before the new job is inserted. Used by delete to flip the
@@ -1522,11 +1536,12 @@ export class ProvisioningJobService {
     if (existing) {
       const hydrated = await hydrateJob(existing);
       opts.validateReuse?.(hydrated);
+      const reused = opts.upgradeReuse ? await opts.upgradeReuse(tx, hydrated) : hydrated;
       logger.info(`[provisioning-jobs] Reusing active ${opts.logName} job`, {
         jobId: existing.id,
         ...logFields,
       });
-      return { job: hydrated, created: false };
+      return { job: reused, created: false };
     }
 
     await opts.beforeInsert?.(tx, sandbox);
@@ -1655,6 +1670,7 @@ export class ProvisioningJobService {
     userId: string;
     webhookUrl?: string;
     authorization?: DeleteAuthorization;
+    stateLossAcknowledged?: boolean;
     expectedIdentity?: {
       agentName: string;
       createdAt: Date | string;
@@ -1677,6 +1693,7 @@ export class ProvisioningJobService {
         organizationId: params.organizationId,
         userId: params.userId,
         authorization: params.authorization,
+        ...(params.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
       },
       toRecord: agentDeleteJobDataToRecord,
       agentId: params.agentId,
@@ -1689,6 +1706,35 @@ export class ProvisioningJobService {
       // sub-second. 30s matches the Docker deletion-stop command timeout.
       estimatedDurationMs: 30_000,
       logName: "agent_delete",
+      upgradeReuse: params.stateLossAcknowledged
+        ? async (tx, existing) => {
+            const existingData = readAgentDeleteJobData(existing);
+            if (existingData.stateLossAcknowledged === true) return existing;
+            const [upgraded] = await tx
+              .update(jobs)
+              .set({
+                data: agentDeleteJobDataToRecord({
+                  ...existingData,
+                  stateLossAcknowledged: true,
+                }),
+                data_storage: "inline",
+                data_key: null,
+                updated_at: new Date(),
+              })
+              .where(
+                and(eq(jobs.id, existing.id), sql`${jobs.status} IN ('pending', 'in_progress')`),
+              )
+              .returning();
+            if (!upgraded) {
+              throw new ApiError(
+                409,
+                "session_not_ready",
+                "Agent deletion changed while recording state-loss authority",
+              );
+            }
+            return hydrateJob(upgraded);
+          }
+        : undefined,
       validateSandbox: expectedIdentity
         ? (sandbox) => {
             if (
@@ -5265,11 +5311,18 @@ export class ProvisioningJobService {
     });
 
     await this.assertExecutionMutationLease(job);
-    const delResult = await elizaSandboxService.executeDeletion(
-      data.agentId,
-      data.organizationId,
-      data.authorization,
-    );
+    const delResult = data.stateLossAcknowledged
+      ? await elizaSandboxService.executeDeletion(
+          data.agentId,
+          data.organizationId,
+          data.authorization,
+          true,
+        )
+      : await elizaSandboxService.executeDeletion(
+          data.agentId,
+          data.organizationId,
+          data.authorization,
+        );
 
     if (!delResult.success) {
       // The free requeue is bounded. `retryLaterWithoutIncrementingAttempts`
@@ -5291,6 +5344,7 @@ export class ProvisioningJobService {
           cloudAgentId: data.agentId,
           containerStopped: delResult.containerStopped,
           rowDeleted: false,
+          ...(data.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
           error: delResult.error,
           ...(captureRetryCount > 0 ? { captureRetryCount } : {}),
         }),
@@ -5330,6 +5384,7 @@ export class ProvisioningJobService {
       cloudAgentId: data.agentId,
       containerStopped: delResult.containerStopped,
       rowDeleted: delResult.rowDeleted,
+      ...(data.stateLossAcknowledged ? { stateLossAcknowledged: true } : {}),
     };
 
     await this.settleClaimedExecution(job, "completed", {

@@ -645,6 +645,66 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_delete carries explicit state-loss authority through execution and completion", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "billing_request",
+        stateLossAcknowledged: true,
+      }),
+    );
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "billing_request", true);
+      expect(completedCall(ctx)?.[2]?.result).toMatchObject({ stateLossAcknowledged: true });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
+  test("agent_delete retains explicit state-loss authority on a failed partial result", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "billing_request",
+        stateLossAcknowledged: true,
+      }),
+    );
+    stub("executeDeletion", {
+      success: false,
+      retryable: false,
+      containerStopped: false,
+      rowDeleted: false,
+      error: "provider teardown failed",
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
+      expect(ctx.updateSpy.mock.calls[0]?.[1]?.result).toMatchObject({
+        stateLossAcknowledged: true,
+        error: "provider teardown failed",
+      });
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("an unresolved delete completes the hot queue attempt with rowDeleted false", async () => {
     const ctx = harness(makeJob(JOB_TYPES.AGENT_DELETE));
     stub("executeDeletion", {
