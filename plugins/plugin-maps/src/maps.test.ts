@@ -205,7 +205,13 @@ describe("MapsService and MAPS action", () => {
       data: {
         reason: "missing_input",
         awaitingUserInput: true,
-        uiRequest: { kind: "form", fields: [{ name: "query", type: "text" }] },
+        uiRequest: {
+          kind: "form",
+          fields: [
+            { name: "query", type: "text" },
+            { name: "limit", type: "number" },
+          ],
+        },
       },
     });
     expect(result.userFacingText).toContain("[FORM]");
@@ -866,7 +872,12 @@ describe("MapsService and MAPS action", () => {
     });
     expect(missingDestination.data).toMatchObject({
       missingFields: ["destinationPlaceId"],
-      uiRequest: { fields: [{ name: "destinationPlaceId", required: true }] },
+      uiRequest: {
+        fields: [
+          { name: "destinationPlaceId", required: true },
+          { name: "travelMode", type: "select" },
+        ],
+      },
     });
     const missingOrigin = await invoke(runtime, {
       action: "route",
@@ -874,7 +885,12 @@ describe("MapsService and MAPS action", () => {
     });
     expect(missingOrigin.data).toMatchObject({
       missingFields: ["originPlaceId"],
-      uiRequest: { fields: [{ name: "originPlaceId", required: true }] },
+      uiRequest: {
+        fields: [
+          { name: "originPlaceId", required: true },
+          { name: "travelMode", type: "select" },
+        ],
+      },
     });
   });
 
@@ -1090,7 +1106,11 @@ describe("MapsService and MAPS action", () => {
       },
     });
 
-    const share = await invoke(runtime, { action: "share", placeId: "home-1" });
+    const share = await invoke(runtime, {
+      action: "share",
+      placeId: "home-1",
+      confirm: true,
+    });
     const navigate = await invoke(runtime, {
       action: "navigate",
       placeId: "office-1",
