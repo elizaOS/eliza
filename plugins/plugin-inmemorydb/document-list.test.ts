@@ -460,15 +460,22 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
     const storage = new BlockingBatchStorage();
     const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
     await adapter.initialize();
+    // searchMemories ranks the eligible set exhaustively (#23405), so the read
+    // barrier is observed through searchExact rather than the approximate walk.
     const vectorSearch = vi.spyOn(
       (
         adapter as unknown as {
           vectorIndex: {
-            search: (embedding: number[], limit: number, threshold: number) => Promise<unknown[]>;
+            searchExact: (
+              embedding: number[],
+              limit: number,
+              threshold: number,
+              eligibleIds?: ReadonlySet<string>
+            ) => Promise<unknown[]>;
           };
         }
       ).vectorIndex,
-      "search"
+      "searchExact"
     );
     const original = memory(10, ROOM_A, { documentRevision: 0 });
     const oldFragment = {
