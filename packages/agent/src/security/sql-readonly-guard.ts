@@ -4,11 +4,7 @@
  * model-generated SQL cannot hide mutation keywords in split tokens or make the
  * guard spend unbounded time in comment/string handling.
  */
-import {
-  stripSqlBlockComments,
-  stripSqlDollarQuotedLiterals,
-  stripSqlLineComments,
-} from "../shared/sql-sanitizers.ts";
+import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";
 
 // Mirrors the server-side allowlist in api/database.ts. The scanner removes
 // comments and literals first so keywords in data do not trip the guard.
@@ -83,51 +79,37 @@ const DANGEROUS_FUNCTIONS = [
 
 export function checkReadOnly(
   sqlText: string,
+  writeOverride = "allowWrites:true",
 ): { ok: true } | { ok: false; reason: string } {
-  const stripped = stripSqlLineComments(stripSqlBlockComments(sqlText)).trim();
-  const noLiterals = stripSqlDollarQuotedLiterals(stripped).replace(
-    /'(?:[^']|'')*'/g,
-    " ",
-  );
-  const noStrings = noLiterals.replace(/"(?:[^"]|"")*"/g, " ");
-
-  // PostgreSQL unicode-escaped quoted identifiers can decode to dangerous
-  // function names only at parse time, so reject the token after removing
-  // comments and string literals.
-  if (/[uU]&"/.test(noLiterals)) {
-    return {
-      ok: false,
-      reason:
-        'Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
-    };
-  }
+  const scan = scanSqlForReadOnly(sqlText);
+  if (!scan.ok) return scan;
 
   const mutation = new RegExp(
     `\\b(${MUTATION_KEYWORDS.join("|")})\\b`,
     "i",
-  ).exec(noStrings);
+  ).exec(scan.keywordText);
   if (mutation) {
     return {
       ok: false,
-      reason: `"${mutation[1].toUpperCase()}" is a mutation keyword. Set allowWrites:true to execute mutations.`,
+      reason: `"${mutation[1].toUpperCase()}" is a mutation keyword. Set ${writeOverride} to execute mutations.`,
     };
   }
 
   const fn = new RegExp(
     `(?:^|[^\\w$])"?(?:${DANGEROUS_FUNCTIONS.join("|")})"?\\s*\\(`,
     "i",
-  ).exec(noLiterals);
+  ).exec(scan.callableText);
   if (fn) {
     const name = new RegExp(`(${DANGEROUS_FUNCTIONS.join("|")})`, "i").exec(
       fn[0],
     );
     return {
       ok: false,
-      reason: `"${(name?.[1] ?? "UNKNOWN").toUpperCase()}" is a dangerous function. Set allowWrites:true to execute.`,
+      reason: `"${(name?.[1] ?? "UNKNOWN").toUpperCase()}" is a dangerous function. Set ${writeOverride} to execute.`,
     };
   }
 
-  if (stripped.replace(/;\s*$/, "").includes(";")) {
+  if (scan.structuralText.trim().replace(/;\s*$/, "").includes(";")) {
     return {
       ok: false,
       reason: "Multi-statement queries are not allowed in read-only mode.",

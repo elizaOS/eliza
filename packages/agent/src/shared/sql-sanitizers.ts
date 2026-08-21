@@ -115,3 +115,195 @@ export function stripSqlDollarQuotedLiterals(sql: string): string {
 
   return result;
 }
+
+const MAX_DOLLAR_QUOTE_TAG_LENGTH = 128;
+export const MAX_READ_ONLY_SQL_LENGTH = 2 * 1024 * 1024;
+
+export type ReadOnlySqlScan =
+  | {
+      ok: true;
+      keywordText: string;
+      callableText: string;
+      structuralText: string;
+    }
+  | { ok: false; reason: string };
+
+function isAsciiIdentifierStart(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z_]/.test(char);
+}
+
+function isAsciiIdentifierPart(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z0-9_$]/.test(char);
+}
+
+/**
+ * Tokenize the SQL contexts relevant to the read-only policy in one bounded
+ * pass. Malformed constructs are rejected instead of being preserved for a
+ * later regex, where context ordering can hide executable text.
+ */
+export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
+  if (sql.length > MAX_READ_ONLY_SQL_LENGTH) {
+    return {
+      ok: false,
+      reason: `Read-only SQL is limited to ${MAX_READ_ONLY_SQL_LENGTH} characters.`,
+    };
+  }
+
+  let keywordText = "";
+  let callableText = "";
+  let structuralText = "";
+  let i = 0;
+
+  const appendOutside = (text: string): void => {
+    keywordText += text;
+    callableText += text;
+    structuralText += text;
+  };
+
+  while (i < sql.length) {
+    if (sql.startsWith("--", i)) {
+      i += 2;
+      while (i < sql.length && sqlLineTerminatorLength(sql, i) === 0) i += 1;
+      appendOutside(" ");
+      continue;
+    }
+
+    if (sql.startsWith("/*", i)) {
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth > 0) {
+        if (sql.startsWith("/*", i)) {
+          depth += 1;
+          i += 2;
+        } else if (sql.startsWith("*/", i)) {
+          depth -= 1;
+          i += 2;
+        } else {
+          i += 1;
+        }
+      }
+      if (depth !== 0) {
+        return { ok: false, reason: "Unterminated block comment." };
+      }
+      // Empty replacement deliberately makes split policy keywords visible.
+      continue;
+    }
+
+    if (sql[i] === "$") {
+      if (isAsciiIdentifierPart(sql[i - 1])) {
+        appendOutside("$");
+        i += 1;
+        continue;
+      }
+      let tagEnd = i + 1;
+      if (sql[tagEnd] !== "$" && !isAsciiIdentifierStart(sql[tagEnd])) {
+        appendOutside("$");
+        i += 1;
+        continue;
+      }
+      while (
+        tagEnd < sql.length &&
+        sql[tagEnd] !== "$" &&
+        isAsciiIdentifierPart(sql[tagEnd])
+      ) {
+        if (tagEnd - i > MAX_DOLLAR_QUOTE_TAG_LENGTH) {
+          return {
+            ok: false,
+            reason: `Dollar-quote tags longer than ${MAX_DOLLAR_QUOTE_TAG_LENGTH} characters are not allowed in read-only mode.`,
+          };
+        }
+        tagEnd += 1;
+      }
+      if (sql[tagEnd] !== "$") {
+        appendOutside("$");
+        i += 1;
+        continue;
+      }
+
+      const delimiter = sql.slice(i, tagEnd + 1);
+      let close = tagEnd + 1;
+      while (close < sql.length && !sql.startsWith(delimiter, close))
+        close += 1;
+      if (close >= sql.length) {
+        return { ok: false, reason: "Unterminated dollar-quoted string." };
+      }
+      appendOutside(" ");
+      i = close + delimiter.length;
+      continue;
+    }
+
+    if (sql[i] === "'") {
+      const escapePrefix =
+        i > 0 &&
+        (sql[i - 1] === "e" || sql[i - 1] === "E") &&
+        !isAsciiIdentifierPart(sql[i - 2]);
+      if (escapePrefix) {
+        keywordText = keywordText.slice(0, -1);
+        callableText = callableText.slice(0, -1);
+        structuralText = structuralText.slice(0, -1);
+      }
+
+      let closed = false;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") {
+          i += 2;
+        } else if (sql[i] === "'") {
+          i += 1;
+          closed = true;
+          break;
+        } else if (sql[i] === "\\" && escapePrefix) {
+          i += Math.min(2, sql.length - i);
+        } else {
+          i += 1;
+        }
+      }
+      if (!closed) return { ok: false, reason: "Unterminated string literal." };
+      appendOutside(" ");
+      continue;
+    }
+
+    if (sql[i] === '"') {
+      const unicodePrefix =
+        i >= 2 &&
+        (sql[i - 2] === "u" || sql[i - 2] === "U") &&
+        sql[i - 1] === "&" &&
+        !isAsciiIdentifierPart(sql[i - 3]);
+      if (unicodePrefix) {
+        return {
+          ok: false,
+          reason:
+            'Unicode-escaped identifiers (U&"...") are not allowed in read-only mode: they can hide a dangerous function name from the guard.',
+        };
+      }
+
+      let decoded = "";
+      let closed = false;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === '"' && sql[i + 1] === '"') {
+          decoded += '"';
+          i += 2;
+        } else if (sql[i] === '"') {
+          i += 1;
+          closed = true;
+          break;
+        } else {
+          decoded += sql[i];
+          i += 1;
+        }
+      }
+      if (!closed)
+        return { ok: false, reason: "Unterminated quoted identifier." };
+      keywordText += " ";
+      callableText += decoded;
+      structuralText += " ";
+      continue;
+    }
+
+    appendOutside(sql[i]);
+    i += 1;
+  }
+
+  return { ok: true, keywordText, callableText, structuralText };
+}
