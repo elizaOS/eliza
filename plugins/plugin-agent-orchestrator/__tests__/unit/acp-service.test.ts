@@ -11,6 +11,7 @@ import {
 import os, { tmpdir } from "node:os";
 import path, { join } from "node:path";
 import { Writable } from "node:stream";
+import { CODING_AGENT_BACKENDS } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -358,6 +359,40 @@ async function waitForNativeClient(
 }
 
 describe("AcpService", () => {
+  it("preflight covers every canonical backend and reports a missing transport", async () => {
+    const service = new AcpService(
+      runtime({ ELIZA_ACP_TRANSPORT: "cli", ELIZA_ACP_CLI: "/no/acpx" }),
+    );
+
+    const availability = await service.checkAvailableAgents();
+
+    expect(availability.map((entry) => entry.agentType)).toEqual(
+      CODING_AGENT_BACKENDS,
+    );
+    expect(availability.every((entry) => entry.installed === false)).toBe(true);
+    expect(
+      availability.every((entry) => Boolean(entry.unavailableReason)),
+    ).toBe(true);
+  });
+
+  it("marks canonical backends installed only when their configured command is executable", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_ELIZAOS_ACP_COMMAND: process.execPath,
+        ELIZA_PI_AGENT_ACP_COMMAND: process.execPath,
+        ELIZA_CLAUDE_ACP_COMMAND: process.execPath,
+        ELIZA_CODEX_ACP_COMMAND: process.execPath,
+        ELIZA_OPENCODE_ACP_COMMAND: process.execPath,
+      }),
+    );
+
+    const availability = await service.checkAvailableAgents();
+
+    expect(availability).toHaveLength(CODING_AGENT_BACKENDS.length);
+    expect(availability.every((entry) => entry.installed === true)).toBe(true);
+  });
+
   it("fails with a clear diagnostic when acpx is missing on Android", async () => {
     const previousPlatform = process.env.ELIZA_PLATFORM;
     process.env.ELIZA_PLATFORM = "android";

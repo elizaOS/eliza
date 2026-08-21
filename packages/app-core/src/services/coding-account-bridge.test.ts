@@ -629,7 +629,9 @@ describe("coding-account-bridge", () => {
     writeAccount("anthropic-subscription", "c1", "t1");
     writeAccount("openai-codex", "x1", "t2");
     getDefaultAccountPool();
-    const desc = getCodingAgentSelectorBridge()?.describe() ?? {};
+    const bridge = getCodingAgentSelectorBridge();
+    if (!bridge) throw new Error("coding-agent selector bridge not installed");
+    const desc = bridge.describe();
     expect(
       desc.claude?.some(
         (p) => p.providerId === "anthropic-subscription" && p.enabled === 1,
@@ -640,6 +642,9 @@ describe("coding-account-bridge", () => {
         (p) => p.providerId === "openai-codex" && p.enabled === 1,
       ),
     ).toBe(true);
+    expect(Object.keys(desc).sort()).toEqual(["claude", "codex", "opencode"]);
+    await expect(bridge.select("kimi", {})).resolves.toBeNull();
+    await expect(bridge.select("deepseek", {})).resolves.toBeNull();
   });
 
   // Follow-up pinning: session affinity alone expires after 3 selects, after

@@ -230,6 +230,7 @@ export interface AvailableAgentInfo {
   adapter: AgentType;
   agentType: AgentType;
   installed: boolean;
+  unavailableReason?: string;
   installCommand?: string;
   docsUrl?: string;
   auth?: {

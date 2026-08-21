@@ -28,7 +28,7 @@ describe("ElizaClient account replacement transport", () => {
           strategy: "priority",
           runtimeEligibility: {
             chat: { available: true },
-            codingAgent: { available: true },
+            codingAgent: { available: true, backend: "codex" },
           },
           accounts: [
             {
@@ -49,6 +49,29 @@ describe("ElizaClient account replacement transport", () => {
     };
 
     await expect(accountsClient(body).listAccounts()).resolves.toEqual(body);
+  });
+
+  it("rejects server metadata that advertises an unspawnable account provider", async () => {
+    const body = {
+      providers: [
+        {
+          providerId: "deepseek-api",
+          strategy: "priority",
+          runtimeEligibility: {
+            chat: { available: true },
+            codingAgent: { available: true, backend: "opencode" },
+          },
+          accounts: [],
+        },
+      ],
+    };
+
+    await expect(accountsClient(body).listAccounts()).rejects.toMatchObject({
+      code: ACCOUNTS_RESPONSE_INVALID_CODE,
+      context: {
+        path: "response.providers[0].runtimeEligibility.codingAgent.available",
+      },
+    });
   });
 
   it.each([

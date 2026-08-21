@@ -19,6 +19,7 @@ import {
   getCodingAgentSelectorBridge,
   logger,
 } from "@elizaos/core";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
 // the shared types under this plugin's public surface. `CodingAccountSelection`
@@ -49,10 +50,14 @@ export interface ResolvedCodingAccount {
  * first-party CLIs; opencode pool-rotates across `cerebras-api` accounts (the
  * one backend it resolves from a pooled key — its injected CEREBRAS_API_KEY is
  * read by buildOpencodeSpawnConfig). elizaos/pi-agent authenticate through their
- * own backend, and z.ai/Kimi/GLM have no first-party coding CLI. Keep this in
- * sync with the app-core bridge's AGENT_PROVIDER_CANDIDATES.
+ * own backend, and z.ai/Kimi/GLM have no first-party coding CLI. The set is
+ * derived from the shared executable-backend credential map.
  */
-const MULTI_ACCOUNT_AGENT_TYPES = new Set(["claude", "codex", "opencode"]);
+const MULTI_ACCOUNT_AGENT_TYPES = new Set(
+  Object.entries(CODING_AGENT_BACKEND_PROVIDERS)
+    .filter(([, providers]) => providers.length > 0)
+    .map(([backend]) => backend),
+);
 
 export function isMultiAccountAgentType(agentType: string): boolean {
   return MULTI_ACCOUNT_AGENT_TYPES.has(agentType.toLowerCase());

@@ -61,12 +61,21 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger, resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  resolveStateDir,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
+  codingAgentSpawnCapabilityForProvider,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
+  type ProviderRuntimeCapability,
+  type ProviderRuntimeEligibility,
   type ServiceRouteAccountStrategy,
 } from "@elizaos/shared";
 import * as zod from "zod";
@@ -338,20 +347,32 @@ const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
   "cerebras-api",
 ]);
 
-type ProviderRuntimeCapability = {
-  available: boolean;
-  defaultModel?: string;
-  credentialPath?: "account-pool" | "direct-api" | "external-cli" | "none";
-  unavailableReason?: string;
-};
-
-type ProviderRuntimeEligibility = {
-  chat: ProviderRuntimeCapability;
-  codingAgent: ProviderRuntimeCapability;
-};
-
 const ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON =
   "Claude subscription OAuth credentials are scoped to Claude Code CLI/coding-agent use. Fable chat must use a direct Anthropic API/app-owned provider path; the shared external Anthropic proxy is a dev fallback only.";
+
+function codingAgentCapabilityForProvider(
+  providerId: LinkedAccountProviderId,
+  credentialPath: Exclude<
+    NonNullable<ProviderRuntimeCapability["credentialPath"]>,
+    "none"
+  >,
+  defaultModel?: string,
+): ProviderRuntimeCapability {
+  const spawn = codingAgentSpawnCapabilityForProvider(providerId);
+  if (!spawn.available) {
+    return {
+      available: false,
+      credentialPath: "none",
+      unavailableReason: spawn.unavailableReason,
+    };
+  }
+  return {
+    available: true,
+    backend: spawn.backend,
+    credentialPath,
+    ...(defaultModel ? { defaultModel } : {}),
+  };
+}
 
 function runtimeEligibilityForProvider(
   providerId: LinkedAccountProviderId,
@@ -365,11 +386,11 @@ function runtimeEligibilityForProvider(
           credentialPath: "none",
           unavailableReason: ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON,
         },
-        codingAgent: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "account-pool",
-        },
+        codingAgent: codingAgentCapabilityForProvider(
+          providerId,
+          "account-pool",
+          "claude-fable-5",
+        ),
       };
     case "openai-codex":
       return {
@@ -378,11 +399,11 @@ function runtimeEligibilityForProvider(
           defaultModel: "gpt-5.6-sol",
           credentialPath: "account-pool",
         },
-        codingAgent: {
-          available: true,
-          defaultModel: "gpt-5.6-terra",
-          credentialPath: "account-pool",
-        },
+        codingAgent: codingAgentCapabilityForProvider(
+          providerId,
+          "account-pool",
+          "gpt-5.6-terra",
+        ),
       };
     case "anthropic-api":
       return {
@@ -391,11 +412,11 @@ function runtimeEligibilityForProvider(
           defaultModel: "claude-fable-5",
           credentialPath: "direct-api",
         },
-        codingAgent: {
-          available: true,
-          defaultModel: "claude-fable-5",
-          credentialPath: "direct-api",
-        },
+        codingAgent: codingAgentCapabilityForProvider(
+          providerId,
+          "direct-api",
+          "claude-fable-5",
+        ),
       };
     case "gemini-cli":
       return {
@@ -405,32 +426,34 @@ function runtimeEligibilityForProvider(
           unavailableReason:
             "Gemini subscription auth stays inside Gemini CLI and is not a runtime chat provider.",
         },
-        codingAgent: { available: true, credentialPath: "external-cli" },
+        codingAgent: codingAgentCapabilityForProvider(
+          providerId,
+          "external-cli",
+        ),
       };
     default: {
       const direct = DIRECT_PROVIDER_IDS.has(providerId);
       const codingPlan = isCodingPlanKeySubscriptionProvider(providerId);
+      const inferenceAvailable = direct || codingPlan;
       return {
         chat: {
-          available: direct,
-          credentialPath: direct ? "direct-api" : "none",
-          ...(direct
+          available: inferenceAvailable,
+          credentialPath: direct
+            ? "direct-api"
+            : codingPlan
+              ? "account-pool"
+              : "none",
+          ...(inferenceAvailable
             ? {}
             : {
                 unavailableReason:
                   "This provider is not registered as a runtime chat provider.",
               }),
         },
-        codingAgent: {
-          available: direct || codingPlan,
-          credentialPath: direct ? "direct-api" : "account-pool",
-          ...(!direct && !codingPlan
-            ? {
-                unavailableReason:
-                  "This provider is not registered as a coding-agent credential source.",
-              }
-            : {}),
-        },
+        codingAgent: codingAgentCapabilityForProvider(
+          providerId,
+          direct ? "direct-api" : "account-pool",
+        ),
       };
     }
   }

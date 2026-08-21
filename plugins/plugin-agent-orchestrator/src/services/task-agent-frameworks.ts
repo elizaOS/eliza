@@ -19,7 +19,11 @@ import {
   resolveStateDir,
   resolveUserPath,
 } from "@elizaos/core";
-import { readAliasedEnv } from "@elizaos/shared";
+import {
+  CODING_AGENT_BACKENDS,
+  type CodingAgentBackend,
+  readAliasedEnv,
+} from "@elizaos/shared";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
@@ -38,12 +42,7 @@ type TaskAgentPreflightResult = {
   auth?: { status?: unknown };
 };
 
-export type SupportedTaskAgentAdapter =
-  | "elizaos"
-  | "pi-agent"
-  | "claude"
-  | "codex"
-  | "opencode";
+export type SupportedTaskAgentAdapter = CodingAgentBackend;
 export type TaskAgentFrameworkId = SupportedTaskAgentAdapter;
 
 export interface TaskAgentModelPrefs {
@@ -211,13 +210,8 @@ const FRAMEWORK_LABELS: Record<TaskAgentFrameworkId, string> = {
   opencode: "OpenCode",
 };
 
-const STANDARD_FRAMEWORKS: SupportedTaskAgentAdapter[] = [
-  "elizaos",
-  "pi-agent",
-  "claude",
-  "codex",
-  "opencode",
-];
+const STANDARD_FRAMEWORKS: readonly SupportedTaskAgentAdapter[] =
+  CODING_AGENT_BACKENDS;
 
 const DEFAULT_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 5_000;
 const MAX_FRAMEWORK_PREFLIGHT_TIMEOUT_MS = 2_147_483_647;
@@ -705,7 +699,7 @@ async function computeTaskAgentFrameworkState(
     const preflightTimeoutMs = resolveFrameworkPreflightTimeoutMs();
     try {
       const results = await withTimeout(
-        probe.checkAvailableAgents(STANDARD_FRAMEWORKS),
+        probe.checkAvailableAgents([...STANDARD_FRAMEWORKS]),
         preflightTimeoutMs,
         "task-agent framework preflight",
       );

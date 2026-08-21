@@ -20,7 +20,7 @@ import {
   spawnSync,
 } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { accessSync, constants, existsSync, statSync } from "node:fs";
 import {
   chmod,
   copyFile,
@@ -43,7 +43,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { isAndroidMobile } from "@elizaos/shared";
+import { CODING_AGENT_BACKENDS, isAndroidMobile } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
@@ -355,7 +355,14 @@ function findExecutableOnPath(name: string): string | undefined {
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
     const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
+    try {
+      if (!statSync(candidate).isFile()) continue;
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // error-policy:J3 PATH entries that are missing or non-executable are
+      // explicit preflight misses; continue looking for a runnable candidate.
+    }
   }
   return undefined;
 }
@@ -802,7 +809,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: readonly AgentType[] = CODING_AGENT_BACKENDS;
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -2815,12 +2822,16 @@ export class AcpService extends Service {
   }
 
   async getAvailableAgents(): Promise<AvailableAgentInfo[]> {
-    return DEFAULT_AGENTS.map((agentType) => ({
-      adapter: agentType,
-      agentType,
-      installed: true,
-      auth: { status: "unknown" },
-    }));
+    return DEFAULT_AGENTS.map((agentType) => {
+      const command = this.agentCommandAvailability(agentType);
+      return {
+        adapter: agentType,
+        agentType,
+        installed: command.available,
+        ...(command.reason ? { unavailableReason: command.reason } : {}),
+        auth: { status: "unknown" },
+      };
+    });
   }
 
   async checkAvailableAgents(types?: string[]): Promise<AvailableAgentInfo[]> {
@@ -3632,6 +3643,57 @@ export class AcpService extends Service {
         "eliza-code-acp"
       );
     return String(normalizedAgentType);
+  }
+
+  private agentCommandAvailability(agentType: AgentType): {
+    available: boolean;
+    reason?: string;
+  } {
+    let commandLine: string;
+    try {
+      commandLine =
+        this.transportMode === "native"
+          ? this.nativeAgentCommand(agentType)
+          : this.cliPath;
+    } catch (error) {
+      // error-policy:J4 preflight turns an invalid backend configuration into
+      // an explicit unavailable row instead of aborting the entire inventory.
+      return { available: false, reason: errorMessage(error) };
+    }
+    const [token] = commandLine.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+    const command = token?.replace(/^(['"])(.*)\1$/u, "$2") ?? "";
+    if (!command) {
+      return {
+        available: false,
+        reason: "No executable command is configured.",
+      };
+    }
+    if (command.includes("/") || command.includes("\\")) {
+      try {
+        const commandPath = resolve(command);
+        if (!statSync(commandPath).isFile()) {
+          return {
+            available: false,
+            reason: `Configured command is not a file: ${command}`,
+          };
+        }
+        accessSync(commandPath, constants.X_OK);
+        return { available: true };
+      } catch {
+        // error-policy:J3 configured command paths fail closed when absent or
+        // non-executable; the preflight row reports installed=false.
+        return {
+          available: false,
+          reason: `Configured command is missing or not executable: ${command}`,
+        };
+      }
+    }
+    return findExecutableOnPath(command)
+      ? { available: true }
+      : {
+          available: false,
+          reason: `Command is not available on PATH: ${command}`,
+        };
   }
 
   private async stopNativeClient(sessionId: string): Promise<void> {

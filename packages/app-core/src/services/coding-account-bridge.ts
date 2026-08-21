@@ -65,6 +65,7 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
@@ -108,9 +109,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
 }
 
 /**
- * Ordered provider candidates per coding-agent type. The first provider with an
- * eligible account wins; a subscription provider is preferred over its direct
- * API equivalent (subscriptions are the primary use case here).
+ * Ordered provider candidates per coding-agent type. Provider lists come from
+ * the shared executable-backend contract; the first eligible account wins and
+ * subscriptions are preferred over direct API credentials.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
  * opencode authenticates through its configured backend; the only backend it
@@ -123,9 +124,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
-  claude: ["anthropic-subscription", "anthropic-api"],
-  codex: ["openai-codex", "openai-api"],
-  opencode: ["cerebras-api"],
+  claude: CODING_AGENT_BACKEND_PROVIDERS.claude,
+  codex: CODING_AGENT_BACKEND_PROVIDERS.codex,
+  opencode: CODING_AGENT_BACKEND_PROVIDERS.opencode,
 };
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {

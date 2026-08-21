@@ -236,7 +236,11 @@ describe("accounts routes", () => {
       accounts: [{ id: "account-1", hasCredential: true }],
       runtimeEligibility: {
         chat: { available: true, credentialPath: "direct-api" },
-        codingAgent: { available: true, credentialPath: "direct-api" },
+        codingAgent: {
+          available: true,
+          backend: "codex",
+          credentialPath: "direct-api",
+        },
       },
     });
     expect(
@@ -246,9 +250,44 @@ describe("accounts routes", () => {
     ).toMatchObject({
       runtimeEligibility: {
         chat: { available: false, credentialPath: "none" },
-        codingAgent: { available: true, credentialPath: "account-pool" },
+        codingAgent: {
+          available: true,
+          backend: "claude",
+          credentialPath: "account-pool",
+        },
       },
     });
+
+    for (const providerId of [
+      "zai-coding",
+      "kimi-coding",
+      "deepseek-coding",
+      "deepseek-api",
+      "zai-api",
+      "moonshot-api",
+    ]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          codingAgent: {
+            available: false,
+            credentialPath: "none",
+            unavailableReason: expect.any(String),
+          },
+        },
+      });
+    }
+    for (const providerId of ["zai-coding", "kimi-coding"]) {
+      expect(
+        response.providers.find((item) => item.providerId === providerId),
+      ).toMatchObject({
+        runtimeEligibility: {
+          chat: { available: true, credentialPath: "account-pool" },
+          codingAgent: { available: false, credentialPath: "none" },
+        },
+      });
+    }
   });
 
   it("sets, surfaces, validates, and clears subscriptionEndsAt through PATCH", async () => {
