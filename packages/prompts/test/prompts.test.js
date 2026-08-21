@@ -122,6 +122,21 @@ describe("prompt template exports", () => {
     );
   });
 
+  it("routes live app creation and edits through the verified APP lifecycle", () => {
+    assert.match(
+      prompts.messageHandlerTemplate,
+      /candidateActions=\["APP"\].*verified create-or-edit lifecycle and final link/,
+    );
+    assert.match(
+      prompts.messageHandlerTemplate,
+      /never replace it with raw TASKS\/SPAWN_AGENT/,
+    );
+    assert.match(
+      prompts.messageHandlerTemplate,
+      /imperative code\/repo\/file changes that are not an app lifecycle request/,
+    );
+  });
+
   it("factExtractionTemplate names structured fields for multilingual LifeOps projection", () => {
     const body = prompts.factExtractionTemplate;
     assert.match(
