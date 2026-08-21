@@ -133,9 +133,28 @@ export function stampDockerNodeEnvironmentMetadata(
   return { ...base, environment };
 }
 
-function currentEnvironmentPredicate() {
+/**
+ * Environment guard for node reads, split by consequence.
+ *
+ * `placement` fails CLOSED: with ENVIRONMENT set, only rows explicitly stamped
+ * with the same environment are eligible. An unlabeled row must never receive
+ * a placement — treating '' as "matches everything" is how a staging box
+ * registered in the production DB became a production placement target
+ * (elizaOS/eliza#22547), and deleting such a row leaves the gate open for the
+ * next one. Live fleets must therefore carry `metadata.environment`; the
+ * onboarding, bootstrap-callback, and admin-register paths all stamp it via
+ * {@link stampDockerNodeEnvironmentMetadata}.
+ *
+ * `operational` stays inclusive of unlabeled rows so health checks, disk
+ * monitoring, and the orphan reconciler keep watching legacy nodes, while
+ * still excluding rows stamped for a DIFFERENT environment.
+ */
+function currentEnvironmentPredicate(scope: "placement" | "operational") {
   const environment = currentDeploymentEnvironment();
   if (!environment) return sql`TRUE`;
+  if (scope === "placement") {
+    return sql`${dockerNodes.metadata}->>'environment' = ${environment}`;
+  }
   return sql`(
     COALESCE(${dockerNodes.metadata}->>'environment', '') = ''
     OR ${dockerNodes.metadata}->>'environment' = ${environment}
@@ -169,7 +188,7 @@ export class DockerNodesRepository {
     return dbRead
       .select()
       .from(dockerNodes)
-      .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate()))
+      .where(and(eq(dockerNodes.enabled, true), currentEnvironmentPredicate("operational")))
       .orderBy(asc(dockerNodes.node_id));
   }
 
@@ -189,7 +208,7 @@ export class DockerNodesRepository {
           eq(dockerNodes.enabled, true),
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           capacityAttestedPredicate(),
-          currentEnvironmentPredicate(),
+          currentEnvironmentPredicate("placement"),
         ),
       )
       .orderBy(asc(dockerNodes.node_id));
@@ -223,7 +242,7 @@ export class DockerNodesRepository {
           eq(dockerNodes.placement_state, PLACEABLE_NODE_STATE),
           eq(dockerNodes.status, "healthy"),
           capacityAttestedPredicate(),
-          currentEnvironmentPredicate(),
+          currentEnvironmentPredicate("placement"),
           sql`${dockerNodes.allocated_count} < ${dockerNodes.capacity}`,
         ),
       )
