@@ -1,0 +1,136 @@
+<!doctype html>
+<!--
+  Privacy policy for Eliza Research products, served at
+  https://elizaresearch.ai/privacy. Store reviewers (Apple, Google Play,
+  Microsoft, Samsung, Amazon, Solana Mobile, Snap, Flathub, browser-extension
+  stores) rely on this URL being public, unauthenticated, and stable.
+  Self-contained: only same-origin fonts and assets, no scripts.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ff5800" />
+<title>Privacy Policy — Eliza Research</title>
+<meta name="description" content="Privacy policy for Eliza Research products, including the Eliza app, elizaOS, Eliza Cloud, and Eliza browser extensions." />
+<link rel="canonical" href="https://elizaresearch.ai/privacy" />
+<link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg" />
+<style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  :root {
+    --orange: #ff5800;
+    --orange-deep: #b23d00;
+    --black: #0d0b0a;
+    --ink: #111111;
+    --bg: #ffffff;
+    --muted: #4d4a48;
+    --line: #e6e3e1;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Geist", Arial, sans-serif;
+    background: var(--bg); color: var(--ink);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--orange); color: white; }
+  .wrap { max-width: 760px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
+  nav {
+    background: var(--orange); color: white;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  }
+  nav .mark { display: inline-flex; min-height: 44px; align-items: center; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; color: white; }
+  nav .links { display: flex; gap: 1.5rem; }
+  nav .links a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; color: white; font-weight: 600; font-size: 0.92rem; opacity: 0.85; }
+  nav .links a:hover { opacity: 1; }
+  main { padding-block: clamp(2.5rem, 7vh, 5rem); }
+  h1 { font-size: clamp(2rem, 5.5vw, 3.2rem); font-weight: 850; letter-spacing: -0.03em; line-height: 1.05; }
+  .updated { margin-top: 0.8rem; color: var(--muted); font-size: 0.92rem; }
+  h2 { margin-top: 2.6rem; font-size: 1.35rem; font-weight: 750; letter-spacing: -0.015em; }
+  h3 { margin-top: 1.6rem; font-size: 1.05rem; font-weight: 700; }
+  main p, main li { margin-top: 0.9rem; color: var(--ink); max-width: 68ch; }
+  main ul { margin-top: 0.4rem; padding-left: 1.3rem; }
+  main li { margin-top: 0.5rem; }
+  main a { color: var(--orange-deep); }
+  footer { margin-top: clamp(3rem, 8vh, 5rem); border-top: 1px solid var(--line); padding-block: 2rem; color: var(--muted); font-size: 0.9rem; }
+  footer .row { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<nav>
+  <a class="mark" href="/">Eliza&nbsp;Research</a>
+  <div class="links">
+    <a href="/terms">Terms</a>
+    <a href="/support">Support</a>
+  </div>
+</nav>
+<main class="wrap">
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: August 20, 2026</p>
+
+  <p>This policy describes how Eliza Research Corporation ("Eliza Research", "we") handles information across our products: the <strong>Eliza</strong> application for desktop and mobile, the open source <strong>elizaOS</strong> framework, <strong>Eliza Cloud</strong>, and the Eliza browser extensions. Our guiding design principle is local-first: the app is built so that your conversations, memories, and files live on your own device by default.</p>
+
+  <h2 id="local-first">Local-first by default</h2>
+  <p>When you run the Eliza app without signing in to Eliza Cloud, your data — conversations, agent memory, settings, and attachments — is stored locally on your device. We do not receive it. On-device model inference, where you enable it, runs entirely on your hardware and sends nothing to us.</p>
+
+  <h2 id="data-we-collect">Information we collect</h2>
+  <h3>Eliza Cloud accounts</h3>
+  <p>If you create an Eliza Cloud account, we collect the information needed to operate it:</p>
+  <ul>
+    <li>Account identifiers: your email address or the sign-in identity you connect (for example an OAuth provider account or a wallet address), and authentication credentials or tokens.</li>
+    <li>Content you sync or host through Eliza Cloud: conversations, agent configuration, memories, and attachments you choose to store with a cloud-hosted agent.</li>
+    <li>Billing information for paid plans, processed by our payment processor; we do not store full card numbers.</li>
+    <li>Operational logs (timestamps, request metadata, error diagnostics) used to run and secure the service.</li>
+  </ul>
+  <h3>Third-party model providers</h3>
+  <p>The Eliza app can connect to model providers you configure (for example an inference API you hold a key for). When you use a provider, the content of the requests you make is sent to that provider under its own terms and privacy policy. We do not proxy or read those requests unless you route them through Eliza Cloud, in which case they are handled as Eliza Cloud content above.</p>
+  <h3>Connected channels and integrations</h3>
+  <p>If you connect a messaging channel or integration (for example a chat platform, calendar, or wallet), the app accesses only what that connection requires, and the connected service handles your data under its own policy. Credentials for connections you configure locally are stored on your device.</p>
+  <h3>Browser extensions</h3>
+  <p>The Eliza browser extensions act as a bridge between your browser and your own Eliza app. They do not collect analytics, do not inject ads, and do not sell or transmit browsing data to us. Page content is read only when you invoke the extension, and it is sent only to the Eliza runtime you configured.</p>
+
+  <h2 id="what-we-dont-do">What we do not do</h2>
+  <ul>
+    <li>We do not sell your personal information.</li>
+    <li>We do not use the content of your conversations to advertise to you.</li>
+    <li>We do not collect device-wide tracking identifiers or embed third-party advertising SDKs in our apps.</li>
+  </ul>
+
+  <h2 id="sharing">When information is shared</h2>
+  <p>We share information only with service providers that host and operate Eliza Cloud infrastructure (such as cloud hosting and payment processing), when you direct a request to a third-party provider you configured, or when required by law. Providers acting for us are bound to use the information only to provide their service.</p>
+
+  <h2 id="retention-deletion">Retention and deleting your data</h2>
+  <p>Local data is under your control and can be removed by deleting it in the app or uninstalling the app. For Eliza Cloud, your content is retained while your account is active.</p>
+  <p id="account-deletion">You can delete your Eliza Cloud account and its data at any time from the account settings inside the app or the Eliza Cloud dashboard, or by emailing <a href="mailto:privacy@elizaresearch.ai">privacy@elizaresearch.ai</a> from the address associated with your account. Deletion removes your account content from our production systems, with residual copies purged from backups on their normal rotation schedule.</p>
+
+  <h2 id="security">Security</h2>
+  <p>Cloud data is encrypted in transit. Secrets you store in the app's vault are encrypted at rest on your device. We limit internal access to production systems and log administrative access.</p>
+
+  <h2 id="children">Children</h2>
+  <p>Our products are not directed to children under 13, and we do not knowingly collect personal information from them. If you believe a child has provided us personal information, contact us and we will delete it.</p>
+
+  <h2 id="changes">Changes to this policy</h2>
+  <p>When we change this policy we will update the date above and, for material changes affecting Eliza Cloud accounts, notify account holders. The current version is always available at <a href="https://elizaresearch.ai/privacy">elizaresearch.ai/privacy</a>.</p>
+
+  <h2 id="contact">Contact</h2>
+  <p>Privacy questions: <a href="mailto:privacy@elizaresearch.ai">privacy@elizaresearch.ai</a>. General support: see our <a href="/support">support page</a>.</p>
+
+  <footer>
+    <div class="row">
+      <span>© Eliza Research Corporation</span>
+      <a href="/">Home</a>
+      <a href="/terms">Terms</a>
+      <a href="/support">Support</a>
+    </div>
+  </footer>
+</main>
+</body>
+</html>

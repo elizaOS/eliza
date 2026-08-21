@@ -1,0 +1,115 @@
+<!doctype html>
+<!--
+  Support page for Eliza Research products, served at
+  https://elizaresearch.ai/support. App-store listings across every channel
+  point here as the organization-owned support URL, so it must stay public,
+  unauthenticated, and stable. Self-contained: only same-origin fonts and
+  assets, no scripts.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#ff5800" />
+<title>Support — Eliza Research</title>
+<meta name="description" content="Get help with Eliza Research products: the Eliza app, elizaOS, Eliza Cloud, and Eliza browser extensions." />
+<link rel="canonical" href="https://elizaresearch.ai/support" />
+<link rel="icon" type="image/svg+xml" href="assets/logo_orange_nobg.svg" />
+<style>
+  @font-face {
+    font-family: "Geist";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url("assets/geist-sans-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  :root {
+    --orange: #ff5800;
+    --orange-deep: #b23d00;
+    --black: #0d0b0a;
+    --ink: #111111;
+    --bg: #ffffff;
+    --muted: #4d4a48;
+    --line: #e6e3e1;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Geist", Arial, sans-serif;
+    background: var(--bg); color: var(--ink);
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  ::selection { background: var(--orange); color: white; }
+  .wrap { max-width: 760px; margin-inline: auto; padding-inline: clamp(1.25rem, 4vw, 3rem); }
+  nav {
+    background: var(--orange); color: white;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  }
+  nav .mark { display: inline-flex; min-height: 44px; align-items: center; font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; text-decoration: none; color: white; }
+  nav .links { display: flex; gap: 1.5rem; }
+  nav .links a { display: inline-flex; min-height: 44px; align-items: center; text-decoration: none; color: white; font-weight: 600; font-size: 0.92rem; opacity: 0.85; }
+  nav .links a:hover { opacity: 1; }
+  main { padding-block: clamp(2.5rem, 7vh, 5rem); }
+  h1 { font-size: clamp(2rem, 5.5vw, 3.2rem); font-weight: 850; letter-spacing: -0.03em; line-height: 1.05; }
+  h2 { margin-top: 2.6rem; font-size: 1.35rem; font-weight: 750; letter-spacing: -0.015em; }
+  main p, main li { margin-top: 0.9rem; color: var(--ink); max-width: 68ch; }
+  main ul { margin-top: 0.4rem; padding-left: 1.3rem; }
+  main li { margin-top: 0.5rem; }
+  main a { color: var(--orange-deep); }
+  .card {
+    margin-top: 1.4rem; border: 1px solid var(--line); border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+  }
+  .card strong { display: block; font-size: 1.02rem; }
+  .card a.mail { font-weight: 700; }
+  footer { margin-top: clamp(3rem, 8vh, 5rem); border-top: 1px solid var(--line); padding-block: 2rem; color: var(--muted); font-size: 0.9rem; }
+  footer .row { display: flex; flex-wrap: wrap; gap: 1.25rem; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<nav>
+  <a class="mark" href="/">Eliza&nbsp;Research</a>
+  <div class="links">
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
+  </div>
+</nav>
+<main class="wrap">
+  <h1>Support</h1>
+  <p>Help with any Eliza Research product: the Eliza app for desktop and mobile, the elizaOS framework, Eliza Cloud, and the Eliza browser extensions.</p>
+
+  <h2 id="contact">Contact us</h2>
+  <div class="card">
+    <strong>Email support</strong>
+    <p><a class="mail" href="mailto:support@elizaresearch.ai">support@elizaresearch.ai</a></p>
+    <p>We read every message and aim to respond within two business days. Include the product, your platform and version, and what you expected to happen versus what happened.</p>
+  </div>
+
+  <h2 id="issues">Bug reports and feature requests</h2>
+  <p>Eliza is developed in the open. Search existing issues or open a new one at <a href="https://github.com/elizaOS/eliza/issues" rel="noopener noreferrer">github.com/elizaOS/eliza/issues</a>. Public issues are the fastest path for reproducible bugs; use email for anything involving your account or private data.</p>
+
+  <h2 id="security">Security vulnerabilities</h2>
+  <p>Please report suspected vulnerabilities privately through <a href="https://github.com/elizaOS/eliza/security/advisories/new" rel="noopener noreferrer">GitHub Security Advisories</a> rather than a public issue. We acknowledge reports and coordinate disclosure.</p>
+
+  <h2 id="account">Account and data</h2>
+  <ul>
+    <li>Manage or cancel an Eliza Cloud subscription from account settings in the app or the Eliza Cloud dashboard.</li>
+    <li>Delete your account and its data as described in the <a href="/privacy#account-deletion">privacy policy</a>, or email <a href="mailto:privacy@elizaresearch.ai">privacy@elizaresearch.ai</a>.</li>
+  </ul>
+
+  <h2 id="docs">Documentation</h2>
+  <p>Developer and user documentation lives at <a href="https://docs.elizaos.ai" rel="noopener noreferrer">docs.elizaos.ai</a>.</p>
+
+  <footer>
+    <div class="row">
+      <span>© Eliza Research Corporation</span>
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy</a>
+      <a href="/terms">Terms</a>
+    </div>
+  </footer>
+</main>
+</body>
+</html>
