@@ -18,6 +18,9 @@ package ai.elizaos.app;
  * plain unit test ({@code BionicDecodeLoopTest}) — the host-side regression
  * gate for the cap invariant.
  */
+import java.util.Collections;
+import java.util.List;
+
 final class BionicDecodeLoop {
 
     /** Default per-turn cap when the request carries none ({@code maxTokens <= 0}). */
@@ -72,26 +75,84 @@ final class BionicDecodeLoop {
      */
     static Result run(StepFn step, int maxTokens, int stepTokens, TokenSink sink)
             throws Exception {
+        return run(step, maxTokens, stepTokens, Collections.emptyList(), sink);
+    }
+
+    /**
+     * Drive one turn while enforcing caller-supplied textual stop sequences.
+     * A suffix up to the longest marker is withheld from the streaming sink so
+     * markers split across native decode steps never leak to the consumer.
+     */
+    static Result run(StepFn step, int maxTokens, int stepTokens,
+                      List<String> stopSequences, TokenSink sink) throws Exception {
         final int cap = maxTokens > 0 ? maxTokens : DEFAULT_CAP_TOKENS;
         int perStep = stepTokens;
         if (perStep < 1) perStep = 1;
         if (perStep > MAX_STEP_TOKENS) perStep = MAX_STEP_TOKENS;
 
         final StringBuilder sb = new StringBuilder();
+        final StringBuilder pending = new StringBuilder();
+        final int longestStop = longestStopLength(stopSequences);
+        boolean stopped = false;
         int produced = 0;
         while (produced < cap) {
             final int stepCap = Math.min(perStep, cap - produced);
             final Step s = step.next(stepCap);
             if (s == null) break;
             if (!s.text.isEmpty()) {
-                sb.append(s.text);
-                if (sink != null) sink.emit(s.text);
+                pending.append(s.text);
+                final int stopIndex = earliestStopIndex(pending, stopSequences);
+                if (stopIndex >= 0) {
+                    commit(pending.substring(0, stopIndex), sb, sink);
+                    pending.setLength(0);
+                    stopped = true;
+                } else {
+                    final int safeLength = Math.max(0, pending.length()
+                        - Math.max(0, longestStop - 1));
+                    if (safeLength > 0) {
+                        commit(pending.substring(0, safeLength), sb, sink);
+                        pending.delete(0, safeLength);
+                    }
+                }
             }
             // A step reporting nout=0 without done (e.g. a text-buffer-bound
             // partial step) still counts 1 so the loop provably terminates.
             produced += s.nout > 0 ? s.nout : 1;
-            if (s.done) break;
+            if (stopped || s.done) break;
+        }
+        if (!stopped && pending.length() > 0) {
+            commit(pending.toString(), sb, sink);
         }
         return new Result(produced, sb.toString());
+    }
+
+    private static void commit(String text, StringBuilder output, TokenSink sink)
+            throws Exception {
+        if (text.isEmpty()) return;
+        output.append(text);
+        if (sink != null) sink.emit(text);
+    }
+
+    private static int longestStopLength(List<String> stopSequences) {
+        int longest = 0;
+        if (stopSequences == null) return longest;
+        for (String stop : stopSequences) {
+            if (stop != null && !stop.isEmpty()) {
+                longest = Math.max(longest, stop.length());
+            }
+        }
+        return longest;
+    }
+
+    private static int earliestStopIndex(CharSequence text, List<String> stopSequences) {
+        if (stopSequences == null || stopSequences.isEmpty()) return -1;
+        final String value = text.toString();
+        int earliest = -1;
+        for (String stop : stopSequences) {
+            if (stop == null || stop.isEmpty()) continue;
+            final int index = value.indexOf(stop);
+            if (index >= 0 && (earliest < 0 || index < earliest)) earliest = index;
+        }
+        return earliest;
     }
 }

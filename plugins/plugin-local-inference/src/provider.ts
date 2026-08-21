@@ -57,6 +57,7 @@ import { LocalPiiRecognizerService } from "./pii/service.js";
 import { transcriptsRoutes } from "./routes/transcripts-routes.js";
 import { voiceProfilePluginRoutes } from "./routes/voice-profile-plugin-routes.js";
 import { handleVoiceEntityBound } from "./runtime/voice-entity-binding.js";
+import { mergeElizaTurnStopSequences } from "./services/eliza-turn-stops.js";
 import { augmentVisionRequest } from "./services/vision/augmenter.js";
 import { prepareVisionImageInput } from "./services/vision/image-input.js";
 import type { VisionImageInput } from "./services/vision/types.js";
@@ -331,7 +332,7 @@ function textGenerationArgsFromParams(
 ): LocalInferenceGenerateArgs {
 	return {
 		prompt: promptFromParams(params),
-		stopSequences: params.stopSequences,
+		stopSequences: mergeElizaTurnStopSequences(params.stopSequences),
 		maxTokens: params.omitMaxTokens
 			? (params.maxTokens ?? OMIT_MAX_TOKENS_LOCAL_BUDGET)
 			: params.maxTokens,
