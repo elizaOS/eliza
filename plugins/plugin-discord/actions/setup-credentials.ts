@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { ElizaError, logger } from "@elizaos/core";
 
 export interface CredentialPreset {
 	name: string;
@@ -30,10 +31,18 @@ const CREDENTIAL_PROBE_MAX_BODY_BYTES = 64 * 1024;
 const CREDENTIAL_VALUE_MAX_LENGTH = 16 * 1024;
 const presets = new Map<string, CredentialPreset>();
 
-class CredentialProbeError extends Error {
+class CredentialProbeError extends ElizaError {
 	constructor(readonly kind: "timeout" | "response" | "network") {
-		super(kind);
-		this.name = "CredentialProbeError";
+		super("Credential validation probe failed.", {
+			code:
+				kind === "timeout"
+					? "CREDENTIAL_PROBE_TIMEOUT"
+					: kind === "response"
+						? "CREDENTIAL_PROBE_RESPONSE_INVALID"
+						: "CREDENTIAL_PROBE_NETWORK_FAILED",
+			context: { kind },
+			severity: kind === "response" ? "fatal" : "ephemeral",
+		});
 	}
 }
 
@@ -53,25 +62,39 @@ function parseContentLength(value: string | null): number | null {
 	return parsed;
 }
 
-async function startBodyCancellation(
+function cancelProbeBody(
 	stream:
 		| ReadableStream<Uint8Array>
 		| ReadableStreamDefaultReader<Uint8Array>
 		| null,
 	reason?: unknown,
-): Promise<void> {
+): void {
 	if (!stream) return;
-	// Starting cancellation is sufficient for this boundary. A provider stream's
-	// teardown promise must not extend the probe deadline, while Promise.race still
-	// observes a later cancellation rejection.
-	await Promise.race([stream.cancel(reason), Promise.resolve()]);
+	try {
+		// error-policy:J6 provider-stream teardown is best effort and must not
+		// extend the probe deadline; its rejection is observed and safely logged.
+		void stream.cancel(reason).catch(() => {
+			logger.debug(
+				"[DiscordCredentialProbe] Failed to cancel provider response body",
+			);
+		});
+	} catch {
+		// error-policy:J6 synchronous provider-stream teardown failure is safe to ignore.
+		logger.debug(
+			"[DiscordCredentialProbe] Failed to cancel provider response body",
+		);
+	}
+}
+
+function throwIfProbeTimedOut(signal: AbortSignal): void {
+	if (signal.aborted) throw new CredentialProbeError("timeout");
 }
 
 async function readBodyChunk(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	signal: AbortSignal,
 ): Promise<{ done: boolean; value?: Uint8Array }> {
-	if (signal.aborted) throw new CredentialProbeError("timeout");
+	throwIfProbeTimedOut(signal);
 	return await new Promise((resolve, reject) => {
 		const onAbort = () => reject(new CredentialProbeError("timeout"));
 		signal.addEventListener("abort", onAbort, { once: true });
@@ -92,6 +115,7 @@ async function readBoundedBody(
 	response: Response,
 	signal: AbortSignal,
 ): Promise<Uint8Array> {
+	throwIfProbeTimedOut(signal);
 	const declaredLength = parseContentLength(
 		response.headers.get("content-length"),
 	);
@@ -99,11 +123,14 @@ async function readBoundedBody(
 		declaredLength !== null &&
 		declaredLength > CREDENTIAL_PROBE_MAX_BODY_BYTES
 	) {
-		await startBodyCancellation(response.body, "credential response too large");
+		cancelProbeBody(response.body, "credential response too large");
 		throw new CredentialProbeError("response");
 	}
 
-	if (!response.body) return new Uint8Array();
+	if (!response.body) {
+		throwIfProbeTimedOut(signal);
+		return new Uint8Array();
+	}
 	const reader = response.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let received = 0;
@@ -120,7 +147,7 @@ async function readBoundedBody(
 		}
 	} catch (error) {
 		// error-policy:J2 cancel the bounded reader before preserving its typed failure.
-		await startBodyCancellation(reader, error);
+		cancelProbeBody(reader, error);
 		throw error;
 	} finally {
 		reader.releaseLock();
@@ -132,6 +159,7 @@ async function readBoundedBody(
 		body.set(chunk, offset);
 		offset += chunk.byteLength;
 	}
+	throwIfProbeTimedOut(signal);
 	return body;
 }
 
@@ -140,20 +168,22 @@ async function readProbeJson(
 	signal: AbortSignal,
 ): Promise<unknown> {
 	if (!isJsonContentType(response.headers.get("content-type"))) {
-		await startBodyCancellation(
-			response.body,
-			"invalid credential response type",
-		);
+		cancelProbeBody(response.body, "invalid credential response type");
 		throw new CredentialProbeError("response");
 	}
 	const bytes = await readBoundedBody(response, signal);
+	let parsed: unknown;
 	try {
 		const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-		return JSON.parse(text) as unknown;
+		parsed = JSON.parse(text) as unknown;
 	} catch {
 		// error-policy:J3 malformed provider JSON is an explicit invalid response.
 		throw new CredentialProbeError("response");
 	}
+	// Keep the deadline check outside the parse catch so a timeout that races a
+	// valid payload retains its typed timeout identity.
+	throwIfProbeTimedOut(signal);
+	return parsed;
 }
 
 async function credentialProbe(
@@ -167,6 +197,10 @@ async function credentialProbe(
 			redirect: "error",
 			signal,
 		});
+		if (signal.aborted) {
+			cancelProbeBody(response.body, "credential probe timed out");
+			throw new CredentialProbeError("timeout");
+		}
 		return { response, signal };
 	} catch {
 		// error-policy:J1 network and timeout failures become stable probe errors.
@@ -175,14 +209,10 @@ async function credentialProbe(
 	}
 }
 
-async function discardProbeBody(
-	response: Response,
-	_signal: AbortSignal,
-): Promise<void> {
-	await startBodyCancellation(
-		response.body,
-		"credential response not consumed",
-	);
+function discardProbeBody(response: Response, signal: AbortSignal): void {
+	throwIfProbeTimedOut(signal);
+	cancelProbeBody(response.body, "credential response not consumed");
+	throwIfProbeTimedOut(signal);
 }
 
 function invalidProbeResult(
@@ -275,7 +305,7 @@ registerPreset({
 				},
 			);
 			if (!response.ok) {
-				await discardProbeBody(response, signal);
+				discardProbeBody(response, signal);
 				return {
 					valid: false,
 					error: `GitHub returned ${response.status}`,
@@ -314,7 +344,7 @@ registerPreset({
 				{ headers: { Authorization: `Bearer ${token}` } },
 			);
 			if (!response.ok) {
-				await discardProbeBody(response, signal);
+				discardProbeBody(response, signal);
 				return {
 					valid: false,
 					error: `Vercel returned ${response.status}`,
@@ -359,7 +389,7 @@ registerPreset({
 				},
 			);
 			if (!response.ok) {
-				await discardProbeBody(response, signal);
+				discardProbeBody(response, signal);
 				return {
 					valid: false,
 					error: `Cloudflare returned ${response.status}`,
@@ -395,26 +425,19 @@ registerPreset({
 			const apiKey = requireCredential(credentials, "apiKey");
 			// @duplicate-component-audit-allow: credential probe validates the key; response content is ignored.
 			const { response, signal } = await credentialProbe(
-				"https://api.anthropic.com/v1/messages",
+				"https://api.anthropic.com/v1/models?limit=1",
 				{
-					method: "POST",
 					headers: {
 						"x-api-key": apiKey,
 						"anthropic-version": "2023-06-01",
-						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({
-						model: "claude-3-5-haiku-20241022",
-						max_tokens: 1,
-						messages: [{ role: "user", content: "hi" }],
-					}),
 				},
 			);
 			if (response.ok) {
-				await discardProbeBody(response, signal);
+				discardProbeBody(response, signal);
 				return { valid: true, identity: "key verified" };
 			}
-			await discardProbeBody(response, signal);
+			discardProbeBody(response, signal);
 			return {
 				valid: false,
 				error: `Anthropic returned ${response.status}`,
@@ -440,10 +463,10 @@ registerPreset({
 				{ headers: { Authorization: `Bearer ${apiKey}` } },
 			);
 			if (response.ok) {
-				await discardProbeBody(response, signal);
+				discardProbeBody(response, signal);
 				return { valid: true, identity: "key verified" };
 			}
-			await discardProbeBody(response, signal);
+			discardProbeBody(response, signal);
 			return {
 				valid: false,
 				error: `OpenAI returned ${response.status}`,
@@ -465,25 +488,20 @@ registerPreset({
 		try {
 			const apiKey = requireCredential(credentials, "apiKey");
 			const { response, signal } = await credentialProbe(
-				"https://rest.fal.run/fal-ai/fast-sdxl",
+				"https://queue.fal.run/fal-ai/flux/schnell/requests/00000000-0000-0000-0000-000000000000/status",
 				{
-					method: "POST",
 					headers: {
 						Authorization: `Key ${apiKey}`,
-						"Content-Type": "application/json",
 					},
-					body: JSON.stringify({
-						prompt: "test",
-						image_size: { width: 64, height: 64 },
-						num_images: 1,
-					}),
 				},
 			);
-			if (response.ok) {
-				await discardProbeBody(response, signal);
+			// A deliberately nonexistent request proves authorization without
+			// submitting billable inference. fal documents 404 as "not found".
+			if (response.ok || response.status === 404) {
+				discardProbeBody(response, signal);
 				return { valid: true, identity: "key verified" };
 			}
-			await discardProbeBody(response, signal);
+			discardProbeBody(response, signal);
 			return {
 				valid: false,
 				error: `fal.ai returned ${response.status}`,

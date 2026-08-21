@@ -33,10 +33,14 @@ describe("credential probe network boundary", () => {
 		[
 			"anthropic",
 			{ apiKey: "anthropic-secret" },
-			"https://api.anthropic.com/v1/messages",
+			"https://api.anthropic.com/v1/models?limit=1",
 		],
 		["openai", { apiKey: "openai-secret" }, "https://api.openai.com/v1/models"],
-		["fal", { apiKey: "fal-secret" }, "https://rest.fal.run/fal-ai/fast-sdxl"],
+		[
+			"fal",
+			{ apiKey: "fal-secret" },
+			"https://queue.fal.run/fal-ai/flux/schnell/requests/00000000-0000-0000-0000-000000000000/status",
+		],
 	])(
 		"fences %s redirects and supplies a deadline",
 		async (name, credentials, url) => {
@@ -63,6 +67,26 @@ describe("credential probe network boundary", () => {
 			);
 		},
 	);
+
+	it("uses non-billable read probes for Anthropic and fal credentials", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(new Response(null, { status: 204 }))
+			.mockResolvedValueOnce(new Response(null, { status: 404 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(
+			preset("anthropic").validate({ apiKey: "secret" }),
+		).resolves.toMatchObject({ valid: true });
+		await expect(
+			preset("fal").validate({ apiKey: "secret" }),
+		).resolves.toMatchObject({ valid: true });
+
+		for (const [, init] of fetchMock.mock.calls) {
+			expect(init?.method).toBeUndefined();
+			expect(init?.body).toBeUndefined();
+		}
+	});
 
 	it("rejects an oversized declared JSON response before parsing", async () => {
 		vi.stubGlobal(
@@ -250,6 +274,61 @@ describe("credential probe network boundary", () => {
 			valid: false,
 			error: "Anthropic credential validation timed out",
 		});
+	});
+
+	it("preserves timeout identity when the deadline races valid JSON parsing", async () => {
+		const controller = new AbortController();
+		const response = Response.json({ login: "owner" });
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(controller.signal);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => response),
+		);
+		const parse = JSON.parse.bind(JSON);
+		vi.spyOn(JSON, "parse").mockImplementation((text) => {
+			const parsed = parse(text);
+			controller.abort(new DOMException("sensitive detail", "TimeoutError"));
+			return parsed;
+		});
+
+		await expect(
+			preset("github").validate({ token: "secret" }),
+		).resolves.toEqual({
+			valid: false,
+			error: "GitHub credential validation timed out",
+		});
+	});
+
+	it("rejects and cancels a response returned after the deadline", async () => {
+		let cancelled = false;
+		vi.spyOn(AbortSignal, "timeout").mockReturnValue(
+			AbortSignal.abort(
+				new DOMException("sensitive upstream detail", "TimeoutError"),
+			),
+		);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(
+						new ReadableStream({
+							pull() {},
+							cancel() {
+								cancelled = true;
+							},
+						}),
+						{ status: 200 },
+					),
+			),
+		);
+
+		await expect(
+			preset("openai").validate({ apiKey: "secret" }),
+		).resolves.toEqual({
+			valid: false,
+			error: "OpenAI credential validation timed out",
+		});
+		await vi.waitFor(() => expect(cancelled).toBe(true));
 	});
 
 	it("applies the deadline through body reads even when stream cancellation hangs", async () => {
