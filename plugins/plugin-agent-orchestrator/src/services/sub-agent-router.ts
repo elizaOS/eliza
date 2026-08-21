@@ -1768,30 +1768,17 @@ export class SubAgentRouter extends Service {
         deliverable = extractAskedOutputDeliverable(data, ask);
       }
       if (deliverable === undefined) {
-        // Ask-regex-independent floor: a very short final response with no
-        // tool-transcript markers IS the answer ("Tonight's dinner idea is:
-        // …"), and every re-narration pass lost it ("ran the script and got
-        // the output" with no output, three phrasings in a row, live
-        // 2026-08-21). Verbatim relay of ≤400 bytes cannot leak a transcript.
+        // Verify-lap completions bury the answer under criteria-proof fences;
+        // the answer head (before the first "- [x]" checklist) or the last
+        // `$ <cmd>` block's stdout is the user's answer. No naive short-
+        // response floor here: "short" is not "answer" — it verbatim-relayed
+        // raw agent reasoning and routing banners (unit-caught 2026-08-21).
         const response =
           pickPayloadString(data, "response") ??
           pickPayloadString(data, "finalText");
         const trimmed = response?.trim();
-        if (
-          trimmed &&
-          Buffer.byteLength(trimmed, "utf8") <= 400 &&
-          !trimmed.includes("[tool output") &&
-          !/https?:\/\//.test(trimmed)
-        ) {
-          deliverable = trimmed;
-        } else if (trimmed) {
-          // Answer-then-proofs shape: the verify lap's completion leads with
-          // the user's answer and follows with criteria-proof checklists —
-          // relaying the whole thing dumped ls/diff blocks into chat after a
-          // one-line answer (live 2026-08-21). Keep the pre-proof head when
-          // it is a clean short answer; else fall back to the last proof
-          // block's stdout.
-          const proofAt = trimmed.search(/\n- \[x\] /);
+        if (trimmed?.includes("- [x] ")) {
+          const proofAt = trimmed.search(/\n(?:Evidence:\s*\n)?- \[x\] /);
           const head = proofAt > 0 ? trimmed.slice(0, proofAt).trim() : "";
           if (
             head &&

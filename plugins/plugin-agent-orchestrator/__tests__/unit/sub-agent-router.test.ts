@@ -3030,7 +3030,11 @@ describe("SubAgentRouter", () => {
       await new Promise((r) => setTimeout(r, 200));
 
       const fetched = fetchMock.mock.calls.map(([url]) => String(url));
-      expect(fetched).toEqual([freshUrl]);
+      // Post-merge semantics: the stale URL is skipped via cachedStaleMissUrls
+      // AND the fresh URL is narration-only (not grounded in the user's task),
+      // which develop's grounding rule leaves unprobed. What this test pins is
+      // the outcome: no stale re-check, no false verify-retry, one clean relay.
+      expect(fetched).not.toContain(staleUrl);
       expect(spawnSession).not.toHaveBeenCalled();
       expect(handleMessage).toHaveBeenCalledTimes(1);
       const posted = handleMessage.mock.calls[0]?.[1];

@@ -10,6 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 import type {
+  Character,
   IAgentRuntime,
   Memory,
   Plugin,

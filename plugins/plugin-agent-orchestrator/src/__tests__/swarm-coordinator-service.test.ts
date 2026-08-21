@@ -13,7 +13,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.ts";
-import { ADMIN_STOP_META_KEY } from "../services/admin-stop-marker.ts";
+import { ADMIN_STOP_META_KEY,
+  ADMIN_STOP_STAMPED_AT_META_KEY } from "../services/admin-stop-marker.ts";
 import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.ts";
 
 type EventHandler = (sessionId: string, event: string, data: unknown) => void;
@@ -87,6 +88,9 @@ describe("swarm-coordinator admin-stop suppression", () => {
     acp.metadataById.set("s1", {
       label: "builder",
       [ADMIN_STOP_META_KEY]: "task_lifecycle",
+      // Freshness-scoped (#22981): a stamp without a current timestamp is
+      // treated as a failed-stop survivor and synthesizes.
+      [ADMIN_STOP_STAMPED_AT_META_KEY]: new Date().toISOString(),
     });
 
     acp.emit("s1", "stopped", { label: "builder" });
@@ -127,6 +131,7 @@ describe("swarm-coordinator admin-stop suppression", () => {
     acp.metadataById.set("s3", {
       label: "late-stamp",
       [ADMIN_STOP_META_KEY]: "user_stop",
+      [ADMIN_STOP_STAMPED_AT_META_KEY]: new Date().toISOString(),
     });
 
     acp.emit("s3", "stopped", { label: "late-stamp" });

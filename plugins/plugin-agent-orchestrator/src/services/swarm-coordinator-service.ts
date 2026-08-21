@@ -24,7 +24,6 @@ import {
   SWARM_COORDINATOR_SERVICE_TYPE,
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
-import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
 import { isPendingHandoffCurrent } from "./handoff-pending.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import { isSessionBusyError } from "./parent-agent-dispatch.js";
