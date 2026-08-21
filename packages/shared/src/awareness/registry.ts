@@ -8,7 +8,9 @@
  * errors are captured and surfaced as `[{id}: unavailable]` markers — the
  * registry itself NEVER throws from composeSummary / getDetail.
  */
+
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   type AwarenessContributor,
   type AwarenessInvalidationEvent,
@@ -40,6 +42,12 @@ function sanitize(input: string): string {
 interface CacheEntry {
   value: string;
   expiresAt: number;
+}
+
+export function truncateSummaryLine(line: string): string {
+  const wellFormed = toWellFormedUnicode(line);
+  if (wellFormed.length <= SUMMARY_CHAR_LIMIT) return wellFormed;
+  return `${truncateWellFormed(wellFormed, SUMMARY_CHAR_LIMIT - 3)}...`;
 }
 
 export class AwarenessRegistry {
@@ -79,9 +87,7 @@ export class AwarenessRegistry {
       if (contributor.trusted !== true) {
         line = sanitize(line);
       }
-      if (line.length > SUMMARY_CHAR_LIMIT) {
-        line = `${line.slice(0, SUMMARY_CHAR_LIMIT - 3)}...`;
-      }
+      line = truncateSummaryLine(line);
 
       lines.push(line);
     }
