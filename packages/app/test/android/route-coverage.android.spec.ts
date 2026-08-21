@@ -22,7 +22,6 @@ import {
   gotoRoute,
   type ReadyCheck,
   test,
-  waitForShellReady,
 } from "./android-harness";
 
 type RouteCase = {
@@ -57,13 +56,19 @@ test.describe("android route coverage (real backend)", () => {
   test.beforeAll(async ({ page }) => {
     // The combined hosted lane starts with a genuinely fresh onboarding test,
     // so the worker fixture intentionally cannot seed developer mode before
-    // boot. Enable it here and reload before probing developer-only routes such
-    // as Orchestrator; otherwise pathname retention can hide a gated fallback.
-    await page.evaluate(() => {
-      localStorage.setItem("eliza:developerMode", "1");
-    });
-    await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
-    await waitForShellReady(page);
+    // boot. Exercise the visible Settings control before probing developer-only
+    // routes such as Orchestrator; reserved shell storage correctly rejects a
+    // raw localStorage write once a view realm has mounted.
+    await gotoRoute(page, "/settings");
+    const backupsSection = page.getByText("Backups", { exact: true }).first();
+    await expect(backupsSection).toBeVisible({ timeout: 45_000 });
+    await backupsSection.click();
+    const developerViews = page.locator("#advanced-developer-mode");
+    await expect(developerViews).toBeVisible({ timeout: 45_000 });
+    if ((await developerViews.getAttribute("aria-checked")) !== "true") {
+      await developerViews.click();
+    }
+    await expect(developerViews).toHaveAttribute("aria-checked", "true");
   });
 
   for (const route of UNIQUE_ROUTES) {
