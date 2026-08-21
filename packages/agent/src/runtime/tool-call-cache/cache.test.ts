@@ -6,14 +6,26 @@
  * and privacy redaction.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
-import { defaultPrivacyRedactor } from "./redact.ts";
+import {
+  defaultPrivacyRedactor,
+  REDACT_BOUNDED_SENTINEL,
+  REDACT_CYCLE_SENTINEL,
+  REDACT_DEPTH_SENTINEL,
+} from "./redact.ts";
 import { CACHEABLE_TOOL_REGISTRY, resolveToolDescriptor } from "./registry.ts";
 import type {
   CacheableToolDescriptor,
@@ -326,7 +338,7 @@ describe("ToolCallCache", () => {
       callback: () => "not serializable",
     } as unknown as ToolOutput;
 
-    expect(() => cache.set(descriptor, args, invalidOutput)).toThrow();
+    expect(() => cache.set(descriptor, args, invalidOutput)).not.toThrow();
     expect(cache.get(descriptor, args)).toBeUndefined();
   });
 
@@ -406,12 +418,12 @@ describe("ToolCallCache", () => {
   it("fail-closes on cyclic tool output instead of stack-overflowing the disk write", () => {
     const cyclic: Record<string, unknown> = { blob: "sk-AAAAAAAAAAAAAAAAAA" };
     cyclic.self = cyclic;
-    let redacted: Record<string, unknown>;
+    let redacted: Record<string, unknown> = {};
     expect(() => {
       redacted = defaultPrivacyRedactor(cyclic) as Record<string, unknown>;
     }).not.toThrow();
-    expect(redacted!.blob).toContain("<REDACTED:openai-key>");
-    expect(redacted!.self).toBe("[REDACTED_BOUNDED]");
+    expect(redacted.blob).toContain("<REDACTED:openai-key>");
+    expect(redacted.self).toBe(REDACT_CYCLE_SENTINEL);
   });
 
   it("fail-closes on a deep nest instead of overflowing", () => {
@@ -422,7 +434,79 @@ describe("ToolCallCache", () => {
       redacted = defaultPrivacyRedactor(deep);
     }).not.toThrow();
     expect(() => JSON.stringify(redacted)).not.toThrow();
-    expect(JSON.stringify(redacted)).toContain("[REDACTED_BOUNDED]");
+    expect(JSON.stringify(redacted)).toContain(REDACT_DEPTH_SENTINEL);
+  });
+
+  it("preserves a shared acyclic subtree instead of destroying the DAG", () => {
+    const shared = { leaf: 1, key: "sk-AAAAAAAAAAAAAAAAAA" };
+    const redacted = defaultPrivacyRedactor({ x: shared, y: shared }) as {
+      x: { leaf: number; key: string };
+      y: { leaf: number; key: string };
+    };
+    expect(redacted.x.leaf).toBe(1);
+    expect(redacted.y.leaf).toBe(1);
+    expect(redacted.x.key).toContain("<REDACTED:openai-key>");
+    expect(redacted.y.key).toContain("<REDACTED:openai-key>");
+    expect(redacted.y).not.toBe(REDACT_CYCLE_SENTINEL);
+  });
+
+  it("does not persist or serve a depth-truncated disk hit", async () => {
+    const cache = new ToolCallCache({
+      diskRoot: tempRoot,
+      redact: defaultPrivacyRedactor,
+    });
+    const desc = resolveToolDescriptor("web_search");
+    let deep: Record<string, unknown> = { bottom: "bottom-value" };
+    for (let i = 0; i < 12; i++) deep = { child: deep };
+
+    const out = await cache.run(desc, { q: "deep" }, async () => deep);
+    expect(out).toEqual(deep);
+
+    const key = buildCacheKey(desc.name, { q: "deep" });
+    const file = path.join(tempRoot, key.slice(0, 2), `${key}.json`);
+    expect(existsSync(file)).toBe(false);
+
+    const fresh = new ToolCallCache({
+      diskRoot: tempRoot,
+      redact: defaultPrivacyRedactor,
+    });
+    expect(fresh.get(desc, { q: "deep" })).toBeUndefined();
+  });
+
+  it("does not serve a prior-head truncated disk row as a successful hit", () => {
+    const cache = new ToolCallCache({
+      diskRoot: tempRoot,
+      redact: defaultPrivacyRedactor,
+    });
+    const desc = resolveToolDescriptor("web_search");
+    const key = buildCacheKey(desc.name, { q: "old" });
+    const dir = path.join(tempRoot, key.slice(0, 2));
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${key}.json`);
+    writeFileSync(
+      file,
+      JSON.stringify({
+        key,
+        toolName: desc.name,
+        toolVersion: desc.version,
+        cachedAt: Date.now(),
+        expiresAt: Date.now() + 60_000,
+        output: { child: { child: REDACT_BOUNDED_SENTINEL } },
+      }),
+      "utf8",
+    );
+    expect(cache.get(desc, { q: "old" })).toBeUndefined();
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it("returns deep-but-legal output through run without rejecting", async () => {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    let deep: Record<string, unknown> = { v: 1 };
+    for (let i = 0; i < 64; i++) deep = { child: deep };
+    await expect(
+      cache.run(desc, { q: "legal-deep" }, async () => deep),
+    ).resolves.toEqual(deep);
   });
 
   it("registry includes web_search, web_fetch, file_read, rag_search, knowledge_lookup", () => {

@@ -5,9 +5,12 @@
  * the shared cache types.
  */
 export type { ToolCallCacheOptions } from "./cache.ts";
-export { ToolCallCache } from "./cache.ts";
+export { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
 export { buildCacheKey, canonicalizeJson } from "./key.ts";
-export { defaultPrivacyRedactor } from "./redact.ts";
+export {
+  defaultPrivacyRedactor,
+  isRedactionDegraded,
+} from "./redact.ts";
 export {
   CACHEABLE_TOOL_REGISTRY,
   isCacheable,

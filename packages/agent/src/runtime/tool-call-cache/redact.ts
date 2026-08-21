@@ -8,6 +8,11 @@
  *   - common API key shapes (`sk-…`, `Bearer …`, `ghp_…`, `AKIA…`)
  *   - environment-variable values whose key name looks like a secret
  *   - geographic coordinates (matching the Location-plugin patterns)
+ *
+ * Walk is path-scoped (seen.delete on container exit) so shared acyclic
+ * subtrees / DAGs are fully redacted. True cycles emit [Circular]; containers
+ * past the depth cap emit [MaxDepth]. DiskStore refuses to persist a degraded
+ * value so a sentinel can never be served as a successful cross-process hit.
  */
 
 import type { PrivacyRedactor } from "./types.ts";
@@ -183,6 +188,13 @@ function redactCoordsBlocks(input: string): string {
   return matchedAny ? output + input.slice(copiedThrough) : input;
 }
 
+/** Depth cap bounds containers, not string leaves (a string at depth 9 is kept). */
+export const MAX_REDACT_DEPTH = 8;
+export const REDACT_CYCLE_SENTINEL = "[Circular]";
+export const REDACT_DEPTH_SENTINEL = "[MaxDepth]";
+/** Prior-head sentinel; still treated as degraded so old disk rows are not served. */
+export const REDACT_BOUNDED_SENTINEL = "[REDACTED_BOUNDED]";
+
 function snapshotEnvCredentials(): string[] {
   const out: string[] = [];
   for (const [key, value] of Object.entries(process.env)) {
@@ -209,10 +221,6 @@ function redactString(input: string, envValues: string[]): string {
   return out;
 }
 
-/** Fail-closed bound: cyclic or deeply nested tool outputs must not stack-overflow the disk write. */
-const MAX_REDACT_DEPTH = 8;
-const BOUNDED_SENTINEL = "[REDACTED_BOUNDED]";
-
 function walk(
   value: unknown,
   envValues: string[],
@@ -223,21 +231,56 @@ function walk(
     return redactString(value, envValues);
   }
   if (value && typeof value === "object") {
-    if (depth > MAX_REDACT_DEPTH || seen.has(value)) {
-      return BOUNDED_SENTINEL;
+    if (depth > MAX_REDACT_DEPTH) {
+      return REDACT_DEPTH_SENTINEL;
+    }
+    if (seen.has(value)) {
+      return REDACT_CYCLE_SENTINEL;
     }
     seen.add(value);
-    if (Array.isArray(value)) {
-      return value.map((item) => walk(item, envValues, seen, depth + 1));
+    try {
+      if (Array.isArray(value)) {
+        return value.map((item) => walk(item, envValues, seen, depth + 1));
+      }
+      const obj = value as Record<string, unknown>;
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(obj)) {
+        out[key] = walk(obj[key], envValues, seen, depth + 1);
+      }
+      return out;
+    } finally {
+      seen.delete(value);
     }
-    const obj = value as Record<string, unknown>;
-    const out: Record<string, unknown> = {};
-    for (const key of Object.keys(obj)) {
-      out[key] = walk(obj[key], envValues, seen, depth + 1);
-    }
-    return out;
   }
   return value;
+}
+
+export function isRedactionDegraded(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+): boolean {
+  if (
+    value === REDACT_CYCLE_SENTINEL ||
+    value === REDACT_DEPTH_SENTINEL ||
+    value === REDACT_BOUNDED_SENTINEL
+  ) {
+    return true;
+  }
+  if (!value || typeof value !== "object") return false;
+  if (depth > 64) return true;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.some((item) => isRedactionDegraded(item, seen, depth + 1));
+    }
+    return Object.values(value as Record<string, unknown>).some((item) =>
+      isRedactionDegraded(item, seen, depth + 1),
+    );
+  } finally {
+    seen.delete(value);
+  }
 }
 
 export const defaultPrivacyRedactor: PrivacyRedactor = (value) => {

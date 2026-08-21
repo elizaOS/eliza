@@ -21,6 +21,7 @@ import { resolveStateDir } from "../../config/paths.ts";
 import { DiskStore } from "./disk-store.ts";
 import { buildCacheKey } from "./key.ts";
 import { Lru } from "./lru.ts";
+import { isRedactionDegraded } from "./redact.ts";
 import type {
   CacheableToolDescriptor,
   PrivacyRedactor,
@@ -42,25 +43,41 @@ export interface ToolCallCacheOptions {
 
 type CacheOutputValidator<T> = (output: unknown) => output is T & ToolOutput;
 
-function isToolOutput(
+/** Fail-safe bound: deep acyclic tool output must not RangeError the persist path. */
+const MAX_TOOL_OUTPUT_DEPTH = 32;
+const MAX_TOOL_OUTPUT_NODES = 100_000;
+
+export function isCacheableToolOutput(
   value: unknown,
-  seen = new WeakSet<object>(),
+  seen: WeakSet<object> = new WeakSet(),
+  depth = 0,
+  ctx: { nodes: number } = { nodes: 0 },
 ): value is ToolOutput {
+  if (depth > MAX_TOOL_OUTPUT_DEPTH) return false;
+  ctx.nodes += 1;
+  if (ctx.nodes > MAX_TOOL_OUTPUT_NODES) return false;
   if (value === null) return true;
   if (typeof value === "string" || typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
   if (typeof value !== "object") return false;
   if (seen.has(value)) return false;
   seen.add(value);
-
-  if (Array.isArray(value)) {
-    return value.every((entry) => isToolOutput(entry, seen));
+  try {
+    if (Array.isArray(value)) {
+      return value.every((entry) =>
+        isCacheableToolOutput(entry, seen, depth + 1, ctx),
+      );
+    }
+    const prototype = Object.getPrototypeOf(value);
+    return (
+      (prototype === Object.prototype || prototype === null) &&
+      Object.values(value).every((entry) =>
+        isCacheableToolOutput(entry, seen, depth + 1, ctx),
+      )
+    );
+  } finally {
+    seen.delete(value);
   }
-  const prototype = Object.getPrototypeOf(value);
-  return (
-    (prototype === Object.prototype || prototype === null) &&
-    Object.values(value).every((entry) => isToolOutput(entry, seen))
-  );
 }
 
 export class ToolCallCache {
@@ -101,6 +118,11 @@ export class ToolCallCache {
       this.disk.delete(key);
       return undefined;
     }
+    if (isRedactionDegraded(candidate.output)) {
+      this.memory.delete(key);
+      this.disk.delete(key);
+      return undefined;
+    }
 
     if (!fromMemory) this.memory.set(key, candidate);
     return structuredClone(candidate);
@@ -119,13 +141,20 @@ export class ToolCallCache {
     if (!descriptor.cacheable) return;
     const key = buildCacheKey(descriptor.name, args);
     const cachedAt = this.now();
+    let cloned: ToolOutput;
+    try {
+      cloned = structuredClone(output);
+    } catch {
+      // Cyclic output cannot be cloned into either tier; return uncached.
+      return;
+    }
     const entry: ToolCacheEntry = {
       key,
       toolName: descriptor.name,
       toolVersion: descriptor.version,
       cachedAt,
       expiresAt: cachedAt + descriptor.ttlMs,
-      output: structuredClone(output),
+      output: cloned,
     };
     this.memory.set(key, entry);
     this.disk.write(entry);
@@ -181,7 +210,9 @@ export class ToolCallCache {
     descriptor: CacheableToolDescriptor,
     args: ToolArgs,
     execute: () => Promise<unknown>,
-    shouldCache: (output: unknown) => output is ToolOutput = isToolOutput,
+    shouldCache: (
+      output: unknown,
+    ) => output is ToolOutput = isCacheableToolOutput,
   ): Promise<unknown> {
     const hit = this.get(descriptor, args);
     if (hit && shouldCache(hit.output)) return hit.output;
