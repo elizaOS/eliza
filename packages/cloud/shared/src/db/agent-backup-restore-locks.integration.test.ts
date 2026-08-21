@@ -5,6 +5,18 @@ import { Buffer } from "node:buffer";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  AGENT_BACKUP_MANIFEST_FORMAT,
+  AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+  AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1,
+  type AgentBackupManifestV3Draft,
+  canonicalizeAgentBackupManifestV3,
+  computeAgentBackupChunkAadDigest,
+  createAgentBackupManifestV3,
+} from "@elizaos/shared";
 import { pushSchema } from "drizzle-kit/api";
 import { eq, inArray, sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -16,6 +28,7 @@ import {
   agentBackupCatalogAuthorities,
   agentBackupObjects,
   agentBackupRestoreLeases,
+  agentBackupRestoreOperations,
 } from "./schemas/agent-backup-catalog";
 import {
   agentActivationPublications,
@@ -96,6 +109,21 @@ const WRITER_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b30a";
 const WRITER_RESERVE_ONE = "00000000-0000-4000-8000-00000000b30b";
 const WRITER_RESERVE_TWO = "00000000-0000-4000-8000-00000000b30c";
 
+const LOCK_BACKUP_ONE = "00000000-0000-4000-8000-00000000b401";
+const LOCK_BACKUP_TWO = "00000000-0000-4000-8000-00000000b402";
+const LOCK_OPERATION_ONE = "00000000-0000-4000-8000-00000000b403";
+const LOCK_OPERATION_TWO = "00000000-0000-4000-8000-00000000b404";
+const LOCK_ATTEMPT_ID = "00000000-0000-4000-8000-00000000b405";
+const LOCK_LEASE_ID = "00000000-0000-4000-8000-00000000b406";
+const LOCK_FENCE = "00000000-0000-4000-8000-00000000b407";
+const LOCK_VAULT_GENERATION = "00000000-0000-4000-8000-00000000b408";
+const LOCK_KEY_BUNDLE_GENERATION = "00000000-0000-4000-8000-00000000b409";
+const LOCK_TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000b40a";
+const LOCK_TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000b40b";
+const LOCK_OWNER_ID = "restore-lock-order-owner";
+const LOCK_KEY_BUNDLE = Buffer.alloc(AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes, 0x55);
+const LOCK_KEY_BUNDLE_SHA = createHash("sha256").update(LOCK_KEY_BUNDLE).digest("hex");
+
 let postgres: EphemeralPostgres | null = await acquireEphemeralPostgres();
 let isolatedDatabaseName: string | null = null;
 let isolatedDsn: string | null = null;
@@ -129,6 +157,15 @@ let recordAgentVaultKeySeedReceipt:
   | undefined;
 let commitAgentBackupRestore:
   | typeof import("./repositories/agent-backup-restore-history").commitAgentBackupRestore
+  | undefined;
+let openAgentBackupRestoreOperation:
+  | typeof import("./repositories/agent-backup-restore-operations").openAgentBackupRestoreOperation
+  | undefined;
+let claimAgentBackupRestoreOperation:
+  | typeof import("./repositories/agent-backup-restore-operations").claimAgentBackupRestoreOperation
+  | undefined;
+let reserveAgentBackupRestoreTarget:
+  | typeof import("./repositories/agent-backup-restore-operations").reserveAgentBackupRestoreTarget
   | undefined;
 
 function restoreEnv(name: keyof typeof ORIGINAL_ENV, value: string | undefined): void {
@@ -209,6 +246,348 @@ async function waitUntilDatabaseTime(observer: Client, threshold: Date): Promise
   throw new Error("Timed out waiting for the primary database clock");
 }
 
+function postgresErrorCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+async function buildLockManifest(operationId: string): Promise<{
+  canonicalDraft: string;
+  digest: string;
+}> {
+  const emptyComponent = (name: "character" | "media" | "state-files" | "vault") =>
+    ({
+      name,
+      format: "raw-v1",
+      compression: "none" as const,
+      payloadContentHmacSha256: SHA,
+      state: { kind: "full" as const, resultContentHmacSha256: SHA },
+      totals: { plainBytes: 0, compressedBytes: 0, encryptedBytes: 0, chunkCount: 0 },
+      chunks: [],
+    }) as const;
+  const plainBytes = 4;
+  const encryptedBytes = 32;
+  const aadSha256 = await computeAgentBackupChunkAadDigest({
+    identity: {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: "0",
+    },
+    operationId,
+    component: { name: "database", format: "raw-v1", compression: "none" },
+    chunk: {
+      index: 0,
+      offsetBytes: 0,
+      plainBytes,
+      compressedBytes: plainBytes,
+      contentHmacSha256: SHA,
+    },
+  });
+  const draft: AgentBackupManifestV3Draft = {
+    format: AGENT_BACKUP_MANIFEST_FORMAT,
+    schemaVersion: 3,
+    operationId,
+    createdAt: "2026-08-20T00:00:00.000Z",
+    identity: {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      activationGeneration: ACTIVATION_GENERATION,
+      lifecycleRevision: "0",
+    },
+    source: {
+      kind: "robot",
+      provider: "hetzner",
+      nodeRecordId: NODE_RECORD_ID,
+      nodeIncarnation: NODE_INCARNATION,
+      nodeId: "robot-node-lock",
+      containerId: SOURCE_CONTAINER_ID,
+    },
+    runtime: {
+      imageDigest: `sha256:${SHA}`,
+      agentSchemaVersion: "2.0.0",
+      databaseSchemaVersion: "1",
+      plugins: [],
+    },
+    chain: { kind: "full", baseOperationId: null, parentOperationId: null, depth: 0 },
+    components: [
+      emptyComponent("character"),
+      {
+        name: "database",
+        format: "raw-v1",
+        compression: "none",
+        payloadContentHmacSha256: SHA,
+        state: { kind: "full", resultContentHmacSha256: SHA },
+        totals: {
+          plainBytes,
+          compressedBytes: plainBytes,
+          encryptedBytes,
+          chunkCount: 1,
+        },
+        chunks: [
+          {
+            index: 0,
+            offsetBytes: 0,
+            plainBytes,
+            compressedBytes: plainBytes,
+            encryptedBytes,
+            contentHmacSha256: SHA,
+            aadSha256,
+            sha256: SHA,
+          },
+        ],
+      },
+      emptyComponent("media"),
+      emptyComponent("state-files"),
+      emptyComponent("vault"),
+    ],
+    watermarks: [{ namespace: "database.lsn", value: "0/1" }],
+    totals: {
+      plainBytes,
+      compressedBytes: plainBytes,
+      encryptedBytes,
+      chunkCount: 1,
+    },
+    vaultKeyAuthority: {
+      format: "kms-aead-vault-passphrase-v1",
+      generationId: LOCK_VAULT_GENERATION,
+      receiptDerivation: "elizaos.agent-vault-key.authority-receipt.v1",
+      receiptDigest: RECEIPT_SHA,
+    },
+    encryption: {
+      algorithm: "AES-256-GCM",
+      chunkEnvelope: "aes-256-gcm-v1",
+      nonceBytes: 12,
+      tagBytes: 16,
+      noncePlacement: "prefix",
+      tagPlacement: "suffix",
+      aad: { version: 1, derivation: "elizaos.agent-backup.chunk-aad.v1" },
+      kms: { provider: "steward", keyId: `org:${ORG_ID}/dek/v1`, keyVersion: 1 },
+      operationKeyBundle: {
+        format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        generationId: LOCK_KEY_BUNDLE_GENERATION,
+        plaintextBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.plaintextBytes,
+        dek: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.dek,
+        contentHmac: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac,
+        wrapped: {
+          ref: `backup-key-bundle:${operationId}`,
+          bytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.wrappedBytes,
+          sha256: LOCK_KEY_BUNDLE_SHA,
+          localReceiptDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+          localReceiptDigest: SHA,
+          contextDerivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+        },
+      },
+    },
+    integrity: {
+      framedContentHmacSha256: SHA,
+      contentAddressing: {
+        algorithm: "HMAC-SHA-256",
+        scope: "operation",
+        derivation: AGENT_BACKUP_OPERATION_CONTENT_HMAC_DERIVATION,
+        keyBundleFormat: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+        keyOffsetBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.offsetBytes,
+        keyBytes: AGENT_BACKUP_OPERATION_KEY_BUNDLE_V1.contentHmac.bytes,
+      },
+    },
+  };
+  const manifest = await createAgentBackupManifestV3(draft);
+  return {
+    canonicalDraft: canonicalizeAgentBackupManifestV3(draft),
+    digest: manifest.integrity.manifestSha256,
+  };
+}
+
+async function seedLockBackup(input: {
+  backupId: string;
+  operationId: string;
+  manifest: Awaited<ReturnType<typeof buildLockManifest>>;
+  catalogRevision: bigint;
+  objectInventoryDigest: string;
+}): Promise<void> {
+  if (!dbWrite) throw new Error("real PostgreSQL harness was not initialized");
+  await dbWrite.insert(agentSandboxBackups).values({
+    id: input.backupId,
+    sandbox_record_id: null,
+    snapshot_type: "auto",
+    state_data: { memories: [], config: {}, workspaceFiles: {} },
+    state_data_storage: "inline",
+    size_bytes: LOCK_KEY_BUNDLE.byteLength,
+    backup_kind: "full",
+    backup_operation_id: input.operationId,
+    catalog_version: 2,
+    catalog_state: "protected",
+    catalog_payload_digest: SHA,
+    catalog_revision: input.catalogRevision,
+    catalog_organization_id: ORG_ID,
+    catalog_agent_id: AGENT_ID,
+    lifecycle_generation: ACTIVATION_GENERATION,
+    lifecycle_revision: 0n,
+    source_provider: "operator-onboarded",
+    source_node_record_id: NODE_RECORD_ID,
+    source_node_id: "robot-node-lock",
+    source_node_incarnation: NODE_INCARNATION,
+    source_provider_server_id: null,
+    source_provider_handle: "container-generation-lock",
+    source_container_id: SOURCE_CONTAINER_ID,
+    retention_reason: "schedule",
+    retention_until: new Date(Date.now() + 86_400_000),
+    manifest_format: AGENT_BACKUP_MANIFEST_FORMAT,
+    manifest_version: 3,
+    manifest_digest: input.manifest.digest,
+    manifest_canonical_draft: input.manifest.canonicalDraft,
+    manifest_object_count: 1,
+    object_inventory_digest: input.objectInventoryDigest,
+    image_digest: `sha256:${SHA}`,
+    database_schema_version: "1",
+    plugin_set_digest: SHA,
+    watermark_digest: SHA,
+    raw_size_bytes: 4,
+    compressed_size_bytes: 4,
+    encrypted_size_bytes: 32,
+    kms_key_id: `org:${ORG_ID}/backup/v1`,
+    kms_key_version: 1,
+    operation_key_bundle_generation_id: LOCK_KEY_BUNDLE_GENERATION,
+    operation_key_bundle_format: AGENT_BACKUP_OPERATION_KEY_BUNDLE_FORMAT,
+    operation_key_bundle_ref: `backup-key-bundle:${input.operationId}`,
+    operation_key_bundle_ciphertext_base64: LOCK_KEY_BUNDLE.toString("base64"),
+    operation_key_bundle_sha256: LOCK_KEY_BUNDLE_SHA,
+    operation_key_bundle_size_bytes: LOCK_KEY_BUNDLE.byteLength,
+    operation_key_bundle_context: "{}",
+    operation_key_bundle_context_derivation: AGENT_BACKUP_OPERATION_KEY_BUNDLE_CONTEXT_DERIVATION,
+    operation_key_bundle_local_receipt_derivation:
+      AGENT_BACKUP_OPERATION_KEY_BUNDLE_LOCAL_RECEIPT_DERIVATION,
+    operation_key_bundle_local_receipt_digest: SHA,
+    vault_key_generation_id: LOCK_VAULT_GENERATION,
+    vault_key_authority_receipt_digest: RECEIPT_SHA,
+  });
+  await dbWrite.insert(agentVaultKeyBackupBindings).values({
+    organization_id: ORG_ID,
+    agent_id: AGENT_ID,
+    backup_id: input.backupId,
+    operation_id: input.operationId,
+    source_activation_generation: ACTIVATION_GENERATION,
+    source_lifecycle_revision: 0n,
+    manifest_sha256: input.manifest.digest,
+    vault_key_generation_id: LOCK_VAULT_GENERATION,
+    vault_key_authority_receipt_digest: RECEIPT_SHA,
+  });
+}
+
+async function seedRestoreOperationLockFixture(includeSecondBackup = false): Promise<{
+  operationId: string;
+  authority: {
+    organizationId: string;
+    agentId: string;
+    backupId: string;
+    operationId: string;
+    sourceActivationGeneration: string;
+    sourceLifecycleRevision: string;
+    expectedManifestSha256: string;
+    restoreAttemptId: string;
+    leaseId: string;
+    ownerId: string;
+    fencingToken: string;
+    catalogEpoch: string;
+    copyRole: "primary";
+  };
+}> {
+  const open = openAgentBackupRestoreOperation;
+  const inventoryDigest = agentBackupObjectInventoryDigest;
+  if (!dbWrite || !open || !inventoryDigest) {
+    throw new Error("real PostgreSQL harness was not initialized");
+  }
+  await dbWrite
+    .insert(agentBackupCatalogAuthorities)
+    .values({ organization_id: ORG_ID, agent_id: AGENT_ID })
+    .onConflictDoNothing();
+  const [catalog] = await dbWrite
+    .select({ revision: agentBackupCatalogAuthorities.catalog_revision })
+    .from(agentBackupCatalogAuthorities)
+    .where(eq(agentBackupCatalogAuthorities.agent_id, AGENT_ID));
+  if (!catalog) throw new Error("restore lock fixture catalogue authority is missing");
+  await dbWrite
+    .insert(agentVaultKeyGenerations)
+    .values({
+      organization_id: ORG_ID,
+      agent_id: AGENT_ID,
+      generation_id: LOCK_VAULT_GENERATION,
+      source_activation_generation: ACTIVATION_GENERATION,
+      supersedes_generation_id: null,
+      format: "kms-aead-vault-passphrase-v1",
+      kms_key_id: `org:${ORG_ID}/lock-order/dek/v1`,
+      kms_key_version: 1n,
+      kms_context: "{}",
+      kms_context_derivation: "elizaos.agent-vault-key.kms-context.v1",
+      wrapped_ciphertext_base64: Buffer.alloc(32, 0x11).toString("base64"),
+      wrapped_nonce_base64: Buffer.alloc(12, 0x22).toString("base64"),
+      wrapped_auth_tag_base64: Buffer.alloc(16, 0x33).toString("base64"),
+      wrapped_envelope_sha256: SHA,
+      authority_receipt_derivation: "elizaos.agent-vault-key.authority-receipt.v1",
+      authority_receipt_digest: RECEIPT_SHA,
+    })
+    .onConflictDoNothing();
+  const firstManifest = await buildLockManifest(LOCK_OPERATION_ONE);
+  const exactObjectInventoryDigest = await inventoryDigest([
+    {
+      component: "database",
+      chunkIndex: 0,
+      contentHmacSha256: SHA,
+      ciphertextSha256: SHA,
+      sizeBytes: 32,
+    },
+  ]);
+  await seedLockBackup({
+    backupId: LOCK_BACKUP_ONE,
+    operationId: LOCK_OPERATION_ONE,
+    manifest: firstManifest,
+    catalogRevision: catalog.revision,
+    objectInventoryDigest: exactObjectInventoryDigest,
+  });
+  if (includeSecondBackup) {
+    await seedLockBackup({
+      backupId: LOCK_BACKUP_TWO,
+      operationId: LOCK_OPERATION_TWO,
+      manifest: await buildLockManifest(LOCK_OPERATION_TWO),
+      catalogRevision: catalog.revision,
+      objectInventoryDigest: exactObjectInventoryDigest,
+    });
+  }
+  await dbWrite.insert(agentBackupRestoreLeases).values({
+    id: LOCK_LEASE_ID,
+    organization_id: ORG_ID,
+    agent_id: AGENT_ID,
+    backup_id: LOCK_BACKUP_ONE,
+    operation_id: LOCK_OPERATION_ONE,
+    activation_generation: ACTIVATION_GENERATION,
+    lifecycle_revision: 0n,
+    expected_manifest_sha256: firstManifest.digest,
+    copy_role: "primary",
+    restore_attempt_id: LOCK_ATTEMPT_ID,
+    owner_id: LOCK_OWNER_ID,
+    generation: LOCK_FENCE,
+    catalog_epoch: catalog.revision,
+    expires_at: new Date(Date.now() + 300_000),
+  });
+  const authority = {
+    organizationId: ORG_ID,
+    agentId: AGENT_ID,
+    backupId: LOCK_BACKUP_ONE,
+    operationId: LOCK_OPERATION_ONE,
+    sourceActivationGeneration: ACTIVATION_GENERATION,
+    sourceLifecycleRevision: "0",
+    expectedManifestSha256: firstManifest.digest,
+    restoreAttemptId: LOCK_ATTEMPT_ID,
+    leaseId: LOCK_LEASE_ID,
+    ownerId: LOCK_OWNER_ID,
+    fencingToken: LOCK_FENCE,
+    catalogEpoch: catalog.revision.toString(),
+    copyRole: "primary" as const,
+  };
+  const opened = await open({ authority, leaseId: LOCK_LEASE_ID });
+  return { operationId: opened.operation.id, authority };
+}
+
 if (!postgres) {
   console.warn(SKIP_REASON);
 } else {
@@ -219,12 +598,14 @@ if (!postgres) {
   process.env.TEST_DATABASE_URL = isolated.dsn;
   process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
   process.env.MOCK_REDIS = "1";
-  const [clientModule, repositoryModule, leaseModule, restoreHistoryModule] = await Promise.all([
-    import("./client"),
-    import("./repositories/agent-backup-catalog"),
-    import("./repositories/agent-backup-restore-lease"),
-    import("./repositories/agent-backup-restore-history"),
-  ]);
+  const [clientModule, repositoryModule, leaseModule, restoreHistoryModule, operationsModule] =
+    await Promise.all([
+      import("./client"),
+      import("./repositories/agent-backup-catalog"),
+      import("./repositories/agent-backup-restore-lease"),
+      import("./repositories/agent-backup-restore-history"),
+      import("./repositories/agent-backup-restore-operations"),
+    ]);
   closeDatabaseConnectionsForTests = clientModule.closeDatabaseConnectionsForTests;
   dbWrite = clientModule.dbWrite;
   reserveAgentBackupOperation = repositoryModule.reserveAgentBackupOperation;
@@ -237,6 +618,9 @@ if (!postgres) {
   recordAgentActivationPublication = restoreHistoryModule.recordAgentActivationPublication;
   recordAgentVaultKeySeedReceipt = restoreHistoryModule.recordAgentVaultKeySeedReceipt;
   commitAgentBackupRestore = restoreHistoryModule.commitAgentBackupRestore;
+  openAgentBackupRestoreOperation = operationsModule.openAgentBackupRestoreOperation;
+  claimAgentBackupRestoreOperation = operationsModule.claimAgentBackupRestoreOperation;
+  reserveAgentBackupRestoreTarget = operationsModule.reserveAgentBackupRestoreTarget;
 }
 
 afterAll(async () => {
@@ -267,6 +651,7 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
         agentSandboxBackups,
         agentBackupObjects,
         agentBackupRestoreLeases,
+        agentBackupRestoreOperations,
         agentNodeIncarnationHistories,
         agentActivationPublications,
         agentVaultKeySeedReceipts,
@@ -351,6 +736,9 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
   afterEach(async () => {
     if (!dbWrite) return;
     await dbWrite
+      .delete(agentBackupRestoreOperations)
+      .where(eq(agentBackupRestoreOperations.restore_attempt_id, LOCK_ATTEMPT_ID));
+    await dbWrite
       .update(agentSandboxes)
       .set({
         activation_generation: ACTIVATION_GENERATION,
@@ -378,10 +766,16 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       .where(eq(agentActivationPublications.id, WRITER_PUBLICATION_ID));
     await dbWrite
       .delete(agentBackupRestoreLeases)
-      .where(eq(agentBackupRestoreLeases.id, WRITER_LEASE_ID));
+      .where(inArray(agentBackupRestoreLeases.id, [WRITER_LEASE_ID, LOCK_LEASE_ID]));
     await dbWrite
       .delete(agentVaultKeyBackupBindings)
-      .where(eq(agentVaultKeyBackupBindings.backup_id, WRITER_BACKUP_ID));
+      .where(
+        inArray(agentVaultKeyBackupBindings.backup_id, [
+          WRITER_BACKUP_ID,
+          LOCK_BACKUP_ONE,
+          LOCK_BACKUP_TWO,
+        ]),
+      );
     await dbWrite
       .delete(agentSandboxBackups)
       .where(
@@ -389,6 +783,8 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           WRITER_OPERATION_ID,
           WRITER_RESERVE_ONE,
           WRITER_RESERVE_TWO,
+          LOCK_OPERATION_ONE,
+          LOCK_OPERATION_TWO,
         ]),
       );
     await dbWrite
@@ -396,10 +792,16 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       .where(eq(agentVaultKeyAuthorities.current_generation_id, WRITER_VAULT_GENERATION));
     await dbWrite
       .delete(agentVaultKeyGenerations)
-      .where(eq(agentVaultKeyGenerations.generation_id, WRITER_VAULT_GENERATION));
+      .where(
+        inArray(agentVaultKeyGenerations.generation_id, [
+          WRITER_VAULT_GENERATION,
+          LOCK_VAULT_GENERATION,
+        ]),
+      );
     await dbWrite
       .delete(agentNodeIncarnationHistories)
       .where(eq(agentNodeIncarnationHistories.docker_node_record_id, NODE_RECORD_ID));
+    await dbWrite.delete(dockerNodes).where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
   });
 
   test("reservation replay and actual restore acquisition share backup-before-authority order", async () => {
@@ -555,6 +957,282 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       await capture.query("ROLLBACK");
       if (scheduler) await scheduler;
       await Promise.allSettled([capture.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("operation replay waits on its lease while a claimant waits on the operation", async () => {
+    const open = openAgentBackupRestoreOperation;
+    const claim = claimAgentBackupRestoreOperation;
+    if (!isolatedDsn || !open || !claim) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await seedRestoreOperationLockFixture();
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    let replayResult: Awaited<ReturnType<typeof open>> | undefined;
+    let replayError: unknown;
+    let replay: Promise<void> | undefined;
+    let claimResult: Awaited<ReturnType<typeof claim>> | undefined;
+    let claimError: unknown;
+    let claiming: Promise<void> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query("SELECT id FROM agent_backup_restore_leases WHERE id = $1 FOR UPDATE", [
+        LOCK_LEASE_ID,
+      ]);
+
+      // New order: backup -> operation -> lease -> catalogue. The replay owns
+      // O before it queues for L, so a claimant cannot own O and close the old
+      // C/L/O cycle when the lease holder is released.
+      replay = open({ authority: fixture.authority, leaseId: LOCK_LEASE_ID }).then(
+        (result) => {
+          replayResult = result;
+        },
+        (error: unknown) => {
+          replayError = error;
+        },
+      );
+      const replayPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+      claiming = claim({
+        operationId: fixture.operationId,
+        ownerId: LOCK_OWNER_ID,
+        claimMs: 60_000,
+      }).then(
+        (result) => {
+          claimResult = result;
+        },
+        (error: unknown) => {
+          claimError = error;
+        },
+      );
+      const claimPid = await waitUntilBlockedBy(observer, replayPid);
+      expect(claimPid).not.toBe(replayPid);
+
+      await blocker.query("COMMIT");
+      await Promise.all([replay, claiming]);
+
+      expect(postgresErrorCode(replayError)).not.toBe("40P01");
+      expect(postgresErrorCode(claimError)).not.toBe("40P01");
+      if (replayError) throw replayError;
+      if (claimError) throw claimError;
+      expect(replayResult?.replayed).toBe(true);
+      expect(replayResult?.operation.id).toBe(fixture.operationId);
+      expect(claimResult?.operation.id).toBe(fixture.operationId);
+      expect(claimResult?.operation.claim_owner).toBe(LOCK_OWNER_ID);
+      expect(claimResult?.operation.claim_generation).toBe(claimResult?.claimGeneration);
+    } finally {
+      await blocker.query("ROLLBACK");
+      if (replay) await replay;
+      if (claiming) await claiming;
+      await Promise.allSettled([blocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("divergent restore-attempt replay reaches catalogue without waiting on another backup lease", async () => {
+    const open = openAgentBackupRestoreOperation;
+    const acquire = acquireAgentBackupRestoreLease;
+    if (!isolatedDsn || !open || !acquire) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await seedRestoreOperationLockFixture(true);
+    const secondManifest = await buildLockManifest(LOCK_OPERATION_TWO);
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    let acquisitionResult: Awaited<ReturnType<typeof acquire>> | undefined;
+    let acquisitionError: unknown;
+    let acquisition: Promise<void> | undefined;
+    let replayResult: Awaited<ReturnType<typeof open>> | undefined;
+    let replayError: unknown;
+    let replay: Promise<void> | undefined;
+    try {
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query(
+        "SELECT organization_id FROM agent_backup_catalog_authorities " +
+          "WHERE organization_id = $1 AND agent_id = $2 FOR UPDATE",
+        [ORG_ID, AGENT_ID],
+      );
+
+      // Queue the divergent B2 acquisition on C first. It must not subsequently
+      // wait on L1, which belongs to B1 despite sharing the restore-attempt id.
+      acquisition = acquire({
+        organizationId: ORG_ID,
+        backupId: LOCK_BACKUP_TWO,
+        operationId: LOCK_OPERATION_TWO,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        sourceLifecycleRevision: "0",
+        expectedManifestSha256: secondManifest.digest,
+        copyRole: "primary",
+        restoreAttemptId: LOCK_ATTEMPT_ID,
+        ownerId: LOCK_OWNER_ID,
+        fencingToken: LOCK_FENCE,
+        leaseMs: 60_000,
+      }).then(
+        (result) => {
+          acquisitionResult = result;
+        },
+        (error: unknown) => {
+          acquisitionError = error;
+        },
+      );
+      const acquisitionPid = await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+
+      // The B1 replay owns L1 before it joins the C queue behind B2. With the
+      // old org+attempt FOR UPDATE, B2 then waited on L1 and closed C <-> L1.
+      replay = open({ authority: fixture.authority, leaseId: LOCK_LEASE_ID }).then(
+        (result) => {
+          replayResult = result;
+        },
+        (error: unknown) => {
+          replayError = error;
+        },
+      );
+      // PostgreSQL reports the earlier catalogue waiter as the replay's soft
+      // blocker, rather than reporting the row holder twice. This exact queue
+      // is the old cycle's first half: replay already owns L1, then waits on C
+      // behind the divergent acquisition.
+      const replayPid = await waitUntilBlockedBy(observer, acquisitionPid);
+      expect(replayPid).not.toBe(acquisitionPid);
+
+      await blocker.query("COMMIT");
+      await Promise.all([acquisition, replay]);
+
+      expect(postgresErrorCode(acquisitionError)).not.toBe("40P01");
+      expect(postgresErrorCode(replayError)).not.toBe("40P01");
+      expect(acquisitionResult).toBeUndefined();
+      expect(String(acquisitionError)).toContain("Restore attempt replay authority mismatch");
+      if (replayError) throw replayError;
+      expect(replayResult?.replayed).toBe(true);
+      expect(replayResult?.operation.id).toBe(fixture.operationId);
+    } finally {
+      await blocker.query("ROLLBACK");
+      if (acquisition) await acquisition;
+      if (replay) await replay;
+      await Promise.allSettled([blocker.end(), observer.end()]);
+    }
+  }, 30_000);
+
+  test("target reservation reaches catalogue only after its exact node lock", async () => {
+    const claim = claimAgentBackupRestoreOperation;
+    const reserveTarget = reserveAgentBackupRestoreTarget;
+    if (!isolatedDsn || !dbWrite || !claim || !reserveTarget) {
+      throw new Error("real PostgreSQL harness was not initialized");
+    }
+    const fixture = await seedRestoreOperationLockFixture(true);
+    await dbWrite.insert(dockerNodes).values({
+      id: LOCK_TARGET_NODE_RECORD_ID,
+      node_id: "restore-lock-target",
+      hostname: "restore-lock-target.example.test",
+      capacity: 2,
+      allocated_count: 0,
+      enabled: true,
+      status: "healthy",
+      placement_state: "open",
+      host_key_fingerprint: "SHA256:restore-lock-target-host-key",
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      node_incarnation: LOCK_TARGET_NODE_INCARNATION,
+      metadata: {},
+    });
+    await dbWrite.insert(agentNodeIncarnationHistories).values({
+      docker_node_record_id: LOCK_TARGET_NODE_RECORD_ID,
+      node_id: "restore-lock-target",
+      node_incarnation: LOCK_TARGET_NODE_INCARNATION,
+      fleet_kind: "robot",
+      infrastructure_provider: "hetzner",
+      provider_server_id: null,
+      host_key_fingerprint: "SHA256:restore-lock-target-host-key",
+    });
+    const claimed = await claim({
+      operationId: fixture.operationId,
+      ownerId: LOCK_OWNER_ID,
+      claimMs: 60_000,
+    });
+    const blocker = new Client({ connectionString: isolatedDsn });
+    const observer = new Client({ connectionString: isolatedDsn });
+    await Promise.all([blocker.connect(), observer.connect()]);
+    let reservationResult: Awaited<ReturnType<typeof reserveTarget>> | undefined;
+    let reservationError: unknown;
+    let reservation: Promise<void> | undefined;
+    let blockerError: unknown;
+    let blockerBackupId: string | undefined;
+    let blockerCatalogRevision: string | undefined;
+    try {
+      await blocker.query("BEGIN");
+      const blockerPid = await blocker.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+      await blocker.query("SELECT id FROM docker_nodes WHERE id = $1 FOR UPDATE", [
+        LOCK_TARGET_NODE_RECORD_ID,
+      ]);
+
+      reservation = reserveTarget({
+        operationId: fixture.operationId,
+        ownerId: LOCK_OWNER_ID,
+        claimGeneration: claimed.claimGeneration,
+        targetNodeRecordId: LOCK_TARGET_NODE_RECORD_ID,
+        targetNodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
+      }).then(
+        (result) => {
+          reservationResult = result;
+        },
+        (error: unknown) => {
+          reservationError = error;
+        },
+      );
+      await waitUntilBlockedBy(observer, blockerPid.rows[0]!.pid);
+
+      // This independent B2 writer deliberately owns N before it follows
+      // B2 -> C. A reserve implementation that owns C while waiting for N
+      // creates the exact C/N cycle this proof guards against.
+      try {
+        const backup = await blocker.query<{ id: string }>(
+          "SELECT id FROM agent_sandbox_backups WHERE id = $1 FOR UPDATE",
+          [LOCK_BACKUP_TWO],
+        );
+        blockerBackupId = backup.rows[0]?.id;
+        const catalog = await blocker.query<{ catalog_revision: string }>(
+          "SELECT catalog_revision FROM agent_backup_catalog_authorities " +
+            "WHERE organization_id = $1 AND agent_id = $2 FOR UPDATE",
+          [ORG_ID, AGENT_ID],
+        );
+        blockerCatalogRevision = catalog.rows[0]?.catalog_revision;
+      } catch (error) {
+        blockerError = error;
+      }
+      await blocker.query("COMMIT");
+      await reservation;
+
+      expect(postgresErrorCode(blockerError)).not.toBe("40P01");
+      expect(postgresErrorCode(reservationError)).not.toBe("40P01");
+      if (blockerError) throw blockerError;
+      if (reservationError) throw reservationError;
+      expect(blockerBackupId).toBe(LOCK_BACKUP_TWO);
+      expect(blockerCatalogRevision).toBe(fixture.authority.catalogEpoch);
+      expect(reservationResult?.replayed).toBe(false);
+      expect(reservationResult?.operation.id).toBe(fixture.operationId);
+      expect(reservationResult?.target).toEqual({
+        nodeRecordId: LOCK_TARGET_NODE_RECORD_ID,
+        nodeId: "restore-lock-target",
+        nodeIncarnation: LOCK_TARGET_NODE_INCARNATION,
+        imageDigest: `sha256:${SHA}`,
+      });
+      expect(reservationResult?.operation.expected_node_record_id).toBe(LOCK_TARGET_NODE_RECORD_ID);
+      expect(reservationResult?.operation.expected_node_incarnation).toBe(
+        LOCK_TARGET_NODE_INCARNATION,
+      );
+      expect(reservationResult?.operation.expected_image_digest).toBe(`sha256:${SHA}`);
+      const [targetNode] = await dbWrite
+        .select({ allocatedCount: dockerNodes.allocated_count })
+        .from(dockerNodes)
+        .where(eq(dockerNodes.id, LOCK_TARGET_NODE_RECORD_ID));
+      expect(targetNode?.allocatedCount).toBe(1);
+    } finally {
+      await blocker.query("ROLLBACK");
+      if (reservation) await reservation;
+      await Promise.allSettled([blocker.end(), observer.end()]);
     }
   }, 30_000);
 
@@ -863,7 +1541,10 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
       sourceProviderHandle: "container-generation-lock",
       sourceContainerId: SOURCE_CONTAINER_ID,
       retentionReason: "schedule" as const,
-      retentionUntil: new Date("2020-01-01T00:00:00.000Z"),
+      // The sanity acquisition below must start from a genuinely protected,
+      // non-expired backup. The race installs its short database-clock
+      // retention window explicitly after releasing that sanity lease.
+      retentionUntil: new Date("2100-01-01T00:00:00.000Z"),
     };
     const backup = await reserve(input);
     const objectAuthority = {
@@ -941,7 +1622,6 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           operation_key_bundle_local_receipt_digest: RECEIPT_SHA,
           vault_key_generation_id: EXPIRATION_VAULT_GENERATION_ID,
           vault_key_authority_receipt_digest: RECEIPT_SHA,
-          retention_until: sql`clock_timestamp() + INTERVAL '1 hour'`,
         })
         .where(eq(agentSandboxBackups.id, backup.id));
       await tx.insert(agentVaultKeyBackupBindings).values({
@@ -1124,7 +1804,14 @@ realPostgres("restore authority PostgreSQL lock proofs", () => {
           lifecycle_generation uuid NOT NULL, lifecycle_revision numeric(20, 0) NOT NULL,
           manifest_digest text NOT NULL, manifest_version integer, catalog_state text,
           vault_key_generation_id uuid, vault_key_authority_receipt_digest text,
-          UNIQUE (id, catalog_organization_id, catalog_agent_id)
+          CONSTRAINT agent_sandbox_backups_catalog_chain_identity_unique
+            UNIQUE (id, catalog_organization_id, catalog_agent_id)
+        );
+        CREATE TABLE agent_sandboxes (
+          id uuid PRIMARY KEY,
+          organization_id uuid NOT NULL REFERENCES organizations(id),
+          activation_backup_id uuid,
+          activation_consent_head_backup_id uuid
         );
         INSERT INTO organizations VALUES ('${CLOCK_ORG_ID}');
         INSERT INTO agent_backup_catalog_authorities

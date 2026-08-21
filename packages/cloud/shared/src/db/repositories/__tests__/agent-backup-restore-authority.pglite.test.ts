@@ -3,6 +3,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { ElizaError } from "@elizaos/core";
 import { MemoryKmsAdapter } from "@elizaos/core/security/kms";
 import {
   AGENT_BACKUP_MANIFEST_FORMAT,
@@ -30,6 +33,7 @@ import {
   agentBackupCatalogAuthorities,
   agentBackupObjects,
   agentBackupRestoreLeases,
+  agentBackupRestoreOperations,
 } from "../../schemas/agent-backup-catalog";
 import {
   agentActivationPublications,
@@ -67,10 +71,18 @@ import {
   renewAgentBackupRestoreLease,
 } from "../agent-backup-restore-lease";
 import {
+  claimAgentBackupRestoreOperation,
+  openAgentBackupRestoreOperation,
+  reserveAgentBackupRestoreTarget,
+} from "../agent-backup-restore-operations";
+import {
+  AgentVaultKeySecretHandle,
   bindAgentBackupVaultKeyGeneration,
   createOrRotateAgentVaultKeyGeneration,
   loadCurrentAgentVaultKeyAuthority,
+  withAgentBackupRestoreVaultPassphrase,
 } from "../agent-vault-key-authority";
+import { dockerNodesRepository } from "../docker-nodes";
 
 const TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000d001";
@@ -85,6 +97,9 @@ const USER_ID = "00000000-0000-4000-8000-00000000d032";
 const TARGET_ACTIVATION_GENERATION = "00000000-0000-4000-8000-00000000d042";
 const TARGET_NODE_RECORD_ID = "00000000-0000-4000-8000-00000000d043";
 const TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d044";
+const REARMED_TARGET_NODE_INCARNATION = "00000000-0000-4000-8000-00000000d065";
+const TARGET_NODE_CREATED_AT = new Date("2026-08-19T23:59:59.000Z");
+const TARGET_NODE_ATTESTED_AT = new Date("2026-08-20T00:00:00.000Z");
 const ACTIVATION_PUBLICATION_ID = "00000000-0000-4000-8000-00000000d045";
 const SEED_RECEIPT_ID = "00000000-0000-4000-8000-00000000d046";
 const FINAL_RECEIPT_ID = "00000000-0000-4000-8000-00000000d047";
@@ -99,6 +114,36 @@ let schemaFailure = "";
 
 function isZeroized(value: Uint8Array | null): boolean {
   return value !== null && value.every((byte) => byte === 0);
+}
+
+function expectTokensInOrder(source: string, tokens: readonly string[]): void {
+  let previous = -1;
+  for (const token of tokens) {
+    const index = source.indexOf(token);
+    expect(index).toBeGreaterThan(previous);
+    previous = index;
+  }
+}
+
+function captureVaultRawKeyAtRelease(): {
+  readonly rawKey: Uint8Array | null;
+  restore: () => void;
+} {
+  const originalRelease = AgentVaultKeySecretHandle.prototype.release;
+  let capturedRawKey: Uint8Array | null = null;
+  const releaseSpy = spyOn(AgentVaultKeySecretHandle.prototype, "release").mockImplementation(
+    function (this: AgentVaultKeySecretHandle) {
+      const rawKey = Reflect.get(this, "rawKey");
+      capturedRawKey = rawKey instanceof Uint8Array ? rawKey : null;
+      originalRelease.call(this);
+    },
+  );
+  return {
+    get rawKey() {
+      return capturedRawKey;
+    },
+    restore: () => releaseSpy.mockRestore(),
+  };
 }
 
 function sha256Hex(value: Uint8Array | string): string {
@@ -574,6 +619,129 @@ async function insertExactProtectedSource(vaultAuthority: {
   return { exact, binding };
 }
 
+async function acquireVaultPassphraseFixture(
+  entropyByte = 0x43,
+  options: Readonly<{ reserveTarget?: boolean }> = {},
+) {
+  const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x93) });
+  const generation = await createOrRotateAgentVaultKeyGeneration(
+    {
+      organizationId: ORG_ID,
+      agentId: AGENT_ID,
+      generationId: VAULT_GENERATION,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      expectedCurrentGenerationId: null,
+    },
+    {
+      kmsClient: kms,
+      randomBytes: (size) => new Uint8Array(size).fill(entropyByte),
+    },
+  );
+  generation.secret.release();
+  const { exact } = await insertExactProtectedSource(generation.authority);
+  const acquired = await acquireAgentBackupRestoreLease({
+    organizationId: ORG_ID,
+    backupId: BACKUP_ID,
+    operationId: OPERATION_ID,
+    sourceActivationGeneration: ACTIVATION_GENERATION,
+    sourceLifecycleRevision: "7",
+    expectedManifestSha256: exact.manifest.integrity.manifestSha256,
+    copyRole: "primary",
+    restoreAttemptId: RESTORE_ATTEMPT_ID,
+    ownerId: "vault-restore-worker",
+    leaseMs: 60_000,
+  });
+  const opened = await openAgentBackupRestoreOperation({
+    authority: acquired.authority,
+    leaseId: acquired.authority.leaseId,
+  });
+  const claimed = await claimAgentBackupRestoreOperation({
+    operationId: opened.operation.id,
+    ownerId: acquired.authority.ownerId,
+    claimMs: 60_000,
+  });
+  await dbWrite.insert(dockerNodes).values({
+    id: TARGET_NODE_RECORD_ID,
+    node_id: "vault-restore-target-node",
+    hostname: "vault-restore-target-node.internal",
+    capacity: 2,
+    enabled: true,
+    placement_state: "open",
+    status: "healthy",
+    host_key_fingerprint: `SHA256:${SHA}`,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    node_incarnation: TARGET_NODE_INCARNATION,
+    metadata: {},
+    created_at: TARGET_NODE_CREATED_AT,
+  });
+  await dbWrite.insert(agentNodeIncarnationHistories).values({
+    docker_node_record_id: TARGET_NODE_RECORD_ID,
+    node_id: "vault-restore-target-node",
+    node_incarnation: TARGET_NODE_INCARNATION,
+    fleet_kind: "robot",
+    infrastructure_provider: "hetzner",
+    provider_server_id: null,
+    host_key_fingerprint: `SHA256:${SHA}`,
+    attested_at: TARGET_NODE_ATTESTED_AT,
+  });
+  if (options.reserveTarget !== false) {
+    await reserveAgentBackupRestoreTarget({
+      operationId: opened.operation.id,
+      ownerId: acquired.authority.ownerId,
+      claimGeneration: claimed.claimGeneration,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+    });
+  }
+  return {
+    kms,
+    generation,
+    operation: claimed.operation,
+    input: {
+      ...acquired.authority,
+      restoreOperationId: opened.operation.id,
+      restoreClaimGeneration: claimed.claimGeneration,
+      targetNodeRecordId: TARGET_NODE_RECORD_ID,
+      targetNodeIncarnation: TARGET_NODE_INCARNATION,
+      vaultKeyGenerationId: generation.authority.generationId,
+      vaultKeyAuthorityReceiptDigest: generation.authority.receiptDigest,
+    },
+  } as const;
+}
+
+async function rearmVaultTargetNodeThroughIncarnation(
+  nextIncarnation: string,
+  timing: "later" | "backdated" = "later",
+): Promise<void> {
+  const [originalHistory] = await dbWrite
+    .select()
+    .from(agentNodeIncarnationHistories)
+    .where(eq(agentNodeIncarnationHistories.docker_node_record_id, TARGET_NODE_RECORD_ID));
+  if (!originalHistory) throw new Error("vault target history fixture is missing");
+  await dbWrite
+    .update(dockerNodes)
+    .set({ node_incarnation: nextIncarnation })
+    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+  await dbWrite.insert(agentNodeIncarnationHistories).values({
+    docker_node_record_id: TARGET_NODE_RECORD_ID,
+    node_id: originalHistory.node_id,
+    node_incarnation: nextIncarnation,
+    fleet_kind: originalHistory.fleet_kind,
+    infrastructure_provider: originalHistory.infrastructure_provider,
+    provider_server_id: originalHistory.provider_server_id,
+    host_key_fingerprint: originalHistory.host_key_fingerprint,
+    attested_at: new Date(
+      originalHistory.attested_at.getTime() + (timing === "backdated" ? -1_000 : 1_000),
+    ),
+  });
+  await dbWrite
+    .update(dockerNodes)
+    .set({ node_incarnation: TARGET_NODE_INCARNATION })
+    .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+}
+
 beforeAll(async () => {
   try {
     const { apply } = await pushSchema(
@@ -586,6 +754,7 @@ beforeAll(async () => {
         agentBackupCatalogAuthorities,
         agentBackupObjects,
         agentBackupRestoreLeases,
+        agentBackupRestoreOperations,
         dockerNodes,
         agentNodeIncarnationHistories,
         agentActivationPublications,
@@ -598,6 +767,7 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    // error-policy:J1 setup failure is retained for the test boundary assertion.
   } catch (error) {
     schemaFailure = error instanceof Error ? error.message : String(error);
   }
@@ -610,6 +780,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentActivationPublications);
   await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(agentVaultKeyBackupBindings);
+  await dbWrite.delete(agentBackupRestoreOperations);
   await dbWrite.delete(agentBackupRestoreLeases);
   await dbWrite.delete(agentBackupObjects);
   await dbWrite.delete(agentSandboxBackups);
@@ -734,27 +905,66 @@ describe("strict restore catalogue authority", () => {
       throw new Error("simulated KMS failure");
     });
     try {
-      await expect(
-        createOrRotateAgentVaultKeyGeneration(
-          {
-            organizationId: ORG_ID,
-            agentId: AGENT_ID,
-            generationId: VAULT_GENERATION,
-            sourceActivationGeneration: ACTIVATION_GENERATION,
-            expectedCurrentGenerationId: null,
-          },
-          {
-            kmsClient: kms,
-            randomBytes: (size) => new Uint8Array(size).fill(0x45),
-          },
-        ),
-      ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_CREATE_FAILED" });
+      const attempt = createOrRotateAgentVaultKeyGeneration(
+        {
+          organizationId: ORG_ID,
+          agentId: AGENT_ID,
+          generationId: VAULT_GENERATION,
+          sourceActivationGeneration: ACTIVATION_GENERATION,
+          expectedCurrentGenerationId: null,
+        },
+        {
+          kmsClient: kms,
+          randomBytes: (size) => new Uint8Array(size).fill(0x45),
+        },
+      );
+      await expect(attempt).rejects.toBeInstanceOf(ElizaError);
+      await expect(attempt).rejects.toMatchObject({
+        code: "AGENT_VAULT_KEY_CREATE_FAILED",
+        cause: expect.any(Error),
+      });
       expect(borrowedPlaintext).not.toBeNull();
       expect(isZeroized(borrowedPlaintext)).toBe(true);
       expect(await dbWrite.select().from(agentVaultKeyGenerations)).toHaveLength(0);
     } finally {
       encryptSpy.mockRestore();
     }
+  });
+
+  test("rejects non-canonical restore authority inputs with typed field context", async () => {
+    const input = {
+      organizationId: ORG_ID,
+      backupId: BACKUP_ID,
+      operationId: OPERATION_ID,
+      sourceActivationGeneration: ACTIVATION_GENERATION,
+      sourceLifecycleRevision: "7",
+      expectedManifestSha256: SHA,
+      copyRole: "primary" as const,
+      restoreAttemptId: "00000000-0000-4000-8000-00000000d010",
+      ownerId: "restore-worker",
+      leaseMs: 60_000,
+    };
+    const uppercaseTenant = acquireAgentBackupRestoreLease({
+      ...input,
+      organizationId: ORG_ID.toUpperCase(),
+    });
+    await expect(uppercaseTenant).rejects.toBeInstanceOf(ElizaError);
+    await expect(uppercaseTenant).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "organizationId" },
+    });
+    await expect(
+      acquireAgentBackupRestoreLease({ ...input, expectedManifestSha256: SHA.toUpperCase() }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "expectedManifestSha256" },
+    });
+    await expect(
+      acquireAgentBackupRestoreLease({ ...input, ownerId: "x".repeat(256) }),
+    ).rejects.toMatchObject({
+      code: "AGENT_BACKUP_RESTORE_INPUT_INVALID",
+      context: { field: "ownerId" },
+    });
   });
 
   for (const state of ["primary_verified", "secondary_pending"] as const) {
@@ -1014,7 +1224,7 @@ describe("strict restore catalogue authority", () => {
     expect(releaseReplay.released_at).toEqual(released.released_at);
   });
 
-  test("replays one immutable seed-to-activation receipt chain and fences boot ABA", async () => {
+  test("replays one immutable seed-to-activation receipt chain and fences current boot drift", async () => {
     const kms = new MemoryKmsAdapter({ seed: () => new Uint8Array(32).fill(0x94) });
     const generation = await createOrRotateAgentVaultKeyGeneration(
       {
@@ -1128,6 +1338,8 @@ describe("strict restore catalogue authority", () => {
       .update(dockerNodes)
       .set({ node_incarnation: TARGET_NODE_INCARNATION })
       .where(eq(dockerNodes.id, TARGET_NODE_RECORD_ID));
+    // This direct mutation did not publish a B history. Journaled A -> B -> A
+    // is covered separately and remains rejected after the mutable row rewinds.
 
     const acquired = await acquireAgentBackupRestoreLease({
       organizationId: ORG_ID,
@@ -1366,4 +1578,458 @@ describe("strict restore catalogue authority", () => {
       digestSpy.mockRestore();
     }
   }, 10_000);
+
+  test("locks vault target authority in backup-to-catalogue order before the DB clock", () => {
+    const source = readFileSync(
+      join(import.meta.dir, "..", "agent-vault-key-authority.ts"),
+      "utf8",
+    );
+    const proof = source.slice(
+      source.indexOf("async function proveAgentBackupRestoreVaultTargetAuthority"),
+      source.indexOf("export async function withAgentBackupRestoreVaultPassphrase"),
+    );
+    expectTokensInOrder(proof, [
+      ".from(agentSandboxBackups)",
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      ".from(dockerNodes)",
+      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "lockAgentBackupCatalogAuthority(",
+      "readPostLockDatabaseNow(",
+    ]);
+  });
+
+  test("unwraps the manifest-retained vault generation after current authority rotates", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x47);
+    const rotated = await createOrRotateAgentVaultKeyGeneration(
+      {
+        organizationId: ORG_ID,
+        agentId: AGENT_ID,
+        generationId: ROTATED_VAULT_GENERATION,
+        sourceActivationGeneration: ACTIVATION_GENERATION,
+        expectedCurrentGenerationId: VAULT_GENERATION,
+      },
+      {
+        kmsClient: fixture.kms,
+        randomBytes: (size) => new Uint8Array(size).fill(0x48),
+      },
+    );
+    rotated.secret.release();
+    let borrowedPassphrase: Uint8Array | null = null;
+
+    const passphraseText = await withAgentBackupRestoreVaultPassphrase(
+      fixture.input,
+      (passphrase) => {
+        borrowedPassphrase = passphrase;
+        return Buffer.from(passphrase).toString("ascii");
+      },
+      { kmsClient: fixture.kms },
+    );
+
+    expect(passphraseText).toBe("47".repeat(32));
+    expect(isZeroized(borrowedPassphrase)).toBe(true);
+    expect(
+      await loadCurrentAgentVaultKeyAuthority({ organizationId: ORG_ID, agentId: AGENT_ID }),
+    ).toEqual(rotated.authority);
+  });
+
+  test("rejects mismatched source, vault, claim, target, fence, and lease authority before KMS or use", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    const use = () => {
+      useCalls += 1;
+      return undefined;
+    };
+    const mismatches = [
+      { ...fixture.input, expectedManifestSha256: "f".repeat(64) },
+      { ...fixture.input, vaultKeyGenerationId: ROTATED_VAULT_GENERATION },
+      { ...fixture.input, vaultKeyAuthorityReceiptDigest: "f".repeat(64) },
+      { ...fixture.input, fencingToken: STALE_VAULT_GENERATION },
+      { ...fixture.input, restoreOperationId: "00000000-0000-4000-8000-00000000d060" },
+      { ...fixture.input, restoreClaimGeneration: "00000000-0000-4000-8000-00000000d061" },
+      { ...fixture.input, targetNodeRecordId: "00000000-0000-4000-8000-00000000d062" },
+      { ...fixture.input, targetNodeIncarnation: "00000000-0000-4000-8000-00000000d063" },
+    ] as const;
+    try {
+      for (const input of mismatches) {
+        await expect(
+          withAgentBackupRestoreVaultPassphrase(input, use, { kmsClient: fixture.kms }),
+        ).rejects.toBeInstanceOf(Error);
+      }
+      await releaseAgentBackupRestoreLease(fixture.input);
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(fixture.input, use, { kmsClient: fixture.kms }),
+      ).rejects.toThrow("expired, released, or fenced");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("does not call KMS without the exact restore operation and persisted target", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x43, { reserveTarget: false });
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    const use = () => {
+      useCalls += 1;
+    };
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          {
+            ...fixture.input,
+            restoreOperationId: "00000000-0000-4000-8000-00000000d064",
+          },
+          use,
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("operation is missing");
+
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(fixture.input, use, { kmsClient: fixture.kms }),
+      ).rejects.toThrow("lacks its exact complete target authority");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("rejects an invalid remote handoff bound before source proof or KMS", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    try {
+      for (const handoffTimeoutMs of [0, 60_001, 1.5, Number.NaN]) {
+        await expect(
+          withAgentBackupRestoreVaultPassphrase(fixture.input, () => undefined, {
+            kmsClient: fixture.kms,
+            handoffTimeoutMs,
+          }),
+        ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_INPUT_INVALID" });
+      }
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("rejects a backdated target B history before KMS", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    await rearmVaultTargetNodeThroughIncarnation(REARMED_TARGET_NODE_INCARNATION, "backdated");
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("ambiguous multi-incarnation history");
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("fails while incarnation is NULL and resumes after exact host-key CAS re-attestation", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x4a);
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    try {
+      await dockerNodesRepository.invalidateNodeIncarnation({
+        id: fixture.input.targetNodeRecordId,
+        nodeId: "vault-restore-target-node",
+        expectedIncarnation: TARGET_NODE_INCARNATION,
+        expectedHostKeyFingerprint: `SHA256:${SHA}`,
+      });
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("target node record or incarnation was lost");
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+
+      const reattested = await dockerNodesRepository.attestNodeIncarnation({
+        id: fixture.input.targetNodeRecordId,
+        nodeId: "vault-restore-target-node",
+        expectedIncarnation: null,
+        expectedHostKeyFingerprint: `SHA256:${SHA}`,
+        observedIncarnation: TARGET_NODE_INCARNATION,
+      });
+      expect(reattested.id).toBe(TARGET_NODE_RECORD_ID);
+      const result = await withAgentBackupRestoreVaultPassphrase(
+        fixture.input,
+        (passphrase) => {
+          useCalls += 1;
+          return Buffer.from(passphrase).toString("ascii");
+        },
+        { kmsClient: fixture.kms },
+      );
+      expect(result).toBe("4a".repeat(32));
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(1);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("revalidates after KMS and zeroizes plaintext when the lease is lost during decrypt", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await releaseAgentBackupRestoreLease(fixture.input);
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("expired, released, or fenced");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+      secretRelease.restore();
+    }
+  });
+
+  test("revalidates after KMS and zeroizes plaintext when the restore claim is lost", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await dbWrite
+          .update(agentBackupRestoreOperations)
+          .set({ claim_owner: null, claim_generation: null, claim_expires_at: null })
+          .where(eq(agentBackupRestoreOperations.id, fixture.input.restoreOperationId));
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("claim is not live");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+      secretRelease.restore();
+    }
+  });
+
+  test("revalidates after KMS and zeroizes plaintext when the target incarnation is lost", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await dbWrite
+          .update(dockerNodes)
+          .set({ node_incarnation: "00000000-0000-4000-8000-00000000d065" })
+          .where(eq(dockerNodes.id, fixture.input.targetNodeRecordId));
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("target node record or incarnation was lost");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+      secretRelease.restore();
+    }
+  });
+
+  test("revalidates after KMS and zeroizes plaintext after a backdated B history", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const secretRelease = captureVaultRawKeyAtRelease();
+    const originalDecrypt = fixture.kms.decrypt.bind(fixture.kms);
+    let borrowedPlaintext: Uint8Array | null = null;
+    let useCalls = 0;
+    const decryptSpy = spyOn(fixture.kms, "decrypt").mockImplementation(
+      async (keyId, ciphertext, nonce, authTag, aad, keyVersion) => {
+        const plaintext = await originalDecrypt(keyId, ciphertext, nonce, authTag, aad, keyVersion);
+        borrowedPlaintext = plaintext;
+        await rearmVaultTargetNodeThroughIncarnation(REARMED_TARGET_NODE_INCARNATION, "backdated");
+        return plaintext;
+      },
+    );
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms },
+        ),
+      ).rejects.toThrow("ambiguous multi-incarnation history");
+
+      expect(decryptSpy).toHaveBeenCalledTimes(1);
+      expect(useCalls).toBe(0);
+      expect(isZeroized(borrowedPlaintext)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      decryptSpy.mockRestore();
+      secretRelease.restore();
+    }
+  });
+
+  test("requires lease and claim authority to cover the configured remote handoff bound", async () => {
+    const fixture = await acquireVaultPassphraseFixture();
+    const decryptSpy = spyOn(fixture.kms, "decrypt");
+    let useCalls = 0;
+    const shortAuthorityExpiry = new Date(Date.now() + 5_000);
+    await dbWrite
+      .update(agentBackupRestoreLeases)
+      .set({ expires_at: shortAuthorityExpiry })
+      .where(eq(agentBackupRestoreLeases.id, fixture.input.leaseId));
+    await dbWrite
+      .update(agentBackupRestoreOperations)
+      .set({ claim_expires_at: shortAuthorityExpiry })
+      .where(eq(agentBackupRestoreOperations.id, fixture.input.restoreOperationId));
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          () => {
+            useCalls += 1;
+          },
+          { kmsClient: fixture.kms, handoffTimeoutMs: 10_000 },
+        ),
+      ).rejects.toThrow("do not cover the bounded remote handoff plus authority margin");
+      expect(decryptSpy).toHaveBeenCalledTimes(0);
+      expect(useCalls).toBe(0);
+    } finally {
+      decryptSpy.mockRestore();
+    }
+  });
+
+  test("aborts a timed-out remote handoff and zeroizes borrowed secret material", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x4b);
+    const secretRelease = captureVaultRawKeyAtRelease();
+    let borrowedPassphrase: Uint8Array | null = null;
+    let handoffSignal: AbortSignal | null = null;
+    let handoffStartedAt: number | null = null;
+    const callbackFinished = Promise.withResolvers<void>();
+    try {
+      await expect(
+        withAgentBackupRestoreVaultPassphrase(
+          fixture.input,
+          async (passphrase, signal) => {
+            handoffStartedAt = Date.now();
+            borrowedPassphrase = passphrase;
+            handoffSignal = signal;
+            await new Promise<void>((resolve) => {
+              signal.addEventListener("abort", () => resolve(), { once: true });
+            });
+            await Bun.sleep(1);
+            callbackFinished.resolve();
+          },
+          { kmsClient: fixture.kms, handoffTimeoutMs: 10 },
+        ),
+      ).rejects.toMatchObject({ code: "AGENT_VAULT_KEY_HANDOFF_TIMEOUT" });
+      await callbackFinished.promise;
+      expect(handoffStartedAt).not.toBeNull();
+      expect(Date.now() - (handoffStartedAt ?? 0)).toBeLessThan(1_000);
+      expect(handoffSignal?.aborted).toBe(true);
+      expect(isZeroized(borrowedPassphrase)).toBe(true);
+      expect(isZeroized(secretRelease.rawKey)).toBe(true);
+    } finally {
+      secretRelease.restore();
+    }
+  });
+
+  test("zeroizes callback passphrases on success and throw while preserving the callback error", async () => {
+    const fixture = await acquireVaultPassphraseFixture(0x49);
+    let successfulPassphrase: Uint8Array | null = null;
+
+    const result = await withAgentBackupRestoreVaultPassphrase(
+      fixture.input,
+      (passphrase) => {
+        successfulPassphrase = passphrase;
+        return Buffer.from(passphrase).toString("ascii");
+      },
+      { kmsClient: fixture.kms },
+    );
+
+    expect(result).toBe("49".repeat(32));
+    expect(isZeroized(successfulPassphrase)).toBe(true);
+
+    const callbackError = new Error("vault restore callback failed");
+    let failedPassphrase: Uint8Array | null = null;
+    let thrown: unknown;
+    try {
+      await withAgentBackupRestoreVaultPassphrase(
+        fixture.input,
+        (passphrase) => {
+          failedPassphrase = passphrase;
+          throw callbackError;
+        },
+        { kmsClient: fixture.kms },
+      );
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBe(callbackError);
+    expect(isZeroized(failedPassphrase)).toBe(true);
+  });
 });
