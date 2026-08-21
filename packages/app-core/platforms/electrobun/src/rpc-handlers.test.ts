@@ -55,6 +55,20 @@ function createDesktopFixture() {
 }
 
 describe("window RPC handlers", () => {
+  it("reveals the owning managed window after the renderer reaches its ready shell", async () => {
+    const desktop = createDesktopFixture().desktop;
+    const revealCurrentWindow = vi.fn(async () => {});
+    const handlers = buildWindowRpcHandlers({
+      desktop,
+      appName: "Test App",
+      revealCurrentWindow,
+    });
+
+    await handlers.desktopRendererReady();
+
+    expect(revealCurrentWindow).toHaveBeenCalledTimes(1);
+  });
+
   it("closes the owning managed window when a per-window closer is provided", async () => {
     const desktop = createDesktopFixture().desktop;
     const closeCurrentWindow = vi.fn(async () => {});

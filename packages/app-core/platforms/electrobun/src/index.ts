@@ -1813,6 +1813,7 @@ const MAX_RPC_REQUEST_TIME_MS = 600_000;
 function createDesktopRpc(
   label: string,
   closeCurrentWindow?: () => void | Promise<void>,
+  revealCurrentWindow?: () => void | Promise<void>,
 ): {
   rpc: ElizaDesktopRpc;
   sendToWebview: SendToWebview;
@@ -1859,6 +1860,7 @@ function createDesktopRpc(
         sendToWebview,
         shellControllerEndpoint: shellSyncEndpoint,
         closeCurrentWindow,
+        revealCurrentWindow,
       }) as BunRpcRequestsHandlers,
     },
   });
@@ -2874,9 +2876,15 @@ async function main(): Promise<void> {
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
       let managedWindow: (BrowserWindow & ManagedWindowLike) | undefined;
-      const { rpc, releaseShellSync } = createDesktopRpc("surface", () => {
-        managedWindow?.close();
-      });
+      const { rpc, releaseShellSync } = createDesktopRpc(
+        "surface",
+        () => {
+          managedWindow?.close();
+        },
+        () => {
+          managedWindow?.show?.();
+        },
+      );
       const window = createElectrobunBrowserWindow({
         ...options,
         rpc,

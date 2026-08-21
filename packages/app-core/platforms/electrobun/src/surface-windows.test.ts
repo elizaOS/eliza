@@ -25,6 +25,8 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly focus = vi.fn(() => {
     this.emit("focus");
   });
+  readonly show = vi.fn();
+  readonly hide = vi.fn();
   readonly maximize = vi.fn();
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
@@ -193,6 +195,7 @@ describe("SurfaceWindowManager app windows", () => {
       url: "http://127.0.0.1:5173/?desktopSurface=workspace",
       titleBarStyle: "hiddenInset",
       transparent: false,
+      hidden: true,
     });
     expect(fixture.created[0]?.focus).toHaveBeenCalledTimes(1);
     expect(fixture.manager.listWindows("workspace")).toEqual([first]);
@@ -211,6 +214,7 @@ describe("SurfaceWindowManager app windows", () => {
     const window = fixture.created[0];
     await fixture.manager.openWorkspaceWindow("/notes", undefined, true);
 
+    expect(window?.hide).toHaveBeenCalledTimes(1);
     expect(window?.webview.loadURL).toHaveBeenCalledWith(
       "http://127.0.0.1:5173/notes?desktopSurface=workspace",
     );

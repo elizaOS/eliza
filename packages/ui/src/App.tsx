@@ -2394,6 +2394,19 @@ function AppContent() {
   // During first-run setup / pairing / startup phases the StartupScreen handles
   // its own gate (bootstrap step), so we skip the check.
   const isCoordinatorReady = startupCoordinator.phase === "ready";
+  useEffect(() => {
+    if (!isCoordinatorReady || typeof window === "undefined") return;
+    if (
+      new URLSearchParams(window.location.search).get("desktopSurface") !==
+      "workspace"
+    ) {
+      return;
+    }
+    void invokeDesktopBridgeRequest<void>({
+      rpcMethod: "desktopRendererReady",
+      ipcChannel: "desktop:rendererReady",
+    });
+  }, [isCoordinatorReady]);
   // The live shell may MOUNT once the backend is reached and the agent boot is
   // underway (first-run-required / starting-runtime / hydrating / ready) —
   // first-turn capability then fades in behind it (see useShellController's

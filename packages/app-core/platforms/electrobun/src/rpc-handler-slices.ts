@@ -66,12 +66,17 @@ export function buildWindowRpcHandlers({
   desktop,
   appName,
   closeCurrentWindow,
+  revealCurrentWindow,
 }: {
   desktop: WindowRpcDesktop;
   appName: string;
   closeCurrentWindow?: () => void | Promise<void>;
+  revealCurrentWindow?: () => void | Promise<void>;
 }) {
   return {
+    desktopRendererReady: async () => {
+      await revealCurrentWindow?.();
+    },
     desktopCloseWindow: async () => {
       if (closeCurrentWindow) {
         await closeCurrentWindow();
