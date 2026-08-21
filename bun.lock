@@ -2057,6 +2057,22 @@
         "vitest": "^4.1.10",
       },
     },
+    "plugins/plugin-linear": {
+      "name": "@elizaos/plugin-linear",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@elizaos/cloud-test-mocks": "workspace:*",
+        "@types/node": "^25.0.6",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
+      },
+    },
     "plugins/plugin-local-inference": {
       "name": "@elizaos/plugin-local-inference",
       "version": "2.0.3-beta.7",
@@ -4123,6 +4139,8 @@
     "@elizaos/plugin-inmemorydb": ["@elizaos/plugin-inmemorydb@workspace:plugins/plugin-inmemorydb"],
 
     "@elizaos/plugin-instagram": ["@elizaos/plugin-instagram@workspace:plugins/plugin-instagram"],
+
+    "@elizaos/plugin-linear": ["@elizaos/plugin-linear@workspace:plugins/plugin-linear"],
 
     "@elizaos/plugin-local-inference": ["@elizaos/plugin-local-inference@workspace:plugins/plugin-local-inference"],
 
