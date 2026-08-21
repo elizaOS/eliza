@@ -1,0 +1,79 @@
+/**
+ * Regression for securityStatus provider surrogate-safe truncation (500).
+ */
+
+import { describe, expect, it } from "vitest";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
+
+const DETAILS_LIMIT = 500;
+
+function clampDetails(details: string | undefined): string | undefined {
+	if (details === undefined) return details;
+	const wellFormed = toWellFormedUnicode(details);
+	return truncateWellFormed(wellFormed, DETAILS_LIMIT);
+}
+
+function isWellFormed(value: string): boolean {
+	if (!value) return true;
+	const maybe = value as unknown as { isWellFormed?: () => boolean };
+	if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
+	for (let i = 0; i < value.length; i++) {
+		const code = value.charCodeAt(i);
+		if (code >= 0xd800 && code <= 0xdbff) {
+			const next = value.charCodeAt(i + 1);
+			if (!(next >= 0xdc00 && next <= 0xdfff)) return false;
+			i++;
+		} else if (code >= 0xdc00 && code <= 0xdfff) return false;
+	}
+	return true;
+}
+
+describe("securityStatus provider well-formed", () => {
+	it("backs off astral at 500 boundary (499+fox->499)", () => {
+		const fox = "🦊";
+		const input = `${"a".repeat(499)}${fox}${"b".repeat(20)}`;
+		const out = clampDetails(input) as string;
+		expect(isWellFormed(out)).toBe(true);
+		expect(out.length).toBe(499);
+		expect(out).toBe("a".repeat(499));
+	});
+
+	it("preserves fitting astral at 500 (498+fox intact)", () => {
+		const fox = "🦊";
+		const input = `${"a".repeat(498)}${fox}`;
+		const out = clampDetails(input) as string;
+		expect(isWellFormed(out)).toBe(true);
+		expect(out).toBe(input);
+		expect(out.length).toBe(500);
+	});
+
+	it("sanitizes lone high surrogate", () => {
+		const lone = `detail ${String.fromCharCode(0xd800)} text`;
+		const out = clampDetails(`${lone}${"x".repeat(600)}`) as string;
+		expect(isWellFormed(out)).toBe(true);
+		expect(out.includes("�")).toBe(true);
+	});
+
+	it("short passthrough", () => {
+		const out = clampDetails("short detail");
+		expect(out).toBe("short detail");
+		expect(isWellFormed(out as string)).toBe(true);
+	});
+
+	it("undefined passthrough", () => {
+		expect(clampDetails(undefined)).toBeUndefined();
+	});
+
+	it("sweep around 500 well-formed", () => {
+		const fox = "🦊";
+		for (let n = 495; n <= 505; n++) {
+			const input = `${"x".repeat(n)}${fox}${"y".repeat(20)}`;
+			const out = clampDetails(input) as string;
+			expect(isWellFormed(out)).toBe(true);
+			expect(out.length).toBeLessThanOrEqual(500);
+		}
+	});
+});
