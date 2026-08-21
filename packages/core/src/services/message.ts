@@ -5244,9 +5244,47 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function canonicalJsonValue(value: unknown): string {
+const CANONICAL_JSON_UNBOUNDED = "CANONICAL_JSON_UNBOUNDED";
+const MAX_CANONICAL_JSON_DEPTH = 32;
+const MAX_CANONICAL_JSON_NODES = 4_096;
+
+// Recovered tool-argument JSON is untrusted model output (error-policy:J3) and
+// this walk is recursive, so it needs its own depth/node bounds rather than
+// relying on the caller's parse step — JSON.parse is iterative and happily
+// produces object graphs deep enough to blow the recursive call stack here.
+class CanonicalJsonUnboundedError extends ElizaError {
+	override readonly name = "CanonicalJsonUnboundedError";
+
+	constructor(
+		reason: "depth" | "nodes",
+		context: Record<string, unknown> = {},
+	) {
+		super(`tool-argument JSON is unbounded (${reason})`, {
+			code: CANONICAL_JSON_UNBOUNDED,
+			context: { reason, ...context },
+			severity: "ephemeral",
+		});
+	}
+}
+
+interface CanonicalJsonState {
+	nodes: number;
+}
+
+function canonicalJsonValue(
+	value: unknown,
+	depth = 0,
+	state: CanonicalJsonState = { nodes: 0 },
+): string {
+	if (depth > MAX_CANONICAL_JSON_DEPTH) {
+		throw new CanonicalJsonUnboundedError("depth", { depth });
+	}
+	state.nodes += 1;
+	if (state.nodes > MAX_CANONICAL_JSON_NODES) {
+		throw new CanonicalJsonUnboundedError("nodes", { nodes: state.nodes });
+	}
 	if (Array.isArray(value)) {
-		return `[${value.map(canonicalJsonValue).join(",")}]`;
+		return `[${value.map((entry) => canonicalJsonValue(entry, depth + 1, state)).join(",")}]`;
 	}
 	if (value && typeof value === "object") {
 		const entries = Object.entries(value as Record<string, unknown>).sort(
@@ -5254,7 +5292,8 @@ function canonicalJsonValue(value: unknown): string {
 		);
 		return `{${entries
 			.map(
-				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
+				([key, entry]) =>
+					`${JSON.stringify(key)}:${canonicalJsonValue(entry, depth + 1, state)}`,
 			)
 			.join(",")}}`;
 	}
@@ -5305,8 +5344,18 @@ function parseToolArgumentsString(
 	}
 
 	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
-	const canonical = canonicalJsonValue(first);
-	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+	let canonical: string;
+	try {
+		canonical = canonicalJsonValue(first);
+		if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+			return null;
+		}
+	} catch (error) {
+		if (!(error instanceof CanonicalJsonUnboundedError)) throw error;
+		// error-policy:J3 planner output is untrusted model input; an over-budget
+		// fragment invalidates the duplicated-stream recovery rather than being
+		// truncated — truncating would let two different over-budget fragments
+		// canonicalize identically and pass the equality check below.
 		return null;
 	}
 	return first;
