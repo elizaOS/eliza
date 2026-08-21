@@ -6,18 +6,25 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`merge-candidate-biome.yml` is the pre-merge admission gate. GitHub's merge
-queue synthesizes its checkout SHA from the current `develop` tip and the
-queued pull requests, then the workflow runs the repository-pinned full lint
-and format contracts on that exact tree. Branch rules must require the stable
-`Merge Candidate Biome / Candidate tree` check for the queue to block a bad
-candidate; post-merge workflows remain health checks rather than admission.
+`ci.yml` is the canonical pull-request, merge-queue, and `develop` branch-health
+workflow. Pull requests targeting `develop` or `main` and every `merge_group`
+candidate run the same fail-closed job graph. Branch rules require only its stable
+`CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
+succeeds; individual lane names may evolve without silently weakening admission.
 
-`ci.yml` is the canonical post-merge branch-health workflow for `develop`. It
-classifies changed paths, runs repository quality checks, affected tests,
-deterministic smoke tests, a path-scoped Android release AAB audit, and a
-diff-scoped secret scan. Its stable `CI / Required` job diagnoses the integrated
-branch; it does not replace the merge-candidate admission check above.
+`merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
+GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
+format contracts, but it is not a separately required context because canonical
+CI already covers those contracts and publishes the single admission aggregate.
+
+`.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
+manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
+is read-only by default (`--check`) and requires explicit `--apply` authority to
+create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
+same semantic readback on a schedule, by manual dispatch, and through the
+`repository_ruleset_drift` external repository-dispatch event. A green readback
+proves configuration parity only; owner audit-log review plus red/green and
+direct-push canaries remain required after an authorized apply.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
