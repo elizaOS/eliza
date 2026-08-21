@@ -8,11 +8,18 @@ import {
 
 export type ContainerBackedExecutionTier = (typeof CONTAINER_BACKED_EXECUTION_TIERS)[number];
 
+/** Narrows unknown row authority to an explicitly container-backed tier. */
+export function isContainerBackedExecutionTier(
+  executionTier: unknown,
+): executionTier is ContainerBackedExecutionTier {
+  return CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === executionTier);
+}
+
 /** Rejects any tier that is not explicitly admitted to own a container. */
 export function assertContainerBackedExecutionTier(
   executionTier: unknown,
 ): asserts executionTier is ContainerBackedExecutionTier {
-  if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === executionTier)) {
+  if (!isContainerBackedExecutionTier(executionTier)) {
     throw new ElizaError("Sandbox creation requires an explicit container-backed execution tier", {
       code: "SANDBOX_CREATE_EXECUTION_TIER_NOT_CONTAINER_BACKED",
       context: {

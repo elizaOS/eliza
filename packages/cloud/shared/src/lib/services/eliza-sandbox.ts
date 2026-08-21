@@ -36,7 +36,6 @@ import {
   type AgentExecutionTier,
   agentSandboxBackups,
   agentSandboxes,
-  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   WARM_POOL_ORG_ID,
@@ -115,6 +114,7 @@ import {
   type SandboxProvider,
 } from "./sandbox-provider";
 import {
+  isContainerBackedExecutionTier,
   type SandboxDeletionStopOutcome,
   SandboxReplacementCleanupUnresolvedError,
 } from "./sandbox-provider-types";
@@ -427,7 +427,7 @@ export type ProvisionResult =
 function rejectNonContainerBackedProvision(
   rec: AgentSandbox,
 ): Extract<ProvisionResult, { success: false }> | undefined {
-  if (CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === rec.execution_tier)) {
+  if (isContainerBackedExecutionTier(rec.execution_tier)) {
     return undefined;
   }
   return {
