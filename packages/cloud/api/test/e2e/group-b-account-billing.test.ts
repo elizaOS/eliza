@@ -1,7 +1,7 @@
 /**
  * Group B — Account / billing / credits / top-up routes.
  *
- * Covers the 16 routes assigned to Group B in `test/FANOUT.md`:
+ * Covers the 15 routes assigned to Group B in `test/FANOUT.md`:
  *
  *   /api/v1/api-keys/:id/regenerate
  *   /api/v1/api-keys/explorer
@@ -14,7 +14,6 @@
  *   /api/v1/topup/50
  *   /api/v1/topup/100
  *   /api/v1/pricing/summary
- *   /api/quotas/usage
  *   /api/stats/account
  *   /api/stripe/create-checkout-session
  *   /api/stripe/credit-packs
