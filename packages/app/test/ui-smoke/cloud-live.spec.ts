@@ -359,11 +359,98 @@ test.describe("real cloud login + personal identity + chat", () => {
     await openAppPath(page, "/chat");
     const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
     const challengeToken = extractLivenessChallengeToken(challenge);
-    const liveness = await assertOnboardingLivenessWithTiming(page, {
-      label: "cloud-live",
-      prompt: challenge,
-      challengeToken,
-    });
+    const auditBeforeLiveness = primaryAudit.snapshot();
+    const domBeforeLiveness = await page.evaluate(() => ({
+      userRowCount: document.querySelectorAll(
+        '[data-testid="thread-line"][data-role="user"]',
+      ).length,
+      assistantRowCount: document.querySelectorAll(
+        '[data-testid="thread-line"][data-role="assistant"]',
+      ).length,
+    }));
+    const liveness = await (async () => {
+      try {
+        return await assertOnboardingLivenessWithTiming(page, {
+          label: "cloud-live",
+          prompt: challenge,
+          challengeToken,
+        });
+      } catch (error) {
+        // error-policy:J3 reduce the original assertion and live browser state
+        // to an allowlisted name plus counts/booleans only. Never emit the draft,
+        // challenge, response text, request URL, or any account/runtime ID.
+        const auditAfterLiveness = primaryAudit.snapshot();
+        const [domSnapshotResult] = await Promise.allSettled([
+          page.evaluate((before) => {
+            const userRows = Array.from(
+              document.querySelectorAll(
+                '[data-testid="thread-line"][data-role="user"]',
+              ),
+            );
+            const assistantRows = Array.from(
+              document.querySelectorAll<HTMLElement>(
+                '[data-testid="thread-line"][data-role="assistant"]',
+              ),
+            );
+            const freshAssistantRows = assistantRows.slice(
+              before.assistantRowCount,
+            );
+            const composer = document.querySelector<
+              HTMLTextAreaElement | HTMLInputElement
+            >('[data-testid="chat-composer-textarea"]');
+            return {
+              draftCleared: composer
+                ? composer.value.trim().length === 0
+                : null,
+              newUserRowCount: Math.max(
+                0,
+                userRows.length - before.userRowCount,
+              ),
+              newAssistantRowCount: Math.max(
+                0,
+                assistantRows.length - before.assistantRowCount,
+              ),
+              failureRowPresent: freshAssistantRows.some((row) =>
+                Boolean(row.dataset.failure?.trim()),
+              ),
+              retryRowPresent: freshAssistantRows.some((row) =>
+                Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
+              ),
+            };
+          }, domBeforeLiveness),
+        ]);
+        const domSnapshot =
+          domSnapshotResult?.status === "fulfilled"
+            ? domSnapshotResult.value
+            : null;
+        const originalErrorName =
+          error instanceof Error &&
+          ["Error", "AssertionError", "LivenessAssertionError"].includes(
+            error.name,
+          )
+            ? error.name
+            : "UnknownError";
+        const diagnostic = [
+          `originalErrorName=${originalErrorName}`,
+          `chatSendAttemptDelta=${Math.max(0, auditAfterLiveness.chatSendAttemptCount - auditBeforeLiveness.chatSendAttemptCount)}`,
+          `logicalChatSendDelta=${Math.max(0, auditAfterLiveness.logicalChatSendCount - auditBeforeLiveness.logicalChatSendCount)}`,
+          `unidentifiedChatSendDelta=${Math.max(0, auditAfterLiveness.unidentifiedChatSendAttemptCount - auditBeforeLiveness.unidentifiedChatSendAttemptCount)}`,
+          `successfulChatResponseDelta=${Math.max(0, auditAfterLiveness.successfulChatSendResponseCount - auditBeforeLiveness.successfulChatSendResponseCount)}`,
+          `clientErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.clientErrorChatSendResponseCount - auditBeforeLiveness.clientErrorChatSendResponseCount)}`,
+          `serverErrorChatResponseDelta=${Math.max(0, auditAfterLiveness.serverErrorChatSendResponseCount - auditBeforeLiveness.serverErrorChatSendResponseCount)}`,
+          `otherChatResponseDelta=${Math.max(0, auditAfterLiveness.otherChatSendResponseCount - auditBeforeLiveness.otherChatSendResponseCount)}`,
+          `domSnapshotAvailable=${domSnapshot !== null}`,
+          `draftCleared=${domSnapshot?.draftCleared ?? "unavailable"}`,
+          `newUserRowCount=${domSnapshot?.newUserRowCount ?? "unavailable"}`,
+          `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
+          `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
+          `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
+        ].join("; ");
+        throw new Error(
+          `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
+        );
+      }
+    })();
     test.info().annotations.push({
       type: "first-turn-latency-ms",
       description: String(liveness.firstTurnLatencyMs),
