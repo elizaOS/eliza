@@ -94,6 +94,11 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
+import {
+  isBrowserBridgeLoopbackApiBase,
+  startBrowserBridgeDesktopLifecycle,
+  stopBrowserBridgeDesktopLifecycle,
+} from "./native/browser-bridge-desktop-lifecycle";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -1933,6 +1938,19 @@ async function _startAgent(): Promise<void> {
     logger.info(
       `[Main] Skipping embedded agent startup (${runtimeResolution.mode} mode)`,
     );
+    const externalApiBase = runtimeResolution.externalApi.base;
+    if (externalApiBase && isBrowserBridgeLoopbackApiBase(externalApiBase)) {
+      try {
+        await startBrowserBridgeDesktopLifecycle({ apiBase: externalApiBase });
+      } catch (error) {
+        // error-policy:J4 external-runtime enrollment is visibly unavailable when secure setup fails.
+        logger.warn(
+          `[BrowserBridgeBroker] External-runtime enrollment unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     injectApiBaseIntoOpenRendererWindows();
     return;
   }
@@ -1958,6 +1976,16 @@ async function _startAgent(): Promise<void> {
       // the bridge succeeds, the renderer skips the login UI; if it fails,
       // the renderer behaves like a remote browser (password-required).
       await primeDesktopSessionAuth(apiBase, rendererBase);
+      try {
+        await startBrowserBridgeDesktopLifecycle({ apiBase });
+      } catch (error) {
+        // error-policy:J4 browser enrollment remains visibly unavailable when secure setup fails.
+        logger.warn(
+          `[BrowserBridgeBroker] Secure enrollment broker unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
       const apiToken = resolveApiToken(process.env) ?? "";
       // Set the source-of-truth API base FIRST (correct even with zero open
       // windows), then push to every open window.
@@ -2415,6 +2443,16 @@ async function runShutdownCleanup(reason: string): Promise<void> {
           }`,
         );
       }
+    }
+    try {
+      await stopBrowserBridgeDesktopLifecycle();
+    } catch (error) {
+      // error-policy:J6 shutdown continues after reporting best-effort broker disposal.
+      logger.warn(
+        `[Main] Browser bridge broker disposal failed during shutdown: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
     try {
       await disposeNativeModules();
