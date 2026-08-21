@@ -2,6 +2,10 @@
 import { expect, test } from "../src/helpers/test-fixtures";
 import { loginWithTestWallet } from "../src/helpers/wallet-login";
 
+function requestCanonicalRoute(canonicalPath: string, apiUrl: string) {
+  return fetch(`${apiUrl}${canonicalPath}`);
+}
+
 /**
  * Proves the REAL wallet sign-in path works end-to-end against the booted
  * cloud-api — the gap `seedTestUser` (direct DB insert) never covered.
@@ -14,6 +18,14 @@ import { loginWithTestWallet } from "../src/helpers/wallet-login";
  */
 test.describe("SIWE wallet login (real handshake)", () => {
   const BALANCE = "/api/v1/credits/balance";
+
+  test("runtime-surface:@elizaos/cloud-api:route:get-/api/i18n/locale", async ({
+    stack,
+  }) => {
+    expect(
+      (await requestCanonicalRoute("/api/i18n/locale", stack.urls.api)).status,
+    ).toBe(200);
+  });
 
   test("nonce → sign → verify mints a real API key for a fresh free account", async ({
     stack,

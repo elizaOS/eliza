@@ -661,6 +661,26 @@ export function scenarioDeferral(value) {
 
 export function scenario(value) {
   if (value && typeof value === "object") {
+    if (value.runtimeSurfaceIds !== undefined) {
+      if (!Array.isArray(value.runtimeSurfaceIds)) {
+        throw new Error("runtimeSurfaceIds must be an array of canonical ids");
+      }
+      const seenRuntimeSurfaceIds = new Set();
+      for (const id of value.runtimeSurfaceIds) {
+        if (
+          typeof id !== "string" ||
+          !/^@elizaos\/[^:\s]+:[a-z][a-z-]*:[^\s]+$/.test(id)
+        ) {
+          throw new Error(
+            `invalid canonical runtime surface id: ${String(id)}`,
+          );
+        }
+        if (seenRuntimeSurfaceIds.has(id)) {
+          throw new Error(`duplicate canonical runtime surface id: ${id}`);
+        }
+        seenRuntimeSurfaceIds.add(id);
+      }
+    }
     if (Array.isArray(value.finalChecks)) {
       value.finalChecks.forEach(validateStrictFinalCheck);
     }

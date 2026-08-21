@@ -1,95 +1,67 @@
 #!/usr/bin/env bun
 /**
- * Enforces the synthetic-world runtime-surface inventory ratchet. Production
- * registrations may only be covered by executable artifacts with exact
- * boundary signals or by a pre-existing explicit classification; newly added,
- * stale, silently covered, malformed, or duplicate rows fail the gate.
+ * Reports the production runtime-surface census and optionally compares two
+ * generated reports within explicitly named package scopes. This foundation
+ * is advisory: it never turns repository churn into a PR-blocking exit code.
  */
 
-import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import {
   buildRuntimeSurfaceInventory,
-  discoverRuntimeSurfaces,
-  type ExternalServiceDependency,
-  loadRuntimeSurfaceBaseline,
-  type MockDependency,
-  RUNTIME_SURFACE_SCHEMA,
-  RUNTIME_SURFACE_STATUSES,
-  type RuntimeSurfaceBaseline,
   type RuntimeSurfaceInventory,
-  type RuntimeSurfaceStatus,
+  type RuntimeSurfaceRow,
 } from "./runtime-surface-inventory.ts";
 
-export interface RuntimeSurfaceGateResult {
-  newlyUnclassified: string[];
-  staleClassifications: string[];
-  silentlyCovered: string[];
-  invalidClassifications: string[];
-  invalidCoverage: string[];
-  invalidDependencyOwnership: string[];
+export interface RuntimeSurfaceHealth {
   duplicateRows: string[];
-  unclassifiedPackages: string[];
-  stalePackageClassifications: string[];
-  invalidPackageClassifications: string[];
-  overbroadClassificationReasons: string[];
-  expandedFromParent: string[];
-  changedFromParent: string[];
+  invalidCoverage: string[];
+  coveredWithoutMockOwner: string[];
   ok: boolean;
 }
 
-function validReason(reason: string): boolean {
-  const trimmed = reason.trim();
-  return (
-    trimmed.length >= 24 &&
-    !/^(?:todo|tbd|n\/a|unknown|unreviewed|fixme)(?:\b|\s|[-:])/i.test(trimmed)
-  );
+export interface RuntimeSurfaceScopedDrift {
+  packages: string[];
+  added: string[];
+  removed: string[];
+  changed: string[];
 }
 
-export function evaluateRuntimeSurfaceCoverage(
-  inventory: RuntimeSurfaceInventory,
-  baseline: RuntimeSurfaceBaseline,
-  parentBaseline?: RuntimeSurfaceBaseline | null,
-): RuntimeSurfaceGateResult {
-  const rowIds = new Set<string>();
-  const duplicateRows: string[] = [];
-  for (const row of inventory.rows) {
-    if (rowIds.has(row.id)) duplicateRows.push(row.id);
-    rowIds.add(row.id);
+interface CliOptions {
+  json: boolean;
+  compareFile: string | null;
+  packages: string[];
+}
+
+function parseArgs(args: string[]): CliOptions {
+  const options: CliOptions = { json: false, compareFile: null, packages: [] };
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--json") {
+      options.json = true;
+    } else if (argument === "--compare") {
+      options.compareFile = args[++index] ?? null;
+    } else if (argument === "--package") {
+      const packageName = args[++index];
+      if (packageName) options.packages.push(packageName);
+    } else {
+      throw new Error(`Unknown runtime-surface report option: ${argument}`);
+    }
   }
+  if (options.compareFile && options.packages.length === 0) {
+    throw new Error("--compare requires at least one explicit --package scope");
+  }
+  return options;
+}
 
-  const newlyUnclassified = inventory.rows
-    .filter(
-      (row) => row.status !== "covered" && !baseline.classifications[row.id],
-    )
-    .map((row) => row.id)
-    .sort();
-
-  const staleClassifications = Object.keys(baseline.classifications)
-    .filter((id) => !rowIds.has(id))
-    .sort();
-
-  const silentlyCovered = inventory.rows
-    .filter(
-      (row) =>
-        row.status === "covered" && Boolean(baseline.classifications[row.id]),
-    )
-    .map((row) => row.id)
-    .sort();
-
-  const validStatuses = new Set<RuntimeSurfaceStatus>(RUNTIME_SURFACE_STATUSES);
-  const invalidClassifications = Object.entries(baseline.classifications)
-    .filter(
-      ([, classification]) =>
-        (classification.status as string) === "covered" ||
-        !validStatuses.has(classification.status) ||
-        !validReason(classification.reason),
-    )
-    .map(([id]) => id)
-    .sort();
-
+export function inspectRuntimeSurfaceHealth(
+  inventory: RuntimeSurfaceInventory,
+): RuntimeSurfaceHealth {
+  const seen = new Set<string>();
+  const duplicateRows = new Set<string>();
+  for (const row of inventory.rows) {
+    if (seen.has(row.id)) duplicateRows.add(row.id);
+    seen.add(row.id);
+  }
   const invalidCoverage = inventory.rows
     .filter(
       (row) =>
@@ -100,7 +72,7 @@ export function evaluateRuntimeSurfaceCoverage(
     )
     .map((row) => row.id)
     .sort();
-  const invalidDependencyOwnership = inventory.rows
+  const coveredWithoutMockOwner = inventory.rows
     .filter(
       (row) =>
         row.status === "covered" &&
@@ -108,345 +80,114 @@ export function evaluateRuntimeSurfaceCoverage(
     )
     .map((row) => row.id)
     .sort();
-  const zeroSurfacePackages = inventory.packages
-    .filter((entry) => entry.registrationState === "no-runtime-registration")
-    .map((entry) => entry.packageDir)
-    .sort();
-  const unclassifiedPackages = zeroSurfacePackages.filter(
-    (packageDir) => !baseline.packageClassifications[packageDir],
-  );
-  const stalePackageClassifications = Object.keys(
-    baseline.packageClassifications,
-  )
-    .filter((packageDir) => !zeroSurfacePackages.includes(packageDir))
-    .sort();
-  const invalidPackageClassifications = Object.entries(
-    baseline.packageClassifications,
-  )
-    .filter(
-      ([, classification]) =>
-        classification.status !== "no-runtime-registration" ||
-        !validReason(classification.reason),
-    )
-    .map(([packageDir]) => packageDir)
-    .sort();
-  const reasonCounts = new Map<string, number>();
-  for (const classification of Object.values(baseline.classifications)) {
-    reasonCounts.set(
-      classification.reason,
-      (reasonCounts.get(classification.reason) ?? 0) + 1,
-    );
-  }
-  const overbroadClassificationReasons = [...reasonCounts.entries()]
-    .filter(([, count]) => count > 8)
-    .map(([reason, count]) => `${count}x ${reason}`)
-    .sort();
-  const expandedFromParent = parentBaseline
-    ? Object.keys(baseline.classifications)
-        .filter((id) => !parentBaseline.classifications[id])
-        .sort()
-    : [];
-  const changedFromParent = parentBaseline
-    ? Object.entries(baseline.classifications)
-        .filter(([id, classification]) => {
-          const parent = parentBaseline.classifications[id];
-          return Boolean(
-            parent &&
-              (parent.status !== classification.status ||
-                parent.reason !== classification.reason),
-          );
-        })
-        .map(([id]) => id)
-        .sort()
-    : [];
-
   return {
-    newlyUnclassified,
-    staleClassifications,
-    silentlyCovered,
-    invalidClassifications,
+    duplicateRows: [...duplicateRows].sort(),
     invalidCoverage,
-    invalidDependencyOwnership,
-    duplicateRows: [...new Set(duplicateRows)].sort(),
-    unclassifiedPackages,
-    stalePackageClassifications,
-    invalidPackageClassifications,
-    overbroadClassificationReasons,
-    expandedFromParent,
-    changedFromParent,
+    coveredWithoutMockOwner,
     ok:
-      newlyUnclassified.length === 0 &&
-      staleClassifications.length === 0 &&
-      silentlyCovered.length === 0 &&
-      invalidClassifications.length === 0 &&
+      duplicateRows.size === 0 &&
       invalidCoverage.length === 0 &&
-      invalidDependencyOwnership.length === 0 &&
-      duplicateRows.length === 0 &&
-      unclassifiedPackages.length === 0 &&
-      stalePackageClassifications.length === 0 &&
-      invalidPackageClassifications.length === 0 &&
-      overbroadClassificationReasons.length === 0 &&
-      expandedFromParent.length === 0 &&
-      changedFromParent.length === 0,
+      coveredWithoutMockOwner.length === 0,
   };
 }
 
-function loadDevelopBaseline(
-  baselineFile: string,
-): RuntimeSurfaceBaseline | null {
-  const relative = path
-    .relative(
-      path.resolve(path.dirname(baselineFile), "../../.."),
-      baselineFile,
-    )
-    .split(path.sep)
-    .join("/");
-  const baseRef = "origin/develop";
-  const baseCommit = spawnSync(
-    "git",
-    ["cat-file", "-e", `${baseRef}^{commit}`],
-    {
-      encoding: "utf8",
-    },
-  );
-  if (baseCommit.status !== 0) {
-    throw new Error(
-      `Cannot enforce the shrinking runtime-surface baseline because ${baseRef} is unavailable; fetch develop before running the gate.`,
-    );
-  }
-  const baseFile = spawnSync(
-    "git",
-    ["cat-file", "-e", `${baseRef}:${relative}`],
-    {
-      encoding: "utf8",
-    },
-  );
-  if (baseFile.status !== 0) return null;
-  const result = spawnSync("git", ["show", `${baseRef}:${relative}`], {
-    encoding: "utf8",
+function comparableRow(row: RuntimeSurfaceRow): string {
+  return JSON.stringify({
+    kind: row.kind,
+    surfaceName: row.surfaceName,
+    packageName: row.packageName,
+    sourcePath: row.sourcePath,
+    registrationField: row.registrationField,
+    externalServiceDependencies: row.externalServiceDependencies,
+    mockDependencies: row.mockDependencies,
+    dependencyDisposition: row.dependencyDisposition,
+    deterministicScenarioIds: row.deterministicScenarioIds,
+    liveModelScenarioIds: row.liveModelScenarioIds,
+    cloudE2eCells: row.cloudE2eCells,
+    evidenceClass: row.evidenceClass,
+    boundaryArtifacts: row.boundaryArtifacts,
+    boundarySignals: row.boundarySignals,
+    status: row.status,
   });
-  if (result.status !== 0) {
-    throw new Error(
-      `Cannot read the parent runtime-surface baseline from ${baseRef}: ${result.stderr.trim()}`,
-    );
+}
+
+export function compareRuntimeSurfaceInventories(
+  current: RuntimeSurfaceInventory,
+  previous: RuntimeSurfaceInventory,
+  packageNames: readonly string[],
+): RuntimeSurfaceScopedDrift {
+  const packages = [...new Set(packageNames)].sort();
+  if (packages.length === 0) {
+    throw new Error("Runtime-surface drift requires an explicit package scope");
   }
-  const parsed = JSON.parse(result.stdout) as RuntimeSurfaceBaseline;
-  if (parsed.schema !== RUNTIME_SURFACE_SCHEMA) {
-    throw new Error(`Invalid parent runtime-surface baseline at ${baseRef}`);
+  const scope = new Set(packages);
+  const scoped = (inventory: RuntimeSurfaceInventory): Map<string, string> =>
+    new Map(
+      inventory.rows
+        .filter((row) => scope.has(row.packageName))
+        .map((row) => [row.id, comparableRow(row)]),
+    );
+  const currentRows = scoped(current);
+  const previousRows = scoped(previous);
+  return {
+    packages,
+    added: [...currentRows.keys()].filter((id) => !previousRows.has(id)).sort(),
+    removed: [...previousRows.keys()]
+      .filter((id) => !currentRows.has(id))
+      .sort(),
+    changed: [...currentRows.keys()]
+      .filter(
+        (id) =>
+          previousRows.has(id) && previousRows.get(id) !== currentRows.get(id),
+      )
+      .sort(),
+  };
+}
+
+function readInventory(file: string): RuntimeSurfaceInventory {
+  const parsed = JSON.parse(
+    readFileSync(file, "utf8"),
+  ) as RuntimeSurfaceInventory;
+  if (
+    !parsed ||
+    !Array.isArray(parsed.rows) ||
+    typeof parsed.schema !== "string"
+  ) {
+    throw new Error(`Invalid runtime-surface report: ${file}`);
   }
   return parsed;
 }
 
-export function candidateClassification(
-  kind: string,
-  platformRequirements: readonly string[],
-  externalServiceDependencies: readonly ExternalServiceDependency[],
-  mockDependencies: readonly MockDependency[],
-  context?: { packageName: string; surfaceName: string; workstream: string },
-): { status: Exclude<RuntimeSurfaceStatus, "covered">; reason: string } {
-  const subject = context
-    ? `${context.packageName} ${kind} "${context.surfaceName}"`
-    : `This ${kind} surface`;
-  const workstream = context?.workstream ?? "its dependency workstream";
-  if (
-    kind === "native-bridge" ||
-    platformRequirements.includes("native-host")
-  ) {
-    return {
-      status: "platform-deferred",
-      reason: `${subject} requires a supported native host or device target; deterministic platform composition is tracked by ${workstream}.`,
-    };
-  }
-  const hasMissingMock = mockDependencies.some(
-    (dependency) => dependency.availability === "missing",
-  );
-  if (kind === "model-handler" && hasMissingMock) {
-    return {
-      status: "provider-qualified-only",
-      reason: `${subject} has only real-provider qualification; strict deterministic model fixtures are tracked by ${workstream}.`,
-    };
-  }
-  if (
-    externalServiceDependencies.length > 0 &&
-    hasMissingMock &&
-    ["provider", "connector-ingress", "connector-egress"].includes(kind)
-  ) {
-    return {
-      status: "provider-qualified-only",
-      reason: `${subject} lacks a resettable production-client mock for its external protocol; fidelity is tracked by ${workstream}.`,
-    };
-  }
-  return {
-    status: "uncovered",
-    reason: `${subject} has no boundary-specific executable synthetic-world artifact; implementation is assigned to ${workstream}.`,
-  };
-}
-
-function bootstrapReviewedBaseline(
-  baselineFile: string,
-  sourceRevision: string,
-): void {
-  const reviewedPackageReasons: Record<string, string> = {
-    "plugins/plugin-cli":
-      "@elizaos/plugin-cli exports Commander command construction, execution, parsing, and CLI utility contracts; its reachable entry graph does not register an AgentRuntime Plugin surface.",
-    "plugins/plugin-native-activity-tracker":
-      "@elizaos/native-activity-tracker is a Darwin subprocess client that spawns and parses the Swift activity collector; its consumer owns lifecycle wiring and the package registers no AgentRuntime surface.",
-    "plugins/plugin-native-reminders":
-      "@elizaos/macosreminders exports macOS reminder bridge policy helpers only; it contains no Plugin object, runtime registration call, or native bridge registration entrypoint.",
-    "plugins/plugin-native-shared-types":
-      "@elizaos/native-plugin-shared-types exports compile-time bridge callback and Web Speech contracts only; its entrypoint has no runtime values or registration side effects.",
-  };
-  const seed: RuntimeSurfaceBaseline = {
-    schema: RUNTIME_SURFACE_SCHEMA,
-    generatedFrom: sourceRevision,
-    classifications: {},
-    packageClassifications: {},
-  };
-  const inventory = buildRuntimeSurfaceInventory({ baseline: seed });
-  const classifications = Object.fromEntries(
-    inventory.rows
-      .filter((row) => row.status !== "covered")
-      .map((row) => [
-        row.id,
-        candidateClassification(
-          row.kind,
-          row.platformRequirements,
-          row.externalServiceDependencies,
-          row.mockDependencies,
-          {
-            packageName: row.packageName,
-            surfaceName: row.surfaceName,
-            workstream: row.workstream,
-          },
-        ),
-      ]),
-  );
-  const packageClassifications = Object.fromEntries(
-    inventory.packages
-      .filter((entry) => entry.registrationState === "no-runtime-registration")
-      .map((entry) => [
-        entry.packageDir,
-        {
-          status: "no-runtime-registration" as const,
-          reason:
-            reviewedPackageReasons[entry.packageDir] ??
-            `UNREVIEWED zero-surface package ${entry.packageName}; add a package-specific production-entrypoint disposition before committing this baseline.`,
-        },
-      ]),
-  );
-  const baseline: RuntimeSurfaceBaseline = {
-    schema: RUNTIME_SURFACE_SCHEMA,
-    generatedFrom: sourceRevision,
-    classifications,
-    packageClassifications,
-  };
-  writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
-  process.stdout.write(
-    `Wrote reviewed baseline with ${Object.keys(classifications).length} surface classifications and ${Object.keys(packageClassifications).length} package dispositions. Review the complete diff before commit.\n`,
-  );
-}
-
-function printFailures(result: RuntimeSurfaceGateResult): void {
-  const groups: Array<[keyof RuntimeSurfaceGateResult, string]> = [
-    [
-      "newlyUnclassified",
-      "new production surfaces need an explicit implementation or disposition",
-    ],
-    [
-      "staleClassifications",
-      "baseline rows no longer exist and must be removed",
-    ],
-    [
-      "silentlyCovered",
-      "covered rows remain baselined; the baseline may only shrink",
-    ],
-    [
-      "invalidClassifications",
-      "classifications have an invalid status or non-actionable reason",
-    ],
-    [
-      "invalidCoverage",
-      "covered rows lack an executable artifact and exact boundary signal",
-    ],
-    [
-      "invalidDependencyOwnership",
-      "covered external-service rows lack an explicit mock owner and source",
-    ],
-    ["duplicateRows", "duplicate canonical row ids were generated"],
-    [
-      "unclassifiedPackages",
-      "zero-surface packages need a reviewed no-runtime disposition",
-    ],
-    [
-      "stalePackageClassifications",
-      "package dispositions became stale after surfaces were discovered",
-    ],
-    [
-      "invalidPackageClassifications",
-      "package dispositions have an invalid status or reason",
-    ],
-    [
-      "overbroadClassificationReasons",
-      "one disposition reason was reused across too many surfaces",
-    ],
-    [
-      "expandedFromParent",
-      "the classification baseline expanded relative to develop",
-    ],
-    [
-      "changedFromParent",
-      "classification entries changed instead of being implemented and removed",
-    ],
-  ];
-  for (const [key, description] of groups) {
-    const values = result[key];
-    if (!Array.isArray(values) || values.length === 0) continue;
-    process.stderr.write(
-      `\n[runtime-surfaces] ${description}:\n  ${values.join("\n  ")}\n`,
-    );
-  }
-}
-
 function main(): number {
-  const args = process.argv.slice(2);
-  const baselineFile = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "runtime-surface-baseline.json",
-  );
-  if (args.includes("--bootstrap-reviewed-baseline")) {
-    const sourceRevision =
-      args
-        .find((arg) => arg.startsWith("--source-revision="))
-        ?.slice("--source-revision=".length) ?? "reviewed-working-tree";
-    bootstrapReviewedBaseline(baselineFile, sourceRevision);
-    return 0;
-  }
-  if (args.includes("--list-registrations")) {
+  const options = parseArgs(process.argv.slice(2));
+  const inventory = buildRuntimeSurfaceInventory();
+  const health = inspectRuntimeSurfaceHealth(inventory);
+  const drift = options.compareFile
+    ? compareRuntimeSurfaceInventories(
+        inventory,
+        readInventory(options.compareFile),
+        options.packages,
+      )
+    : null;
+  if (options.json) {
     process.stdout.write(
-      `${JSON.stringify(discoverRuntimeSurfaces(), null, 2)}\n`,
-    );
-    return 0;
-  }
-  const baseline = loadRuntimeSurfaceBaseline(baselineFile);
-  const inventory = buildRuntimeSurfaceInventory({ baseline });
-  const parentBaseline = loadDevelopBaseline(baselineFile);
-  const result = evaluateRuntimeSurfaceCoverage(
-    inventory,
-    baseline,
-    parentBaseline,
-  );
-  if (args.includes("--json")) {
-    process.stdout.write(`${JSON.stringify({ result, inventory }, null, 2)}\n`);
-  } else if (result.ok) {
-    process.stdout.write(
-      `[runtime-surfaces] OK — ${inventory.summary.total} registered surfaces; ` +
-        `${inventory.summary.byStatus.covered ?? 0} covered; ` +
-        `${Object.keys(baseline.classifications).length} explicitly classified.\n`,
+      `${JSON.stringify({ inventory, health, drift }, null, 2)}\n`,
     );
   } else {
-    printFailures(result);
+    process.stdout.write(
+      `[runtime-surfaces] REPORT — ${inventory.summary.total} registered; ` +
+        `${inventory.summary.byStatus.covered ?? 0} covered; ` +
+        `${inventory.summary.byStatus.uncovered ?? 0} uncovered; ` +
+        `${health.ok ? "structurally valid" : "structural findings present"}.\n`,
+    );
+    if (drift) {
+      process.stdout.write(
+        `[runtime-surfaces] scoped drift — ${drift.packages.join(", ")}: ` +
+          `+${drift.added.length} -${drift.removed.length} ~${drift.changed.length}.\n`,
+      );
+    }
   }
-  return result.ok ? 0 : 1;
+  return 0;
 }
 
 if (import.meta.main) process.exit(main());

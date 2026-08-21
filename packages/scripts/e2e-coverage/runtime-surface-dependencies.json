@@ -4,7 +4,7 @@
     "pullRequest": 23185,
     "head": "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     "path": "packages/cloud/test-mocks/provider-mock-catalog.json",
-    "relationship": "This inventory catalog is the fail-closed surface-to-protocol index. PR #23185 remains the richer provider implementation and conformance catalog and must consume these canonical service IDs when the stacks are combined."
+    "relationship": "This inventory catalog is the current fail-closed surface-to-protocol index. Closed draft PR #23185 is retained only as a design reference for a richer provider conformance catalog; it is not merged code, evidence, or a required stack."
   },
   "rules": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "packageName": "@elizaos/core",
-      "kinds": ["connector-ingress", "provider", "route"],
+      "kinds": ["provider", "route"],
       "noExternalServiceReason": "Core registrations define framework-local message, context, and test routes and do not select an external provider protocol."
     },
     {
@@ -73,7 +73,7 @@
     },
     {
       "packageName": "@elizaos/plugin-bluebubbles",
-      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "kinds": ["connector-ingress", "route"],
       "externalServices": [
         {
           "id": "bluebubbles-server",
@@ -245,7 +245,7 @@
     },
     {
       "packageName": "@elizaos/plugin-imessage",
-      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "kinds": ["connector-ingress", "route"],
       "externalServices": [
         {
           "id": "imessage-bridge",
@@ -273,7 +273,7 @@
     },
     {
       "packageName": "@elizaos/plugin-local-inference",
-      "kinds": ["model-handler", "route"],
+      "kinds": ["model-handler", "provider", "route"],
       "noExternalServiceReason": "Local-inference handlers and routes execute an embedded local model runtime."
     },
     {
@@ -332,7 +332,7 @@
     },
     {
       "packageName": "@elizaos/plugin-personal-assistant",
-      "kinds": ["provider"],
+      "kinds": ["provider", "route"],
       "noExternalServiceReason": "Personal-assistant providers assemble local domain state; scheduled delivery transports are inventoried separately."
     },
     {
@@ -443,7 +443,7 @@
     },
     {
       "packageName": "@elizaos/plugin-whatsapp",
-      "kinds": ["connector-ingress", "connector-egress", "route"],
+      "kinds": ["connector-ingress", "route"],
       "externalServices": [
         {
           "id": "whatsapp-api",
@@ -460,7 +460,7 @@
     },
     {
       "packageName": "@elizaos/plugin-workflow",
-      "kinds": ["route"],
+      "kinds": ["provider", "route"],
       "noExternalServiceReason": "Workflow routes operate on the embedded local workflow runtime."
     },
     {

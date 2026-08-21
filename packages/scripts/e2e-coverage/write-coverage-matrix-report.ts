@@ -227,7 +227,7 @@ function renderRuntimeMarkdown(
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([workstream, ids]) => `- ${workstream}: ${ids.length}`),
     "",
-    "The JSON artifact separates package-manager dependencies from explicit external service protocols and resettable mock owners. It also carries scenarios, Cloud cells, mock/reset fidelity, boundary signals, and the written disposition for every row.",
+    "The JSON artifact separates package-manager dependencies from explicit external service protocols and mock owners. Reset support is reported independently. It also carries scenarios, Cloud cells, mock fidelity, boundary signals, and the derived disposition for every row.",
     "",
   ];
   return lines.join("\n");

@@ -94,21 +94,6 @@ export interface RuntimeDependencyCatalog {
   rules: RuntimeDependencyRule[];
 }
 
-export interface RuntimeSurfaceClassification {
-  status: Exclude<RuntimeSurfaceStatus, "covered">;
-  reason: string;
-}
-
-export interface RuntimeSurfaceBaseline {
-  schema: typeof RUNTIME_SURFACE_SCHEMA;
-  generatedFrom: string;
-  classifications: Record<string, RuntimeSurfaceClassification>;
-  packageClassifications: Record<
-    string,
-    { status: "no-runtime-registration"; reason: string }
-  >;
-}
-
 export interface RuntimeSurfaceRow {
   id: string;
   kind: RuntimeSurfaceKind;
@@ -3246,31 +3231,9 @@ export function discoverRuntimeSurfaces(): RawSurface[] {
   return uniqueRawSurfaces(rows);
 }
 
-export function loadRuntimeSurfaceBaseline(
-  file = path.join(
-    path.dirname(new URL(import.meta.url).pathname),
-    "runtime-surface-baseline.json",
-  ),
-): RuntimeSurfaceBaseline {
-  const parsed = readJson(file) as unknown as RuntimeSurfaceBaseline;
-  if (
-    parsed.schema !== RUNTIME_SURFACE_SCHEMA ||
-    typeof parsed.classifications !== "object" ||
-    typeof parsed.packageClassifications !== "object"
-  ) {
-    throw new Error(`Invalid runtime-surface baseline schema in ${file}`);
-  }
-  return parsed;
-}
-
 export function buildRuntimeSurfaceInventory(
-  options: {
-    baseline?: RuntimeSurfaceBaseline;
-    generatedAt?: string;
-    sourceRevision?: string;
-  } = {},
+  options: { generatedAt?: string; sourceRevision?: string } = {},
 ): RuntimeSurfaceInventory {
-  const baseline = options.baseline ?? loadRuntimeSurfaceBaseline();
   const scenarios = scenarioRecords();
   const cloudCells = cloudE2eFiles();
   const raw = discoverRuntimeSurfaces();
@@ -3308,18 +3271,6 @@ export function buildRuntimeSurfaceInventory(
         ...matchingCells.map((cell) => cell.file),
       ]),
     ].sort();
-    const covered = boundaryArtifacts.length > 0;
-    const classification = baseline.classifications[id];
-    const status: RuntimeSurfaceStatus = covered
-      ? "covered"
-      : (classification?.status ?? "uncovered");
-    const reason = covered
-      ? "Executable keyless scenario or Cloud E2E cell contains the exact registered boundary signal."
-      : (classification?.reason ??
-        "UNCLASSIFIED: new production surface requires an explicit disposition.");
-    const providerQualified = status === "provider-qualified-only";
-    const mockAvailable = deterministic.length > 0;
-    const partialMock = !mockAvailable && matchingCells.length > 0;
     const runtimeDependencies = EXPLICIT_DEPENDENCY_KINDS.has(surface.kind)
       ? resolveRuntimeDependencies(
           surface.package.packageName,
@@ -3331,6 +3282,34 @@ export function buildRuntimeSurfaceInventory(
           mockDependencies: [],
           dependencyDisposition: "local-only" as const,
         };
+    const covered = boundaryArtifacts.length > 0;
+    const missingMock = runtimeDependencies.mockDependencies.some(
+      (dependency) => dependency.availability === "missing",
+    );
+    const status: RuntimeSurfaceStatus = covered
+      ? "covered"
+      : surface.kind === "native-bridge" ||
+          surface.package.platformRequirements.includes("native-host")
+        ? "platform-deferred"
+        : missingMock &&
+            [
+              "provider",
+              "connector-ingress",
+              "connector-egress",
+              "model-handler",
+            ].includes(surface.kind)
+          ? "provider-qualified-only"
+          : "uncovered";
+    const reason = covered
+      ? "Executable keyless scenario or Cloud E2E cell exercises the exact registered boundary."
+      : status === "platform-deferred"
+        ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} requires a native host; the report records it without claiming synthetic coverage.`
+        : status === "provider-qualified-only"
+          ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicit external protocol but no owned mock source; the report records the gap without claiming coverage.`
+          : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
+    const providerQualified = status === "provider-qualified-only";
+    const mockAvailable = deterministic.length > 0;
+    const partialMock = !mockAvailable && matchingCells.length > 0;
     return {
       id,
       kind: surface.kind,
@@ -3435,7 +3414,6 @@ export function buildRuntimeSurfaceInventory(
         .map((row) => row.id)
         .sort();
       const hasSurfaces = registeredSurfaceIds.length > 0;
-      const packageClassification = baseline.packageClassifications[entry.dir];
       return {
         owner: entry.owner,
         packageName: entry.packageName,
@@ -3449,14 +3427,13 @@ export function buildRuntimeSurfaceInventory(
           : "no-runtime-registration",
         reason: hasSurfaces
           ? "Production registration or export analysis found the listed canonical runtime surfaces."
-          : (packageClassification?.reason ??
-            "UNCLASSIFIED: scanner found no reachable production runtime registration."),
+          : "Report-only observation: the scanner found no reachable production runtime registration; this is not a product exemption.",
       };
     });
   return {
     schema: RUNTIME_SURFACE_SCHEMA,
     generatedAt: options.generatedAt ?? "1970-01-01T00:00:00.000Z",
-    sourceRevision: options.sourceRevision ?? baseline.generatedFrom,
+    sourceRevision: options.sourceRevision ?? "report-only-working-tree",
     packages,
     rows,
     summary: {
