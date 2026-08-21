@@ -8,6 +8,8 @@
  * without standing up a renderer.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 export function formatAddressForDisplay(address: string): string {
   if (!address) return "(unknown)";
   if (address.length <= 12) return address;
@@ -69,6 +71,7 @@ export function decodeBase64ForPreview(base64: string): string {
 }
 
 export function truncateMessageForDisplay(message: string, max = 240): string {
-  if (message.length <= max) return message;
-  return `${message.slice(0, max)}… (${message.length - max} more chars)`;
+  const wellFormed = toWellFormedUnicode(message);
+  if (wellFormed.length <= max) return wellFormed;
+  return `${truncateWellFormed(wellFormed, Math.max(0, max))}… (${wellFormed.length - max} more chars)`;
 }
