@@ -123,7 +123,6 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--concurrency", type=int, default=16)
-    ap.add_argument("--max-input-chars", type=int, default=1500)
     args = ap.parse_args()
 
     is_clean = make_is_clean(CFG)
@@ -141,7 +140,6 @@ def main() -> None:
     asyncio.run(run_round(
         cfg=CFG, items=items,
         concurrency=args.concurrency,
-        max_input_chars=args.max_input_chars,
         progress_label="r3 progress",
     ))
 

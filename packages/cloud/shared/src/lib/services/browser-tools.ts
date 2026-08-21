@@ -684,7 +684,7 @@ JSON.stringify({ title: await page.title(), url: page.url() });
         timeoutSeconds,
         code: `
 const payload = await page.evaluate(() => ({
-  text: document.body?.innerText?.slice(0, 16000) || "",
+	text: document.body?.innerText || "",
   title: document.title,
   url: location.href,
 }));

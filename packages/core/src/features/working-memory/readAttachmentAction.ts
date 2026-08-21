@@ -51,7 +51,6 @@ import {
 import { maybeStoreTaskClipboardItem } from "./taskClipboardPersistence.ts";
 
 const ATTACHMENT_ACTIONS = ["read", "save_as_document"] as const;
-const MAX_ATTACHMENT_ANSWER_CHARS = 32_000;
 const MIN_ATTACHMENT_ANSWER_TOKENS = 1024;
 const MAX_ATTACHMENT_ANSWER_TOKENS = 4096;
 /** A bare link share wants a one-to-two sentence reaction, not a page digest. */
@@ -86,12 +85,8 @@ function isLinkShareWithoutAsk(text: string): boolean {
 	);
 }
 
-export function attachmentContentForAnswering(content: string): string {
-	if (content.length <= MAX_ATTACHMENT_ANSWER_CHARS) {
-		return content;
-	}
-	const suffix = `\n\n[Attachment content truncated before answering because it exceeded ${MAX_ATTACHMENT_ANSWER_CHARS} characters.]`;
-	return `${content.slice(0, MAX_ATTACHMENT_ANSWER_CHARS - suffix.length)}${suffix}`;
+export function completeAttachmentContent(content: string): string {
+	return content;
 }
 
 function attachmentAnswerTokenBudget(content: string): number {
@@ -530,7 +525,7 @@ async function answerAttachmentRequest(params: {
 		"",
 		`User request:\n${userRequest || "Read the attachment."}`,
 		"",
-		`Attachment content:\n${attachmentContentForAnswering(params.content)}`,
+		`Attachment content:\n${completeAttachmentContent(params.content)}`,
 	].join("\n");
 	const response = await params.runtime.useModel(ModelType.TEXT_SMALL, {
 		prompt,

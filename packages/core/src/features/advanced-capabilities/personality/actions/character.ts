@@ -84,7 +84,6 @@ export const CHARACTER_OP_ACCESS: Record<
 };
 
 const IDENTITY_NAME_MAX_LENGTH = 120;
-const IDENTITY_SYSTEM_MAX_LENGTH = 100_000;
 
 const SAVEABLE_CHARACTER_FIELDS: ReadonlyArray<keyof Character> = [
 	"name",
@@ -353,11 +352,11 @@ export const characterAction: Action = {
 	] as ActionExample[][],
 };
 
-export function trimToString(value: unknown, max: number): string | undefined {
+export function trimToString(value: unknown): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();
 	if (!trimmed) return undefined;
-	return truncateWellFormed(toWellFormedUnicode(trimmed), max);
+	return toWellFormedUnicode(trimmed);
 }
 
 function readCharacterField(
@@ -374,8 +373,8 @@ async function runUpdateIdentity(
 	params: CharacterParameters,
 	callback?: HandlerCallback,
 ): Promise<ActionResult> {
-	const name = trimToString(params.name, IDENTITY_NAME_MAX_LENGTH);
-	const systemPrompt = trimToString(params.system, IDENTITY_SYSTEM_MAX_LENGTH);
+	const name = trimToString(params.name);
+	const systemPrompt = trimToString(params.system);
 
 	if (!name && !systemPrompt) {
 		const text =
@@ -384,6 +383,14 @@ async function runUpdateIdentity(
 			text,
 			success: false,
 			values: { error: "MISSING_PARAMETERS" },
+			data: { action: "CHARACTER", op: "update_identity" },
+		};
+	}
+	if (name && name.length > IDENTITY_NAME_MAX_LENGTH) {
+		return {
+			text: `Character name cannot exceed ${IDENTITY_NAME_MAX_LENGTH} characters.`,
+			success: false,
+			values: { error: "NAME_TOO_LONG" },
 			data: { action: "CHARACTER", op: "update_identity" },
 		};
 	}
@@ -1134,12 +1141,11 @@ Example:
 async function buildRecentConversationContext(
 	runtime: IAgentRuntime,
 	message: Memory,
-	maxMessages = 6,
 ): Promise<string> {
 	try {
 		const recentMessages = await runtime.getMemories({
 			roomId: message.roomId,
-			count: maxMessages,
+			count: Number.MAX_SAFE_INTEGER,
 			unique: true,
 			tableName: "messages",
 		});
@@ -1149,7 +1155,6 @@ async function buildRecentConversationContext(
 					typeof entry.content.text === "string" &&
 					entry.content.text.trim().length > 0,
 			)
-			.slice(-maxMessages)
 			.map((entry) => {
 				const speaker =
 					entry.entityId === runtime.agentId
@@ -1595,10 +1600,7 @@ async function handleUserPreference(
 					type: MemoryType.CUSTOM,
 					category: preference.category,
 					timestamp: Date.now(),
-					originalRequest: truncateWellFormed(
-						toWellFormedUnicode(messageText),
-						200,
-					),
+					originalRequest: toWellFormedUnicode(messageText),
 				},
 			},
 			USER_PREFS_TABLE,

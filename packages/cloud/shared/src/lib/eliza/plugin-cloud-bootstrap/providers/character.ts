@@ -7,28 +7,13 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import {
-  addHeader,
-  ChannelType,
-  logger,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { addHeader, ChannelType, logger, toWellFormedUnicode } from "@elizaos/core";
 
 /** Alternate grouped shape used by some editors (`examples[]`). `Character.messageExamples` is `MessageExample[][]`. */
 type MessageExampleGroup = { examples: MessageExample[] };
 
-const BIO_LIMIT = 10;
-const TOPIC_LIMIT = 5;
-const POST_EXAMPLE_LIMIT = 50;
-const MESSAGE_EXAMPLE_GROUP_LIMIT = 5;
-const CHARACTER_FIELD_TEXT_LIMIT = 4000;
-
-export function truncateText(value: string, limit = CHARACTER_FIELD_TEXT_LIMIT): string {
-  const wellFormed = toWellFormedUnicode(value);
-  if (wellFormed.length <= limit) return wellFormed;
-  const budget = Math.max(0, limit - 3);
-  return `${truncateWellFormed(wellFormed, budget)}...`;
+export function normalizeText(value: string): string {
+  return toWellFormedUnicode(value);
 }
 
 function getExampleMessages(example: MessageExampleGroup | MessageExample[]): MessageExample[] {
@@ -66,14 +51,9 @@ export const characterProvider: Provider = {
       const agentName = character.name;
 
       // Handle bio (string or random selection from array)
-      const bioText = Array.isArray(character.bio)
-        ? [...character.bio]
-            .sort(() => 0.5 - Math.random())
-            .slice(0, BIO_LIMIT)
-            .join(" ")
-        : character.bio || "";
+      const bioText = Array.isArray(character.bio) ? character.bio.join(" ") : character.bio || "";
 
-      const bio = addHeader(`# About ${character.name}`, truncateText(bioText));
+      const bio = addHeader(`# About ${character.name}`, normalizeText(bioText));
 
       // System prompt
       const system = character.system ?? "";
@@ -94,8 +74,6 @@ export const characterProvider: Provider = {
         character.topics && character.topics.length > 0
           ? `${character.name} is also interested in ${character.topics
               .filter((topic) => topic !== topicString)
-              .sort(() => 0.5 - Math.random())
-              .slice(0, TOPIC_LIMIT)
               .map((topic, index, array) => {
                 if (index === array.length - 2) {
                   return `${topic} and `;
@@ -119,13 +97,11 @@ export const characterProvider: Provider = {
       // Format post examples
       const formattedCharacterPostExamples = !character.postExamples
         ? ""
-        : [...character.postExamples]
-            .sort(() => 0.5 - Math.random())
+        : character.postExamples
             .map((post) => {
               const messageString = `${post}`;
-              return truncateText(messageString);
+              return normalizeText(messageString);
             })
-            .slice(0, POST_EXAMPLE_LIMIT)
             .join("\n");
 
       const characterPostExamples =
@@ -137,9 +113,7 @@ export const characterProvider: Provider = {
       // Format message examples
       const formattedCharacterMessageExamples = !character.messageExamples
         ? ""
-        : [...character.messageExamples]
-            .sort(() => 0.5 - Math.random())
-            .slice(0, MESSAGE_EXAMPLE_GROUP_LIMIT)
+        : character.messageExamples
             .map((example) => {
               const exampleNames = Array.from({ length: 5 }, () =>
                 Math.random().toString(36).substring(2, 8),
@@ -156,7 +130,7 @@ export const characterProvider: Provider = {
                     const placeholder = `{{name${index + 1}}}`;
                     messageString = messageString.replaceAll(placeholder, name);
                   });
-                  return truncateText(messageString);
+                  return normalizeText(messageString);
                 })
                 .join("\n");
             })
@@ -184,7 +158,7 @@ export const characterProvider: Provider = {
               (() => {
                 const all = character?.style?.all || [];
                 const post = character?.style?.post || [];
-                return truncateText([...all, ...post].join("\n"));
+                return normalizeText([...all, ...post].join("\n"));
               })(),
             )
           : "";
@@ -197,7 +171,7 @@ export const characterProvider: Provider = {
               (() => {
                 const all = character?.style?.all || [];
                 const chat = character?.style?.chat || [];
-                return truncateText([...all, ...chat].join("\n"));
+                return normalizeText([...all, ...chat].join("\n"));
               })(),
             )
           : "";
@@ -205,7 +179,7 @@ export const characterProvider: Provider = {
       // Summary-specific directions: ONLY style.chat (voice/tone), no execution rules from style.all
       const summaryDirections =
         character?.style?.chat?.length && character?.style?.chat?.length > 0
-          ? addHeader(`# Response Style`, truncateText(character.style.chat.join("\n")))
+          ? addHeader(`# Response Style`, normalizeText(character.style.chat.join("\n")))
           : "";
 
       const directions = isPostFormat ? postDirections : messageDirections;
@@ -223,7 +197,7 @@ export const characterProvider: Provider = {
         topics,
         directions,
         examples,
-        truncateText(system),
+        normalizeText(system),
       ]
         .filter(Boolean)
         .join("\n\n");
@@ -233,7 +207,7 @@ export const characterProvider: Provider = {
         values: {
           agentName,
           bio,
-          system: truncateText(system),
+          system: normalizeText(system),
           topic,
           topics,
           adjective,
@@ -256,7 +230,7 @@ export const characterProvider: Provider = {
           },
           directions,
           examples,
-          system: truncateText(system),
+          system: normalizeText(system),
         },
       };
     } catch (error) {

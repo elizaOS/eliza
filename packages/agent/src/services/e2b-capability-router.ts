@@ -65,17 +65,9 @@ const DEFAULT_REMOTE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
-const MAX_LIST_LIMIT = 1000;
 const MAX_REMOTE_JSON_BYTES = 1024 * 1024;
 const MAX_REMOTE_ERROR_BYTES = 16 * 1024;
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
-
-function truncateUtf8(text: string, maxBytes: number): string {
-  const prefix = Buffer.from(text, "utf8").subarray(0, maxBytes);
-  // Streaming decode omits an incomplete trailing code point instead of
-  // inserting U+FFFD, whose encoding could exceed the requested byte cap.
-  return new TextDecoder().decode(prefix, { stream: true });
-}
 
 /**
  * Default Eliza Cloud API base for the `eliza-cloud` sandbox provider. Exported
@@ -685,10 +677,7 @@ export class E2BRemoteCapabilityRouterService
     await this.requireAvailable("fs", "fs.list");
     const sandbox = await this.getSandbox();
     const target = this.mapPath(params.path ?? this.routerConfig.workdir);
-    const limit = Math.max(
-      1,
-      Math.min(params.limit ?? MAX_LIST_LIMIT, MAX_LIST_LIMIT),
-    );
+    const limit = params.limit ?? Number.MAX_SAFE_INTEGER;
     const entries = await sandbox.files.list(target, {
       depth: 1,
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
@@ -733,11 +722,14 @@ export class E2BRemoteCapabilityRouterService
       typeof content === "string"
         ? content
         : Buffer.from(content).toString("utf8");
-    const maxBytes = params.maxBytes ?? MAX_READ_BYTES;
     const bytes = Buffer.byteLength(text, "utf8");
-    if (maxBytes > 0 && bytes > maxBytes) {
-      const truncated = truncateUtf8(text, maxBytes);
-      return { path: target, text: truncated, size: bytes, truncated: true };
+    if (params.maxBytes !== undefined && bytes > params.maxBytes) {
+      throw new CapabilityError({
+        code: "CAPABILITY_REQUEST_FAILED",
+        capability: "fs",
+        method: "fs.readText",
+        message: `fs.readText requires ${bytes} bytes, exceeding the requested ${params.maxBytes}-byte acceptance ceiling.`,
+      });
     }
     return { path: target, text, size: bytes, truncated: false };
   }

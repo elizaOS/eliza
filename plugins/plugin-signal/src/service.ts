@@ -247,7 +247,7 @@ function signalRecentToConnectorTarget(
     },
     label: recent.roomName,
     kind: recent.isGroup ? "group" : "contact",
-    description: `${recent.speakerName}: ${recent.text.slice(0, 120)}`,
+    description: `${recent.speakerName}: ${recent.text}`,
     score,
     contexts: ["social", "connectors"],
     metadata: {

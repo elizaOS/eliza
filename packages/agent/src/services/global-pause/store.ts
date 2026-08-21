@@ -10,11 +10,7 @@
  * Backing storage: runtime cache. Single canonical key.
  */
 
-import {
-  type IAgentRuntime,
-  toWellFormedUnicode,
-  truncateWellFormed,
-} from "@elizaos/core";
+import { type IAgentRuntime, toWellFormedUnicode } from "@elizaos/core";
 
 type RuntimeCacheLike = Pick<
   IAgentRuntime,
@@ -71,10 +67,7 @@ function normalizeWindow(window: GlobalPauseWindow): GlobalPauseWindow {
   }
   if (typeof window.reason === "string" && window.reason.trim().length > 0) {
     const wellFormed = toWellFormedUnicode(window.reason.trim());
-    normalized.reason =
-      wellFormed.length <= 200
-        ? wellFormed
-        : truncateWellFormed(wellFormed, 200);
+    normalized.reason = wellFormed;
   }
   return normalized;
 }

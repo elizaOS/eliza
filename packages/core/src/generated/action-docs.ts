@@ -3372,23 +3372,6 @@ export const allActionsSpec = {
 			descriptionCompressed: "Show or set the default coding backend",
 		},
 		{
-			name: "COMPACT_COMMAND",
-			description: "Compact conversation history",
-			parameters: [
-				{
-					name: "instructions",
-					description: "Optional compaction instructions",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional compaction instructions",
-				},
-			],
-			similes: ["/compact"],
-			descriptionCompressed: "Compact convo history",
-		},
-		{
 			name: "CONTEXT_COMMAND",
 			description: "Show current context information",
 			parameters: [

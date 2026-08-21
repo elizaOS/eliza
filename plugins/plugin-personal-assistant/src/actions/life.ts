@@ -1773,7 +1773,7 @@ export async function runLifeConnectedQuery(args: {
             unreadCount: feed.summary.unreadCount,
             importantNewCount: feed.summary.importantNewCount,
             likelyReplyNeededCount: feed.summary.likelyReplyNeededCount,
-            subjects: feed.messages.slice(0, 8).map((entry) => entry.subject),
+            subjects: feed.messages.map((entry) => entry.subject),
           },
         }),
         data: toActionData(feed),

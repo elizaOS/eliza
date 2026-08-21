@@ -2,7 +2,7 @@
  * The ATTACHMENTS provider for the basic-capabilities bundle: it injects the
  * conversation's attachments into the prompt. Attachments from the current
  * message and recent room messages are merged by id (newest wins), sorted
- * most-recent-first, and capped at `MAX_VISIBLE_ATTACHMENTS`.
+ * most-recent-first without omitting older attachments.
  *
  * Prompt text is gated: it renders only when the current message carries its
  * own attachments, or when the current/reply message text both references and
@@ -24,17 +24,12 @@ import {
 	type ProviderResult,
 } from "../../../types/index.ts";
 import { MESSAGE_SOURCE_SUB_AGENT } from "../../../types/message-source.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { toWellFormedUnicode } from "../../../utils/well-formed.ts";
 import { addHeader } from "../../../utils.ts";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ATTACHMENTS");
-const MAX_VISIBLE_ATTACHMENTS = 3;
-const MAX_ATTACHMENT_MEMORY_LOOKBACK = 50;
 const ATTACHMENT_REFERENCE_RE =
 	/\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
 const ATTACHMENT_INSPECTION_RE =
@@ -46,7 +41,7 @@ const ATTACHMENT_INSPECTION_RE =
  * `data:audio/wav;base64,…`) are replaced with a compact descriptor — the
  * agent still knows the media exists and can pull it via `ATTACHMENT
  * action=read`, but a multi-KB base64 blob never reaches the model. Remote
- * URLs are passed through, defensively truncated if pathologically long.
+ * URLs are passed through completely.
  */
 function formatAttachmentUrlForPrompt(url: string | undefined): string {
 	if (!url) return "(none)";
@@ -54,9 +49,7 @@ function formatAttachmentUrlForPrompt(url: string | undefined): string {
 		const mime = /^data:([^;,]+)/.exec(url)?.[1] ?? "binary";
 		return `[inline ${mime} data, ${url.length} chars]`;
 	}
-	return url.length > 512
-		? `${truncateWellFormed(toWellFormedUnicode(url), 511)}…`
-		: toWellFormedUnicode(url);
+	return toWellFormedUnicode(url);
 }
 
 function contentString(message: Memory, key: string): string {
@@ -125,14 +118,9 @@ export const attachmentsProvider: Provider = {
 			};
 		}
 
-		const allAttachments = await listConversationAttachments(runtime, message, {
-			maxLookback: MAX_ATTACHMENT_MEMORY_LOOKBACK,
-		});
-		const visibleAttachments = allAttachments.slice(0, MAX_VISIBLE_ATTACHMENTS);
-		const omittedCount = Math.max(
-			0,
-			allAttachments.length - visibleAttachments.length,
-		);
+		const allAttachments = await listConversationAttachments(runtime, message);
+		const visibleAttachments = allAttachments;
+		const omittedCount = 0;
 		const shouldRenderText = shouldRenderAttachmentPromptText(
 			message,
 			allAttachments,
@@ -167,18 +155,10 @@ export const attachmentsProvider: Provider = {
 					)
 					.join("\n")
 			: "";
-		const omissionNotice =
-			shouldRenderText && omittedCount > 0
-				? `Showing the ${visibleAttachments.length} most recent attachments. ${omittedCount} older attachment${omittedCount === 1 ? "" : "s"} omitted from context; use ATTACHMENT action=read to inspect one.`
-				: "";
-
 		// Create formatted text with header
 		const text =
 			formattedAttachments && formattedAttachments.length > 0
-				? addHeader(
-						"# Attachments",
-						[formattedAttachments, omissionNotice].filter(Boolean).join("\n\n"),
-					)
+				? addHeader("# Attachments", formattedAttachments)
 				: "";
 
 		const values = {
