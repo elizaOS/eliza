@@ -42,6 +42,10 @@ import type {
 } from "../../../types/index.ts";
 import { ModelType } from "../../../types/model.ts";
 import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
+import {
 	buildFactQueryText,
 	scoreFactKeywordRelevance,
 } from "../fact-keywords.ts";
@@ -369,9 +373,10 @@ function collectTurnEvidenceText(
 		}
 	}
 	const joined = parts.filter((part) => part.trim().length > 0).join("\n");
-	return joined.length > EVIDENCE_TEXT_CHAR_CAP
-		? joined.slice(0, EVIDENCE_TEXT_CHAR_CAP)
-		: joined;
+	const wellFormed = toWellFormedUnicode(joined);
+	return wellFormed.length > EVIDENCE_TEXT_CHAR_CAP
+		? truncateWellFormed(wellFormed, EVIDENCE_TEXT_CHAR_CAP)
+		: wellFormed;
 }
 
 function formatDurableLine(memory: Memory): string {
