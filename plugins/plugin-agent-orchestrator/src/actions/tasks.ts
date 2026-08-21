@@ -3839,6 +3839,22 @@ Follow-up from the user on the FINISHED deliverable above (build on it, do not r
           };
         }
       ).__orchestratorSubAgentInbox;
+      const sendOriginId = spawnRootIdFor(_message, content) ?? "";
+      // The planner routinely answers ONE user message with BOTH a create and
+      // a send: the create launches a lane carrying the full ask, and the
+      // queued send then flushes into a redundant successor at completion —
+      // a second kickoff bubble for the same request (live 2026-08-21,
+      // "space-fact-new-run"). A same-origin send while this origin's create
+      // already launched is redundant by construction. A follow-up from a NEW
+      // user message has a fresh origin id and queues normally.
+      if (sendOriginId && hasCreateClaimForMessage(runtime, sendOriginId)) {
+        return {
+          success: true,
+          text: "The lane just launched for this request already carries these instructions; nothing further was queued.",
+          data: { sessionId: target.session.id, redundantSameOriginSend: true },
+          continueChain: false,
+        };
+      }
       if (smithersActive && queueInbox) {
         queueInbox.enqueue(target.session.id, textInput);
         return {
@@ -4692,6 +4708,17 @@ function claimCreateForMessage(
   claims.set(messageId, now);
   logger(runtime).warn(`[TASKS] create claim recorded for origin ${messageId}`);
   return true;
+}
+
+function hasCreateClaimForMessage(
+  runtime: IAgentRuntime,
+  messageId: string,
+): boolean {
+  const holder = runtime as IAgentRuntime & {
+    __orchestratorCreateClaims?: Map<string, number>;
+  };
+  const at = holder.__orchestratorCreateClaims?.get(messageId);
+  return at !== undefined && Date.now() - at <= RECENT_CREATE_CLAIM_TTL_MS;
 }
 
 async function findNearDuplicateInFlightWork(args: {
