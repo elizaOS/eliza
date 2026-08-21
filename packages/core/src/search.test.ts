@@ -129,3 +129,66 @@ describe("BM25 empty string fields", () => {
 		expect(bm25.search("arrival", 10).map((r) => r.index)).toEqual([1]);
 	});
 });
+
+describe("BM25 empty text at the remaining tokenize call sites", () => {
+	// Indexing guards its own call sites, but search/searchPhrase tokenize
+	// through the same path, so empty input reached the tokenizer unguarded.
+	it("returns no hits for an empty or whitespace-only query", () => {
+		const bm25 = new BM25([{ title: "a", content: "hello world" }]);
+
+		expect(bm25.search("", 10)).toEqual([]);
+		expect(bm25.search("   ", 10)).toEqual([]);
+	});
+
+	it("returns no hits for an empty phrase", () => {
+		const bm25 = new BM25([{ title: "a", content: "hello world" }]);
+
+		expect(bm25.searchPhrase("", 10)).toEqual([]);
+	});
+
+	// Two conditions have to line up before the phrase rescan reaches the
+	// tokenizer with empty text: the document must already be a phrase
+	// candidate, and the empty field must be iterated BEFORE the matching one,
+	// since the loop stops looking once it finds the phrase. An attachment-only
+	// field ahead of the title is exactly that shape.
+	it("scans a matching document with an empty field without throwing", () => {
+		const bm25 = new BM25([
+			{ attachment: "", title: "hello world again" },
+			{ attachment: "x", title: "unrelated" },
+		]);
+
+		expect(bm25.searchPhrase("hello world", 10).map((r) => r.index)).toEqual([
+			0,
+		]);
+	});
+
+	// BM25 normalizes by document length, so an empty field contributing any
+	// nonzero length would skew every other document's relative score. Not
+	// crashing is the visible bug; scoring identically is the quiet one.
+	it("scores an empty field identically to an absent field", () => {
+		const withEmpty = new BM25([
+			{ title: "hello world", content: "" },
+			{ title: "unrelated", content: "nothing here" },
+		]);
+		const withoutEmpty = new BM25([
+			{ title: "hello world" },
+			{ title: "unrelated", content: "nothing here" },
+		]);
+
+		expect(withEmpty.search("hello", 10)[0].score).toBe(
+			withoutEmpty.search("hello", 10)[0].score,
+		);
+	});
+
+	it("ranks a memory whose text is empty instead of throwing", () => {
+		const hits = rankMessageSearch(
+			[
+				{ id: "empty", content: { text: "" } },
+				{ id: "filled", content: { text: "query words here" } },
+			],
+			"query",
+		);
+
+		expect(hits.map((hit) => hit.item.id)).toEqual(["filled"]);
+	});
+});
