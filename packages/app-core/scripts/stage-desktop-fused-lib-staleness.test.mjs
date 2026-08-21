@@ -55,6 +55,16 @@ function mkTmp() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "fused-stale-"));
 }
 
+test("--variant cpu explicitly disables platform GPU defaults", () => {
+  const source = fs.readFileSync(script, "utf8");
+  const cpuCase = source.match(/case "cpu":\s+[\s\S]*?return \[([\s\S]*?)\];/);
+  assert.ok(cpuCase, "expected a CPU backend flag block");
+  assert.match(cpuCase[1], /"-DGGML_METAL=OFF"/);
+  assert.match(cpuCase[1], /"-DGGML_CUDA=OFF"/);
+  assert.match(cpuCase[1], /"-DGGML_VULKAN=OFF"/);
+  assert.match(cpuCase[1], /"-DGGML_HIP=OFF"/);
+});
+
 test("--check: empty dir (no staged lib) is STALE → exit 2", () => {
   const dir = mkTmp();
   try {

@@ -334,7 +334,15 @@ function backendCmakeFlags(backend) {
     case "hip":
       return ["-DGGML_HIP=ON"];
     case "cpu":
-      return [];
+      // ggml enables Metal by default on macOS. A requested CPU build must be
+      // genuinely CPU-only so it remains usable on hosts whose Xcode install
+      // does not include the optional Metal Toolchain component.
+      return [
+        "-DGGML_METAL=OFF",
+        "-DGGML_CUDA=OFF",
+        "-DGGML_VULKAN=OFF",
+        "-DGGML_HIP=OFF",
+      ];
     default:
       die(`unknown backend ${backend}`);
   }
