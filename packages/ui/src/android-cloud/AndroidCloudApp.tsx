@@ -94,6 +94,8 @@ export function AndroidCloudApp({
             );
             setMessages(restoredMessages.slice(-100));
           } catch (historyError) {
+            // error-policy:J4 conversation restore failure remains visible
+            // while the authenticated shell stays usable for a new chat.
             setError(
               `Your previous conversation could not be restored: ${errorMessage(historyError)}`,
             );
@@ -106,6 +108,8 @@ export function AndroidCloudApp({
       }
       setPhase(restored ? "ready" : "signed-out");
     } catch (restoreError) {
+      // error-policy:J4 session verification failure becomes an explicit
+      // signed-out error state with a retry affordance.
       setSession(null);
       setPhase("signed-out");
       setError(errorMessage(restoreError));
@@ -155,6 +159,7 @@ export function AndroidCloudApp({
       }
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
+      // error-policy:J4 the sign-in boundary renders the actionable failure.
       setError(errorMessage(signInError));
     } finally {
       if (loginAttemptRef.current === attemptNumber) setBusy(false);
@@ -178,6 +183,8 @@ export function AndroidCloudApp({
       setMessages([]);
       setPhase("signed-out");
     } catch (signOutError) {
+      // error-policy:J4 failed logout remains visible without fabricating a
+      // signed-out state that the client did not complete.
       setError(errorMessage(signOutError));
     } finally {
       setBusy(false);
@@ -233,10 +240,12 @@ export function AndroidCloudApp({
         controller.signal,
       );
     } catch (sendError) {
+      // error-policy:J4 a failed send removes the optimistic placeholder and
+      // surfaces non-user-cancelled failures in the composer.
+      setMessages((current) =>
+        current.filter((message) => message.id !== assistantId),
+      );
       if (!controller.signal.aborted) {
-        setMessages((current) =>
-          current.filter((message) => message.id !== assistantId),
-        );
         setError(errorMessage(sendError));
       }
     } finally {
@@ -266,6 +275,7 @@ export function AndroidCloudApp({
       setError(null);
       setListening(true);
     } catch (dictationError) {
+      // error-policy:J4 denied or failed dictation is visible at the input.
       setListening(false);
       setError(errorMessage(dictationError));
     }
@@ -277,9 +287,10 @@ export function AndroidCloudApp({
         setError("Audio playback is not available on this device.");
         return;
       }
-      void voice
-        .speak(text)
-        .catch((playbackError) => setError(errorMessage(playbackError)));
+      void voice.speak(text).catch((playbackError) => {
+        // error-policy:J4 playback failure is visible beside the transcript.
+        setError(errorMessage(playbackError));
+      });
     },
     [voice],
   );

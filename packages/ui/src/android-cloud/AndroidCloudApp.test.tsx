@@ -119,4 +119,34 @@ describe("AndroidCloudApp", () => {
     );
     expect(JSON.stringify(localStorage)).not.toContain("Hello from Eliza");
   });
+
+  it("removes the pending assistant row when a send is stopped", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    vi.spyOn(client, "createConversation").mockResolvedValue("conversation-1");
+    vi.spyOn(client, "sendChat").mockImplementation(
+      async (_session, _conversationId, _text, _onText, signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            "abort",
+            () => reject(new DOMException("Aborted", "AbortError")),
+            { once: true },
+          );
+        }),
+    );
+    render(<AndroidCloudApp client={client} voice={createVoice()} />);
+    await screen.findByText("Ada");
+
+    fireEvent.change(screen.getByLabelText("Message Eliza"), {
+      target: { value: "Never finish" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText("Thinking…")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    await waitFor(() => expect(screen.queryByText("Thinking…")).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText("Never finish")).toBeTruthy();
+  });
 });
