@@ -452,3 +452,187 @@ describe("PUT /api/character descriptor-only staging", () => {
     expect(invalidateTopologySpy).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * `CharacterSchema` accepts `{"username":""}`, `{"bio":""}`, `{"style":{}}`,
+ * and the empty-array forms: that is how a caller CLEARS a character field.
+ * Field PRESENCE must therefore survive staging independently of the
+ * history-display normalization, which deliberately omits empty values.
+ */
+/** Read one argument off a `vi.fn()` call without fighting its empty tuple type. */
+function mockCallArg(
+  fn: ReturnType<typeof vi.fn>,
+  call: number,
+  index: number,
+): unknown {
+  return (fn.mock.calls as unknown as unknown[][])[call]?.[index];
+}
+
+function makeClearRuntime() {
+  const character: Record<string, unknown> = {
+    name: "Ada",
+    username: "ada_live",
+    bio: ["a long standing bio"],
+    system: "live system",
+    adjectives: ["curious"],
+    topics: ["math"],
+    style: { all: ["terse"], chat: ["warm"] },
+    postExamples: ["a post"],
+    messageExamples: [{ examples: [{ name: "Ada", content: { text: "hi" } }] }],
+  };
+  const updateAgent = vi.fn(async () => undefined);
+  const createMemory = vi.fn(async () => undefined);
+  const config = { agents: { list: [{ id: "main", default: true }] } };
+  const saveConfig = vi.fn();
+  return {
+    character,
+    updateAgent,
+    createMemory,
+    config,
+    saveConfig,
+    runtime: {
+      agentId: "agent",
+      character,
+      updateAgent,
+      createMemory,
+    } as never,
+  };
+}
+
+async function putClear(
+  fixture: ReturnType<typeof makeClearRuntime>,
+  body: Record<string, unknown>,
+) {
+  const json = vi.fn();
+  const error = vi.fn();
+  const handled = await handleCharacterRoutes({
+    req: {} as never,
+    res: {} as never,
+    method: "PUT",
+    pathname: "/api/character",
+    state: {
+      agentName: "Ada",
+      runtime: fixture.runtime,
+      config: fixture.config,
+    },
+    json,
+    error,
+    saveConfig: fixture.saveConfig,
+    readJsonBody: vi.fn(async () => body),
+    pickRandomNames: vi.fn(),
+    validateCharacter: vi.fn(() => ({ success: true })),
+  } as never);
+  expect(handled).toBe(true);
+  expect(error).not.toHaveBeenCalled();
+  return { json, error };
+}
+
+describe("PUT /api/character clears schema-valid empty values", () => {
+  it("clears username with an empty string", async () => {
+    const fixture = makeClearRuntime();
+    const { json } = await putClear(fixture, { username: "" });
+
+    expect(fixture.character.username).toBe("");
+    expect(json).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        ok: true,
+        character: expect.objectContaining({ username: "" }),
+      }),
+    );
+    expect(fixture.updateAgent).toHaveBeenCalledTimes(1);
+    // History display deliberately omits an empty username (unchanged from the
+    // base route), but the live character and the response are cleared.
+    const metadata = mockCallArg(fixture.updateAgent, 0, 1) as {
+      metadata: { character: Record<string, unknown> };
+    };
+    expect(Object.hasOwn(metadata.metadata.character, "username")).toBe(false);
+    // The clear is a real history change: username present before, absent after.
+    expect(fixture.createMemory).toHaveBeenCalledTimes(1);
+    const memory = mockCallArg(fixture.createMemory, 0, 0) as {
+      metadata: {
+        fieldsChanged: string[];
+        changes: Array<Record<string, unknown>>;
+      };
+    };
+    expect(memory.metadata.fieldsChanged).toContain("username");
+    expect(memory.metadata.changes[0]).toEqual({
+      field: "username",
+      before: "ada_live",
+    });
+  });
+
+  it("clears bio with an empty string", async () => {
+    const fixture = makeClearRuntime();
+    await putClear(fixture, { bio: "" });
+
+    expect(fixture.character.bio).toEqual([""]);
+    const metadata = mockCallArg(fixture.updateAgent, 0, 1) as {
+      metadata: { character: { bio?: string[] } };
+    };
+    expect(metadata.metadata.character.bio).toEqual([""]);
+    expect(fixture.saveConfig).toHaveBeenCalledTimes(1);
+    expect(fixture.config.agents.list[0]).toEqual(
+      expect.objectContaining({ bio: [""] }),
+    );
+  });
+
+  it("clears style with an empty object", async () => {
+    const fixture = makeClearRuntime();
+    await putClear(fixture, { style: {} });
+
+    expect(fixture.character.style).toEqual({});
+    expect(fixture.saveConfig).toHaveBeenCalledTimes(1);
+    expect(fixture.config.agents.list[0]).toEqual(
+      expect.objectContaining({ style: {} }),
+    );
+    // Style is absent from the history snapshot once it holds no known arrays.
+    const metadata = mockCallArg(fixture.updateAgent, 0, 1) as {
+      metadata: { character: Record<string, unknown> };
+    };
+    expect(Object.hasOwn(metadata.metadata.character, "style")).toBe(false);
+    expect(fixture.createMemory).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the empty-collection forms", async () => {
+    const fixture = makeClearRuntime();
+    await putClear(fixture, {
+      system: "",
+      adjectives: [],
+      topics: [],
+      postExamples: [],
+      messageExamples: [],
+    });
+
+    expect(fixture.character.system).toBe("");
+    expect(fixture.character.adjectives).toEqual([]);
+    expect(fixture.character.topics).toEqual([]);
+    expect(fixture.character.postExamples).toEqual([]);
+    expect(fixture.character.messageExamples).toEqual([]);
+    expect(fixture.config.agents.list[0]).toEqual(
+      expect.objectContaining({
+        system: "",
+        adjectives: [],
+        topics: [],
+        postExamples: [],
+        messageExamples: [],
+      }),
+    );
+  });
+
+  it("keeps untouched fields when one field is cleared", async () => {
+    const fixture = makeClearRuntime();
+    await putClear(fixture, { username: "" });
+
+    expect(fixture.character.name).toBe("Ada");
+    expect(fixture.character.bio).toEqual(["a long standing bio"]);
+    expect(fixture.character.style).toEqual({
+      all: ["terse"],
+      chat: ["warm"],
+    });
+    expect(fixture.character.messageExamples).toEqual([
+      { examples: [{ name: "Ada", content: { text: "hi" } }] },
+    ]);
+    expect(invalidateTopologySpy).not.toHaveBeenCalled();
+  });
+});

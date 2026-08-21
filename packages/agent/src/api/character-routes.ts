@@ -15,11 +15,14 @@ import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
 import {
   buildCharacterHistorySnapshot,
   type CharacterHistorySnapshot,
+  createHistoryWalkContext,
+  type HistoryWalkContext,
   isCharacterHistoryUnbounded,
   listCharacterHistory,
   type RuntimeCharacterLike,
   readOwnDataValue,
   recordCharacterHistory,
+  toBoundedCharacterValue,
 } from "../services/character-history.ts";
 import { invalidateConversationConnectionTopology } from "./conversation-connection-readiness.ts";
 
@@ -230,70 +233,98 @@ const CHARACTER_PUT_FIELDS = [
 type CharacterPutField = (typeof CHARACTER_PUT_FIELDS)[number];
 
 /**
- * Stage the next character by *reference* only: every field is taken from a
- * single own-data-descriptor read of the submitted body, falling back to the
- * live character. No submitted value is traversed here — that happens once, in
- * `buildCharacterHistorySnapshot`, under the walk budget.
+ * The presence-aware staged DTO for one `PUT /api/character`.
+ *
+ * `values` holds one bounded, descriptor-only, commit-shaped value per
+ * character field — submitted fields from the request, the rest from the live
+ * character. `submitted` records which fields the request actually carried.
+ *
+ * Presence is tracked here rather than inferred from the history snapshot:
+ * `CharacterSchema` accepts `{"username":""}`, `{"bio":""}` and `{"style":{}}`
+ * as the way a caller CLEARS a field, and the history snapshot deliberately
+ * omits those empty values for display. Using the snapshot as the value
+ * authority silently dropped such a clear.
+ */
+type StagedCharacterPut = {
+  values: Record<string, unknown>;
+  submitted: Set<CharacterPutField>;
+};
+
+/** Base-route commit shape for one submitted field, applied to bounded data. */
+function shapeSubmittedField(
+  field: CharacterPutField,
+  value: unknown,
+): unknown {
+  if (value === undefined) return undefined;
+  if (field === "name" || field === "username" || field === "system") {
+    return String(value);
+  }
+  if (field === "bio") {
+    return Array.isArray(value) ? value : [String(value)];
+  }
+  return value;
+}
+
+/**
+ * Stage the next character. Every value crosses the boundary exactly once,
+ * through `toBoundedCharacterValue`: a single own-data-descriptor read of the
+ * body (falling back to the live character), then one bounded descriptor walk
+ * charged to the shared `ctx`. Nothing downstream touches the submitted graph.
  */
 function stageCharacterPut(
   character: unknown,
   body: Record<string, unknown>,
-): RuntimeCharacterLike {
-  const staged: Record<string, unknown> = {};
+  ctx: HistoryWalkContext,
+): StagedCharacterPut {
+  const values: Record<string, unknown> = {};
+  const submitted = new Set<CharacterPutField>();
+
   for (const field of CHARACTER_PUT_FIELDS) {
-    const submitted = readOwnDataValue(body, field);
-    staged[field] =
-      submitted != null ? submitted : readOwnDataValue(character, field);
+    const raw = readOwnDataValue(body, field);
+    if (raw != null) {
+      submitted.add(field);
+      values[field] = shapeSubmittedField(
+        field,
+        toBoundedCharacterValue(raw, ctx),
+      );
+      continue;
+    }
+    values[field] = toBoundedCharacterValue(
+      readOwnDataValue(character, field),
+      ctx,
+    );
   }
-  return staged as RuntimeCharacterLike;
+
+  return { values, submitted };
 }
 
 /**
- * Commit the validated snapshot onto the live character. Only fields the body
- * actually submitted are overwritten (plus message examples on a rename), and
- * every committed value comes from the bounded snapshot rather than the raw
- * request graph.
+ * Commit the staged DTO onto the live character. Only fields the request
+ * submitted are overwritten (plus message examples on a rename), and every
+ * committed value is the bounded staged value — never the raw request graph,
+ * and never the history snapshot.
  */
-function commitCharacterSnapshot(
+function commitStagedCharacter(
   target: CharacterPutTarget,
-  body: Record<string, unknown>,
-  snapshot: CharacterHistorySnapshot,
-  messageExamples: CharacterMessageExampleGroup[] | undefined,
+  staged: StagedCharacterPut,
 ): void {
-  const submitted = new Set<CharacterPutField>();
   for (const field of CHARACTER_PUT_FIELDS) {
-    if (readOwnDataValue(body, field) != null) submitted.add(field);
+    if (field === "messageExamples") continue;
+    if (!staged.submitted.has(field)) continue;
+    const value = staged.values[field];
+    if (value === undefined) continue;
+    (target as Record<string, unknown>)[field] = value;
   }
 
-  if (submitted.has("name") && snapshot.name !== undefined) {
-    target.name = snapshot.name;
-  }
-  if (submitted.has("username") && snapshot.username !== undefined) {
-    target.username = snapshot.username;
-  }
-  if (submitted.has("bio") && snapshot.bio !== undefined) {
-    target.bio = snapshot.bio;
-  }
-  if (submitted.has("system") && snapshot.system !== undefined) {
-    target.system = snapshot.system;
-  }
-  if (submitted.has("adjectives") && snapshot.adjectives !== undefined) {
-    target.adjectives = snapshot.adjectives;
-  }
-  if (submitted.has("topics") && snapshot.topics !== undefined) {
-    target.topics = snapshot.topics;
-  }
-  if (submitted.has("style") && snapshot.style !== undefined) {
-    target.style = snapshot.style;
-  }
-  if (submitted.has("postExamples") && snapshot.postExamples !== undefined) {
-    target.postExamples = snapshot.postExamples;
-  }
-  if (
-    (submitted.has("messageExamples") || submitted.has("name")) &&
-    messageExamples !== undefined
+  // Message examples also change on a rename, and the base route clears them
+  // when the request submits a non-array, so presence is decided separately.
+  if (staged.submitted.has("messageExamples")) {
+    target.messageExamples = staged.values.messageExamples;
+  } else if (
+    staged.submitted.has("name") &&
+    staged.values.messageExamples !== undefined
   ) {
-    target.messageExamples = messageExamples;
+    target.messageExamples = staged.values.messageExamples;
   }
 }
 
@@ -586,31 +617,35 @@ export async function handleCharacterRoutes(
             ? previousCharacterName.trim()
             : state.agentName;
 
-      // One bounded, descriptor-only snapshot of the whole next character; the
-      // submitted graph is never traversed outside this call.
+      // Stage the whole next character once, under one bounded descriptor walk;
+      // the submitted graph is never traversed outside this call. The staged
+      // DTO is the value authority for the live character (presence preserved),
+      // and the history snapshot is derived from it afterwards.
+      let staged: StagedCharacterPut;
       let charData: CharacterHistorySnapshot;
-      let nextMessageExamples: CharacterMessageExampleGroup[] | undefined;
       try {
-        charData = buildCharacterHistorySnapshot(
-          stageCharacterPut(character, body),
-        );
-        const rewritesExamples =
-          submittedName != null ||
-          readOwnDataValue(body, "messageExamples") != null;
-        nextMessageExamples = rewritesExamples
-          ? rewriteSnapshotMessageExamplesForName(
-              charData.messageExamples,
-              nextCharacterName,
-              previousCharacterName,
-            )
-          : undefined;
-        if (nextMessageExamples !== undefined) {
-          charData = {
-            ...charData,
-            messageExamples:
-              nextMessageExamples as unknown as CharacterHistorySnapshot["messageExamples"],
-          };
+        staged = stageCharacterPut(character, body, createHistoryWalkContext());
+        if (
+          staged.submitted.has("name") ||
+          staged.submitted.has("messageExamples")
+        ) {
+          const rewritten = rewriteSnapshotMessageExamplesForName(
+            staged.values.messageExamples,
+            nextCharacterName,
+            previousCharacterName,
+          );
+          if (
+            rewritten !== undefined ||
+            staged.submitted.has("messageExamples")
+          ) {
+            staged.values.messageExamples = rewritten;
+          }
         }
+        // Derived from staged plain data, so this walk cannot reach the
+        // request graph; it re-applies the history-display normalization only.
+        charData = buildCharacterHistorySnapshot(
+          staged.values as RuntimeCharacterLike,
+        );
       } catch (err) {
         // error-policy:J3 Zod-accepted passthrough extras can still overflow.
         if (isCharacterHistoryUnbounded(err)) {
@@ -626,12 +661,7 @@ export async function handleCharacterRoutes(
       ) {
         invalidateConversationConnectionTopology(runtime);
       }
-      commitCharacterSnapshot(
-        character as CharacterPutTarget,
-        body,
-        charData,
-        nextMessageExamples,
-      );
+      commitStagedCharacter(character as CharacterPutTarget, staged);
 
       // Persist character fields to DB so edits survive restarts
       try {

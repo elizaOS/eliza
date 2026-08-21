@@ -190,7 +190,7 @@ function mapOwnArrayData<T>(
   return mapped;
 }
 
-function createHistoryWalkContext(): HistoryWalkContext {
+export function createHistoryWalkContext(): HistoryWalkContext {
   return { visits: 0, visiting: new WeakSet<object>() };
 }
 
@@ -214,7 +214,7 @@ export type RuntimeCharacterLike = {
 
 export type CharacterHistorySource = "manual" | "agent" | "restore";
 
-type CharacterHistoryValue =
+export type CharacterHistoryValue =
   | string
   | number
   | boolean
@@ -471,6 +471,23 @@ const CHARACTER_STYLE_KEYS = ["all", "chat", "post"] as const;
  * unwrapped `Array.isArray` runs on caller-supplied values, and one hostile
  * field cannot spend an independent walk budget.
  */
+/**
+ * Bounded, descriptor-only projection of ONE caller-supplied value into inert
+ * plain data (arrays keep holes, objects become null-prototype records).
+ *
+ * This is the value authority for staging a `PUT /api/character` field: unlike
+ * {@link buildCharacterHistorySnapshot} it preserves *presence*, so a
+ * schema-valid empty clear (`""`, `{}`, `[]`) survives staging instead of being
+ * normalized away by the history-display rules. Shares `ctx`, so every staged
+ * field is charged to one aggregate walk budget.
+ */
+export function toBoundedCharacterValue(
+  value: unknown,
+  ctx: HistoryWalkContext,
+): CharacterHistoryValue | undefined {
+  return toCharacterHistoryValue(value, 0, ctx);
+}
+
 export function buildCharacterHistorySnapshot(
   character: RuntimeCharacterLike,
   ctx: HistoryWalkContext = createHistoryWalkContext(),
