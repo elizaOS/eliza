@@ -1018,4 +1018,50 @@ describe("collectGmail", () => {
     expect(result.manifest.totals.messages).toBe(3);
     expect((await validateCorpusTarget(outDir)).ok).toBe(true);
   });
+
+  // The relabel and crash-resume cases are covered separately above; this is
+  // the composition of the two, which is where the durability gap lived. A
+  // relabeled id has its staging verdict dropped in memory while the
+  // checkpoint advances historyId past the label event. If the process dies in
+  // between, the resume reloads the stale verdict from the staging file and no
+  // future incremental run ever re-sees that event.
+  it("does not resurrect a stale verdict when a relabel refetch crashes", async () => {
+    const outDir = await makeTempDir();
+    const transport = new FakeGmailTransport(ACCOUNT, baseSpecs());
+    const first = await collect(transport, outDir);
+    expect(first.manifest.totals.messages).toBe(3);
+
+    // m1 gains SENT, so its direction must flip from "in" to "out".
+    transport.historyDelta = {
+      added: [],
+      deletedIds: [],
+      labelChanges: [{ id: "m1", added: ["SENT"] }],
+      terminalHistoryId: "2500",
+    };
+
+    // Crash while refetching the relabeled id, after the checkpoint advanced.
+    const realGet = transport.getMessage.bind(transport);
+    transport.getMessage = async (messageId: string) => {
+      if (messageId === "m1") throw new Error("collector died mid-refetch");
+      return realGet(messageId);
+    };
+    await expect(collect(transport, outDir)).rejects.toThrow();
+
+    // A healthy third run must still produce the corrected direction.
+    transport.getMessage = realGet;
+    transport.historyDelta = undefined;
+    await collect(transport, outDir);
+
+    const july = (
+      await fs.readFile(
+        path.join(outDir, "gmail", ACCOUNT_SEGMENT, "2024-07.jsonl"),
+        "utf8",
+      )
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const m1 = july.find((row) => row.id === `gmail:${ACCOUNT}:m1`);
+    expect(m1?.direction).toBe("out");
+  });
 });

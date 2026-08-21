@@ -1222,6 +1222,21 @@ export async function collectGmail(
           ),
           completed: false,
         };
+        // Compact the staging file BEFORE persisting the checkpoint. The
+        // relabeled ids were dropped from `staging` in memory only, while this
+        // checkpoint advances `historyId` past the label event. A crash in
+        // between resumes from a checkpoint that will never re-see that event
+        // and reloads the stale verdict from the staging file — permanently,
+        // until an expired-history full rescan.
+        {
+          const stagedBody = [...staging.values()]
+            .map((row) => JSON.stringify(row))
+            .join("\n");
+          await writePrivateAtomic(
+            stagingPath,
+            stagedBody.length > 0 ? `${stagedBody}\n` : "",
+          );
+        }
         await saveCheckpoint(checkpoint);
       }
     } else if (checkpoint) {
