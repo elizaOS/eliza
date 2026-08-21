@@ -115,12 +115,7 @@ async function seedNodeWithTargetAndSibling(options: {
   allocationCounted: boolean | null;
   status?: "running" | "stopped" | "sleeping" | "deletion_pending" | "deletion_failed";
   withDeletionIntent?: boolean;
-}): Promise<{
-  agentId: string;
-  orgId: string;
-  nodeId: string;
-  deletionAttemptId: string;
-}> {
+}): Promise<{ agentId: string; orgId: string; nodeId: string; deletionAttemptId: string }> {
   const nodeId = uniq("node");
   const deletionAttemptId = crypto.randomUUID();
 
@@ -133,11 +128,9 @@ async function seedNodeWithTargetAndSibling(options: {
     .values({ steward_user_id: uniq("steward"), organization_id: org.id })
     .returning();
 
-  await dbWrite.insert(dockerNodes).values({
-    node_id: nodeId,
-    hostname: `${nodeId}.test.invalid`,
-    allocated_count: 2,
-  });
+  await dbWrite
+    .insert(dockerNodes)
+    .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
 
   const withIntent = options.withDeletionIntent ?? true;
   const [agent] = await dbWrite
@@ -150,10 +143,7 @@ async function seedNodeWithTargetAndSibling(options: {
       node_id: nodeId,
       container_name: uniq("container"),
       ...(withIntent
-        ? {
-            deletion_attempt_id: deletionAttemptId,
-            deletion_started_at: new Date(),
-          }
+        ? { deletion_attempt_id: deletionAttemptId, deletion_started_at: new Date() }
         : {}),
       deletion_allocation_counted: options.allocationCounted,
     })
@@ -387,10 +377,7 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
         nodeId,
         preparedRevision,
       );
-      expect(release).toEqual({
-        outcome: "released",
-        lifecycleRevision: preparedRevision + 1,
-      });
+      expect(release).toEqual({ outcome: "released", lifecycleRevision: preparedRevision + 1 });
       expect(await lifecycleRevision(agentId)).toBe(release.lifecycleRevision);
       expect(await allocatedCount(nodeId)).toBe(1);
 
@@ -501,11 +488,9 @@ describe("a deletion continuation never re-derives ownership from its own state"
       // release for a slot the pre-ownership provider already decremented.
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite.insert(dockerNodes).values({
-        node_id: nodeId,
-        hostname: `${nodeId}.test.invalid`,
-        allocated_count: 2,
-      });
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
       await dbWrite
         .update(agentSandboxes)
         .set({
@@ -543,35 +528,15 @@ describe("a deletion continuation never re-derives ownership from its own state"
   );
 
   test("isDeletionContinuation covers the shapes the narrow test misses", () => {
-    const fresh = {
-      status: "running",
-      deletion_attempt_id: null,
-      deletion_started_at: null,
-    };
+    const fresh = { status: "running", deletion_attempt_id: null, deletion_started_at: null };
     expect(isDeletionContinuation(fresh)).toBe(false);
 
     // Each of these is a continuation the `deletion_started_at` test alone misses.
     for (const row of [
-      {
-        status: "deletion_pending",
-        deletion_attempt_id: null,
-        deletion_started_at: null,
-      },
-      {
-        status: "deletion_failed",
-        deletion_attempt_id: null,
-        deletion_started_at: null,
-      },
-      {
-        status: "running",
-        deletion_attempt_id: crypto.randomUUID(),
-        deletion_started_at: null,
-      },
-      {
-        status: "running",
-        deletion_attempt_id: null,
-        deletion_started_at: new Date(),
-      },
+      { status: "deletion_pending", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "deletion_failed", deletion_attempt_id: null, deletion_started_at: null },
+      { status: "running", deletion_attempt_id: crypto.randomUUID(), deletion_started_at: null },
+      { status: "running", deletion_attempt_id: null, deletion_started_at: new Date() },
     ]) {
       expect(isDeletionContinuation(row)).toBe(true);
     }
@@ -1097,18 +1062,12 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       if (!pgliteReady) return;
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite.insert(dockerNodes).values({
-        node_id: nodeId,
-        hostname: `${nodeId}.test.invalid`,
-        allocated_count: 2,
-      });
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
       await dbWrite
         .update(agentSandboxes)
-        .set({
-          status: "running",
-          node_id: nodeId,
-          container_name: uniq("container"),
-        })
+        .set({ status: "running", node_id: nodeId, container_name: uniq("container") })
         .where(eq(agentSandboxes.id, agentId));
 
       await new ProvisioningJobService().enqueueAgentDeleteOnce({
@@ -1150,19 +1109,13 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       if (!pgliteReady) return;
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite.insert(dockerNodes).values({
-        node_id: nodeId,
-        hostname: `${nodeId}.test.invalid`,
-        allocated_count: 2,
-      });
+      await dbWrite
+        .insert(dockerNodes)
+        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
       // Suspend already gave the slot back while keeping the locator.
       await dbWrite
         .update(agentSandboxes)
-        .set({
-          status: "stopped",
-          node_id: nodeId,
-          container_name: uniq("container"),
-        })
+        .set({ status: "stopped", node_id: nodeId, container_name: uniq("container") })
         .where(eq(agentSandboxes.id, agentId));
 
       await new ProvisioningJobService().enqueueAgentDeleteOnce({

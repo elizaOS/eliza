@@ -1828,6 +1828,10 @@ export class ProvisioningJobService {
             ) {
               return existing;
             }
+            // A legacy acknowledged row without persisted provenance is
+            // stamped with the current re-requesting user: the true first
+            // acknowledging actor was never recorded, so this best-effort
+            // attribution is the earliest authenticated actor we can prove.
             const [upgraded] = await tx
               .update(jobs)
               .set({
@@ -2694,9 +2698,7 @@ export class ProvisioningJobService {
               409,
               "session_not_ready",
               "requestId was already used for a different canary request",
-              {
-                requestId: params.requestId,
-              },
+              { requestId: params.requestId },
             );
           }
         }
@@ -3973,11 +3975,7 @@ export class ProvisioningJobService {
             .where(and(eq(agentSandboxes.id, agentId), eq(agentSandboxes.status, "running")));
           logger.warn(
             "[provisioning-jobs] Recorded rollback-safe upgrade failure without marking sandbox terminal",
-            {
-              jobId: job.id,
-              agentId,
-              failedTargetDigest: toDigest,
-            },
+            { jobId: job.id, agentId, failedTargetDigest: toDigest },
           );
         };
       }
@@ -4035,19 +4033,12 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, failedJob.organization_id)))
-            .returning({
-              id: apps.id,
-              api_key_id: apps.api_key_id,
-              slug: apps.slug,
-            });
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
               "[provisioning-jobs] Marked app deployment as failed after permanent failure",
-              {
-                jobId: job.id,
-                appId,
-              },
+              { jobId: job.id, appId },
             );
           }
         };
@@ -4089,11 +4080,7 @@ export class ProvisioningJobService {
             .update(apps)
             .set({ deployment_status: "failed", updated_at: new Date() })
             .where(and(eq(apps.id, appId), eq(apps.organization_id, row.organizationId)))
-            .returning({
-              id: apps.id,
-              api_key_id: apps.api_key_id,
-              slug: apps.slug,
-            });
+            .returning({ id: apps.id, api_key_id: apps.api_key_id, slug: apps.slug });
           if (failedApp) {
             await enqueueAppCacheInvalidation(tx, failedJob, failedApp);
             logger.warn(
@@ -4128,10 +4115,7 @@ export class ProvisioningJobService {
             .where(eq(agentSandboxes.id, agentId));
           logger.warn(
             "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
-            {
-              jobId: job.id,
-              agentId,
-            },
+            { jobId: job.id, agentId },
           );
         };
       }
@@ -4428,11 +4412,7 @@ export class ProvisioningJobService {
   ): Promise<boolean> {
     if (result.success || result.error !== "Agent not found") return false;
     await this.settleClaimedExecution(job, "completed", {
-      result: {
-        cloudAgentId: agentId,
-        skipped: true,
-        reason: "Agent not found",
-      },
+      result: { cloudAgentId: agentId, skipped: true, reason: "Agent not found" },
       completed_at: new Date(),
     });
     logger.info("[provisioning-jobs] Job completed as no-op — agent no longer exists", {
@@ -5859,12 +5839,7 @@ export class ProvisioningJobService {
     minAgeMs?: number;
     maxAgents?: number;
     concurrency?: number;
-  }): Promise<{
-    total: number;
-    recovered: number;
-    unresolved: number;
-    failed: number;
-  }> {
+  }): Promise<{ total: number; recovered: number; unresolved: number; failed: number }> {
     const minAgeMs = params?.minAgeMs ?? 5 * 60 * 1000; // 5m grace beyond normal boot
     const maxAgents = params?.maxAgents ?? 50;
     const concurrency = params?.concurrency ?? 5;
@@ -6085,9 +6060,7 @@ export class ProvisioningJobService {
       const isWaifuTarget =
         waifuTarget != null && isWaifuWebhookTargetUrl(safeWebhookUrl, waifuTarget);
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
       let rawBody: string;
 
       if (isWaifuTarget && waifuTarget) {
