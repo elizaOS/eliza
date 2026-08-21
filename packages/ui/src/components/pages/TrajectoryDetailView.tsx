@@ -157,6 +157,18 @@ export function normalizeTrajectoryCallText(...candidates: unknown[]): string {
   return "";
 }
 
+/**
+ * Line counts are metadata a reader trusts, so an absent or whitespace-only
+ * prompt must report zero rather than the `1` that `"".split("\n")` yields.
+ * Only genuine text contributes a count; `false` and `0` arrive here already
+ * serialized by `normalizeTrajectoryCallText` and keep their truthful count.
+ */
+export function countTrajectoryTextLines(value: unknown): number {
+  if (typeof value !== "string") return 0;
+  if (value.trim().length === 0) return 0;
+  return value.split("\n").length;
+}
+
 function isNativeToolCallEvent(
   event: TrajectoryEvent,
 ): event is NativeToolCallEvent {
@@ -761,9 +773,9 @@ export function TrajectoryDetailView({
                 systemPrompt={call.systemPrompt}
                 systemPromptButtonLabel={t("trajectorydetailview.SystemPrompt")}
                 systemLabel={t("trajectorydetailview.System")}
-                systemLinesLabel={`${call.systemPrompt?.split("\n").length ?? 0} ${t(
-                  "trajectorydetailview.lines",
-                )}`}
+                systemLinesLabel={`${countTrajectoryTextLines(
+                  call.systemPrompt,
+                )} ${t("trajectorydetailview.lines")}`}
                 systemCollapseLabel={t("common.collapse", {
                   defaultValue: "Collapse",
                 })}
@@ -772,18 +784,16 @@ export function TrajectoryDetailView({
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}
                 outputLabel={t("trajectorydetailview.OutputResponse")}
-                inputLinesLabel={`${
+                inputLinesLabel={`${countTrajectoryTextLines(
                   normalizeTrajectoryCallText(
                     call.userPrompt,
                     call.prompt,
                     call.messages,
-                  ).split("\n").length
-                } ${t("trajectorydetailview.lines")}`}
-                outputLinesLabel={`${
-                  normalizeTrajectoryCallText(call.response, call.output).split(
-                    "\n",
-                  ).length
-                } ${t("trajectorydetailview.lines")}`}
+                  ),
+                )} ${t("trajectorydetailview.lines")}`}
+                outputLinesLabel={`${countTrajectoryTextLines(
+                  normalizeTrajectoryCallText(call.response, call.output),
+                )} ${t("trajectorydetailview.lines")}`}
                 tags={(call.tags ?? []).filter((tag) => tag !== "llm")}
                 userPrompt={normalizeTrajectoryCallText(
                   call.userPrompt,
