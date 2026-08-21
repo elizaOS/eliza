@@ -67,10 +67,15 @@ async function clickIfVisible(
   const target = locator.first();
   const offered = await target.waitFor({ state: "visible", timeout }).then(
     () => true,
-    // error-policy:J4 the only expected failure of this wait is "the optional
-    // affordance never appeared", which becomes a distinct absent state; the
-    // click below still surfaces any genuine interaction failure.
-    () => false,
+    // error-policy:J4 a timeout is the one expected failure — the optional
+    // affordance never appeared — and becomes a distinct absent state. Anything
+    // else is rethrown: a strict-mode violation (two elements matched the
+    // locator) would otherwise be reported as "not offered", quietly turning a
+    // broken selector into a passing skip.
+    (error: unknown) => {
+      if (error instanceof Error && error.name === "TimeoutError") return false;
+      throw error;
+    },
   );
   if (!offered) return false;
   await target.click();

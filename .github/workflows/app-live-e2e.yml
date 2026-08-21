@@ -697,7 +697,11 @@ jobs:
               `- cloud login+personal-identity+chat (staging): \`${process.env.R_CLOUD_STAGING}\``,
               `- desktop packaged (build+boot+renderer): \`${process.env.R_DESKTOP}\``,
               "",
-              `Run log + failure artifacts: ${process.env.RUN_URL}`,
+              `Run log: ${process.env.RUN_URL}`,
+              "",
+              "Staging uploads a secret-free receipt; the production cloud-live",
+              "job deliberately uploads nothing, so its evidence is job status",
+              "plus the run log only.",
               "",
               "_Auto-posted by app-live-e2e.yml so a red nightly notifies someone (Done-when, #13681)._",
             ].join("\n");
