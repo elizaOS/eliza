@@ -641,9 +641,9 @@ function mapRichMessage(
   }
   const headers = message.payload?.headers ?? [];
   const subject = decodeHtmlEntities(headerValue(headers, "Subject") || "") || "(no subject)";
-  const fromMailbox = parseMailbox(headerValue(headers, "From") || "");
+  const fromMailbox = parseEmailAddresses(headerValue(headers, "From"))[0] ?? null;
   const replyTo = headerValue(headers, "Reply-To");
-  const replyToMailbox = replyTo ? parseMailbox(replyTo) : null;
+  const replyToMailbox = parseEmailAddresses(replyTo)[0] ?? null;
   const to = parseEmailAddresses(headerValue(headers, "To")).map(formatAddressValue);
   const cc = parseEmailAddresses(headerValue(headers, "Cc")).map(formatAddressValue);
   const labels = (message.labelIds ?? []).map((label) => label.trim()).filter(Boolean);
@@ -719,6 +719,9 @@ function parseEmailAddresses(value: string | undefined): GoogleEmailAddress[] {
   return addresses;
 }
 
+const MAX_ADDRESS_HEADER_LENGTH = 512 * 1024;
+const MAX_ADDRESSES_PER_HEADER = 2_048;
+
 // RFC 5322 address lists separate mailboxes with commas, but a comma is only a
 // separator in the base list state. Inside a quoted string, an RFC comment, or
 // an angle-addr route it is ordinary text, and a quoted-pair (`\x`) escapes the
@@ -727,9 +730,14 @@ function parseEmailAddresses(value: string | undefined): GoogleEmailAddress[] {
 // corporate "Last, First" mailbox in half and manufactures a phantom `"Smith`
 // recipient. This bounded scanner tracks quoted strings, nested comments,
 // quoted-pairs, and angle addresses, splits only in the base state, and fails
-// closed to a single opaque token when a context is left unterminated so
-// malformed input can never inflate the recipient count.
+// closed when a context is left unterminated, a group is malformed, or the
+// header exceeds explicit size/address-count limits, so malformed input can
+// never inflate the recipient count or allocate an unbounded DTO.
 function splitAddressList(value: string): string[] {
+  if (value.length > MAX_ADDRESS_HEADER_LENGTH) {
+    return [];
+  }
+
   const tokens: string[] = [];
   let current = "";
   let inQuote = false;
@@ -737,6 +745,21 @@ function splitAddressList(value: string): string[] {
   let inAngle = false;
   let inDomainLiteral = false;
   let escaped = false;
+  let inGroup = false;
+
+  const pushCurrent = (): boolean => {
+    const token = current.trim();
+    current = "";
+    if (!token) {
+      return true;
+    }
+    if (tokens.length >= MAX_ADDRESSES_PER_HEADER) {
+      return false;
+    }
+    tokens.push(token);
+    return true;
+  };
+
   for (const char of value) {
     if (escaped) {
       current += char;
@@ -787,33 +810,49 @@ function splitAddressList(value: string): string[] {
       continue;
     }
     if (char === "<") {
+      if (inAngle) {
+        return [];
+      }
       inAngle = true;
       current += char;
       continue;
     }
     if (char === ">") {
+      if (!inAngle) {
+        return [];
+      }
       inAngle = false;
       current += char;
       continue;
     }
-    if (char === "," && !inAngle) {
-      tokens.push(current);
+    if (char === ":" && !inAngle) {
+      if (inGroup || !current.trim()) {
+        return [];
+      }
+      inGroup = true;
       current = "";
+      continue;
+    }
+    if (char === ";" && !inAngle) {
+      if (!inGroup || !pushCurrent()) {
+        return [];
+      }
+      inGroup = false;
+      continue;
+    }
+    if (char === "," && !inAngle) {
+      if (!pushCurrent()) {
+        return [];
+      }
       continue;
     }
     current += char;
   }
-  tokens.push(current);
 
-  if (inQuote || commentDepth > 0 || inAngle || inDomainLiteral || escaped) {
-    // Unterminated quote/comment/angle context: the comma boundaries we scanned
-    // are no longer trustworthy, so preserve one opaque token rather than
-    // emitting several half-parsed recipients.
-    const opaque = value.trim();
-    return opaque ? [opaque] : [];
+  if (inQuote || commentDepth > 0 || inAngle || inDomainLiteral || escaped || inGroup) {
+    return [];
   }
-
-  return tokens.map((token) => token.trim()).filter(Boolean);
+  return pushCurrent() ? tokens : [];
 }
 
 // Remove RFC 5322 comments (`(...)`, nestable, with quoted-pair escapes) from a
@@ -885,28 +924,85 @@ function stripMailboxComments(value: string): string {
 
 // A conservative addr-spec check so an arbitrary fragment (a truncated `"Smith`,
 // a bare display name) is never presented as an email. Requires a single `@`
-// with a non-empty local part and a dotted or bracketed-literal domain, and no
-// structural characters that only belong to display names or comments.
+// with a non-empty dot-atom or quoted local part and a dot-atom or
+// bracketed-literal domain, and no structural characters that only belong to
+// display names, groups, or comments.
 function isPlausibleEmailAddress(value: string): boolean {
   if (!value) {
     return false;
   }
-  const at = value.indexOf("@");
-  if (at <= 0 || at !== value.lastIndexOf("@") || at === value.length - 1) {
+  const at = findAddressSeparator(value);
+  if (at <= 0 || at === value.length - 1) {
     return false;
   }
   const local = value.slice(0, at);
   const domain = value.slice(at + 1);
-  if (/[\s",()<>[\]\\]/.test(local)) {
+  if (!isPlausibleLocalPart(local)) {
     return false;
   }
   if (isBracketedDomainLiteral(domain)) {
     return true;
   }
-  if (/[\s",()<>[\]\\]/.test(domain)) {
+  if (/[\s",()<>[\]\\@:;]/.test(domain)) {
     return false;
   }
-  return domain.includes(".") && !domain.startsWith(".") && !domain.endsWith(".");
+  return !domain.startsWith(".") && !domain.endsWith(".") && !domain.includes("..");
+}
+
+function findAddressSeparator(value: string): number {
+  let separator = -1;
+  let inQuote = false;
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (inQuote && char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (char === "@" && !inQuote) {
+      if (separator !== -1) {
+        return -1;
+      }
+      separator = index;
+    }
+  }
+  return inQuote || escaped ? -1 : separator;
+}
+
+function isPlausibleLocalPart(value: string): boolean {
+  if (value.startsWith('"') || value.endsWith('"')) {
+    if (!(value.length >= 2 && value.startsWith('"') && value.endsWith('"'))) {
+      return false;
+    }
+    let escaped = false;
+    for (let index = 1; index < value.length - 1; index += 1) {
+      const char = value[index];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === '"' || char === "\r" || char === "\n") {
+        return false;
+      }
+    }
+    return !escaped;
+  }
+  if (/[\s",()<>[\]\\@:;]/.test(value)) {
+    return false;
+  }
+  return !value.startsWith(".") && !value.endsWith(".") && !value.includes("..");
 }
 
 function isBracketedDomainLiteral(value: string): boolean {

@@ -241,6 +241,66 @@ describe("parseEmailAddresses top-level comma splitting", () => {
     const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
     expect(msg.to?.map((address) => address.email)).toEqual(["real@y.com"]);
   });
+
+  it("flattens RFC groups without retaining their label or terminator", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        {
+          name: "To",
+          value: 'Project Team: "Doe, Jane" <jane@corp.com>, bob@x.com;, outside@example.com',
+        },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to).toEqual([
+      { email: "jane@corp.com", name: "Doe, Jane" },
+      { email: "bob@x.com" },
+      { email: "outside@example.com" },
+    ]);
+  });
+
+  it("keeps valid quoted local-parts and dotless domains compatible", async () => {
+    const client = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        {
+          name: "To",
+          value: '"comma, and @ sign"@example.com, local@intranet',
+        },
+      ])
+    );
+    const msg = await client.getMessage({ accountId: "a1", messageId: "m1" });
+    expect(msg.to?.map((address) => address.email)).toEqual([
+      '"comma, and @ sign"@example.com',
+      "local@intranet",
+    ]);
+  });
+
+  it("fails closed when a header exceeds parser size or address-count bounds", async () => {
+    const tooMany = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        {
+          name: "To",
+          value: Array.from({ length: 2_049 }, (_, index) => `u${index}@x.com`).join(","),
+        },
+      ])
+    );
+    const tooLong = clientReturning(
+      messageWithHeaders([
+        { name: "From", value: "sender@corp.com" },
+        { name: "To", value: `recipient@x.com${" ".repeat(512 * 1024)}` },
+      ])
+    );
+
+    await expect(tooMany.getMessage({ accountId: "a1", messageId: "m1" })).resolves.toMatchObject({
+      to: [],
+    });
+    await expect(tooLong.getMessage({ accountId: "a1", messageId: "m1" })).resolves.toMatchObject({
+      to: [],
+    });
+  });
 });
 
 describe("rich triage path (mapRichMessage) top-level comma splitting", () => {
