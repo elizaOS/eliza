@@ -586,7 +586,20 @@ app.delete("/", async (c) => {
     });
     const durableStateLossAcknowledged =
       enqueueResult.job.data?.stateLossAcknowledged === true;
-    if (stateLossAcknowledged && !durableStateLossAcknowledged) {
+    const durableAcknowledgingUserId =
+      typeof enqueueResult.job.data?.stateLossAcknowledgedByUserId === "string"
+        ? enqueueResult.job.data.stateLossAcknowledgedByUserId
+        : undefined;
+    const durableAcknowledgedAt =
+      typeof enqueueResult.job.data?.stateLossAcknowledgedAt === "string"
+        ? enqueueResult.job.data.stateLossAcknowledgedAt
+        : undefined;
+    if (
+      stateLossAcknowledged &&
+      (!durableStateLossAcknowledged ||
+        durableAcknowledgingUserId === undefined ||
+        durableAcknowledgedAt === undefined)
+    ) {
       throw new Error("Delete state-loss acknowledgement was not persisted");
     }
 
@@ -616,6 +629,8 @@ app.delete("/", async (c) => {
           agentId,
           status: enqueueResult.job.status,
           stateLossAcknowledged: durableStateLossAcknowledged || undefined,
+          stateLossAcknowledgedByUserId: durableAcknowledgingUserId,
+          stateLossAcknowledgedAt: durableAcknowledgedAt,
         },
         polling: {
           endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,

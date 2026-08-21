@@ -17,7 +17,7 @@
  * PGlite/pushSchema is unavailable; it never silently passes.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 
 const AMBIENT_DATABASE_URL = process.env.DATABASE_URL ?? "";
 const CAN_USE_ISOLATED_PGLITE =
@@ -33,6 +33,7 @@ import { apiKeys } from "../../../db/schemas/api-keys";
 import { containers } from "../../../db/schemas/containers";
 import { dockerNodes } from "../../../db/schemas/docker-nodes";
 import { generations } from "../../../db/schemas/generations";
+import { jobExecutionLeases } from "../../../db/schemas/job-execution-leases";
 import { jobs } from "../../../db/schemas/jobs";
 import { organizations } from "../../../db/schemas/organizations";
 import { usageRecords } from "../../../db/schemas/usage-records";
@@ -43,6 +44,7 @@ import {
   isDeletionContinuation,
   TERMINAL_SANDBOX_STATUSES,
 } from "../docker-node-workload-queries";
+import { JOB_TYPES } from "../provisioning-job-types";
 
 const PGLITE_TIMEOUT = 60_000;
 
@@ -52,6 +54,7 @@ let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTest
 let agentSandboxesRepository: typeof import("../../../db/repositories/agent-sandboxes").agentSandboxesRepository;
 let countAllocatedWorkloadsOnNodeWithDatabase: typeof import("../docker-node-workload-queries").countAllocatedWorkloadsOnNodeWithDatabase;
 let ElizaSandboxService: typeof import("../eliza-sandbox").ElizaSandboxService;
+let elizaSandboxService: typeof import("../eliza-sandbox").elizaSandboxService;
 let ProvisioningJobService: typeof import("../provisioning-jobs").ProvisioningJobService;
 
 let seq = 0;
@@ -72,7 +75,7 @@ beforeAll(async () => {
     ({ countAllocatedWorkloadsOnNodeWithDatabase } = await import(
       "../docker-node-workload-queries"
     ));
-    ({ ElizaSandboxService } = await import("../eliza-sandbox"));
+    ({ ElizaSandboxService, elizaSandboxService } = await import("../eliza-sandbox"));
     ({ ProvisioningJobService } = await import("../provisioning-jobs"));
 
     const schema = {
@@ -84,6 +87,7 @@ beforeAll(async () => {
       generations,
       usageRecords,
       jobs,
+      jobExecutionLeases,
       dockerNodes,
       containers,
     };
@@ -111,7 +115,12 @@ async function seedNodeWithTargetAndSibling(options: {
   allocationCounted: boolean | null;
   status?: "running" | "stopped" | "sleeping" | "deletion_pending" | "deletion_failed";
   withDeletionIntent?: boolean;
-}): Promise<{ agentId: string; orgId: string; nodeId: string; deletionAttemptId: string }> {
+}): Promise<{
+  agentId: string;
+  orgId: string;
+  nodeId: string;
+  deletionAttemptId: string;
+}> {
   const nodeId = uniq("node");
   const deletionAttemptId = crypto.randomUUID();
 
@@ -124,9 +133,11 @@ async function seedNodeWithTargetAndSibling(options: {
     .values({ steward_user_id: uniq("steward"), organization_id: org.id })
     .returning();
 
-  await dbWrite
-    .insert(dockerNodes)
-    .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+  await dbWrite.insert(dockerNodes).values({
+    node_id: nodeId,
+    hostname: `${nodeId}.test.invalid`,
+    allocated_count: 2,
+  });
 
   const withIntent = options.withDeletionIntent ?? true;
   const [agent] = await dbWrite
@@ -139,7 +150,10 @@ async function seedNodeWithTargetAndSibling(options: {
       node_id: nodeId,
       container_name: uniq("container"),
       ...(withIntent
-        ? { deletion_attempt_id: deletionAttemptId, deletion_started_at: new Date() }
+        ? {
+            deletion_attempt_id: deletionAttemptId,
+            deletion_started_at: new Date(),
+          }
         : {}),
       deletion_allocation_counted: options.allocationCounted,
     })
@@ -373,7 +387,10 @@ describe("tryReleaseDeletionAllocation — releases exactly once", () => {
         nodeId,
         preparedRevision,
       );
-      expect(release).toEqual({ outcome: "released", lifecycleRevision: preparedRevision + 1 });
+      expect(release).toEqual({
+        outcome: "released",
+        lifecycleRevision: preparedRevision + 1,
+      });
       expect(await lifecycleRevision(agentId)).toBe(release.lifecycleRevision);
       expect(await allocatedCount(nodeId)).toBe(1);
 
@@ -484,9 +501,11 @@ describe("a deletion continuation never re-derives ownership from its own state"
       // release for a slot the pre-ownership provider already decremented.
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite
-        .insert(dockerNodes)
-        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite.insert(dockerNodes).values({
+        node_id: nodeId,
+        hostname: `${nodeId}.test.invalid`,
+        allocated_count: 2,
+      });
       await dbWrite
         .update(agentSandboxes)
         .set({
@@ -524,15 +543,35 @@ describe("a deletion continuation never re-derives ownership from its own state"
   );
 
   test("isDeletionContinuation covers the shapes the narrow test misses", () => {
-    const fresh = { status: "running", deletion_attempt_id: null, deletion_started_at: null };
+    const fresh = {
+      status: "running",
+      deletion_attempt_id: null,
+      deletion_started_at: null,
+    };
     expect(isDeletionContinuation(fresh)).toBe(false);
 
     // Each of these is a continuation the `deletion_started_at` test alone misses.
     for (const row of [
-      { status: "deletion_pending", deletion_attempt_id: null, deletion_started_at: null },
-      { status: "deletion_failed", deletion_attempt_id: null, deletion_started_at: null },
-      { status: "running", deletion_attempt_id: crypto.randomUUID(), deletion_started_at: null },
-      { status: "running", deletion_attempt_id: null, deletion_started_at: new Date() },
+      {
+        status: "deletion_pending",
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+      },
+      {
+        status: "deletion_failed",
+        deletion_attempt_id: null,
+        deletion_started_at: null,
+      },
+      {
+        status: "running",
+        deletion_attempt_id: crypto.randomUUID(),
+        deletion_started_at: null,
+      },
+      {
+        status: "running",
+        deletion_attempt_id: null,
+        deletion_started_at: new Date(),
+      },
     ]) {
       expect(isDeletionContinuation(row)).toBe(true);
     }
@@ -793,7 +832,11 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
         userId,
         authorization: "user_request",
         stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: userId,
       });
+      expect(enqueued.job.data.stateLossAcknowledgedAt).toMatch(
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
+      );
     },
     PGLITE_TIMEOUT,
   );
@@ -803,6 +846,10 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
     async () => {
       if (!pgliteReady) return;
       const { agentId, orgId, userId } = await seedAgentViaService();
+      const [acknowledgingUser] = await dbWrite
+        .insert(users)
+        .values({ steward_user_id: uniq("steward"), organization_id: orgId })
+        .returning();
       const service = new ProvisioningJobService();
 
       const first = await service.enqueueAgentDeleteOnce({
@@ -817,13 +864,19 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       const upgraded = await service.enqueueAgentDeleteOnce({
         agentId,
         organizationId: orgId,
-        userId,
+        userId: acknowledgingUser.id,
         authorization: "user_request",
         stateLossAcknowledged: true,
       });
       expect(upgraded.created).toBe(false);
       expect(upgraded.job.id).toBe(first.job.id);
-      expect(upgraded.job.data.stateLossAcknowledged).toBe(true);
+      expect(upgraded.job.data).toMatchObject({
+        userId,
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: acknowledgingUser.id,
+      });
+      const acknowledgedAt = upgraded.job.data.stateLossAcknowledgedAt;
+      expect(acknowledgedAt).toBeString();
 
       const reusedWithoutAuthority = await service.enqueueAgentDeleteOnce({
         agentId,
@@ -832,7 +885,124 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
         authorization: "user_request",
       });
       expect(reusedWithoutAuthority.created).toBe(false);
-      expect(reusedWithoutAuthority.job.data.stateLossAcknowledged).toBe(true);
+      expect(reusedWithoutAuthority.job.data).toMatchObject({
+        stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: acknowledgingUser.id,
+        stateLossAcknowledgedAt: acknowledgedAt,
+      });
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "an acknowledgement committed during capture requeues the stale attempt with its actual actor",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const [acknowledgingUser] = await dbWrite
+        .insert(users)
+        .values({ steward_user_id: uniq("steward"), organization_id: orgId })
+        .returning();
+      const service = new ProvisioningJobService({
+        executionOwnerId: crypto.randomUUID(),
+        executionLeaseMs: 10_000,
+        executionLeaseHeartbeatMs: 1_000,
+      });
+      await dbWrite
+        .update(jobs)
+        .set({ status: "completed", completed_at: new Date() })
+        .where(and(eq(jobs.type, JOB_TYPES.AGENT_DELETE), eq(jobs.status, "pending")));
+      const first = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+      await dbWrite.update(jobs).set({ max_attempts: 1 }).where(eq(jobs.id, first.job.id));
+
+      let enterCapture!: () => void;
+      let releaseCapture!: () => void;
+      const captureEntered = new Promise<void>((resolve) => {
+        enterCapture = resolve;
+      });
+      const captureRelease = new Promise<void>((resolve) => {
+        releaseCapture = resolve;
+      });
+      let executionCalls = 0;
+      const deletionSpy = spyOn(elizaSandboxService, "executeDeletion").mockImplementation(
+        async () => {
+          executionCalls += 1;
+          if (executionCalls === 1) {
+            enterCapture();
+            await captureRelease;
+            return {
+              success: false,
+              containerStopped: false,
+              rowDeleted: false,
+              error: "pre-deletion capture refused after barrier",
+            };
+          }
+          return { success: true, containerStopped: true, rowDeleted: true };
+        },
+      );
+
+      try {
+        const processing = service.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_DELETE],
+        });
+        await captureEntered;
+        const upgraded = await service.enqueueAgentDeleteOnce({
+          agentId,
+          organizationId: orgId,
+          userId: acknowledgingUser.id,
+          authorization: "user_request",
+          stateLossAcknowledged: true,
+        });
+        expect(upgraded.job.id).toBe(first.job.id);
+        expect(upgraded.job.data).toMatchObject({
+          userId,
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+        });
+        releaseCapture();
+        const firstPass = await processing;
+
+        expect(firstPass).toMatchObject({
+          succeeded: 0,
+          retried: 1,
+          failed: 0,
+        });
+        const [requeued] = await dbWrite.select().from(jobs).where(eq(jobs.id, first.job.id));
+        expect(requeued).toMatchObject({ status: "pending", attempts: 0 });
+        expect(requeued.data).toMatchObject({
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+        });
+        expect(requeued.result).toMatchObject({
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+          error: "pre-deletion capture refused after barrier",
+        });
+
+        const secondPass = await service.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_DELETE],
+        });
+        expect(secondPass).toMatchObject({
+          succeeded: 1,
+          retried: 0,
+          failed: 0,
+        });
+        const [completed] = await dbWrite.select().from(jobs).where(eq(jobs.id, first.job.id));
+        expect(completed.status).toBe("completed");
+        expect(completed.result).toMatchObject({
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+          rowDeleted: true,
+        });
+      } finally {
+        releaseCapture();
+        deletionSpy.mockRestore();
+      }
     },
     PGLITE_TIMEOUT,
   );
@@ -843,12 +1013,18 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       if (!pgliteReady) return;
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite
-        .insert(dockerNodes)
-        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite.insert(dockerNodes).values({
+        node_id: nodeId,
+        hostname: `${nodeId}.test.invalid`,
+        allocated_count: 2,
+      });
       await dbWrite
         .update(agentSandboxes)
-        .set({ status: "running", node_id: nodeId, container_name: uniq("container") })
+        .set({
+          status: "running",
+          node_id: nodeId,
+          container_name: uniq("container"),
+        })
         .where(eq(agentSandboxes.id, agentId));
 
       await new ProvisioningJobService().enqueueAgentDeleteOnce({
@@ -890,13 +1066,19 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
       if (!pgliteReady) return;
       const { agentId, orgId, userId } = await seedAgentViaService();
       const nodeId = uniq("node");
-      await dbWrite
-        .insert(dockerNodes)
-        .values({ node_id: nodeId, hostname: `${nodeId}.test.invalid`, allocated_count: 2 });
+      await dbWrite.insert(dockerNodes).values({
+        node_id: nodeId,
+        hostname: `${nodeId}.test.invalid`,
+        allocated_count: 2,
+      });
       // Suspend already gave the slot back while keeping the locator.
       await dbWrite
         .update(agentSandboxes)
-        .set({ status: "stopped", node_id: nodeId, container_name: uniq("container") })
+        .set({
+          status: "stopped",
+          node_id: nodeId,
+          container_name: uniq("container"),
+        })
         .where(eq(agentSandboxes.id, agentId));
 
       await new ProvisioningJobService().enqueueAgentDeleteOnce({

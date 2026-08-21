@@ -25,9 +25,7 @@ const deleteAgent = mock(
     error: "Failed to delete sandbox",
   }),
 );
-type CancelAgentDeletionResult =
-  | { success: true }
-  | { success: false; error: string };
+type CancelAgentDeletionResult = { success: true } | { success: false; error: string };
 
 const cancelAgentDeletion = mock(
   async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
@@ -68,10 +66,7 @@ mock.module("@/db/schemas/agent-server-wallets", () => ({
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: (
-    c: { json: (body: unknown, status?: number) => Response },
-    error: unknown,
-  ) =>
+  failureResponse: (c: { json: (body: unknown, status?: number) => Response }, error: unknown) =>
     c.json(
       {
         success: false,
@@ -125,9 +120,7 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { default: agentRoute } = await import(
-  "../v1/eliza/agents/[agentId]/route"
-);
+const { default: agentRoute } = await import("../v1/eliza/agents/[agentId]/route");
 
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId", agentRoute);
@@ -278,7 +271,11 @@ describe("agent deletion lifecycle", () => {
       job: {
         id: "delete-job-1",
         status: "pending",
-        data: { stateLossAcknowledged: true },
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "user-1",
+          stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+        },
       },
     });
     const response = await deleteRequest({ stateLossAcknowledged: true });
@@ -289,6 +286,8 @@ describe("agent deletion lifecycle", () => {
       data: {
         jobId: "delete-job-1",
         stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: "user-1",
+        stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
       },
     });
     expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
@@ -304,6 +303,21 @@ describe("agent deletion lifecycle", () => {
     enqueueAgentDeleteOnce.mockResolvedValueOnce({
       created: false,
       job: { id: "delete-job-1", status: "pending", data: {} },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority has no acknowledging actor", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "legacy-delete-job",
+        status: "in_progress",
+        data: { stateLossAcknowledged: true },
+      },
     });
 
     const response = await deleteRequest({ stateLossAcknowledged: true });
