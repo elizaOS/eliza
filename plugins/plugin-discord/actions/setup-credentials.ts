@@ -46,6 +46,21 @@ class CredentialProbeError extends ElizaError {
 	}
 }
 
+/**
+ * Raised when supplied credential input is rejected locally, before any
+ * request leaves the process. Kept distinct from CredentialProbeError so the
+ * user-facing message never blames the provider for input that was never sent.
+ */
+class CredentialInputError extends ElizaError {
+	constructor(readonly field: string) {
+		super("Credential input rejected before probing the provider.", {
+			code: "CREDENTIAL_INPUT_INVALID",
+			context: { field },
+			severity: "fatal",
+		});
+	}
+}
+
 function isJsonContentType(contentType: string | null): boolean {
 	if (!contentType) return false;
 	const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
@@ -219,6 +234,12 @@ function invalidProbeResult(
 	service: string,
 	error: unknown,
 ): { valid: false; error: string } {
+	if (error instanceof CredentialInputError) {
+		return {
+			valid: false,
+			error: `Invalid ${error.field} value; provide a non-empty single-line value`,
+		};
+	}
 	const kind = error instanceof CredentialProbeError ? error.kind : "network";
 	return {
 		valid: false,
@@ -247,7 +268,7 @@ function requireCredential(
 		value.length > maxLength ||
 		/[\r\n\0]/.test(value)
 	) {
-		throw new CredentialProbeError("response");
+		throw new CredentialInputError(key);
 	}
 	return value;
 }
@@ -312,10 +333,12 @@ registerPreset({
 				};
 			}
 			const data = await readProbeJson(response, signal);
+			// The character class includes underscores because Enterprise Managed
+			// User logins (for example "mona_acme") are valid GitHub identities.
 			if (
 				!isRecord(data) ||
 				typeof data.login !== "string" ||
-				!/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(data.login)
+				!/^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/.test(data.login)
 			) {
 				throw new CredentialProbeError("response");
 			}

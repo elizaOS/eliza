@@ -186,13 +186,13 @@ describe("credential probe network boundary", () => {
 
 		await expect(preset("github").validate({})).resolves.toEqual({
 			valid: false,
-			error: "GitHub returned an invalid response",
+			error: "Invalid token value; provide a non-empty single-line value",
 		});
 		await expect(
 			preset("openai").validate({ apiKey: "x".repeat(16 * 1024 + 1) }),
 		).resolves.toEqual({
 			valid: false,
-			error: "OpenAI returned an invalid response",
+			error: "Invalid apiKey value; provide a non-empty single-line value",
 		});
 		await expect(
 			preset("cloudflare").validate({
@@ -201,9 +201,20 @@ describe("credential probe network boundary", () => {
 			}),
 		).resolves.toEqual({
 			valid: false,
-			error: "Cloudflare returned an invalid response",
+			error: "Invalid email value; provide a non-empty single-line value",
 		});
 		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
+	it("accepts underscore-bearing Enterprise Managed User GitHub logins", async () => {
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async () => Response.json({ login: "mona_acme" })),
+		);
+
+		await expect(
+			preset("github").validate({ token: "secret" }),
+		).resolves.toEqual({ valid: true, identity: "@mona_acme" });
 	});
 
 	it("does not mistake throttling or request validation for authenticated success", async () => {
