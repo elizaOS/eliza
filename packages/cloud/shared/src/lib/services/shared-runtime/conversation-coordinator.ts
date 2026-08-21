@@ -238,7 +238,7 @@ function coordinatorStub(
 ) {
   const stub = namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
   return {
-    fetch: (input: RequestInfo | URL, init?: RequestInit) => coordinatorFetch(stub, input, init),
+    fetch: (input: string | URL, init?: RequestInit) => coordinatorFetch(stub, input, init),
   };
 }
 
