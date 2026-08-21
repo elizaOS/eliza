@@ -33,11 +33,11 @@ import {
 	parseFrontmatter,
 	validateFrontmatter,
 } from "../parser";
+import { loadScanReport } from "../security";
 import {
 	buildSkillExecutionEnv,
 	isInheritableSkillEnvKey,
 } from "../security/skill-execution-env";
-import { loadScanReport } from "../security";
 import type { SkillScanReport, SkillScanStatus } from "../security/types";
 import {
 	createSkillPackage,

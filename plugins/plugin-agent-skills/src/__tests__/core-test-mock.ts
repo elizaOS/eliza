@@ -7,7 +7,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { vi } from "vitest";
 
-vi.mock("@elizaos/core", () => {
+vi.mock("@elizaos/core", async () => {
+	// Use the real spawn-environment policy: a stub cannot prove that injection
+	// primitives are removed at the production boundary.
+	const { sanitizeSpawnEnv } = await import(
+		"../../../../packages/core/src/security/spawn-env-policy"
+	);
 	const streamingContext = new AsyncLocalStorage<
 		{ abortSignal?: AbortSignal } | undefined
 	>();
@@ -152,6 +157,7 @@ vi.mock("@elizaos/core", () => {
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],
 		unwrapUserMessageText,
+		sanitizeSpawnEnv,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";
