@@ -497,6 +497,24 @@ describe("shared conversation coordinator", () => {
     expect(seen?.aborted).toBe(true);
   });
 
+  test("coordinatorFetch preserves Request inputs through the deadline wrapper", async () => {
+    const request = new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: "{}",
+    });
+    let seenInput: RequestInfo | URL | undefined;
+    const stub = {
+      fetch: async (input: RequestInfo | URL) => {
+        seenInput = input;
+        return Response.json({ ok: true });
+      },
+    };
+
+    await coordinatorFetch(stub, request);
+
+    expect(seenInput).toBe(request);
+  });
+
   test("coordinatorFetch still times out when the caller signal never aborts", async () => {
     const caller = new AbortController();
     const hungStub = {
