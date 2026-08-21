@@ -1966,7 +1966,7 @@ describe("strict restore catalogue authority", () => {
     const fixture = await acquireVaultPassphraseFixture(0x4b);
     const secretRelease = captureVaultRawKeyAtRelease();
     let borrowedPassphrase: Uint8Array | null = null;
-    let handoffSignal: AbortSignal | null = null;
+    const handoff = { signal: null as AbortSignal | null };
     let handoffStartedAt: number | null = null;
     const callbackFinished = Promise.withResolvers<void>();
     try {
@@ -1976,7 +1976,7 @@ describe("strict restore catalogue authority", () => {
           async (passphrase, signal) => {
             handoffStartedAt = Date.now();
             borrowedPassphrase = passphrase;
-            handoffSignal = signal;
+            handoff.signal = signal;
             await new Promise<void>((resolve) => {
               signal.addEventListener("abort", () => resolve(), { once: true });
             });
@@ -1989,7 +1989,7 @@ describe("strict restore catalogue authority", () => {
       await callbackFinished.promise;
       expect(handoffStartedAt).not.toBeNull();
       expect(Date.now() - (handoffStartedAt ?? 0)).toBeLessThan(1_000);
-      expect(handoffSignal?.aborted).toBe(true);
+      expect(handoff.signal?.aborted).toBe(true);
       expect(isZeroized(borrowedPassphrase)).toBe(true);
       expect(isZeroized(secretRelease.rawKey)).toBe(true);
     } finally {

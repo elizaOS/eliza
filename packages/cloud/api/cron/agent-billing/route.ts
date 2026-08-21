@@ -176,25 +176,10 @@ async function processSandboxBilling(
       now.getTime() + AGENT_PRICING.GRACE_PERIOD_HOURS * 60 * 60 * 1000,
     );
 
-    const warningScheduled =
-      await agentBillingRepository.scheduleShutdownWarningForRun({
-        ...runAuthority,
-        sandboxId,
-        organizationId,
-        agentName,
-        now,
-        shutdownTime,
-      });
-    if (!warningScheduled) {
-      return {
-        sandboxId,
-        agentName,
-        organizationId,
-        action: "skipped",
-        error: "Shutdown warning was no longer applicable",
-      };
-    }
-
+    // Deliver before stamping: the sandbox transition, the armed shutdown,
+    // and the durable `warning_sent` item commit atomically only after the
+    // provider accepted delivery. A crash before that commit changes nothing,
+    // so a retried invocation redelivers instead of recording a false skip.
     const recipientEmail =
       org.billing_email || (await getOrgUserEmail(organizationId));
     if (recipientEmail) {
@@ -247,6 +232,25 @@ async function processSandboxBilling(
       logger.info(
         `[Agent Billing] Sent shutdown warning for ${agentName} to ${recipientEmail}`,
       );
+    }
+
+    const warningCommitted =
+      await agentBillingRepository.commitShutdownWarningForRun({
+        ...runAuthority,
+        sandboxId,
+        organizationId,
+        agentName,
+        now,
+        shutdownTime,
+      });
+    if (!warningCommitted) {
+      return {
+        sandboxId,
+        agentName,
+        organizationId,
+        action: "skipped",
+        error: "Shutdown warning was no longer applicable",
+      };
     }
 
     await notifyWaifuCreditWebhook(sandbox, "credits.low", {
@@ -779,6 +783,14 @@ async function handleAgentBilling(c: AppContext): Promise<Response> {
       recovered: claim.recovered,
       attemptCount: run.attempt_count,
     });
+    const suspendedFailedSandboxes =
+      await agentBillingRepository.suspendFailedSandboxBilling(now);
+    if (suspendedFailedSandboxes > 0) {
+      logger.info("[Agent Billing] Suspended failed sandbox billing", {
+        runId: run.id,
+        sandboxesSuspended: suspendedFailedSandboxes,
+      });
+    }
     await renewRunLease(true);
     for (const item of await agentBillingRunRepository.listItems(run.id)) {
       applyRunItem(item);

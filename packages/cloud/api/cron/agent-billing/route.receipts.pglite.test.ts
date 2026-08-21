@@ -84,8 +84,10 @@ async function defaultRecordHourlyBilling(input: {
   };
 }
 const recordHourlyBilling = mock(defaultRecordHourlyBilling);
+const suspendFailedSandboxBilling = mock(async () => 0);
 const getOrganizationCreditBalance = mock(async () => 100);
-const scheduleShutdownWarningForRun = mock(
+const warningCallOrder: string[] = [];
+const commitShutdownWarningForRun = mock(
   async (_input: {
     runId: string;
     leaseToken: string;
@@ -93,9 +95,15 @@ const scheduleShutdownWarningForRun = mock(
     organizationId: string;
     agentName: string;
     now: Date;
-  }) => true,
+  }) => {
+    warningCallOrder.push("commit");
+    return true;
+  },
 );
-const sendContainerShutdownWarningEmail = mock(async () => true);
+const sendContainerShutdownWarningEmail = mock(async () => {
+  warningCallOrder.push("email");
+  return true;
+});
 const loggerInfo = mock(() => undefined);
 const loggerWarn = mock(() => undefined);
 const loggerError = mock(() => undefined);
@@ -105,9 +113,10 @@ mock.module("@/db/repositories/agent-billing", () => ({
     listBillableSandboxes,
     listBillingOrganizations,
     recordHourlyBilling,
+    suspendFailedSandboxBilling,
     getOrganizationCreditBalance,
     scheduleShutdownWarning: mock(async () => undefined),
-    scheduleShutdownWarningForRun,
+    commitShutdownWarningForRun,
     suspendSandboxForInsufficientCredits: mock(async () => undefined),
   },
 }));
@@ -299,10 +308,19 @@ beforeEach(async () => {
   recordHourlyBilling.mockImplementation(defaultRecordHourlyBilling);
   getOrganizationCreditBalance.mockClear();
   getOrganizationCreditBalance.mockImplementation(async () => 100);
-  scheduleShutdownWarningForRun.mockClear();
-  scheduleShutdownWarningForRun.mockImplementation(async () => true);
+  warningCallOrder.length = 0;
+  commitShutdownWarningForRun.mockClear();
+  commitShutdownWarningForRun.mockImplementation(async () => {
+    warningCallOrder.push("commit");
+    return true;
+  });
+  suspendFailedSandboxBilling.mockClear();
+  suspendFailedSandboxBilling.mockImplementation(async () => 0);
   sendContainerShutdownWarningEmail.mockClear();
-  sendContainerShutdownWarningEmail.mockImplementation(async () => true);
+  sendContainerShutdownWarningEmail.mockImplementation(async () => {
+    warningCallOrder.push("email");
+    return true;
+  });
   loggerInfo.mockClear();
   loggerWarn.mockClear();
   loggerError.mockClear();
@@ -441,6 +459,7 @@ describe("agent billing durable run receipts on PGlite", () => {
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(500);
+    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",
@@ -469,6 +488,7 @@ describe("agent billing durable run receipts on PGlite", () => {
     const response = await dispatchManualRequest();
 
     expect(response.status).toBe(500);
+    expect(commitShutdownWarningForRun).not.toHaveBeenCalled();
     const [receipt] = await dbWrite.select().from(agentBillingRuns);
     expect(receipt).toMatchObject({
       status: "failed",
@@ -479,6 +499,111 @@ describe("agent billing durable run receipts on PGlite", () => {
     const items = await dbWrite.select().from(agentBillingRunItems);
     expect(items).toHaveLength(1);
     expect(items[0]?.action).toBe("error");
+  });
+
+  test("delivers the warning before arming the shutdown and records one warning item", async () => {
+    recordHourlyBilling.mockImplementation(async () => ({
+      status: "insufficient_credits",
+    }));
+    getOrganizationCreditBalance.mockImplementation(async () => 0);
+
+    const response = await dispatchManualRequest();
+
+    expect(response.status).toBe(200);
+    expect(warningCallOrder).toEqual(["email", "commit"]);
+    const [receipt] = await dbWrite.select().from(agentBillingRuns);
+    expect(receipt).toMatchObject({
+      status: "succeeded",
+      sandboxes_processed: 1,
+      warnings_sent: 1,
+      errors: 0,
+    });
+    const items = await dbWrite.select().from(agentBillingRunItems);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      sandbox_id: firstSandbox.id,
+      action: "warning_sent",
+    });
+  });
+
+  test("records an honest skip when the warning is no longer applicable at commit", async () => {
+    recordHourlyBilling.mockImplementation(async () => ({
+      status: "insufficient_credits",
+    }));
+    getOrganizationCreditBalance.mockImplementation(async () => 0);
+    commitShutdownWarningForRun.mockImplementation(async () => {
+      warningCallOrder.push("commit");
+      return false;
+    });
+
+    const response = await dispatchManualRequest();
+
+    expect(response.status).toBe(200);
+    expect(warningCallOrder).toEqual(["email", "commit"]);
+    const [receipt] = await dbWrite.select().from(agentBillingRuns);
+    expect(receipt).toMatchObject({
+      status: "succeeded",
+      sandboxes_processed: 1,
+      warnings_sent: 0,
+      errors: 0,
+    });
+    const items = await dbWrite.select().from(agentBillingRunItems);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      sandbox_id: firstSandbox.id,
+      action: "skipped",
+      detail_message: "Shutdown warning was no longer applicable",
+    });
+  });
+
+  test("a crashed pre-commit warning attempt is redelivered by the scheduled retry", async () => {
+    recordHourlyBilling.mockImplementation(async () => ({
+      status: "insufficient_credits",
+    }));
+    getOrganizationCreditBalance.mockImplementation(async () => 0);
+    const crashed = await agentBillingRunRepository.startOrLoad({
+      invocationKey: scheduledCronInvocationId(
+        { cron: SCHEDULE, scheduledTime: SCHEDULED_TIME },
+        PATH,
+      ),
+      triggerKind: "scheduled",
+      schedule: SCHEDULE,
+      scheduledAt: new Date(SCHEDULED_TIME),
+      leaseDurationMs: 5 * 60_000,
+    });
+    if (!crashed.leaseToken) throw new Error("Expected initial run lease");
+    // Worker death after (at most) the email attempt: no sandbox mutation and
+    // no run item exist, so the retry must redeliver, never fabricate a skip.
+    const staleUpdatedAt = new Date(Date.now() - 2 * 60_000);
+    await dbWrite
+      .update(agentBillingRuns)
+      .set({
+        lease_expires_at: new Date(staleUpdatedAt.getTime() + 60_000),
+        updated_at: staleUpdatedAt,
+      })
+      .where(eq(agentBillingRuns.id, crashed.run.id));
+
+    const response = await dispatchScheduledRequest(mountRoute());
+
+    expect(response.status).toBe(200);
+    expect(sendContainerShutdownWarningEmail).toHaveBeenCalledTimes(1);
+    expect(warningCallOrder).toEqual(["email", "commit"]);
+    const [receipt] = await dbWrite.select().from(agentBillingRuns);
+    expect(receipt).toMatchObject({
+      id: crashed.run.id,
+      status: "succeeded",
+      attempt_count: 2,
+      sandboxes_processed: 1,
+      warnings_sent: 1,
+      errors: 0,
+    });
+    const items = await dbWrite.select().from(agentBillingRunItems);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      run_id: crashed.run.id,
+      sandbox_id: firstSandbox.id,
+      action: "warning_sent",
+    });
   });
 
   test("a selection exception leaves a durable failed receipt and returns non-2xx", async () => {

@@ -4,6 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type { PersonalDeliveryInput } from "@/lib/services/eliza-app/user-service";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
+  PersonalDeliveryAccountResolutionError,
   PersonalDeliveryProjection,
   resolvePersonalDeliveryProjection,
 } from "./personal-delivery-projection";
@@ -278,22 +279,159 @@ describe("resolvePersonalDeliveryProjection", () => {
     expect(getByName).not.toHaveBeenCalled();
   });
 
-  test("fails closed when a bound projection returns malformed state", async () => {
+  test("bounds the projection read with an abort signal", async () => {
+    let signal: unknown;
+    const namespace = {
+      getByName: () => ({
+        fetch: async (_url: string, init: RequestInit) => {
+          signal = init.signal;
+          return Response.json({
+            ...sharedResult(),
+            resolution: "sender-projection-hit",
+          });
+        },
+      }),
+    };
+
+    await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery: async () => sharedResult() },
+    );
+
+    expect(signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test("degrades a malformed projection result to the canonical resolver", async () => {
     const namespace = {
       getByName: () => ({
         fetch: async () => Response.json({ success: true }),
       }),
     };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
 
-    await expect(
-      resolvePersonalDeliveryProjection(
-        {
-          PERSONAL_DELIVERY_PROJECTIONS: namespace,
-          PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
-        } as unknown as AppEnv["Bindings"],
-        TELEGRAM,
-        { resolvePersonalDelivery: async () => sharedResult() },
-      ),
-    ).rejects.toThrow("Personal delivery projection failed with status 200");
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("degrades a projection 502 to the canonical resolver in one attempt", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Personal delivery resolution failed",
+              failureName: "TypeError",
+            },
+            { status: 502 },
+          ),
+      }),
+    };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("degrades a projection transport failure to the canonical resolver", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () => {
+          throw new DOMException("The operation timed out.", "TimeoutError");
+        },
+      }),
+    };
+    const resolvePersonalDelivery = mock(async () => sharedResult());
+
+    const result = await resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      { resolvePersonalDelivery },
+    );
+
+    expect(result).toEqual(sharedResult());
+    expect(resolvePersonalDelivery).toHaveBeenCalledTimes(1);
+  });
+
+  test("throws typed classification only after both paths fail", async () => {
+    const namespace = {
+      getByName: () => ({
+        fetch: async () =>
+          Response.json(
+            {
+              error: "Personal delivery resolution failed",
+              failureName: "TypeError",
+            },
+            { status: 502 },
+          ),
+      }),
+    };
+    const databaseFailure = new Error("connection reset");
+
+    const attempt = resolvePersonalDeliveryProjection(
+      {
+        PERSONAL_DELIVERY_PROJECTIONS: namespace,
+        PERSONAL_DELIVERY_PROJECTION_READ_ENABLED: "true",
+      } as unknown as AppEnv["Bindings"],
+      TELEGRAM,
+      {
+        resolvePersonalDelivery: async () => {
+          throw databaseFailure;
+        },
+      },
+    );
+
+    const caught: unknown = await attempt.then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+    expect(caught).toBeInstanceOf(PersonalDeliveryAccountResolutionError);
+    const error = caught as PersonalDeliveryAccountResolutionError;
+    expect(error.name).toBe("PersonalDeliveryAccountResolutionError");
+    expect(error.projectionFailure).toBe("status-502:TypeError");
+    expect(error.cause).toBe(databaseFailure);
+    expect(error.message).not.toContain("connection reset");
+  });
+
+  test("reports a tenant-safe failure name from the projection boundary", async () => {
+    const memory = state();
+    const object = new PersonalDeliveryProjection(memory.durableState, ENV, {
+      resolvePersonalDelivery: async () => {
+        throw new TypeError(
+          "secret column list must never reach the connector",
+        );
+      },
+    });
+
+    const response = await object.fetch(request("/resolve", TELEGRAM));
+
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.failureName).toBe("TypeError");
+    expect(JSON.stringify(body)).not.toContain("secret column list");
   });
 });

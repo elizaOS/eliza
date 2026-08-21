@@ -60,6 +60,8 @@ describe("dormant restore API boundary", () => {
       "claimAgentBackupRestoreOperation",
       "reserveAgentBackupRestoreTarget",
       "advanceAgentBackupRestoreOperation",
+      "openAgentBackupRestoreQuarantine",
+      "recordAgentBackupRestoreQuarantinedContainer",
       "recordAgentActivationPublication",
       "authorizeAgentActivationDispatch",
       "recordAgentVaultKeySeedReceipt",
@@ -282,6 +284,55 @@ describe("dormant restore API boundary", () => {
     );
     expect(divergentLookup).not.toContain('.for("update")');
     expect(divergentLookup).toContain("Restore attempt replay authority mismatch");
+  });
+
+  test("keeps the restore quarantine DB-only, target-derived, and route-free", () => {
+    const quarantineSource = readFileSync(
+      join(import.meta.dir, "repositories/agent-backup-restore-quarantine.ts"),
+      "utf8",
+    );
+    expect(quarantineSource).not.toMatch(
+      /DockerSandboxProvider|DockerNodeManager|DockerSSHClient|getAvailableNode|nodeAutoscaler|parseDockerNodes|SandboxRegistry|SANDBOX_REGISTRY|ssh\.exec|process\.env|fetch\s*\(/i,
+    );
+    expect(quarantineSource).toContain("activation_generation: operation.restore_attempt_id");
+
+    const functions = [
+      quarantineSource.slice(
+        quarantineSource.indexOf("export async function openAgentBackupRestoreQuarantine"),
+        quarantineSource.indexOf(
+          "export async function recordAgentBackupRestoreQuarantinedContainer",
+        ),
+      ),
+      quarantineSource.slice(
+        quarantineSource.indexOf(
+          "export async function recordAgentBackupRestoreQuarantinedContainer",
+        ),
+      ),
+    ];
+    const lockAnchors = [
+      ".from(agentSandboxBackups)",
+      ".from(agentBackupRestoreOperations)",
+      ".from(agentBackupRestoreLeases)",
+      ".from(agentSandboxes)",
+      ".from(dockerNodes)",
+      "proveUnambiguousAgentNodeIncarnationForLockedNode(",
+      "lockAgentBackupCatalogAuthority(",
+      "readPostLockDatabaseNow(tx)",
+    ];
+    for (const source of functions) {
+      const transactional = source.slice(source.indexOf("return dbWrite.transaction"));
+      for (let index = 1; index < lockAnchors.length; index += 1) {
+        expect(transactional.indexOf(lockAnchors[index - 1] as string)).toBeLessThan(
+          transactional.indexOf(lockAnchors[index] as string),
+        );
+      }
+      const sandboxMutationStart = source.indexOf(".update(agentSandboxes)");
+      const sandboxMutation = source.slice(
+        source.indexOf(".set({", sandboxMutationStart),
+        source.indexOf(".where(", sandboxMutationStart),
+      );
+      expect(sandboxMutation).not.toMatch(/\n\s+(?:sandbox_id|node_id|image_digest|status):/);
+    }
   });
 
   test("contains no coordinator, capacity, billing, or probe migration in the dormant range", () => {

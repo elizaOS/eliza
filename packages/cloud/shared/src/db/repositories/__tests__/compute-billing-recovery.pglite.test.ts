@@ -210,7 +210,7 @@ async function claimBillingRun(_billingCutoffAt: Date) {
 }
 
 describe("compute billing recovery", () => {
-  test("claims one shutdown warning without pre-committing a sent run item", async () => {
+  test("commits the sandbox stamp and warning_sent item atomically after delivery", async () => {
     const { org, sandbox } = await seed("0.000000");
     const now = new Date("2026-08-19T04:30:00.000Z");
     const authority = await claimBillingRun(now);
@@ -223,9 +223,15 @@ describe("compute billing recovery", () => {
       shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
     };
 
-    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(true);
-    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(false);
-    expect(await dbWrite.select().from(agentBillingRunItems)).toEqual([]);
+    await expect(agentBillingRepository.commitShutdownWarningForRun(input)).resolves.toBe(true);
+    await expect(agentBillingRepository.commitShutdownWarningForRun(input)).resolves.toBe(false);
+    const items = await dbWrite.select().from(agentBillingRunItems);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      run_id: authority.runId,
+      sandbox_id: sandbox.id,
+      action: "warning_sent",
+    });
     const [updated] = await dbWrite
       .select({
         billingStatus: agentSandboxes.billing_status,
@@ -237,6 +243,185 @@ describe("compute billing recovery", () => {
       billingStatus: "shutdown_pending",
       warningSentAt: now,
     });
+  });
+
+  test("a crash before the warning commit leaves the retry free to redeliver", async () => {
+    const { org, sandbox } = await seed("0.000000");
+    const now = new Date("2026-08-19T04:30:00.000Z");
+    const invocationKey = `manual:compute-recovery:${crypto.randomUUID()}`;
+    const crashed = await agentBillingRunRepository.startOrLoad({
+      invocationKey,
+      triggerKind: "manual",
+      schedule: null,
+      scheduledAt: null,
+      leaseDurationMs: 5 * 60_000,
+    });
+    if (!crashed.leaseToken) throw new Error("Expected billing run lease");
+    // Simulated worker death: the email may or may not have left, but the
+    // commit never ran, so neither the sandbox row nor any run item changed.
+    expect(await dbWrite.select().from(agentBillingRunItems)).toEqual([]);
+    const [beforeRetry] = await dbWrite
+      .select({
+        billingStatus: agentSandboxes.billing_status,
+        warningSentAt: agentSandboxes.shutdown_warning_sent_at,
+        scheduledShutdownAt: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(beforeRetry).toEqual({
+      billingStatus: "active",
+      warningSentAt: null,
+      scheduledShutdownAt: null,
+    });
+
+    await dbWrite
+      .update(agentBillingRuns)
+      .set({
+        lease_expires_at: sql`clock_timestamp() - INTERVAL '1 second'`,
+        updated_at: sql`clock_timestamp() - INTERVAL '2 seconds'`,
+      })
+      .where(eq(agentBillingRuns.id, crashed.run.id));
+    const retry = await agentBillingRunRepository.startOrLoad({
+      invocationKey,
+      triggerKind: "manual",
+      schedule: null,
+      scheduledAt: null,
+      leaseDurationMs: 5 * 60_000,
+    });
+    if (!retry.leaseToken) throw new Error("Expected recovered run lease");
+    expect(retry).toMatchObject({
+      claimed: true,
+      recovered: true,
+      run: { id: crashed.run.id, attempt_count: 2 },
+    });
+
+    await expect(
+      agentBillingRepository.commitShutdownWarningForRun({
+        runId: retry.run.id,
+        leaseToken: retry.leaseToken,
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        agentName: sandbox.agent_name ?? sandbox.id,
+        now,
+        shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+      }),
+    ).resolves.toBe(true);
+    const items = await dbWrite.select().from(agentBillingRunItems);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      run_id: crashed.run.id,
+      sandbox_id: sandbox.id,
+      action: "warning_sent",
+    });
+    const [afterRetry] = await dbWrite
+      .select({
+        billingStatus: agentSandboxes.billing_status,
+        warningSentAt: agentSandboxes.shutdown_warning_sent_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(afterRetry).toEqual({
+      billingStatus: "shutdown_pending",
+      warningSentAt: now,
+    });
+  });
+
+  test("Dedicated warm-pool capacity is outside every billing lifecycle path", async () => {
+    const { org, user, sandbox, lastBilledAt } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ pool_status: "unclaimed" })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const now = new Date("2026-08-19T04:30:00.000Z");
+
+    const billableWhileRunning = await agentBillingRepository.listBillableSandboxes(
+      now,
+      new Date("2026-08-19T03:30:00.000Z"),
+    );
+    expect(billableWhileRunning.runningSandboxes.map((row) => row.id)).not.toContain(sandbox.id);
+
+    const input = {
+      ...(await claimBillingRun(now)),
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      userId: user.id,
+      agentName: "pool-capacity",
+      hourlyRate: 0.01,
+      billingDescription: "must remain exempt",
+      lowCreditWarningAmount: 1,
+      now,
+    };
+    await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toEqual({
+      status: "already_billed_recently",
+    });
+    await expect(
+      agentBillingRepository.settleAccruedBillingBeforeLifecycle(sandbox.id, org.id, now),
+    ).resolves.toEqual({ status: "already_billed_recently" });
+
+    await agentBillingRepository.scheduleShutdownWarning(
+      sandbox.id,
+      org.id,
+      now,
+      new Date("2026-08-19T05:30:00.000Z"),
+    );
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandbox.id, org.id, now);
+
+    const [afterRejectedTransitions] = await dbWrite
+      .select({
+        billing_status: agentSandboxes.billing_status,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(afterRejectedTransitions).toEqual({
+      billing_status: "active",
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "stopped", last_backup_at: now })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const billableWhileStopped = await agentBillingRepository.listBillableSandboxes(
+      now,
+      new Date("2026-08-19T03:30:00.000Z"),
+    );
+    expect(billableWhileStopped.stoppedWithBackups.map((row) => row.id)).not.toContain(sandbox.id);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ billing_status: "suspended" })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+      sandbox.id,
+      new Date("2026-08-19T04:31:00.000Z"),
+      org.id,
+    );
+
+    const [stored] = await dbWrite
+      .select({
+        billing_status: agentSandboxes.billing_status,
+        last_billed_at: agentSandboxes.last_billed_at,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(stored).toEqual({
+      billing_status: "suspended",
+      last_billed_at: lastBilledAt,
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+    const [balance] = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(balance.credit_balance).toBe("10.000000");
+    expect(await dbWrite.select().from(agentBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
   });
 
   test("a delayed run charges the full elapsed interval and a concurrent replay is a no-op", async () => {

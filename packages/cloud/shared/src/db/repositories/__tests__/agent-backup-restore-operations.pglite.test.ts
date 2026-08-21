@@ -27,7 +27,7 @@ process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
 import { pushSchema } from "drizzle-kit/api";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import type { AgentBackupRestorePhase } from "../../schemas/agent-backup-catalog";
 import {
@@ -320,6 +320,36 @@ async function openAndClaim(): Promise<{
   return { operationId: operation.id, claimGeneration: claim.claimGeneration };
 }
 
+/**
+ * Test-only stand-in for the separately proven quarantine writer. Keeping this
+ * as a direct fixture lets this suite exercise later generic phases without
+ * introducing a second caller for the dormant production API.
+ */
+async function recordQuarantinedContainerFixture(
+  operationId: string,
+  claimGeneration: string,
+): Promise<void> {
+  const [recorded] = await dbWrite
+    .update(agentBackupRestoreOperations)
+    .set({
+      phase: "container_created",
+      expected_container_id: CONTAINER,
+      claim_owner: null,
+      claim_generation: null,
+      claim_expires_at: null,
+    })
+    .where(
+      and(
+        eq(agentBackupRestoreOperations.id, operationId),
+        eq(agentBackupRestoreOperations.phase, "vault_seeded"),
+        eq(agentBackupRestoreOperations.claim_owner, "restore-worker"),
+        eq(agentBackupRestoreOperations.claim_generation, claimGeneration),
+      ),
+    )
+    .returning();
+  if (!recorded) throw new Error("quarantined container fixture lost its operation CAS");
+}
+
 /** Walks the machine one adjacent step at a time, re-claiming per phase. */
 async function walkTo(operationId: string, target: AgentBackupRestorePhase): Promise<void> {
   const order: AgentBackupRestorePhase[] = [
@@ -352,6 +382,10 @@ async function walkTo(operationId: string, target: AgentBackupRestorePhase): Pro
         ownerId: "restore-worker",
         claimMs: 60_000,
       });
+    }
+    if (order[index + 1] === "container_created") {
+      await recordQuarantinedContainerFixture(operationId, claim.claimGeneration);
+      continue;
     }
     await advanceAgentBackupRestoreOperation({
       operationId,
@@ -505,6 +539,9 @@ describe("restore operation spine", () => {
       const replay = results.find((result) => result.replayed);
       expect(reserved).toBeDefined();
       expect(replay).toBeDefined();
+      if (!reserved || !replay) {
+        throw new Error("concurrent reservation did not return one reservation and one replay");
+      }
       expect(reserved.target).toEqual({
         nodeRecordId: TARGET_NODE_RECORD_ID,
         nodeId: "restore-target-a",
@@ -940,6 +977,19 @@ describe("restore operation spine", () => {
       "lockAgentBackupCatalogAuthority(",
       "readPostLockDatabaseNow(",
     ]);
+
+    const genericAdvance = source.slice(
+      source.indexOf("export async function advanceAgentBackupRestoreOperation"),
+      source.indexOf("export async function heartbeatAgentBackupRestoreOperation"),
+    );
+    const genericAdvanceMutationStart = genericAdvance.indexOf(".set({");
+    const genericAdvanceMutation = genericAdvance.slice(
+      genericAdvanceMutationStart,
+      genericAdvance.indexOf(".where(", genericAdvanceMutationStart),
+    );
+    expect(genericAdvanceMutation).not.toContain("expected_container_id");
+    expect(genericAdvance).toContain('params.toPhase === "container_created"');
+    expect(genericAdvance).toContain('"recordedIdentity" in params');
   });
 
   test(
@@ -1004,7 +1054,7 @@ describe("restore operation spine", () => {
   );
 
   test(
-    "refuses to leave reserved without target authority, then advances after exact reservation",
+    "rejects generic container identity and creation without mutating a reachable operation",
     async () => {
       await seedTargetNode();
       await seedLease();
@@ -1040,27 +1090,78 @@ describe("restore operation spine", () => {
         targetNodeRecordId: TARGET_NODE_RECORD_ID,
         targetNodeIncarnation: TARGET_NODE_INCARNATION,
       });
-      const advanced = await advanceAgentBackupRestoreOperation({
+
+      const [beforeIdentityBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      const legacyIdentityRequest = {
         operationId: operation.id,
         ownerId: "restore-worker",
         claimGeneration: claim.claimGeneration,
         fromPhase: "reserved",
         toPhase: "vault_seeded",
         recordedIdentity: { containerId: CONTAINER },
+      } as unknown as Parameters<typeof advanceAgentBackupRestoreOperation>[0];
+      await expect(advanceAgentBackupRestoreOperation(legacyIdentityRequest)).rejects.toThrow(
+        "Generic restore advance cannot record a container identity",
+      );
+      const [afterIdentityBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(afterIdentityBypass).toEqual(beforeIdentityBypass);
+
+      const advanced = await advanceAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: claim.claimGeneration,
+        fromPhase: "reserved",
+        toPhase: "vault_seeded",
       });
       expect(advanced.phase).toBe("vault_seeded");
-      expect(advanced.expected_container_id).toBe(CONTAINER);
+      expect(advanced.expected_container_id).toBeNull();
       expect(advanced.claim_owner).toBeNull();
 
+      const containerClaim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const [beforeTransitionBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
       await expect(
         advanceAgentBackupRestoreOperation({
           operationId: operation.id,
           ownerId: "restore-worker",
-          claimGeneration: claim.claimGeneration,
+          claimGeneration: containerClaim.claimGeneration,
           fromPhase: "vault_seeded",
           toPhase: "container_created",
         }),
-      ).rejects.toThrow("claim is not live");
+      ).rejects.toThrow("must be recorded through quarantine authority");
+      const [afterTransitionBypass] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(afterTransitionBypass).toEqual(beforeTransitionBypass);
+
+      await recordQuarantinedContainerFixture(operation.id, containerClaim.claimGeneration);
+      const postContainerClaim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const restoring = await advanceAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: postContainerClaim.claimGeneration,
+        fromPhase: "container_created",
+        toPhase: "restoring",
+      });
+      expect(restoring.phase).toBe("restoring");
+      expect(restoring.expected_container_id).toBe(CONTAINER);
     },
     TIMEOUT,
   );
@@ -1098,6 +1199,113 @@ describe("restore operation spine", () => {
           receiptDigest: SHA,
         }),
       ).rejects.toThrow("cannot advance from reserved to finalized");
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "resumes an already-recorded container phase without rewriting its identity",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const containerClaim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const failed = await failAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: containerClaim.claimGeneration,
+        retryable: true,
+        resumePhase: "container_created",
+        errorCode: "CONTAINER_ATTEST_TIMEOUT",
+        error: "container attestation timed out",
+        failureDigest: SHA,
+        retryDelayMs: 0,
+      });
+      expect(failed.phase).toBe("failed_retryable");
+      expect(failed.resume_phase).toBe("container_created");
+      expect(failed.expected_container_id).toBe(CONTAINER);
+
+      const retry = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const resumed = await advanceAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: retry.claimGeneration,
+        fromPhase: "failed_retryable",
+        toPhase: "container_created",
+      });
+      expect(resumed.phase).toBe("container_created");
+      expect(resumed.resume_phase).toBeNull();
+      expect(resumed.expected_container_id).toBe(failed.expected_container_id);
+      expect(resumed.claim_owner).toBeNull();
+    },
+    TIMEOUT,
+  );
+
+  test(
+    "refuses a container-phase retry whose durable container identity is missing",
+    async () => {
+      await seedLease();
+      const { operation } = await openAgentBackupRestoreOperation({
+        authority: authorityReceipt(),
+        leaseId: LEASE_ID,
+      });
+      await walkTo(operation.id, "container_created");
+      const containerClaim = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      await failAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimGeneration: containerClaim.claimGeneration,
+        retryable: true,
+        resumePhase: "container_created",
+        errorCode: "CONTAINER_ATTEST_TIMEOUT",
+        error: "container attestation timed out",
+        failureDigest: SHA,
+        retryDelayMs: 0,
+      });
+      // Test-only corruption fixture: a real dedicated writer never produces
+      // this state, but a generic resume must still fail closed if it observes it.
+      await dbWrite
+        .update(agentBackupRestoreOperations)
+        .set({ expected_container_id: null })
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      const retry = await claimAgentBackupRestoreOperation({
+        operationId: operation.id,
+        ownerId: "restore-worker",
+        claimMs: 60_000,
+      });
+      const [beforeResume] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      await expect(
+        advanceAgentBackupRestoreOperation({
+          operationId: operation.id,
+          ownerId: "restore-worker",
+          claimGeneration: retry.claimGeneration,
+          fromPhase: "failed_retryable",
+          toPhase: "container_created",
+        }),
+      ).rejects.toThrow("cannot resume container_created without a recorded container identity");
+      const [afterResume] = await dbWrite
+        .select()
+        .from(agentBackupRestoreOperations)
+        .where(eq(agentBackupRestoreOperations.id, operation.id));
+      expect(afterResume).toEqual(beforeResume);
     },
     TIMEOUT,
   );

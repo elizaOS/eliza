@@ -46,7 +46,6 @@ import type {
 	GetConnectorAccountParams,
 	GetOAuthFlowStateParams,
 	IDatabaseAdapter,
-	JsonValue,
 	ListConnectorAccountCredentialRefsParams,
 	ListConnectorAccountsParams,
 	Log,
@@ -80,6 +79,10 @@ import { MemoryType } from "../types";
 import { normalizePairingPageOptions } from "../types/pairing";
 import { DEFAULT_UUID } from "../types/primitives";
 import { isPlainObject } from "../utils/type-guards";
+import {
+	cloneConnectorJsonObject,
+	redactConnectorJsonAudit,
+} from "./connector-json";
 import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
@@ -149,48 +152,15 @@ function connectorDateToMillis(
 	return value instanceof Date ? value.getTime() : value;
 }
 
-function cloneConnectorJsonObject(
-	value: ConnectorAccountJsonObject | undefined,
-): ConnectorAccountJsonObject {
-	return value
-		? (JSON.parse(JSON.stringify(value)) as ConnectorAccountJsonObject)
-		: {};
-}
-
-const CONNECTOR_AUDIT_REDACTED = "[REDACTED]";
 const CONNECTOR_AUDIT_SECRET_KEY_PATTERN =
 	/(access|refresh|id)?_?token|secret|password|credential|authorization|cookie|code[_-]?verifier|codeVerifier|client[_-]?secret|api_?key|private_?key|oauth_?code|state/i;
-
-function redactConnectorAuditValue(value: unknown): JsonValue {
-	if (value === null || value === undefined) return null;
-	if (Array.isArray(value)) return value.map(redactConnectorAuditValue);
-	if (typeof value === "object") {
-		const redacted: ConnectorAccountJsonObject = {};
-		for (const [key, item] of Object.entries(
-			value as Record<string, unknown>,
-		)) {
-			redacted[key] = CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key)
-				? CONNECTOR_AUDIT_REDACTED
-				: redactConnectorAuditValue(item);
-		}
-		return redacted;
-	}
-	if (
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
-		return value;
-	}
-	return String(value);
-}
 
 function redactConnectorAuditMetadata(
 	metadata: Record<string, unknown> | undefined,
 ): ConnectorAccountJsonObject {
-	return redactConnectorAuditValue(
-		metadata ?? {},
-	) as ConnectorAccountJsonObject;
+	return redactConnectorJsonAudit(metadata, (key) =>
+		CONNECTOR_AUDIT_SECRET_KEY_PATTERN.test(key),
+	);
 }
 
 async function sha256Hex(value: string): Promise<string> {
@@ -2179,6 +2149,12 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			: undefined;
 		const now = Date.now();
 		const id = params.id ?? existing?.id ?? randomUuid();
+		const profile = cloneConnectorJsonObject(
+			params.profile !== undefined ? params.profile : existing?.profile,
+		);
+		const metadata = cloneConnectorJsonObject(
+			params.metadata !== undefined ? params.metadata : existing?.metadata,
+		);
 		if (existing) {
 			this.connectorAccountIdsByKey.delete(
 				connectorAccountKey({
@@ -2228,14 +2204,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 			capabilities: params.capabilities
 				? [...params.capabilities]
 				: [...(existing?.capabilities ?? [])],
-			profile:
-				params.profile !== undefined
-					? cloneConnectorJsonObject(params.profile)
-					: cloneConnectorJsonObject(existing?.profile),
-			metadata:
-				params.metadata !== undefined
-					? cloneConnectorJsonObject(params.metadata)
-					: cloneConnectorJsonObject(existing?.metadata),
+			profile,
+			metadata,
 			connectedAt: connectedAt ?? existing?.connectedAt ?? now,
 			lastSyncAt: lastSyncAt !== undefined ? lastSyncAt : existing?.lastSyncAt,
 			deletedAt: deletedAt === undefined ? null : deletedAt,
@@ -2370,7 +2340,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 		this.connectorAuditEvents.push(record);
 		return {
 			...record,
-			metadata: cloneConnectorJsonObject(record.metadata),
+			metadata: redactConnectorJsonAudit(record.metadata, () => false),
 		};
 	}
 

@@ -169,9 +169,12 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       amount: 25,
       idempotency_key: "idempotency-key-0001",
     });
+    await client.getRedemptionQuote({ network: "base", pointsAmount: 500 });
+    await client.getRedemptionQuote("solana");
     await client.createRedemption({
       pointsAmount: 500,
       network: "base",
+      asset: "eliza",
       payoutAddress: "0x0000000000000000000000000000000000000001",
     });
 
@@ -182,8 +185,16 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     ).toEqual([
       "POST /api/v1/affiliates",
       "POST /api/v1/apps/app_1/earnings/withdraw",
+      "GET /api/v1/redemptions/quote",
+      "GET /api/v1/redemptions/quote",
       "POST /api/v1/redemptions",
     ]);
+    expect(requests[2]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=base&pointsAmount=500",
+    );
+    expect(requests[3]?.url).toBe(
+      "https://cloud.test/api/v1/redemptions/quote?network=solana",
+    );
   });
 });
 

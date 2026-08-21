@@ -21,7 +21,10 @@
       "@elizaos/cloud-test-mocks": [
         "../../packages/cloud/test-mocks/src/index.ts"
       ],
-      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"]
+      "@elizaos/cloud-test-mocks/*": ["../../packages/cloud/test-mocks/src/*"],
+      "@elizaos/scenario-runner/scenario-assertions": [
+        "../../packages/scenario-runner/src/scenario-assertions.ts"
+      ]
     }
   },
   "include": [

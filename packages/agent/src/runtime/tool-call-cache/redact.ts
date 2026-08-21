@@ -13,8 +13,10 @@
 import type { PrivacyRedactor } from "./types.ts";
 
 const CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
+  // The generic sk- shape also accepts hyphens, so the provider-specific
+  // prefix must be classified first.
   { label: "anthropic-key", pattern: /\bsk-ant-[A-Za-z0-9_-]{16,}\b/g },
+  { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
   { label: "bearer", pattern: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/g },
   { label: "github-token", pattern: /\bghp_[A-Za-z0-9]{20,}\b/g },
   { label: "aws-access-key", pattern: /\bAKIA[0-9A-Z]{16}\b/g },

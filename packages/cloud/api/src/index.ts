@@ -36,7 +36,7 @@ import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
-import { isThinStewardPublicPath } from "./steward/public-paths";
+import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
 export { isThinCliSessionPath } from "./cli-session-paths";
@@ -46,7 +46,11 @@ export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
-export { isThinStewardPublicPath } from "./steward/public-paths";
+export {
+  isThinStewardEmailAuthPath,
+  isThinStewardPath,
+  isThinStewardPublicPath,
+} from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
 let appPromise: Promise<Hono<AppEnv>> | undefined;
@@ -468,12 +472,8 @@ async function dispatchThinSteward(
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
 ): Promise<Response | null> {
-  const method = request.method.toUpperCase();
-  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
-    return null;
-  }
   const pathname = new URL(request.url).pathname;
-  if (!isThinStewardPublicPath(pathname)) return null;
+  if (!isThinStewardPath(request.method, pathname)) return null;
 
   const dispatchStartedAt = performance.now();
   const moduleWasInitialized = stewardThinAppPromise !== undefined;
