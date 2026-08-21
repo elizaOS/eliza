@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { assertAndroidPlayManifestPolicyEvidence } from "./lib/android-cloud-artifact-audit.mjs";
 import {
+  ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
@@ -134,6 +135,10 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
+      "agent",
+      "runners",
+    ]);
     expect(ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES).toEqual([
       "@capacitor/app",
       "@capacitor/browser",

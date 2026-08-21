@@ -5710,6 +5710,11 @@ export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
   "llama-cpp-kernels.json",
 ]);
 
+export const ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES = Object.freeze([
+  "agent",
+  "runners",
+]);
+
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
   path.join("drawable", "eliza_ime_mic_bg.xml"),
   path.join("drawable", "eliza_voice_bar_bg.xml"),
@@ -6029,7 +6034,7 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
     const isAsset = /(^|\/)assets\//i.test(normalized);
     const isNativeLibrary = /(^|\/)lib\//i.test(normalized);
     return (
-      /(^|\/)assets\/agent\//i.test(normalized) ||
+      /(^|\/)assets\/(?:agent|runners)\//i.test(normalized) ||
       // A local-runtime shared library or a loadable dex under assets/ is the
       // same contraband as one packaged conventionally — cloud thin clients
       // must not ship dynamically-loadable native or DEX code at any path.
@@ -6727,11 +6732,12 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
 
 function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  const stagedAgentAssets = path.join(assetsRoot, "agent");
-  if (fs.existsSync(stagedAgentAssets)) {
-    rmRecursive(stagedAgentAssets);
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    const target = path.join(assetsRoot, directory);
+    if (!fs.existsSync(target)) continue;
+    rmRecursive(target);
     console.log(
-      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+      `[mobile-build] Removed cloud-disallowed assets/${directory}/.`,
     );
   }
 
@@ -7023,8 +7029,10 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   });
 
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  if (fs.existsSync(path.join(assetsRoot, "agent"))) {
-    failures.push("app/src/main/assets/agent still exists");
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    if (fs.existsSync(path.join(assetsRoot, directory))) {
+      failures.push(`app/src/main/assets/${directory} still exists`);
+    }
   }
   walkFiles(assetsRoot, (filePath) => {
     if (isCloudBannedAsset(filePath)) {
