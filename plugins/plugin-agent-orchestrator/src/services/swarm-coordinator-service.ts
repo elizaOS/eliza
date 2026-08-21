@@ -1798,6 +1798,40 @@ export class SwarmCoordinatorService
     event: "task_complete" | "escalation",
     data: Record<string, unknown>,
   ): Promise<void> {
+    const taskService =
+      this.runtime.getService<OrchestratorTaskService>(
+        OrchestratorTaskService.serviceType,
+      ) ?? null;
+    if (taskService) {
+      const verification = isRecord(data.verification)
+        ? data.verification
+        : null;
+      const result = isRecord(verification?.result)
+        ? verification.result
+        : undefined;
+      const summary =
+        readString(data, "summary") ??
+        (event === "task_complete"
+          ? "App verification passed."
+          : "App verification failed.");
+      try {
+        await taskService.applyCustomValidatorResult(sessionId, {
+          passed: event === "task_complete",
+          summary,
+          ...(result
+            ? { evidence: JSON.stringify(result).slice(0, 20_000) }
+            : {}),
+        });
+      } catch (err) {
+        // error-policy:J7 durable projection is independent of verdict/chat
+        // fan-out; report it, then still deliver the authoritative result.
+        logger.warn(
+          `[SwarmCoordinator] failed to project custom validator verdict onto durable task: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
     this.updateLegacyTaskContext(sessionId, event, data);
     this.dispatchSwarmEvent({
       type: event,

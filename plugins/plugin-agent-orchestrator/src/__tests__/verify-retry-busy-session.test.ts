@@ -26,6 +26,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { isSessionBusyError } from "../services/parent-agent-dispatch.js";
 import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.js";
 
@@ -55,6 +56,11 @@ function makeHarness(opts: HarnessOptions): {
   counters: { sendPromptCalls: () => number };
   metadataPatches: Array<Record<string, unknown>>;
   stopSessionCalls: string[];
+  durableVerdicts: Array<{
+    sessionId: string;
+    passed: boolean;
+    summary: string;
+  }>;
 } {
   const handlers: Array<
     (sessionId: string, event: string, data: unknown) => void
@@ -105,10 +111,25 @@ function makeHarness(opts: HarnessOptions): {
   const verification = {
     verifyApp: async () => opts.verdict,
   };
+  const durableVerdicts: Array<{
+    sessionId: string;
+    passed: boolean;
+    summary: string;
+  }> = [];
+  const taskService = {
+    applyCustomValidatorResult: async (
+      sessionId: string,
+      result: { passed: boolean; summary: string },
+    ) => {
+      durableVerdicts.push({ sessionId, ...result });
+      return null;
+    },
+  };
   const runtime = {
     getService: (type: string) => {
       if (type === AcpService.serviceType) return acp;
       if (type === "app-verification") return verification;
+      if (type === OrchestratorTaskService.serviceType) return taskService;
       return null;
     },
     reportError: vi.fn(),
@@ -136,12 +157,22 @@ function makeHarness(opts: HarnessOptions): {
     counters: { sendPromptCalls: () => sendPromptCalls },
     metadataPatches,
     stopSessionCalls,
+    durableVerdicts,
   };
 }
 
 const FAIL_VERDICT = {
   verdict: "fail",
   checks: [{ label: "lint", passed: false }],
+};
+const PASS_VERDICT = {
+  verdict: "pass",
+  checks: [
+    { label: "typecheck", passed: true },
+    { label: "lint", passed: true },
+    { label: "test", passed: true },
+    { label: "build", passed: true },
+  ],
 };
 
 function retryTaskCompleteData(): Record<string, unknown> {
@@ -187,6 +218,7 @@ describe("verify-retry delivery tolerates a transient busy session", () => {
     expect(h.completions).toEqual([]);
     expect(h.swarmEvents).not.toContain("escalation");
     expect(h.metadataPatches).toEqual([{ retryCount: 1 }]);
+    expect(h.durableVerdicts).toEqual([]);
 
     await h.service.stop();
   });
@@ -221,6 +253,9 @@ describe("verify-retry delivery tolerates a transient busy session", () => {
       "https://example.org/apps/color-pop/",
     );
     expect(h.swarmEvents).toContain("escalation");
+    expect(h.durableVerdicts).toMatchObject([
+      { sessionId: SESSION, passed: false },
+    ]);
 
     await h.service.stop();
   });
@@ -244,12 +279,45 @@ describe("verify-retry delivery tolerates a transient busy session", () => {
     expect(h.completions).toHaveLength(1);
     expect(h.completions[0]?.status).toBe("errored");
     expect(h.stopSessionCalls).toEqual([SESSION]);
+    expect(h.durableVerdicts).toMatchObject([
+      { sessionId: SESSION, passed: false },
+    ]);
 
     await h.service.stop();
   });
 });
 
 describe("dispatched FAIL verdict owns the session's user-facing terminal", () => {
+  it("projects a PASS onto the durable task before announcing completion", async () => {
+    const h = makeHarness({
+      sendPrompt: async () => ({ stopReason: "end_turn" }),
+      verdict: PASS_VERDICT,
+    });
+
+    h.emit(SESSION, "task_complete", {
+      label: "create-app:color-pop",
+      response:
+        'APP_CREATE_DONE {"appName":"color-pop","files":["src/index.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}',
+      validator: {
+        service: "app-verification",
+        method: "verifyApp",
+        params: {},
+      },
+    });
+    await flushMicrotasks();
+
+    expect(h.durableVerdicts).toMatchObject([
+      {
+        sessionId: SESSION,
+        passed: true,
+        summary: "App verification passed.",
+      },
+    ]);
+    expect(h.swarmEvents).toContain("task_complete");
+
+    await h.service.stop();
+  });
+
   it("posts errored to origin chat and suppresses the teardown stopped (no-retry fail)", async () => {
     const h = makeHarness({
       sendPrompt: async () => ({ stopReason: "end_turn" }),
@@ -276,6 +344,9 @@ describe("dispatched FAIL verdict owns the session's user-facing terminal", () =
     // The pre-fix bug: this array ended as [{ status: "stopped", ... }] — the
     // generic "stopped before completion" — with the fail verdict dropped.
     expect(h.completions.some((c) => c.status === "stopped")).toBe(false);
+    expect(h.durableVerdicts).toMatchObject([
+      { sessionId: SESSION, passed: false },
+    ]);
 
     await h.service.stop();
   });

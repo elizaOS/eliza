@@ -1803,17 +1803,33 @@ export class OrchestratorTaskService extends Service {
         // and evidence assembly never throws into this path.
         const { evidence: completionEvidence, bundle: completionBundle } =
           await this.buildCompletionEvidence(taskId, sessionId, summary ?? "");
+        const storedSession = (await this.store.findSession(sessionId, taskId))
+          ?.session;
+        const validator = isRecord(storedSession?.metadata?.validator)
+          ? storedSession.metadata.validator
+          : null;
+        const customAppValidatorOwnsCompletion =
+          validator?.service === "app-verification" &&
+          (validator.method === "verifyApp" ||
+            validator.method === "verifyPlugin");
         // Thread the RAW final message (record.response) through alongside the
         // reworded evidence bundle: the #8895 CompletionEnvelope lives verbatim in
         // the sub-agent's last message, not in the prose evidence, so the structural
         // parser must see the original text.
-        void this.autoVerifyCompletion(
-          taskId,
-          sessionId,
-          completionEvidence,
-          summary ?? "",
-          completionBundle,
-        );
+        // APP/PLUGIN tasks carry a purpose-built validator that runs the exact
+        // typecheck/lint/test/build/proof contract and owns its bounded retries.
+        // Running the generic goal verifier in parallel races that retry turn,
+        // can demand an impossible public URL when no publish target exists,
+        // and can strand a custom-validator PASS on `waiting_on_user`.
+        if (!customAppValidatorOwnsCompletion) {
+          void this.autoVerifyCompletion(
+            taskId,
+            sessionId,
+            completionEvidence,
+            summary ?? "",
+            completionBundle,
+          );
+        }
         break;
       }
       case "error": {
@@ -3246,6 +3262,38 @@ export class OrchestratorTaskService extends Service {
     if (!taskId) return null;
     const doc = await this.store.getTask(taskId);
     return doc?.task ?? null;
+  }
+
+  /**
+   * Project a purpose-built APP/PLUGIN validator verdict onto the durable task
+   * that owns the ACP session. The generic goal verifier deliberately stands
+   * aside for these sessions; this is the single authoritative completion
+   * bridge that keeps the task card consistent with the verified chat result.
+   */
+  async applyCustomValidatorResult(
+    sessionId: string,
+    result: {
+      passed: boolean;
+      summary: string;
+      evidence?: string;
+    },
+  ): Promise<TaskThreadDetailDto | null> {
+    const task = await this.getTaskForSession(sessionId);
+    if (!task) return null;
+    const validated = await this.validateTask(task.id, {
+      passed: result.passed,
+      summary: result.summary,
+      evidence: result.evidence,
+      verifier: "app-verification",
+    });
+    if (result.passed) return validated;
+
+    // The custom validator already exhausted its own bounded retry contract
+    // before it emits FAIL. Park the task for a human instead of leaving an
+    // `active` card with no live worker after validateTask's failure edge.
+    await this.advanceTaskStatus(task.id, "awaiting_user");
+    this.emitChange(task.id);
+    return this.getTask(task.id);
   }
 
   private async resolveTaskId(sessionId: string): Promise<string | undefined> {

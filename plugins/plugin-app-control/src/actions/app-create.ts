@@ -291,6 +291,8 @@ interface DispatchInput {
 	label: string;
 	workdir: string;
 	appName: string;
+	/** Durable task criteria matching the configured APP verifier/publish mode. */
+	acceptanceCriteria: string[];
 	/**
 	 * Room ID to post the verification verdict back to once the orchestrator
 	 * runs the AppVerificationService validator. Forwarded via START_CODING_TASK
@@ -404,6 +406,7 @@ async function dispatchCodingAgent({
 	label,
 	workdir,
 	appName,
+	acceptanceCriteria,
 	originRoomId,
 	callback,
 	verifyProfile,
@@ -429,6 +432,7 @@ async function dispatchCodingAgent({
 			task: prompt,
 			label,
 			workdir,
+			acceptanceCriteria,
 			lockWorkdir: true,
 			keepAliveAfterComplete: true,
 			approvalPreset: "permissive",
@@ -567,6 +571,22 @@ function buildCreatePrompt(
 		);
 	}
 	return lines.join("\n");
+}
+
+function appAcceptanceCriteria(
+	appName: string,
+	publish: { urlBase: string } | null,
+): string[] {
+	return [
+		"typecheck, lint, tests, and the production build pass",
+		`APP_CREATE_DONE names ${appName} and lists deliverable files that exist in the exact app workdir`,
+		"the generated app contains the requested UI/content and is accepted by the app-verification service",
+		...(publish
+			? [
+					"the configured non-loopback publish URL and its referenced JavaScript asset both return HTTP 200",
+				]
+			: []),
+	];
 }
 
 function buildEditPrompt(
@@ -791,6 +811,7 @@ async function createNewApp({
 		label: `create-app:${name}`,
 		workdir,
 		appName: name,
+		acceptanceCriteria: appAcceptanceCriteria(name, publish),
 		originRoomId,
 		callback,
 	});
@@ -894,6 +915,7 @@ async function editExistingApp({
 		label: `edit-app:${app.name}`,
 		workdir,
 		appName: app.name,
+		acceptanceCriteria: appAcceptanceCriteria(app.name, null),
 		originRoomId,
 		callback,
 	});
