@@ -101,10 +101,23 @@ interface StoredMemory {
 
 const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/;
 const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const MAX_PATCH_PATH_LENGTH = 256;
+const MAX_PATCH_PATH_SEGMENTS = 16;
 
 function patchPathSegments(path: string): string[] {
+  if (path.length > MAX_PATCH_PATH_LENGTH) {
+    throw new ElizaError("Component patch path is invalid", {
+      code: "COMPONENT_PATCH_PATH_INVALID",
+      context: { pathLength: path.length },
+      severity: "fatal",
+    });
+  }
   const parts = path.split(".");
-  if (!PATCH_PATH_PATTERN.test(path) || parts.some((part) => BLOCKED_PATCH_KEYS.has(part))) {
+  if (
+    parts.length > MAX_PATCH_PATH_SEGMENTS ||
+    !PATCH_PATH_PATTERN.test(path) ||
+    parts.some((part) => BLOCKED_PATCH_KEYS.has(part))
+  ) {
     throw new ElizaError("Component patch path is invalid", {
       code: "COMPONENT_PATCH_PATH_INVALID",
       context: { path },
@@ -208,7 +221,7 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
       delete parent[last];
       break;
     case "push": {
-      const existing = parent[last];
+      const existing = Object.hasOwn(parent, last) ? parent[last] : undefined;
       if (Array.isArray(existing)) {
         existing.push(op.value);
       } else {
@@ -217,7 +230,7 @@ function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
       break;
     }
     case "increment": {
-      const existing = parent[last];
+      const existing = Object.hasOwn(parent, last) ? parent[last] : undefined;
       const delta = typeof op.value === "number" ? op.value : 1;
       definePatchValue(parent, last, typeof existing === "number" ? existing + delta : delta);
       break;
