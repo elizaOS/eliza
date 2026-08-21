@@ -1,5 +1,9 @@
-// Google Ads API integration - https://developers.google.com/google-ads/api
+/**
+ * Implements the Google Ads provider boundary, including bounded REST calls and resumable media
+ * uploads against provider-issued authorities.
+ */
 
+import { ElizaError } from "@elizaos/core";
 import { logger } from "../../../utils/logger";
 import { downloadAdMedia, mediaFileName } from "../media-utils";
 import type {
@@ -23,21 +27,130 @@ const GOOGLE_ADS_BASE_URL = `https://googleads.googleapis.com/${GOOGLE_ADS_API_V
 const GOOGLE_ADS_RESUMABLE_UPLOAD_BASE_URL = `https://googleads.googleapis.com/resumable/upload/${GOOGLE_ADS_API_VERSION}`;
 
 const GOOGLE_ADS_REQUEST_TIMEOUT_MS = 30_000;
+const GOOGLE_ADS_LIST_ACCOUNTS_TIMEOUT_MS = 60_000;
+const GOOGLE_ADS_UPLOAD_TIMEOUT_MS = 60_000;
+const MAX_GOOGLE_ADS_ACCESSIBLE_CUSTOMERS = 10_000;
+const GOOGLE_ADS_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+async function bufferGoogleAdsResponse(response: Response, signal: AbortSignal): Promise<Response> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength !== null && /^\d+$/.test(contentLength)) {
+    const declaredBytes = Number(contentLength);
+    if (!Number.isSafeInteger(declaredBytes) || declaredBytes > GOOGLE_ADS_RESPONSE_MAX_BYTES) {
+      const error = new ElizaError("Google Ads response exceeds the byte limit", {
+        code: "GOOGLE_ADS_RESPONSE_TOO_LARGE",
+        context: { declaredBytes, maxBytes: GOOGLE_ADS_RESPONSE_MAX_BYTES },
+      });
+      if (response.body) {
+        try {
+          await response.body.cancel(error);
+        } catch (cause) {
+          // error-policy:J6 The response already failed closed; cancellation only releases the
+          // unread transport body.
+          logger.debug("[GoogleAds] Failed to cancel declared-oversize response body", { cause });
+        }
+      }
+      throw error;
+    }
+  }
+  if (!response.body) return response;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+  const cancelBody = (): void => {
+    reader.cancel(signal.reason).catch((cause: unknown) => {
+      // error-policy:J6 The hop already failed; cancellation only releases its response stream.
+      logger.debug("[GoogleAds] Failed to cancel aborted response body", { cause });
+    });
+  };
+  signal.addEventListener("abort", cancelBody, { once: true });
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      receivedBytes += next.value.byteLength;
+      if (receivedBytes > GOOGLE_ADS_RESPONSE_MAX_BYTES) {
+        const error = new ElizaError("Google Ads response exceeds the byte limit", {
+          code: "GOOGLE_ADS_RESPONSE_TOO_LARGE",
+          context: { receivedBytes, maxBytes: GOOGLE_ADS_RESPONSE_MAX_BYTES },
+        });
+        try {
+          await reader.cancel(error);
+        } catch (cause) {
+          // error-policy:J6 The bounded read already failed; cancellation only releases the stream.
+          logger.debug("[GoogleAds] Failed to cancel oversized response body", { cause });
+        }
+        throw error;
+      }
+      chunks.push(next.value);
+    }
+  } finally {
+    signal.removeEventListener("abort", cancelBody);
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Response(body.buffer, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
 
 /**
  * Bound every Google Ads REST hop so a hung or rate-limited API cannot pin the
- * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ * ad-provider worker indefinitely. Caller cancellation and the deadline are
+ * composed so neither can disable the other.
  */
-export function googleAdsFetch(
+export async function googleAdsFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = GOOGLE_ADS_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_DELAY_MS) {
+    throw new ElizaError("Google Ads timeout must be a positive timer-safe integer", {
+      code: "INVALID_GOOGLE_ADS_TIMEOUT",
+      context: { timeoutMs },
+    });
+  }
+
+  const controller = new AbortController();
+  let rejectAbort!: (reason: unknown) => void;
+  const abortPromise = new Promise<never>((_resolve, reject) => {
+    rejectAbort = reject;
   });
+  const abort = (reason: unknown): void => {
+    if (controller.signal.aborted) return;
+    controller.abort(reason);
+    rejectAbort(reason);
+  };
+  const onCallerAbort = (): void =>
+    abort(
+      init?.signal?.reason ?? new DOMException("The Google Ads request was aborted.", "AbortError"),
+    );
+  init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
+  if (init?.signal?.aborted) onCallerAbort();
+  const timeoutId = setTimeout(
+    () => abort(new DOMException("Google Ads API request timed out", "TimeoutError")),
+    timeoutMs,
+  );
+  try {
+    const response = await Promise.race([
+      fetch(input, { ...init, signal: controller.signal }),
+      abortPromise,
+    ]);
+    return await Promise.race([bufferGoogleAdsResponse(response, controller.signal), abortPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+    init?.signal?.removeEventListener("abort", onCallerAbort);
+  }
 }
 
 interface GoogleAdsError {
@@ -55,6 +168,79 @@ interface GoogleAdsCustomer {
 }
 
 type GoogleAdsSearchStreamResponse<T> = { results?: T[] } | Array<{ results?: T[] }>;
+
+function accessibleCustomerIds(resourceNames: unknown): string[] {
+  if (!Array.isArray(resourceNames)) {
+    throw new ElizaError("Google Ads accessible-customer response is malformed", {
+      code: "INVALID_GOOGLE_ADS_CUSTOMER_RESOURCES",
+    });
+  }
+  if (resourceNames.length > MAX_GOOGLE_ADS_ACCESSIBLE_CUSTOMERS) {
+    throw new ElizaError(
+      `Google Ads returned more than ${MAX_GOOGLE_ADS_ACCESSIBLE_CUSTOMERS} accessible customers`,
+      {
+        code: "GOOGLE_ADS_CUSTOMER_LIMIT_EXCEEDED",
+        context: {
+          count: resourceNames.length,
+          maxCustomers: MAX_GOOGLE_ADS_ACCESSIBLE_CUSTOMERS,
+        },
+      },
+    );
+  }
+
+  const seen = new Set<string>();
+  return resourceNames.map((resourceName) => {
+    if (typeof resourceName !== "string" || !/^customers\/\d+$/.test(resourceName)) {
+      throw new ElizaError("Google Ads accessible-customer response contains an invalid resource", {
+        code: "INVALID_GOOGLE_ADS_CUSTOMER_RESOURCES",
+        context: { resourceName },
+      });
+    }
+    const customerId = resourceName.slice("customers/".length);
+    if (seen.has(customerId)) {
+      throw new ElizaError(
+        "Google Ads accessible-customer response contains a duplicate resource",
+        {
+          code: "INVALID_GOOGLE_ADS_CUSTOMER_RESOURCES",
+          context: { customerId },
+        },
+      );
+    }
+    seen.add(customerId);
+    return customerId;
+  });
+}
+
+function googleAdsUploadUrl(rawUrl: string): URL {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch (cause) {
+    // error-policy:J2 Preserve the parser cause while adding provider-boundary context.
+    throw new ElizaError("Google Ads video upload returned an invalid upload URL", {
+      code: "INVALID_GOOGLE_ADS_UPLOAD_URL",
+      cause,
+    });
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname.toLowerCase() !== "googleads.googleapis.com" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.port !== "" ||
+    parsed.hash !== ""
+  ) {
+    throw new ElizaError("Google Ads video upload returned an untrusted upload URL", {
+      code: "INVALID_GOOGLE_ADS_UPLOAD_URL",
+      context: {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port,
+      },
+    });
+  }
+  return parsed;
+}
 
 async function googleAdsRequest<T>(
   endpoint: string,
@@ -302,50 +488,59 @@ export const googleAdsProvider: AdProvider = {
   async listAdAccounts(
     credentials: AdAccountCredentials,
   ): Promise<Array<{ id: string; name: string }>> {
-    const response = await googleAdsFetch(
-      `${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`,
-      {
-        headers: {
-          Authorization: `Bearer ${credentials.accessToken}`,
-          "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "",
+    const deadline = new AbortController();
+    const timeoutId = setTimeout(() => {
+      deadline.abort(new DOMException("Google Ads account listing timed out", "TimeoutError"));
+    }, GOOGLE_ADS_LIST_ACCOUNTS_TIMEOUT_MS);
+    try {
+      const response = await googleAdsFetch(
+        `${GOOGLE_ADS_BASE_URL}/customers:listAccessibleCustomers`,
+        {
+          headers: {
+            Authorization: `Bearer ${credentials.accessToken}`,
+            "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN || "",
+          },
+          signal: deadline.signal,
         },
-      },
-    );
+      );
 
-    if (!response.ok) {
-      throw new Error("Failed to list Google Ads accounts");
-    }
-
-    const data = (await response.json()) as { resourceNames: string[] };
-
-    // Get details for each customer
-    const accounts: Array<{ id: string; name: string }> = [];
-
-    for (const resourceName of data.resourceNames || []) {
-      const customerId = resourceName.replace("customers/", "");
-
-      const customerResponse = await googleAdsRequest<
-        GoogleAdsSearchStreamResponse<{
-          customer: GoogleAdsCustomer;
-        }>
-      >("/googleAds:searchStream", credentials.accessToken, customerId, {
-        method: "POST",
-        body: JSON.stringify({
-          query: `SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1`,
-        }),
-      });
-
-      const row = firstGoogleAdsSearchResult(customerResponse);
-      if (row) {
-        const customer = row.customer;
-        accounts.push({
-          id: customer.id,
-          name: customer.descriptiveName || `Account ${customer.id}`,
-        });
+      if (!response.ok) {
+        throw new Error("Failed to list Google Ads accounts");
       }
-    }
 
-    return accounts;
+      const data = (await response.json()) as { resourceNames?: unknown };
+      const customerIds = accessibleCustomerIds(data.resourceNames);
+
+      // Get details for each customer
+      const accounts: Array<{ id: string; name: string }> = [];
+
+      for (const customerId of customerIds) {
+        const customerResponse = await googleAdsRequest<
+          GoogleAdsSearchStreamResponse<{
+            customer: GoogleAdsCustomer;
+          }>
+        >("/googleAds:searchStream", credentials.accessToken, customerId, {
+          method: "POST",
+          body: JSON.stringify({
+            query: `SELECT customer.id, customer.descriptive_name FROM customer LIMIT 1`,
+          }),
+          signal: deadline.signal,
+        });
+
+        const row = firstGoogleAdsSearchResult(customerResponse);
+        if (row) {
+          const customer = row.customer;
+          accounts.push({
+            id: customer.id,
+            name: customer.descriptiveName || `Account ${customer.id}`,
+          });
+        }
+      }
+
+      return accounts;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   },
 
   async createCampaign(
@@ -723,74 +918,94 @@ export const googleAdsProvider: AdProvider = {
           "X-Goog-Upload-Header-Content-Length": String(downloaded.bytes.byteLength),
           "X-Goog-Upload-Header-Content-Type": downloaded.contentType,
         };
-        const startResponse = await googleAdsFetch(
-          `${GOOGLE_ADS_RESUMABLE_UPLOAD_BASE_URL}/customers/${accountId}/youTubeVideoUploads:create`,
-          {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              customer_id: accountId,
-              you_tube_video_upload: {
-                video_title: input.name || downloaded.fileName,
-                video_description: input.name || downloaded.fileName,
-                video_privacy: "UNLISTED",
-              },
-            }),
-          },
-        );
-        if (!startResponse.ok) {
-          throw new Error(`Google Ads video upload initiation failed (${startResponse.status})`);
-        }
+        const deadline = new AbortController();
+        const timeoutId = setTimeout(() => {
+          deadline.abort(new DOMException("Google Ads video upload timed out", "TimeoutError"));
+        }, GOOGLE_ADS_UPLOAD_TIMEOUT_MS);
+        try {
+          const startResponse = await googleAdsFetch(
+            `${GOOGLE_ADS_RESUMABLE_UPLOAD_BASE_URL}/customers/${accountId}/youTubeVideoUploads:create`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                customer_id: accountId,
+                you_tube_video_upload: {
+                  video_title: input.name || downloaded.fileName,
+                  video_description: input.name || downloaded.fileName,
+                  video_privacy: "UNLISTED",
+                },
+              }),
+              signal: deadline.signal,
+            },
+          );
+          if (!startResponse.ok) {
+            throw new Error(`Google Ads video upload initiation failed (${startResponse.status})`);
+          }
 
-        const uploadUrl = startResponse.headers.get("x-goog-upload-url");
-        if (!uploadUrl) {
-          throw new Error("Google Ads video upload did not return an upload URL");
-        }
+          const uploadUrl = startResponse.headers.get("x-goog-upload-url");
+          if (!uploadUrl) {
+            throw new Error("Google Ads video upload did not return an upload URL");
+          }
+          const parsedUploadUrl = googleAdsUploadUrl(uploadUrl);
 
-        const videoBody = downloaded.bytes.buffer.slice(
-          downloaded.bytes.byteOffset,
-          downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
-        ) as ArrayBuffer;
-        const finalizeResponse = await googleAdsFetch(uploadUrl, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${credentials.accessToken}`,
-            "Content-Type": downloaded.contentType,
-            "Content-Length": String(downloaded.bytes.byteLength),
-            "X-Goog-Upload-Offset": "0",
-            "X-Goog-Upload-Command": "upload, finalize",
-          },
-          body: videoBody,
-        });
-        // error-policy:J3 finalize body may be empty/non-JSON; the !ok check below still
-        // surfaces HTTP failures, and a 2xx with no resourceName reports an explicit failure.
-        const data = (await finalizeResponse.json().catch(() => ({}))) as {
-          resourceName?: string;
-        };
-        if (!finalizeResponse.ok) {
-          throw new Error(`Google Ads video upload failed (${finalizeResponse.status})`);
-        }
-        if (!data.resourceName) {
+          const videoBody = downloaded.bytes.buffer.slice(
+            downloaded.bytes.byteOffset,
+            downloaded.bytes.byteOffset + downloaded.bytes.byteLength,
+          ) as ArrayBuffer;
+          const finalizeResponse = await googleAdsFetch(parsedUploadUrl, {
+            method: "PUT",
+            redirect: "error",
+            headers: {
+              Authorization: `Bearer ${credentials.accessToken}`,
+              "Content-Type": downloaded.contentType,
+              "Content-Length": String(downloaded.bytes.byteLength),
+              "X-Goog-Upload-Offset": "0",
+              "X-Goog-Upload-Command": "upload, finalize",
+            },
+            body: videoBody,
+            signal: deadline.signal,
+          });
+          const responseText = await finalizeResponse.text();
+          if (!finalizeResponse.ok) {
+            throw new Error(`Google Ads video upload failed (${finalizeResponse.status})`);
+          }
+          let data: { resourceName?: string } = {};
+          if (responseText !== "") {
+            try {
+              data = JSON.parse(responseText) as { resourceName?: string };
+            } catch (cause) {
+              // error-policy:J2 Preserve the parse cause while adding provider-boundary context.
+              throw new ElizaError("Google Ads video upload returned invalid JSON", {
+                code: "INVALID_GOOGLE_ADS_UPLOAD_RESPONSE",
+                cause,
+              });
+            }
+          }
+          if (!data.resourceName) {
+            return {
+              success: false,
+              error: "Google Ads video upload returned no resource name",
+              metadata: { response: data },
+            };
+          }
+
           return {
-            success: false,
-            error: "Google Ads video upload returned no resource name",
-            metadata: { response: data },
+            success: true,
+            providerAssetId: data.resourceName,
+            providerAssetUrl: downloaded.url,
+            providerAssetResourceName: data.resourceName,
+            metadata: {
+              fileName: downloaded.fileName,
+              contentType: downloaded.contentType,
+              sizeBytes: downloaded.bytes.byteLength,
+              uploadType: "youtube_video_upload",
+              state: "UPLOADED",
+            },
           };
+        } finally {
+          clearTimeout(timeoutId);
         }
-
-        return {
-          success: true,
-          providerAssetId: data.resourceName,
-          providerAssetUrl: downloaded.url,
-          providerAssetResourceName: data.resourceName,
-          metadata: {
-            fileName: downloaded.fileName,
-            contentType: downloaded.contentType,
-            sizeBytes: downloaded.bytes.byteLength,
-            uploadType: "youtube_video_upload",
-            state: "UPLOADED",
-          },
-        };
       }
 
       const downloaded = await downloadAdMedia(input.url, {
