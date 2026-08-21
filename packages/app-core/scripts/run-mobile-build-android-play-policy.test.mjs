@@ -145,6 +145,7 @@ describe("Android Play manifest policy", () => {
       "@capacitor/share",
       "@capacitor/status-bar",
       "@elizaos/capacitor-browser-surface",
+      "@elizaos/capacitor-secure-store",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([

@@ -5795,6 +5795,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/share",
   "@capacitor/status-bar",
   "@elizaos/capacitor-browser-surface",
+  "@elizaos/capacitor-secure-store",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
