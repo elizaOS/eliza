@@ -240,6 +240,10 @@ const LIFEOPS_RATE_LIMITS = {
   // Generic outbound messaging (X DMs, iMessage, signal, telegram). Tighter
   // than the default to limit blast radius.
   outbound_message: { maxRequests: 5, windowMs: 60_000 },
+  // Unauthenticated provider webhook ingress (Plaid). A dedicated bucket so a
+  // flood of forged deliveries cannot exhaust the shared default bucket and
+  // 429 the owner's own routes; verification rejects forgeries afterwards.
+  webhook_ingress: { maxRequests: 120, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
@@ -2589,7 +2593,7 @@ export async function handleLifeOpsRoutes(
     // raw bytes BEFORE any lookup or state change. The body read is bounded
     // and the stream destroyed on overflow so an unauthenticated sender
     // cannot make this receiver buffer arbitrary bytes.
-    if (rateLimitRequest(ctx, "default")) return true;
+    if (rateLimitRequest(ctx, "webhook_ingress")) return true;
     const verificationHeader = req.headers["plaid-verification"];
     const verificationJwt = Array.isArray(verificationHeader)
       ? verificationHeader[0]
