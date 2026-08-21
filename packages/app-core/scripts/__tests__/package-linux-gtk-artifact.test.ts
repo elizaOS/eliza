@@ -7,12 +7,17 @@
  * fields the validator enforces so cross-repository drift is caught here.
  */
 
+import { generateKeyPairSync } from "node:crypto";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -30,6 +35,7 @@ import {
   produceArtifact,
   SCHEMA_PATH,
   verifyArtifactDir,
+  writeSigningKeyPair,
 } from "../package-linux-gtk-artifact.mjs";
 
 const tempDirs: string[] = [];
@@ -134,6 +140,132 @@ describe("produceArtifact", () => {
     ).toThrow(/not executable/);
   });
 
+  it("refuses an entrypoint symlink even when its target is executable", () => {
+    const stage = stageShell();
+    const entrypoint = path.join(stage, "bin", "eliza-agent");
+    rmSync(entrypoint);
+    const external = path.join(tempDir(), "external-agent");
+    writeFileSync(external, "#!/bin/sh\nexit 0\n");
+    chmodSync(external, 0o755);
+    symlinkSync(external, entrypoint);
+    const { privateKeyPem } = generateSigningKeyPair();
+    expect(() =>
+      produceArtifact({
+        stageDir: stage,
+        outDir: tempDir(),
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/stage symlinks|regular non-symlink file/);
+  });
+
+  it("refuses an intermediate bin symlink and an escaping payload symlink", () => {
+    const externalStage = stageShell();
+    const stage = tempDir();
+    symlinkSync(path.join(externalStage, "bin"), path.join(stage, "bin"));
+    const { privateKeyPem } = generateSigningKeyPair();
+    expect(() =>
+      produceArtifact({
+        stageDir: stage,
+        outDir: tempDir(),
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/stage symlinks must use a non-traversing relative target/);
+
+    const regularStage = stageShell();
+    symlinkSync("/etc/passwd", path.join(regularStage, "share", "escape"));
+    expect(() =>
+      produceArtifact({
+        stageDir: regularStage,
+        outDir: tempDir(),
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/stage symlinks must use a non-traversing relative target/);
+  });
+
+  it("allows a non-traversing relative payload symlink", () => {
+    const stage = stageShell();
+    symlinkSync(
+      "renderer.txt",
+      path.join(stage, "share", "renderer-current.txt"),
+    );
+    const { privateKeyPem, publicKeyPem } = generateSigningKeyPair();
+    const outDir = tempDir();
+    produceArtifact({
+      stageDir: stage,
+      outDir,
+      privateKeyPem,
+      version: "1.2.3",
+      architecture: "x86_64",
+      sourceCommit: COMMIT,
+    });
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).not.toThrow();
+  });
+
+  it("refuses recursive output and existing artifact outputs", () => {
+    const stage = stageShell();
+    const { privateKeyPem } = generateSigningKeyPair();
+    expect(() =>
+      produceArtifact({
+        stageDir: stage,
+        outDir: path.join(stage, "artifacts"),
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/must not be the stage directory/);
+
+    const outDir = tempDir();
+    const first = produceArtifact({
+      stageDir: stage,
+      outDir,
+      privateKeyPem,
+      version: "1.2.3",
+      architecture: "x86_64",
+      sourceCommit: COMMIT,
+    });
+    const originalArchive = readFileSync(first.archivePath);
+    expect(() =>
+      produceArtifact({
+        stageDir: stage,
+        outDir,
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/refusing to overwrite existing artifact output/);
+    expect(readFileSync(first.archivePath)).toEqual(originalArchive);
+  });
+
+  it("refuses dangling output symlinks without creating their targets", () => {
+    const stage = stageShell();
+    const outDir = tempDir();
+    const externalTarget = path.join(tempDir(), "external-manifest.json");
+    symlinkSync(externalTarget, path.join(outDir, MANIFEST_NAME));
+    const { privateKeyPem } = generateSigningKeyPair();
+    expect(() =>
+      produceArtifact({
+        stageDir: stage,
+        outDir,
+        privateKeyPem,
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/refusing to overwrite existing artifact output/);
+    expect(existsSync(externalTarget)).toBe(false);
+  });
+
   it("refuses unsupported architectures and malformed versions", () => {
     expect(() => produce("amd64")).toThrow(/unsupported architecture/);
     expect(() => produce("x86_64", { version: "1.2" })).toThrow(
@@ -142,6 +274,69 @@ describe("produceArtifact", () => {
     expect(() => produce("x86_64", { sourceCommit: "deadbeef" })).toThrow(
       /invalid sourceCommit/,
     );
+  });
+
+  it("refuses a signing key from the wrong algorithm before emitting output", () => {
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const outDir = tempDir();
+    expect(() =>
+      produceArtifact({
+        stageDir: stageShell(),
+        outDir,
+        privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(/signing key must be Ed25519/);
+    expect(() => readFileSync(path.join(outDir, MANIFEST_NAME))).toThrow();
+  });
+
+  it("translates malformed key input to a typed contract failure", () => {
+    const outDir = tempDir();
+    expect(() =>
+      produceArtifact({
+        stageDir: stageShell(),
+        outDir,
+        privateKeyPem: "not a private key",
+        version: "1.2.3",
+        architecture: "x86_64",
+        sourceCommit: COMMIT,
+      }),
+    ).toThrow(ArtifactContractError);
+    expect(() => readFileSync(path.join(outDir, MANIFEST_NAME))).toThrow();
+  });
+});
+
+describe("writeSigningKeyPair", () => {
+  it("creates a private key with mode 0600 and never overwrites it", () => {
+    const outDir = tempDir();
+    const { privateKeyPath } = writeSigningKeyPair(outDir);
+    const originalPrivateKey = readFileSync(privateKeyPath);
+    expect(statSync(privateKeyPath).mode & 0o777).toBe(0o600);
+    expect(() => writeSigningKeyPair(outDir)).toThrow(
+      /refusing to overwrite an existing desktop signing keypair/,
+    );
+    expect(readFileSync(privateKeyPath)).toEqual(originalPrivateKey);
+  });
+
+  it("rejects a public-key collision without leaving a half keypair", () => {
+    const outDir = tempDir();
+    const publicKeyPath = path.join(outDir, "desktop-signing.pub.pem");
+    writeFileSync(publicKeyPath, "existing public key");
+    expect(() => writeSigningKeyPair(outDir)).toThrow(/refusing to overwrite/);
+    expect(existsSync(path.join(outDir, "desktop-signing.key.pem"))).toBe(
+      false,
+    );
+    expect(readFileSync(publicKeyPath, "utf8")).toBe("existing public key");
+  });
+
+  it("rejects a dangling private-key symlink without creating its target", () => {
+    const outDir = tempDir();
+    const externalTarget = path.join(tempDir(), "external-private.pem");
+    symlinkSync(externalTarget, path.join(outDir, "desktop-signing.key.pem"));
+    expect(() => writeSigningKeyPair(outDir)).toThrow(/refusing to overwrite/);
+    expect(existsSync(externalTarget)).toBe(false);
   });
 });
 
@@ -185,6 +380,17 @@ describe("verifyArtifactDir", () => {
     const stranger = generateSigningKeyPair();
     expect(() => verifyArtifactDir(outDir, stranger.publicKeyPem)).toThrow(
       /manifest signature does not verify/,
+    );
+  });
+
+  it("rejects symlinked external contract files", () => {
+    const { outDir, publicKeyPem } = produce("x86_64");
+    const manifestPath = path.join(outDir, MANIFEST_NAME);
+    const externalManifest = path.join(tempDir(), MANIFEST_NAME);
+    renameSync(manifestPath, externalManifest);
+    symlinkSync(externalManifest, manifestPath);
+    expect(() => verifyArtifactDir(outDir, publicKeyPem)).toThrow(
+      /regular non-symlink file/,
     );
   });
 });

@@ -27,10 +27,17 @@ import {
   generateKeyPairSync,
 } from "node:crypto";
 import {
-  existsSync,
+  linkSync,
+  lstatSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -67,14 +74,138 @@ const REQUIRED_CAPABILITIES = [
 
 /** Error type for every contract violation this module detects. */
 export class ArtifactContractError extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message, options) {
+    super(message, options);
     this.name = "ArtifactContractError";
   }
 }
 
 function fail(message) {
   throw new ArtifactContractError(message);
+}
+
+function pathEntryExists(filePath) {
+  try {
+    lstatSync(filePath);
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+function assertRegularFile(filePath, label) {
+  let stats;
+  try {
+    stats = lstatSync(filePath);
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      fail(`missing ${label}`);
+    }
+    throw error;
+  }
+  if (!stats.isFile()) {
+    fail(`${label} must be a regular non-symlink file`);
+  }
+}
+
+function isWithinDirectory(rootDir, candidatePath) {
+  return (
+    candidatePath === rootDir ||
+    candidatePath.startsWith(`${rootDir}${path.sep}`)
+  );
+}
+
+function hasControlCharacters(value) {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0);
+    if (codePoint <= 0x1f || codePoint === 0x7f) return true;
+  }
+  return false;
+}
+
+/** Rejects stage entries that could escape or create special files on extraction. */
+export function assertSafeStageTree(stageDir) {
+  const canonicalStageDir = realpathSync(stageDir);
+  const pending = [canonicalStageDir];
+  let entryCount = 0;
+  while (pending.length > 0) {
+    const directory = pending.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      entryCount += 1;
+      if (entryCount > 100_000) fail("stage contains more than 100000 entries");
+      if (hasControlCharacters(entry.name)) {
+        fail("stage entry names must not contain control characters");
+      }
+      const fullPath = path.join(directory, entry.name);
+      const stats = lstatSync(fullPath);
+      if (stats.isDirectory()) {
+        pending.push(fullPath);
+        continue;
+      }
+      if (stats.isFile()) {
+        if (stats.nlink > 1) fail("stage must not contain hard-linked files");
+        continue;
+      }
+      if (stats.isSymbolicLink()) {
+        const target = readlinkSync(fullPath);
+        if (path.isAbsolute(target) || target.split(/[\\/]/).includes("..")) {
+          fail("stage symlinks must use a non-traversing relative target");
+        }
+        let resolvedTarget;
+        try {
+          resolvedTarget = realpathSync(fullPath);
+        } catch (error) {
+          // error-policy:J2 context-adding rethrow: identify the unsafe stage link.
+          throw new ArtifactContractError(
+            `stage symlink target is missing: ${path.relative(canonicalStageDir, fullPath)}`,
+            { cause: error },
+          );
+        }
+        if (!isWithinDirectory(canonicalStageDir, resolvedTarget)) {
+          fail("stage symlink resolves outside the stage directory");
+        }
+        continue;
+      }
+      fail("stage contains a socket, device, FIFO, or unsupported entry type");
+    }
+  }
+}
+
+function requireEd25519PrivateKey(privateKeyPem) {
+  let privateKey;
+  try {
+    privateKey = createPrivateKey(privateKeyPem);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow: keep parser diagnostics as cause.
+    throw new ArtifactContractError(
+      "artifact signing key is not a valid private key",
+      { cause: error },
+    );
+  }
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    fail("artifact signing key must be Ed25519");
+  }
+  return privateKey;
+}
+
+function requireEd25519PublicKey(publicKeyPem) {
+  let publicKey;
+  try {
+    publicKey = createPublicKey(publicKeyPem);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow: keep parser diagnostics as cause.
+    throw new ArtifactContractError(
+      "artifact verification key is not a valid public key",
+      { cause: error },
+    );
+  }
+  if (publicKey.asymmetricKeyType !== "ed25519") {
+    fail("artifact verification key must be Ed25519");
+  }
+  return publicKey;
 }
 
 /** SHA-256 hex digest of a file's exact bytes. */
@@ -84,12 +215,17 @@ export function sha256File(filePath) {
 
 /** Detached Ed25519 signature (raw 64 bytes) over `bytes`. */
 export function signBytes(privateKeyPem, bytes) {
-  return edSign(null, bytes, createPrivateKey(privateKeyPem));
+  return edSign(null, bytes, requireEd25519PrivateKey(privateKeyPem));
 }
 
 /** Verifies a detached Ed25519 signature over `bytes`. */
 export function verifyBytes(publicKeyPem, bytes, signature) {
-  return edVerify(null, bytes, createPublicKey(publicKeyPem), signature);
+  return edVerify(
+    null,
+    bytes,
+    requireEd25519PublicKey(publicKeyPem),
+    signature,
+  );
 }
 
 /** Generates a PEM Ed25519 keypair for local/dev signing. */
@@ -99,6 +235,36 @@ export function generateSigningKeyPair() {
     privateKeyPem: privateKey.export({ type: "pkcs8", format: "pem" }),
     publicKeyPem: publicKey.export({ type: "spki", format: "pem" }),
   };
+}
+
+/** Creates a signing keypair without rotating or weakening an existing key. */
+export function writeSigningKeyPair(outDir) {
+  mkdirSync(outDir, { recursive: true });
+  const privateKeyPath = path.join(outDir, "desktop-signing.key.pem");
+  const publicKeyPath = path.join(outDir, "desktop-signing.pub.pem");
+  if (pathEntryExists(privateKeyPath) || pathEntryExists(publicKeyPath)) {
+    fail("refusing to overwrite an existing desktop signing keypair");
+  }
+  const { privateKeyPem, publicKeyPem } = generateSigningKeyPair();
+  let privateKeyCreated = false;
+  try {
+    writeFileSync(privateKeyPath, privateKeyPem, {
+      flag: "wx",
+      mode: 0o600,
+    });
+    privateKeyCreated = true;
+    writeFileSync(publicKeyPath, publicKeyPem, { flag: "wx", mode: 0o644 });
+  } catch (error) {
+    if (privateKeyCreated) {
+      try {
+        unlinkSync(privateKeyPath);
+      } catch {
+        // error-policy:J6 best-effort teardown: preserve the original write failure.
+      }
+    }
+    throw error;
+  }
+  return { privateKeyPath, publicKeyPath };
 }
 
 /**
@@ -203,18 +369,27 @@ export function assertValidManifest(manifest) {
  * executable regular file. Entrypoint paths are manifest-relative (bin/...).
  */
 export function assertStageEntrypoints(stageDir, entrypoints) {
+  const binStats = lstatSync(path.join(stageDir, "bin"));
+  if (!binStats.isDirectory()) {
+    fail("stage bin must be a real directory, not a symlink");
+  }
   for (const key of REQUIRED_ENTRYPOINTS) {
     const rel = entrypoints[key];
     if (!ENTRYPOINT_RE.test(String(rel ?? ""))) {
       fail(`entrypoints.${key} "${rel}" does not match bin/<name>`);
     }
     const full = path.join(stageDir, rel);
-    if (!existsSync(full)) {
-      fail(`entrypoint ${key} missing from stage: ${rel}`);
+    let stats;
+    try {
+      stats = lstatSync(full);
+    } catch (error) {
+      if (error && typeof error === "object" && error.code === "ENOENT") {
+        fail(`entrypoint ${key} missing from stage: ${rel}`);
+      }
+      throw error;
     }
-    const stats = statSync(full);
     if (!stats.isFile()) {
-      fail(`entrypoint ${key} is not a regular file: ${rel}`);
+      fail(`entrypoint ${key} is not a regular non-symlink file: ${rel}`);
     }
     if ((stats.mode & 0o111) === 0) {
       fail(`entrypoint ${key} is not executable: ${rel}`);
@@ -235,6 +410,58 @@ export function listArchiveMembers(archivePath) {
     .split("\n")
     .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
     .filter((line) => line.length > 0 && line !== ".");
+}
+
+function assertSafeArchiveMembers(archivePath) {
+  for (const member of listArchiveMembers(archivePath)) {
+    if (
+      path.posix.isAbsolute(member) ||
+      member.split("/").some((segment) => segment === "..") ||
+      hasControlCharacters(member)
+    ) {
+      fail(`archive contains an unsafe member path: ${JSON.stringify(member)}`);
+    }
+  }
+  const verbose = execFileSync("tar", ["--zstd", "-tvf", archivePath], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" },
+  });
+  for (const line of verbose.split("\n").filter(Boolean)) {
+    const type = line[0];
+    if (type !== "-" && type !== "d" && type !== "l") {
+      fail(
+        "archive contains a hard link, socket, device, FIFO, or unsupported type",
+      );
+    }
+    if (type === "l") {
+      const arrow = line.lastIndexOf(" -> ");
+      const target = arrow >= 0 ? line.slice(arrow + 4) : "";
+      if (
+        !target ||
+        path.posix.isAbsolute(target) ||
+        target.split("/").includes("..")
+      ) {
+        fail("archive contains an unsafe symlink target");
+      }
+    }
+  }
+}
+
+function assertArchivedEntrypoint(archivePath, relativePath, key) {
+  const listing = execFileSync(
+    "tar",
+    ["--zstd", "-tvf", archivePath, `./${relativePath}`],
+    { encoding: "utf8", env: { ...process.env, LC_ALL: "C" } },
+  ).trim();
+  const mode = listing.split(/\s+/, 1)[0] ?? "";
+  if (!/^-[rwx-]{9}$/.test(mode)) {
+    fail(`entrypoint ${key} (${relativePath}) is not a regular archive file`);
+  }
+  if (mode[3] !== "x" && mode[6] !== "x" && mode[9] !== "x") {
+    fail(
+      `entrypoint ${key} (${relativePath}) is not executable in the archive`,
+    );
+  }
 }
 
 /**
@@ -262,63 +489,127 @@ export function produceArtifact({
   if (!COMMIT_RE.test(sourceCommit)) {
     fail(`invalid sourceCommit "${sourceCommit}"`);
   }
-  if (!existsSync(stageDir) || !statSync(stageDir).isDirectory()) {
+  const signingKey = requireEd25519PrivateKey(privateKeyPem);
+  if (!pathEntryExists(stageDir) || !statSync(stageDir).isDirectory()) {
     fail(`stage directory does not exist: ${stageDir}`);
   }
-  assertStageEntrypoints(stageDir, entrypoints);
 
   mkdirSync(outDir, { recursive: true });
+  const canonicalStageDir = realpathSync(stageDir);
+  const canonicalOutDir = realpathSync(outDir);
+  if (
+    canonicalOutDir === canonicalStageDir ||
+    canonicalOutDir.startsWith(`${canonicalStageDir}${path.sep}`)
+  ) {
+    fail(
+      "output directory must not be the stage directory or one of its descendants",
+    );
+  }
+  assertSafeStageTree(canonicalStageDir);
+  assertStageEntrypoints(canonicalStageDir, entrypoints);
   const archiveName = `${artifactBaseName}-${version}-${architecture}.tar.zst`;
   if (!ARCHIVE_RE.test(archiveName)) {
     fail(`derived archive name "${archiveName}" violates the contract`);
   }
-  const archivePath = path.join(outDir, archiveName);
-  runTar(["--zstd", "-cf", archivePath, "-C", stageDir, "."]);
-
-  const archiveBytes = readFileSync(archivePath);
-  const archiveDigest = createHash("sha256").update(archiveBytes).digest("hex");
   const archiveSignatureName = `${archiveName.replace(/\.tar\.zst$/, "")}.sig`;
-  writeFileSync(
-    path.join(outDir, archiveSignatureName),
-    signBytes(privateKeyPem, archiveBytes),
+  const outputNames = [
+    archiveName,
+    archiveSignatureName,
+    MANIFEST_SIGNATURE_NAME,
+    MANIFEST_NAME,
+  ];
+  for (const outputName of outputNames) {
+    if (pathEntryExists(path.join(canonicalOutDir, outputName))) {
+      fail(`refusing to overwrite existing artifact output: ${outputName}`);
+    }
+  }
+  const stagingDir = mkdtempSync(
+    path.join(canonicalOutDir, ".linux-gtk-artifact-"),
   );
+  const publishedEntries = [];
+  try {
+    const stagedArchivePath = path.join(stagingDir, archiveName);
+    runTar(["--zstd", "-cf", stagedArchivePath, "-C", canonicalStageDir, "."]);
+    assertSafeArchiveMembers(stagedArchivePath);
+    const archiveBytes = readFileSync(stagedArchivePath);
+    const archiveDigest = createHash("sha256")
+      .update(archiveBytes)
+      .digest("hex");
+    writeFileSync(
+      path.join(stagingDir, archiveSignatureName),
+      edSign(null, archiveBytes, signingKey),
+      { flag: "wx" },
+    );
 
-  const manifest = {
-    schemaVersion: 1,
-    sourceCommit,
-    version,
-    architecture,
-    shell: "gtk-webkit",
-    archive: archiveName,
-    sha256: archiveDigest,
-    signature: archiveSignatureName,
-    manifestSignature: MANIFEST_SIGNATURE_NAME,
-    entrypoints,
-    capabilities: {
-      tray: true,
-      overlay: true,
-      wayland: true,
-      cloudAuth: true,
-      computerUse: true,
-      remoteControl: true,
-    },
-  };
-  assertValidManifest(manifest);
+    const manifest = {
+      schemaVersion: 1,
+      sourceCommit,
+      version,
+      architecture,
+      shell: "gtk-webkit",
+      archive: archiveName,
+      sha256: archiveDigest,
+      signature: archiveSignatureName,
+      manifestSignature: MANIFEST_SIGNATURE_NAME,
+      entrypoints,
+      capabilities: {
+        tray: true,
+        overlay: true,
+        wayland: true,
+        cloudAuth: true,
+        computerUse: true,
+        remoteControl: true,
+      },
+    };
+    assertValidManifest(manifest);
+    const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
+    writeFileSync(path.join(stagingDir, MANIFEST_NAME), manifestBytes, {
+      flag: "wx",
+    });
+    writeFileSync(
+      path.join(stagingDir, MANIFEST_SIGNATURE_NAME),
+      edSign(null, manifestBytes, signingKey),
+      { flag: "wx" },
+    );
 
-  const manifestBytes = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-  const manifestPath = path.join(outDir, MANIFEST_NAME);
-  writeFileSync(manifestPath, manifestBytes);
-  writeFileSync(
-    path.join(outDir, MANIFEST_SIGNATURE_NAME),
-    signBytes(privateKeyPem, manifestBytes),
-  );
-
-  return {
-    archivePath,
-    archiveSignaturePath: path.join(outDir, archiveSignatureName),
-    manifestPath,
-    manifestSignaturePath: path.join(outDir, MANIFEST_SIGNATURE_NAME),
-  };
+    for (const outputName of outputNames) {
+      const publishedPath = path.join(canonicalOutDir, outputName);
+      linkSync(path.join(stagingDir, outputName), publishedPath);
+      const publishedStats = lstatSync(publishedPath);
+      publishedEntries.push({
+        dev: publishedStats.dev,
+        ino: publishedStats.ino,
+        path: publishedPath,
+      });
+    }
+    return {
+      archivePath: path.join(canonicalOutDir, archiveName),
+      archiveSignaturePath: path.join(canonicalOutDir, archiveSignatureName),
+      manifestPath: path.join(canonicalOutDir, MANIFEST_NAME),
+      manifestSignaturePath: path.join(
+        canonicalOutDir,
+        MANIFEST_SIGNATURE_NAME,
+      ),
+    };
+  } catch (error) {
+    for (const published of publishedEntries.reverse()) {
+      try {
+        const current = lstatSync(published.path);
+        if (current.dev === published.dev && current.ino === published.ino) {
+          unlinkSync(published.path);
+        }
+      } catch {
+        // error-policy:J6 best-effort teardown: preserve the publication failure.
+      }
+    }
+    throw error;
+  } finally {
+    try {
+      rmSync(stagingDir, { force: true, recursive: true });
+    } catch {
+      // error-policy:J6 best-effort teardown: published bytes remain authoritative.
+    }
+  }
 }
 
 /**
@@ -329,7 +620,7 @@ export function produceArtifact({
  */
 export function verifyArtifactDir(outDir, publicKeyPem) {
   const manifestPath = path.join(outDir, MANIFEST_NAME);
-  if (!existsSync(manifestPath)) fail(`missing ${MANIFEST_NAME} in ${outDir}`);
+  assertRegularFile(manifestPath, MANIFEST_NAME);
   const manifestBytes = readFileSync(manifestPath);
   let manifest;
   try {
@@ -338,14 +629,13 @@ export function verifyArtifactDir(outDir, publicKeyPem) {
     // error-policy:J2 context-adding rethrow: name the file that failed to parse.
     throw new ArtifactContractError(
       `${MANIFEST_NAME} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
   assertValidManifest(manifest);
 
   const manifestSigPath = path.join(outDir, MANIFEST_SIGNATURE_NAME);
-  if (!existsSync(manifestSigPath)) {
-    fail(`missing ${MANIFEST_SIGNATURE_NAME} next to the manifest`);
-  }
+  assertRegularFile(manifestSigPath, MANIFEST_SIGNATURE_NAME);
   if (
     !verifyBytes(publicKeyPem, manifestBytes, readFileSync(manifestSigPath))
   ) {
@@ -353,7 +643,7 @@ export function verifyArtifactDir(outDir, publicKeyPem) {
   }
 
   const archivePath = path.join(outDir, manifest.archive);
-  if (!existsSync(archivePath)) fail(`missing archive ${manifest.archive}`);
+  assertRegularFile(archivePath, `archive ${manifest.archive}`);
   const archiveBytes = readFileSync(archivePath);
   const digest = createHash("sha256").update(archiveBytes).digest("hex");
   if (digest !== manifest.sha256) {
@@ -362,20 +652,20 @@ export function verifyArtifactDir(outDir, publicKeyPem) {
     );
   }
   const archiveSigPath = path.join(outDir, manifest.signature);
-  if (!existsSync(archiveSigPath)) {
-    fail(`missing archive signature ${manifest.signature}`);
-  }
+  assertRegularFile(archiveSigPath, `archive signature ${manifest.signature}`);
   if (!verifyBytes(publicKeyPem, archiveBytes, readFileSync(archiveSigPath))) {
     fail("archive signature does not verify over the exact archive bytes");
   }
 
   const members = new Set(listArchiveMembers(archivePath));
+  assertSafeArchiveMembers(archivePath);
   for (const key of REQUIRED_ENTRYPOINTS) {
     if (!members.has(manifest.entrypoints[key])) {
       fail(
         `entrypoint ${key} (${manifest.entrypoints[key]}) is not present in the archive`,
       );
     }
+    assertArchivedEntrypoint(archivePath, manifest.entrypoints[key], key);
   }
   return manifest;
 }
@@ -423,12 +713,7 @@ function cliMain() {
   }
   if (command === "generate-key") {
     const outDir = path.resolve(args.get("out") ?? ".");
-    mkdirSync(outDir, { recursive: true });
-    const { privateKeyPem, publicKeyPem } = generateSigningKeyPair();
-    writeFileSync(path.join(outDir, "desktop-signing.key.pem"), privateKeyPem, {
-      mode: 0o600,
-    });
-    writeFileSync(path.join(outDir, "desktop-signing.pub.pem"), publicKeyPem);
+    writeSigningKeyPair(outDir);
     process.stdout.write(`wrote Ed25519 keypair under ${outDir}\n`);
     return;
   }
