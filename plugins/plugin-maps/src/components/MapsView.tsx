@@ -35,7 +35,11 @@ import {
   useState,
 } from "react";
 import type { PlaceRef, RoutePlan, TravelMode } from "../types.js";
-import { type MapsViewTransport, mapsViewTransport } from "./maps-view-data.js";
+import {
+  type MapsProviderDescription,
+  type MapsViewTransport,
+  mapsViewTransport,
+} from "./maps-view-data.js";
 
 const TRAVEL_MODES: readonly TravelMode[] = [
   "drive",
@@ -399,13 +403,33 @@ function projectPlaces(places: readonly PlaceRef[]) {
 
 interface MapPanelProps {
   places: readonly PlaceRef[];
+  attributionProviderIds: readonly string[];
+  providers: readonly MapsProviderDescription[];
   selected: PlaceRef | null;
   activeRoute: RoutePlan | null;
   onSelect: (place: PlaceRef) => void;
 }
 
-function MapPanel({ places, selected, activeRoute, onSelect }: MapPanelProps) {
+function MapPanel({
+  places,
+  attributionProviderIds,
+  providers,
+  selected,
+  activeRoute,
+  onSelect,
+}: MapPanelProps) {
   const points = useMemo(() => projectPlaces(places), [places]);
+  const providerAttribution = useMemo(() => {
+    const descriptions = new Map(
+      providers.map((provider) => [provider.id, provider]),
+    );
+    return attributionProviderIds
+      .map((providerId) => {
+        const attribution = descriptions.get(providerId)?.attribution;
+        return attribution ?? `Legal attribution unavailable for ${providerId}`;
+      })
+      .join(" · ");
+  }, [attributionProviderIds, providers]);
   return (
     <figure
       aria-labelledby="maps-canvas-title"
@@ -468,20 +492,34 @@ function MapPanel({ places, selected, activeRoute, onSelect }: MapPanelProps) {
           );
         })}
       </div>
-      <div className="absolute top-3 left-3 flex items-center gap-2 rounded-lg bg-bg/90 px-3 py-2 text-xs font-medium text-text shadow-sm backdrop-blur">
+      <div
+        data-testid="maps-schematic-label"
+        className="pointer-events-none absolute top-3 left-3 flex items-center gap-2 rounded-lg bg-bg/90 px-3 py-2 text-xs font-medium text-text shadow-sm backdrop-blur"
+      >
         <MapIcon aria-hidden="true" className="size-4 text-[#d94b00]" />
         Provider-neutral map
       </div>
-      {activeRoute ? (
-        <div className="absolute right-3 bottom-12 left-3 rounded-lg bg-bg/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur">
-          Route geometry is not drawn in this provider-neutral schematic. Time
-          and distance remain provider-backed.
+      <div
+        data-testid="maps-bottom-overlays"
+        className="pointer-events-none absolute right-3 bottom-3 left-3 flex flex-col items-end gap-2"
+      >
+        {activeRoute ? (
+          <div
+            data-testid="maps-route-disclaimer"
+            className="w-full rounded-lg bg-bg/90 px-3 py-2 text-xs text-muted-foreground shadow-sm backdrop-blur"
+          >
+            Route geometry is not drawn in this provider-neutral schematic. Time
+            and distance remain provider-backed.
+          </div>
+        ) : null}
+        <div
+          data-testid="maps-provider-attribution"
+          className="max-w-full break-words rounded-md bg-bg/90 px-2 py-1 text-right text-[11px] text-muted-foreground shadow-sm"
+        >
+          {attributionProviderIds.length
+            ? providerAttribution
+            : "No provider data loaded"}
         </div>
-      ) : null}
-      <div className="absolute right-3 bottom-3 rounded-md bg-bg/90 px-2 py-1 text-[11px] text-muted-foreground shadow-sm">
-        {places.length
-          ? `Place data: ${[...new Set(places.map((place) => place.provider))].join(", ")}`
-          : "No provider data loaded"}
       </div>
     </figure>
   );
@@ -546,6 +584,7 @@ export function MapsView({
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [providers, setProviders] = useState<MapsProviderDescription[]>([]);
   const [isOnline, setIsOnline] = useState(
     online ?? (typeof navigator === "undefined" ? true : navigator.onLine),
   );
@@ -579,6 +618,25 @@ export function MapsView({
       window.removeEventListener("offline", update);
     };
   }, [online]);
+
+  useEffect(() => {
+    if (!transport.describeProviders) {
+      setProviders([]);
+      return;
+    }
+    const controller = new AbortController();
+    void transport
+      .describeProviders(controller.signal)
+      .then((descriptions) => {
+        if (!controller.signal.aborted) setProviders(descriptions);
+      })
+      // error-policy:J4 Missing provider metadata is rendered as an explicit
+      // attribution-unavailable state for each provider returned by a search.
+      .catch((_cause: unknown) => {
+        if (!controller.signal.aborted) setProviders([]);
+      });
+    return () => controller.abort();
+  }, [transport]);
 
   useEffect(
     () => () => {
@@ -623,6 +681,15 @@ export function MapsView({
     routes.find((route) => route.routeId === activeRouteId) ??
     routes[0] ??
     null;
+  const attributionProviderIds = useMemo(
+    () => [
+      ...new Set([
+        ...places.map((place) => place.provider),
+        ...routes.map((route) => route.provider),
+      ]),
+    ],
+    [places, routes],
+  );
 
   const runSearch = useCallback(
     async (requested: string) => {
@@ -1111,6 +1178,8 @@ export function MapsView({
 
           <MapPanel
             places={filteredPlaces}
+            attributionProviderIds={attributionProviderIds}
+            providers={providers}
             selected={selected}
             activeRoute={activeRoute}
             onSelect={selectPlace}

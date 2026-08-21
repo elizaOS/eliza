@@ -12,6 +12,12 @@ const PROVIDER_PARAM = {
 
 export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
   {
+    id: "maps-describe-providers",
+    description:
+      "Read registered provider identities and adapter-owned attribution metadata.",
+    params: {},
+  },
+  {
     id: "maps-search-places",
     description:
       "Search registered maps providers for normalized places. This capability is read-only.",

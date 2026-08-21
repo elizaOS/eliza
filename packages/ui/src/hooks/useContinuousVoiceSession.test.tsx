@@ -15,7 +15,15 @@
  */
 
 import { act, renderHook } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { useVoiceLiveActivityMock } = vi.hoisted(() => ({
+  useVoiceLiveActivityMock: vi.fn(),
+}));
+
+vi.mock("../voice/ios-live-activity", () => ({
+  useVoiceLiveActivity: useVoiceLiveActivityMock,
+}));
 
 import { useContinuousVoiceSession } from "./useContinuousVoiceSession";
 import type { UseRealtimeVoiceSessionState } from "./useRealtimeVoiceSession";
@@ -88,6 +96,10 @@ function makeRealtime(
 }
 
 describe("useContinuousVoiceSession", () => {
+  beforeEach(() => {
+    useVoiceLiveActivityMock.mockClear();
+  });
+
   it("passes the batch state through UNCHANGED when realtime is unavailable", () => {
     const batch = makeBatch();
     const realtime = makeRealtime({ available: false });
@@ -99,6 +111,11 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.status).toBe("listening");
     expect(result.current.interimTranscript).toBe("batch interim");
     expect(result.current.latency.speechEndToVoiceStartMs).toBe(200);
+    expect(useVoiceLiveActivityMock).toHaveBeenLastCalledWith({
+      active: true,
+      status: "listening",
+      error: false,
+    });
   });
 
   it("start()/stop() route to the batch pause/resume on the batch path", async () => {
@@ -138,6 +155,11 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.interimTranscript).toBe("rt partial");
     expect(result.current.finalTranscript).toBe("rt final");
     expect(result.current.agentSpeaking).toBe(true);
+    expect(useVoiceLiveActivityMock).toHaveBeenLastCalledWith({
+      active: true,
+      status: "speaking",
+      error: false,
+    });
   });
 
   it("keeps the committed transcript visible while the EOT request is thinking", () => {
@@ -210,7 +232,7 @@ describe("useContinuousVoiceSession", () => {
   });
 
   it("exposes realtimeConnecting while a started session is pre-live, and stop() cancels it", async () => {
-    const batch = makeBatch();
+    const batch = makeBatch({ active: false, status: "idle" });
     const realtime = makeRealtime({
       available: true,
       active: false,
@@ -221,6 +243,11 @@ describe("useContinuousVoiceSession", () => {
     );
     expect(result.current.realtimeConnecting).toBe(true);
     expect(result.current.realtimeActive).toBe(false);
+    expect(useVoiceLiveActivityMock).toHaveBeenLastCalledWith({
+      active: false,
+      status: "idle",
+      error: false,
+    });
 
     // A stop during bring-up must cancel the pending realtime lifecycle, not
     // pause the (disabled) batch path.
@@ -246,5 +273,10 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.realtimeError?.kind).toBe("permission");
     // The fail-closed TTS banner still rides through from the batch state.
     expect(result.current.ttsError?.engine).toBe("elevenlabs");
+    expect(useVoiceLiveActivityMock).toHaveBeenLastCalledWith({
+      active: true,
+      status: "idle",
+      error: true,
+    });
   });
 });

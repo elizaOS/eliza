@@ -453,7 +453,7 @@ function terminalEffectReceipt(
           },
         ]
       : [],
-    idempotency: { key: null, replayed: false },
+    idempotency: { key: result.runId, replayed: false },
     observedAt,
   } as const;
   if (result.exitCode === 0 && !result.timedOut) {

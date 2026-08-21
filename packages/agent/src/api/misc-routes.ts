@@ -236,11 +236,14 @@ export interface MiscRouteContext {
    * this instead of relying on the count snapshot captured before body parsing.
    */
   tryAcquireTerminalRunSlot?: (
+    scopeId: string,
     runId: string,
     maxConcurrent: number,
   ) =>
     | { release: () => void }
     | { rejection: "capacity" | "duplicate" | "registry-capacity" };
+  /** Test seam for failures before the shell process can be launched. */
+  resolveTerminalShellCommand?: typeof resolveTerminalShellCommand;
 }
 
 // ---------------------------------------------------------------------------
@@ -483,12 +486,21 @@ export async function handleMiscRoutes(
     }
 
     const emitTerminalEvent = (payload: object) => {
-      if (ctx.isSharedTerminalClientId(targetClientId)) {
-        state.broadcastWs?.(payload);
-        return;
+      try {
+        if (ctx.isSharedTerminalClientId(targetClientId)) {
+          state.broadcastWs?.(payload);
+          return;
+        }
+        if (typeof state.broadcastWsToClientId !== "function") return;
+        state.broadcastWsToClientId(targetClientId, payload);
+      } catch (error) {
+        // error-policy:J6 terminal event delivery is observational; a broken
+        // subscriber must not replace the command result or leak its lease.
+        logger.warn(
+          { error, runClientId: targetClientId },
+          "[terminal] Failed to broadcast terminal event",
+        );
       }
-      if (typeof state.broadcastWsToClientId !== "function") return;
-      state.broadcastWsToClientId(targetClientId, payload);
     };
 
     const captureOutput = body.captureOutput === true;
@@ -503,8 +515,9 @@ export async function handleMiscRoutes(
     }
 
     const { maxConcurrent, maxDurationMs } = resolveTerminalRunLimits();
+    const runScopeId = String(state.runtime?.agentId ?? "no-agent");
     const admission = ctx.tryAcquireTerminalRunSlot
-      ? ctx.tryAcquireTerminalRunSlot(runId, maxConcurrent)
+      ? ctx.tryAcquireTerminalRunSlot(runScopeId, runId, maxConcurrent)
       : ctx.activeTerminalRunCount < maxConcurrent
         ? {
             release: (() => {
@@ -540,18 +553,13 @@ export async function handleMiscRoutes(
       json(res, { ok: true, runId });
     }
 
-    try {
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "start",
-        command,
-        maxDurationMs,
-      });
-    } catch (eventError) {
-      releaseTerminalRunSlot();
-      throw eventError;
-    }
+    emitTerminalEvent({
+      type: "terminal-output",
+      runId,
+      event: "start",
+      command,
+      maxDurationMs,
+    });
 
     let finalized = false;
     let timedOut = false;
@@ -620,10 +628,12 @@ export async function handleMiscRoutes(
       });
     };
 
-    const shell = resolveTerminalShellCommand();
     Promise.resolve()
-      .then(() =>
-        runShell(
+      .then(() => {
+        const shell = (
+          ctx.resolveTerminalShellCommand ?? resolveTerminalShellCommand
+        )();
+        return runShell(
           {
             command: shell.command,
             args: shell.argsFor(command),
@@ -635,8 +645,8 @@ export async function handleMiscRoutes(
             toolName: "terminal.run",
           },
           null,
-        ),
-      )
+        );
+      })
       .then((result) => {
         finalize();
         emitTerminalEvent({
