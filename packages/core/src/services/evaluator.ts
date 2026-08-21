@@ -30,6 +30,10 @@ import type {
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
 import { formatActionResultsForPrompt } from "../utils/action-results.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 
 type PreparedEntry = {
@@ -787,7 +791,7 @@ export class EvaluatorService extends BaseService {
 						src: "service:evaluator",
 						agentId: this.runtime.agentId,
 						evaluator: evaluator.name,
-						rawSection: stringifyForDiagnostics(rawSection).slice(0, 500),
+						rawSection: truncateWellFormed(toWellFormedUnicode(stringifyForDiagnostics(rawSection)), 500),
 					},
 					"Evaluator output section did not validate",
 				);
