@@ -7,38 +7,52 @@
  *
  * Signs in headlessly with the same deterministic e2e wallet the onboarding
  * lanes use (real EIP-4361 handshake — no mock), lists the org's agents, and
- * deletes the leaked ones. Dry-run by default; --apply performs deletions.
- * DELETE either completes synchronously (shared runtime) or returns a 202
- * job which --wait polls to completion.
+ * proposes leaked candidates. Dry-run is the only implicit mode. Mutation
+ * requires reviewed candidate IDs, an independently expected SIWE wallet and
+ * organization, a durable receipt path, conditional DELETE identity, job
+ * completion, and post-delete absence verification.
  *
  * Usage:
  *   bun run cloud:e2e:agents:cleanup                    # dry run vs https://api.eliza.app
- *   bun run cloud:e2e:agents:cleanup -- --apply --wait
+ *   bun run cloud:e2e:agents:cleanup -- --report /tmp/cleanup-dry-run.json
+ *   bun run cloud:e2e:agents:cleanup -- --apply --wait \
+ *     --candidate <reviewed-id> --expected-address <wallet> \
+ *     --expected-org <org-id> --report /tmp/cleanup-receipt.json
  *   bun run cloud:e2e:agents:cleanup -- --base <url> --keep 2 --min-age-minutes 10
  *   bun run cloud:e2e:agents:cleanup -- --protect <agentId> --report <path>
- *   ELIZA_E2E_WALLET_PK=0x... overrides the wallet; ELIZA_CLOUD_AUTH_TOKEN
- *   skips SIWE and uses an existing bearer token instead.
+ *   ELIZA_E2E_WALLET_PK=0x... overrides the wallet. ELIZA_CLOUD_AUTH_TOKEN
+ *   supports remote dry runs only; mutation requires verifiable SIWE except
+ *   in deterministic loopback tests.
  */
 
 import fs from "node:fs";
 import {
+  assertExpectedCleanupIdentity,
+  bindReviewedCleanupCandidates,
   normalizeAgentRow,
   resolveE2eWalletPrivateKey,
   selectAgentsForCleanup,
 } from "./e2e-agent-cleanup-lib.mjs";
 
-const argIndex = (name) => process.argv.indexOf(name);
-const arg = (name, fallback = null) => {
-  const i = argIndex(name);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
-};
-const argAll = (name) => {
+function argAll(name) {
   const values = [];
-  for (let i = 0; i < process.argv.length - 1; i += 1) {
-    if (process.argv[i] === name) values.push(process.argv[i + 1]);
+  for (let i = 2; i < process.argv.length; i += 1) {
+    if (process.argv[i] !== name) continue;
+    const value = process.argv[i + 1];
+    if (!value || value.startsWith("--")) {
+      throw new Error(`${name} requires a value`);
+    }
+    values.push(value);
   }
   return values;
-};
+}
+
+function arg(name, fallback = null) {
+  const values = argAll(name);
+  if (values.length > 1) throw new Error(`${name} may only be provided once`);
+  return values[0] ?? fallback;
+}
+
 const has = (name) => process.argv.includes(name);
 const log = (message) => console.log(`[e2e-agent-cleanup] ${message}`);
 
@@ -48,39 +62,122 @@ if (has("--help") || has("-h")) {
       "Usage: bun scripts/cloud/e2e-agent-cleanup.mjs [options]",
       "  --base <url>             cloud API base (default https://api.eliza.app)",
       "  --apply                  actually delete (default is dry run)",
-      "  --wait                   poll 202 delete jobs to completion",
-      "  --keep <n>               newest agents to retain (default 1)",
+      "  --wait                   required with --apply; verify delete jobs",
+      "  --candidate <agentId>    reviewed deletion candidate (repeatable)",
+      "  --expected-address <0x>  expected SIWE wallet (required to apply)",
+      "  --expected-org <uuid>    expected cloud org (required to apply)",
+      "  --keep <n>               newest eligible agents to retain (default 0)",
       "  --min-age-minutes <n>    never touch agents younger than this (default 30)",
       "  --protect <agentId>      never delete this agent (repeatable)",
-      "  --report <path>          write a JSON report",
+      "  --report <path>          write a JSON receipt (required to apply)",
+      "  --job-timeout-ms <n>     delete-job timeout (default 120000)",
+      "  --poll-interval-ms <n>   delete-job poll interval (default 5000)",
     ].join("\n"),
   );
   process.exit(0);
 }
 
-const baseUrl = (
-  arg("--base") ??
-  process.env.ELIZA_CLOUD_API_BASE ??
-  "https://api.eliza.app"
-).replace(/\/+$/, "");
-const keepNewest = Number.parseInt(arg("--keep", "1"), 10);
-const minAgeMs = Number.parseFloat(arg("--min-age-minutes", "30")) * 60_000;
-const protectIds = argAll("--protect");
-const apply = has("--apply");
-const wait = has("--wait");
-const reportPath = arg("--report");
+function parseNumberOption(name, fallback, { integer = false } = {}) {
+  const raw = arg(name, fallback);
+  if (!/^\d+(?:\.\d+)?$/.test(raw)) {
+    throw new Error(`${name} must be a non-negative number`);
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || (integer && !Number.isInteger(value))) {
+    throw new Error(
+      `${name} must be a non-negative ${integer ? "integer" : "number"}`,
+    );
+  }
+  return value;
+}
 
-async function resolveToken() {
+function parseOptions() {
+  const baseUrl = (
+    arg("--base") ??
+    process.env.ELIZA_CLOUD_API_BASE ??
+    "https://api.eliza.app"
+  ).replace(/\/+$/, "");
+  const parsedBase = new URL(baseUrl);
+  if (!/^https?:$/.test(parsedBase.protocol)) {
+    throw new Error("--base must be an http(s) URL");
+  }
+  const isLoopback = ["127.0.0.1", "localhost", "::1"].includes(
+    parsedBase.hostname,
+  );
+  if (parsedBase.protocol !== "https:" && !isLoopback) {
+    throw new Error("--base must use HTTPS unless it is loopback");
+  }
+  const options = {
+    baseUrl,
+    apply: has("--apply"),
+    wait: has("--wait"),
+    candidateIds: argAll("--candidate"),
+    expectedAddress: arg("--expected-address"),
+    expectedOrganizationId: arg("--expected-org"),
+    keepNewest: parseNumberOption("--keep", "0", { integer: true }),
+    minAgeMs: parseNumberOption("--min-age-minutes", "30") * 60_000,
+    protectIds: argAll("--protect"),
+    reportPath: arg("--report"),
+    jobTimeoutMs: parseNumberOption("--job-timeout-ms", "120000"),
+    pollIntervalMs: parseNumberOption("--poll-interval-ms", "5000"),
+    isLoopback,
+  };
+  for (const id of [...options.candidateIds, ...options.protectIds]) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(id)) {
+      throw new Error(`agent id is malformed: ${id}`);
+    }
+  }
+  if (options.jobTimeoutMs <= 0) {
+    throw new Error("--job-timeout-ms must be positive");
+  }
+  if (options.wait && !options.apply) {
+    throw new Error("--wait requires --apply");
+  }
+  if (options.apply) {
+    if (!options.wait) throw new Error("--apply requires --wait");
+    if (!options.reportPath) throw new Error("--apply requires --report");
+    if (options.candidateIds.length === 0) {
+      throw new Error("--apply requires at least one --candidate");
+    }
+    if (!/^0x[a-fA-F0-9]{40}$/.test(options.expectedAddress ?? "")) {
+      throw new Error("--apply requires a valid --expected-address");
+    }
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        options.expectedOrganizationId ?? "",
+      )
+    ) {
+      throw new Error("--apply requires a valid --expected-org");
+    }
+  }
+  return options;
+}
+
+async function resolveToken(options) {
   const preset = process.env.ELIZA_CLOUD_AUTH_TOKEN?.trim();
   if (preset) {
+    if (options.apply && !options.isLoopback) {
+      throw new Error(
+        "ELIZA_CLOUD_AUTH_TOKEN may not apply cleanup against a non-loopback host; use verifiable SIWE",
+      );
+    }
     log("using ELIZA_CLOUD_AUTH_TOKEN (skipping SIWE login)");
-    return { token: preset, identity: null };
+    return {
+      token: preset,
+      identity: options.apply
+        ? {
+            address: options.expectedAddress,
+            organizationId: options.expectedOrganizationId,
+            userId: "loopback-test-user",
+          }
+        : null,
+    };
   }
   const { siweTestLogin } = await import(
     "@elizaos/cloud-shared/lib/auth/siwe-test-login"
   );
   const session = await siweTestLogin({
-    baseUrl,
+    baseUrl: options.baseUrl,
     privateKey: resolveE2eWalletPrivateKey(),
   });
   log(
@@ -96,8 +193,8 @@ async function resolveToken() {
   };
 }
 
-async function cloud(token, path, init = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
+async function cloud(options, token, path, init = {}) {
+  const res = await fetch(`${options.baseUrl}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
@@ -113,7 +210,7 @@ async function cloud(token, path, init = {}) {
   } catch {
     // error-policy:J3 non-JSON body is reported through the structured error below
   }
-  if (!res.ok && body?.success !== true) {
+  if (!res.ok) {
     throw new Error(
       `Cloud request failed (${res.status}) ${path}: ${text.slice(0, 300)}`,
     );
@@ -121,9 +218,9 @@ async function cloud(token, path, init = {}) {
   return { status: res.status, body };
 }
 
-async function creditBalance(token) {
+async function creditBalance(options, token) {
   try {
-    const res = await cloud(token, "/api/v1/credits/balance");
+    const res = await cloud(options, token, "/api/v1/credits/balance");
     return res.body?.balance ?? res.body?.data?.balance ?? null;
   } catch (error) {
     // error-policy:J4 balance is advisory context for the report; the cleanup
@@ -134,8 +231,8 @@ async function creditBalance(token) {
   }
 }
 
-async function listAgents(token) {
-  const res = await cloud(token, "/api/v1/eliza/agents");
+async function listAgents(options, token) {
+  const res = await cloud(options, token, "/api/v1/eliza/agents");
   const rows = Array.isArray(res.body?.data)
     ? res.body.data
     : Array.isArray(res.body)
@@ -154,44 +251,71 @@ async function listAgents(token) {
   return normalized;
 }
 
-async function deleteAgent(token, agent) {
+async function deleteAgent(options, token, agent) {
   const res = await cloud(
+    options,
     token,
     `/api/v1/eliza/agents/${encodeURIComponent(agent.id)}`,
-    { method: "DELETE" },
+    {
+      method: "DELETE",
+      body: JSON.stringify({
+        expectedAgentName: agent.agentName,
+        expectedCreatedAt: agent.createdAt,
+        expectedExecutionTier: agent.executionTier,
+      }),
+    },
   );
   if (res.status === 202) {
     const jobId = res.body?.data?.jobId ?? null;
-    if (wait && !jobId) {
+    if (!jobId) {
       throw new Error(`delete request for ${agent.id} omitted its job id`);
     }
-    if (wait) {
-      const deadline = Date.now() + 120_000;
-      while (Date.now() < deadline) {
-        const job = await cloud(
-          token,
-          `/api/v1/jobs/${encodeURIComponent(jobId)}`,
-        );
-        const status = String(
-          job.body?.data?.status ?? job.body?.status ?? "",
-        ).toLowerCase();
-        if (["completed", "complete", "success", "succeeded"].includes(status))
-          return { mode: "job", jobId, final: status };
-        if (["failed", "error"].includes(status))
-          throw new Error(`delete job ${jobId} for ${agent.id} failed`);
-        await new Promise((r) => setTimeout(r, 5_000));
-      }
-      throw new Error(`delete job ${jobId} for ${agent.id} timed out`);
+    const timeoutMs = options.jobTimeoutMs;
+    const pollIntervalMs = options.pollIntervalMs;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new Error("--job-timeout-ms must be positive");
     }
-    return { mode: "job", jobId, final: wait ? "unknown" : "enqueued" };
+    if (!Number.isFinite(pollIntervalMs) || pollIntervalMs < 0) {
+      throw new Error("--poll-interval-ms must be non-negative");
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const job = await cloud(
+        options,
+        token,
+        `/api/v1/jobs/${encodeURIComponent(jobId)}`,
+      );
+      const status = String(
+        job.body?.data?.status ?? job.body?.status ?? "",
+      ).toLowerCase();
+      if (["completed", "complete", "success", "succeeded"].includes(status))
+        return { mode: "job", jobId, final: status };
+      if (["failed", "error", "cancelled", "canceled"].includes(status))
+        throw new Error(
+          `delete job ${jobId} for ${agent.id} failed: ${status}`,
+        );
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    }
+    throw new Error(`delete job ${jobId} for ${agent.id} timed out`);
   }
   return { mode: "sync", final: "deleted" };
 }
 
+function writeReport(reportPath, report) {
+  if (!reportPath) return;
+  const temporaryPath = `${reportPath}.tmp`;
+  fs.writeFileSync(temporaryPath, `${JSON.stringify(report, null, 2)}\n`);
+  fs.renameSync(temporaryPath, reportPath);
+}
+
 async function main() {
-  const { token, identity } = await resolveToken();
-  const balanceBefore = await creditBalance(token);
-  const agents = await listAgents(token);
+  const options = parseOptions();
+  const { token, identity } = await resolveToken(options);
+  if (options.apply) {
+    assertExpectedCleanupIdentity(identity, options);
+  }
+  const balanceBefore = await creditBalance(options, token);
+  const agents = await listAgents(options, token);
   log(`org has ${agents.length} agent(s); credits=${balanceBefore}`);
   for (const agent of agents) {
     log(
@@ -204,43 +328,83 @@ async function main() {
   }
 
   const { toDelete, kept } = selectAgentsForCleanup(agents, {
-    keepNewest,
-    minAgeMs,
-    protectIds,
+    keepNewest: options.keepNewest,
+    minAgeMs: options.minAgeMs,
+    protectIds: options.protectIds,
   });
   for (const { agent, reason } of kept) log(`keep   ${agent.id} (${reason})`);
   for (const agent of toDelete)
     log(
-      `${apply ? "DELETE" : "would delete"} ${agent.id} ("${agent.agentName}")`,
+      `${options.apply ? "eligible" : "would delete"} ${agent.id} ("${agent.agentName}")`,
     );
 
-  const deletions = [];
-  if (apply) {
-    for (const agent of toDelete) {
-      const result = await deleteAgent(token, agent);
-      log(`deleted ${agent.id}: ${result.mode}/${result.final}`);
-      deletions.push({ agentId: agent.id, ...result });
-    }
-  }
-  const balanceAfter = apply ? await creditBalance(token) : balanceBefore;
-
+  const bound = options.apply
+    ? bindReviewedCleanupCandidates(agents, toDelete, options.candidateIds)
+    : { toDelete, alreadyAbsent: [] };
   const report = {
-    baseUrl,
-    apply,
+    baseUrl: options.baseUrl,
+    apply: options.apply,
     identity,
     balanceBefore,
-    balanceAfter,
+    balanceAfter: balanceBefore,
     agents,
     kept: kept.map(({ agent, reason }) => ({ agentId: agent.id, reason })),
-    toDelete: toDelete.map((agent) => agent.id),
-    deletions,
+    eligible: toDelete.map((agent) => agent.id),
+    reviewedCandidates: options.candidateIds,
+    alreadyAbsent: bound.alreadyAbsent,
+    attempts: [],
+    verifiedAbsent: [],
+    failure: null,
   };
-  if (reportPath)
-    fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  writeReport(options.reportPath, report);
+
+  if (options.apply) {
+    for (const agent of bound.toDelete) {
+      const attempt = {
+        agentId: agent.id,
+        expectedAgentName: agent.agentName,
+        expectedCreatedAt: agent.createdAt,
+        expectedExecutionTier: agent.executionTier,
+        status: "started",
+      };
+      report.attempts.push(attempt);
+      writeReport(options.reportPath, report);
+      try {
+        const result = await deleteAgent(options, token, agent);
+        Object.assign(attempt, { status: "completed", ...result });
+        log(`deleted ${agent.id}: ${result.mode}/${result.final}`);
+      } catch (error) {
+        attempt.status = "failed";
+        attempt.error = error instanceof Error ? error.message : String(error);
+        report.failure = attempt.error;
+        writeReport(options.reportPath, report);
+        throw error;
+      }
+      writeReport(options.reportPath, report);
+    }
+
+    const remaining = new Set(
+      (await listAgents(options, token)).map((agent) => agent.id),
+    );
+    const notAbsent = bound.toDelete.filter((agent) => remaining.has(agent.id));
+    if (notAbsent.length > 0) {
+      report.failure = `post-delete verification still listed: ${notAbsent
+        .map((agent) => agent.id)
+        .join(", ")}`;
+      writeReport(options.reportPath, report);
+      throw new Error(report.failure);
+    }
+    report.verifiedAbsent = [
+      ...bound.alreadyAbsent,
+      ...bound.toDelete.map((agent) => agent.id),
+    ];
+    report.balanceAfter = await creditBalance(options, token);
+    writeReport(options.reportPath, report);
+  }
   log(
-    apply
-      ? `done: deleted ${deletions.length}/${toDelete.length}`
-      : `dry run: ${toDelete.length} agent(s) would be deleted (pass --apply)`,
+    options.apply
+      ? `done: verified ${report.verifiedAbsent.length} reviewed candidate(s) absent`
+      : `dry run: ${toDelete.length} eligible agent(s); review IDs before --apply`,
   );
 }
 
