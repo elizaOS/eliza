@@ -303,6 +303,35 @@ export class EphemeralHNSW implements IVectorStorage {
       }));
   }
 
+  /**
+   * Brute-force nearest-neighbor scan over every indexed vector. The
+   * approximate graph traversal in `search` can leave reachable nodes
+   * unvisited (identical/near-duplicate clusters trap the beam), so callers
+   * that must not miss any eligible vector — e.g. scope-filtered memory recall
+   * that filters after ranking — use this instead. O(n) over the in-memory
+   * node map, which matches this index's "speed over durability" mandate for
+   * the small corpora it serves.
+   */
+  async searchExact(query: number[], k: number, threshold = 0.5): Promise<VectorSearchResult[]> {
+    if (this.nodes.size === 0) return [];
+
+    if (query.length !== this.dimension) {
+      throw new Error(`Query dimension mismatch: expected ${this.dimension}, got ${query.length}`);
+    }
+
+    const scored: VectorSearchResult[] = [];
+    for (const node of this.nodes.values()) {
+      const distance = cosineDistance(query, node.vector);
+      const similarity = 1 - distance;
+      if (similarity >= threshold) {
+        scored.push({ id: node.id, distance, similarity });
+      }
+    }
+
+    scored.sort((a, b) => a.distance - b.distance);
+    return k >= scored.length ? scored : scored.slice(0, k);
+  }
+
   async clear(): Promise<void> {
     this.nodes.clear();
     this.entryPoint = null;
