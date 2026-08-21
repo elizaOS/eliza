@@ -32,6 +32,27 @@ carry no timestamps in the archive, so they are counted in the summary and
 never emitted as message rows. Re-running is idempotent: unchanged shards are
 reused, missing shards are rewritten.
 
+## Loader for mock and scenario consumers
+
+`loadCorpusMessages` (`src/loader.ts`) is the read boundary for downstream
+mocks: it validates a shard tree with the shared validator, applies a
+platform/account/thread/window/cap selection with deterministic ts-then-id
+ordering, and enforces a scrub floor that defaults to `verified` — unscrubbed
+rows never reach a consumer unless a test explicitly loosens
+`minScrubState`. Any validation issue aborts the load (`CorpusLoadError`)
+rather than serving a partial corpus, and an unrecognized `minScrubState` or a
+malformed numeric bound is rejected as a `CorpusSelectionError` at the call
+boundary; the array selection fields must be arrays, so a decoded-config
+string cannot widen an account filter into a substring match. Message-id
+uniqueness and reply resolution are evaluated over the whole collected corpus,
+not per shard, and because selection can still cut a thread, a released row
+whose parent was not released is emitted with `replyToId` dropped. The
+committed synthetic tree under
+`fixtures/sample-corpus/` exercises the whole path in CI; the scenario-runner
+Gmail mock consumes this loader via `ELIZA_CORPUS_DIR` /
+`startMocks({ corpusDir })` (see
+`packages/scenario-runner/test/mocks/scripts/google-gmail-corpus.ts`).
+
 ## Reviewed sensitive deletion
 
 The two-phase deletion boundary never mutates raw source shards. `plan` binds a
