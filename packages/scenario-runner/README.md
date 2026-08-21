@@ -158,6 +158,21 @@ Reusable Stage-1/planner fixtures are exported by `@elizaos/core/testing` for
 single tools, multiple tools, clarifications, terminal replies, evaluators,
 scheduled rendering, and adversarial/malformed outputs.
 
+## Production-boundary observation ledger
+
+`observeProductionBoundary` wraps an existing connector, repository, service,
+or use-case call and requires the caller to supply its authoritative readback.
+It hashes sanitized request, response, and readback values into an append-only
+JSONL receipt. An adapter response cannot be recorded as `succeeded` unless the
+real call occurred, its acceptance was typed, its readback exists and matches,
+and the authoritative active generation still matches the attempt.
+
+The ledger is evidence, never desired or provider state. Fault directives are
+injected at this consumer boundary and record timeout, retryable/permanent,
+rate-limit, partial, ambiguous, and stale-completion outcomes without inventing
+successful effects. `JsonlBoundaryObservationLedger` is single-writer; the
+cross-process namespace lease owns writer exclusion.
+
 ## Programmatic use
 
 ```ts

@@ -25,6 +25,21 @@ export {
   SCENARIO_NATIVE_EXPORT_SCHEMA,
   SCENARIO_NATIVE_EXPORT_VERSION,
 } from "./native-export.ts";
+export type {
+  BoundaryAcceptance,
+  BoundaryFaultDirective,
+  BoundaryFaultKind,
+  BoundaryObservationLedger,
+  BoundaryObservationResult,
+  BoundaryResultClassification,
+  ObserveProductionBoundaryOptions,
+  ProductionBoundaryIdentity,
+  ProductionBoundaryObservation,
+} from "./production-boundary-ledger.ts";
+export {
+  JsonlBoundaryObservationLedger,
+  observeProductionBoundary,
+} from "./production-boundary-ledger.ts";
 export * from "./provider-qualified/index.ts";
 export {
   buildAggregate,
