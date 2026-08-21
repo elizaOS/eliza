@@ -237,7 +237,7 @@ async function buildPassMessage(payload: BridgeEventPayload): Promise<string> {
 					launchable.canonicalName,
 				);
 				if (launched.launchUrl) {
-					return `${payload.targetName} is ready and open: [Open ${launched.displayName}](${launched.launchUrl})`;
+					return `${launched.displayName} is ready and open: [Open ${launched.displayName}](${launched.launchUrl})`;
 				}
 				return `${payload.targetName} is ready and running.`;
 			} catch (err) {

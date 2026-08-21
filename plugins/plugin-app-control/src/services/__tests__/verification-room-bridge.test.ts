@@ -304,7 +304,7 @@ describe("VerificationRoomBridgeService — verdict posting", () => {
 		expect(memory.roomId).toBe("room-99");
 		const text = memory.content.text as string;
 		expect(text).toBe(
-			"notes is ready and open: [Open Notes](/api/apps/local/notes/)",
+			"Notes is ready and open: [Open Notes](/api/apps/local/notes/)",
 		);
 		expect(memory.content.metadata).toMatchObject({ verdict: "pass" });
 
