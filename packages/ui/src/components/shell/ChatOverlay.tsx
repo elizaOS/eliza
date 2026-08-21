@@ -1093,7 +1093,7 @@ function PillHandle({
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It wraps the complete painted
   // target so the visible surface and hit geometry remain identical.
-  counterScale: MotionValue<number>;
+  counterScale: MotionValue<number> | number;
   onOpen: () => void;
   breathing: boolean;
   // Interactive ONLY while pilled. The handle sits directly over the composer
@@ -3546,8 +3546,19 @@ export function ChatOverlay({
   // capsule wrapper (see pillHandleCounterScale).
   const pillCounterScale = useTransform(openProgress, pillHandleCounterScale);
   // Glass surface + its content crossfade IN as the input forms (one wrapper, so
-  // sheen/glow/thread/composer resolve together with the glass).
-  const glassOpacity = useTransform(openProgress, [0, 1], [0, 1]);
+  // sheen/glow/thread/composer resolve together with the glass). The detached
+  // macOS host physically follows the scaled panel from 64x12 to its composer
+  // frame. Painting controls from progress zero made a miniature, dim composer
+  // visibly swim underneath the full-size resting bar during that resize. Keep
+  // the bar as the only early paint, then resolve the solid composer once there
+  // is enough real geometry for its controls. Embedded/browser surfaces retain
+  // their established continuous morph.
+  const glassOpacity = useTransform(
+    openProgress,
+    desktopOverlayHost ? [0.45, 0.85] : [0, 1],
+    [0, 1],
+    { clamp: true },
+  );
   const rimOpacity = useTransform(
     [glassOpacity, fullBleedT] as MotionValue<number>[],
     ([open, bleed]: number[]) => open * (1 - bleed),
@@ -6019,8 +6030,13 @@ export function ChatOverlay({
         // Non-full-bleed keeps the same safe-area clearance above the reclaimed
         // physical bottom, with the wallpaper/app floor owning everything below.
         // Side inset eases with the shape spring (12px inset → 0 at full-bleed).
-        paddingLeft: overlayPadX,
-        paddingRight: overlayPadX,
+        // The detached native host already IS the exact visible surface width.
+        // Keeping the shared mobile inset here left a 40px parent inside the
+        // 64px resting window: WebKit painted the overflowing white bar but
+        // clipped its hit-testing to the center. Desktop therefore uses the
+        // native width directly; browser/mobile retain their safe inset.
+        paddingLeft: desktopOverlayHost ? "0px" : overlayPadX,
+        paddingRight: desktopOverlayHost ? "0px" : overlayPadX,
         // Bottom clearance: the keyboard-lift gap wins when the keyboard is up;
         // else, only WHILE maximizing/restoring does the composer inset ease with
         // the shape spring (its value equals the plain rest inset at the boundary,
@@ -7359,25 +7375,46 @@ export function ChatOverlay({
           ) : null}
           {/* PILL CAPSULE — the collapsed handle, crossfaded out as the input
               forms. Interactive only while pilled; sits over the (faded) input. */}
+          {!desktopOverlayHost ? (
+            <motion.div
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
+              style={{
+                opacity: pillOpacity,
+              }}
+            >
+              <PillHandle
+                binding={pullBinding}
+                counterScale={pillCounterScale}
+                onOpen={openFromPill}
+                // The pill IS the whole chat while collapsed, so it alone pulses
+                // for a live mic capture (`recording`) — the open-sheet grabber
+                // deliberately does not (the composer glyphs carry that cue).
+                breathing={listening || responding || recording}
+                pilled={pilled}
+                desktopOverlayHost={false}
+              />
+            </motion.div>
+          ) : null}
+        </motion.fieldset>
+        {!firstRunOpen && desktopOverlayHost ? (
+          // Keep the detached rest button OUTSIDE the panel's pill-morph
+          // transform. Counter-scaling made the bar LOOK 64px wide inside a
+          // much narrower transformed parent, but WKWebView clipped hit-testing
+          // to that parent's center. This sibling owns the full visible bar.
           <motion.div
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
-            style={{
-              opacity: pillOpacity,
-            }}
+            style={{ opacity: pillOpacity }}
           >
             <PillHandle
               binding={pullBinding}
-              counterScale={pillCounterScale}
+              counterScale={1}
               onOpen={openFromPill}
-              // The pill IS the whole chat while collapsed, so it alone pulses
-              // for a live mic capture (`recording`) — the open-sheet grabber
-              // deliberately does not (the composer glyphs carry that cue).
               breathing={listening || responding || recording}
               pilled={pilled}
-              desktopOverlayHost={desktopOverlayHost}
+              desktopOverlayHost
             />
           </motion.div>
-        </motion.fieldset>
+        ) : null}
       </motion.div>
     </motion.div>
   );

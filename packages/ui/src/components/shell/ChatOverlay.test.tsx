@@ -4362,7 +4362,11 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     fireEvent.pointerUp(grabber, { clientY: 380, pointerId: 80 });
 
     expect(sheet.dataset.detent).toBe("pill");
+    const overlay = screen.getByTestId("chat-overlay");
+    expect(overlay.style.paddingLeft).toBe("0px");
+    expect(overlay.style.paddingRight).toBe("0px");
     const pill = screen.getByTestId("chat-pill");
+    expect(sheet.contains(pill)).toBe(false);
     expect(pill.style.width).toBe("64px");
     expect(pill.style.height).toBe("12px");
     expect(pill.className).not.toContain("border-white/20");
