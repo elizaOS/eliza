@@ -258,24 +258,33 @@ function isPlaceholderSignatureName(value: string): boolean {
 	return cursor > whitespaceStart && normalized.slice(cursor) === "name]";
 }
 
-function stripPlaceholderSignature(body: string): string {
+interface PlaceholderSignatureStrip {
+	text: string;
+	strippedClosing: boolean;
+}
+
+function stripPlaceholderSignatureOnce(
+	body: string,
+	allowClosing: boolean,
+): PlaceholderSignatureStrip {
 	let end = body.length;
 	while (end > 0 && /\s/u.test(body[end - 1])) end -= 1;
-	if (body[end - 1] !== "]") return body;
+	if (body[end - 1] !== "]") return { text: body, strippedClosing: false };
 	let open = end - 2;
 	while (open >= 0 && body[open] !== "[") open -= 1;
 	if (open < 0 || !isPlaceholderSignatureName(body.slice(open, end))) {
-		return body;
+		return { text: body, strippedClosing: false };
 	}
 
 	let removalStart = open;
+	let strippedClosing = false;
 	let closingEnd = open;
 	let sawNewline = false;
 	while (closingEnd > 0 && /\s/u.test(body[closingEnd - 1])) {
 		closingEnd -= 1;
 		if (body[closingEnd] === "\n") sawNewline = true;
 	}
-	if (sawNewline) {
+	if (allowClosing && sawNewline) {
 		if (body[closingEnd - 1] === ",") closingEnd -= 1;
 		for (const closing of PLACEHOLDER_SIGNATURE_CLOSINGS) {
 			const closingStart = closingEnd - closing.length;
@@ -284,11 +293,23 @@ function stripPlaceholderSignature(body: string): string {
 				body.slice(closingStart, closingEnd).toLowerCase() === closing
 			) {
 				removalStart = closingStart;
+				strippedClosing = true;
 				break;
 			}
 		}
 	}
-	return body.slice(0, removalStart).trim();
+	return { text: body.slice(0, removalStart), strippedClosing };
+}
+
+function stripPlaceholderSignature(body: string): string {
+	// The replaced regex grammar ran the closing-form strip and then the bare
+	// strip in sequence, so removing "Thanks,\n[Your Name]" must still expose
+	// and remove one further bare placeholder line beneath it.
+	const first = stripPlaceholderSignatureOnce(body, true);
+	const text = first.strippedClosing
+		? stripPlaceholderSignatureOnce(first.text, false).text
+		: first.text;
+	return text.trim();
 }
 
 function asReplyBody(params: Record<string, unknown>): string | undefined {

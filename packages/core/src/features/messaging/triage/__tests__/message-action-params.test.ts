@@ -67,6 +67,21 @@ describe("message reply action parameter parsing", () => {
 		});
 	});
 
+	it("strips a bare placeholder exposed beneath a closing signature", () => {
+		const parsed = parseDraftReplyParams({
+			parameters: {
+				messageId: "msg-1",
+				reply: "Actual reply\n[Name]\nThanks,\n[Your Name]",
+			},
+		} as never);
+
+		expect(parsed).toEqual({
+			messageId: "msg-1",
+			body: "Actual reply",
+			lookup: {},
+		});
+	});
+
 	it("preserves flexible whitespace in placeholder signature names", () => {
 		const parsed = parseDraftReplyParams({
 			parameters: {
