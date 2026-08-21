@@ -2387,7 +2387,7 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 
 .landing-handoff-head {
   display: grid;
-  grid-template-columns: 2.35rem minmax(0, 1fr) auto;
+  grid-template-columns: 2.35rem minmax(0, 1fr);
   align-items: center;
   gap: 0.62rem;
   padding: 0.68rem 0.75rem;
@@ -2435,59 +2435,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   line-height: 1.15;
 }
 
-.landing-handoff-title small {
-  margin-top: 0.12rem;
-  color: #6e6e73;
-  font-size: 0.66rem;
-}
-
-.landing-handoff-head > svg {
-  width: 1.08rem;
-  height: 1.08rem;
-  color: #ff3b30;
-  stroke-width: 1.8;
-}
-
-.landing-handoff-location,
-.landing-handoff-transfer,
-.landing-handoff-notes li {
-  border-top: 1px solid rgb(0 0 0 / 7%);
-}
-
-.landing-handoff-location {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.52rem 0.75rem;
-  color: #3a3a3c;
-  font-size: 0.68rem;
-}
-
-.landing-handoff-location svg,
-.landing-handoff-notes svg {
-  flex: 0 0 auto;
-  width: 0.86rem;
-  height: 0.86rem;
-  color: #ff3b30;
-  stroke-width: 1.9;
-}
-
-.landing-handoff-transfer {
-  display: flex;
-  align-items: center;
-  gap: 0.42rem;
-  padding: 0.52rem 0.75rem;
-  background: #f7f7f8;
-  font-size: 0.7rem;
-}
-
-.landing-handoff-transfer svg {
-  width: 0.8rem;
-  height: 0.8rem;
-  color: #8e8e93;
-}
-
-.landing-handoff-notes,
 .landing-itinerary-stops,
 .landing-heat-plan-schedule {
   margin: 0;
@@ -2495,13 +2442,9 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   list-style: none;
 }
 
-.landing-handoff-notes li {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 1.86rem;
-  padding: 0 0.75rem;
-  color: #3a3a3c;
+.landing-handoff-title span {
+  margin-top: 0.12rem;
+  color: #6e6e73;
   font-size: 0.67rem;
 }
 
@@ -2518,30 +2461,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   background: #f2f7ff;
 }
 
-.landing-itinerary-head > span {
-  display: grid;
-  min-width: 0;
-}
-
 .landing-itinerary-head strong {
   font-size: 0.9rem;
   letter-spacing: -0.015em;
   line-height: 1.15;
-}
-
-.landing-itinerary-head small {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.12rem;
-  color: #46627d;
-  font-size: 0.65rem;
-}
-
-.landing-itinerary-head small svg {
-  width: 0.76rem;
-  height: 0.76rem;
-  stroke-width: 1.9;
 }
 
 .landing-itinerary-head > svg {
@@ -2611,13 +2534,6 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   line-height: 1.15;
 }
 
-.landing-itinerary-copy small {
-  margin-top: 0.04rem;
-  color: #6e6e73;
-  font-size: 0.59rem;
-  line-height: 1.2;
-}
-
 .landing-heat-plan-attachment {
   background: #fff;
 }
@@ -2632,38 +2548,10 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
   color: #fff;
 }
 
-.landing-heat-plan-head > span {
-  display: grid;
-  min-width: 0;
-}
-
-.landing-heat-plan-head small {
-  font-size: 0.6rem;
-  font-weight: 650;
-  letter-spacing: 0.05em;
-  opacity: 0.86;
-  text-transform: uppercase;
-}
-
 .landing-heat-plan-head strong {
-  margin-top: 0.05rem;
   font-size: 1.02rem;
   letter-spacing: -0.02em;
   line-height: 1.1;
-}
-
-.landing-heat-plan-head span span {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.2rem;
-  font-size: 0.64rem;
-}
-
-.landing-heat-plan-head span span svg {
-  width: 0.72rem;
-  height: 0.72rem;
-  stroke-width: 2;
 }
 
 .landing-heat-plan-head > svg {

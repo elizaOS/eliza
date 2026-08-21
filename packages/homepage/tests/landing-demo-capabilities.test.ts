@@ -212,17 +212,16 @@ describe("landing Shared-agent capability contract", () => {
       handoff: {
         child: "Ava",
         time: "4:30 PM",
-        notes: ["Inhaler · front pocket", "Cleats · stay in the car"],
+        location: "Mission Rec Field",
       },
     });
     expect(trip).toMatchObject({
       kind: "itinerary",
       itinerary: {
-        alert: "Rain at 2 · covered route",
         stops: [
-          { label: "Airport arrivals" },
-          { label: "Bag storage" },
-          { label: "Lunch" },
+          { label: "Meet at arrivals" },
+          { label: "Drop bags" },
+          { label: "Get lunch" },
           { label: "Apartment" },
         ],
       },
@@ -230,12 +229,12 @@ describe("landing Shared-agent capability contract", () => {
     expect(community).toMatchObject({
       kind: "heat-plan",
       heatPlan: {
-        alert: "Water early Saturday",
+        title: "Friday Weather",
         schedule: [
-          { task: "Seedlings first" },
-          { task: "West bed" },
-          { task: "Mulch check" },
-          { task: "Hose at gate" },
+          { task: "Water seedlings" },
+          { task: "Water west bed" },
+          { task: "Check mulch" },
+          { task: "Hose by gate" },
         ],
       },
     });
@@ -372,8 +371,10 @@ describe("landing Shared-agent capability contract", () => {
     ).toBe(true);
     expect(copy).toContain("I matched all four travel calendars");
     expect(copy).toContain("covered route");
-    expect(copy).toContain("good vegetarian food for Emi");
-    expect(copy).toContain("plenty of non-veg options for Theo");
+    expect(copy).toContain("solid veggie food for Emi");
+    expect(copy).toContain("burgers for Theo");
+    expect(copy).not.toContain("Samira has the keys");
+    expect(copy).not.toContain("Rain at 2 · covered route");
     expect(copy).not.toContain("we haven't picked anywhere");
   });
 

@@ -1,14 +1,7 @@
-import {
-  CloudRain,
-  KeyRound,
-  Luggage,
-  MapPin,
-  Plane,
-  Utensils,
-} from "lucide-react";
+import { House, Luggage, MapPin, Plane, Utensils } from "lucide-react";
 import type { LandingDemoItinerary } from "@/lib/landing-demo";
 
-const STOP_ICONS = [Plane, Luggage, Utensils, KeyRound] as const;
+const STOP_ICONS = [Plane, Luggage, Utensils, House] as const;
 
 export function LandingItineraryAttachment({
   itinerary,
@@ -21,13 +14,7 @@ export function LandingItineraryAttachment({
       aria-label={`${itinerary.title}: ${itinerary.stops.map((stop) => stop.label).join(", ")}`}
     >
       <header className="landing-itinerary-head">
-        <span>
-          <strong>{itinerary.title}</strong>
-          <small>
-            <CloudRain aria-hidden="true" />
-            {itinerary.alert}
-          </small>
-        </span>
+        <strong>{itinerary.title}</strong>
         <MapPin aria-hidden="true" />
       </header>
       <ol className="landing-itinerary-stops">
@@ -41,7 +28,6 @@ export function LandingItineraryAttachment({
               <span className="landing-itinerary-time">{stop.time}</span>
               <span className="landing-itinerary-copy">
                 <strong>{stop.label}</strong>
-                <small>{stop.detail}</small>
               </span>
             </li>
           );

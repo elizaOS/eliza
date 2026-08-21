@@ -39,8 +39,12 @@ test("shows all five rooms and their native attachment prototypes", async ({
   await expect(page.locator(".landing-place-attachment")).toHaveCount(1);
   await expect(page.locator(".landing-task-list-attachment")).toHaveCount(1);
   await expect(page.locator(".landing-handoff-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-handoff-title small")).toHaveCount(0);
   await expect(page.locator(".landing-itinerary-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-itinerary-head small")).toHaveCount(0);
+  await expect(page.locator(".landing-itinerary-copy small")).toHaveCount(0);
   await expect(page.locator(".landing-heat-plan-attachment")).toHaveCount(1);
+  await expect(page.locator(".landing-heat-plan-head small")).toHaveCount(0);
   await expect(page.locator(".landing-place-fit")).toHaveCount(0);
   await expect(
     page.locator(".landing-task-list-attachment footer"),
