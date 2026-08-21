@@ -80,6 +80,12 @@ let memoryCache: {
   ttlMs?: number;
 } | null = null;
 let registryLoadPromise: Promise<Map<string, RegistryPluginInfo>> | null = null;
+/**
+ * Bumped every time the registry caches are invalidated. A load that started
+ * before the bump carries a pre-invalidation snapshot, so it must not publish
+ * that snapshot (or stamp a fresh TTL over it) once it finally resolves.
+ */
+let registryGeneration = 0;
 
 const LOCAL_FALLBACK_CACHE_TTL_MS = 5 * 60_000;
 
@@ -263,7 +269,8 @@ export async function getRegistryPlugins(): Promise<
     return registryLoadPromise;
   }
 
-  registryLoadPromise = (async () => {
+  const generation = registryGeneration;
+  const load: Promise<Map<string, RegistryPluginInfo>> = (async () => {
     logger.info("[registry-client] Fetching plugin registry...");
     let plugins: Map<string, RegistryPluginInfo>;
     let usedLocalFallback = false;
@@ -286,6 +293,11 @@ export async function getRegistryPlugins(): Promise<
     await mergeCustomEndpoints(plugins, getConfiguredEndpoints());
     logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
 
+    // The caches were invalidated after this load started, so this snapshot is
+    // already known to be stale. Hand it to the callers that are awaiting it,
+    // but never publish it.
+    if (generation !== registryGeneration) return plugins;
+
     memoryCache = {
       plugins,
       fetchedAt: Date.now(),
@@ -299,17 +311,32 @@ export async function getRegistryPlugins(): Promise<
 
     return plugins;
   })().finally(() => {
-    registryLoadPromise = null;
+    // Only clear the slot if it is still this load's; an invalidation may have
+    // already replaced it with a newer one.
+    if (registryLoadPromise === load) registryLoadPromise = null;
   });
+  registryLoadPromise = load;
 
-  return registryLoadPromise;
+  return load;
+}
+
+/**
+ * Drop every cached registry snapshot, including one that is still loading.
+ * Clearing `memoryCache` alone is not enough: an in-flight load returns its
+ * pre-invalidation snapshot to the refresher and then republishes it with a
+ * fresh TTL, which suppresses later refreshes for the full cache lifetime.
+ */
+function invalidateRegistryCaches(): void {
+  memoryCache = null;
+  registryLoadPromise = null;
+  registryGeneration += 1;
 }
 
 /** Force-refresh from network. */
 export async function refreshRegistry(): Promise<
   Map<string, RegistryPluginInfo>
 > {
-  memoryCache = null;
+  invalidateRegistryCaches();
   try {
     await fs.unlink(cacheFilePath());
   } catch {
