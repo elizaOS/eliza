@@ -859,8 +859,12 @@ describe("restore activation quarantine", () => {
       expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
       expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
       const { sandbox, operation } = await readRows();
-      expect([CONTAINER_A, CONTAINER_B]).toContain(operation.expected_container_id);
-      expect(sandbox.activation_container_id).toBe(operation.expected_container_id);
+      const expectedContainerId = operation.expected_container_id;
+      if (!expectedContainerId) {
+        throw new Error("winning quarantine contender did not persist its container id");
+      }
+      expect([CONTAINER_A, CONTAINER_B]).toContain(expectedContainerId);
+      expect(sandbox.activation_container_id).toBe(expectedContainerId);
       expect(operation.phase).toBe("container_created");
     },
     TIMEOUT,

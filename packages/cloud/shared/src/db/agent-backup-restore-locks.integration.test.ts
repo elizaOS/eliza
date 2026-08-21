@@ -24,6 +24,7 @@ import {
   acquireEphemeralPostgres,
   type EphemeralPostgres,
 } from "../lib/services/tenant-db/__tests__/ephemeral-postgres";
+import type { AgentBackupRestoreLeaseAuthorityReceipt } from "./repositories/agent-backup-restore-lease";
 import {
   agentBackupCatalogAuthorities,
   agentBackupObjects,
@@ -255,16 +256,15 @@ async function buildLockManifest(operationId: string): Promise<{
   canonicalDraft: string;
   digest: string;
 }> {
-  const emptyComponent = (name: "character" | "media" | "state-files" | "vault") =>
-    ({
-      name,
-      format: "raw-v1",
-      compression: "none" as const,
-      payloadContentHmacSha256: SHA,
-      state: { kind: "full" as const, resultContentHmacSha256: SHA },
-      totals: { plainBytes: 0, compressedBytes: 0, encryptedBytes: 0, chunkCount: 0 },
-      chunks: [],
-    }) as const;
+  const emptyComponent = (name: "character" | "media" | "state-files" | "vault") => ({
+    name,
+    format: "raw-v1",
+    compression: "none" as const,
+    payloadContentHmacSha256: SHA,
+    state: { kind: "full" as const, resultContentHmacSha256: SHA },
+    totals: { plainBytes: 0, compressedBytes: 0, encryptedBytes: 0, chunkCount: 0 },
+    chunks: [],
+  });
   const plainBytes = 4;
   const encryptedBytes = 32;
   const aadSha256 = await computeAgentBackupChunkAadDigest({
@@ -476,25 +476,12 @@ async function seedLockBackup(input: {
 
 async function seedRestoreOperationLockFixture(includeSecondBackup = false): Promise<{
   operationId: string;
-  authority: {
-    organizationId: string;
-    agentId: string;
-    backupId: string;
-    operationId: string;
-    sourceActivationGeneration: string;
-    sourceLifecycleRevision: string;
-    expectedManifestSha256: string;
-    restoreAttemptId: string;
-    leaseId: string;
-    ownerId: string;
-    fencingToken: string;
-    catalogEpoch: string;
-    copyRole: "primary";
-  };
+  authority: AgentBackupRestoreLeaseAuthorityReceipt;
 }> {
   const open = openAgentBackupRestoreOperation;
+  const acquire = acquireAgentBackupRestoreLease;
   const inventoryDigest = agentBackupObjectInventoryDigest;
-  if (!dbWrite || !open || !inventoryDigest) {
+  if (!dbWrite || !open || !acquire || !inventoryDigest) {
     throw new Error("real PostgreSQL harness was not initialized");
   }
   await dbWrite
@@ -569,21 +556,20 @@ async function seedRestoreOperationLockFixture(includeSecondBackup = false): Pro
     catalog_epoch: catalog.revision,
     expires_at: new Date(Date.now() + 300_000),
   });
-  const authority = {
+  const acquired = await acquire({
     organizationId: ORG_ID,
-    agentId: AGENT_ID,
     backupId: LOCK_BACKUP_ONE,
     operationId: LOCK_OPERATION_ONE,
     sourceActivationGeneration: ACTIVATION_GENERATION,
     sourceLifecycleRevision: "0",
     expectedManifestSha256: firstManifest.digest,
     restoreAttemptId: LOCK_ATTEMPT_ID,
-    leaseId: LOCK_LEASE_ID,
     ownerId: LOCK_OWNER_ID,
     fencingToken: LOCK_FENCE,
-    catalogEpoch: catalog.revision.toString(),
-    copyRole: "primary" as const,
-  };
+    copyRole: "primary",
+    leaseMs: 300_000,
+  });
+  const authority = acquired.authority;
   const opened = await open({ authority, leaseId: LOCK_LEASE_ID });
   return { operationId: opened.operation.id, authority };
 }
