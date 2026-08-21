@@ -5,6 +5,7 @@
  * lives in this module.
  */
 
+import { isIP } from "node:net";
 import { ElizaError } from "@elizaos/core";
 import type { AgentBackupManifestV3 } from "@elizaos/shared";
 import { and, eq, sql } from "drizzle-orm";
@@ -25,6 +26,27 @@ import { decryptAgentEnvVars } from "./agent-env-crypto";
 
 const API_TOKEN_NAMES = ["ELIZA_API_TOKEN", "ELIZAOS_API_KEY", "ELIZAOS_CLOUD_API_KEY"] as const;
 const SHA256_IMAGE_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RESOLVED_RUNTIME_AUTHORITY_STALE_FAILURES = new WeakSet<ElizaError>();
+
+/**
+ * Only this database-backed resolver may mint stale-authority evidence. An
+ * injected resolver can throw an identically shaped ElizaError, but it cannot
+ * authorize irreversible catalogue settlement.
+ */
+export function isResolvedAgentBackupCaptureV3RuntimeAuthorityStale(
+  error: unknown,
+): error is ElizaError & {
+  code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE";
+  severity: "fatal";
+} {
+  return (
+    error instanceof ElizaError &&
+    error.code === "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE" &&
+    error.severity === "fatal" &&
+    RESOLVED_RUNTIME_AUTHORITY_STALE_FAILURES.has(error)
+  );
+}
 
 export interface AgentBackupCaptureV3RuntimeMetadata {
   agentSchemaVersion: string;
@@ -34,7 +56,10 @@ export interface AgentBackupCaptureV3RuntimeMetadata {
 
 export interface AgentBackupCaptureV3RuntimeAuthority {
   organizationId: string;
-  agentId: string;
+  /** Durable `agent_sandboxes.id` used by the backup catalogue. */
+  catalogAgentId: string;
+  /** Runtime `agent_sandboxes.character_id` accepted by `/api/snapshot/v2`. */
+  runtimeAgentId: string;
   activationGeneration: string;
   lifecycleRevision: string;
   status: string;
@@ -67,6 +92,16 @@ export interface AgentBackupCaptureV3RuntimeContextConfig {
 
 function contextError(code: string, message: string, cause?: unknown): never {
   throw new ElizaError(message, { code, cause, severity: "fatal" });
+}
+
+function resolvedRuntimeAuthorityStale(message: string, cause?: unknown): never {
+  const error = new ElizaError(message, {
+    code: "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+    cause,
+    severity: "fatal",
+  });
+  RESOLVED_RUNTIME_AUTHORITY_STALE_FAILURES.add(error);
+  throw error;
 }
 
 function requireClaimIdentity(claim: Readonly<AgentBackupOperationClaim>): {
@@ -117,7 +152,8 @@ async function loadRuntimeAuthority(input: {
   const [row] = await dbWrite
     .select({
       organizationId: agentSandboxes.organization_id,
-      agentId: agentSandboxes.id,
+      catalogAgentId: agentSandboxes.id,
+      runtimeAgentId: agentSandboxes.character_id,
       status: agentSandboxes.status,
       activationGeneration: agentSandboxes.activation_generation,
       activationLifecycleRevision: sql<
@@ -156,7 +192,7 @@ async function loadRuntimeAuthority(input: {
   input.signal?.throwIfAborted();
   if (
     !row ||
-    row.agentId !== identity.agentId ||
+    row.catalogAgentId !== identity.agentId ||
     row.status !== "running" ||
     row.activationPhase !== "active" ||
     row.activationGeneration !== identity.activationGeneration ||
@@ -170,19 +206,21 @@ async function loadRuntimeAuthority(input: {
     row.infrastructureProvider !== "hetzner" ||
     (row.fleetKind !== "robot" && row.fleetKind !== "cloud")
   ) {
-    contextError(
-      "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
+    resolvedRuntimeAuthorityStale(
       "Reserved capture source is no longer the exact active sandbox generation",
+    );
+  }
+  if (!row.runtimeAgentId) {
+    contextError(
+      "AGENT_BACKUP_V3_RUNTIME_IDENTITY_MISSING",
+      "Exact active sandbox has no runtime character identity",
     );
   }
   if (
     row.providerHandle !== identity.providerHandle ||
     !SHA256_IMAGE_PATTERN.test(row.activationImageDigest)
   ) {
-    contextError(
-      "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
-      "Reserved capture provider handle or image authority changed",
-    );
+    resolvedRuntimeAuthorityStale("Reserved capture provider handle or image authority changed");
   }
   const source: AgentBackupManifestV3["source"] =
     row.fleetKind === "robot"
@@ -204,13 +242,11 @@ async function loadRuntimeAuthority(input: {
             containerId: row.activationContainerId,
             providerServerId: row.providerServerId,
           }
-        : contextError(
-            "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_STALE",
-            "Cloud capture source lost its provider server authority",
-          );
+        : resolvedRuntimeAuthorityStale("Cloud capture source lost its provider server authority");
   return {
     organizationId: row.organizationId,
-    agentId: row.agentId,
+    catalogAgentId: row.catalogAgentId,
+    runtimeAgentId: row.runtimeAgentId,
     activationGeneration: row.activationGeneration,
     lifecycleRevision: row.lifecycleRevision,
     status: row.status,
@@ -246,7 +282,8 @@ function buildAttestation(
 ): AgentBackupCaptureV2RuntimeAttestation {
   return {
     organizationId: authority.organizationId,
-    agentId: authority.agentId,
+    catalogAgentId: authority.catalogAgentId,
+    runtimeAgentId: authority.runtimeAgentId,
     activationGeneration: authority.activationGeneration,
     lifecycleRevision: authority.lifecycleRevision,
     source: authority.source,
@@ -266,12 +303,57 @@ async function resolveAgentApiBaseUrl(
   authority: Readonly<AgentBackupCaptureV3RuntimeAuthority>,
   dependencies: Readonly<AgentBackupCaptureV3RuntimeContextDependencies>,
 ): Promise<string> {
-  if (authority.bridgePort && authority.bridgePort > 0 && authority.bridgePort <= 65_535) {
-    const host = authority.headscaleIp || authority.nodeHostname;
-    if (host && /^[A-Za-z0-9][A-Za-z0-9.:-]{0,253}$/.test(host)) {
-      const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-      return new URL(`http://${bracketed}:${authority.bridgePort}/`).toString();
+  if (authority.headscaleIp !== null) {
+    const headscaleIp = authority.headscaleIp.trim();
+    if (headscaleIp !== authority.headscaleIp || isIP(headscaleIp) === 0) {
+      contextError(
+        "AGENT_BACKUP_V3_CAPTURE_ROUTE_INVALID",
+        "Exact capture source has a malformed Headscale address",
+      );
     }
+    if (!authority.bridgeUrl) {
+      contextError(
+        "AGENT_BACKUP_V3_CAPTURE_ROUTE_MISSING",
+        "Headscale capture source has no canonical container bridge route",
+      );
+    }
+    let bridge: URL;
+    try {
+      bridge = new URL(authority.bridgeUrl);
+    } catch (cause) {
+      contextError(
+        "AGENT_BACKUP_V3_CAPTURE_ROUTE_INVALID",
+        "Headscale capture bridge route is malformed",
+        cause,
+      );
+    }
+    if (
+      (bridge.protocol !== "http:" && bridge.protocol !== "https:") ||
+      !bridge.port ||
+      bridge.username ||
+      bridge.password ||
+      bridge.search ||
+      bridge.hash ||
+      (bridge.pathname !== "/" && bridge.pathname !== "")
+    ) {
+      contextError(
+        "AGENT_BACKUP_V3_CAPTURE_ROUTE_INVALID",
+        "Headscale capture bridge route has no canonical container port",
+      );
+    }
+    const bracketed = isIP(headscaleIp) === 6 ? `[${headscaleIp}]` : headscaleIp;
+    return new URL(`${bridge.protocol}//${bracketed}:${bridge.port}/`).toString();
+  }
+  if (
+    authority.bridgePort &&
+    authority.bridgePort > 0 &&
+    authority.bridgePort <= 65_535 &&
+    authority.nodeHostname &&
+    /^[A-Za-z0-9][A-Za-z0-9.:-]{0,253}$/.test(authority.nodeHostname)
+  ) {
+    const host = authority.nodeHostname;
+    const bracketed = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    return new URL(`http://${bracketed}:${authority.bridgePort}/`).toString();
   }
   if (!authority.bridgeUrl) {
     contextError(
@@ -310,7 +392,7 @@ async function resolveApiToken(
     if (
       !token ||
       token !== token.trim() ||
-      token.includes("\0") ||
+      /[\u0000-\u001f\u007f]/.test(token) ||
       Buffer.byteLength(token, "utf8") > 16 * 1024
     ) {
       contextError("AGENT_BACKUP_V3_CAPTURE_TOKEN_INVALID", "Capture API token is not canonical");
@@ -332,6 +414,16 @@ export function createAgentBackupCaptureV3RuntimeContextResolver(
       claim: input.claim,
       signal: input.signal,
     });
+    if (
+      !UUID_PATTERN.test(authority.catalogAgentId) ||
+      authority.catalogAgentId !== input.request.agentId ||
+      !UUID_PATTERN.test(authority.runtimeAgentId)
+    ) {
+      contextError(
+        "AGENT_BACKUP_V3_RUNTIME_IDENTITY_INVALID",
+        "Database runtime authority has no exact catalogue/runtime identity binding",
+      );
+    }
     if (!sameSource(authority.source, input.expectedSource)) {
       contextError(
         "AGENT_BACKUP_V3_RUNTIME_AUTHORITY_MISMATCH",
@@ -341,7 +433,7 @@ export function createAgentBackupCaptureV3RuntimeContextResolver(
     await input.heartbeat();
     const vault = await dependencies.loadVaultAuthority({
       organizationId: authority.organizationId,
-      agentId: authority.agentId,
+      agentId: authority.catalogAgentId,
       sourceActivationGeneration: authority.activationGeneration,
     });
     input.signal?.throwIfAborted();
@@ -353,9 +445,17 @@ export function createAgentBackupCaptureV3RuntimeContextResolver(
       async revalidateAttestation(signal) {
         signal?.throwIfAborted();
         const current = await dependencies.loadAuthority({ claim: input.claim, signal });
+        if (
+          current.catalogAgentId !== authority.catalogAgentId ||
+          current.runtimeAgentId !== authority.runtimeAgentId
+        ) {
+          resolvedRuntimeAuthorityStale(
+            "Catalogue/runtime identity binding changed while capture held the catalogue lease",
+          );
+        }
         const currentVault = await dependencies.loadVaultAuthority({
           organizationId: current.organizationId,
-          agentId: current.agentId,
+          agentId: current.catalogAgentId,
           sourceActivationGeneration: current.activationGeneration,
         });
         if (

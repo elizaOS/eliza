@@ -54,6 +54,7 @@ import {
   buildAgentBackupObjectKey,
   claimDueAgentBackupOperations,
   failAgentBackupOperation,
+  handoffCapturedAgentBackupOperation,
   markAgentBackupObjectUploading,
   markAgentBackupObjectVerified,
   recordAgentBackupObjectPresent,
@@ -81,6 +82,7 @@ import { agentSandboxesRepository } from "../agent-sandboxes";
 const PGLITE_TIMEOUT = 60_000;
 const ORG_ID = "00000000-0000-4000-8000-00000000c001";
 const FOREIGN_ORG_ID = "00000000-0000-4000-8000-00000000c00a";
+const FOREIGN_AGENT_ID = "00000000-0000-4000-8000-00000000c01a";
 const USER_ID = "00000000-0000-4000-8000-00000000c002";
 const AGENT_ID = "00000000-0000-4000-8000-00000000c003";
 const OPERATION_ID = "00000000-0000-4000-8000-00000000c004";
@@ -1092,6 +1094,73 @@ afterAll(async () => {
 });
 
 describe("agent backup catalogue on primary PGlite", () => {
+  test("proves repeated limit-one claims reset tenant fairness for A,A versus B", async () => {
+    const [baselineSandbox] = await dbWrite
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, AGENT_ID));
+    if (!baselineSandbox) throw new Error("Expected baseline sandbox fixture");
+    await dbWrite.insert(agentSandboxes).values({
+      ...baselineSandbox,
+      id: FOREIGN_AGENT_ID,
+      organization_id: FOREIGN_ORG_ID,
+      agent_name: "Foreign Backup Catalogue Agent",
+      sandbox_id: "foreign-container-generation-1",
+      container_name: "foreign-backup-catalogue-agent",
+      activation_receipt: baselineSandbox.activation_receipt
+        ? {
+            ...baselineSandbox.activation_receipt,
+            agentId: FOREIGN_AGENT_ID,
+            organizationId: FOREIGN_ORG_ID,
+          }
+        : null,
+    });
+
+    const firstA = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c021",
+    });
+    const secondA = await reserveTestBackup({
+      operationId: "00000000-0000-4000-8000-00000000c022",
+    });
+    const tenantB = await reserveTestBackup({
+      organizationId: FOREIGN_ORG_ID,
+      agentId: FOREIGN_AGENT_ID,
+      sandboxRecordId: FOREIGN_AGENT_ID,
+      operationId: "00000000-0000-4000-8000-00000000c023",
+      sourceProviderHandle: "foreign-container-generation-1",
+    });
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ catalog_next_attempt_at: new Date("2020-01-01T00:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, firstA.id));
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ catalog_next_attempt_at: new Date("2020-01-02T00:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, secondA.id));
+    await dbWrite
+      .update(agentSandboxBackups)
+      .set({ catalog_next_attempt_at: new Date("2020-01-03T00:00:00.000Z") })
+      .where(eq(agentSandboxBackups.id, tenantB.id));
+
+    const [firstClaim] = await claimDueAgentBackupOperations({
+      ownerId: "fairness-proof-1",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    const [secondClaim] = await claimDueAgentBackupOperations({
+      ownerId: "fairness-proof-2",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    expect(firstClaim?.backup.id).toBe(firstA.id);
+    expect(secondClaim?.backup.id).toBe(secondA.id);
+    const [unclaimedB] = await dbWrite
+      .select({ owner: agentSandboxBackups.catalog_lease_owner })
+      .from(agentSandboxBackups)
+      .where(eq(agentSandboxBackups.id, tenantB.id));
+    expect(unclaimedB?.owner).toBeNull();
+  });
+
   test("reserves and claims only one exact active source authority", async () => {
     const first = await reserveAgentBackupOperation(exactReservation());
     const replay = await reserveAgentBackupOperation(exactReservation());
@@ -1171,6 +1240,102 @@ describe("agent backup catalogue on primary PGlite", () => {
       watermark_digest: manifest.watermarkDigest,
       image_digest: SOURCE_IMAGE_DIGEST,
     });
+  });
+
+  test("hands an exact captured fence to publication without waiting for lease expiry", async () => {
+    const reserved = await reserveAgentBackupOperation(exactReservation());
+    const [claim] = await claimDueAgentBackupOperations({
+      ownerId: "capture-worker-handoff",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    if (!claim) throw new Error("Expected one capture claim");
+    const execution = { ownerId: claim.ownerId, generation: claim.generation };
+    await transitionAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      expectedState: "scheduled",
+      to: "capturing",
+      execution,
+    });
+
+    await expect(
+      handoffCapturedAgentBackupOperation({
+        organizationId: ORG_ID,
+        backupId: reserved.id,
+        operationId: OPERATION_ID,
+        lifecycleGeneration: LIFECYCLE_GENERATION,
+        execution,
+      }),
+    ).rejects.toThrow("exact execution fence");
+
+    await recordCapturedAgentBackupManifest({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      expectedActivationGeneration: LIFECYCLE_GENERATION,
+      expectedLifecycleRevision: "0",
+      execution,
+      manifest: await capturedManifest([objectDescriptor()], {
+        createdAt: reserved.created_at.toISOString(),
+      }),
+    });
+
+    for (const mismatch of [
+      { organizationId: FOREIGN_ORG_ID },
+      { operationId: INCREMENTAL_OPERATION_ID },
+      { lifecycleGeneration: INCREMENTAL_GENERATION },
+      { execution: { ...execution, ownerId: "foreign-capture-worker" } },
+      { execution: { ...execution, generation: randomUUID() } },
+    ]) {
+      await expect(
+        handoffCapturedAgentBackupOperation({
+          organizationId: ORG_ID,
+          backupId: reserved.id,
+          operationId: OPERATION_ID,
+          lifecycleGeneration: LIFECYCLE_GENERATION,
+          execution,
+          ...mismatch,
+        }),
+      ).rejects.toThrow("exact execution fence");
+    }
+
+    const handedOff = await handoffCapturedAgentBackupOperation({
+      organizationId: ORG_ID,
+      backupId: reserved.id,
+      operationId: OPERATION_ID,
+      lifecycleGeneration: LIFECYCLE_GENERATION,
+      execution,
+    });
+    expect(handedOff).toMatchObject({
+      catalog_state: "captured",
+      catalog_lease_owner: null,
+      catalog_lease_generation: null,
+      catalog_lease_expires_at: null,
+    });
+
+    await expect(
+      handoffCapturedAgentBackupOperation({
+        organizationId: ORG_ID,
+        backupId: reserved.id,
+        operationId: OPERATION_ID,
+        lifecycleGeneration: LIFECYCLE_GENERATION,
+        execution,
+      }),
+    ).rejects.toThrow("exact execution fence");
+
+    const [publicationClaim] = await claimDueAgentBackupOperations({
+      ownerId: "publication-worker-handoff",
+      limit: 1,
+      leaseMs: 60_000,
+    });
+    expect(publicationClaim).toMatchObject({
+      ownerId: "publication-worker-handoff",
+      backup: { id: reserved.id, catalog_state: "captured" },
+    });
+    expect(publicationClaim?.generation).not.toBe(execution.generation);
   });
 
   test("persists and exactly replays one manifest-v3 operation key bundle", async () => {
