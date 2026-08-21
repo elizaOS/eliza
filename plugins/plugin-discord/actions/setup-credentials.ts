@@ -2,6 +2,15 @@
  * Credential preset definitions and loader for the connector `/setup` flow.
  * Describes the fields each credential preset requires and reads their values
  * from disk.
+ *
+ * Preset `validate` hooks probe third-party APIs with attacker-influenced
+ * responses, so every probe is bounded and fails closed: a shared deadline
+ * covers the request and every body read, redirects are refused rather than
+ * followed, bodies are capped and must be JSON matching the provider's success
+ * schema, and unconsumed bodies are cancelled. Failures are translated into a
+ * fixed set of messages that never echo transport detail or credential text,
+ * and input rejected before a request leaves the process is reported as local
+ * input error rather than as provider misbehaviour.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
