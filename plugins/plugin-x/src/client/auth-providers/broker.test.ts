@@ -185,33 +185,38 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("rejects oversized declared responses before reading the body", async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const release = vi.fn(async () => undefined);
     const body = {
-      cancel: vi.fn(async () => undefined),
+      cancel,
       getReader: vi.fn(),
     } as unknown as ReadableStream<Uint8Array>;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          ({
-            ok: true,
-            status: 200,
-            body,
-            headers: new Headers({
-              "content-length": String(BROKER_RESPONSE_MAX_BYTES + 1),
-            }),
-          }) as Response,
-      ),
+    const guardedFetch = vi.fn(
+      async (): Promise<GuardedFetchResult> => ({
+        response: {
+          ok: true,
+          status: 200,
+          body,
+          headers: new Headers({
+            "content-length": String(BROKER_RESPONSE_MAX_BYTES + 1),
+          }),
+        } as Response,
+        finalUrl:
+          "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+        release,
+      }),
     );
-    const provider = newTestProvider(
+    const provider = new BrokerAuthProvider(
       runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+      guardedFetch,
     );
 
-    await expect(provider.getAccessToken()).rejects.toThrow(
+    await expect(settleWithin(provider.getAccessToken())).rejects.toThrow(
       "X broker response exceeded the size limit",
     );
     expect(body.getReader).not.toHaveBeenCalled();
-    expect(body.cancel).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("cancels a chunked response once its cumulative size is exceeded", async () => {
@@ -290,26 +295,33 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("does not read or reflect non-success response bodies", async () => {
-    const cancel = vi.fn(async () => undefined);
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const release = vi.fn(async () => undefined);
     const body = {
       cancel,
       getReader: vi.fn(() => {
         throw new Error("secret error body was read");
       }),
     } as unknown as ReadableStream<Uint8Array>;
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({ status: 500, ok: false, body }) as Response),
+    const guardedFetch = vi.fn(
+      async (): Promise<GuardedFetchResult> => ({
+        response: { status: 500, ok: false, body } as Response,
+        finalUrl:
+          "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+        release,
+      }),
     );
-    const provider = newTestProvider(
+    const provider = new BrokerAuthProvider(
       runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+      guardedFetch,
     );
 
-    await expect(provider.getAccessToken()).rejects.toThrow(
+    await expect(settleWithin(provider.getAccessToken())).rejects.toThrow(
       "X broker request failed (500)",
     );
     expect(body.getReader).not.toHaveBeenCalled();
     expect(cancel).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("sanitizes transport errors and preserves the authoritative timeout", async () => {

@@ -182,30 +182,42 @@ function abortReason(signal: AbortSignal): unknown {
   );
 }
 
+function observeBrokerCancellation(
+  cancel: () => Promise<void>,
+  failureMessage: string,
+): void {
+  try {
+    void cancel().catch(() => {
+      // error-policy:J6 The authoritative boundary result remains; cancellation
+      // is observed but cannot delay guarded transport release.
+      logger.debug(failureMessage);
+    });
+  } catch {
+    // error-policy:J6 The authoritative boundary result remains; cancellation
+    // is observed but cannot delay guarded transport release.
+    logger.debug(failureMessage);
+  }
+}
+
 function cancelBrokerReaderWithoutWaiting(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   reason: unknown,
 ): void {
-  void reader.cancel(reason).catch(() => {
-    // error-policy:J6 The authoritative boundary result remains; cancellation
-    // is observed but cannot delay reader-lock or guarded transport release.
-    logger.debug(
-      "[XBroker] Broker response cancellation failed during teardown",
-    );
-  });
+  observeBrokerCancellation(
+    () => reader.cancel(reason),
+    "[XBroker] Broker response cancellation failed during teardown",
+  );
 }
 
-async function cancelBrokerBody(
+function cancelBrokerBodyWithoutWaiting(
   body: ReadableStream<Uint8Array> | null,
   reason: string,
-): Promise<void> {
+): void {
   if (!body) return;
-  try {
-    await body.cancel(reason);
-  } catch {
-    // error-policy:J6 The primary broker boundary error remains authoritative;
-    // the request signal/release path still tears down the guarded transport.
-  }
+  observeBrokerCancellation(
+    () => body.cancel(reason),
+    "[XBroker] Broker response body cancellation failed during teardown",
+  );
 }
 
 async function readWithSignal(
@@ -235,7 +247,7 @@ async function readBoundedJson(
     (declaredLength.kind === "valid" &&
       declaredLength.bytes > BROKER_RESPONSE_MAX_BYTES)
   ) {
-    await cancelBrokerBody(
+    cancelBrokerBodyWithoutWaiting(
       response.body,
       "X broker rejected the declared body length",
     );
@@ -517,7 +529,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
       if (response.status === 401 || response.status === 403) {
         this.cacheGeneration += 1;
         this.cached = null;
-        await cancelBrokerBody(
+        cancelBrokerBodyWithoutWaiting(
           response.body,
           "X broker rejected the credential",
         );
@@ -527,7 +539,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
         );
       }
       if (!response.ok) {
-        await cancelBrokerBody(
+        cancelBrokerBodyWithoutWaiting(
           response.body,
           "X broker returned a non-success status",
         );
