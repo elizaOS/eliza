@@ -48,11 +48,19 @@ const CHATVIEW_TSX = readFileSync(
   "utf8",
 );
 
+/**
+ * Collapses runs of whitespace so a JSX-wiring assertion stays true when the
+ * formatter reflows the element across lines. Only the token order matters.
+ */
+function collapseWhitespace(source: string): string {
+  return source.replace(/\s+/g, " ");
+}
+
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(APP_TSX).toContain(
-      "<ShellFoundationMount\n          useWebChatPanel",
+    expect(collapseWhitespace(APP_TSX)).toContain(
+      "<ShellFoundationMount useWebChatPanel",
     );
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
     // The floating glass chat remains available in the main shell, including
@@ -81,8 +89,8 @@ describe("App standalone chat-overlay wiring", () => {
     );
 
     expect(overlayShell).toContain("<GlassStyles />");
-    expect(overlayShell).toContain(
-      "<ShellFoundationMount\n          useWebChatPanel",
+    expect(collapseWhitespace(overlayShell)).toContain(
+      "<ShellFoundationMount useWebChatPanel",
     );
     expect(overlayShell).toContain(
       "releaseFirstRunToFull={releaseFirstRunToFull}",
