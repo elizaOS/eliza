@@ -79,6 +79,18 @@ interface ParsedHeredocDelimiter {
   quoted: boolean;
 }
 
+interface MaskedShellInput {
+  executableCommand: string;
+  unquotedHeredocBodies: string[];
+}
+
+interface NestedCommandInspection {
+  commands: string[];
+  unsafe: boolean;
+}
+
+const MAX_NESTED_EXPANSION_DEPTH = 16;
+
 function hasTrailingLineContinuation(line: string): boolean {
   let backslashes = 0;
   for (let i = line.length - 1; i >= 0 && line[i] === "\\"; i -= 1) {
@@ -255,12 +267,14 @@ function heredocDeclarations(line: string): HeredocDeclaration[] {
 // classifiers. Unquoted bodies can evaluate nested expansions; those require
 // their own recursive inspection rather than treating the whole body as a
 // command list.
-function maskHeredocBodies(command: string): string {
+function maskHeredocBodies(command: string): MaskedShellInput {
   const lines = command.match(/[^\r\n]*(?:\r\n|\r|\n|$)/g) ?? [];
   const pending: HeredocDeclaration[] = [];
   let continuedBodyLine = "";
+  let activeUnquotedBody = "";
+  const unquotedHeredocBodies: string[] = [];
 
-  return lines
+  const executableCommand = lines
     .map((line) => {
       const newline = line.endsWith("\r\n")
         ? "\r\n"
@@ -280,8 +294,17 @@ function maskHeredocBodies(command: string): string {
         continuedBodyLine += joinsNextLine
           ? comparable.slice(0, -1)
           : comparable;
+        const terminatesBody =
+          !joinsNextLine && continuedBodyLine === active.delimiter;
+        if (!active.quoted && !terminatesBody) activeUnquotedBody += line;
         if (!joinsNextLine) {
-          if (continuedBodyLine === active.delimiter) pending.shift();
+          if (terminatesBody) {
+            pending.shift();
+            if (!active.quoted) {
+              unquotedHeredocBodies.push(activeUnquotedBody);
+              activeUnquotedBody = "";
+            }
+          }
           continuedBodyLine = "";
         }
         return `${" ".repeat(content.length)}${newline}`;
@@ -295,6 +318,132 @@ function maskHeredocBodies(command: string): string {
       return line;
     })
     .join("");
+
+  if (activeUnquotedBody) unquotedHeredocBodies.push(activeUnquotedBody);
+  return { executableCommand, unquotedHeredocBodies };
+}
+
+function nestedCommands(
+  source: string,
+  shellQuotesAreSyntax: boolean,
+): NestedCommandInspection {
+  const commands: string[] = [];
+  let quote: string | null = null;
+
+  for (let cursor = 0; cursor < source.length; cursor += 1) {
+    const ch = source[cursor] as string;
+    if (shellQuotesAreSyntax && quote === "'") {
+      if (ch === "'") quote = null;
+      continue;
+    }
+    if (ch === "\\" && cursor + 1 < source.length) {
+      cursor += 1;
+      continue;
+    }
+    if (shellQuotesAreSyntax && ch === "'") {
+      quote = "'";
+      continue;
+    }
+    if (shellQuotesAreSyntax && ch === '"') {
+      quote = quote === '"' ? null : '"';
+      continue;
+    }
+    if (
+      shellQuotesAreSyntax &&
+      quote === null &&
+      ch === "#" &&
+      (cursor === 0 || /[\s;|&()]/.test(source[cursor - 1] as string))
+    ) {
+      while (
+        cursor + 1 < source.length &&
+        !/[\r\n]/.test(source[cursor + 1] as string)
+      ) {
+        cursor += 1;
+      }
+      continue;
+    }
+
+    if (ch === "`" && (!shellQuotesAreSyntax || quote !== "'")) {
+      let end = cursor + 1;
+      let body = "";
+      for (; end < source.length; end += 1) {
+        const nested = source[end] as string;
+        if (nested === "\\" && end + 1 < source.length) {
+          const escaped = source[end + 1] as string;
+          if (!/[$`\\\r\n]/.test(escaped)) body += nested;
+          body += escaped;
+          end += 1;
+          continue;
+        }
+        if (nested === "`") break;
+        body += nested;
+      }
+      if (end >= source.length) return { commands, unsafe: true };
+      commands.push(body);
+      cursor = end;
+      continue;
+    }
+
+    if (ch !== "$" || source[cursor + 1] !== "(") continue;
+    // Arithmetic expansion is data, but command substitutions nested inside
+    // it are still executable and will be found while scanning onward.
+    if (source[cursor + 2] === "(") continue;
+
+    let end = cursor + 2;
+    let parenDepth = 1;
+    let nestedBacktick = false;
+    let nestedQuote: string | null = null;
+    let body = "";
+    for (; end < source.length; end += 1) {
+      const nested = source[end] as string;
+      if (nestedQuote === "'") {
+        body += nested;
+        if (nested === "'") nestedQuote = null;
+        continue;
+      }
+      if (nested === "\\" && end + 1 < source.length) {
+        body += nested;
+        body += source[end + 1] as string;
+        end += 1;
+        continue;
+      }
+      if (nestedQuote === null && nested === "`") {
+        nestedBacktick = !nestedBacktick;
+        body += nested;
+        continue;
+      }
+      if (nestedBacktick) {
+        body += nested;
+        continue;
+      }
+      if (nested === "'") {
+        nestedQuote = "'";
+        body += nested;
+        continue;
+      }
+      if (nested === '"') {
+        nestedQuote = nestedQuote === '"' ? null : '"';
+        body += nested;
+        continue;
+      }
+      if (nestedQuote === null && nested === "(") parenDepth += 1;
+      else if (nestedQuote === null && nested === ")") {
+        parenDepth -= 1;
+        if (parenDepth === 0) break;
+      }
+      if (parenDepth > MAX_NESTED_EXPANSION_DEPTH) {
+        return { commands, unsafe: true };
+      }
+      body += nested;
+    }
+    if (end >= source.length || parenDepth !== 0) {
+      return { commands, unsafe: true };
+    }
+    commands.push(body);
+    cursor = end;
+  }
+
+  return { commands, unsafe: false };
 }
 
 function splitSegments(command: string): string[] {
@@ -345,7 +494,51 @@ function tokens(segment: string): string[] {
 export function classifyDestructiveCommand(
   command: string,
 ): DestructiveVerdict {
-  const executableCommand = maskHeredocBodies(command);
+  return classifyDestructiveCommandAtDepth(command, 0);
+}
+
+function classifyDestructiveCommandAtDepth(
+  command: string,
+  depth: number,
+): DestructiveVerdict {
+  if (depth > MAX_NESTED_EXPANSION_DEPTH) {
+    return {
+      destructive: true,
+      reason: "nested shell expansion exceeds inspection depth",
+      targets: ["nested shell expansion"],
+    };
+  }
+
+  const { executableCommand, unquotedHeredocBodies } =
+    maskHeredocBodies(command);
+  const inspectionSources = [
+    { shellQuotesAreSyntax: true, source: executableCommand },
+    ...unquotedHeredocBodies.map((source) => ({
+      shellQuotesAreSyntax: false,
+      source,
+    })),
+  ];
+  for (const inspectionSource of inspectionSources) {
+    const nested = nestedCommands(
+      inspectionSource.source,
+      inspectionSource.shellQuotesAreSyntax,
+    );
+    if (nested.unsafe) {
+      return {
+        destructive: true,
+        reason: "nested shell expansion could not be inspected safely",
+        targets: ["nested shell expansion"],
+      };
+    }
+    for (const nestedCommand of nested.commands) {
+      const nestedVerdict = classifyDestructiveCommandAtDepth(
+        nestedCommand,
+        depth + 1,
+      );
+      if (nestedVerdict.destructive) return nestedVerdict;
+    }
+  }
+
   const sql = DROP_SQL.exec(executableCommand);
   if (sql) {
     return {
