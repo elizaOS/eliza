@@ -379,34 +379,21 @@ function ChatOverlayShell() {
       reportNativeInteractiveSize(authSize);
       return;
     }
-    if (windowSizeClass !== "resting") {
-      // INPUT and every open detent share one stable native envelope. Resizing
-      // NSWindow at the same instant the renderer mounted its drag preview let
-      // WKWebView briefly keep the old 64px viewport at the new window origin:
-      // the composer jumped up-screen, then snapped back as WebKit caught up.
-      // The exact painted bounds remain the separate native hit target below,
-      // so transparent pixels in this stable envelope stay click-through.
-      reportNativeWindowSize(stageSize);
-      if (windowSizeClass === "sheet") {
-        // Fail open for the transition frame. The panel's ResizeObserver
-        // reports its exact painted bounds on the next animation frame.
-        reportNativeInteractiveSize(stageSize);
-      } else {
-        reportNativeInteractiveSize(
-          resolveChatOverlayCompactWindowSize("input", stageSize),
-        );
-      }
+    // The native envelope never changes between resting pill, composer, and
+    // sheet. WKWebView therefore has no viewport resize seam to expose during
+    // pill -> input or input -> sheet motion. Pointer ownership remains exact:
+    // the native material controller ignores every transparent pixel outside
+    // the compact measured surface below.
+    reportNativeWindowSize(stageSize);
+    if (windowSizeClass === "sheet") {
+      // Fail open for the first transition frame. ResizeObserver narrows this
+      // to the exact painted panel on the next animation frame.
+      reportNativeInteractiveSize(stageSize);
       return;
     }
-    const compactSize = resolveChatOverlayCompactWindowSize(
-      windowSizeClass,
-      stageSize,
+    reportNativeInteractiveSize(
+      resolveChatOverlayCompactWindowSize(windowSizeClass, stageSize),
     );
-    reportNativeWindowSize(compactSize);
-    // Reset the native hit target synchronously on every compact transition.
-    // The measured composer height may expand it moments later, but stale sheet
-    // geometry must not survive a half->input->pill cycle.
-    reportNativeInteractiveSize(compactSize);
   }, [
     authSize,
     controller?.authGate.gated,

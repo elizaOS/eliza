@@ -46,6 +46,8 @@ import { hydrateCloudOnlyEnv } from "./cloud-only-boot";
 import {
   appendChatOverlayShellModeParam,
   computeBottomBarFrame,
+  EXPANDED_BOTTOM_BAR_HEIGHT,
+  EXPANDED_BOTTOM_BAR_WIDTH,
   resolveDesktopShellWindowPresentation,
 } from "./desktop-bottom-bar-config";
 import {
@@ -1100,9 +1102,11 @@ async function resolveRendererUrlForCurrentRuntime(): Promise<string> {
 }
 
 /**
- * Resolve the chromeless bottom-bar window frame from the primary display's
- * usable work area. Falls back to a 1080p estimate if the Screen API is
- * unavailable (the user-visible bar still opens; only the width estimate is off).
+ * Resolve one stable transparent host frame for every detached-chat detent.
+ * The exact painted material is a separate native hit target, so keeping this
+ * envelope at stage size does not make its clear pixels block other apps. It
+ * does prevent WKWebView from briefly painting its old pill-sized viewport at
+ * the top of a newly enlarged NSWindow during the first upward drag.
  */
 function resolveBottomBarFrame(): {
   x: number;
@@ -1121,7 +1125,10 @@ function resolveBottomBarFrame(): {
       `[main-window] bottom-bar Screen.getPrimaryDisplay() failed; using default geometry: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return computeBottomBarFrame(workArea);
+  return computeBottomBarFrame(workArea, {
+    width: EXPANDED_BOTTOM_BAR_WIDTH,
+    height: EXPANDED_BOTTOM_BAR_HEIGHT,
+  });
 }
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
