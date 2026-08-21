@@ -32,11 +32,11 @@ export interface ChatOverlayWindowBoundsCoordinator {
   whenIdle: () => Promise<void>;
 }
 
-// The detached rest control is a visible 64x24 capsule. Keeping the native
+// The detached rest control is a visible 64x12 white bar. Keeping the native
 // host identical to the painted control gives mouse users a normal forgiving
 // target without adding an invisible click-blocking halo over the desktop.
 export const CHAT_OVERLAY_RESTING_WINDOW_WIDTH = 64;
-export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 24;
+export const CHAT_OVERLAY_RESTING_WINDOW_HEIGHT = 12;
 export const CHAT_OVERLAY_INPUT_WINDOW_HEIGHT = 64;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_WIDTH = 600;
 export const CHAT_OVERLAY_EXPANDED_WINDOW_HEIGHT = 820;
@@ -114,7 +114,7 @@ function normalizeMaterialSize(
 
 /**
  * Converts the transformed panel rect into the exact native material size.
- * A pill-mode commit precedes its closing spring, so the final 64x24 geometry
+ * A pill-mode commit precedes its closing spring, so the final 64x12 geometry
  * cannot take over until that still-visible panel has actually reached rest.
  */
 export function resolveChatOverlayMaterialSize(

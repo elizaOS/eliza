@@ -4364,10 +4364,12 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(sheet.dataset.detent).toBe("pill");
     const pill = screen.getByTestId("chat-pill");
     expect(pill.style.width).toBe("64px");
-    expect(pill.style.height).toBe("24px");
-    expect(pill.className).toContain("border-white/20");
-    expect(pill.className).toContain("bg-[rgba(22,22,26,0.96)]");
-    expect(screen.getByTestId("chat-pill-mark").className).toContain("w-9");
+    expect(pill.style.height).toBe("12px");
+    expect(pill.className).not.toContain("border-white/20");
+    expect(pill.className).toContain("bg-transparent");
+    const mark = screen.getByTestId("chat-pill-mark");
+    expect(mark.className).toContain("h-full");
+    expect(mark.className).toContain("w-full");
   });
 
   it("opens detached Mac chat before showing the composer actions menu", () => {

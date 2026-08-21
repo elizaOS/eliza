@@ -1123,7 +1123,6 @@ function PillHandle({
         markTestId="chat-pill-mark"
         aria-label="open chat"
         breathing={breathing}
-        markClassName={desktopOverlayHost ? "h-1 w-9" : undefined}
         style={
           desktopOverlayHost
             ? {
@@ -1168,8 +1167,6 @@ function PillHandle({
         aria-hidden={pilled ? undefined : true}
         className={cn(
           "cursor-grab touch-none select-none active:cursor-grabbing",
-          desktopOverlayHost &&
-            "border border-white/20 bg-[rgba(22,22,26,0.96)] shadow-[0_2px_12px_rgba(0,0,0,0.35)]",
           pilled ? "pointer-events-auto" : "pointer-events-none",
         )}
       />
