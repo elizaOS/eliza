@@ -53,11 +53,7 @@ interface HarnessOptions {
   existingPreflight?: JsonObject[];
   pairing?: "negative" | "positive";
   retryAfter?: string;
-  sseReply?:
-    | "valid"
-    | "invalid"
-    | "warming-once"
-    | "malformed-503";
+  sseReply?: "valid" | "invalid" | "warming-once" | "malformed-503";
 }
 
 function requestBody(init: RequestInit | undefined): JsonObject | null {
