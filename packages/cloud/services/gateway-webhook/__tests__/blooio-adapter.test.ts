@@ -179,7 +179,8 @@ describe("blooio extractEvent", () => {
 
     expect(event).not.toBeNull();
     expect(event?.messageId).toBe("msg_v4_abc123");
-    expect(event?.chatId).toBe("+15551234567");
+    expect(event?.chatId).toBe("chat_abc123");
+    expect(event?.chatType).toBe("private");
     expect(event?.senderId).toBe("+15551234567");
     expect(event?.channelId).toBe("ch_abc123");
     expect(event?.channelType).toBe("blooio");
@@ -223,11 +224,19 @@ describe("blooio extractEvent", () => {
     expect(event).toBeNull();
   });
 
-  test("skips group messages", async () => {
+  test("preserves group thread and participant identity", async () => {
     const event = await blooioAdapter.extractEvent(
-      inboundPayload({ is_group: true }),
+      v4InboundPayload({
+        chat_id: "chat_group_123",
+        is_group: true,
+        group: { group_id: "grp_123", member_count: 4 },
+      }),
     );
-    expect(event).toBeNull();
+    expect(event).toMatchObject({
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+    });
   });
 
   test("skips non message.received events", async () => {
@@ -369,12 +378,15 @@ describe("blooio sendReply", () => {
   }
 
   test("pins a v4 reply to the exact inbound WhatsApp channel", async () => {
-    let body: Record<string, unknown> = {};
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
     globalThis.fetch = (async (
-      _url: string | URL | Request,
+      url: string | URL | Request,
       init?: RequestInit,
     ) => {
-      body = JSON.parse(String(init?.body));
+      captured = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
       return Response.json({ id: "out_whatsapp_1" });
     }) as typeof fetch;
 
@@ -382,16 +394,45 @@ describe("blooio sendReply", () => {
       makeConfig(),
       {
         ...chatEvent,
+        chatId: "chat_whatsapp_123",
         channelId: "ch_whatsapp_123",
         channelType: "whatsapp_business",
         protocol: "whatsapp",
       },
       "hi",
     );
-    expect(body).toEqual({
-      to: "+15551234567",
-      from: "ch_whatsapp_123",
-      text: "hi",
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/chats/chat_whatsapp_123/messages",
+      body: { text: "hi" },
+    });
+  });
+
+  test("replies to a group through its existing provider chat", async () => {
+    let captured: { url: string; body: Record<string, unknown> } | null = null;
+    globalThis.fetch = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      captured = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+      };
+      return Response.json({ id: "out_group_1" });
+    }) as typeof fetch;
+
+    await blooioAdapter.sendReply(
+      makeConfig(),
+      {
+        ...chatEvent,
+        chatId: "chat_group_123",
+        chatType: "group",
+      },
+      "hello group",
+    );
+
+    expect(captured).toEqual({
+      url: "https://api.blooio.com/v4/chats/chat_group_123/messages",
+      body: { text: "hello group" },
     });
   });
 

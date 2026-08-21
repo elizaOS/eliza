@@ -339,6 +339,22 @@ export async function handleWebhook(
     return ackResponse(adapter.platform);
   }
 
+  // A public group must be explicitly bound to one verified owner's canonical
+  // Personal Shared agent. Resolving by the current sender would let the first
+  // participant who speaks capture the whole room, while forwarding through
+  // the DM contract would collapse participant and thread identity. Keep the
+  // provider webhook retry-safe and inert until the Cloud-owned group-binding
+  // contract supplies that owner and canonical group conversation.
+  if (event.chatType === "group" || event.chatType === "supergroup") {
+    logger.info("Group delivery awaiting canonical owner binding", {
+      project,
+      platform: adapter.platform,
+      messageId: event.messageId,
+      chatType: event.chatType,
+    });
+    return ackResponse(adapter.platform);
+  }
+
   const dedupKey = buildWebhookDedupeKey(
     adapter,
     config,

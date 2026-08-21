@@ -65,7 +65,7 @@ export interface TelegramResolvedVoiceNote {
   durationSeconds: number;
 }
 
-interface TelegramMessage {
+export interface TelegramMessage {
   message_id: number;
   date?: number;
   from?: {
@@ -77,6 +77,19 @@ interface TelegramMessage {
   chat: { id: number; type: string };
   text?: string;
   caption?: string;
+  entities?: Array<{
+    type: string;
+    offset: number;
+    length: number;
+  }>;
+  caption_entities?: Array<{
+    type: string;
+    offset: number;
+    length: number;
+  }>;
+  reply_to_message?: {
+    from?: { is_bot?: boolean; username?: string };
+  };
   voice?: {
     file_id: string;
     duration: number;
@@ -88,6 +101,72 @@ interface TelegramMessage {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+}
+
+export interface TelegramGroupPolicy {
+  /** Username returned by Bot API getMe, without the leading @. */
+  botUsername: string;
+  /** Opt-in for privacy-disabled/admin bots that should see ambient traffic. */
+  allowAmbient?: boolean;
+}
+
+function normalizedTelegramUsername(value: string): string {
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function entityText(
+  text: string,
+  entity: { offset: number; length: number },
+): string {
+  return text.slice(entity.offset, entity.offset + entity.length);
+}
+
+/**
+ * Default group policy: respond only to a command delivered to the bot, an
+ * explicit @mention of this bot, or a reply to one of its messages. Ambient
+ * replies require an explicit opt-in even if Telegram privacy mode is off.
+ */
+export function isTelegramGroupInvocation(
+  message: TelegramMessage,
+  text: string,
+  policy: TelegramGroupPolicy,
+): boolean {
+  if (policy.allowAmbient) return true;
+  const botUsername = normalizedTelegramUsername(policy.botUsername);
+  if (!botUsername) return false;
+  if (
+    message.reply_to_message?.from?.is_bot &&
+    normalizedTelegramUsername(message.reply_to_message.from.username ?? "") ===
+      botUsername
+  ) {
+    return true;
+  }
+  const entities = message.text ? message.entities : message.caption_entities;
+  for (const entity of entities ?? []) {
+    if (
+      !Number.isInteger(entity.offset) ||
+      !Number.isInteger(entity.length) ||
+      entity.offset < 0 ||
+      entity.length <= 0 ||
+      entity.offset + entity.length > text.length
+    ) {
+      continue;
+    }
+    const value = entityText(text, entity);
+    if (
+      entity.type === "mention" &&
+      normalizedTelegramUsername(value) === botUsername
+    ) {
+      return true;
+    }
+    if (entity.type === "bot_command") {
+      const target = value.match(/@([a-z0-9_]{5,32})$/i)?.[1];
+      if (!target || normalizedTelegramUsername(target) === botUsername) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 export class TelegramApiTransportError extends Error {
@@ -136,6 +215,7 @@ function exceedsTelegramVoiceSizeLimit(size: number): boolean {
 export function parseTelegramWebhook(
   rawBody: string,
   logger?: TelegramConnectorLogger,
+  groupPolicy?: TelegramGroupPolicy,
 ): TelegramConnectorEvent | null {
   let update: TelegramUpdate;
   try {
@@ -147,11 +227,21 @@ export function parseTelegramWebhook(
   }
 
   const message = update.message;
-  if (message?.chat.type !== "private") return null;
+  if (!message) return null;
+  const isPrivate = message.chat.type === "private";
+  const isGroup =
+    message.chat.type === "group" || message.chat.type === "supergroup";
+  if (!isPrivate && !isGroup) return null;
   const text = message.text || message.caption || "";
   const voice = message.voice;
   if (!text && !voice) return null;
   if (message.from?.is_bot) return null;
+  if (
+    isGroup &&
+    (!groupPolicy || !isTelegramGroupInvocation(message, text, groupPolicy))
+  ) {
+    return null;
+  }
 
   if (
     voice &&

@@ -190,6 +190,37 @@ describe("gateway webhook handler e2e routing", () => {
     expect(await redis.get(negativeCacheKey)).toBeNull();
   });
 
+  test("does not let a group participant capture a Personal Shared agent", async () => {
+    configureEnv();
+    const redis = new MemoryRedis();
+    const event = createTwilioEvent({
+      chatId: "group-thread-1",
+      chatType: "group",
+    });
+    const adapter = createAdapter(event);
+    let fetched = false;
+    globalThis.fetch = mock(async () => {
+      fetched = true;
+      throw new Error("group guard must run before identity or Shared routing");
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      requestFor(event),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetched).toBe(false);
+    expect(adapter.replies).toEqual([]);
+    expect(redis.store.size).toBe(0);
+  });
+
   test("acks before an unresolved phone message enters personal Shared", async () => {
     configureEnv();
     const redis = new MemoryRedis();

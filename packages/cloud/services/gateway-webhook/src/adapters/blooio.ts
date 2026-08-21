@@ -1,6 +1,6 @@
 /**
- * Authenticates Blooio webhook fan-in and maps stable one-to-one message
- * deliveries onto the gateway's deduplicated chat contract.
+ * Authenticates Blooio webhook fan-in and preserves the provider's stable chat
+ * and participant identities across one-to-one and group deliveries.
  */
 import crypto from "node:crypto";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
 const BLOOIO_V2_API_BASE = "https://api.blooio.com/v2/api";
 const BLOOIO_V4_MESSAGES_URL = "https://api.blooio.com/v4/messages";
+const BLOOIO_V4_CHATS_URL = "https://api.blooio.com/v4/chats";
 
 export class BlooioApiResponseError extends Error {
   constructor(
@@ -31,6 +32,7 @@ const BlooioV2WebhookEventSchema = z.object({
   external_id: z.string().nullish(),
   internal_id: z.string().nullish(),
   sender: z.string().trim().min(1).nullish(),
+  chat_id: z.string().trim().min(1).nullish(),
   channel_id: z.string().trim().min(1).nullish(),
   channel_type: z.string().trim().min(1).nullish(),
   text: z.string().nullish(),
@@ -86,6 +88,7 @@ function parseWebhookEvent(data: unknown): BlooioWebhookEvent | null {
     external_id: sender,
     internal_id: message.recipient ?? message.channel_address,
     sender,
+    chat_id: message.chat_id,
     channel_id: message.channel_id,
     channel_type: message.channel_type,
     text: message.text,
@@ -140,14 +143,23 @@ async function sendBlooioMessage(
     "Idempotency-Key": `gw-reply-${event.messageId}`,
   };
 
+  // A provider chat id is the only safe reply target for a group and is also
+  // the strongest thread-affinity signal for a v4 one-to-one delivery. The
+  // chat already owns its channel and participants, so v4 explicitly forbids
+  // supplying `from` or `to` on this endpoint.
+  const hasProviderChatId =
+    event.chatId !== event.senderId || /^chat_/i.test(event.chatId);
+  const url = hasProviderChatId
+    ? `${BLOOIO_V4_CHATS_URL}/${encodeURIComponent(event.chatId)}/messages`
+    : BLOOIO_V4_MESSAGES_URL;
   const from = event.channelId ?? config.fromNumber;
-  const body: { to: string; text: string; from?: string } = {
-    to: event.senderId,
-    text,
-  };
-  if (from) body.from = from;
+  const body: { text: string; to?: string; from?: string } = { text };
+  if (!hasProviderChatId) {
+    body.to = event.senderId;
+    if (from) body.from = from;
+  }
 
-  const response = await fetch(BLOOIO_V4_MESSAGES_URL, {
+  const response = await fetch(url, {
     method: "POST",
     headers,
     body: JSON.stringify(body),
@@ -286,7 +298,6 @@ export const blooioAdapter: PlatformAdapter = {
     }
 
     if (event.event !== "message.received") return null;
-    if (event.is_group) return null;
 
     // Blooio documents message_id as the stable identifier for message
     // deliveries. internal_id is the receiving number and external_id is the
@@ -319,7 +330,8 @@ export const blooioAdapter: PlatformAdapter = {
     return {
       platform: "blooio",
       messageId: event.message_id,
-      chatId: event.sender,
+      chatId: event.chat_id ?? event.sender,
+      chatType: event.is_group ? "group" : "private",
       channelId: event.channel_id ?? undefined,
       channelType: event.channel_type ?? undefined,
       protocol: event.protocol ?? undefined,
@@ -355,7 +367,7 @@ export const blooioAdapter: PlatformAdapter = {
   ): Promise<void> {
     if (!config.apiKey) return;
     try {
-      const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;
+      const url = `${BLOOIO_V2_API_BASE}/chats/${encodeURIComponent(event.chatId)}/read`;
       const headers: Record<string, string> = {
         Authorization: `Bearer ${config.apiKey}`,
         "Content-Type": "application/json",
