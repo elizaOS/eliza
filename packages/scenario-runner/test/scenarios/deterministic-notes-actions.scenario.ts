@@ -60,6 +60,7 @@ function notesService(ctx: ScenarioContext): NotesService | null {
 export default scenario({
   id: "deterministic-notes-actions",
   lane: "pr-deterministic",
+  runtimeSurfaceIds: ["@elizaos/plugin-notes:action:notes"],
   modelFixtures: {
     mode: "model-free",
     reason:

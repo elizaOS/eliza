@@ -638,6 +638,11 @@ export type ScenarioDefinition = {
    */
   lane?: ScenarioLane;
   /**
+   * Canonical production boundary ids exercised by this scenario. Reporting
+   * tools count an id only when an executable assertion reaches that boundary.
+   */
+  runtimeSurfaceIds?: readonly string[];
+  /**
    * Evidence trust boundary for this scenario. Absent preserves existing
    * scenarios by resolving to `simulated`; simulated results are never
    * publishable as provider evidence.

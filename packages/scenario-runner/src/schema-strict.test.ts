@@ -105,6 +105,30 @@ describe("scenario() strict scenario metadata validation", () => {
     turns: [{ kind: "message", name: "ask", text: "hello" }],
   } satisfies ScenarioDefinition;
 
+  it("accepts unique canonical runtime surface ids and rejects malformed metadata", () => {
+    expect(() =>
+      scenario({
+        ...base,
+        runtimeSurfaceIds: ["@elizaos/plugin-notes:action:notes"],
+      }),
+    ).not.toThrow();
+    expect(() =>
+      scenario({
+        ...base,
+        runtimeSurfaceIds: ["plugin-notes:action:notes"],
+      }),
+    ).toThrow(/invalid canonical runtime surface id/);
+    expect(() =>
+      scenario({
+        ...base,
+        runtimeSurfaceIds: [
+          "@elizaos/plugin-notes:action:notes",
+          "@elizaos/plugin-notes:action:notes",
+        ],
+      }),
+    ).toThrow(/duplicate canonical runtime surface id/);
+  });
+
   it("throws on an unknown top-level scenario status instead of running it", () => {
     expect(() =>
       scenario({
