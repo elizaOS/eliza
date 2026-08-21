@@ -21,6 +21,8 @@ const playEntry = vi.hoisted(() => ({
   secureClear: vi.fn(async () => undefined),
   secureGet: vi.fn(async () => ({ value: null as string | null })),
   secureSet: vi.fn(async (_options: { value: string }) => undefined),
+  voiceListeners: new Map<string, (value: unknown) => void>(),
+  voiceStop: vi.fn(async () => undefined),
 }));
 
 vi.mock("react-dom/client", () => ({ createRoot: playEntry.createRoot }));
@@ -42,11 +44,20 @@ vi.mock("@capacitor/core", () => ({
           remove: playEntry.secureClear,
         }
       : {
-          addListener: vi.fn(async () => ({ remove: vi.fn() })),
+          addListener: vi.fn(
+            async (name: string, listener: (value: unknown) => void) => {
+              playEntry.voiceListeners.set(name, listener);
+              return {
+                remove: vi.fn(async () => {
+                  playEntry.voiceListeners.delete(name);
+                }),
+              };
+            },
+          ),
           requestPermission: vi.fn(async () => ({ granted: true })),
           speak: vi.fn(async () => undefined),
           startDictation: vi.fn(async () => ({ started: true })),
-          stopDictation: vi.fn(async () => undefined),
+          stopDictation: playEntry.voiceStop,
         },
 }));
 vi.mock("@capacitor/preferences", () => ({
@@ -106,10 +117,12 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   playEntry.appListeners.clear();
+  playEntry.voiceListeners.clear();
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
   playEntry.secureSet.mockResolvedValue(undefined);
+  playEntry.voiceStop.mockResolvedValue(undefined);
 });
 
 describe("Android Cloud renderer behavior", () => {
@@ -202,5 +215,33 @@ describe("Android Cloud renderer behavior", () => {
 
     window.removeEventListener("eliza:android-cloud-compose", compose);
     document.removeEventListener("eliza:share-target", share);
+  });
+
+  it("routes native recognition errors through the voice adapter", async () => {
+    const onError = vi.fn();
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), onError);
+
+    playEntry.voiceListeners.get("error")?.({ code: 7 });
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError.mock.calls[0]?.[0]).toMatchObject({
+      message: "Voice dictation stopped unexpectedly (code 7).",
+    });
+  });
+
+  it("observes native-event voice teardown failures", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    playEntry.voiceStop.mockRejectedValueOnce(new Error("native stop failed"));
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+
+    playEntry.voiceListeners.get("error")?.({ code: 7 });
+
+    await vi.waitFor(() =>
+      expect(warning).toHaveBeenCalledWith(
+        "[Eliza Android] ElizaPlayVoice teardown unavailable:",
+        "native stop failed",
+      ),
+    );
+    warning.mockRestore();
   });
 });

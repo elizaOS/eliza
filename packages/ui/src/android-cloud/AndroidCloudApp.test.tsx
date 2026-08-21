@@ -149,4 +149,83 @@ describe("AndroidCloudApp", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("Never finish")).toBeTruthy();
   });
+
+  it("cancels an in-flight login poll without restoring its session", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+    });
+    let resolvePoll: (value: {
+      status: "authenticated";
+      token: string;
+    }) => void = () => {};
+    const poll = new Promise<{ status: "authenticated"; token: string }>(
+      (resolve) => {
+        resolvePoll = resolve;
+      },
+    );
+    const pollLogin = vi.spyOn(client, "pollLogin").mockReturnValue(poll);
+    const signOut = vi.spyOn(client, "signOut").mockResolvedValue(undefined);
+    const openExternal = vi.fn(async () => undefined);
+    const closeExternal = vi.fn(async () => undefined);
+    const originalSetTimeout = window.setTimeout.bind(window);
+    vi.spyOn(window, "setTimeout").mockImplementation(
+      (handler, timeout, ...args) => {
+        if (timeout === 1_500) {
+          queueMicrotask(() => {
+            if (typeof handler === "function") handler(...args);
+          });
+          return 1;
+        }
+        return originalSetTimeout(handler, timeout, ...args);
+      },
+    );
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={openExternal}
+        closeExternal={closeExternal}
+        voice={createVoice()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(pollLogin).toHaveBeenCalledOnce());
+    const signal = pollLogin.mock.calls[0]?.[1];
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    expect(signal?.aborted).toBe(true);
+    resolvePoll({ status: "authenticated", token: "cancelled-token" });
+
+    await waitFor(() => expect(signOut).toHaveBeenCalledOnce());
+    expect(client.restoreSession).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeTruthy();
+  });
+
+  it("leaves listening state and surfaces an asynchronous voice error", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    let reportError: (error: Error) => void = () => {};
+    const voice: AndroidCloudVoiceAdapter = {
+      requestAndStart: vi.fn(async (_onTranscript, onError) => {
+        reportError = onError;
+      }),
+      stop: vi.fn(async () => undefined),
+      speak: vi.fn(async () => undefined),
+    };
+    render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    await screen.findByRole("button", { name: "Stop dictation" });
+    act(() => reportError(new Error("Voice recognition failed.")));
+
+    expect(
+      await screen.findByRole("button", { name: "Start dictation" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Voice recognition failed.",
+    );
+  });
 });

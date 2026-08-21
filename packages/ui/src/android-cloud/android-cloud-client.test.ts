@@ -84,6 +84,35 @@ describe("AndroidCloudClient", () => {
     );
   });
 
+  it("clears a token when sign-in is cancelled during durable persistence", async () => {
+    let releaseWrite: () => void = () => {};
+    const writeWait = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    const credentialStore = {
+      read: vi.fn(async () => null),
+      write: vi.fn(async () => writeWait),
+      clear: vi.fn(async () => undefined),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "cancelled-token" }),
+      );
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+    const controller = new AbortController();
+
+    const poll = client.pollLogin(SESSION_ID, controller.signal);
+    await vi.waitFor(() =>
+      expect(credentialStore.write).toHaveBeenCalledOnce(),
+    );
+    controller.abort();
+    releaseWrite();
+
+    await expect(poll).rejects.toMatchObject({ name: "AbortError" });
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+  });
+
   it("restores identity and resolves its managed runtime before chat", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "steward-token");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValueOnce(
