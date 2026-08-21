@@ -176,32 +176,19 @@ function resolveConfiguredPhone(
     : null;
 }
 
-// Public Telegram Desktop app credentials (api_id 2040). api_id/api_hash
-// identify the CLIENT APP, not the user, and grant no account access on their
-// own — the minted StringSession is the real secret. Bundling a working default
-// makes personal-account onboarding zero-friction: the user never has to visit
-// my.telegram.org to register an app.
-//
-// Future option: instead of one shared bundled app, auto-fetch each user's OWN
-// api_id/api_hash by repairing the my.telegram.org scraper
-// (account-auth-service.ts getOrCreateProvisionedApp), whose HTML parser Telegram
-// broke. That path is only reached when NO credentials resolve here — which,
-// with this bundled default, is never — so it is documented, not wired.
-const BUNDLED_TELEGRAM_APP_ID = 2040;
-const BUNDLED_TELEGRAM_APP_HASH = "b18441a1ff607e10a989891a5462e627";
-
 /**
  * Resolve the MTProto app credentials for the personal-account login, in
  * priority order: (1) per-account configured creds (power users / own app
- * identity), (2) deployment settings `TELEGRAM_APP_ID` / `TELEGRAM_APP_HASH`,
- * (3) the bundled default. Never returns null, so the fragile my.telegram.org
- * provisioning scrape is bypassed entirely. Exported for direct unit coverage
- * of the three-tier precedence.
+ * identity), then (2) deployment settings `TELEGRAM_APP_ID` /
+ * `TELEGRAM_APP_HASH`. When neither trust domain supplies credentials, return
+ * null so TelegramAccountAuthSession provisions a user-owned app identity via
+ * my.telegram.org. The plugin never embeds or silently borrows a third-party
+ * client credential pair.
  */
 export function resolveTelegramAppCredentials(
   runtime: IAgentRuntime,
   connConfig: Record<string, unknown>,
-): { apiId: number; apiHash: string } {
+): { apiId: number; apiHash: string } | null {
   const parsedAccountId =
     typeof connConfig.appId === "string" || typeof connConfig.appId === "number"
       ? Number(connConfig.appId)
@@ -231,10 +218,7 @@ export function resolveTelegramAppCredentials(
   ) {
     return { apiId: parsedEnvId, apiHash: envHash.trim() };
   }
-  return {
-    apiId: BUNDLED_TELEGRAM_APP_ID,
-    apiHash: BUNDLED_TELEGRAM_APP_HASH,
-  };
+  return null;
 }
 
 function resolveService(

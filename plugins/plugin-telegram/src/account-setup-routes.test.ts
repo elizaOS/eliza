@@ -1,18 +1,15 @@
 /**
- * Unit coverage for `resolveTelegramAppCredentials` — the three-tier MTProto
- * app-credential precedence (per-account config → deployment settings → bundled
- * default) that keeps personal-account login off the broken my.telegram.org
- * scrape. Deterministic: a plain fake runtime whose `getSetting` reads a map, no
- * network and no real model. The resolver is pure, so it runs under the
- * package's global `@elizaos/core` stub (`__tests__/core-test-mock.ts`).
+ * Unit coverage for `resolveTelegramAppCredentials` — the trust-domain MTProto
+ * app-credential precedence (per-account config → deployment settings →
+ * user-owned provisioning). Deterministic: a plain fake runtime whose
+ * `getSetting` reads a map, no network and no real model. The resolver is pure,
+ * so it runs under the package's global core stub.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 
 import { resolveTelegramAppCredentials } from "./account-setup-routes.ts";
-
-const BUNDLED = { apiId: 2040, apiHash: "b18441a1ff607e10a989891a5462e627" };
 
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
@@ -57,8 +54,8 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
-  it("returns the bundled default when neither config nor settings resolve", () => {
-    expect(resolveTelegramAppCredentials(makeRuntime(), {})).toEqual(BUNDLED);
+  it("uses user-owned provisioning when neither config nor settings resolve", () => {
+    expect(resolveTelegramAppCredentials(makeRuntime(), {})).toBeNull();
   });
 
   it("ignores a config with a blank appHash and uses the next tier", () => {
@@ -75,7 +72,7 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
-  it("ignores a non-numeric TELEGRAM_APP_ID and falls back to the bundled default", () => {
+  it("ignores a non-numeric TELEGRAM_APP_ID and uses user-owned provisioning", () => {
     const creds = resolveTelegramAppCredentials(
       makeRuntime({
         TELEGRAM_APP_ID: "not-a-number",
@@ -83,7 +80,7 @@ describe("resolveTelegramAppCredentials", () => {
       }),
       {},
     );
-    expect(creds).toEqual(BUNDLED);
+    expect(creds).toBeNull();
   });
 
   it("ignores a non-numeric configured appId and falls through to settings", () => {
@@ -100,13 +97,13 @@ describe("resolveTelegramAppCredentials", () => {
     });
   });
 
-  it("ignores non-positive and fractional configured appIds and falls back to the bundled default", () => {
+  it("ignores non-positive and fractional configured appIds and uses user-owned provisioning", () => {
     for (const appId of ["-1", 0, 12.5]) {
       const creds = resolveTelegramAppCredentials(makeRuntime(), {
         appId,
         appHash: "cfgHashcfgHashcfgHashcfgHashcfg4",
       });
-      expect(creds).toEqual(BUNDLED);
+      expect(creds).toBeNull();
     }
   });
 
