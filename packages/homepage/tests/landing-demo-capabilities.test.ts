@@ -1,6 +1,6 @@
 /**
  * Verifies that the landing animation declares advanced capability claims and
- * visibly discloses the connected source or permission state behind them.
+ * keeps capability claims scoped to the natural-language reply that shows them.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -64,7 +64,7 @@ describe("landing Shared-agent capability contract", () => {
     ).toEqual([]);
   });
 
-  test("discloses a source for every connected capability", () => {
+  test("keeps connected capabilities inside ordinary Eliza messages", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
       const connectedSteps = scenario.steps.filter(
         (step) =>
@@ -72,24 +72,8 @@ describe("landing Shared-agent capability contract", () => {
           step.kind !== "user" &&
           step.capability !== "conversation-memory",
       );
-      const connectedCards = connectedSteps.filter(
-        (step) => step.kind === "card",
-      );
-
-      expect(connectedCards.length).toBeGreaterThan(0);
-      expect(
-        connectedCards.every(
-          (step) => step.kind === "card" && step.card.source,
-        ),
-      ).toBe(true);
-      for (const step of connectedSteps) {
-        expect(
-          connectedCards.some(
-            (card) =>
-              card.kind === "card" && card.capability === step.capability,
-          ),
-        ).toBe(true);
-      }
+      expect(connectedSteps.length).toBeGreaterThan(0);
+      expect(connectedSteps.every((step) => step.kind === "eliza")).toBe(true);
     }
   });
 
@@ -116,18 +100,15 @@ describe("landing Shared-agent capability contract", () => {
 
   test("gives every room a longer mini-story with evolving recaps", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
-      expect(scenario.steps).toHaveLength(24);
-      expect(scenario.steps.at(-1)?.kind).toBe("card");
-      expect(
-        scenario.steps.filter((step) => step.kind === "card"),
-      ).toHaveLength(4);
+      expect(scenario.steps).toHaveLength(20);
+      expect(scenario.steps.at(-1)?.kind).toBe("eliza");
       expect(
         scenario.steps.filter((step) => step.kind === "eliza").length,
       ).toBeGreaterThanOrEqual(5);
     }
   });
 
-  test("structures every room as four humans, Eliza's reply, and its embed", () => {
+  test("structures every room as four humans followed by Eliza", () => {
     for (const scenario of LANDING_DEMO_SCENARIOS) {
       expect(
         scenario.steps
@@ -135,7 +116,6 @@ describe("landing Shared-agent capability contract", () => {
           .every((step) => step.kind === "member" || step.kind === "user"),
       ).toBe(true);
       expect(scenario.steps[4]?.kind).toBe("eliza");
-      expect(scenario.steps[5]?.kind).toBe("card");
     }
   });
 
@@ -214,7 +194,7 @@ describe("landing Shared-agent capability contract", () => {
       ]),
     );
     expect(copy).toContain("severe peanut allergy");
-    expect(copy).toContain("I already filtered");
+    expect(copy).toContain("I remembered");
     expect(copy).not.toContain("shared room profile");
     expect(copy).not.toContain("no peanuts for me");
     expect(copy).toContain("checked its current allergy policy");
@@ -248,9 +228,9 @@ describe("landing Shared-agent capability contract", () => {
         )
         .join(" ") ?? "";
 
-    expect(copy).toContain("I balanced this against the house rotation");
-    expect(copy).toContain("keeps anyone else from getting a third");
-    expect(copy).toContain("Two tasks each");
+    expect(copy).toContain("I checked the house rotation");
+    expect(copy).toContain("keeps anyone else from getting stuck with a third");
+    expect(copy).toContain("Two each");
     expect(humanCopy).not.toMatch(/I'll get coffee|I'll empty|I'll go if/i);
   });
 
@@ -268,11 +248,10 @@ describe("landing Shared-agent capability contract", () => {
           : false,
       ),
     ).toBe(true);
-    expect(copy).toContain("I matched the travel calendars");
-    expect(copy).toContain("4 travel calendars shared");
+    expect(copy).toContain("I matched all four travel calendars");
     expect(copy).toContain("covered route");
-    expect(copy).toContain("real vegetarian options for Emi");
-    expect(copy).toContain("plenty of meat for Theo");
+    expect(copy).toContain("good vegetarian food for Emi");
+    expect(copy).toContain("plenty of non-veg options for Theo");
     expect(copy).not.toContain("we haven't picked anywhere");
   });
 

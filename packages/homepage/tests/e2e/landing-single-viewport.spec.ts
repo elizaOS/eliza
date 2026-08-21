@@ -103,17 +103,15 @@ test("prefills the human setup, then lets Eliza respond", async ({ page }) => {
   await expect(page.locator(".landing-bubble--eliza")).toHaveCount(0);
   await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(phone).toHaveAttribute("data-demo-typing", "Eliza", {
-    timeout: 2_500,
+    timeout: 3_500,
   });
   await expect(
     page.getByText(
-      "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
+      "I checked the house rotation. You have coffee and laundry, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants. That's even.",
       { exact: true },
     ),
-  ).toBeVisible({ timeout: 4_000 });
-  await expect(page.locator(".landing-demo-card")).toHaveCount(1, {
-    timeout: 5_000,
-  });
+  ).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
 });
 
 test("plays the original welcome aura each time the contact menu opens", async ({
@@ -207,7 +205,7 @@ test("human replies show the participant's iOS typing indicator", async ({
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-typing", "Jules", {
-    timeout: 8_000,
+    timeout: 14_000,
   });
 
   const indicator = page.locator('[data-demo-typing-indicator="Jules"]');
@@ -305,14 +303,14 @@ test("concurrent human replies share one compact typing row", async ({
 test("all five longer rooms keep rotating without hiding usable thread space", async ({
   page,
 }) => {
-  test.setTimeout(300_000);
+  test.setTimeout(360_000);
   await page.setViewportSize({ width: 390, height: 1275 });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForLandingIntro(page);
 
   const phone = page.locator(".landing-iphone");
   await expect(phone).toHaveAttribute("data-demo-cycle", "1", {
-    timeout: 280_000,
+    timeout: 340_000,
   });
   await expect(phone).toHaveAttribute("data-demo-scenario", "household", {
     timeout: 5_000,

@@ -146,23 +146,6 @@ export function findUndeclaredLandingDemoClaims(
   return detected.filter((category) => !allowed.includes(category));
 }
 
-export type LandingDemoSourceKind = "calendar" | "memory" | "reminder" | "web";
-
-export interface LandingDemoSource {
-  kind: LandingDemoSourceKind;
-  label: string;
-}
-
-export interface LandingDemoCard {
-  capability: LandingDemoCapability;
-  label: string;
-  title: string;
-  rows: string[];
-  status?: string;
-  statusKind?: "confirmed" | "open";
-  source?: LandingDemoSource;
-}
-
 export type LandingDemoStep =
   | {
       capability: LandingDemoCapability;
@@ -171,12 +154,7 @@ export type LandingDemoStep =
       text: string;
     }
   | { kind: "member"; name: string; text: string }
-  | { kind: "user"; text: string }
-  | {
-      capability: LandingDemoCapability;
-      kind: "card";
-      card: LandingDemoCard;
-    };
+  | { kind: "user"; text: string };
 
 export type LandingDemoScenarioId =
   | "friends"
@@ -229,20 +207,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "connected-calendar",
         kind: "eliza",
-        text: "Saturday after 7 is the only overlap on the calendars you chose to share. Jamie still needs to answer.",
-      },
-      {
-        capability: "connected-calendar",
-        kind: "card",
-        card: {
-          capability: "connected-calendar",
-          label: "Availability match",
-          title: "Saturday is the overlap",
-          rows: ["After 7", "4 people are free", "Waiting on Jamie"],
-          source: { kind: "calendar", label: "4 calendars shared" },
-          status: "Waiting on the group",
-          statusKind: "open",
-        },
+        text: "Saturday after 7 is the only time the four shared calendars overlap. Jamie still needs to answer.",
       },
       { kind: "member", name: "Jamie", text: "7:30 works" },
       { kind: "user", text: "ok perfect" },
@@ -251,23 +216,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Everyone can make 7:30. Quiet and outdoors if it's warm. Mission or Noe is still open.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Best fit",
-          title: "Saturday · 7:30 PM",
-          rows: [
-            "Everyone can make it",
-            "Quiet + outdoor option",
-            "Neighborhood still open",
-          ],
-          status: "Updated from this group",
-          statusKind: "open",
-        },
+        text: "7:30 works for everyone. I'll keep it quiet, with outdoor seating if it's warm. Mission or Noe both work.",
       },
       {
         kind: "member",
@@ -278,27 +227,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "I already filtered for Priya being vegetarian and Jamie's severe peanut allergy. Peanut cross-contact is a hard constraint.",
-      },
-      {
-        capability: "room-memory",
-        kind: "card",
-        card: {
-          capability: "room-memory",
-          label: "Group requirements",
-          title: "Two dietary constraints",
-          rows: [
-            "Priya · Vegetarian",
-            "Jamie · Severe peanut allergy",
-            "Cross-contact must be confirmed",
-          ],
-          source: {
-            kind: "memory",
-            label: "Remembered for Friends",
-          },
-          status: "Filtering risky matches",
-          statusKind: "open",
-        },
+        text: "Already on it. I remembered Priya is vegetarian and Jamie has a severe peanut allergy, so I'm only checking places with a real cross-contact protocol.",
       },
       { kind: "member", name: "Maya", text: "noe pls" },
       { kind: "member", name: "Leo", text: "just not somewhere loud" },
@@ -317,25 +246,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "public-web-search",
         kind: "eliza",
-        text: "Their published protocol covers Jamie's peanut constraint, including separate tools and a manager check at the table. Cypress Table is the best fit, and I kept a second verified option as backup.",
-      },
-      {
-        capability: "public-web-search",
-        kind: "card",
-        card: {
-          capability: "public-web-search",
-          label: "Restaurant match",
-          title: "Cypress Table · 7:30 target",
-          rows: [
-            "Quiet patio + indoor fallback",
-            "Vegetarian mains for Priya",
-            "Peanut protocol checked for Jamie",
-            "Verified backup ready",
-          ],
-          source: { kind: "web", label: "Public web · checked now" },
-          status: "Best match found",
-          statusKind: "confirmed",
-        },
+        text: "Yes. Their current policy uses separate tools and a manager check at the table. Cypress Table is the best fit: quiet patio, indoor backup, good vegetarian mains, and a peanut protocol. I saved a verified backup too.",
       },
     ],
   },
@@ -360,20 +271,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "connected-calendar",
         kind: "eliza",
-        text: "Ava's shared calendar shows soccer Saturday at 9. Thursday and Friday pickups are covered; soccer is still open.",
-      },
-      {
-        capability: "connected-calendar",
-        kind: "card",
-        card: {
-          capability: "connected-calendar",
-          label: "Custody logistics",
-          title: "Two pickups covered",
-          rows: ["Thu · Nina", "Fri · You", "Sat 9 AM soccer · Open"],
-          source: { kind: "calendar", label: "Shared family calendar" },
-          status: "One adult still needed",
-          statusKind: "open",
-        },
+        text: "Ava's family calendar has soccer Saturday at 9. Nina has Thursday pickup, you have Friday, and soccer still needs one of you.",
       },
       {
         kind: "member",
@@ -393,27 +291,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Pickups and soccer are covered. Backpack, cleats, and permission slip are accounted for. No direct negotiation required.",
-      },
-      {
-        capability: "room-memory",
-        kind: "card",
-        card: {
-          capability: "room-memory",
-          label: "Treaty status",
-          title: "Everyone knows their job",
-          rows: [
-            "Thu pickup · Nina",
-            "Fri pickup + cleats · You",
-            "Sat soccer · Nina",
-            "Backpack is ready",
-          ],
-          source: {
-            kind: "memory",
-            label: "Remembered for Co-parenting",
-          },
-          status: "Zero extra replies needed",
-        },
+        text: "Done. Nina has Thursday pickup and Saturday soccer. You have Friday pickup and the cleats. The backpack and permission slip are ready.",
       },
       {
         kind: "member",
@@ -424,22 +302,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Nina remains primary Thursday; you're backup until 5:30. Friday and Saturday stay covered, and nobody has to renegotiate.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Fallback protocol",
-          title: "The treaty has a backup",
-          rows: [
-            "Primary · Nina at 5",
-            "Backup · You until 5:30",
-            "Fri + Sat covered",
-          ],
-          status: "No new argument required",
-        },
+        text: "Nina is still primary Thursday at 5. If she isn't there by 5:30, you take over. Friday and Saturday stay the same.",
       },
       { kind: "member", name: "Nina", text: "I have her inhaler btw" },
       {
@@ -461,27 +324,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "scheduled-reminder",
         kind: "eliza",
-        text: "I added the inhaler check to Friday's existing 4:30 handoff reminder. You both have the same plan, so nobody needs another text.",
-      },
-      {
-        capability: "scheduled-reminder",
-        kind: "card",
-        card: {
-          capability: "scheduled-reminder",
-          label: "Peacekeeping checklist",
-          title: "Ava has what she needs",
-          rows: [
-            "Thu · Nina packs inhaler",
-            "Fri 4:30 · Verify inhaler",
-            "Cleats · Stay in the car",
-            "Backpack · Already packed",
-          ],
-          source: {
-            kind: "reminder",
-            label: "Your reminders · already allowed",
-          },
-          status: "One reminder, zero follow-ups",
-        },
+        text: "I added an inhaler check to Friday's 4:30 handoff reminder. Blue backpack, front pocket. Cleats stay in the car. You both have the same plan now.",
       },
     ],
   },
@@ -502,25 +345,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
-      },
-      {
-        capability: "room-memory",
-        kind: "card",
-        card: {
-          capability: "room-memory",
-          label: "Fair rotation",
-          title: "Tonight is split evenly",
-          rows: [
-            "Coffee + laundry · You",
-            "Dishwasher · Noor",
-            "Recycling · Eli",
-            "Plants · Jules",
-          ],
-          source: { kind: "memory", label: "Household memory · room only" },
-          status: "Balanced from the house rotation",
-          statusKind: "confirmed",
-        },
+        text: "I checked the house rotation. You have coffee and laundry, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants. That's even.",
       },
       { kind: "user", text: "ugh ok lol" },
       { kind: "member", name: "Noor", text: "dishwasher is clean btw" },
@@ -529,23 +354,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Noor unloads the dishwasher. Eli already covered recycling, Jules finished the plants, and you have coffee plus laundry. No swap is needed.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Chore balance",
-          title: "Everyone has a lane",
-          rows: [
-            "Coffee + laundry · You",
-            "Dishwasher · Noor",
-            "Recycling · Eli",
-            "Plants · Jules",
-          ],
-          status: "Adjusted around Eli getting home late",
-        },
+        text: "No swap needed. Noor unloads the dishwasher, Eli already did recycling, Jules finished the plants, and you still have coffee plus laundry.",
       },
       {
         kind: "member",
@@ -555,25 +364,9 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Trash bags go to Eli's next store run. That gives him a second task and keeps anyone else from getting a third.",
+        text: "Trash bags go on Eli's next store run. That gives him two jobs and keeps anyone else from getting stuck with a third.",
       },
       { kind: "member", name: "Eli", text: "fine" },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Fair split",
-          title: "No one gets everything",
-          rows: [
-            "Coffee + laundry · You",
-            "Dishwasher · Noor",
-            "Recycling + trash bags · Eli",
-            "Plants · Jules",
-          ],
-          status: "Two tasks max so far",
-        },
-      },
       {
         kind: "member",
         name: "Jules",
@@ -588,31 +381,14 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "No huge run. Noor gets pasta and oat milk, just two things. Tomatoes and parmesan are already at home. Jules cooks, which brings everyone to two tasks.",
+        text: "No huge run. Noor only needs pasta and oat milk. You already have tomatoes and parmesan, and Jules can cook. That puts everyone at two jobs.",
       },
       { kind: "member", name: "Eli", text: "wait we still have tomatoes" },
       { kind: "member", name: "Jules", text: "ok pasta is easy" },
       {
         capability: "room-memory",
         kind: "eliza",
-        text: "Yep, tomatoes were already counted. Final split: Noor shops, Jules cooks, Eli gets trash bags, and you handle coffee plus laundry.",
-      },
-      {
-        capability: "room-memory",
-        kind: "card",
-        card: {
-          capability: "room-memory",
-          label: "Tonight's split",
-          title: "Chores plus dinner",
-          rows: [
-            "Dishwasher + 2-item run · Noor",
-            "Plants + pasta · Jules",
-            "Recycling + trash bags · Eli",
-            "Coffee + laundry · You",
-          ],
-          source: { kind: "memory", label: "Household memory · room only" },
-          status: "Two tasks each",
-        },
+        text: "Yep. Final split: Noor does the dishwasher and two-item run, Jules has plants and pasta, Eli has recycling and trash bags, and you have coffee and laundry. Two each.",
       },
     ],
   },
@@ -633,24 +409,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "connected-calendar",
         kind: "eliza",
-        text: "I matched the travel calendars: Theo lands at 9:40, Emi at 10:15, you overlap at 10:20, and Samira arrives the night before.",
-      },
-      {
-        capability: "connected-calendar",
-        kind: "card",
-        card: {
-          capability: "connected-calendar",
-          label: "Travel calendar match",
-          title: "10:20 airport meetup",
-          rows: [
-            "Samira · Night before",
-            "Theo · 9:40",
-            "Emi · 10:15",
-            "Group overlap · 10:20",
-          ],
-          source: { kind: "calendar", label: "4 travel calendars shared" },
-          status: "Best overlap found",
-        },
+        text: "I matched all four travel calendars. Theo lands at 9:40, Emi at 10:15, and you three overlap at arrivals at 10:20. Samira is already there from the night before.",
       },
       { kind: "member", name: "Theo", text: "ok arrivals then" },
       {
@@ -663,22 +422,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Meet by arrivals after Emi lands, find the red suitcase, then head to the apartment. Samira has the keys.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Shared route",
-          title: "Airport to apartment",
-          rows: [
-            "Meet by arrivals",
-            "Look for the red suitcase",
-            "Apartment keys · Samira",
-          ],
-          status: "Updated from this group",
-        },
+        text: "Meet at arrivals at 10:20, look for Emi's huge red suitcase, then go to the apartment. Samira has the keys.",
       },
       { kind: "member", name: "Theo", text: "what if emi's late tho" },
       {
@@ -689,22 +433,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "If Emi isn't out by 10:45, Theo and you head to the apartment. Samira has the keys, and Emi can follow.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Delay plan",
-          title: "10:45 cutoff",
-          rows: [
-            "Theo + you · Go ahead",
-            "Samira · Has the keys",
-            "Emi · Follows after landing",
-          ],
-          status: "Updated from this group",
-        },
+        text: "If Emi isn't out by 10:45, you and Theo go ahead. Samira has the keys, and Emi can follow when she gets out.",
       },
       {
         kind: "member",
@@ -731,26 +460,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "public-web-search",
         kind: "eliza",
-        text: "I found three full-menu lunch spots within a five-minute covered walk. All have real vegetarian options for Emi and plenty of meat for Theo. The rest of the arrival plan still holds.",
-      },
-      {
-        capability: "public-web-search",
-        kind: "card",
-        card: {
-          capability: "public-web-search",
-          label: "Arrival day",
-          title: "Covered until 3 PM",
-          rows: [
-            "10:45 · Airport cutoff",
-            "Bags · Staffed desk nearby",
-            "Transit · Covered route before rain",
-            "Lunch · Veg for Emi + meat for Theo",
-            "3 PM · Apartment ready",
-          ],
-          source: { kind: "web", label: "Public web · checked now" },
-          status: "Choose a lunch spot",
-          statusKind: "open",
-        },
+        text: "I found three lunch spots on the covered walk by the bag desk. All have good vegetarian food for Emi and plenty of non-veg options for Theo. I'll pick the best-rated one that's open when you arrive. Then bags, lunch, and the apartment at 3 are handled.",
       },
     ],
   },
@@ -767,19 +477,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "Tuesday, Thursday, and Saturday are covered. The north bed is still open.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Coverage map",
-          title: "One spot still open",
-          rows: ["Tue · Rosa", "Thu · Dev", "Sat · You", "North bed · Open"],
-          status: "Waiting on the group",
-          statusKind: "open",
-        },
+        text: "Tuesday is Rosa, Thursday is Dev, and Saturday is you. The north bed is the only thing still uncovered.",
       },
       { kind: "member", name: "Rosa", text: "I can do that tuesday too" },
       { kind: "member", name: "Tasha", text: "I'll bring the other hose" },
@@ -792,46 +490,15 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "The full week is covered. Rosa has the north bed, Tasha has the hose, and you'll drop off shade cloth Wednesday.",
-      },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Fewest trips",
-          title: "Coverage set",
-          rows: [
-            "Tue · Rosa + north bed",
-            "Wed · Shade cloth from you",
-            "Thu · Dev",
-            "Sat · You",
-          ],
-          status: "Updated from this group",
-        },
+        text: "Full week is covered now. Rosa adds the north bed Tuesday, you drop the shade cloth Wednesday, Dev waters Thursday, and Tasha leaves the hose ready for Saturday.",
       },
       { kind: "member", name: "Dev", text: "west bed looks super dry too" },
       {
         capability: "conversation-memory",
         kind: "eliza",
-        text: "You're already there Saturday. Can you add the west bed so Rosa doesn't need a second trip?",
+        text: "You're already there Saturday, so adding the west bed to your round saves Rosa a second trip. Can you take it?",
       },
       { kind: "user", text: "yeah sure I'll do both" },
-      {
-        capability: "conversation-memory",
-        kind: "card",
-        card: {
-          capability: "conversation-memory",
-          label: "Least extra travel",
-          title: "West bed added Saturday",
-          rows: [
-            "Owner · You",
-            "Rosa avoids a second trip",
-            "Rest of week covered",
-          ],
-          status: "Updated from this group",
-        },
-      },
       {
         kind: "member",
         name: "Tasha",
@@ -864,27 +531,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
       {
         capability: "scheduled-reminder",
         kind: "eliza",
-        text: "Saturday's reminder now starts with the heat-sensitive seedlings, then the west bed. Rosa checks mulch Tuesday; Tasha stages the hose.",
-      },
-      {
-        capability: "scheduled-reminder",
-        kind: "card",
-        card: {
-          capability: "scheduled-reminder",
-          label: "Heat prep",
-          title: "No extra garden trip",
-          rows: [
-            "Tue · Rosa checks mulch",
-            "Hose · Tasha leaves it at gate",
-            "Sat · West bed + seedlings",
-            "Owner Saturday · You",
-          ],
-          source: {
-            kind: "reminder",
-            label: "Your reminders · already allowed",
-          },
-          status: "Saturday reminder set",
-        },
+        text: "Your Saturday reminder now starts with the heat-sensitive seedlings, then the west bed. Rosa checks mulch Tuesday, and Tasha leaves the hose at the gate. No extra garden trip needed.",
       },
     ],
   },
@@ -908,12 +555,5 @@ export const LANDING_DEMO_SCENARIOS: readonly LandingDemoScenario[] =
   });
 
 export function landingDemoStepText(step: LandingDemoStep): string {
-  if (step.kind !== "card") return step.text;
-  return [
-    step.card.label,
-    step.card.title,
-    ...step.card.rows,
-    step.card.status ?? "",
-    step.card.source?.label ?? "",
-  ].join(" ");
+  return step.text;
 }

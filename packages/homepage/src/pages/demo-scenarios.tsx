@@ -1,6 +1,5 @@
 /** Development-only board for reviewing every landing demo room at once. */
 
-import { LandingDemoCardBubble } from "@/components/landing-demo-card";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
@@ -30,7 +29,7 @@ function stepCapability(step: LandingDemoStep): LandingDemoCapability | null {
 }
 
 function senderAvatar(step: LandingDemoStep): string | null {
-  if (step.kind === "eliza" || step.kind === "card") {
+  if (step.kind === "eliza") {
     return "/brand/logos/logo_white_orangebg.svg";
   }
   if (step.kind === "user") return null;
@@ -42,9 +41,7 @@ function senderAvatar(step: LandingDemoStep): string | null {
 }
 
 function stepKey(step: LandingDemoStep): string {
-  return step.kind === "card"
-    ? `${step.kind}-${step.card.title}`
-    : `${step.kind}-${step.text}`;
+  return `${step.kind}-${step.text}`;
 }
 
 function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
@@ -79,13 +76,7 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
             </span>
           ) : null}
         </div>
-        {step.kind === "card" ? (
-          <div className="landing-bubble-card demo-review-card-preview">
-            <LandingDemoCardBubble card={step.card} />
-          </div>
-        ) : (
-          <p>{step.text}</p>
-        )}
+        <p>{step.text}</p>
       </div>
     </li>
   );
@@ -100,8 +91,7 @@ export default function DemoScenariosPage() {
           <p>Development review</p>
           <h1>Group chat demo scripts</h1>
           <span className="demo-review-subtitle">
-            One shared mobile + desktop source · 20 messages and 4 cards per
-            room
+            One shared mobile + desktop source · natural iMessage conversations
           </span>
           <span className="demo-review-editor-note">
             Edit <code>packages/homepage/src/lib/landing-demo.ts</code>. This

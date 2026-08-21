@@ -1,7 +1,7 @@
 /** Review-board coverage for the development-only full script view. */
 import { expect, test } from "playwright/test";
 
-test("shows all five rooms, 24 beats each, with distinct casts", async ({
+test("shows all five rooms, 20 messages each, with distinct casts", async ({
   page,
 }) => {
   await page.goto("/demo-scenarios", { waitUntil: "domcontentloaded" });
@@ -18,9 +18,9 @@ test("shows all five rooms, 24 beats each, with distinct casts", async ({
   await expect(rooms).toHaveCount(5);
 
   for (const room of await rooms.all()) {
-    await expect(room.locator("[data-demo-review-step]")).toHaveCount(24);
+    await expect(room.locator("[data-demo-review-step]")).toHaveCount(20);
   }
-  await expect(page.locator(".landing-demo-card")).toHaveCount(20);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.locator(".demo-review-plan-card")).toHaveCount(0);
 
   const castSources = await page
