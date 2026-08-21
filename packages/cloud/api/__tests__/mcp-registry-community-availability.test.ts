@@ -31,11 +31,34 @@ mock.module("@/lib/utils/logger", () => ({
 
 const registryRoute = (await import("../mcp/registry/route")).default;
 
-async function getRegistry(path = "/") {
+async function getRegistry(path = "/", env: Record<string, string> = {}) {
   return await registryRoute.request(path, undefined, {
     NEXT_PUBLIC_APP_URL: "https://app.example.test",
+    ...env,
   });
 }
+
+test("reports DoorDash live only when its Cloud upstream is configured", async () => {
+  listPublic.mockResolvedValue([]);
+
+  const unavailableResponse = await getRegistry("/?search=DoorDash");
+  const unavailable = (await unavailableResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(unavailable.registry).toEqual([
+    expect.objectContaining({ id: "doordash", status: "coming_soon" }),
+  ]);
+
+  const availableResponse = await getRegistry("/?search=DoorDash", {
+    MCP_DOORDASH_STREAMABLE_HTTP_URL: "https://doordash-mcp.example.test/mcp",
+  });
+  const available = (await availableResponse.json()) as {
+    registry: Array<{ id: string; status: string }>;
+  };
+  expect(available.registry).toEqual([
+    expect.objectContaining({ id: "doordash", status: "live" }),
+  ]);
+});
 
 test("marks community registry unavailable when the optional live lookup fails", async () => {
   listPublic.mockRejectedValueOnce(new Error("community registry unavailable"));

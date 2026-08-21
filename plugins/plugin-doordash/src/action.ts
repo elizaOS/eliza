@@ -1,0 +1,492 @@
+/** Agent-facing DoorDash action with exact checkout preview confirmation. */
+
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  JsonObject,
+  JsonValue,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { ElizaError, gateDestructiveConfirmation, logger } from "@elizaos/core";
+import { createHash } from "@elizaos/core/utils/crypto-compat";
+import { callDoorDashOperation, hasDoorDashCapability } from "./adapter.js";
+import {
+  DOORDASH_OPERATIONS,
+  type DoorDashMcpService,
+  type DoorDashOperation,
+} from "./types.js";
+
+const MCP_SERVICE_NAME = "mcp";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function parameters(
+  options?: HandlerOptions | Record<string, unknown>,
+): Record<string, unknown> {
+  if (!options || typeof options !== "object") return {};
+  const nested = (options as HandlerOptions).parameters;
+  return isRecord(nested) ? nested : (options as Record<string, unknown>);
+}
+
+function normalizeOperation(value: unknown): DoorDashOperation | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replaceAll("-", "_");
+  return (DOORDASH_OPERATIONS as readonly string[]).includes(normalized)
+    ? (normalized as DoorDashOperation)
+    : null;
+}
+
+function stableValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stableValue(entry)]),
+  );
+}
+
+function toJsonValue(value: unknown): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : String(value);
+  if (Array.isArray(value)) return value.map(toJsonValue);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, toJsonValue(entry)]),
+    ) as JsonObject;
+  }
+  return String(value);
+}
+
+export function checkoutPreviewDigest(value: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(stableValue(value)))
+    .digest("hex");
+}
+
+function cartHasItems(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(
+      (cart) =>
+        isRecord(cart) && Array.isArray(cart.items) && cart.items.length > 0,
+    );
+  }
+  return (
+    isRecord(value) && Array.isArray(value.items) && value.items.length > 0
+  );
+}
+
+function checkoutTotal(value: unknown): number | null {
+  if (!isRecord(value)) return null;
+  const summary = isRecord(value.summary) ? value.summary : value;
+  return typeof summary.total === "number" && Number.isFinite(summary.total)
+    ? summary.total
+    : null;
+}
+
+export function buildCheckoutBinding(
+  cart: unknown,
+  preview: unknown,
+): Record<string, unknown> {
+  if (!cartHasItems(cart)) {
+    throw new ElizaError(
+      "DoorDash checkout cannot be confirmed because the cart is empty or unreadable.",
+      {
+        code: "DOORDASH_CHECKOUT_PREVIEW_INCOMPLETE",
+        context: { missing: "cart_items" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  const total = checkoutTotal(preview);
+  if (total === null || total <= 0) {
+    throw new ElizaError(
+      "DoorDash checkout cannot be confirmed without a positive total.",
+      {
+        code: "DOORDASH_CHECKOUT_PREVIEW_INCOMPLETE",
+        context: { missing: "positive_total" },
+        severity: "ephemeral",
+      },
+    );
+  }
+  return { cart, checkout: preview };
+}
+
+export function assertVerifiedOrderReceipt(value: unknown): void {
+  if (!isRecord(value) || value.success !== true) {
+    throw new ElizaError(
+      "DoorDash did not return a successful order receipt.",
+      {
+        code: "DOORDASH_ORDER_UNVERIFIED",
+        severity: "ephemeral",
+      },
+    );
+  }
+  const orderId = value.orderId;
+  if (
+    typeof orderId !== "string" ||
+    orderId.trim().length === 0 ||
+    /^order-\d+$/.test(orderId.trim())
+  ) {
+    throw new ElizaError(
+      "DoorDash checkout response did not contain an authoritative order ID.",
+      {
+        code: "DOORDASH_ORDER_UNVERIFIED",
+        context: { receiptKind: "missing_or_synthetic_order_id" },
+        severity: "ephemeral",
+      },
+    );
+  }
+}
+
+function previewPrompt(value: unknown): string {
+  const summary =
+    isRecord(value) && isRecord(value.summary) ? value.summary : value;
+  return [
+    "Please confirm this exact DoorDash checkout. Reply yes to place the order or anything else to cancel.",
+    JSON.stringify(summary, null, 2),
+  ].join("\n");
+}
+
+async function reply(
+  result: ActionResult,
+  callback: HandlerCallback | undefined,
+  source: string | undefined,
+): Promise<ActionResult> {
+  if (result.userFacingText) {
+    await callback?.({
+      text: result.userFacingText,
+      source,
+      actions: ["DOORDASH"],
+    });
+  }
+  return result;
+}
+
+function service(runtime: IAgentRuntime): DoorDashMcpService | null {
+  return runtime.getService(MCP_SERVICE_NAME) as DoorDashMcpService | null;
+}
+
+async function execute(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state?: State,
+  options?: HandlerOptions | Record<string, unknown>,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const args = parameters(options);
+  const operation = normalizeOperation(
+    args.action ?? args.op ?? args.operation,
+  );
+  if (!operation) {
+    return reply(
+      {
+        success: false,
+        text: "A valid DoorDash operation is required.",
+        userFacingText:
+          "Tell me whether to search restaurants, show a menu, manage the cart, preview checkout, place the order, or track an order.",
+      },
+      callback,
+      message.content.source,
+    );
+  }
+
+  const mcp = service(runtime);
+  if (!mcp || !hasDoorDashCapability(mcp)) {
+    return reply(
+      {
+        success: false,
+        text: "No connected DoorDash MCP adapter.",
+        userFacingText:
+          "DoorDash is not connected. Configure a server named doordash in plugin-mcp or set MCP_SERVER_DOORDASH_URL.",
+        data: { reason: "adapter_unavailable" },
+      },
+      callback,
+      message.content.source,
+    );
+  }
+
+  try {
+    if (operation === "clear_session") {
+      const decision = await gateDestructiveConfirmation({
+        runtime,
+        message,
+        actionName: "DOORDASH_CLEAR_SESSION",
+        pendingKey:
+          typeof args.serverName === "string" ? args.serverName : "doordash",
+        prompt:
+          "Clear the connected DoorDash session? You will need to authenticate again before using it.",
+        callback,
+        ttlMs: 5 * 60_000,
+      });
+      if (decision.status === "pending") {
+        return {
+          success: true,
+          text: "DoorDash session clearing is awaiting explicit user confirmation.",
+          data: { awaitingUserInput: true },
+        };
+      }
+      if (decision.status === "cancelled") {
+        return reply(
+          {
+            success: true,
+            text: "DoorDash session clearing cancelled.",
+            userFacingText: "Cancelled. I kept the DoorDash session connected.",
+            data: { cancelled: true },
+          },
+          callback,
+          message.content.source,
+        );
+      }
+    }
+
+    if (operation === "place_order") {
+      const cart = await callDoorDashOperation(
+        mcp,
+        "cart",
+        args,
+        typeof args.serverName === "string" ? args.serverName : undefined,
+      );
+      const preview = await callDoorDashOperation(
+        mcp,
+        "preview_checkout",
+        args,
+        typeof args.serverName === "string" ? args.serverName : undefined,
+      );
+      const binding = buildCheckoutBinding(cart.value, preview.value);
+      const digest = checkoutPreviewDigest(binding);
+      const decision = await gateDestructiveConfirmation({
+        runtime,
+        message,
+        actionName: "DOORDASH_PLACE_ORDER",
+        pendingKey: digest,
+        prompt: previewPrompt(binding),
+        callback,
+        ttlMs: 5 * 60_000,
+        metadata: { digest },
+      });
+      if (decision.status === "pending") {
+        return {
+          success: true,
+          text: "DoorDash checkout is awaiting explicit user confirmation.",
+          data: {
+            awaitingUserInput: true,
+            checkoutDigest: digest,
+            preview: toJsonValue(binding),
+          },
+        };
+      }
+      if (decision.status === "cancelled") {
+        return reply(
+          {
+            success: true,
+            text: "DoorDash checkout cancelled.",
+            userFacingText: "Cancelled. I did not place the DoorDash order.",
+            data: { cancelled: true, checkoutDigest: digest },
+          },
+          callback,
+          message.content.source,
+        );
+      }
+      const placed = await callDoorDashOperation(
+        mcp,
+        "place_order",
+        args,
+        typeof args.serverName === "string" ? args.serverName : undefined,
+      );
+      assertVerifiedOrderReceipt(placed.value);
+      return reply(
+        {
+          success: true,
+          text:
+            placed.text ||
+            "DoorDash adapter accepted the confirmed checkout request.",
+          userFacingText:
+            placed.text || "DoorDash accepted the confirmed checkout request.",
+          data: {
+            checkoutDigest: digest,
+            serverName: placed.serverName,
+            toolName: placed.toolName,
+            result: toJsonValue(placed.value),
+          },
+        },
+        callback,
+        message.content.source,
+      );
+    }
+
+    const called = await callDoorDashOperation(
+      mcp,
+      operation,
+      args,
+      typeof args.serverName === "string" ? args.serverName : undefined,
+    );
+    return reply(
+      {
+        success: true,
+        text: called.text || JSON.stringify(called.value),
+        userFacingText: called.text || JSON.stringify(called.value, null, 2),
+        data: {
+          serverName: called.serverName,
+          toolName: called.toolName,
+          result: toJsonValue(called.value),
+        },
+      },
+      callback,
+      message.content.source,
+    );
+  } catch (error) {
+    // error-policy:J1 The action boundary translates typed adapter failures for the planner.
+    if (!(error instanceof ElizaError)) throw error;
+    logger.warn(
+      { code: error.code, context: error.context },
+      `[DOORDASH] ${error.message}`,
+    );
+    return reply(
+      {
+        success: false,
+        text: error.message,
+        userFacingText: error.message,
+        error,
+        data: { code: error.code },
+      },
+      callback,
+      message.content.source,
+    );
+  }
+}
+
+export const doorDashAction: Action = {
+  name: "DOORDASH",
+  similes: [
+    "ORDER_FOOD",
+    "FOOD_DELIVERY",
+    "SEARCH_RESTAURANTS",
+    "DOORDASH_CART",
+    "TRACK_DOORDASH_ORDER",
+  ],
+  description:
+    "Search DoorDash restaurants, browse menus, manage the cart, preview checkout, explicitly confirm an order, inspect history, and track delivery through a connected DoorDash MCP adapter.",
+  descriptionCompressed:
+    "DoorDash restaurant search, menus, cart, confirmed checkout, history, order tracking.",
+  routingHint:
+    "DoorDash restaurant, menu, cart, food delivery checkout, or order tracking -> DOORDASH.",
+  contexts: ["general", "connectors", "shopping", "food", "automation"],
+  roleGate: { minRole: "USER" },
+  tags: ["domain:shopping", "capability:external-side-effect"],
+  parameters: [
+    {
+      name: "action",
+      description: "DoorDash operation.",
+      required: true,
+      schema: { type: "string", enum: [...DOORDASH_OPERATIONS] },
+    },
+    {
+      name: "query",
+      description: "Restaurant, cuisine, or food search.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "address",
+      description:
+        "Delivery address for adapters that support setting it explicitly.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "cuisine",
+      description: "Optional cuisine filter.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "restaurantId",
+      description: "Restaurant/store ID returned by search.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "menuId",
+      description: "Menu ID required by some adapters.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "itemId",
+      description: "Menu item or cart item ID.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "itemName",
+      description: "Exact menu item name.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "unitPrice",
+      description:
+        "Item unit price in minor currency units when required by the adapter.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "quantity",
+      description: "Item quantity from 1 through 99.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "currency",
+      description: "ISO currency code; defaults to USD.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "specialInstructions",
+      description: "Optional item instructions.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "cartId",
+      description: "Cart ID for removal.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "orderId",
+      description: "Order ID for tracking.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "limit",
+      description: "Maximum history results.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "serverName",
+      description: "Optional configured MCP server name; defaults to doordash.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (runtime) => hasDoorDashCapability(service(runtime)),
+  handler: execute,
+};

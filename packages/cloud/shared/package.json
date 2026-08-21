@@ -56,6 +56,7 @@
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-cloud-apps": "workspace:*",
+    "@elizaos/plugin-doordash": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/plugin-todos": "workspace:*",

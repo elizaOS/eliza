@@ -719,6 +719,7 @@
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-cloud-apps": "workspace:*",
+        "@elizaos/plugin-doordash": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
@@ -1752,6 +1753,22 @@
         "@biomejs/biome": "2.5.8",
         "@types/node": "^25.6.0",
         "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+    },
+    "plugins/plugin-doordash": {
+      "name": "@elizaos/plugin-doordash",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-mcp": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/node": "^25.0.3",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.10",
       },
@@ -4191,6 +4208,8 @@
     "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
 
     "@elizaos/plugin-dropbox": ["@elizaos/plugin-dropbox@workspace:plugins/plugin-dropbox"],
+
+    "@elizaos/plugin-doordash": ["@elizaos/plugin-doordash@workspace:plugins/plugin-doordash"],
 
     "@elizaos/plugin-elizacloud": ["@elizaos/plugin-elizacloud@workspace:plugins/plugin-elizacloud"],
 

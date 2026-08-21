@@ -19,6 +19,8 @@ const BUILTIN = new Set<string>(["time", "weather", "crypto"]);
 const COINGECKO = "https://api.coingecko.com/api/v3";
 
 export const MCP_PROVIDER_REQUEST_TIMEOUT_MS = 10_000;
+/** Browser-backed DoorDash MCP calls include navigation and need a bounded interactive deadline. */
+export const MCP_DOORDASH_UPSTREAM_TIMEOUT_MS = 120_000;
 
 type JsonRpcId = string | number | null;
 type JsonObject = Record<string, unknown>;
@@ -535,7 +537,12 @@ export function createMcpsTransportApp(provider: string): Hono<AppEnv> {
     const envKey = upstreamEnvKey(provider);
     const upstreamRaw = c.env[envKey];
     if (typeof upstreamRaw === "string" && upstreamRaw.trim().length > 0) {
-      return forwardMcpUpstreamRequest(c.req.raw, upstreamRaw.trim());
+      return forwardMcpUpstreamRequest(c.req.raw, upstreamRaw.trim(), {
+        timeoutMs:
+          provider === "doordash"
+            ? MCP_DOORDASH_UPSTREAM_TIMEOUT_MS
+            : undefined,
+      });
     }
 
     if (!BUILTIN.has(provider)) {
