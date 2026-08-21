@@ -2506,6 +2506,8 @@ export function NotificationsHomeCenter({
 
   useEffect(() => {
     if (
+      !surfaceReady ||
+      hydrationStatus === "failed" ||
       openRequestId === null ||
       openRequestId === undefined ||
       lastHandledOpenRequestIdRef.current === openRequestId
@@ -2517,7 +2519,13 @@ export function NotificationsHomeCenter({
     // overrides the ordinary collapsed empty state after Home has mounted.
     beginProgrammaticShadeOpen();
     onOpenRequestHandled?.(openRequestId);
-  }, [beginProgrammaticShadeOpen, onOpenRequestHandled, openRequestId]);
+  }, [
+    beginProgrammaticShadeOpen,
+    hydrationStatus,
+    onOpenRequestHandled,
+    openRequestId,
+    surfaceReady,
+  ]);
 
   // Build stable rested and expanded projections. During a downward pull,
   // lower-priority groups reveal under the finger while already-visible

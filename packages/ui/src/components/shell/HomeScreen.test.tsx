@@ -178,6 +178,19 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
+  it("retains a notification-center request until hydration makes the destination visible", () => {
+    const requestId = requestNotificationCenterOpen();
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+
+    expect(screen.queryByTestId("home-notification-center")).toBeNull();
+    expect(peekNotificationCenterOpenRequest()).toBe(requestId);
+
+    act(() => __setHydratedForTests(true));
+
+    expect(screen.getByTestId("home-notification-center")).toBeTruthy();
+    expect(peekNotificationCenterOpenRequest()).toBeNull();
+  });
+
   it("keeps rested notifications compact, then displaces and restores focused secondary content", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),

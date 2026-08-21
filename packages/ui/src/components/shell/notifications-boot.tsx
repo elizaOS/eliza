@@ -84,21 +84,6 @@ export function NotificationsShellBoot(): null {
   const setTab = useAppSelector((s) => s.setTab);
 
   useEffect(() => {
-    // Install the in-app destination before attaching the native bridge.
-    // Capacitor may synchronously replay a retained cold-launch tap from
-    // addListener(), so reversing this order would drop that first event.
-    const onOpen = () => {
-      goHome();
-      setTab("chat");
-    };
-    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
-    // A fallback AppDelegate URL can be replayed by getLaunchUrl() after the
-    // root mounts but before this effect commits. The dispatcher retained that
-    // request, so complete its navigation instead of waiting for another tap.
-    if (peekNotificationCenterOpenRequest() !== null) {
-      onOpen();
-    }
-
     // Native-only, gated on granted permission, guarded against double-register.
     // The token POST is what makes the server's APNs/FCM stack a live pipeline.
     void initPushRegistration();
@@ -129,8 +114,23 @@ export function NotificationsShellBoot(): null {
     return () => {
       unsubscribeBase();
       window.removeEventListener("steward-token-sync", onTokenAuthorityChange);
-      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
     };
+  }, []);
+
+  useEffect(() => {
+    const onOpen = () => {
+      goHome();
+      setTab("chat");
+    };
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    // A fallback AppDelegate URL can be replayed by getLaunchUrl() after the
+    // root mounts but before this effect commits. The dispatcher retained that
+    // request, so complete its navigation instead of waiting for another tap.
+    if (peekNotificationCenterOpenRequest() !== null) {
+      onOpen();
+    }
+    return () =>
+      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
   }, [setTab]);
 
   return null;

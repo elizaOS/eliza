@@ -14,15 +14,15 @@ const mocks = vi.hoisted(() => ({
   setTab: vi.fn(),
   goHome: vi.fn(),
 }));
+const appState = vi.hoisted(() => ({ setTab: mocks.setTab }));
 
 vi.mock("../../api/client", () => ({
   client: { onBaseUrlChange: mocks.onBaseUrlChange },
 }));
 
 vi.mock("../../state", () => ({
-  useAppSelector: (
-    selector: (state: { setTab: typeof mocks.setTab }) => unknown,
-  ) => selector({ setTab: mocks.setTab }),
+  useAppSelector: (selector: (state: typeof appState) => unknown) =>
+    selector(appState),
 }));
 vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
 vi.mock("../../bridge/native-notifications", () => ({
@@ -55,6 +55,7 @@ afterEach(() => {
     acknowledgeNotificationCenterOpenRequest(pendingRequestId);
   }
   vi.clearAllMocks();
+  appState.setTab = mocks.setTab;
   mocks.localTap.mockResolvedValue(undefined);
 });
 
@@ -182,5 +183,17 @@ describe("notification boot boundaries", () => {
 
     unmount();
     expect(mocks.unsubscribeBase).toHaveBeenCalledOnce();
+  });
+
+  it("does not re-register push ownership when the tab dispatcher identity changes", async () => {
+    const view = render(<NotificationsShellBoot />);
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
+
+    appState.setTab = vi.fn();
+    view.rerender(<NotificationsShellBoot />);
+
+    expect(mocks.push).toHaveBeenCalledOnce();
+    expect(mocks.onBaseUrlChange).toHaveBeenCalledOnce();
+    expect(mocks.unsubscribeBase).not.toHaveBeenCalled();
   });
 });
