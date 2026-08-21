@@ -118,22 +118,21 @@ export class BrowserBridgeEnrollmentBroker {
       };
     } catch (error) {
       // error-policy:J1 native-host failures become a bounded protocol response; secrets are omitted.
+      const code: BrowserBridgeNativeErrorCode =
+        error instanceof BrowserBridgeNativeProtocolError
+          ? mapProtocolErrorCode(error.code)
+          : error instanceof BrowserBridgePairingError
+            ? error.code
+            : "broker_unavailable";
       return {
         v: 1,
         type: "browser_bridge.error",
         requestId,
-        code:
-          error instanceof BrowserBridgeNativeProtocolError
-            ? mapProtocolErrorCode(error.code)
-            : error instanceof BrowserBridgePairingError
-              ? error.code
-              : "broker_unavailable",
+        code,
         retryable:
-          !(error instanceof BrowserBridgeNativeProtocolError) &&
-          !(
-            error instanceof BrowserBridgePairingError &&
-            error.code === "revoked"
-          ),
+          code === "app_not_running" ||
+          code === "app_not_authenticated" ||
+          code === "broker_unavailable",
       };
     }
   }

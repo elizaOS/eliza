@@ -129,7 +129,7 @@ describe("browser bridge enrollment broker", () => {
     expect(JSON.stringify(response)).not.toContain("secret internal detail");
   });
 
-  it("maps forged authentication and replay to bounded non-secret errors", async () => {
+  it("maps forged authentication, replay, and stale envelopes to retryable bounded errors", async () => {
     const broker = new BrowserBridgeEnrollmentBroker({
       ...baseOptions,
       ownerSession: async () => ({
@@ -159,7 +159,7 @@ describe("browser bridge enrollment broker", () => {
     ).toMatchObject({
       type: "browser_bridge.error",
       code: "broker_unavailable",
-      retryable: false,
+      retryable: true,
     });
     expect((await broker.handle(valid)).type).toBe(
       "browser_bridge.enroll_result",
@@ -167,7 +167,24 @@ describe("browser bridge enrollment broker", () => {
     expect(await broker.handle(valid)).toMatchObject({
       type: "browser_bridge.error",
       code: "broker_unavailable",
-      retryable: false,
+      retryable: true,
+    });
+    const stale = signBrokerEnvelope(
+      {
+        protocol: BROWSER_BRIDGE_BROKER_PROTOCOL,
+        timestampMs: nowMs - 60_001,
+        caller: { browser: "chrome", id: callerId },
+        request: {
+          ...request().request,
+          nonce: Buffer.alloc(32, 7).toString("base64url"),
+        },
+      },
+      secret,
+    );
+    expect(await broker.handle(stale)).toMatchObject({
+      type: "browser_bridge.error",
+      code: "broker_unavailable",
+      retryable: true,
     });
   });
 

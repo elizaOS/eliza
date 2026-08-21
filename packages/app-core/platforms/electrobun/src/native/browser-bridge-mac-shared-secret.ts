@@ -1,14 +1,12 @@
-/** Resolves the signed helper contract for Safari app-group and shared-Keychain enrollment. */
+/** Stores Safari enrollment HMAC material inside the provisioned shared App Group container. */
 
-import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  MAC_BROWSER_BRIDGE_APP_GROUP,
-  MAC_BROWSER_BRIDGE_KEYCHAIN_ACCOUNT,
-  MAC_BROWSER_BRIDGE_KEYCHAIN_SERVICE,
-} from "./browser-bridge-broker-transport";
+import { MAC_BROWSER_BRIDGE_APP_GROUP } from "./browser-bridge-broker-transport";
+
+export const MAC_BROWSER_BRIDGE_SHARED_SECRET_NAME = "s";
 
 export function resolveMacBrowserBridgeAppGroupContainer(
   homeDir = os.homedir(),
@@ -21,66 +19,136 @@ export function resolveMacBrowserBridgeAppGroupContainer(
   );
 }
 
-export function resolveMacBrowserBridgeKeychainHelper(
-  moduleDir: string,
-  exists: (candidate: string) => boolean = fs.existsSync,
+export function resolveMacBrowserBridgeSharedSecretPath(
+  containerPath: string,
 ): string {
-  const candidates = [
-    path.resolve(moduleDir, "..", "browser-bridge-keychain-helper"),
-    path.resolve(
-      moduleDir,
-      "..",
-      "..",
-      "build",
-      "browser-bridge-keychain-helper",
-    ),
-  ];
-  const resolved = candidates.find(exists);
-  if (!resolved) throw new Error("packaged shared-Keychain helper is missing");
-  return resolved;
-}
-
-export function macSharedKeychainHelperInvocation(
-  helperPath: string,
-  accessGroup: string,
-): {
-  command: string;
-  args: string[];
-} {
-  if (!path.isAbsolute(helperPath))
-    throw new Error("shared Keychain helper path must be absolute");
-  if (!/^[A-Z0-9]{10}\.ai\.elizaos\.browserbridge\.shared$/.test(accessGroup)) {
-    throw new Error("shared Keychain access group is not concrete");
+  if (!path.isAbsolute(containerPath)) {
+    throw new Error("browser bridge App Group container path must be absolute");
   }
-  return {
-    command: helperPath,
-    args: [
-      "get-or-create",
-      "--service",
-      MAC_BROWSER_BRIDGE_KEYCHAIN_SERVICE,
-      "--account",
-      MAC_BROWSER_BRIDGE_KEYCHAIN_ACCOUNT,
-      "--access-group",
-      accessGroup,
-      "--bytes",
-      "32",
-    ],
-  };
+  return path.join(containerPath, MAC_BROWSER_BRIDGE_SHARED_SECRET_NAME);
 }
 
-export function loadOrCreateMacSharedKeychainSecret(
-  helperPath: string,
-  accessGroup: string,
+function validateContainer(containerPath: string, expectedUid: number): void {
+  const stat = fs.lstatSync(containerPath);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(
+      "browser bridge App Group container must be a real directory",
+    );
+  }
+  if (expectedUid >= 0 && stat.uid !== expectedUid) {
+    throw new Error("browser bridge App Group container has the wrong owner");
+  }
+}
+
+function readSecretDescriptor(
+  descriptor: number,
+  secretPath: string,
+  expectedUid: number,
 ): Buffer {
-  const invocation = macSharedKeychainHelperInvocation(helperPath, accessGroup);
-  const result = spawnSync(invocation.command, invocation.args, {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 5_000,
-  });
-  if (result.status !== 0) throw new Error("shared Keychain helper failed");
-  const secret = Buffer.from(result.stdout.trim(), "base64");
-  if (secret.byteLength !== 32)
-    throw new Error("shared Keychain helper returned invalid secret");
+  const descriptorStat = fs.fstatSync(descriptor);
+  const pathStat = fs.lstatSync(secretPath);
+  if (
+    pathStat.isSymbolicLink() ||
+    !descriptorStat.isFile() ||
+    !pathStat.isFile() ||
+    descriptorStat.dev !== pathStat.dev ||
+    descriptorStat.ino !== pathStat.ino ||
+    (descriptorStat.mode & 0o777) !== 0o600
+  ) {
+    throw new Error(
+      "browser bridge App Group secret is not a private regular file",
+    );
+  }
+  if (expectedUid >= 0 && descriptorStat.uid !== expectedUid) {
+    throw new Error("browser bridge App Group secret has the wrong owner");
+  }
+  const secret = Buffer.alloc(32);
+  let offset = 0;
+  while (offset < secret.byteLength) {
+    const count = fs.readSync(
+      descriptor,
+      secret,
+      offset,
+      secret.byteLength - offset,
+      offset,
+    );
+    if (count === 0) break;
+    offset += count;
+  }
+  if (offset !== 32 || descriptorStat.size !== 32) {
+    throw new Error("browser bridge App Group secret has invalid length");
+  }
   return secret;
+}
+
+export function loadMacBrowserBridgeSharedSecret(
+  containerPath: string,
+  expectedUid = typeof process.getuid === "function" ? process.getuid() : -1,
+): Buffer {
+  validateContainer(containerPath, expectedUid);
+  const secretPath = resolveMacBrowserBridgeSharedSecretPath(containerPath);
+  const descriptor = fs.openSync(
+    secretPath,
+    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    return readSecretDescriptor(descriptor, secretPath, expectedUid);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
+
+export function loadOrCreateMacBrowserBridgeSharedSecret(
+  containerPath: string,
+  randomBytes: (size: number) => Buffer = crypto.randomBytes,
+  expectedUid = typeof process.getuid === "function" ? process.getuid() : -1,
+): Buffer {
+  validateContainer(containerPath, expectedUid);
+  const secretPath = resolveMacBrowserBridgeSharedSecretPath(containerPath);
+  const secret = randomBytes(32);
+  if (secret.byteLength !== 32) {
+    throw new Error(
+      "browser bridge App Group secret generator returned invalid length",
+    );
+  }
+  let descriptor: number;
+  try {
+    descriptor = fs.openSync(
+      secretPath,
+      fs.constants.O_RDWR |
+        fs.constants.O_CREAT |
+        fs.constants.O_EXCL |
+        (fs.constants.O_NOFOLLOW ?? 0),
+      0o600,
+    );
+  } catch (error) {
+    // error-policy:J1 an existing item is accepted only through the same no-follow validation path.
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      return loadMacBrowserBridgeSharedSecret(containerPath, expectedUid);
+    }
+    throw error;
+  }
+  try {
+    fs.fchmodSync(descriptor, 0o600);
+    let offset = 0;
+    while (offset < secret.byteLength) {
+      offset += fs.writeSync(
+        descriptor,
+        secret,
+        offset,
+        secret.byteLength - offset,
+        offset,
+      );
+    }
+    fs.fsyncSync(descriptor);
+    const validated = readSecretDescriptor(descriptor, secretPath, expectedUid);
+    if (!crypto.timingSafeEqual(secret, validated)) {
+      throw new Error(
+        "browser bridge App Group secret write verification failed",
+      );
+    }
+    return validated;
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
