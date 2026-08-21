@@ -25,6 +25,7 @@ function scenario(): ScenarioDefinition {
     domain: "calendar",
     lane: "live-only",
     executionProfile: "provider-qualified",
+    evidenceScope: "provider-certification",
     isolation: "per-scenario",
     turns: [
       {
@@ -43,6 +44,7 @@ function scenario(): ScenarioDefinition {
         name: "calendar-create",
         observerId: "calendar-observer",
         provider: "google-calendar",
+        connectorProvider: "google",
         accountId: "parent-account",
         operation: "event-create",
         minCount: 1,
@@ -77,6 +79,12 @@ function bindings(): ProviderRunBindings {
     target: {
       principalRefSha256: hash("parent-principal"),
       roomRefSha256: hash("parent-room"),
+      operation: {
+        schema: "eliza.provider-operation-binding.v1",
+        kind: "google-calendar.event-create",
+        providerTargetRefSha256: hash("provider-target"),
+        operationInputSha256: hash("operation-input"),
+      },
     },
     models: {
       actingAdapter: "eliza-runtime",
@@ -88,7 +96,7 @@ function bindings(): ProviderRunBindings {
     },
     connectors: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         environment: "provider-sandbox",
@@ -96,7 +104,7 @@ function bindings(): ProviderRunBindings {
     ],
     ingress: {
       kind: "provider-webhook",
-      provider: "google-calendar",
+      provider: "google",
       channel: "google-chat",
       accountRefSha256,
       connectionRefSha256,
@@ -106,7 +114,7 @@ function bindings(): ProviderRunBindings {
     },
     capabilities: [
       {
-        provider: "google-calendar",
+        provider: "google",
         accountRefSha256,
         connectionRefSha256,
         capability: "event-create",
@@ -121,7 +129,7 @@ function bindings(): ProviderRunBindings {
         sourceKind: "provider-api",
         system: "google-calendar",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256,
         connectionRefSha256,
         requiredCount: 1,
@@ -131,6 +139,46 @@ function bindings(): ProviderRunBindings {
         providerAcceptanceRequired: true,
         readbackRequired: true,
         idempotencyRequired: true,
+      },
+    ],
+    failureProbes: [
+      {
+        probeId: "calendar-auth-denied",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "authorization-denied",
+        requestPayloadSha256: hash("auth-denied-request"),
+        expectedStatusCode: 403,
+        expectedErrorCodeSha256: hash("insufficient-scope"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("denied-grant"),
+        maxObservationAgeMs: 60_000,
+      },
+      {
+        probeId: "calendar-provider-rejected",
+        observerId: "calendar-observer",
+        sourceKind: "provider-api",
+        system: "google-calendar",
+        environment: "provider-sandbox",
+        provider: "google-calendar",
+        connectorProvider: "google",
+        accountRefSha256,
+        connectionRefSha256,
+        operation: "event-create",
+        failureClass: "provider-rejected",
+        requestPayloadSha256: hash("provider-rejected-request"),
+        expectedStatusCode: 400,
+        expectedErrorCodeSha256: hash("invalid-event"),
+        scopeSha256: hash("calendar-scope"),
+        authorizationGrantSha256: hash("grant"),
+        maxObservationAgeMs: 60_000,
       },
     ],
   };
@@ -194,6 +242,27 @@ describe("createProviderQualificationManifest", () => {
       /kind.*unsupported/,
     );
   });
+
+  it.each(["readbackRequired", "idempotencyRequired"] as const)(
+    "rejects provider-effect contracts that disable %s",
+    (field) => {
+      const unsafeBindings = structuredClone(bindings());
+      const providerContract = unsafeBindings.observationContracts[0] as
+        | (Record<string, unknown> & { kind: "provider-effect" })
+        | undefined;
+      if (providerContract?.kind !== "provider-effect") {
+        throw new Error("test fixture lacks its provider-effect contract");
+      }
+      providerContract[field] = false;
+
+      expect(() =>
+        createProviderQualificationManifest({
+          scenario: scenario(),
+          bindings: unsafeBindings,
+        }),
+      ).toThrow(/must require provider readback and idempotency verification/);
+    },
+  );
 
   it("rejects accessors and hidden fields without invoking them", () => {
     const accessorBindings = bindings();
@@ -440,7 +509,7 @@ describe("createProviderQualificationManifest", () => {
         sourceKind: "durable-database",
         system: "draft-store",
         environment: "provider-sandbox",
-        connectorProvider: "google-calendar",
+        connectorProvider: "google",
         accountRefSha256: hash("parent-account"),
         connectionRefSha256: hash("google-connection"),
         requiredCount: 1,
@@ -456,6 +525,28 @@ describe("createProviderQualificationManifest", () => {
     ).toThrow(/provider-effect or provider-no-effect/);
   });
 
+  it("requires both exact negative-path probes on the target provider operation", () => {
+    const missingRejection = bindings();
+    missingRejection.failureProbes = [
+      missingRejection.failureProbes[0],
+    ] as never;
+    expect(() =>
+      createProviderQualificationManifest({
+        scenario: scenario(),
+        bindings: missingRejection,
+      }),
+    ).toThrow(/authorization-denied and provider-rejected probes/);
+
+    const wrongOperation = bindings();
+    wrongOperation.failureProbes[1].operation = "event-delete";
+    expect(() =>
+      createProviderQualificationManifest({
+        scenario: scenario(),
+        bindings: wrongOperation,
+      }),
+    ).toThrow(/must exercise the exact target provider, operation/);
+  });
+
   it("accepts two bound calendar providers while ingress selects one account", () => {
     const definition = scenario();
     definition.finalChecks = [
@@ -465,6 +556,7 @@ describe("createProviderQualificationManifest", () => {
         name: "guest-availability-read",
         observerId: "outlook-observer",
         provider: "outlook-calendar",
+        connectorProvider: "outlook-calendar",
         accountId: "guest-account",
         minCount: 1,
         intervalCoversScenario: true,
@@ -525,7 +617,7 @@ describe("createProviderQualificationManifest", () => {
       bindings: multi,
     });
     expect(manifest.connectors).toHaveLength(2);
-    expect(manifest.ingress.provider).toBe("google-calendar");
+    expect(manifest.ingress.provider).toBe("google");
     expect(manifest.requiredObservations).toHaveLength(2);
   });
 

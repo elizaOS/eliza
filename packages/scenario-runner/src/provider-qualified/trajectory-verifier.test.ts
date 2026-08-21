@@ -106,6 +106,18 @@ describe("verifyScenarioTrajectories", () => {
     expect(result.trajectories[0]?.stages[0]?.sha256).toBe(
       canonicalSha256(trajectory.stages[0], "stage"),
     );
+    expect(result.trajectories[0]?.stages[0]?.tool).toEqual({
+      name: "CREATE_CALENDAR_EVENT",
+      argsSha256: canonicalSha256(
+        trajectory.stages[0].tool.args,
+        "trajectory[0].stages[0].tool.args",
+      ),
+      resultSha256: canonicalSha256(
+        trajectory.stages[0].tool.result,
+        "trajectory[0].stages[0].tool.result",
+      ),
+      success: true,
+    });
     expect(result.setSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(
       validateVerifiedScenarioTrajectorySet(JSON.parse(JSON.stringify(result))),
