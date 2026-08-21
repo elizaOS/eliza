@@ -151,6 +151,21 @@ export interface ScheduledTaskStore {
     options?: ScheduledTaskUpsertOptions,
   ): Promise<void>;
   /**
+   * Persist the full task row only while the stored row still shows
+   * `expectedStatus`. Returns `false` when zero rows matched — a concurrent
+   * writer (a user verb such as `complete` / `dismiss` / `snooze`) moved the
+   * row's lifecycle state while this snapshot was stale, and overwriting it
+   * would silently revert the user's action. The fire path passes the status
+   * observed at claim time (`"fired"`) so post-dispatch persistence can never
+   * clobber a verb that landed while the dispatcher was in flight.
+   */
+  upsertIfStatus(
+    task: ScheduledTask,
+    options: ScheduledTaskUpsertOptions & {
+      expectedStatus: ScheduledTask["state"]["status"];
+    },
+  ): Promise<boolean>;
+  /**
    * Atomically transition a row to `"fired"`, returning the resulting row.
    * Returns `{ kind: "raced" }` when zero rows matched — either because the
    * row's state moved (another tick claimed it) or the id no longer exists.
@@ -195,6 +210,14 @@ export function createInMemoryScheduledTaskStore(): ScheduledTaskStore {
   return {
     async upsert(task) {
       map.set(task.taskId, structuredClone(task));
+    },
+    async upsertIfStatus(task, options) {
+      const existing = map.get(task.taskId);
+      if (!existing || existing.state.status !== options.expectedStatus) {
+        return false;
+      }
+      map.set(task.taskId, structuredClone(task));
+      return true;
     },
     async claimForFire({ taskId, firedAtIso, expected }) {
       const existing = map.get(taskId);
@@ -660,8 +683,10 @@ export interface EscalationCursorView {
  * - `fired` — the task transitioned to `"fired"` (or was deferred via
  *   `gate.defer`, reopened for a recurrence, etc.) and the dispatcher ran.
  *   `task` is the post-mutation state.
- * - `raced` — another tick atomically claimed this task first. Caller drops
- *   the attempt silently; the winning tick's dispatch is authoritative.
+ * - `raced` — another writer moved the row out from under this attempt: a
+ *   parallel tick claimed it first, or a user verb (`complete` / `dismiss` /
+ *   `snooze`) settled it while this attempt's dispatch was in flight. Caller
+ *   drops the attempt silently; the winning writer is authoritative.
  * - `skipped` — the task was skipped without dispatch: global-pause active,
  *   a gate denied, or the task was already terminal and not eligible for
  *   recurrence refire.
@@ -900,8 +925,25 @@ export function createScheduledTaskRunner(
     };
   }
 
-  async function persist(task: ScheduledTask): Promise<ScheduledTask> {
+  /**
+   * Persist a task snapshot. Pass `expectedStatus` on post-claim writes: the
+   * store then only applies the row while it still shows that status, and
+   * this returns `null` when a concurrent user verb won instead — callers
+   * must treat `null` as "the row moved; reload before acting on it" and
+   * never write derived state-log rows for a persistence that did not happen.
+   */
+  async function persist(
+    task: ScheduledTask,
+    opts?: { expectedStatus?: ScheduledTask["state"]["status"] },
+  ): Promise<ScheduledTask | null> {
     const nextFireAtIso = await resolveNextFireAt(task);
+    if (opts?.expectedStatus) {
+      const applied = await deps.store.upsertIfStatus(task, {
+        nextFireAtIso,
+        expectedStatus: opts.expectedStatus,
+      });
+      return applied ? structuredClone(task) : null;
+    }
     await deps.store.upsert(task, { nextFireAtIso });
     return structuredClone(task);
   }
@@ -1843,7 +1885,13 @@ export function createScheduledTaskRunner(
         ? { lastDispatchResult: failure.dispatchResult }
         : {}),
     };
-    await persist(claimed);
+    // A verb that landed while the dispatcher was in flight owns the row's
+    // lifecycle now: skip the failed write, its state-log row, and the
+    // onFail pipeline so history records only the user's settlement.
+    const persisted = await persist(claimed, { expectedStatus: "fired" });
+    if (!persisted) {
+      return { kind: "raced", taskId: claimed.taskId };
+    }
     await logger.log(claimed.taskId, "failed", {
       reason,
       detail: {
@@ -2092,8 +2140,16 @@ export function createScheduledTaskRunner(
       lastDispatchedAt: fireAtIso,
     });
     // Persist the post-claim metadata (escalationCursor, lastDecisionLog).
-    // `persist` recomputes `next_fire_at` from the now-`fired` row.
-    await persist(claimed);
+    // `persist` recomputes `next_fire_at` from the now-`fired` row. The
+    // status guard keeps a verb that landed between the claim and this write
+    // authoritative: if the row moved off `fired`, the user already settled
+    // the task and this fire must not dispatch (or log) at all.
+    const claimedPersisted = await persist(claimed, {
+      expectedStatus: "fired",
+    });
+    if (!claimedPersisted) {
+      return { kind: "raced", taskId: claimed.taskId };
+    }
     await logger.log(claimed.taskId, "fired");
 
     // Host-capability gate. If the host can't satisfy the task's profile,
@@ -2176,7 +2232,14 @@ export function createScheduledTaskRunner(
         claimed.metadata.pendingPromptRoomId = pendingPromptRoomId;
       }
       clearPendingDispatch(claimed);
-      await persist(claimed);
+      // The dispatch already reached the user, so the fire itself stands;
+      // the guard only stops this stale snapshot from reverting a verb that
+      // landed mid-flight. Surface the authoritative row either way.
+      const persisted = await persist(claimed, { expectedStatus: "fired" });
+      if (!persisted) {
+        const current = await deps.store.get(claimed.taskId);
+        return { kind: "fired", task: current ?? claimed };
+      }
     } else {
       // Void dispatchers (e.g. notify-only event emitters) report no typed
       // result; a completed call is success, so drop the continuation.
@@ -2193,7 +2256,13 @@ export function createScheduledTaskRunner(
         };
       }
       if (pending) clearPendingDispatch(claimed);
-      if (pending || pendingPromptRoomId) await persist(claimed);
+      if (pending || pendingPromptRoomId) {
+        const persisted = await persist(claimed, { expectedStatus: "fired" });
+        if (!persisted) {
+          const current = await deps.store.get(claimed.taskId);
+          return { kind: "fired", task: current ?? claimed };
+        }
+      }
     }
     return { kind: "fired", task: claimed };
   }
@@ -2249,7 +2318,13 @@ export function createScheduledTaskRunner(
       case "complete":
         // decideDispatchPolicy only returns `complete` for ok:true input.
         clearPendingDispatch(task);
-        await persist(task);
+        {
+          const persisted = await persist(task, { expectedStatus: "fired" });
+          if (!persisted) {
+            const current = await deps.store.get(task.taskId);
+            return { kind: "fired", task: current ?? task };
+          }
+        }
         return { kind: "fired", task };
       case "retry": {
         // `retryAfterMinutes` is connector-supplied and schema-unbounded; a
@@ -2272,7 +2347,13 @@ export function createScheduledTaskRunner(
           attempt: attempt + 1,
           ...(hasEventPayload ? { eventPayload: args.eventPayload } : {}),
         });
-        await persist(task);
+        // A verb that landed mid-flight owns the row: do not park it back
+        // into `scheduled` (that would resurrect a settled task) and do not
+        // write the retry log row for a persistence that never happened.
+        const persisted = await persist(task, { expectedStatus: "fired" });
+        if (!persisted) {
+          return { kind: "raced", taskId: task.taskId };
+        }
         await logger.log(task.taskId, "dispatch_retried", {
           reason: decision.reason,
           detail: {
@@ -2325,7 +2406,12 @@ export function createScheduledTaskRunner(
         if (decision.kind === "surface_degraded") {
           recordConnectorDegradation(task, decision, fireAtIso);
         }
-        await persist(task);
+        // Same mid-flight guard as the retry path: a settled row must not be
+        // parked back into `scheduled` for a ladder step it will never take.
+        const persisted = await persist(task, { expectedStatus: "fired" });
+        if (!persisted) {
+          return { kind: "raced", taskId: task.taskId };
+        }
         await logger.log(task.taskId, "escalated", {
           reason: `dispatch_failed:${decision.reason}`,
           detail: {
@@ -2402,7 +2488,13 @@ export function createScheduledTaskRunner(
         message: detailMessage,
       },
     };
-    await persist(task);
+    // Same post-claim guard as the success path: a verb that landed while
+    // the failed dispatch was in flight owns the row, so neither the failed
+    // write, its state-log row, nor the onFail pipeline may run.
+    const persisted = await persist(task, { expectedStatus: "fired" });
+    if (!persisted) {
+      return { kind: "raced", taskId: task.taskId };
+    }
     await logger.log(task.taskId, "failed", {
       reason: `dispatch_failed:${reason}`,
       detail: { message: detailMessage },
