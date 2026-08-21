@@ -26,6 +26,7 @@ import {
 import {
 	BUILTIN_RESPONSE_HANDLER_EVALUATORS,
 	messageHandlerFromFieldResult,
+	resolveZeroDeliveryRecovery,
 	runV5MessageRuntimeStage1,
 } from "../services/message";
 import { runWithTrajectoryContext } from "../trajectory-context";
@@ -4944,6 +4945,292 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent).toBeNull();
 			expect(result.result.responseMessages).toEqual([]);
 		}
+	});
+
+	// Zero-delivery recovery contract (#20086, backstop behind #20083): a
+	// RESPOND turn that ran tools and delivered no terminal/action-owned text
+	// must recover a grounded reply — even after an early progress ack — while
+	// never duplicating a delivery, never claiming success when every tool
+	// failed, and staying silent for a successfully accepted async handoff
+	// whose completion arrives through a later relay turn.
+	describe("zero-delivery recovery", () => {
+		const spawnTurnResponses = () => [
+			stage1Response({
+				thought: "Spawn the coding task.",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS_SPAWN_AGENT"],
+				replyText: "On it.",
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "spawn-1",
+						name: "TASKS_SPAWN_AGENT",
+						arguments: {},
+					},
+				],
+			},
+		];
+		const spawnAction = (
+			handlerResult: Record<string, unknown>,
+		): IAgentRuntime["actions"] =>
+			[
+				{
+					name: "TASKS_SPAWN_AGENT",
+					description: "Spawn a coding task.",
+					contexts: ["general"],
+					asyncHandoff: true,
+					validate: vi.fn(async () => true),
+					handler: vi.fn(async () => ({
+						continueChain: false,
+						...handlerResult,
+					})),
+				},
+			] as IAgentRuntime["actions"];
+
+		it("delivers a grounded terminal reply after an early progress ack when the tool failed with user-facing text", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({
+				success: false,
+				text: "",
+				userFacingText: "The sandbox rejected the spawn: quota exceeded.",
+			});
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				// The turn must end with the tool's grounded failure text —
+				// never a repeat of the ack and never silence.
+				expect(result.result.responseContent?.text).toBe(
+					"The sandbox rejected the spawn: quota exceeded.",
+				);
+			}
+		});
+
+		it("ends a failed-tool early-ack turn with failure-aware wording, never a success claim", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({ success: false, text: "" });
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				const text = result.result.responseContent?.text ?? "";
+				expect(text.length).toBeGreaterThan(0);
+				// The turn's only tool failed; the terminal reply must not claim
+				// the work finished and must not re-send the ack.
+				expect(text).not.toContain("finished");
+				expect(text).not.toBe("On it.");
+				expect(text).toContain("failed");
+			}
+		});
+
+		it("delivers the action's userFacingText after an early ack instead of ending silent", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({
+				success: true,
+				text: "",
+				userFacingText: "Spawned coding task session-1; progress will follow.",
+			});
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent?.text).toBe(
+					"Spawned coding task session-1; progress will follow.",
+				);
+			}
+		});
+
+		it("keeps a successfully accepted async handoff silent after the early ack", async () => {
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = spawnAction({ success: true, text: "" });
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+			});
+
+			expect(earlyReply).toHaveBeenCalledTimes(1);
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				// The ack promised background work that a completion relay will
+				// report; a manufactured "finished" line here would be a lie.
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.responseMessages).toEqual([]);
+			}
+		});
+
+		it("does not duplicate an action-owned callback delivery", async () => {
+			const deliveredLine = "Spawned the coding task: session-1.";
+			const runtime = makeRuntime(spawnTurnResponses());
+			runtime.actions = [
+				{
+					name: "TASKS_SPAWN_AGENT",
+					description: "Spawn a coding task.",
+					contexts: ["general"],
+					asyncHandoff: true,
+					validate: vi.fn(async () => true),
+					handler: vi.fn(async (...handlerArgs: unknown[]) => {
+						const callback = handlerArgs[4] as
+							| ((content: { text: string }) => Promise<unknown>)
+							| undefined;
+						await callback?.({ text: deliveredLine });
+						return {
+							success: true,
+							text: deliveredLine,
+							userFacingText: deliveredLine,
+							continueChain: false,
+						};
+					}),
+				},
+			] as IAgentRuntime["actions"];
+			const deliveredVisibleTexts = new Set<string>();
+			const delivered: string[] = [];
+			const earlyReply = vi.fn(async () => undefined);
+
+			const result = await runV5MessageRuntimeStage1({
+				runtime,
+				message: makeMessage(),
+				state: makeState(),
+				responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+				onResponseHandlerEarlyReply: earlyReply,
+				deliveredVisibleTexts,
+				callback: async (content) => {
+					if (content.text) {
+						delivered.push(content.text);
+						deliveredVisibleTexts.add(content.text.toLowerCase());
+					}
+					return [];
+				},
+			});
+
+			expect(result.kind).toBe("planned_reply");
+			expect(delivered).toEqual([deliveredLine]);
+			if (result.kind === "planned_reply") {
+				// The callback delivery is the turn's terminal text; recovery must
+				// not re-send it as a second bubble.
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.responseMessages).toEqual([]);
+			}
+		});
+
+		// Pure decision seam: the exact source precedence, ack suppression,
+		// failure-aware wording, and the async-handoff silence gate.
+		describe("resolveZeroDeliveryRecovery", () => {
+			it("prefers surviving planner text over everything else", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "The check passed on retry.",
+					actionResults: [{ success: true, userFacingText: "raw tool line" }],
+					stageOneAck: "On it.",
+					earlyReplySent: false,
+				});
+				expect(decision).toMatchObject({
+					recover: true,
+					text: "The check passed on retry.",
+					source: "plannedText",
+				});
+			});
+
+			it("prefers the LAST explicit action userFacingText ahead of the Stage-1 ack", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [
+						{ success: true, userFacingText: "first tool line" },
+						{ success: false },
+						{ success: true, userFacingText: "second tool line" },
+					],
+					stageOneAck: "On it.",
+					earlyReplySent: false,
+				});
+				expect(decision).toMatchObject({
+					recover: true,
+					text: "second tool line",
+					source: "actionUserFacingText",
+					actionSuccessCount: 2,
+					actionFailureCount: 1,
+				});
+			});
+
+			it("never re-sends the Stage-1 ack once an early ack shipped", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.text).not.toBe("On it.");
+				expect(decision.source).toBe("fallbackText");
+			});
+
+			it("uses failure-aware fallback wording when every tool failed", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }, { success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("failed");
+				expect(decision.text).not.toContain("finished");
+				expect(decision.actionSuccessCount).toBe(0);
+				expect(decision.actionFailureCount).toBe(2);
+			});
+
+			it("claims completion only when a tool actually succeeded", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("finished");
+			});
+
+			it("declines to recover a successful early-ack turn with nothing grounded to say", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(false);
+			});
+		});
 	});
 
 	it("voice turn signal can force IGNORE before early reply/planning", async () => {
