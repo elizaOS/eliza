@@ -35,6 +35,10 @@ export interface CredentialField {
 }
 
 const SAFE_PRESET_NAME_RE = /^[A-Za-z0-9_-]+$/;
+/**
+ * Deadline shared by a credential probe's request and every one of its body
+ * reads, so `/setup` cannot hang on an untrusted provider hop.
+ */
 export const SETUP_CREDENTIAL_FETCH_TIMEOUT_MS = 15_000;
 const CREDENTIAL_PROBE_MAX_BODY_BYTES = 64 * 1024;
 const CREDENTIAL_VALUE_MAX_LENGTH = 16 * 1024;
