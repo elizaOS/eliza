@@ -274,7 +274,31 @@ describe("truncateText", () => {
 
   it("handles custom ellipsis string and boundaries", () => {
     expect(truncateText("hello world", 8, "...")).toBe("hello...");
-    expect(truncateText("hello world", 2, "...")).toBe("...");
+    expect(truncateText("hello world", 2, "...")).toBe("..");
+  });
+
+  it.each([
+    { maxLength: 0, ellipsis: "...", expected: "" },
+    { maxLength: 1, ellipsis: "😀", expected: "h" },
+    { maxLength: 2, ellipsis: "😀", expected: "😀" },
+    { maxLength: 1, ellipsis: "\ud800", expected: "�" },
+  ])(
+    "bounds and sanitizes ellipsis $ellipsis at maxLength=$maxLength",
+    ({ maxLength, ellipsis, expected }) => {
+      const truncated = truncateText("hello world", maxLength, ellipsis);
+
+      expect(truncated).toBe(expected);
+      expect(truncated.length).toBeLessThanOrEqual(maxLength);
+      expect(truncated.isWellFormed()).toBe(true);
+    },
+  );
+
+  it("never exceeds maxLength for oversized custom ellipses", () => {
+    for (const maxLength of [0, 1, 2]) {
+      const truncated = truncateText("hello world", maxLength, "😀...");
+      expect(truncated.length).toBeLessThanOrEqual(maxLength);
+      expect(truncated.isWellFormed()).toBe(true);
+    }
   });
 });
 

@@ -552,8 +552,12 @@ export function truncateText(
   if (wellFormed.length <= maxLength) {
     return wellFormed;
   }
-  const budget = Math.max(0, maxLength - ellipsis.length);
-  return `${truncateWellFormed(wellFormed, budget)}${toWellFormedUnicode(ellipsis)}`;
+  const boundedEllipsis = truncateWellFormed(
+    toWellFormedUnicode(ellipsis),
+    maxLength,
+  );
+  const budget = Math.max(0, maxLength - boundedEllipsis.length);
+  return `${truncateWellFormed(wellFormed, budget)}${boundedEllipsis}`;
 }
 
 /**
