@@ -1,0 +1,304 @@
+/**
+ * Exercises the real capability-selection surface: deterministic retrieval
+ * (ranking, ambiguity flagging, designed-empty, flood metrics), account
+ * selection (policy denial, unavailability mapping, wrong-account prevention,
+ * ranking order), invalid-input rejection, and the evaluation harness run
+ * against the built-in corpus. Deterministic and mock-free — the corpus data
+ * are real contract values, not stand-ins for the system under test.
+ */
+import { describe, expect, it } from "vitest";
+import { ElizaError } from "../errors";
+import { PROVIDER_INTEGRATION_CONTRACT_VERSION } from "../types/provider-integrations";
+import {
+	type AccountSelectionPolicy,
+	selectConnectedAccount,
+} from "./account-selection";
+import { runCapabilitySelectionEvaluation } from "./evaluation";
+import {
+	CAPABILITY_EVALUATION_CATALOG,
+	CAPABILITY_EVALUATION_CORPUS,
+} from "./evaluation-corpus";
+import { retrieveCapabilities } from "./retrieval";
+
+const OPEN_POLICY: AccountSelectionPolicy = {
+	allowedModes: null,
+	allowedProviderIds: null,
+	blockedAccountIds: [],
+	maxRiskLevel: "R2",
+	preferredRegion: null,
+	maxUnitCostMicros: null,
+};
+
+describe("capability retrieval", () => {
+	it("ranks the intended capability first and bounds the retrieved token budget", () => {
+		const result = retrieveCapabilities({
+			catalog: CAPABILITY_EVALUATION_CATALOG,
+			intentText: "send an email to sam about the offsite",
+		});
+		expect(result.results[0]?.entry.capabilityId).toBe("email.message.send");
+		expect(result.metrics.retrievedCount).toBeLessThanOrEqual(5);
+		expect(result.metrics.retrievedPromptTokenEstimate).toBeLessThan(
+			result.metrics.catalogPromptTokenEstimate,
+		);
+		expect(result.metrics.floodRatio).toBeLessThan(0.6);
+	});
+
+	it("flags cross-domain near-ties as ambiguous with both contenders", () => {
+		const result = retrieveCapabilities({
+			catalog: CAPABILITY_EVALUATION_CATALOG,
+			intentText: "send a message",
+		});
+		expect(result.ambiguity.ambiguous).toBe(true);
+		expect(result.ambiguity.contenders).toContain("messaging.chat.send");
+		expect(result.ambiguity.contenders).toContain("email.message.send");
+	});
+
+	it("returns designed-empty for a non-matching intent instead of the full catalog", () => {
+		const result = retrieveCapabilities({
+			catalog: CAPABILITY_EVALUATION_CATALOG,
+			intentText: "zzqx flibberwock",
+		});
+		expect(result.results).toHaveLength(0);
+		expect(result.ambiguity.ambiguous).toBe(false);
+		expect(result.metrics.retrievedPromptTokenEstimate).toBe(0);
+	});
+
+	it("is idempotent for identical inputs", () => {
+		const run = () =>
+			retrieveCapabilities({
+				catalog: CAPABILITY_EVALUATION_CATALOG,
+				intentText: "search my files and documents",
+			});
+		expect(run()).toEqual(run());
+	});
+
+	it("rejects duplicate capability ids, bad token estimates, and bad limits", () => {
+		const entry = CAPABILITY_EVALUATION_CATALOG[0];
+		expect(() =>
+			retrieveCapabilities({ catalog: [entry, entry], intentText: "email" }),
+		).toThrowError(ElizaError);
+		expect(() =>
+			retrieveCapabilities({
+				catalog: [{ ...entry, promptTokenEstimate: 0 }],
+				intentText: "email",
+			}),
+		).toThrowError(ElizaError);
+		expect(() =>
+			retrieveCapabilities({
+				catalog: CAPABILITY_EVALUATION_CATALOG,
+				intentText: "email",
+				limit: 0,
+			}),
+		).toThrowError(ElizaError);
+	});
+});
+
+describe("deterministic account selection", () => {
+	const capability = {
+		capabilityId: "email.message.send",
+		riskLevel: "R2",
+		status: "available",
+	} as const;
+	const baseAccount = {
+		contractVersion: PROVIDER_INTEGRATION_CONTRACT_VERSION,
+		providerId: "google-mail",
+		mode: "cloud",
+		status: "connected",
+		displayName: null,
+		capabilities: [capability],
+		lastUsedAt: null,
+	} as const;
+	const intent = {
+		capabilityId: "email.message.send",
+		riskLevel: "R2",
+		requestedAccountId: null,
+	} as const;
+
+	it("never substitutes a different account for an ineligible pinned account", () => {
+		const result = selectConnectedAccount(
+			{ ...intent, requestedAccountId: "acct-b" },
+			[
+				{ ...baseAccount, accountId: "acct-a" },
+				{ ...baseAccount, accountId: "acct-b", status: "revoked" },
+			],
+			OPEN_POLICY,
+			[
+				{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 },
+				{ accountId: "acct-b", healthy: true, region: "us", unitCostMicros: 1 },
+			],
+		);
+		expect(result).toEqual({
+			outcome: "unavailable",
+			code: "account_revoked",
+			retryable: false,
+		});
+	});
+
+	it("prefers a policy denial over unavailability when nothing is eligible", () => {
+		const result = selectConnectedAccount(
+			intent,
+			[
+				{ ...baseAccount, accountId: "acct-a", status: "unavailable" },
+				{ ...baseAccount, accountId: "acct-b" },
+			],
+			{ ...OPEN_POLICY, blockedAccountIds: ["acct-b"] },
+			[
+				{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 },
+				{ accountId: "acct-b", healthy: true, region: "us", unitCostMicros: 1 },
+			],
+		);
+		expect(result).toEqual({
+			outcome: "denied",
+			reasonCode: "account_policy_denied",
+			accountId: null,
+		});
+	});
+
+	it("orders eligible accounts by region, cost, recency, then accountId", () => {
+		const result = selectConnectedAccount(
+			intent,
+			[
+				{ ...baseAccount, accountId: "acct-c" },
+				{ ...baseAccount, accountId: "acct-a" },
+				{ ...baseAccount, accountId: "acct-b" },
+			],
+			{ ...OPEN_POLICY, preferredRegion: "eu" },
+			[
+				{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 },
+				{ accountId: "acct-b", healthy: true, region: "eu", unitCostMicros: 9 },
+				{ accountId: "acct-c", healthy: true, region: "eu", unitCostMicros: 9 },
+			],
+		);
+		expect(result.outcome).toBe("selected");
+		if (result.outcome === "selected") {
+			expect(result.account.accountId).toBe("acct-b");
+			expect(result.rationale.consideredAccountIds).toEqual([
+				"acct-b",
+				"acct-c",
+				"acct-a",
+			]);
+			expect(result.rationale.regionMatched).toBe(true);
+		}
+	});
+
+	it("maps a stricter capability grant than the intent risk to needs_scope", () => {
+		const result = selectConnectedAccount(
+			{ ...intent, riskLevel: "R2" },
+			[
+				{
+					...baseAccount,
+					accountId: "acct-a",
+					capabilities: [{ ...capability, riskLevel: "R1" }],
+				},
+			],
+			{ ...OPEN_POLICY, maxRiskLevel: "R3" },
+			[{ accountId: "acct-a", healthy: true, region: "us", unitCostMicros: 1 }],
+		);
+		expect(result).toEqual({
+			outcome: "unavailable",
+			code: "needs_scope",
+			retryable: false,
+		});
+	});
+
+	it("rejects missing signals and duplicate accounts as invalid input", () => {
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[{ ...baseAccount, accountId: "acct-a" }],
+				OPEN_POLICY,
+				[],
+			),
+		).toThrowError(ElizaError);
+		expect(() =>
+			selectConnectedAccount(
+				intent,
+				[
+					{ ...baseAccount, accountId: "acct-a" },
+					{ ...baseAccount, accountId: "acct-a" },
+				],
+				OPEN_POLICY,
+				[
+					{
+						accountId: "acct-a",
+						healthy: true,
+						region: "us",
+						unitCostMicros: 1,
+					},
+				],
+			),
+		).toThrowError(ElizaError);
+	});
+});
+
+describe("evaluation harness", () => {
+	it("passes every built-in corpus case and reports flood metrics", () => {
+		const report = runCapabilitySelectionEvaluation(
+			CAPABILITY_EVALUATION_CATALOG,
+			CAPABILITY_EVALUATION_CORPUS,
+		);
+		const failed = report.cases.filter((entry) => !entry.passed);
+		expect(
+			failed.map((entry) => `${entry.name}: ${entry.failures.join("; ")}`),
+		).toEqual([]);
+		expect(report.summary.total).toBe(CAPABILITY_EVALUATION_CORPUS.length);
+		expect(report.summary.passed).toBe(report.summary.total);
+		expect(report.summary.meanFloodRatio).toBeGreaterThan(0);
+		expect(report.summary.meanFloodRatio).toBeLessThan(0.6);
+		expect(report.summary.maxLatencyMs).toBeGreaterThanOrEqual(0);
+	});
+
+	it("produces identical outcomes across repeated runs", () => {
+		const strip = (
+			report: ReturnType<typeof runCapabilitySelectionEvaluation>,
+		) => report.cases.map((entry) => ({ ...entry, latencyMs: 0 }));
+		expect(
+			strip(
+				runCapabilitySelectionEvaluation(
+					CAPABILITY_EVALUATION_CATALOG,
+					CAPABILITY_EVALUATION_CORPUS,
+				),
+			),
+		).toEqual(
+			strip(
+				runCapabilitySelectionEvaluation(
+					CAPABILITY_EVALUATION_CATALOG,
+					CAPABILITY_EVALUATION_CORPUS,
+				),
+			),
+		);
+	});
+
+	it("rejects an empty corpus and duplicate case names", () => {
+		expect(() =>
+			runCapabilitySelectionEvaluation(CAPABILITY_EVALUATION_CATALOG, []),
+		).toThrowError(ElizaError);
+		const dup = CAPABILITY_EVALUATION_CORPUS[0];
+		expect(() =>
+			runCapabilitySelectionEvaluation(CAPABILITY_EVALUATION_CATALOG, [
+				dup,
+				dup,
+			]),
+		).toThrowError(ElizaError);
+	});
+
+	it("reports a failing case with actionable failure text", () => {
+		const report = runCapabilitySelectionEvaluation(
+			CAPABILITY_EVALUATION_CATALOG,
+			[
+				{
+					name: "expected wrong top capability",
+					intentText: "send an email to sam",
+					retrieval: {
+						topCapabilityId: "calendar.event.create",
+						mustInclude: [],
+						expectAmbiguous: false,
+					},
+					selection: null,
+				},
+			],
+		);
+		expect(report.summary.failed).toBe(1);
+		expect(report.cases[0].failures[0]).toContain("calendar.event.create");
+	});
+});

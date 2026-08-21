@@ -26,6 +26,7 @@ export * from "./app-route-plugin-registry";
 export * from "./boot-env";
 export * from "./build-variant";
 export * from "./capabilities";
+export * from "./capability-selection";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
