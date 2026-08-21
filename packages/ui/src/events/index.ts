@@ -357,10 +357,27 @@ const navigateViewRequestResolvers = new WeakMap<
   (applied: boolean) => void
 >();
 const pendingNavigateViewRequests: NavigateViewDetail[] = [];
+let drainingNavigateViewRequests = false;
 
 function emitNavigateViewRequest(detail: NavigateViewDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(createNavigateViewEvent(detail));
+}
+
+function drainNavigateViewRequests(): void {
+  if (drainingNavigateViewRequests || typeof window === "undefined") return;
+  drainingNavigateViewRequests = true;
+  try {
+    while (pendingNavigateViewRequests.length > 0) {
+      const request = pendingNavigateViewRequests[0];
+      emitNavigateViewRequest(request);
+      // Every attached listener declined or threw. Preserve strict FIFO: a
+      // later request cannot overtake this one while it is still unclaimed.
+      if (pendingNavigateViewRequests[0] === request) break;
+    }
+  } finally {
+    drainingNavigateViewRequests = false;
+  }
 }
 
 function dropOldestPendingNavigateViewRequest(): void {
@@ -415,7 +432,7 @@ export function dispatchNavigateViewRequest(
   if (pendingNavigateViewRequests.length > MAX_PENDING_NAVIGATE_VIEW_REQUESTS) {
     dropOldestPendingNavigateViewRequest();
   }
-  emitNavigateViewRequest(request);
+  drainNavigateViewRequests();
   return applied;
 }
 
@@ -456,9 +473,7 @@ export function listenForNavigateViewRequests(
   };
 
   window.addEventListener(NAVIGATE_VIEW_EVENT, handle);
-  for (const request of [...pendingNavigateViewRequests]) {
-    emitNavigateViewRequest(request);
-  }
+  drainNavigateViewRequests();
   return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, handle);
 }
 
