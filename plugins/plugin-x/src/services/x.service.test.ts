@@ -1,7 +1,7 @@
 /** Unit tests for X account status and trusted multi-account connector routing. Network clients are deterministic fakes. */
 import type { Content, IAgentRuntime, TargetInfo } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import type { ClientBase } from "../base";
+import { ClientBase } from "../base";
 import type { AuthenticatedTwitterSession } from "../client/auth";
 import type { TwitterClientState } from "../types";
 import { TwitterPostService } from "./PostService";
@@ -45,6 +45,43 @@ function deferred<T>() {
 }
 
 describe("XService account status", () => {
+  it("passes validated interval state into production clients", async () => {
+    const runtime = runtimeWithSettings({
+      TWITTER_AUTH_MODE: "broker",
+      TWITTER_BROKER_TOKEN: "test-token",
+      TWITTER_ENABLE_DMS: "false",
+      TWITTER_ENABLE_REPLIES: "false",
+      TWITTER_ENABLE_ACTIONS: "false",
+      TWITTER_ENABLE_DISCOVERY: "false",
+      TWITTER_ENABLE_POST: "false",
+    });
+    const service = new XService(runtime);
+    const init = vi
+      .spyOn(ClientBase.prototype, "init")
+      .mockResolvedValue(undefined);
+
+    const instance = await (
+      service as unknown as {
+        getTwitterClientForAccount(
+          accountId: string,
+          options: { state: TwitterClientState },
+        ): Promise<TwitterClientInstance>;
+      }
+    ).getTwitterClientForAccount("default", {
+      state: {
+        accountId: "default",
+        TWITTER_AUTH_MODE: "broker",
+        TWITTER_BROKER_TOKEN: "test-token",
+        TWITTER_POST_INTERVAL: "1h",
+        TWITTER_DM_POLL_INTERVAL_SECONDS: "90s",
+      },
+    });
+
+    expect(instance.client.state.TWITTER_POST_INTERVAL).toBe("120");
+    expect(instance.client.state.TWITTER_DM_POLL_INTERVAL_SECONDS).toBe("60");
+    init.mockRestore();
+  });
+
   it("honors account-scoped DM disablement over the runtime default", () => {
     const instance = new TwitterClientInstance(
       runtimeWithSettings({ TWITTER_ENABLE_DMS: "true" }),

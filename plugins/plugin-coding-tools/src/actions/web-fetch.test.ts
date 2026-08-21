@@ -287,7 +287,7 @@ describe("coding-tools WEB_FETCH", () => {
   it("removes browser-tokenized and unclosed script/style blocks", () => {
     expect(
       htmlToReadableText(
-        "<p>visible</p><script>steal()</sCrIpT data-x=1><style>hidden{}</style/ignored><p>after</p><script>unclosed",
+        "<p>visible</p><script>steal()</script:lookalike>still-script</sCrIpT data-x=1><style>hidden{}</style=lookalike>still-style</style/ignored><p>after</p><script>unclosed",
       ),
     ).toBe("visible\n\nafter");
   });

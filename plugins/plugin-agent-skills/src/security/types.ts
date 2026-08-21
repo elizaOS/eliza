@@ -46,6 +46,7 @@ export interface SkillScanOptions {
 	maxFiles?: number;
 	maxFileBytes?: number;
 	additionalSafeDomains?: string[];
+	signal?: AbortSignal;
 }
 
 export function truncateEvidence(evidence: string, maxLen = 120): string {

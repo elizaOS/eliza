@@ -61,10 +61,11 @@ function createLeaseGate(): {
   const seen = new Set<string>();
   return {
     active: () => active,
-    acquire: (runId, maxConcurrent) => {
-      if (seen.has(runId)) return { rejection: "duplicate" };
+    acquire: (scopeId, runId, maxConcurrent) => {
+      const reservationKey = `${scopeId}:${runId}`;
+      if (seen.has(reservationKey)) return { rejection: "duplicate" };
       if (active >= maxConcurrent) return { rejection: "capacity" };
-      seen.add(runId);
+      seen.add(reservationKey);
       active += 1;
       let released = false;
       return {
@@ -212,6 +213,19 @@ describe("terminal run limits", () => {
     expect(gate.active()).toBe(0);
   });
 
+  it("releases admission when shell resolution fails before launch", async () => {
+    const gate = createLeaseGate();
+    const route = makeContext("run-00000000-0000-4000-8000-000000000010", gate);
+    route.ctx.resolveTerminalShellCommand = () => {
+      throw new Error("shell resolution failed");
+    };
+
+    expect(await handleMiscRoutes(route.ctx)).toBe(true);
+    await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+    expect(runShellMock).not.toHaveBeenCalled();
+    expect(gate.active()).toBe(0);
+  });
+
   it("rejects reuse of a run id before and after the first run settles", async () => {
     const gate = createLeaseGate();
     const pending = deferred<ShellResult>();
@@ -238,6 +252,47 @@ describe("terminal run limits", () => {
       409,
     );
     expect(runShellMock).toHaveBeenCalledOnce();
+  });
+
+  it("binds replay reservations to the agent rather than caller-controlled client ids", async () => {
+    const gate = createLeaseGate();
+    const runId = "run-00000000-0000-4000-8000-000000000008";
+    runShellMock.mockResolvedValue(shellResult());
+    const first = makeContext(runId, gate);
+    const otherClient = makeContext(runId, gate);
+    vi.mocked(otherClient.ctx.resolveTerminalRunClientId).mockReturnValue(
+      "terminal-other",
+    );
+
+    expect(await handleMiscRoutes(first.ctx)).toBe(true);
+    await vi.waitFor(() => expect(first.json).toHaveBeenCalledOnce());
+    expect(await handleMiscRoutes(otherClient.ctx)).toBe(true);
+    expect(otherClient.error).toHaveBeenCalledWith(
+      otherClient.ctx.res,
+      "Terminal run id was already used",
+      409,
+    );
+
+    const otherAgent = makeContext(runId, gate);
+    otherAgent.ctx.state.runtime = {
+      agentId: "00000000-0000-4000-8000-0000000000bb",
+    } as AgentRuntime;
+    expect(await handleMiscRoutes(otherAgent.ctx)).toBe(true);
+    await vi.waitFor(() => expect(otherAgent.json).toHaveBeenCalledOnce());
+    expect(runShellMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a subscriber failure from masking the result or leaking admission", async () => {
+    const gate = createLeaseGate();
+    runShellMock.mockResolvedValueOnce(shellResult());
+    const route = makeContext("run-00000000-0000-4000-8000-000000000009", gate);
+    route.ctx.state.broadcastWsToClientId = vi.fn(() => {
+      throw new Error("subscriber closed");
+    });
+
+    expect(await handleMiscRoutes(route.ctx)).toBe(true);
+    await vi.waitFor(() => expect(route.json).toHaveBeenCalledOnce());
+    expect(gate.active()).toBe(0);
   });
 
   it("fails closed when the run-id reservation registry is saturated", async () => {

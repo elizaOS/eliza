@@ -108,6 +108,10 @@ describe("terminal action effect proof", () => {
             kind: "provider_accepted",
             id: dispatchedRunId,
           },
+          idempotency: {
+            key: dispatchedRunId,
+            replayed: false,
+          },
         },
       ],
     });

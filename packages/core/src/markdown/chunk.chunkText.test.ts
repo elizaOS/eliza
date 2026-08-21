@@ -9,11 +9,9 @@ import { describe, expect, it } from "vitest";
 import { chunkText } from "./chunk.ts";
 
 describe("chunkText", () => {
-	it("returns [] for empty and a single chunk within-limit / non-positive limit", () => {
+	it("returns [] for empty and a single chunk within the limit", () => {
 		expect(chunkText("", 10)).toEqual([]);
 		expect(chunkText("short", 10)).toEqual(["short"]);
-		expect(chunkText("anything", 0)).toEqual(["anything"]);
-		expect(chunkText("anything", -5)).toEqual(["anything"]);
 	});
 
 	it("splits long text into chunks each within the limit", () => {

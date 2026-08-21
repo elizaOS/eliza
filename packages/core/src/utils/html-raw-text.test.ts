@@ -25,6 +25,17 @@ describe("stripHtmlRawTextElements", () => {
 		).toBe("before after");
 	});
 
+	it.each([":", "=", "!", "?", ".", "-"])(
+		"keeps a %s-delimited end-tag lookalike inside raw text",
+		(punctuation) => {
+			expect(
+				stripHtmlRawTextElements(
+					`before<script>first</script${punctuation}lookalike>second</sCrIpT data-x=1>after`,
+				),
+			).toBe("before after");
+		},
+	);
+
 	it.each(["!", "?", "=", "-", "_", "\u00a0"])(
 		"keeps raw text past the invalid %j end-tag delimiter",
 		(delimiter) => {
