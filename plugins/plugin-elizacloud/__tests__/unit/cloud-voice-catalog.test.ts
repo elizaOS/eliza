@@ -10,7 +10,9 @@
  *     at all, since the gate runs before the HTTP fetch).
  *   - Per-endpoint failure isolation (one endpoint erroring still surfaces
  *     the other's voices).
- *   - Total outages are retried rather than cached as genuine empty catalogs.
+ *   - Total outages are retried rather than cached as genuine empty catalogs,
+ *     subject to a short failure backoff, singleflighted across concurrent
+ *     callers, and reported via `runtime.reportError`.
  *
  * The SDK client is swapped via `setCloudVoiceClientFactoryForTesting` so
  * the tests never hit the real network and never need a working
@@ -37,7 +39,9 @@ interface RuntimeOptions {
   useTts?: string | null;
 }
 
-function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
+function makeRuntime(
+  opts: RuntimeOptions = {}
+): IAgentRuntime & { reportError: ReturnType<typeof vi.fn> } {
   const apiKey = opts.apiKey ?? "test-cloud-key";
   const baseUrl = opts.baseUrl ?? "https://cloud.test.local/api/v1";
   const enabled =
@@ -50,7 +54,8 @@ function makeRuntime(opts: RuntimeOptions = {}): IAgentRuntime {
   };
   return {
     getSetting: (key: string) => settings[key] ?? undefined,
-  } as unknown as IAgentRuntime;
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime & { reportError: ReturnType<typeof vi.fn> };
 }
 
 interface FakeRoutesCallLog {
@@ -293,26 +298,104 @@ describe("fetchCloudVoiceCatalog", () => {
     warnSpy.mockRestore();
   });
 
-  it("does not cache a total outage and recovers on the next call", async () => {
-    const failed = makeFakeClient({
-      premadeError: new Error("premade endpoint down"),
-      userError: new Error("user endpoint down"),
-    });
-    const recovered = makeFakeClient({
-      premade: [{ voice_id: "recovered-voice", name: "Recovered" }],
-      user: [],
-    });
-    let currentClient = failed.client;
-    setCloudVoiceClientFactoryForTesting(() => currentClient);
+  it("does not cache a total outage and recovers once the failure backoff expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const failed = makeFakeClient({
+        premadeError: new Error("premade endpoint down"),
+        userError: new Error("user endpoint down"),
+      });
+      const recovered = makeFakeClient({
+        premade: [{ voice_id: "recovered-voice", name: "Recovered" }],
+        user: [],
+      });
+      let currentClient = failed.client;
+      setCloudVoiceClientFactoryForTesting(() => currentClient);
 
-    const first = await fetchCloudVoiceCatalog(makeRuntime());
-    expect(first).toEqual([]);
+      const first = await fetchCloudVoiceCatalog(makeRuntime());
+      expect(first).toEqual([]);
 
-    currentClient = recovered.client;
-    const second = await fetchCloudVoiceCatalog(makeRuntime());
-    expect(second.map((voice) => voice.id)).toEqual(["recovered-voice"]);
-    expect(failed.calls).toEqual({ premade: 1, user: 1 });
-    expect(recovered.calls).toEqual({ premade: 1, user: 1 });
+      currentClient = recovered.client;
+      // Past the 30s failure backoff — the next call retries upstream
+      // instead of being served from the remembered outage.
+      vi.advanceTimersByTime(30_001);
+      const second = await fetchCloudVoiceCatalog(makeRuntime());
+      expect(second.map((voice) => voice.id)).toEqual(["recovered-voice"]);
+      expect(failed.calls).toEqual({ premade: 1, user: 1 });
+      expect(recovered.calls).toEqual({ premade: 1, user: 1 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shares one upstream fetch pair across concurrent calls during an outage (singleflight)", async () => {
+    const { client, calls } = makeFakeClient({
+      premadeError: new Error("premade down"),
+      userError: new Error("user down"),
+    });
+    setCloudVoiceClientFactoryForTesting(() => client);
+    const runtime = makeRuntime();
+
+    const [a, b] = await Promise.all([
+      fetchCloudVoiceCatalog(runtime),
+      fetchCloudVoiceCatalog(runtime),
+    ]);
+
+    expect(a).toEqual([]);
+    expect(b).toEqual([]);
+    // Both concurrent callers awaited the same in-flight fetch pair.
+    expect(calls).toEqual({ premade: 1, user: 1 });
+  });
+
+  it("keeps a failed catalog cached within the backoff window, then retries after it expires", async () => {
+    vi.useFakeTimers();
+    try {
+      const failed = makeFakeClient({
+        premadeError: new Error("premade down"),
+        userError: new Error("user down"),
+      });
+      setCloudVoiceClientFactoryForTesting(() => failed.client);
+      const runtime = makeRuntime();
+
+      const first = await fetchCloudVoiceCatalog(runtime);
+      expect(first).toEqual([]);
+      expect(failed.calls).toEqual({ premade: 1, user: 1 });
+
+      // Still inside the 30s backoff window — served from the remembered
+      // failure, no second upstream round trip.
+      vi.advanceTimersByTime(29_000);
+      const second = await fetchCloudVoiceCatalog(runtime);
+      expect(second).toEqual([]);
+      expect(failed.calls).toEqual({ premade: 1, user: 1 });
+
+      // Past the window — the next call retries upstream.
+      vi.advanceTimersByTime(2_000);
+      const third = await fetchCloudVoiceCatalog(runtime);
+      expect(third).toEqual([]);
+      expect(failed.calls).toEqual({ premade: 2, user: 2 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reports a total outage via runtime.reportError so it's observable, not a silent empty catalog", async () => {
+    const { client } = makeFakeClient({
+      premadeError: new Error("premade down"),
+      userError: new Error("user down"),
+    });
+    setCloudVoiceClientFactoryForTesting(() => client);
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const runtime = makeRuntime();
+
+    await fetchCloudVoiceCatalog(runtime);
+
+    expect(runtime.reportError).toHaveBeenCalledTimes(1);
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "cloud-voice-catalog",
+      expect.any(Error),
+      expect.objectContaining({ baseUrl: expect.any(String) })
+    );
+    warnSpy.mockRestore();
   });
 
   it("caches a partial success while one endpoint is unavailable", async () => {
