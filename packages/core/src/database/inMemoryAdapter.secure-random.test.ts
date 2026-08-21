@@ -3,7 +3,13 @@
  * the platform CSPRNG and fails closed when that primitive is unavailable.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Memory, UUID } from "../types";
+import type {
+	Memory,
+	PairingAllowlistEntry,
+	PairingRequest,
+	Task,
+	UUID,
+} from "../types";
 import { InMemoryDatabaseAdapter } from "./inMemoryAdapter";
 
 const agentId = "00000000-0000-0000-0000-000000000001" as UUID;
@@ -11,6 +17,9 @@ const entityId = "10000000-0000-0000-0000-000000000001" as UUID;
 const roomId = "20000000-0000-0000-0000-000000000001" as UUID;
 const accountId = "30000000-0000-4000-8000-000000000001" as UUID;
 const memoryId = "30000000-0000-4000-8000-000000000002" as UUID;
+const taskId = "30000000-0000-4000-8000-000000000003" as UUID;
+const pairingRequestId = "30000000-0000-4000-8000-000000000004" as UUID;
+const pairingAllowlistId = "30000000-0000-4000-8000-000000000005" as UUID;
 const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(
 	globalThis,
 	"crypto",
@@ -85,6 +94,47 @@ describe("InMemoryDatabaseAdapter secure record identities", () => {
 		await expect(
 			adapter.createMemories([{ memory: message(), tableName: "messages" }]),
 		).rejects.toMatchObject({ code: "IN_MEMORY_ADAPTER_CSPRNG_UNAVAILABLE" });
+		expect(weakRandom).not.toHaveBeenCalled();
+	});
+
+	it("preserves caller-supplied stable IDs without consulting a CSPRNG", async () => {
+		installCrypto({});
+		const weakRandom = vi.spyOn(Math, "random");
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const now = new Date(0);
+
+		const memoryIds = await adapter.createMemories([
+			{ memory: { ...message(), id: memoryId }, tableName: "messages" },
+		]);
+		const taskIds = await adapter.createTasks([
+			{ id: taskId, name: "stable task" } satisfies Task,
+		]);
+		const pairingRequestIds = await adapter.createPairingRequests([
+			{
+				id: pairingRequestId,
+				channel: "telegram",
+				senderId: "stable-sender",
+				code: "STABLE01",
+				createdAt: now,
+				lastSeenAt: now,
+				agentId,
+			} satisfies PairingRequest,
+		]);
+		const pairingAllowlistIds = await adapter.createPairingAllowlistEntries([
+			{
+				id: pairingAllowlistId,
+				channel: "telegram",
+				senderId: "stable-sender",
+				createdAt: now,
+				agentId,
+			} satisfies PairingAllowlistEntry,
+		]);
+
+		expect(memoryIds).toEqual([memoryId]);
+		expect(taskIds).toEqual([taskId]);
+		expect(pairingRequestIds).toEqual([pairingRequestId]);
+		expect(pairingAllowlistIds).toEqual([pairingAllowlistId]);
 		expect(weakRandom).not.toHaveBeenCalled();
 	});
 });

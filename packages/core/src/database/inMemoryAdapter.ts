@@ -1245,8 +1245,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const { memory, tableName, unique } of memories) {
-			const gen = randomUuid();
-			const id = memory.id ? String(memory.id) : gen;
+			const id = memory.id ? String(memory.id) : randomUuid();
 			const stored: Memory = {
 				...memory,
 				id: asUuid(id),
@@ -1812,8 +1811,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createTasks(tasks: Task[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const task of tasks) {
-			const gen = randomUuid();
-			const id = task.id ? String(task.id) : gen;
+			const id = task.id ? String(task.id) : randomUuid();
 			const taskId = asUuid(id);
 			const stored: Task = { ...task, id: taskId };
 			this.tasks.set(id, stored);
@@ -1975,8 +1973,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const request of requests) {
-			const gen = randomUuid();
-			const id = request.id ? String(request.id) : gen;
+			const id = request.id ? String(request.id) : randomUuid();
 			const stored: PairingRequest = { ...request, id: asUuid(id) };
 			this.pairingRequests.set(id, stored);
 			ids.push(asUuid(id));
@@ -2064,8 +2061,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<
 	): Promise<UUID[]> {
 		const ids: UUID[] = [];
 		for (const entry of entries) {
-			const gen = randomUuid();
-			const id = entry.id ? String(entry.id) : gen;
+			const id = entry.id ? String(entry.id) : randomUuid();
 			const stored: PairingAllowlistEntry = { ...entry, id: asUuid(id) };
 			this.pairingAllowlist.set(id, stored);
 			ids.push(asUuid(id));
