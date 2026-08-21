@@ -9,7 +9,8 @@
  * owned by the PA-hosted VOICE_CALL action.
  */
 
-import { logger } from "@elizaos/core";
+import { createHash } from "node:crypto";
+import { ElizaError, logger } from "@elizaos/core";
 
 export interface TwilioCredentials {
   accountSid: string;
@@ -35,6 +36,45 @@ export interface TwilioDeliveryResult {
   billing?: TwilioSmsBillingBreakdown;
 }
 
+export type TwilioProviderResourceKind = "message" | "call";
+
+export interface TwilioProviderResourceReadback {
+  resourceKind: TwilioProviderResourceKind;
+  resourceSid: string;
+  accountSid: string;
+  status: string;
+  from: string | null;
+  to: string | null;
+  direction: string | null;
+  body: string | null;
+  rawResponseSha256: string;
+}
+
+export type TwilioProviderCleanupResult =
+  | {
+      disposition: "deleted" | "already-absent";
+      resourceKind: TwilioProviderResourceKind;
+      resourceSid: string;
+    }
+  | {
+      disposition: "reconciliation-required";
+      resourceKind: TwilioProviderResourceKind;
+      resourceSid: string;
+      reason:
+        | "read-failed"
+        | "resource-not-terminal"
+        | "delete-ambiguous"
+        | "delete-rejected"
+        | "deletion-unverified";
+      providerStatus?: string;
+      httpStatus?: number;
+    };
+
+export type TwilioFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
 type TwilioTelemetrySpan = {
   success: (metadata?: Record<string, unknown>) => void;
   failure: (metadata?: Record<string, unknown>) => void;
@@ -44,6 +84,25 @@ const TWILIO_SMS_MARKUP_RATE = 0.2;
 const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075;
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1_000;
+const MAX_PROVIDER_RESPONSE_BYTES = 2 * 1024 * 1024;
+const ACCOUNT_SID_PATTERN = /^AC[0-9a-fA-F]{32}$/;
+const MESSAGE_SID_PATTERN = /^(?:SM|MM)[0-9a-fA-F]{32}$/;
+const CALL_SID_PATTERN = /^CA[0-9a-fA-F]{32}$/;
+const TERMINAL_MESSAGE_STATUSES = new Set([
+  "canceled",
+  "delivered",
+  "failed",
+  "read",
+  "received",
+  "undelivered",
+]);
+const TERMINAL_CALL_STATUSES = new Set([
+  "busy",
+  "canceled",
+  "completed",
+  "failed",
+  "no-answer",
+]);
 
 function createTwilioTelemetrySpan(): TwilioTelemetrySpan {
   return {
@@ -139,11 +198,38 @@ function nonEmptyTrimmed(value: string, field: string): string | null {
   return null;
 }
 
+function validateStatusCallbackUrl(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  if (value.length === 0 || value !== value.trim()) {
+    return "statusCallbackUrl must be an exact non-empty HTTPS URL";
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    // error-policy:J3 malformed caller input becomes an explicit validation failure.
+    return "statusCallbackUrl must be an exact non-empty HTTPS URL";
+  }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username !== "" ||
+    parsed.password !== "" ||
+    parsed.hash !== "" ||
+    parsed.hostname.length === 0 ||
+    !/^[A-Za-z0-9.-]+$/.test(parsed.hostname) ||
+    parsed.toString() !== value
+  ) {
+    return "statusCallbackUrl must be an exact HTTPS URL with a valid hostname and no credentials or fragment";
+  }
+  return null;
+}
+
 function validateTwilioRequestInputs(args: {
   credentials: TwilioCredentials;
   to: string;
   messageField: "body" | "message";
   message: string;
+  statusCallbackUrl?: string;
 }): string | null {
   return (
     nonEmptyTrimmed(args.credentials.accountSid, "credentials.accountSid") ??
@@ -153,7 +239,8 @@ function validateTwilioRequestInputs(args: {
       "credentials.fromPhoneNumber",
     ) ??
     nonEmptyTrimmed(args.to, "to") ??
-    nonEmptyTrimmed(args.message, args.messageField)
+    nonEmptyTrimmed(args.message, args.messageField) ??
+    validateStatusCallbackUrl(args.statusCallbackUrl)
   );
 }
 
@@ -296,15 +383,18 @@ export async function sendTwilioSms(args: {
   credentials: TwilioCredentials;
   to: string;
   body: string;
+  /** Exact manifest-bound URL for Twilio delivery status callbacks. */
+  statusCallbackUrl?: string;
   /** @deprecated Twilio Messages does not document a client idempotency key. */
   idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
-  const { credentials, to, body } = args;
+  const { credentials, to, body, statusCallbackUrl } = args;
   const validationError = validateTwilioRequestInputs({
     credentials,
     to,
     messageField: "body",
     message: body,
+    statusCallbackUrl,
   });
   if (validationError) return validationFailure(validationError);
 
@@ -315,6 +405,9 @@ export async function sendTwilioSms(args: {
       To: to,
       From: credentials.fromPhoneNumber,
       Body: body,
+      ...(statusCallbackUrl === undefined
+        ? {}
+        : { StatusCallback: statusCallbackUrl }),
     }),
   });
 
@@ -341,15 +434,18 @@ export async function sendTwilioVoiceCall(args: {
   credentials: TwilioCredentials;
   to: string;
   message: string;
+  /** Exact manifest-bound URL for the terminal completed progress event. */
+  statusCallbackUrl?: string;
   /** @deprecated Twilio Calls does not document a client idempotency key. */
   idempotencyKey?: string;
 }): Promise<TwilioDeliveryResult> {
-  const { credentials, to, message } = args;
+  const { credentials, to, message, statusCallbackUrl } = args;
   const validationError = validateTwilioRequestInputs({
     credentials,
     to,
     messageField: "message",
     message,
+    statusCallbackUrl,
   });
   if (validationError) return validationFailure(validationError);
 
@@ -360,6 +456,289 @@ export async function sendTwilioVoiceCall(args: {
       To: to,
       From: credentials.fromPhoneNumber,
       Twiml: `<Response><Say>${escapeXml(message)}</Say></Response>`,
+      ...(statusCallbackUrl === undefined
+        ? {}
+        : {
+            StatusCallback: statusCallbackUrl,
+            StatusCallbackMethod: "POST",
+            StatusCallbackEvent: "completed",
+          }),
     }),
   });
+}
+
+function resourcePath(input: {
+  credentials: TwilioCredentials;
+  resourceKind: TwilioProviderResourceKind;
+  resourceSid: string;
+}): string {
+  if (!ACCOUNT_SID_PATTERN.test(input.credentials.accountSid)) {
+    throw new ElizaError("Twilio provider boundary requires an Account SID", {
+      code: "TWILIO_PROVIDER_INVALID_ACCOUNT_SID",
+    });
+  }
+  const sidPattern =
+    input.resourceKind === "message" ? MESSAGE_SID_PATTERN : CALL_SID_PATTERN;
+  if (!sidPattern.test(input.resourceSid)) {
+    throw new ElizaError(
+      "Twilio provider boundary requires a matching resource SID",
+      {
+        code: "TWILIO_PROVIDER_INVALID_RESOURCE_SID",
+        context: { resourceKind: input.resourceKind },
+      },
+    );
+  }
+  if (input.credentials.authToken.trim().length === 0) {
+    throw new ElizaError("Twilio provider boundary requires an Auth Token", {
+      code: "TWILIO_PROVIDER_INVALID_AUTH_TOKEN",
+    });
+  }
+  const collection = input.resourceKind === "message" ? "Messages" : "Calls";
+  return `/2010-04-01/Accounts/${encodeURIComponent(
+    input.credentials.accountSid,
+  )}/${collection}/${encodeURIComponent(input.resourceSid)}.json`;
+}
+
+async function providerFetch(input: {
+  credentials: TwilioCredentials;
+  resourceKind: TwilioProviderResourceKind;
+  resourceSid: string;
+  method: "GET" | "DELETE";
+  fetchImpl: TwilioFetch;
+}): Promise<Response> {
+  const path = resourcePath(input);
+  return input.fetchImpl(`${getTwilioBaseUrl()}${path}`, {
+    method: input.method,
+    headers: {
+      Accept: "application/json",
+      Authorization: `Basic ${encodeBasicAuth(
+        input.credentials.accountSid,
+        input.credentials.authToken,
+      )}`,
+    },
+    redirect: "error",
+    signal: AbortSignal.timeout(12_000),
+  });
+}
+
+/**
+ * Read one exact Twilio Message or Call with credentials supplied by the
+ * calling role. A 404 is the only absence proof; every other provider or
+ * transport failure is explicit.
+ */
+export async function readTwilioProviderResource(input: {
+  credentials: TwilioCredentials;
+  resourceKind: TwilioProviderResourceKind;
+  resourceSid: string;
+  fetchImpl?: TwilioFetch;
+}): Promise<TwilioProviderResourceReadback | null> {
+  let response: Response;
+  try {
+    response = await providerFetch({
+      ...input,
+      method: "GET",
+      fetchImpl: input.fetchImpl ?? fetch,
+    });
+  } catch (error) {
+    // error-policy:J2 retain the ambiguous provider-read cause without credentials.
+    throw new ElizaError("Twilio provider resource read failed", {
+      code: "TWILIO_PROVIDER_READ_FAILED",
+      context: {
+        resourceKind: input.resourceKind,
+        resourceSid: input.resourceSid,
+      },
+      cause: error,
+    });
+  }
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new ElizaError("Twilio provider resource read was rejected", {
+      code: "TWILIO_PROVIDER_READ_REJECTED",
+      context: {
+        resourceKind: input.resourceKind,
+        resourceSid: input.resourceSid,
+        statusCode: response.status,
+      },
+    });
+  }
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (
+    Number.isFinite(declaredLength) &&
+    declaredLength > MAX_PROVIDER_RESPONSE_BYTES
+  ) {
+    throw new ElizaError("Twilio provider resource response is too large", {
+      code: "TWILIO_PROVIDER_RESPONSE_TOO_LARGE",
+    });
+  }
+  let raw: string;
+  try {
+    raw = await response.text();
+  } catch (error) {
+    // error-policy:J2 provider body transport failures remain explicit and typed.
+    throw new ElizaError(
+      "Twilio provider resource response could not be read",
+      {
+        code: "TWILIO_PROVIDER_INVALID_RESPONSE",
+        cause: error,
+      },
+    );
+  }
+  if (Buffer.byteLength(raw) > MAX_PROVIDER_RESPONSE_BYTES) {
+    throw new ElizaError("Twilio provider resource response is too large", {
+      code: "TWILIO_PROVIDER_RESPONSE_TOO_LARGE",
+    });
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    // error-policy:J2 retain malformed provider material as a typed boundary failure.
+    throw new ElizaError("Twilio provider resource response is not JSON", {
+      code: "TWILIO_PROVIDER_INVALID_RESPONSE",
+      cause: error,
+    });
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ElizaError("Twilio provider resource response is not an object", {
+      code: "TWILIO_PROVIDER_INVALID_RESPONSE",
+    });
+  }
+  const value = parsed as Record<string, unknown>;
+  if (
+    value.sid !== input.resourceSid ||
+    value.account_sid !== input.credentials.accountSid ||
+    typeof value.status !== "string" ||
+    value.status.length === 0
+  ) {
+    throw new ElizaError(
+      "Twilio provider resource response is not correlated",
+      {
+        code: "TWILIO_PROVIDER_RESPONSE_MISMATCH",
+        context: {
+          resourceKind: input.resourceKind,
+          resourceSid: input.resourceSid,
+        },
+      },
+    );
+  }
+  const nullableString = (field: string): string | null =>
+    typeof value[field] === "string" ? value[field] : null;
+  return Object.freeze({
+    resourceKind: input.resourceKind,
+    resourceSid: input.resourceSid,
+    accountSid: input.credentials.accountSid,
+    status: value.status,
+    from: nullableString("from"),
+    to: nullableString("to"),
+    direction: nullableString("direction"),
+    body: input.resourceKind === "message" ? nullableString("body") : null,
+    rawResponseSha256: createHash("sha256").update(raw).digest("hex"),
+  });
+}
+
+function terminalResource(readback: TwilioProviderResourceReadback): boolean {
+  return (
+    readback.resourceKind === "message"
+      ? TERMINAL_MESSAGE_STATUSES
+      : TERMINAL_CALL_STATUSES
+  ).has(readback.status);
+}
+
+/**
+ * Delete one terminal Twilio provider record and prove it absent with a second
+ * GET. Transport ambiguity, active resources, rejected deletion, and failed
+ * verification return reconciliation-required instead of fabricated cleanup.
+ */
+export async function cleanupTwilioProviderResource(input: {
+  credentials: TwilioCredentials;
+  resourceKind: TwilioProviderResourceKind;
+  resourceSid: string;
+  fetchImpl?: TwilioFetch;
+}): Promise<TwilioProviderCleanupResult> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  let before: TwilioProviderResourceReadback | null;
+  try {
+    before = await readTwilioProviderResource({ ...input, fetchImpl });
+  } catch {
+    // error-policy:J1 cleanup is the role boundary; unresolved reads reconcile.
+    return {
+      disposition: "reconciliation-required",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+      reason: "read-failed",
+    };
+  }
+  if (!before) {
+    return {
+      disposition: "already-absent",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+    };
+  }
+  if (!terminalResource(before)) {
+    return {
+      disposition: "reconciliation-required",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+      reason: "resource-not-terminal",
+      providerStatus: before.status,
+    };
+  }
+  let deletion: Response;
+  try {
+    deletion = await providerFetch({
+      ...input,
+      method: "DELETE",
+      fetchImpl,
+    });
+  } catch {
+    // error-policy:J1 DELETE transport failure may follow provider consumption.
+    return {
+      disposition: "reconciliation-required",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+      reason: "delete-ambiguous",
+    };
+  }
+  if (deletion.status === 404) {
+    return {
+      disposition: "already-absent",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+    };
+  }
+  if (deletion.status !== 204) {
+    return {
+      disposition: "reconciliation-required",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+      reason: "delete-rejected",
+      httpStatus: deletion.status,
+    };
+  }
+  try {
+    const after = await readTwilioProviderResource({ ...input, fetchImpl });
+    if (after) {
+      return {
+        disposition: "reconciliation-required",
+        resourceKind: input.resourceKind,
+        resourceSid: input.resourceSid,
+        reason: "deletion-unverified",
+        providerStatus: after.status,
+      };
+    }
+  } catch {
+    // error-policy:J1 only a provider 404 proves cleanup after DELETE.
+    return {
+      disposition: "reconciliation-required",
+      resourceKind: input.resourceKind,
+      resourceSid: input.resourceSid,
+      reason: "deletion-unverified",
+    };
+  }
+  return {
+    disposition: "deleted",
+    resourceKind: input.resourceKind,
+    resourceSid: input.resourceSid,
+  };
 }

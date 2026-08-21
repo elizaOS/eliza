@@ -7,7 +7,9 @@
 import fc from "fast-check";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  cleanupTwilioProviderResource,
   readTwilioCredentialsFromEnv,
+  readTwilioProviderResource,
   sendTwilioSms,
   sendTwilioVoiceCall,
   type TwilioCredentials,
@@ -18,6 +20,15 @@ const credentials: TwilioCredentials = {
   authToken: "token",
   fromPhoneNumber: "+15550000000",
 };
+const callbackUrl =
+  "https://canary.example.test/provider-canary/twilio/status?run=abc123";
+const providerCredentials: TwilioCredentials = {
+  accountSid: `AC${"1".repeat(32)}`,
+  authToken: "a".repeat(32),
+  fromPhoneNumber: "+15550000000",
+};
+const messageSid = `SM${"2".repeat(32)}`;
+const callSid = `CA${"3".repeat(32)}`;
 
 afterEach(() => {
   vi.useRealTimers();
@@ -51,6 +62,7 @@ describe("Twilio transport", () => {
       credentials,
       to: "+15551112222",
       body: "hello",
+      statusCallbackUrl: callbackUrl,
       idempotencyKey: "approval:req-123:twilio",
     });
 
@@ -70,7 +82,7 @@ describe("Twilio transport", () => {
       "https://twilio.test/2010-04-01/Accounts/AC123/Messages.json",
       expect.objectContaining({
         method: "POST",
-        body: "To=%2B15551112222&From=%2B15550000000&Body=hello",
+        body: `To=%2B15551112222&From=%2B15550000000&Body=hello&StatusCallback=${encodeURIComponent(callbackUrl)}`,
         headers: expect.not.objectContaining({
           // This is an inbound Twilio webhook retry identifier, not a
           // documented outbound Messages/Calls idempotency request header.
@@ -112,6 +124,31 @@ describe("Twilio transport", () => {
       error: "credentials.authToken must be a non-empty string",
     });
 
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "http://canary.example.test/status",
+    "https://user:secret@canary.example.test/status",
+    "https://canary.example.test/status#fragment",
+    "https://invalid_host.example.test/status",
+    " https://canary.example.test/status",
+  ])("rejects an unsafe or non-exact callback URL: %s", async (url) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      sendTwilioSms({
+        credentials,
+        to: "+15551112222",
+        body: "hello",
+        statusCallbackUrl: url,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: null,
+      error: expect.stringContaining("statusCallbackUrl"),
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -212,6 +249,7 @@ describe("Twilio transport", () => {
       credentials,
       to: "+15551112222",
       message: "Use <admin> & confirm",
+      statusCallbackUrl: callbackUrl,
     });
 
     expect(result).toMatchObject({ ok: true, status: 201, sid: "CA123" });
@@ -223,6 +261,9 @@ describe("Twilio transport", () => {
     expect(body.get("Twiml")).toBe(
       "<Response><Say>Use &lt;admin&gt; &amp; confirm</Say></Response>",
     );
+    expect(body.get("StatusCallback")).toBe(callbackUrl);
+    expect(body.get("StatusCallbackMethod")).toBe("POST");
+    expect(body.getAll("StatusCallbackEvent")).toEqual(["completed"]);
   });
 
   it("rejects blank voice-call inputs before contacting Twilio", async () => {
@@ -362,5 +403,286 @@ describe("Twilio transport", () => {
 
     expect(result).toMatchObject({ ok: true, status: 201, retryCount: 2 });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+function providerJson(input: {
+  resourceSid: string;
+  status: string;
+  body?: string;
+}): Record<string, unknown> {
+  return {
+    sid: input.resourceSid,
+    account_sid: providerCredentials.accountSid,
+    status: input.status,
+    from: providerCredentials.fromPhoneNumber,
+    to: "+15551112222",
+    direction: "outbound-api",
+    ...(input.body === undefined ? {} : { body: input.body }),
+  };
+}
+
+describe("Twilio provider record boundary", () => {
+  it("reads one exact provider resource with role-supplied credentials", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        providerJson({
+          resourceSid: messageSid,
+          status: "delivered",
+          body: "hello",
+        }),
+      ),
+    );
+
+    await expect(
+      readTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toMatchObject({
+      resourceKind: "message",
+      resourceSid: messageSid,
+      accountSid: providerCredentials.accountSid,
+      status: "delivered",
+      body: "hello",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      `https://twilio.test/2010-04-01/Accounts/${providerCredentials.accountSid}/Messages/${messageSid}.json`,
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: `Basic ${Buffer.from(
+            `${providerCredentials.accountSid}:${providerCredentials.authToken}`,
+          ).toString("base64")}`,
+        }),
+      }),
+    );
+  });
+
+  it("treats only a provider 404 as absent", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 404 }));
+    await expect(
+      readTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "call",
+        resourceSid: callSid,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toBeNull();
+
+    fetchMock.mockResolvedValueOnce(
+      Response.json({ message: "unauthorized" }, { status: 401 }),
+    );
+    await expect(
+      readTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "call",
+        resourceSid: callSid,
+        fetchImpl: fetchMock,
+      }),
+    ).rejects.toMatchObject({ code: "TWILIO_PROVIDER_READ_REJECTED" });
+  });
+
+  it("deletes a terminal record and proves it absent with a second GET", async () => {
+    process.env.ELIZA_MOCK_TWILIO_BASE = "https://twilio.test";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          providerJson({ resourceSid: callSid, status: "completed" }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 }));
+
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "call",
+        resourceSid: callSid,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toEqual({
+      disposition: "deleted",
+      resourceKind: "call",
+      resourceSid: callSid,
+    });
+    expect(fetchMock.mock.calls.map((call) => call[1]?.method)).toEqual([
+      "GET",
+      "DELETE",
+      "GET",
+    ]);
+  });
+
+  it("does not delete a non-terminal call record", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        providerJson({ resourceSid: callSid, status: "in-progress" }),
+      ),
+    );
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "call",
+        resourceSid: callSid,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toEqual({
+      disposition: "reconciliation-required",
+      resourceKind: "call",
+      resourceSid: callSid,
+      reason: "resource-not-terminal",
+      providerStatus: "in-progress",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires reconciliation for ambiguous or unverified deletion", async () => {
+    const terminal = Response.json(
+      providerJson({
+        resourceSid: messageSid,
+        status: "delivered",
+        body: "hello",
+      }),
+    );
+    const ambiguousFetch = vi
+      .fn()
+      .mockResolvedValueOnce(terminal)
+      .mockRejectedValueOnce(new Error("socket closed after DELETE"));
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: ambiguousFetch,
+      }),
+    ).resolves.toMatchObject({
+      disposition: "reconciliation-required",
+      reason: "delete-ambiguous",
+    });
+
+    const unverifiedFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          providerJson({
+            resourceSid: messageSid,
+            status: "delivered",
+            body: "hello",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        Response.json(
+          providerJson({
+            resourceSid: messageSid,
+            status: "delivered",
+            body: "hello",
+          }),
+        ),
+      );
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: unverifiedFetch,
+      }),
+    ).resolves.toMatchObject({
+      disposition: "reconciliation-required",
+      reason: "deletion-unverified",
+    });
+  });
+
+  it("keeps read failures and rejected deletes reconciliation-owned", async () => {
+    const readFailure = vi.fn(async () => {
+      throw new Error("observer network unavailable");
+    });
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: readFailure,
+      }),
+    ).resolves.toMatchObject({
+      disposition: "reconciliation-required",
+      reason: "read-failed",
+    });
+
+    const rejectedDelete = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json(
+          providerJson({
+            resourceSid: messageSid,
+            status: "delivered",
+            body: "hello",
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ message: "permission denied" }, { status: 403 }),
+      );
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: rejectedDelete,
+      }),
+    ).resolves.toMatchObject({
+      disposition: "reconciliation-required",
+      reason: "delete-rejected",
+      httpStatus: 403,
+    });
+  });
+
+  it("accepts an initial provider 404 as already-absent cleanup proof", async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 404 }));
+    await expect(
+      cleanupTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: fetchMock,
+      }),
+    ).resolves.toEqual({
+      disposition: "already-absent",
+      resourceKind: "message",
+      resourceSid: messageSid,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects mismatched provider material and malformed resource SIDs", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json(
+        providerJson({
+          resourceSid: `SM${"9".repeat(32)}`,
+          status: "delivered",
+        }),
+      ),
+    );
+    await expect(
+      readTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "message",
+        resourceSid: messageSid,
+        fetchImpl: fetchMock,
+      }),
+    ).rejects.toMatchObject({ code: "TWILIO_PROVIDER_RESPONSE_MISMATCH" });
+    await expect(
+      readTwilioProviderResource({
+        credentials: providerCredentials,
+        resourceKind: "call",
+        resourceSid: messageSid,
+        fetchImpl: fetchMock,
+      }),
+    ).rejects.toMatchObject({ code: "TWILIO_PROVIDER_READ_FAILED" });
   });
 });
