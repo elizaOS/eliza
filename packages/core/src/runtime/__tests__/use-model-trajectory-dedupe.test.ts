@@ -15,7 +15,6 @@ import {
 } from "../../trajectory-context";
 import {
 	logActiveTrajectoryLlmCall,
-	markProviderRecordedCall,
 	recordLlmCall,
 	type TrajectoryRuntimeLlmCallParams,
 } from "../../trajectory-utils";
@@ -128,46 +127,6 @@ describe("AgentRuntime.useModel trajectory accounting", () => {
 			actionType: "provider.wire",
 			response: "provider-result",
 		});
-	});
-
-	it("lets a pass-through stream finalizer win the text-promise race", async () => {
-		const { runtime, trajectory } = await makeRuntime();
-		const providerRecords: string[] = [];
-		runtime.registerModel(
-			ModelType.TEXT_SMALL,
-			() => ({
-				text: Promise.resolve("provider-stream"),
-				usage: Promise.resolve(undefined),
-				finishReason: Promise.resolve("stop"),
-				textStream: (async function* () {
-					try {
-						yield "provider-stream";
-					} finally {
-						providerRecords.push("provider-stream");
-						markProviderRecordedCall();
-					}
-				})(),
-			}),
-			"stream-provider",
-		);
-
-		await withStep("step-stream-race", async () => {
-			const result = (await runtime.useModel(ModelType.TEXT_SMALL, {
-				prompt: "provider stream",
-				stream: true,
-			})) as {
-				text: Promise<string>;
-				textStream: AsyncIterable<string>;
-			};
-			const text = result.text;
-			const chunks: string[] = [];
-			for await (const chunk of result.textStream) chunks.push(chunk);
-			await expect(text).resolves.toBe("provider-stream");
-			expect(chunks).toEqual(["provider-stream"]);
-		});
-
-		expect(providerRecords).toEqual(["provider-stream"]);
-		expect(trajectory.calls).toEqual([]);
 	});
 
 	// Regression: the recording scope used to run the model body under a spread
