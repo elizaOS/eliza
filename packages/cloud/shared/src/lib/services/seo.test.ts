@@ -23,11 +23,27 @@ describe("seoFetch — SSRF-safe hops that fail closed and keep caller signals",
     expect(seenInit?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  test("preserves a caller-provided abort signal instead of adding a timeout", async () => {
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
     const controller = new AbortController();
     await seoFetch("https://api.indexnow.org/indexnow", {
       signal: controller.signal,
     });
-    expect(seenInit?.signal).toBe(controller.signal);
+    // The wrapper owns the deadline, so safeFetch receives a composition of the
+    // caller signal and that deadline — never the caller's object verbatim.
+    // Asserting identity here would pin the behavior that lets a caller signal
+    // which never fires silently defeat the bound.
+    expect(seenInit?.signal).toBeInstanceOf(AbortSignal);
+    expect(seenInit?.signal).not.toBe(controller.signal);
+  });
+
+  test("aborts when the caller cancels", async () => {
+    const controller = new AbortController();
+    await seoFetch("https://api.indexnow.org/indexnow", {
+      signal: controller.signal,
+    });
+    const composed = seenInit?.signal;
+    expect(composed?.aborted).toBe(false);
+    controller.abort();
+    expect(composed?.aborted).toBe(true);
   });
 });

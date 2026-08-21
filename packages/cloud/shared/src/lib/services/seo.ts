@@ -24,13 +24,16 @@ const SEO_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Bound every SEO provider hop AND keep it inside the file's own SSRF-safe
- * wrapper: `safeFetch` screens and pins every outbound address, and this
- * helper adds a fail-closed hop timeout (a caller-provided abort signal wins).
+ * wrapper: `safeFetch` screens and pins every outbound address, and this helper
+ * adds a fail-closed hop timeout. A caller-provided signal is composed with the
+ * deadline rather than replacing it — a caller that cancels still aborts early,
+ * and a caller whose signal never fires still cannot outlive the bound.
  */
 export function seoFetch(rawUrl: string, init?: RequestInit): Promise<Response> {
+  const deadline = AbortSignal.timeout(SEO_REQUEST_TIMEOUT_MS);
   return safeFetch(rawUrl, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(SEO_REQUEST_TIMEOUT_MS),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 
