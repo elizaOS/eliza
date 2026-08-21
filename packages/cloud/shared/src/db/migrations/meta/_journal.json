@@ -1942,30 +1942,30 @@
       "breakpoints": true
     },
     {
-      "idx": 276,
-      "version": "7",
-      "when": 1793390400000,
-      "tag": "0283_billing_subscription_commands",
-      "breakpoints": true
-    },
-    {
       "idx": 277,
       "version": "7",
       "when": 1793476800000,
-      "tag": "0284_subscription_billing_fences",
+      "tag": "0283_billing_subscription_commands",
       "breakpoints": true
     },
     {
       "idx": 278,
       "version": "7",
       "when": 1793563200000,
-      "tag": "0285_billing_subscription_event_receipts",
+      "tag": "0284_subscription_billing_fences",
       "breakpoints": true
     },
     {
       "idx": 279,
       "version": "7",
       "when": 1793649600000,
+      "tag": "0285_billing_subscription_event_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 280,
+      "version": "7",
+      "when": 1793736000000,
       "tag": "0286_billing_subscription_incidents",
       "breakpoints": true
     }

@@ -87,7 +87,7 @@ afterEach(async () => {
   await Promise.all(databases.splice(0).map((db) => db.close()));
 });
 
-describe("0277-0280 subscription billing operation migrations", () => {
+describe("0283-0286 subscription billing operation migrations", () => {
   test("are journaled in dependency order and match the Drizzle columns", async () => {
     const db = await database();
     for (const table of [
@@ -112,7 +112,7 @@ describe("0277-0280 subscription billing operation migrations", () => {
     expect(journal.entries.slice(-4).map(({ idx, tag }) => ({ idx, tag }))).toEqual(
       migrationNames
         .slice(1)
-        .map((name, offset) => ({ idx: 276 + offset, tag: name.slice(0, -4) })),
+        .map((name, offset) => ({ idx: 277 + offset, tag: name.slice(0, -4) })),
     );
   });
 
