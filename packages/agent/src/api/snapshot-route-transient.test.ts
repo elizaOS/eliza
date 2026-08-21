@@ -194,6 +194,29 @@ describe("POST /api/snapshot transient/terminal mapping", () => {
     );
   }, 120_000);
 
+  it("keeps filesystem diagnostics out of the backup list 500 body", async () => {
+    await withSnapshotServer(
+      async () => ({}),
+      async (baseUrl) => {
+        // A regular file where the backups directory belongs makes readdir
+        // throw ENOTDIR with the absolute state path in the message.
+        const backupsPath = path.join(
+          process.env.ELIZA_STATE_DIR as string,
+          "backups",
+        );
+        await writeFile(backupsPath, "not a directory", "utf8");
+        const res = await fetch(`${baseUrl}/api/backups`, {
+          headers: { Authorization: `Bearer ${API_TOKEN}` },
+        });
+        expect(res.status).toBe(500);
+        const body = (await res.json()) as Record<string, unknown>;
+        expect(body).toMatchObject({ error: "Backup list failed" });
+        expect(JSON.stringify(body)).not.toContain(backupsPath);
+        expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+      },
+    );
+  }, 120_000);
+
   it("contains a snapshot failure with hostile diagnostic accessors", async () => {
     const hostile = new Proxy(Object.create(null), {
       getPrototypeOf() {

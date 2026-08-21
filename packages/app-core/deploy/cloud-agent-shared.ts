@@ -1043,7 +1043,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               memoriesCount: state.memories.length,
               startedAt: state.startedAt,
               database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-              databaseLiveness,
+              // The bridge RPC is renderer/cloud-readable; project away the
+              // internal probe diagnostic just like the HTTP health boundary.
+              databaseLiveness: publicDatabaseLiveness(databaseLiveness),
             },
           }),
         );

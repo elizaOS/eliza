@@ -1825,17 +1825,10 @@ async function handleRequest(
       const backups = await listLocalAgentBackups(state.runtime.agentId);
       json(res, { backups });
     } catch (err) {
-      logger.error(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[agent-backup] Local backup list failed",
-      );
-      error(
-        res,
-        err instanceof Error ? err.message : "Backup list failed",
-        500,
-      );
+      // error-policy:J1 backup listing can surface filesystem paths in
+      // exceptions; keep the original diagnostic in the structured log.
+      logger.error({ err }, "[agent-backup] Local backup list failed");
+      error(res, "Backup list failed", 500);
     }
     return;
   }
