@@ -218,6 +218,7 @@ describe("landing Shared-agent capability contract", () => {
     expect(trip).toMatchObject({
       kind: "itinerary",
       itinerary: {
+        title: "Plan",
         stops: [
           { label: "Meet at arrivals" },
           { label: "Drop bags" },

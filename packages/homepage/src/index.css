@@ -2578,18 +2578,28 @@ html:has(.landing-page)::-webkit-scrollbar-thumb:hover {
 }
 
 .landing-heat-plan-head {
-  border-bottom: 1px solid rgb(0 0 0 / 7%);
-  background: #f7f7f8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: linear-gradient(145deg, #2f8be8, #67b8ec);
+  color: #fff;
 }
 
 .landing-heat-plan-head strong {
-  font-size: 0.92rem;
-  letter-spacing: -0.01em;
+  font-size: 1.02rem;
+  letter-spacing: -0.02em;
   line-height: 1.1;
 }
 
-.landing-heat-plan-app-icon {
-  background: #4ca6e8;
+.landing-heat-plan-head > svg {
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  color: #ffd45a;
+  fill: rgb(255 212 90 / 20%);
+  stroke-width: 1.6;
 }
 
 .landing-heat-plan-schedule {

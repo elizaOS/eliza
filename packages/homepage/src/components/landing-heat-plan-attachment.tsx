@@ -11,14 +11,9 @@ export function LandingHeatPlanAttachment({
       className="landing-heat-plan-attachment"
       aria-label={`${heatPlan.title}: ${heatPlan.schedule.map((item) => item.task).join(", ")}`}
     >
-      <header className="landing-heat-plan-head landing-attachment-head">
-        <span
-          className="landing-heat-plan-app-icon landing-attachment-icon"
-          aria-hidden="true"
-        >
-          <Sun />
-        </span>
+      <header className="landing-heat-plan-head">
         <strong>{heatPlan.title}</strong>
+        <Sun aria-hidden="true" />
       </header>
       <ul className="landing-heat-plan-schedule">
         {heatPlan.schedule.map((item) => (

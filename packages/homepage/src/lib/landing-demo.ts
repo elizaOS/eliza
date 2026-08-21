@@ -576,7 +576,7 @@ const LANDING_DEMO_SCENARIO_DEFINITIONS: readonly LandingDemoScenario[] = [
         capability: "public-web-search",
         kind: "itinerary",
         itinerary: {
-          title: "Arrival Plan",
+          title: "Plan",
           stops: [
             {
               time: "10:20",
