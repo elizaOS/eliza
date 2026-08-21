@@ -21,6 +21,7 @@ describe("ambassador naming", () => {
     expect(ambassadorNameForContainer("app-111111112222")).toBe("app-db-111111112222");
     // round-trips with ambassadorName for the same app
     expect(ambassadorNameForContainer("app-111111112222")).toBe(ambassadorName(APP_ID));
+    expect(ambassadorNameForContainer("app-111111112222-gabcdef12")).toBe(ambassadorName(APP_ID));
   });
 
   test("appContainerNameForAmbassador recovers only complete managed names", () => {

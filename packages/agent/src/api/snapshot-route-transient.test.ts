@@ -185,10 +185,55 @@ describe("POST /api/snapshot transient/terminal mapping", () => {
         const body = (await res.json()) as Record<string, unknown>;
         expect(body).toEqual(
           expect.objectContaining({
-            error: "tar write failed: disk I/O error",
+            error: "Snapshot failed",
           }),
         );
+        expect(JSON.stringify(body)).not.toContain("disk I/O error");
         expect(body.code).toBeUndefined();
+      },
+    );
+  }, 120_000);
+
+  it("keeps filesystem diagnostics out of the backup list 500 body", async () => {
+    await withSnapshotServer(
+      async () => ({}),
+      async (baseUrl) => {
+        // A regular file where the backups directory belongs makes readdir
+        // throw ENOTDIR with the absolute state path in the message.
+        const backupsPath = path.join(
+          process.env.ELIZA_STATE_DIR as string,
+          "backups",
+        );
+        await writeFile(backupsPath, "not a directory", "utf8");
+        const res = await fetch(`${baseUrl}/api/backups`, {
+          headers: { Authorization: `Bearer ${API_TOKEN}` },
+        });
+        expect(res.status).toBe(500);
+        const body = (await res.json()) as Record<string, unknown>;
+        expect(body).toMatchObject({ error: "Backup list failed" });
+        expect(JSON.stringify(body)).not.toContain(backupsPath);
+        expect(JSON.stringify(body)).not.toContain("ENOTDIR");
+      },
+    );
+  }, 120_000);
+
+  it("contains a snapshot failure with hostile diagnostic accessors", async () => {
+    const hostile = new Proxy(Object.create(null), {
+      getPrototypeOf() {
+        throw new Error("prototype secret");
+      },
+      get() {
+        throw new Error("getter secret");
+      },
+    });
+    await withSnapshotServer(
+      async () => {
+        throw hostile;
+      },
+      async (baseUrl) => {
+        const res = await postSnapshot(baseUrl);
+        expect(res.status).toBe(500);
+        await expect(res.json()).resolves.toEqual({ error: "Snapshot failed" });
       },
     );
   }, 120_000);

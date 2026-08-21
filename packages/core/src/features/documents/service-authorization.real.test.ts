@@ -13,6 +13,7 @@ import {
 	ChannelType,
 	type Memory,
 	MemoryType,
+	ModelType,
 	type State,
 	type UUID,
 } from "../../types/index.ts";
@@ -29,9 +30,14 @@ const DELETE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000005" as UUID;
 const VISIBLE_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000009" as UUID;
 const HIDDEN_USER_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000010" as UUID;
 const FOREIGN_DOCUMENT_ID = "f4300000-0000-4000-8000-000000000011" as UUID;
+const ATOMIC_UPDATE_DOCUMENT_ID =
+	"f4300000-0000-4000-8000-000000000016" as UUID;
+const FAILED_UPDATE_DOCUMENT_ID =
+	"f4300000-0000-4000-8000-000000000018" as UUID;
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
+let failEmbedding = false;
 
 function message(): Memory {
 	return {
@@ -248,6 +254,120 @@ describe("DocumentService requester authorization", () => {
 		} finally {
 			getService.mockRestore();
 		}
+	});
+
+	it("keeps the complete old revision when replacement embedding fails", async () => {
+		const embed = async () => {
+			if (failEmbedding) throw new Error("injected update embedding failure");
+			return Array.from({ length: 384 }, (_, index) => (index % 11) / 10);
+		};
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING,
+			async () => embed(),
+			"atomic-update-test",
+			1_000,
+		);
+		runtime.registerModel(
+			ModelType.TEXT_EMBEDDING_BATCH,
+			async (_runtime, params: { texts?: string[] }) =>
+				Promise.all((params.texts ?? []).map(() => embed())),
+			"atomic-update-test",
+			1_000,
+		);
+		const original = userPrivateDocument(
+			FAILED_UPDATE_DOCUMENT_ID,
+			"Failure original body",
+		);
+		const oldFragmentId = "f4300000-0000-4000-8000-000000000019" as UUID;
+		await runtime.createMemories([
+			{ memory: original, tableName: "documents" },
+			{
+				memory: documentFragment(
+					original,
+					"Failure old fragment",
+					oldFragmentId,
+				),
+				tableName: "document_fragments",
+			},
+		]);
+		failEmbedding = true;
+		try {
+			await expect(
+				new DocumentService(runtime).updateDocument({
+					documentId: FAILED_UPDATE_DOCUMENT_ID,
+					content: "Replacement that must not become visible",
+					message: message(),
+				}),
+			).rejects.toThrow("injected update embedding failure");
+		} finally {
+			failEmbedding = false;
+		}
+		await expect(
+			runtime.adapter.getMemoryById(FAILED_UPDATE_DOCUMENT_ID),
+		).resolves.toMatchObject({
+			content: { text: "Failure original body" },
+			metadata: { documentRevision: 0 },
+		});
+		await expect(
+			runtime.adapter.getMemoryById(oldFragmentId),
+		).resolves.toMatchObject({ content: { text: "Failure old fragment" } });
+	});
+
+	it("commits a parent and its replacement fragments as one revision", async () => {
+		const original = userPrivateDocument(
+			ATOMIC_UPDATE_DOCUMENT_ID,
+			"Atomic original body",
+		);
+		const oldFragmentId = "f4300000-0000-4000-8000-000000000017" as UUID;
+		await runtime.createMemories([
+			{ memory: original, tableName: "documents" },
+			{
+				memory: documentFragment(
+					original,
+					"Atomic old fragment",
+					oldFragmentId,
+				),
+				tableName: "document_fragments",
+			},
+		]);
+		const service = new DocumentService(runtime);
+		await expect(
+			service.updateDocument({
+				documentId: ATOMIC_UPDATE_DOCUMENT_ID,
+				content: "Atomic replacement body",
+				message: message(),
+			}),
+		).resolves.toMatchObject({ fragmentCount: 1 });
+
+		const context = {
+			agentId: runtime.agentId,
+			requesterEntityId: USER_ID,
+			requesterRoomIds: [ROOM_ID],
+			requesterRole: "USER" as const,
+		};
+		const parent = await runtime.adapter.getDocument({
+			...context,
+			documentId: ATOMIC_UPDATE_DOCUMENT_ID,
+		});
+		const fragments = await runtime.adapter.queryDocumentFragments({
+			...context,
+			limit: 100,
+		});
+		const replacementFragments = fragments.filter(
+			(fragment) => fragment.metadata?.documentId === ATOMIC_UPDATE_DOCUMENT_ID,
+		);
+		expect(parent).toMatchObject({
+			content: { text: "Atomic replacement body" },
+			metadata: { documentRevision: 1 },
+		});
+		expect(replacementFragments).toHaveLength(1);
+		expect(replacementFragments[0]).toMatchObject({
+			content: { text: "Atomic replacement body" },
+			metadata: { documentRevision: 1, position: 0 },
+		});
+		await expect(
+			runtime.adapter.getMemoryById(oldFragmentId),
+		).resolves.toBeNull();
 	});
 
 	it("denies same-turn update and delete after room membership is revoked", async () => {

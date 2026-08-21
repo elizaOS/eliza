@@ -12,7 +12,10 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { terminalAction } from "./terminal.ts";
+import {
+  resolveTerminalTransportTimeoutMs,
+  terminalAction,
+} from "./terminal.ts";
 
 function runtime(): IAgentRuntime {
   return {
@@ -54,6 +57,15 @@ function terminalResponse(overrides: Record<string, unknown> = {}): Response {
   );
 }
 
+function terminalResponseForRequest(
+  init: RequestInit | undefined,
+  overrides: Record<string, unknown> = {},
+): Response {
+  const runId = new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id");
+  if (!runId) throw new Error("terminal action omitted its run identity");
+  return terminalResponse({ runId, ...overrides });
+}
+
 describe("terminal action effect proof", () => {
   beforeEach(() => {
     vi.stubEnv("ELIZA_BUILD_VARIANT", "direct");
@@ -65,9 +77,14 @@ describe("terminal action effect proof", () => {
   });
 
   it("returns an applied receipt bound to exact clean stdout", async () => {
+    let dispatchedRunId = "";
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse()),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        return terminalResponseForRequest(init);
+      }),
     );
 
     const result = await terminalAction.handler(
@@ -81,17 +98,19 @@ describe("terminal action effect proof", () => {
       success: true,
       userFacingText: "hello",
       verifiedUserFacing: false,
-      userFacingEffectReceiptIds: [
-        "terminal-run:run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
-      ],
+      userFacingEffectReceiptIds: [`terminal-run:${dispatchedRunId}`],
       effectReceipts: [
         {
-          receiptId: "terminal-run:run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+          receiptId: `terminal-run:${dispatchedRunId}`,
           operation: "system.shell.execute",
           outcome: "applied",
           commit: {
             kind: "provider_accepted",
-            id: "run-7f72b2d2-741f-48d9-8571-4ac9918d6a6e",
+            id: dispatchedRunId,
+          },
+          idempotency: {
+            key: dispatchedRunId,
+            replayed: false,
           },
         },
       ],
@@ -101,8 +120,8 @@ describe("terminal action effect proof", () => {
   it("returns a failed non-retryable receipt for a nonzero exit", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           exitCode: 7,
           stdout: "",
           stderr: "permission denied",
@@ -138,8 +157,8 @@ describe("terminal action effect proof", () => {
   it("does not stamp raw stdout as verified user-facing text", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           command:
             "git ls-remote --heads https://github.com/elizaOS/eliza develop",
           stdout:
@@ -171,7 +190,9 @@ describe("terminal action effect proof", () => {
   it("keeps the deterministic empty-stdout success sentence verified", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -190,7 +211,9 @@ describe("terminal action effect proof", () => {
   it("summarizes multiline stdout without marking it canonical", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "first\nsecond\n" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "first\nsecond\n" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -212,7 +235,9 @@ describe("terminal action effect proof", () => {
   it("summarizes carriage-return-delimited stdout", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout: "first\rsecond" })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout: "first\rsecond" }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -233,7 +258,9 @@ describe("terminal action effect proof", () => {
     const stdout = "x".repeat(201);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -255,7 +282,9 @@ describe("terminal action effect proof", () => {
     const stdout = "x".repeat(200);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => terminalResponse({ stdout })),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, { stdout }),
+      ),
     );
 
     const result = await terminalAction.handler(
@@ -294,7 +323,9 @@ describe("terminal action effect proof", () => {
     for (const testCase of cases) {
       vi.stubGlobal(
         "fetch",
-        vi.fn(async () => terminalResponse(testCase.override)),
+        vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+          terminalResponseForRequest(init, testCase.override),
+        ),
       );
       const result = await terminalAction.handler(
         runtime(),
@@ -310,24 +341,48 @@ describe("terminal action effect proof", () => {
   });
 
   it("rejects a response that omits its exit code instead of fabricating zero", async () => {
-    const response = terminalResponse();
-    const payload = (await response.json()) as Record<string, unknown>;
-    delete payload.exitCode;
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () =>
-          new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { "Content-Type": "application/json" },
-          }),
-      ),
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        const response = terminalResponseForRequest(init);
+        const payload = (await response.json()) as Record<string, unknown>;
+        delete payload.exitCode;
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
     );
 
     await expect(
       terminalAction.handler(runtime(), message(), undefined, options()),
     ).rejects.toMatchObject({
-      code: "TERMINAL_RESPONSE_INVALID",
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: { acceptance: "unknown" },
+    });
+  });
+
+  it("rejects execution proof for a different run identity", async () => {
+    let dispatchedRunId = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        return terminalResponse({
+          runId: "run-00000000-0000-4000-8000-000000000001",
+        });
+      }),
+    );
+
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: {
+        acceptance: "unknown",
+        runId: dispatchedRunId,
+      },
     });
   });
 
@@ -343,6 +398,111 @@ describe("terminal action effect proof", () => {
       code: "TERMINAL_REQUEST_FAILED",
       context: { status: 503 },
     });
+  });
+
+  it("derives its transport deadline from the configured server run limit", () => {
+    vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", "125000");
+    expect(resolveTerminalTransportTimeoutMs()).toBe(135_000);
+
+    vi.stubEnv("ELIZA_TERMINAL_MAX_DURATION_MS", "9999999999");
+    expect(resolveTerminalTransportTimeoutMs()).toBe(3_610_000);
+  });
+
+  it("classifies caller abort after dispatch as an acceptance-unknown outcome", async () => {
+    const caller = new AbortController();
+    let bodyCancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel: () => {
+                bodyCancelled = true;
+              },
+            }),
+            { status: 200 },
+          ),
+      ),
+    );
+    const abortReason = new Error("turn cancelled");
+    const pending = terminalAction.handler(runtime(), message(), undefined, {
+      ...options(),
+      abortSignal: caller.signal,
+    } as HandlerOptions & { abortSignal: AbortSignal });
+
+    await vi.waitFor(() => {
+      expect(fetch).toHaveBeenCalledOnce();
+    });
+    caller.abort(abortReason);
+
+    await expect(pending).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: {
+        acceptance: "unknown",
+        runId: expect.stringMatching(/^run-[0-9a-f-]{36}$/u),
+      },
+    });
+    expect(bodyCancelled).toBe(true);
+  });
+
+  it("rejects and cancels a response whose declared body exceeds the cap", async () => {
+    let bodyCancelled = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream<Uint8Array>({
+              cancel: () => {
+                bodyCancelled = true;
+              },
+            }),
+            {
+              status: 200,
+              headers: { "Content-Length": String(2 * 1024 * 1024 + 1) },
+            },
+          ),
+      ),
+    );
+
+    await expect(
+      terminalAction.handler(runtime(), message(), undefined, options()),
+    ).rejects.toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: { acceptance: "unknown" },
+    });
+    expect(bodyCancelled).toBe(true);
+  });
+
+  it("binds an acceptance-unknown transport failure to the dispatched run id", async () => {
+    let dispatchedRunId = "";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+        dispatchedRunId =
+          new Headers(init?.headers).get("X-Eliza-Terminal-Run-Id") ?? "";
+        throw new TypeError("connection reset");
+      }),
+    );
+
+    let caught: unknown;
+    try {
+      await terminalAction.handler(runtime(), message(), undefined, options());
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
+      context: {
+        acceptance: "unknown",
+        runId: expect.stringMatching(/^run-[0-9a-f-]{36}$/u),
+        transportTimeoutMs: 310_000,
+      },
+    });
+    expect((caught as { context: { runId: string } }).context.runId).toBe(
+      dispatchedRunId,
+    );
   });
 });
 
@@ -366,8 +526,8 @@ describe("terminal secret hygiene", () => {
       `https://operator:${urlPassword}@api.example.com/${configuredSecret}`;
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () =>
-        terminalResponse({
+      vi.fn(async (_input: string | URL | Request, init?: RequestInit) =>
+        terminalResponseForRequest(init, {
           command: leakyCommand,
           stdout: `result ${configuredSecret} ${bearerSecret}\n`,
           stderr: `postgres://service:${urlPassword}@db.example.com/app`,
@@ -442,7 +602,7 @@ describe("terminal secret hygiene", () => {
       terminalAction.handler(runtime(), message(), undefined, options()),
     ).rejects.toMatchObject({
       name: ElizaError.name,
-      code: "TERMINAL_REQUEST_FAILED",
+      code: "TERMINAL_REQUEST_OUTCOME_UNKNOWN",
     });
     expect(Date.now() - started).toBeLessThan(1_000);
   });

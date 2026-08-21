@@ -8,12 +8,14 @@
  * Empty when no skills are enabled — never pollutes the prompt.
  */
 
-import type {
-	IAgentRuntime,
-	Memory,
-	Provider,
-	ProviderResult,
-	State,
+import {
+	type IAgentRuntime,
+	type Memory,
+	type Provider,
+	type ProviderResult,
+	type State,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 
@@ -22,8 +24,9 @@ const MAX_SKILLS_LISTED = 50;
 
 function truncateDescription(value: string): string {
 	const cleaned = value.replace(/\s+/g, " ").trim();
-	if (cleaned.length <= MAX_DESCRIPTION_CHARS) return cleaned;
-	return `${cleaned.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
+	const wellFormed = toWellFormedUnicode(cleaned);
+	if (wellFormed.length <= MAX_DESCRIPTION_CHARS) return wellFormed;
+	return `${truncateWellFormed(wellFormed, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
 }
 
 export const enabledSkillsProvider: Provider = {

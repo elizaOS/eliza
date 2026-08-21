@@ -205,12 +205,35 @@ function coordinatorName(agentId: string, rpc: BridgeRequest): string {
   return `${agentId}:${coordinatorRoom(rpc.params?.roomId, rpc.params?.userId)}`;
 }
 
+const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
+
+/**
+ * Bound every shared-runtime Durable Object hop so a hung or overloaded
+ * coordinator cannot pin the calling worker indefinitely. Caller cancellation
+ * and the hop deadline are composed so whichever fires first aborts the fetch.
+ */
+export function coordinatorFetch(
+  stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
+  url: string | URL,
+  init?: RequestInit,
+  timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
+): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return stub.fetch(url, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
+  });
+}
+
 function coordinatorStub(
   namespace: RuntimeDurableObjectNamespace,
   agentId: string,
   roomId: string,
 ) {
-  return namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
+  const stub = namespace.getByName(`${agentId}:${coordinatorRoom(roomId)}`);
+  return {
+    fetch: (input: RequestInfo | URL, init?: RequestInit) => coordinatorFetch(stub, input, init),
+  };
 }
 
 function cacheContextUnavailable(): SharedRuntimeCacheWarmingError {
@@ -287,9 +310,10 @@ export async function coordinateSharedBridge(
   options: SharedConversationCoordinatorOptions,
 ): Promise<BridgeResponse> {
   const namespace = requireTurnCoordinator(options);
-  const response = await namespace
-    .getByName(coordinatorName(agent.id, rpc))
-    .fetch("https://shared-runtime.internal/bridge", {
+  const response = await coordinatorFetch(
+    namespace.getByName(coordinatorName(agent.id, rpc)),
+    "https://shared-runtime.internal/bridge",
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -303,7 +327,8 @@ export async function coordinateSharedBridge(
           : {}),
         ...(options.channel ? { channel: options.channel } : {}),
       }),
-    });
+    },
+  );
   await requireCoordinatorResponse(response, "conversation");
   return (await response.json()) as BridgeResponse;
 }
@@ -314,9 +339,10 @@ export async function coordinateSharedStream(
   options: SharedConversationCoordinatorOptions,
 ): Promise<Response> {
   const namespace = requireTurnCoordinator(options);
-  const response = await namespace
-    .getByName(coordinatorName(agent.id, rpc))
-    .fetch("https://shared-runtime.internal/stream", {
+  const response = await coordinatorFetch(
+    namespace.getByName(coordinatorName(agent.id, rpc)),
+    "https://shared-runtime.internal/stream",
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -331,7 +357,8 @@ export async function coordinateSharedStream(
         ...(options.channel ? { channel: options.channel } : {}),
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
-    });
+    },
+  );
   return await requireCoordinatorResponse(response, "stream");
 }
 

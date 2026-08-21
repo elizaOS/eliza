@@ -1,11 +1,15 @@
 /** Development-only board for reviewing every landing demo room at once. */
 
-import { LandingDemoCardBubble } from "@/components/landing-demo-card";
+import {
+  isLandingDemoAttachmentStep,
+  LandingDemoAttachment,
+} from "@/components/landing-demo-attachment";
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
   type LandingDemoCapability,
   type LandingDemoStep,
+  landingDemoStepText,
 } from "@/lib/landing-demo";
 import "./demo-scenarios.css";
 
@@ -30,7 +34,7 @@ function stepCapability(step: LandingDemoStep): LandingDemoCapability | null {
 }
 
 function senderAvatar(step: LandingDemoStep): string | null {
-  if (step.kind === "eliza" || step.kind === "card") {
+  if (step.kind !== "member" && step.kind !== "user") {
     return "/brand/logos/logo_white_orangebg.svg";
   }
   if (step.kind === "user") return null;
@@ -42,15 +46,32 @@ function senderAvatar(step: LandingDemoStep): string | null {
 }
 
 function stepKey(step: LandingDemoStep): string {
-  return step.kind === "card"
-    ? `${step.kind}-${step.card.title}`
-    : `${step.kind}-${step.text}`;
+  return `${step.kind}-${landingDemoStepText(step)}`;
 }
 
-function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
+function sameStepSender(
+  first: LandingDemoStep | undefined,
+  second: LandingDemoStep | undefined,
+): boolean {
+  if (!first || !second) return false;
+  return stepSender(first) === stepSender(second);
+}
+
+function ReviewStep({
+  index,
+  nextStep,
+  previousStep,
+  step,
+}: {
+  index: number;
+  nextStep?: LandingDemoStep;
+  previousStep?: LandingDemoStep;
+  step: LandingDemoStep;
+}) {
   const sender = stepSender(step);
-  const capability = stepCapability(step);
   const avatar = senderAvatar(step);
+  const showAuthor = !sameStepSender(previousStep, step);
+  const showAvatar = !sameStepSender(step, nextStep);
 
   return (
     <li
@@ -59,21 +80,25 @@ function ReviewStep({ index, step }: { index: number; step: LandingDemoStep }) {
     >
       <span className="demo-review-number">{index + 1}</span>
       <span className="demo-review-avatar-slot">
-        {avatar ? <img src={avatar} alt="" /> : null}
+        {avatar && showAvatar ? (
+          <img
+            src={avatar}
+            alt=""
+            width={256}
+            height={256}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : null}
       </span>
       <div className="demo-review-step-body">
-        <div className="demo-review-step-meta">
-          <strong>{sender}</strong>
-          {capability ? (
-            <span className="demo-review-step-capability">
-              {CAPABILITY_LABELS[capability]}
-            </span>
-          ) : null}
-        </div>
-        {step.kind === "card" ? (
-          <div className="landing-bubble-card demo-review-card-preview">
-            <LandingDemoCardBubble card={step.card} />
+        {showAuthor ? (
+          <div className="demo-review-step-meta">
+            <strong>{sender}</strong>
           </div>
+        ) : null}
+        {isLandingDemoAttachmentStep(step) ? (
+          <LandingDemoAttachment step={step} />
         ) : (
           <p>{step.text}</p>
         )}
@@ -91,8 +116,7 @@ export default function DemoScenariosPage() {
           <p>Development review</p>
           <h1>Group chat demo scripts</h1>
           <span className="demo-review-subtitle">
-            One shared mobile + desktop source · 20 messages and 4 cards per
-            room
+            One shared mobile + desktop source · natural iMessage conversations
           </span>
           <span className="demo-review-editor-note">
             Edit <code>packages/homepage/src/lib/landing-demo.ts</code>. This
@@ -137,9 +161,20 @@ export default function DemoScenariosPage() {
                         ]
                       }
                       alt=""
+                      width={256}
+                      height={256}
+                      loading="lazy"
+                      decoding="async"
                     />
                   ))}
-                  <img src="/brand/logos/logo_white_orangebg.svg" alt="" />
+                  <img
+                    src="/brand/logos/logo_white_orangebg.svg"
+                    alt=""
+                    width={423}
+                    height={423}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 </div>
                 <div>
                   <p>{scenario.label}</p>
@@ -164,6 +199,8 @@ export default function DemoScenariosPage() {
                   <ReviewStep
                     index={index}
                     key={`${scenario.id}-${stepKey(step)}`}
+                    nextStep={scenario.steps[index + 1]}
+                    previousStep={scenario.steps[index - 1]}
                     step={step}
                   />
                 ))}

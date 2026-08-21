@@ -35,6 +35,7 @@ export * from "./ad-report-shares";
 export * from "./ad-transactions";
 export * from "./affiliates";
 export * from "./agent-billing";
+export * from "./agent-billing-runs";
 export * from "./agent-events";
 // ============================================
 // Eliza Cloud Sandboxes

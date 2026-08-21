@@ -12,7 +12,7 @@ import {
   readDocumentMutationSnapshot,
   type UUID,
 } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "./adapter";
 import { MemoryStorage } from "./storage-memory";
 
@@ -20,6 +20,37 @@ const AGENT_ID = "50000000-0000-0000-0000-000000000001" as UUID;
 const REQUESTER_ID = "50000000-0000-0000-0000-000000000002" as UUID;
 const ROOM_A = "50000000-0000-0000-0000-000000000003" as UUID;
 const ROOM_B = "50000000-0000-0000-0000-000000000004" as UUID;
+
+class BlockingBatchStorage extends MemoryStorage {
+  readonly batchStarted: Promise<void>;
+  private markBatchStarted!: () => void;
+  private releaseBatch!: () => void;
+  private readonly batchRelease: Promise<void>;
+
+  constructor() {
+    super();
+    this.batchStarted = new Promise((resolve) => {
+      this.markBatchStarted = resolve;
+    });
+    this.batchRelease = new Promise((resolve) => {
+      this.releaseBatch = resolve;
+    });
+  }
+
+  release(): void {
+    this.releaseBatch();
+  }
+
+  override async applyBatch(batch: {
+    collection: string;
+    deletes: string[];
+    sets: Array<{ id: string; data: unknown }>;
+  }): Promise<void> {
+    this.markBatchStarted();
+    await this.batchRelease;
+    await super.applyBatch(batch);
+  }
+}
 
 function memory(
   index: number,
@@ -293,5 +324,217 @@ describe("InMemoryDatabaseAdapter document list capability", () => {
       })
     ).resolves.toEqual({ status: "conflict" });
     await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toHaveLength(1);
+  });
+
+  it("atomically replaces a parent and its complete fragment generation", async () => {
+    const adapter = new InMemoryDatabaseAdapter(new MemoryStorage(), AGENT_ID);
+    await adapter.initialize();
+    const original = memory(1, ROOM_A, { documentRevision: 0 });
+    const oldFragment = {
+      ...memory(2, ROOM_A),
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const expected = readDocumentMutationSnapshot(original);
+    if (!expected) throw new Error("Expected a valid document mutation snapshot");
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const newFragment = {
+      ...oldFragment,
+      id: memory(3, ROOM_A).id,
+      content: { text: "new fragment" },
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+    await expect(
+      adapter.replaceDocumentRevision({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole: "OWNER",
+        documentId: original.id,
+        expected,
+        replacement,
+        fragments: [newFragment],
+      })
+    ).resolves.toMatchObject({ status: "updated" });
+    await expect(adapter.getMemoriesByIds([oldFragment.id], "document_fragments")).resolves.toEqual(
+      []
+    );
+    await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toEqual([
+      expect.objectContaining({
+        content: { text: "new body" },
+        metadata: expect.objectContaining({ documentRevision: 1 }),
+      }),
+    ]);
+    await expect(adapter.getMemoriesByIds([newFragment.id], "document_fragments")).resolves.toEqual(
+      [
+        expect.objectContaining({
+          content: { text: "new fragment" },
+          metadata: expect.objectContaining({ documentRevision: 1 }),
+        }),
+      ]
+    );
+  });
+
+  it("rejects reused fragment ids without corrupting the committed vector", async () => {
+    const storage = new MemoryStorage();
+    const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
+    await adapter.initialize();
+    const original = memory(20, ROOM_A, { documentRevision: 0 });
+    const oldEmbedding = [1, ...Array.from({ length: 383 }, () => 0)];
+    const oldFragment = {
+      ...memory(21, ROOM_A),
+      content: { text: "old searchable fragment" },
+      embedding: oldEmbedding,
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const expected = readDocumentMutationSnapshot(original);
+    if (!expected) throw new Error("Expected a valid document mutation snapshot");
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const reusedFragment = {
+      ...oldFragment,
+      content: { text: "new fragment with reused id" },
+      embedding: [0, 1, ...Array.from({ length: 382 }, () => 0)],
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    await expect(
+      adapter.replaceDocumentRevision({
+        agentId: AGENT_ID,
+        requesterEntityId: REQUESTER_ID,
+        requesterRoomIds: [],
+        requesterRole: "OWNER",
+        documentId: original.id,
+        expected,
+        replacement,
+        fragments: [reusedFragment],
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
+    await expect(
+      adapter.searchMemories({
+        tableName: "document_fragments",
+        embedding: oldEmbedding,
+        match_threshold: 0.99,
+        limit: 1,
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: oldFragment.id,
+        content: { text: "old searchable fragment" },
+      }),
+    ]);
+    await expect(adapter.getMemoriesByIds([original.id], "documents")).resolves.toEqual([
+      expect.objectContaining({
+        content: { text: original.content.text },
+        metadata: expect.objectContaining({ documentRevision: 0 }),
+      }),
+    ]);
+  });
+
+  it("does not expose staged revision vectors before the storage swap", async () => {
+    const storage = new BlockingBatchStorage();
+    const adapter = new InMemoryDatabaseAdapter(storage, AGENT_ID);
+    await adapter.initialize();
+    // searchMemories ranks the eligible set exhaustively (#23405), so the read
+    // barrier is observed through searchExact rather than the approximate walk.
+    const vectorSearch = vi.spyOn(
+      (
+        adapter as unknown as {
+          vectorIndex: {
+            searchExact: (
+              embedding: number[],
+              limit: number,
+              threshold: number,
+              eligibleIds?: ReadonlySet<string>
+            ) => Promise<unknown[]>;
+          };
+        }
+      ).vectorIndex,
+      "searchExact"
+    );
+    const original = memory(10, ROOM_A, { documentRevision: 0 });
+    const oldFragment = {
+      ...memory(11, ROOM_A),
+      content: { text: "old searchable fragment" },
+      embedding: [0, 1, ...Array.from({ length: 382 }, () => 0)],
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const expected = readDocumentMutationSnapshot(original);
+    if (!expected) throw new Error("Expected a valid document mutation snapshot");
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const newFragment = {
+      ...oldFragment,
+      id: memory(12, ROOM_A).id,
+      content: { text: "new searchable fragment" },
+      embedding: [1, ...Array.from({ length: 383 }, () => 0)],
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    const replacementPromise = adapter.replaceDocumentRevision({
+      agentId: AGENT_ID,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [],
+      requesterRole: "OWNER",
+      documentId: original.id,
+      expected,
+      replacement,
+      fragments: [newFragment],
+    });
+    await storage.batchStarted;
+    const readPromise = adapter.searchMemories({
+      tableName: "document_fragments",
+      embedding: newFragment.embedding,
+      match_threshold: 0.9,
+      limit: 1,
+    });
+    expect(vectorSearch).not.toHaveBeenCalled();
+
+    storage.release();
+    await expect(replacementPromise).resolves.toMatchObject({ status: "updated" });
+    await expect(readPromise).resolves.toEqual([
+      expect.objectContaining({
+        id: newFragment.id,
+        content: { text: "new searchable fragment" },
+      }),
+    ]);
+    expect(vectorSearch).toHaveBeenCalledOnce();
   });
 });

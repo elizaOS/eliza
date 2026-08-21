@@ -1,20 +1,44 @@
 /**
  * Covers the push-token registry: register/list/count/unregister, idempotent
  * upsert, moving a token between platforms, whitespace trimming and empty-token
- * rejection, platform filtering, cache-backed persistence with rehydration, and
+ * rejection, platform filtering, cache-backed persistence with rehydration,
  * dropping malformed records on hydrate, concurrent first-use hydration, and
- * serialized persistence. Backed by a Map-backed mock runtime cache — no real
- * storage.
+ * serialized persistence.
+ *
+ * Adversarial persistence-boundary coverage: UTF-8 byte-length bounding (not
+ * char length), malformed-timestamp rejection (NaN/Infinity/negative/fractional
+ * /unsafe-integer/non-number), dedup-before-cap so duplicate-heavy dumps do not
+ * underfill, the persisted-record ceiling (exact boundary hydrates, one above
+ * fails closed without destroying the durable row), one-time durable repair
+ * that never rewrites a clean load (including a resolved-false repair write that
+ * leaves the dirty row intact, reports a redacted diagnostic without failing the
+ * read, retries on the next cold start, and stops rewriting once it lands),
+ * failed-write rollback (in-memory and durable
+ * state unchanged, typed error, token redacted), mutation-queue recovery after a
+ * failed op, resolved-false persistence failure (register/unregister and a
+ * deferred false-return all leave in-memory and durable state unchanged with the
+ * typed persist-failed error), observable atomicity (list/count never see an
+ * uncommitted mutation while its write is pending and stay unchanged on
+ * rejection), and
+ * persistence-boundary validation of direct callers (unsupported platform and
+ * non-string token become the typed invalid error). Backed by a Map-backed mock
+ * runtime cache — no real storage.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import { createMockRuntime } from "@elizaos/core/testing";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  MAX_PUSH_TOKEN_LENGTH,
+  MAX_PERSISTED_PUSH_TOKENS,
+  MAX_PUSH_TOKEN_BYTES,
   MAX_PUSH_TOKENS_PER_AGENT,
+  PUSH_TOKEN_INVALID_CODE,
+  PUSH_TOKEN_PERSIST_FAILED_CODE,
   type PushTokenRecord,
   PushTokenRegistry,
 } from "./push-token-registry.ts";
+
+const AGENT_ID = "00000000-0000-0000-0000-0000000000aa";
+const KEY = `push-tokens:${AGENT_ID}`;
 
 function createRuntime(): {
   runtime: IAgentRuntime;
@@ -228,10 +252,7 @@ describe("PushTokenRegistry", () => {
         createdAt: i + 1,
       });
     }
-    ctx.cache.set(
-      "push-tokens:00000000-0000-0000-0000-0000000000aa",
-      dumped,
-    );
+    ctx.cache.set("push-tokens:00000000-0000-0000-0000-0000000000aa", dumped);
     const fresh = new PushTokenRegistry(ctx.runtime);
     const list = await fresh.list();
     expect(list).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
@@ -241,9 +262,515 @@ describe("PushTokenRegistry", () => {
     expect(list.map((r) => r.token)).not.toContain("old-0");
   });
 
-  it("rejects a token longer than the length cap", async () => {
-    const huge = "x".repeat(MAX_PUSH_TOKEN_LENGTH + 1);
-    await expect(registry.register("ios", huge)).rejects.toThrow(/length cap/);
+  it("rejects a token longer than the byte cap", async () => {
+    const huge = "x".repeat(MAX_PUSH_TOKEN_BYTES + 1);
+    await expect(registry.register("ios", huge)).rejects.toThrow(/byte cap/);
     expect(await registry.count()).toBe(0);
+  });
+
+  it("bounds tokens by UTF-8 byte length, not char length", async () => {
+    // '€' encodes to 3 UTF-8 bytes, so a char-length check would accept a token
+    // over the byte cap. Register the largest token that fits by bytes, then one
+    // char more (still tiny by char count) and confirm it is rejected.
+    const maxChars = Math.floor(MAX_PUSH_TOKEN_BYTES / 3);
+    const atLimit = "€".repeat(maxChars);
+    expect(Buffer.byteLength(atLimit, "utf8")).toBeLessThanOrEqual(
+      MAX_PUSH_TOKEN_BYTES,
+    );
+    await registry.register("ios", atLimit);
+    expect(await registry.count()).toBe(1);
+
+    const overByBytes = "€".repeat(maxChars + 1);
+    expect(overByBytes.length).toBeLessThan(MAX_PUSH_TOKEN_BYTES);
+    expect(Buffer.byteLength(overByBytes, "utf8")).toBeGreaterThan(
+      MAX_PUSH_TOKEN_BYTES,
+    );
+    await expect(registry.register("android", overByBytes)).rejects.toThrow(
+      /byte cap/,
+    );
+    expect(await registry.count()).toBe(1);
+  });
+
+  it("rejects hydrated records with malformed timestamps", async () => {
+    ctx.cache.set(KEY, [
+      { token: "ok", platform: "ios", createdAt: 5 },
+      { token: "nan", platform: "ios", createdAt: Number.NaN },
+      { token: "inf", platform: "ios", createdAt: Number.POSITIVE_INFINITY },
+      { token: "negative", platform: "ios", createdAt: -1 },
+      { token: "fractional", platform: "ios", createdAt: 1.5 },
+      {
+        token: "unsafe",
+        platform: "ios",
+        createdAt: Number.MAX_SAFE_INTEGER + 1,
+      },
+      { token: "stringified", platform: "ios", createdAt: "5" },
+    ]);
+    const fresh = new PushTokenRegistry(ctx.runtime);
+    expect((await fresh.list()).map((r) => r.token)).toEqual(["ok"]);
+  });
+
+  it("drops hydrated records whose token exceeds the UTF-8 byte cap", async () => {
+    ctx.cache.set(KEY, [
+      { token: "small", platform: "ios", createdAt: 1 },
+      {
+        token: "€".repeat(Math.floor(MAX_PUSH_TOKEN_BYTES / 3) + 1),
+        platform: "android",
+        createdAt: 2,
+      },
+    ]);
+    const fresh = new PushTokenRegistry(ctx.runtime);
+    expect((await fresh.list()).map((r) => r.token)).toEqual(["small"]);
+  });
+
+  it("dedups before capping so duplicate-heavy data does not underfill", async () => {
+    // Naive cap-then-dedup would keep only the single hottest token (its 64
+    // newest duplicates fill the cap, then collapse to one). Dedup-before-cap
+    // must retain the newest hot record PLUS every unique older token.
+    const dump: PushTokenRecord[] = [];
+    for (let i = 0; i < MAX_PUSH_TOKENS_PER_AGENT; i++) {
+      dump.push({ token: "hot", platform: "ios", createdAt: 1000 + i });
+    }
+    for (let i = 0; i < 40; i++) {
+      dump.push({ token: `uniq-${i}`, platform: "android", createdAt: 1 + i });
+    }
+    ctx.cache.set(KEY, dump);
+    const fresh = new PushTokenRegistry(ctx.runtime);
+    const list = await fresh.list();
+    expect(list).toHaveLength(41);
+    expect(list.find((r) => r.token === "hot")?.createdAt).toBe(1063);
+    expect(list.filter((r) => r.token.startsWith("uniq-"))).toHaveLength(40);
+  });
+
+  it("hydrates exactly at the persisted-record ceiling but fails closed above it", async () => {
+    const makeDump = (n: number): PushTokenRecord[] =>
+      Array.from({ length: n }, (_, i) => ({
+        token: `t-${i}`,
+        platform: "ios" as const,
+        createdAt: i + 1,
+      }));
+
+    // Exactly at the ceiling: traversed, deduped, capped to the live cap.
+    ctx.cache.set(KEY, makeDump(MAX_PERSISTED_PUSH_TOKENS));
+    const atCeiling = new PushTokenRegistry(ctx.runtime);
+    expect(await atCeiling.count()).toBe(MAX_PUSH_TOKENS_PER_AGENT);
+
+    // One above the ceiling: fail closed to empty and DO NOT destroy the
+    // durable row (a later mutation overwrites it with a bounded array).
+    const over = createRuntime();
+    const oversized = makeDump(MAX_PERSISTED_PUSH_TOKENS + 1);
+    over.cache.set(KEY, oversized);
+    const aboveCeiling = new PushTokenRegistry(over.runtime);
+    expect(await aboveCeiling.count()).toBe(0);
+    expect((over.cache.get(KEY) as PushTokenRecord[]).length).toBe(
+      MAX_PERSISTED_PUSH_TOKENS + 1,
+    );
+  });
+
+  it("persists the repaired form exactly once and never rewrites a clean load", async () => {
+    const setCalls: PushTokenRecord[][] = [];
+    const cache = new Map<string, unknown>();
+    cache.set(KEY, [
+      { token: "  spaced  ", platform: "ios", createdAt: 2, extra: "junk" },
+      { token: "dupe", platform: "android", createdAt: 1 },
+      { token: "dupe", platform: "android", createdAt: 9 },
+      { token: "", platform: "ios", createdAt: 3 },
+    ]);
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        setCalls.push(value as PushTokenRecord[]);
+        cache.set(k, value);
+        return true;
+      },
+    });
+
+    const first = new PushTokenRegistry(runtime);
+    const list = await first.list();
+    expect(list.map((r) => r.token).sort()).toEqual(["dupe", "spaced"]);
+    expect(setCalls).toHaveLength(1);
+    const repaired = setCalls[0];
+    expect(repaired.find((r) => r.token === "dupe")?.createdAt).toBe(9);
+    for (const record of repaired) {
+      expect(Object.keys(record).sort()).toEqual([
+        "createdAt",
+        "platform",
+        "token",
+      ]);
+    }
+
+    // A second cold registry over the already-repaired cache must not rewrite.
+    const second = new PushTokenRegistry(runtime);
+    await second.list();
+    expect(setCalls).toHaveLength(1);
+  });
+
+  it("leaves the dirty row intact and reports when a repair write resolves false, then a later true repair stops rewriting", async () => {
+    const setCalls: PushTokenRecord[][] = [];
+    const reported: Array<{ scope: string; error: unknown }> = [];
+    const cache = new Map<string, unknown>();
+    // A bounded-but-dirty dump (unsorted extra field + dupe) that normalizes.
+    const dirty = [
+      { token: "  spaced  ", platform: "ios", createdAt: 2, extra: "junk" },
+      { token: "dupe", platform: "android", createdAt: 1 },
+      { token: "dupe", platform: "android", createdAt: 9 },
+    ];
+    cache.set(KEY, dirty);
+    let repairSucceeds = false;
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        setCalls.push(value as PushTokenRecord[]);
+        // The adapter reports `false` when the durable row did not land.
+        if (!repairSucceeds) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    runtime.reportError = ((scope: string, error: unknown) => {
+      reported.push({ scope, error });
+    }) as IAgentRuntime["reportError"];
+
+    // Cold start #1: repair write resolves false. The read still succeeds with
+    // the normalized in-memory view, the diagnostic is reported (redacted), and
+    // the original dirty durable row is left intact for a later retry.
+    const first = new PushTokenRegistry(runtime);
+    expect((await first.list()).map((r) => r.token).sort()).toEqual([
+      "dupe",
+      "spaced",
+    ]);
+    expect(setCalls).toHaveLength(1);
+    expect(reported).toHaveLength(1);
+    expect(reported[0].scope).toBe("push.registry.repair");
+    expect((reported[0].error as ElizaError).code).toBe(
+      PUSH_TOKEN_PERSIST_FAILED_CODE,
+    );
+    // No token leaks into the reported error surface.
+    expect(JSON.stringify(reported[0].error)).not.toContain("spaced");
+    // Durable row is still the original dirty dump (repair did not land).
+    expect(cache.get(KEY)).toBe(dirty);
+
+    // Cold start #2: the dirty row is still present, so the registry scans and
+    // re-normalizes again — but now the repair write lands.
+    repairSucceeds = true;
+    const second = new PushTokenRegistry(runtime);
+    expect((await second.list()).map((r) => r.token).sort()).toEqual([
+      "dupe",
+      "spaced",
+    ]);
+    expect(setCalls).toHaveLength(2);
+    const repaired = cache.get(KEY) as PushTokenRecord[];
+    for (const record of repaired) {
+      expect(Object.keys(record).sort()).toEqual([
+        "createdAt",
+        "platform",
+        "token",
+      ]);
+    }
+
+    // Cold start #3: the durable row is now canonical, so no rewrite occurs.
+    const third = new PushTokenRegistry(runtime);
+    await third.list();
+    expect(setCalls).toHaveLength(2);
+  });
+
+  it("rolls the in-memory registry back when a durable write is rejected", async () => {
+    let failNextWrite = false;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        if (failNextWrite) throw new Error("cache offline");
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    failNextWrite = true;
+    await reg.register("android", "reject-me").then(
+      () => {
+        throw new Error("expected the rejected write to throw");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+        // Tokens are never leaked into the error surface.
+        expect(String((err as ElizaError).message)).not.toContain("reject-me");
+        expect(JSON.stringify((err as ElizaError).context)).not.toContain(
+          "reject-me",
+        );
+      },
+    );
+    failNextWrite = false;
+
+    // In-memory registry unchanged (rejected token absent, prior token intact).
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    // Durable cache never received the rejected token either.
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("treats a resolved false setCache as a persistence failure on register", async () => {
+    let denyNextWrite = false;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        // The SQL adapter resolves `false` when the durable row did not land.
+        if (denyNextWrite) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    denyNextWrite = true;
+    await reg.register("android", "denied").then(
+      () => {
+        throw new Error("expected a false setCache to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+    denyNextWrite = false;
+
+    // Observable registry and durable cache stay on the committed token.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("treats a resolved false setCache as a persistence failure on unregister", async () => {
+    let denyNextWrite = false;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        if (denyNextWrite) return false;
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    denyNextWrite = true;
+    await reg.unregister("keep").then(
+      () => {
+        throw new Error("expected a false setCache to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+    denyNextWrite = false;
+
+    // The delete was never published: the token remains in memory and durably.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("never publishes a deferred false setCache while its write is pending", async () => {
+    const cache = new Map<string, unknown>();
+    let gateNextWrite = false;
+    let resolvePendingWrite!: (result: boolean) => void;
+    let pendingWriteStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      pendingWriteStarted = resolve;
+    });
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: <T>(k: string, value: T): Promise<boolean> => {
+        if (!gateNextWrite) {
+          cache.set(k, value);
+          return Promise.resolve(true);
+        }
+        return new Promise<boolean>((resolve) => {
+          resolvePendingWrite = resolve;
+          pendingWriteStarted();
+        });
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    gateNextWrite = true;
+    const pending = reg.register("android", "pending-token");
+    await started;
+    // Staged but not published while the durable write is in flight.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+
+    resolvePendingWrite(false);
+    await pending.then(
+      () => {
+        throw new Error("expected the false write to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+
+    // Observable registry and durable cache are unchanged after the false write.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("keeps processing later mutations after a failed one (no queue wedge)", async () => {
+    let failCount = 0;
+    const cache = new Map<string, unknown>();
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: async <T>(k: string, value: T): Promise<boolean> => {
+        if (failCount > 0) {
+          failCount--;
+          throw new Error("transient cache failure");
+        }
+        cache.set(k, value);
+        return true;
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "a");
+
+    failCount = 1;
+    const failing = reg.register("android", "b");
+    const following = reg.register("ios", "c");
+    await expect(failing).rejects.toThrow(/persist/);
+    // The queue is not wedged: the op enqueued after the failure still resolves.
+    await following;
+
+    expect((await reg.list()).map((r) => r.token).sort()).toEqual(["a", "c"]);
+    expect(
+      (cache.get(KEY) as PushTokenRecord[]).map((r) => r.token).sort(),
+    ).toEqual(["a", "c"]);
+  });
+
+  it("never exposes an uncommitted mutation while its write is pending, and stays unchanged on rejection", async () => {
+    const cache = new Map<string, unknown>();
+    let gateNextWrite = false;
+    let rejectPendingWrite!: (reason: Error) => void;
+    let pendingWriteStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      pendingWriteStarted = resolve;
+    });
+    const runtime = createMockRuntime({
+      agentId: AGENT_ID,
+      getCache: async <T>(k: string): Promise<T | undefined> =>
+        cache.get(k) as T | undefined,
+      setCache: <T>(k: string, value: T): Promise<boolean> => {
+        if (!gateNextWrite) {
+          cache.set(k, value);
+          return Promise.resolve(true);
+        }
+        return new Promise<boolean>((_resolve, reject) => {
+          rejectPendingWrite = reject;
+          pendingWriteStarted();
+        });
+      },
+    });
+    const reg = new PushTokenRegistry(runtime);
+    await reg.register("ios", "keep");
+    expect(await reg.count()).toBe(1);
+
+    gateNextWrite = true;
+    const pending = reg.register("android", "pending-token");
+    await started;
+    // The candidate is staged but not published: readers observe only committed
+    // state while the durable write is in flight.
+    expect(await reg.count()).toBe(1);
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+
+    rejectPendingWrite(new Error("cache offline"));
+    await pending.then(
+      () => {
+        throw new Error("expected the rejected write to throw");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_PERSIST_FAILED_CODE);
+      },
+    );
+
+    // Observable registry and durable cache are unchanged after the rejection.
+    expect((await reg.list()).map((r) => r.token)).toEqual(["keep"]);
+    expect((cache.get(KEY) as PushTokenRecord[]).map((r) => r.token)).toEqual([
+      "keep",
+    ]);
+  });
+
+  it("rejects an unsupported platform from a direct caller with a typed error", async () => {
+    const untyped = registry as unknown as {
+      register(platform: unknown, token: string): Promise<void>;
+    };
+    await untyped.register("web", "tok-web").then(
+      () => {
+        throw new Error("expected unsupported platform to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_INVALID_CODE);
+      },
+    );
+    expect(await registry.count()).toBe(0);
+    expect(ctx.cache.get(KEY)).toBeUndefined();
+  });
+
+  it("turns a non-string runtime token into the typed invalid error, not a TypeError", async () => {
+    const untyped = registry as unknown as {
+      register(platform: string, token: unknown): Promise<void>;
+    };
+    await untyped.register("ios", 12345).then(
+      () => {
+        throw new Error("expected a non-string token to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_INVALID_CODE);
+      },
+    );
+    expect(await registry.count()).toBe(0);
+  });
+
+  it("rejects an empty token with a typed validation error", async () => {
+    await registry.register("ios", "real").catch(() => undefined);
+    await registry.register("ios", "   ").then(
+      () => {
+        throw new Error("expected empty token to reject");
+      },
+      (err: unknown) => {
+        expect(err).toBeInstanceOf(ElizaError);
+        expect((err as ElizaError).code).toBe(PUSH_TOKEN_INVALID_CODE);
+      },
+    );
   });
 });

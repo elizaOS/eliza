@@ -24,6 +24,15 @@ describe("containerNameForApp (#9145)", () => {
     const id = "550e8400-e29b-41d4-a716-446655440000";
     expect(containerNameForApp(id)).toBe("app-550e8400e29b");
   });
+
+  test("isolates Docker names by deployment generation", () => {
+    expect(
+      containerNameForApp(
+        "550e8400-e29b-41d4-a716-446655440000",
+        "11111111-2222-4333-8444-555555555555",
+      ),
+    ).toBe("app-550e8400e29b-g11111111");
+  });
 });
 
 // build-from-repo is intentionally deferred (prebuilt-image only). A repo-configured

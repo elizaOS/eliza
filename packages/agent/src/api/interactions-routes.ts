@@ -21,6 +21,8 @@ import {
   type AgentRuntime,
   EventType,
   readRequestBodyBuffer,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 const MAX_BODY_BYTES = 4 * 1024;
@@ -86,7 +88,10 @@ export function parseShortcutBody(
   if (!SHORTCUT_ID_PATTERN.test(shortcutId)) return null;
   const context =
     typeof body.context === "string" && body.context.trim()
-      ? body.context.trim().slice(0, MAX_CONTEXT_CHARS)
+      ? truncateWellFormed(
+          toWellFormedUnicode(body.context.trim()),
+          MAX_CONTEXT_CHARS,
+        )
       : undefined;
   return { shortcutId, ...(context ? { context } : {}) };
 }
@@ -97,7 +102,11 @@ function readBoundedString(
 ): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, maxChars) : undefined;
+  if (!trimmed) return undefined;
+  const wellFormed = toWellFormedUnicode(trimmed);
+  return wellFormed.length <= maxChars
+    ? wellFormed
+    : truncateWellFormed(wellFormed, maxChars);
 }
 
 function readNonNegativeInteger(value: unknown): number | null {

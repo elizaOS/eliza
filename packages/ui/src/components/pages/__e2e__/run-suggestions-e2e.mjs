@@ -56,6 +56,7 @@ import { fileURLToPath } from "node:url";
 import { EventType } from "@elizaos/core";
 import { build } from "esbuild";
 import { chromium } from "playwright";
+import { suggestionsFixtureBuildOptions } from "./suggestions-bundle.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const agentSrc = join(here, "..", "..", "..", "..", "..", "agent", "src");
@@ -420,44 +421,13 @@ const captured = proactiveFrames();
 
 console.log("— phase 2: captured frames → real ChatTranscript in Chromium —");
 
-// `state/parsers` re-exports streaming-text helpers whose canonical home is
-// @elizaos/shared; the shared BARREL drags http-helpers → the @elizaos/core
-// node barrel into a browser bundle. Vite resolves the published browser
-// condition here; for this esbuild fixture we alias the barrel to the exact
-// (pure, browser-safe) module the fixture graph actually consumes.
-const sharedStreamingText = join(
-  here,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-  "shared",
-  "src",
-  "utils",
-  "streaming-text.ts",
-);
-const aliasSharedBarrel = {
-  name: "alias-shared-barrel",
-  setup(b) {
-    b.onResolve({ filter: /^@elizaos\/shared$/ }, () => ({
-      path: sharedStreamingText,
-    }));
-  },
-};
-
-const bundle = await build({
-  entryPoints: [join(here, "suggestions-fixture.tsx")],
-  bundle: true,
-  format: "iife",
-  platform: "browser",
-  conditions: ["eliza-source", "browser"],
-  jsx: "automatic",
-  loader: { ".tsx": "tsx", ".ts": "ts" },
-  define: { "process.env.NODE_ENV": '"production"' },
-  plugins: [aliasSharedBarrel],
-  write: false,
-});
+// The fixture's server-only edges (the @elizaos/shared barrel and the
+// @elizaos/core value-import behind `api/client`) are aliased or stubbed in
+// suggestions-bundle.ts, which its regression test bundles with the same
+// options. Those edges are dead at render here — no API base is set, so no
+// client-cloud call is ever made — and the page-error guard below would
+// surface it if any of them ran at module load.
+const bundle = await build(suggestionsFixtureBuildOptions());
 const js = bundle.outputFiles[0].text;
 // Map the design tokens the suggestion treatment uses (accent/dashed border /
 // tinted bubble) onto the brand orange so the rendered affordance is honest.

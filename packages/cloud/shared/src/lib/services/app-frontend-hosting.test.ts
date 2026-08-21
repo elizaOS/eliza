@@ -163,6 +163,20 @@ describe("injectBeacon", () => {
     expect(out).toContain("visitor_id:v");
     expect(out).toContain("session_id:sid");
   });
+  test("keeps every script-shaped beacon value inside its JavaScript literal", () => {
+    const breakout = '</script><script data-owned="no">alert(1)</script>&\u2028\u2029';
+    const out = injectBeacon("<body></body>", `app-${breakout}`, `https://site.test/${breakout}`, {
+      visitorId: `visitor-${breakout}`,
+      sessionId: `session-${breakout}`,
+    });
+
+    expect(out.match(/<script>/g)).toHaveLength(1);
+    expect(out.match(/<\/script>/g)).toHaveLength(1);
+    expect(out).not.toContain('</script><script data-owned="no">');
+    expect(out).toContain("\\u003c/script\\u003e");
+    expect(out).toContain("\\u0026");
+    expect(out).toContain("\\u2028\\u2029");
+  });
   test("no-op without a body", () => {
     expect(injectBeacon("<div></div>", "app-123")).toBe("<div></div>");
   });

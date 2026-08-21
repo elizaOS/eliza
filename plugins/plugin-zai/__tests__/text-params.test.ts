@@ -227,4 +227,71 @@ describe("z.ai text parameter resolution", () => {
       })
     );
   });
+
+  it("handles valid providerOptions and rejects cyclic providerOptions with ZAI_PROVIDER_OPTIONS_UNBOUNDED", async () => {
+    const runtime = {
+      character: {},
+      getSetting(key: string) {
+        if (key === "ZAI_API_KEY") return "test-key";
+        return undefined;
+      },
+    };
+
+    const { handleTextSmall } = await import("../models/text");
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: { agentName: "test-agent", extra: { foo: "bar" } },
+      })
+    ).resolves.toBe("ok");
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      handleTextSmall(runtime as never, {
+        prompt: "hello",
+        providerOptions: cyclic as never,
+      })
+    ).rejects.toMatchObject({
+      code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED",
+    });
+
+    expect(generateTextMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["small", "handleTextSmall"],
+    ["large", "handleTextLarge"],
+  ] as const)(
+    "rejects malformed present providerOptions before %s provider dispatch",
+    async (_size, handlerName) => {
+      const runtime = {
+        character: {},
+        getSetting(key: string) {
+          if (key === "ZAI_API_KEY") return "test-key";
+          return undefined;
+        },
+      };
+      const handlers = await import("../models/text");
+      const handler = handlers[handlerName];
+
+      for (const providerOptions of [
+        { agentName: "keep", bad: 1n },
+        new Date(0),
+        { nested: new Map([["enabled", true]]) },
+      ]) {
+        await expect(
+          handler(runtime as never, {
+            prompt: "hello",
+            providerOptions: providerOptions as never,
+          })
+        ).rejects.toMatchObject({ code: "ZAI_PROVIDER_OPTIONS_UNBOUNDED" });
+      }
+
+      expect(createOpenAICompatibleMock).not.toHaveBeenCalled();
+      expect(generateTextMock).not.toHaveBeenCalled();
+    }
+  );
 });

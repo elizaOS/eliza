@@ -24,6 +24,11 @@ import {
   MAX_SAVED_PLACE_STATE_BYTES,
   MAX_SAVED_PLACES_PER_OWNER,
 } from "./store.js";
+import {
+  MAX_MAPS_PROVIDER_ID_LENGTH,
+  MAX_MAPS_PROVIDERS,
+  type PlacePage,
+} from "./types.js";
 
 const AGENT_ID = "11111111-1111-4111-a111-111111111111" as UUID;
 const OWNER_ID = "22222222-2222-4222-a222-222222222222" as UUID;
@@ -299,6 +304,152 @@ describe("MapsService and MAPS action", () => {
     expect(() =>
       opaqueService.registerAdapter({ ...adapter, id: " invalid " }),
     ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    expect(() =>
+      opaqueService.registerAdapter({ ...adapter, attribution: " " }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+    expect(opaqueService.describeProviders([adapter.id])).toEqual([
+      {
+        id: adapter.id,
+        attribution: null,
+        generation: 1,
+      },
+    ]);
+  });
+
+  it("snapshots normalized legal attribution at adapter registration", () => {
+    const mutableAdapter = {
+      ...adapter,
+      attribution: "  Map data © Contract Maps  ",
+    };
+    const attributionService = new MapsService(runtime);
+    attributionService.registerAdapter(mutableAdapter, true);
+
+    mutableAdapter.attribution = "x".repeat(501);
+    const description = attributionService.describeProviders([adapter.id]);
+    expect(description).toEqual([
+      {
+        id: adapter.id,
+        attribution: "Map data © Contract Maps",
+        generation: 1,
+      },
+    ]);
+
+    (description[0] as { attribution: string | null }).attribution =
+      "caller mutation";
+    expect(
+      attributionService.describeProviders([adapter.id])[0]?.attribution,
+    ).toBe("Map data © Contract Maps");
+
+    attributionService.registerAdapter({
+      ...adapter,
+      attribution: "Updated legal notice",
+    });
+    expect(attributionService.describeProviders([adapter.id])[0]).toEqual({
+      id: adapter.id,
+      attribution: "Updated legal notice",
+      generation: 2,
+    });
+  });
+
+  it("keeps registration unlimited and resolves a 33rd default provider exactly", async () => {
+    const boundedService = new MapsService(runtime);
+    expect(() =>
+      boundedService.registerAdapter({
+        ...adapter,
+        id: "x".repeat(MAX_MAPS_PROVIDER_ID_LENGTH + 1),
+      }),
+    ).toThrow(expect.objectContaining({ code: "MAPS_INVALID_INPUT" }));
+
+    for (let index = 0; index < MAX_MAPS_PROVIDERS; index += 1) {
+      boundedService.registerAdapter({
+        ...adapter,
+        id: `provider_${index}`,
+        connectionId: `conn_${String(index).padStart(16, "0")}`,
+      });
+    }
+    const overflowId = "one_provider_too_many";
+    expect(() =>
+      boundedService.registerAdapter(
+        {
+          ...adapter,
+          id: overflowId,
+          connectionId: "conn_overflow00000000",
+          attribution: "Overflow legal attribution",
+          async searchPlaces() {
+            return {
+              places: [{ ...home, provider: overflowId }],
+              nextCursor: null,
+            };
+          },
+        },
+        true,
+      ),
+    ).not.toThrow();
+    expect(boundedService.listAdapters()).toHaveLength(MAX_MAPS_PROVIDERS + 1);
+    expect(boundedService.describeProviders([overflowId])).toEqual([
+      {
+        id: overflowId,
+        attribution: "Overflow legal attribution",
+        generation: MAX_MAPS_PROVIDERS + 1,
+      },
+    ]);
+    await expect(
+      boundedService.searchPlacesResult({ query: "default" }),
+    ).resolves.toMatchObject({
+      page: { places: [{ provider: overflowId }] },
+      provider: {
+        id: overflowId,
+        attribution: "Overflow legal attribution",
+        generation: MAX_MAPS_PROVIDERS + 1,
+      },
+    });
+  });
+
+  it("binds an in-flight result to the adapter generation that started it", async () => {
+    let resolveSearch: ((page: PlacePage) => void) | undefined;
+    const generationService = new MapsService(runtime);
+    generationService.registerAdapter(
+      {
+        ...adapter,
+        attribution: "Original legal attribution",
+        searchPlaces: vi.fn(
+          () =>
+            new Promise<
+              Awaited<ReturnType<MapsProviderAdapter["searchPlaces"]>>
+            >((resolve) => {
+              resolveSearch = resolve;
+            }),
+        ),
+      },
+      true,
+    );
+
+    const inFlight = generationService.searchPlacesResult({ query: "old" });
+    generationService.registerAdapter({
+      ...adapter,
+      attribution: "Replacement legal attribution",
+    });
+    resolveSearch?.({ places: [home], nextCursor: null });
+
+    await expect(inFlight).resolves.toMatchObject({
+      provider: {
+        id: adapter.id,
+        attribution: "Original legal attribution",
+        generation: 1,
+      },
+    });
+    await expect(
+      generationService.searchPlacesResult({ query: "new" }),
+    ).resolves.toMatchObject({
+      provider: {
+        id: adapter.id,
+        attribution: "Replacement legal attribution",
+        generation: 2,
+      },
+    });
+    await expect(
+      generationService.searchPlacesResult({ query: "stale" }, adapter.id, 1),
+    ).rejects.toMatchObject({ code: "MAPS_PROVIDER_CHANGED" });
   });
 
   it("validates public store UUIDs before creating persistence namespaces", async () => {

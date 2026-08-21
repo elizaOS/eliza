@@ -101,6 +101,19 @@ export interface WorkflowStepExecuteArgs {
   readonly previousStepValue: unknown;
 }
 
+/**
+ * Arguments handed to a contribution's `compensate` callback when a later
+ * step in the same run failed. `executedValue` is the value this step's
+ * `execute` returned, so compensation can target the exact side effect
+ * (e.g. the created task id or browser session id).
+ */
+export interface WorkflowStepCompensateArgs {
+  readonly definition: LifeOpsWorkflowDefinition;
+  readonly startedAt: string;
+  readonly request: Record<string, unknown>;
+  readonly executedValue: unknown;
+}
+
 export interface WorkflowStepContribution<
   TStep extends { kind: string } = { kind: string },
   TResult = unknown,
@@ -123,6 +136,18 @@ export interface WorkflowStepContribution<
     args: WorkflowStepExecuteArgs,
     ctx: WorkflowStepExecuteContext,
   ): Promise<TResult>;
+  /**
+   * Optional failure compensation. When a later step in the run throws, the
+   * dispatcher invokes `compensate` on every already-executed step that
+   * declares one, in reverse execution order. Compensation must be
+   * best-effort idempotent: it may run again if a replayed run fails at the
+   * same point. Read-only steps should omit it.
+   */
+  compensate?(
+    step: TStep,
+    args: WorkflowStepCompensateArgs,
+    ctx: WorkflowStepExecuteContext,
+  ): Promise<void>;
 }
 
 export type AnyWorkflowStepContribution = WorkflowStepContribution<

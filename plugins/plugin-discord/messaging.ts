@@ -3,7 +3,11 @@
  * length limit, escaping Discord markdown, and extracting user mentions from
  * message content.
  */
-import { ElizaError, truncateWellFormed } from "@elizaos/core";
+import {
+	ElizaError,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "@elizaos/core";
 import type { Guild, MessageReaction } from "discord.js";
 
 /**
@@ -633,17 +637,21 @@ export function escapeDiscordMarkdown(text: string): string {
 }
 
 /**
- * Truncates text to a maximum length with an ellipsis
+ * Truncates text to a maximum length with an ellipsis safely
  */
 export function truncateText(
 	text: string,
 	maxLength: number,
 	ellipsis = "…",
 ): string {
-	if (text.length <= maxLength) {
-		return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxLength) {
+		return wellFormed;
 	}
-	return text.slice(0, maxLength - ellipsis.length) + ellipsis;
+	const safeEllipsis = toWellFormedUnicode(ellipsis);
+	const retainedEllipsis = truncateWellFormed(safeEllipsis, maxLength);
+	const budget = Math.max(0, maxLength - retainedEllipsis.length);
+	return `${truncateWellFormed(wellFormed, budget)}${retainedEllipsis}`;
 }
 
 /**
@@ -654,25 +662,7 @@ export function truncateUtf16Safe(
 	maxLength: number,
 	ellipsis = "…",
 ): string {
-	if (text.length <= maxLength) {
-		return text;
-	}
-
-	const targetLength = maxLength - ellipsis.length;
-	if (targetLength <= 0) {
-		return ellipsis.slice(0, maxLength);
-	}
-
-	// Check if we're in the middle of a surrogate pair
-	let truncateAt = targetLength;
-	const charAtTruncate = text.charCodeAt(truncateAt);
-
-	// If we're at a low surrogate, back up one
-	if (charAtTruncate >= 0xdc00 && charAtTruncate <= 0xdfff) {
-		truncateAt--;
-	}
-
-	return text.slice(0, truncateAt) + ellipsis;
+	return truncateText(text, maxLength, ellipsis);
 }
 
 /**

@@ -1,23 +1,23 @@
 /** Exercises Android notification identifier decoding through the UDS route harness. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const list = mock(() => []);
-const getUnreadCount = mock(() => 0);
-const markRead = mock(async (_id: string) => true);
-const markAllRead = mock(async () => 1);
-const remove = mock(async (_id: string) => true);
-const clear = mock(async () => undefined);
+const list = vi.fn(() => []);
+const getUnreadCount = vi.fn(() => 0);
+const markRead = vi.fn(async (_id: string) => true);
+const markAllRead = vi.fn(async () => 1);
+const remove = vi.fn(async (_id: string) => true);
+const clear = vi.fn(async () => undefined);
 
-mock.module("@elizaos/core", () => ({
+vi.mock("@elizaos/core", () => ({
 	NotificationService: {
 		getAvailability: () => "ready",
 		requestRecovery: () => ({ retryAfterSeconds: 1 }),
 	},
 	ServiceType: { NOTIFICATION: "notification" },
 }));
-mock.module("@elizaos/shared", () => ({
+vi.mock("@elizaos/shared", () => ({
 	readAliasedEnv: () => undefined,
 }));
 

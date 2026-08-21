@@ -7,6 +7,14 @@ import { MapsError } from "./errors.js";
 import { RuntimeSavedPlaceStore, type SavedPlaceStore } from "./store.js";
 import {
   coordinatesSchema,
+  MAX_MAPS_PROVIDER_GENERATION,
+  type MapsPlacePageResult,
+  type MapsPlaceResult,
+  type MapsProviderDescription,
+  type MapsRouteResult,
+  mapsAttributionSchema,
+  mapsProviderIdSchema,
+  mapsProviderIdsSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -22,11 +30,17 @@ import {
 } from "./types.js";
 
 export const MAPS_SERVICE_TYPE = "maps";
+export type { MapsProviderDescription } from "./types.js";
 
 export interface MapsHandoff {
   kind: "share" | "navigate";
   uri: string;
   place: PlaceRef;
+}
+
+interface RegisteredMapsProvider {
+  adapter: MapsProviderAdapter;
+  description: MapsProviderDescription;
 }
 
 function validated<T>(
@@ -122,7 +136,8 @@ export class MapsService extends Service {
   override capabilityDescription =
     "Provider-neutral place search, route planning, durable saved places, sharing, and navigation handoffs.";
 
-  private readonly adapters = new Map<string, MapsProviderAdapter>();
+  private readonly providers = new Map<string, RegisteredMapsProvider>();
+  private providerGeneration = 0;
   private defaultAdapterId: string | null = null;
   private readonly store: SavedPlaceStore;
 
@@ -136,50 +151,104 @@ export class MapsService extends Service {
   }
 
   override async stop(): Promise<void> {
-    this.adapters.clear();
+    this.providers.clear();
     this.defaultAdapterId = null;
   }
 
   registerAdapter(adapter: MapsProviderAdapter, makeDefault = false): void {
+    const providerId = mapsProviderIdSchema.safeParse(adapter.id);
     if (
-      !/^[a-z0-9][a-z0-9_-]*$/i.test(adapter.id) ||
+      !providerId.success ||
       !/^conn_[A-Za-z0-9_-]{16,}$/.test(adapter.connectionId)
     ) {
       throw new MapsError("Maps adapter identity is invalid.", {
         code: "MAPS_INVALID_INPUT",
+        ...(!providerId.success ? { cause: providerId.error } : {}),
       });
     }
-    this.adapters.set(adapter.id, adapter);
+    const attribution =
+      adapter.attribution === undefined
+        ? null
+        : mapsAttributionSchema.safeParse(adapter.attribution);
+    if (attribution !== null && !attribution.success) {
+      throw new MapsError("Maps adapter attribution is invalid.", {
+        code: "MAPS_INVALID_INPUT",
+        cause: attribution.error,
+      });
+    }
+    if (this.providerGeneration >= MAX_MAPS_PROVIDER_GENERATION) {
+      throw new MapsError("Maps provider generation capacity is exhausted.", {
+        code: "MAPS_PROVIDER_UNAVAILABLE",
+      });
+    }
+    this.providerGeneration += 1;
+    this.providers.set(providerId.data, {
+      adapter,
+      description: {
+        id: providerId.data,
+        attribution: attribution?.data ?? null,
+        generation: this.providerGeneration,
+      },
+    });
     if (makeDefault || this.defaultAdapterId === null)
-      this.defaultAdapterId = adapter.id;
+      this.defaultAdapterId = providerId.data;
   }
 
   unregisterAdapter(adapterId: string): void {
-    this.adapters.delete(adapterId);
+    this.providers.delete(adapterId);
     if (this.defaultAdapterId === adapterId) {
-      this.defaultAdapterId = this.adapters.keys().next().value ?? null;
+      this.defaultAdapterId = this.providers.keys().next().value ?? null;
     }
   }
 
   listAdapters(): readonly string[] {
-    return [...this.adapters.keys()];
+    return [...this.providers.keys()];
+  }
+
+  /**
+   * Describes only the exact bounded provider ids requested by a consumer.
+   * Result-producing providers cannot disappear behind registration order.
+   */
+  describeProviders(providerIds: readonly string[]): MapsProviderDescription[] {
+    const ids = validated(
+      mapsProviderIdsSchema,
+      providerIds,
+      "Maps provider description lookup is invalid.",
+    );
+    return ids.flatMap((id) => {
+      const provider = this.providers.get(id);
+      return provider ? [this.copyDescription(provider.description)] : [];
+    });
   }
 
   async searchPlaces(
     request: PlaceSearchRequest,
     provider?: string,
   ): Promise<PlacePage> {
-    const adapter = this.adapter(provider);
+    return (await this.searchPlacesResult(request, provider)).page;
+  }
+
+  async searchPlacesResult(
+    request: PlaceSearchRequest,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<MapsPlacePageResult> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
     const page = validated(
       placePageSchema,
       await adapter.searchPlaces(validatedSearchRequest(request)),
       "Maps provider returned an invalid place page.",
     );
-    return {
+    const normalizedPage = {
       ...page,
       places: page.places.map((place) =>
         assertProviderPlace(place, adapter, "place search result"),
       ),
+    };
+    return {
+      page: normalizedPage,
+      provider: this.copyDescription(registration.description),
     };
   }
 
@@ -187,21 +256,42 @@ export class MapsService extends Service {
     providerPlaceId: string,
     provider?: string,
   ): Promise<PlaceRef | null> {
-    const adapter = this.adapter(provider);
+    return (await this.getPlaceResult(providerPlaceId, provider)).place;
+  }
+
+  async getPlaceResult(
+    providerPlaceId: string,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<MapsPlaceResult> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
     if (!providerPlaceId || providerPlaceId.length > 512) {
       throw new MapsError("Place id is invalid.", {
         code: "MAPS_INVALID_INPUT",
       });
     }
     const place = await adapter.getPlace(providerPlaceId);
-    return place ? assertProviderPlace(place, adapter, "place detail") : null;
+    return {
+      place: place ? assertProviderPlace(place, adapter, "place detail") : null,
+      provider: this.copyDescription(registration.description),
+    };
   }
 
   async planRoute(
     request: RoutePlanRequest,
     provider?: string,
   ): Promise<RoutePlan> {
-    const adapter = this.adapter(provider);
+    return (await this.planRouteResult(request, provider)).route;
+  }
+
+  async planRouteResult(
+    request: RoutePlanRequest,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<MapsRouteResult> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
     const normalized = {
       origin: validated(
         placeRefSchema,
@@ -312,7 +402,10 @@ export class MapsService extends Service {
         },
       );
     }
-    return route;
+    return {
+      route,
+      provider: this.copyDescription(registration.description),
+    };
   }
 
   async savePlace(request: SavePlaceRequest): Promise<SavePlaceResult> {
@@ -376,16 +469,41 @@ export class MapsService extends Service {
     };
   }
 
-  private adapter(provider?: string): MapsProviderAdapter {
+  private provider(
+    provider?: string,
+    expectedGeneration?: number,
+  ): RegisteredMapsProvider {
     const id = provider?.trim() || this.defaultAdapterId;
-    const adapter = id ? this.adapters.get(id) : undefined;
-    if (!adapter) {
+    const registration = id ? this.providers.get(id) : undefined;
+    if (!registration) {
       throw new MapsError("No maps provider adapter is available.", {
         code: "MAPS_PROVIDER_UNAVAILABLE",
         context: { requestedProvider: provider ?? null },
       });
     }
-    return adapter;
+    if (
+      expectedGeneration !== undefined &&
+      registration.description.generation !== expectedGeneration
+    ) {
+      throw new MapsError(
+        "The maps provider changed after these results loaded. Search again before continuing.",
+        {
+          code: "MAPS_PROVIDER_CHANGED",
+          context: {
+            providerId: id,
+            expectedGeneration,
+            actualGeneration: registration.description.generation,
+          },
+        },
+      );
+    }
+    return registration;
+  }
+
+  private copyDescription(
+    description: MapsProviderDescription,
+  ): MapsProviderDescription {
+    return { ...description };
   }
 }
 

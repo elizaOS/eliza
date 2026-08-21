@@ -10,6 +10,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import ts from "typescript";
+import { encodeMarkdownTableCell } from "./markdown-table-cell.mjs";
 
 const ROOT = process.cwd();
 const DEFAULT_ROOTS = [
@@ -519,7 +520,7 @@ function capitalizeAscii(value) {
 }
 
 function escapeCell(value) {
-  return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
+  return encodeMarkdownTableCell(value);
 }
 
 /**

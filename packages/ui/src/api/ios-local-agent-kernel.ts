@@ -3,12 +3,15 @@
  * (market data, steward session) directly in the webview when the full-bun agent
  * is not reachable, using the shared market-provider helpers.
  */
+
+import { logger } from "@elizaos/logger";
 import {
   asRecord,
   buildCoinGeckoMarketsUrl,
   buildMarketMovers,
   buildMarketPriceSnapshots,
   COINGECKO_MARKET_PROVIDER,
+  formatError,
   POLYMARKET_MARKET_PROVIDER,
   type ProviderStatus,
   parseCanonicalInteger,
@@ -61,6 +64,7 @@ import {
   positiveFiniteNumber,
 } from "./ios-local-agent-mobile-policy";
 import type { IttpAgentRequestContext } from "./ittp-agent-transport";
+import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 
 const STORAGE_PREFIX = "eliza:ios-local-agent";
 const CONVERSATIONS_KEY = `${STORAGE_PREFIX}:conversations:v1`;
@@ -80,6 +84,12 @@ const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://eliza.app";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
+// Cloud bridge relays a full LLM turn; 60 s matches the model gateway's server
+// timeout so the client does not hang forever on a cold regional worker.
+export const CLOUD_BRIDGE_REQUEST_TIMEOUT_MS = 60_000;
+// Eliza-1 manifest is a small JSON (< 50 KB) over Hugging Face CDN; 30 s is
+// generous even for a cold link while still bounding a hung fetch.
+export const IOS_BUNDLE_MANIFEST_TIMEOUT_MS = 30_000;
 const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   preferredProvider: {},
   policy: {},
@@ -1652,16 +1662,37 @@ function normalizedSha256(value: unknown): string | null {
     : null;
 }
 
+class PublicLocalModelDownloadError extends Error {}
+
+function publicLocalModelDownloadError(error: unknown): string | null {
+  try {
+    if (!(error instanceof PublicLocalModelDownloadError)) return null;
+    const message = Reflect.get(error, "message");
+    return typeof message === "string" && message.length <= 512
+      ? message
+      : "Model download failed";
+  } catch {
+    // error-policy:J4 hostile native failures remain a generic visible state.
+    return null;
+  }
+}
+
 function normalizeNativeHashResult(
   result: Awaited<ReturnType<NonNullable<LlamaCppModule["hashFile"]>>>,
 ): { sha256: string; sizeBytes?: number } {
   if (typeof result === "string") {
     const sha256 = normalizedSha256(result);
-    if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+    if (!sha256)
+      throw new PublicLocalModelDownloadError(
+        "Native hashFile returned an invalid SHA256",
+      );
     return { sha256 };
   }
   const sha256 = normalizedSha256(result.sha256 ?? result.hash);
-  if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+  if (!sha256)
+    throw new PublicLocalModelDownloadError(
+      "Native hashFile returned an invalid SHA256",
+    );
   const sizeBytes =
     typeof result.sizeBytes === "number"
       ? result.sizeBytes
@@ -1680,7 +1711,7 @@ async function hashNativeBundleFile(
   label: string,
 ): Promise<{ sha256: string; sizeBytes?: number }> {
   if (!llama.hashFile) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `Native Eliza-1 downloader cannot verify SHA256 for ${label}; refusing bundle install.`,
     );
   }
@@ -1695,7 +1726,7 @@ async function verifyNativeBundleFile(
 ): Promise<{ sha256: string; sizeBytes?: number }> {
   const hashed = await hashNativeBundleFile(llama, filePath, label);
   if (hashed.sha256 !== expectedSha256) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `SHA256 mismatch for ${label}: expected ${expectedSha256}, got ${hashed.sha256}`,
     );
   }
@@ -1717,17 +1748,23 @@ function parseIosBundleManifest(
   model: CatalogModel,
 ): IosBundleManifest {
   if (!input || typeof input !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: expected object");
+    throw new PublicLocalModelDownloadError(
+      "Invalid Eliza-1 manifest: expected object",
+    );
   }
   const raw = input as Partial<IosBundleManifest>;
   if (raw.id !== model.id) {
-    throw new Error(`Invalid Eliza-1 manifest id for ${model.id}`);
+    throw new PublicLocalModelDownloadError(
+      `Invalid Eliza-1 manifest id for ${model.id}`,
+    );
   }
   if (raw.defaultEligible !== true || typeof raw.version !== "string") {
-    throw new Error("Invalid Eliza-1 manifest metadata");
+    throw new PublicLocalModelDownloadError(
+      "Invalid Eliza-1 manifest metadata",
+    );
   }
   if (!raw.files || typeof raw.files !== "object") {
-    throw new Error("Invalid Eliza-1 manifest files");
+    throw new PublicLocalModelDownloadError("Invalid Eliza-1 manifest files");
   }
   for (const kind of [
     "text",
@@ -1738,18 +1775,22 @@ function parseIosBundleManifest(
     "vad",
   ] as const) {
     if (!Array.isArray(raw.files[kind])) {
-      throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
+      throw new PublicLocalModelDownloadError(
+        `Invalid Eliza-1 manifest files.${kind}`,
+      );
     }
   }
   for (const kind of ["text", "voice", "asr", "cache", "vad"] as const) {
     if (raw.files[kind].length === 0) {
-      throw new Error(
+      throw new PublicLocalModelDownloadError(
         `Invalid Eliza-1 manifest files.${kind} must be non-empty`,
       );
     }
   }
   if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
-    throw new Error(`Eliza-1 manifest missing text file ${model.ggufFile}`);
+    throw new PublicLocalModelDownloadError(
+      `Eliza-1 manifest missing text file ${model.ggufFile}`,
+    );
   }
   return raw as IosBundleManifest;
 }
@@ -2326,6 +2367,17 @@ interface CloudForwardResult {
   modelId?: string;
 }
 
+class IosCloudNotPairedError extends Error {}
+
+function isIosCloudNotPairedError(error: unknown): boolean {
+  try {
+    return error instanceof IosCloudNotPairedError;
+  } catch {
+    // error-policy:J1 hostile thrown values map to the generic bridge failure.
+    return false;
+  }
+}
+
 function cloudBridgeResultText(result: unknown): string | null {
   const record = asRecord(result);
   if (!record) return null;
@@ -2341,54 +2393,70 @@ async function sendPromptToIosCloud(
 ): Promise<CloudForwardResult> {
   const pairing = readIosCloudPairing();
   if (!pairing.paired || !pairing.agentId || !pairing.token) {
-    throw new Error("Eliza Cloud is not paired.");
+    throw new IosCloudNotPairedError("Eliza Cloud is not paired.");
   }
 
-  const response = await fetch(
-    `${pairing.apiBase}/api/v1/eliza/agents/${encodeURIComponent(pairing.agentId)}/bridge`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        authorization: `Bearer ${pairing.token}`,
+  // Portable 60 s bound — `AbortSignal.timeout` is missing on iOS 16.0-16.3.
+  const { signal: cloudBridgeSignal, dispose: disposeCloudBridgeSignal } =
+    createTimeoutSignal(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${pairing.apiBase}/api/v1/eliza/agents/${encodeURIComponent(pairing.agentId)}/bridge`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          authorization: `Bearer ${pairing.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: randomId("cloud"),
+          method: "message.send",
+          params: { text: prompt },
+        }),
+        signal: cloudBridgeSignal,
       },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: randomId("cloud"),
-        method: "message.send",
-        params: { text: prompt },
-      }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Cloud bridge failed: HTTP ${response.status}`);
-  }
-
-  // error-policy:J3 body-parse failure becomes the explicit non-object throw
-  // below instead of a fabricated bridge reply.
-  const body = asRecord(await response.json().catch(() => null));
-  if (!body) {
-    throw new Error("Cloud bridge returned a non-object response.");
-  }
-  const error = asRecord(body.error);
-  if (error) {
-    throw new Error(
-      stringValue(error.message) ?? "Cloud bridge returned an error.",
     );
+    if (!response.ok) {
+      throw new Error(`Cloud bridge failed: HTTP ${response.status}`);
+    }
+
+    // Keep the timeout signal alive through the body stream — headers may
+    // arrive well before the timeout while the body is still stalled.
+    // error-policy:J3 body-parse failure becomes the explicit non-object
+    // throw below instead of a fabricated bridge reply; timeout aborts
+    // rethrow so handleIosCloudChat surfaces the 502 bridge failure.
+    const body = asRecord(
+      await response.json().catch((err: unknown) => {
+        if (isTimeoutAbortError(err)) throw err;
+        return null;
+      }),
+    );
+    if (!body) {
+      throw new Error("Cloud bridge returned a non-object response.");
+    }
+    const error = asRecord(body.error);
+    if (error) {
+      throw new Error(
+        stringValue(error.message) ?? "Cloud bridge returned an error.",
+      );
+    }
+    const result = asRecord(body.result);
+    const text = cloudBridgeResultText(result);
+    if (!text) {
+      throw new Error("Cloud bridge response missing text.");
+    }
+    const modelId = stringValue(result?.model);
+    return {
+      text,
+      promptTokens: 0,
+      completionTokens: 0,
+      ...(modelId ? { modelId } : {}),
+    };
+  } finally {
+    disposeCloudBridgeSignal();
   }
-  const result = asRecord(body.result);
-  const text = cloudBridgeResultText(result);
-  if (!text) {
-    throw new Error("Cloud bridge response missing text.");
-  }
-  const modelId = stringValue(result?.model);
-  return {
-    text,
-    promptTokens: 0,
-    completionTokens: 0,
-    ...(modelId ? { modelId } : {}),
-  };
 }
 
 async function handleIosCloudChat(request: Request): Promise<Response> {
@@ -2402,8 +2470,21 @@ async function handleIosCloudChat(request: Request): Promise<Response> {
   try {
     return json(await sendPromptToIosCloud(prompt));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return json({ error: message }, message.includes("not paired") ? 409 : 502);
+    const notPaired = isIosCloudNotPairedError(error);
+    // error-policy:J1 the WebView transport logs the provider detail locally
+    // and returns a stable typed failure to the renderer.
+    logger.error(
+      { error, diagnostic: formatError(error) },
+      "[ios-local-agent] cloud chat request failed",
+    );
+    return json(
+      {
+        error: notPaired
+          ? "Cloud agent is not paired"
+          : "Cloud chat is unavailable",
+      },
+      notPaired ? 409 : 502,
+    );
   }
 }
 
@@ -2777,7 +2858,9 @@ async function downloadNativeModelFile(
   filename: string,
 ): Promise<string> {
   if (!llama.downloadModel) {
-    throw new Error("Native Eliza-1 downloader is unavailable.");
+    throw new PublicLocalModelDownloadError(
+      "Native Eliza-1 downloader is unavailable.",
+    );
   }
   const result = await llama.downloadModel(url, filename);
   return typeof result === "string" ? result : (result.path ?? filename);
@@ -2789,7 +2872,7 @@ async function downloadIosBundle(
   job: DownloadJob,
 ): Promise<string> {
   if (!model.bundleManifestFile) {
-    throw new Error(
+    throw new PublicLocalModelDownloadError(
       `${model.displayName} does not declare an Eliza-1 manifest.`,
     );
   }
@@ -2797,13 +2880,43 @@ async function downloadIosBundle(
     model,
     model.bundleManifestFile,
   );
-  const manifestResponse = await fetch(manifestUrl, { redirect: "follow" });
-  if (!manifestResponse.ok) {
-    throw new Error(
-      `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
+  // Portable 30 s bound — small JSON over Hugging Face CDN; keep the signal
+  // alive through `response.json()` so a headers-received + stalled-body hang
+  // is still bounded. `AbortSignal.timeout` would throw on iOS 16.0-16.3.
+  // Fetch, parse, and timeout aborts all propagate to startDownload's job
+  // boundary, which records the failed download state.
+  const manifest = await (async () => {
+    const { signal, dispose } = createTimeoutSignal(
+      IOS_BUNDLE_MANIFEST_TIMEOUT_MS,
     );
-  }
-  const manifest = parseIosBundleManifest(await manifestResponse.json(), model);
+    try {
+      const manifestResponse = await fetch(manifestUrl, {
+        redirect: "follow",
+        signal,
+      });
+      if (!manifestResponse.ok) {
+        throw new PublicLocalModelDownloadError(
+          `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
+        );
+      }
+      return parseIosBundleManifest(await manifestResponse.json(), model);
+    } catch (err) {
+      // error-policy:J2 a manifest timeout becomes a public download error so
+      // the models UI names the cause; other failures keep their contained
+      // "Model download failed" diagnostics from startDownload's boundary.
+      if (isTimeoutAbortError(err)) {
+        throw new PublicLocalModelDownloadError(
+          `Timed out fetching ${model.displayName} manifest after ${Math.round(
+            IOS_BUNDLE_MANIFEST_TIMEOUT_MS / 1000,
+          )} s`,
+          { cause: err },
+        );
+      }
+      throw err;
+    } finally {
+      dispose();
+    }
+  })();
 
   const files: Record<string, string> = {};
   let bundleSizeBytes = 0;
@@ -2856,7 +2969,9 @@ async function downloadIosBundle(
 
   const textPath = files[model.ggufFile];
   if (!textPath) {
-    throw new Error(`Eliza-1 bundle did not install ${model.ggufFile}`);
+    throw new PublicLocalModelDownloadError(
+      `Eliza-1 bundle did not install ${model.ggufFile}`,
+    );
   }
   writeBundleRecord({
     modelId: model.id,
@@ -2897,7 +3012,9 @@ function startDownload(model: CatalogModel): DownloadJob {
       updateDownload(job, { state: "downloading" });
       const llama = await loadLlamaCpp();
       if (!llama?.downloadModel) {
-        throw new Error("Native Eliza-1 downloader is unavailable.");
+        throw new PublicLocalModelDownloadError(
+          "Native Eliza-1 downloader is unavailable.",
+        );
       }
       if (model.bundleManifestFile) {
         const textPath = await downloadIosBundle(model, llama, job);
@@ -2944,7 +3061,9 @@ function startDownload(model: CatalogModel): DownloadJob {
                     : total > received && bytesPerSec > 0
                       ? Math.round(((total - received) / bytesPerSec) * 1000)
                       : job.etaMs,
-                ...(progress.error ? { error: progress.error } : {}),
+                ...(progress.error
+                  ? { error: "Native model download reported an error" }
+                  : {}),
               });
             }
           } catch {
@@ -2975,9 +3094,11 @@ function startDownload(model: CatalogModel): DownloadJob {
         await activateModel(model.id, path).catch(() => undefined);
       }
     } catch (error) {
+      logger.error({ error }, "[ios-local-agent] model download failed");
+      const publicError = publicLocalModelDownloadError(error);
       updateDownload(job, {
         state: "failed",
-        error: error instanceof Error ? error.message : String(error),
+        error: publicError ?? "Model download failed",
       });
     }
   })();
@@ -3079,11 +3200,14 @@ async function activateModel(
     });
     return state;
   } catch (error) {
+    // error-policy:J4 model activation remains a visible error state without
+    // persisting native exception text into renderer-readable storage.
+    logger.error({ error }, "[ios-local-agent] local model activation failed");
     const state: ActiveModelState = {
       modelId,
       loadedAt: null,
       status: "error",
-      error: error instanceof Error ? error.message : String(error),
+      error: "Local model could not be loaded",
     };
     writeActiveModelState(state);
     return state;

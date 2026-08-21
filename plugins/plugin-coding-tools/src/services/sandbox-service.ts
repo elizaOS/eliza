@@ -15,9 +15,11 @@ import {
 import { readAliasedEnv } from "@elizaos/shared";
 import {
   isAbsolutePath,
+  isBlockedPath,
   isUncPath,
   isWithin,
   resolveRealPath,
+  traversesBlockedPath,
 } from "../lib/path-utils.js";
 import { CODING_TOOLS_LOG_PREFIX, SANDBOX_SERVICE } from "../types.js";
 
@@ -173,6 +175,24 @@ export class SandboxService extends Service {
       };
     }
     const resolved = await resolveRealPath(absPath);
+    // A proc fd entry is itself a symlink, so resolving the full path erases
+    // its pseudo-filesystem identity. Canonicalize its parent separately to
+    // retain that identity while still catching directory aliases into /proc.
+    const resolvedEntry = path.join(
+      await resolveRealPath(path.dirname(absPath)),
+      path.basename(absPath),
+    );
+    if (
+      isBlockedPath(resolved) ||
+      isBlockedPath(resolvedEntry) ||
+      (await traversesBlockedPath(absPath))
+    ) {
+      return {
+        ok: false,
+        reason: "blocked",
+        message: `Path ${absPath} resolves to a blocked device or process file descriptor.`,
+      };
+    }
     for (const blocked of this.blockedPaths) {
       if (isWithin(resolved, blocked) || resolved === blocked) {
         return {

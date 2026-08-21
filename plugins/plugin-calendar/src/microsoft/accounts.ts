@@ -159,7 +159,13 @@ function normalizedScopeName(scope: string): string {
   return lastPathSegment.trim().toLowerCase();
 }
 
-function capabilitiesForScopes(
+/**
+ * Maps granted Microsoft Graph scopes onto the normalized capability catalog
+ * shared across the calendar, mail, contacts, and files domains. Consumed by
+ * grant derivation and exported so domain plugins and tests can reason about
+ * an account's effective capabilities without reparsing scope strings.
+ */
+export function capabilitiesForScopes(
   scopes: readonly string[],
 ): LifeOpsMicrosoftCapability[] {
   const normalized = new Set(scopes.map(normalizedScopeName));
@@ -192,6 +198,35 @@ function capabilitiesForScopes(
   }
   if (hasRead) capabilities.add("microsoft.calendar.read");
   if (hasWrite) capabilities.add("microsoft.calendar.write");
+  const hasMailManage =
+    normalized.has("mail.readwrite") || normalized.has("mail.readwrite.shared");
+  if (
+    hasMailManage ||
+    normalized.has("mail.read") ||
+    normalized.has("mail.read.shared")
+  ) {
+    capabilities.add("microsoft.mail.triage");
+  }
+  if (hasMailManage) capabilities.add("microsoft.mail.manage");
+  if (normalized.has("mail.send") || normalized.has("mail.send.shared")) {
+    capabilities.add("microsoft.mail.send");
+  }
+  if (
+    normalized.has("contacts.read") ||
+    normalized.has("contacts.read.shared") ||
+    normalized.has("contacts.readwrite") ||
+    normalized.has("contacts.readwrite.shared")
+  ) {
+    capabilities.add("microsoft.contacts.read");
+  }
+  if (
+    normalized.has("files.read") ||
+    normalized.has("files.read.all") ||
+    normalized.has("files.readwrite") ||
+    normalized.has("files.readwrite.all")
+  ) {
+    capabilities.add("microsoft.files.read");
+  }
   return [...capabilities];
 }
 

@@ -885,7 +885,7 @@
     {
       "id": "coding-tools",
       "name": "Coding Tools",
-      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. AST-validated commands, mtime-gated writes, sealed workspace roots, optional per-OS process sandboxing (sandbox-exec on macOS, bwrap on Linux).",
+      "description": "Native coding tools (FILE, SHELL, WORKTREE) running directly in the agent. Commands are analyzed before trusted host execution; mtime-gated file writes and configured path roots apply to FILE, WORKTREE, and the SHELL working directory.",
       "npmName": "@elizaos/plugin-coding-tools",
       "version": "0.1.0",
       "source": "bundled",
@@ -896,7 +896,7 @@
           "required": false,
           "sensitive": false,
           "label": "Workspace roots",
-          "help": "Comma-separated absolute paths the coding tools may read/write under. Defaults to the runtime's cwd.",
+          "help": "Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. SHELL commands may address paths outside these roots. Defaults to the runtime's cwd.",
           "advanced": false
         },
         "CODING_TOOLS_DENY_COMMANDS": {
@@ -927,14 +927,6 @@
           "advanced": true,
           "min": 1000,
           "unit": "ms"
-        },
-        "CODING_TOOLS_OS_SANDBOX": {
-          "type": "boolean",
-          "required": false,
-          "sensitive": false,
-          "label": "OS-level sandbox",
-          "help": "Wrap bash invocations in sandbox-exec (macOS) or bwrap (Linux) when available. AST analysis runs regardless.",
-          "advanced": true
         }
       },
       "render": {
@@ -1505,6 +1497,86 @@
         "routePlugin": {
           "specifier": "@elizaos/plugin-documents/plugin",
           "exportName": "documentsPlugin"
+        }
+      }
+    },
+    {
+      "id": "dropbox",
+      "name": "Dropbox",
+      "description": "Dropbox connector for file listing, search, text reads, uploads, temporary links, and citation deep links. Uses PKCE offline OAuth; local mode accepts a generated access token.",
+      "npmName": "@elizaos/plugin-dropbox",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": [
+        "dropbox",
+        "files",
+        "storage",
+        "documents",
+        "connector",
+        "productivity"
+      ],
+      "config": {
+        "DROPBOX_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "App Key",
+          "help": "Dropbox app key (OAuth client ID). Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "DROPBOX_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "App Secret",
+          "help": "Dropbox app secret (OAuth client secret). Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "DROPBOX_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Redirect URI",
+          "help": "Redirect URI registered on the Dropbox app.",
+          "advanced": true
+        },
+        "DROPBOX_ACCESS_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Access Token",
+          "help": "Local BYO access token for self-hosted mode. Short-lived tokens without a refresh token stop working when they expire.",
+          "advanced": false
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "FolderOpen",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-dropbox#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "other",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": ["DROPBOX_ACCESS_TOKEN"]
+      },
+      "accounts": {
+        "owner": {
+          "supported": true,
+          "authKind": "oauth-cloud",
+          "credentialKeys": [],
+          "notes": "The user's Dropbox account, connected via PKCE offline OAuth with read scopes by default and an explicit write-scope escalation."
         }
       }
     },
@@ -2656,14 +2728,6 @@
           "sensitive": false,
           "label": "Enabled",
           "help": "Enable or disable this feature",
-          "advanced": false
-        },
-        "IMESSAGE_CLI_PATH": {
-          "type": "file-path",
-          "required": false,
-          "sensitive": false,
-          "label": "Cli Path",
-          "help": "Path to CLI binary",
           "advanced": false
         },
         "IMESSAGE_DM_POLICY": {
@@ -3853,6 +3917,79 @@
       }
     },
     {
+      "id": "notion",
+      "name": "Notion",
+      "description": "Notion connector for workspace search, page reads with citation deep links, page creation, and appends. Uses workspace-bound OAuth; local mode accepts an internal integration token.",
+      "npmName": "@elizaos/plugin-notion",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["notion", "notes", "documents", "connector", "productivity"],
+      "config": {
+        "NOTION_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Client ID",
+          "help": "Notion public-integration OAuth client ID. Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "NOTION_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "OAuth Client Secret",
+          "help": "Notion public-integration OAuth client secret. Not needed when using Eliza Cloud OAuth.",
+          "advanced": true
+        },
+        "NOTION_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "OAuth Redirect URI",
+          "help": "Redirect URI registered on the Notion integration.",
+          "advanced": true
+        },
+        "NOTION_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Internal Integration Token",
+          "help": "Local BYO internal-integration token for self-hosted mode. The integration only sees pages shared with it.",
+          "advanced": false
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "FileText",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-notion#readme",
+        "repository": "https://github.com/elizaOS/eliza"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "other",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": ["NOTION_TOKEN"]
+      },
+      "accounts": {
+        "owner": {
+          "supported": true,
+          "authKind": "oauth-cloud",
+          "credentialKeys": [],
+          "notes": "The user's Notion workspace, connected via OAuth. The grant is scoped to exactly the pages and databases the user shares with the connection inside Notion's consent UI."
+        }
+      }
+    },
+    {
       "id": "openai",
       "name": "Openai",
       "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
@@ -4725,6 +4862,72 @@
           "credentialKeys": [],
           "notes": "The agent's own Slack bot identity (xoxb-... bot token), installed into the workspace via Eliza Cloud OAuth. Posts, mentions, replies, and DMs flow through the bot user."
         }
+      }
+    },
+    {
+      "id": "spotify",
+      "name": "Spotify",
+      "description": "Spotify music integration: search, saved-track library, playlists, playback control, and device handoff with managed OAuth or a self-hosted Spotify app.",
+      "npmName": "@elizaos/plugin-spotify",
+      "version": "2.0.0-beta.0",
+      "source": "bundled",
+      "tags": ["connector", "music", "media", "spotify"],
+      "config": {
+        "SPOTIFY_CLIENT_ID": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Client ID",
+          "help": "Spotify application client ID (only needed for self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_CLIENT_SECRET": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Client Secret",
+          "help": "Spotify application client secret (self-hosted local mode)",
+          "advanced": false
+        },
+        "SPOTIFY_REFRESH_TOKEN": {
+          "type": "secret",
+          "required": false,
+          "sensitive": true,
+          "label": "Refresh Token",
+          "help": "Long-lived refresh token for local mode, obtained via a one-time authorization-code grant",
+          "advanced": true
+        },
+        "SPOTIFY_REDIRECT_URI": {
+          "type": "string",
+          "required": false,
+          "sensitive": false,
+          "label": "Redirect URI",
+          "help": "OAuth redirect URI registered on the Spotify application",
+          "advanced": true
+        }
+      },
+      "render": {
+        "visible": true,
+        "pinTo": [],
+        "style": "setup-panel",
+        "icon": "Music",
+        "group": "connector",
+        "groupOrder": 1,
+        "actions": ["enable", "configure", "setup-guide"]
+      },
+      "resources": {
+        "homepage": "https://github.com/elizaos/eliza#readme",
+        "repository": "https://github.com/elizaos/eliza",
+        "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#spotify"
+      },
+      "dependsOn": [],
+      "channels": [],
+      "shortIds": [],
+      "kind": "connector",
+      "subtype": "streaming",
+      "auth": {
+        "kind": "oauth",
+        "credentialKeys": []
       }
     },
     {

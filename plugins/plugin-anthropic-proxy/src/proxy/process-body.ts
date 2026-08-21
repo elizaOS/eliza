@@ -53,6 +53,37 @@ export interface ProcessBodyResult {
   };
 }
 
+function stripThinkingParameters(value: string): {
+  value: string;
+  count: number;
+} {
+  const marker = '"thinking":';
+  const out: string[] = [];
+  let cursor = 0;
+  let count = 0;
+  while (cursor < value.length) {
+    const keyStart = value.indexOf(marker, cursor);
+    if (keyStart < 0) break;
+    let objectStart = keyStart + marker.length;
+    while (objectStart < value.length && value[objectStart]?.trim() === "") {
+      objectStart += 1;
+    }
+    if (value[objectStart] !== "{") {
+      out.push(value.slice(cursor, keyStart + 1));
+      cursor = keyStart + 1;
+      continue;
+    }
+    const objectEnd = value.indexOf("}", objectStart + 1);
+    if (objectEnd < 0) break;
+    const removalStart = keyStart > cursor && value[keyStart - 1] === "," ? keyStart - 1 : keyStart;
+    out.push(value.slice(cursor, removalStart));
+    cursor = objectEnd + 1;
+    count += 1;
+  }
+  out.push(value.slice(cursor));
+  return { value: out.join(""), count };
+}
+
 function insertTopLevelField(body: string, field: string): string {
   if (!body.startsWith("{")) return `{${field}}`;
 
@@ -229,12 +260,9 @@ export function processBody(bodyStr: string, config: ProcessBodyConfig): Process
   let thinkingBlocksStripped = 0;
   let thinkingParamsStripped = 0;
   if (config.stripThinkingBlocks !== false) {
-    const thinkingParamRegex = /,?"thinking":\s*\{[^}]*\}/g;
-    const thinkingMatches = m.match(thinkingParamRegex);
-    if (thinkingMatches) {
-      m = m.replace(thinkingParamRegex, "");
-      thinkingParamsStripped = thinkingMatches.length;
-    }
+    const strippedThinkingParameters = stripThinkingParameters(m);
+    m = strippedThinkingParameters.value;
+    thinkingParamsStripped = strippedThinkingParameters.count;
     const msgsIdx2 = m.indexOf('"messages":[');
     if (msgsIdx2 !== -1) {
       for (const marker of ['{"type":"thinking"', '{"type":"redacted_thinking"']) {

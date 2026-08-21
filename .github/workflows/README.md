@@ -6,18 +6,45 @@ runners, environments, and a concise job graph.
 
 ## Required validation
 
-`merge-candidate-biome.yml` is the pre-merge admission gate. GitHub's merge
-queue synthesizes its checkout SHA from the current `develop` tip and the
-queued pull requests, then the workflow runs the repository-pinned full lint
-and format contracts on that exact tree. Branch rules must require the stable
-`Merge Candidate Biome / Candidate tree` check for the queue to block a bad
-candidate; post-merge workflows remain health checks rather than admission.
+`ci.yml` is the canonical pull-request, merge-queue, and `develop` branch-health
+workflow. Pull requests targeting `develop` or `main` and every `merge_group`
+candidate run the same fail-closed job graph. Branch rules require only its stable
+`CI / All Tests Passed` aggregate, which succeeds only when every mandatory lane
+succeeds; individual lane names may evolve without silently weakening admission.
 
-`ci.yml` is the canonical post-merge branch-health workflow for `develop`. It
-classifies changed paths, runs repository quality checks, affected tests,
-deterministic smoke tests, a path-scoped Android release AAB audit, and a
-diff-scoped secret scan. Its stable `CI / Required` job diagnoses the integrated
-branch; it does not replace the merge-candidate admission check above.
+`merge-candidate-biome.yml` remains a defense-in-depth merge-queue check of
+GitHub's synthesized candidate tree. It runs the repository-pinned full lint and
+format contracts, but it is not a separately required context because canonical
+CI already covers those contracts and publishes the single admission aggregate.
+
+`.github/rulesets/required-branches.json` is the reviewed no-bypass ruleset
+manifest for `develop` and `main`. `scripts/security/apply-branch-protection.sh`
+is read-only by default (`--check`) and requires explicit `--apply` authority to
+create or update that exact ruleset. `repository-ruleset-drift.yml` performs the
+same semantic readback on a schedule, by manual dispatch, and through the
+`repository_ruleset_drift` external repository-dispatch event. A green readback
+proves configuration parity only; owner audit-log review plus red/green and
+direct-push canaries remain required after an authorized apply. Scheduled and
+external readback requires an owner-provisioned
+`REPOSITORY_RULESET_READ_TOKEN` Actions secret with repository
+`Administration: read`; the workflow-scoped `GITHUB_TOKEN` cannot request
+that repository permission and is never used for this readback.
+
+The manifest intentionally keeps Code Owner review disabled while
+`.github/CODEOWNERS` names placeholder teams. An organization owner must
+replace every placeholder, verify each team exists and can review the covered
+paths, then submit a separate reviewed manifest change enabling Code Owner
+review. The current ruleset still requires one approval, last-push approval,
+and review-thread resolution.
+
+The manifest allows squash and rebase only: linear history rejects merge commits.
+Required-signature enforcement is deferred because GitHub cannot generally
+produce a signed web squash for an external contributor unless the merger is
+also the pull-request author, while rebase admission requires every source
+commit to be signed. An owner may propose signature enforcement separately only
+after proving contributor-safe signed squash/rebase canaries; ordinary approval,
+last-push approval, thread resolution, status checks, linear history, and the
+force-push/deletion bans remain active here.
 
 `nightly.yml` calls the same CI workflow once per day and adds macOS and Windows
 core smoke tests. It never publishes packages or creates releases.
@@ -48,7 +75,8 @@ fixture, research, example, and documentation trees are excluded.
 Several branch-scoped and path-scoped workflows run alongside the canonical CI
 gate for specific surfaces. This list is non-exhaustive; other specialized
 gates such as `cloud-tests.yml`, `chat-shell-gestures.yml`, and the `pr.yaml`
-title check cover narrower contracts. None replaces the `CI / Required` status.
+title check cover narrower contracts. None replaces the required
+`All Tests Passed` aggregate.
 Representative examples:
 
 - `develop-pr.yml` is called from canonical `ci.yml` for `develop`-targeted PRs
@@ -134,6 +162,33 @@ Representative examples:
   `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
   upload still depends on the corresponding organization account, application
   record, agreements, and roles already existing in each publisher portal.
+
+  The authored inventory of those names, together with the prerequisite,
+  owner, rotation cadence, and revocation path for each lane, lives in
+  `packages/scripts/lib/store-release-credentials.mjs`.
+  `bun run release:store-credentials` prints it and fails on drift between the
+  contract and the names these workflows reference.
+  `bun run release:store-credentials:audit` additionally reads the live
+  `production-release` environment through `gh api`: the credential-name
+  inventory a repository owner still has to provision, plus the resolved
+  required-reviewer principals, `prevent_self_review`, and the custom
+  deployment branch/tag policy patterns, validated against the repo-owned
+  `RELEASE_ENVIRONMENT_POLICY` (reviewer allowlist, self-review prevention,
+  and only the `develop` branch and `v*` tag deployment patterns). Any
+  protection setting the API cannot prove is reported as an owner-verification
+  blocker, never a pass, and the reviewer allowlist ships empty so the audit
+  cannot report READY until an owner verifies and commits it. Both operations
+  compare names and policy metadata only; the GitHub API never exposes secret
+  values and the preflight never reads, prints, or stores one. Name presence
+  cannot prove a credential value is valid — only a real protected store
+  publish proves that. Exit codes are `0` ready, `1` contract drift or
+  unreadable live state, `2` live environment not provisioned or its
+  protection policy unproven or in violation.
+
+  Creating `production-release`, selecting its required reviewers and
+  deployment branch/tag policy, and adding any credential are owner-only
+  actions taken in the GitHub UI with authorized confirmation at action time.
+  No automation in this repository creates them.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

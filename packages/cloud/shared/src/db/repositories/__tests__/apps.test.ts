@@ -338,6 +338,85 @@ describe("AppsRepository.update", () => {
   });
 });
 
+describe("AppsRepository.claimDeploymentStart", () => {
+  test("admits one active generation and allows a new generation after failure", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Single Flight Deploy",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+
+    const firstStartedAt = new Date("2026-08-20T12:00:00.000Z");
+    const firstGeneration = "11111111-1111-4111-8111-111111111111";
+    const [left, right] = await Promise.all([
+      appsRepository.claimDeploymentStart(created.id, firstGeneration, {
+        last_deployed_at: firstStartedAt,
+        metadata: created.metadata,
+      }),
+      appsRepository.claimDeploymentStart(created.id, firstGeneration, {
+        last_deployed_at: firstStartedAt,
+        metadata: created.metadata,
+      }),
+    ]);
+    expect([left, right].filter(Boolean)).toHaveLength(1);
+    expect((left ?? right)?.deployment_status).toBe("building");
+    expect((left ?? right)?.metadata.deploymentGeneration).toBe(firstGeneration);
+
+    const staleFailure = await appsRepository.updateDeploymentGeneration(
+      created.id,
+      "22222222-2222-4222-8222-222222222222",
+      { deployment_status: "failed" },
+    );
+    expect(staleFailure).toBeUndefined();
+
+    await appsRepository.updateDeploymentGeneration(created.id, firstGeneration, {
+      deployment_status: "failed",
+    });
+    const nextStartedAt = new Date("2026-08-20T12:01:00.000Z");
+    const nextGeneration = "33333333-3333-4333-8333-333333333333";
+    const next = await appsRepository.claimDeploymentStart(created.id, nextGeneration, {
+      last_deployed_at: nextStartedAt,
+      metadata: (left ?? right)?.metadata,
+    });
+    expect(next?.deployment_status).toBe("building");
+    expect(next?.metadata.deploymentGeneration).toBe(nextGeneration);
+    expect(next?.last_deployed_at?.toISOString()).toBe(nextStartedAt.toISOString());
+
+    const deploying = await appsRepository.updateDeploymentGeneration(
+      created.id,
+      nextGeneration,
+      { deployment_status: "deploying", metadata: { containerId: "container-1" } },
+      ["building"],
+    );
+    expect(deploying?.metadata).toMatchObject({
+      deploymentGeneration: nextGeneration,
+      containerId: "container-1",
+    });
+    expect(await appsRepository.isDeploymentGenerationCurrent(created.id, nextGeneration)).toBe(
+      true,
+    );
+    await appsRepository.updateDeploymentGeneration(
+      created.id,
+      nextGeneration,
+      { deployment_status: "failed" },
+      ["deploying"],
+    );
+    expect(await appsRepository.isDeploymentGenerationCurrent(created.id, nextGeneration)).toBe(
+      false,
+    );
+    await expect(
+      appsRepository.updateDeploymentGeneration(
+        created.id,
+        nextGeneration,
+        { deployment_status: "deploying" },
+        ["building"],
+      ),
+    ).resolves.toBeUndefined();
+  });
+});
+
 describe("AppsRepository.delete", () => {
   test("delete removes the row (findById -> undefined) and evicts the cache", async () => {
     expect(pgliteReady).toBe(true);

@@ -44,6 +44,7 @@ import {
   imageRequiresDigestPin,
   isCodingContainerImageAllowed,
 } from "@/lib/services/coding-containers";
+import { QuotaExceededError } from "@/lib/services/container-quota";
 import { type Container, containersService } from "@/lib/services/containers";
 import { getHetznerContainersClient } from "@/lib/services/containers/hetzner-client/client";
 import {
@@ -322,7 +323,7 @@ app.post("/", async (c) => {
 
     // Quota + credit pre-check (the create path also enforces this atomically).
     const quota = await containersService.checkQuota(user.organization_id);
-    if (!quota.allowed) {
+    if (!quota.allowed && quota.availability === "unavailable") {
       return c.json(
         {
           success: false,
@@ -332,6 +333,11 @@ app.post("/", async (c) => {
         402,
       );
     }
+    // An authoritative at-cap preflight is advisory: the primary admission
+    // below must still run because a replica can miss an already-committed row
+    // for this same project. The locked path either reconstructs that existing
+    // intent or throws QuotaExceededError, which the boundary maps to this same
+    // 402 shape. No provider call occurs before that decision.
 
     const client = getHetznerContainersClient();
     const container = await client.createContainer({
@@ -359,6 +365,16 @@ app.post("/", async (c) => {
     });
     return c.json({ success: true, data: toContainerDto(container) }, 201);
   } catch (error) {
+    if (error instanceof QuotaExceededError) {
+      const quota = {
+        availability: "ready" as const,
+        allowed: false,
+        current: error.current,
+        max: error.max,
+        error: `Container quota exceeded (${error.current}/${error.max})`,
+      };
+      return c.json({ success: false, error: quota.error, quota }, 402);
+    }
     if (error instanceof HetznerClientError) {
       const status = error.code === "invalid_input" ? 400 : 502;
       logger.warn("[Containers API] container deploy failed", {

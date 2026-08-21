@@ -18,6 +18,7 @@ type JsonPrimitive = boolean | number | string | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type JsonRecord = { [key: string]: JsonValue };
 type LogLevel = "debug" | "info" | "warn" | "error";
+const MAX_ERROR_DIAGNOSTIC_CHARS = 4_096;
 
 export type RunnerConfig = {
   hostname: string;
@@ -271,16 +272,67 @@ function privateHealthResponse(config: RunnerConfig): Response {
 }
 
 function errorResponse(error: unknown, url: URL): Response {
-  const status = error instanceof HttpError ? error.status : 500;
-  const message = error instanceof Error ? error.message : String(error);
+  let status = 500;
+  let publicMessage = "remote runner request failed";
+  try {
+    if (
+      error instanceof HttpError &&
+      error.status >= 400 &&
+      error.status < 500
+    ) {
+      status = error.status;
+      publicMessage = error.publicMessage;
+    }
+  } catch {
+    // error-policy:J1 hostile thrown values remain generic at the HTTP boundary.
+  }
+  const diagnostic = boundedErrorDiagnostic(error);
   if (status >= 500) {
     log("error", "[CodingRemoteRunner] request failed", {
       path: url.pathname,
       status,
-      error: message,
+      error: diagnostic,
     });
   }
-  return jsonResponse(status, { error: message });
+  return jsonResponse(status, {
+    error: publicMessage,
+  });
+}
+
+function boundedErrorDiagnostic(error: unknown): string {
+  let text: string | undefined;
+  if (
+    error !== null &&
+    (typeof error === "object" || typeof error === "function")
+  ) {
+    try {
+      const message = Reflect.get(error, "message");
+      if (typeof message === "string" && message.trim()) text = message;
+    } catch {
+      // error-policy:J7 diagnostic access cannot replace the original failure.
+    }
+  }
+  if (text === undefined) {
+    try {
+      text = String(error);
+    } catch {
+      // error-policy:J7 hostile coercion still needs a printable marker.
+      text = "[uninspectable thrown value]";
+    }
+  }
+  const clipped =
+    text.length > MAX_ERROR_DIAGNOSTIC_CHARS
+      ? `${text.slice(0, MAX_ERROR_DIAGNOSTIC_CHARS)}…[truncated]`
+      : text;
+  return Array.from(clipped, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+      ? `\\u{${code.toString(16)}}`
+      : character;
+  }).join("");
 }
 
 async function listEntries(url: URL, config: RunnerConfig): Promise<Response> {
@@ -686,7 +738,7 @@ function recordOfStringsField(
   const out: Record<string, string> = {};
   for (const [entryKey, entryValue] of Object.entries(value)) {
     if (typeof entryValue !== "string") {
-      throw new HttpError(400, `${key}.${entryKey} must be a string`);
+      throw new HttpError(400, `${key} entries must be strings`);
     }
     out[entryKey] = entryValue;
   }
@@ -744,9 +796,9 @@ function log(level: LogLevel, message: string, meta: JsonRecord = {}): void {
 class HttpError extends Error {
   constructor(
     readonly status: number,
-    message: string,
+    readonly publicMessage: string,
   ) {
-    super(message);
+    super(publicMessage);
   }
 }
 

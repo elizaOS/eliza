@@ -24,8 +24,10 @@ export * from "./api/route-helpers";
 export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
+import "./runtime-probes";
 export * from "./build-variant";
 export * from "./capabilities";
+export * from "./capability-selection";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -97,6 +99,7 @@ export {
 } from "./contracts/service-routing";
 export * from "./contracts/wallet";
 export * from "./database";
+export * from "./database/connector-json";
 export * from "./database/document-list-query";
 export * from "./database/inMemoryAdapter";
 export * from "./entities";
@@ -477,6 +480,7 @@ export * from "./utils/deterministic";
 export * from "./utils/environment";
 export { getEnv } from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/html-raw-text";
 /** Single-lane local inference scheduling: interactive-over-background gate + device-class background budgets (#11914). */
 export * from "./utils/inference-priority-gate";
 // Export Node-specific utilities

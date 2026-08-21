@@ -115,6 +115,59 @@ interface ScheduledEvent {
   scheduledTime: number;
 }
 
+export interface ScheduledCronInvocationMetadata {
+  invocationId: string;
+  path: string;
+  schedule: string;
+  scheduledTime: number;
+}
+
+const scheduledInvocationMetadata = new WeakMap<Request, ScheduledCronInvocationMetadata>();
+
+export const CRON_INVOCATION_ID_HEADER = "x-cron-invocation-id";
+export const CRON_SCHEDULE_HEADER = "x-cron-schedule";
+export const CRON_SCHEDULED_TIME_HEADER = "x-cron-scheduled-time";
+
+/**
+ * Stable identity for one route invocation within one Cloudflare scheduled
+ * event. The path is part of the identity because a single schedule fans out
+ * to multiple independently retried handlers.
+ */
+export function scheduledCronInvocationId(event: ScheduledEvent, path: string): string {
+  return [
+    "cloudflare-cron",
+    String(event.scheduledTime),
+    encodeURIComponent(event.cron),
+    encodeURIComponent(path),
+  ].join(":");
+}
+
+/**
+ * Returns scheduler provenance only for the exact in-process Request object
+ * created by `makeCronHandler`. Matching HTTP headers alone cannot forge this
+ * marker because callers cannot write to the module-private WeakMap.
+ */
+export function getScheduledCronInvocationMetadata(
+  request: Request,
+): ScheduledCronInvocationMetadata | null {
+  return scheduledInvocationMetadata.get(request) ?? null;
+}
+
+/**
+ * Clone a request while preserving scheduler provenance only when the source
+ * Request already owns the in-process capability. An HTTP caller with matching
+ * headers cannot mint the WeakMap brand through this helper.
+ */
+export function cloneRequestWithScheduledCronMetadata(
+  source: Request,
+  init?: RequestInit,
+): Request {
+  const clone = new Request(source, init);
+  const metadata = scheduledInvocationMetadata.get(source);
+  if (metadata) scheduledInvocationMetadata.set(clone, metadata);
+  return clone;
+}
+
 /**
  * Build the `scheduled()` handler bound to the same Hono app `fetch`.
  */
@@ -140,10 +193,26 @@ export function makeCronHandler(
 
     const work = paths.map(async (path) => {
       try {
+        const invocationId = scheduledCronInvocationId(event, path);
         const req = new Request(`${baseUrl}${path}`, {
           method: "POST",
-          headers: { "x-cron-secret": secret, "user-agent": "cf-cron/1.0" },
+          headers: {
+            "x-cron-secret": secret,
+            [CRON_INVOCATION_ID_HEADER]: invocationId,
+            [CRON_SCHEDULE_HEADER]: event.cron,
+            [CRON_SCHEDULED_TIME_HEADER]: String(event.scheduledTime),
+            "user-agent": "cf-cron/1.0",
+          },
         });
+        scheduledInvocationMetadata.set(
+          req,
+          Object.freeze({
+            invocationId,
+            path,
+            schedule: event.cron,
+            scheduledTime: event.scheduledTime,
+          }),
+        );
         const res = await appFetch(req, env, ctx);
         if (!res.ok) {
           logger.warn(`[Cron] ${path} -> ${res.status}`);

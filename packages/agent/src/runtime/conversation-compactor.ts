@@ -384,6 +384,13 @@ const STRUCTURED_SECTION_HEADINGS = [
   "Ledger (chronological)",
 ];
 
+function parseSectionBullet(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("-") || trimmed[1]?.trim() !== "") return null;
+  const body = trimmed.slice(2).trim();
+  return body || null;
+}
+
 function extractSectionBullets(text: string, heading: string): string[] {
   const nextHeadings = STRUCTURED_SECTION_HEADINGS.filter((h) => h !== heading)
     .map(escapeRegExp)
@@ -395,8 +402,8 @@ function extractSectionBullets(text: string, heading: string): string[] {
   if (!section) return [];
   const bullets: string[] = [];
   for (const line of section[1].split("\n")) {
-    const match = /^-\s+(.+)$/.exec(line.trim());
-    if (match) bullets.push(match[1].trim());
+    const bullet = parseSectionBullet(line);
+    if (bullet) bullets.push(bullet);
   }
   return bullets;
 }
@@ -409,8 +416,8 @@ function extractHashSectionBullets(text: string, heading: string): string[] {
   if (!section) return [];
   const bullets: string[] = [];
   for (const line of section[1].split("\n")) {
-    const match = /^-\s+(.+)$/.exec(line.trim());
-    if (match) bullets.push(match[1].trim());
+    const bullet = parseSectionBullet(line);
+    if (bullet) bullets.push(bullet);
   }
   return bullets;
 }

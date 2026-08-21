@@ -171,6 +171,7 @@ export * from "./apps/FullscreenView.helpers";
 export * from "./apps/GameViewOverlay";
 export * from "./apps/overlay-app-api";
 export * from "./apps/overlay-app-registry";
+export * from "./browser";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/CharacterRoster.helpers";

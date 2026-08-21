@@ -118,7 +118,7 @@ export function IMessageStatusPanel() {
           <div className="text-muted">Database: {status.chatDbPath}</div>
         ) : null}
         {status?.bridgeType ? (
-          <div className="text-muted">Bridge: {status.bridgeType}</div>
+          <div className="text-muted">Transport: macOS Messages</div>
         ) : null}
         {permissionAction ? (
           <ol className="list-decimal space-y-1 pl-4 text-muted">

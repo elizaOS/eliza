@@ -5,7 +5,10 @@
  * XSS from agent-authored specs), and enumerates the supported component types.
  * No React — logic only, so it can be unit-tested in isolation.
  */
-import { getByPath } from "../../config/config-catalog";
+import {
+  getByPath,
+  matchesSafeUntrustedRegexPattern,
+} from "../../config/config-catalog";
 import type {
   AuthState,
   UiSpecValidationCheck,
@@ -125,11 +128,7 @@ const BUILTIN_VALIDATORS: Record<
     typeof v === "string" && v.length <= Number(args?.length ?? Infinity),
   pattern: (v, args) => {
     if (typeof v !== "string" || !args?.pattern) return true;
-    try {
-      return new RegExp(String(args.pattern)).test(v);
-    } catch {
-      return true;
-    }
+    return matchesSafeUntrustedRegexPattern(String(args.pattern), v);
   },
   min: (v, args) => Number(v) >= Number(args?.value ?? -Infinity),
   max: (v, args) => Number(v) <= Number(args?.value ?? Infinity),

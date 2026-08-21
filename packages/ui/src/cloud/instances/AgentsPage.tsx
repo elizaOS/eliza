@@ -38,9 +38,20 @@ export default function AgentsPage() {
   }
 
   const agents: AgentListItemDto[] = agentsQuery.data ?? [];
-  const runningCount = agents.filter((a) => a.status === "running").length;
-  const idleCount = agents.filter(
-    (a) => a.status === "stopped" || a.status === "disconnected",
+  // The list response does not expose a canonical/superseded cutover marker.
+  // Keep every authoritative row visible: a dedicated target exists before its
+  // readiness/import handoff completes, so presence alone cannot retire Shared.
+  const visibleAgents = agents;
+  const sharedCount = visibleAgents.filter(
+    (a) => a.executionTier === "shared",
+  ).length;
+  const runningCount = visibleAgents.filter(
+    (a) => a.executionTier !== "shared" && a.status === "running",
+  ).length;
+  const idleCount = visibleAgents.filter(
+    (a) =>
+      a.executionTier !== "shared" &&
+      (a.status === "stopped" || a.status === "disconnected"),
   ).length;
   const creditBalance =
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
@@ -69,11 +80,12 @@ export default function AgentsPage() {
         ) : (
           <>
             <ElizaAgentPricingBanner
+              sharedCount={sharedCount}
               runningCount={runningCount}
               idleCount={idleCount}
               creditBalance={creditBalance}
             />
-            <ElizaAgentsTable agents={agents} />
+            <ElizaAgentsTable agents={visibleAgents} />
           </>
         )}
       </DashboardPageContainer>

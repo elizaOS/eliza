@@ -323,6 +323,11 @@ export const LIFEOPS_MICROSOFT_CAPABILITIES = [
   "microsoft.calendar.read",
   "microsoft.calendar.freebusy",
   "microsoft.calendar.write",
+  "microsoft.mail.triage",
+  "microsoft.mail.send",
+  "microsoft.mail.manage",
+  "microsoft.contacts.read",
+  "microsoft.files.read",
 ] as const;
 export type LifeOpsMicrosoftCapability =
   (typeof LIFEOPS_MICROSOFT_CAPABILITIES)[number];

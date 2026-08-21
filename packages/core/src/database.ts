@@ -29,6 +29,7 @@ import type {
 	DocumentListQueryParams,
 	DocumentListQueryResult,
 	DocumentMutationResult,
+	DocumentRevisionReplaceParams,
 	Entity,
 	GetConnectorAccountCredentialRefParams,
 	GetConnectorAccountParams,
@@ -115,9 +116,9 @@ export abstract class DatabaseAdapter<DB extends object = object>
 {
 	/**
 	 * Exact document-store contract implemented by every first-class adapter.
-	 * Version 2 adds canonical lookup/search authorization and CAS mutations.
+	 * Version 3 adds atomic parent-and-fragment revision replacement.
 	 */
-	abstract readonly documentListQueryCapability: 2;
+	abstract readonly documentListQueryCapability: 3;
 
 	abstract queryDocuments(
 		params: DocumentListQueryParams,
@@ -131,6 +132,10 @@ export abstract class DatabaseAdapter<DB extends object = object>
 
 	abstract compareAndSwapDocument(
 		params: DocumentCompareAndSwapParams,
+	): Promise<DocumentMutationResult>;
+
+	abstract replaceDocumentRevision(
+		params: DocumentRevisionReplaceParams,
 	): Promise<DocumentMutationResult>;
 
 	abstract deleteDocumentWithSnapshot(

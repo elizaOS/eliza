@@ -5,9 +5,9 @@
 // fixtures (no live model, no network).
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realCloudBindings from "../../runtime/cloud-bindings";
+import * as provisioningObservation from "./provisioning-observation";
 
 const sessionCache = new Map<string, unknown>();
-const ensureElizaAppProvisioning = mock();
 const getElizaAppProvisioningStatus = mock();
 const linkPhoneToUser = mock();
 const launchManagedElizaAgent = mock();
@@ -36,7 +36,7 @@ mock.module("../eliza-managed-launch", () => ({
 }));
 
 mock.module("./provisioning", () => ({
-  ensureElizaAppProvisioning,
+  ...provisioningObservation,
   getElizaAppProvisioningStatus,
 }));
 
@@ -46,7 +46,7 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import(
+const { runOnboardingChat, onboardingFetch } = await import(
   `./onboarding-chat.ts?test=onboarding-error-policy-${Date.now()}`
 );
 
@@ -71,11 +71,9 @@ function authedTrustedPhoneTurn() {
 describe("onboarding-chat phone-link error policy", () => {
   beforeEach(() => {
     sessionCache.clear();
-    ensureElizaAppProvisioning.mockReset();
     getElizaAppProvisioningStatus.mockReset();
     linkPhoneToUser.mockReset();
     launchManagedElizaAgent.mockReset();
-    ensureElizaAppProvisioning.mockResolvedValue(provisioning());
     getElizaAppProvisioningStatus.mockResolvedValue(provisioning());
     cloudEnv = {};
   });
@@ -96,8 +94,6 @@ describe("onboarding-chat phone-link error policy", () => {
 
     // The link ran; the throw was not turned into a healthy-looking result.
     expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
-    // Fail-closed on the link means we never advanced to provisioning this turn.
-    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
   });
 
   test("a designed tenant-safety decline (success:false) stays distinct: onboarding continues, no throw", async () => {
@@ -110,12 +106,11 @@ describe("onboarding-chat phone-link error policy", () => {
 
     expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
     // A business decline is NOT an internal failure — the turn resolves with a
-    // real reply and reads the existing lifecycle state without provisioning.
+    // real reply and observes the existing lifecycle state without mutating it.
     expect(typeof result.reply).toBe("string");
     expect(result.reply.length).toBeGreaterThan(0);
     expect(result.requiresLogin).toBe(false);
-    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-1");
-    expect(ensureElizaAppProvisioning).not.toHaveBeenCalled();
+    expect(getElizaAppProvisioningStatus).toHaveBeenCalledWith("org-1", "user-1");
     expect(result.provisioning.status).toBe("provisioning");
   });
 
@@ -127,5 +122,40 @@ describe("onboarding-chat phone-link error policy", () => {
     expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
     expect(result.reply.length).toBeGreaterThan(0);
     expect(result.provisioning.status).toBe("provisioning");
+  });
+});
+
+describe("onboardingFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung onboarding coordinator hop at the timeout", async () => {
+    // A coordinator that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the 10s default bounds internal hops).
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    };
+    const start = Date.now();
+    await expect(
+      onboardingFetch(hungStub, "https://onboarding.internal/resolve", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return new Response("{}", { status: 200 });
+      },
+    };
+    const controller = new AbortController();
+    await onboardingFetch(stub, "https://onboarding.internal/resolve", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
