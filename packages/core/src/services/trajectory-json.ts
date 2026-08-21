@@ -5,6 +5,7 @@
  */
 
 import type { JsonValue } from "../types/primitives";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 
 const TRAJECTORY_JSON_MAX_DEPTH = 20;
 const TRAJECTORY_JSON_MAX_ARRAY_ITEMS = 250;
@@ -25,12 +26,13 @@ export type SanitizationState = {
 };
 
 function truncateTrajectoryString(value: string): string {
-	if (value.length <= TRAJECTORY_JSON_MAX_STRING_CHARS) return value;
+	const wellFormed = toWellFormedUnicode(value);
+	if (wellFormed.length <= TRAJECTORY_JSON_MAX_STRING_CHARS) return wellFormed;
 	const previewLength = Math.max(
 		0,
 		TRAJECTORY_JSON_MAX_STRING_CHARS - TRAJECTORY_JSON_TRUNCATION_SUFFIX.length,
 	);
-	return `${value.slice(0, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
+	return `${truncateWellFormed(wellFormed, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
 }
 
 function jsonByteLength(value: JsonValue): number {
