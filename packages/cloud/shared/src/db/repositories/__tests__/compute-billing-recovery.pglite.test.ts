@@ -20,7 +20,11 @@ import { getHetznerContainersClient } from "../../../lib/services/containers/het
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentSandboxes } from "../../schemas/agent-sandboxes";
 import { apiKeys } from "../../schemas/api-keys";
-import { agentBillingRecords } from "../../schemas/compute-billing";
+import {
+  agentBillingRecords,
+  agentBillingRunItems,
+  agentBillingRuns,
+} from "../../schemas/compute-billing";
 import { computeBillingRateSegments } from "../../schemas/compute-billing-rate-segments";
 import { containerComputeStopIntents } from "../../schemas/compute-stop-intents";
 import { containerBillingRecords, containers } from "../../schemas/containers";
@@ -36,6 +40,7 @@ import {
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 import { agentBillingRepository } from "../agent-billing";
+import { agentBillingRunRepository } from "../agent-billing-runs";
 import { containersRepository } from "../containers";
 
 const PGLITE_TIMEOUT = 60_000;
@@ -51,6 +56,8 @@ beforeAll(async () => {
       apiKeys,
       creditTransactions,
       agentBillingRecords,
+      agentBillingRuns,
+      agentBillingRunItems,
       computeBillingRateSegments,
       containers,
       containerBillingRecords,
@@ -137,6 +144,8 @@ beforeEach(async () => {
   await dbWrite.delete(computeBillingRateSegments);
   await dbWrite.delete(redeemableEarningsLedger);
   await dbWrite.delete(redeemableEarnings);
+  await dbWrite.delete(agentBillingRunItems);
+  await dbWrite.delete(agentBillingRuns);
   await dbWrite.delete(agentBillingRecords);
   await dbWrite.delete(creditTransactions);
   await dbWrite.delete(agentSandboxes);
@@ -188,11 +197,53 @@ async function seed(balance = "10.000000") {
   return { org, user, sandbox, lastBilledAt };
 }
 
+async function claimBillingRun(_billingCutoffAt: Date) {
+  const claim = await agentBillingRunRepository.startOrLoad({
+    invocationKey: `manual:compute-recovery:${crypto.randomUUID()}`,
+    triggerKind: "manual",
+    schedule: null,
+    scheduledAt: null,
+    leaseDurationMs: 5 * 60_000,
+  });
+  if (!claim.leaseToken) throw new Error("Expected billing run lease");
+  return { runId: claim.run.id, leaseToken: claim.leaseToken };
+}
+
 describe("compute billing recovery", () => {
+  test("claims one shutdown warning without pre-committing a sent run item", async () => {
+    const { org, sandbox } = await seed("0.000000");
+    const now = new Date("2026-08-19T04:30:00.000Z");
+    const authority = await claimBillingRun(now);
+    const input = {
+      ...authority,
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      agentName: sandbox.agent_name ?? sandbox.id,
+      now,
+      shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+    };
+
+    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(true);
+    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(false);
+    expect(await dbWrite.select().from(agentBillingRunItems)).toEqual([]);
+    const [updated] = await dbWrite
+      .select({
+        billingStatus: agentSandboxes.billing_status,
+        warningSentAt: agentSandboxes.shutdown_warning_sent_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(updated).toEqual({
+      billingStatus: "shutdown_pending",
+      warningSentAt: now,
+    });
+  });
+
   test("a delayed run charges the full elapsed interval and a concurrent replay is a no-op", async () => {
     const { org, user, sandbox } = await seed();
     const now = new Date("2026-08-19T04:30:00.000Z");
     const input = {
+      ...(await claimBillingRun(now)),
       sandboxId: sandbox.id,
       organizationId: org.id,
       userId: user.id,
@@ -222,11 +273,21 @@ describe("compute billing recovery", () => {
       .from(agentBillingRecords)
       .where(eq(agentBillingRecords.organization_id, org.id));
     expect(counts.receipts).toBe(1);
+    const [runItem] = await dbWrite.select().from(agentBillingRunItems);
+    expect(runItem).toMatchObject({
+      run_id: input.runId,
+      sandbox_id: sandbox.id,
+      action: "billed",
+      amount: "0.035000",
+    });
+    expect(runItem?.transaction_id).toBeTruthy();
   });
 
   test("insufficient credit rolls back the claim and creates no ledger or receipt", async () => {
     const { org, user, sandbox, lastBilledAt } = await seed("0.001000");
+    const now = new Date("2026-08-19T04:30:00.000Z");
     const result = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun(now)),
       sandboxId: sandbox.id,
       organizationId: org.id,
       userId: user.id,
@@ -234,7 +295,7 @@ describe("compute billing recovery", () => {
       hourlyRate: 0.01,
       billingDescription: "elapsed compute",
       lowCreditWarningAmount: 1,
-      now: new Date("2026-08-19T04:30:00.000Z"),
+      now,
     });
     expect(result.status).toBe("insufficient_credits");
 
@@ -244,6 +305,42 @@ describe("compute billing recovery", () => {
       .where(eq(agentSandboxes.id, sandbox.id));
     expect(row.last_billed_at).toEqual(lastBilledAt);
     expect(await dbWrite.select().from(agentBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+  });
+
+  test("an expired run lease is fenced inside the debit transaction before mutation", async () => {
+    const { org, user, sandbox, lastBilledAt } = await seed();
+    const now = new Date("2026-08-19T04:30:00.000Z");
+    const authority = await claimBillingRun(now);
+    await dbWrite
+      .update(agentBillingRuns)
+      .set({
+        lease_expires_at: sql`clock_timestamp() - INTERVAL '1 second'`,
+        updated_at: sql`clock_timestamp() - INTERVAL '2 seconds'`,
+      })
+      .where(eq(agentBillingRuns.id, authority.runId));
+
+    await expect(
+      agentBillingRepository.recordHourlyBilling({
+        ...authority,
+        sandboxId: sandbox.id,
+        organizationId: org.id,
+        userId: user.id,
+        agentName: "elapsed-agent",
+        hourlyRate: 0.01,
+        billingDescription: "expired lease must not debit",
+        lowCreditWarningAmount: 1,
+        now,
+      }),
+    ).rejects.toMatchObject({ code: "AGENT_BILLING_RUN_LEASE_LOST" });
+
+    const [sandboxAfter] = await dbWrite
+      .select({ last_billed_at: agentSandboxes.last_billed_at })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(sandboxAfter.last_billed_at).toEqual(lastBilledAt);
+    expect(await dbWrite.select().from(agentBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(agentBillingRunItems)).toHaveLength(0);
     expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
   });
 
@@ -321,6 +418,7 @@ describe("compute billing recovery", () => {
       },
     ]);
     const result = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun(new Date("2026-08-19T04:00:00.000Z"))),
       sandboxId: sandbox.id,
       organizationId: org.id,
       userId: user.id,
@@ -344,6 +442,7 @@ describe("compute billing recovery", () => {
       .values({ name: "Other", slug: `other-${crypto.randomUUID()}`, credit_balance: "10" })
       .returning();
     const result = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun(new Date("2026-08-19T04:30:00.000Z"))),
       sandboxId: sandbox.id,
       organizationId: other.id,
       userId: user.id,

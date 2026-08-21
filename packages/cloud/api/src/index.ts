@@ -20,7 +20,10 @@ import {
   ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/shared/elizacloud";
 import type { Hono, ExecutionContext as HonoExecutionContext } from "hono";
-import { makeCronHandler } from "@/lib/cron/cloudflare-cron";
+import {
+  cloneRequestWithScheduledCronMetadata,
+  makeCronHandler,
+} from "@/lib/cron/cloudflare-cron";
 import {
   ELIZA_TRACE_ID_HEADER,
   resolveElizaTraceId,
@@ -226,22 +229,26 @@ export function decorateFullAppDispatchResponse(
   });
 }
 
-async function dispatchFullApp(
+export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext | HonoExecutionContext,
+  loadFullApp: () => Promise<Hono<AppEnv>> = getApp,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const moduleWasInitialized = appPromise !== undefined;
+  const moduleWasInitialized =
+    loadFullApp === getApp ? appPromise !== undefined : true;
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
-  const tracedRequest = new Request(request, { headers });
+  const tracedRequest = cloneRequestWithScheduledCronMetadata(request, {
+    headers,
+  });
   let moduleInitMs: number | null = null;
   let status: number | null = null;
 
   try {
-    const app = await getApp();
+    const app = await loadFullApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;
