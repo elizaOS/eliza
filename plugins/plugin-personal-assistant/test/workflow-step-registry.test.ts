@@ -13,7 +13,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   __resetWorkflowStepRegistryForTests,
@@ -73,6 +73,7 @@ function makeStubArgs(): WorkflowStepExecuteArgs {
     } as unknown as WorkflowStepExecuteArgs["definition"],
     startedAt: "2026-05-09T00:00:00.000Z",
     confirmBrowserActions: false,
+    triggerChainDepth: 0,
     request: {},
     outputs: {},
     previousStepValue: null,
@@ -229,6 +230,44 @@ describe("WorkflowStepRegistry", () => {
     )) as { text: string };
     expect(typeof result.text).toBe("string");
     expect(result.text.length).toBeGreaterThan(0);
+  });
+
+  it("dispatch_workflow advances trigger ancestry for the nested execution", async () => {
+    const execute = vi.fn(async () => ({ ok: true, executionId: "run-1" }));
+    const registry = createWorkflowStepRegistry();
+    registerDefaultWorkflowStepPack(registry);
+    const dispatchWorkflow = registry.get("dispatch_workflow");
+    expect(dispatchWorkflow).not.toBeNull();
+    const validated = dispatchWorkflow?.paramSchema.parse({
+      kind: "dispatch_workflow",
+      workflowId: "nested-workflow",
+      payload: { source: "lifeops" },
+    });
+    const args: WorkflowStepExecuteArgs = {
+      ...makeStubArgs(),
+      triggerChainDepth: 3,
+      request: { requestId: "request-1" },
+      outputs: { prepared: true },
+    };
+    const ctx = {
+      ...makeStubCtx(),
+      runtime: {
+        getService: (serviceType: string) =>
+          serviceType === "WORKFLOW_DISPATCH" ? { execute } : null,
+      },
+    } as unknown as WorkflowStepExecuteContext;
+
+    await dispatchWorkflow?.execute(validated, args, ctx);
+
+    expect(execute).toHaveBeenCalledWith(
+      "nested-workflow",
+      {
+        source: "lifeops",
+        request: { requestId: "request-1" },
+        outputs: { prepared: true },
+      },
+      { triggerChainDepth: 4 },
+    );
   });
 
   it("default browser contribution short-circuits when permissionPolicy.allowBrowserActions=false", async () => {
