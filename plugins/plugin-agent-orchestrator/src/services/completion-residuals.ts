@@ -23,7 +23,7 @@
  * `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag convention).
  */
 import { spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import {
   type OrchestratorOwnedArtifact,
   ownedArtifactStillMatches,
@@ -158,6 +158,11 @@ export interface CompletionResidualsInput {
    * dirty paths are retained as output evidence instead of misclassified as
    * leftovers. Read-only tasks leave this false and still require cleanliness. */
   workspaceMutationExpected?: boolean;
+  /** Alternate Git index used by the reporting ACP session. Completion must
+   * inspect the same staged/HEAD view the child saw; probing the repository's
+   * shared index can otherwise report fabricated deletions after an isolated
+   * commit. Missing/stale index paths fall back to the repository index. */
+  gitIndexFile?: string;
   testResults?: ReadonlyArray<{
     command: string;
     exitCode: number;
@@ -174,9 +179,22 @@ interface GitProbe {
   stderr: string;
 }
 
-function runGit(workdir: string, args: string[]): GitProbe {
+function runGit(
+  workdir: string,
+  args: string[],
+  gitIndexFile?: string,
+): GitProbe {
+  const resolvedGitIndex = gitIndexFile?.trim();
   const result = spawnSync("git", args, {
     cwd: workdir,
+    env:
+      resolvedGitIndex && existsSync(resolvedGitIndex)
+        ? {
+            ...process.env,
+            GIT_INDEX_FILE: resolvedGitIndex,
+            GIT_OPTIONAL_LOCKS: "0",
+          }
+        : process.env,
     timeout: GIT_TIMEOUT_MS,
     maxBuffer: GIT_MAX_BUFFER,
     windowsHide: true,
@@ -363,7 +381,11 @@ export async function collectCompletionResiduals(
       if (stats === undefined) probe = "missing";
       else if (!stats.isDirectory()) probe = "not_directory";
       else {
-        const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
+        const inside = runGit(
+          workdir,
+          ["rev-parse", "--is-inside-work-tree"],
+          input.gitIndexFile,
+        );
         probe =
           inside.ok && inside.stdout.trim() === "true"
             ? "worktree"
@@ -415,7 +437,11 @@ export async function collectCompletionResiduals(
     // the persisted snapshot so the skip is visible, never a silent pass.
     gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    const status = runGit(
+      workdir,
+      ["status", "--porcelain"],
+      input.gitIndexFile,
+    );
     if (!status.ok) {
       return unverifiable(
         "git_failed",
@@ -463,14 +489,17 @@ export async function collectCompletionResiduals(
     // The upstream leg only applies when an upstream is configured: a local
     // throwaway repo (or a detached/unborn HEAD) legitimately has nothing to
     // push, and treating that as a residual would block every scratch task.
-    const upstream = runGit(workdir, [
-      "rev-parse",
-      "--abbrev-ref",
-      "--symbolic-full-name",
-      "@{u}",
-    ]);
+    const upstream = runGit(
+      workdir,
+      ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+      input.gitIndexFile,
+    );
     if (upstream.ok) {
-      const unpushed = runGit(workdir, ["rev-list", "@{u}..HEAD"]);
+      const unpushed = runGit(
+        workdir,
+        ["rev-list", "@{u}..HEAD"],
+        input.gitIndexFile,
+      );
       if (!unpushed.ok) {
         return unverifiable(
           "git_failed",
@@ -483,10 +512,11 @@ export async function collectCompletionResiduals(
         .filter((line) => line.length > 0);
       const baselineHeadSha = input.baselineHeadSha?.trim();
       if (baselineHeadSha && shas.length > 0) {
-        const sinceSpawn = runGit(workdir, [
-          "rev-list",
-          `${baselineHeadSha}..HEAD`,
-        ]);
+        const sinceSpawn = runGit(
+          workdir,
+          ["rev-list", `${baselineHeadSha}..HEAD`],
+          input.gitIndexFile,
+        );
         if (!sinceSpawn.ok) {
           return unverifiable(
             "git_failed",

@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -50,6 +51,26 @@ function git(cwd: string, ...args: string[]): string {
       ...args,
     ],
     { cwd, encoding: "utf8" },
+  );
+}
+
+function gitWithEnv(
+  cwd: string,
+  env: NodeJS.ProcessEnv,
+  ...args: string[]
+): string {
+  return execFileSync(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Residuals Test",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, env: { ...process.env, ...env }, encoding: "utf8" },
   );
 }
 
@@ -101,6 +122,37 @@ describe("collectCompletionResiduals — real git legs", () => {
     expect(residual?.detail).toContain("2 uncommitted path(s)");
     expect(residual?.items?.join("\n")).toContain("README.md");
     expect(residual?.items?.join("\n")).toContain("untracked.ts");
+  });
+
+  it("inspects the reporting session's isolated Git index", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const repoIndex = git(
+      workdir,
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-path",
+      "index",
+    ).trim();
+    const gitIndexFile = join(workdir, ".git", "session.index");
+    copyFileSync(repoIndex, gitIndexFile);
+    writeFileSync(join(workdir, "session-file.txt"), "session output\n");
+    const env = { GIT_INDEX_FILE: gitIndexFile };
+    gitWithEnv(workdir, env, "add", "session-file.txt");
+    gitWithEnv(workdir, env, "commit", "-q", "-m", "session output");
+
+    const sharedIndexResult = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
+    expect(sharedIndexResult.status).toBe("residuals");
+
+    const sessionIndexResult = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+      gitIndexFile,
+    });
+    expect(sessionIndexResult.status).toBe("clean");
+    expect(sessionIndexResult.residuals).toEqual([]);
   });
 
   it("treats requested workspace mutations as deliverables, not leftovers", async () => {

@@ -731,6 +731,13 @@ function residualsWorkspaceMutationExpected(
   return doc.task.metadata?.workspaceMutationExpected === true;
 }
 
+function residualsGitIndexFile(
+  session: OrchestratorTaskSession | undefined,
+): string | undefined {
+  const value = session?.metadata?.gitIndexFile;
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
 /** Owned-artifact fingerprints the residuals gate may exempt: the live ACP
  * session ledger wins when non-empty; otherwise fall back to the records
  * persisted on session metadata (a service restart loses the in-memory
@@ -3686,6 +3693,7 @@ export class OrchestratorTaskService extends Service {
     let residuals = residualsGateEnabled()
       ? await collectCompletionResiduals({
           workdir: workspaceSession?.workdir,
+          gitIndexFile: residualsGitIndexFile(workspaceSession),
           repoExpected: residualsRepoExpected(doc, workspaceSession),
           workspaceMutationExpected: residualsWorkspaceMutationExpected(doc),
           orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
@@ -4032,6 +4040,7 @@ export class OrchestratorTaskService extends Service {
         const acp = this.acp();
         const residuals = await collectCompletionResiduals({
           workdir: reportingSession?.workdir,
+          gitIndexFile: residualsGitIndexFile(reportingSession),
           repoExpected: residualsRepoExpected(doc, reportingSession),
           workspaceMutationExpected: residualsWorkspaceMutationExpected(doc),
           orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
