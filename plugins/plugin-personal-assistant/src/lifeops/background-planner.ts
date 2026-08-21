@@ -82,6 +82,8 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type {
   ApprovalAction,
