@@ -100,9 +100,15 @@ describe("window RPC handlers", () => {
   it("opens the complete workstation through its dedicated native callback", async () => {
     const { desktop, handlers } = createDesktopFixture();
 
-    await handlers.desktopOpenWorkspaceWindow();
+    await handlers.desktopOpenWorkspaceWindow({
+      routePath: "/notes",
+      maximize: true,
+    });
 
-    expect(desktop.openWorkspace).toHaveBeenCalledTimes(1);
+    expect(desktop.openWorkspace).toHaveBeenCalledWith({
+      routePath: "/notes",
+      maximize: true,
+    });
   });
 
   it("forwards browser surface browse targets and coerces always-on-top", async () => {

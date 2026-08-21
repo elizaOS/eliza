@@ -2966,11 +2966,15 @@ async function main(): Promise<void> {
   }
 
   // Wire detached window callbacks so menus and RPC can open them.
-  getDesktopManager().setOpenWorkspaceCallback(() => {
+  getDesktopManager().setOpenWorkspaceCallback((options) => {
     if (!surfaceWindowManager) {
       throw new Error("Surface window manager is not ready.");
     }
-    void surfaceWindowManager.openWorkspaceWindow();
+    void surfaceWindowManager.openWorkspaceWindow(
+      options?.routePath ?? "/",
+      undefined,
+      options?.maximize === true,
+    );
   });
   getDesktopManager().setOpenSettingsCallback((tabHint) => {
     void createSettingsWindow(tabHint);

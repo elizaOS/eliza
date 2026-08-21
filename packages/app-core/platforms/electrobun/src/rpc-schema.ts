@@ -1636,7 +1636,7 @@ export type ElizaDesktopRPCSchema = {
         response: DesktopReleaseNotesWindowInfo;
       };
       desktopOpenWorkspaceWindow: {
-        params: undefined;
+        params: { routePath?: string; maximize?: boolean } | undefined;
         response: undefined;
       };
       desktopOpenSettingsWindow: {

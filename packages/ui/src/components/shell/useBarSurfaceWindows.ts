@@ -8,16 +8,14 @@ import {
   type NavigateViewDetail,
   pathForNavigateViewDetail,
 } from "../../app-navigate-view";
-import {
-  openDesktopAppWindow,
-  openDesktopLauncherWindow,
-} from "../../bridge/electrobun-rpc";
+import { openDesktopAppWindow } from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { NAVIGATE_VIEW_EVENT } from "../../events";
+import { openDesktopWorkspaceWindow } from "../../utils/desktop-workspace";
 
 /** Detail shape used by views/launcher whose own window should open. */
 type OpenWindowFn = typeof openDesktopAppWindow;
-type OpenLauncherFn = typeof openDesktopLauncherWindow;
+type OpenWorkspaceFn = typeof openDesktopWorkspaceWindow;
 
 /** View ids that resolve to the launcher/springboard rather than a single view. */
 const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
@@ -31,26 +29,27 @@ const LAUNCHER_VIEW_IDS: ReadonlySet<string> = new Set([
  * Phase 3). The bar renders only the chat overlay — it has no full-app tab
  * system — so a "show a view" / "show the launcher" intent (the
  * `eliza:navigate:view` bus the agent + slash commands already drive) must open
- * a dedicated desktop window instead of switching an inline tab.
+ * the singleton full Workspace at the requested route instead of switching an
+ * inline tab. An explicit `open-window` action retains the utility-window
+ * escape hatch.
  *
- * The launcher is summoned as its own window; it is never the resting surface.
  * No-op off desktop (the bar shell only runs on the Electrobun desktop).
  *
- * The `openWindow` / `openLauncher` deps are injectable for tests.
+ * The bridge deps are injectable for tests.
  */
 export function useBarSurfaceWindows(options?: {
   openWindow?: OpenWindowFn;
-  openLauncher?: OpenLauncherFn;
+  openWorkspace?: OpenWorkspaceFn;
   isDesktop?: () => boolean;
 }): void {
   const openWindow = options?.openWindow ?? openDesktopAppWindow;
-  const openLauncher = options?.openLauncher ?? openDesktopLauncherWindow;
+  const openWorkspace = options?.openWorkspace ?? openDesktopWorkspaceWindow;
   const isDesktop = options?.isDesktop ?? isElectrobunRuntime;
 
   const openWindowRef = React.useRef(openWindow);
   openWindowRef.current = openWindow;
-  const openLauncherRef = React.useRef(openLauncher);
-  openLauncherRef.current = openLauncher;
+  const openWorkspaceRef = React.useRef(openWorkspace);
+  openWorkspaceRef.current = openWorkspace;
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !isDesktop()) return;
@@ -59,11 +58,15 @@ export function useBarSurfaceWindows(options?: {
       if (!detail || detail.action === "close" || detail.action === "close-all")
         return;
       if (detail.viewId && LAUNCHER_VIEW_IDS.has(detail.viewId)) {
-        void openLauncherRef.current();
+        void openWorkspaceRef.current({ routePath: "/views", maximize: true });
         return;
       }
       const path = pathForNavigateViewDetail(detail);
       if (!path) return;
+      if (detail.action !== "open-window") {
+        void openWorkspaceRef.current({ routePath: path, maximize: true });
+        return;
+      }
       void openWindowRef.current({
         slug: detail.viewId,
         title: detail.viewLabel ?? detail.viewId ?? "View",

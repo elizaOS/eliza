@@ -399,7 +399,9 @@ export class DesktopManager {
     null;
 
   // Callback to open the settings window (set by index.ts)
-  private openWorkspaceCallback: (() => void) | null = null;
+  private openWorkspaceCallback:
+    | ((options?: { routePath?: string; maximize?: boolean }) => void)
+    | null = null;
   private openSettingsCallback: ((tabHint?: string) => void) | null = null;
   private openSurfaceWindowCallback:
     | ((
@@ -513,7 +515,9 @@ export class DesktopManager {
   /**
    * Set the callback used to open the complete workstation window.
    */
-  setOpenWorkspaceCallback(cb: (() => void) | null): void {
+  setOpenWorkspaceCallback(
+    cb: ((options?: { routePath?: string; maximize?: boolean }) => void) | null,
+  ): void {
     this.openWorkspaceCallback = cb;
   }
 
@@ -594,8 +598,8 @@ export class DesktopManager {
   /**
    * Open the complete workstation window via the registered callback.
    */
-  openWorkspace(): void {
-    this.openWorkspaceCallback?.();
+  openWorkspace(options?: { routePath?: string; maximize?: boolean }): void {
+    this.openWorkspaceCallback?.(options);
   }
 
   /**
@@ -1499,9 +1503,7 @@ X-GNOME-Autostart-enabled=true
    * second visible/click-blocking surface over the workstation. Visibility
    * intent is preserved and applied when Workspace blurs or closes.
    */
-  async setMainWindowSuppressedByWorkspace(
-    suppressed: boolean,
-  ): Promise<void> {
+  async setMainWindowSuppressedByWorkspace(suppressed: boolean): Promise<void> {
     if (this.mainWindowSuppressedByWorkspace === suppressed) return;
     this.mainWindowSuppressedByWorkspace = suppressed;
     if (suppressed) {

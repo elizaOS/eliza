@@ -25,6 +25,7 @@ class FakeManagedWindow implements ManagedWindowLike {
   readonly focus = vi.fn(() => {
     this.emit("focus");
   });
+  readonly maximize = vi.fn();
   readonly setAlwaysOnTop = vi.fn((flag: boolean) => {
     this.alwaysOnTop = flag;
   });
@@ -48,9 +49,7 @@ class FakeManagedWindow implements ManagedWindowLike {
     return this.frame;
   }
 
-  emit(
-    event: "close" | "focus" | "blur" | "resize" | "move" | "dom-ready",
-  ) {
+  emit(event: "close" | "focus" | "blur" | "resize" | "move" | "dom-ready") {
     if (event === "dom-ready") {
       for (const handler of this.webview.handlers.get(event) ?? []) {
         handler();
@@ -203,6 +202,20 @@ describe("SurfaceWindowManager app windows", () => {
       fixture.created[0],
       "workspace",
     );
+  });
+
+  it("navigates and maximizes the singleton workspace for pill view intents", async () => {
+    const fixture = createFixture();
+
+    await fixture.manager.openWorkspaceWindow();
+    const window = fixture.created[0];
+    await fixture.manager.openWorkspaceWindow("/notes", undefined, true);
+
+    expect(window?.webview.loadURL).toHaveBeenCalledWith(
+      "http://127.0.0.1:5173/notes?desktopSurface=workspace",
+    );
+    expect(window?.maximize).toHaveBeenCalledTimes(1);
+    expect(window?.focus).toHaveBeenCalledTimes(1);
   });
 
   it("navigates the already-open workspace to the requested settings section (#19996)", async () => {

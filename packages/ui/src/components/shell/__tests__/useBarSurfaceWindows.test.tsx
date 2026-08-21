@@ -29,30 +29,28 @@ function setup(isDesktop = true) {
   const openWindow = vi.fn<
     (opts: OpenWindowArg) => Promise<{ id: string } | null>
   >(async () => ({ id: "w1" }));
-  const openLauncher = vi.fn<() => Promise<{ id: string } | null>>(
-    async () => ({
-      id: "launcher",
-    }),
-  );
+  const openWorkspace = vi.fn<
+    (options?: { routePath?: string; maximize?: boolean }) => Promise<void>
+  >(async () => undefined);
   renderHook(() =>
     useBarSurfaceWindows({
       openWindow,
-      openLauncher,
+      openWorkspace,
       isDesktop: () => isDesktop,
     }),
   );
-  return { openWindow, openLauncher };
+  return { openWindow, openWorkspace };
 }
 
 describe("useBarSurfaceWindows", () => {
   it("opens a dedicated window for a view navigation", async () => {
-    const { openWindow, openLauncher } = setup();
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({
       viewId: "calendar",
       viewLabel: "Calendar",
       action: "open-window",
     });
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
     expect(openWindow).toHaveBeenCalledTimes(1);
     expect(openWindow.mock.calls[0][0]).toMatchObject({
       slug: "calendar",
@@ -61,40 +59,44 @@ describe("useBarSurfaceWindows", () => {
     });
   });
 
-  it("summons the launcher for launcher/views ids", async () => {
-    const { openWindow, openLauncher } = setup();
+  it("opens launcher/views ids inside the maximized Workspace", async () => {
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({ viewId: "launcher" });
     await dispatchNavigate({ viewId: "views-manager" });
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).toHaveBeenCalledTimes(2);
+    expect(openWorkspace).toHaveBeenCalledTimes(2);
+    expect(openWorkspace).toHaveBeenLastCalledWith({
+      routePath: "/views",
+      maximize: true,
+    });
   });
 
-  it("honours an explicit view path and alwaysOnTop", async () => {
-    const { openWindow } = setup();
+  it("opens a normal view path inside the maximized Workspace", async () => {
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({
-      viewId: "phone",
-      viewPath: "/phone",
-      alwaysOnTop: true,
+      viewId: "notes",
+      viewPath: "/notes",
     });
-    expect(openWindow.mock.calls[0][0]).toMatchObject({
-      path: "/phone",
-      alwaysOnTop: true,
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(openWorkspace).toHaveBeenCalledWith({
+      routePath: "/notes",
+      maximize: true,
     });
   });
 
   it("ignores close actions and detail-less events", async () => {
-    const { openWindow, openLauncher } = setup();
+    const { openWindow, openWorkspace } = setup();
     await dispatchNavigate({ action: "close", viewId: "calendar" });
     await dispatchNavigate(undefined);
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
   });
 
   it("is inert off the desktop runtime", async () => {
-    const { openWindow, openLauncher } = setup(false);
+    const { openWindow, openWorkspace } = setup(false);
     await dispatchNavigate({ viewId: "calendar", action: "open-window" });
     await dispatchNavigate({ viewId: "launcher" });
     expect(openWindow).not.toHaveBeenCalled();
-    expect(openLauncher).not.toHaveBeenCalled();
+    expect(openWorkspace).not.toHaveBeenCalled();
   });
 });
