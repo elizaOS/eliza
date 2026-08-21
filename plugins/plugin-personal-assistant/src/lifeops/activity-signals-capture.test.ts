@@ -724,6 +724,21 @@ describe("startLifeOpsActivitySignalCapture", () => {
     );
   });
 
+  it("stands down when the native MobileSignals plugin is intentionally absent", async () => {
+    mockNativeMobile();
+    h.mobile.checkPermissions.mockRejectedValue(
+      new Error('"MobileSignals" plugin is not implemented on android'),
+    );
+
+    stop = startLifeOpsActivitySignalCapture(true);
+    await settle();
+
+    expect(h.dispatchStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: "capture_error" }),
+    );
+    expect(h.mobile.startMonitoring).not.toHaveBeenCalled();
+  });
+
   it("surfaces an unexpected (non-transport) status-probe failure instead of reading it as not-ready", async () => {
     h.getStatus.mockRejectedValue(new TypeError("status DTO shape broken"));
 
