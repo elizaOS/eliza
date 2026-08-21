@@ -369,6 +369,8 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
     cmd: string,
     opts: SandboxCommandRunOptions = {},
   ): Promise<SandboxCommandResult> {
+    const effectiveTimeoutMs =
+      opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs;
     const result = await fetchBounded(
       `${this.apiBase}/v1/processes/run`,
       {
@@ -386,8 +388,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
         }),
       },
       {
-        timeoutMs:
-          opts.timeoutMs ?? opts.requestTimeoutMs ?? this.requestTimeoutMs,
+        timeoutMs: effectiveTimeoutMs,
         maxResponseBytes: MAX_REMOTE_JSON_BYTES,
       },
     );
@@ -418,6 +419,7 @@ class RemoteRunnerHttpClient implements E2BSandboxClient {
       exitCode,
       stdout: stdout ?? "",
       stderr: stderr ?? "",
+      ...(payload.timedOut === true ? { timedOut: true } : {}),
     };
   }
 }
@@ -781,12 +783,14 @@ export class E2BRemoteCapabilityRouterService
     };
     try {
       const result = await sandbox.commands.run(command, opts);
-      return commandRunResult(result, false);
+      return commandRunResult(result, result.timedOut === true);
     } catch (error) {
       const normalized =
         error instanceof Error ? error : new Error(String(error));
       const commandResult = commandResultFromError(normalized);
-      if (commandResult) return commandRunResult(commandResult, false);
+      if (commandResult) {
+        return commandRunResult(commandResult, commandResult.timedOut === true);
+      }
       if (isTimeoutError(normalized)) {
         return {
           output: normalized.message,
@@ -1209,7 +1213,7 @@ async function fetchBounded(
     options.timeoutMs > MAX_TIMER_DELAY_MS
   ) {
     throw new RangeError(
-      `Remote HTTP timeout must be an integer from 1 to ${MAX_TIMER_DELAY_MS} milliseconds.`,
+      `Duration must be an integer between 1 and ${MAX_TIMER_DELAY_MS}ms.`,
     );
   }
   const controller = new AbortController();
@@ -1815,7 +1819,7 @@ function positiveIntSetting(
   if (value === undefined) return fallback;
   if (!/^[1-9]\d*$/.test(value)) {
     throw new ElizaError(
-      `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
+      `${key} must be an integer between 1 and ${MAX_TIMER_DELAY_MS}.`,
       {
         code: "REMOTE_RUNNER_CONFIG_INVALID",
         context: { key },
@@ -1828,7 +1832,7 @@ function positiveIntSetting(
     return parsed;
   }
   throw new ElizaError(
-    `${key} must be a canonical integer from 1 to ${MAX_TIMER_DELAY_MS}.`,
+    `${key} must be an integer between 1 and ${MAX_TIMER_DELAY_MS}.`,
     {
       code: "REMOTE_RUNNER_CONFIG_INVALID",
       context: { key },
