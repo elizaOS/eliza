@@ -266,6 +266,36 @@ describe("LINEAR action", () => {
     expect(captured).toHaveLength(0);
   });
 
+  it("rejects malformed limits before any HTTP request", async () => {
+    for (const limit of ["1", 1.5, Number.NaN, 0, 101, true, null]) {
+      const result = await invoke(runtime, {
+        action: "search",
+        query: "x",
+        limit,
+      } as ActionParameters);
+      expect(result.success).toBe(false);
+      expect(result.data?.code).toBe("LINEAR_INVALID_INPUT");
+    }
+    expect(captured).toHaveLength(0);
+  });
+
+  it("rejects malformed cursor, assignedToMe, and teamKey before any HTTP request", async () => {
+    const malformed: ActionParameters[] = [
+      { action: "search", query: "x", cursor: 7 },
+      { action: "search", query: "x", cursor: "" },
+      { action: "search", query: "x", assignedToMe: "yes" },
+      { action: "search", query: "x", teamKey: 9 },
+      { action: "my_issues", teamKey: false },
+      { action: "issue", identifier: 42 },
+    ] as ActionParameters[];
+    for (const parameters of malformed) {
+      const result = await invoke(runtime, parameters);
+      expect(result.success).toBe(false);
+      expect(result.data?.code).toBe("LINEAR_INVALID_INPUT");
+    }
+    expect(captured).toHaveLength(0);
+  });
+
   it("reports a missing issue as an explicit not-found result", async () => {
     const result = await invoke(runtime, {
       action: "issue",

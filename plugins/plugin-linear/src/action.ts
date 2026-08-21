@@ -39,22 +39,57 @@ function parameters(message: Memory, options?: HandlerOptions): Params {
   return values as Params;
 }
 
-function text(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function invalidParameter(name: string, requirement: string): LinearError {
+  return new LinearError(
+    `The Linear ${name} parameter must be ${requirement}.`,
+    { code: "LINEAR_INVALID_INPUT" },
+  );
 }
 
-function opaqueText(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+// A parameter that was supplied with the wrong type or range is rejected at
+// this boundary; only a genuinely absent parameter may fall back to defaults.
+function text(params: Params, name: string): string | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !value.trim()) {
+    throw invalidParameter(name, "a non-empty string");
+  }
+  return value.trim();
 }
 
-function integer(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value)
-    ? value
-    : undefined;
+function opaqueText(params: Params, name: string): string | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length === 0) {
+    throw invalidParameter(name, "a non-empty string");
+  }
+  return value;
 }
 
-function bool(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined;
+function integer(
+  params: Params,
+  name: string,
+  min: number,
+  max: number,
+): number | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw invalidParameter(name, `an integer from ${min} to ${max}`);
+  }
+  return value;
+}
+
+function bool(params: Params, name: string): boolean | undefined {
+  const value = params[name];
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") throw invalidParameter(name, "a boolean");
+  return value;
 }
 
 function normalizeAction(value: unknown): LinearSubaction | null {
@@ -66,7 +101,10 @@ function normalizeAction(value: unknown): LinearSubaction | null {
 }
 
 function stateType(value: unknown): (typeof linearWorkflowStateTypes)[number] {
-  const normalized = text(value)?.toLowerCase();
+  const normalized =
+    typeof value === "string" && value.trim()
+      ? value.trim().toLowerCase()
+      : undefined;
   if (
     !normalized ||
     !linearWorkflowStateTypes.includes(
@@ -138,13 +176,14 @@ async function execute(
   const action = normalizeAction(params.action) ?? "my_issues";
   try {
     const service = getLinearService(runtime);
-    const cursor = opaqueText(params.cursor);
-    const limit = integer(params.limit);
+    const cursor = opaqueText(params, "cursor");
+    const limit = integer(params, "limit", 1, 100);
     switch (action) {
       case "my_issues": {
+        const teamKey = text(params, "teamKey");
         const page = await service.searchIssues({
           assignedToMe: true,
-          ...(text(params.teamKey) ? { teamKey: text(params.teamKey) } : {}),
+          ...(teamKey ? { teamKey } : {}),
           ...(params.state !== undefined
             ? { stateType: stateType(params.state) }
             : {}),
@@ -165,8 +204,8 @@ async function execute(
         );
       }
       case "search": {
-        const query = text(params.query);
-        const teamKey = text(params.teamKey);
+        const query = text(params, "query");
+        const teamKey = text(params, "teamKey");
         if (!query && !teamKey && params.state === undefined) {
           throw new LinearError(
             "Linear issue search requires a query, teamKey, or state filter.",
@@ -179,7 +218,7 @@ async function execute(
           ...(params.state !== undefined
             ? { stateType: stateType(params.state) }
             : {}),
-          ...(bool(params.assignedToMe) ? { assignedToMe: true } : {}),
+          ...(bool(params, "assignedToMe") ? { assignedToMe: true } : {}),
           ...(cursor ? { cursor } : {}),
           ...(limit !== undefined ? { limit } : {}),
         });
@@ -197,7 +236,7 @@ async function execute(
         );
       }
       case "issue": {
-        const identifier = text(params.identifier);
+        const identifier = text(params, "identifier");
         if (!identifier) {
           throw new LinearError(
             "Linear issue lookup requires an identifier such as ENG-123.",
