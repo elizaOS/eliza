@@ -136,10 +136,31 @@ describe("connectBot / disconnectBot ownership race", () => {
       connectBot: (a: typeof ASSIGNMENT) => Promise<void>;
     };
 
+    const teardownOrder: string[] = [];
+    const setex = mock(async (...args: unknown[]) => {
+      teardownOrder.push(`setex:${String(args[0])}`);
+      return "OK";
+    });
+    (manager as unknown as { redis: unknown }).redis = { setex };
+
     const firstLogin = deferred();
     pendingLogin = () => firstLogin.promise;
     const firstConnect = gm.connectBot(ASSIGNMENT);
     const firstClient = createdClients[0];
+    firstClient.destroy = mock(() => {
+      teardownOrder.push("destroy");
+      return undefined;
+    });
+    // Counters the superseded connection accumulated before it was replaced.
+    const firstConn = (
+      manager as unknown as {
+        connections: Map<string, { guildCount: number; eventsRouted: number }>;
+      }
+    ).connections.get(ASSIGNMENT.connectionId);
+    if (!firstConn) throw new Error("first connection was never registered");
+    firstConn.guildCount = 3;
+    firstConn.eventsRouted = 7;
+
     const queuedError = firstClient.listeners(
       discordActual.Events.Error,
     )[0] as (error: Error) => Promise<void>;
@@ -148,6 +169,18 @@ describe("connectBot / disconnectBot ownership race", () => {
     await gm.connectBot(ASSIGNMENT);
 
     expect(firstClient.destroy).toHaveBeenCalledTimes(1);
+    // The superseded connection's session state is persisted before its client
+    // is destroyed, exactly as disconnectBot and shutdown do.
+    expect(teardownOrder).toEqual([
+      `setex:discord:session:${ASSIGNMENT.connectionId}`,
+      "destroy",
+    ]);
+    const savedState = JSON.parse(String(setex.mock.calls[0]?.[2]));
+    expect(savedState).toMatchObject({
+      connectionId: ASSIGNMENT.connectionId,
+      guildCount: 3,
+      eventsRouted: 7,
+    });
     await queuedError(new Error("stale socket error"));
     firstLogin.reject(new Error("replaced login"));
     await firstConnect;

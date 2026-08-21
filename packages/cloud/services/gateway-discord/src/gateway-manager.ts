@@ -1081,6 +1081,10 @@ export class GatewayManager {
     const previous = this.connections.get(assignment.connectionId);
     this.connections.set(assignment.connectionId, conn);
     if (previous?.client) {
+      // Same teardown contract as disconnectBot/shutdown: persist the
+      // superseded connection's counters before its client is destroyed, so a
+      // replacement does not silently discard guild and event totals.
+      await this.saveSessionState(assignment.connectionId, previous);
       this.removeAllListeners(previous);
       previous.client.destroy();
     }
@@ -1382,10 +1386,20 @@ export class GatewayManager {
     try {
       await client.login(assignment.botToken);
     } catch (error) {
-      // A disconnect, replacement, or shutdown revokes ownership before it
-      // starts awaited teardown. The rejected login belongs to that stale
-      // client and must not log or publish a failure for the current owner.
+      // error-policy:J1 transport boundary — a login failure for the current
+      // owner is published to the control plane as an "error" connection
+      // status so the next poll can reassign it.
+      //
+      // error-policy:J5 a disconnect, replacement, or shutdown revokes
+      // ownership before it starts awaited teardown, so this rejection belongs
+      // to a client that path already destroyed; disconnectBot/shutdown
+      // publishes the authoritative status for the slot and this stale
+      // rejection must not overwrite it.
       if (this.connections.get(assignment.connectionId) !== conn) {
+        logger.debug("Ignoring stale bot login rejection", {
+          connectionId: assignment.connectionId,
+          error: sanitizeError(error),
+        });
         return;
       }
 
