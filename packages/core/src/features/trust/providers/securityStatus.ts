@@ -15,6 +15,10 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../utils/well-formed.ts";
 import { resolveAdminContext } from "../services/adminContext.ts";
 import type { SecurityModuleServiceWrapper } from "../services/wrappers.ts";
 
@@ -85,7 +89,9 @@ export const securityStatusProvider: Provider = {
 			const messageAnalysis = {
 				detected: analysis.detected,
 				type: analysis.type,
-				details: analysis.details?.slice(0, 500),
+				details: analysis.details
+					? truncateWellFormed(toWellFormedUnicode(analysis.details), 500)
+					: undefined,
 			};
 			const incidents = await securityModule.getRecentSecurityIncidents(
 				message.roomId,
