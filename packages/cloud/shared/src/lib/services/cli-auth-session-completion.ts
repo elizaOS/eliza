@@ -1,7 +1,7 @@
 /** Primary-consistent, single-winner persistence for CLI login completion. */
 
 import crypto from "crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeys, type NewApiKey } from "../../db/schemas/api-keys";
@@ -78,6 +78,7 @@ export class CliAuthSessionCompletionService {
           and(
             eq(cliAuthSessions.session_id, params.sessionId),
             eq(cliAuthSessions.status, "pending"),
+            isNull(cliAuthSessions.consumed_at),
             gt(cliAuthSessions.expires_at, now),
           ),
         )

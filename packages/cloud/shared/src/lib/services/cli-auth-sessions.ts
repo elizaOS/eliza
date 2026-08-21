@@ -172,6 +172,10 @@ export class CliAuthSessionsService {
       );
     }
 
+    if (session.status === "pending" && session.consumed_at) {
+      throw new Error("Session delivery is awaiting acknowledgement");
+    }
+
     if (session.status !== "pending") {
       // Expired or any other non-pending terminal state.
       throw new Error("Session already authenticated or expired");
@@ -220,7 +224,10 @@ export class CliAuthSessionsService {
    * The plaintext is decrypted in-memory from the encrypted api_keys row
    * and never persisted on the cli_auth_sessions row.
    */
-  async getAndClearApiKey(sessionId: string): Promise<CliAuthApiKeyRevealResult> {
+  async getAndClearApiKey(
+    sessionId: string,
+    options: { requireAcknowledgement?: boolean } = {},
+  ): Promise<CliAuthApiKeyRevealResult> {
     const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
     if (!state) {
       return { status: "unavailable", reason: "not-found" };
@@ -283,6 +290,7 @@ export class CliAuthSessionsService {
       userId: session.user_id,
       organizationId: apiKeyRecord.organization_id,
       keyHash: apiKeyRecord.key_hash,
+      requireAcknowledgement: options.requireAcknowledgement,
     });
     if (!claimed) {
       return { status: "unavailable", reason: "claim-lost" };
@@ -294,6 +302,47 @@ export class CliAuthSessionsService {
       keyPrefix: apiKeyRecord.key_prefix,
       expiresAt: apiKeyRecord.expires_at,
     };
+  }
+
+  /** Confirms receipt of a cancellation-sensitive reveal using its exact bearer. */
+  async acknowledgeConsumedCredential(sessionId: string, presentedToken: string): Promise<boolean> {
+    const token = presentedToken.trim();
+    if (!token) return false;
+    const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
+    if (
+      !state ||
+      !state.session.consumed_at ||
+      !state.session.api_key_id ||
+      !state.session.user_id ||
+      !state.apiKey ||
+      state.apiKey.id !== state.session.api_key_id ||
+      state.apiKey.user_id !== state.session.user_id ||
+      !state.apiKey.is_active ||
+      state.apiKey.deleted_at
+    ) {
+      return false;
+    }
+
+    const presentedHash = crypto.createHash("sha256").update(token).digest();
+    const storedHash = Buffer.from(state.apiKey.key_hash, "hex");
+    if (
+      storedHash.length !== presentedHash.length ||
+      !crypto.timingSafeEqual(storedHash, presentedHash)
+    ) {
+      return false;
+    }
+
+    if (state.session.status === "authenticated") return true;
+    if (state.session.status !== "pending") return false;
+    return Boolean(
+      await cliAuthSessionsRepository.acknowledgeConsumed({
+        sessionId,
+        apiKeyId: state.apiKey.id,
+        userId: state.apiKey.user_id,
+        organizationId: state.apiKey.organization_id,
+        keyHash: state.apiKey.key_hash,
+      }),
+    );
   }
 
   /**
@@ -309,7 +358,7 @@ export class CliAuthSessionsService {
     const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
     if (
       !state ||
-      state.session.status !== "authenticated" ||
+      (state.session.status !== "authenticated" && state.session.status !== "pending") ||
       !state.session.consumed_at ||
       !state.session.api_key_id ||
       !state.session.user_id ||

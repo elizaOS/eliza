@@ -64,7 +64,8 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(json(200, { sessionId: SESSION_ID }))
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "steward-token" }),
-      );
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl });
 
     const attempt = await client.beginLogin();
@@ -82,6 +83,56 @@ describe("AndroidCloudClient", () => {
       "https://api.eliza.app/api/auth/cli-session",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      2,
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}?delivery=acknowledgement-required`,
+      { signal: undefined },
+    );
+    expect(fetchImpl).toHaveBeenNthCalledWith(
+      3,
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({
+        method: "PATCH",
+        headers: { Authorization: "Bearer steward-token" },
+        signal: expect.any(AbortSignal),
+      }),
+    );
+  });
+
+  it("revokes and removes a reveal whose delivery acknowledgement fails", async () => {
+    let storedToken: string | null = null;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        storedToken = token;
+      }),
+      clear: vi.fn(async () => {
+        storedToken = null;
+      }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "unacknowledged-token" }),
+      )
+      .mockResolvedValueOnce(json(503, { error: "ack unavailable" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await expect(client.pollLogin(SESSION_ID)).rejects.toThrow(
+      "could not be acknowledged",
+    );
+    expect(credentialStore.clear).toHaveBeenCalledOnce();
+    expect(storedToken).toBeNull();
+    expect(fetchImpl).toHaveBeenLastCalledWith(
+      `https://api.eliza.app/api/auth/cli-session/${SESSION_ID}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    const restarted = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: vi.fn<typeof fetch>(),
+    });
+    await expect(restarted.restoreSession()).resolves.toBeNull();
   });
 
   it("clears a token when sign-in is cancelled during durable persistence", async () => {
@@ -105,6 +156,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
     const controller = new AbortController();
@@ -141,6 +193,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -173,6 +226,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -211,6 +265,7 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "cancelled-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -219,7 +274,7 @@ describe("AndroidCloudClient", () => {
       client.discardLoginAttempt(SESSION_ID, "cancelled-token"),
     ).rejects.toThrow("could not be removed");
     expect(storedToken).toBe("cancelled-token");
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
 
     rejectTombstone = false;
     await client.discardLoginAttempt(SESSION_ID, "cancelled-token");
@@ -248,9 +303,11 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "shared-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "shared-token" }),
-      );
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
     await client.pollLogin("10000000-0000-4000-8000-000000000001");
@@ -262,7 +319,7 @@ describe("AndroidCloudClient", () => {
 
     expect(storedToken).toBe("shared-token");
     expect(credentialStore.clear).not.toHaveBeenCalled();
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
   });
 
   it("revokes a distinct stale bearer without clearing the newer login", async () => {
@@ -281,9 +338,11 @@ describe("AndroidCloudClient", () => {
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "stale-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(
         json(200, { status: "authenticated", apiKey: "newer-token" }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     const client = new AndroidCloudClient({ fetchImpl, credentialStore });
 
@@ -317,7 +376,10 @@ describe("AndroidCloudClient", () => {
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
       if (init?.method === "DELETE") return revocation;
-      if (url.endsWith(firstSession)) {
+      if (init?.method === "PATCH") {
+        return new Response(null, { status: 204 });
+      }
+      if (url.includes(firstSession)) {
         return json(200, { status: "authenticated", apiKey: "stale-token" });
       }
       return json(200, { status: "authenticated", apiKey: "newer-token" });

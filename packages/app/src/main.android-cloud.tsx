@@ -271,12 +271,37 @@ async function initializeAndroidCloudPlatform(): Promise<void> {
 
 let activeVoiceListeners: Array<{ remove: () => Promise<void> }> = [];
 const VOICE_LISTENER_TEARDOWN_TIMEOUT_MS = 1_000;
+const VOICE_NATIVE_STOP_TIMEOUT_MS = 1_000;
 let voiceGeneration = 0;
 
 function assertCurrentVoiceGeneration(generation: number): void {
   if (voiceGeneration !== generation) {
     throw new DOMException("Voice dictation start was canceled.", "AbortError");
   }
+}
+
+async function retainVoiceListener(
+  generation: number,
+  listener: { remove: () => Promise<void> },
+  replace: boolean,
+): Promise<void> {
+  if (voiceGeneration !== generation) {
+    const cancellation = new DOMException(
+      "Voice dictation start was canceled.",
+      "AbortError",
+    );
+    try {
+      await listener.remove();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [cancellation, cleanupError],
+        "Canceled voice listener setup could not be cleaned up.",
+      );
+    }
+    throw cancellation;
+  }
+  if (replace) activeVoiceListeners = [listener];
+  else activeVoiceListeners.push(listener);
 }
 
 interface PlayVoicePlugin {
@@ -306,28 +331,102 @@ function stopVoiceAfterNativeEvent(): void {
   });
 }
 
+async function teardownVoiceResources(): Promise<void> {
+  const listeners = activeVoiceListeners;
+  // Invoke native stop before listener teardown. Both boundaries are bounded,
+  // and listener handles remain registered until their removers really settle.
+  let nativeTimeout: ReturnType<typeof window.setTimeout> | undefined;
+  const nativeStopResult = Promise.resolve()
+    .then(() => PlayVoice.stopDictation())
+    .then(
+      () => ({ status: "fulfilled" as const }),
+      (reason: unknown) => ({ status: "rejected" as const, reason }),
+    );
+  const boundedNativeStop = Promise.race([
+    nativeStopResult,
+    new Promise<{ status: "rejected"; reason: unknown }>((resolve) => {
+      nativeTimeout = window.setTimeout(
+        () =>
+          resolve({
+            status: "rejected",
+            reason: new Error(
+              "Native voice teardown timed out; cleanup remains retryable.",
+            ),
+          }),
+        VOICE_NATIVE_STOP_TIMEOUT_MS,
+      );
+    }),
+  ]).finally(() => {
+    if (nativeTimeout !== undefined) window.clearTimeout(nativeTimeout);
+  });
+  const removalResults = await Promise.allSettled(
+    listeners.map(async (listener) => {
+      let timeout: ReturnType<typeof window.setTimeout> | undefined;
+      const removal = listener.remove().then(() => {
+        activeVoiceListeners = activeVoiceListeners.filter(
+          (candidate) => candidate !== listener,
+        );
+      });
+      try {
+        await Promise.race([
+          removal,
+          new Promise<never>((_resolve, reject) => {
+            timeout = window.setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "Voice listener teardown timed out; cleanup remains retryable.",
+                  ),
+                ),
+              VOICE_LISTENER_TEARDOWN_TIMEOUT_MS,
+            );
+          }),
+        ]);
+      } finally {
+        if (timeout !== undefined) window.clearTimeout(timeout);
+      }
+    }),
+  );
+  const nativeStop = await boundedNativeStop;
+  const teardownErrors = removalResults.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+  if (nativeStop.status === "rejected") teardownErrors.push(nativeStop.reason);
+  if (teardownErrors.length === 1) throw teardownErrors[0];
+  if (teardownErrors.length > 1) {
+    throw new AggregateError(
+      teardownErrors,
+      "Voice dictation teardown failed at multiple boundaries.",
+    );
+  }
+}
+
 export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript, onError) {
-    await androidCloudVoice.stop();
     const generation = ++voiceGeneration;
-    const permissions = await PlayVoice.requestPermission();
-    assertCurrentVoiceGeneration(generation);
-    if (!permissions.granted) {
-      throw new Error("Microphone permission is required for voice dictation.");
-    }
     try {
+      await teardownVoiceResources();
+      assertCurrentVoiceGeneration(generation);
+      const permissions = await PlayVoice.requestPermission();
+      assertCurrentVoiceGeneration(generation);
+      if (!permissions.granted) {
+        throw new Error(
+          "Microphone permission is required for voice dictation.",
+        );
+      }
       const transcriptListener = await PlayVoice.addListener(
         "transcript",
         (event) => {
+          if (voiceGeneration !== generation) return;
           if (!event.isFinal) return;
           const transcript = event.text.trim();
           if (transcript) onFinalTranscript(transcript);
           stopVoiceAfterNativeEvent();
         },
       );
-      activeVoiceListeners = [transcriptListener];
-      assertCurrentVoiceGeneration(generation);
+      await retainVoiceListener(generation, transcriptListener, true);
       const errorListener = await PlayVoice.addListener("error", (event) => {
+        if (voiceGeneration !== generation) return;
         onError(
           new Error(
             `Voice dictation stopped unexpectedly (code ${event.code}).`,
@@ -335,8 +434,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         );
         stopVoiceAfterNativeEvent();
       });
-      activeVoiceListeners.push(errorListener);
-      assertCurrentVoiceGeneration(generation);
+      await retainVoiceListener(generation, errorListener, false);
       const result = await PlayVoice.startDictation({
         language: navigator.language || "en-US",
       });
@@ -345,8 +443,10 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
         throw new Error(result.error || "Voice dictation could not start.");
       }
     } catch (setupError) {
+      if (voiceGeneration !== generation) throw setupError;
+      voiceGeneration += 1;
       try {
-        await androidCloudVoice.stop();
+        await teardownVoiceResources();
       } catch (cleanupError) {
         throw new AggregateError(
           [setupError, cleanupError],
@@ -358,54 +458,7 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
   },
   async stop() {
     voiceGeneration += 1;
-    const listeners = activeVoiceListeners;
-    // Start the native microphone stop before touching listener handles. A
-    // broken Capacitor remover must never keep recognition alive.
-    const nativeStopResult = PlayVoice.stopDictation().then(
-      () => ({ status: "fulfilled" as const }),
-      (reason: unknown) => ({ status: "rejected" as const, reason }),
-    );
-    const removalResults = await Promise.allSettled(
-      listeners.map(async (listener) => {
-        let timeout: ReturnType<typeof window.setTimeout> | undefined;
-        const removal = listener.remove().then(() => {
-          activeVoiceListeners = activeVoiceListeners.filter(
-            (candidate) => candidate !== listener,
-          );
-        });
-        try {
-          await Promise.race([
-            removal,
-            new Promise<never>((_resolve, reject) => {
-              timeout = window.setTimeout(
-                () =>
-                  reject(
-                    new Error(
-                      "Voice listener teardown timed out; cleanup remains retryable.",
-                    ),
-                  ),
-                VOICE_LISTENER_TEARDOWN_TIMEOUT_MS,
-              );
-            }),
-          ]);
-        } finally {
-          if (timeout !== undefined) window.clearTimeout(timeout);
-        }
-      }),
-    );
-    const nativeStop = await nativeStopResult;
-    const teardownErrors = removalResults.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
-    );
-    if (nativeStop.status === "rejected")
-      teardownErrors.push(nativeStop.reason);
-    if (teardownErrors.length === 1) throw teardownErrors[0];
-    if (teardownErrors.length > 1) {
-      throw new AggregateError(
-        teardownErrors,
-        "Voice dictation teardown failed at multiple boundaries.",
-      );
-    }
+    await teardownVoiceResources();
   },
   async speak(text) {
     await PlayVoice.speak({ text, language: navigator.language || "en-US" });

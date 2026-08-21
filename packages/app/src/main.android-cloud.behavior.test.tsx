@@ -259,6 +259,24 @@ describe("Android Cloud renderer behavior", () => {
     expect(playEntry.voiceStart).not.toHaveBeenCalled();
   });
 
+  it("does not start after cancellation overtakes the initial native stop", async () => {
+    let finishInitialStop: () => void = () => {};
+    playEntry.voiceStop.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        finishInitialStop = resolve;
+      }),
+    );
+
+    const starting = entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    await vi.waitFor(() => expect(playEntry.voiceStop).toHaveBeenCalledOnce());
+    await entry.androidCloudVoice.stop();
+    finishInitialStop();
+
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    expect(playEntry.voicePermission).not.toHaveBeenCalled();
+    expect(playEntry.voiceStart).not.toHaveBeenCalled();
+  });
+
   it("observes native-event voice teardown failures", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
     await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
@@ -299,12 +317,34 @@ describe("Android Cloud renderer behavior", () => {
 
       const stopping = entry.androidCloudVoice.stop();
       const rejection = expect(stopping).rejects.toThrow("teardown timed out");
+      await Promise.resolve();
       expect(playEntry.voiceStop).toHaveBeenCalledOnce();
       await vi.advanceTimersByTimeAsync(1_000);
       await rejection;
 
       await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
       expect(playEntry.voiceListenerRemovers[0]).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds a pending native stop so teardown can be retried", async () => {
+    vi.useFakeTimers();
+    try {
+      await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+      playEntry.voiceStop.mockClear();
+      playEntry.voiceStop.mockReturnValueOnce(new Promise<void>(() => {}));
+
+      const stopping = entry.androidCloudVoice.stop();
+      const rejection = expect(stopping).rejects.toThrow(
+        "Native voice teardown timed out",
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      await rejection;
+
+      await expect(entry.androidCloudVoice.stop()).resolves.toBeUndefined();
+      expect(playEntry.voiceStop).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

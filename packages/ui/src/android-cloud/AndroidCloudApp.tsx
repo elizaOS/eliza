@@ -10,6 +10,7 @@ export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
 const LOGIN_POLL_MS = 1_500;
 const LOGIN_TIMEOUT_MS = 10 * 60_000;
+const BROWSER_CLOSE_TIMEOUT_MS = 5_000;
 export const ANDROID_CLOUD_COMPOSE_EVENT = "eliza:android-cloud-compose";
 
 export interface AndroidCloudMessage {
@@ -83,6 +84,7 @@ export function AndroidCloudApp({
     sessionId: string;
     token: string;
   } | null>(null);
+  const pendingLoginCleanupPromiseRef = useRef<Promise<void> | null>(null);
   const voiceAttemptRef = useRef(0);
   const voicePhaseRef = useRef<"idle" | "starting" | "listening" | "stopping">(
     "idle",
@@ -90,23 +92,54 @@ export function AndroidCloudApp({
   const mountedRef = useRef(true);
 
   const runBrowserOperation = useCallback(
-    (operation: () => Promise<void> | void): Promise<void> => {
-      const result = browserOperationRef.current.then(operation, operation);
-      browserOperationRef.current = result.then(
+    (
+      operation: () => Promise<void> | void,
+      timeoutMs?: number,
+    ): Promise<void> => {
+      const underlying = browserOperationRef.current.then(operation, operation);
+      browserOperationRef.current = underlying.then(
         () => undefined,
         () => undefined,
       );
-      return result;
+      if (timeoutMs === undefined) return underlying;
+      let timeout: ReturnType<typeof window.setTimeout> | undefined;
+      return Promise.race([
+        underlying,
+        new Promise<never>((_resolve, reject) => {
+          timeout = window.setTimeout(
+            () =>
+              reject(new Error("The sign-in browser did not close in time.")),
+            timeoutMs,
+          );
+        }),
+      ]).finally(() => {
+        if (timeout !== undefined) window.clearTimeout(timeout);
+      });
     },
     [],
   );
 
   const discardPendingLogin = useCallback(async () => {
+    if (pendingLoginCleanupPromiseRef.current) {
+      await pendingLoginCleanupPromiseRef.current;
+      return;
+    }
     const pending = pendingLoginCleanupRef.current;
     if (!pending) return;
-    await client.discardLoginAttempt(pending.sessionId, pending.token);
-    if (pendingLoginCleanupRef.current === pending) {
-      pendingLoginCleanupRef.current = null;
+    const cleanup = client
+      .discardLoginAttempt(pending.sessionId, pending.token)
+      .then(() => {
+        if (pendingLoginCleanupRef.current === pending) {
+          pendingLoginCleanupRef.current = null;
+        }
+      });
+    pendingLoginCleanupPromiseRef.current = cleanup;
+    try {
+      await cleanup;
+    } finally {
+      if (pendingLoginCleanupPromiseRef.current === cleanup) {
+        pendingLoginCleanupPromiseRef.current = null;
+      }
     }
   }, [client]);
 
@@ -192,6 +225,7 @@ export function AndroidCloudApp({
 
   useEffect(() => {
     mountedRef.current = true;
+    voicePhaseRef.current = "idle";
     void restore();
     return () => {
       mountedRef.current = false;
@@ -259,7 +293,7 @@ export function AndroidCloudApp({
         await runBrowserOperation(async () => {
           if (loginAttemptRef.current !== attemptNumber) return;
           await closeExternal?.();
-        });
+        }, BROWSER_CLOSE_TIMEOUT_MS);
         if (loginAttemptRef.current !== attemptNumber) {
           await discardPendingLogin();
           return;
@@ -284,6 +318,7 @@ export function AndroidCloudApp({
       }
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
+      loginController.abort();
       let reportedError: unknown = signInError;
       if (pendingLoginCleanupRef.current) {
         try {
@@ -330,14 +365,21 @@ export function AndroidCloudApp({
     setBusy(false);
     setSession(null);
     setPhase("signed-out");
-    void runBrowserOperation(async () => {
-      await closeExternal?.();
-    }).catch((closeError) => {
+    void discardPendingLogin().catch((cleanupError) => {
       setError(
-        `The sign-in browser could not be closed: ${errorMessage(closeError)}`,
+        `Sign-in was canceled, but credential cleanup needs attention: ${errorMessage(cleanupError)}`,
       );
     });
-  }, [closeExternal, runBrowserOperation]);
+    void runBrowserOperation(async () => {
+      await closeExternal?.();
+    }, BROWSER_CLOSE_TIMEOUT_MS).catch((closeError) => {
+      setError((current) =>
+        current?.includes("credential cleanup needs attention")
+          ? current
+          : `The sign-in browser could not be closed: ${errorMessage(closeError)}`,
+      );
+    });
+  }, [closeExternal, discardPendingLogin, runBrowserOperation]);
 
   const signOut = useCallback(async () => {
     setBusy(true);

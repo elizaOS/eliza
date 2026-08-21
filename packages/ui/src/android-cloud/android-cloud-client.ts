@@ -331,7 +331,7 @@ export class AndroidCloudClient {
       throw new Error("The sign-in session is invalid.");
     }
     const response = await this.fetchImpl(
-      `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+      `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}?delivery=acknowledgement-required`,
       { signal },
     );
     if (response.status === 404) {
@@ -358,9 +358,20 @@ export class AndroidCloudClient {
         revision: credentialRevision,
         token,
       });
-      if (signal?.aborted) {
-        await this.discardLoginAttempt(sessionId, token);
-        signal.throwIfAborted();
+      try {
+        signal?.throwIfAborted();
+        await this.acknowledgeLoginCredential(sessionId, token, signal);
+        signal?.throwIfAborted();
+      } catch (acknowledgementError) {
+        try {
+          await this.discardLoginAttempt(sessionId, token);
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [acknowledgementError, cleanupError],
+            "Sign-in delivery could not be acknowledged or revoked.",
+          );
+        }
+        throw acknowledgementError;
       }
       return { status: "authenticated", token };
     }
@@ -458,6 +469,39 @@ export class AndroidCloudClient {
 
   acceptLoginAttempt(sessionId: string): void {
     this.loginCredentials.delete(sessionId);
+  }
+
+  private async acknowledgeLoginCredential(
+    sessionId: string,
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort(signal?.reason);
+    if (signal?.aborted) abortFromCaller();
+    else signal?.addEventListener("abort", abortFromCaller, { once: true });
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      this.loginRevocationTimeoutMs,
+    );
+    try {
+      const response = await this.fetchImpl(
+        `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          `The sign-in credential delivery could not be acknowledged (${response.status}).`,
+        );
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener("abort", abortFromCaller);
+    }
   }
 
   async discardLoginAttempt(sessionId: string, token: string): Promise<void> {

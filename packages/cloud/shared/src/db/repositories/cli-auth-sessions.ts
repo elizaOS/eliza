@@ -139,12 +139,18 @@ export class CliAuthSessionsRepository {
     userId: string;
     organizationId: string;
     keyHash: string;
+    requireAcknowledgement?: boolean;
   }): Promise<CliAuthSession | undefined> {
     const consumedAt = new Date();
     const [claimed] = await dbWrite
       .update(cliAuthSessions)
       .set({
         consumed_at: consumedAt,
+        // Android's cancellation-sensitive flow uses `pending` + a non-null
+        // consumed_at as a durable delivered-but-unacknowledged state. This
+        // reuses the existing schema while keeping legacy CLI reveals on the
+        // authenticated state they have always used.
+        ...(input.requireAcknowledgement ? { status: "pending" as const } : {}),
         updated_at: consumedAt,
       })
       .where(
@@ -178,6 +184,49 @@ export class CliAuthSessionsRepository {
     return claimed;
   }
 
+  /** Atomically confirms that the exact delivered credential reached its client. */
+  async acknowledgeConsumed(input: {
+    sessionId: string;
+    apiKeyId: string;
+    userId: string;
+    organizationId: string;
+    keyHash: string;
+  }): Promise<CliAuthSession | undefined> {
+    const acknowledgedAt = new Date();
+    const [acknowledged] = await dbWrite
+      .update(cliAuthSessions)
+      .set({ status: "authenticated", updated_at: acknowledgedAt })
+      .where(
+        and(
+          eq(cliAuthSessions.session_id, input.sessionId),
+          eq(cliAuthSessions.status, "pending"),
+          isNotNull(cliAuthSessions.consumed_at),
+          gt(cliAuthSessions.expires_at, acknowledgedAt),
+          eq(cliAuthSessions.api_key_id, input.apiKeyId),
+          eq(cliAuthSessions.user_id, input.userId),
+          exists(
+            dbWrite
+              .select({ id: apiKeys.id })
+              .from(apiKeys)
+              .where(
+                and(
+                  eq(apiKeys.id, input.apiKeyId),
+                  eq(apiKeys.user_id, input.userId),
+                  eq(apiKeys.organization_id, input.organizationId),
+                  eq(apiKeys.key_hash, input.keyHash),
+                  eq(apiKeys.is_active, true),
+                  isNull(apiKeys.deleted_at),
+                  or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, acknowledgedAt)),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+
+    return acknowledged;
+  }
+
   /**
    * Marks a session as expired.
    */
@@ -201,8 +250,9 @@ export class CliAuthSessionsRepository {
    * `consumed_at`). Deleting such a session without touching its key would
    * strand a live credential nobody holds — the #22551 orphan population — so
    * the key is deactivated in the same transaction that removes the session.
-   * Consumed sessions leave their keys alone: that credential was handed to a
-   * real CLI and lives out its own `expires_at`.
+   * A cancellation-sensitive reveal remains `pending` until its client proves
+   * receipt with the exact bearer. Expired unacknowledged reveals are revoked;
+   * acknowledged and legacy consumed sessions leave their keys active.
    *
    * Returns the revoked keys' hashes so the caller can invalidate auth caches
    * AFTER commit (write-then-invalidate; a pre-commit invalidation could be
@@ -219,7 +269,7 @@ export class CliAuthSessionsRepository {
         .where(
           and(
             lt(cliAuthSessions.expires_at, now),
-            isNull(cliAuthSessions.consumed_at),
+            or(isNull(cliAuthSessions.consumed_at), eq(cliAuthSessions.status, "pending")),
             isNotNull(cliAuthSessions.api_key_id),
           ),
         );

@@ -201,6 +201,9 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     expect(response.headers.get("access-control-allow-methods")).toContain(
       "DELETE",
     );
+    expect(response.headers.get("access-control-allow-methods")).toContain(
+      "PATCH",
+    );
   });
 
   test("the poll route rejects a non-UUID session id before any lookup", async () => {
@@ -323,6 +326,71 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     await expect(
       apiKeysService.validateApiKey(OTHER_PLAINTEXT),
     ).resolves.toMatchObject({ id: OTHER_API_KEY_ID, is_active: true });
+  });
+
+  test("response loss leaves an unacknowledged reveal revocable at session expiry", async () => {
+    const sessionId = "12121212-1212-4212-8212-121212121212";
+    await seedAuthenticatedSession(sessionId);
+
+    const revealed = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}?delivery=acknowledgement-required`,
+    );
+    expect(revealed.status).toBe(200);
+    expect(await revealed.json()).toMatchObject({ apiKey: PLAINTEXT });
+    expect(await readSession(sessionId)).toMatchObject({
+      status: "pending",
+      consumed_at: expect.any(String),
+    });
+
+    await dbWrite.execute(
+      `UPDATE cli_auth_sessions SET expires_at = now() - interval '1 second' WHERE session_id = '${sessionId}'`,
+    );
+    await cliAuthSessionsService.cleanupExpiredSessions();
+
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
+  });
+
+  test("exact delivery acknowledgement preserves the accepted credential at session expiry", async () => {
+    const sessionId = "13131313-1313-4313-8313-131313131313";
+    await seedAuthenticatedSession(sessionId);
+
+    const revealed = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}?delivery=acknowledgement-required`,
+    );
+    expect(revealed.status).toBe(200);
+    expect(await revealed.json()).toMatchObject({ apiKey: PLAINTEXT });
+
+    const mismatched = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${OTHER_PLAINTEXT}` },
+      },
+    );
+    expect(mismatched.status).toBe(403);
+    expect(await readSession(sessionId)).toMatchObject({ status: "pending" });
+
+    const acknowledged = await pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+      {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(acknowledged.status).toBe(204);
+    expect(await readSession(sessionId)).toMatchObject({
+      status: "authenticated",
+      consumed_at: expect.any(String),
+    });
+
+    await dbWrite.execute(
+      `UPDATE cli_auth_sessions SET expires_at = now() - interval '1 second' WHERE session_id = '${sessionId}'`,
+    );
+    await cliAuthSessionsService.cleanupExpiredSessions();
+
+    await expect(
+      apiKeysRepository.findByIdConsistent(API_KEY_ID),
+    ).resolves.toMatchObject({ id: API_KEY_ID, is_active: true });
   });
 
   test("a decrypt failure does not consume the session and a retry can win", async () => {

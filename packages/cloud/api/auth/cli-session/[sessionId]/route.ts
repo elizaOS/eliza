@@ -18,7 +18,7 @@ const app = new Hono<AppEnv>();
 function cliSessionCorsHeaders(origin: string | null): Record<string, string> {
   return {
     ...getCorsHeaders(origin),
-    "Access-Control-Allow-Methods": "GET, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PATCH, DELETE, OPTIONS",
   };
 }
 
@@ -51,8 +51,13 @@ app.get("/", async (c) => {
     }
 
     if (session.status === "authenticated") {
-      const apiKeyData =
-        await cliAuthSessionsService.getAndClearApiKey(sessionId);
+      const apiKeyData = await cliAuthSessionsService.getAndClearApiKey(
+        sessionId,
+        {
+          requireAcknowledgement:
+            c.req.query("delivery") === "acknowledgement-required",
+        },
+      );
       if (apiKeyData.status === "unavailable") {
         if (
           apiKeyData.reason === "consumed" ||
@@ -86,6 +91,44 @@ app.get("/", async (c) => {
   } catch (error) {
     logger.error("[CLI Auth] Error getting CLI auth session", { error });
     return c.json({ error: "Failed to get session status" }, 500, corsHeaders);
+  }
+});
+
+app.patch("/", async (c) => {
+  const corsHeaders = cliSessionCorsHeaders(c.req.header("origin") ?? null);
+  try {
+    const sessionId = c.req.param("sessionId");
+    if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {
+      return c.json({ error: "Invalid session ID format" }, 400, corsHeaders);
+    }
+    const token = bearerToken(c.req.header("authorization"));
+    if (!token) {
+      return c.json({ error: "Credential required" }, 401, corsHeaders);
+    }
+    const acknowledged =
+      await cliAuthSessionsService.acknowledgeConsumedCredential(
+        sessionId,
+        token,
+      );
+    if (!acknowledged) {
+      return c.json(
+        { error: "Credential does not match pending delivery" },
+        403,
+        corsHeaders,
+      );
+    }
+    return new Response(null, { status: 204, headers: corsHeaders });
+  } catch (error) {
+    // error-policy:J1 receipt acknowledgement must fail closed so an expired
+    // unacknowledged credential remains eligible for server-side revocation.
+    logger.error("[CLI Auth] Error acknowledging session credential", {
+      error,
+    });
+    return c.json(
+      { error: "Failed to acknowledge session credential" },
+      500,
+      corsHeaders,
+    );
   }
 });
 

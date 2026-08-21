@@ -291,6 +291,43 @@ describe("AndroidCloudApp", () => {
     );
   });
 
+  it("discards the revealed token even when browser close never settles", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "cancelled-token",
+    });
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockResolvedValue(undefined);
+    const closeExternal = vi.fn(() => new Promise<void>(() => {}));
+    accelerateLoginPollTimers();
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={closeExternal}
+        voice={createVoice()}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(closeExternal).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+
+    await waitFor(() =>
+      expect(discardLoginAttempt).toHaveBeenCalledWith(
+        "10000000-0000-4000-8000-000000000001",
+        "cancelled-token",
+      ),
+    );
+  });
+
   it("cancels while the authenticated session is being restored", async () => {
     const client = createClient();
     vi.spyOn(client, "restoreSession")
@@ -426,7 +463,7 @@ describe("AndroidCloudApp", () => {
     fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
     finishRestore(session);
 
-    await waitFor(() => expect(discardLoginAttempt).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(discardLoginAttempt).toHaveBeenCalledTimes(4));
     expect(screen.getByRole("alert").textContent).toContain(
       "credential cleanup needs attention",
     );
@@ -567,5 +604,29 @@ describe("AndroidCloudApp", () => {
 
     await waitFor(() => expect(voice.stop).toHaveBeenCalled());
     expect(screen.queryByRole("button", { name: "Stop dictation" })).toBeNull();
+  });
+
+  it("cancels a delayed voice start when the shell unmounts", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    let finishStart: () => void = () => {};
+    const voice: AndroidCloudVoiceAdapter = {
+      requestAndStart: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finishStart = resolve;
+          }),
+      ),
+      stop: vi.fn(async () => undefined),
+      speak: vi.fn(async () => undefined),
+    };
+    const view = render(<AndroidCloudApp client={client} voice={voice} />);
+    await screen.findByText("Ada");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start dictation" }));
+    view.unmount();
+    finishStart();
+
+    await waitFor(() => expect(voice.stop).toHaveBeenCalledTimes(2));
   });
 });
