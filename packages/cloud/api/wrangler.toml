@@ -79,6 +79,7 @@ head_sampling_rate = 0.05
 [triggers]
 crons = [
   "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
+  "*/2 * * * *",    # pool-health-check
   "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning + node-disk-cleanup
   "*/10 * * * *",   # cleanup-expired-crypto-payments
   "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog + domain-health
