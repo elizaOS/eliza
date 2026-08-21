@@ -25,6 +25,11 @@ let nextStatus = "pending";
 let runningHasBridge = true;
 let statusResponseSuccess = true;
 let releaseStatusResponse: (() => void) | null = null;
+let legacyStatusAgentId: string | null = null;
+let legacyStatusBridgeUrl: string | null = null;
+let legacyChatStatus = "running";
+let legacyChatAgentId: string | null = null;
+let legacyChatBridgeUrl: string | null = null;
 
 // --- Controllable poll scheduler ---
 // Production recursively schedules setTimeout(cb, 5000). We capture the
@@ -72,8 +77,20 @@ const clientMock = {
         success: statusResponseSuccess,
         data: {
           status: nextStatus,
-          agentId: null,
-          bridgeUrl: null,
+          agentId: legacyStatusAgentId,
+          bridgeUrl: legacyStatusBridgeUrl,
+        },
+      };
+    }
+
+    if (url === "/api/eliza-app/provisioning-agent/chat") {
+      return {
+        success: true,
+        data: {
+          reply: "Canonical target refreshed.",
+          containerStatus: legacyChatStatus,
+          agentId: legacyChatAgentId,
+          bridgeUrl: legacyChatBridgeUrl,
         },
       };
     }
@@ -185,6 +202,8 @@ interface ObservedState {
   isReady: boolean;
   provisioningError: string | null;
   hasObservedStatus: boolean;
+  bridgeUrl: string | null;
+  agentId: string | null;
   sendMessage: (content: string) => Promise<void>;
 }
 
@@ -199,6 +218,8 @@ function mountHook(
     isReady: false,
     provisioningError: null,
     hasObservedStatus: false,
+    bridgeUrl: null,
+    agentId: null,
     sendMessage: async () => undefined,
   };
 
@@ -214,6 +235,8 @@ function mountHook(
         isReady: result.isReady,
         provisioningError: result.provisioningError,
         hasObservedStatus: result.hasObservedStatus,
+        bridgeUrl: result.bridgeUrl,
+        agentId: result.agentId,
         sendMessage: result.sendMessage,
       };
     });
@@ -241,6 +264,11 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
     runningHasBridge = true;
     statusResponseSuccess = true;
     releaseStatusResponse = null;
+    legacyStatusAgentId = null;
+    legacyStatusBridgeUrl = null;
+    legacyChatStatus = "running";
+    legacyChatAgentId = null;
+    legacyChatBridgeUrl = null;
     capturedTimers = [];
     activeTimers = new Set();
   });
@@ -305,6 +333,33 @@ describe("useElizaAppProvisioningChat — shared onboarding poll", () => {
 
     releaseStatusResponse?.();
     await waitForEffects(50);
+    unmount();
+  });
+
+  test("legacy chat clears a disappeared canonical target after polling stopped", async () => {
+    nextStatus = "running";
+    legacyStatusAgentId = "agent-a";
+    legacyStatusBridgeUrl = "https://agent-a.example";
+    const { getState, unmount } = mountHook(true, null);
+
+    await waitForEffects(150);
+
+    expect(getState().isReady).toBe(true);
+    expect(getState().agentId).toBe("agent-a");
+    expect(getState().bridgeUrl).toBe("https://agent-a.example");
+    expect([...activeTimers].filter((timer) => !timer.cleared)).toHaveLength(0);
+
+    legacyChatStatus = "none";
+    legacyChatAgentId = null;
+    legacyChatBridgeUrl = null;
+    await getState().sendMessage("Are you still there?");
+    await waitForEffects(50);
+
+    expect(getState().containerStatus).toBe("none");
+    expect(getState().agentId).toBeNull();
+    expect(getState().bridgeUrl).toBeNull();
+    expect(getState().isReady).toBe(false);
+
     unmount();
   });
 

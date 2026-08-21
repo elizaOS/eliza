@@ -41,8 +41,8 @@ interface LegacyChatResponse {
   data?: {
     reply?: string;
     containerStatus?: string;
-    bridgeUrl?: string;
-    agentId?: string;
+    bridgeUrl?: string | null;
+    agentId?: string | null;
   };
 }
 
@@ -357,10 +357,23 @@ export function useElizaAppProvisioningChat(
             },
           );
           if (res.success && res.data) {
-            if (res.data.containerStatus)
-              setContainerStatus(res.data.containerStatus);
-            if (res.data.bridgeUrl) setBridgeUrl(res.data.bridgeUrl);
-            if (res.data.agentId) setAgentId(res.data.agentId);
+            const nextStatus =
+              res.data.containerStatus ?? containerStatusRef.current;
+            if (res.data.containerStatus) {
+              setContainerStatus(nextStatus);
+              setHasObservedStatus(true);
+            }
+            // A chat response observes the same canonical target as polling.
+            // Replace nullable identity fields so a removed or stopped target
+            // cannot leave a stale handoff URL in the client.
+            setAgentId(res.data.agentId ?? null);
+            setBridgeUrl(
+              nextStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
+            );
+            if (nextStatus !== "running" || !res.data.bridgeUrl) {
+              pollStartRef.current = Date.now();
+              stoppedRef.current = false;
+            }
             const reply = res.data.reply;
             if (reply) {
               setMessages((prev) => [
