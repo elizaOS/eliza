@@ -5311,21 +5311,25 @@ describe("ChatOverlay — routed OS-intent composer prefill (#9148, #16441)", ()
     expect(controller.send).toHaveBeenCalledWith("what's the weather?");
   });
 
-  it("does NOT show Retry on an unrecoverable failure (no_provider / insufficient_credits)", () => {
+  it("marks a non-retryable normal assistant failure without showing Retry", () => {
     const controller = makeController({
       messages: [
         { id: "u1", role: "user", content: "hi", createdAt: 1 },
         {
           id: "a1",
           role: "assistant",
-          content: "",
+          content: "The required capability is unavailable.",
           createdAt: 2,
-          failureKind: "insufficient_credits",
+          failureKind: "missing_capability",
         },
       ],
     } as unknown as Partial<ShellController>);
     render(<ChatOverlay controller={controller} />);
     fireEvent.focus(screen.getByLabelText("message"));
+    const failedTurn = screen
+      .getByText("The required capability is unavailable.")
+      .closest('[data-testid="thread-line"]');
+    expect(failedTurn?.getAttribute("data-failure")).toBe("missing_capability");
     expect(screen.queryByTestId("thread-line-retry")).toBeNull();
   });
 

@@ -5,7 +5,10 @@
  * fail) lives in the dependency-free `liveness-contract.mjs`; this file only
  * adds the DOM driving so browser-based onboarding lanes (cloud-live and the
  * web/desktop paths) end the same way: send a message, wait for the assistant
- * reply, assert liveness.
+ * reply, assert liveness. The timed variant additionally waits for the thread
+ * to settle, re-reads the same fresh row, and measures from initiation of the
+ * UI send action through final validation; it is full-turn latency, not
+ * first-token latency.
  *
  * Reply selection is fail-closed by construction (#16936 review): the assistant
  * row count is snapshotted before send, only rows that did not exist before the
@@ -56,12 +59,52 @@ export interface LivenessChatOptions {
   label?: string;
 }
 
+export interface TimedLivenessReply {
+  /** Validated, trimmed assistant reply. Never persist this in CI metadata. */
+  reply: string;
+  /** Composer send click to the settled, validated assistant turn. */
+  firstTurnLatencyMs: number;
+}
+
+interface RenderedReplyMeasurement {
+  reply: string;
+  sendActionStartedAt: number;
+}
+
 function chatComposer(page: Page): Locator {
   return page.locator(CHAT_COMPOSER_SELECTOR).first();
 }
 
 function chatSendButton(page: Page): Locator {
   return page.locator(CHAT_SEND_SELECTOR).first();
+}
+
+async function acceptedReplyText(
+  row: Locator,
+  challengeToken: string | undefined,
+): Promise<string> {
+  if ((await row.getAttribute("data-failure"))?.trim()) return "";
+  if ((await row.locator('[data-testid="thread-line-retry"]').count()) > 0)
+    return "";
+  // Mirror the iOS driver's classification: a row whose overlay body is
+  // explicitly in the status phase is a pending placeholder. A row with no
+  // overlay marker is a plain chat surface, where the typing indicator renders
+  // as a sibling and any non-empty matched row is assistant content.
+  const overlayBodies = await row
+    .locator('[data-testid="overlay-assistant-turn-body"]')
+    .count();
+  if (overlayBodies > 0) {
+    const replyBodies = await row
+      .locator(
+        '[data-testid="overlay-assistant-turn-body"][data-phase="reply"]',
+      )
+      .count();
+    if (replyBodies === 0) return "";
+  }
+  const text = (await row.textContent())?.trim() ?? "";
+  if (!text) return "";
+  if (challengeToken && !text.toLowerCase().includes(challengeToken)) return "";
+  return text;
 }
 
 /**
@@ -71,10 +114,11 @@ function chatSendButton(page: Page): Locator {
  * post-onboarding). Kept separate from the assertion so a caller can inspect
  * the reply before enforcing the contract.
  */
-export async function sendChatAndReadReply(
+async function sendChatAndMeasureRenderedReply(
   page: Page,
   options: LivenessChatOptions = {},
-): Promise<string> {
+  waitForSettledTurn: boolean,
+): Promise<RenderedReplyMeasurement> {
   const replyTimeoutMs = options.replyTimeoutMs ?? DEFAULT_REPLY_TIMEOUT_MS;
   const composer = chatComposer(page);
   await expect(composer).toBeVisible({ timeout: 60_000 });
@@ -82,6 +126,7 @@ export async function sendChatAndReadReply(
   const priorCount = await assistantRows.count();
   await composer.fill(options.prompt ?? DEFAULT_PROMPT);
   await expect(chatSendButton(page)).toBeEnabled();
+  const sendStartedAt = performance.now();
   await chatSendButton(page).click();
 
   // Only rows beyond the pre-send snapshot can satisfy the turn: the pre-existing
@@ -93,33 +138,17 @@ export async function sendChatAndReadReply(
   // transcript only appends during a turn, so indices ≥ the snapshot are
   // exactly this run's rows.
   const token = options.challengeToken?.trim().toLowerCase();
-  let replyText: string | null = null;
+  const replyMatch = { text: "", rowIndex: -1 };
   await expect
     .poll(
       async () => {
         const count = await assistantRows.count();
         for (let i = priorCount; i < count; i += 1) {
           const row = assistantRows.nth(i);
-          // Mirror the iOS driver's classification: a row whose overlay body
-          // is explicitly in the status phase is the pending placeholder; a
-          // row with no overlay marker at all is a plain chat surface (the
-          // typing indicator renders as a sibling there, never as a row), so
-          // any matched row counts.
-          const overlayBodies = await row
-            .locator('[data-testid="overlay-assistant-turn-body"]')
-            .count();
-          if (overlayBodies > 0) {
-            const replyBodies = await row
-              .locator(
-                '[data-testid="overlay-assistant-turn-body"][data-phase="reply"]',
-              )
-              .count();
-            if (replyBodies === 0) continue;
-          }
-          const text = (await row.textContent())?.trim() ?? "";
+          const text = await acceptedReplyText(row, token);
           if (!text) continue;
-          if (token && !text.toLowerCase().includes(token)) continue;
-          replyText = text;
+          replyMatch.text = text;
+          replyMatch.rowIndex = i;
           return text;
         }
         return "";
@@ -132,11 +161,50 @@ export async function sendChatAndReadReply(
       },
     )
     .toMatch(/\S/);
-  // The poll's winning element and the returned text are the same value; never
-  // re-resolve a locator after the wait (the row may have kept streaming).
-  if (replyText === null)
+
+  if (!replyMatch.text || replyMatch.rowIndex < priorCount) {
     throw new Error("liveness reply poll ended without a reply");
-  return replyText;
+  }
+
+  let measuredReply = replyMatch.text;
+  if (waitForSettledTurn) {
+    // `data-phase="reply"` flips when the first content renders, so it cannot
+    // be the end boundary for a conservatively named first-turn metric. The
+    // overlay thread content owns the authoritative responding state. Only the
+    // timed Cloud lane opts into this overlay-specific boundary; the historic
+    // string APIs remain usable by plain chat surfaces.
+    const remainingTimeoutMs = Math.max(
+      1,
+      Math.ceil(sendStartedAt + replyTimeoutMs - performance.now()),
+    );
+    await expect(
+      page
+        .getByTestId("chat-thread-scroll")
+        .locator('[data-slot="message-scroller-content"][aria-busy="false"]')
+        .first(),
+    ).toBeVisible({ timeout: remainingTimeoutMs });
+    const settledReply = await acceptedReplyText(
+      assistantRows.nth(replyMatch.rowIndex),
+      token,
+    );
+    if (!settledReply) {
+      throw new Error(
+        "fresh assistant row was empty or invalid after the turn settled",
+      );
+    }
+    measuredReply = settledReply;
+  }
+  return {
+    reply: measuredReply,
+    sendActionStartedAt: sendStartedAt,
+  };
+}
+
+export async function sendChatAndReadReply(
+  page: Page,
+  options: LivenessChatOptions = {},
+): Promise<string> {
+  return (await sendChatAndMeasureRenderedReply(page, options, false)).reply;
 }
 
 /**
@@ -157,4 +225,30 @@ export async function assertOnboardingLiveness(
         label: options.label,
       })
     : assertLiveReply(reply, { label: options.label });
+}
+
+/**
+ * Apply the onboarding liveness contract and separately return full-turn
+ * latency. The duration starts immediately before the composer send click and
+ * ends only after the overlay reports idle, the same fresh assistant row is
+ * re-read, and its settled text passes the liveness contract. It does not claim
+ * transport first-token timing.
+ */
+export async function assertOnboardingLivenessWithTiming(
+  page: Page,
+  options: LivenessChatOptions = {},
+): Promise<TimedLivenessReply> {
+  const measured = await sendChatAndMeasureRenderedReply(page, options, true);
+  const reply = options.challengeToken
+    ? assertLiveChallengeReply(measured.reply, {
+        challengeToken: options.challengeToken,
+        label: options.label,
+      })
+    : assertLiveReply(measured.reply, { label: options.label });
+  return {
+    reply,
+    firstTurnLatencyMs: Math.ceil(
+      performance.now() - measured.sendActionStartedAt,
+    ),
+  };
 }

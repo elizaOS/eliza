@@ -1111,6 +1111,7 @@ export const ChatMessage = memo(function ChatMessage({
         align={isUser ? "end" : "start"}
         data-testid="thread-line"
         data-role={message.role}
+        data-failure={isAssistant ? message.failureKind : undefined}
         // A very short opacity-only entrance keeps fast-model turns immediate
         // without fighting the scroller's bottom anchor.
         initial={initial}
