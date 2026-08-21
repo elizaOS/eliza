@@ -108,6 +108,15 @@ describe("InlineWidgetText", () => {
     expect(container.textContent).toContain("just a normal reply");
   });
 
+  it("renders a safe completion link in the overlay fast path", () => {
+    withApp(
+      <InlineWidgetText content="Ready: [Open Notes](/api/apps/local/notes/)" />,
+    );
+    const link = screen.getByRole("link", { name: "Open Notes" });
+    expect(link.getAttribute("href")).toBe("/api/apps/local/notes/");
+    expect(link.getAttribute("target")).toBe("_blank");
+  });
+
   it("renders a choice picker and does not leak the [CHOICE] marker", () => {
     const { container } = withApp(
       <InlineWidgetText

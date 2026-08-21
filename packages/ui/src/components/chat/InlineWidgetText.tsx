@@ -18,6 +18,7 @@ import {
   isSafeNormalizedPluginId,
   normalizePluginId,
 } from "./message-parser-helpers";
+import { SafeMarkdownText } from "./SafeMarkdownText";
 import { useParsedSegments } from "./use-parsed-segments";
 // Side effect: register the built-in inline widgets (choice/followups/form/task).
 import "./widgets/inline-builtins";
@@ -47,7 +48,7 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
 
   // Fast path: a single plain-text segment (most replies) renders as-is.
   if (segments.length === 1 && segments[0].kind === "text") {
-    return segments[0].text;
+    return <SafeMarkdownText text={segments[0].text} />;
   }
 
   const keyCounts = new Map<string, number>();
@@ -61,7 +62,13 @@ export function InlineWidgetText({ content }: { content: string }): ReactNode {
   for (const seg of segments) {
     switch (seg.kind) {
       case "text": {
-        if (seg.text) nodes.push(<span key={nextKey("t")}>{seg.text}</span>);
+        if (seg.text) {
+          nodes.push(
+            <span key={nextKey("t")}>
+              <SafeMarkdownText text={seg.text} />
+            </span>,
+          );
+        }
         break;
       }
       case "code": {
