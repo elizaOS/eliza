@@ -599,6 +599,9 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         modelCall.begin();
         result = streamText(generation);
       } catch (error) {
+        // error-policy:J6 best-effort teardown — close the timing span so a
+        // synchronous streamText failure cannot leave the call recorded as
+        // still running, then let the original error propagate untouched.
         modelCall.finish();
         throw error;
       }

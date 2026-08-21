@@ -1556,6 +1556,10 @@ describe("SharedRuntimeChatService", () => {
         fallbackCount: 0,
         selectedProvider: "none",
         callsTruncated: false,
+        // A replay never ran a provider call, so nothing was clamped. The
+        // field is required on the receipt, so asserting it here keeps a
+        // replayed receipt structurally identical to a live one.
+        clamped: false,
         calls: [],
       },
     });
