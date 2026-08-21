@@ -35,7 +35,7 @@ const claimOpeningContextSql = `
     opening_previous_interaction_at
 `;
 
-describe("0275 Twilio call opening context", () => {
+describe("0281 Twilio call opening context", () => {
   const databases: PGlite[] = [];
 
   afterEach(async () => {
@@ -57,25 +57,26 @@ describe("0275 Twilio call opening context", () => {
     const entry = journal.entries.at(-1);
 
     expect(entry).toEqual({
-      idx: 269,
+      idx: 275,
       version: "7",
-      when: 1792785600000,
-      tag: "0275_twilio_call_opening_context",
+      when: 1793072800004,
+      tag: "0281_twilio_call_opening_context",
       breakpoints: true,
     });
     expect(new Set(journal.entries.map(({ idx }) => idx)).size).toBe(journal.entries.length);
     expect(new Set(journal.entries.map(({ tag }) => tag)).size).toBe(journal.entries.length);
-    expect(filenames.filter((filename) => filename.startsWith("0275_"))).toEqual([
-      "0275_twilio_call_opening_context.sql",
+    expect(filenames.filter((filename) => filename.startsWith("0281_"))).toEqual([
+      "0281_twilio_call_opening_context.sql",
     ]);
     expect(filenames).toContain("0253_job_retryable_requeues.sql");
-    expect(filenames).toContain("0274_agent_billing_run_receipts.sql");
+    expect(filenames).toContain("0280_mobile_app_auth_credential_tombstone_trigger.sql");
     expect(filenames).not.toContain("0253_twilio_call_opening_context.sql");
     expect(filenames).not.toContain("0246_twilio_call_opening_context.sql");
     expect(filenames).not.toContain("0269_twilio_call_opening_context.sql");
+    expect(filenames).not.toContain("0275_twilio_call_opening_context.sql");
     expect(
       filenames.filter((filename) => filename.endsWith("_twilio_call_opening_context.sql")),
-    ).toEqual(["0275_twilio_call_opening_context.sql"]);
+    ).toEqual(["0281_twilio_call_opening_context.sql"]);
   });
 
   it("claims one snapshot and preserves it across delayed prior history", async () => {
@@ -90,7 +91,7 @@ describe("0275 Twilio call opening context", () => {
       VALUES ('00000000-0000-4000-8000-000000000001', 'CA-legacy');
     `);
     const migration = await readFile(
-      new URL("./migrations/0275_twilio_call_opening_context.sql", import.meta.url),
+      new URL("./migrations/0281_twilio_call_opening_context.sql", import.meta.url),
       "utf8",
     );
 

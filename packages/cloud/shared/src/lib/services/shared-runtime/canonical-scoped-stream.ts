@@ -87,12 +87,11 @@ export async function handleCanonicalScopedAgentStream(
 ): Promise<Response> {
   const timings = request.timings ?? {};
   const parseStartedAt = nowMs();
-  const text =
-    request.body &&
-    typeof request.body === "object" &&
-    typeof (request.body as { text?: unknown }).text === "string"
-      ? (request.body as { text: string }).text
-      : "";
+  const bodyRecord =
+    request.body && typeof request.body === "object"
+      ? (request.body as Record<string, unknown>)
+      : undefined;
+  const text = typeof bodyRecord?.text === "string" ? bodyRecord.text : "";
   const clientMessageId = sharedTurnClientMessageId(request.body);
   timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {

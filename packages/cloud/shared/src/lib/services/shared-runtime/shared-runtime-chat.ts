@@ -1315,9 +1315,7 @@ export class SharedRuntimeChatService {
     }
 
     const messageIds = turnMessageIds(agent.id, roomId, claimKey);
-    const memoryStore = options.transientInput
-      ? null
-      : sharedTurnMemoryStore(agent, roomId);
+    const memoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
     const [factsContext, recallBlock] = await Promise.all([
       sharedTurnFactsContext(memoryStore),
       sharedTurnRecallContext(memoryStore, text, history),
@@ -1545,9 +1543,7 @@ export class SharedRuntimeChatService {
     const detachRequestAbort = () =>
       options.abortSignal?.removeEventListener("abort", abortFromRequest);
     let turn: Awaited<ReturnType<typeof runSharedAgentTurnStream>>;
-    const streamMemoryStore = options.transientInput
-      ? null
-      : sharedTurnMemoryStore(agent, roomId);
+    const streamMemoryStore = options.transientInput ? null : sharedTurnMemoryStore(agent, roomId);
     const [streamFactsContext, streamRecallBlock] = await Promise.all([
       sharedTurnFactsContext(streamMemoryStore),
       sharedTurnRecallContext(streamMemoryStore, text, history),
