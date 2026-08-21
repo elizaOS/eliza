@@ -8261,11 +8261,14 @@ export class ElizaSandboxService {
    * (#20726 item 6: every destructive lifecycle / billing freeze proves a
    * restorable backup first). The provider stop drops the container from its
    * node, so container-local state that never reached a durable backup would
-   * be lost silently. Mirrors the sleep/delete gates: a live capture when the
-   * bridge is reachable, the snapshot-unsupported image sentinel proceeding
-   * exactly as delete does, a transient capture signal deferring to the job
-   * retry loop, and otherwise a proven-restorable existing backup via the
-   * wake integrity gate. A refusal leaves the container running; a
+   * be lost silently. Mirrors the sleep gate exactly: a live capture when the
+   * bridge is reachable, a transient capture signal deferring to the job
+   * retry loop, and any other capture failure — including an image with no
+   * snapshot endpoint — falling through to a proven-restorable existing
+   * backup via the wake integrity gate. Suspend keeps state for a later
+   * resume, so unlike delete there is no state-loss waiver: an uncapturable
+   * container with no durable backup refuses rather than discarding the only
+   * copy. A refusal leaves the container running; a
    * billing-request suspend surfaces through the stop-intent retry /
    * terminal-attention machinery instead of destroying state.
    */
@@ -8295,18 +8298,12 @@ export class ElizaSandboxService {
         return { outcome: "proceed", backupId: backup.id, capturedFresh: true };
       } catch (error) {
         // error-policy:J1 the suspend command boundary translates capture
-        // failures into an explicit disposition: the no-snapshot-endpoint
-        // image proceeds (delete's rule for the identical signal), a
-        // transient signal defers to the job retry loop, and anything else
-        // falls through to the proven-existing-backup gate below.
+        // failures into an explicit disposition: a transient signal defers to
+        // the job retry loop, and anything else — including an image with no
+        // snapshot endpoint — falls through to the proven-existing-backup
+        // gate below (retrying an unsupported capture can never succeed, and
+        // an unbacked-up container must not be dropped).
         const message = error instanceof Error ? error.message : String(error);
-        if (message === SNAPSHOT_ENDPOINT_UNSUPPORTED) {
-          logger.warn(
-            "[agent-sandbox] Suspend proceeding without capture: image has no snapshot endpoint",
-            { agentId: rec.id },
-          );
-          return { outcome: "proceed", capturedFresh: false };
-        }
         if (message === SNAPSHOT_CAPTURE_TRANSIENT) {
           logger.warn("[agent-sandbox] Suspend deferred: capture transiently unavailable", {
             agentId: rec.id,
