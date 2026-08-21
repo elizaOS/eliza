@@ -732,7 +732,7 @@ export function createAgentBackupCatalogPublicationExecutor(params: {
   dependencies?: AgentBackupPublicationExecutorDependencies;
 }): AgentBackupCatalogRuntimePublicationExecutor {
   return {
-    async execute({ claim, leaseMs }) {
+    async execute({ claim, leaseMs, signal }) {
       try {
         const completed = await executeAgentBackupPostCapturePublication({
           claim,
@@ -741,6 +741,7 @@ export function createAgentBackupCatalogPublicationExecutor(params: {
           registry: params.registry,
           resolveSource: params.resolveSource,
           dependencies: params.dependencies,
+          signal,
         });
         if (completed.backup.catalog_state !== "protected") {
           throw new ElizaError("Backup publication did not reach protected", {
