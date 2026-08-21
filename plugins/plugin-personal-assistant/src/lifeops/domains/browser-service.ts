@@ -1416,6 +1416,28 @@ export class BrowserDomain {
         startedAt: new Date().toISOString(),
       });
     if (!leased) {
+      // Failing closed on an uncertain side effect is right — we cannot know
+      // whether the previous attempt already clicked something. But the caller
+      // does not transition the session to `failed` on a 409, so without an
+      // audit record this wedges in `running` and silently re-loops on every
+      // sync with no owner-visible signal. An unrecoverable state has to be
+      // observable, not just safe.
+      await this.deps.recordBrowserAudit(
+        "browser_session_updated",
+        session.id,
+        "browser action lease blocked by an unresolved execution attempt",
+        {
+          sessionId: session.id,
+          companionId: companion.companionId,
+          currentActionIndex,
+          actionId,
+        },
+        {
+          outcome: "blocked",
+          reason: "uncertain_or_concurrent_attempt",
+          requiresOwnerRelease: true,
+        },
+      );
       fail(
         409,
         "browser action already has an uncertain or concurrent execution attempt",

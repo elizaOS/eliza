@@ -64,6 +64,7 @@ import {
   hasAllUrlHostPermission,
   hasManifestPermission,
   isIncognitoAccessAllowed,
+  isPrivilegedExtensionSender,
   queryTabs,
   reloadTab,
   sendTabMessage,
@@ -917,7 +918,14 @@ async function handlePopupMessage(
   }
 }
 
-addRuntimeMessageListener((message, _sender, sendResponse) => {
+addRuntimeMessageListener((message, sender, sendResponse) => {
+  // This channel writes the pairing credential (`browser-bridge:save-config`),
+  // so it accepts messages only from the extension's own privileged contexts.
+  // Content scripts share `runtime.onMessage`, and ours run on every localhost
+  // port.
+  if (!isPrivilegedExtensionSender(sender)) {
+    return false;
+  }
   const request = message as PopupRequest | undefined;
   if (!request || typeof request !== "object" || !("type" in request)) {
     return false;

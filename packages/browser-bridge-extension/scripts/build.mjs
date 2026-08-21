@@ -159,6 +159,11 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       {
         resources: ["blocked.html", "blocked.js"],
         matches: ["http://*/*", "https://*/*"],
+        // Without this the interstitial has a stable chrome-extension://<id>/
+        // URL that every page on the web can probe, which makes the extension
+        // trivially fingerprintable. Chrome 106+ rotates the token per session;
+        // Firefox ignores the key rather than rejecting the manifest.
+        use_dynamic_url: true,
       },
     ],
     icons: {

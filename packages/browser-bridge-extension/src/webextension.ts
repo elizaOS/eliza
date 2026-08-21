@@ -10,6 +10,7 @@ import { withBrowserBridgeRequestTimeout } from "./request-timeout";
 type Callback<T> = (value: T) => void;
 
 type RawRuntime = {
+  id?: string;
   lastError?: { message?: string };
   getManifest?: () => { version?: string; permissions?: string[] };
   onInstalled?: {
@@ -265,6 +266,9 @@ function invokeAsync<T>(
           (maybePromise as Promise<T>).then(resolve, reject);
         }
       } catch (error) {
+        // error-policy:J2 rethrow across the callback/promise shim boundary —
+        // a synchronous throw from the browser API becomes the rejection the
+        // awaiting caller already handles, with the original error intact.
         reject(error);
       }
     });
@@ -445,6 +449,22 @@ export async function executeContentScriptFiles(
         callback,
       ),
   );
+}
+
+/**
+ * True only for a message sent from this extension's own privileged contexts
+ * (the popup or options page). Content scripts carry a `tab`, and anything
+ * from another extension carries a different `id`. The popup channel dispatches
+ * credential writes, so a content script on any granted origin must not reach
+ * it — content scripts here run on `http://localhost/*` at any port, i.e. any
+ * local dev server the user happens to be running.
+ */
+export function isPrivilegedExtensionSender(sender: unknown): boolean {
+  const extensionId = getRawApi().runtime?.id;
+  if (!extensionId) return false;
+  if (!sender || typeof sender !== "object") return false;
+  const candidate = sender as { id?: unknown; tab?: unknown };
+  return candidate.id === extensionId && candidate.tab === undefined;
 }
 
 export function addRuntimeMessageListener(
