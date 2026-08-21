@@ -61,7 +61,7 @@ describe("openDesktopWorkspaceWindow", () => {
 
   it("rejects when the native bridge is unavailable so callers can show an error", async () => {
     await expect(openDesktopWorkspaceWindow()).rejects.toThrow(
-      "Desktop workspace bridge is unavailable",
+      "Desktop workspace bridge returned no managed window",
     );
   });
 
@@ -73,7 +73,22 @@ describe("openDesktopWorkspaceWindow", () => {
     };
 
     await expect(openDesktopWorkspaceWindow()).rejects.toThrow(
-      "Desktop workspace bridge is unavailable",
+      "Desktop workspace bridge returned no managed window",
     );
   });
+
+  it.each([{}, { id: "" }, { id: "   " }, { id: 42 }])(
+    "rejects malformed native window receipt %j",
+    async (receipt) => {
+      desktopWindow.__ELIZA_ELECTROBUN_RPC__ = {
+        request: { desktopOpenAppWindow: vi.fn(async () => receipt) },
+        onMessage: vi.fn(),
+        offMessage: vi.fn(),
+      };
+
+      await expect(openDesktopWorkspaceWindow()).rejects.toThrow(
+        "Desktop workspace bridge returned no managed window",
+      );
+    },
+  );
 });

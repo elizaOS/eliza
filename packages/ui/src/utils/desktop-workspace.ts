@@ -175,7 +175,7 @@ export async function openDesktopSettingsWindow(
 
 /** Open the complete Eliza shell in one deduplicated managed desktop window. */
 export async function openDesktopWorkspaceWindow(): Promise<void> {
-  const response = await requestDesktopBridge<{ id: string }>(
+  const response = await requestDesktopBridge<unknown>(
     "desktopOpenAppWindow",
     "desktop:openAppWindow",
     {
@@ -185,8 +185,12 @@ export async function openDesktopWorkspaceWindow(): Promise<void> {
       alwaysOnTop: false,
     },
   );
-  if (response == null) {
-    throw new Error("Desktop workspace bridge is unavailable");
+  const managedWindowId =
+    response && typeof response === "object" && "id" in response
+      ? response.id
+      : undefined;
+  if (typeof managedWindowId !== "string" || !managedWindowId.trim()) {
+    throw new Error("Desktop workspace bridge returned no managed window");
   }
 }
 
