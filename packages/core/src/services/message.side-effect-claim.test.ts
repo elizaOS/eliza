@@ -1455,6 +1455,24 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 
+	// The maintainer's exact counter-example: a single coordinated question
+	// ("Did I create, save, AND schedule the reminder?") must stay one claim
+	// and pass through untouched, not get split into a false "Criei" report
+	// followed by an unrelated question. Covered with the base comma
+	// coordination plus each newly recognized separator standing in for it,
+	// so the clause-span fix (not just the comma case) is exercised.
+	it.each([
+		"Criei, salvei e agendei o lembrete?",
+		"Criei: salvei e agendei o lembrete?",
+		"Criei - salvei e agendei o lembrete?",
+		"Criei… salvei e agendei o lembrete?",
+	])(
+		"keeps the Portuguese coordinated question %p as a single non-claim",
+		(reply) => {
+			expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+		},
+	);
+
 	// Korean attaches conditional, embedded-question, and quotative endings to
 	// the same completed stem the claim shape matches, so `설정했` alone cannot
 	// distinguish a report from a hypothesis.
@@ -1467,6 +1485,7 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 		"알림을 설정했을 경우 자동으로 알림이 옵니다.",
 		"알림을 설정했을 때 소리가 나요.",
 		"알림을 설정했는가 다시 확인해 주세요.",
+		"알림을 설정했을까 다시 한번 확인해 주세요.",
 		"리마인더를 저장했다고 치고 다음으로 넘어갈게요.",
 	])("passes Korean subordinate-tail %p through", (reply) => {
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
@@ -1487,13 +1506,48 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 
 	// The locale scan runs on every model reply from the Stage-1 evaluator, the
 	// planner REPLY guard, and the egress guard, so a per-match rescan of the
-	// remaining text is a live latency regression, not a micro-optimization.
-	it("stays linear on long repeated-claim Korean input", () => {
-		const long = "알림을 설정했으면 ".repeat(2200);
-		expect(long.length).toBeGreaterThan(20_000);
-		const started = performance.now();
-		expect(replyClaimsCompletedSideEffect(long)).toBe(false);
-		expect(performance.now() - started).toBeLessThan(150);
+	// remaining text is a live latency regression, not a micro-optimization. A
+	// single fixed-size timing assertion cannot distinguish linear from
+	// quadratic — it only proves one input finishes inside a budget, which a
+	// generous budget satisfies either way. This measures the SAME input
+	// shape at two sizes an order of magnitude apart and asserts the growth
+	// ratio stays close to the size ratio; a quadratic scan would show a
+	// ~100x time increase for a 10x size increase, not ~10x.
+	//
+	// The input shape matters: repeated claim tokens with NO sentence
+	// terminator (so the whole string is one sentence the courtesy-tag/
+	// question-tail scan must walk) and a questionTail-matching ending on
+	// every repetition (so every match falls through to the clause-cut and
+	// courtesy-tag lookups instead of short-circuiting on the subordinate-tail
+	// check first). This is the shape that regressed to ~0.86s at 3.5k chars
+	// and ~10.1s at 28k chars before the clause-boundary lookups were
+	// rewritten from a per-match `RegExp.exec` rescan (and per-match clause
+	// re-slicing) to a single precomputed, binary-searched offset table.
+	it("scans near-linearly, not quadratically, as input size grows 10x", () => {
+		const unit = "알림을 설정했나요 ";
+		const small = unit.repeat(Math.round(2_800 / unit.length));
+		const large = unit.repeat(Math.round(28_000 / unit.length));
+		expect(large.length).toBeGreaterThan(small.length * 9);
+
+		// Warm up the JIT on both shapes before timing either — otherwise the
+		// first call absorbs one-time compilation cost unrelated to input size.
+		replyClaimsCompletedSideEffect(small);
+		replyClaimsCompletedSideEffect(large);
+
+		const smallStart = performance.now();
+		expect(replyClaimsCompletedSideEffect(small)).toBe(false);
+		const smallElapsed = Math.max(performance.now() - smallStart, 0.001);
+
+		const largeStart = performance.now();
+		expect(replyClaimsCompletedSideEffect(large)).toBe(false);
+		const largeElapsed = performance.now() - largeStart;
+
+		// A 10x input should cost on the order of 10x, not the ~100x a
+		// quadratic scan would produce. Allow generous headroom (linear scans
+		// still carry constant-factor timer/GC noise at these tiny absolute
+		// durations) while still failing hard on quadratic-or-worse growth.
+		expect(largeElapsed / smallElapsed).toBeLessThan(30);
+		expect(largeElapsed).toBeLessThan(200);
 	});
 });
 

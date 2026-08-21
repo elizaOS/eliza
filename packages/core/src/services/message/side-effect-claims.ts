@@ -219,13 +219,22 @@ interface LocaleSideEffectClaimShapes {
 const MULTILINGUAL_SENTENCE_TERMINATOR = /[.!?。！？\n]/u;
 
 // Punctuation that MAY introduce a trailing courtesy tag ("…, ¿algo más?",
-// "…：还需要别的吗？", "… — mais alguma coisa?", "…… cần gì nữa không?"). This is
-// only a candidate set: severing the clause additionally requires the locale's
-// `courtesyTag` to match past the boundary, because the same punctuation also
-// coordinates ("Criei, salvei e agendei o lembrete?") and brackets
-// parentheticals ("He guardado, por error, el recordatorio?"). Global rather
-// than plain so the scan advances by `lastIndex` instead of re-slicing.
+// "…：还需要别的吗？", "… — mais alguma coisa?", "…… cần gì nữa không?", "…: ¿algo
+// más?", "…- mais alguma coisa?"). This is only a candidate set: severing the
+// clause additionally requires the locale's `courtesyTag` to match past the
+// boundary, because the same punctuation also coordinates ("Criei, salvei e
+// agendei o lembrete?") and brackets parentheticals ("He guardado, por error,
+// el recordatorio?") — a punctuation hit alone never derives a clause span.
+// Collected once per reply into a sorted offset array by
+// `collectClauseTagBoundaries`; every lookup is a binary search against that
+// array rather than a fresh `exec` scan (see its doc comment for why a
+// per-match scan was quadratic on long boundary-sparse input).
 const MULTILINGUAL_CLAUSE_TAG_BOUNDARY = /[,，、;；—–:：…-]/gu;
+
+// Question-mark variants across the shipped locales, collected once per reply
+// by `collectQuestionMarkPositions` rather than re-tested against a fresh
+// clause slice per match — see that function's doc comment.
+const MULTILINGUAL_QUESTION_MARK = /[?？¿]/gu;
 
 const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 	[
@@ -386,6 +395,47 @@ function localeClauseAround(
 }
 
 /**
+ * All clause-tag boundary offsets in `text`, collected with one forward pass.
+ * Every consumer below queries this array by binary search instead of
+ * re-running `MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec` from its own `from` —
+ * an exec-per-match scan degrades to O(matches × distance-to-next-boundary),
+ * which is quadratic on a long boundary-sparse sentence carrying many claim
+ * tokens (measured: a repeated-claim Korean input with no punctuation went
+ * from single-digit ms at ~3.5k chars to hundreds of ms at ~28k chars before
+ * this change). Collecting once up front makes every subsequent lookup
+ * O(log k) against the fixed boundary count `k`, so the whole scan stays
+ * linear in `text.length`.
+ */
+function collectClauseTagBoundaries(text: string): readonly number[] {
+	const boundaries: number[] = [];
+	MULTILINGUAL_CLAUSE_TAG_BOUNDARY.lastIndex = 0;
+	let boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
+	while (boundary) {
+		boundaries.push(boundary.index);
+		boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
+	}
+	return boundaries;
+}
+
+/** Index of the first entry in the sorted `boundaries` array that is `>= from`. */
+function firstBoundaryIndexAtOrAfter(
+	boundaries: readonly number[],
+	from: number,
+): number {
+	let lo = 0;
+	let hi = boundaries.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if ((boundaries[mid] as number) < from) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
+/**
  * Offset of the first punctuation boundary at or after `from` (and before
  * `sentenceEnd`) that a locale `courtesyTag` positively matches past, or -1
  * when the sentence carries no trailing tag. Punctuation alone never severs
@@ -396,33 +446,102 @@ function localeClauseAround(
  */
 function localeCourtesyTagStart(
 	text: string,
+	boundaries: readonly number[],
 	from: number,
 	sentenceEnd: number,
 	courtesyTag: RegExp | undefined,
 ): number {
 	if (!courtesyTag) return -1;
-	MULTILINGUAL_CLAUSE_TAG_BOUNDARY.lastIndex = from;
-	let boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
-	while (boundary && boundary.index < sentenceEnd) {
-		courtesyTag.lastIndex = boundary.index + boundary[0].length;
-		if (courtesyTag.test(text)) return boundary.index;
-		boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
+	let i = firstBoundaryIndexAtOrAfter(boundaries, from);
+	while (i < boundaries.length) {
+		const boundaryIndex = boundaries[i] as number;
+		if (boundaryIndex >= sentenceEnd) break;
+		// Every boundary char class member is a single UTF-16 code unit, so the
+		// tag starts immediately after it.
+		courtesyTag.lastIndex = boundaryIndex + 1;
+		if (courtesyTag.test(text)) return boundaryIndex;
+		i += 1;
 	}
 	return -1;
 }
 
 /** Offset of the first boundary at or after `from`, or `sentenceEnd`. */
 function localeClauseCut(
-	text: string,
+	boundaries: readonly number[],
 	from: number,
 	sentenceEnd: number,
 ): number {
-	MULTILINGUAL_CLAUSE_TAG_BOUNDARY.lastIndex = from;
-	const boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
-	return boundary && boundary.index < sentenceEnd
-		? boundary.index
+	const i = firstBoundaryIndexAtOrAfter(boundaries, from);
+	const boundaryIndex = i < boundaries.length ? (boundaries[i] as number) : -1;
+	return boundaryIndex >= 0 && boundaryIndex < sentenceEnd
+		? boundaryIndex
 		: sentenceEnd;
 }
+
+/**
+ * All `?`/`？`/`¿` offsets in `text`, collected with the same one-pass
+ * discipline as `collectClauseTagBoundaries`. "Does this clause contain a
+ * question mark" is then a binary-search range check instead of a fresh
+ * `RegExp.test` over a freshly sliced clause — on a long boundary-sparse
+ * sentence the clause span can be nearly the whole reply, and re-slicing it
+ * per match is exactly the quadratic cost this module was flagged for.
+ */
+function collectQuestionMarkPositions(text: string): readonly number[] {
+	const positions: number[] = [];
+	MULTILINGUAL_QUESTION_MARK.lastIndex = 0;
+	let mark = MULTILINGUAL_QUESTION_MARK.exec(text);
+	while (mark) {
+		positions.push(mark.index);
+		mark = MULTILINGUAL_QUESTION_MARK.exec(text);
+	}
+	return positions;
+}
+
+/** True when a collected question-mark position falls in `[start, end)`. */
+function hasQuestionMarkInRange(
+	positions: readonly number[],
+	start: number,
+	end: number,
+): boolean {
+	const i = firstBoundaryIndexAtOrAfter(positions, start);
+	return i < positions.length && (positions[i] as number) < end;
+}
+
+// The longest fixed suffix any locale's `questionTail` pattern can match
+// ("phải không" is the longest, at 10 characters). Trailing-tail detection
+// only needs to see this many trimmed characters before the cut point, so
+// bounding the lookback window keeps the check O(1) instead of O(clause
+// length) regardless of how long the surrounding clause is.
+const QUESTION_TAIL_LOOKBEHIND_WINDOW = 32;
+
+/**
+ * The trimmed window of `text` ending at `end`, capped to `maxLen`
+ * characters. `questionTail` patterns are all `$`-anchored fixed suffixes, so
+ * a bounded trailing window is sufficient — slicing the FULL clause (which,
+ * on a long boundary-sparse sentence, can be nearly the whole reply) would
+ * reintroduce the O(clause length)-per-match cost this module was flagged
+ * for.
+ */
+function trailingTrimmedWindow(
+	text: string,
+	end: number,
+	maxLen: number,
+): string {
+	let e = end;
+	while (e > 0 && /\s/u.test(text[e - 1] as string)) {
+		e -= 1;
+	}
+	const windowStart = Math.max(0, e - maxLen);
+	return text.slice(windowStart, e);
+}
+
+// `nonAssertiveLead` clauses (negation, subordinators, second-person leads)
+// are ordinary assistant-reply prose in every shipped locale, always far
+// shorter than this. The cap only ever bites on adversarial/pathological
+// input — the same long boundary-sparse sentence this module was flagged
+// for — and keeps `text.slice(..., claimIndex)` bounded instead of growing
+// with the claim's distance into a multi-kilobyte sentence.
+const NON_ASSERTIVE_LEAD_LOOKBEHIND_WINDOW = 512;
 
 function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 	// Sentence spans depend only on `text`, and repeated claim tokens inside one
@@ -430,6 +549,10 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 	// while the next match falls inside it keeps the scan linear.
 	let cached: { sentence: string; start: number; terminator: string } | null =
 		null;
+	// One forward pass over the whole reply, shared by every locale/claim/match
+	// below — see `collectClauseTagBoundaries` and `collectQuestionMarkPositions`.
+	const clauseTagBoundaries = collectClauseTagBoundaries(text);
+	const questionMarkPositions = collectQuestionMarkPositions(text);
 	for (const shapes of LOCALE_SIDE_EFFECT_CLAIM_SHAPES) {
 		if (!shapes.subjectNoun.test(text)) continue;
 		for (const claim of shapes.claims) {
@@ -457,8 +580,20 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 				// span up to the first punctuation break — is claim-governed even
 				// when a coordinated alternative follows ("我把提醒设置好了吗，还是
 				// 没有？", "알림을 설정했나요, 아니면 아직인가요?").
-				const ownClauseEnd = localeClauseCut(text, matchEnd, sentenceEnd);
-				if (shapes.questionTail?.test(text.slice(start, ownClauseEnd).trim())) {
+				const ownClauseEnd = localeClauseCut(
+					clauseTagBoundaries,
+					matchEnd,
+					sentenceEnd,
+				);
+				if (
+					shapes.questionTail?.test(
+						trailingTrimmedWindow(
+							text,
+							ownClauseEnd,
+							QUESTION_TAIL_LOOKBEHIND_WINDOW,
+						),
+					)
+				) {
 					continue;
 				}
 
@@ -468,17 +603,29 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 				// tier fires on exactly that shape by design.
 				const tagStart = localeCourtesyTagStart(
 					text,
+					clauseTagBoundaries,
 					matchEnd,
 					sentenceEnd,
 					shapes.courtesyTag,
 				);
-				const claimClause =
-					tagStart >= 0 ? text.slice(start, tagStart) : sentence;
-				if (/[?？¿]/u.test(claimClause)) continue;
+				const claimClauseEnd = tagStart >= 0 ? tagStart : sentenceEnd;
+				if (
+					hasQuestionMarkInRange(questionMarkPositions, start, claimClauseEnd)
+				) {
+					continue;
+				}
 				if (tagStart < 0 && (terminator === "?" || terminator === "？")) {
 					continue;
 				}
-				if (shapes.nonAssertiveLead.test(text.slice(start, claimIndex))) {
+				const nonAssertiveLeadWindowStart = Math.max(
+					start,
+					claimIndex - NON_ASSERTIVE_LEAD_LOOKBEHIND_WINDOW,
+				);
+				if (
+					shapes.nonAssertiveLead.test(
+						text.slice(nonAssertiveLeadWindowStart, claimIndex),
+					)
+				) {
 					continue;
 				}
 				return true;
