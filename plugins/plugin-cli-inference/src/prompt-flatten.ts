@@ -1,6 +1,3 @@
-import { types as nodeUtilTypes } from "node:util";
-import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
-
 /**
  * Flatten `GenerateTextParams` (system + messages/prompt) into the two strings
  * the sanctioned CLIs consume:
@@ -15,6 +12,9 @@ import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
  * the system slot (joined with an explicit `params.system`); every other role is
  * flattened, in order, into the body. Nothing is dropped.
  */
+
+import { types as nodeUtilTypes } from "node:util";
+import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
 
 export interface FlattenedPrompt {
   /** Goes to Claude's system-prompt file / Codex's instructions block. */
@@ -225,7 +225,9 @@ function toolOutputToText(
   if (typeof output === "string") return output;
   if (typeof output !== "object") return String(output);
   if (hasProxyInPrototypeChain(output)) {
-    throw new PromptPayloadSerializationError("Tool output contains a Proxy and cannot be read safely");
+    throw new PromptPayloadSerializationError(
+      "Tool output contains a Proxy and cannot be read safely"
+    );
   }
   if (traversal.ancestors.has(output)) {
     throw new PromptPayloadSerializationError(

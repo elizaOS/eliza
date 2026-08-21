@@ -120,6 +120,52 @@ describe("toolOutputToText — unsafe payloads fail explicitly", () => {
     expect(() => contentToText([toolResult(trap)])).toThrow(PromptPayloadSerializationError);
     expect(invoked).toBe(0);
   });
+
+  it("rejects array accessors without invoking them", () => {
+    let invoked = 0;
+    const payload: unknown[] = [];
+    Object.defineProperty(payload, 0, {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return "pwned";
+      },
+    });
+    payload.length = 2;
+    expect(() => contentToText([toolResult({ payload })])).toThrow(PromptPayloadSerializationError);
+    expect(() => contentToText([toolResult(payload)])).toThrow(PromptPayloadSerializationError);
+    expect(invoked).toBe(0);
+  });
+
+  it("rejects Proxy payloads without invoking direct or prototype traps", () => {
+    let invoked = 0;
+    const proxy = new Proxy(Buffer.from("x"), {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+      ownKeys() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+    });
+    const revocable = Proxy.revocable({}, {});
+    revocable.revoke();
+    const proxyPrototype = new Proxy(Buffer.prototype, {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("prototype-chain trap ran");
+      },
+    });
+    const bufferWithProxyPrototype = Buffer.from("y");
+    Object.setPrototypeOf(bufferWithProxyPrototype, proxyPrototype);
+
+    for (const payload of [proxy, revocable.proxy, bufferWithProxyPrototype]) {
+      expect(() => contentToText([toolResult(payload)])).toThrow(PromptPayloadSerializationError);
+    }
+    expect(() => contentToText([toolResult({ proxy })])).toThrow(PromptPayloadSerializationError);
+    expect(invoked).toBe(0);
+  });
 });
 
 describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
@@ -252,6 +298,29 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     expect(contentToText([toolResult(large)])).toBe(
       `[tool_result WEB_FETCH: ${JSON.stringify(large)}]`
     );
+  });
+
+  it("copies Buffer bytes without consulting payload length or @@iterator", () => {
+    let invoked = 0;
+    const payload = Buffer.from("hi");
+    Object.defineProperties(payload, {
+      length: {
+        get() {
+          invoked += 1;
+          throw new Error("length getter ran");
+        },
+      },
+      [Symbol.iterator]: {
+        value() {
+          invoked += 1;
+          throw new Error("iterator ran");
+        },
+      },
+    });
+    expect(contentToText([toolResult(payload)])).toBe(
+      '[tool_result WEB_FETCH: {"type":"Buffer","data":[104,105]}]'
+    );
+    expect(invoked).toBe(0);
   });
 
   it("never consults an attacker-controlled Symbol.toStringTag", () => {
