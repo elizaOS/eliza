@@ -236,6 +236,53 @@ describe("useSandboxStatusPoll", () => {
     });
   });
 
+  it("keeps an active request alive across interval ticks until its deadline", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce((_input, init) => {
+        requestSignals.push(init?.signal);
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      })
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { status: "running", lastHeartbeatAt: null },
+        }),
+      );
+
+    const { result, unmount } = renderHook(() =>
+      useSandboxStatusPoll("agent-a", { intervalMs: 1_000 }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(requestSignals[0]?.aborted).toBe(false);
+
+    await act(async () => {
+      resolveFirst?.(
+        Response.json({
+          data: { status: "provisioning", lastHeartbeatAt: null },
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("provisioning");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("running");
+    unmount();
+  });
+
   it("starts polling a replacement agent after the previous agent reached a terminal state", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")

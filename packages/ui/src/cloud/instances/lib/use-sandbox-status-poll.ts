@@ -105,10 +105,13 @@ export function useSandboxStatusPoll(
         document.visibilityState !== "visible"
       )
         return;
+      // Keep the current hop alive until its 10-second deadline. Aborting it
+      // on every shorter interval tick would starve otherwise-valid slow
+      // responses (the default interval is five seconds).
+      if (requestController) return;
 
       setResult((prev) => ({ ...prev, isLoading: true }));
       const generation = ++requestGeneration;
-      requestController?.abort();
       const controller = new AbortController();
       requestController = controller;
       const timeoutSignal = AbortSignal.timeout(10_000);
