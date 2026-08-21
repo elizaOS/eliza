@@ -1,8 +1,9 @@
 /**
  * iMessage Plugin for elizaOS
  *
- * Provides iMessage integration for Eliza agents on macOS.
- * Uses AppleScript and/or CLI tools to send and receive messages.
+ * Provides iMessage integration for Eliza agents on macOS. Inbound messages
+ * come from the local Messages database and outbound messages use Messages.app
+ * automation, without an auxiliary CLI, relay, or network service.
  */
 
 import { platform } from "node:os";
