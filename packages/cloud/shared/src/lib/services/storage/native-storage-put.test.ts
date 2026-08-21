@@ -227,24 +227,24 @@ describe("executeNativeStoragePut", () => {
     expect(adoptLegacyObjects).toHaveBeenCalledTimes(1);
   });
 
-  test("bounds quota reconciliation pagination against a provider that never repeats but never stops", async () => {
+  test("does not reject a valid catalog because it spans more than 1000 pages", async () => {
     quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
     const bucket = fakeR2({ value: false });
     let page = 0;
     bucket.list = mock().mockImplementation(async () => {
       page += 1;
-      return { objects: [], truncated: true, cursor: `cursor-${page}` };
+      return page === 1_001
+        ? { objects: [], truncated: false }
+        : { objects: [], truncated: true, cursor: `cursor-${page}` };
     });
 
-    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).rejects.toMatchObject({
-      code: "PROVIDER_INTEGRITY",
-    });
-    expect(bucket.list).toHaveBeenCalledTimes(1_000);
-    expect(adoptLegacyObjects).toHaveBeenCalledTimes(999);
-    expect(reconcileNativeQuotaFromCatalog).not.toHaveBeenCalled();
+    await expect(ensureNativeStorageQuotaReconciled(bucket, ORG)).resolves.toBeUndefined();
+    expect(bucket.list).toHaveBeenCalledTimes(1_001);
+    expect(adoptLegacyObjects).toHaveBeenCalledTimes(1_001);
+    expect(reconcileNativeQuotaFromCatalog).toHaveBeenCalledWith(ORG);
   });
 
-  test("accepts the exact final legal R2 page and replacement terminal state", async () => {
+  test("accepts a large final R2 page sequence and replacement terminal state", async () => {
     quotaNeedsNativeCatalogReconciliation.mockResolvedValue(true);
     const bucket = fakeR2({ value: false });
     let page = 0;
@@ -786,6 +786,126 @@ describe("executeNativeStoragePut", () => {
     await expect(
       executeNativeStoragePut({ ...base, contentType: "x".repeat(256) }),
     ).rejects.toMatchObject({ code: "CONTENT_TYPE_INVALID" });
+    expect(preparePut).not.toHaveBeenCalled();
+    expect(base.bucket.put).not.toHaveBeenCalled();
+  });
+
+  test("streams a declared body to R2 without materializing it", async () => {
+    let current = operation("prepared", "0.000000");
+    let observed: RuntimeR2ObjectMetadata | null = null;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("payload"));
+        controller.close();
+      },
+    });
+    const bucket: RuntimeR2Bucket = {
+      get: mock(async () => null),
+      head: mock(async () => observed),
+      put: mock(async (_key, value, options) => {
+        expect(value).toBeInstanceOf(ReadableStream);
+        const received = await new Response(value as BodyInit).arrayBuffer();
+        expect(new TextDecoder().decode(received)).toBe("payload");
+        observed = {
+          size: 7,
+          etag: "etag-1",
+          uploaded: new Date(),
+          customMetadata: options?.customMetadata,
+        };
+      }),
+      delete: mock(async () => undefined),
+    };
+    preparePut.mockResolvedValue({ operation: current, replay: false });
+    reservePutCredits.mockImplementation(async () => {
+      current = operation("reserved", "0.000000");
+      return { operation: current, insufficient: false, available: 0 };
+    });
+    claimProviderLease.mockImplementation(async () => {
+      current = operation("provider_started", "0.000000");
+      return current;
+    });
+    commitObservedPut.mockResolvedValue(operation("committed", "0.000000"));
+
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "stream.bin",
+        idempotencyKey: "stream-1",
+        body,
+        sizeBytes: 7,
+        contentSha256: "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5",
+        contentType: "application/octet-stream",
+        priceUsd: 0,
+      }),
+    ).resolves.toMatchObject({ size: 7, etag: "etag-1" });
+    expect(bucket.put).toHaveBeenCalledTimes(1);
+    expect(preparePut).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sizeBytes: 7n,
+        contentSha256: "239f59ed55e737c77147cf55ad0c1b030b6d7ee748a7426952f9b852d5a935e5",
+      }),
+    );
+  });
+
+  test("rejects a streamed body that does not match its declared length", async () => {
+    let current = operation("prepared", "0.000000");
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("short"));
+        controller.close();
+      },
+    });
+    const bucket: RuntimeR2Bucket = {
+      get: mock(async () => null),
+      head: mock(async () => null),
+      put: mock(async (_key, value) => {
+        await new Response(value as BodyInit).arrayBuffer();
+      }),
+      delete: mock(async () => undefined),
+    };
+    preparePut.mockResolvedValue({ operation: current, replay: false });
+    reservePutCredits.mockImplementation(async () => {
+      current = operation("reserved", "0.000000");
+      return { operation: current, insufficient: false, available: 0 };
+    });
+    claimProviderLease.mockImplementation(async () => {
+      current = operation("provider_started", "0.000000");
+      return current;
+    });
+
+    await expect(
+      executeNativeStoragePut({
+        bucket,
+        organizationId: ORG,
+        logicalKey: "short.bin",
+        idempotencyKey: "stream-short-1",
+        body,
+        sizeBytes: 7,
+        contentSha256: "f9b0078b5df596d2ea19010c001bbd00e65176fa8a6a8a82e29fc880acf10bce",
+        contentType: "application/octet-stream",
+        priceUsd: 0,
+      }),
+    ).rejects.toMatchObject({ code: "CONTENT_LENGTH_INVALID" });
+    expect(bucket.put).toHaveBeenCalledTimes(1);
+  });
+
+  test("rejects streams without trustworthy length and digest metadata", async () => {
+    const base = {
+      bucket: fakeR2({ value: false }),
+      organizationId: ORG,
+      logicalKey: "stream.bin",
+      idempotencyKey: "stream-invalid-1",
+      body: new ReadableStream<Uint8Array>(),
+      contentType: "application/octet-stream",
+      priceUsd: 0,
+    };
+    await expect(executeNativeStoragePut(base)).rejects.toMatchObject({
+      code: "CONTENT_LENGTH_INVALID",
+    });
+    await expect(executeNativeStoragePut({ ...base, sizeBytes: 7 })).rejects.toMatchObject({
+      code: "CONTENT_SHA256_INVALID",
+    });
     expect(preparePut).not.toHaveBeenCalled();
     expect(base.bucket.put).not.toHaveBeenCalled();
   });
