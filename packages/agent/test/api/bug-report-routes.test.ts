@@ -208,3 +208,56 @@ describe.sequential("bug report repository routing", () => {
     });
   });
 });
+
+describe("bug-report Unicode-safe truncation", () => {
+  beforeEach(() => {
+    resetBugReportRateLimit();
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  const isWellFormed = (value: string) =>
+    (value as unknown as { isWellFormed(): boolean }).isWellFormed?.() ?? true;
+
+  it("normalizes lone surrogates in GitHub-mode title/body", async () => {
+    vi.stubEnv("GITHUB_TOKEN", "test-token");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ html_url: "https://github.com/elizaOS/eliza/issues/1" }),
+          { status: 201, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const description = `${"a".repeat(78)}🦊extra`;
+    const ctx = createContext({ description, stepsToReproduce: "Run" });
+
+    await handleBugReportRoutes(ctx);
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(isWellFormed(payload.title)).toBe(true);
+    expect(isWellFormed(payload.body)).toBe(true);
+    expect(payload.title.length).toBeLessThanOrEqual(80);
+  });
+
+  it("normalizes lone surrogates in remote-mode fields", async () => {
+    vi.stubEnv("ELIZA_BUG_REPORT_API_URL", "https://intake.example.test/reports");
+    vi.stubEnv("ELIZA_BUG_REPORT_API_TOKEN", "remote-token");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ accepted: true, id: "r1" }),
+          { status: 202, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const description = `${"b".repeat(499)}🦊extra`;
+    const ctx = createContext({ description, stepsToReproduce: "Run" });
+
+    await handleBugReportRoutes(ctx);
+    const payload = JSON.parse(String(fetchMock.mock.calls[0][1].body));
+    expect(isWellFormed(payload.description)).toBe(true);
+    expect(payload.description.length).toBeLessThanOrEqual(500);
+  });
+});
