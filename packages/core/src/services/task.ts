@@ -34,6 +34,33 @@ function resolveDueTime(task: Task): number | null {
 	return Number.isNaN(t) ? null : t;
 }
 
+/** Opaque handle returned by an injected task-service timer implementation. */
+export type TaskServiceTimerHandle = unknown;
+
+/**
+ * Time boundary used by TaskService. Production uses the system clock and
+ * interval APIs; deterministic hosts can supply a virtual clock without
+ * replacing task persistence, validation, or worker execution.
+ */
+export interface TaskServiceClock {
+	now(): number;
+	setInterval(
+		callback: () => Promise<void>,
+		intervalMs: number,
+	): TaskServiceTimerHandle;
+	clearInterval(handle: TaskServiceTimerHandle): void;
+}
+
+const systemTaskServiceClock: TaskServiceClock = {
+	now: () => Date.now(),
+	setInterval: (callback, intervalMs) =>
+		setInterval(() => {
+			void callback();
+		}, intervalMs),
+	clearInterval: (handle) =>
+		clearInterval(handle as ReturnType<typeof setInterval>),
+};
+
 /**
  * Each tick validates due `queue` tasks against their worker's `shouldRun`,
  * then runs `worker.execute`. Repeat tasks reschedule on their interval (with
@@ -42,8 +69,9 @@ function resolveDueTime(task: Task): number | null {
  * tags — a paused one-shot stays in the store until it is resumed.
  */
 export class TaskService extends Service {
-	private timer: NodeJS.Timeout | null = null;
+	private timer: TaskServiceTimerHandle | null = null;
 	private activeTick: Promise<void> | null = null;
+	private readonly clock: TaskServiceClock;
 	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
@@ -74,7 +102,7 @@ export class TaskService extends Service {
 	 * the TASK_WORKER_MISSING diagnostic that painted red system lines into the
 	 * owner's chat view on every boot.
 	 */
-	private readonly startedAt = Date.now();
+	private readonly startedAt: number;
 	/** Set true in stop(). runTick returns immediately when true (daemon may call runTick after unregister). */
 	private stopped = false;
 	/**
@@ -86,6 +114,15 @@ export class TaskService extends Service {
 	private static readonly ORPHAN_GRACE_MS = 60_000;
 	static serviceType = ServiceType.TASK;
 	capabilityDescription = "The agent is able to schedule and execute tasks";
+
+	constructor(
+		runtime?: IAgentRuntime,
+		clock: TaskServiceClock = systemTaskServiceClock,
+	) {
+		super(runtime);
+		this.clock = clock;
+		this.startedAt = clock.now();
+	}
 
 	/**
 	 * Start the TaskService with the given runtime.
@@ -172,7 +209,7 @@ export class TaskService extends Service {
 				name: "REPEATING_TEST_TASK",
 				description: "A test task that repeats every minute",
 				metadata: {
-					updatedAt: Date.now(), // Use timestamp instead of Date object
+					updatedAt: this.clock.now(), // Use timestamp instead of Date object
 					updateInterval: 1000 * 60, // 1 minute
 				},
 				tags: ["queue", "repeat", "test"],
@@ -184,7 +221,7 @@ export class TaskService extends Service {
 			name: "ONETIME_TEST_TASK",
 			description: "A test task that runs once",
 			metadata: {
-				updatedAt: Date.now(),
+				updatedAt: this.clock.now(),
 			},
 			tags: ["queue", "test"],
 		});
@@ -206,11 +243,11 @@ export class TaskService extends Service {
 			registerTaskSchedulerRuntime(this.runtime, this);
 			return;
 		}
-		if (this.timer) {
-			clearInterval(this.timer);
+		if (this.timer !== null) {
+			this.clock.clearInterval(this.timer);
 		}
 
-		this.timer = setInterval(() => {
+		this.timer = this.clock.setInterval(async () => {
 			if (this.activeTick) {
 				return;
 			}
@@ -228,7 +265,8 @@ export class TaskService extends Service {
 					}
 				});
 			this.activeTick = tick;
-		}, this.TICK_INTERVAL) as NodeJS.Timeout;
+			await tick;
+		}, this.TICK_INTERVAL);
 	}
 
 	/**
@@ -281,7 +319,7 @@ export class TaskService extends Service {
 				// registered YET" — skip silently (no error, no heal). Quarantining
 				// here wrongly paused/DELETED healthy tasks and emitted the
 				// TASK_WORKER_MISSING noise seen on every staging boot.
-				if (Date.now() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
+				if (this.clock.now() - this.startedAt < TaskService.ORPHAN_GRACE_MS) {
 					continue;
 				}
 				// Orphaned task: no worker registered in THIS build. Self-heal instead
@@ -381,7 +419,7 @@ export class TaskService extends Service {
 							// and are never auto-resumed.
 							orphanedNoWorker: true,
 							lastError: `No worker registered for task ${task.name} (orphan auto-paused)`,
-							updatedAt: Date.now(),
+							updatedAt: this.clock.now(),
 						},
 					});
 				}
@@ -443,7 +481,7 @@ export class TaskService extends Service {
 					paused: false,
 					orphanedNoWorker: false,
 					lastError: undefined,
-					updatedAt: Date.now(),
+					updatedAt: this.clock.now(),
 				},
 			});
 			this.quarantinedOrphans.delete(task.id);
@@ -584,7 +622,7 @@ export class TaskService extends Service {
 		if (this.stopped) return;
 		const validation = await this.validateTasks(tasks);
 		const failures: ElizaError[] = [...validation.errors];
-		const now = Date.now();
+		const now = this.clock.now();
 
 		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
@@ -778,7 +816,7 @@ export class TaskService extends Service {
 		}
 
 		this.executingTasks.add(task.id);
-		const startTime = Date.now();
+		const startTime = this.clock.now();
 
 		try {
 			const taskOptions = (task.metadata ?? {}) as Record<
@@ -799,7 +837,7 @@ export class TaskService extends Service {
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
 				const newMeta: TaskMetadata = {
 					...meta,
-					updatedAt: Date.now(),
+					updatedAt: this.clock.now(),
 					failureCount: 0,
 					lastError: undefined,
 				};
@@ -864,7 +902,7 @@ export class TaskService extends Service {
 					const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 					const newMeta: TaskMetadata & Record<string, unknown> = {
 						...(meta ?? {}),
-						updatedAt: Date.now(),
+						updatedAt: this.clock.now(),
 						failureCount,
 						lastError: error instanceof Error ? error.message : String(error),
 					};
@@ -934,7 +972,7 @@ export class TaskService extends Service {
 			throw failure;
 		} finally {
 			this.executingTasks.delete(task.id);
-			const durationMs = Date.now() - startTime;
+			const durationMs = this.clock.now() - startTime;
 			this.runtime.logger.debug(
 				{
 					src: "plugin:basic-capabilities:service:task",
@@ -1085,8 +1123,8 @@ export class TaskService extends Service {
 	async stop() {
 		this.stopped = true;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
-		if (this.timer) {
-			clearInterval(this.timer);
+		if (this.timer !== null) {
+			this.clock.clearInterval(this.timer);
 			this.timer = null;
 		}
 		if (this.activeTick) {
