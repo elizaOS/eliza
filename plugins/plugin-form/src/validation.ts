@@ -46,6 +46,12 @@
  */
 
 import type { JsonValue } from "@elizaos/core";
+import {
+  isSafeUntrustedRegexPattern,
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH,
+  MAX_UNTRUSTED_REGEX_PATTERN_LENGTH,
+  matchesSafeUntrustedRegexPattern,
+} from "@elizaos/shared/config/config-catalog";
 import { strictEmailValid } from "./email";
 import type { FormControl, TypeHandler } from "./types";
 
@@ -195,19 +201,40 @@ export function validateField(
   }
 }
 
-export const MAX_CONTROL_PATTERN_LENGTH = 256;
-export const MAX_CONTROL_PATTERN_INPUT_LENGTH = 4_096;
+/**
+ * Caps and dialect for `FormControl.pattern` come from the shared
+ * agent-authored-regex policy in `@elizaos/shared`, the same gate the config
+ * and UI renderers use. Re-exported here so form code and its tests have one
+ * name for them and one source of truth for the numbers.
+ */
+export const MAX_CONTROL_PATTERN_LENGTH = MAX_UNTRUSTED_REGEX_PATTERN_LENGTH;
+export const MAX_CONTROL_PATTERN_INPUT_LENGTH =
+  MAX_UNTRUSTED_REGEX_INPUT_LENGTH;
 
 /**
- * Compile and test a caller-supplied form control pattern without throwing
- * or running nested-quantifier JavaScript regexes that hang the event loop.
+ * Test a caller-supplied form control pattern against a value.
+ *
+ * WHY the shared dialect instead of `new RegExp(pattern).test(value)`:
+ * `control.pattern` is agent- or plugin-authored data, and a backtracking
+ * engine lets that data choose its own running time. Neither a try/catch nor a
+ * length cap bounds it - `^(a|aa)+$` is nine characters and takes seconds on a
+ * forty-character near-miss. `isSafeUntrustedRegexPattern` admits only a flat
+ * sequence with at most one variable repetition (no groups, no alternation, no
+ * backreferences, bounded fixed repetitions), so an admitted pattern has no
+ * ambiguity to backtrack through, and everything else is refused before the
+ * engine ever sees it.
+ *
+ * Every non-`ok` result is a validation failure at both call sites, so a
+ * refused pattern fails the field closed rather than passing it unchecked.
  */
 export function testControlPattern(
   pattern: string,
   value: string,
-): { ok: true } | { ok: false; reason: "invalid" | "mismatch" | "too-long" } {
+):
+  | { ok: true }
+  | { ok: false; reason: "unsupported" | "mismatch" | "too-long" } {
   if (typeof pattern !== "string" || pattern.length === 0) {
-    return { ok: false, reason: "invalid" };
+    return { ok: false, reason: "unsupported" };
   }
   if (
     pattern.length > MAX_CONTROL_PATTERN_LENGTH ||
@@ -215,28 +242,12 @@ export function testControlPattern(
   ) {
     return { ok: false, reason: "too-long" };
   }
-  if (hasNestedQuantifier(pattern)) {
-    return { ok: false, reason: "invalid" };
+  if (!isSafeUntrustedRegexPattern(pattern)) {
+    return { ok: false, reason: "unsupported" };
   }
-  try {
-    const regex = new RegExp(pattern);
-    return regex.test(value) ? { ok: true } : { ok: false, reason: "mismatch" };
-  } catch {
-    return { ok: false, reason: "invalid" };
-  }
-}
-
-function hasNestedQuantifier(pattern: string): boolean {
-  for (let i = 0; i < pattern.length - 1; i += 1) {
-    const ch = pattern[i];
-    if (ch !== "+" && ch !== "*") continue;
-    let j = i + 1;
-    if (pattern[j] === "?") j += 1;
-    if (pattern[j] !== ")") continue;
-    const next = pattern[j + 1];
-    if (next === "+" || next === "*" || next === "{") return true;
-  }
-  return false;
+  return matchesSafeUntrustedRegexPattern(pattern, value)
+    ? { ok: true }
+    : { ok: false, reason: "mismatch" };
 }
 
 /**
@@ -250,8 +261,8 @@ function validateText(
 ): ValidationResult {
   const strValue = String(value);
 
-  // Pattern validation
-  // WHY regex: Flexible, powerful, user-defined patterns
+  // Pattern validation. Untrusted pattern text never reaches a bare
+  // `new RegExp(...).test(...)`; see testControlPattern.
   if (control.pattern) {
     const checked = testControlPattern(control.pattern, strValue);
     if (!checked.ok) {

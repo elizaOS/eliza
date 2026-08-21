@@ -128,7 +128,9 @@ const textType: ControlType = {
       };
     }
 
-    // Check pattern if specified
+    // Check pattern if specified. Goes through the shared agent-authored-regex
+    // dialect, never a bare `new RegExp` on caller input; any refusal fails
+    // the field closed.
     if (control.pattern) {
       const checked = testControlPattern(control.pattern, str);
       if (!checked.ok) {
