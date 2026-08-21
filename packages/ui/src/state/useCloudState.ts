@@ -1064,7 +1064,7 @@ export function useCloudState({
                 // not a volatile in-memory global — otherwise getCloudAuthToken()
                 // reads nothing, elizaCloudConnected never recomputes true, and
                 // onboarding restarts at the greeting.
-                writeStoredStewardToken(poll.token);
+                await writeStoredStewardToken(poll.token);
                 // Also update boot config so subsequent reads use the resolved cloud base.
                 const cfg = getBootConfig();
                 setBootConfig({
@@ -1203,7 +1203,7 @@ export function useCloudState({
                 "Eliza Cloud login completed, but the cloud session did not return a session token.";
               break;
             }
-            writeStoredStewardToken(poll.token);
+            await writeStoredStewardToken(poll.token);
             setBootConfig({
               ...getBootConfig(),
               cloudApiBase: authenticatedCloudApiBase,
@@ -1607,7 +1607,7 @@ export function useCloudState({
       }
       if (disposed) return;
       if (result?.token) {
-        writeStoredStewardToken(result.token);
+        await writeStoredStewardToken(result.token);
       }
     };
 

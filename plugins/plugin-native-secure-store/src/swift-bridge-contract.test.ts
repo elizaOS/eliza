@@ -12,6 +12,19 @@ const source = readFileSync(
 ).replace(/\s+/g, " ");
 
 describe("Apple secure-store bridge contract", () => {
+  it("links the secure-store pod into the iOS application target", () => {
+    const podfile = readFileSync(
+      resolve(
+        new URL(".", import.meta.url).pathname,
+        "../../../packages/app-core/platforms/ios/App/Podfile",
+      ),
+      "utf8",
+    );
+    expect(podfile).toContain(
+      "pod 'ElizaosCapacitorSecureStore', :path => node_package_path('@elizaos/capacitor-secure-store')",
+    );
+  });
+
   it("uses a fixed app-only, non-synchronizing Keychain namespace", () => {
     expect(source).toContain('service = "ai.elizaos.secure-store"');
     expect(source).toContain(

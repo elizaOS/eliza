@@ -13,6 +13,7 @@
 import { Capacitor } from "@capacitor/core";
 import { logger } from "@elizaos/logger";
 import {
+  registerStewardTokenPersistence,
   registerStewardTokenRemoval,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
@@ -151,9 +152,10 @@ function serializedProtectedStoreSet(
   key: string,
   value: string,
 ): Promise<boolean> {
-  return serializeProtectedStorageMutation(key, () =>
-    protectedStoreSet(key, value),
-  );
+  return serializeProtectedStorageMutation(key, async () => {
+    if (!(await protectedStoreSet(key, value))) return false;
+    return (await protectedStoreGet(key)) === value;
+  });
 }
 
 function serializedProtectedStoreDelete(key: string): Promise<void> {
@@ -722,3 +724,6 @@ export function isStorageBridgeInitialized(): boolean {
 }
 
 registerStewardTokenRemoval(() => removeStorageValue(STEWARD_TOKEN_KEY));
+registerStewardTokenPersistence((token) =>
+  setStorageValue(STEWARD_TOKEN_KEY, token),
+);

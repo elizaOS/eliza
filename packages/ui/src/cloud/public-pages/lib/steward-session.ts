@@ -98,7 +98,7 @@ export async function syncStewardSessionCookie(
     // The cookie boundary may be entered directly by an SDK callback or after
     // the login page already persisted the same token. Canonical storage is
     // idempotent, so both paths publish one authority transition in total.
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );
@@ -134,7 +134,7 @@ export async function confirmTelegramAccountClaim(
     TELEGRAM_ACCOUNT_CLAIM_PURPOSE,
   );
   if (typeof window !== "undefined") {
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
     window.dispatchEvent(
       new CustomEvent("steward-token-sync", { detail: { token } }),
     );

@@ -456,7 +456,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
         );
       }
       if (recovered?.token) {
-        writeStoredStewardToken(recovered.token);
+        await writeStoredStewardToken(recovered.token);
         try {
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
         } catch {
@@ -489,7 +489,7 @@ async function resolveRestoredStewardToken(): Promise<string | null> {
   }
 
   if (refreshed?.token) {
-    writeStoredStewardToken(refreshed.token);
+    await writeStoredStewardToken(refreshed.token);
     // Let the native Steward auth context + any storage listeners pick up the
     // fresh JWT without waiting for the next read.
     try {
@@ -600,7 +600,7 @@ export async function applyRestoredConnection(args: {
         stewardTokenPromise = refreshCloudStewardSession()
           .then(async (refreshed) => {
             const fresh = refreshed?.token?.trim() || null;
-            if (fresh) writeStoredStewardToken(fresh);
+            if (fresh) await writeStoredStewardToken(fresh);
             else await dropShadowingStewardToken("rotation-returned-no-token");
             return fresh;
           })

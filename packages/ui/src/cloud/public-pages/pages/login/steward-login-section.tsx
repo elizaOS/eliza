@@ -132,8 +132,8 @@ type EmailCheckState =
   | "locked"
   | "invalid";
 
-function persistStewardToken(token: string): void {
-  writeStoredStewardToken(token);
+async function persistStewardToken(token: string): Promise<void> {
+  await writeStoredStewardToken(token);
   if (readStoredStewardToken() !== token) {
     throw new Error(
       "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
@@ -752,7 +752,7 @@ export default function StewardLoginSection() {
               "Sign-in completed, but the browser session could not be hydrated. Refresh and try again.",
             );
           }
-          persistStewardToken(token);
+          await persistStewardToken(token);
           window.dispatchEvent(new CustomEvent("steward-token-sync"));
           setRedirectTo(
             resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
@@ -807,7 +807,7 @@ export default function StewardLoginSection() {
           const refreshed = await recoverStewardSessionViaCookie();
           if (cancelled) return;
           if (refreshed?.token) {
-            writeStoredStewardToken(refreshed.token);
+            await writeStoredStewardToken(refreshed.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
             setRedirectTo(resolveLoginReturnTo(searchParams));
           }
@@ -879,7 +879,7 @@ export default function StewardLoginSection() {
             if (cancelled) return;
             if (recovered) {
               if (recovered.token) {
-                persistStewardToken(recovered.token);
+                await persistStewardToken(recovered.token);
                 window.dispatchEvent(new CustomEvent("steward-token-sync"));
               }
               setExternalSuccessDestination(resolveLoginReturnTo(searchParams));
@@ -954,7 +954,7 @@ export default function StewardLoginSection() {
             return;
           }
           if (recovered.token) {
-            persistStewardToken(recovered.token);
+            await persistStewardToken(recovered.token);
             window.dispatchEvent(new CustomEvent("steward-token-sync"));
           }
           setExternalSuccessDestination(message.destination);
@@ -1021,7 +1021,7 @@ export default function StewardLoginSection() {
     // Publish the browser token only after the authoritative Cloud sync wins.
     // Otherwise StewardProviderRuntime can race a second unhinted sync against
     // phone-account promotion.
-    persistStewardToken(token);
+    await persistStewardToken(token);
     toast.success("Signed in!");
     setRedirectTo(
       resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),

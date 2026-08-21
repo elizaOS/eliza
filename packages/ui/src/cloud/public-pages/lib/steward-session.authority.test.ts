@@ -28,7 +28,7 @@ it("publishes exactly one present transition across login persistence and cookie
   window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
 
   try {
-    writeStoredStewardToken("login-token");
+    await writeStoredStewardToken("login-token");
     await syncStewardSessionCookie("login-token");
   } finally {
     window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);

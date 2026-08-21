@@ -4330,7 +4330,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // dedicated agent, the caller's fallback may be that agent's bearer, which
   // must never be relabeled as a control-plane credential.
   if (authToken && !isDedicatedCloudAgentClient(this)) {
-    writeStoredStewardToken(authToken);
+    await writeStoredStewardToken(authToken);
   }
 
   // Reuse an existing agent unless the caller explicitly forces a new one. This

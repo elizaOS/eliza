@@ -335,7 +335,7 @@ export async function authMe(): Promise<AuthMeResult> {
           throwOnTransientHttpFailure: true,
         });
         token = refreshed?.token?.trim() || undefined;
-        if (token) writeStoredStewardToken(token);
+        if (token) await writeStoredStewardToken(token);
       } catch {
         // error-policy:J1 a transport, throttle, or server outage is not
         // authoritative logout; preserve the binding and expose unavailability.
@@ -355,7 +355,7 @@ export async function authMe(): Promise<AuthMeResult> {
       try {
         const refreshed = await refreshCloudStewardSession();
         token = refreshed?.token?.trim() || undefined;
-        if (token) writeStoredStewardToken(token);
+        if (token) await writeStoredStewardToken(token);
       } catch {
         // error-policy:J1 this auth boundary translates a failed terminal
         // refresh into the same explicit signed-out state as a rejected one.

@@ -5,6 +5,7 @@ import {
   clearStoredStewardToken,
   STEWARD_SESSION_CHANGE_EVENT,
   STEWARD_TOKEN_KEY,
+  writeStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +20,7 @@ const nativeStores = vi.hoisted(() => ({
   preferences: new Map<string, string>(),
   secure: new Map<string, string>(),
   secureAvailable: true,
-  secureSetError: null as null | "rejected" | "thrown",
+  secureSetError: null as null | "dropped" | "rejected" | "thrown",
   secureDeleteError: null as null | "denied" | "unavailable" | "native_error",
   secureSetWait: null as Promise<void> | null,
   secureDeleteWait: null as Promise<void> | null,
@@ -76,6 +77,7 @@ vi.mock("@elizaos/capacitor-secure-store", () => ({
       if (nativeStores.secureSetError === "rejected") {
         return { ok: false, error: "denied" };
       }
+      if (nativeStores.secureSetError === "dropped") return { ok: true };
       nativeStores.secure.set(key, value);
       nativeStores.operations.push(`set:done:${key}`);
       return { ok: true };
@@ -153,6 +155,41 @@ describe("native protected-storage bridge contract", () => {
     expect(rawGetItem.call(window.localStorage, STEWARD_TOKEN_KEY)).toBeNull();
     expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
     expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+  });
+
+  it("publishes a Steward login only after secure write and exact readback", async () => {
+    await import("./storage-bridge");
+    const transitions: string[] = [];
+    const listener = (event: Event) => {
+      transitions.push((event as CustomEvent<{ state: string }>).detail.state);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+
+    try {
+      nativeStores.secureSetError = "rejected";
+      await expect(
+        writeStoredStewardToken("not-durable"),
+      ).rejects.toMatchObject({ name: "StewardTokenPersistenceError" });
+      expect(transitions).toEqual([]);
+      expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+      expect(window.localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+
+      nativeStores.secureSetError = "dropped";
+      await expect(
+        writeStoredStewardToken("not-readable-after-write"),
+      ).rejects.toMatchObject({ name: "StewardTokenPersistenceError" });
+      expect(transitions).toEqual([]);
+      expect(nativeStores.secure.has("session.steward_token")).toBe(false);
+
+      nativeStores.secureSetError = null;
+      await writeStoredStewardToken("durable-steward-token");
+      expect(nativeStores.secure.get("session.steward_token")).toBe(
+        "durable-steward-token",
+      );
+      expect(transitions).toEqual(["present"]);
+    } finally {
+      window.removeEventListener(STEWARD_SESSION_CHANGE_EVENT, listener);
+    }
   });
 
   it("installs the storage proxy before the native secure store responds, so a concurrent write during migration never touches plaintext", async () => {
@@ -240,8 +277,12 @@ describe("native protected-storage bridge contract", () => {
     expect(nativeStores.operations).toEqual([
       "set:start:session.device_auth",
       "set:done:session.device_auth",
+      "get:start:session.device_auth",
+      "get:done:session.device_auth",
       "set:start:session.device_auth",
       "set:done:session.device_auth",
+      "get:start:session.device_auth",
+      "get:done:session.device_auth",
     ]);
     expect(nativeStores.secure.get("session.device_auth")).toBe("second-value");
     expect(await bridge.getStorageValue("eliza.device.auth")).toBe(
@@ -380,6 +421,8 @@ describe("native protected-storage bridge contract", () => {
     expect(nativeStores.operations).toEqual([
       "set:start:session.device_auth",
       "set:done:session.device_auth",
+      "get:start:session.device_auth",
+      "get:done:session.device_auth",
       "delete:start:session.device_auth",
       "delete:done:session.device_auth",
     ]);
@@ -413,6 +456,8 @@ describe("native protected-storage bridge contract", () => {
       "delete:done:runtime.active_server",
       "set:start:runtime.active_server",
       "set:done:runtime.active_server",
+      "get:start:runtime.active_server",
+      "get:done:runtime.active_server",
     ]);
     expect(await bridge.getStorageValue("elizaos:active-server")).toBe(
       "new-token",

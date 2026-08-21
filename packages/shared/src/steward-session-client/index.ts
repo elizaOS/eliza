@@ -30,8 +30,23 @@ export interface StewardSessionChangeDetail {
 let sessionEpoch = 0;
 
 type StewardTokenRemoval = () => Promise<void>;
+type StewardTokenPersistence = (token: string) => Promise<void>;
 
 let stewardTokenRemoval: StewardTokenRemoval | null = null;
+let stewardTokenPersistence: StewardTokenPersistence | null = null;
+
+/** Distinguishes a failed durable token write from an ordinary auth failure. */
+export class StewardTokenPersistenceError extends Error {
+  constructor(cause: unknown) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : "Could not persist the protected Steward token",
+      { cause },
+    );
+    this.name = "StewardTokenPersistenceError";
+  }
+}
 
 /** Distinguishes a failed canonical token removal from legacy-key cleanup. */
 export class StewardTokenRemovalError extends Error {
@@ -70,6 +85,22 @@ export function registerStewardTokenRemoval(
   stewardTokenRemoval = removal;
   return () => {
     if (stewardTokenRemoval === removal) stewardTokenRemoval = null;
+  };
+}
+
+/**
+ * Installs the host-owned durable persistence boundary for the Steward token.
+ * Native shells register an awaited secure-store write plus exact readback;
+ * browser-only consumers retain the localStorage fallback.
+ */
+export function registerStewardTokenPersistence(
+  persistence: StewardTokenPersistence,
+): () => void {
+  stewardTokenPersistence = persistence;
+  return () => {
+    if (stewardTokenPersistence === persistence) {
+      stewardTokenPersistence = null;
+    }
   };
 }
 
@@ -263,12 +294,27 @@ export function readStoredStewardToken(): string | null {
   return window.localStorage.getItem(STEWARD_TOKEN_KEY);
 }
 
-/** Persists the canonical token and publishes exactly one authority transition. */
-export function writeStoredStewardToken(token: string): void {
+/**
+ * Persists the canonical token and publishes authority only after the durable
+ * host boundary succeeds. A protected-store rejection never becomes a
+ * healthy-looking in-memory login that disappears on relaunch.
+ */
+export async function writeStoredStewardToken(token: string): Promise<void> {
   if (typeof window === "undefined") return;
-  if (window.localStorage.getItem(STEWARD_TOKEN_KEY) === token) return;
-  window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
-  dispatchStewardSessionChange("present");
+  const wasCurrent = window.localStorage.getItem(STEWARD_TOKEN_KEY) === token;
+  if (!stewardTokenPersistence && wasCurrent) return;
+  try {
+    if (stewardTokenPersistence) {
+      await stewardTokenPersistence(token);
+    } else {
+      window.localStorage.setItem(STEWARD_TOKEN_KEY, token);
+    }
+  } catch (error) {
+    // error-policy:J2 callers must not publish authenticated state after a
+    // failed durable write on a protected host.
+    throw new StewardTokenPersistenceError(error);
+  }
+  if (!wasCurrent) dispatchStewardSessionChange("present");
 }
 
 /**
