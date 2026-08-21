@@ -43,6 +43,7 @@ import {
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
+import { isAcpCommandAvailable } from "./acp-command-availability.js";
 import { NativeAcpClient } from "./acp-native-transport.js";
 import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
 import {
@@ -2817,7 +2818,9 @@ export class AcpService extends Service {
     return DEFAULT_AGENTS.map((agentType) => ({
       adapter: agentType,
       agentType,
-      installed: true,
+      installed:
+        this.transportMode !== "native" ||
+        isAcpCommandAvailable(this.nativeAgentCommand(agentType)),
       auth: { status: "unknown" },
     }));
   }

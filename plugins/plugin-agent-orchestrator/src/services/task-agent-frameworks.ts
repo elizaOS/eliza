@@ -20,6 +20,7 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
+import { isAcpCommandAvailable } from "./acp-command-availability.js";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveVendoredOpencodeShim } from "./opencode-config.js";
 
@@ -648,33 +649,18 @@ function hasBinaryOnPath(binaryName: string): boolean {
   return false;
 }
 
-function leadingCommandToken(command: string): string | undefined {
-  const [token] = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
-  return token?.replace(/^(['"])(.*)\1$/u, "$2");
-}
-
-function isCommandExecutableAvailable(command: string | undefined): boolean {
-  const executable = leadingCommandToken(command?.trim() ?? "");
-  if (!executable) return false;
-  if (path.isAbsolute(executable)) return isExecutableFile(executable);
-  if (executable.includes("/") || executable.includes("\\")) {
-    return isExecutableFile(resolveUserPath(executable));
-  }
-  return hasBinaryOnPath(executable);
-}
-
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   switch (id) {
     case "elizaos": {
       const configured = readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND");
       return configured
-        ? isCommandExecutableAvailable(configured)
+        ? isAcpCommandAvailable(configured)
         : hasBinaryOnPath("eliza-code-acp");
     }
     case "pi-agent": {
       const configured = readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
       return configured
-        ? isCommandExecutableAvailable(configured)
+        ? isAcpCommandAvailable(configured)
         : hasBinaryOnPath("pi-agent");
     }
     case "claude":
@@ -682,7 +668,7 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
     case "codex": {
       const configured = readConfigEnvKey("ELIZA_CODEX_ACP_COMMAND");
       return configured
-        ? isCommandExecutableAvailable(configured)
+        ? isAcpCommandAvailable(configured)
         : hasBinaryOnPath("codex");
     }
     case "opencode":
@@ -784,12 +770,7 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const nativeExplicit =
-        (id === "elizaos" || id === "pi-agent") && explicitDefault === id;
-      const installed =
-        preflight?.installed === true ||
-        hasFrameworkBinary(id) ||
-        nativeExplicit;
+      const installed = preflight?.installed === true || hasFrameworkBinary(id);
       const subscriptionReady =
         id === "claude"
           ? claudeSubscriptionReady

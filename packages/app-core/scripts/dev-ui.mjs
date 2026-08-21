@@ -34,6 +34,7 @@ import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
+import { resolveDevOwnedCodeAgentCommand } from "./lib/dev-owned-code-agent.mjs";
 import {
   createApiHealthWatchdog,
   createParentExitGuard,
@@ -1219,6 +1220,13 @@ if (uiOnly) {
     : cwd;
 
   const childEnv = createApiChildEnv(process.env);
+  const ownedCodeAgentCommand = resolveDevOwnedCodeAgentCommand({
+    cwd: apiSpawnCwd,
+    configuredCommand: childEnv.ELIZA_ELIZAOS_ACP_COMMAND,
+  });
+  if (ownedCodeAgentCommand) {
+    childEnv.ELIZA_ELIZAOS_ACP_COMMAND = ownedCodeAgentCommand;
+  }
   // V8 bytecode cache when the API runtime resolves to Node. Node 22.8+
   // honors it; older Node versions and Bun ignore the var (safe no-op).
   // Pinned under the state dir (not os.tmpdir()) so an OS temp reap doesn't
