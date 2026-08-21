@@ -1,5 +1,10 @@
 /** Builds, parses, and normalizes `agent:{agentId}:{rest}` session identifiers. */
 
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.js";
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -185,8 +190,7 @@ export function normalizeAgentId(value: string | undefined | null): string {
 	if (!rawTrimmed) {
 		return DEFAULT_AGENT_ID;
 	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
+	const trimmed = truncateWellFormed(toWellFormedUnicode(rawTrimmed), 1024);
 	// Keep it path-safe + shell-friendly.
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
@@ -223,8 +227,7 @@ export function normalizeAccountId(value: string | undefined | null): string {
 	if (!rawTrimmed) {
 		return DEFAULT_ACCOUNT_ID;
 	}
-	const trimmed =
-		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
+	const trimmed = truncateWellFormed(toWellFormedUnicode(rawTrimmed), 1024);
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
 	}
