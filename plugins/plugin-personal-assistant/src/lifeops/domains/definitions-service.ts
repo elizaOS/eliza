@@ -4,6 +4,8 @@
  * later fires), including reminder-plan normalization and definition-performance
  * scoring.
  */
+
+import { ElizaError } from "@elizaos/core";
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
@@ -707,10 +709,23 @@ export class DefinitionsDomain {
         definitionScope,
       );
       if (current?.state === "completed") return current;
-      fail(
-        409,
-        `occurrence cannot be completed from state ${current?.state ?? "missing"}`,
-      );
+      if (!current) {
+        // The scoped re-read found nothing: the definition moved to another
+        // owner between the authorized read and the write. Surface the same
+        // typed conflict updateOccurrence raises for a stale scoped mutation.
+        throw new ElizaError(
+          "[DefinitionsDomain] occurrence completion matched no row for this definition scope",
+          {
+            code: "LIFEOPS_OCCURRENCE_CONFLICT",
+            context: {
+              occurrenceId: occurrence.id,
+              definitionId: occurrence.definitionId,
+              agentId: occurrence.agentId,
+            },
+          },
+        );
+      }
+      fail(409, `occurrence cannot be completed from state ${current.state}`);
     }
     await this.ctx.recordAudit(
       "occurrence_completed",
