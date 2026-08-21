@@ -43,6 +43,13 @@ const RAW_INPUT_OCCURRENCES = new Map<
     },
   ],
   [
+    "cloud-panel/sections/AgentSection.tsx",
+    {
+      count: 2,
+      reason: "inline rename and create-name fields sit beside action buttons",
+    },
+  ],
+  [
     "SubscriptionStatus.tsx",
     {
       count: 2,

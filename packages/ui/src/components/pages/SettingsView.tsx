@@ -18,6 +18,7 @@ import {
 } from "react";
 import { useAgentElement } from "../../agent-surface";
 import { isManagedCloudRuntime } from "../../cloud/managed-cloud-runtime";
+import { getBootConfig } from "../../config/boot-config-store";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ContentLayout } from "../../layouts/content-layout";
 import { cn } from "../../lib/utils";
@@ -26,6 +27,7 @@ import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { useAppSelector, useAppSelectorShallow } from "../../state";
 import { useEnabledViewKinds } from "../../state/useViewKinds";
 import { PermissionPrimingModal } from "../permissions/PermissionPrimingModal";
+import { CloudSettingsPanel } from "../settings/cloud-panel/CloudSettingsPanel";
 import { DesktopSettingsNavigation } from "../settings/DesktopSettingsNavigation";
 import { SettingsHubList } from "../settings/SettingsHubList";
 import {
@@ -236,6 +238,41 @@ export function SettingsView({
   navigatePayload?: unknown;
   navigateSequence?: number;
 } = {}) {
+  // Gate: cloud-only desktop builds render the consolidated CloudSettingsPanel
+  // instead of the legacy registry-driven view. This check lives in a thin
+  // wrapper so each branch has its own hook tree — an early return inside the
+  // legacy body would trigger React error #300 (hooks-count mismatch) when
+  // the boot config or runtime target settles after first render.
+  const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
+  const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
+  const managedCloudRuntime =
+    isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
+
+  if (managedCloudRuntime && !inModal) {
+    return <CloudSettingsPanel />;
+  }
+  return (
+    <LegacySettingsView
+      inModal={inModal}
+      initialSection={initialSection}
+      navigatePayload={navigatePayload}
+      navigateSequence={navigateSequence}
+    />
+  );
+}
+
+function LegacySettingsView({
+  inModal,
+  initialSection,
+  navigatePayload,
+  navigateSequence = 0,
+}: {
+  inModal?: boolean;
+  onClose?: () => void;
+  initialSection?: string;
+  navigatePayload?: unknown;
+  navigateSequence?: number;
+} = {}) {
   const { t, loadPlugins, walletEnabled } = useAppSelectorShallow((s) => ({
     t: s.t,
     loadPlugins: s.loadPlugins,
@@ -243,7 +280,9 @@ export function SettingsView({
   }));
   const plugins = useAppSelector((s) => s.plugins);
   const runtimeTarget = useAppSelector((s) => s.startupCoordinator.target);
-  const managedCloudRuntime = isManagedCloudRuntime(runtimeTarget);
+  const cloudOnlyBranding = getBootConfig().branding.cloudOnly === true;
+  const managedCloudRuntime =
+    isManagedCloudRuntime(runtimeTarget) || cloudOnlyBranding;
   const enabledKinds = useEnabledViewKinds();
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   useSyncExternalStore(
