@@ -55,6 +55,14 @@ const UNIQUE_ROUTES = ROUTES.filter((r) => {
 // (workers=1), but a single render hiccup must not abort the rest of the sweep.
 test.describe("android route coverage (real backend)", () => {
   test.beforeAll(async ({ page }) => {
+    // The combined hosted lane starts with a genuinely fresh onboarding test,
+    // so the worker fixture intentionally cannot seed developer mode before
+    // boot. Enable it here and reload before probing developer-only routes such
+    // as Orchestrator; otherwise pathname retention can hide a gated fallback.
+    await page.evaluate(() => {
+      localStorage.setItem("eliza:developerMode", "1");
+    });
+    await page.reload({ waitUntil: "domcontentloaded", timeout: 60_000 });
     await waitForShellReady(page);
   });
 

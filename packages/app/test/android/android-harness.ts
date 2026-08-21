@@ -71,6 +71,7 @@ export const SEED_STORAGE: Record<string, string> = {
   "eliza:first-run-complete": "1",
   "eliza:ui-shell-mode": "native",
   "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote" : "local",
+  "eliza:developerMode": "1",
   "elizaos:active-server": activeServerSeed(),
 };
 
