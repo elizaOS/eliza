@@ -4820,6 +4820,53 @@ describe("view management actions", () => {
 		}
 	});
 
+	it("honors the documented explicit workdir for a registered app edit", async () => {
+		const repo = createRepoFixture();
+		try {
+			const explicitWorkdir = path.join(repo.repoRoot, "custom-app-source");
+			mkdirSync(explicitWorkdir, { recursive: true });
+			const { runtime, codingHandler } = createRuntime();
+			const appClient = {
+				listInstalledApps: vi.fn(async () => [
+					{
+						name: "proof-app",
+						displayName: "Proof App",
+						pluginName: "@local/unresolvable-package-name",
+						version: "1.0.0",
+						installedAt: "2026-08-21T00:00:00.000Z",
+					},
+				]),
+			};
+
+			const result = await runCreate({
+				runtime: runtime as never,
+				client: appClient as never,
+				message: message(
+					"Update the proof app",
+					"explicit-workdir-room",
+				) as never,
+				options: {
+					action: "create",
+					editTarget: "proof-app",
+					intent: "Update the proof marker.",
+					workdir: explicitWorkdir,
+				},
+				callback: vi.fn(),
+				repoRoot: repo.repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values).toMatchObject({
+				mode: "create",
+				subMode: "edit",
+				workdir: explicitWorkdir,
+			});
+			expect(codingHandler).toHaveBeenCalledTimes(1);
+		} finally {
+			repo.cleanup();
+		}
+	});
+
 	it("returns create choice blocks as verified user-facing payloads", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();

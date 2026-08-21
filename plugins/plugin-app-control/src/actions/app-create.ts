@@ -749,9 +749,15 @@ async function deleteIntentTask(
 async function locateInstalledAppWorkdir(
 	repoRoot: string,
 	app: InstalledAppInfo,
+	explicitWorkdir?: string,
 ): Promise<string | null> {
 	const basename = app.pluginName.replace(/^@[^/]+\//, "").trim();
 	const candidates = [
+		...(explicitWorkdir && path.isAbsolute(explicitWorkdir)
+			? [explicitWorkdir]
+			: []),
+		path.join(resolveAppsLandingRoot(), `app-${app.name}`),
+		path.join(resolveAppsLandingRoot(), app.name),
 		path.join(resolveAppsLandingRoot(), basename),
 		path.join(resolveAppsLandingRoot(), basename.replace(/^app-/, "")),
 		path.join(repoRoot, APPS_RELATIVE_PATH, basename),
@@ -903,6 +909,7 @@ async function editExistingApp({
 	repoRoot,
 	originRoomId,
 	originSource,
+	explicitWorkdir,
 	callback,
 }: {
 	runtime: IAgentRuntime;
@@ -911,6 +918,7 @@ async function editExistingApp({
 	repoRoot: string;
 	originRoomId: string;
 	originSource?: string;
+	explicitWorkdir?: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	// Same preflight as the create path: surface missing orchestrator/CLI as
@@ -922,7 +930,11 @@ async function editExistingApp({
 		return { success: false, text };
 	}
 
-	const workdir = await locateInstalledAppWorkdir(repoRoot, app);
+	const workdir = await locateInstalledAppWorkdir(
+		repoRoot,
+		app,
+		explicitWorkdir,
+	);
 	if (!workdir) {
 		const text = `Could not locate the source directory for ${app.displayName} (${app.name}). Try passing { workdir: "/abs/path" } explicitly.`;
 		await callback?.({ text });
@@ -1042,6 +1054,7 @@ export async function runCreate({
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readOptionalRefOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");
+	const explicitWorkdir = readStringOption(options, "workdir") ?? undefined;
 
 	const appClient = client ?? createAppControlClient();
 	const existing = await findExistingIntentTask(runtime, roomId);
@@ -1108,6 +1121,7 @@ export async function runCreate({
 			repoRoot,
 			originRoomId: roomId,
 			originSource,
+			explicitWorkdir,
 			callback,
 		});
 	}
@@ -1157,6 +1171,7 @@ export async function runCreate({
 			repoRoot,
 			originRoomId: roomId,
 			originSource,
+			explicitWorkdir,
 			callback,
 		});
 	}
