@@ -25,6 +25,10 @@ export interface MapsCardPlace {
 export interface MapsPlaceCard {
   kind: "place";
   place: MapsCardPlace;
+  /** Adapter-owned legal attribution for this result, or `null` when the
+   * registered provider carries none. Never fabricated here — sourced from
+   * `MapsProviderDescription.attribution` on the `...Result` service calls. */
+  attribution: string | null;
 }
 
 export interface MapsPlacesCard {
@@ -32,6 +36,7 @@ export interface MapsPlacesCard {
   query: string;
   places: MapsCardPlace[];
   nextCursor: string | null;
+  attribution: string | null;
 }
 
 export interface MapsRouteCard {
@@ -42,6 +47,7 @@ export interface MapsRouteCard {
   distanceMeters: number;
   durationSeconds: number;
   warnings: string[];
+  attribution: string | null;
 }
 
 export interface MapsHandoffCard {
@@ -96,7 +102,10 @@ export function toCardPlace(place: PlaceRef): MapsCardPlace {
   };
 }
 
-export function routeCard(route: RoutePlan): MapsRouteCard {
+export function routeCard(
+  route: RoutePlan,
+  attribution: string | null,
+): MapsRouteCard {
   return {
     kind: "route",
     origin: toCardPlace(route.origin),
@@ -105,6 +114,7 @@ export function routeCard(route: RoutePlan): MapsRouteCard {
     distanceMeters: route.distanceMeters,
     durationSeconds: route.durationSeconds,
     warnings: [...route.warnings],
+    attribution,
   };
 }
 

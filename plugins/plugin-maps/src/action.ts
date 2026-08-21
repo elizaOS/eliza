@@ -340,7 +340,10 @@ async function execute(
       case "place": {
         const placeId = opaqueText(params.placeId);
         if (placeId) {
-          const place = await service.getPlace(placeId, text(params.provider));
+          const { place, provider } = await service.getPlaceResult(
+            placeId,
+            text(params.provider),
+          );
           if (!place) {
             return result(
               action,
@@ -368,7 +371,11 @@ async function execute(
                 place.formattedAddress
                   ? `${place.name} — ${place.formattedAddress}`
                   : place.name,
-                { kind: "place", place: toCardPlace(place) },
+                {
+                  kind: "place",
+                  place: toCardPlace(place),
+                  attribution: provider.attribution,
+                },
               ),
               verifiedUserFacing: true,
               data: { actionName: "MAPS", action, status: "found", place },
@@ -427,15 +434,16 @@ async function execute(
                 "Coordinates are outside the valid latitude/longitude range.",
               )
             : undefined;
-        const page = await service.searchPlaces(
-          {
-            query,
-            near,
-            cursor: opaqueText(params.cursor),
-            limit: number(params.limit),
-          },
-          text(params.provider),
-        );
+        const { page, provider: searchProvider } =
+          await service.searchPlacesResult(
+            {
+              query,
+              near,
+              cursor: opaqueText(params.cursor),
+              limit: number(params.limit),
+            },
+            text(params.provider),
+          );
         const empty = page.places.length === 0;
         return result(
           action,
@@ -455,6 +463,7 @@ async function execute(
                       .slice(0, MAPS_CARD_MAX_PLACES)
                       .map(toCardPlace),
                     nextCursor: page.nextCursor,
+                    attribution: searchProvider.attribution,
                   },
                 ),
             verifiedUserFacing: true,
@@ -526,18 +535,19 @@ async function execute(
             callback,
           );
         }
-        const route = await service.planRoute(
-          {
-            origin,
-            destination,
-            travelMode: validated(
-              travelModeSchema,
-              text(params.travelMode) ?? "drive",
-              "Travel mode must be drive, walk, bicycle, or transit.",
-            ),
-          },
-          text(params.provider),
-        );
+        const { route, provider: routeProvider } =
+          await service.planRouteResult(
+            {
+              origin,
+              destination,
+              travelMode: validated(
+                travelModeSchema,
+                text(params.travelMode) ?? "drive",
+                "Travel mode must be drive, walk, bicycle, or transit.",
+              ),
+            },
+            text(params.provider),
+          );
         const minutes = Math.round(route.durationSeconds / 60);
         return result(
           action,
@@ -546,7 +556,7 @@ async function execute(
             text: `${route.distanceMeters} m, about ${minutes} min by ${route.travelMode}.`,
             userFacingText: appendMapsCard(
               `${route.origin.name} to ${route.destination.name}: about ${minutes} min by ${route.travelMode}.`,
-              routeCard(route),
+              routeCard(route, routeProvider.attribution),
             ),
             verifiedUserFacing: true,
             data: { actionName: "MAPS", action, route },

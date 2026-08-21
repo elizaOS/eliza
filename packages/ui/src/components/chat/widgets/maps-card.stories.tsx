@@ -30,7 +30,14 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Place: Story = {
-  args: { card: { kind: "place", place }, ctx: noopCtx },
+  args: {
+    card: {
+      kind: "place",
+      place,
+      attribution: "Places by Contract Maps",
+    },
+    ctx: noopCtx,
+  },
 };
 
 export const Places: Story = {
@@ -44,6 +51,7 @@ export const Places: Story = {
         { ...place, providerPlaceId: "p-3", name: "Sightglass" },
       ],
       nextCursor: "next-page",
+      attribution: "Places by Contract Maps",
     },
     ctx: noopCtx,
   },
@@ -59,6 +67,7 @@ export const RouteSummary: Story = {
       distanceMeters: 12_345,
       durationSeconds: 4_020,
       warnings: ["Toll road", "Partial closure on Broadway"],
+      attribution: "Routes by Contract Maps",
     },
     ctx: noopCtx,
   },

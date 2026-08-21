@@ -84,6 +84,20 @@ function placeMapUris(place: MapsCardPlace): {
   };
 }
 
+/** Adapter-owned legal attribution text; renders nothing when the provider
+ * carries none rather than fabricating a placeholder. */
+function AttributionLine({ attribution }: { attribution: string | null }) {
+  if (!attribution) return null;
+  return (
+    <div
+      className="pt-0.5 text-3xs text-muted"
+      data-testid="maps-attribution"
+    >
+      {attribution}
+    </div>
+  );
+}
+
 function PlaceRow({
   place,
   ctx,
@@ -345,6 +359,7 @@ export function MapsCardWidget({
       return (
         <div className="my-2" data-testid="maps-place">
           <PlaceRow place={card.place} ctx={ctx} />
+          <AttributionLine attribution={card.attribution} />
         </div>
       );
     case "places":
@@ -368,6 +383,7 @@ export function MapsCardWidget({
               More results are available — ask for the next page.
             </div>
           ) : null}
+          <AttributionLine attribution={card.attribution} />
         </div>
       );
     case "route": {
@@ -401,6 +417,7 @@ export function MapsCardWidget({
           >
             Open destination in Maps
           </a>
+          <AttributionLine attribution={card.attribution} />
         </div>
       );
     }

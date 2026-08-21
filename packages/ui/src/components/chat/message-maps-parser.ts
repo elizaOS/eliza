@@ -20,12 +20,13 @@ export interface MapsCardPlace {
 export type MapsTravelMode = "drive" | "walk" | "bicycle" | "transit";
 
 export type MapsCardSpec =
-  | { kind: "place"; place: MapsCardPlace }
+  | { kind: "place"; place: MapsCardPlace; attribution: string | null }
   | {
       kind: "places";
       query: string;
       places: MapsCardPlace[];
       nextCursor: string | null;
+      attribution: string | null;
     }
   | {
       kind: "route";
@@ -35,6 +36,7 @@ export type MapsCardSpec =
       distanceMeters: number;
       durationSeconds: number;
       warnings: string[];
+      attribution: string | null;
     }
   | {
       kind: "handoff";
@@ -141,7 +143,8 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
   switch (record.kind) {
     case "place": {
       const place = parsePlace(record.place);
-      return place ? { kind: "place", place } : null;
+      const attribution = boundedString(record.attribution, 500);
+      return place ? { kind: "place", place, attribution } : null;
     }
     case "places": {
       const query = boundedString(record.query, 500);
@@ -155,7 +158,8 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
       }
       if (places.length === 0) return null;
       const nextCursor = boundedString(record.nextCursor, 2_048);
-      return { kind: "places", query, places, nextCursor };
+      const attribution = boundedString(record.attribution, 500);
+      return { kind: "places", query, places, nextCursor, attribution };
     }
     case "route": {
       const origin = parsePlace(record.origin);
@@ -183,6 +187,7 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
             )
             .slice(0, 8)
         : [];
+      const attribution = boundedString(record.attribution, 500);
       return {
         kind: "route",
         origin,
@@ -191,6 +196,7 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
         distanceMeters,
         durationSeconds,
         warnings,
+        attribution,
       };
     }
     case "handoff": {

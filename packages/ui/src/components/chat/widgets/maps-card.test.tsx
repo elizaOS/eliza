@@ -125,12 +125,18 @@ describe("message-maps-parser", () => {
 describe("MapsCardWidget", () => {
   it("renders a place card with a directions action", () => {
     const context = ctx();
-    render(<MapsCardWidget card={{ kind: "place", place }} ctx={context} />);
+    render(
+      <MapsCardWidget
+        card={{ kind: "place", place, attribution: null }}
+        ctx={context}
+      />,
+    );
     expect(screen.getByText("Blue Bottle")).toBeTruthy();
     fireEvent.click(screen.getByTestId("maps-directions-p-1"));
     expect(context.sendAction).toHaveBeenCalledWith(
       "Get directions to Blue Bottle (contract-maps place p-1)",
     );
+    expect(screen.queryByTestId("maps-attribution")).toBeNull();
   });
 
   it("renders a paginated places list", () => {
@@ -141,12 +147,16 @@ describe("MapsCardWidget", () => {
           query: "coffee",
           places: [place, { ...place, providerPlaceId: "p-2", name: "Ritual" }],
           nextCursor: "next",
+          attribution: "Places by Contract Maps",
         }}
         ctx={ctx()}
       />,
     );
     expect(screen.getByText("Ritual")).toBeTruthy();
     expect(screen.getByTestId("maps-more")).toBeTruthy();
+    expect(screen.getByTestId("maps-attribution").textContent).toBe(
+      "Places by Contract Maps",
+    );
   });
 
   it("renders a route summary with formatted distance, duration, warnings", () => {
@@ -160,6 +170,7 @@ describe("MapsCardWidget", () => {
           distanceMeters: 12_345,
           durationSeconds: 4_020,
           warnings: ["Toll road"],
+          attribution: null,
         }}
         ctx={ctx()}
       />,

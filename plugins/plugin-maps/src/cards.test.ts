@@ -53,6 +53,7 @@ const manyPlaces = Array.from({ length: 12 }, (_, index) => ({
 const adapter: MapsProviderAdapter = {
   id: "contract-maps",
   connectionId: "conn_1234567890abcdef",
+  attribution: "Map data (c) Contract Maps",
   async searchPlaces(request) {
     if (request.query === "empty") return { places: [], nextCursor: null };
     if (request.query === "bulk")
@@ -141,10 +142,11 @@ describe("MAPS chat cards", () => {
         providerPlaceId: "home-1",
         formattedAddress: "1 Home Way",
       },
+      attribution: "Map data (c) Contract Maps",
     });
   });
 
-  it("emits a bounded places card with the pagination cursor", async () => {
+  it("emits a bounded places card with the pagination cursor and adapter attribution", async () => {
     const page = await invoke({ action: "place", query: "bulk" });
     expect(page.success).toBe(true);
     const card = extractCard(page.userFacingText);
@@ -152,6 +154,7 @@ describe("MAPS chat cards", () => {
     expect(card.query).toBe("bulk");
     expect(card.places).toHaveLength(MAPS_CARD_MAX_PLACES);
     expect(card.nextCursor).toBe("bulk-next");
+    expect(card.attribution).toBe("Map data (c) Contract Maps");
   });
 
   it("keeps designed-empty search results card-free", async () => {
@@ -177,6 +180,7 @@ describe("MAPS chat cards", () => {
       warnings: ["Toll road"],
       origin: { name: "Home" },
       destination: { name: "Office" },
+      attribution: "Map data (c) Contract Maps",
     });
     expect(route.userFacingText).not.toContain("abc123");
   });
