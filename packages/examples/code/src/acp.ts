@@ -33,13 +33,21 @@
 import { consumeWarmClaimToken } from "./acp-bootstrap.js";
 import { randomUUID } from "node:crypto";
 import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ActionEventPayload,
+  type AgentRuntime,
+  EventType,
+} from "@elizaos/core";
 import {
   SandboxService,
   SessionCwdService,
 } from "@elizaos/plugin-coding-tools";
 import { captureHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { publishParsedReply } from "./acp-response.js";
+import {
+  type AcpToolCallUpdate,
+  toolCallUpdateFromAction,
+} from "./acp-tool-ledger.js";
 import { AcpWarmSessionClaim } from "./acp-session-claim.js";
 import { initializeAgent } from "./lib/agent.js";
 import { getAgentClient } from "./lib/agent-client.js";
@@ -65,6 +73,13 @@ function log(message: string, extra?: unknown): void {
 // Lazily-initialized shared runtime (one per ACP server process).
 let runtimePromise: Promise<AgentRuntime> | null = null;
 let identity: SessionIdentity | null = null;
+// The prompt whose turn is running. Every ACP session shares one inner room,
+// so completed actions are attributed by the prompt window, not the room —
+// the orchestrator drives one prompt per process at a time (busy-claim).
+let activePrompt: {
+  sessionId: string;
+  publish: (update: AcpToolCallUpdate) => Promise<unknown>;
+} | null = null;
 const warmSessionClaim = new AcpWarmSessionClaim(consumeWarmClaimToken());
 
 async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
@@ -132,6 +147,31 @@ async function ensureRuntime(cwd?: string): Promise<AgentRuntime> {
       };
       rt.setSetting?.("ELIZA_ADMIN_ENTITY_ID", identity.userId);
       getAgentClient().setRuntime(runtime);
+      // Tool ledger: mirror each completed FILE/SHELL call onto the ACP stream
+      // so the orchestrator's write ledger and verifier see what actually ran
+      // (see acp-tool-ledger.ts).
+      runtime.registerEvent(
+        EventType.ACTION_COMPLETED,
+        async (payload: ActionEventPayload) => {
+          const target = activePrompt;
+          if (!target) return;
+          const update = toolCallUpdateFromAction(
+            target.sessionId,
+            payload.content,
+            randomUUID(),
+          );
+          if (!update) return;
+          try {
+            await target.publish(update);
+          } catch (error) {
+            // error-policy:J7 ledger mirroring is diagnostics for the parent;
+            // a transport hiccup must not fail the tool call it describes.
+            log("tool_call update failed", {
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        },
+      );
       log("runtime initialized", { owner: identity.userId });
       return runtime;
     })();
@@ -334,12 +374,21 @@ const _connection = new AgentSideConnection(
       // is how a Discord user ends up seeing ```json {"response":...} instead
       // of the answer. The parsed user-facing reply only exists once the turn
       // completes, so emit exactly one authoritative chunk with it.
-      const response = await getAgentClient().sendMessage({
-        room,
-        text,
-        identity,
-        source: "acp",
-      });
+      activePrompt = {
+        sessionId: params.sessionId,
+        publish: (update) => conn.sessionUpdate(update),
+      };
+      let response: string;
+      try {
+        response = await getAgentClient().sendMessage({
+          room,
+          text,
+          identity,
+          source: "acp",
+        });
+      } finally {
+        activePrompt = null;
+      }
       await publishParsedReply(params.sessionId, response, (update) =>
         conn.sessionUpdate(update),
       );
