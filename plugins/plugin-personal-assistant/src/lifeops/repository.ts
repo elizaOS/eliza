@@ -3780,15 +3780,19 @@ export class LifeOpsRepository {
    * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
    * the owner's local day in TypeScript where timezone math belongs.
    *
-   * `subjectType` is pushed into SQL rather than filtered by the caller so the
-   * LIMIT can never evict matching rows: under multi-room load, agent-subject
-   * completions interleaved with the owner's would otherwise consume the
-   * window and silently drop owner wins from the evening brief.
+   * Ownership filters are pushed into SQL rather than applied after the LIMIT.
+   * Callers serving one owner must pass the exact definition scope: filtering
+   * only on `subjectType` would mix every owner under the same agent and expose
+   * another owner's completed-item titles through recap surfaces.
    */
   async listCompletedOccurrenceViewsSince(
     agentId: string,
     sinceIso: string,
-    options: { subjectType?: "owner" | "agent"; limit?: number } = {},
+    options: {
+      subjectType?: "owner" | "agent";
+      definitionScopes?: readonly LifeOpsDefinitionScope[];
+      limit?: number;
+    } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
     const subjectFilter = options.subjectType
@@ -3813,7 +3817,7 @@ export class LifeOpsRepository {
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
           AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
-          ${subjectFilter}
+          ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
         ORDER BY occurrence.updated_at DESC
         LIMIT ${sqlInteger(limit)}`,
     );

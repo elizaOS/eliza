@@ -227,15 +227,20 @@ export class DefinitionsDomain {
       reminderPlanDraft,
     );
     if (definition.reminderPlanId !== null) {
-      await this.ctx.repository.updateDefinition(definition);
+      await this.ctx.repository.updateDefinition(definition, {
+        expectedUpdatedAt: definition.updatedAt,
+      });
     }
     await this.deps.syncGoalLink(definition);
     await this.deps.refreshDefinitionOccurrences(definition);
+    const persistedUpdatedAt = definition.updatedAt;
     definition =
       (await this.deps.syncNativeAppleReminderForDefinition({
         definition,
       })) ?? definition;
-    await this.ctx.repository.updateDefinition(definition);
+    await this.ctx.repository.updateDefinition(definition, {
+      expectedUpdatedAt: persistedUpdatedAt,
+    });
     await this.ctx.recordAudit(
       "definition_created",
       "definition",
@@ -379,17 +384,29 @@ export class DefinitionsDomain {
       nextDefinition,
       reminderPlanDraft,
     );
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    const updatedScope = {
+      domain: nextDefinition.domain,
+      subjectType: nextDefinition.subjectType,
+      subjectId: nextDefinition.subjectId,
+    };
+    await this.ctx.repository.updateDefinition(nextDefinition, {
+      expectedUpdatedAt: nextDefinition.updatedAt,
+      expectedScope: updatedScope,
+    });
     await this.deps.syncGoalLink(nextDefinition);
     if (nextDefinition.status === "active") {
       await this.deps.refreshDefinitionOccurrences(nextDefinition);
     }
+    const persistedUpdatedAt = nextDefinition.updatedAt;
     nextDefinition =
       (await this.deps.syncNativeAppleReminderForDefinition({
         definition: nextDefinition,
         previousDefinition: current.definition,
       })) ?? nextDefinition;
-    await this.ctx.repository.updateDefinition(nextDefinition);
+    await this.ctx.repository.updateDefinition(nextDefinition, {
+      expectedUpdatedAt: persistedUpdatedAt,
+      expectedScope: updatedScope,
+    });
     await this.ctx.recordAudit(
       "definition_updated",
       "definition",

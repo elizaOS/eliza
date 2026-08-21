@@ -307,6 +307,49 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     );
   });
 
+  it("keeps another owner's completed items out of owner recaps", async () => {
+    const now = new Date("2027-01-05T10:00:00.000Z");
+    const ownDefinition = makeDefinition(agentId, ownerA, "owner A completed");
+    const foreignDefinition = makeDefinition(
+      agentId,
+      OWNER_B,
+      "owner B private completion",
+    );
+    await repository.createDefinition(ownDefinition);
+    await repository.createDefinition(foreignDefinition);
+
+    const [ownOccurrence] = await service.refreshDefinitionOccurrences(
+      ownDefinition,
+      now,
+    );
+    const [foreignOccurrence] = await service.refreshDefinitionOccurrences(
+      foreignDefinition,
+      now,
+    );
+    if (!ownOccurrence || !foreignOccurrence) {
+      throw new Error("expected both owner occurrences to materialize");
+    }
+    await repository.updateOccurrence({
+      ...ownOccurrence,
+      state: "completed",
+      updatedAt: now.toISOString(),
+    });
+    await repository.updateOccurrence({
+      ...foreignOccurrence,
+      state: "completed",
+      updatedAt: now.toISOString(),
+    });
+
+    const completed = await service.listOwnerOccurrencesCompletedToday(now);
+    expect(completed.map((item) => item.id)).toContain(ownOccurrence.id);
+    expect(completed.map((item) => item.id)).not.toContain(
+      foreignOccurrence.id,
+    );
+    expect(completed.map((item) => item.title)).not.toContain(
+      foreignDefinition.title,
+    );
+  });
+
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {
     const before = await repository.getDefinition(agentId, defA.id);
     if (!before) throw new Error("definition A missing");

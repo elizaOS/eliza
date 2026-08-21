@@ -244,6 +244,7 @@ import {
   callerDefinitionScopes,
   getCallerDefinition,
   getCallerOccurrence,
+  getCallerOccurrenceView,
   listCallerDefinitions,
 } from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
@@ -3512,8 +3513,9 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
-        const occurrence = await this.ctx.repository.getOccurrenceView(
-          this.ctx.agentId(),
+        const occurrence = await getCallerOccurrenceView(
+          this.ctx.repository,
+          this.ctx,
           reviewAttempt.ownerId,
         );
         if (!occurrence) {
@@ -4629,7 +4631,14 @@ export class RemindersDomain {
         ),
         updatedAt,
       };
-      await this.ctx.repository.updateDefinition(nextDefinition);
+      await this.ctx.repository.updateDefinition(nextDefinition, {
+        expectedUpdatedAt: definition.updatedAt,
+        expectedScope: {
+          domain: definition.domain,
+          subjectType: definition.subjectType,
+          subjectId: definition.subjectId,
+        },
+      });
       await this.ctx.recordAudit(
         "definition_updated",
         "definition",
