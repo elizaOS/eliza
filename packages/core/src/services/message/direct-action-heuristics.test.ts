@@ -1126,6 +1126,7 @@ describe("app lifecycle work inference", () => {
 		"build a small app for tracking colors",
 		"update my Nubs Color Pebble site and open it when it is ready",
 		"change the button on the existing website and let me preview it",
+		"make the big title on my Nubs Color Pebble page say hello and open it",
 	])("routes %j to APP before generic coding delegation", (text) => {
 		expect(
 			inferDirectCurrentRequestCandidateInference(

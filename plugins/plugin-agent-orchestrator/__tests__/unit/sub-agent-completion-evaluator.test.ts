@@ -8,7 +8,7 @@ import type {
   ResponseHandlerEvaluatorContext,
 } from "@elizaos/core";
 import { SIMPLE_CONTEXT_ID } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { subAgentCompletionResponseEvaluator } from "../../src/evaluators/sub-agent-completion.js";
 
 function makeContext(overrides: {
@@ -143,6 +143,47 @@ describe("subAgentCompletionResponseEvaluator", () => {
         ],
       },
     );
+  });
+
+  it("rewrites a verbose coding report into clean non-technical completion prose", async () => {
+    const technicalReport = `[sub-agent: page edit (elizaos) — task_complete]
+Updated \`src/index.tsx\` and \`tests/app.test.tsx\`.
+
+### Evidence Checklist
+- typecheck passes
+- lint passes
+- tests pass
+
+--- a/src/index.tsx
++++ b/src/index.tsx
+Changed the heading and button copy as requested.
+
+Test Files 2 passed (2)
+Remaining risks: None.`;
+    const context = makeContext({
+      text: technicalReport,
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: technicalReport,
+          requiresTool: false,
+        },
+      },
+    });
+    const useModel = vi.fn(
+      async () =>
+        "Done — I updated the page title and button, and everything is working.",
+    );
+    context.runtime = { useModel } as never;
+
+    const result = await subAgentCompletionResponseEvaluator.evaluate(context);
+
+    expect(useModel).toHaveBeenCalledOnce();
+    expect(result.reply).toBe(
+      "Done — I updated the page title and button, and everything is working.",
+    );
+    expect(result.reply).not.toContain("src/index.tsx");
+    expect(result.reply).not.toContain("Evidence Checklist");
   });
 
   it("prefers grounded completion prose over a model-invented URL reply", async () => {

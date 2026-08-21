@@ -1526,6 +1526,9 @@ function looksLikeAppLifecycleWorkRequest(text: string): boolean {
 	const appArtifact =
 		/\b(?:app|application|website|web site|site|webpage|web page|landing page|dashboard|widget)\b/iu.test(
 			normalized,
+		) ||
+		/\b(?:my|our|existing|installed)\b(?:(?![.!?]).){0,80}\bpage\b/iu.test(
+			normalized,
 		);
 	if (!appArtifact) return false;
 	const createsApp =
