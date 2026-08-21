@@ -144,7 +144,7 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
     const stub = {
       fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -156,6 +156,10 @@ describe("onboardingFetch — bounded hops fail closed and keep caller signals",
     await onboardingFetch(stub, "https://onboarding.internal/resolve", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    // The wrapper owns the deadline, so the signal handed to the transport is
+    // a composition of the caller's signal and that deadline — never the caller's
+    // object verbatim. Asserting identity here would pin the very behavior that
+    // lets a never-firing caller signal defeat the bound.
+    expect(seen).not.toBe(controller.signal);
   });
 });
