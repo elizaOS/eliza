@@ -1381,12 +1381,46 @@ function parseWorkflowRun(row: Record<string, unknown>): LifeOpsWorkflowRun {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     workflowId: toText(row.workflow_id),
+    idempotencyKey:
+      typeof row.idempotency_key === "string" ? row.idempotency_key : null,
     startedAt: toText(row.started_at),
     finishedAt: row.finished_at ? toText(row.finished_at) : null,
     status: toText(row.status) as LifeOpsWorkflowRun["status"],
     result: parseJsonRecord(row.result_json),
     auditRef: row.audit_ref ? toText(row.audit_ref) : null,
   };
+}
+
+const TERMINAL_WORKFLOW_RUN_STATUSES = new Set<LifeOpsWorkflowRun["status"]>([
+  "success",
+  "failed",
+  "failed_uncompensated",
+  "cancelled",
+]);
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
+  "elizaos:life_workflow_runs:idempotency-backfill:v1";
+const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
+
+function assertValidWorkflowRunIdempotencyKey(
+  idempotencyKey: string | null | undefined,
+): void {
+  if (idempotencyKey === null || idempotencyKey === undefined) return;
+  if (
+    idempotencyKey.length === 0 ||
+    idempotencyKey.length > 256 ||
+    idempotencyKey.includes("\0")
+  ) {
+    throw new ElizaError(
+      "[LifeOpsRepository] Workflow run idempotency key must contain 1 to 256 non-NUL characters",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_KEY_INVALID",
+        context: {
+          length: idempotencyKey.length,
+          containsNul: idempotencyKey.includes("\0"),
+        },
+      },
+    );
+  }
 }
 
 function parseReminderAttempt(
@@ -2640,6 +2674,211 @@ export class LifeOpsRepository {
     await LifeOpsRepository.ensureBrowserBridgeCompanionTokenColumns(runtime);
     await LifeOpsRepository.ensureConnectorAccountColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+  }
+
+  /**
+   * Repair pre-column workflow-run tables and lift one deterministic legacy
+   * `result.idempotencyKey` row per scope into the indexed column. The
+   * application-side parser tolerates historical TEXT values PostgreSQL
+   * cannot cast to jsonb (notably JSON strings containing `\\u0000`). When
+   * older code wrote duplicate keys, the most recent `(started_at, id)` row
+   * becomes canonical and the other rows deliberately remain unkeyed.
+   *
+   * A durable comment on the completed unique index is the backfill marker.
+   * The schema migrator can create an uncommented index before this repair,
+   * so index existence alone is not evidence that the one-time scan ran.
+   *
+   * This is a protocol cutover, not a rolling compatibility shim: deployments
+   * must quiesce pre-column workflow writers before starting this migration.
+   * Those writers reserve replay keys only after their side effects, so no
+   * backfill can make mixed-version execution safely idempotent. A table lock
+   * closes the narrower race with writes already draining during the scan.
+   */
+  static async ensureWorkflowRunIdempotencyKey(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    if (!(await tableExists(runtime, "app_lifeops.life_workflow_runs"))) {
+      return;
+    }
+    const markerQuery = `SELECT description.description
+         FROM pg_catalog.pg_description AS description
+         JOIN pg_catalog.pg_class AS index_class
+           ON index_class.oid = description.objoid
+         JOIN pg_catalog.pg_namespace AS namespace
+           ON namespace.oid = index_class.relnamespace
+        WHERE namespace.nspname = 'app_lifeops'
+          AND index_class.relname = 'idx_life_workflow_runs_idempotency'
+          AND description.classoid = 'pg_catalog.pg_class'::regclass
+          AND description.objsubid = 0
+          AND description.description = ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}
+        LIMIT 1`;
+    const markerRows = await executeRawSql(runtime, markerQuery);
+    if (markerRows.length > 0) {
+      return;
+    }
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE app_lifeops.life_workflow_runs ADD COLUMN IF NOT EXISTS idempotency_key TEXT",
+    );
+    await withTransaction(runtime, async (tx) => {
+      // Serialize concurrent bootstraps and stop legacy INSERTs from landing
+      // behind the keyset cursor while the one-time scan is in flight.
+      await executeRawSqlTx(
+        tx,
+        "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
+      );
+      if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        return;
+      }
+      await executeRawSqlTx(
+        tx,
+        `CREATE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency_backfill_scan
+           ON app_lifeops.life_workflow_runs (started_at DESC, id DESC)
+        WHERE idempotency_key IS NULL`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `WITH ranked_existing AS (
+           SELECT id,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY agent_id, workflow_id, idempotency_key
+                    ORDER BY started_at DESC, id DESC
+                  ) AS row_number
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NOT NULL
+         )
+         UPDATE app_lifeops.life_workflow_runs AS run
+            SET idempotency_key = NULL
+           FROM ranked_existing
+          WHERE run.id = ranked_existing.id
+            AND ranked_existing.row_number > 1`,
+      );
+
+      let cursor: { startedAt: string; id: string } | null = null;
+      while (true) {
+        const cursorClause = cursor
+          ? `AND (started_at, id) < (${sqlQuote(cursor.startedAt)}, ${sqlQuote(cursor.id)})`
+          : "";
+        const rows = await executeRawSqlTx(
+          tx,
+          `SELECT id, agent_id, workflow_id, started_at, result_json
+             FROM app_lifeops.life_workflow_runs
+            WHERE idempotency_key IS NULL
+              ${cursorClause}
+            ORDER BY started_at DESC, id DESC
+            LIMIT ${WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE}`,
+        );
+        if (rows.length === 0) {
+          break;
+        }
+
+        const candidates: Array<{
+          id: string;
+          agentId: string;
+          workflowId: string;
+          idempotencyKey: string;
+          ordinal: number;
+        }> = [];
+        for (const [ordinal, row] of rows.entries()) {
+          let result: Record<string, unknown>;
+          try {
+            result = parseJsonRecord(row.result_json);
+          } catch {
+            // error-policy:J6 one corrupt historical result must not block the
+            // compatibility migration for every other workflow run.
+            continue;
+          }
+          const legacyKey = result.idempotencyKey;
+          if (
+            typeof legacyKey !== "string" ||
+            legacyKey.length === 0 ||
+            legacyKey.length > 256 ||
+            legacyKey.includes("\0")
+          ) {
+            continue;
+          }
+          candidates.push({
+            id: toText(row.id),
+            agentId: toText(row.agent_id),
+            workflowId: toText(row.workflow_id),
+            idempotencyKey: legacyKey,
+            ordinal,
+          });
+        }
+
+        if (candidates.length > 0) {
+          const values = candidates
+            .map(
+              (candidate) =>
+                `(${sqlQuote(candidate.id)}, ${sqlQuote(candidate.agentId)}, ${sqlQuote(candidate.workflowId)}, ${sqlQuote(candidate.idempotencyKey)}, ${sqlInteger(candidate.ordinal)})`,
+            )
+            .join(",\n");
+          await executeRawSqlTx(
+            tx,
+            `WITH candidates (
+               id, agent_id, workflow_id, idempotency_key, ordinal
+             ) AS (
+               VALUES ${values}
+             ), ranked AS (
+               SELECT candidate.*,
+                      ROW_NUMBER() OVER (
+                        PARTITION BY candidate.agent_id,
+                                     candidate.workflow_id,
+                                     candidate.idempotency_key
+                        ORDER BY candidate.ordinal ASC
+                      ) AS row_number
+                 FROM candidates AS candidate
+             ), available AS (
+               SELECT candidate.*
+                 FROM ranked AS candidate
+                WHERE candidate.row_number = 1
+                  AND NOT EXISTS (
+                    SELECT 1
+                      FROM app_lifeops.life_workflow_runs AS claimed
+                     WHERE claimed.agent_id = candidate.agent_id
+                       AND claimed.workflow_id = candidate.workflow_id
+                       AND claimed.idempotency_key = candidate.idempotency_key
+                  )
+             )
+             UPDATE app_lifeops.life_workflow_runs AS run
+                SET idempotency_key = candidate.idempotency_key
+               FROM available AS candidate
+              WHERE run.id = candidate.id
+                AND run.agent_id = candidate.agent_id
+                AND run.workflow_id = candidate.workflow_id
+                AND run.idempotency_key IS NULL`,
+          );
+        }
+
+        const last = rows.at(-1);
+        if (!last) {
+          break;
+        }
+        cursor = {
+          startedAt: toText(last.started_at),
+          id: toText(last.id),
+        };
+      }
+
+      await executeRawSqlTx(
+        tx,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency
+         ON app_lifeops.life_workflow_runs (
+           agent_id, workflow_id, idempotency_key
+         )
+        WHERE idempotency_key IS NOT NULL`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+           IS ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        "DROP INDEX IF EXISTS app_lifeops.idx_life_workflow_runs_idempotency_backfill_scan",
+      );
+    });
   }
 
   static async ensureSchedulingNegotiationColumns(
@@ -6537,15 +6776,17 @@ export class LifeOpsRepository {
   }
 
   async createWorkflowRun(run: LifeOpsWorkflowRun): Promise<void> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_workflow_runs (
-        id, agent_id, workflow_id, started_at, finished_at, status,
-        result_json, audit_ref
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
       ) VALUES (
         ${sqlQuote(run.id)},
         ${sqlQuote(run.agentId)},
         ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
         ${sqlQuote(run.startedAt)},
         ${sqlText(run.finishedAt)},
         ${sqlQuote(run.status)},
@@ -6553,6 +6794,109 @@ export class LifeOpsRepository {
         ${sqlText(run.auditRef)}
       )`,
     );
+  }
+
+  /**
+   * Atomically reserve a workflow run before any workflow step can perform a
+   * side effect. The unique `(agent, workflow, idempotency key)` index elects
+   * one cross-process winner; PostgreSQL NULL semantics keep unkeyed runs
+   * independent.
+   */
+  async claimWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (run.status !== "running" || run.finishedAt !== null) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run claims must be unfinished running records",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_CLAIM_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `INSERT INTO app_lifeops.life_workflow_runs (
+        id, agent_id, workflow_id, idempotency_key, started_at, finished_at,
+        status, result_json, audit_ref
+      ) VALUES (
+        ${sqlQuote(run.id)},
+        ${sqlQuote(run.agentId)},
+        ${sqlQuote(run.workflowId)},
+        ${sqlText(run.idempotencyKey)},
+        ${sqlQuote(run.startedAt)},
+        NULL,
+        'running',
+        ${sqlJson(run.result)},
+        ${sqlText(run.auditRef)}
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING id`,
+    );
+    return rows.length === 1;
+  }
+
+  async getWorkflowRunByIdempotencyKey(
+    agentId: string,
+    workflowId: string,
+    idempotencyKey: string,
+  ): Promise<LifeOpsWorkflowRun | null> {
+    assertValidWorkflowRunIdempotencyKey(idempotencyKey);
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM app_lifeops.life_workflow_runs
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND workflow_id = ${sqlQuote(workflowId)}
+          AND idempotency_key = ${sqlQuote(idempotencyKey)}
+        LIMIT 1`,
+    );
+    const row = rows[0];
+    return row ? parseWorkflowRun(row) : null;
+  }
+
+  /**
+   * Finalize only the still-running reservation represented by `run`. A stale
+   * writer, a losing claimant, a mismatched key, or a repeated completion sees
+   * zero affected rows and returns false.
+   */
+  async completeWorkflowRun(run: LifeOpsWorkflowRun): Promise<boolean> {
+    assertValidWorkflowRunIdempotencyKey(run.idempotencyKey);
+    if (
+      !TERMINAL_WORKFLOW_RUN_STATUSES.has(run.status) ||
+      run.finishedAt === null
+    ) {
+      throw new ElizaError(
+        "[LifeOpsRepository] Workflow run completion requires a terminal status and finish time",
+        {
+          code: "LIFEOPS_WORKFLOW_RUN_COMPLETION_INVALID",
+          context: {
+            runId: run.id,
+            status: run.status,
+            finishedAt: run.finishedAt,
+          },
+        },
+      );
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_workflow_runs
+          SET finished_at = ${sqlQuote(run.finishedAt)},
+              status = ${sqlQuote(run.status)},
+              result_json = ${sqlJson(run.result)},
+              audit_ref = ${sqlText(run.auditRef)}
+        WHERE id = ${sqlQuote(run.id)}
+          AND agent_id = ${sqlQuote(run.agentId)}
+          AND workflow_id = ${sqlQuote(run.workflowId)}
+          AND idempotency_key IS NOT DISTINCT FROM ${sqlText(run.idempotencyKey)}
+          AND status = 'running'
+          AND finished_at IS NULL
+      RETURNING id`,
+    );
+    return rows.length === 1;
   }
 
   async listWorkflowRuns(
