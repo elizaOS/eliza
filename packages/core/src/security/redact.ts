@@ -1,3 +1,7 @@
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -257,12 +261,23 @@ function resolvePatterns(value?: string[]): readonly RegExp[] {
 	return value.map(parsePattern).filter((re): re is RegExp => Boolean(re));
 }
 
-function maskToken(token: string): string {
+function maskToken(tokenInput: string): string {
+	const token = toWellFormedUnicode(tokenInput);
 	if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
 		return "***";
 	}
-	const start = token.slice(0, DEFAULT_REDACT_KEEP_START);
-	const end = token.slice(-DEFAULT_REDACT_KEEP_END);
+	const start = truncateWellFormed(token, DEFAULT_REDACT_KEEP_START);
+	let tailStart = token.length - DEFAULT_REDACT_KEEP_END;
+	if (
+		tailStart > 0 &&
+		token.charCodeAt(tailStart - 1) >= 0xd800 &&
+		token.charCodeAt(tailStart - 1) <= 0xdbff &&
+		token.charCodeAt(tailStart) >= 0xdc00 &&
+		token.charCodeAt(tailStart) <= 0xdfff
+	) {
+		tailStart += 1;
+	}
+	const end = token.slice(tailStart);
 	return `${start}…${end}`;
 }
 
@@ -306,7 +321,8 @@ function redactMatch(match: string, groups: string[]): string {
 	// the scheme/prefix, so splice the known tail position directly.
 	const tailIndex = match.length - token.length;
 	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
-		return `${match.slice(0, tailIndex)}${masked}`;
+		const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex);
+		return `${head}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a
