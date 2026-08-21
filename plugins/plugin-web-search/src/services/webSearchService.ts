@@ -220,17 +220,26 @@ function decodeHtmlEntities(text: string): string {
         return String.fromCodePoint(codePoint);
     };
 
-    return text
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&apos;/g, "'")
-        .replace(/&#(\d+);/g, (entity, digits: string) => decodeNumericEntity(entity, digits, 10))
-        .replace(/&#x([0-9a-fA-F]+);/g, (entity, digits: string) =>
-            decodeNumericEntity(entity, digits, 16)
-        );
+    const namedEntities: Record<string, string> = {
+        amp: "&",
+        apos: "'",
+        gt: ">",
+        lt: "<",
+        quot: '"',
+        "#39": "'",
+    };
+    return text.replace(
+        /&(amp|lt|gt|quot|apos|#39|#\d+|#x[0-9a-fA-F]+);/g,
+        (entity, name: string) => {
+            if (name.startsWith("#x")) {
+                return decodeNumericEntity(entity, name.slice(2), 16);
+            }
+            if (name.startsWith("#") && name !== "#39") {
+                return decodeNumericEntity(entity, name.slice(1), 10);
+            }
+            return namedEntities[name] ?? entity;
+        }
+    );
 }
 
 type PageBodyCanceller = {

@@ -18,10 +18,12 @@ process.env.MOCK_REDIS = "1";
 import { pushSchema } from "drizzle-kit/api";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { type AgentBillingStatus, agentSandboxes } from "../../schemas/agent-sandboxes";
+import { agentBillingRunItems, agentBillingRuns } from "../../schemas/compute-billing";
 import { organizations } from "../../schemas/organizations";
 import { userCharacters } from "../../schemas/user-characters";
 import { users } from "../../schemas/users";
 import { agentBillingRepository } from "../agent-billing";
+import { agentBillingRunRepository } from "../agent-billing-runs";
 
 const PGLITE_TIMEOUT = 60_000;
 const BILLING_NOW = new Date("2026-08-20T12:00:00.000Z");
@@ -78,6 +80,18 @@ async function seedSandbox(
   return sandbox.id;
 }
 
+async function claimBillingRun(): Promise<{ runId: string; leaseToken: string }> {
+  const claim = await agentBillingRunRepository.startOrLoad({
+    invocationKey: `manual:billing-safety:${crypto.randomUUID()}`,
+    triggerKind: "manual",
+    schedule: null,
+    scheduledAt: null,
+    leaseDurationMs: 5 * 60_000,
+  });
+  if (!claim.leaseToken) throw new Error("Expected billing run lease");
+  return { runId: claim.run.id, leaseToken: claim.leaseToken };
+}
+
 async function row(id: string) {
   const [sandbox] = await dbWrite.select().from(agentSandboxes).where(eq(agentSandboxes.id, id));
   return sandbox;
@@ -89,7 +103,14 @@ beforeAll(async () => {
     return;
   }
   try {
-    const schema = { organizations, users, userCharacters, agentSandboxes };
+    const schema = {
+      organizations,
+      users,
+      userCharacters,
+      agentSandboxes,
+      agentBillingRuns,
+      agentBillingRunItems,
+    };
     const { apply } = await pushSchema(schema as never, dbWrite as never);
     await apply();
   } catch (error) {
@@ -100,6 +121,8 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   expect(pgliteReady).toBe(true);
+  await dbWrite.delete(agentBillingRunItems);
+  await dbWrite.delete(agentBillingRuns);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
@@ -172,6 +195,7 @@ describe("AgentBillingRepository billable-state authority", () => {
       .where(eq(agentSandboxes.id, sandboxId));
 
     const outcome = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun()),
       sandboxId,
       organizationId,
       userId,
@@ -194,6 +218,7 @@ describe("AgentBillingRepository billable-state authority", () => {
     });
 
     const outcome = await agentBillingRepository.recordHourlyBilling({
+      ...(await claimBillingRun()),
       sandboxId,
       organizationId,
       userId,
