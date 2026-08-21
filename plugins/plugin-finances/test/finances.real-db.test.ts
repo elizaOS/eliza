@@ -13,12 +13,13 @@
  * methods needing Eliza Cloud) are deliberately out of scope.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, HandlerOptions, Memory } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { runPaymentsHandler } from "../src/actions/finances.ts";
 import { FinancesRepository } from "../src/db/finances-repository.ts";
 import { FinancesService } from "../src/finances-service.ts";
 import financesPlugin from "../src/plugin.ts";
@@ -298,5 +299,255 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
     expect(electric).toBeTruthy();
     expect(electric?.amountUsd).toBe(87.42);
     expect(electric?.dueDate).toBe("2026-07-01");
+  });
+
+  describe("normalized capability subactions via runPaymentsHandler (real DB)", () => {
+    function actionMessage(): Memory {
+      return {
+        entityId: runtime.agentId,
+        roomId: runtime.agentId,
+        content: { text: "" },
+      };
+    }
+    const run = (parameters: Record<string, unknown>) =>
+      runPaymentsHandler(runtime, actionMessage(), undefined, {
+        parameters,
+      } as HandlerOptions);
+
+    it("add_source and remove_source return internal-write receipts", async () => {
+      const added = await run({
+        subaction: "add_source",
+        kind: "manual",
+        label: "Receipted account",
+      });
+      expect(added.success).toBe(true);
+      const addedData = added.data as {
+        source: { id: string };
+        receipt: {
+          receiptId: string;
+          capability: string;
+          operation: string;
+          entityId: string;
+          outcome: string;
+        };
+      };
+      expect(addedData.receipt.capability).toBe("finance.add_source");
+      expect(addedData.receipt.operation).toBe("create");
+      expect(addedData.receipt.entityId).toBe(addedData.source.id);
+      expect(addedData.receipt.outcome).toBe("applied");
+
+      const removed = await run({
+        subaction: "remove_source",
+        sourceId: addedData.source.id,
+      });
+      expect(removed.success).toBe(true);
+      const removedData = removed.data as {
+        receipt: { capability: string; operation: string; entityId: string };
+      };
+      expect(removedData.receipt.capability).toBe("finance.remove_source");
+      expect(removedData.receipt.operation).toBe("delete");
+      expect(removedData.receipt.entityId).toBe(addedData.source.id);
+      expect(removedData.receipt.entityId).not.toBe(
+        addedData.receipt.receiptId,
+      );
+    });
+
+    it("import_csv issues a receipt only when rows were actually inserted", async () => {
+      const source = await service.addPaymentSource({
+        kind: "csv",
+        label: "CSV receipt account",
+      });
+      const csvText =
+        "Date,Amount,Merchant\n2026-08-01,-12.50,Coffee Shop\n2026-08-02,-30.00,Grocer\n";
+      const first = await run({
+        subaction: "import_csv",
+        sourceId: source.id,
+        csvText,
+      });
+      expect(first.success).toBe(true);
+      const firstData = first.data as {
+        result: { inserted: number; skipped: number };
+        receipt?: { capability: string; counts: { inserted: number } | null };
+      };
+      expect(firstData.result.inserted).toBe(2);
+      expect(firstData.receipt?.capability).toBe("finance.import_csv");
+      expect(firstData.receipt?.counts?.inserted).toBe(2);
+
+      // An all-duplicate replay succeeds but mutates nothing: no receipt.
+      const replay = await run({
+        subaction: "import_csv",
+        sourceId: source.id,
+        csvText,
+      });
+      expect(replay.success).toBe(true);
+      const replayData = replay.data as {
+        result: { inserted: number; skipped: number };
+        receipt?: unknown;
+      };
+      expect(replayData.result.inserted).toBe(0);
+      expect(replayData.result.skipped).toBe(2);
+      expect(replayData.receipt).toBeUndefined();
+    });
+
+    it("balances derives per-source figures with freshness metadata", async () => {
+      const source = await service.addPaymentSource({
+        kind: "manual",
+        label: "Balances account",
+      });
+      const postedAt = new Date(Date.now() - 86_400_000).toISOString();
+      await repository.insertPaymentTransaction({
+        id: "txn-balance-credit",
+        agentId: runtime.agentId,
+        sourceId: source.id,
+        externalId: null,
+        postedAt,
+        amountUsd: 250,
+        direction: "credit",
+        merchantRaw: "ACME Payroll",
+        merchantNormalized: "acme payroll",
+        description: null,
+        category: null,
+        currency: "USD",
+        metadata: {},
+        createdAt: new Date().toISOString(),
+      });
+      await repository.insertPaymentTransaction({
+        id: "txn-balance-pending",
+        agentId: runtime.agentId,
+        sourceId: source.id,
+        externalId: null,
+        postedAt,
+        amountUsd: 40,
+        direction: "debit",
+        merchantRaw: "Pending Store",
+        merchantNormalized: "pending store",
+        description: null,
+        category: null,
+        currency: "USD",
+        metadata: { pending: true },
+        createdAt: new Date().toISOString(),
+      });
+
+      const result = await run({ subaction: "balances", sourceId: source.id });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        balances: {
+          sourceId: string;
+          netFlowUsd: number;
+          pendingCount: number;
+          latestActivityAt: string | null;
+        }[];
+        meta: {
+          capability: string;
+          provider: string;
+          freshness: { latestDataAt: string | null; transactionCount: number };
+          calculation: { method: string };
+        };
+      };
+      expect(data.balances).toHaveLength(1);
+      expect(data.balances[0].netFlowUsd).toBe(250);
+      expect(data.balances[0].pendingCount).toBe(1);
+      expect(data.meta.capability).toBe("finance.balances");
+      expect(data.meta.provider).toBe("plugin-finances");
+      expect(data.meta.calculation.method).toBe("derived_from_transactions");
+      expect(data.meta.freshness.latestDataAt).toBe(postedAt);
+    });
+
+    it("budget_status rejects a missing budget and evaluates a supplied one", async () => {
+      const missing = await run({ subaction: "budget_status" });
+      expect(missing.success).toBe(false);
+      expect((missing.data as { error: string }).error).toBe(
+        "MISSING_BUDGET_AMOUNT",
+      );
+
+      const source = await service.addPaymentSource({
+        kind: "manual",
+        label: "Budget account",
+      });
+      await repository.insertPaymentTransaction({
+        id: "txn-budget-1",
+        agentId: runtime.agentId,
+        sourceId: source.id,
+        externalId: null,
+        postedAt: new Date(Date.now() - 3_600_000).toISOString(),
+        amountUsd: 120,
+        direction: "debit",
+        merchantRaw: "Grocer",
+        merchantNormalized: "grocer",
+        description: null,
+        category: null,
+        currency: "USD",
+        metadata: {},
+        createdAt: new Date().toISOString(),
+      });
+      const result = await run({
+        subaction: "budget_status",
+        sourceId: source.id,
+        budgetUsd: 100,
+        windowDays: 30,
+      });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        budget: { spentUsd: number; status: string; remainingUsd: number };
+        meta: { calculation: { method: string; windowDays: number | null } };
+      };
+      expect(data.budget.spentUsd).toBe(120);
+      expect(data.budget.status).toBe("over_budget");
+      expect(data.budget.remainingUsd).toBe(-20);
+      expect(data.meta.calculation.method).toBe("user_supplied_input");
+      expect(data.meta.calculation.windowDays).toBe(30);
+    });
+
+    it("anomalies flags a real duplicate charge and subscriptions handles empty data", async () => {
+      const source = await service.addPaymentSource({
+        kind: "manual",
+        label: "Anomaly account",
+      });
+      const base = Date.now() - 2 * 86_400_000;
+      for (const [index, offsetHours] of [0, 12].entries()) {
+        await repository.insertPaymentTransaction({
+          id: `txn-dupe-${index}`,
+          agentId: runtime.agentId,
+          sourceId: source.id,
+          externalId: null,
+          postedAt: new Date(base + offsetHours * 3_600_000).toISOString(),
+          amountUsd: 14.99,
+          direction: "debit",
+          merchantRaw: index === 0 ? "NETFLlX.COM*8873" : "Netflix",
+          merchantNormalized: "netflix",
+          description: null,
+          category: null,
+          currency: "USD",
+          metadata: {},
+          createdAt: new Date().toISOString(),
+        });
+      }
+      const result = await run({ subaction: "anomalies", sourceId: source.id });
+      expect(result.success).toBe(true);
+      const data = result.data as {
+        anomalies: { kind: string; transactionIds: string[] }[];
+        meta: { capability: string };
+      };
+      expect(data.anomalies).toHaveLength(1);
+      expect(data.anomalies[0].kind).toBe("possible_duplicate_charge");
+      expect(data.anomalies[0].transactionIds.sort()).toEqual([
+        "txn-dupe-0",
+        "txn-dupe-1",
+      ]);
+      expect(data.meta.capability).toBe("finance.anomalies");
+
+      const subs = await run({
+        subaction: "subscriptions",
+        sourceId: source.id,
+      });
+      expect(subs.success).toBe(true);
+      const subsData = subs.data as {
+        subscriptions: unknown[];
+        meta: { capability: string };
+      };
+      // Two occurrences 12 hours apart are not a regular-cadence subscription.
+      expect(subsData.subscriptions).toEqual([]);
+      expect(subsData.meta.capability).toBe("finance.subscriptions");
+    });
   });
 });
