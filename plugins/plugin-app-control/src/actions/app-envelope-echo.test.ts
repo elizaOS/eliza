@@ -80,6 +80,41 @@ const runtime = {
 } as unknown as IAgentRuntime;
 
 describe("APP — hardened-envelope messages never leak the envelope", () => {
+	it("launch success owns the final user-facing turn instead of allowing a contradictory model rewrite", async () => {
+		const client = clientWith();
+		vi.mocked(client.launchApp).mockResolvedValue({
+			pluginInstalled: true,
+			needsRestart: false,
+			displayName: "Chess",
+			launchType: "local",
+			launchUrl: "/api/apps/local/chess/",
+			viewer: {
+				url: "/api/apps/local/chess/",
+				sandbox: "allow-scripts allow-same-origin",
+			},
+			session: null,
+			run: null,
+		});
+		const callback = vi.fn();
+		const result = await ownerAction(client).handler(
+			runtime,
+			envelopedMessage("launch chess"),
+			undefined,
+			{ parameters: { action: "launch", app: "chess" } },
+			callback,
+		);
+
+		expect(result).toEqual(
+			expect.objectContaining({
+				success: true,
+				userFacingText: "Launched Chess.",
+				verifiedUserFacing: true,
+				turnComplete: true,
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith({ text: "Launched Chess." });
+	});
+
 	it("launch: extracts the target from the payload and clamps the not-found echo", async () => {
 		const client = clientWith();
 		const callback = vi.fn();

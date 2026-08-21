@@ -74,6 +74,9 @@ export async function runLaunch({
 		return {
 			success: false,
 			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
 			data: { target: targetReferenceLogView(target) },
 		};
 	}
@@ -91,7 +94,14 @@ export async function runLaunch({
 			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
 		);
 		await callback?.({ text });
-		return { success: false, text, error: message };
+		return {
+			success: false,
+			text,
+			userFacingText: text,
+			verifiedUserFacing: true,
+			turnComplete: true,
+			error: message,
+		};
 	}
 	const runId = result.run?.runId ?? null;
 	const text = runId
@@ -106,6 +116,9 @@ export async function runLaunch({
 	return {
 		success: true,
 		text,
+		userFacingText: text,
+		verifiedUserFacing: true,
+		turnComplete: true,
 		values: {
 			mode: "launch",
 			appName,
