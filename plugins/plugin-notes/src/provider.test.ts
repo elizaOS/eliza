@@ -20,6 +20,7 @@ import {
   type Provider,
   type State,
   stringToUuid,
+  toWellFormedUnicode,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -29,6 +30,13 @@ import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import type { StickyNote } from "./types.js";
 import { parseNoteContent } from "./validation.js";
+
+/**
+ * `String.prototype.isWellFormed` is ES2024 and the workspace compiles against
+ * the ES2023 lib, so assert well-formedness through the core helper instead.
+ */
+const isWellFormedText = (value: string): boolean =>
+  toWellFormedUnicode(value) === value;
 
 const temporaryDirectories: string[] = [];
 const testRuntimes: AgentRuntime[] = [];
@@ -278,7 +286,7 @@ describe("SAVED_NOTES provider", () => {
     const noteLine = text.split("\n").find((line) => line.startsWith("- x"));
     expect(noteLine).toBeDefined();
     if (noteLine) {
-      expect(noteLine.isWellFormed()).toBe(true);
+      expect(isWellFormedText(noteLine)).toBe(true);
       expect(noteLine.length).toBeLessThanOrEqual(402);
     }
     expect(noteLine).not.toContain("🦊");
@@ -297,7 +305,7 @@ describe("SAVED_NOTES provider", () => {
       },
     ]);
     expect(text).toContain("a\ufffdbc");
-    expect(text.isWellFormed()).toBe(true);
+    expect(isWellFormedText(text)).toBe(true);
   });
 
   it("preserves an emoji that fits entirely under the 400 cap", () => {
@@ -313,11 +321,11 @@ describe("SAVED_NOTES provider", () => {
       },
     ]);
     expect(text).toContain("🦊");
-    expect(text.isWellFormed()).toBe(true);
+    expect(isWellFormedText(text)).toBe(true);
     const noteLine = text.split("\n").find((line) => line.startsWith("- t"));
     expect(noteLine).toBeDefined();
     if (noteLine) {
-      expect(noteLine.isWellFormed()).toBe(true);
+      expect(isWellFormedText(noteLine)).toBe(true);
     }
   });
 });

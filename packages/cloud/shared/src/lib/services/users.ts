@@ -15,6 +15,7 @@ import { retryOnTransientDbError } from "../../db/retry-transient";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { apiKeysService } from "./api-keys";
 import {
   type PersonalDeliveryProjectionIdentity,
   runWithBoundPersonalDeliveryProjectionFences,
@@ -581,15 +582,11 @@ export class UsersService {
       }
 
       if (user.organization_id) {
-        await apiKeysRepository.deactivateByUserAndOrganization(id, user.organization_id);
+        await apiKeysService.deactivateByUserAndOrganization(id, user.organization_id);
       }
 
       await this.invalidateCache(user);
       await this.invalidateCache(updated);
-      // The revoked keys may still be warm in the inference-auth cache under the
-      // old org's identity — evict them so they stop fast-pathing immediately.
-      await this.invalidateInferenceAuthForUser(id);
-
       return updated;
     });
   }

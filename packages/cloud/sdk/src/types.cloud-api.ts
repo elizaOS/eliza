@@ -75,6 +75,80 @@ export interface CreditBalanceResponse {
   balance: number;
 }
 
+export type SubscriptionCatalogVersion = "v1";
+export type SubscriptionPlanKey = "plus_monthly" | "pro_monthly";
+export type SubscriptionBillingInterval = "month";
+export type SubscriptionCurrency = "usd";
+export type SubscriptionFundingClass = "allowance_eligible" | "cash_only";
+
+export interface SubscriptionRateEnvelopeDto {
+  completionsRpm: number;
+  embeddingsRpm: number;
+  standardRpm: number;
+  strictRpm: number;
+}
+
+export interface SubscriptionResourceCeilingsDto {
+  cloudCharacters: number;
+  agentSandboxes: number;
+  containers: number;
+  storageGiB: number;
+  apps: number;
+}
+
+export interface SubscriptionAllowanceDto {
+  amountUsd: string;
+  fundingClass: "allowance_eligible";
+  rollover: false;
+  expiresAt: "billing_period_end";
+}
+
+export interface SubscriptionPlanDto {
+  key: SubscriptionPlanKey;
+  name: "Plus" | "Pro";
+  catalogVersion: SubscriptionCatalogVersion;
+  active: true;
+  interval: SubscriptionBillingInterval;
+  intervalCount: 1;
+  currency: SubscriptionCurrency;
+  amountCents: number;
+  allowance: SubscriptionAllowanceDto;
+  fundingClasses: readonly SubscriptionFundingClass[];
+  rateLimits: SubscriptionRateEnvelopeDto;
+  resourceCeilings: null;
+}
+
+export interface SubscriptionPlansDto {
+  catalogVersion: SubscriptionCatalogVersion;
+  plans: readonly SubscriptionPlanDto[];
+}
+
+export type SubscriptionPlansResponse =
+  ApiSuccessEnvelope<SubscriptionPlansDto>;
+
+export type SubscriptionPublicState =
+  | "active"
+  | "grace"
+  | "past_due"
+  | "unpaid"
+  | "canceled";
+
+export interface SubscriptionDto {
+  catalogVersion: SubscriptionCatalogVersion;
+  planKey: SubscriptionPlanKey;
+  state: SubscriptionPublicState;
+  currentPeriodStartsAt: IsoDateString;
+  currentPeriodEndsAt: IsoDateString;
+  cancelAtPeriodEnd: boolean;
+  pendingPlanKey: SubscriptionPlanKey | null;
+  allowanceGrantedUsd: string;
+  allowanceRemainingUsd: string;
+  allowanceExpiresAt: IsoDateString;
+  rateLimits: SubscriptionRateEnvelopeDto;
+  /** Unavailable (`null`) until the resource-enforcement policy is ratified. */
+  resourceCeilings: SubscriptionResourceCeilingsDto | null;
+}
+
 export type AgentSandboxStatus =
   | "pending"
   | "provisioning"

@@ -116,6 +116,7 @@ export const KNOWN_ROUTE_SHARD_KEYS: readonly string[] = [
   "v1/solana",
   "v1/steward",
   "v1/stripe",
+  "v1/subscriptions",
   "v1/telegram",
   "v1/topup",
   "v1/track",

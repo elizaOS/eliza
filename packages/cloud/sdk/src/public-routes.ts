@@ -2241,6 +2241,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/steward/tenants/credentials/route.ts",
   },
+  "GET /api/v1/subscriptions/plans": {
+    method: "GET",
+    path: "/api/v1/subscriptions/plans",
+    methodName: "getApiV1SubscriptionsPlans",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/subscriptions/plans/route.ts",
+  },
   "GET /api/v1/telegram/chats": {
     method: "GET",
     path: "/api/v1/telegram/chats",
@@ -5253,6 +5262,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
   "GET /api/v1/solana/transactions/{address}": { address: string | number };
   "GET /api/v1/steward/tenants/credentials": Record<never, never>;
+  "GET /api/v1/subscriptions/plans": Record<never, never>;
   "GET /api/v1/telegram/chats": Record<never, never>;
   "GET /api/v1/telegram/scan-chats": Record<never, never>;
   "GET /api/v1/telegram/status": Record<never, never>;
@@ -5905,6 +5915,7 @@ export interface PublicRouteHeaders {
   "GET /api/v1/solana/token-accounts/{address}": never;
   "GET /api/v1/solana/transactions/{address}": never;
   "GET /api/v1/steward/tenants/credentials": never;
+  "GET /api/v1/subscriptions/plans": never;
   "GET /api/v1/telegram/chats": never;
   "GET /api/v1/telegram/scan-chats": never;
   "GET /api/v1/telegram/status": never;
@@ -8590,6 +8601,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/steward/tenants/credentials", TResponse>(
       "GET /api/v1/steward/tenants/credentials",
+      options,
+    );
+  }
+
+  getApiV1SubscriptionsPlans<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/subscriptions/plans", TResponse>(
+      "GET /api/v1/subscriptions/plans",
       options,
     );
   }
@@ -12858,6 +12878,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/steward/tenants/credentials"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/steward/tenants/credentials", options);
+  }
+
+  getApiV1SubscriptionsPlansRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/subscriptions/plans"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/subscriptions/plans", options);
   }
 
   getApiV1TelegramChatsRaw(

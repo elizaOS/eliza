@@ -1734,6 +1734,21 @@
         "react-dom": "^19.0.0",
       },
     },
+    "plugins/plugin-dropbox": {
+      "name": "@elizaos/plugin-dropbox",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/node": "^25.6.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
+      },
+    },
     "plugins/plugin-elizacloud": {
       "name": "@elizaos/plugin-elizacloud",
       "version": "2.0.3-beta.7",
@@ -2728,6 +2743,21 @@
       },
       "peerDependencies": {
         "react-dom": "^19.0.0",
+      },
+    },
+    "plugins/plugin-notion": {
+      "name": "@elizaos/plugin-notion",
+      "version": "2.0.3-beta.7",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-google-workspace": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "2.5.8",
+        "@types/node": "^25.6.0",
+        "@typescript/native": "npm:typescript@^7.0.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.10",
       },
     },
     "plugins/plugin-openai": {
@@ -4130,6 +4160,8 @@
 
     "@elizaos/plugin-documents": ["@elizaos/plugin-documents@workspace:plugins/plugin-documents"],
 
+    "@elizaos/plugin-dropbox": ["@elizaos/plugin-dropbox@workspace:plugins/plugin-dropbox"],
+
     "@elizaos/plugin-elizacloud": ["@elizaos/plugin-elizacloud@workspace:plugins/plugin-elizacloud"],
 
     "@elizaos/plugin-embeddings": ["@elizaos/plugin-embeddings@workspace:plugins/plugin-embeddings"],
@@ -4181,6 +4213,8 @@
     "@elizaos/plugin-native-settings": ["@elizaos/plugin-native-settings@workspace:plugins/plugin-native-settings"],
 
     "@elizaos/plugin-notes": ["@elizaos/plugin-notes@workspace:plugins/plugin-notes"],
+
+    "@elizaos/plugin-notion": ["@elizaos/plugin-notion@workspace:plugins/plugin-notion"],
 
     "@elizaos/plugin-openai": ["@elizaos/plugin-openai@workspace:plugins/plugin-openai"],
 
