@@ -9319,6 +9319,41 @@ export async function runV5MessageRuntimeStage1(args: {
 					}
 				}
 
+				if (
+					!callbackDelivered &&
+					result.success === true &&
+					result.modelReplyRequired === true
+				) {
+					return runPlannerLoop({
+						runtime: plannerRuntime,
+						context: plannerContextAfterEarlyReply,
+						config: args.plannerLoopConfig,
+						postToolReplySeed: { toolCall, result },
+						executeToolCall: () => {
+							throw new Error(
+								"Post-tool reply synthesis cannot execute another tool",
+							);
+						},
+						evaluate: ({
+							runtime: plannerRuntimeForEval,
+							context,
+							trajectory,
+						}) =>
+							runEvaluator({
+								runtime: plannerRuntimeForEval,
+								context,
+								trajectory,
+								effects: evaluatorEffects,
+								recorder,
+								trajectoryId,
+							}),
+						evaluatorEffects,
+						recorder,
+						trajectoryId,
+						providerAttributionState: plannerState,
+					});
+				}
+
 				const reportableResultText = result.userFacingText?.trim();
 				const finalMessage =
 					!callbackDelivered &&

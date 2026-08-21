@@ -109,27 +109,39 @@ export async function runLaunch({
 	const runId = result.run?.runId ?? null;
 	const launchUrl = result.launchUrl?.trim() || null;
 	const opened = launchUrl ? await openBrowserView(launchUrl) : false;
-	const text = launchUrl
-		? `[Open ${result.displayName}](${launchUrl})`
-		: `${result.displayName} is running.`;
 
 	logger.info(
 		`[plugin-app-control] APP/launch ${appName} runId=${runId ?? "<none>"}`,
 	);
 
-	await callback?.({ text });
 	return {
 		success: true,
-		text,
-		userFacingText: text,
-		verifiedUserFacing: true,
-		turnComplete: true,
+		text: JSON.stringify({ effect: "app_launch", status: "completed" }),
+		transcriptVisibility: "internal",
+		// The effect is already complete. Give Eliza a bounded receipt and let the
+		// model own the conversational wording instead of posting canned action copy.
+		modelReplyRequired: true,
 		values: {
 			mode: "launch",
 			appName,
 			displayName: result.displayName,
 			runId,
 			openedInBrowser: opened,
+		},
+		promptData: {
+			operation: "launch_app",
+			outcome: "success",
+			appName,
+			displayName: result.displayName,
+			openedInBrowser: opened,
+			...(launchUrl
+				? {
+						link: {
+							label: `Open ${result.displayName}`,
+							href: launchUrl,
+						},
+					}
+				: {}),
 		},
 		data: { launch: result },
 	};

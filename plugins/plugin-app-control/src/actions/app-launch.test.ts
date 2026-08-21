@@ -59,27 +59,47 @@ describe("APP launch Browser handoff", () => {
 		expect(openBrowserView).toHaveBeenCalledWith(
 			"/api/apps/local/nubs-color-pebble/",
 		);
-		expect(result.userFacingText).toBe(
-			"[Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
-		);
-		expect(result.userFacingText).not.toContain("internal-run-id");
+		expect(result.text).toBe('{"effect":"app_launch","status":"completed"}');
+		expect(result.transcriptVisibility).toBe("internal");
+		expect(result.modelReplyRequired).toBe(true);
+		expect(result.userFacingText).toBeUndefined();
+		expect(result.verifiedUserFacing).toBeUndefined();
+		expect(result.turnComplete).toBeUndefined();
+		expect(result.promptData).toEqual({
+			operation: "launch_app",
+			outcome: "success",
+			appName: "nubs-color-pebble",
+			displayName: "Nubs Color Pebble",
+			openedInBrowser: true,
+			link: {
+				label: "Open Nubs Color Pebble",
+				href: "/api/apps/local/nubs-color-pebble/",
+			},
+		});
 		expect(result.values).toMatchObject({
 			openedInBrowser: true,
 			runId: "internal-run-id",
 		});
-		expect(callback).toHaveBeenCalledWith({ text: result.userFacingText });
+		expect(callback).not.toHaveBeenCalled();
 	});
 
-	it("returns a clean fallback link when Browser navigation is unavailable", async () => {
+	it("keeps the app link in the model receipt when Browser navigation is unavailable", async () => {
 		const result = await runLaunch({
 			client: client(),
 			message,
 			openBrowserView: vi.fn(async () => false),
 		});
 
-		expect(result.userFacingText).toBe(
-			"[Open Nubs Color Pebble](/api/apps/local/nubs-color-pebble/)",
-		);
-		expect(result.userFacingText).not.toContain("Run ID");
+		expect(result.modelReplyRequired).toBe(true);
+		expect(result.userFacingText).toBeUndefined();
+		expect(result.promptData).toMatchObject({
+			operation: "launch_app",
+			outcome: "success",
+			openedInBrowser: false,
+			link: {
+				label: "Open Nubs Color Pebble",
+				href: "/api/apps/local/nubs-color-pebble/",
+			},
+		});
 	});
 });
