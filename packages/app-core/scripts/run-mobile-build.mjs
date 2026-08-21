@@ -5762,7 +5762,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
-  ["@elizaos/capacitor-browser-surface", "elizaos-capacitor-browser-surface"],
   ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
@@ -5795,6 +5794,7 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/preferences",
   "@capacitor/share",
   "@capacitor/status-bar",
+  "@elizaos/capacitor-browser-surface",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([

@@ -144,6 +144,7 @@ describe("Android Play manifest policy", () => {
       "@capacitor/preferences",
       "@capacitor/share",
       "@capacitor/status-bar",
+      "@elizaos/capacitor-browser-surface",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
@@ -156,6 +157,9 @@ describe("Android Play manifest policy", () => {
         "llama-cpp-capacitor",
       ]),
     );
+    expect(
+      ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+    ).not.toContain("@elizaos/capacitor-browser-surface");
     expect(ANDROID_CLOUD_STRIPPED_RESOURCE_FILES).toEqual(
       expect.arrayContaining([
         "drawable/eliza_ime_mic_bg.xml",
