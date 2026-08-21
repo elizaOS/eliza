@@ -1071,7 +1071,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           code: "CAPABILITY_REQUEST_FAILED",
           capability: "pty",
           method: "pty.command.run",
-          message: expect.stringMatching(/timeout must be an integer/i),
+          message: expect.stringMatching(/duration must be an integer/i),
         });
         expect(processCalls).toBe(0);
       } finally {

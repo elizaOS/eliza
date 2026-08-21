@@ -1162,7 +1162,7 @@ function timeoutSignal(ms: number | undefined): {
   }
   if (!Number.isSafeInteger(ms) || ms <= 0 || ms > MAX_TIMER_TIMEOUT_MS) {
     throw new RangeError(
-      `Timeout must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}ms.`,
+      `Duration must be an integer between 1 and ${MAX_TIMER_TIMEOUT_MS}ms.`,
     );
   }
   const controller = new AbortController();
