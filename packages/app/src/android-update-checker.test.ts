@@ -180,6 +180,52 @@ describe("AndroidUpdateChecker.check()", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("checks for updates when the last-check timestamp is malformed", async () => {
+    mockDeviceInfo("android");
+    vi.stubEnv("VITE_ANDROID_BUILD_VARIANT", "sideload");
+    mockAppInfo("1.0.10", "10");
+    localStorage.setItem(
+      "elizaos_android_update_last_check",
+      "not-a-timestamp",
+    );
+
+    const manifest = makeManifest(10);
+    const fetchMock = setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => manifest,
+      } as Response),
+    );
+
+    const result = await AndroidUpdateChecker.check("stable");
+
+    expect(result).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("checks for updates when the last-check timestamp is in the future", async () => {
+    mockDeviceInfo("android");
+    vi.stubEnv("VITE_ANDROID_BUILD_VARIANT", "sideload");
+    mockAppInfo("1.0.10", "10");
+    localStorage.setItem(
+      "elizaos_android_update_last_check",
+      String(Date.now() + 60 * 60 * 1000),
+    );
+
+    const manifest = makeManifest(10);
+    const fetchMock = setFetchMock(
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => manifest,
+      } as Response),
+    );
+
+    const result = await AndroidUpdateChecker.check("stable");
+
+    expect(result).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   it("fetches correct stable manifest URL", async () => {
     mockDeviceInfo("android");
     vi.stubEnv("VITE_ANDROID_BUILD_VARIANT", "sideload");
