@@ -66,4 +66,19 @@ describe("message reply action parameter parsing", () => {
 			lookup: {},
 		});
 	});
+
+	it("preserves flexible whitespace in placeholder signature names", () => {
+		const parsed = parseDraftReplyParams({
+			parameters: {
+				messageId: "msg-1",
+				reply: "Actual reply\nRegards,\n[Your\t \n Name]",
+			},
+		} as never);
+
+		expect(parsed).toEqual({
+			messageId: "msg-1",
+			body: "Actual reply",
+			lookup: {},
+		});
+	});
 });

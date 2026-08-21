@@ -238,11 +238,6 @@ export interface DraftReplyParams {
 	lookup: MessageLookupHints;
 }
 
-const PLACEHOLDER_SIGNATURE_NAMES = new Set([
-	"[your name]",
-	"[name]",
-	"[sender]",
-]);
 const PLACEHOLDER_SIGNATURE_CLOSINGS = new Set([
 	"best",
 	"regards",
@@ -250,23 +245,50 @@ const PLACEHOLDER_SIGNATURE_CLOSINGS = new Set([
 	"thanks",
 ]);
 
+function isPlaceholderSignatureName(value: string): boolean {
+	const normalized = value.toLowerCase();
+	if (normalized === "[name]" || normalized === "[sender]") return true;
+	if (!normalized.startsWith("[your") || !normalized.endsWith("name]")) {
+		return false;
+	}
+	let cursor = "[your".length;
+	const whitespaceStart = cursor;
+	while (cursor < normalized.length && /\s/u.test(normalized[cursor]))
+		cursor += 1;
+	return cursor > whitespaceStart && normalized.slice(cursor) === "name]";
+}
+
 function stripPlaceholderSignature(body: string): string {
-	const lines = body.split("\n");
-	let last = lines.length - 1;
-	while (last >= 0 && lines[last].trim() === "") last -= 1;
-	if (
-		!PLACEHOLDER_SIGNATURE_NAMES.has(lines[last]?.trim().toLowerCase() ?? "")
-	) {
+	let end = body.length;
+	while (end > 0 && /\s/u.test(body[end - 1])) end -= 1;
+	if (body[end - 1] !== "]") return body;
+	let open = end - 2;
+	while (open >= 0 && body[open] !== "[") open -= 1;
+	if (open < 0 || !isPlaceholderSignatureName(body.slice(open, end))) {
 		return body;
 	}
-	last -= 1;
-	while (last >= 0 && lines[last].trim() === "") last -= 1;
-	const closing = lines[last]?.trim().replace(/,$/, "").toLowerCase();
-	if (closing && PLACEHOLDER_SIGNATURE_CLOSINGS.has(closing)) last -= 1;
-	return lines
-		.slice(0, last + 1)
-		.join("\n")
-		.trim();
+
+	let removalStart = open;
+	let closingEnd = open;
+	let sawNewline = false;
+	while (closingEnd > 0 && /\s/u.test(body[closingEnd - 1])) {
+		closingEnd -= 1;
+		if (body[closingEnd] === "\n") sawNewline = true;
+	}
+	if (sawNewline) {
+		if (body[closingEnd - 1] === ",") closingEnd -= 1;
+		for (const closing of PLACEHOLDER_SIGNATURE_CLOSINGS) {
+			const closingStart = closingEnd - closing.length;
+			if (
+				closingStart >= 0 &&
+				body.slice(closingStart, closingEnd).toLowerCase() === closing
+			) {
+				removalStart = closingStart;
+				break;
+			}
+		}
+	}
+	return body.slice(0, removalStart).trim();
 }
 
 function asReplyBody(params: Record<string, unknown>): string | undefined {

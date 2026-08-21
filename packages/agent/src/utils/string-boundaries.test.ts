@@ -13,4 +13,12 @@ describe("agent string boundary scanner", () => {
   it("handles a 100k-character suffix in linear time", () => {
     expect(trimEndCharacters(`base${"/".repeat(100_000)}`, "/")).toBe("base");
   });
+
+  it("does not split an unmatched Unicode code point", () => {
+    const allowed = String.fromCodePoint(0x1f600);
+    const sameLowSurrogate = String.fromCodePoint(0x1f200);
+    expect(trimEndCharacters(`base${sameLowSurrogate}`, allowed)).toBe(
+      `base${sameLowSurrogate}`,
+    );
+  });
 });

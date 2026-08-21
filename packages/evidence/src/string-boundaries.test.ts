@@ -14,4 +14,16 @@ describe("evidence string boundary scanner", () => {
     const edge = "-".repeat(100_000);
     expect(trimBoundaryCharacters(`${edge}step${edge}`, "-")).toBe("step");
   });
+
+  it("does not split unmatched Unicode code points", () => {
+    const allowed = String.fromCodePoint(0x1f600);
+    const sameHighSurrogate = String.fromCodePoint(0x1f601);
+    const sameLowSurrogate = String.fromCodePoint(0x1f200);
+    expect(
+      trimBoundaryCharacters(
+        `${sameHighSurrogate}step${sameLowSurrogate}`,
+        allowed,
+      ),
+    ).toBe(`${sameHighSurrogate}step${sameLowSurrogate}`);
+  });
 });

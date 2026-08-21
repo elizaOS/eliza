@@ -15,4 +15,12 @@ describe("core string boundary scanners", () => {
 		expect(trimEndCharacters(`root${"/".repeat(100_000)}`, "/")).toBe("root");
 		expect(trimEndWhitespace(`root${"\t".repeat(100_000)}`)).toBe("root");
 	});
+
+	it("does not split an unmatched Unicode code point", () => {
+		const allowed = String.fromCodePoint(0x1f600);
+		const sameLowSurrogate = String.fromCodePoint(0x1f200);
+		expect(trimEndCharacters(`root${sameLowSurrogate}`, allowed)).toBe(
+			`root${sameLowSurrogate}`,
+		);
+	});
 });
