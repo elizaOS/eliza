@@ -18,6 +18,7 @@ const ENV = {
   STRIPE_PLUS_PRODUCT_ID: "prod_plus123",
   STRIPE_PRO_MONTHLY_PRICE_ID: "price_pro123",
   STRIPE_PRO_PRODUCT_ID: "prod_pro123",
+  STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID: "bpc_preflight123",
   STRIPE_SUBSCRIPTION_PREFLIGHT_WRONG_PRICE_ID: "price_wrong123",
 } satisfies NodeJS.ProcessEnv;
 
@@ -62,6 +63,25 @@ function provider(
     async retrieveProduct() {
       return { active: true, deleted: false, livemode: false };
     },
+    async retrievePortalConfiguration() {
+      return {
+        active: true,
+        livemode: false,
+        loginPageEnabled: false,
+        customerUpdateEnabled: false,
+        invoiceHistoryEnabled: true,
+        paymentMethodUpdateEnabled: true,
+        subscriptionCancel: {
+          enabled: true,
+          mode: "at_period_end",
+          prorationBehavior: "none",
+        },
+        subscriptionUpdate: {
+          enabled: false,
+          defaultAllowedUpdates: [],
+        },
+      };
+    },
   };
 }
 
@@ -76,7 +96,8 @@ describe("subscription catalog operator preflight", () => {
     ).resolves.toEqual({
       catalogVersion: "v1",
       approvedPlanKeys: ["plus_monthly", "pro_monthly"],
-      approvedProviderObjects: 4,
+      approvedProviderObjects: 5,
+      portalConfigurationVerified: true,
       wrongFixtureRejected: true,
       mode: "test",
     });

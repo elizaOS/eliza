@@ -418,6 +418,8 @@ export interface Bindings {
   STRIPE_PRO_MONTHLY_PRICE_ID?: string;
   /** Server-only approved Stripe Product for the Pro plan. */
   STRIPE_PRO_PRODUCT_ID?: string;
+  /** Server-only, policy-verified Stripe Billing Portal configuration. */
+  STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;

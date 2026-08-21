@@ -152,6 +152,10 @@ const SUBSCRIPTION_CATALOG = buildCatalog([
 ]);
 
 const providerIdSchemas = {
+  portalConfiguration: z
+    .string()
+    .trim()
+    .regex(/^bpc_[A-Za-z0-9]+$/),
   price: z
     .string()
     .trim()
@@ -174,7 +178,25 @@ interface PlanBinding {
 interface SubscriptionCatalogBindings {
   expectedLivemode: boolean;
   credential: string;
+  portalConfigurationId: string;
   plans: Readonly<Record<SubscriptionPlanKey, Readonly<PlanBinding>>>;
+}
+
+export interface VerifiedSubscriptionPlan {
+  plan: Readonly<SubscriptionPlanDto>;
+  priceId: string;
+  productId: string;
+}
+
+/**
+ * Server-only catalog authority consumed by recurring lifecycle services.
+ * Provider identifiers must never be serialized into a public DTO.
+ */
+export interface VerifiedSubscriptionCatalog {
+  catalogVersion: "v1";
+  expectedLivemode: boolean;
+  portalConfigurationId: string;
+  plans: Readonly<Record<SubscriptionPlanKey, Readonly<VerifiedSubscriptionPlan>>>;
 }
 
 export interface SubscriptionCatalogProviderPrice {
@@ -198,9 +220,30 @@ export interface SubscriptionCatalogProviderProduct {
   livemode: boolean | null;
 }
 
+export interface SubscriptionCatalogProviderPortalConfiguration {
+  active: boolean;
+  livemode: boolean;
+  loginPageEnabled: boolean;
+  customerUpdateEnabled: boolean;
+  invoiceHistoryEnabled: boolean;
+  paymentMethodUpdateEnabled: boolean;
+  subscriptionCancel: {
+    enabled: boolean;
+    mode: string;
+    prorationBehavior: string;
+  };
+  subscriptionUpdate: {
+    enabled: boolean;
+    defaultAllowedUpdates: string[];
+  };
+}
+
 export interface SubscriptionCatalogProvider {
   retrievePrice(priceId: string): Promise<SubscriptionCatalogProviderPrice>;
   retrieveProduct(productId: string): Promise<SubscriptionCatalogProviderProduct>;
+  retrievePortalConfiguration(
+    configurationId: string,
+  ): Promise<SubscriptionCatalogProviderPortalConfiguration>;
 }
 
 const providerPriceSchema = z
@@ -228,6 +271,30 @@ const providerProductSchema = z
     active: z.boolean(),
     deleted: z.boolean(),
     livemode: z.boolean().nullable(),
+  })
+  .strict();
+
+const providerPortalConfigurationSchema = z
+  .object({
+    active: z.boolean(),
+    livemode: z.boolean(),
+    loginPageEnabled: z.boolean(),
+    customerUpdateEnabled: z.boolean(),
+    invoiceHistoryEnabled: z.boolean(),
+    paymentMethodUpdateEnabled: z.boolean(),
+    subscriptionCancel: z
+      .object({
+        enabled: z.boolean(),
+        mode: z.string().min(1),
+        prorationBehavior: z.string().min(1),
+      })
+      .strict(),
+    subscriptionUpdate: z
+      .object({
+        enabled: z.boolean(),
+        defaultAllowedUpdates: z.array(z.string().min(1)),
+      })
+      .strict(),
   })
   .strict();
 
@@ -290,6 +357,11 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
       productId: requiredProviderId(env, "STRIPE_PRO_PRODUCT_ID", "product"),
     },
   } as const;
+  const portalConfigurationId = requiredProviderId(
+    env,
+    "STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID",
+    "portalConfiguration",
+  );
 
   if (plans.plus_monthly.priceId === plans.pro_monthly.priceId) {
     throw new SubscriptionCatalogError(
@@ -303,7 +375,12 @@ function parseBindings(env: NodeJS.ProcessEnv): SubscriptionCatalogBindings {
       "Subscription plans cannot share an approved provider product",
     );
   }
-  return deepFreeze({ expectedLivemode, credential: secret.data, plans });
+  return deepFreeze({
+    expectedLivemode,
+    credential: secret.data,
+    portalConfigurationId,
+    plans,
+  });
 }
 
 function mismatch(planKey: SubscriptionPlanKey, field: string): never {
@@ -350,6 +427,48 @@ async function verifyPlan(
   if (product.livemode !== expectedLivemode) mismatch(plan.key, "product.livemode");
 }
 
+function portalMismatch(field: string): never {
+  throw new SubscriptionCatalogError(
+    "SUBSCRIPTION_CATALOG_PORTAL_DRIFT",
+    "Subscription Customer Portal configuration does not match the approved policy",
+    { field },
+  );
+}
+
+async function verifyPortalConfiguration(
+  configurationId: string,
+  expectedLivemode: boolean,
+  provider: SubscriptionCatalogProvider,
+): Promise<void> {
+  const rawConfiguration = await provider.retrievePortalConfiguration(configurationId);
+  const result = providerPortalConfigurationSchema.safeParse(rawConfiguration);
+  if (!result.success) portalMismatch("shape");
+  const configuration = result.data;
+  if (!configuration.active) portalMismatch("active");
+  if (configuration.livemode !== expectedLivemode) portalMismatch("livemode");
+  if (configuration.loginPageEnabled) portalMismatch("login_page.enabled");
+  if (configuration.customerUpdateEnabled) portalMismatch("customer_update.enabled");
+  if (!configuration.invoiceHistoryEnabled) portalMismatch("invoice_history.enabled");
+  if (!configuration.paymentMethodUpdateEnabled) {
+    portalMismatch("payment_method_update.enabled");
+  }
+  if (!configuration.subscriptionCancel.enabled) {
+    portalMismatch("subscription_cancel.enabled");
+  }
+  if (configuration.subscriptionCancel.mode !== "at_period_end") {
+    portalMismatch("subscription_cancel.mode");
+  }
+  if (configuration.subscriptionCancel.prorationBehavior !== "none") {
+    portalMismatch("subscription_cancel.proration_behavior");
+  }
+  if (configuration.subscriptionUpdate.enabled) {
+    portalMismatch("subscription_update.enabled");
+  }
+  if (configuration.subscriptionUpdate.defaultAllowedUpdates.length !== 0) {
+    portalMismatch("subscription_update.default_allowed_updates");
+  }
+}
+
 function publicPlans(): SubscriptionPlansDto {
   return deepFreeze({
     catalogVersion: CATALOG_VERSION,
@@ -383,12 +502,13 @@ function bindingCacheKey(bindings: SubscriptionCatalogBindings): string {
     bindings.plans.plus_monthly.productId,
     bindings.plans.pro_monthly.priceId,
     bindings.plans.pro_monthly.productId,
+    bindings.portalConfigurationId,
   ].join("\0");
 }
 
 interface VerificationCacheEntry {
   expiresAt: number;
-  pending: Promise<SubscriptionPlansDto>;
+  pending: Promise<VerifiedSubscriptionCatalog>;
 }
 
 const verificationCache = new Map<string, VerificationCacheEntry>();
@@ -399,15 +519,16 @@ export function validateSubscriptionCatalogConfiguration(env: NodeJS.ProcessEnv)
 }
 
 /**
- * Read and validate both approved provider objects, then return only the public
- * catalog projection. Successful checks are briefly coalesced per isolate;
- * failures are never cached and stale success is never served after expiry.
+ * Read and validate both approved plans and the dedicated Customer Portal
+ * configuration, then return their server-only lifecycle authority. Successful
+ * checks are briefly coalesced per isolate; failures are never cached and stale
+ * success is never served after expiry.
  */
-export async function getVerifiedSubscriptionPlans(options: {
+export async function getVerifiedSubscriptionCatalog(options: {
   env: NodeJS.ProcessEnv;
   provider: SubscriptionCatalogProvider;
   now?: () => number;
-}): Promise<SubscriptionPlansDto> {
+}): Promise<VerifiedSubscriptionCatalog> {
   const bindings = parseBindings(options.env);
   const now = options.now ?? Date.now;
   const cacheKey = bindingCacheKey(bindings);
@@ -415,12 +536,41 @@ export async function getVerifiedSubscriptionPlans(options: {
   if (existing && existing.expiresAt > now()) return await existing.pending;
   if (existing) verificationCache.delete(cacheKey);
 
-  const pending = Promise.all(
-    SUBSCRIPTION_CATALOG.map((plan) =>
+  const pending = Promise.all([
+    ...SUBSCRIPTION_CATALOG.map((plan) =>
       verifyPlan(plan, bindings.plans[plan.key], bindings.expectedLivemode, options.provider),
     ),
-  )
-    .then(() => publicPlans())
+    verifyPortalConfiguration(
+      bindings.portalConfigurationId,
+      bindings.expectedLivemode,
+      options.provider,
+    ),
+  ])
+    .then(() => {
+      const publicCatalog = publicPlans();
+      const [plusPlan, proPlan] = publicCatalog.plans;
+      if (plusPlan?.key !== "plus_monthly" || proPlan?.key !== "pro_monthly") {
+        throw new SubscriptionCatalogError(
+          "SUBSCRIPTION_CATALOG_PLAN_SET_INVALID",
+          "Verified subscription catalog projection is not in canonical plan order",
+        );
+      }
+      return deepFreeze({
+        catalogVersion: CATALOG_VERSION,
+        expectedLivemode: bindings.expectedLivemode,
+        portalConfigurationId: bindings.portalConfigurationId,
+        plans: {
+          plus_monthly: {
+            plan: plusPlan,
+            ...bindings.plans.plus_monthly,
+          },
+          pro_monthly: {
+            plan: proPlan,
+            ...bindings.plans.pro_monthly,
+          },
+        },
+      });
+    })
     .catch((error) => {
       // error-policy:J2 Provider transport failures become one typed catalog
       // failure while preserving the SDK error as the native cause.
@@ -448,6 +598,19 @@ export async function getVerifiedSubscriptionPlans(options: {
   return await pending;
 }
 
+/** Return the provider-secret-free projection after full lifecycle preflight. */
+export async function getVerifiedSubscriptionPlans(options: {
+  env: NodeJS.ProcessEnv;
+  provider: SubscriptionCatalogProvider;
+  now?: () => number;
+}): Promise<SubscriptionPlansDto> {
+  const verified = await getVerifiedSubscriptionCatalog(options);
+  return deepFreeze({
+    catalogVersion: verified.catalogVersion,
+    plans: [verified.plans.plus_monthly.plan, verified.plans.pro_monthly.plan],
+  });
+}
+
 function providerProductId(
   product: string | Stripe.Product | Stripe.DeletedProduct,
 ): string | null {
@@ -457,7 +620,7 @@ function providerProductId(
 
 /** Restricts the Stripe SDK to the read-only catalog preflight surface. */
 export function adaptStripeSubscriptionCatalogProvider(
-  stripe: Pick<Stripe, "prices" | "products">,
+  stripe: Pick<Stripe, "billingPortal" | "prices" | "products">,
 ): SubscriptionCatalogProvider {
   return {
     async retrievePrice(priceId) {
@@ -484,6 +647,26 @@ export function adaptStripeSubscriptionCatalogProvider(
       return product.deleted
         ? { active: false, deleted: true, livemode: null }
         : { active: product.active, deleted: false, livemode: product.livemode };
+    },
+    async retrievePortalConfiguration(configurationId) {
+      const configuration = await stripe.billingPortal.configurations.retrieve(configurationId);
+      return {
+        active: configuration.active,
+        livemode: configuration.livemode,
+        loginPageEnabled: configuration.login_page.enabled,
+        customerUpdateEnabled: configuration.features.customer_update.enabled,
+        invoiceHistoryEnabled: configuration.features.invoice_history.enabled,
+        paymentMethodUpdateEnabled: configuration.features.payment_method_update.enabled,
+        subscriptionCancel: {
+          enabled: configuration.features.subscription_cancel.enabled,
+          mode: configuration.features.subscription_cancel.mode,
+          prorationBehavior: configuration.features.subscription_cancel.proration_behavior,
+        },
+        subscriptionUpdate: {
+          enabled: configuration.features.subscription_update.enabled,
+          defaultAllowedUpdates: configuration.features.subscription_update.default_allowed_updates,
+        },
+      };
     },
   };
 }

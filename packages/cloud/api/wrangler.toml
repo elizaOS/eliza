@@ -363,6 +363,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   STRIPE_PLUS_PRODUCT_ID             Approved Plus Product binding
 #   STRIPE_PRO_MONTHLY_PRICE_ID        Approved recurring Pro Price binding
 #   STRIPE_PRO_PRODUCT_ID              Approved Pro Product binding
+#   STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID Dedicated policy-verified Billing Portal configuration
 #   OXAPAY_MERCHANT_API_KEY            OxaPay crypto checkout + webhook verification
 #   OXAPAY_WEBHOOK_IPS                 Optional OxaPay webhook source IP allowlist
 #   OXAPAY_PAYMENT_REQUESTS_CALLBACK_URL Payment-request settlement callback override

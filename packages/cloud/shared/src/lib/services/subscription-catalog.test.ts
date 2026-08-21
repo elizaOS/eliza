@@ -9,9 +9,11 @@ import {
   __buildSubscriptionCatalogForTests,
   __publicSubscriptionPlansForTests,
   __resetSubscriptionCatalogCacheForTests,
+  getVerifiedSubscriptionCatalog,
   getVerifiedSubscriptionPlans,
   SubscriptionCatalogError,
   type SubscriptionCatalogProvider,
+  type SubscriptionCatalogProviderPortalConfiguration,
   type SubscriptionCatalogProviderPrice,
   type SubscriptionCatalogProviderProduct,
   validateSubscriptionCatalogConfiguration,
@@ -25,11 +27,13 @@ const TEST_ENV = {
   STRIPE_PLUS_PRODUCT_ID: "prod_plus123",
   STRIPE_PRO_MONTHLY_PRICE_ID: "price_pro123",
   STRIPE_PRO_PRODUCT_ID: "prod_pro123",
+  STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID: "bpc_catalog123",
 } satisfies NodeJS.ProcessEnv;
 
 interface ProviderOverrides {
   prices?: Partial<Record<string, Partial<SubscriptionCatalogProviderPrice>>>;
   products?: Partial<Record<string, Partial<SubscriptionCatalogProviderProduct>>>;
+  portal?: Partial<SubscriptionCatalogProviderPortalConfiguration>;
   failPrice?: boolean;
 }
 
@@ -37,6 +41,7 @@ function createProvider(overrides: ProviderOverrides = {}): {
   provider: SubscriptionCatalogProvider;
   priceCalls: string[];
   productCalls: string[];
+  portalCalls: string[];
 } {
   const publicPlans = __publicSubscriptionPlansForTests();
   const planByPrice = new Map([
@@ -49,9 +54,11 @@ function createProvider(overrides: ProviderOverrides = {}): {
   ]);
   const priceCalls: string[] = [];
   const productCalls: string[] = [];
+  const portalCalls: string[] = [];
   return {
     priceCalls,
     productCalls,
+    portalCalls,
     provider: {
       async retrievePrice(priceId) {
         priceCalls.push(priceId);
@@ -81,6 +88,27 @@ function createProvider(overrides: ProviderOverrides = {}): {
           deleted: false,
           livemode: false,
           ...overrides.products?.[productId],
+        };
+      },
+      async retrievePortalConfiguration(configurationId) {
+        portalCalls.push(configurationId);
+        return {
+          active: true,
+          livemode: false,
+          loginPageEnabled: false,
+          customerUpdateEnabled: false,
+          invoiceHistoryEnabled: true,
+          paymentMethodUpdateEnabled: true,
+          subscriptionCancel: {
+            enabled: true,
+            mode: "at_period_end",
+            prorationBehavior: "none",
+          },
+          subscriptionUpdate: {
+            enabled: false,
+            defaultAllowedUpdates: [],
+          },
+          ...overrides.portal,
         };
       },
     },
@@ -207,6 +235,11 @@ describe("subscription catalog configuration", () => {
     ["product in price binding", { STRIPE_PLUS_MONTHLY_PRICE_ID: "prod_wrong123" }],
     ["duplicate price", { STRIPE_PRO_MONTHLY_PRICE_ID: "price_plus123" }],
     ["duplicate product", { STRIPE_PRO_PRODUCT_ID: "prod_plus123" }],
+    ["missing portal configuration", { STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID: undefined }],
+    [
+      "malformed portal configuration",
+      { STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID: "bps_wrong" },
+    ],
     ["live key in staging", { STRIPE_SECRET_KEY: "sk_live_catalog123" }],
     [
       "test key in production",
@@ -227,6 +260,34 @@ describe("Stripe provider authority", () => {
     ).resolves.toEqual(__publicSubscriptionPlansForTests());
     expect(fixture.priceCalls).toHaveLength(2);
     expect(fixture.productCalls).toHaveLength(2);
+    expect(fixture.portalCalls).toEqual([TEST_ENV.STRIPE_SUBSCRIPTION_PORTAL_CONFIGURATION_ID]);
+  });
+
+  test("returns a frozen internal authority with approved provider bindings", async () => {
+    const fixture = createProvider();
+    const verified = await getVerifiedSubscriptionCatalog({
+      env: TEST_ENV,
+      provider: fixture.provider,
+    });
+    expect(verified).toEqual({
+      catalogVersion: "v1",
+      expectedLivemode: false,
+      portalConfigurationId: "bpc_catalog123",
+      plans: {
+        plus_monthly: {
+          plan: __publicSubscriptionPlansForTests().plans[0],
+          priceId: "price_plus123",
+          productId: "prod_plus123",
+        },
+        pro_monthly: {
+          plan: __publicSubscriptionPlansForTests().plans[1],
+          priceId: "price_pro123",
+          productId: "prod_pro123",
+        },
+      },
+    });
+    expect(Object.isFrozen(verified)).toBe(true);
+    expect(Object.isFrozen(verified.plans.plus_monthly)).toBe(true);
   });
 
   test.each([
@@ -254,6 +315,71 @@ describe("Stripe provider authority", () => {
       await expect(
         getVerifiedSubscriptionPlans({ env: TEST_ENV, provider: fixture.provider }),
       ).rejects.toMatchObject({ code: "SUBSCRIPTION_CATALOG_PROVIDER_DRIFT" });
+    },
+  );
+
+  test.each([
+    ["activity", { active: false }],
+    ["livemode", { livemode: true }],
+    ["hosted login", { loginPageEnabled: true }],
+    ["customer update", { customerUpdateEnabled: true }],
+    ["invoice history", { invoiceHistoryEnabled: false }],
+    ["payment method update", { paymentMethodUpdateEnabled: false }],
+    [
+      "cancel disabled",
+      {
+        subscriptionCancel: {
+          enabled: false,
+          mode: "at_period_end",
+          prorationBehavior: "none",
+        },
+      },
+    ],
+    [
+      "immediate cancel",
+      {
+        subscriptionCancel: {
+          enabled: true,
+          mode: "immediately",
+          prorationBehavior: "none",
+        },
+      },
+    ],
+    [
+      "cancel proration",
+      {
+        subscriptionCancel: {
+          enabled: true,
+          mode: "at_period_end",
+          prorationBehavior: "create_prorations",
+        },
+      },
+    ],
+    [
+      "portal plan change",
+      {
+        subscriptionUpdate: {
+          enabled: true,
+          defaultAllowedUpdates: ["price"],
+        },
+      },
+    ],
+    [
+      "latent portal updates",
+      {
+        subscriptionUpdate: {
+          enabled: false,
+          defaultAllowedUpdates: ["price"],
+        },
+      },
+    ],
+  ] satisfies Array<[string, Partial<SubscriptionCatalogProviderPortalConfiguration>]>)(
+    "rejects portal %s drift",
+    async (_name, portal) => {
+      const fixture = createProvider({ portal });
+      await expect(
+        getVerifiedSubscriptionCatalog({ env: TEST_ENV, provider: fixture.provider }),
+      ).rejects.toMatchObject({ code: "SUBSCRIPTION_CATALOG_PORTAL_DRIFT" });
     },
   );
 
@@ -288,6 +414,7 @@ describe("Stripe provider authority", () => {
       now: () => now,
     });
     expect(fixture.priceCalls).toHaveLength(4);
+    expect(fixture.portalCalls).toHaveLength(2);
   });
 
   test("does not reuse provider verification after a Stripe credential rotation", async () => {
@@ -299,6 +426,7 @@ describe("Stripe provider authority", () => {
     });
     expect(fixture.priceCalls).toHaveLength(4);
     expect(fixture.productCalls).toHaveLength(4);
+    expect(fixture.portalCalls).toHaveLength(2);
   });
 
   test("never caches a provider failure", async () => {
