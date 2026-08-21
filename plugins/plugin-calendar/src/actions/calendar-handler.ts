@@ -1277,7 +1277,7 @@ export function buildCalendarEventDisambiguationFallback(args: {
    */
   timeZone?: string;
 }): string {
-  const previewLines = args.candidates.slice(0, 3).map((candidate) => {
+  const previewLines = args.candidates.map((candidate) => {
     const when = formatCalendarEventDateTime(candidate, {
       includeTimeZoneName: true,
       ...(args.timeZone && !candidate.isAllDay
@@ -1289,14 +1289,10 @@ export function buildCalendarEventDisambiguationFallback(args: {
   const intro = args.titleHint
     ? `I found multiple events matching ${describeUserReference(args.titleHint, "that event")}.`
     : "I found multiple matching calendar events.";
-  const suffix =
-    args.candidates.length > 3
-      ? ` There are ${args.candidates.length} matches total.`
-      : "";
   return [
     intro,
     ...previewLines,
-    `Tell me which one to ${args.action} by giving the title and date/time.${suffix}`,
+    `Tell me which one to ${args.action} by giving the title and date/time.`,
   ].join("\n");
 }
 
@@ -2090,8 +2086,7 @@ function formatCreateEventCalendarContext(
     return lines.join("\n");
   }
 
-  const visibleEvents = context.feed.events.slice(0, 40);
-  for (const event of visibleEvents) {
+  for (const event of context.feed.events) {
     const when = event.isAllDay
       ? formatCalendarMoment(event)
       : formatCalendarEventDateTime(event, {
@@ -2100,11 +2095,6 @@ function formatCreateEventCalendarContext(
         });
     lines.push(
       `- ${when} — ${event.title}${event.location ? ` @ ${event.location}` : ""}`,
-    );
-  }
-  if (context.feed.events.length > visibleEvents.length) {
-    lines.push(
-      `... ${context.feed.events.length - visibleEvents.length} more upcoming events omitted`,
     );
   }
   return lines.join("\n");
@@ -3459,7 +3449,7 @@ function formatCalendarCandidateForGrounding(
     `title: ${candidate.event.title}`,
     `startAt: ${candidate.event.startAt}`,
     `location: ${candidate.event.location}`,
-    `description: ${(candidate.event.description).slice(0, 240)}`,
+    `description: ${candidate.event.description}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -3514,7 +3504,7 @@ async function groundCalendarSearchMatchesWithLlm(
 function buildCalendarGroundingCandidates(
   events: LifeOpsCalendarEvent[],
 ): RankedCalendarSearchCandidate[] {
-  return events.slice(0, 24).map((event, index) => ({
+  return events.map((event, index) => ({
     event,
     score: Math.max(1, 24 - index),
     matchedQueries: [],
@@ -3590,7 +3580,7 @@ function formatTripWindowResults(
   }
 
   const lines = [`Here's what's on your calendar while you're in ${location}:`];
-  for (const event of events.slice(0, 12)) {
+  for (const event of events) {
     lines.push(`- ${formatCalendarMoment(event)}: **${event.title}**`);
   }
   return lines.join("\n");
@@ -3622,7 +3612,7 @@ export function formatCalendarSearchResults(
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
-  for (const event of events.slice(0, 8)) {
+  for (const event of events) {
     const when = event.isAllDay
       ? "all day"
       : formatCalendarEventDateTime(event);
@@ -3631,7 +3621,7 @@ export function formatCalendarSearchResults(
       lines.push(`  Location: ${event.location}`);
     }
     if (event.description) {
-      lines.push(`  ${event.description.slice(0, 120)}`);
+      lines.push(`  ${event.description}`);
     }
   }
   return lines.join("\n");
@@ -5379,7 +5369,7 @@ const calendarAction: CalendarHandlerAction = {
             state,
             intent,
             queriesForSearch,
-            rankedEvents.slice(0, 6),
+            rankedEvents,
           );
           if (groundedIds) {
             const groundedIdSet = new Set(groundedIds);
@@ -5395,7 +5385,7 @@ const calendarAction: CalendarHandlerAction = {
             intent,
             queriesForSearch,
             rankedEvents.length > 0
-              ? rankedEvents.slice(0, 12)
+              ? rankedEvents
               : buildCalendarGroundingCandidates(feed.events),
           );
           if (groundedIds && groundedIds.length > 0) {

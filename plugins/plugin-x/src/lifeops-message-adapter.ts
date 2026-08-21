@@ -89,7 +89,7 @@ function memoryToMessageRef(memory: Memory): MessageRef {
       displayName: senderHandle,
     },
     to: [],
-    snippet: body.slice(0, 200),
+    snippet: body,
     body,
     receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
     hasAttachments: false,

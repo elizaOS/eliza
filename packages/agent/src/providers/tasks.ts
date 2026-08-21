@@ -19,9 +19,6 @@ import {
 } from "../api/workbench-helpers.ts";
 import { listTriggerTasks, readTriggerConfig } from "../triggers/runtime.ts";
 
-const MAX_TASKS_IN_CONTEXT = 20;
-const MAX_TRIGGERS_IN_CONTEXT = 10;
-
 function formatTaskForContext(task: Task): string {
   const completed = readTaskCompleted(task);
   const status = completed ? "completed" : "active";
@@ -85,12 +82,10 @@ export function createOngoingTasksProvider(): Provider {
         }
 
         // Active (non-completed) tasks first
-        const activeTasks = workbenchTasks
-          .filter((t) => !readTaskCompleted(t))
-          .slice(0, MAX_TASKS_IN_CONTEXT);
-        const completedTasks = workbenchTasks
-          .filter((t) => readTaskCompleted(t))
-          .slice(0, 5);
+        const activeTasks = workbenchTasks.filter((t) => !readTaskCompleted(t));
+        const completedTasks = workbenchTasks.filter((t) =>
+          readTaskCompleted(t),
+        );
 
         if (activeTasks.length > 0 || completedTasks.length > 0) {
           sections.push("## Active Tasks");
@@ -108,12 +103,10 @@ export function createOngoingTasksProvider(): Provider {
 
         // Fetch trigger tasks
         const triggerTasks = await listTriggerTasks(runtime);
-        const activeTriggers = triggerTasks
-          .filter((t) => {
-            const cfg = readTriggerConfig(t);
-            return cfg?.enabled;
-          })
-          .slice(0, MAX_TRIGGERS_IN_CONTEXT);
+        const activeTriggers = triggerTasks.filter((t) => {
+          const cfg = readTriggerConfig(t);
+          return cfg?.enabled;
+        });
 
         if (activeTriggers.length > 0) {
           if (sections.length > 0) sections.push("");

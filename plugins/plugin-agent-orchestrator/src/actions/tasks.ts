@@ -105,9 +105,7 @@ import { parseHistoryLimit } from "./tasks-history-limit.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
-const WORKSPACE_PATH_MAX_CHARS = 500;
-const ISSUE_RESULT_LIMIT = 25;
-const ISSUE_BODY_MAX_CHARS = 4_000;
+const MAX_BULK_ISSUE_CREATE = 25;
 
 type TaskOp =
   | "create"
@@ -3669,14 +3667,14 @@ async function runProvisionWorkspace(
     if (state) {
       state.codingWorkspace = {
         id: workspace.id,
-        path: workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS),
+        path: workspace.path,
         branch: workspace.branch,
         isWorktree: workspace.isWorktree,
       };
     }
 
     const createdText =
-      `Created workspace at ${workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS)}\n` +
+      `Created workspace at ${workspace.path}\n` +
       `Branch: ${workspace.branch}\n` +
       `Type: ${workspace.isWorktree ? "worktree" : "clone"}`;
     if (callback) await callback({ text: createdText });
@@ -3692,7 +3690,7 @@ async function runProvisionWorkspace(
       turnComplete: true,
       data: {
         workspaceId: workspace.id,
-        path: workspace.path.slice(0, WORKSPACE_PATH_MAX_CHARS),
+        path: workspace.path,
         branch: workspace.branch,
         isWorktree: workspace.isWorktree,
       },
@@ -4038,10 +4036,17 @@ async function handleIssueAction(
             (params.text as string) ?? originalText,
           );
           if (items.length > 0) {
+            if (items.length > MAX_BULK_ISSUE_CREATE) {
+              return {
+                success: false,
+                error: "BULK_ISSUE_LIMIT_EXCEEDED",
+                text: `Requested ${items.length} issue creations; the atomic safety limit is ${MAX_BULK_ISSUE_CREATE}. No issues were created.`,
+              };
+            }
             const labels = parseLabels(params.labels);
             const created: IssueInfo[] = [];
             let bulkLabelNote = "";
-            for (const item of items.slice(0, ISSUE_RESULT_LIMIT)) {
+            for (const item of items) {
               const { issue, labelNote } =
                 await createIssueWithBestEffortLabels(service, repo, {
                   title: item.title,
@@ -4107,12 +4112,10 @@ async function handleIssueAction(
       case "list": {
         const stateFilter = (params.state as string) ?? "open";
         const labels = parseLabels(params.labels);
-        const issues = (
-          await service.listIssues(repo, {
-            state: stateFilter as "open" | "closed" | "all",
-            labels: labels.length > 0 ? labels : undefined,
-          })
-        ).slice(0, ISSUE_RESULT_LIMIT);
+        const issues = await service.listIssues(repo, {
+          state: stateFilter as "open" | "closed" | "all",
+          labels: labels.length > 0 ? labels : undefined,
+        });
         const listText =
           issues.length === 0
             ? `No ${stateFilter} issues found in ${repo}.`
@@ -4142,10 +4145,7 @@ async function handleIssueAction(
           };
         }
         const issue = await service.getIssue(repo, issueNumber);
-        const issueBody = truncateWellFormed(
-          toWellFormedUnicode(issue.body),
-          ISSUE_BODY_MAX_CHARS,
-        );
+        const issueBody = toWellFormedUnicode(issue.body);
         const issueText = `Issue #${issue.number}: ${issue.title} [${issue.state}]\n\n${issueBody}\n\nLabels: ${issue.labels.join(", ") || "none"}\n${issue.url}`;
         return {
           success: true,
@@ -4307,10 +4307,7 @@ async function runManageIssues(
   // Unwrapped: bulk-issue extraction and action/repo inference read this as
   // the user's request; a raw envelope read would mint GitHub issues out of
   // security-notice lines (and the slice could truncate the real payload).
-  const text = truncateWellFormed(
-    toWellFormedUnicode(requestText(message)),
-    ISSUE_BODY_MAX_CHARS,
-  );
+  const text = toWellFormedUnicode(requestText(message));
 
   const topLevelAction = textValue(params.action) ?? textValue(content.action);
   const normalizedTopLevelAction = topLevelAction

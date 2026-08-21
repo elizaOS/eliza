@@ -12,7 +12,6 @@ import {
   type Service,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
@@ -491,12 +490,7 @@ function summarizeOutputTail(raw: string): string {
         !l.startsWith("[/tool output]") &&
         !l.startsWith("[sub-agent:"),
     );
-  const last = lines.slice(-3).join(" / ");
-  if (!last) return "";
-  const wellFormed = toWellFormedUnicode(last);
-  return wellFormed.length > 120
-    ? `${truncateWellFormed(wellFormed, 117)}...`
-    : wellFormed;
+  return toWellFormedUnicode(lines.join(" / "));
 }
 
 function labelOf(session: SessionInfo): string {

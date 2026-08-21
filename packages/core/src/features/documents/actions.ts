@@ -657,7 +657,7 @@ async function handleSearch(
 			: undefined,
 		getSearchMode(params.searchMode),
 	);
-	const limit = getLimit(params.limit, 5);
+	const limit = getLimit(params.limit, Number.MAX_SAFE_INTEGER);
 	const filteredMatches = matches.filter((item) =>
 		storedDocumentMatchesFilters(item, filters),
 	);

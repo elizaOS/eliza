@@ -37,10 +37,7 @@ import {
 	getDeterministicNames,
 } from "./utils/deterministic";
 import { compressPromptDescription } from "./utils/prompt-compression";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "./utils/well-formed.ts";
+import { toWellFormedUnicode } from "./utils/well-formed.ts";
 
 export {
 	type ExtractorPipelineResult,
@@ -499,13 +496,7 @@ function coerceActionParamValue(
 		return value;
 	}
 
-	const SAFE_SPLIT_LIMIT = 10_000;
-	const wellFormedTrimmed = toWellFormedUnicode(trimmed);
-	const safeTrimmed =
-		wellFormedTrimmed.length > SAFE_SPLIT_LIMIT
-			? truncateWellFormed(wellFormedTrimmed, SAFE_SPLIT_LIMIT)
-			: wellFormedTrimmed;
-	const splitValues = safeTrimmed
+	const splitValues = toWellFormedUnicode(trimmed)
 		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);

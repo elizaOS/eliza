@@ -43,6 +43,10 @@ def _import_module(name: str, filepath: str):
 
 # Try multiple paths for the training source
 _script_dir = Path(__file__).resolve().parent
+sys.path.insert(0, str(_script_dir.parent))
+
+from training.tokenization import tokenize_with_explicit_limit  # noqa: E402
+
 for _candidate in [
     _script_dir.parent / "src",                    # local: scripts/../src
     _script_dir / "src",                            # if script is next to src/
@@ -214,7 +218,12 @@ async def run_episode(
         )
 
         # Override the prompt building — use our custom messages
-        enc = agent.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=14000).to(agent.config.device)
+        enc = tokenize_with_explicit_limit(
+            agent.tokenizer,
+            prompt,
+            max_tokens=14_000,
+            return_tensors="pt",
+        ).to(agent.config.device)
 
         from training.turboquant import build_generation_cache
         past_kv = None

@@ -25,12 +25,11 @@ import {
   type Memory,
   type State,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
 
 /** Max characters of fetched text we return when no extract path matches. */
-const WEB_FETCH_SNIPPET_CHARS = 4_000;
+const _WEB_FETCH_SNIPPET_CHARS = 4_000;
 
 /**
  * Capability gate: WEB_FETCH is enabled by default and opted out with
@@ -96,7 +95,7 @@ function stringifyValue(value: unknown): string {
 /**
  * Apply the optional `extract` instruction: when the body parses as JSON and
  * `extract` is a dotted path that resolves, return that field; otherwise fall
- * back to a truncated text snippet of the raw body.
+ * back to the complete guarded response body.
  */
 function extractValue(body: string, extract: string | undefined): string {
   if (extract) {
@@ -108,7 +107,7 @@ function extractValue(body: string, extract: string | undefined): string {
       // Body was not JSON, or extract did not resolve — fall through to snippet.
     }
   }
-  return truncateWellFormed(toWellFormedUnicode(body), WEB_FETCH_SNIPPET_CHARS);
+  return toWellFormedUnicode(body);
 }
 
 export const webFetch: Action & Record<string, unknown> = {

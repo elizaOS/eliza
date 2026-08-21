@@ -115,12 +115,6 @@ def make_is_clean(cfg: RoundConfig) -> "callable[[str], bool]":
     return is_clean
 
 
-def truncate(text: str, n: int) -> str:
-    if len(text) <= n:
-        return text
-    return text[: n - 3] + "..."
-
-
 def _adjust_temperature(current: float, http: HTTPPolicy) -> float:
     if http.temperature_floor is None:
         return min(http.temperature_cap, current + http.temperature_step)
@@ -261,7 +255,6 @@ async def _worker(
     api_key: str,
     sem: asyncio.Semaphore,
     stats: _Stats,
-    max_input_chars: int,
     cfg: RoundConfig,
     is_clean: "callable[[str], bool]",
 ) -> None:
@@ -271,8 +264,8 @@ async def _worker(
             queue.task_done()
             return
         try:
-            user_msg = truncate(item["currentMessage"], max_input_chars)
-            resp = truncate(item["response_text"], max_input_chars // 2)
+            user_msg = item["currentMessage"]
+            resp = item["response_text"]
             thought = await synth_one(
                 client=client, api_key=api_key, user_msg=user_msg,
                 response_text=resp, sem=sem, cfg=cfg, is_clean=is_clean,
@@ -314,7 +307,6 @@ async def run_round(
     cfg: RoundConfig,
     items: Iterable[WorkItem],
     concurrency: int,
-    max_input_chars: int,
     progress_label: str,
     progress_every_s: float = 15.0,
 ) -> dict[str, int]:
@@ -349,7 +341,7 @@ async def run_round(
         asyncio.create_task(_worker(
             queue=queue, out_lock=out_lock, out_handle=out_handle,
             client=client, api_key=api_key, sem=sem, stats=stats,
-            max_input_chars=max_input_chars, cfg=cfg, is_clean=is_clean,
+            cfg=cfg, is_clean=is_clean,
         ))
         for _ in range(concurrency)
     ]

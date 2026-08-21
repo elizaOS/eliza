@@ -5,7 +5,7 @@
  */
 import { execFile } from "node:child_process";
 import os from "node:os";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import type { TerminalActionResult } from "../types.js";
 import { checkDangerousCommand, sanitizeChildEnv } from "./security.js";
 
@@ -20,9 +20,8 @@ const sessions = new Map<string, TerminalSession>();
 let sessionCounter = 0;
 let lastOutputBuffer = "";
 
-export function truncateOutput(output: string): string {
-  const wellFormed = toWellFormedUnicode(output);
-  return truncateWellFormed(wellFormed, 5000);
+export function normalizeOutput(output: string): string {
+  return toWellFormedUnicode(output);
 }
 
 function resolveShell(): {
@@ -96,9 +95,29 @@ export async function executeTerminal(params: {
         env: sanitizeChildEnv(),
       },
       (error, stdout, stderr) => {
-        const output = truncateOutput(
+        const output = normalizeOutput(
           `${stdout}${stderr ? `\n${stderr}` : ""}`,
         );
+        if (
+          error &&
+          (error as NodeJS.ErrnoException).code ===
+            "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"
+        ) {
+          const message =
+            "Terminal output exceeded the 1 MiB execution safety ceiling; narrow the command instead of using a partial result.";
+          lastOutputBuffer = "";
+          resolve({
+            success: false,
+            output: "",
+            exitCode: -1,
+            exit_code: -1,
+            cwd: sessionCwd,
+            sessionId: params.sessionId,
+            session_id: params.sessionId,
+            error: message,
+          });
+          return;
+        }
         lastOutputBuffer = output;
         if (params.sessionId) {
           const existing = sessions.get(params.sessionId);

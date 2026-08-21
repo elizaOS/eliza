@@ -94,10 +94,9 @@ describe("getFailureSignature", () => {
 		);
 	});
 
-	it("caps the error portion at 240 chars", () => {
+	it("preserves the complete error portion", () => {
 		const sig = getFailureSignature({ toolName: "X", error: "e".repeat(500) });
-		// "X:" + 240 chars
-		expect(sig).toHaveLength(2 + 240);
+		expect(sig).toBe(`X:${"e".repeat(500)}`);
 	});
 });
 

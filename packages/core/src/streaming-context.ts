@@ -191,8 +191,8 @@ const discardStreamChunk: StreamChunkCallback = async () => undefined;
  * calls off the user-visible reply (#16230): only the top-level response
  * generation streams raw tokens, while an action delivers its own output
  * through the HandlerCallback. The visible stream would otherwise surface an
- * action's intermediate model output — e.g. the conversation compactor's
- * rendered-ledger JSON masquerading as the `/compact` reply. An action that
+ * action's intermediate model output as though it were the action's final
+ * reply. An action that
  * genuinely wants to stream can still opt in with an explicit `onStreamChunk`
  * in its `useModel` params, which `useModel` honors independently of the
  * ambient context. The planner and evaluator model calls apply the same

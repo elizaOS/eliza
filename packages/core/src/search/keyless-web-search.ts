@@ -5,15 +5,12 @@
  * exposing query text in logs or errors.
  */
 
-import { truncateWellFormed } from "../utils/well-formed";
-
 const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
 const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
 const DEFAULT_RESULT_COUNT = 6;
 const MAX_RESULT_COUNT = 10;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_RESPONSE_BYTES = 256 * 1024;
-const DEFAULT_RESULT_CHARS = 4_000;
 
 export type KeylessWebSearchProvider = "parallel" | "exa";
 export type KeylessWebSearchFetch = (
@@ -25,6 +22,7 @@ export interface KeylessWebSearchOptions {
 	resultCount?: number;
 	timeoutMs?: number;
 	maxResponseBytes?: number;
+	/** @deprecated Search results are always returned in full. */
 	maxResultChars?: number;
 	fetchImpl?: KeylessWebSearchFetch;
 }
@@ -185,21 +183,10 @@ export async function searchKeylessWeb(
 	}
 	if (!text) return undefined;
 
-	const maxResultChars = options.maxResultChars ?? DEFAULT_RESULT_CHARS;
-	if (!Number.isSafeInteger(maxResultChars) || maxResultChars < 0) {
-		throw new RangeError("maxResultChars must be a non-negative safe integer");
-	}
-	const truncationSuffix = "\n[truncated]";
-	const retainedSuffix = truncateWellFormed(truncationSuffix, maxResultChars);
+	void options.maxResultChars;
 	return {
 		provider,
-		text:
-			text.length > maxResultChars
-				? `${truncateWellFormed(
-						text,
-						maxResultChars - retainedSuffix.length,
-					)}${retainedSuffix}`
-				: text,
-		truncated: text.length > maxResultChars,
+		text,
+		truncated: false,
 	};
 }

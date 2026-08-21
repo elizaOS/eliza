@@ -158,9 +158,6 @@ function normalizedViewPath(value: unknown): string | null {
     : rooted;
 }
 
-/** Hard cap on accepted element reports to bound memory + prompt growth. */
-const MAX_REPORTED_VIEW_ELEMENTS = 200;
-
 /**
  * Validate + normalize an untrusted element-snapshot body into the strict
  * ActiveViewElement[] shape. Drops malformed entries (no string id) rather than
@@ -182,7 +179,6 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
     if (typeof r.value === "string") el.value = r.value;
     if (r.focused === true) el.focused = true;
     out.push(el);
-    if (out.length >= MAX_REPORTED_VIEW_ELEMENTS) break;
   }
   return out;
 }

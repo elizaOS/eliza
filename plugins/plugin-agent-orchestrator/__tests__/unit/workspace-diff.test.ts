@@ -368,9 +368,7 @@ describe("workspace-diff — unborn-HEAD scoop flood (#11605)", () => {
     );
   });
 
-  it("agent-written files survive the cap ahead of a large scaffold", async () => {
-    // More legit untracked files than MAX_CHANGED_FILES, all sorting before
-    // the agent's tool-written file.
+  it("retains agent-written files and every file in a large scaffold", async () => {
     for (let i = 0; i < 70; i++) {
       writeFileSync(
         join(dir, `page-${String(i).padStart(2, "0")}.html`),
@@ -380,12 +378,12 @@ describe("workspace-diff — unborn-HEAD scoop flood (#11605)", () => {
     writeFileSync(join(dir, "zzz-server.js"), "require('http');\n");
     const cs = await captureChangeSet(dir, undefined, ["zzz-server.js"]);
     expect(cs).toBeDefined();
-    // agentWritten-first: the explicit tool write leads the list and cannot
-    // be evicted by the cap (previously it sat at position 71 and was cut).
+    // agentWritten-first keeps the explicit tool write prominent without
+    // discarding the rest of the scaffold.
     expect(cs?.changedFiles[0]).toBe("zzz-server.js");
-    expect(cs?.changedFiles.length).toBeLessThanOrEqual(60);
-    expect(cs?.truncated).toBe(true);
-  });
+    expect(cs?.changedFiles).toHaveLength(71);
+    expect(cs?.truncated).toBe(false);
+  }, 20_000);
 
   it("parseLsFiles drops the truncated garbage tail of an over-maxBuffer listing", () => {
     // A complete `git ls-files` listing always ends with a newline; output cut

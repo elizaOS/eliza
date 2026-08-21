@@ -1,9 +1,9 @@
 /**
  * The `SUMMARIZED_CONTEXT` provider of the advanced-memory capability: injects
  * the room's current rolling session summary (text, message range, date, and
- * topics) into prompt context. Reads the summary from `MemoryService` via
- * `runtime.getService("memory")`, trimming the body and topic list to bounded
- * lengths; contributes nothing when no service or summary exists.
+ * topics) into prompt context. Reads the complete summary from `MemoryService`
+ * via `runtime.getService("memory")`; contributes nothing when no service or
+ * summary exists.
  */
 import type {
 	IAgentRuntime,
@@ -12,16 +12,9 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed";
 import { addHeader } from "../../../utils.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
-
-const MAX_SUMMARY_TEXT_LENGTH = 3000;
-const MAX_SUMMARY_TOPICS = 12;
 
 export const contextSummaryProvider: Provider = {
 	name: "SUMMARIZED_CONTEXT",
@@ -79,20 +72,15 @@ export const contextSummaryProvider: Provider = {
 			const messageRange = `${currentSummary.messageCount} messages`;
 			const timeRange = new Date(currentSummary.startTime).toLocaleDateString();
 
-			const wellFormedSummary = toWellFormedUnicode(currentSummary.summary);
-			const trimmedSummary =
-				wellFormedSummary.length > MAX_SUMMARY_TEXT_LENGTH
-					? `${truncateWellFormed(wellFormedSummary, MAX_SUMMARY_TEXT_LENGTH - 3)}...`
-					: wellFormedSummary;
-			const limitedTopics =
-				currentSummary.topics?.slice(0, MAX_SUMMARY_TOPICS) ?? [];
+			const summary = currentSummary.summary;
+			const topics = currentSummary.topics ?? [];
 
 			let summaryOnly = `**Previous Conversation** (${messageRange}, ${timeRange})\n`;
-			summaryOnly += trimmedSummary;
+			summaryOnly += summary;
 
 			let summaryWithTopics = summaryOnly;
-			if (limitedTopics.length > 0) {
-				summaryWithTopics += `\n*Topics: ${limitedTopics.join(", ")}*`;
+			if (topics.length > 0) {
+				summaryWithTopics += `\n*Topics: ${topics.join(", ")}*`;
 			}
 
 			const sessionSummaries = addHeader("# Conversation Summary", summaryOnly);
@@ -117,10 +105,9 @@ export const contextSummaryProvider: Provider = {
 
 			return {
 				data: {
-					summaryText: trimmedSummary,
+					summaryText: summary,
 					messageCount: currentSummary.messageCount,
-					topics: limitedTopics.join(", "),
-					truncated: currentSummary.summary.length > MAX_SUMMARY_TEXT_LENGTH,
+					topics: topics.join(", "),
 				},
 				values: { sessionSummaries, sessionSummariesWithTopics },
 				text: sessionSummariesWithTopics,

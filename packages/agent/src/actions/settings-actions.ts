@@ -26,7 +26,6 @@ import {
   type Setting,
   saltWorldSettings,
   toWellFormedUnicode,
-  truncateWellFormed,
   unsaltWorldSettings,
   type WorldSettings,
 } from "@elizaos/core";
@@ -45,7 +44,6 @@ import {
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   fetchConfiguredOwnerName,
-  OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
 } from "../services/owner-name.ts";
 
@@ -125,7 +123,7 @@ export function trimToString(value: unknown, max: number): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = toWellFormedUnicode(value.trim());
   if (!trimmed) return undefined;
-  return truncateWellFormed(trimmed, max);
+  return trimmed.length <= max ? trimmed : undefined;
 }
 
 function fail(
@@ -321,7 +319,7 @@ async function handleSetOwnerName(
     typeof params.name === "string"
       ? toWellFormedUnicode(params.name.trim())
       : "";
-  const name = truncateWellFormed(raw, OWNER_NAME_MAX_LENGTH);
+  const name = raw;
   if (!name) {
     return fail(
       "INVALID_PARAMETERS",
@@ -860,7 +858,8 @@ export const settingsAction: Action = {
     },
     {
       name: "name",
-      description: `[set_owner_name] New owner display name (1–${OWNER_NAME_MAX_LENGTH} chars after trim).`,
+      description:
+        "[set_owner_name] New owner display name, preserved in full after trimming outer whitespace.",
       required: false,
       schema: { type: "string" as const },
     },

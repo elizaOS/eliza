@@ -1,14 +1,13 @@
 /**
  * The `DOCUMENTS` dynamic provider: injects the agent's relevant and recent
- * documents into the prompt for the `documents` context. It pulls the top
- * relevant fragments (via `DocumentService.searchDocuments`) plus a bounded list
+ * documents into the prompt for the `documents` context. It pulls the
+ * relevant fragments (via `DocumentService.searchDocuments`) plus the list
  * of available/recent documents (via `listDocuments`), rendering snippets and
  * document IDs the agent can cite or follow up to read. Returns an
  * empty/unavailable payload when no `DocumentService` is registered. Gated to the
  * exact `documents` and `knowledge` contexts and a minimum `USER` role, with
  * per-turn cache scope.
  */
-import { logger } from "../../logger";
 import {
 	type IAgentRuntime,
 	type Memory,
@@ -19,14 +18,6 @@ import { addHeader } from "../../utils";
 import { DocumentService } from "./service.ts";
 import type { DocumentMetadataExtended } from "./types.ts";
 import { normalizeDocumentSourceValue } from "./utils.ts";
-
-const MAX_RELEVANT_SNIPPETS = 5;
-const MAX_RECENT_DOCUMENTS = 10;
-const MAX_AVAILABLE_DOCUMENTS = 25;
-export const PINNED_DOCUMENT_TOKEN_BUDGET = 8_000;
-const CHARS_PER_TOKEN_ESTIMATE = 4;
-export const PINNED_DOCUMENT_TRUNCATION_MARKER =
-	"[PINNED KNOWLEDGE TRUNCATED: token budget exceeded]";
 
 function getDocumentTitle(memory: Memory, index: number): string {
 	const metadata = memory.metadata as DocumentMetadataExtended | undefined;
@@ -39,7 +30,7 @@ function getDocumentTitle(memory: Memory, index: number): string {
 
 export function renderPinnedDocuments(
 	documents: Memory[],
-	tokenBudget = PINNED_DOCUMENT_TOKEN_BUDGET,
+	_tokenBudget?: number,
 ): { text: string; truncated: boolean; includedIds: Array<Memory["id"]> } {
 	const pinned = documents
 		.filter((document) => {
@@ -54,25 +45,14 @@ export function renderPinnedDocuments(
 			);
 			return titleOrder || String(a.id ?? "").localeCompare(String(b.id ?? ""));
 		});
-	const maxChars =
-		Math.max(0, Math.floor(tokenBudget)) * CHARS_PER_TOKEN_ESTIMATE;
-	let usedChars = 0;
-	let truncated = false;
 	const includedIds: Array<Memory["id"]> = [];
 	const blocks: string[] = [];
 	for (const [index, document] of pinned.entries()) {
 		const block = `## ${getDocumentTitle(document, index)} (${document.id})\n${document.content.text ?? ""}`;
-		const separatorLength = blocks.length > 0 ? 2 : 0;
-		if (usedChars + separatorLength + block.length > maxChars) {
-			truncated = true;
-			break;
-		}
 		blocks.push(block);
 		includedIds.push(document.id);
-		usedChars += separatorLength + block.length;
 	}
-	if (truncated) blocks.push(PINNED_DOCUMENT_TRUNCATION_MARKER);
-	return { text: blocks.join("\n\n"), truncated, includedIds };
+	return { text: blocks.join("\n\n"), truncated: false, includedIds };
 }
 
 function summarizeDocument(memory: Memory, index: number) {
@@ -122,44 +102,33 @@ export const documentsProvider: Provider = {
 
 		const { relevantFragments, documents, pinnedDocuments } =
 			await service.composeProviderDocuments(message, {
-				limit: MAX_AVAILABLE_DOCUMENTS,
+				limit: Number.MAX_SAFE_INTEGER,
 			});
 		const pinned = renderPinnedDocuments(pinnedDocuments);
-		if (pinned.truncated) {
-			logger.warn(
-				{
-					tokenBudget: PINNED_DOCUMENT_TOKEN_BUDGET,
-					includedIds: pinned.includedIds,
-				},
-				"Pinned knowledge exceeded its provider token budget; prompt content was explicitly truncated",
-			);
-		}
-		const relevantSnippets = relevantFragments
-			.slice(0, MAX_RELEVANT_SNIPPETS)
-			.map((fragment, index) => {
-				const metadata = fragment.metadata as
-					| DocumentMetadataExtended
-					| undefined;
-				return {
-					id: fragment.id,
-					documentId: metadata?.documentId,
-					name:
-						metadata?.filename ??
-						metadata?.title ??
-						(typeof metadata?.documentTitle === "string"
-							? metadata.documentTitle
-							: undefined) ??
-						`Snippet ${index + 1}`,
-					text: fragment.content.text ?? "",
-					score: fragment.similarity,
-					scope: metadata?.scope ?? "global",
-				};
-			});
+		const relevantSnippets = relevantFragments.map((fragment, index) => {
+			const metadata = fragment.metadata as
+				| DocumentMetadataExtended
+				| undefined;
+			return {
+				id: fragment.id,
+				documentId: metadata?.documentId,
+				name:
+					metadata?.filename ??
+					metadata?.title ??
+					(typeof metadata?.documentTitle === "string"
+						? metadata.documentTitle
+						: undefined) ??
+					`Snippet ${index + 1}`,
+				text: fragment.content.text ?? "",
+				score: fragment.similarity,
+				scope: metadata?.scope ?? "global",
+			};
+		});
 
 		const summaries = documents
 			.filter((memory) => memory.metadata?.type === MemoryType.DOCUMENT)
 			.map(summarizeDocument);
-		const recentDocuments = summaries.slice(0, MAX_RECENT_DOCUMENTS);
+		const recentDocuments = summaries;
 
 		const snippetsText = relevantSnippets
 			.map((item) => `- [${item.name}] ${item.text}`)

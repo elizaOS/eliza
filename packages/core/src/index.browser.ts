@@ -128,7 +128,6 @@ export * from "./runtime";
 export { warnOnUnmatchedActionRolePolicyKeys } from "./runtime/action-role-policy";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
-export * from "./runtime/conversation-compaction-hook";
 export {
 	__resetDirectActionRoutingRulesForTests,
 	type DirectActionRoutingRule,

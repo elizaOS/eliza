@@ -82,13 +82,6 @@ interface SqlExecutor {
   all(sql: string, params?: unknown[]): Promise<unknown[]>;
 }
 
-// Bound auxiliary inline collections so telemetry/artifact chatter cannot grow
-// without limit. The primary operator timeline (messages + events) remains
-// uncapped so inspection and recovery can page all retained task history.
-const MAX_USAGE = 1000;
-const MAX_DECISIONS = 300;
-const MAX_ARTIFACTS = 200;
-
 // How long a waiter keeps trying to acquire the lock before giving up.
 const FILE_LOCK_ACQUIRE_TIMEOUT_MS = 30_000;
 // A lock is only reclaimed as "stale" once it is older than this. It MUST be
@@ -290,10 +283,6 @@ function normalizeRowset(result: unknown): unknown[] {
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-function clampTail<T>(items: T[], max: number): T[] {
-  return items.length > max ? items.slice(items.length - max) : items;
 }
 
 function buildSearchText(doc: OrchestratorTaskDocument): string {
@@ -570,21 +559,18 @@ export class InMemoryTaskStore {
   async addUsage(usage: OrchestratorTaskUsage): Promise<void> {
     await this.appendChild(usage.taskId, (doc) => {
       doc.usage.push(usage);
-      doc.usage = clampTail(doc.usage, MAX_USAGE);
     });
   }
 
   async addArtifact(artifact: OrchestratorTaskArtifact): Promise<void> {
     await this.appendChild(artifact.taskId, (doc) => {
       doc.artifacts.push(artifact);
-      doc.artifacts = clampTail(doc.artifacts, MAX_ARTIFACTS);
     });
   }
 
   async addDecision(decision: OrchestratorTaskDecision): Promise<void> {
     await this.appendChild(decision.taskId, (doc) => {
       doc.decisions.push(decision);
-      doc.decisions = clampTail(doc.decisions, MAX_DECISIONS);
     });
   }
 

@@ -175,29 +175,23 @@ describe("terminal run limits", () => {
     expect(gate.active()).toBe(0);
   });
 
-  it("shares one 128 KiB budget across stdout and stderr without broken UTF-8", async () => {
+  it("rejects an oversized capture instead of returning a partial prefix", async () => {
     const gate = createLeaseGate();
     runShellMock.mockImplementationOnce(async (request: ShellRequest) => {
-      request.onStdout?.("a".repeat(128 * 1024 - 2));
+      request.onStdout?.("a".repeat(4 * 1024 * 1024));
       request.onStderr?.("你");
       return shellResult();
     });
     const route = makeContext("run-00000000-0000-4000-8000-000000000004", gate);
 
     expect(await handleMiscRoutes(route.ctx)).toBe(true);
-    await vi.waitFor(() => expect(route.json).toHaveBeenCalledOnce());
-    const payload = route.json.mock.calls[0]?.[1] as {
-      stdout: string;
-      stderr: string;
-      truncated: boolean;
-    };
-    expect(
-      Buffer.byteLength(payload.stdout) + Buffer.byteLength(payload.stderr),
-    ).toBeLessThanOrEqual(128 * 1024);
-    expect(payload.stdout).toHaveLength(128 * 1024 - 2);
-    expect(payload.stderr).toBe("");
-    expect(payload.truncated).toBe(true);
-    expect(`${payload.stdout}${payload.stderr}`).not.toContain("\uFFFD");
+    await vi.waitFor(() => expect(route.error).toHaveBeenCalledOnce());
+    expect(route.json).not.toHaveBeenCalled();
+    expect(route.error).toHaveBeenCalledWith(
+      route.ctx.res,
+      expect.stringContaining("no partial result was returned"),
+      413,
+    );
     expect(gate.active()).toBe(0);
   });
 

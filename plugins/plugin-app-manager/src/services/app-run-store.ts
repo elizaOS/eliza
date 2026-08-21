@@ -24,7 +24,6 @@ import type {
 } from "@elizaos/shared";
 
 const APP_RUN_STORE_VERSION = 2;
-const MAX_RECORDED_RUN_EVENTS = 20;
 
 interface AppRunStoreFile {
   version: number;
@@ -314,8 +313,7 @@ function normalizeRunEvents(value: unknown): AppRunEvent[] {
   return value
     .map((event) => normalizeRunEvent(event))
     .filter((event): event is AppRunEvent => event !== null)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .slice(0, MAX_RECORDED_RUN_EVENTS);
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 function normalizeAwaySummary(value: unknown): AppRunAwaySummary | null {
@@ -418,7 +416,7 @@ function deriveRunHealthDetails(run: AppRunSummary): AppRunHealthDetails {
 
 function buildAwaySummary(run: AppRunSummary): AppRunAwaySummary {
   const events = run.recentEvents;
-  const latestMessages = events.slice(0, 3).map((event) => event.message);
+  const latestMessages = events.map((event) => event.message);
   const message =
     latestMessages.length > 0
       ? latestMessages.join(" ")
