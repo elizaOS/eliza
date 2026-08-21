@@ -54,7 +54,9 @@ import {
   type TrustedApiPrincipal,
   tagsMayProduceEffects,
   timeInferenceSpan,
+  toWellFormedUnicode,
   trackPostDeliveryTask,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type {
@@ -1907,7 +1909,10 @@ function sanitizeActionResultValue(value: unknown, depth = 0): unknown {
   if (typeof value === "number")
     return Number.isFinite(value) ? value : undefined;
   if (typeof value === "string") {
-    return value.length > 1000 ? `${value.slice(0, 997)}...` : value;
+    const wellFormed = toWellFormedUnicode(value);
+    return wellFormed.length > 1000
+      ? `${truncateWellFormed(wellFormed, 997)}...`
+      : wellFormed;
   }
   if (Array.isArray(value)) {
     if (depth >= 2) return undefined;
