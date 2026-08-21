@@ -3909,7 +3909,7 @@ export class AcpService extends Service {
       // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
-        line: line.slice(0, 200),
+        line: truncateWellFormed(toWellFormedUnicode(line), 200),
       });
       return null;
     }
@@ -4869,7 +4869,12 @@ export class AcpService extends Service {
       return "acpx session was not found. This is likely an internal session bookkeeping error.";
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
-    if (stderr.trim()) return stderr.trim().slice(0, 500);
+    if (stderr.trim()) {
+      const wellFormed = toWellFormedUnicode(stderr.trim());
+      return wellFormed.length > 500
+        ? truncateWellFormed(wellFormed, 500)
+        : wellFormed;
+    }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
