@@ -193,6 +193,16 @@
       "import": "./dist/platform/native-library-policy.js",
       "default": "./dist/platform/native-library-policy.js"
     },
+    "./canonical-json": {
+      "types": "./dist/canonical-json.d.ts",
+      "eliza-source": {
+        "types": "./src/canonical-json.ts",
+        "import": "./src/canonical-json.ts",
+        "default": "./src/canonical-json.ts"
+      },
+      "import": "./dist/canonical-json.js",
+      "default": "./dist/canonical-json.js"
+    },
     "./character-presets": {
       "types": "./dist/character-presets.d.ts",
       "eliza-source": {
