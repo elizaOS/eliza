@@ -15,7 +15,10 @@ import type {
 import { logger, NOTIFICATION_STREAM, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationPushService } from "./notification-push-service.ts";
-import { PushTokenRegistry } from "./push-token-registry.ts";
+import {
+  PUSH_TOKEN_PERSIST_FAILED_CODE,
+  PushTokenRegistry,
+} from "./push-token-registry.ts";
 import {
   type PushMessage,
   type PushProvider,
@@ -51,6 +54,7 @@ interface Harness {
   emit: (notification: AgentNotification) => void;
   emitRaw: (event: AgentEventPayload) => void;
   registry: PushTokenRegistry;
+  reportError: ReturnType<typeof vi.fn>;
   listenerCount: () => number;
 }
 
@@ -68,6 +72,7 @@ interface HarnessOptions {
 function makeHarness(options: HarnessOptions = {}): Harness {
   const cache = new Map<string, unknown>();
   const listeners = new Set<AgentEventListener>();
+  const reportError = vi.fn();
   const bus = {
     subscribe(listener: AgentEventListener): () => void {
       listeners.add(listener);
@@ -87,7 +92,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     },
     deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
     getService: (t: string) => (t === ServiceType.AGENT_EVENT ? bus : null),
-    reportError: () => {},
+    reportError,
   } as unknown as IAgentRuntime;
 
   const emitRaw = (event: AgentEventPayload) => {
@@ -107,6 +112,7 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     emit,
     emitRaw,
     registry: new PushTokenRegistry(runtime),
+    reportError,
     listenerCount: () => listeners.size,
   };
 }
@@ -134,8 +140,8 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 /**
  * Run `body` and report every process-level unhandled rejection it produced.
  * The bus listener is invoked synchronously, so `AgentEventService.emit`'s
- * try/catch can only see a synchronous throw — a rejection from the detached
- * fan-out promise is observable nowhere else.
+ * try/catch can only see a synchronous throw. Without a local rejection
+ * handler, the detached fan-out would reach the process-level guard instead.
  */
 async function collectUnhandledRejections(
   body: () => void,
@@ -284,7 +290,7 @@ describe("NotificationPushService", () => {
     expect(h.listenerCount()).toBe(0);
   });
 
-  it("logs and drops fan-out failures from registry list()", async () => {
+  it("reports and drops fan-out failures from registry list() without duplicate logging", async () => {
     const ios = new FakeProvider("apns", true);
     const android = new FakeProvider("fcm", true);
     const service = new NotificationPushService(h.runtime, {
@@ -292,31 +298,26 @@ describe("NotificationPushService", () => {
       providers: { ios, android },
     });
     await service.attach();
-    const listSpy = vi
-      .spyOn(h.registry, "list")
-      .mockRejectedValueOnce(new Error("db down"));
+    const failure = new Error("db down");
+    const listSpy = vi.spyOn(h.registry, "list").mockRejectedValueOnce(failure);
     const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
-    const reportErrorSpy = vi
-      .spyOn(h.runtime, "reportError")
-      .mockImplementation(() => {});
 
-    h.emit(notification());
+    const emitted = notification();
+    h.emit(emitted);
     await flush();
 
     expect(listSpy).toHaveBeenCalledTimes(1);
-    expect(loggerSpy).toHaveBeenCalledWith(
-      { src: "service:notification_push", error: expect.any(Error) },
-      "[NotificationPushService] fan-out failed",
-    );
-    expect(reportErrorSpy).toHaveBeenCalledWith(
+    expect(h.reportError).toHaveBeenCalledTimes(1);
+    expect(h.reportError).toHaveBeenCalledWith(
       "NotificationPushService.fanOut",
-      expect.any(Error),
-      { stream: NOTIFICATION_STREAM },
+      failure,
+      { stream: NOTIFICATION_STREAM, runId: emitted.id },
     );
+    expect(loggerSpy).not.toHaveBeenCalled();
     expect(ios.sent).toHaveLength(0);
   });
 
-  it("logs and drops fan-out failures from dead-token unregister()", async () => {
+  it("reports and drops fan-out failures from dead-token unregister() without duplicate logging", async () => {
     const ios = new FakeProvider("apns", true, new Set(["dead-token"]));
     const android = new FakeProvider("fcm", false);
     const service = new NotificationPushService(h.runtime, {
@@ -325,27 +326,24 @@ describe("NotificationPushService", () => {
     });
     await service.attach();
     await h.registry.register("ios", "dead-token");
+    const failure = new Error("durable write rejected");
     const unregisterSpy = vi
       .spyOn(h.registry, "unregister")
-      .mockRejectedValueOnce(new Error("durable write rejected"));
+      .mockRejectedValueOnce(failure);
     const loggerSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
-    const reportErrorSpy = vi
-      .spyOn(h.runtime, "reportError")
-      .mockImplementation(() => {});
 
-    h.emit(notification());
+    const emitted = notification();
+    h.emit(emitted);
     await flush();
 
     expect(unregisterSpy).toHaveBeenCalledWith("dead-token");
-    expect(loggerSpy).toHaveBeenCalledWith(
-      { src: "service:notification_push", error: expect.any(Error) },
-      "[NotificationPushService] fan-out failed",
-    );
-    expect(reportErrorSpy).toHaveBeenCalledWith(
+    expect(h.reportError).toHaveBeenCalledTimes(1);
+    expect(h.reportError).toHaveBeenCalledWith(
       "NotificationPushService.fanOut",
-      expect.any(Error),
-      { stream: NOTIFICATION_STREAM },
+      failure,
+      { stream: NOTIFICATION_STREAM, runId: emitted.id },
     );
+    expect(loggerSpy).not.toHaveBeenCalled();
   });
 
   it("starts dormant (no throw) when there is no event bus", async () => {
@@ -367,12 +365,12 @@ describe("NotificationPushService", () => {
     // whose try/catch (error-policy:J7) can only contain a SYNCHRONOUS throw.
     // `registry.list()` → `hydrate()` deliberately rethrows a failed
     // `getCache`, and that rejection arrives after the listener has returned —
-    // so it used to surface as a process-level unhandled rejection, which
-    // node's default `--unhandled-rejections=throw` turns into agent death on
-    // a transient cache outage.
+    // so it used to reach the process-level unhandled-rejection guard instead
+    // of the runtime diagnostics path that owns service failures.
+    const failure = new Error("cache adapter unavailable");
     const broken = makeHarness({
       getCache: async () => {
-        throw new Error("cache adapter unavailable");
+        throw failure;
       },
     });
     const ios = new FakeProvider("apns", true);
@@ -382,11 +380,18 @@ describe("NotificationPushService", () => {
     });
     await service.attach();
 
+    const emitted = notification();
     const escaped = await collectUnhandledRejections(() => {
-      broken.emit(notification());
+      broken.emit(emitted);
     });
 
     expect(escaped).toEqual([]);
+    expect(broken.reportError).toHaveBeenCalledTimes(1);
+    expect(broken.reportError).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      failure,
+      { stream: NOTIFICATION_STREAM, runId: emitted.id },
+    );
     expect(ios.sent).toHaveLength(0);
   });
 
@@ -407,11 +412,18 @@ describe("NotificationPushService", () => {
     await flaky.registry.register("ios", "dead-token");
     writesLand = false;
 
+    const emitted = notification();
     const escaped = await collectUnhandledRejections(() => {
-      flaky.emit(notification());
+      flaky.emit(emitted);
     });
 
     expect(escaped).toEqual([]);
+    expect(flaky.reportError).toHaveBeenCalledTimes(1);
+    expect(flaky.reportError).toHaveBeenCalledWith(
+      "NotificationPushService.fanOut",
+      expect.objectContaining({ code: PUSH_TOKEN_PERSIST_FAILED_CODE }),
+      { stream: NOTIFICATION_STREAM, runId: emitted.id },
+    );
     // The removal never persisted, so the observable registry is unchanged.
     expect((await flaky.registry.list()).map((r) => r.token)).toEqual([
       "dead-token",

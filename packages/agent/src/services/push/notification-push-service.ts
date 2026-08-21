@@ -131,19 +131,13 @@ export class NotificationPushService extends Service {
         try {
           await this.onNotification(event);
         } catch (error) {
-          // error-policy:J7 best-effort fan-out must not escape as an
-          // unhandled rejection; log + report and drop the event.
-          logger.error(
-            { src: "service:notification_push", error },
-            "[NotificationPushService] fan-out failed",
-          );
-          if (typeof this.runtime.reportError === "function") {
-            this.runtime.reportError(
-              "NotificationPushService.fanOut",
-              error as Error,
-              { stream: NOTIFICATION_STREAM },
-            );
-          }
+          // error-policy:J7 best-effort push fan-out must not escape as an
+          // unhandled rejection. reportError owns the diagnostic log, event,
+          // recent-error ring, and escalation path, so do not log separately.
+          this.runtime.reportError("NotificationPushService.fanOut", error, {
+            stream: NOTIFICATION_STREAM,
+            runId: event.runId,
+          });
         }
       })();
     });
