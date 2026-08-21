@@ -336,7 +336,7 @@ async function openSafariUrl(url, inNewTab = false) {
 async function readSafariFrontTabState() {
   const raw = await runAppleScript(`
     tell application "${safariAppName}"
-      set payload to do JavaScript "JSON.stringify({ title: document.querySelector('#statusTitle')?.textContent ?? document.title ?? '', detail: document.querySelector('#statusDetail')?.textContent ?? '', badge: document.querySelector('#statusBadge')?.textContent ?? '', button: document.querySelector('#autoPair')?.textContent ?? '', summary: document.querySelector('#summary')?.textContent ?? '' })" in current tab of front window
+      set payload to do JavaScript "JSON.stringify({ title: document.querySelector('#statusTitle')?.textContent ?? document.title ?? '', button: document.querySelector('#primaryAction')?.textContent ?? '', app: document.querySelector('#appValue')?.textContent ?? '' })" in current tab of front window
       return payload
     end tell
   `);
@@ -346,7 +346,7 @@ async function readSafariFrontTabState() {
 async function clickSafariPopupPrimaryButton() {
   await runAppleScript(`
     tell application "${safariAppName}"
-      do JavaScript "document.querySelector('#autoPair')?.click();" in current tab of front window
+      do JavaScript "document.querySelector('#primaryAction')?.click();" in current tab of front window
     end tell
   `);
 }
@@ -355,7 +355,7 @@ async function importSafariPairing(config) {
   const encodedConfig = Buffer.from(JSON.stringify(config), "utf8").toString(
     "base64",
   );
-  const javascript = `document.querySelector('#advancedTools').open = true; document.querySelector('#pairingJson').value = atob('${encodedConfig}'); document.querySelector('#import').click();`;
+  const javascript = `document.querySelector('#details').open = true; document.querySelector('#recovery').open = true; document.querySelector('#pairingJson').value = atob('${encodedConfig}'); document.querySelector('#importPairing').click();`;
   const escapedJavascript = javascript
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"');

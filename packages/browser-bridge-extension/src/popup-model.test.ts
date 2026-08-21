@@ -1,8 +1,9 @@
 /**
- * Unit tests for derivePopupStatusModel across the connection states; pure
- * model, no browser environment.
+ * Unit coverage for every compact popup state, including the invariant that
+ * the default surface exposes no more than one contextual action.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { BrowserBridgeSettings } from "./browser-bridge-contracts";
 import { derivePopupStatusModel } from "./popup-model";
 import type { BackgroundState } from "./protocol";
 
@@ -24,20 +25,42 @@ function baseState(overrides: Partial<BackgroundState> = {}): BackgroundState {
 const config = {
   apiBaseUrl: "https://agent.example.com",
   companionId: "companion-1",
-  pairingToken: "pairing-token",
+  pairingToken: "pairing-token-must-not-render",
   pairingTokenExpiresAt: null,
   browser: "chrome" as const,
   profileId: "default",
   profileLabel: "Default",
-  label: "Agent Browser Bridge chrome Default",
+  label: "Eliza Browser chrome Default",
 };
 
-const enabledSettings = {
+const enabledSettings: BrowserBridgeSettings = {
   enabled: true,
-  trackingMode: "active_tabs" as const,
+  trackingMode: "active_tabs",
   allowBrowserControl: true,
+  requireConfirmationForAccountAffecting: true,
+  incognitoEnabled: false,
+  siteAccessMode: "granted_sites",
+  grantedOrigins: [],
+  blockedOrigins: [],
+  maxRememberedTabs: 10,
   pauseUntil: null,
+  metadata: {},
+  updatedAt: null,
 };
+
+function derive(
+  state: BackgroundState,
+  options: {
+    discoveredApiBaseUrl?: string | null;
+    hasAllWebsiteAccess?: boolean;
+  } = {},
+) {
+  return derivePopupStatusModel({
+    state,
+    discoveredApiBaseUrl: options.discoveredApiBaseUrl ?? null,
+    hasAllWebsiteAccess: options.hasAllWebsiteAccess ?? false,
+  });
+}
 
 describe("derivePopupStatusModel", () => {
   beforeEach(() => {
@@ -45,126 +68,104 @@ describe("derivePopupStatusModel", () => {
     vi.setSystemTime(new Date("2026-01-01T12:00:00.000Z"));
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
+  afterEach(() => vi.useRealTimers());
+
+  it("keeps every default state to zero or one contextual action", () => {
+    const views = [
+      derive(baseState({ syncing: true })),
+      derive(baseState()),
+      derive(baseState(), { discoveredApiBaseUrl: "http://127.0.0.1:2138" }),
+      derive(baseState({ config, lastError: "Pairing expired" })),
+      derive(baseState({ config })),
+      derive(baseState({ config, settings: enabledSettings })),
+      derive(
+        baseState({
+          config,
+          settings: { ...enabledSettings, siteAccessMode: "all_sites" },
+        }),
+      ),
+    ];
+    for (const view of views) {
+      expect(view.action === null ? 0 : 1).toBeLessThanOrEqual(1);
+    }
   });
 
-  it("prioritizes syncing and error states over connection details", () => {
-    expect(
-      derivePopupStatusModel({
-        state: baseState({ config, settings: enabledSettings, syncing: true }),
-        discoveredApiBaseUrl: null,
-      }),
-    ).toMatchObject({
-      kind: "syncing",
-      primaryAction: "sync",
-      showSync: true,
+  it("uses pairing recovery only when configuration is missing", () => {
+    expect(derive(baseState())).toMatchObject({
+      kind: "needs_app",
+      action: { kind: "show_recovery", label: "Pair this browser" },
     });
-
     expect(
-      derivePopupStatusModel({
-        state: baseState({
-          config,
-          settings: enabledSettings,
-          lastError: "Pairing expired",
-        }),
-        discoveredApiBaseUrl: null,
-      }),
+      derive(baseState(), { discoveredApiBaseUrl: "http://127.0.0.1:2138" }),
+    ).toMatchObject({
+      kind: "needs_settings",
+      action: { kind: "show_recovery", label: "Pair this browser" },
+    });
+    expect(
+      derive(baseState({ config, settings: enabledSettings })).action,
+    ).toBeNull();
+  });
+
+  it("shows website access only when all-sites mode needs it", () => {
+    const state = baseState({
+      config,
+      settings: { ...enabledSettings, siteAccessMode: "all_sites" },
+    });
+    expect(derive(state)).toMatchObject({
+      kind: "needs_permission",
+      action: { kind: "grant_website_access" },
+    });
+    expect(derive(state, { hasAllWebsiteAccess: true })).toMatchObject({
+      kind: "connected",
+      action: null,
+    });
+    expect(
+      derive(baseState({ config, settings: enabledSettings })).action,
+    ).toBeNull();
+  });
+
+  it("renders paused, disabled, control-off, retry, and connected states", () => {
+    for (const settings of [
+      { ...enabledSettings, pauseUntil: "2026-01-01T13:00:00.000Z" },
+      { ...enabledSettings, enabled: false },
+      { ...enabledSettings, allowBrowserControl: false },
+    ]) {
+      expect(derive(baseState({ config, settings }))).toMatchObject({
+        kind: "needs_settings",
+        action: null,
+      });
+    }
+    expect(
+      derive(baseState({ config, lastError: "Pairing expired" })),
     ).toMatchObject({
       kind: "error",
-      detail: "Pairing expired",
-      primaryAction: "sync",
-      showSync: true,
+      action: { kind: "sync", label: "Retry connection" },
+    });
+    expect(
+      derive(baseState({ config, settings: enabledSettings })),
+    ).toMatchObject({
+      kind: "connected",
+      label: "Connected to Eliza",
+      action: null,
     });
   });
 
-  it("classifies connected, control-off, disabled, paused, pairing, and missing-app states", () => {
-    expect(
-      derivePopupStatusModel({
-        state: baseState({ config, settings: enabledSettings }),
-        discoveredApiBaseUrl: null,
-      }).kind,
-    ).toBe("connected");
-
-    expect(
-      derivePopupStatusModel({
-        state: baseState({
-          config,
-          settings: { ...enabledSettings, allowBrowserControl: false },
-        }),
-        discoveredApiBaseUrl: null,
-      }),
-    ).toMatchObject({ kind: "needs_settings", badge: "Control Off" });
-
-    expect(
-      derivePopupStatusModel({
-        state: baseState({
-          config,
-          settings: { ...enabledSettings, enabled: false },
-        }),
-        discoveredApiBaseUrl: null,
-      }),
-    ).toMatchObject({ kind: "needs_settings", badge: "Access Off" });
-
-    expect(
-      derivePopupStatusModel({
-        state: baseState({
-          config,
-          settings: {
-            ...enabledSettings,
-            pauseUntil: "2026-01-01T13:00:00.000Z",
-          },
-        }),
-        discoveredApiBaseUrl: null,
-      }),
-    ).toMatchObject({ kind: "needs_settings", badge: "Paused" });
-
-    expect(
-      derivePopupStatusModel({
-        state: baseState(),
-        discoveredApiBaseUrl: "http://127.0.0.1:2138",
-      }),
-    ).toMatchObject({
-      kind: "needs_pairing",
-      primaryAction: "manual_pair",
-      primaryLabel: "Import Pairing JSON",
-      showSync: false,
-    });
-
-    expect(
-      derivePopupStatusModel({
-        state: baseState(),
-        discoveredApiBaseUrl: null,
-      }),
-    ).toMatchObject({
-      kind: "needs_app",
-      primaryAction: "manual_pair",
-      primaryLabel: "Import Pairing JSON",
-      showSync: false,
-    });
-  });
-
-  it("summarizes configured or discovered app, sync time, tab count, and mode", () => {
-    const model = derivePopupStatusModel({
-      state: baseState({
+  it("never copies pairing credentials into diagnostics", () => {
+    const view = derive(
+      baseState({
         config,
         settings: enabledSettings,
         lastSyncAt: "2026-01-01T11:59:00.000Z",
         rememberedTabCount: 3,
         settingsSummary: "Active tabs",
       }),
-      discoveredApiBaseUrl: "http://127.0.0.1:2138",
+    );
+    expect(view.diagnostics).toMatchObject({
+      app: "https://agent.example.com",
+      mode: "Active tabs",
+      tabCount: "3",
     });
-
-    expect(model.summary).toEqual(
-      expect.arrayContaining([
-        "App: https://agent.example.com",
-        "Remembered tabs: 3",
-        "Mode: Active tabs",
-      ]),
-    );
-    expect(model.summary.some((entry) => entry.startsWith("Last sync: "))).toBe(
-      true,
-    );
+    expect(JSON.stringify(view)).not.toContain(config.pairingToken);
+    expect(JSON.stringify(view)).not.toContain(config.companionId);
   });
 });

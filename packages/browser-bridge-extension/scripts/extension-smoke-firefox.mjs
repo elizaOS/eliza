@@ -94,7 +94,7 @@ async function waitForInstalledPairingGuide(browser, timeout = 20_000) {
     for (const page of await browser.pages()) {
       try {
         if (
-          (await page.title()) === "Agent Browser Bridge" &&
+          (await page.title()) === "Eliza Browser" &&
           (await page.$("#pairingJson"))
         ) {
           return page;
@@ -143,7 +143,7 @@ async function runInstalledFirefoxSmoke() {
     const popupPage = await waitForInstalledPairingGuide(browser);
     // Firefox BiDi can report no clickable geometry for an installed
     // extension page whose protocol URL is stale even though its DOM is live.
-    await popupPage.$eval("#autoPair", (element) => element.click());
+    await popupPage.$eval("#primaryAction", (element) => element.click());
     const pairingJson = JSON.stringify({
       apiBaseUrl: mockServer.origin,
       companionId: "companion-smoke-test",
@@ -161,19 +161,18 @@ async function runInstalledFirefoxSmoke() {
       },
       pairingJson,
     );
-    await popupPage.$eval("#import", (element) => element.click());
+    await popupPage.$eval("#importPairing", (element) => element.click());
     try {
       await popupPage.waitForFunction(
         () =>
           document
-            .querySelector("#autoPair")
-            ?.textContent?.includes("Sync This Browser"),
+            .querySelector("#statusTitle")
+            ?.textContent?.includes("Connected"),
         { timeout: 20_000 },
       );
     } catch (error) {
       const popupState = await popupPage.evaluate(() => ({
-        action: document.querySelector("#autoPair")?.textContent,
-        detail: document.querySelector("#statusDetail")?.textContent,
+        action: document.querySelector("#primaryAction")?.textContent,
         pairingJson: document.querySelector("#pairingJson")?.value,
         title: document.querySelector("#statusTitle")?.textContent,
       }));

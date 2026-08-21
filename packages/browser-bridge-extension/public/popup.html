@@ -3,103 +3,67 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agent Browser Bridge</title>
+    <title>Eliza Browser</title>
     <link rel="stylesheet" href="./popup.css" />
   </head>
   <body>
     <main class="panel">
-      <header class="panel-header">
-        <p class="eyebrow">Agent Browser Bridge</p>
-        <h1>Connect Your Browser</h1>
-        <p class="lede">Use the exact browser profile that contains your real accounts. Pairing credentials must be created in authenticated Eliza settings.</p>
-      </header>
+      <h1>Eliza Browser</h1>
 
-      <section class="status-hero">
-        <div class="status-topline">
-          <span id="statusBadge" class="status-badge" data-kind="syncing">Loading</span>
-        </div>
-        <h2 id="statusTitle" class="status-title">Loading extension state…</h2>
-        <p id="statusDetail" class="status-detail"></p>
-        <ul id="statusChecklist" class="status-checklist"></ul>
-        <div id="summary" class="summary-grid"></div>
+      <section class="connection" aria-label="Browser connection">
+        <p
+          id="statusTitle"
+          class="status"
+          data-kind="syncing"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          Connecting to Eliza…
+        </p>
+        <button id="primaryAction" class="primary" type="button" hidden></button>
       </section>
 
-      <section class="auto-card">
-        <div class="import-copy">
-          <h2>Authenticated Pairing</h2>
-          <p>Create a browser companion pairing in Eliza's Browser settings, copy its pairing JSON, then import it below.</p>
-        </div>
-        <div class="actions">
-          <button id="autoPair" class="primary" type="button">Import Pairing JSON</button>
-          <button id="sync" type="button">Sync This Browser</button>
-        </div>
-      </section>
-
-      <section class="auto-card">
-        <div class="import-copy">
-          <h2>Website Access</h2>
-          <p id="siteAccessStatus">Checking browser-managed website permissions…</p>
-        </div>
-        <div class="actions single-action">
-          <button id="siteAccess" class="secondary" type="button">Grant Website Access</button>
-        </div>
-      </section>
-
-      <details id="advancedTools" class="advanced-card">
-        <summary>Pairing and Advanced Tools</summary>
-
-        <section class="form-grid">
-          <label>
-            <span>API Base URL</span>
-            <input id="apiBaseUrl" type="url" placeholder="http://127.0.0.1:31337" />
-          </label>
-          <label>
-            <span>Browser</span>
-            <select id="browser" disabled>
-              <option value="chrome">Chrome</option>
-              <option value="safari">Safari</option>
-            </select>
-          </label>
-          <label>
-            <span>Companion ID</span>
-            <input id="companionId" type="text" placeholder="UUID from Eliza pairing" />
-          </label>
-          <label>
-            <span>Pairing Token</span>
-            <input id="pairingToken" type="password" placeholder="lobr_…" />
-          </label>
-          <label>
-            <span>Profile ID</span>
-            <input id="profileId" type="text" placeholder="default" />
-          </label>
-          <label>
-            <span>Profile Label</span>
-            <input id="profileLabel" type="text" placeholder="Default" />
-          </label>
-          <label>
-            <span>Companion Label</span>
-            <input id="label" type="text" placeholder="Agent Browser Bridge chrome Default" />
-          </label>
-        </section>
-
-        <section class="import-card">
-          <div class="import-copy">
-            <h2>Manual Pairing JSON</h2>
-            <p>Paste pairing JSON copied from authenticated Eliza Browser settings, then import it here.</p>
+      <details id="details" class="details">
+        <summary>Details</summary>
+        <dl>
+          <div>
+            <dt>App</dt>
+            <dd id="appValue">Looking for Eliza…</dd>
           </div>
+          <div>
+            <dt>Last connected</dt>
+            <dd id="lastSyncValue">Not yet</dd>
+          </div>
+          <div>
+            <dt>Browser mode</dt>
+            <dd id="modeValue">Not available</dd>
+          </div>
+          <div>
+            <dt>Shared tabs</dt>
+            <dd id="tabCountValue">0</dd>
+          </div>
+        </dl>
+        <button id="disconnect" class="disconnect" type="button" hidden>
+          Disconnect this browser
+        </button>
+
+        <details id="recovery" class="recovery">
+          <summary>Advanced recovery</summary>
+          <label for="pairingJson">Pairing JSON from Eliza</label>
           <textarea
             id="pairingJson"
-            rows="7"
-            placeholder='{"apiBaseUrl":"http://127.0.0.1:31337","companionId":"...","pairingToken":"...","browser":"chrome"}'
+            rows="5"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
           ></textarea>
-          <div class="advanced-actions">
-            <button id="import" class="secondary" type="button">Import Pairing JSON</button>
-            <button id="save" class="secondary" type="button">Save Manual Pairing</button>
-            <button id="clear" class="danger" type="button">Clear</button>
-          </div>
-        </section>
+          <button id="importPairing" class="secondary" type="button">
+            Import pairing
+          </button>
+        </details>
       </details>
     </main>
     <script src="./popup.js"></script>
   </body>
-  </html>
+</html>

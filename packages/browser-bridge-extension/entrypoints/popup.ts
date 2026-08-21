@@ -1,47 +1,36 @@
 /**
- * Popup UI controller: renders the status model from derivePopupStatusModel,
- * drives the settings form (agent API URL, companion id, tracking mode), and
- * imports authenticated manual pairing or triggers sync through the background worker.
+ * Renders the extension's compact connection status and exposes only
+ * contextual recovery, permission, and disconnect controls.
  */
-import { derivePopupStatusModel } from "../src/popup-model";
+import {
+  derivePopupStatusModel,
+  type PopupContextualAction,
+} from "../src/popup-model";
 import type {
   BackgroundState,
   CompanionConfig,
   PopupRequest,
   PopupResponse,
 } from "../src/protocol";
-import {
-  DEFAULT_BROWSER_BRIDGE_API_BASE_URL,
-  discoverAgentApiBaseUrl,
-} from "../src/storage";
+import { discoverAgentApiBaseUrl } from "../src/storage";
 import {
   hasAllUrlHostPermission,
   requestAllWebsiteAccess,
   sendRuntimeMessage,
 } from "../src/webextension";
 
-type FormRefs = {
-  apiBaseUrl: HTMLInputElement;
-  autoPairButton: HTMLButtonElement;
-  browser: HTMLSelectElement;
-  companionId: HTMLInputElement;
-  pairingToken: HTMLInputElement;
-  profileId: HTMLInputElement;
-  profileLabel: HTMLInputElement;
-  label: HTMLInputElement;
-  pairingJson: HTMLTextAreaElement;
-  advancedTools: HTMLDetailsElement;
-  statusBadge: HTMLElement;
+type PopupRefs = {
   statusTitle: HTMLElement;
-  statusDetail: HTMLElement;
-  statusChecklist: HTMLUListElement;
-  summary: HTMLElement;
-  saveButton: HTMLButtonElement;
-  importButton: HTMLButtonElement;
-  syncButton: HTMLButtonElement;
-  clearButton: HTMLButtonElement;
-  siteAccessButton: HTMLButtonElement;
-  siteAccessStatus: HTMLElement;
+  primaryAction: HTMLButtonElement;
+  details: HTMLDetailsElement;
+  recovery: HTMLDetailsElement;
+  pairingJson: HTMLTextAreaElement;
+  importPairingButton: HTMLButtonElement;
+  appValue: HTMLElement;
+  lastSyncValue: HTMLElement;
+  modeValue: HTMLElement;
+  tabCountValue: HTMLElement;
+  disconnectButton: HTMLButtonElement;
 };
 
 type ElementConstructor<T extends HTMLElement> = { new (): T };
@@ -57,29 +46,19 @@ function requireElement<T extends HTMLElement>(
   return element;
 }
 
-function getFormRefs(): FormRefs {
+function getPopupRefs(): PopupRefs {
   return {
-    apiBaseUrl: requireElement("#apiBaseUrl", HTMLInputElement),
-    autoPairButton: requireElement("#autoPair", HTMLButtonElement),
-    browser: requireElement("#browser", HTMLSelectElement),
-    companionId: requireElement("#companionId", HTMLInputElement),
-    pairingToken: requireElement("#pairingToken", HTMLInputElement),
-    profileId: requireElement("#profileId", HTMLInputElement),
-    profileLabel: requireElement("#profileLabel", HTMLInputElement),
-    label: requireElement("#label", HTMLInputElement),
-    pairingJson: requireElement("#pairingJson", HTMLTextAreaElement),
-    advancedTools: requireElement("#advancedTools", HTMLDetailsElement),
-    statusBadge: requireElement("#statusBadge", HTMLElement),
     statusTitle: requireElement("#statusTitle", HTMLElement),
-    statusDetail: requireElement("#statusDetail", HTMLElement),
-    statusChecklist: requireElement("#statusChecklist", HTMLUListElement),
-    summary: requireElement("#summary", HTMLElement),
-    saveButton: requireElement("#save", HTMLButtonElement),
-    importButton: requireElement("#import", HTMLButtonElement),
-    syncButton: requireElement("#sync", HTMLButtonElement),
-    clearButton: requireElement("#clear", HTMLButtonElement),
-    siteAccessButton: requireElement("#siteAccess", HTMLButtonElement),
-    siteAccessStatus: requireElement("#siteAccessStatus", HTMLElement),
+    primaryAction: requireElement("#primaryAction", HTMLButtonElement),
+    details: requireElement("#details", HTMLDetailsElement),
+    recovery: requireElement("#recovery", HTMLDetailsElement),
+    pairingJson: requireElement("#pairingJson", HTMLTextAreaElement),
+    importPairingButton: requireElement("#importPairing", HTMLButtonElement),
+    appValue: requireElement("#appValue", HTMLElement),
+    lastSyncValue: requireElement("#lastSyncValue", HTMLElement),
+    modeValue: requireElement("#modeValue", HTMLElement),
+    tabCountValue: requireElement("#tabCountValue", HTMLElement),
+    disconnectButton: requireElement("#disconnect", HTMLButtonElement),
   };
 }
 
@@ -89,129 +68,22 @@ function popupResponseError(response: PopupResponse): string {
     : "The browser bridge returned an incomplete success response.";
 }
 
-function renderChecklist(
-  listElement: HTMLUListElement,
-  entries: string[],
-): void {
-  listElement.innerHTML = "";
-  for (const entry of entries) {
-    const item = document.createElement("li");
-    item.textContent = entry;
-    listElement.appendChild(item);
-  }
-}
-
-function renderSummary(refs: FormRefs, entries: string[]): void {
-  refs.summary.replaceChildren();
-  for (const entry of entries) {
-    const pill = document.createElement("span");
-    pill.className = "summary-pill";
-    pill.textContent = entry;
-    refs.summary.appendChild(pill);
-  }
-}
-
-function renderState(
-  refs: FormRefs,
-  state: BackgroundState,
-  discoveredApiBaseUrl: string | null,
-): void {
-  const config = state.config;
-  refs.apiBaseUrl.value =
-    config?.apiBaseUrl ?? DEFAULT_BROWSER_BRIDGE_API_BASE_URL;
-  refs.browser.value = config?.browser ?? "chrome";
-  refs.companionId.value = config?.companionId ?? "";
-  refs.pairingToken.value = config?.pairingToken ?? "";
-  refs.profileId.value = config?.profileId ?? "default";
-  refs.profileLabel.value = config?.profileLabel ?? "default";
-  refs.label.value = config?.label ?? "";
-  const model = derivePopupStatusModel({
-    state,
-    discoveredApiBaseUrl,
-  });
-  refs.statusBadge.textContent = model.badge;
-  refs.statusBadge.dataset.kind = model.kind;
-  refs.statusTitle.textContent = model.title;
-  refs.statusDetail.textContent = model.detail;
-  renderChecklist(refs.statusChecklist, model.checklist);
-  renderSummary(
-    refs,
-    state.activeSessionId
-      ? [...model.summary, `Session: ${state.activeSessionId}`]
-      : model.summary,
-  );
-  refs.autoPairButton.textContent = model.primaryLabel;
-  refs.autoPairButton.disabled = state.syncing;
-  refs.syncButton.hidden = !model.showSync || model.primaryAction === "sync";
-  refs.syncButton.disabled = state.syncing;
-}
-
-function applyDiscoveredApiBaseUrl(
-  refs: FormRefs,
-  state: BackgroundState,
-  discovered: string | null,
-): void {
-  const configured = state.config?.apiBaseUrl?.trim() ?? "";
-  if (
-    configured.length > 0 &&
-    configured.replace(/\/+$/, "") !== DEFAULT_BROWSER_BRIDGE_API_BASE_URL
-  ) {
-    return;
-  }
-  if (!discovered) {
-    return;
-  }
-  refs.apiBaseUrl.value = discovered;
-}
-
-async function renderResolvedState(
-  refs: FormRefs,
-  state: BackgroundState,
-): Promise<void> {
-  const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-  renderState(refs, state, discoveredApiBaseUrl);
-  applyDiscoveredApiBaseUrl(refs, state, discoveredApiBaseUrl);
-  const allWebsiteAccess = await hasAllUrlHostPermission();
-  refs.siteAccessButton.disabled = allWebsiteAccess;
-  refs.siteAccessButton.textContent = allWebsiteAccess
-    ? "Website Access Granted"
-    : "Grant Website Access";
-  refs.siteAccessStatus.textContent = allWebsiteAccess
-    ? "Eliza may use the HTTP and HTTPS sites allowed by your Browser settings."
-    : "Required for cross-site control and LifeOps website blocking. Your browser will show a permission prompt.";
-}
-
 async function sendMessage<T extends PopupRequest>(
   request: T,
 ): Promise<PopupResponse> {
   return await sendRuntimeMessage<PopupResponse>(request);
 }
 
-function readConfig(refs: FormRefs): Partial<CompanionConfig> {
-  return {
-    apiBaseUrl: refs.apiBaseUrl.value,
-    browser:
-      refs.browser.value === "safari" || refs.browser.value === "firefox"
-        ? refs.browser.value
-        : "chrome",
-    companionId: refs.companionId.value,
-    pairingToken: refs.pairingToken.value,
-    profileId: refs.profileId.value,
-    profileLabel: refs.profileLabel.value,
-    label: refs.label.value,
-  };
-}
+let currentAction: PopupContextualAction | null = null;
 
-function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
-  const trimmed = jsonValue.trim();
-  if (!trimmed) {
-    throw new Error("Paste the pairing JSON before importing it");
-  }
+function parsePairingJson(value: string): Partial<CompanionConfig> {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error("Paste pairing JSON from Eliza first");
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    // error-policy:J3 Manual pairing input remains an explicit validation error.
+    // error-policy:J3 Manual recovery input remains an explicit validation error.
     throw new Error("Pairing JSON must be valid JSON");
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -222,7 +94,7 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
     apiBaseUrl:
       typeof record.apiBaseUrl === "string" ? record.apiBaseUrl : undefined,
     browser:
-      record.browser === "safari" || record.browser === "firefox"
+      record.browser === "firefox" || record.browser === "safari"
         ? record.browser
         : "chrome",
     companionId:
@@ -240,133 +112,164 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
   };
 }
 
-async function refresh(refs: FormRefs): Promise<void> {
+function renderError(refs: PopupRefs, label: string): void {
+  currentAction = null;
+  refs.statusTitle.dataset.kind = "error";
+  refs.statusTitle.textContent = label;
+  refs.primaryAction.hidden = true;
+  refs.primaryAction.disabled = false;
+}
+
+async function renderState(
+  refs: PopupRefs,
+  state: BackgroundState,
+  discoveredApiBaseUrl: string | null,
+): Promise<void> {
+  const hasAllWebsiteAccess = await hasAllUrlHostPermission();
+  const view = derivePopupStatusModel({
+    state,
+    discoveredApiBaseUrl,
+    hasAllWebsiteAccess,
+  });
+  currentAction = view.action?.kind ?? null;
+  refs.statusTitle.dataset.kind = view.kind;
+  refs.statusTitle.textContent = view.label;
+  refs.primaryAction.hidden = view.action === null;
+  refs.primaryAction.disabled = false;
+  refs.primaryAction.textContent = view.action?.label ?? "";
+  refs.appValue.textContent = view.diagnostics.app;
+  refs.lastSyncValue.textContent = view.diagnostics.lastSync;
+  refs.modeValue.textContent = view.diagnostics.mode;
+  refs.tabCountValue.textContent = view.diagnostics.tabCount;
+  refs.disconnectButton.hidden = !view.showDisconnect;
+}
+
+async function loadState(): Promise<{
+  state: BackgroundState;
+  discoveredApiBaseUrl: string | null;
+} | null> {
   const response = await sendMessage({ type: "browser-bridge:get-state" });
-  if (!response.ok || !response.state) {
-    refs.statusTitle.textContent = "Agent Browser Bridge could not load";
-    refs.statusDetail.textContent = popupResponseError(response);
+  if (!response.ok || !response.state) return null;
+  return {
+    state: response.state,
+    discoveredApiBaseUrl: await discoverAgentApiBaseUrl(),
+  };
+}
+
+async function refresh(refs: PopupRefs): Promise<void> {
+  const loaded = await loadState();
+  if (!loaded) {
+    renderError(refs, "Couldn’t read the browser connection");
     return;
   }
-  await renderResolvedState(refs, response.state);
+  await renderState(refs, loaded.state, loaded.discoveredApiBaseUrl);
+}
+
+async function runContextualAction(refs: PopupRefs): Promise<void> {
+  const action = currentAction;
+  if (!action) return;
+  if (action === "show_recovery") {
+    refs.details.open = true;
+    refs.recovery.open = true;
+    refs.pairingJson.focus();
+    return;
+  }
+  refs.primaryAction.disabled = true;
+  refs.statusTitle.dataset.kind = "syncing";
+  refs.statusTitle.textContent =
+    action === "grant_website_access"
+      ? "Waiting for browser permission…"
+      : "Connecting to Eliza…";
+
+  if (action === "grant_website_access") {
+    try {
+      if (!(await requestAllWebsiteAccess())) {
+        renderError(refs, "Website access wasn’t granted");
+        currentAction = "grant_website_access";
+        refs.primaryAction.textContent = "Try again";
+        refs.primaryAction.hidden = false;
+        return;
+      }
+    } catch {
+      // error-policy:J4 Permission failure remains a visible recoverable state.
+      renderError(refs, "Website access wasn’t granted");
+      currentAction = "grant_website_access";
+      refs.primaryAction.textContent = "Try again";
+      refs.primaryAction.hidden = false;
+      return;
+    }
+  }
+
+  const response = await sendMessage({ type: "browser-bridge:sync-now" });
+  if (!response.ok || !response.state) {
+    renderError(refs, "Couldn’t connect to Eliza");
+    currentAction = action;
+    refs.primaryAction.textContent = "Retry connection";
+    refs.primaryAction.hidden = false;
+    return;
+  }
+  await renderState(refs, response.state, await discoverAgentApiBaseUrl());
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const refs = getFormRefs();
-
+  const refs = getPopupRefs();
   void refresh(refs);
 
-  refs.autoPairButton.addEventListener("click", async () => {
-    const currentResponse = await sendMessage({
-      type: "browser-bridge:get-state",
-    });
-    const currentState = currentResponse.ok ? currentResponse.state : null;
-    const discoveredApiBaseUrl = await discoverAgentApiBaseUrl();
-    const model = currentState
-      ? derivePopupStatusModel({
-          state: currentState,
-          discoveredApiBaseUrl,
-        })
-      : null;
-    refs.statusDetail.textContent =
-      model?.primaryAction === "sync"
-        ? "Syncing this browser with Eliza…"
-        : "Paste pairing JSON copied from authenticated Eliza Browser settings.";
-    if (model?.primaryAction !== "sync") {
-      refs.advancedTools.open = true;
-      refs.pairingJson.focus();
-      return;
-    }
-    const response = await sendMessage({ type: "browser-bridge:sync-now" });
-    if (!response.ok || !response.state) {
-      refs.statusDetail.textContent = popupResponseError(response);
-      return;
-    }
-    await renderResolvedState(refs, response.state);
+  refs.primaryAction.addEventListener("click", () => {
+    void runContextualAction(refs);
   });
 
-  refs.saveButton.addEventListener("click", async () => {
-    refs.statusDetail.textContent = "Saving manual pairing…";
-    const response = await sendMessage({
-      type: "browser-bridge:save-config",
-      config: readConfig(refs),
-    });
+  refs.disconnectButton.addEventListener("click", async () => {
+    if (!globalThis.confirm("Disconnect this browser from Eliza?")) return;
+    refs.disconnectButton.disabled = true;
+    const response = await sendMessage({ type: "browser-bridge:clear-config" });
+    refs.disconnectButton.disabled = false;
     if (!response.ok || !response.state) {
-      refs.statusDetail.textContent = popupResponseError(response);
+      renderError(refs, popupResponseError(response));
       return;
     }
-    await renderResolvedState(refs, response.state);
+    refs.details.open = false;
+    await renderState(refs, response.state, await discoverAgentApiBaseUrl());
   });
 
-  refs.importButton.addEventListener("click", async () => {
-    refs.statusDetail.textContent = "Importing manual pairing JSON…";
+  refs.importPairingButton.addEventListener("click", async () => {
     let config: Partial<CompanionConfig>;
     try {
       config = parsePairingJson(refs.pairingJson.value);
     } catch (error) {
-      // error-policy:J4 Invalid manual pairing input is shown in the popup and
-      // never reaches extension storage or the agent.
-      refs.statusDetail.textContent =
-        error instanceof Error ? error.message : String(error);
+      // error-policy:J4 Invalid recovery input stays visible without storage.
+      renderError(
+        refs,
+        error instanceof Error ? error.message : "Pairing JSON is invalid",
+      );
       return;
     }
+    refs.importPairingButton.disabled = true;
+    refs.statusTitle.dataset.kind = "syncing";
+    refs.statusTitle.textContent = "Importing pairing…";
     const response = await sendMessage({
       type: "browser-bridge:save-config",
       config,
     });
+    refs.importPairingButton.disabled = false;
     if (!response.ok || !response.state) {
-      refs.statusDetail.textContent = popupResponseError(response);
+      renderError(refs, "Couldn’t import pairing");
       return;
     }
     refs.pairingJson.value = "";
-    await renderResolvedState(refs, response.state);
-  });
-
-  refs.syncButton.addEventListener("click", async () => {
-    refs.statusDetail.textContent = "Syncing this browser with Eliza…";
-    const response = await sendMessage({ type: "browser-bridge:sync-now" });
-    if (!response.ok || !response.state) {
-      refs.statusDetail.textContent = popupResponseError(response);
-      return;
-    }
-    await renderResolvedState(refs, response.state);
-  });
-
-  refs.clearButton.addEventListener("click", async () => {
-    const response = await sendMessage({
-      type: "browser-bridge:clear-config",
+    refs.recovery.open = false;
+    refs.details.open = false;
+    const syncResponse = await sendMessage({
+      type: "browser-bridge:sync-now",
     });
-    if (!response.ok || !response.state) {
-      refs.statusDetail.textContent = popupResponseError(response);
+    if (!syncResponse.ok || !syncResponse.state) {
+      renderError(refs, "Pairing saved · Couldn’t connect to Eliza");
       return;
     }
-    await renderResolvedState(refs, response.state);
-  });
-
-  refs.siteAccessButton.addEventListener("click", async () => {
-    refs.siteAccessStatus.textContent =
-      "Waiting for the browser permission decision…";
-    try {
-      const granted = await requestAllWebsiteAccess();
-      if (!granted) {
-        refs.siteAccessStatus.textContent =
-          "Website access was not granted. Loopback pairing remains available.";
-        return;
-      }
-      refs.siteAccessButton.disabled = true;
-      refs.siteAccessButton.textContent = "Website Access Granted";
-      refs.siteAccessStatus.textContent =
-        "Website access granted. Syncing permissions and blocking rules with Eliza…";
-      const response = await sendMessage({ type: "browser-bridge:sync-now" });
-      if (!response.ok || !response.state) {
-        refs.siteAccessStatus.textContent = popupResponseError(response);
-        return;
-      }
-      await renderResolvedState(refs, response.state);
-    } catch (error) {
-      // error-policy:J4 Browser permission failures remain visible and do not
-      // claim that website access was granted.
-      refs.siteAccessStatus.textContent =
-        error instanceof Error ? error.message : String(error);
-    }
+    await renderState(
+      refs,
+      syncResponse.state,
+      await discoverAgentApiBaseUrl(),
+    );
   });
 });

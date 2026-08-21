@@ -198,17 +198,13 @@ async function waitForPopupText(page, selector, expected, timeout = 20_000) {
 async function waitForPopupSettled(page) {
   await page.waitForFunction(() => {
     const title = document.querySelector("#statusTitle")?.textContent ?? "";
-    const badge = document.querySelector("#statusBadge")?.textContent ?? "";
-    const primary = document.querySelector("#autoPair");
-    const primaryLabel = primary?.textContent?.trim() ?? "";
+    const primary = document.querySelector("#primaryAction");
     return (
       title.trim().length > 0 &&
-      title !== "Loading extension state…" &&
-      title !== "Looking for Eliza in this browser" &&
-      badge !== "Loading" &&
-      primaryLabel.length > 0 &&
-      primary instanceof HTMLButtonElement &&
-      !primary.disabled
+      title !== "Connecting to Eliza…" &&
+      (!(primary instanceof HTMLButtonElement) ||
+        primary.hidden ||
+        !primary.disabled)
     );
   });
 }
@@ -585,19 +581,11 @@ async function runManualPairAndSyncScenario(chromium) {
 
   try {
     await waitForPopupSettled(popupPage);
-    if (exerciseSiteAccess) {
-      await popupPage.click("#siteAccess");
-      await waitForPopupText(
-        popupPage,
-        "#siteAccess",
-        "Website Access Granted",
-        120_000,
-      );
-      await saveScreenshot(popupPage, "chrome-website-access-granted");
-    }
-    await popupPage.click("#autoPair");
+    await popupPage.click("#primaryAction");
     await popupPage.waitForFunction(
-      () => document.querySelector("#advancedTools")?.open === true,
+      () =>
+        document.querySelector("#details")?.open === true &&
+        document.querySelector("#recovery")?.open === true,
     );
     await popupPage.fill(
       "#pairingJson",
@@ -611,22 +599,25 @@ async function runManualPairAndSyncScenario(chromium) {
         label: "Agent Browser Bridge smoke",
       }),
     );
-    await popupPage.click("#import");
-    await waitForPopupText(popupPage, "#autoPair", "Sync This Browser", 20_000);
-
-    await popupPage.click("#autoPair");
-    await waitForPopupText(
-      popupPage,
-      "#statusTitle",
-      "This browser is connected to Eliza",
-      20_000,
-    );
-    await waitForPopupText(
-      popupPage,
-      "#summary",
-      `App: ${mockServer.origin}`,
-      10_000,
-    );
+    await popupPage.click("#importPairing");
+    await waitForPopupText(popupPage, "#statusTitle", "Connected", 20_000);
+    if (exerciseSiteAccess) {
+      await waitForPopupText(
+        popupPage,
+        "#primaryAction",
+        "Grant website access",
+        20_000,
+      );
+      await popupPage.click("#primaryAction");
+      await waitForPopupText(
+        popupPage,
+        "#statusTitle",
+        "Connected to Eliza",
+        120_000,
+      );
+      await saveScreenshot(popupPage, "chrome-website-access-granted");
+    }
+    await waitForPopupText(popupPage, "#appValue", mockServer.origin, 10_000);
 
     const syncRequests = mockServer.requests.filter(
       (request) =>
