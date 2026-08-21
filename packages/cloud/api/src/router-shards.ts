@@ -15,18 +15,16 @@
  * derived from.
  */
 
+import { tryDecodeURI } from "hono/utils/url";
+
 export function routeShardKey(path: string): string | null {
-  let routingPath = path;
-  try {
-    // Hono decodes URI-safe escapes before matching literal routes. The shard
-    // selector must use the same view or `/api/%66oo` would match `/api/foo`
-    // in a full router while loading a non-existent `%66oo` shard here.
-    // `decodeURI` deliberately preserves encoded slashes, matching Hono.
-    routingPath = decodeURI(path);
-  } catch {
-    // Malformed escapes are not valid literal aliases. Keep the raw path so
-    // they select no unrelated shard and reach the ordinary 404 boundary.
-  }
+  // This mirrors Hono's `getPath`: preserve an encoded percent, while decoding
+  // every independently valid percent run even if another run is malformed.
+  // A single `decodeURI` try/catch is not equivalent for mixed input such as
+  // `%61uth/%zz`, which Hono routes through the literal `auth` mount.
+  const routingPath = tryDecodeURI(
+    path.includes("%25") ? path.replaceAll("%25", "%2525") : path,
+  );
   const segments = routingPath.split("/").filter(Boolean);
   if (segments[0] !== "api") return null;
   const first = segments[1];
@@ -37,4 +35,13 @@ export function routeShardKey(path: string): string | null {
     return `v1/${second}`;
   }
   return first;
+}
+
+/** Collapse request-derived shard names to the finite generated inventory. */
+export function knownRouteShardKey(
+  path: string,
+  knownShards: ReadonlySet<string>,
+): string | null {
+  const shard = routeShardKey(path);
+  return shard !== null && knownShards.has(shard) ? shard : null;
 }

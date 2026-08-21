@@ -31,6 +31,8 @@ src/
                            mountShardRoutes(app, shard) mounts one family and
                            mountRoutes(app) mounts all. Both are async. Re-run
                            `bun run codegen` after adding/removing a route.
+  _router-shard-keys.generated.ts  GENERATED finite shard-key inventory used by
+                           the thin entrypoint without evaluating the full table.
   router-shards.ts         routeShardKey(path): the shard a mount pattern or request
                            path belongs to. Runtime twin of the codegen copy in
                            _generate-router.mjs; kept in lockstep by its test.
