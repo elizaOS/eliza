@@ -257,6 +257,63 @@ function spawnRefusalResult(
 }
 
 /**
+ * A brand-new hosted app belongs to the APP create workflow, which provisions
+ * a real scaffold and owns build/browser/publish verification. TASKS remains
+ * valid for explicit existing-repository work and for `spawn_agent` (where the
+ * user deliberately asked for a raw coding worker). This is a fail-closed
+ * boundary after planner selection, not a natural-language shortcut: it stops
+ * a mistaken TASKS create from inventing a scratch path and declaring a loose
+ * file to be a website while still letting the planner invoke APP normally.
+ */
+function guardHostedAppCreate(args: {
+  runtime: IAgentRuntime;
+  operation: TaskOp;
+  params: Record<string, unknown>;
+  content: Record<string, unknown>;
+  fallbackText: string;
+}): ActionResult | undefined {
+  if (args.operation !== "create") return undefined;
+  const registeredActions =
+    typeof args.runtime.getAllActions === "function"
+      ? args.runtime.getAllActions()
+      : (args.runtime.actions ?? []);
+  const appActionAvailable = registeredActions.some(
+    (action) => action.name.toUpperCase() === "APP",
+  );
+  if (!appActionAvailable) return undefined;
+
+  // A caller that locks an existing workdir, binds a managed project, or names
+  // a repository is intentionally operating on code that already exists.
+  if (
+    pickBoolean(args.params, args.content, "lockWorkdir") === true ||
+    pickString(args.params, args.content, "repo") ||
+    pickString(args.params, args.content, "projectId") ||
+    pickString(args.params, args.content, "workspaceId")
+  ) {
+    return undefined;
+  }
+
+  const goal = taskParts(args.params, args.content, args.fallbackText).join(
+    "\n",
+  );
+  if (detectTaskType(goal) !== "app-build") return undefined;
+
+  const humanText =
+    "I’m switching this to the app builder so it gets a real preview and verification.";
+  return {
+    success: false,
+    error: "HOSTED_APP_NEEDS_APP_BUILDER",
+    text: humanText,
+    userFacingText: humanText,
+    data: {
+      code: "HOSTED_APP_NEEDS_APP_BUILDER",
+      plannerGuidance:
+        "Call APP with action=create and pass the user's website/app request as the intent. APP owns scaffolding, coding-agent dispatch, browser verification, and the live preview/publish result. Do not retry TASKS and do not invent a workdir.",
+    },
+  };
+}
+
+/**
  * Pre-spawn intent gate — fails fast BEFORE any ACP session exists. A coding
  * sub-agent must only be spawned on an explicit instruction. Refuses:
  *
@@ -4554,6 +4611,7 @@ const TASKS_READ_ONLY_OPERATIONS: ReadonlySet<TaskOp> = new Set([
 const TASKS_REJECTED_FAILURE_CODES: ReadonlySet<string> = new Set([
   "EMPTY_TASK_PROMPT",
   "FORBIDDEN",
+  "HOSTED_APP_NEEDS_APP_BUILDER",
   "INVALID_CREDENTIALS",
   "INVALID_REPO_DOMAIN",
   "LINK_SHARE_NOT_A_TASK",
@@ -5734,15 +5792,23 @@ export const tasksAction: Action & {
           return [];
         }
       : undefined;
-    const result = await dispatchTasksOperation(
-      action,
-      runtime,
-      message,
-      state,
-      params,
-      content,
-      captureCallback,
-    );
+    const result =
+      guardHostedAppCreate({
+        runtime,
+        operation: action,
+        params,
+        content,
+        fallbackText: requestText(message),
+      }) ??
+      (await dispatchTasksOperation(
+        action,
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        captureCallback,
+      ));
     return settleTasksOperation({
       operation: action,
       message,

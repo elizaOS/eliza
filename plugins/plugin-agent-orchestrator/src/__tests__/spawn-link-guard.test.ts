@@ -52,7 +52,10 @@ function makeFakeAcp() {
   return { service, spawnSession };
 }
 
-function makeRuntime(acp: ReturnType<typeof makeFakeAcp>["service"]) {
+function makeRuntime(
+  acp: ReturnType<typeof makeFakeAcp>["service"],
+  options: { appAction?: boolean } = {},
+) {
   return {
     agentId: AGENT_ID,
     character: { name: "Tester" },
@@ -66,6 +69,8 @@ function makeRuntime(acp: ReturnType<typeof makeFakeAcp>["service"]) {
     reportError: vi.fn(),
     emitEvent: vi.fn(async () => undefined),
     useModel: vi.fn(async () => "{}"),
+    getAllActions: () =>
+      options.appAction ? ([{ name: "APP" }] as never[]) : ([] as never[]),
   } as unknown as IAgentRuntime;
 }
 
@@ -242,5 +247,68 @@ describe("TASKS spawn gate: empty task prompts refuse pre-spawn", () => {
     expect(String(data.plannerGuidance)).toMatch(/empty/i);
     expectNoInternalTextInUserFacingFields(result);
     expect(spawnSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("TASKS create gate: new hosted apps use the owned APP workflow", () => {
+  it("rejects generic create before spawn when APP is registered", async () => {
+    const { service, spawnSession } = makeFakeAcp();
+    const runtime = makeRuntime(service, { appAction: true });
+    const result = await runOp(
+      runtime,
+      messageWithText("make me a personal website for nubs"),
+      {
+        action: "create",
+        task: "Build a personal website for Nubs and give the user a live preview.",
+        workdir: "/workspaces/nubs-site",
+      },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("HOSTED_APP_NEEDS_APP_BUILDER");
+    const data = result.data as Record<string, unknown>;
+    expect(data.code).toBe("HOSTED_APP_NEEDS_APP_BUILDER");
+    expect(String(data.plannerGuidance)).toContain("APP");
+    expect(String(data.plannerGuidance)).not.toContain("/workspaces/nubs-site");
+    expect(result.verifiedUserFacing).not.toBe(true);
+    expect(spawnSession).not.toHaveBeenCalled();
+  });
+
+  it("keeps explicit existing-workdir app work on TASKS", async () => {
+    const { service } = makeFakeAcp();
+    const runtime = makeRuntime(service, { appAction: true });
+    const result = await runOp(
+      runtime,
+      messageWithText("update the website in my existing repo"),
+      {
+        action: "create",
+        task: "Update the website in the existing repository.",
+        workdir: "/tmp",
+        lockWorkdir: true,
+      },
+    );
+
+    // The fake runtime has no project/workspace services, so later routing may
+    // reject this fixture. The hosted-app boundary itself must stand aside.
+    expect(result.error).not.toBe("HOSTED_APP_NEEDS_APP_BUILDER");
+    expect(result.data).not.toMatchObject({
+      code: "HOSTED_APP_NEEDS_APP_BUILDER",
+    });
+  });
+
+  it("keeps explicit raw spawn_agent delegation available", async () => {
+    const { service, spawnSession } = makeFakeAcp();
+    const runtime = makeRuntime(service, { appAction: true });
+    const result = await runOp(
+      runtime,
+      messageWithText("spawn a coding agent to build a local website"),
+      {
+        action: "spawn_agent",
+        task: "Build a local website.",
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(spawnSession).toHaveBeenCalledTimes(1);
   });
 });
