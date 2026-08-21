@@ -1012,58 +1012,52 @@ export const ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS = Object.freeze([
   "32438",
   "10.0.2.2",
   "adb reverse",
+  "eliza-local-agent:",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "remote-mac",
 ]);
 
-/** Physically removes direct/simulator routing defaults from Play renderer code. */
-export function scrubAndroidCloudLocalRouting(source: string): string {
-  return source
-    .replaceAll("31337", "0")
-    .replaceAll("31338", "0")
-    .replaceAll("32437", "0")
-    .replaceAll("32438", "0")
-    .replaceAll("10.0.2.2", "invalid.invalid")
-    .replaceAll("adb reverse", "Android cloud routing");
+type AndroidCloudAuditOutput = {
+  type: "chunk" | "asset";
+  code?: string;
+  source?: string | Uint8Array;
+};
+
+/**
+ * Fail-only audit of every text-bearing file emitted into the Android Cloud
+ * renderer. Build policy must never rewrite arbitrary dependency output to
+ * conceal a marker, and lazy chunks remain executable packaged product code.
+ */
+export function findAndroidCloudEmittedRoutingFindings(
+  bundle: Record<string, AndroidCloudAuditOutput>,
+): string[] {
+  const findings: string[] = [];
+  for (const [fileName, output] of Object.entries(bundle)) {
+    const content =
+      output.type === "chunk"
+        ? output.code
+        : typeof output.source === "string"
+          ? output.source
+          : output.source instanceof Uint8Array
+            ? new TextDecoder().decode(output.source)
+            : undefined;
+    if (!content) continue;
+    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
+      if (content.toLowerCase().includes(marker.toLowerCase())) {
+        findings.push(`${fileName}: ${marker}`);
+      }
+    }
+  }
+  return findings.sort();
 }
 
 function androidCloudRendererPolicyPlugin(): Plugin {
   return {
     name: "android-cloud-renderer-policy",
     enforce: "pre",
-    transform(code, id) {
-      const sourcePath = path.resolve(id.split("?")[0] ?? id);
-      if (
-        !IS_ANDROID_CLOUD_RENDERER_BUILD ||
-        id.startsWith("\0") ||
-        id.includes("node_modules") ||
-        !sourcePath.startsWith(`${elizaRoot}${path.sep}`)
-      ) {
-        return null;
-      }
-      const scrubbed = scrubAndroidCloudLocalRouting(code);
-      return scrubbed === code ? null : { code: scrubbed, map: null };
-    },
-    renderChunk(code) {
-      if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return null;
-      const scrubbed = scrubAndroidCloudLocalRouting(code);
-      return scrubbed === code ? null : { code: scrubbed, map: null };
-    },
     generateBundle(_options, bundle) {
       if (!IS_ANDROID_CLOUD_RENDERER_BUILD) return;
-      const findings: string[] = [];
-      for (const [fileName, output] of Object.entries(bundle)) {
-        const content =
-          output.type === "chunk"
-            ? output.code
-            : typeof output.source === "string"
-              ? output.source
-              : null;
-        if (content === null) continue;
-        for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-          if (content.toLowerCase().includes(marker.toLowerCase())) {
-            findings.push(`${fileName}: ${marker}`);
-          }
-        }
-      }
+      const findings = findAndroidCloudEmittedRoutingFindings(bundle);
       if (findings.length > 0) {
         throw new Error(
           `Android Cloud renderer contains forbidden local routing markers:\n${findings

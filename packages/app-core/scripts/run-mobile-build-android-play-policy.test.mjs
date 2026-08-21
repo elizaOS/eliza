@@ -187,6 +187,31 @@ describe("Android Play manifest policy", () => {
     expect(APP_BUILD_GRADLE).toContain(
       'implementation "androidx.work:work-runtime:2.11.0"',
     );
+    const mainActivity = cloudSafeMainActivityJava("ai.elizaos.app");
+    expect(mainActivity).not.toContain("android.os.SystemProperties");
+    expect(mainActivity).not.toContain("java.lang.reflect");
+    expect(mainActivity).not.toContain("GatewayConnectionService");
+  });
+
+  it("rejects local routing and credential material in packaged text assets", () => {
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["base/assets/public/app.js"],
+        [Buffer.from("http://127.0.0.1:31337")],
+      ),
+    ).toEqual(["base/assets/public/app.js: local routing marker 31337"]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from('CEREBRAS_API_KEY="not-a-real-key"')],
+      ),
+    ).toEqual([]);
+    expect(
+      findAndroidPlayTextAssetFindings(
+        ["assets/public/app.js"],
+        [Buffer.from(`CARTESIA_API_KEY="${"a".repeat(24)}"`)],
+      ),
+    ).toEqual(["assets/public/app.js: Cerebras/Cartesia credential"]);
   });
 
   it("rejects an active local-agent bootstrap in packaged Play index HTML", () => {

@@ -7,8 +7,8 @@ import appViteConfig, {
   androidCloudRendererEntryPlugin,
   appDevWsBasePlugin,
   appShellMetadataPlugin,
+  findAndroidCloudEmittedRoutingFindings,
   resolveAppShellLocalCspSources,
-  scrubAndroidCloudLocalRouting,
   selectAndroidCloudRendererEntry,
   stripAndroidCloudIpcBootstrap,
   stripAndroidCloudPublicAssetReferences,
@@ -84,12 +84,37 @@ describe("app shell local connection policy", () => {
       localHttpSources: "",
       localConnectSources: "",
     });
-    const scrubbed = scrubAndroidCloudLocalRouting(
-      "http://127.0.0.1:31337 http://10.0.2.2:31338 adb reverse tcp:32437",
-    );
-    for (const marker of ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS) {
-      expect(scrubbed.toLowerCase()).not.toContain(marker.toLowerCase());
-    }
+  });
+
+  test("audits every emitted file without rewriting packaged code", () => {
+    const lazyCode = "http://127.0.0.1:31337 adb reverse tcp:32437";
+    const bundle = {
+      "entry.js": {
+        type: "chunk" as const,
+        isEntry: true,
+        imports: ["runtime.js"],
+        code: 'import "./runtime.js"',
+      },
+      "runtime.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: "const emulatorHost = '10.0.2.2'",
+      },
+      "lazy-direct-runtime.js": {
+        type: "chunk" as const,
+        imports: [],
+        code: lazyCode,
+      },
+    };
+
+    expect(findAndroidCloudEmittedRoutingFindings(bundle)).toEqual([
+      "lazy-direct-runtime.js: 31337",
+      "lazy-direct-runtime.js: 32437",
+      "lazy-direct-runtime.js: adb reverse",
+      "runtime.js: 10.0.2.2",
+    ]);
+    expect(bundle["lazy-direct-runtime.js"].code).toBe(lazyCode);
+    expect(ANDROID_CLOUD_FORBIDDEN_ROUTING_MARKERS).toContain("adb reverse");
   });
 
   test("physically removes the native local-agent bootstrap from Android cloud HTML", () => {
@@ -99,7 +124,8 @@ describe("app shell local connection policy", () => {
         <script>window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__ = true; fetch("eliza-local-agent://ipc")</script>
         <!-- ELIZA_NATIVE_AGENT_IPC_BRIDGE_END -->
         <meta http-equiv="Content-Security-Policy" content="connect-src 'self' blob: data: eliza-local-agent: https://*;" />
-      </head>`;
+      </head>
+      <script type="module" src="/src/entry.ts"></script>`;
     const stripped = stripAndroidCloudIpcBootstrap(source);
     expect(stripped).not.toContain("ELIZA_ANDROID_IPC_FETCH_BRIDGE");
     expect(stripped).not.toContain("eliza-local-agent:");

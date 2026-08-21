@@ -5849,6 +5849,9 @@ export const ANDROID_PLAY_FORBIDDEN_ASSET_MARKERS = Object.freeze([
   "32438",
   "10.0.2.2",
   "adb reverse",
+  "eliza-local-agent:",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "remote-mac",
 ]);
 
 export const ANDROID_PLAY_FORBIDDEN_INDEX_HTML_MARKERS = Object.freeze([
