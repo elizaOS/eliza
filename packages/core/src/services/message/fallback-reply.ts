@@ -6,11 +6,18 @@
  * Classification unwraps the AI SDK retry envelope and reads the structured HTTP
  * status first, falling back to a message-substring scan for status-less errors.
  * buildFailureReplyPrompt shapes the in-character apology (never answering on the
- * merits), and stripReasoningBlocks removes <think> spans from the raw reply.
+ * merits), and stripReasoningBlocks removes private-reasoning spans from the raw
+ * reply.
  */
 import { TrajectoryLimitExceeded } from "../../runtime/limits";
 import { readActionFailureProvenance } from "../../types/action-failure";
 import { ModelType } from "../../types/model";
+import {
+	findNextCloseTag,
+	REASONING_TAG_NAMES,
+	stripPairedTagBlocks,
+	stripUnclosedTagSuffix,
+} from "../../utils/reasoning-tags";
 
 type ErrorWithStatus = {
 	code?: unknown;
@@ -422,11 +429,26 @@ export function buildFailureReplyPrompt(
 	].join("\n");
 }
 
+const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|");
+
+/**
+ * Strips a leading close-only residue prefix — model output can open with a
+ * dangling close tag left over from a previous stripping pass (e.g. the
+ * evaluator's "None</think>" repair) with no matching open of its own. Only
+ * the first remaining close matters here: everything before it is discarded,
+ * everything at/after it is kept for the caller's later passes.
+ */
+function stripLeadingCloseOnlyResidue(text: string): string {
+	const close = findNextCloseTag(text, 0, REASONING_TAG_ALTERNATION);
+	return close ? text.slice(close.end) : text;
+}
+
 export function stripReasoningBlocks(raw: string): string {
-	return raw
-		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
-		.replace(/^[\s\S]*?<\/think>/i, "")
-		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
-		.replace(/\/?\bno_think\b/gi, "")
-		.trim();
+	const paired = stripPairedTagBlocks(raw, REASONING_TAG_ALTERNATION);
+	const afterLeadingClose = stripLeadingCloseOnlyResidue(paired);
+	const afterUnclosedSuffix = stripUnclosedTagSuffix(
+		afterLeadingClose,
+		REASONING_TAG_ALTERNATION,
+	);
+	return afterUnclosedSuffix.replace(/\/?\bno_think\b/gi, "").trim();
 }

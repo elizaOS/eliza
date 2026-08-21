@@ -51,6 +51,10 @@ import {
 	isModelProviderError,
 	modelProviderErrorDetail,
 } from "../utils/model-errors";
+import {
+	hasReasoningResidue,
+	stripReasoningPrefixes,
+} from "../utils/reasoning-tags";
 import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { tailWellFormed, truncateWellFormed } from "../utils/well-formed";
@@ -5071,16 +5075,12 @@ function isJunkCodingReply(text: unknown): boolean {
 }
 
 /**
- * Strip reasoning-model scaffolding that leaks into a final reply: a
- * `<think>…</think>` block, or a stray closing `</think>` with the chain-of-
- * thought before it (keep only the answer after the last `</think>`). Observed
- * with glm-4.7 on Cerebras: "…Let me verify.</think>I've fixed both validators…".
+ * Strip reasoning-model scaffolding that leaks into a final reply. Completed
+ * blocks and stray closes use the shared grammar, keeping only content after
+ * the last private-reasoning close.
  */
 function stripReasoningArtifacts(text: string): string {
-	let out = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
-	const lastClose = out.toLowerCase().lastIndexOf("</think>");
-	if (lastClose >= 0) out = out.slice(lastClose + "</think>".length);
-	return out.replace(/<\/?think>/gi, "").trim();
+	return stripReasoningPrefixes(text).trim();
 }
 
 /**
@@ -5765,14 +5765,17 @@ export function isUnsafeUserVisibleText(value: string | undefined): boolean {
 	) {
 		return true;
 	}
-	// Reasoning-token residue and evaluator protocol envelopes are internals,
-	// never replies: a `</think>` anywhere means upstream stripping failed, and
-	// a JSON body carrying the evaluator's decision/success protocol keys is
-	// the verdict envelope itself (live tj-b8809c9841cdfd delivered
+	// Reasoning-tag residue and evaluator protocol envelopes are internals,
+	// never replies: any surviving reasoning markup (open or close, any
+	// canonical spelling, mixed case) means upstream stripping failed, and a
+	// JSON body carrying the evaluator's decision/success protocol keys is the
+	// verdict envelope itself (live tj-b8809c9841cdfd delivered
 	// `None</think>\`\`\`json {"success": true, "decision": "FINISH"…}` to
-	// Discord when a think-prefixed envelope defeated the parser). Egress is
-	// the last line: reject both shapes regardless of how they got here.
-	if (text.includes("</think>")) return true;
+	// Discord when a think-prefixed envelope defeated the parser; #20080
+	// generalizes the residue gate beyond the exact lowercase `</think>`).
+	// Egress is the last line: reject both shapes regardless of how they got
+	// here.
+	if (hasReasoningResidue(text)) return true;
 	if (
 		/"decision"\s*:\s*"(?:FINISH|CONTINUE|NEXT_RECOMMENDED)"/.test(text) &&
 		/"success"\s*:\s*(?:true|false)/.test(text)

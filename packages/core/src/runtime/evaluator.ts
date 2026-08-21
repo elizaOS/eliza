@@ -27,6 +27,7 @@ import {
 	type PromptSegment,
 } from "../types/model";
 import { modelProviderErrorDetail } from "../utils/model-errors";
+import { stripReasoningPrefixes } from "../utils/reasoning-tags";
 import { resolveSetting } from "../utils/resolve-setting";
 import { computePrefixHashes } from "./context-hash";
 import {
@@ -1848,13 +1849,11 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 	// `None</think>\`\`\`json {…}` fails the fence unwrap, the strict parse,
 	// AND the leading-fence repair (which requires the text to START with a
 	// fence) — the raw envelope then leaked verbatim to Discord (live
-	// tj-b8809c9841cdfd, matrix F18). The think contract is unambiguous:
-	// everything before the LAST </think> is reasoning, never output — strip
-	// it before any envelope handling.
-	const thinkEnd = text.lastIndexOf("</think>");
-	const visible =
-		thinkEnd >= 0 ? text.slice(thinkEnd + "</think>".length) : text;
-	return parseEvaluatorVisibleText(visible);
+	// tj-b8809c9841cdfd, matrix F18). The reasoning-tag contract is
+	// unambiguous for every canonical spelling (think/thinking/reasoning/…):
+	// everything before the LAST close is reasoning, never output — strip it
+	// before any envelope handling (#20080 generalizes the F18 </think> fix).
+	return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {
