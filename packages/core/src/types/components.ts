@@ -845,8 +845,16 @@ export interface Provider {
 	/** Optional role gate checked before including this provider. */
 	roleGate?: RoleGate;
 
-	/** Non-overridable destination-audience policy for sensitive context. */
-	disclosureGate?: DisclosureGate;
+	/**
+	 * Non-overridable destination-audience policy for sensitive context.
+	 *
+	 * Deliberately narrower than `Action.disclosureGate`: every provider
+	 * enforcement site in `runtime.ts` tests `require === "owner_exclusive"`
+	 * literally, so a provider declaring `audience_admission` would compose
+	 * into the prompt with NO enforcement at all. Widen this only in the same
+	 * change that wires the provider path.
+	 */
+	disclosureGate?: Extract<DisclosureGate, { require: "owner_exclusive" }>;
 
 	/** Child provider/action names exposed beneath this provider, if any. */
 	subActions?: string[];
