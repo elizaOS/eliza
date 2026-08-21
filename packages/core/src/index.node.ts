@@ -24,7 +24,6 @@ export * from "./api/route-helpers";
 export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
-import "./runtime-probes";
 export * from "./build-variant";
 export * from "./capabilities";
 export * from "./capability-selection";
