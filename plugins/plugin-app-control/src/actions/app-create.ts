@@ -532,7 +532,7 @@ function resolvePublishTarget(
 	return { dir, urlBase: urlBase.replace(/\/+$/, "") };
 }
 
-function buildCreatePrompt(
+export function buildCreatePrompt(
 	intent: string,
 	appName: string,
 	displayName: string,
@@ -562,8 +562,10 @@ function buildCreatePrompt(
 		);
 	}
 	lines.push(
+		"completionFiles: list every changed deliverable file as a nonempty relative path array; use the actual paths from this scaffold, never a guessed example path",
+		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"${liveUrl ? `,"liveUrl":"${liveUrl}"` : ""}}`,
+		`APP_CREATE_DONE {"appName":"${appName}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"${liveUrl ? `,"liveUrl":"${liveUrl}"` : ""},"description":"<one factual sentence>"}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
 	);
 	if (liveUrl) {
@@ -590,7 +592,7 @@ function appAcceptanceCriteria(
 	];
 }
 
-function buildEditPrompt(
+export function buildEditPrompt(
 	intent: string,
 	app: InstalledAppInfo,
 	workdir: string,
@@ -608,8 +610,10 @@ function buildEditPrompt(
 		"  bun run typecheck",
 		"  bun run lint",
 		"  bun run test",
+		"completionFiles: list every changed deliverable file as a nonempty relative path array; use the actual paths in this app, never a guessed example path",
+		"completionTests: replace the example passed count with the exact count printed by the test command",
 		"completionRule: after all commands pass, emit exactly one completion line in this canonical schema",
-		`APP_CREATE_DONE {"appName":"${app.name}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		`APP_CREATE_DONE {"appName":"${app.name}","files":["<changed-relative-path>"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}`,
 		"completionFields: files are relative to sourceDir; do not emit legacy name, testsPassed, or lintClean fields",
 	].join("\n");
 }
