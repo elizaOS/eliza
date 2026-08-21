@@ -286,6 +286,14 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
 }
 
 /**
+ * Caps a forum-topic name at Telegram's 128-code-unit limit without splitting a
+ * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
+ */
+export function truncateForumTopicName(name?: string): string {
+  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
+}
+
+/**
  * Class representing a Telegram service that allows the agent to send and receive messages on Telegram.
  * This service handles all Telegram-specific functionality including:
  * - Initializing and managing the Telegram bot
@@ -296,10 +304,6 @@ function telegramChatKind(chat: Chat): MessageConnectorTarget["kind"] {
  *
  * @extends Service
  */
-export function truncateForumTopicName(name?: string): string {
-  return truncateWellFormed(toWellFormedUnicode(name ?? "thread"), 128);
-}
-
 export class TelegramService extends Service {
   static serviceType = TELEGRAM_SERVICE_NAME;
   capabilityDescription =

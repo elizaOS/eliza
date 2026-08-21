@@ -71,9 +71,14 @@ const TELEGRAM_MAX_COMMANDS = 100;
 /** Telegram caps a single text message at 4096 characters. */
 const TELEGRAM_MESSAGE_MAX = 4096;
 
+/**
+ * Caps a slash-command reply at Telegram's message limit without splitting a
+ * surrogate pair, sanitizing lone surrogates so the strict-JSON Bot API accepts it.
+ */
 export function truncateTelegramCommandReply(reply: string): string {
   return truncateWellFormed(toWellFormedUnicode(reply), TELEGRAM_MESSAGE_MAX);
 }
+
 /** The catalog surface this bridge serves. */
 const TELEGRAM_SURFACE = "telegram";
 const DEFAULT_ACCOUNT_ID = "default";

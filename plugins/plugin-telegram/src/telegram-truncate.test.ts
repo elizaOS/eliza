@@ -7,19 +7,7 @@ import { truncateTelegramCommandReply } from "./command-registration";
 import { truncateForumTopicName } from "./service";
 
 function isWellFormed(s: string): boolean {
-  try {
-    // @ts-ignore
-    if (typeof s.isWellFormed === "function") return s.isWellFormed();
-  } catch {}
-  for (let i = 0; i < s.length; i++) {
-    const c = s.charCodeAt(i);
-    if (c >= 0xd800 && c <= 0xdbff) {
-      const n = s.charCodeAt(i + 1);
-      if (!(n >= 0xdc00 && n <= 0xdfff)) return false;
-      i++;
-    } else if (c >= 0xdc00 && c <= 0xdfff) return false;
-  }
-  return true;
+  return s.isWellFormed();
 }
 
 describe("truncateTelegramCommandReply (4096)", () => {
@@ -100,8 +88,7 @@ describe("truncateForumTopicName (128)", () => {
   });
 
   it("handles undefined via default thread", () => {
-    // @ts-expect-error intentional undefined for coverage
-    const out = truncateForumTopicName(undefined as unknown as string);
+    const out = truncateForumTopicName(undefined);
     expect(out).toBe("thread");
   });
 });
