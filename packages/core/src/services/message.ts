@@ -207,6 +207,7 @@ import {
 	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { withSemanticStageFanOut } from "../runtime/trajectory-semantic-stage-sink";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import {
 	sanitizeUserVisibleModelOutput,
@@ -7914,19 +7915,25 @@ export async function runV5MessageRuntimeStage1(args: {
 	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
+	// Every stage emitted below also mirrors into the turn's database
+	// trajectory step (#17030) so the app viewer carries the same
+	// Stage-1/planner/tool/evaluation semantics as the file trajectory.
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
-		? createJsonFileTrajectoryRecorder({
-				logger: args.runtime.logger as {
-					warn?: (context: unknown, message?: string) => void;
-				},
-				reportError: args.runtime.reportError.bind(args.runtime),
-				// Final-persistence tool-diagnostic projection: the recorder always
-				// runs the shared tool-shape pattern pass; this adds the runtime's
-				// character-configured secret masking on top. Optional-bound because
-				// lightweight/test runtimes may not implement redactSecrets — the
-				// pattern pass must keep running for them.
-				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
-			})
+		? withSemanticStageFanOut(
+				createJsonFileTrajectoryRecorder({
+					logger: args.runtime.logger as {
+						warn?: (context: unknown, message?: string) => void;
+					},
+					reportError: args.runtime.reportError.bind(args.runtime),
+					// Final-persistence tool-diagnostic projection: the recorder always
+					// runs the shared tool-shape pattern pass; this adds the runtime's
+					// character-configured secret masking on top. Optional-bound because
+					// lightweight/test runtimes may not implement redactSecrets — the
+					// pattern pass must keep running for them.
+					redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
+				}),
+				args.runtime,
+			)
 		: undefined;
 	const trajectoryId = recorder
 		? recorder.startTrajectory({
