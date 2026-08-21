@@ -128,6 +128,7 @@ export * from "./service-pricing";
 // ============================================
 export * from "./subscription-allowance";
 export * from "./subscription-authority";
+export * from "./subscription-billing-operations";
 export * from "./subscription-entitlements";
 export * from "./subscription-funding-reservations";
 // ============================================
