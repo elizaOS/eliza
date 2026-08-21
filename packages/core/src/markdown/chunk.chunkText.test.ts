@@ -53,6 +53,33 @@ describe("chunkText", () => {
 		}
 		expect(chunks.join("")).toBe(input);
 	});
+
+	it("keeps pairs whole at limit 2 (one astral scalar per chunk)", () => {
+		const input = "😀".repeat(4);
+		const chunks = chunkText(input, 2);
+		expect(chunks).toEqual(["😀", "😀", "😀", "😀"]);
+	});
+
+	it("emits one whole pair per chunk at limit 1 instead of lone surrogates", () => {
+		// A 1-unit cap cannot represent any astral scalar; the contract is to
+		// exceed the cap by one unit rather than bisect the pair.
+		const input = "😀".repeat(3);
+		const chunks = chunkText(input, 1);
+		expect(chunks).toEqual(["😀", "😀", "😀"]);
+		for (const c of chunks) {
+			expect(isWellFormed(c)).toBe(true);
+		}
+		expect(chunks.join("")).toBe(input);
+	});
+
+	it("passes pre-existing lone surrogates through untouched", () => {
+		const input = "ab\ud83dcd\ude00ef";
+		const chunks = chunkText(input, 3);
+		expect(chunks.join("")).toBe(input);
+		for (const c of chunks) {
+			expect(c.length).toBeLessThanOrEqual(3);
+		}
+	});
 });
 
 function isWellFormed(s: string): boolean {

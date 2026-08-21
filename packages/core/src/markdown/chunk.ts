@@ -283,17 +283,21 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
  * A hard break at an arbitrary UTF-16 index can land between the two halves of
  * a surrogate pair (any non-BMP character: emoji, symbols, rare CJK), leaving a
  * lone surrogate that renders as U+FFFD in the emitted chunk. Back the break
- * off by one code unit so the pair stays whole. Index 1 is left as-is: at
- * `limit === 1` an all-astral run cannot be split without bisecting a pair, and
- * backing off to 0 would emit an empty chunk and stall the loop.
+ * off by one code unit so the pair stays whole. When backing off would yield an
+ * empty chunk (index 1, i.e. `limit === 1` on an astral-first run), advance
+ * past the pair instead: a one-unit cap cannot represent any astral scalar, so
+ * emitting one whole pair — exceeding the cap by a single code unit — is the
+ * contract, chosen over corrupting output or stalling the loop. Pre-existing
+ * lone surrogates in the input are passed through untouched.
  */
 function avoidSurrogateSplit(text: string, index: number): number {
-	if (index > 1 && index < text.length) {
-		const high = text.charCodeAt(index - 1);
-		const low = text.charCodeAt(index);
-		if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
-			return index - 1;
-		}
+	if (index <= 0 || index >= text.length) {
+		return index;
+	}
+	const high = text.charCodeAt(index - 1);
+	const low = text.charCodeAt(index);
+	if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
+		return index > 1 ? index - 1 : index + 1;
 	}
 	return index;
 }
