@@ -17,7 +17,11 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { stringToUuid, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,

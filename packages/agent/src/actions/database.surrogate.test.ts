@@ -9,7 +9,10 @@ const DATABASE_SNIPPET_LIMIT = 160;
 
 function clampDatabaseSnippet(hitText: string): string {
   const wellFormed = toWellFormedUnicode(hitText ?? "");
-  return truncateWellFormed(wellFormed, DATABASE_SNIPPET_LIMIT).replace(/\s+/g, " ");
+  return truncateWellFormed(wellFormed, DATABASE_SNIPPET_LIMIT).replace(
+    /\s+/g,
+    " ",
+  );
 }
 
 function isWellFormed(s: string): boolean {

@@ -14,8 +14,8 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -119,7 +119,10 @@ export const recentConversationsProvider: Provider = {
         const tag = roomSourceTag(room);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
         const speaker = formatSpeakerLabel(runtime, mem);
-        const text = truncateWellFormed(toWellFormedUnicode(mem.content.text ?? ""), 200);
+        const text = truncateWellFormed(
+          toWellFormedUnicode(mem.content.text ?? ""),
+          200,
+        );
         lines.push(`${tag} ${age}${speaker}: ${text}`);
       }
 

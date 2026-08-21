@@ -957,11 +957,17 @@ function describeRpcEndpoint(url: string): string {
 /** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!res.ok) throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || `HTTP ${res.status}`);
+  if (!res.ok)
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) ||
+        `HTTP ${res.status}`,
+    );
   try {
     return JSON.parse(text) as T;
   } catch {
-    throw new Error(truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON");
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON",
+    );
   }
 }
 

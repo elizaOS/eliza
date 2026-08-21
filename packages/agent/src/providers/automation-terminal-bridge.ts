@@ -13,7 +13,12 @@ import type {
   ProviderResult,
   UUID,
 } from "@elizaos/core";
-import { logger, stringToUuid, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import {
+  logger,
+  stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
@@ -82,7 +87,10 @@ export const automationTerminalBridgeProvider: Provider = {
       for (const mem of visibleMessages) {
         const speaker = formatSpeakerLabel(runtime, mem);
         const age = formatRelativeTimestampPrefix(mem.createdAt);
-        const text = truncateWellFormed(toWellFormedUnicode(mem.content.text ?? ""), 300);
+        const text = truncateWellFormed(
+          toWellFormedUnicode(mem.content.text ?? ""),
+          300,
+        );
         lines.push(`${age}${speaker}: ${text}`);
       }
 
