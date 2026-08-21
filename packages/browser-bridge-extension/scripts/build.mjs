@@ -135,6 +135,7 @@ export async function buildBrowserBridgeExtension(kind = browserKind) {
       "scripting",
       "alarms",
       "activeTab",
+      "nativeMessaging",
       "declarativeNetRequestWithHostAccess",
     ],
     // SOC2 L-4: scoped host permissions. The default-install allowlist is

@@ -4,7 +4,7 @@ Browser extension for Chrome-family browsers, Firefox, and Safari that pairs a u
 
 ## Purpose / role
 
-This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It communicates with the elizaOS agent API server (default `http://127.0.0.1:31337`) over HTTP using a companion pairing token. The corresponding `/api/browser-bridge/*` server-side routes live in `plugins/plugin-browser/src/routes/bridge.ts`; the `/api/website-blocker` route is served by `plugins/plugin-native-websiteblocker`. Extension-local wire types mirror the owning plugin contracts so this standalone workspace does not depend on runtime packages.
+This is a standalone browser extension — it is not a Node/Bun package imported by other packages. It exposes no npm exports. It obtains short-lived companion credentials from the authenticated `ai.elizaos.browserbridge` native-messaging host, then communicates with the elizaOS agent API server over HTTP. Manual authenticated pairing remains a recovery path. The corresponding `/api/browser-bridge/*` server-side routes live in `plugins/plugin-browser/src/routes/bridge.ts`; the `/api/website-blocker` route is served by `plugins/plugin-native-websiteblocker`. Extension-local wire types mirror the owning plugin contracts so this standalone workspace does not depend on runtime packages.
 
 ## Layout
 
@@ -24,7 +24,9 @@ packages/browser-bridge-extension/
     page-extract.ts           capturePageContext() — collects title, text, headings, links, forms from the live DOM
     dom-actions.ts            runDomAction() — executes click/type/submit/history_back/history_forward in page
     popup-model.ts            derivePopupStatusModel() — pure status model for popup rendering
-    webextension.ts           Thin promise wrapper over chrome.* / browser.* APIs (storage, tabs, windows, alarms, scripting, permissions, declarativeNetRequest)
+    webextension.ts           Thin promise wrapper over chrome.* / browser.* APIs (storage, native messaging, tabs, windows, alarms, scripting, permissions, declarativeNetRequest)
+    native-enrollment.ts      Strict v1 native-messaging enrollment, validation, single-flight timeout, and backoff
+    coalescing-sync-runner.ts Serial sync runner that drains coalesced concurrent requests
     url.ts                    normalizeHttpBaseUrl, normalizeHttpOrigin helpers
   scripts/
     build.mjs                 Bun build script; produces IIFE bundles + manifest.json in dist/<chrome|firefox|safari>/
@@ -68,7 +70,7 @@ The build script (`scripts/build.mjs`) injects one define constant into each bun
 
 `scripts/build.mjs` produces `dist/<kind>/manifest.json` at build time. Key manifest fields:
 
-- `permissions`: `tabs`, `storage`, `scripting`, `alarms`, `activeTab`, `declarativeNetRequestWithHostAccess`
+- `permissions`: `tabs`, `storage`, `scripting`, `alarms`, `activeTab`, `nativeMessaging`, `declarativeNetRequestWithHostAccess`
 - `host_permissions` (default install): `http://127.0.0.1/*` and `http://localhost/*` for background-owned local-agent discovery
 - `optional_host_permissions`: `https://*/*`, `http://*/*` — requested only from the popup's browser-managed **Grant Website Access** action
 - `content_security_policy`: `script-src 'self'; object-src 'self'` — no inline scripts, no `unsafe-eval`
@@ -108,7 +110,7 @@ bun run --cwd packages/browser-bridge-extension test:smoke:safari
 
 Output lands in `dist/chrome/`, `dist/firefox/`, or `dist/safari/`. Load the Chrome directory from `chrome://extensions`; load the Firefox directory temporarily from `about:debugging#/runtime/this-firefox`.
 
-The extension opens its pairing guide once on a fresh browser profile so the owner can import credentials without relying on a background-page debug target. The Chrome and Firefox smokes install the unpacked build into the system browser and exercise authenticated manual pairing, explicit website access, sync, a real DOM action, progress, completion, and website-block redirect. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
+The extension attempts authenticated native enrollment before sync and retains the pairing guide for manual recovery. Production native-host registrations must allow only exact stable release identities: the Chrome Web Store ID (or committed public manifest key), Firefox manifest ID `browser-bridge@elizaos.ai`, and the signed Safari containing-app identity. Never wildcard allowed extension origins or distribute a Chrome private signing key. The Chrome and Firefox smokes install the unpacked build into the system browser and exercise authenticated manual pairing, explicit website access, sync, a real DOM action, progress, completion, and website-block redirect. Set `FIREFOX_EXECUTABLE_PATH` when Firefox is not installed in a standard platform location.
 
 Chrome 137 and later reject `--load-extension` in the branded browser. Chrome smokes therefore require an official Chrome for Testing executable through `CHROME_FOR_TESTING_EXECUTABLE_PATH` (or the standard `/Applications/Google Chrome for Testing.app` path on macOS). The default `test` script runs `test:unit` only, because the `client` repository test lane must pass on machines without an installed browser; `test:smoke:installed` chains the Chrome and Firefox installed-browser smokes and is an explicit opt-in. `test:smoke` runs the loopback pairing/action contract headlessly. `test:smoke:site-access` runs headed and waits up to two minutes for the browser-managed optional-permission decision before proving the website-block redirect; it is the installed-browser acceptance lane and cannot be replaced by a headless result.
 
@@ -170,7 +172,7 @@ Edit `BROWSER_BRIDGE_HOST_ALLOWLIST` in `scripts/build.mjs`. The array is mirror
   injection requires a separately reviewed explicit top-frame origin grant and
   a reachable, tested activation path.
 - Sync runs on a 30-second alarm (`SYNC_INTERVAL_MINUTES = 0.5`) and is debounced 750ms after tab events. Do not remove the debounce — rapid tab events would otherwise flood the agent API.
-- `isCompanionAuthError()` in the background detects expired/revoked pairing tokens and clears stored config so the popup can require a newly authenticated manual pairing.
+- `isCompanionAuthError()` retries an expired token through native enrollment once. Revocation and explicit disconnect persist a suppression tombstone; only explicit manual recovery may clear it.
 - Unit tests in `src/storage.test.ts` use `jsdom` via `vitest.extension.config.ts`. Do not run `bun test` from the repo root for this package — it uses its own vitest config.
 
 <!-- BEGIN: evidence-and-e2e-mandate (managed; canonical standard = repo-root AGENTS.md) -->

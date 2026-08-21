@@ -1,7 +1,7 @@
 /**
  * Derives the compact popup status and its sole contextual action from the
- * background connection state. Diagnostics are intentionally non-secret and
- * remain separate from the default one-line status surface.
+ * background connection state. The model deliberately contains no connection
+ * diagnostics or credential-adjacent values.
  */
 import type { BackgroundState } from "./protocol";
 
@@ -13,21 +13,12 @@ export type PopupStatusKind =
   | "syncing"
   | "error";
 
-export type PopupContextualAction =
-  | "show_recovery"
-  | "sync"
-  | "grant_website_access";
+export type PopupContextualAction = "sync" | "grant_website_access";
 
 export interface PopupStatusModel {
   kind: PopupStatusKind;
   label: string;
   action: { kind: PopupContextualAction; label: string } | null;
-  diagnostics: {
-    app: string;
-    lastSync: string;
-    mode: string;
-    tabCount: string;
-  };
   showDisconnect: boolean;
 }
 
@@ -37,28 +28,13 @@ function isFutureIso(value: string | null | undefined): boolean {
   return Number.isFinite(parsed) && parsed > Date.now();
 }
 
-function formatClock(value: string | null): string {
-  if (!value) return "Not yet";
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed)
-    ? new Date(parsed).toLocaleTimeString()
-    : "Not available";
-}
-
 export function derivePopupStatusModel(args: {
   state: BackgroundState;
-  discoveredApiBaseUrl: string | null;
   hasAllWebsiteAccess: boolean;
 }): PopupStatusModel {
-  const { state, discoveredApiBaseUrl, hasAllWebsiteAccess } = args;
+  const { state, hasAllWebsiteAccess } = args;
   const settings = state.settings;
   const hasConfig = Boolean(state.config);
-  const diagnostics = {
-    app: state.config?.apiBaseUrl ?? discoveredApiBaseUrl ?? "Not found",
-    lastSync: formatClock(state.lastSyncAt),
-    mode: state.settingsSummary ?? "Not available",
-    tabCount: String(state.rememberedTabCount),
-  };
   const model = (
     kind: PopupStatusKind,
     label: string,
@@ -67,7 +43,6 @@ export function derivePopupStatusModel(args: {
     kind,
     label,
     action,
-    diagnostics,
     showDisconnect: hasConfig,
   });
 
@@ -76,17 +51,23 @@ export function derivePopupStatusModel(args: {
   }
 
   if (!hasConfig) {
-    if (discoveredApiBaseUrl) {
-      return model(
-        state.lastError ? "error" : "needs_settings",
-        state.lastError ? "Pairing needs attention" : "Eliza is ready to pair",
-        { kind: "show_recovery", label: "Pair this browser" },
-      );
-    }
-    return model("needs_app", "Open Eliza, then pair this browser", {
-      kind: "show_recovery",
-      label: "Pair this browser",
-    });
+    const connectionLabel =
+      state.connectionIssue === "app_not_authenticated"
+        ? "Sign in to Eliza"
+        : state.connectionIssue === "app_not_running"
+          ? "Open Eliza to connect"
+          : null;
+    return model(
+      connectionLabel === null && state.lastError ? "error" : "needs_app",
+      connectionLabel ??
+        (state.lastError
+          ? "Connection needs attention"
+          : "Open Eliza to connect"),
+      {
+        kind: "sync",
+        label: "Retry connection",
+      },
+    );
   }
 
   if (state.lastError) {
