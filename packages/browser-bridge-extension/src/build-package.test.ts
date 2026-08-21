@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { parseBrowserBridgeBuildKind } from "../scripts/build.mjs";
 import { createDeterministicWebExtensionArchive } from "../scripts/package-webextension.mjs";
@@ -26,6 +27,7 @@ type BuiltManifest = {
   web_accessible_resources: Array<{
     resources: string[];
     matches: string[];
+    use_dynamic_url?: boolean;
   }>;
   content_security_policy: { extension_pages: string };
   background: { service_worker?: string; scripts?: string[] };
@@ -106,6 +108,7 @@ describe("cross-browser extension build", () => {
         {
           resources: ["blocked.html", "blocked.js"],
           matches: ["http://*/*", "https://*/*"],
+          use_dynamic_url: true,
         },
       ]);
     }
@@ -138,5 +141,10 @@ describe("cross-browser extension build", () => {
     expect(createHash("sha256").update(first).digest("hex")).toBe(
       createHash("sha256").update(second).digest("hex"),
     );
+    expect(
+      Object.keys(unzipSync(new Uint8Array(first))).some((name) =>
+        name.endsWith(".map"),
+      ),
+    ).toBe(false);
   }, 30_000);
 });

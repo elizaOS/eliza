@@ -452,19 +452,28 @@ export async function executeContentScriptFiles(
 }
 
 /**
- * True only for a message sent from this extension's own privileged contexts
- * (the popup or options page). Content scripts carry a `tab`, and anything
- * from another extension carries a different `id`. The popup channel dispatches
- * credential writes, so a content script on any granted origin must not reach
- * it — content scripts here run on `http://localhost/*` at any port, i.e. any
- * local dev server the user happens to be running.
+ * True only for a message sent from this extension's own privileged pages.
+ * Browsers may host an installed guide or popup in a tab, so `tab` alone does
+ * not distinguish it from a content script. A tab sender is privileged only
+ * when its URL has this extension's origin; content scripts here run on
+ * `http://localhost/*` at any port and therefore fail that check.
  */
 export function isPrivilegedExtensionSender(sender: unknown): boolean {
   const extensionId = getRawApi().runtime?.id;
   if (!extensionId) return false;
   if (!sender || typeof sender !== "object") return false;
-  const candidate = sender as { id?: unknown; tab?: unknown };
-  return candidate.id === extensionId && candidate.tab === undefined;
+  const candidate = sender as { id?: unknown; tab?: unknown; url?: unknown };
+  if (candidate.id !== extensionId) return false;
+  if (candidate.tab === undefined) return true;
+  if (typeof candidate.url !== "string") return false;
+  const extensionUrl = getRawApi().runtime?.getURL?.("");
+  if (!extensionUrl) return false;
+  try {
+    return new URL(candidate.url).origin === new URL(extensionUrl).origin;
+  } catch {
+    // error-policy:J3 A malformed sender URL is untrusted input.
+    return false;
+  }
 }
 
 export function addRuntimeMessageListener(

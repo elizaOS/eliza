@@ -27,6 +27,9 @@ async function collectFiles(root, current = root) {
         `Refusing to package non-regular extension path: ${absolute}`,
       );
     }
+    if (entry.name.endsWith(".map")) {
+      continue;
+    }
     files.push({
       absolute,
       relative: path.relative(root, absolute).split(path.sep).join("/"),

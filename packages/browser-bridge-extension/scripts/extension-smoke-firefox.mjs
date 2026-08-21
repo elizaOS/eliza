@@ -141,7 +141,9 @@ async function runInstalledFirefoxSmoke() {
     // about:blank even though its extension document is loaded. Identify the
     // installed guide by its real DOM rather than a stale protocol URL.
     const popupPage = await waitForInstalledPairingGuide(browser);
-    await popupPage.click("#autoPair");
+    // Firefox BiDi can report no clickable geometry for an installed
+    // extension page whose protocol URL is stale even though its DOM is live.
+    await popupPage.$eval("#autoPair", (element) => element.click());
     const pairingJson = JSON.stringify({
       apiBaseUrl: mockServer.origin,
       companionId: "companion-smoke-test",
@@ -159,7 +161,7 @@ async function runInstalledFirefoxSmoke() {
       },
       pairingJson,
     );
-    await popupPage.click("#import");
+    await popupPage.$eval("#import", (element) => element.click());
     try {
       await popupPage.waitForFunction(
         () =>

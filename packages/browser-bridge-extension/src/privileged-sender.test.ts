@@ -14,7 +14,11 @@ const EXTENSION_ID = "abcdefghijklmnopqrstuvwxyzabcdef";
 
 function stubExtensionId(id: string | undefined): void {
   vi.stubGlobal("chrome", {
-    runtime: { id, sendMessage: () => undefined },
+    runtime: {
+      id,
+      getURL: (path: string) => `chrome-extension://${id}/${path}`,
+      sendMessage: () => undefined,
+    },
   });
 }
 
@@ -29,11 +33,42 @@ describe("isPrivilegedExtensionSender", () => {
     expect(isPrivilegedExtensionSender({ id: EXTENSION_ID })).toBe(true);
   });
 
-  it("rejects a content script, which carries a tab", () => {
+  it("accepts the extension's installed guide when hosted in a tab", () => {
+    stubExtensionId(EXTENSION_ID);
+
+    expect(
+      isPrivilegedExtensionSender({
+        id: EXTENSION_ID,
+        tab: { id: 7 },
+        url: `chrome-extension://${EXTENSION_ID}/popup.html`,
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects a content script even though it carries this extension's id", () => {
+    stubExtensionId(EXTENSION_ID);
+
+    expect(
+      isPrivilegedExtensionSender({
+        id: EXTENSION_ID,
+        tab: { id: 7 },
+        url: "http://localhost:5173/chat",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects tab senders without a valid URL", () => {
     stubExtensionId(EXTENSION_ID);
 
     expect(
       isPrivilegedExtensionSender({ id: EXTENSION_ID, tab: { id: 7 } }),
+    ).toBe(false);
+    expect(
+      isPrivilegedExtensionSender({
+        id: EXTENSION_ID,
+        tab: { id: 7 },
+        url: "not a URL",
+      }),
     ).toBe(false);
   });
 
