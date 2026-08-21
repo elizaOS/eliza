@@ -8,6 +8,7 @@ const opaqueText = (max: number) => z.string().min(1).max(max);
 export const MAX_MAPS_PROVIDERS = 32;
 export const MAX_MAPS_PROVIDER_ID_LENGTH = 64;
 export const MAX_MAPS_ATTRIBUTION_LENGTH = 500;
+export const MAX_MAPS_PROVIDER_GENERATION = Number.MAX_SAFE_INTEGER;
 
 /** Validates the canonical identity used to join adapter and browser metadata. */
 export const mapsProviderIdSchema = z
@@ -24,12 +25,26 @@ export const mapsAttributionSchema = z
   .min(1);
 
 /** Couples one canonical provider id to legal text or explicit unavailability. */
+export const mapsProviderGenerationSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(MAX_MAPS_PROVIDER_GENERATION);
+
 export const mapsProviderDescriptionSchema = z
   .object({
     id: mapsProviderIdSchema,
     attribution: mapsAttributionSchema.nullable(),
+    generation: mapsProviderGenerationSchema,
   })
   .strict();
+
+export const mapsProviderIdsSchema = z
+  .array(mapsProviderIdSchema)
+  .max(MAX_MAPS_PROVIDERS)
+  .refine((providers) => new Set(providers).size === providers.length, {
+    message: "Maps provider lookup ids must be unique.",
+  });
 
 export const mapsProviderDescriptionsSchema = z
   .array(mapsProviderDescriptionSchema)
@@ -108,6 +123,45 @@ export const placePageSchema = z
   })
   .strict();
 
+/** Binds one page to the exact adapter registration that generated it. */
+export const mapsPlacePageResultSchema = z
+  .object({
+    page: placePageSchema,
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine(
+    (result) =>
+      result.page.places.every(
+        (place) => place.provider === result.provider.id,
+      ),
+    { message: "Maps page provider binding does not match its places." },
+  );
+
+/** Binds one detail read to the exact adapter registration that generated it. */
+export const mapsPlaceResultSchema = z
+  .object({
+    place: placeRefSchema.nullable(),
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine(
+    (result) =>
+      result.place === null || result.place.provider === result.provider.id,
+    { message: "Maps detail provider binding does not match its place." },
+  );
+
+/** Binds one route to the exact adapter registration that generated it. */
+export const mapsRouteResultSchema = z
+  .object({
+    route: routePlanSchema,
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine((result) => result.route.provider === result.provider.id, {
+    message: "Maps route provider binding does not match its route.",
+  });
+
 export const placeSearchRequestSchema = z
   .object({
     query: boundedText(500),
@@ -135,6 +189,9 @@ export type TravelMode = z.infer<typeof travelModeSchema>;
 export type RoutePlan = z.infer<typeof routePlanSchema>;
 export type SavedPlace = z.infer<typeof savedPlaceSchema>;
 export type PlacePage = z.infer<typeof placePageSchema>;
+export type MapsPlacePageResult = z.infer<typeof mapsPlacePageResultSchema>;
+export type MapsPlaceResult = z.infer<typeof mapsPlaceResultSchema>;
+export type MapsRouteResult = z.infer<typeof mapsRouteResultSchema>;
 
 export interface PlaceSearchRequest {
   query: string;

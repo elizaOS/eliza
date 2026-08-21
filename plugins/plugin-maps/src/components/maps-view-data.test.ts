@@ -17,6 +17,12 @@ const PLACE = {
   categories: ["landmark"],
 };
 
+const PROVIDER = {
+  id: "fixture_maps",
+  attribution: "Map data © Fixture Maps",
+  generation: 7,
+};
+
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -24,85 +30,27 @@ function response(body: unknown, status = 200): Response {
   });
 }
 
-function providerMetadataResponse(providers: unknown): Response {
-  return response({
-    requestId: "maps-provider-request",
-    success: true,
-    result: {
-      success: true,
-      data: { providers },
-    },
-  });
-}
-
 describe("mapsViewTransport", () => {
   beforeEach(() => fetchWithCsrf.mockReset());
 
-  it("validates adapter-owned provider attribution metadata", async () => {
-    fetchWithCsrf.mockResolvedValueOnce(
-      providerMetadataResponse([
-        {
-          id: "fixture_maps",
-          attribution: "  Map data © Fixture Maps  ",
-        },
-      ]),
-    );
-
-    await expect(mapsViewTransport.describeProviders?.()).resolves.toEqual([
-      {
-        id: "fixture_maps",
-        attribution: "Map data © Fixture Maps",
-      },
-    ]);
-
-    fetchWithCsrf.mockResolvedValueOnce(
-      providerMetadataResponse([
-        {
-          id: "fixture_maps",
-          attribution: "x".repeat(501),
-        },
-      ]),
-    );
-    await expect(mapsViewTransport.describeProviders?.()).rejects.toThrow();
-  });
-
-  it.each([
-    ["blank attribution", [{ id: "fixture_maps", attribution: "   " }]],
-    ["invalid provider id", [{ id: "fixture maps", attribution: null }]],
-    [
-      "duplicate provider id",
-      [
-        { id: "fixture_maps", attribution: null },
-        { id: "fixture_maps", attribution: "Duplicate" },
-      ],
-    ],
-    [
-      "too many providers",
-      Array.from({ length: 33 }, (_, index) => ({
-        id: `fixture_${index}`,
-        attribution: null,
-      })),
-    ],
-  ])("rejects %s in provider metadata", async (_case, providers) => {
-    fetchWithCsrf.mockResolvedValueOnce(providerMetadataResponse(providers));
-    await expect(mapsViewTransport.describeProviders?.()).rejects.toThrow();
-  });
-
-  it("validates a successful search broker envelope", async () => {
+  it("validates a successful search page and its captured provider generation", async () => {
     fetchWithCsrf.mockResolvedValue(
       response({
         requestId: "maps-request-1",
         success: true,
         result: {
           success: true,
-          data: { places: [PLACE], nextCursor: null },
+          data: {
+            page: { places: [PLACE], nextCursor: null },
+            provider: PROVIDER,
+          },
         },
       }),
     );
 
     await expect(mapsViewTransport.search("ferry")).resolves.toEqual({
-      places: [PLACE],
-      nextCursor: null,
+      page: { places: [PLACE], nextCursor: null },
+      provider: PROVIDER,
     });
     expect(fetchWithCsrf).toHaveBeenCalledWith(
       "/api/views/maps/interact",
@@ -124,10 +72,13 @@ describe("mapsViewTransport", () => {
         result: {
           success: true,
           data: {
-            places: [
-              { ...PLACE, coordinates: { latitude: 900, longitude: 0 } },
-            ],
-            nextCursor: null,
+            page: {
+              places: [
+                { ...PLACE, coordinates: { latitude: 900, longitude: 0 } },
+              ],
+              nextCursor: null,
+            },
+            provider: PROVIDER,
           },
         },
       }),
@@ -158,7 +109,7 @@ describe("mapsViewTransport", () => {
     );
   });
 
-  it("forwards opaque cursors and surfaces expired or revoked authorization", async () => {
+  it("forwards opaque cursors with the exact provider generation", async () => {
     fetchWithCsrf.mockResolvedValueOnce(
       response({ error: { message: "Maps authorization expired." } }, 401),
     );
@@ -170,7 +121,7 @@ describe("mapsViewTransport", () => {
       response({ error: { message: "Maps authorization revoked." } }, 403),
     );
     await expect(
-      mapsViewTransport.search("museum", undefined, "opaque-page-2"),
+      mapsViewTransport.search("museum", undefined, "opaque-page-2", PROVIDER),
     ).rejects.toThrow("Maps authorization revoked.");
     expect(fetchWithCsrf).toHaveBeenLastCalledWith(
       "/api/views/maps/interact",
@@ -181,6 +132,8 @@ describe("mapsViewTransport", () => {
             query: "museum",
             limit: 24,
             cursor: "opaque-page-2",
+            provider: "fixture_maps",
+            providerGeneration: 7,
           },
         }),
       }),

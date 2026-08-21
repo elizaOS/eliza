@@ -64,6 +64,12 @@ function agentIdPart(value: string): string {
 
 type Phase = "idle" | "searching" | "ready" | "error";
 
+interface PlaceResultGeneration {
+  places: PlaceRef[];
+  nextCursor: string | null;
+  provider: MapsProviderDescription | null;
+}
+
 function readChatSheetOpen(): boolean {
   return (
     document
@@ -574,8 +580,12 @@ export function MapsView({
   const [lastQuery, setLastQuery] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [places, setPlaces] = useState<PlaceRef[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [placeResult, setPlaceResult] = useState<PlaceResultGeneration>({
+    places: [],
+    nextCursor: null,
+    provider: null,
+  });
+  const { places, nextCursor } = placeResult;
   const [pageBusy, setPageBusy] = useState(false);
   const [selected, setSelected] = useState<PlaceRef | null>(null);
   const [origin, setOrigin] = useState<PlaceRef | null>(null);
@@ -584,15 +594,13 @@ export function MapsView({
   const [activeRouteId, setActiveRouteId] = useState<string | null>(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
-  const [providers, setProviders] = useState<MapsProviderDescription[]>([]);
-  const [providerMetadataRevision, setProviderMetadataRevision] = useState(0);
+  const providers = placeResult.provider ? [placeResult.provider] : [];
   const [isOnline, setIsOnline] = useState(
     online ?? (typeof navigator === "undefined" ? true : navigator.onLine),
   );
   const searchRequest = useRef<AbortController | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const routeRequest = useRef<AbortController | null>(null);
-  const providerMetadataRequest = useRef<AbortController | null>(null);
   const detailRequestGeneration = useRef(0);
   const routeRequestGeneration = useRef(0);
   const attributionProviderIds = useMemo(
@@ -604,10 +612,6 @@ export function MapsView({
     ],
     [places, routes],
   );
-  const attributionProviderKey = attributionProviderIds.join("\0");
-  const providerMetadataRequestKey = attributionProviderKey
-    ? `${attributionProviderKey}\0${providerMetadataRevision}`
-    : "";
 
   const invalidateRouteOperation = useCallback(() => {
     routeRequestGeneration.current += 1;
@@ -633,33 +637,6 @@ export function MapsView({
       window.removeEventListener("offline", update);
     };
   }, [online]);
-
-  useEffect(() => {
-    providerMetadataRequest.current?.abort();
-    providerMetadataRequest.current = null;
-    if (!providerMetadataRequestKey || !transport.describeProviders) {
-      setProviders([]);
-      return;
-    }
-    const controller = new AbortController();
-    providerMetadataRequest.current = controller;
-    void transport
-      .describeProviders(controller.signal)
-      .then((descriptions) => {
-        if (!controller.signal.aborted) setProviders(descriptions);
-      })
-      // error-policy:J4 Missing provider metadata is rendered as an explicit
-      // attribution-unavailable state for each provider returned by a search.
-      .catch((_cause: unknown) => {
-        if (!controller.signal.aborted) setProviders([]);
-      });
-    return () => {
-      controller.abort();
-      if (providerMetadataRequest.current === controller) {
-        providerMetadataRequest.current = null;
-      }
-    };
-  }, [providerMetadataRequestKey, transport]);
 
   useEffect(
     () => () => {
@@ -708,8 +685,6 @@ export function MapsView({
     async (requested: string) => {
       const normalized = requested.trim();
       if (!normalized) {
-        providerMetadataRequest.current?.abort();
-        providerMetadataRequest.current = null;
         searchRequest.current?.abort();
         detailRequestGeneration.current += 1;
         detailRequest.current?.abort();
@@ -717,11 +692,9 @@ export function MapsView({
         invalidateRouteOperation();
         setPhase("idle");
         setError(null);
-        setPlaces([]);
-        setNextCursor(null);
+        setPlaceResult({ places: [], nextCursor: null, provider: null });
         setSelected(null);
         setCategory("all");
-        setProviders([]);
         return;
       }
       if (normalized.length > 500) return;
@@ -741,24 +714,28 @@ export function MapsView({
       searchRequest.current = controller;
       setPhase("searching");
       setError(null);
-      // Leave `places`/`providers` untouched while this replacement search is
+      // Leave the prior result generation untouched while this replacement is
       // pending: the previously rendered results and their attribution are
-      // still the correct, coherent state for what's on screen. The provider
-      // metadata effect below only refetches once new places actually commit
-      // (via the revision bump on success), so a failed replacement never
-      // strips attribution from results that are still displayed.
+      // still the correct, coherent state for what's on screen. A successful
+      // broker response contains both the new page and
+      // its captured provider description, so the UI swaps them atomically.
       setLastQuery(normalized);
       try {
-        const page = await transport.search(normalized, controller.signal);
+        const result = await transport.search(normalized, controller.signal);
         if (controller.signal.aborted || searchRequest.current !== controller)
           return;
-        setPlaces(page.places);
-        setNextCursor(page.nextCursor);
-        setSelected(page.places[0] ?? null);
+        if (
+          placeResult.provider &&
+          (placeResult.provider.id !== result.provider.id ||
+            placeResult.provider.generation !== result.provider.generation)
+        ) {
+          setOrigin(null);
+        }
+        setPlaceResult({ ...result.page, provider: result.provider });
+        setSelected(result.page.places[0] ?? null);
         setCategory("all");
         setRoutes([]);
         setActiveRouteId(null);
-        setProviderMetadataRevision((revision) => revision + 1);
         setPhase("ready");
       } catch (cause) {
         if (controller.signal.aborted) return;
@@ -773,7 +750,13 @@ export function MapsView({
         if (searchRequest.current === controller) searchRequest.current = null;
       }
     },
-    [invalidateRouteOperation, isOnline, places.length, transport],
+    [
+      invalidateRouteOperation,
+      isOnline,
+      places.length,
+      placeResult.provider,
+      transport,
+    ],
   );
 
   const loadNextPage = useCallback(async () => {
@@ -788,22 +771,37 @@ export function MapsView({
         lastQuery,
         controller.signal,
         nextCursor,
+        placeResult.provider ?? undefined,
       );
       if (controller.signal.aborted) return;
-      setPlaces((current) => {
+      if (
+        !placeResult.provider ||
+        page.provider.id !== placeResult.provider.id ||
+        page.provider.generation !== placeResult.provider.generation
+      ) {
+        throw new Error(
+          "Maps pagination returned a different provider generation.",
+        );
+      }
+      setPlaceResult((current) => {
         const seen = new Set(
-          current.map((place) => `${place.provider}:${place.providerPlaceId}`),
+          current.places.map(
+            (place) => `${place.provider}:${place.providerPlaceId}`,
+          ),
         );
         const added: PlaceRef[] = [];
-        for (const place of page.places) {
+        for (const place of page.page.places) {
           const key = `${place.provider}:${place.providerPlaceId}`;
           if (seen.has(key)) continue;
           seen.add(key);
           added.push(place);
         }
-        return [...current, ...added];
+        return {
+          places: [...current.places, ...added],
+          nextCursor: page.page.nextCursor,
+          provider: page.provider,
+        };
       });
-      setNextCursor(page.nextCursor);
     } catch (cause) {
       if (controller.signal.aborted) return;
       // error-policy:J4 pagination failures preserve prior visible places.
@@ -816,7 +814,14 @@ export function MapsView({
       if (searchRequest.current === controller) searchRequest.current = null;
       if (!controller.signal.aborted) setPageBusy(false);
     }
-  }, [isOnline, lastQuery, nextCursor, pageBusy, transport]);
+  }, [
+    isOnline,
+    lastQuery,
+    nextCursor,
+    pageBusy,
+    placeResult.provider,
+    transport,
+  ]);
 
   const submitSearch = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -828,17 +833,18 @@ export function MapsView({
 
   const selectPlace = useCallback(
     (place: PlaceRef) => {
+      const provider = placeResult.provider;
       detailRequestGeneration.current += 1;
       const detailGeneration = detailRequestGeneration.current;
       detailRequest.current?.abort();
       detailRequest.current = null;
       invalidateRouteOperation();
       setSelected(place);
-      if (!isOnline) return;
+      if (!isOnline || !provider) return;
       const controller = new AbortController();
       detailRequest.current = controller;
       void transport
-        .getPlace(place, controller.signal)
+        .getPlace(place, provider, controller.signal)
         .then((detail) => {
           if (
             controller.signal.aborted ||
@@ -846,7 +852,15 @@ export function MapsView({
             detailRequestGeneration.current !== detailGeneration
           )
             return;
-          if (detail) setSelected(detail);
+          if (
+            detail.provider.id !== provider.id ||
+            detail.provider.generation !== provider.generation
+          ) {
+            throw new Error(
+              "Maps detail returned a different provider generation.",
+            );
+          }
+          if (detail.place) setSelected(detail.place);
         })
         // error-policy:J4 the normalized search result remains visible while
         // a failed optional detail enrichment is announced.
@@ -871,11 +885,12 @@ export function MapsView({
             detailRequest.current = null;
         });
     },
-    [invalidateRouteOperation, isOnline, transport],
+    [invalidateRouteOperation, isOnline, placeResult.provider, transport],
   );
 
   const planRoutes = useCallback(async () => {
-    if (!origin || !selected || routeBusy) return;
+    const provider = placeResult.provider;
+    if (!origin || !selected || !provider || routeBusy) return;
     if (
       origin.provider === selected.provider &&
       origin.providerPlaceId === selected.providerPlaceId
@@ -898,7 +913,13 @@ export function MapsView({
     try {
       const outcomes = await Promise.allSettled(
         TRAVEL_MODES.map((mode) =>
-          transport.planRoute(origin, selected, mode, controller.signal),
+          transport.planRoute(
+            origin,
+            selected,
+            mode,
+            provider,
+            controller.signal,
+          ),
         ),
       );
       if (
@@ -920,8 +941,20 @@ export function MapsView({
           new Error("No route alternatives are available.")
         );
       }
-      setRoutes(available);
-      setActiveRouteId(available[0]?.routeId ?? null);
+      if (
+        available.some(
+          (result) =>
+            result.provider.id !== provider.id ||
+            result.provider.generation !== provider.generation,
+        )
+      ) {
+        throw new Error(
+          "Maps routes returned a different provider generation.",
+        );
+      }
+      const routes = available.map((result) => result.route);
+      setRoutes(routes);
+      setActiveRouteId(routes[0]?.routeId ?? null);
     } catch (cause) {
       if (
         controller.signal.aborted ||
@@ -944,7 +977,7 @@ export function MapsView({
         setRouteBusy(false);
       }
     }
-  }, [isOnline, origin, routeBusy, selected, transport]);
+  }, [isOnline, origin, placeResult.provider, routeBusy, selected, transport]);
 
   const handoff = useCallback(
     (action: "MAPS_SAVE" | "MAPS_SHARE" | "MAPS_NAVIGATE") => {
