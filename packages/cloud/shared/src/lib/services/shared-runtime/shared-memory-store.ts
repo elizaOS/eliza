@@ -101,9 +101,10 @@ export class SharedMemoryStore {
   }
 
   /**
-   * Tenant-scoped vector search over this store's transcript rows (P3 recall's
+   * Room-pinned vector search over this store's transcript rows (P3 recall's
    * store leg). Scope pinning mirrors recordTurnPair exactly — the same
-   * organization/user/agent triple — so recall can never read across tenants.
+   * organization/user/agent triple plus the trusted conversation room — so
+   * recall can never read across tenants or across a tenant's own rooms.
    */
   async searchByEmbedding(
     embedding: number[],
