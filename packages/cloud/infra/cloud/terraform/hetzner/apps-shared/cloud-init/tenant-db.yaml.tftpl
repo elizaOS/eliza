@@ -318,6 +318,7 @@ write_files:
       fi
       set -a
       . "$ENV_FILE"
+      set +a
       # The sourced file contains base64 alphabet only. Decode after parsing so
       # spaces, quotes, dollar signs, command substitutions, and newlines in
       # operator-provided values can never become root shell syntax.
@@ -331,7 +332,6 @@ write_files:
       unset BACKUP_S3_ENDPOINT_B64 BACKUP_S3_BUCKET_B64 BACKUP_S3_PREFIX_B64 \
         BACKUP_S3_ACCESS_KEY_ID_B64 BACKUP_S3_SECRET_ACCESS_KEY_B64 \
         BACKUP_ENCRYPTION_PASSPHRASE_B64 BACKUP_RETENTION_DAYS_B64
-      set +a
       : "$BACKUP_S3_ENDPOINT" "$BACKUP_S3_BUCKET" "$BACKUP_S3_PREFIX" \
         "$BACKUP_S3_ACCESS_KEY_ID" "$BACKUP_S3_SECRET_ACCESS_KEY" \
         "$BACKUP_ENCRYPTION_PASSPHRASE" "$BACKUP_RETENTION_DAYS"
@@ -387,9 +387,11 @@ write_files:
         > manifest.json
 
       tar -czf backup.tar.gz manifest.json checksums.sha256 globals.sql dbmap.tsv dumps
-      openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt \
+      BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE" \
+        openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt \
         -in backup.tar.gz -out backup.tar.gz.enc \
         -pass env:BACKUP_ENCRYPTION_PASSPHRASE
+      unset BACKUP_ENCRYPTION_PASSPHRASE
       ENC_SHA=$(sha256sum backup.tar.gz.enc | awk '{print $1}')
       ENC_BYTES=$(stat -c%s backup.tar.gz.enc)
       # Plaintext sidecar: freshness/integrity metadata only (no tenant data),
@@ -415,9 +417,13 @@ write_files:
       CUTOFF=$(date -u -d "-$BACKUP_RETENTION_DAYS days" +%Y%m%dT%H%M%SZ)
       PRUNED=0
       RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")
-      while IFS= read -r dir; do
-        dir=$(printf '%s' "$dir" | tr -d '/')
-        [ -n "$dir" ] || continue
+      while IFS= read -r listed_dir; do
+        [ -n "$listed_dir" ] || continue
+        if ! [[ "$listed_dir" =~ ^[0-9]{8}T[0-9]{6}Z/$ ]]; then
+          log "unexpected retention directory name; refusing before purge."
+          exit 1
+        fi
+        dir=$${listed_dir%/}
         if [[ "$dir" < "$CUTOFF" ]]; then
           rclone purge ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX/$dir"
           PRUNED=$((PRUNED+1))

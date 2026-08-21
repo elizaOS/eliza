@@ -53,6 +53,20 @@ const RESTORE_TARGET_ID =
 const PASSWORD_ENV = /^[A-Z][A-Z0-9_]*$/;
 export const POOLER_PORT = 6432;
 
+/**
+ * Fail-closed containment for the merged restore orchestrator. The current
+ * one-use target marker is cleared before the later guarded restore sessions,
+ * and the remaining authority/evidence contracts require a redesign backed by
+ * a real disposable Postgres and pgbouncer canary. Keep parsing helpers
+ * available to tests, but refuse every destructive drill invocation.
+ */
+export function assertRestoreDrillExecutionEnabled(): void {
+  throw new RecoveryDrillError(
+    "RESTORE_DRILL_DISABLED",
+    "tenant restore drills are disabled pending a verified destructive-authority redesign",
+  );
+}
+
 export class RecoveryDrillError extends Error {
   readonly code: string;
   constructor(code: string, message: string) {
@@ -895,7 +909,8 @@ export function verifyAndConsumeRestoreTargetIdentity(
 }
 
 /** Execute the full drill. Requires openssl, tar, psql, pg_restore on PATH. */
-function executeDrill(options: CliOptions): DrillReport {
+export function executeDrill(options: CliOptions): DrillReport {
+  assertRestoreDrillExecutionEnabled();
   const targetUrl = assertDirectTarget(options.targetDsn);
   const work = mkdtempSync(join(tmpdir(), "tenant-db-drill-"));
   try {

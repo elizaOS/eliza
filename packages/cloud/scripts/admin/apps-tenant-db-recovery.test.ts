@@ -20,9 +20,11 @@ import { join } from "node:path";
 import {
   assertDirectTarget,
   assertNoGlobalRoleCollisions,
+  assertRestoreDrillExecutionEnabled,
   assertRestoreTargetIdentity,
   buildIsolationChecks,
   evaluateObjectives,
+  executeDrill,
   guardedConsumeTargetIdentitySql,
   guardPsqlScript,
   isCrossTenantDenial,
@@ -52,6 +54,17 @@ const SIDECAR = {
   database_count: 3,
   cipher: "aes-256-cbc-pbkdf2-210000",
 };
+
+describe("restore drill containment", () => {
+  test("refuses execution before any destructive collaborator can run", () => {
+    expect(() => executeDrill({} as never)).toThrow(
+      expect.objectContaining({ code: "RESTORE_DRILL_DISABLED" }),
+    );
+    expect(() => assertRestoreDrillExecutionEnabled()).toThrow(
+      RecoveryDrillError,
+    );
+  });
+});
 
 describe("redactDsn", () => {
   test("strips credentials and database, keeps host and port", () => {
