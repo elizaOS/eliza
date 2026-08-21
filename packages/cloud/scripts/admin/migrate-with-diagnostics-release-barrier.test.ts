@@ -281,9 +281,13 @@ describe("usage-quotas migration release barrier", () => {
     expect(cloudSharedPackage.scripts?.["db:migrate:drizzle"]).not.toContain(
       "drizzle-kit migrate",
     );
-    expect(journal.entries?.slice(-2).map((entry) => entry.tag)).toEqual([
-      DROP_TAG,
-      RESTORE_TAG,
-    ]);
+    // Adjacency, not tail position. Pinning the pair to the end of the journal
+    // is the same mistake the barrier itself used to make: it turns the next
+    // migration anyone appends into a repo-wide failure. What must hold is that
+    // the restore immediately follows the drop, so nothing can interleave.
+    const tags = journal.entries?.map((entry) => entry.tag) ?? [];
+    const dropAt = tags.indexOf(DROP_TAG);
+    expect(dropAt).toBeGreaterThanOrEqual(0);
+    expect(tags[dropAt + 1]).toBe(RESTORE_TAG);
   });
 });

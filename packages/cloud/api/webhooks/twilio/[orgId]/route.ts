@@ -15,6 +15,7 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
 import { twilioAutomationService } from "@/lib/services/twilio-automation";
 import { usageService } from "@/lib/services/usage";
 import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
@@ -26,6 +27,13 @@ import {
   verifyTwilioSignature,
 } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function boundedOrganizationId(value: string): string {
+  return uuidPattern.test(value) ? value : "invalid";
+}
 
 function firstForwardedHeaderValue(
   value: string | undefined,
@@ -60,9 +68,7 @@ function resolveSmsCostPerSegment(env: AppContext["env"]): number {
     if (!Number.isFinite(parsed) || parsed < 0) {
       logger.warn(
         "[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default",
-        {
-          raw,
-        },
+        { configured: true },
       );
     }
   }
@@ -70,10 +76,11 @@ function resolveSmsCostPerSegment(env: AppContext["env"]): number {
 }
 
 async function handleTwilioWebhook(c: AppContext): Promise<Response> {
-  const orgId = c.req.param("orgId") ?? "";
-  if (!orgId) {
+  const requestedOrgId = c.req.param("orgId") ?? "";
+  if (!requestedOrgId) {
     return c.text("Organization ID is required", 400);
   }
+  const orgId = boundedOrganizationId(requestedOrgId);
 
   try {
     const formData = await c.req.formData();
@@ -87,13 +94,11 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
     try {
       event = parseTwilioWebhookEvent(webhookData);
     } catch (validationError) {
+      // error-policy:J3 malformed provider input becomes a bounded 400 response.
       if (validationError instanceof ZodError) {
         logger.warn("[TwilioWebhook] Invalid webhook payload", {
           orgId,
-          errors: validationError.issues.map((e) => ({
-            path: e.path,
-            message: e.message,
-          })),
+          issueCount: validationError.issues.length,
         });
         return c.text("Invalid webhook payload", 400);
       }
@@ -142,7 +147,6 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
     if (await isAlreadyProcessed(idempotencyKey)) {
       logger.info("[TwilioWebhook] Duplicate message, skipping", {
         orgId,
-        messageSid: event.MessageSid,
       });
       return c.body(
         '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
@@ -155,11 +159,8 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
 
     logger.info("[TwilioWebhook] Received SMS", {
       orgId,
-      messageSid: event.MessageSid,
-      from: event.From,
-      to: event.To,
       hasBody: !!event.Body,
-      numMedia: event.NumMedia,
+      numMedia: extractMediaUrls(event).length,
     });
 
     await handleIncomingMessage(c, orgId, event);
@@ -173,9 +174,10 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
       },
     );
   } catch (error) {
+    // error-policy:J1 unexpected webhook failures become a bounded 500 response.
     logger.error("[TwilioWebhook] Error processing webhook", {
       orgId,
-      error: error instanceof Error ? error.message : "Unknown error",
+      ...phoneErrorDiagnostic(error),
     });
     return c.text("Internal server error", 500);
   }
@@ -206,19 +208,14 @@ async function handleIncomingMessage(
   const mediaUrls = extractMediaUrls(event);
 
   if (!body && mediaUrls.length === 0) {
-    logger.info("[TwilioWebhook] Skipping empty message", { orgId, from });
+    logger.info("[TwilioWebhook] Skipping empty message", { orgId });
     return;
   }
 
   logger.info("[TwilioWebhook] Processing incoming message", {
     orgId,
-    from,
-    to,
     hasBody: !!body,
     numMedia: mediaUrls.length,
-    fromCity: event.FromCity,
-    fromState: event.FromState,
-    fromCountry: event.FromCountry,
   });
 
   const startTime = Date.now();
@@ -254,8 +251,6 @@ async function handleIncomingMessage(
   if (!routed.handled) {
     logger.warn("[TwilioWebhook] Failed to route message to owned Agent", {
       orgId,
-      from,
-      to,
       reason: routed.reason,
       agentId: routed.agentId,
     });
@@ -299,33 +294,26 @@ async function handleIncomingMessage(
           is_successful: true,
           metadata: {
             channel: "sms",
-            messageSid: event.MessageSid,
-            from,
-            to,
             segments: billing.segments,
             costPerSegment: billing.costPerSegment,
             billing,
           },
         });
       } catch (error) {
+        // error-policy:J6 billing persistence must not change provider delivery authority.
         logger.error("[TwilioWebhook] Failed to persist Twilio SMS usage", {
           orgId,
-          messageSid: event.MessageSid,
-          error: error instanceof Error ? error.message : String(error),
+          ...phoneErrorDiagnostic(error),
         });
       }
 
       logger.info("[TwilioWebhook] Agent response sent", {
         orgId,
-        from,
-        to,
         responseTime,
       });
     } else {
       logger.error("[TwilioWebhook] Failed to send agent response", {
         orgId,
-        from,
-        to,
       });
     }
   }

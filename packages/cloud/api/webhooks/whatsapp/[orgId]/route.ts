@@ -17,6 +17,7 @@ import {
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import { messageRouterService } from "@/lib/services/message-router";
+import { phoneErrorDiagnostic } from "@/lib/services/phone-error-diagnostics";
 import { whatsappAutomationService } from "@/lib/services/whatsapp-automation";
 import {
   releaseProcessingClaim,
@@ -81,6 +82,7 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
       const rawPayload = JSON.parse(rawBody);
       payload = parseWhatsAppWebhookPayload(rawPayload);
     } catch (parseError) {
+      // error-policy:J3 malformed provider input becomes a bounded 400 response.
       if (parseError instanceof SyntaxError) {
         logger.warn("[WhatsAppWebhook] Invalid JSON payload", { orgId });
         return c.json({ error: "Invalid JSON" }, 400);
@@ -88,12 +90,9 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
       if (parseError instanceof ZodError) {
         logger.warn("[WhatsAppWebhook] Invalid payload schema", {
           orgId,
-          issues: parseError.issues,
+          issueCount: parseError.issues.length,
         });
-        return c.json(
-          { error: "Invalid payload", details: parseError.issues },
-          400,
-        );
+        return c.json({ error: "Invalid payload" }, 400);
       }
       throw parseError;
     }
@@ -110,28 +109,25 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
     for (const msg of messages) {
       const idempotencyKey = `whatsapp:org:${orgId}:${msg.messageId}`;
 
-      // Atomic claim - prevents duplicate processing across concurrent deliveries
+      // Preserve the provider contract owned by #22359. This storage migration
+      // does not redefine WhatsApp delivery/replay semantics.
       const claimed = await tryClaimForProcessing(
         idempotencyKey,
         "whatsapp-org",
       );
       if (!claimed) {
-        logger.info("[WhatsAppWebhook] Skipping duplicate", {
-          orgId,
-          messageId: msg.messageId,
-        });
+        logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
         continue;
       }
 
       try {
         await handleIncomingMessage(orgId, msg);
       } catch (error) {
+        // error-policy:J4 isolate ordinary message failures and release their claim.
         logger.error("[WhatsAppWebhook] Failed to process message", {
           orgId,
-          messageId: msg.messageId,
-          error: error instanceof Error ? error.message : String(error),
+          ...phoneErrorDiagnostic(error),
         });
-        // Release claim so the message can be retried
         await releaseProcessingClaim(idempotencyKey);
       }
     }
@@ -141,10 +137,10 @@ async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
     // error-policy:J1 route boundary for the webhooks/ dir — the outermost handler
     // catch translates an unexpected exception into an explicit 500 (structured
     // failure), never a fabricated 200/ack. Parse/validation failures degrade to
-    // 400 above; per-message failures are isolated and the claim is released.
+    // 400 above; per-message failures remain isolated and release their claim.
     logger.error("[WhatsAppWebhook] Error processing webhook", {
       orgId,
-      error: error instanceof Error ? error.message : "Unknown error",
+      ...phoneErrorDiagnostic(error),
     });
     return c.json({ error: "Internal server error" }, 500);
   }
@@ -190,7 +186,6 @@ async function handleIncomingMessage(
   if (!text) {
     logger.info("[WhatsAppWebhook] Skipping non-text message", {
       orgId,
-      type: msg.type,
     });
     return;
   }
@@ -199,7 +194,6 @@ async function handleIncomingMessage(
   if (!isValidWhatsAppId(msg.from)) {
     logger.warn("[WhatsAppWebhook] Invalid WhatsApp ID format", {
       orgId,
-      from: msg.from,
     });
     return;
   }
@@ -226,6 +220,7 @@ async function handleIncomingMessage(
           );
           return;
         } catch (err) {
+          // error-policy:J4 read-receipt delivery is best-effort after bounded retries.
           if (attempt < retries) {
             await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
           } else {
@@ -233,8 +228,7 @@ async function handleIncomingMessage(
               "[WhatsAppWebhook] Failed to mark as read after retries",
               {
                 orgId,
-                messageId: msg.messageId,
-                error: err instanceof Error ? err.message : String(err),
+                ...phoneErrorDiagnostic(err),
               },
             );
           }
@@ -252,9 +246,7 @@ async function handleIncomingMessage(
   try {
     logger.info("[WhatsAppWebhook] Processing incoming message", {
       orgId,
-      from: `***${msg.from.slice(-4)}`,
       hasText: !!text,
-      profileName: msg.profileName,
     });
 
     const recipient = businessPhone || msg.phoneNumberId;
@@ -269,7 +261,9 @@ async function handleIncomingMessage(
       providerMessageId: msg.messageId,
       messageType: "whatsapp" as const,
       metadata: {
-        profileName: msg.profileName,
+        ...(msg.profileName !== undefined
+          ? { profileName: msg.profileName }
+          : {}),
         timestamp: msg.timestamp,
         phoneNumberId: msg.phoneNumberId,
       },
@@ -282,7 +276,9 @@ async function handleIncomingMessage(
       body: text,
       providerMessageId: msg.messageId,
       metadata: {
-        profileName: msg.profileName,
+        ...(msg.profileName !== undefined
+          ? { profileName: msg.profileName }
+          : {}),
         timestamp: msg.timestamp,
         phoneNumberId: msg.phoneNumberId,
       },
@@ -305,8 +301,7 @@ async function handleIncomingMessage(
           "[WhatsAppWebhook] Message received (agent routing not configured)",
           {
             orgId,
-            from: `***${msg.from.slice(-4)}`,
-            text: text.substring(0, 50),
+            provider: "whatsapp",
           },
         );
         return;
@@ -335,12 +330,10 @@ async function handleIncomingMessage(
         if (sent) {
           logger.info("[WhatsAppWebhook] Agent response sent", {
             orgId,
-            to: `***${msg.from.slice(-4)}`,
           });
         } else {
           logger.error("[WhatsAppWebhook] Failed to send agent response", {
             orgId,
-            to: `***${msg.from.slice(-4)}`,
           });
         }
       }
@@ -354,7 +347,6 @@ async function handleIncomingMessage(
         "[WhatsAppWebhook] Shared gateway handled message without reply",
         {
           orgId,
-          from: `***${msg.from.slice(-4)}`,
           agentId: routeResult.agentId,
         },
       );
@@ -376,12 +368,10 @@ async function handleIncomingMessage(
     if (sent) {
       logger.info("[WhatsAppWebhook] Agent response sent", {
         orgId,
-        to: `***${msg.from.slice(-4)}`,
       });
     } else {
       logger.error("[WhatsAppWebhook] Failed to send agent response", {
         orgId,
-        to: `***${msg.from.slice(-4)}`,
       });
     }
   } finally {

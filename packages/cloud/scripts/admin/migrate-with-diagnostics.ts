@@ -76,13 +76,7 @@ interface AppliedMigration {
 
 interface DatabaseError extends Error {
   code?: string;
-  detail?: string;
-  hint?: string;
   position?: string;
-  schema?: string;
-  table?: string;
-  column?: string;
-  constraint?: string;
 }
 
 interface MigrationClient {
@@ -226,25 +220,54 @@ function summarizeStatement(statement: string): string {
   return statement.replace(/\s+/g, " ").slice(0, 500);
 }
 
-function formatDatabaseError(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return String(error);
-  }
+const POSTGRES_SQLSTATE_PATTERN = /^[0-9A-Z]{5}$/;
+const POSTGRES_POSITION_PATTERN = /^[1-9][0-9]{0,9}$/;
 
-  const databaseError = error as DatabaseError;
+function allowlistedDatabaseField(
+  value: unknown,
+  pattern: RegExp,
+): string | undefined {
+  return typeof value === "string" && pattern.test(value) ? value : undefined;
+}
+
+/**
+ * Format only bounded PostgreSQL metadata that cannot contain row values.
+ *
+ * PostgreSQL's `message`, `detail`, and `hint` fields are deliberately absent:
+ * JSON parse failures copy the offending legacy token into `detail`, while
+ * other error classes may interpolate provider or row data into any of the
+ * three. This formatter is shared by statement, cleanup, and fatal stderr so a
+ * parent process using inherited stdio cannot accidentally re-expose them.
+ */
+function formatDatabaseError(error: unknown): string {
+  let sqlState: string | undefined;
+  let position: string | undefined;
+  try {
+    const databaseError =
+      error instanceof Error ? (error as DatabaseError) : null;
+    sqlState = allowlistedDatabaseField(
+      databaseError?.code,
+      POSTGRES_SQLSTATE_PATTERN,
+    );
+    position = allowlistedDatabaseField(
+      databaseError?.position,
+      POSTGRES_POSITION_PATTERN,
+    );
+  } catch {
+    // error-policy:J3 hostile error accessors yield the static diagnostic.
+  }
   const details = [
-    `message=${databaseError.message}`,
-    databaseError.code ? `code=${databaseError.code}` : null,
-    databaseError.detail ? `detail=${databaseError.detail}` : null,
-    databaseError.hint ? `hint=${databaseError.hint}` : null,
-    databaseError.position ? `position=${databaseError.position}` : null,
-    databaseError.schema ? `schema=${databaseError.schema}` : null,
-    databaseError.table ? `table=${databaseError.table}` : null,
-    databaseError.column ? `column=${databaseError.column}` : null,
-    databaseError.constraint ? `constraint=${databaseError.constraint}` : null,
+    "code=DATABASE_OPERATION_FAILED",
+    sqlState ? `database_code=${sqlState}` : null,
+    position ? `position=${position}` : null,
   ].filter(Boolean);
 
   return details.join(" ");
+}
+
+/** Emits the production fatal boundary without serializing the database error. */
+function reportMigrationFatalFailure(error: unknown): void {
+  console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
 }
 
 function reportMigrationCleanupFailure(failure: CleanupFailure): void {
@@ -757,16 +780,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error) => {
-    console.error(`[db:migrate] fatal: ${formatDatabaseError(error)}`);
-    if (error instanceof Error && typeof error.stack === "string") {
-      const frames = error.stack
-        .split("\n")
-        .slice(1, 13)
-        .filter((line) => line.trimStart().startsWith("at "));
-      if (frames.length > 0) {
-        console.error(`[db:migrate] stack frames:\n${frames.join("\n")}`);
-      }
-    }
+    reportMigrationFatalFailure(error);
     process.exit(1);
   });
 }

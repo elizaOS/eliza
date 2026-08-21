@@ -115,6 +115,8 @@ export * from "./org-storage-quota";
 export * from "./org-storage-reads";
 export * from "./organization-invites";
 export * from "./organizations";
+export * from "./phone-message-logs";
+export * from "./phone-metadata-readers";
 export * from "./press-releases";
 export * from "./provider-health";
 // ============================================

@@ -56,6 +56,10 @@ const authenticateBlueBubblesGateway = mock(
     },
 );
 const touchBlueBubblesGateway = mock(async () => undefined);
+const loggerInfo = mock();
+const loggerWarn = mock();
+const loggerError = mock();
+const loggerDebug = mock();
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
@@ -68,6 +72,15 @@ mock.module("@/lib/services/phone-gateway-devices", () => ({
   authenticateBlueBubblesGateway,
   registerPhoneGatewayDevice,
   touchBlueBubblesGateway,
+}));
+
+mock.module("@/lib/utils/logger", () => ({
+  logger: {
+    info: loggerInfo,
+    warn: loggerWarn,
+    error: loggerError,
+    debug: loggerDebug,
+  },
 }));
 
 // The route dedupes on the message guid via webhookEventsRepository.tryCreate
@@ -151,6 +164,10 @@ describe("BlueBubbles webhook", () => {
     registerPhoneGatewayDevice.mockImplementation(async () =>
       registeredGatewayDevice(),
     );
+    loggerInfo.mockClear();
+    loggerWarn.mockClear();
+    loggerError.mockClear();
+    loggerDebug.mockClear();
   });
 
   test("rejects requests without the shared gateway secret", async () => {
@@ -244,12 +261,44 @@ describe("BlueBubbles webhook", () => {
     );
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
       success: false,
       handled: false,
       reason: "bridge_failed",
       routingError: "BlueBubbles gateway presence update failed",
     });
+    expect(tryCreate).not.toHaveBeenCalled();
+    expect(routePhoneMessage).not.toHaveBeenCalled();
+  });
+
+  test("returns a bounded 503 when registered gateway authentication needs migration", async () => {
+    const sentinel = "SENTINEL_BLUEBUBBLES_AUTH_DATABASE_BODY";
+    authenticateBlueBubblesGateway.mockRejectedValueOnce(
+      Object.assign(new Error(sentinel), {
+        code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+      }),
+    );
+
+    const response = await app.fetch(
+      request(
+        inboundPayload,
+        { authorization: "Bearer bbg_registered-token" },
+        "https://api.example.test/?bridge=bb-registered",
+      ),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
+      success: false,
+      handled: false,
+      reason: "bridge_failed",
+      routingError: "BlueBubbles gateway authorization unavailable",
+    });
+    expect(JSON.stringify(responseBody)).not.toContain(sentinel);
+    expect(JSON.stringify(loggerError.mock.calls)).not.toContain(sentinel);
     expect(tryCreate).not.toHaveBeenCalled();
     expect(routePhoneMessage).not.toHaveBeenCalled();
   });
@@ -480,6 +529,48 @@ describe("BlueBubbles webhook", () => {
     );
   });
 
+  test("fails closed and releases dedupe when the legacy gateway schema is missing", async () => {
+    const sentinel = "SENTINEL_BLUEBUBBLES_SCHEMA_ERROR";
+    registerPhoneGatewayDevice.mockRejectedValueOnce(
+      Object.assign(
+        new Error(`${sentinel}-message`, {
+          cause: Object.assign(new Error(`${sentinel}-cause`), {
+            name: `${sentinel}-cause-name`,
+          }),
+        }),
+        {
+          name: `${sentinel}-name`,
+          code: "PHONE_SCHEMA_MIGRATION_REQUIRED",
+        },
+      ),
+    );
+
+    const response = await app.fetch(
+      request(inboundPayload, { "x-eliza-gateway-secret": "test-secret" }),
+      env,
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      success: false,
+      handled: false,
+      reason: "bridge_failed",
+    });
+    expect(routePhoneMessage).not.toHaveBeenCalled();
+    expect(deleteByEventId).toHaveBeenCalledWith(
+      "bluebubbles:default:message-1",
+      "bluebubbles",
+    );
+    const serializedLogs = JSON.stringify([
+      ...loggerWarn.mock.calls,
+      ...loggerError.mock.calls,
+    ]);
+    expect(serializedLogs).toContain(
+      '"errorClass":"schema_migration_required"',
+    );
+    expect(serializedLogs).not.toContain(sentinel);
+  });
+
   test("routes inbound messages even when gateway device registration throws", async () => {
     registerPhoneGatewayDevice.mockRejectedValueOnce(
       new Error("gateway table unavailable"),
@@ -504,10 +595,15 @@ describe("BlueBubbles webhook", () => {
     expect(routePhoneMessage).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
-          phoneGatewayDeviceId: undefined,
           phoneGatewayDeviceRegistered: false,
         }),
       }),
+    );
+    const routingCalls = routePhoneMessage.mock.calls as unknown as Array<
+      [{ metadata: Record<string, unknown> }]
+    >;
+    expect(routingCalls[0]?.[0].metadata).not.toHaveProperty(
+      "phoneGatewayDeviceId",
     );
   });
 
@@ -624,7 +720,8 @@ describe("BlueBubbles webhook", () => {
     );
 
     expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
+    const responseBody = await response.json();
+    expect(responseBody).toMatchObject({
       success: false,
       handled: false,
       reason: "bridge_failed",
@@ -632,6 +729,7 @@ describe("BlueBubbles webhook", () => {
       gatewayDeviceRegistered: true,
       routingError: "BlueBubbles routing failed",
     });
+    expect(responseBody).not.toHaveProperty("gatewayDevicePhoneNumber");
     expect(deleteByEventId).toHaveBeenCalledWith(
       "bluebubbles:default:message-1",
       "bluebubbles",
@@ -697,5 +795,40 @@ describe("BlueBubbles webhook", () => {
       reason: "bridge_failed",
       routingError: "BlueBubbles routing failed",
     });
+  });
+
+  test("never logs phone numbers, message contents, or provider error bodies", async () => {
+    const sentinelPhone = "+19995550123";
+    const sentinelContent = "SENTINEL_BLUEBUBBLES_MESSAGE_BODY";
+    const sentinelProviderBody = "SENTINEL_BLUEBUBBLES_PROVIDER_BODY";
+    registerPhoneGatewayDevice.mockRejectedValueOnce(
+      new Error(sentinelProviderBody),
+    );
+
+    const response = await app.fetch(
+      request(
+        {
+          ...inboundPayload,
+          data: {
+            ...inboundPayload.data,
+            text: sentinelContent,
+            handle: { address: sentinelPhone, service: "iMessage" },
+          },
+        },
+        { "x-eliza-gateway-secret": "test-secret" },
+      ),
+      { ...env, BLUEBUBBLES_GATEWAY_PHONE_NUMBER: sentinelPhone },
+    );
+
+    expect(response.status).toBe(200);
+    const serializedLogs = JSON.stringify([
+      ...loggerInfo.mock.calls,
+      ...loggerWarn.mock.calls,
+      ...loggerError.mock.calls,
+      ...loggerDebug.mock.calls,
+    ]);
+    expect(serializedLogs).not.toContain(sentinelPhone);
+    expect(serializedLogs).not.toContain(sentinelContent);
+    expect(serializedLogs).not.toContain(sentinelProviderBody);
   });
 });

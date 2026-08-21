@@ -12,10 +12,6 @@ import { logger } from "./logger";
 
 const IDEMPOTENCY_TTL_MS = 2 * 60 * 1000; // 2 minutes
 
-/** Extract error message safely */
-const getErrorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : "Unknown error";
-
 /**
  * Check if a message has already been processed within the TTL window.
  * Fails open (returns false) on errors to avoid dropping messages.
@@ -37,10 +33,9 @@ export async function isAlreadyProcessed(key: string): Promise<boolean> {
     }
 
     return true;
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error checking key", {
-      key,
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
     return false;
   }
@@ -63,11 +58,9 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
 
     // length === 1 means we inserted (claimed), 0 means key already exists (conflict)
     return rows.length === 1;
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error claiming key", {
-      key,
-      source,
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
     return true; // Fail open to avoid dropping messages
   }
@@ -80,10 +73,9 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
 export async function releaseProcessingClaim(key: string): Promise<void> {
   try {
     await dbWrite.delete(idempotencyKeys).where(eq(idempotencyKeys.key, key));
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error releasing claim", {
-      key,
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
   }
 }
@@ -98,11 +90,9 @@ export async function markAsProcessed(key: string, source = "unknown"): Promise<
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })
       .onConflictDoUpdate({ target: idempotencyKeys.key, set: { expires_at } });
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error marking key", {
-      key,
-      source,
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
   }
 }
@@ -117,9 +107,9 @@ export async function getProcessedMessagesCount(): Promise<number> {
       .from(idempotencyKeys)
       .where(gt(idempotencyKeys.expires_at, new Date()));
     return result?.count ?? 0;
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error getting count", {
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
     return 0;
   }
@@ -141,9 +131,9 @@ export async function cleanupExpiredKeys(): Promise<number> {
       });
     }
     return deleted.length;
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error cleaning up", {
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
     return 0;
   }
@@ -153,9 +143,9 @@ export async function cleanupExpiredKeys(): Promise<number> {
 export async function clearProcessedMessages(): Promise<void> {
   try {
     await dbWrite.delete(idempotencyKeys);
-  } catch (error) {
+  } catch {
     logger.error("[Idempotency] Error clearing keys", {
-      error: getErrorMessage(error),
+      failureClass: "idempotency_store_failed",
     });
   }
 }
