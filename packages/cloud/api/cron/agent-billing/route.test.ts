@@ -33,6 +33,7 @@ const listBillableSandboxes = mock(async () => ({
   runningSandboxes: [runningSandbox],
   stoppedWithBackups: [],
 }));
+const suspendFailedSandboxBilling = mock(async () => 0);
 const listBillingOrganizations = mock(async () => [
   {
     id: "agent-org",
@@ -60,6 +61,7 @@ const webhookFetch = mock(
 
 mock.module("@/db/repositories/agent-billing", () => ({
   agentBillingRepository: {
+    suspendFailedSandboxBilling,
     listBillableSandboxes,
     listBillingOrganizations,
     recordHourlyBilling,
@@ -110,6 +112,7 @@ const { default: app } = await import("./route");
 
 describe("agent billing cron waifu lifecycle callbacks", () => {
   beforeEach(() => {
+    suspendFailedSandboxBilling.mockClear();
     listBillableSandboxes.mockClear();
     listBillingOrganizations.mockClear();
     recordHourlyBilling.mockClear();
@@ -120,10 +123,14 @@ describe("agent billing cron waifu lifecycle callbacks", () => {
     enqueueAgentSuspendOnce.mockClear();
     sendContainerShutdownWarningEmail.mockClear();
     webhookFetch.mockClear();
-    listBillableSandboxes.mockImplementation(async () => ({
-      runningSandboxes: [runningSandbox],
-      stoppedWithBackups: [],
-    }));
+    suspendFailedSandboxBilling.mockImplementation(async () => 0);
+    listBillableSandboxes.mockImplementation(async () => {
+      expect(suspendFailedSandboxBilling).toHaveBeenCalledTimes(1);
+      return {
+        runningSandboxes: [runningSandbox],
+        stoppedWithBackups: [],
+      };
+    });
     listBillingOrganizations.mockImplementation(async () => [
       {
         id: "agent-org",
