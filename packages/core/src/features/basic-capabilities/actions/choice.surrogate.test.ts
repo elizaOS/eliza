@@ -1,9 +1,8 @@
-/** Surrogate safety for task shortId in choice.ts. */
+/** Surrogate safety for task shortId in choice.ts — exercises system under test. */
 import { describe, expect, test } from "vitest";
-import {
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../../../utils/well-formed.ts";
+import { formatTaskShortId } from "./choice.ts";
+import { choiceAction } from "./choice.ts";
+import type { IAgentRuntime, Memory, State } from "../../../types/index.ts";
 
 function isWellFormed(value: string): boolean {
 	if (!value) return true;
@@ -12,44 +11,78 @@ function isWellFormed(value: string): boolean {
 	return true;
 }
 
-function formatTaskChoiceItem(taskId: string, name: string): string {
-	const shortId = truncateWellFormed(toWellFormedUnicode(taskId), 8);
-	return `**${name}** (ID: ${shortId}):\n`;
-}
-
 describe("choice action task id surrogate safety", () => {
-	test("emoji in task id at 7 boundary backs off cleanly without lone surrogate", () => {
+	test("helper truncates at astral boundary without lone surrogate", () => {
 		const fox = "🦊";
 		const taskId = `${"a".repeat(7)}${fox}123456`;
-		const out = formatTaskChoiceItem(taskId, "Deploy Task");
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes("ID: aaaaaaa")).toBe(true);
-		expect(() => JSON.stringify({ out })).not.toThrow();
+		const shortId = formatTaskShortId(taskId);
+		expect(isWellFormed(shortId)).toBe(true);
+		expect(shortId).toBe("a".repeat(7));
+		expect(() => JSON.stringify({ shortId })).not.toThrow();
 	});
 
-	test("fitting emoji ending at 8 kept intact", () => {
+	test("helper keeps fitting emoji intact", () => {
 		const fox = "🦊";
 		const taskId = `${"a".repeat(6)}${fox}`;
-		const out = formatTaskChoiceItem(taskId, "Choice Task");
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes(fox)).toBe(true);
+		const shortId = formatTaskShortId(taskId);
+		expect(isWellFormed(shortId)).toBe(true);
+		expect(shortId.includes(fox)).toBe(true);
+		expect(shortId.length).toBe(8);
 	});
 
-	test("lone high surrogate in task id is sanitized safely", () => {
+	test("lone high surrogate sanitized via helper", () => {
 		const badTaskId = "task\ud800123456";
-		const out = formatTaskChoiceItem(badTaskId, "Test Task");
-		expect(isWellFormed(out)).toBe(true);
-		expect(out.includes("\ud800")).toBe(false);
+		const shortId = formatTaskShortId(badTaskId);
+		expect(isWellFormed(shortId)).toBe(true);
+		expect(shortId.includes("\ud800")).toBe(false);
 	});
 
-	test("sweep offsets around 8 cap all stay well-formed", () => {
+	test("choiceAction handler formats menu via production helper (both sites)", async () => {
+		const fox = "🦊";
+		const taskIdAstral = `${"a".repeat(7)}${fox}rest-of-uuid-1234`;
+		const taskIdShort = `${"b".repeat(6)}${fox}`;
+		// Mock runtime with minimal pending tasks
+		const pendingTasks = [
+			{ id: taskIdAstral, name: "Deploy Task", metadata: { options: ["opt1", "opt2"] } },
+			{ id: taskIdShort, name: "Choice Task", metadata: { options: ["yes", "no"] } },
+		];
+		const runtime = {
+			agentId: "agent-1",
+			getRoom: async () => ({ messageServerId: "server-1" }),
+			getTasks: async () => pendingTasks,
+			getService: () => null,
+		} as unknown as IAgentRuntime;
+		const message = {
+			entityId: "entity-1",
+			roomId: "room-1",
+			content: { source: "test" },
+		} as unknown as Memory;
+		const state = { data: { room: { messageServerId: "server-1" } } } as unknown as State;
+		let capturedText = "";
+		const callback = async (opts: { text: string }) => {
+			capturedText = opts.text;
+		};
+		// Handler without taskId/selectedOption triggers menu path which uses both truncation sites
+		await choiceAction.handler(runtime, message, state, {}, callback as never);
+		expect(capturedText).toBeTruthy();
+		// Both site truncations must be well-formed
+		expect(isWellFormed(capturedText)).toBe(true);
+		expect(() => JSON.stringify({ capturedText })).not.toThrow();
+		// First site: shortId for taskIdAstral should back off to 7 'a's (not contain lone surrogate)
+		expect(capturedText.includes("ID: aaaaaaa")).toBe(true);
+		expect(capturedText.includes("\ud83e")).toBe(false);
+		// Second site: shortId for taskIdShort (6b + fox = 8) should keep fox
+		expect(capturedText.includes(fox)).toBe(true);
+	});
+
+	test("sweep offsets around 8 cap all stay well-formed via helper", () => {
 		const fox = "🦊";
 		for (let offset = -4; offset <= 4; offset++) {
 			const n = 8 + offset;
 			const taskId = `${"a".repeat(n)}${fox}${"b".repeat(5)}`;
-			const out = formatTaskChoiceItem(taskId, "Task Item");
-			expect(isWellFormed(out)).toBe(true);
-			expect(() => JSON.stringify({ out })).not.toThrow();
+			const shortId = formatTaskShortId(taskId);
+			expect(isWellFormed(shortId)).toBe(true);
+			expect(() => JSON.stringify({ shortId })).not.toThrow();
 		}
 	});
 });

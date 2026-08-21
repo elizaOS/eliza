@@ -25,6 +25,10 @@ import {
 	truncateWellFormed,
 } from "../../../utils/well-formed.ts";
 
+export function formatTaskShortId(taskId: string): string {
+	return truncateWellFormed(toWellFormedUnicode(taskId), 8);
+}
+
 const spec = requireActionSpec("CHOOSE_OPTION");
 
 function _readChoiceParameters(
@@ -150,7 +154,7 @@ export const choiceAction: Action = {
 				},
 			)
 			.map((task) => {
-				const shortId = truncateWellFormed(toWellFormedUnicode(task.id), 8);
+				const shortId = formatTaskShortId(task.id);
 				const taskMetadata = task.metadata;
 				const taskOptions = taskMetadata?.options;
 
@@ -323,9 +327,7 @@ export const choiceAction: Action = {
 			"Please select a valid option from one of these tasks:\n\n";
 
 		tasksWithOptions.forEach((task) => {
-			const shortId = task.id
-				? truncateWellFormed(toWellFormedUnicode(task.id), 8)
-				: "";
+			const shortId = task.id ? formatTaskShortId(task.id) : "";
 
 			optionsText += `**${task.name}** (ID: ${shortId}):\n`;
 			const taskMetadata = task.metadata;
