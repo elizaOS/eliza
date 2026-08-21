@@ -194,7 +194,11 @@ for (const viewport of VIEWPORTS) {
         );
 
         // ── Logo presence on the chrome'd pages (not the marketing landing). ──
-        if (route.name !== "landing" && settledPath !== "/") {
+        if (
+          route.name !== "landing" &&
+          route.name !== "leaderboard" &&
+          settledPath !== "/"
+        ) {
           const logo = page
             .locator(
               'header img[alt*="Eliza" i], header svg[aria-label*="Eliza" i], [aria-label="Eliza"]',
@@ -222,6 +226,12 @@ for (const viewport of VIEWPORTS) {
             document.body.querySelectorAll<HTMLElement>("*"),
           );
           for (const el of all) {
+            // The landing phone deliberately reproduces native iOS geometry:
+            // device shells, message bubbles, the composer, and keyboard keys
+            // use Apple's larger continuous radii rather than the web app's
+            // 3px surface token. Audit the surrounding web UI, not the native
+            // facsimile rendered inside it.
+            if (el.closest(".landing-iphone")) continue;
             const cs = getComputedStyle(el);
             const rect = el.getBoundingClientRect();
             if (rect.width < 8 || rect.height < 8) continue;

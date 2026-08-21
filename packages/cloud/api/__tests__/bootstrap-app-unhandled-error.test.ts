@@ -31,7 +31,7 @@ function captureConsoleError(): unknown[][] {
 
 describe("createApp onError (unhandled-error logging)", () => {
   test("an unhandled throw logs a plain-object summary with message, code, and cause", async () => {
-    const app = createApp();
+    const app = await createApp();
 
     // Real route through the real chain — public prefix bypasses the session
     // gate so the throw originates inside a handler, exactly like a live 500.
@@ -91,7 +91,7 @@ describe("createApp onError (unhandled-error logging)", () => {
   });
 
   test("an ApiError below 500 takes the quiet debug branch, not the unhandled log", async () => {
-    const app = createApp();
+    const app = await createApp();
     app.get("/api/public/__coverage-api-error", () => {
       throw new ApiError(404, "resource_not_found", "nope");
     });

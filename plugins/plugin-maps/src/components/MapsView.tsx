@@ -585,14 +585,29 @@ export function MapsView({
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [providers, setProviders] = useState<MapsProviderDescription[]>([]);
+  const [providerMetadataRevision, setProviderMetadataRevision] = useState(0);
   const [isOnline, setIsOnline] = useState(
     online ?? (typeof navigator === "undefined" ? true : navigator.onLine),
   );
   const searchRequest = useRef<AbortController | null>(null);
   const detailRequest = useRef<AbortController | null>(null);
   const routeRequest = useRef<AbortController | null>(null);
+  const providerMetadataRequest = useRef<AbortController | null>(null);
   const detailRequestGeneration = useRef(0);
   const routeRequestGeneration = useRef(0);
+  const attributionProviderIds = useMemo(
+    () => [
+      ...new Set([
+        ...places.map((place) => place.provider),
+        ...routes.map((route) => route.provider),
+      ]),
+    ],
+    [places, routes],
+  );
+  const attributionProviderKey = attributionProviderIds.join("\0");
+  const providerMetadataRequestKey = attributionProviderKey
+    ? `${attributionProviderKey}\0${providerMetadataRevision}`
+    : "";
 
   const invalidateRouteOperation = useCallback(() => {
     routeRequestGeneration.current += 1;
@@ -620,11 +635,14 @@ export function MapsView({
   }, [online]);
 
   useEffect(() => {
-    if (!transport.describeProviders) {
+    providerMetadataRequest.current?.abort();
+    providerMetadataRequest.current = null;
+    if (!providerMetadataRequestKey || !transport.describeProviders) {
       setProviders([]);
       return;
     }
     const controller = new AbortController();
+    providerMetadataRequest.current = controller;
     void transport
       .describeProviders(controller.signal)
       .then((descriptions) => {
@@ -635,8 +653,13 @@ export function MapsView({
       .catch((_cause: unknown) => {
         if (!controller.signal.aborted) setProviders([]);
       });
-    return () => controller.abort();
-  }, [transport]);
+    return () => {
+      controller.abort();
+      if (providerMetadataRequest.current === controller) {
+        providerMetadataRequest.current = null;
+      }
+    };
+  }, [providerMetadataRequestKey, transport]);
 
   useEffect(
     () => () => {
@@ -681,20 +704,12 @@ export function MapsView({
     routes.find((route) => route.routeId === activeRouteId) ??
     routes[0] ??
     null;
-  const attributionProviderIds = useMemo(
-    () => [
-      ...new Set([
-        ...places.map((place) => place.provider),
-        ...routes.map((route) => route.provider),
-      ]),
-    ],
-    [places, routes],
-  );
-
   const runSearch = useCallback(
     async (requested: string) => {
       const normalized = requested.trim();
       if (!normalized) {
+        providerMetadataRequest.current?.abort();
+        providerMetadataRequest.current = null;
         searchRequest.current?.abort();
         detailRequestGeneration.current += 1;
         detailRequest.current?.abort();
@@ -706,6 +721,7 @@ export function MapsView({
         setNextCursor(null);
         setSelected(null);
         setCategory("all");
+        setProviders([]);
         return;
       }
       if (normalized.length > 500) return;
@@ -725,6 +741,12 @@ export function MapsView({
       searchRequest.current = controller;
       setPhase("searching");
       setError(null);
+      // Leave `places`/`providers` untouched while this replacement search is
+      // pending: the previously rendered results and their attribution are
+      // still the correct, coherent state for what's on screen. The provider
+      // metadata effect below only refetches once new places actually commit
+      // (via the revision bump on success), so a failed replacement never
+      // strips attribution from results that are still displayed.
       setLastQuery(normalized);
       try {
         const page = await transport.search(normalized, controller.signal);
@@ -736,6 +758,7 @@ export function MapsView({
         setCategory("all");
         setRoutes([]);
         setActiveRouteId(null);
+        setProviderMetadataRevision((revision) => revision + 1);
         setPhase("ready");
       } catch (cause) {
         if (controller.signal.aborted) return;

@@ -124,6 +124,105 @@ describe("MapsView", () => {
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
   });
 
+  it("loads provider metadata after provider-backed results become available", async () => {
+    let providerReady = false;
+    const describeProviders = vi.fn(async () =>
+      providerReady
+        ? [{ id: "fixture_maps", attribution: "Late legal attribution" }]
+        : [],
+    );
+    const user = userEvent.setup();
+    render(
+      <MapsView
+        transport={transport({
+          describeProviders,
+          search: vi.fn(async () => {
+            providerReady = true;
+            return { places: [FERRY], nextCursor: null };
+          }),
+        })}
+        online
+      />,
+    );
+
+    expect(describeProviders).not.toHaveBeenCalled();
+    await searchFor(user, "waterfront");
+    expect(await screen.findByText("Late legal attribution")).toBeTruthy();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries failed metadata after a successful repeat search", async () => {
+    const describeProviders = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("metadata temporarily unavailable"))
+      .mockResolvedValueOnce([
+        { id: "fixture_maps", attribution: "Recovered legal attribution" },
+      ]);
+    const user = userEvent.setup();
+    render(<MapsView transport={transport({ describeProviders })} online />);
+
+    await searchFor(user, "waterfront");
+    expect(
+      await screen.findByText("Legal attribution unavailable for fixture_maps"),
+    ).toBeTruthy();
+
+    await searchFor(user, "waterfront");
+    expect(await screen.findByText("Recovered legal attribution")).toBeTruthy();
+    expect(describeProviders).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps prior results and attribution coherent while a replacement search is pending, and after it fails", async () => {
+    const describeProviders = vi.fn<
+      NonNullable<MapsViewTransport["describeProviders"]>
+    >(async () => [
+      { id: "fixture_maps", attribution: "Current legal attribution" },
+    ]);
+    let rejectReplacementSearch: ((reason: unknown) => void) | undefined;
+    const search = vi
+      .fn<MapsViewTransport["search"]>()
+      .mockResolvedValueOnce({ places: [FERRY], nextCursor: null })
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectReplacementSearch = reject;
+          }),
+      );
+    const user = userEvent.setup();
+    render(
+      <MapsView transport={transport({ describeProviders, search })} online />,
+    );
+
+    await searchFor(user, "first");
+    expect(
+      (await screen.findAllByText("Ferry Building")).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByText("Current legal attribution")).toBeTruthy();
+    await waitFor(() => expect(describeProviders).toHaveBeenCalledTimes(1));
+
+    await searchFor(user, "second");
+    // The replacement search is still in flight: the places list shows its
+    // loading skeleton (expected UI), but the map's attribution — driven by
+    // the still-unchanged `places`/`providers` state, not by search phase —
+    // must keep showing the prior search's legal notice untouched, never a
+    // stripped/mismatched "unavailable" placeholder.
+    expect(screen.getByText("Current legal attribution")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
+
+    rejectReplacementSearch?.(new Error("search backend unavailable"));
+    await screen.findByText("search backend unavailable");
+
+    // A failed replacement search must not clear the still-valid prior
+    // results or strip their attribution — the {places, providers} pair only
+    // swaps once a replacement search actually succeeds.
+    expect(
+      (await screen.findAllByText("Ferry Building")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("Current legal attribution")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+    expect(describeProviders).toHaveBeenCalledTimes(1);
+  });
+
   it("explicitly reports unavailable legal attribution", async () => {
     const user = userEvent.setup();
     render(

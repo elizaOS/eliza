@@ -20,7 +20,7 @@ import {
 } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import { getDefaultRedactPatterns, type IAgentRuntime } from "@elizaos/core";
 import type {
   OrchestratorTaskDocument,
   OrchestratorTaskMessage,
@@ -245,12 +245,27 @@ function provenanceFor(doc: OrchestratorTaskDocument): string[] {
   return values.filter((value): value is string => Boolean(value));
 }
 
-const SECRET_PATTERNS: RegExp[] = [
-  /\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g,
-  /\bsk-[A-Za-z0-9_-]{20,}\b/g,
-  /\bAKIA[A-Z0-9]{16}\b/g,
-  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g,
-  /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|password|credential)\s*[:=]\s*["']?[^"'\s,;]+/gi,
+/**
+ * Credential shapes come from `@elizaos/core`'s canonical set rather than a
+ * local copy. A second hand-maintained denylist drifts the moment a provider
+ * introduces a format, and a miss here writes a live credential into a notes
+ * file that is later injected as coding context. Unlike core's diagnostic
+ * masking, the whole match is removed: a persisted read-model has no use for
+ * the surviving affixes that make a log line debuggable.
+ */
+const CREDENTIAL_PATTERNS: readonly RegExp[] = getDefaultRedactPatterns()
+  .map((raw) => {
+    const wrapped = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (wrapped) {
+      const flags = wrapped[2].includes("g") ? wrapped[2] : `${wrapped[2]}g`;
+      return new RegExp(wrapped[1], flags);
+    }
+    return new RegExp(raw, "gi");
+  })
+  .filter((pattern): pattern is RegExp => Boolean(pattern));
+
+/** Contact details that are personal data rather than credential shapes. */
+const CONTACT_PATTERNS: readonly RegExp[] = [
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
   /\b(?:\+?\d[\d .()-]{8,}\d)\b/g,
 ];
@@ -278,8 +293,15 @@ function redactPrivateKeys(input: string): string {
 }
 
 export function redactCodingMemoryText(input: string): string {
+  // Private keys are stripped by index-based scanning, not a `[\s\S]+?`
+  // regex, so an unterminated/huge PEM block can't push this onto the
+  // ReDoS-hardening backlog's radar (core's equivalent pattern is still run
+  // below as a defense-in-depth backstop, but it never sees a real block).
   let text = redactPrivateKeys(input);
-  for (const pattern of SECRET_PATTERNS) {
+  for (const pattern of CREDENTIAL_PATTERNS) {
+    text = text.replace(pattern, "[REDACTED]");
+  }
+  for (const pattern of CONTACT_PATTERNS) {
     text = text.replace(pattern, "[REDACTED]");
   }
   return text.replace(/\s+/g, " ").trim();

@@ -62,7 +62,9 @@
  *     stay unread; `boundedWalk` rejects the accessor first.
  */
 
+import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
+import { types as nodeUtilTypes } from "node:util";
 
 import { ElizaError } from "@elizaos/core";
 
@@ -159,9 +161,15 @@ type WalkResult =
   | { ok: true; text: string | undefined }
   | { ok: false; reason: CacheKeyRejection };
 
-/** Charge produced canonical text against the shared byte budget. */
-function charge(state: WalkState, length: number): boolean {
+/** Charge ASCII syntax bytes against the shared canonical-text budget. */
+function chargeAscii(state: WalkState, length: number): boolean {
   state.bytes += length;
+  return state.bytes <= state.limits.maxBytes;
+}
+
+/** Charge a JSON-encoded leaf or key by its actual UTF-8 byte length. */
+function chargeText(state: WalkState, text: string): boolean {
+  state.bytes += Buffer.byteLength(text, "utf8");
   return state.bytes <= state.limits.maxBytes;
 }
 
@@ -221,7 +229,7 @@ function walkArray(
     return { ok: false, reason: "keys" };
   }
   state.keys += length;
-  if (!charge(state, 2 + (length > 0 ? length - 1 : 0))) {
+  if (!chargeAscii(state, 2 + (length > 0 ? length - 1 : 0))) {
     return { ok: false, reason: "bytes" };
   }
 
@@ -273,20 +281,27 @@ function walkObject(
     left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0,
   );
 
-  if (!charge(state, 2 + (entries.length > 0 ? entries.length - 1 : 0))) {
+  if (!chargeAscii(state, 2 + (entries.length > 0 ? entries.length - 1 : 0))) {
     return { ok: false, reason: "bytes" };
   }
 
   const parts: string[] = [];
   for (const [name, value] of entries) {
     const encodedKey = JSON.stringify(name);
-    if (!charge(state, encodedKey.length + 1)) {
+    if (!chargeText(state, encodedKey) || !chargeAscii(state, 1)) {
       return { ok: false, reason: "bytes" };
     }
     const child = walkValue(value, state, depth + 1);
     if (!child.ok) return child;
     // A property whose value has no JSON text kept the literal `undefined`
     // token in the previous canonicalizer; preserved so keys do not move.
+    // The token itself is charged like any other emitted text — otherwise a
+    // wide object of function/symbol/undefined-valued properties emits
+    // "undefined" nine bytes at a time for free and the canonical text can
+    // exceed `maxBytes` despite every charge site appearing to enforce it.
+    if (child.text === undefined && !chargeAscii(state, 9)) {
+      return { ok: false, reason: "bytes" };
+    }
     parts.push(
       `${encodedKey}:${child.text === undefined ? "undefined" : child.text}`,
     );
@@ -305,7 +320,7 @@ function walkValue(
   state.nodes += 1;
 
   if (value === null) {
-    return charge(state, 4)
+    return chargeAscii(state, 4)
       ? { ok: true, text: "null" }
       : { ok: false, reason: "bytes" };
   }
@@ -317,14 +332,14 @@ function walkValue(
       return { ok: false, reason: "string-length" };
     }
     const encoded = JSON.stringify(text);
-    return charge(state, encoded.length)
+    return chargeText(state, encoded)
       ? { ok: true, text: encoded }
       : { ok: false, reason: "bytes" };
   }
   if (type === "number" || type === "boolean") {
     // Non-finite numbers serialize as `null`, exactly as before.
     const encoded = JSON.stringify(value) as string;
-    return charge(state, encoded.length)
+    return chargeAscii(state, encoded.length)
       ? { ok: true, text: encoded }
       : { ok: false, reason: "bytes" };
   }
@@ -341,6 +356,15 @@ function walkValue(
   const container = value as object;
   if (state.seen.has(container)) return { ok: false, reason: "cycle" };
   if (depth >= state.limits.maxDepth) return { ok: false, reason: "depth" };
+
+  // `util.types.isProxy` inspects the engine object directly and never
+  // invokes user traps, including for revoked proxies — the same guard
+  // `bounded-walk.ts`'s `describeContainer` applies (#23428), kept consistent
+  // here so both cache boundaries reject a hostile Proxy before any of
+  // `ownKeys`/`getOwnPropertyDescriptor`/`getPrototypeOf` can run its trap.
+  if (nodeUtilTypes.isProxy(container)) {
+    return { ok: false, reason: "reflection" };
+  }
 
   let isArray: boolean;
   try {

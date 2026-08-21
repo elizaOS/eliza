@@ -7,6 +7,7 @@
  * closing/reopening fences is best-effort within it.
  */
 
+import { execFileSync } from "node:child_process";
 import * as fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { chunkMarkdownText } from "./chunk.ts";
@@ -118,6 +119,34 @@ describe("chunkMarkdownText", () => {
 			expect(isWellFormed(c)).toBe(true);
 		}
 		expect(chunks.join("")).toBe(input);
+	});
+
+	it("keeps progress when surrogate backoff reaches a fence reopen boundary", () => {
+		const payload = "😀x𐐷y".repeat(8);
+		const input = `\`\`\`ts\n${payload}\n\`\`\``;
+		const chunkUrl = new URL("./chunk.ts", import.meta.url).href;
+		const script = `
+			const { chunkMarkdownText } = await import(${JSON.stringify(chunkUrl)});
+			const input = ${JSON.stringify(input)};
+			console.log(JSON.stringify(chunkMarkdownText(input, 11)));
+		`;
+		const chunks = JSON.parse(
+			execFileSync("bun", ["--conditions=eliza-source", "--eval", script], {
+				encoding: "utf8",
+				timeout: 5_000,
+				env: { PATH: process.env.PATH ?? "" },
+			}),
+		) as string[];
+
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeGreaterThan(0);
+			expect(chunk.length).toBeLessThanOrEqual(11);
+			expect(isWellFormed(chunk)).toBe(true);
+		}
+		const recoveredPayload = Array.from(chunks.join(""))
+			.filter((character) => ["😀", "𐐷", "x", "y"].includes(character))
+			.join("");
+		expect(recoveredPayload).toBe(payload);
 	});
 
 	it("passes pre-existing lone surrogates through untouched", () => {

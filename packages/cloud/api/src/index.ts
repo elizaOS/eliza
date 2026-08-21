@@ -36,6 +36,7 @@ import { isStorageReadCapabilityPath, serveBlobHostRequest } from "./blob-host";
 import { isThinCliSessionPath } from "./cli-session-paths";
 import { isPersonalSharedTelegramEdgeEnabled } from "./personal-shared-telegram-edge";
 import { serveRegistryHostRequest } from "./registry-host";
+import { routeShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
 export { AnonymousChatGate } from "./anonymous-chat-gate";
@@ -53,7 +54,13 @@ export {
 } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
 
-let appPromise: Promise<Hono<AppEnv>> | undefined;
+/**
+ * Full-app promises memoised per route shard (issue #22550). Each entry is a
+ * complete middleware stack whose generated routes are limited to the shard
+ * that can match the request path, so a cold isolate serving one path family
+ * does not evaluate the other ~600 route modules.
+ */
+const fullAppPromises = new Map<string | null, Promise<Hono<AppEnv>>>();
 const inferenceAppPromises = new Map<string, Promise<Hono<AppEnv>>>();
 /** Lazy thin shell for login-critical Steward GETs (#18049). */
 let stewardThinAppPromise: Promise<Hono<AppEnv>> | undefined;
@@ -195,9 +202,16 @@ type AgentDomainBindings = Pick<
   "AGENT_ROUTER_ORIGIN_HOST" | "ELIZA_CLOUD_AGENT_BASE_DOMAIN"
 >;
 
-async function getApp(): Promise<Hono<AppEnv>> {
-  appPromise ??= import("./bootstrap-app").then((m) => m.createApp());
-  return appPromise;
+function getAppForPath(pathname: string): Promise<Hono<AppEnv>> {
+  const shard = routeShardKey(pathname);
+  let promise = fullAppPromises.get(shard);
+  if (!promise) {
+    promise = import("./bootstrap-app").then((m) =>
+      m.createApp({ requestPath: pathname }),
+    );
+    fullAppPromises.set(shard, promise);
+  }
+  return promise;
 }
 
 /** Preserve Workerd upgrade responses; rebuilding one drops its `webSocket` extension. */
@@ -237,11 +251,14 @@ export async function dispatchFullApp(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext | HonoExecutionContext,
-  loadFullApp: () => Promise<Hono<AppEnv>> = getApp,
+  loadFullApp?: () => Promise<Hono<AppEnv>>,
 ): Promise<Response> {
   const startedAt = performance.now();
-  const moduleWasInitialized =
-    loadFullApp === getApp ? appPromise !== undefined : true;
+  const requestPathname = new URL(request.url).pathname;
+  const moduleWasInitialized = loadFullApp
+    ? true
+    : fullAppPromises.has(routeShardKey(requestPathname));
+  const loadApp = loadFullApp ?? (() => getAppForPath(requestPathname));
   const traceId = resolveElizaTraceId(request.headers);
   const headers = new Headers(request.headers);
   headers.set(ELIZA_TRACE_ID_HEADER, traceId);
@@ -252,7 +269,7 @@ export async function dispatchFullApp(
   let status: number | null = null;
 
   try {
-    const app = await loadFullApp();
+    const app = await loadApp();
     moduleInitMs = Math.round((performance.now() - startedAt) * 100) / 100;
     const response = await app.fetch(tracedRequest, env, ctx);
     status = response.status;

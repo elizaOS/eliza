@@ -447,6 +447,112 @@ describe("createMobileLifecycle — app lifecycle", () => {
     );
   });
 
+  it("defers the Android ack until handleDeepLink's returned promise resolves applied=true (#23350)", async () => {
+    // Regression: `ctx.handleDeepLink` used to be treated as complete the
+    // instant it returned, so `acknowledgePendingUrl` fired even though the
+    // navigation intent it dispatched was still only enqueued, not yet
+    // claimed by the App shell. A renderer reload/crash in that window lost
+    // the intent while Android had already been told it was delivered.
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolveApplied = resolve;
+          }),
+      ),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    // The intent is dispatched, but nothing has confirmed it landed yet —
+    // acknowledging now would be the exact bug this test guards against.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    // Simulate the App shell's canonical listener claiming + applying it.
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
+  it("never acknowledges Android when handleDeepLink's promise resolves applied=false (dropped/never claimed)", async () => {
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(() => Promise.resolve(false)),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeDeepLinks();
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.peekPendingUrl).toHaveBeenCalled(),
+    );
+    lifecycle.initializeAppLifecycle();
+
+    expect(ctx.handleDeepLink).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Never applied (e.g. every listener declined, or it overflowed the
+    // replay bound) — the native buffer must stay unacknowledged so a fresh
+    // process can pick the intent back up.
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+  });
+
+  it("queues an in-flight redelivery's ack behind the original attempt instead of confirming it early", async () => {
+    // Android's cold-launch replay polls the unacked buffer every second
+    // for up to 15s. A poll landing while the FIRST attempt is still
+    // in-flight must not let that second poll's ack fire ahead of — or
+    // instead of — the real "applied" confirmation.
+    vi.useFakeTimers();
+    const url = "elizaos://apps/deploy";
+    const deepLinkBuffer = makeDeepLinkBuffer(url);
+    let resolveApplied: ((applied: boolean) => void) | undefined;
+    let callCount = 0;
+    const ctx = makeContext({
+      androidDeepLinkBuffer: deepLinkBuffer.bridge,
+      handleDeepLink: vi.fn(() => {
+        callCount += 1;
+        return new Promise<boolean>((resolve) => {
+          resolveApplied = resolve;
+        });
+      }),
+    });
+    const lifecycle = createMobileLifecycle(ctx);
+
+    lifecycle.initializeAppLifecycle();
+    // A poll redelivers the same still-unacked URL while the first attempt
+    // is in-flight.
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // handleDeepLink is only invoked once per URL — the redelivery reuses
+    // the first attempt's outcome rather than re-dispatching.
+    expect(callCount).toBe(1);
+    expect(deepLinkBuffer.bridge.acknowledgePendingUrl).not.toHaveBeenCalled();
+
+    resolveApplied?.(true);
+    await vi.waitFor(() =>
+      expect(deepLinkBuffer.bridge.acknowledgePendingUrl).toHaveBeenCalledWith({
+        url,
+      }),
+    );
+  });
+
   it("acknowledges a native replay duplicate after appUrlOpen already routed it", async () => {
     vi.useFakeTimers();
     const url = "elizaos://chat/replayed";
