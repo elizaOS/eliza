@@ -93,9 +93,13 @@ variable "backup_s3_bucket" {
 }
 
 variable "backup_s3_prefix" {
-  description = "Object key prefix under which dated backup sets are written."
+  description = "Object key prefix under which dated backup sets are written. The nightly job's retention purge deletes everything under this prefix that is older than the cutoff, so an empty or unbounded value would scope that delete sweep to the bucket root; the node script re-validates this at runtime as defense in depth."
   type        = string
   default     = "tenant-db"
+  validation {
+    condition     = can(regex("^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$", var.backup_s3_prefix)) && !can(regex("\\.\\.", var.backup_s3_prefix)) && !endswith(var.backup_s3_prefix, "/")
+    error_message = "backup_s3_prefix must be non-empty, at most 200 characters, contain only [A-Za-z0-9._/-], and must not contain '..' or end with '/'"
+  }
 }
 
 variable "backup_s3_access_key" {
