@@ -305,28 +305,42 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
     if (!permissions.granted) {
       throw new Error("Microphone permission is required for voice dictation.");
     }
-    const transcriptListener = await PlayVoice.addListener(
-      "transcript",
-      (event) => {
-        if (!event.isFinal) return;
-        const transcript = event.text.trim();
-        if (transcript) onFinalTranscript(transcript);
-        stopVoiceAfterNativeEvent();
-      },
-    );
-    const errorListener = await PlayVoice.addListener("error", (event) => {
-      onError(
-        new Error(`Voice dictation stopped unexpectedly (code ${event.code}).`),
+    try {
+      const transcriptListener = await PlayVoice.addListener(
+        "transcript",
+        (event) => {
+          if (!event.isFinal) return;
+          const transcript = event.text.trim();
+          if (transcript) onFinalTranscript(transcript);
+          stopVoiceAfterNativeEvent();
+        },
       );
-      stopVoiceAfterNativeEvent();
-    });
-    activeVoiceListeners = [transcriptListener, errorListener];
-    const result = await PlayVoice.startDictation({
-      language: navigator.language || "en-US",
-    });
-    if (!result.started) {
-      await androidCloudVoice.stop();
-      throw new Error(result.error || "Voice dictation could not start.");
+      activeVoiceListeners = [transcriptListener];
+      const errorListener = await PlayVoice.addListener("error", (event) => {
+        onError(
+          new Error(
+            `Voice dictation stopped unexpectedly (code ${event.code}).`,
+          ),
+        );
+        stopVoiceAfterNativeEvent();
+      });
+      activeVoiceListeners.push(errorListener);
+      const result = await PlayVoice.startDictation({
+        language: navigator.language || "en-US",
+      });
+      if (!result.started) {
+        throw new Error(result.error || "Voice dictation could not start.");
+      }
+    } catch (setupError) {
+      try {
+        await androidCloudVoice.stop();
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [setupError, cleanupError],
+          "Voice dictation setup and cleanup failed.",
+        );
+      }
+      throw setupError;
     }
   },
   async stop() {

@@ -23,6 +23,7 @@ const playEntry = vi.hoisted(() => ({
   secureSet: vi.fn(async (_options: { value: string }) => undefined),
   voiceListeners: new Map<string, (value: unknown) => void>(),
   voiceListenerRemovers: [] as Array<ReturnType<typeof vi.fn>>,
+  voiceListenerSetupFailure: null as "transcript" | "error" | null,
   voiceStop: vi.fn(async () => undefined),
 }));
 
@@ -47,6 +48,9 @@ vi.mock("@capacitor/core", () => ({
       : {
           addListener: vi.fn(
             async (name: string, listener: (value: unknown) => void) => {
+              if (playEntry.voiceListenerSetupFailure === name) {
+                throw new Error(`${name} listener setup failed`);
+              }
               playEntry.voiceListeners.set(name, listener);
               const remove = vi.fn(async () => {
                 playEntry.voiceListeners.delete(name);
@@ -120,6 +124,7 @@ beforeEach(() => {
   playEntry.appListeners.clear();
   playEntry.voiceListeners.clear();
   playEntry.voiceListenerRemovers.length = 0;
+  playEntry.voiceListenerSetupFailure = null;
   window.localStorage.clear();
   playEntry.preferenceGet.mockResolvedValue({ value: null });
   playEntry.secureGet.mockResolvedValue({ value: null });
@@ -258,5 +263,18 @@ describe("Android Cloud renderer behavior", () => {
       "listener teardown failed",
     );
     expect(playEntry.voiceStop).toHaveBeenCalledOnce();
+  });
+
+  it("cleans up a transcript listener when error-listener setup fails", async () => {
+    playEntry.voiceListenerSetupFailure = "error";
+
+    await expect(
+      entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn()),
+    ).rejects.toThrow("error listener setup failed");
+
+    expect(playEntry.voiceListenerRemovers).toHaveLength(1);
+    expect(playEntry.voiceListenerRemovers[0]).toHaveBeenCalledOnce();
+    expect(playEntry.voiceStop).toHaveBeenCalledTimes(2);
+    expect(playEntry.voiceListeners.size).toBe(0);
   });
 });
