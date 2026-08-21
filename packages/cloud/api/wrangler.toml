@@ -497,8 +497,8 @@ NODE_ENV = "production"
 # Rows remain compact and exclude prompt/response text.
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "1"
-# Staging exercises the strongly invalidated sender projection while default
-# and production stay on canonical resolution until the live latency matrix passes.
+# Staging exercises the strongly invalidated sender projection while the default
+# remains fail-closed for unclassified environments.
 PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
 # The protected staging cutover owns PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
 # as a secret binding. It uses a fresh name because keep_vars preserved the old
@@ -783,7 +783,10 @@ __filename = '"/worker.js"'
 NODE_ENV = "production"
 SHARED_TURN_TRACES_ENABLED = "true"
 SHARED_TURN_TRACES_SAMPLE = "0.1"
-PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "false"
+# The projection is invalidated by phone, Telegram, Discord, and cutover writes.
+# Production activation removes repeated canonical sender lookups; rollback is
+# the previous certified Worker version or this flag set back to false.
+PERSONAL_DELIVERY_PROJECTION_READ_ENABLED = "true"
 PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # The protected production cutover owns
 # PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED as a secret binding.
