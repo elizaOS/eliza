@@ -491,7 +491,7 @@ describe("App Live E2E staging Cloud job (#18076)", () => {
     expect(spec).toContain("unidentifiedChatSendAttemptCount).toBe(0)");
     // Both the initial leg and the two history legs bind the accepted reply to
     // the exact run-unique user row without requiring the model to echo it.
-    expect(spec).toContain("turnAnchorToken: challengeToken");
+    expect(spec).toContain("turnAnchorToken,");
     expect(spec).toContain("findAnchoredLiveTurn(");
     expect(spec).toContain("isLiveReply(anchored.reply)");
     // The fresh-context leg must inherit nothing: no shared smoke seed, no

@@ -13,9 +13,10 @@
  * Reply selection is fail-closed by construction (#16936 review). Strict
  * challenge callers require the fresh assistant row to echo their token. The
  * Cloud continuity lane instead anchors on the run-unique token in the exact
- * user row, then accepts only a valid assistant row that follows it before any
- * later user turn. A pending status row, first-run greeting, cached reply, or
- * unrelated answer cannot satisfy either mode.
+ * user row, then accepts only that turn's first assistant row after it settles
+ * as uninterrupted model text. A pending status row, first-run greeting,
+ * cached reply, widget-only row, or unrelated answer cannot satisfy either
+ * mode.
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 import {
@@ -56,9 +57,9 @@ export interface LivenessChatOptions {
    */
   challengeToken?: string;
   /**
-   * Run-unique token present in the exact user row that owns the reply. Unlike
-   * `challengeToken`, this binds by transcript order and does not require the
-   * model to copy the token into its answer.
+   * Run-unique token present in the exact user row that owns the first
+   * assistant row after it. Unlike `challengeToken`, this binds by transcript
+   * order and does not require the model to copy the token into its answer.
    */
   turnAnchorToken?: string;
   /** How long to wait for the assistant reply to render. */
@@ -84,6 +85,8 @@ export interface LivenessThreadLine {
   text: string;
   failureKind: string;
   hasRetry: boolean;
+  interrupted: boolean;
+  hasMessageText: boolean | null;
   phase: string | null;
 }
 
@@ -94,16 +97,24 @@ export async function readLivenessThreadLines(
   return page.evaluate(() =>
     Array.from(
       document.querySelectorAll<HTMLElement>('[data-testid="thread-line"]'),
-    ).map((row) => ({
-      role: row.dataset.role ?? "",
-      text: row.textContent ?? "",
-      failureKind: row.dataset.failure ?? "",
-      hasRetry: Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
-      phase:
-        row.querySelector<HTMLElement>(
-          '[data-testid="overlay-assistant-turn-body"]',
-        )?.dataset.phase ?? null,
-    })),
+    ).map((row) => {
+      const assistantBody = row.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      );
+      return {
+        role: row.dataset.role ?? "",
+        text: row.textContent ?? "",
+        failureKind: row.dataset.failure ?? "",
+        hasRetry: Boolean(
+          row.querySelector('[data-testid="thread-line-retry"]'),
+        ),
+        interrupted: row.dataset.interrupted === "true",
+        hasMessageText: assistantBody
+          ? assistantBody.dataset.hasMessageText === "true"
+          : null,
+        phase: assistantBody?.dataset.phase ?? null,
+      };
+    }),
   );
 }
 
@@ -120,6 +131,7 @@ async function acceptedReplyText(
   challengeToken: string | undefined,
 ): Promise<string> {
   if ((await row.getAttribute("data-failure"))?.trim()) return "";
+  if ((await row.getAttribute("data-interrupted")) === "true") return "";
   if ((await row.locator('[data-testid="thread-line-retry"]').count()) > 0)
     return "";
   // Mirror the iOS driver's classification: a row whose overlay body is
@@ -130,6 +142,12 @@ async function acceptedReplyText(
     .locator('[data-testid="overlay-assistant-turn-body"]')
     .count();
   if (overlayBodies > 0) {
+    const messageTextBodies = await row
+      .locator(
+        '[data-testid="overlay-assistant-turn-body"][data-has-message-text="true"]',
+      )
+      .count();
+    if (messageTextBodies === 0) return "";
     const replyBodies = await row
       .locator(
         '[data-testid="overlay-assistant-turn-body"][data-phase="reply"]',
@@ -167,9 +185,9 @@ async function sendChatAndMeasureRenderedReply(
 
   // Without a user-row anchor, only assistant rows beyond the pre-send snapshot
   // can satisfy the turn. With an anchor, DOM order supplies the stronger
-  // binding: the exact token-bearing user row must precede the accepted reply.
-  // In both modes `data-phase="status"`, structured failures, Retry rows, and
-  // empty content remain ineligible.
+  // binding: the exact token-bearing user row must immediately own the accepted
+  // assistant row. In both modes status/widget-only rows, interruptions,
+  // structured failures, Retry rows, and empty content remain ineligible.
   const token = options.challengeToken?.trim().toLowerCase();
   const turnAnchorToken = options.turnAnchorToken?.trim().toLowerCase();
   const replyMatch = { text: "", rowIndex: -1, threadRowIndex: -1 };

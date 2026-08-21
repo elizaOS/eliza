@@ -189,7 +189,6 @@ describe("structural user-turn anchoring", () => {
             role: "user",
             text: `Reply with exactly this code: ${anchorToken}`,
           },
-          { role: "assistant", text: "", phase: "status" },
           {
             role: "assistant",
             text: "Hello from the live model",
@@ -200,23 +199,78 @@ describe("structural user-turn anchoring", () => {
       ),
     ).toEqual({
       userLineIndex: 1,
-      assistantLineIndex: 3,
+      assistantLineIndex: 2,
       reply: "Hello from the live model",
     });
   });
 
-  it("rejects failure/retry rows and never crosses into a later user turn", () => {
+  it("never skips the first assistant row to accept an unrelated later row", () => {
+    const invalidFirstRows = [
+      { text: "failed", failureKind: "handler_error", phase: "reply" },
+      { text: "retry", hasRetry: true, phase: "reply" },
+      { text: "partial answer", interrupted: true, phase: "reply" },
+      { text: "Thinking", phase: "status" },
+      {
+        text: "Download generated file",
+        hasMessageText: false,
+        phase: "reply",
+      },
+    ];
+
+    for (const invalidFirstRow of invalidFirstRows) {
+      expect(
+        findAnchoredLiveTurn(
+          [
+            { role: "user", text: `challenge ${anchorToken}` },
+            { role: "assistant", ...invalidFirstRow },
+            {
+              role: "assistant",
+              text: "unrelated later answer",
+              hasMessageText: true,
+              phase: "reply",
+            },
+          ],
+          { anchorToken },
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("accepts the same first assistant row only after pending becomes a text reply", () => {
+    const user = { role: "user", text: `challenge ${anchorToken}` };
+    expect(
+      findAnchoredLiveTurn(
+        [user, { role: "assistant", text: "Thinking", phase: "status" }],
+        { anchorToken },
+      ),
+    ).toBeNull();
+
+    expect(
+      findAnchoredLiveTurn(
+        [
+          user,
+          {
+            role: "assistant",
+            text: "The settled live answer",
+            hasMessageText: true,
+            phase: "reply",
+          },
+        ],
+        { anchorToken },
+      ),
+    ).toEqual({
+      userLineIndex: 0,
+      assistantLineIndex: 1,
+      reply: "The settled live answer",
+    });
+  });
+
+  it("never crosses into a later user turn", () => {
     expect(
       findAnchoredLiveTurn(
         [
           { role: "user", text: `challenge ${anchorToken}` },
-          {
-            role: "assistant",
-            text: "failed",
-            failureKind: "handler_error",
-          },
-          { role: "assistant", text: "retry", hasRetry: true },
-          { role: "user", text: "a later turn" },
+          { role: "user", text: `a later duplicated ${anchorToken}` },
           { role: "assistant", text: "later answer", phase: "reply" },
         ],
         { anchorToken },

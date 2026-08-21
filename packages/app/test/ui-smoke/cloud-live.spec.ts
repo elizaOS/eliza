@@ -29,8 +29,6 @@ import {
 import { resolveCloudLiveOriginContract } from "../cloud-live-origin";
 import {
   assertOnboardingLivenessWithTiming,
-  buildLivenessChallenge,
-  extractLivenessChallengeToken,
   findAnchoredLiveTurn,
   isLiveReply,
   readLivenessThreadLines,
@@ -180,11 +178,11 @@ function installNetworkAudit(context: BrowserContext) {
   return audit;
 }
 
-async function proveChallengeHistory(
+async function proveAnchoredTurnHistory(
   page: Page,
   audit: ReturnType<typeof createCloudLiveNetworkAudit>,
   priorCount: number,
-  challengeToken: string,
+  turnAnchorToken: string,
 ): Promise<CloudLiveHistoryObservation> {
   await expect
     .poll(() => audit.snapshot().successfulHistoryGetCount > priorCount, {
@@ -196,7 +194,7 @@ async function proveChallengeHistory(
       async () => {
         const anchored = findAnchoredLiveTurn(
           await readLivenessThreadLines(page),
-          { anchorToken: challengeToken },
+          { anchorToken: turnAnchorToken },
         );
         return Boolean(anchored && isLiveReply(anchored.reply));
       },
@@ -370,8 +368,8 @@ test.describe("real cloud login + personal identity + chat", () => {
     // following assistant row without treating verbatim code echo as a model
     // liveness requirement.
     await openAppPath(page, "/chat");
-    const challenge = buildLivenessChallenge(randomBytes(4).toString("hex"));
-    const challengeToken = extractLivenessChallengeToken(challenge);
+    const turnAnchorToken = randomBytes(8).toString("hex");
+    const turnPrompt = `In one short sentence, say hello. Unique turn marker: ${turnAnchorToken}`;
     const auditBeforeLiveness = primaryAudit.snapshot();
     const domBeforeLiveness = await page.evaluate(() => ({
       userRowCount: document.querySelectorAll(
@@ -385,8 +383,8 @@ test.describe("real cloud login + personal identity + chat", () => {
       try {
         return await assertOnboardingLivenessWithTiming(page, {
           label: "cloud-live",
-          prompt: challenge,
-          turnAnchorToken: challengeToken,
+          prompt: turnPrompt,
+          turnAnchorToken,
         });
       } catch (error) {
         // error-policy:J3 reduce the original assertion and live browser state
@@ -429,6 +427,18 @@ test.describe("real cloud login + personal identity + chat", () => {
               retryRowPresent: freshAssistantRows.some((row) =>
                 Boolean(row.querySelector('[data-testid="thread-line-retry"]')),
               ),
+              interruptedRowPresent: freshAssistantRows.some(
+                (row) => row.dataset.interrupted === "true",
+              ),
+              widgetOnlyReplyRowPresent: freshAssistantRows.some((row) => {
+                const body = row.querySelector<HTMLElement>(
+                  '[data-testid="overlay-assistant-turn-body"]',
+                );
+                return (
+                  body?.dataset.phase === "reply" &&
+                  body.dataset.hasMessageText === "false"
+                );
+              }),
             };
           }, domBeforeLiveness),
         ]);
@@ -458,6 +468,8 @@ test.describe("real cloud login + personal identity + chat", () => {
           `newAssistantRowCount=${domSnapshot?.newAssistantRowCount ?? "unavailable"}`,
           `failureRowPresent=${domSnapshot?.failureRowPresent ?? "unavailable"}`,
           `retryRowPresent=${domSnapshot?.retryRowPresent ?? "unavailable"}`,
+          `interruptedRowPresent=${domSnapshot?.interruptedRowPresent ?? "unavailable"}`,
+          `widgetOnlyReplyRowPresent=${domSnapshot?.widgetOnlyReplyRowPresent ?? "unavailable"}`,
         ].join("; ");
         throw new Error(
           `Cloud live liveness failed; privacy-safe diagnostic: ${diagnostic}`,
@@ -474,16 +486,16 @@ test.describe("real cloud login + personal identity + chat", () => {
     expect(challengeAudit.unidentifiedChatSendAttemptCount).toBe(0);
 
     // Reload the same document partition. A successful server history GET plus
-    // both challenge-bound rows proves the turn did not survive merely in React
+    // both turn-anchored rows proves the turn did not survive merely in React
     // memory. Private binding values are reduced to booleans before evidence.
     const reloadHistoryBefore =
       primaryAudit.snapshot().successfulHistoryGetCount;
     await page.reload({ waitUntil: "domcontentloaded" });
-    const reload = await proveChallengeHistory(
+    const reload = await proveAnchoredTurnHistory(
       page,
       primaryAudit,
       reloadHistoryBefore,
-      challengeToken,
+      turnAnchorToken,
     );
     const reloadBindingReuse = compareCloudLiveRuntimeBindings(
       referenceBinding,
@@ -517,11 +529,11 @@ test.describe("real cloud login + personal identity + chat", () => {
         const freshHistoryBefore =
           freshAudit.snapshot().successfulHistoryGetCount;
         await openAppPath(freshPage, "/chat");
-        const history = await proveChallengeHistory(
+        const history = await proveAnchoredTurnHistory(
           freshPage,
           freshAudit,
           freshHistoryBefore,
-          challengeToken,
+          turnAnchorToken,
         );
         return {
           history: {

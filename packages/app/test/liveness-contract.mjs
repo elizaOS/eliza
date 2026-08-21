@@ -89,8 +89,9 @@ export function isLiveReply(reply) {
  * The token is required only in the user row. A model may answer the exact
  * turn without copying an arbitrary code verbatim; requiring an echo confuses
  * instruction-following with liveness. DOM order still binds the reply to the
- * run: the token-bearing user row must be followed by a non-pending,
- * non-failure assistant row before another user row appears.
+ * run: the first assistant row after the token-bearing user row owns the turn
+ * and must settle as uninterrupted, non-failure model text. The helper never
+ * skips an invalid owner row to accept unrelated content further down.
  *
  * This helper consumes a privacy-sensitive in-memory transcript snapshot but
  * returns only indices plus the validated candidate text. Callers must never
@@ -101,6 +102,8 @@ export function isLiveReply(reply) {
  *   text?: string,
  *   failureKind?: string,
  *   hasRetry?: boolean,
+ *   interrupted?: boolean,
+ *   hasMessageText?: boolean | null,
  *   phase?: string | null,
  * }>} lines ordered thread rows
  * @param {{ anchorToken?: string }} [options]
@@ -133,14 +136,26 @@ export function findAnchoredLiveTurn(lines, { anchorToken } = {}) {
       assistantLineIndex += 1
     ) {
       const line = lines[assistantLineIndex];
-      if (line?.role === "user") break;
+      if (line?.role === "user") return null;
       if (line?.role !== "assistant") continue;
-      if (String(line.failureKind ?? "").trim()) continue;
-      if (line.hasRetry === true || line.phase === "status") continue;
+      // The first assistant row after the anchored user owns this turn. A
+      // pending row may become a reply on a later poll; a terminal failure,
+      // retry, interruption, or widget-only body must never be skipped in
+      // favour of an unrelated assistant row further down the transcript.
+      if (String(line.failureKind ?? "").trim()) return null;
+      if (
+        line.hasRetry === true ||
+        line.interrupted === true ||
+        line.hasMessageText === false ||
+        line.phase === "status"
+      ) {
+        return null;
+      }
       const reply = String(line.text ?? "").trim();
-      if (!reply) continue;
+      if (!reply) return null;
       return { userLineIndex, assistantLineIndex, reply };
     }
+    return null;
   }
   return null;
 }

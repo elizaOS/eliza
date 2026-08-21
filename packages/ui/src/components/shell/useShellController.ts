@@ -1002,6 +1002,7 @@ export function useShellController(): ShellController {
       if (
         cached &&
         cached.content === message.text &&
+        cached.interrupted === (message.interrupted || undefined) &&
         cached.failureKind === message.failureKind &&
         (cached.reasoning || undefined) === (message.reasoning || undefined) &&
         cached.secretRequest === message.secretRequest &&
@@ -1018,6 +1019,7 @@ export function useShellController(): ShellController {
         role: message.role,
         content: message.text,
         createdAt: message.timestamp,
+        ...(message.interrupted ? { interrupted: true } : {}),
         // Invariant per id (like role/createdAt), so the cache compare above
         // can omit it. Drives the suggestion affordance (#8792).
         ...(message.source ? { source: message.source } : {}),

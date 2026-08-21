@@ -4629,6 +4629,59 @@ describe("ChatOverlay — empty thread while the sheet is open", () => {
 });
 
 describe("ChatOverlay — streaming + consumer activity render (#10712)", () => {
+  it("exposes interrupted and widget-only rows without treating either as settled text", () => {
+    render(
+      <ChatOverlay
+        controller={makeController({
+          responding: false,
+          messages: [
+            {
+              id: "a-interrupted",
+              role: "assistant",
+              content: "Partial durable answer",
+              interrupted: true,
+              createdAt: 1,
+            },
+            {
+              id: "a-attachment-only",
+              role: "assistant",
+              content: "",
+              attachments: [
+                {
+                  id: "generated-image",
+                  url: "data:image/png;base64,iVBORw0KGgo=",
+                  contentType: "image",
+                  title: "Generated image",
+                },
+              ],
+              createdAt: 2,
+            },
+          ],
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const interruptedRow = screen
+      .getByText("Partial durable answer")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    expect(interruptedRow?.dataset.interrupted).toBe("true");
+    expect(
+      interruptedRow?.querySelector<HTMLElement>(
+        '[data-testid="overlay-assistant-turn-body"]',
+      )?.dataset.hasMessageText,
+    ).toBe("true");
+
+    const attachmentRow = screen
+      .getByTestId("message-attachments")
+      .closest<HTMLElement>('[data-testid="thread-line"]');
+    const attachmentBody = attachmentRow?.querySelector<HTMLElement>(
+      '[data-testid="overlay-assistant-turn-body"]',
+    );
+    expect(attachmentBody?.dataset.phase).toBe("reply");
+    expect(attachmentBody?.dataset.hasMessageText).toBe("false");
+  });
+
   it("renders the reply while keeping tool traces and reasoning in diagnostics", () => {
     render(
       <ChatOverlay
