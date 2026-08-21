@@ -4,7 +4,11 @@
  * turns, over the LifeOps repository.
  */
 import crypto from "node:crypto";
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { LifeOpsRepository } from "../repository.js";
 import type {
   ThreadSourceRef,
@@ -117,11 +121,11 @@ function isoNow(): string {
 }
 
 function compactText(value: string, maxLength: number): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+  return `${truncateWellFormed(wellFormed, maxLength - 3).trimEnd()}...`;
 }
 
 function normalizeSourceRefs(
