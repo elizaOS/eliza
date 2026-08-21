@@ -20,6 +20,12 @@ export {
 // Re-export everything from the Node.js entry point
 // This ensures that imports from "@elizaos/core" resolve correctly during builds
 export * from "./index.node";
+// Unwraps the untrusted-content envelope to the user's verbatim text. Public
+// because orchestration surfaces that forward a user message onward (e.g. a
+// deterministic follow-up send) must never embed the security banner in a
+// child task (live 2026-08-21: a sub-agent echoed the banner back and the
+// outbound envelope guard blocked its completion).
+export { extractWrappedExternalContent } from "./security/external-content";
 export {
 	isSensitiveKeyName,
 	redactLogArgs,
@@ -27,9 +33,3 @@ export {
 	redactSecrets,
 	redactSensitiveText,
 } from "./security/redact";
-// Unwraps the untrusted-content envelope to the user's verbatim text. Public
-// because orchestration surfaces that forward a user message onward (e.g. a
-// deterministic follow-up send) must never embed the security banner in a
-// child task (live 2026-08-21: a sub-agent echoed the banner back and the
-// outbound envelope guard blocked its completion).
-export { extractWrappedExternalContent } from "./security/external-content";

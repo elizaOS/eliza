@@ -18,16 +18,16 @@
  */
 
 import {
+	tailWellFormed,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
+import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptFewShotExample,
 	type OptimizedPromptService,
 	type OptimizedPromptTask,
 } from "./optimized-prompt.js";
-import {
-	tailWellFormed,
-	toWellFormedUnicode,
-	truncateWellFormed,
-} from "../utils/well-formed.ts";
 
 /**
  * Minimal shape of `IAgentRuntime` we need to look up the

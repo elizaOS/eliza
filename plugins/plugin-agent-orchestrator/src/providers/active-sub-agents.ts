@@ -5,6 +5,7 @@
  * spend-capped, or round-trip-capped session to resolve.
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import {
   type IAgentRuntime,
   type Memory,
@@ -14,7 +15,6 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
-import { existsSync, readdirSync } from "node:fs";
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
@@ -470,7 +470,10 @@ function describeFinishedWorkdir(workdir: string): string {
       return "workdir=(cleaned up — reopen via SEND_TO_AGENT)";
     }
     const files = readdirSync(workdir)
-      .filter((name) => !name.startsWith(".") && name !== "node_modules" && name !== "venv")
+      .filter(
+        (name) =>
+          !name.startsWith(".") && name !== "node_modules" && name !== "venv",
+      )
       .slice(0, 4);
     return files.length > 0
       ? `workdir=${workdir} files=${files.join(",")}`

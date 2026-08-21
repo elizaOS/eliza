@@ -41,7 +41,6 @@ import {
   detectTaskType,
   type OrchestratorTaskType,
 } from "../services/acceptance-criteria.js";
-import { userTaskFromInitialTask } from "../services/user-task-text.js";
 import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
@@ -85,6 +84,7 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
+import { userTaskFromInitialTask } from "../services/user-task-text.js";
 import type {
   AuthPromptCallback,
   CodingWorkspaceService,

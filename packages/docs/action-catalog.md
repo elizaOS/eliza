@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 171
+- **Registered runtime actions:** 173
 
 ## Actions
 
@@ -422,6 +422,7 @@ list. Regenerate this document after changing the registered action surface.
 - `INBOX` — `plugins/plugin-inbox/src/actions/inbox.ts`
 - `JOIN_MEETING` — `plugins/plugin-meetings/src/actions/join-meeting.ts`
 - `LEAVE_MEETING` — `plugins/plugin-meetings/src/actions/leave-meeting.ts`
+- `LINEAR` — `plugins/plugin-linear/src/action.ts`
 - `LIQUIDITY` — `plugins/plugin-wallet/src/lp/actions/liquidity.ts`
 - `LIST_AD_SLOTS` — `plugins/plugin-cloud-apps/src/actions/ad-inventory.ts`
 - `LIST_APP_DOMAINS` — `plugins/plugin-cloud-apps/src/actions/list-app-domains.ts`
@@ -436,6 +437,7 @@ list. Regenerate this document after changing the registered action surface.
 - `MANAGE_BROWSER_BRIDGE` — `plugins/plugin-browser/src/actions/manage-browser-bridge.ts`
 - `MANAGE_PLUGINS` — `packages/core/src/features/plugin-manager/actions/plugin.ts`
 - `MANAGE_TRANSCRIPT_PRIVACY` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
+- `MAPS` — `plugins/plugin-maps/src/action.ts`
 - `MARK_FOLLOWUP_DONE` — `plugins/plugin-personal-assistant/src/followup/actions/markFollowupDone.ts`
 - `MCP` — `plugins/plugin-mcp/src/actions/mcp.ts`
 - `MEMORY` — `packages/agent/src/actions/memories.ts`
@@ -492,6 +494,7 @@ list. Regenerate this document after changing the registered action surface.
 - `SHARE_TRANSCRIPT` — `plugins/plugin-local-inference/src/actions/transcript-permissioning.ts`
 - `SHELL` — `plugins/plugin-coding-tools/src/actions/bash.ts`
 - `SKILL` — `plugins/plugin-agent-skills/src/actions/skill.ts`
+- `SPOTIFY` — `plugins/plugin-spotify/src/actions.ts`
 - `START_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
 - `STOP_TRANSCRIPTION` — `plugins/plugin-local-inference/src/actions/transcription-control.ts`
 - `SUBMIT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`

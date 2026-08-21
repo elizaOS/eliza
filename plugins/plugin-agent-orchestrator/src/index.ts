@@ -81,7 +81,6 @@ import { activeWorkspaceContextProvider } from "./providers/active-workspace-con
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { codingSessionChangesProvider } from "./providers/coding-session-changes.js";
 import { AcpService } from "./services/acp-service.js";
-import { userTaskFromInitialTask } from "./services/user-task-text.js";
 import {
   createActiveSessionForwardHandler,
   isSessionBusy,
@@ -104,6 +103,7 @@ import {
   type AcpToolCall,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
+import { userTaskFromInitialTask } from "./services/user-task-text.js";
 import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";

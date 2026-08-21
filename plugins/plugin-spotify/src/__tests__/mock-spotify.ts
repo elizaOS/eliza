@@ -25,7 +25,7 @@ interface Route {
 export function jsonResponse(
   status: number,
   body: unknown,
-  headers: Record<string, string> = {},
+  headers: Record<string, string> = {}
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -33,11 +33,7 @@ export function jsonResponse(
   });
 }
 
-export function spotifyError(
-  status: number,
-  message: string,
-  reason?: string,
-): Response {
+export function spotifyError(status: number, message: string, reason?: string): Response {
   return jsonResponse(status, {
     error: { status, message, ...(reason ? { reason } : {}) },
   });

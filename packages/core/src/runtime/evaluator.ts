@@ -305,24 +305,24 @@ function finalizeEvaluatorOutput(
 	return sanitizeOutputMessage(
 		repairFinishWithUnservedDeclaredIntents(
 			repairFinishWithProgressPromise(
-			repairFinishedToolTurnWithoutUserMessage(
-				repairMissingEvaluatorMessage(
-					repairMissingEvaluatorSuccess(
-						rejectEvaluatorInvocationMessage(
-							recoverEvaluatorTextOutput(
-								parseEvaluatorOutput(raw),
-								raw,
-								trajectory,
+				repairFinishedToolTurnWithoutUserMessage(
+					repairMissingEvaluatorMessage(
+						repairMissingEvaluatorSuccess(
+							rejectEvaluatorInvocationMessage(
+								recoverEvaluatorTextOutput(
+									parseEvaluatorOutput(raw),
+									raw,
+									trajectory,
+								),
 							),
+							trajectory,
 						),
+						context,
 						trajectory,
 					),
-					context,
 					trajectory,
 				),
 				trajectory,
-			),
-			trajectory,
 			),
 			context,
 			trajectory,

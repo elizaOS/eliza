@@ -13,8 +13,10 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.ts";
-import { ADMIN_STOP_META_KEY,
-  ADMIN_STOP_STAMPED_AT_META_KEY } from "../services/admin-stop-marker.ts";
+import {
+  ADMIN_STOP_META_KEY,
+  ADMIN_STOP_STAMPED_AT_META_KEY,
+} from "../services/admin-stop-marker.ts";
 import { SwarmCoordinatorService } from "../services/swarm-coordinator-service.ts";
 
 type EventHandler = (sessionId: string, event: string, data: unknown) => void;

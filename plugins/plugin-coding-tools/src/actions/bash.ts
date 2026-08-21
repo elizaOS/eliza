@@ -132,7 +132,6 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
   },
 ];
 
-
 /** Matches a `find <dir>` whose target is a root-scale directory (/, /home,
  *  $HOME, ~) with no -maxdepth bound anywhere in the command. Conservative:
  *  deeper paths (even large ones) are allowed — only the guaranteed-timeout
@@ -146,11 +145,16 @@ export function unboundedRootFindTarget(command: string): string | undefined {
   const target = (m[2] ?? m[3] ?? m[4] ?? "").replace(/\/+$/, "");
   const home = process.env.HOME?.replace(/\/+$/, "");
   const rootScale = new Set(
-    ["/", "/home", "~", "$HOME", home, home ? `~${home.split("/").pop()}` : undefined].filter(
-      (v): v is string => typeof v === "string" && v.length > 0,
-    ),
+    [
+      "/",
+      "/home",
+      "~",
+      "$HOME",
+      home,
+      home ? `~${home.split("/").pop()}` : undefined,
+    ].filter((v): v is string => typeof v === "string" && v.length > 0),
   );
-  return rootScale.has(target) || target === "" ? (target || "/") : undefined;
+  return rootScale.has(target) || target === "" ? target || "/" : undefined;
 }
 
 export type CommandPlatform = "windows" | "macos" | "linux";

@@ -22,12 +22,16 @@ describe("unboundedRootFindTarget", () => {
   it("rejects the ls-fallback compound form", () => {
     const home = process.env.HOME?.replace(/\/+$/, "") ?? "/home/user";
     expect(
-      unboundedRootFindTarget(`ls -R /tmp/guess 2>/dev/null || find ${home} -name script.py`),
+      unboundedRootFindTarget(
+        `ls -R /tmp/guess 2>/dev/null || find ${home} -name script.py`,
+      ),
     ).toBe(home);
   });
 
   it("allows find bounded by -maxdepth", () => {
-    expect(unboundedRootFindTarget("find $HOME -maxdepth 3 -name x.py")).toBeUndefined();
+    expect(
+      unboundedRootFindTarget("find $HOME -maxdepth 3 -name x.py"),
+    ).toBeUndefined();
   });
 
   it("allows find over a specific project directory", () => {
