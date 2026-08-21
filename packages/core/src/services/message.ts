@@ -658,6 +658,29 @@ function parseInlinePlannerParams(
 	}
 }
 
+function splitInlinePlannerParams(
+	value: string,
+): { name: string; body: string } | null {
+	const lower = value.toLowerCase();
+	let open = lower.indexOf("<params");
+	while (open >= 0) {
+		const boundary = lower[open + "<params".length];
+		if (!boundary || !/[a-z0-9_]/i.test(boundary)) break;
+		open = lower.indexOf("<params", open + "<params".length);
+	}
+	if (open < 0) return null;
+	const bodyStart = value.indexOf(">", open + "<params".length);
+	if (bodyStart < 0) return null;
+	const close = lower.indexOf("</params>", bodyStart + 1);
+	if (close < 0 || value.slice(close + "</params>".length).trim() !== "") {
+		return null;
+	}
+	return {
+		name: value.slice(0, open).trimEnd(),
+		body: value.slice(bodyStart + 1, close),
+	};
+}
+
 function extractInlinePlannerActionParams(value: string): {
 	name: string;
 	params?: Record<string, unknown>;
@@ -675,13 +698,11 @@ function extractInlinePlannerActionParams(value: string): {
 		}
 	}
 
-	const inlineParamsMatch = value.match(
-		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
-	);
-	if (inlineParamsMatch) {
+	const inlineParams = splitInlinePlannerParams(value);
+	if (inlineParams) {
 		return {
-			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
-			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+			name: unwrapPlannerIdentifier(inlineParams.name),
+			params: parseInlinePlannerParams(inlineParams.body) ?? undefined,
 		};
 	}
 
@@ -2081,10 +2102,126 @@ export function resolveZeroDeliveryRecovery(args: {
 	return { recover, text, source, actionSuccessCount, actionFailureCount };
 }
 
-/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
-const MEDIA_CONTENT_URL_RE =
-	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+function mediaContentUrlRegions(
+	text: string,
+): Array<{ start: number; end: number }> {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lowerText = text.toLowerCase();
+	let cursor = 0;
+	while (cursor < text.length) {
+		const http = lowerText.indexOf("http", cursor);
+		if (http < 0) break;
+		let end = http;
+		while (
+			end < text.length &&
+			!/\s/u.test(text[end]) &&
+			text[end] !== "<" &&
+			text[end] !== ">"
+		)
+			end += 1;
+		const lower = lowerText.slice(http, end);
+		const scheme = lower.startsWith("https://")
+			? 8
+			: lower.startsWith("http://")
+				? 7
+				: 0;
+		if (scheme) {
+			// The endpoint may sit mid-token (trailing punctuation, query strings)
+			// and after any of several `/v1/` segments; the region ends right after
+			// `/content` so surrounding punctuation survives for later cleanup.
+			let matchEnd = -1;
+			let marker = lower.indexOf("/v1/", scheme);
+			while (marker >= 0) {
+				const kindEnd = lower.indexOf("/", marker + 4);
+				if (kindEnd >= 0) {
+					const kind = lower.slice(marker + 4, kindEnd);
+					const idEnd = lower.indexOf("/", kindEnd + 1);
+					if (
+						["videos", "images", "audio"].includes(kind) &&
+						idEnd > kindEnd + 1 &&
+						lower.startsWith("content", idEnd + 1)
+					) {
+						matchEnd = idEnd + 1 + "content".length;
+					}
+				}
+				marker = lower.indexOf("/v1/", marker + 4);
+			}
+			if (matchEnd > 0) {
+				regions.push({ start: http, end: http + matchEnd });
+			}
+		}
+		cursor = Math.max(end, http + 1);
+	}
+	return regions;
+}
 
+function removeRegions(
+	text: string,
+	regions: Array<{ start: number; end: number }>,
+): string {
+	if (regions.length === 0) return text;
+	const chunks: string[] = [];
+	let cursor = 0;
+	for (const region of regions) {
+		let start = region.start;
+		let end = region.end;
+		while (start > cursor && /\s/u.test(text[start - 1])) start -= 1;
+		if (text[start - 1] === "<") start -= 1;
+		while (end < text.length && /\s/u.test(text[end])) end += 1;
+		if (text[end] === ">") end += 1;
+		chunks.push(text.slice(cursor, start));
+		cursor = end;
+	}
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
+}
+
+function removeDeliveredUrl(text: string, url: string): string {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lower = text.toLowerCase();
+	const needle = url.toLowerCase();
+	let cursor = 0;
+	while (needle && cursor < text.length) {
+		const start = lower.indexOf(needle, cursor);
+		if (start < 0) break;
+		regions.push({ start, end: start + url.length });
+		cursor = start + url.length;
+	}
+	return removeRegions(text, regions);
+}
+
+const MEDIA_DELIVERY_PREAMBLES = [
+	...["here", "here's", "here is", "here you go"].flatMap((base) => [
+		`${base} it is`,
+		base,
+	]),
+	"done.",
+	...["video", "video'", "videos", "video's"].flatMap((subject) =>
+		["up", "live", "ready"].map((state) => `done ${subject} ${state}`),
+	),
+	"done",
+	"your video is ready",
+	"your video",
+].sort((left, right) => right.length - left.length);
+
+function stripMediaDeliveryPreamble(text: string): string {
+	const lower = text.toLowerCase();
+	for (const prefix of MEDIA_DELIVERY_PREAMBLES) {
+		if (!lower.startsWith(prefix)) continue;
+		let cursor = prefix.length;
+		if (
+			cursor < text.length &&
+			!/\s/u.test(text[cursor]) &&
+			text[cursor] !== ":"
+		)
+			continue;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		if (text[cursor] === ":") cursor += 1;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		return text.slice(cursor);
+	}
+	return text;
+}
 function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
 	const urls = new Set<string>();
 	for (const result of actionResults) {
@@ -2122,23 +2259,17 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
-		cleaned,
-	);
+	const embeddedRegions = mediaContentUrlRegions(cleaned);
+	const hasEmbeddedMediaUrl = embeddedRegions.length > 0;
 	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
 		return cleaned;
 	}
 
 	for (const url of deliveredUrls) {
-		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+		cleaned = removeDeliveredUrl(cleaned, url);
 	}
-	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = removeRegions(cleaned, mediaContentUrlRegions(cleaned));
 	cleaned = cleaned
-		.replace(
-			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
-			"",
-		)
 		.replace(/:\s*$/g, "")
 		.replace(/<\s*>/g, "")
 		.replace(/\(\s*\)/g, "")
@@ -2146,6 +2277,7 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		// newlines are reply formatting and must survive.
 		.replace(/[^\S\n]{2,}/g, " ")
 		.trim();
+	cleaned = stripMediaDeliveryPreamble(cleaned).trim();
 
 	if (
 		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
@@ -14461,10 +14593,11 @@ export class DefaultMessageService implements IMessageService {
 							// media-store URLs use the trusted runtime fetch.
 							const { buffer, contentType } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 							imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 						}
@@ -14508,10 +14641,11 @@ export class DefaultMessageService implements IMessageService {
 					) {
 						const { buffer, contentType } = await this.fetchAttachmentBytes(
 							runtime,
-							attachment,
+							attachment.url,
 							url,
 							isRemote,
 							byteBudget,
+							attachment.size,
 						);
 						// Any text/* document (plain, csv, markdown) and application/json —
 						// all on the chat upload allow-list — is readable as UTF-8 text;
@@ -14591,10 +14725,11 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14688,10 +14823,11 @@ export class DefaultMessageService implements IMessageService {
 							// attacker-controlled URL itself.
 							const { buffer } = await this.fetchAttachmentBytes(
 								runtime,
-								attachment,
+								attachment.url,
 								url,
 								isRemote,
 								byteBudget,
+								attachment.size,
 							);
 
 							const transcript = await runtime.useModel(
@@ -14829,10 +14965,11 @@ export class DefaultMessageService implements IMessageService {
 	 */
 	private async fetchAttachmentBytes(
 		runtime: IAgentRuntime,
-		attachment: Media,
+		rawUrl: string,
 		resolvedLocalUrl: string,
 		isRemote: boolean,
 		budget: AttachmentByteBudget,
+		expectedBytes?: number,
 	): Promise<{ buffer: Buffer; contentType: string }> {
 		if (budget.remaining <= 0) {
 			throw new MediaFetchError(
@@ -14841,38 +14978,6 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 		const maxBytes = Math.min(ATTACHMENT_FETCH_MAX_BYTES, budget.remaining);
-		const inline = attachment as MediaWithInlineData;
-		if (
-			typeof inline._data === "string" &&
-			inline._data.trim() &&
-			typeof inline._mimeType === "string" &&
-			inline._mimeType.trim()
-		) {
-			if (!/^[A-Za-z0-9+/]*={0,2}$/.test(inline._data)) {
-				throw new MediaFetchError(
-					"invalid_response",
-					"Inline attachment data is not valid base64",
-				);
-			}
-			const buffer = Buffer.from(inline._data, "base64");
-			if (buffer.byteLength === 0) {
-				throw new MediaFetchError(
-					"invalid_response",
-					"Inline attachment data decodes to zero bytes",
-				);
-			}
-			if (buffer.byteLength > maxBytes) {
-				throw new MediaFetchError(
-					"max_bytes",
-					buffer.byteLength > budget.remaining
-						? "Attachment exceeds turn byte budget"
-						: `Attachment exceeds ${ATTACHMENT_FETCH_MAX_BYTES} bytes`,
-				);
-			}
-			budget.remaining -= buffer.byteLength;
-			return { buffer, contentType: inline._mimeType };
-		}
-		const expectedBytes = attachment.size;
 		if (
 			typeof expectedBytes === "number" &&
 			Number.isFinite(expectedBytes) &&
@@ -14887,7 +14992,7 @@ export class DefaultMessageService implements IMessageService {
 		}
 		if (isRemote) {
 			const { buffer, contentType } = await fetchRemoteMedia({
-				url: attachment.url,
+				url: rawUrl,
 				maxBytes,
 			});
 			budget.remaining -= Math.max(buffer.byteLength, expectedBytes ?? 0);

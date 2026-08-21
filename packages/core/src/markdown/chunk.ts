@@ -196,6 +196,7 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 			: findFenceSpanAt(spans, breakIdx);
 
 		let fenceToSplit = initialFence;
+		let minimumFenceProgress = 0;
 		if (initialFence) {
 			const closeLine = `${initialFence.indent}${initialFence.marker}`;
 			const maxIdxIfNeedNewline = limit - (closeLine.length + 1);
@@ -213,6 +214,7 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 					remaining.length,
 					initialFence.start + initialFence.openLine.length + 2,
 				);
+				minimumFenceProgress = minProgressIdx;
 				const maxIdxIfAlreadyNewline = limit - closeLine.length;
 
 				let pickedNewline = false;
@@ -258,6 +260,14 @@ export function chunkMarkdownText(text: string, limit: number): string[] {
 		}
 
 		breakIdx = avoidSurrogateSplit(remaining, breakIdx);
+		if (fenceToSplit && breakIdx < minimumFenceProgress) {
+			// A surrogate-safe backoff can move the cut before the first byte of
+			// fence content. Closing and reopening there would consume only the
+			// opening line and prepend that same line forever. Preserve progress by
+			// taking the existing hard-cap fallback without synthetic fence lines.
+			fenceToSplit = undefined;
+			breakIdx = avoidSurrogateSplit(remaining, limit);
+		}
 
 		let rawChunk = remaining.slice(0, breakIdx);
 		if (!rawChunk) {

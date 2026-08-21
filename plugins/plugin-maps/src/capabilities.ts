@@ -10,13 +10,15 @@ const PROVIDER_PARAM = {
   pattern: "^[a-zA-Z0-9][a-zA-Z0-9_-]*$",
 } as const;
 
+const PROVIDER_GENERATION_PARAM = {
+  type: "integer",
+  description:
+    "Exact adapter-registration generation that produced the result.",
+  minimum: 1,
+  maximum: Number.MAX_SAFE_INTEGER,
+} as const;
+
 export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
-  {
-    id: "maps-describe-providers",
-    description:
-      "Read registered provider identities and adapter-owned attribution metadata.",
-    params: {},
-  },
   {
     id: "maps-search-places",
     description:
@@ -31,6 +33,7 @@ export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
         pattern: "\\S",
       },
       provider: PROVIDER_PARAM,
+      providerGeneration: PROVIDER_GENERATION_PARAM,
       cursor: {
         type: "string",
         description: "Opaque next-page cursor from the preceding result.",
@@ -58,6 +61,7 @@ export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
         maxLength: 512,
       },
       provider: PROVIDER_PARAM,
+      providerGeneration: PROVIDER_GENERATION_PARAM,
     },
   },
   {
@@ -82,6 +86,7 @@ export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
         enum: ["drive", "walk", "bicycle", "transit"],
       },
       provider: PROVIDER_PARAM,
+      providerGeneration: PROVIDER_GENERATION_PARAM,
     },
   },
 ];

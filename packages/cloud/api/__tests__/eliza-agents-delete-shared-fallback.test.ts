@@ -278,7 +278,11 @@ describe("agent deletion lifecycle", () => {
       job: {
         id: "delete-job-1",
         status: "pending",
-        data: { stateLossAcknowledged: true },
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "user-1",
+          stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
+        },
       },
     });
     const response = await deleteRequest({ stateLossAcknowledged: true });
@@ -289,6 +293,8 @@ describe("agent deletion lifecycle", () => {
       data: {
         jobId: "delete-job-1",
         stateLossAcknowledged: true,
+        stateLossAcknowledgedByUserId: "user-1",
+        stateLossAcknowledgedAt: "2026-08-21T04:00:00.000Z",
       },
     });
     expect(enqueueAgentDeleteOnce).toHaveBeenCalledWith({
@@ -307,6 +313,40 @@ describe("agent deletion lifecycle", () => {
     });
 
     const response = await deleteRequest({ stateLossAcknowledged: true });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority has no acknowledging actor", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "legacy-delete-job",
+        status: "in_progress",
+        data: { stateLossAcknowledged: true },
+      },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority provenance is malformed", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "malformed-delete-job",
+        status: "in_progress",
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "",
+          stateLossAcknowledgedAt: "not-an-iso-timestamp",
+        },
+      },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: false });
 
     expect(response.status).toBe(500);
   });

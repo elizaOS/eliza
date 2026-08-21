@@ -107,6 +107,7 @@ type RemoteRunnerHttpCall = {
   method: string;
   pathname: string;
   authorization: string | null;
+  redirect: RequestRedirect;
   body: unknown;
 };
 
@@ -129,6 +130,26 @@ function replaceGlobalFetch(fetchImpl: typeof fetch): void {
     writable: true,
     value: fetchImpl,
   });
+}
+
+async function settleWithin<T>(
+  promise: Promise<T>,
+  timeoutMs = 250,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Operation did not settle after teardown.")),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 function makeRuntime(
@@ -278,6 +299,7 @@ function startElizaCloudProvisioningServer(): RemoteRunnerHttpServer {
           method: request.method,
           pathname: url.pathname,
           authorization: request.headers.get("authorization"),
+          redirect: request.redirect,
           body: parseRequestBody(request, bodyText),
         });
         return jsonResponse(201, {
@@ -341,6 +363,7 @@ function recordRemoteRunnerHttpCall(
     method: context.request.method,
     pathname: context.url.pathname,
     authorization: context.request.headers.get("authorization"),
+    redirect: context.request.redirect,
     body: context.body,
   });
 }
@@ -621,6 +644,37 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(config.agentRunners).toEqual(["claude-code", "codex"]);
   });
 
+  it("rejects non-canonical request timeouts and values outside the platform timer range", () => {
+    // Two distinct rejections: a value that is not a canonical decimal integer
+    // never reaches the range check, while a canonical value above the timer
+    // ceiling passes the shape check and is rejected on range.
+    for (const value of ["0", "01", "+1", "1.0", "1e3"]) {
+      expect(() =>
+        resolveE2BRemoteRunnerConfig(
+          makeRuntime({
+            ELIZA_CODING_REMOTE_RUNNER: "home",
+            ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+            ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS: value,
+          }),
+        ),
+      ).toThrow(
+        "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be a canonical integer from 1 to 2147483647.",
+      );
+    }
+
+    expect(() =>
+      resolveE2BRemoteRunnerConfig(
+        makeRuntime({
+          ELIZA_CODING_REMOTE_RUNNER: "home",
+          ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+          ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS: "2147483648",
+        }),
+      ),
+    ).toThrow(
+      "ELIZA_HOME_REMOTE_RUNNER_REQUEST_TIMEOUT_MS must be an integer between 1 and 2147483647.",
+    );
+  });
+
   it("reports structured unavailable when credentials are missing", async () => {
     const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
@@ -830,11 +884,374 @@ describe("E2BRemoteCapabilityRouterService", () => {
         expect(
           server.calls.every((call) => call.authorization === "Bearer token"),
         ).toBe(true);
+        expect(server.calls.every((call) => call.redirect === "error")).toBe(
+          true,
+        );
       } finally {
         await server.close();
       }
     },
   );
+
+  it("keeps the remote request deadline active through response-body consumption", async () => {
+    const originalFetch = globalThis.fetch;
+    let bodyWasCancelled = false;
+    const fetchMock: typeof fetch = Object.assign(
+      async (
+        _input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ): Promise<Response> => {
+        const signal = init?.signal;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode("{"));
+              signal?.addEventListener(
+                "abort",
+                () => {
+                  bodyWasCancelled = true;
+                  controller.error(signal.reason);
+                },
+                { once: true },
+              );
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+          requestTimeoutMs: 20,
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
+        name: "TimeoutError",
+        message: expect.stringMatching(/timed out.*20ms/i),
+      });
+      expect(bodyWasCancelled).toBe(true);
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("rejects responses whose declared length exceeds the operation cap", async () => {
+    const originalFetch = globalThis.fetch;
+    let bodyWasCancelled = false;
+    const fetchMock: typeof fetch = Object.assign(
+      async (): Promise<Response> =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array([123]));
+              controller.close();
+            },
+            cancel() {
+              bodyWasCancelled = true;
+              return new Promise<void>(() => undefined);
+            },
+          }),
+          { headers: { "content-length": "16385" } },
+        ),
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(
+        settleWithin(service.fs.list({ path: "/repo" })),
+      ).rejects.toMatchObject({
+        name: "RemoteResponseTooLargeError",
+        code: "REMOTE_RESPONSE_TOO_LARGE",
+      });
+      expect(bodyWasCancelled).toBe(true);
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("does not expose untrusted remote error bodies", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock: typeof fetch = Object.assign(
+      async (): Promise<Response> =>
+        new Response("secret-internal-runner-detail", { status: 500 }),
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toThrow(
+        "Remote runner health check failed with HTTP 500.",
+      );
+      await expect(service.fs.list({ path: "/repo" })).rejects.not.toThrow(
+        "secret-internal-runner-detail",
+      );
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("does not expose transport diagnostics from the remote boundary", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock: typeof fetch = Object.assign(
+      async (): Promise<Response> => {
+        throw new Error("connect ECONNREFUSED 10.0.0.8:4321");
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toThrow(
+        "Remote HTTP request failed.",
+      );
+      await expect(service.fs.list({ path: "/repo" })).rejects.not.toThrow(
+        "10.0.0.8",
+      );
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("aborts a streamed response when its actual bytes exceed the cap", async () => {
+    const originalFetch = globalThis.fetch;
+    let bodyWasCancelled = false;
+    const fetchMock: typeof fetch = Object.assign(
+      async (): Promise<Response> =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            pull(controller) {
+              controller.enqueue(new Uint8Array(10_000));
+            },
+            cancel() {
+              bodyWasCancelled = true;
+              return new Promise<void>(() => undefined);
+            },
+          }),
+        ),
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(
+        settleWithin(service.fs.list({ path: "/repo" })),
+      ).rejects.toMatchObject({ name: "RemoteResponseTooLargeError" });
+      expect(bodyWasCancelled).toBe(true);
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it.each([
+    "file:///etc/passwd",
+    "https://runner:secret@remote-runner.test",
+    "https://remote-runner.test?token=secret",
+  ])(
+    "rejects an unsafe remote runner base URL without echoing it: %s",
+    async (url) => {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: url,
+        }),
+      );
+
+      const failure = service.fs.list({ path: "/repo" });
+      await expect(failure).rejects.toMatchObject({
+        code: expect.stringMatching(/^REMOTE_HTTP_URL_/),
+      });
+      await expect(failure).rejects.not.toThrow(url);
+      await expect(failure).rejects.not.toThrow("secret");
+    },
+  );
+
+  it("fails closed when a process response omits its exit status", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock: typeof fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const path = new URL(String(input)).pathname;
+        return path === "/v1/health"
+          ? jsonResponse(200, { ok: true })
+          : jsonResponse(200, { stdout: "looks successful" });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(
+        service.pty.runCommand({ command: "true" }),
+      ).rejects.toMatchObject({
+        code: "CAPABILITY_REQUEST_FAILED",
+        message: "Remote runner process response omitted exit code.",
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("rejects malformed file-entry metadata instead of fabricating defaults", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock: typeof fetch = Object.assign(
+      async (input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const path = new URL(String(input)).pathname;
+        return path === "/v1/health"
+          ? jsonResponse(200, { ok: true })
+          : jsonResponse(200, {
+              entries: [{ path: "/workspace/file", type: "file" }],
+            });
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "home",
+          apiKey: undefined,
+          remoteHttpBaseUrl: "https://remote-runner.test",
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
+        code: "REMOTE_RESPONSE_SCHEMA_INVALID",
+        message:
+          "Remote runner fs entry size was not a non-negative safe integer.",
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("applies the provisioning deadline to the initial Cloud request", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestWasAborted = false;
+    const fetchMock: typeof fetch = Object.assign(
+      async (
+        _input: Parameters<typeof fetch>[0],
+        init?: Parameters<typeof fetch>[1],
+      ): Promise<Response> =>
+        await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            "abort",
+            () => {
+              requestWasAborted = true;
+              reject(init.signal?.reason);
+            },
+            { once: true },
+          );
+        }),
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "eliza-cloud",
+          apiKey: undefined,
+          cloudApiBaseUrl: "https://api.eliza.app/api/v1",
+          cloudApiToken: "cloud-key",
+          timeoutMs: 20,
+          requestTimeoutMs: 10_000,
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
+        name: "TimeoutError",
+      });
+      expect(requestWasAborted).toBe(true);
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
+
+  it("rejects a private runner authority returned by the public Cloud API", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetchMock: typeof fetch = Object.assign(
+      async (): Promise<Response> =>
+        jsonResponse(201, {
+          data: {
+            containerId: "cloud-container-1",
+            status: "running",
+            url: "http://169.254.169.254/latest/meta-data",
+          },
+        }),
+      { preconnect: originalFetch.preconnect },
+    );
+    replaceGlobalFetch(fetchMock);
+    try {
+      const service = new E2BRemoteCapabilityRouterService(
+        makeRuntime(),
+        makeConfig({
+          provider: "eliza-cloud",
+          apiKey: undefined,
+          cloudApiBaseUrl: "https://api.eliza.app/api/v1",
+          cloudApiToken: "cloud-key",
+        }),
+      );
+
+      await expect(service.fs.list({ path: "/repo" })).rejects.toMatchObject({
+        code: "CLOUD_CODING_CONTAINER_RUNNER_URL_REJECTED",
+        message:
+          "Eliza Cloud coding-container runner URL must use a public HTTPS authority.",
+      });
+    } finally {
+      replaceGlobalFetch(originalFetch);
+    }
+  });
 
   it("provisions an Eliza Cloud coding container before using the remote runner HTTP contract", async () => {
     const server = startElizaCloudProvisioningServer();
@@ -892,6 +1309,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
           .slice(1)
           .every((call) => call.authorization === `Bearer ${remoteToken}`),
       ).toBe(true);
+      expect(server.calls.every((call) => call.redirect === "error")).toBe(
+        true,
+      );
     } finally {
       await server.close();
     }

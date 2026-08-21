@@ -548,9 +548,27 @@ export class AppsService {
 
   async claimDeploymentStart(
     id: string,
+    generation: string,
     data: { last_deployed_at: Date; metadata?: Record<string, unknown> },
   ): Promise<App | undefined> {
-    return await appsRepository.claimDeploymentStart(id, data);
+    return await appsRepository.claimDeploymentStart(id, generation, data);
+  }
+
+  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+    return await appsRepository.findByDeploymentGeneration(id, generation);
+  }
+
+  async updateDeploymentGeneration(
+    id: string,
+    generation: string | null,
+    data: Partial<NewApp>,
+    expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+  ): Promise<App | undefined> {
+    return await appsRepository.updateDeploymentGeneration(id, generation, data, expectedStatuses);
+  }
+
+  async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
+    return await appsRepository.isDeploymentGenerationCurrent(id, generation);
   }
 
   async delete(id: string): Promise<void> {

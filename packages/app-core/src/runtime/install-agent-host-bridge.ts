@@ -44,13 +44,9 @@ let installed = false;
 export function installAgentHostBridge(): void {
   const resolveHttpRequestAuthorization: NonNullable<
     AgentHostBridge["resolveHttpRequestAuthorization"]
-  > = async (req, runtime) => {
+  > = async (req, runtime, options) => {
     const resolved = await resolveAuthorizedRouteRole(req, {
-      // Agent-owned legacy mutations predate app-core's CSRF header and the
-      // web client does not attach it to that surface. These requests have
-      // already passed the server's strict Origin/CORS gate; validate the
-      // host session here without imposing the compat-route CSRF contract.
-      skipCsrf: true,
+      allowCookieAuth: options.allowCookieAuth,
       state: {
         current: runtime,
       },
@@ -88,7 +84,11 @@ export function installAgentHostBridge(): void {
     handleCloudPairRoute,
     resolveHttpRequestAuthorization,
     isHttpRequestAuthorized: async (req, runtime) =>
-      (await resolveHttpRequestAuthorization(req, runtime)).ok,
+      (
+        await resolveHttpRequestAuthorization(req, runtime, {
+          allowCookieAuth: true,
+        })
+      ).ok,
   };
   setAgentHostBridge(bridge);
   installed = true;

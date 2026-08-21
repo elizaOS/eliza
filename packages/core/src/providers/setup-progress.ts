@@ -22,6 +22,10 @@ import {
 	type SetupContext,
 	SetupStep,
 } from "../types/setup";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 
 export const MAX_SETUP_OUTPUT_LENGTH = 5000;
 const MAX_SETUP_ERRORS = 8;
@@ -178,9 +182,12 @@ ${context.completedSteps.map((step) => `- ${SETUP_STEP_LABELS[step]}`).join("\n"
 }
 
 export function truncateSetupProgressText(text: string): string {
-	return text.length > MAX_SETUP_OUTPUT_LENGTH
-		? `${text.slice(0, MAX_SETUP_OUTPUT_LENGTH - 3)}...`
-		: text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= MAX_SETUP_OUTPUT_LENGTH) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, MAX_SETUP_OUTPUT_LENGTH - 3);
+	return `${truncateWellFormed(wellFormed, budget)}...`;
 }
 
 /**

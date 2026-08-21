@@ -1,25 +1,23 @@
-// Production cloud-onboarding on the real Android Capacitor WebView.
-//
-// This lane differs from the existing remote-connect onboarding smoke: it keeps
-// the production cloud-only first-run surface, seeds the e2e SIWE wallet, and
-// lets the app complete the real Eliza Cloud login/provisioning path. No API
-// route is mocked; the test records `/api/first-run` attempts to enforce the
-// Cloud architecture boundary while proving durable completion state.
-//
-// Liveness contract (#14359 / #16936): every SIWE cloud-onboarding lane ends
-// with a real chat turn that must pass the shared non-stub assertion. This is
-// intrinsic to the lane, not opt-in — the cloud agent is SIWE-provisioned and
-// live, so a stub or empty reply means the lane fails.
+/**
+ * Exercises production Cloud onboarding in the real Android Capacitor WebView.
+ *
+ * This lane keeps the production cloud-only first-run surface, seeds the e2e
+ * SIWE wallet, and completes the real Cloud login/provisioning path without
+ * mocked routes. It records `/api/first-run` attempts to enforce the direct-
+ * Cloud boundary, then requires a token-bound non-stub chat reply and complete
+ * MP4/JPG evidence for both tap and autologin modes.
+ */
 
 import { randomBytes } from "node:crypto";
 import path from "node:path";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
   assertOnboardingLiveness,
   buildLivenessChallenge,
   extractLivenessChallengeToken,
 } from "../liveness-contract";
 import { expect, ORIGIN, test } from "./android-harness";
+import { buildAndroidCloudOnboardingJpegArtifact } from "./cloud-onboarding-evidence";
 
 const ARTIFACT_DIR = path.join(
   process.cwd(),
@@ -39,6 +37,11 @@ const DEFAULT_E2E_WALLET_PRIVATE_KEY_PARTS = [
 ];
 
 type CloudOnboardingMode = "tap" | "autologin";
+
+// The wallet private key crosses the browser evaluation boundary below.
+// Playwright traces serialize evaluation arguments, so this secret-bearing
+// lane must use the separately captured Android video and screenshots only.
+test.use({ trace: "off" });
 
 async function installCloudOnboardingHarness(
   page: import("@playwright/test").Page,
@@ -191,12 +194,16 @@ async function runCloudOnboardingMode({
   test.setTimeout(420_000);
 
   await installCloudOnboardingHarness(page, mode);
-  const recording = await startAndroidScreenRecord({
+  // This live-cloud path can outlast Android's 180-second screenrecord cap.
+  // Chunking keeps sign-in, provisioning, home, and the reply in one evidence
+  // artifact instead of silently ending the recording before liveness runs.
+  const recording = await startChunkedAndroidScreenRecord({
     serial: device.serial(),
     artifactDir: path.join(ARTIFACT_DIR, mode),
     filename: `cloud-onboarding-${mode}.mp4`,
-    remotePath: `/sdcard/eliza-cloud-onboarding-${mode}.mp4`,
+    requireComplete: true,
   });
+  let videoPath: string | null = null;
 
   try {
     await page.goto(`${ORIGIN}/?reset&cloudOnboardingMode=${mode}`, {
@@ -208,16 +215,12 @@ async function runCloudOnboardingMode({
       await expect(page.getByText(/Sign in to Eliza Cloud/i)).toBeVisible({
         timeout: 90_000,
       });
-      const greetingPath = path.join(
-        ARTIFACT_DIR,
-        mode,
-        "sign-in-greeting.png",
+      const greetingArtifact = buildAndroidCloudOnboardingJpegArtifact(
+        path.join(ARTIFACT_DIR, mode),
+        "sign-in-greeting",
       );
-      await page.screenshot({ path: greetingPath, fullPage: true });
-      await testInfo.attach("sign-in greeting", {
-        path: greetingPath,
-        contentType: "image/png",
-      });
+      await page.screenshot(greetingArtifact.screenshot);
+      await testInfo.attach("sign-in greeting", greetingArtifact.attachment);
       await page
         .getByRole("button", { name: /Sign in to Eliza Cloud/i })
         .click();
@@ -243,12 +246,12 @@ async function runCloudOnboardingMode({
       page.getByText(/Logged in to Eliza Cloud successfully/i),
     ).toHaveCount(0, { timeout: 15_000 });
 
-    const homePath = path.join(ARTIFACT_DIR, mode, "home-landing.png");
-    await page.screenshot({ path: homePath, fullPage: true });
-    await testInfo.attach("home landing", {
-      path: homePath,
-      contentType: "image/png",
-    });
+    const homeArtifact = buildAndroidCloudOnboardingJpegArtifact(
+      path.join(ARTIFACT_DIR, mode),
+      "home-landing",
+    );
+    await page.screenshot(homeArtifact.screenshot);
+    await testInfo.attach("home landing", homeArtifact.attachment);
 
     const state = await readCloudOnboardingState(page);
     // Direct Cloud agent bases are chat runtimes, not app-shell setup servers;
@@ -284,24 +287,28 @@ async function runCloudOnboardingMode({
     });
     // Issue #16936 requires a reply JPG artifact alongside the existing
     // greeting and home screenshots.
-    const replyScreenshotPath = path.join(
-      ARTIFACT_DIR,
-      mode,
-      "reply-liveness.jpg",
+    const replyArtifact = buildAndroidCloudOnboardingJpegArtifact(
+      path.join(ARTIFACT_DIR, mode),
+      "reply-liveness",
     );
-    await page.screenshot({ path: replyScreenshotPath, fullPage: true });
-    await testInfo.attach("reply liveness screenshot", {
-      path: replyScreenshotPath,
-      contentType: "image/jpeg",
-    });
+    await page.screenshot(replyArtifact.screenshot);
+    await testInfo.attach(
+      "reply liveness screenshot",
+      replyArtifact.attachment,
+    );
   } finally {
-    const videoPath = await recording.stop();
+    videoPath = await recording.stop();
     if (videoPath) {
       await testInfo.attach(`${mode} walkthrough video`, {
         path: videoPath,
         contentType: "video/mp4",
       });
     }
+  }
+  if (!videoPath) {
+    throw new Error(
+      `Android cloud onboarding ${mode} passed but the required MP4 walkthrough was not produced`,
+    );
   }
 }
 

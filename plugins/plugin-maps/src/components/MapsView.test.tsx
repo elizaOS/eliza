@@ -16,7 +16,15 @@ import {
   mapsTestActionNotices,
   resetMapsTestActionNotices,
 } from "../../test/shims/ui-state.js";
-import type { PlacePage, PlaceRef, RoutePlan, TravelMode } from "../types.js";
+import type {
+  MapsPlacePageResult,
+  MapsPlaceResult,
+  MapsProviderDescription,
+  MapsRouteResult,
+  PlaceRef,
+  RoutePlan,
+  TravelMode,
+} from "../types.js";
 import { MapsView } from "./MapsView.js";
 import type { MapsViewTransport } from "./maps-view-data.js";
 
@@ -53,6 +61,34 @@ const PLAZA = place(
 );
 const PIER = place("pier-7", "Pier 7", ["landmark"], 37.8, -122.394);
 
+const PROVIDER: MapsProviderDescription = {
+  id: "fixture_maps",
+  attribution: "Map data © Fixture Maps",
+  generation: 1,
+};
+
+function pageResult(
+  places: PlaceRef[],
+  nextCursor: string | null = null,
+  provider: MapsProviderDescription = PROVIDER,
+): MapsPlacePageResult {
+  return { page: { places, nextCursor }, provider };
+}
+
+function placeResult(
+  place: PlaceRef | null,
+  provider: MapsProviderDescription = PROVIDER,
+): MapsPlaceResult {
+  return { place, provider };
+}
+
+function routeResult(
+  value: RoutePlan,
+  provider: MapsProviderDescription = PROVIDER,
+): MapsRouteResult {
+  return { route: value, provider };
+}
+
 function route(mode: TravelMode): RoutePlan {
   return {
     provider: "fixture_maps",
@@ -68,15 +104,11 @@ function route(mode: TravelMode): RoutePlan {
 
 function transport(over: Partial<MapsViewTransport> = {}): MapsViewTransport {
   return {
-    describeProviders: vi.fn(async () => [
-      {
-        id: "fixture_maps",
-        attribution: "Map data © Fixture Maps",
-      },
-    ]),
-    search: vi.fn(async () => ({ places: [FERRY, PLAZA], nextCursor: null })),
-    getPlace: vi.fn(async (value) => value),
-    planRoute: vi.fn(async (_origin, _destination, mode) => route(mode)),
+    search: vi.fn(async () => pageResult([FERRY, PLAZA])),
+    getPlace: vi.fn(async (value) => placeResult(value)),
+    planRoute: vi.fn(async (_origin, _destination, mode) =>
+      routeResult(route(mode)),
+    ),
     ...over,
   };
 }
@@ -124,14 +156,87 @@ describe("MapsView", () => {
     expect(screen.getByText("Embarcadero Plaza")).toBeTruthy();
   });
 
+  it("swaps successful replacement results and attribution as one generation", async () => {
+    const replacementProvider = {
+      ...PROVIDER,
+      attribution: "Replacement legal attribution",
+      generation: 2,
+    };
+    let resolveReplacement: ((result: MapsPlacePageResult) => void) | undefined;
+    const search = vi
+      .fn<MapsViewTransport["search"]>()
+      .mockResolvedValueOnce(pageResult([FERRY]))
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveReplacement = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+    render(<MapsView transport={transport({ search })} online />);
+
+    await searchFor(user, "first");
+    expect(await screen.findByText(PROVIDER.attribution ?? "")).toBeTruthy();
+
+    await searchFor(user, "second");
+    expect(screen.getByText(PROVIDER.attribution ?? "")).toBeTruthy();
+    resolveReplacement?.(pageResult([PIER], null, replacementProvider));
+
+    expect((await screen.findAllByText("Pier 7")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Replacement legal attribution")).toBeTruthy();
+    expect(screen.queryByText(PROVIDER.attribution ?? "")).toBeNull();
+  });
+
+  it("keeps prior results and attribution coherent while a replacement search is pending, and after it fails", async () => {
+    let rejectReplacementSearch: ((reason: unknown) => void) | undefined;
+    const search = vi
+      .fn<MapsViewTransport["search"]>()
+      .mockResolvedValueOnce(pageResult([FERRY]))
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectReplacementSearch = reject;
+          }),
+      );
+    const user = userEvent.setup();
+    render(<MapsView transport={transport({ search })} online />);
+
+    await searchFor(user, "first");
+    expect(
+      (await screen.findAllByText("Ferry Building")).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByText(PROVIDER.attribution ?? "")).toBeTruthy();
+
+    await searchFor(user, "second");
+    // The replacement search is still in flight: the places list shows its
+    // loading skeleton (expected UI), but the map's attribution — driven by
+    // the still-unchanged `places`/`providers` state, not by search phase —
+    // must keep showing the prior search's legal notice untouched, never a
+    // stripped/mismatched "unavailable" placeholder.
+    expect(screen.getByText(PROVIDER.attribution ?? "")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+
+    rejectReplacementSearch?.(new Error("search backend unavailable"));
+    await screen.findByText("search backend unavailable");
+
+    // A failed replacement search must not clear the still-valid prior
+    // results or strip their attribution — the {places, providers} pair only
+    // swaps once a replacement search actually succeeds.
+    expect(
+      (await screen.findAllByText("Ferry Building")).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(PROVIDER.attribution ?? "")).toBeTruthy();
+    expect(screen.queryByText(/attribution unavailable/i)).toBeNull();
+  });
+
   it("explicitly reports unavailable legal attribution", async () => {
     const user = userEvent.setup();
     render(
       <MapsView
         transport={transport({
-          describeProviders: vi.fn(async () => [
-            { id: "fixture_maps", attribution: null },
-          ]),
+          search: vi.fn(async () =>
+            pageResult([FERRY], null, { ...PROVIDER, attribution: null }),
+          ),
         })}
         online
       />,
@@ -142,29 +247,6 @@ describe("MapsView", () => {
       await screen.findByText("Legal attribution unavailable for fixture_maps"),
     ).toBeTruthy();
   });
-
-  it.each([
-    ["unsupported", undefined],
-    [
-      "failed",
-      vi.fn(async () => {
-        throw new Error("provider metadata unavailable");
-      }),
-    ],
-  ] as const)(
-    "degrades explicitly when provider metadata is %s",
-    async (_state, describeProviders) => {
-      const user = userEvent.setup();
-      render(<MapsView transport={transport({ describeProviders })} online />);
-
-      await searchFor(user, "waterfront");
-      expect(
-        await screen.findByText(
-          "Legal attribution unavailable for fixture_maps",
-        ),
-      ).toBeTruthy();
-    },
-  );
 
   it("gives every rendered control a unique collision-safe agent id", async () => {
     const collisionPlaces = [
@@ -178,8 +260,7 @@ describe("MapsView", () => {
       <MapsView
         transport={transport({
           search: vi.fn(async () => ({
-            places: collisionPlaces,
-            nextCursor: null,
+            ...pageResult(collisionPlaces),
           })),
         })}
         online
@@ -277,8 +358,8 @@ describe("MapsView", () => {
     const user = userEvent.setup();
     const search = vi
       .fn<MapsViewTransport["search"]>()
-      .mockResolvedValueOnce({ places: [FERRY, PLAZA], nextCursor: "page-2" })
-      .mockResolvedValueOnce({ places: [PLAZA, PIER, PIER], nextCursor: null });
+      .mockResolvedValueOnce(pageResult([FERRY, PLAZA], "page-2"))
+      .mockResolvedValueOnce(pageResult([PLAZA, PIER, PIER]));
     render(<MapsView transport={transport({ search })} online />);
 
     await searchFor(user, "waterfront");
@@ -295,6 +376,7 @@ describe("MapsView", () => {
       "waterfront",
       expect.any(AbortSignal),
       "page-2",
+      PROVIDER,
     );
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
   });
@@ -302,12 +384,12 @@ describe("MapsView", () => {
   it("keeps the newest result when searches resolve out of order", async () => {
     const pending = new Map<
       string,
-      { resolve: (value: { places: PlaceRef[]; nextCursor: null }) => void }
+      { resolve: (value: MapsPlacePageResult) => void }
     >();
     const fake = transport({
       search: vi.fn<MapsViewTransport["search"]>(
         (query) =>
-          new Promise<PlacePage>((resolve) => {
+          new Promise<MapsPlacePageResult>((resolve) => {
             pending.set(query, { resolve });
           }),
       ),
@@ -317,31 +399,31 @@ describe("MapsView", () => {
 
     await searchFor(user, "first");
     await searchFor(user, "second");
-    pending.get("second")?.resolve({ places: [PLAZA], nextCursor: null });
+    pending.get("second")?.resolve(pageResult([PLAZA]));
     expect(
       (await screen.findAllByText("Embarcadero Plaza")).length,
     ).toBeGreaterThan(0);
-    pending.get("first")?.resolve({ places: [FERRY], nextCursor: null });
+    pending.get("first")?.resolve(pageResult([FERRY]));
     await Promise.resolve();
     expect(screen.queryByText("Ferry Building")).toBeNull();
   });
 
   it("ignores an old place detail after a new search even when transport ignores abort", async () => {
-    let resolveOldDetail: ((value: PlaceRef) => void) | undefined;
+    let resolveOldDetail: ((value: MapsPlaceResult) => void) | undefined;
     let oldDetailSignal: AbortSignal | undefined;
     const staleDetail = { ...PLAZA, name: "Stale Plaza Detail" };
     const fake = transport({
       search: vi.fn<MapsViewTransport["search"]>(async (query) => ({
-        places: query === "new search" ? [PIER] : [FERRY, PLAZA],
-        nextCursor: null,
+        ...pageResult(query === "new search" ? [PIER] : [FERRY, PLAZA]),
       })),
-      getPlace: vi.fn<MapsViewTransport["getPlace"]>((value, signal) =>
-        value.providerPlaceId === PLAZA.providerPlaceId
-          ? new Promise<PlaceRef>((resolve) => {
-              oldDetailSignal = signal;
-              resolveOldDetail = resolve;
-            })
-          : Promise.resolve(value),
+      getPlace: vi.fn<MapsViewTransport["getPlace"]>(
+        (value, provider, signal) =>
+          value.providerPlaceId === PLAZA.providerPlaceId
+            ? new Promise<MapsPlaceResult>((resolve) => {
+                oldDetailSignal = signal;
+                resolveOldDetail = resolve;
+              })
+            : Promise.resolve(placeResult(value, provider)),
       ),
     });
     const user = userEvent.setup();
@@ -364,7 +446,7 @@ describe("MapsView", () => {
     expect(oldDetailSignal?.aborted).toBe(true);
     expect(await screen.findByRole("heading", { name: "Pier 7" })).toBeTruthy();
     await act(async () => {
-      resolveOldDetail?.(staleDetail);
+      resolveOldDetail?.(placeResult(staleDetail));
       await Promise.resolve();
     });
 
@@ -377,16 +459,15 @@ describe("MapsView", () => {
       destination: PlaceRef;
       mode: TravelMode;
       signal?: AbortSignal;
-      resolve: (value: RoutePlan) => void;
+      resolve: (value: MapsRouteResult) => void;
     }> = [];
     const fake = transport({
       search: vi.fn(async () => ({
-        places: [FERRY, PLAZA, PIER],
-        nextCursor: null,
+        ...pageResult([FERRY, PLAZA, PIER]),
       })),
       planRoute: vi.fn<MapsViewTransport["planRoute"]>(
-        (_origin, destination, mode, signal) =>
-          new Promise<RoutePlan>((resolve) => {
+        (_origin, destination, mode, _provider, signal) =>
+          new Promise<MapsRouteResult>((resolve) => {
             pendingRoutes.push({ destination, mode, signal, resolve });
           }),
       ),
@@ -430,16 +511,18 @@ describe("MapsView", () => {
         for (const pending of pendingRoutes.filter(
           ({ destination }) => destination.providerPlaceId === destinationId,
         )) {
-          pending.resolve({
-            provider: "fixture_maps",
-            routeId: `${destinationId}-${pending.mode}`,
-            origin: FERRY,
-            destination: pending.destination,
-            travelMode: pending.mode,
-            distanceMeters,
-            durationSeconds: 300,
-            warnings: [],
-          });
+          pending.resolve(
+            routeResult({
+              provider: "fixture_maps",
+              routeId: `${destinationId}-${pending.mode}`,
+              origin: FERRY,
+              destination: pending.destination,
+              travelMode: pending.mode,
+              distanceMeters,
+              durationSeconds: 300,
+              warnings: [],
+            }),
+          );
         }
         await Promise.resolve();
       });
@@ -461,8 +544,7 @@ describe("MapsView", () => {
   it("clears a stale route error when a new search starts", async () => {
     const fake = transport({
       search: vi.fn<MapsViewTransport["search"]>(async (query) => ({
-        places: query === "new search" ? [PIER] : [FERRY, PLAZA],
-        nextCursor: null,
+        ...pageResult(query === "new search" ? [PIER] : [FERRY, PLAZA]),
       })),
       planRoute: vi.fn(async () => {
         throw new Error("Old route failure");
@@ -492,7 +574,7 @@ describe("MapsView", () => {
     const fake = transport({
       search: vi.fn<MapsViewTransport["search"]>(
         () =>
-          new Promise<PlacePage>((_resolve, reject) => {
+          new Promise<MapsPlacePageResult>((_resolve, reject) => {
             rejectSearch = reject;
           }),
       ),

@@ -18,6 +18,7 @@ function makeDeps(): { deps: AppDeployDeps; captured: { row?: NewAppContainerRow
 
 const baseReq = {
   appId: "app-1",
+  deploymentGeneration: "11111111-1111-4111-8111-111111111111",
   organizationId: "org-1",
   userId: "user-1",
   containerName: "my-app",

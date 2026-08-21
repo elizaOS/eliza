@@ -1,9 +1,21 @@
 /**
- * Freezes the root package exports so compatibility work can shrink the public
- * API deliberately without allowing accidental additions or removals in CI.
+ * Freezes the public API surface so compatibility work can shrink it
+ * deliberately, without allowing accidental additions or removals in CI.
+ *
+ * Two distinct surfaces are frozen. The root barrel (`src/index.ts`) is
+ * checked via the TypeScript checker, same as before. Wildcard subpath
+ * exports (e.g. `./cloud/*`, `./components/*` in package.json `exports`) are
+ * a SEPARATE public surface: every source file the build emits under the
+ * corresponding `dist/<prefix>/...` path is importable from outside this
+ * package as `@elizaos/ui/<prefix>/<path>`, whether or not anything inside
+ * the monorepo currently imports it. An in-repo importer search finds zero
+ * hits for such a file and makes deleting it look free — it is not, because
+ * an external deep-importer can still reach it. Walking the exports map is
+ * the only way to see this surface; `checker.getExportsOfModule` on
+ * `src/index.ts` never will.
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
@@ -15,7 +27,9 @@ const updateBaseline = process.argv.includes("--update-baseline");
 const configPath = resolve(packageRoot, "tsconfig.json");
 const config = ts.readConfigFile(configPath, ts.sys.readFile);
 if (config.error) {
-  throw new Error(ts.flattenDiagnosticMessageText(config.error.messageText, "\n"));
+  throw new Error(
+    ts.flattenDiagnosticMessageText(config.error.messageText, "\n"),
+  );
 }
 const parsed = ts.parseJsonConfigFileContent(
   config.config,
@@ -34,9 +48,10 @@ if (!moduleSymbol) throw new Error("Could not resolve the root module symbol");
 const api = checker
   .getExportsOfModule(moduleSymbol)
   .map((symbol) => {
-    const resolved = symbol.flags & ts.SymbolFlags.Alias
-      ? checker.getAliasedSymbol(symbol)
-      : symbol;
+    const resolved =
+      symbol.flags & ts.SymbolFlags.Alias
+        ? checker.getAliasedSymbol(symbol)
+        : symbol;
     const declaration = resolved.declarations?.[0];
     const source = declaration?.getSourceFile().fileName;
     return {
@@ -48,10 +63,100 @@ const api = checker
   })
   .sort((left, right) => left.name.localeCompare(right.name));
 
-const report = { exports: api, count: api.length };
+// Wildcard subpath entry points: every `"./<prefix>/*"` key in package.json
+// `exports` whose target lands under `dist/` (not a `.css` passthrough) turns
+// every non-test, non-story source file under `src/<prefix>/**` into a
+// resolvable `@elizaos/ui/<prefix>/<path>` module, because the build (`tsc
+// -p tsconfig.build.json`, include: ["src"]) emits one output file per source
+// file with no dead-code elimination at the package boundary.
+const SOURCE_EXTENSIONS = [".tsx", ".ts"];
+const EXCLUDED_SUFFIXES = [
+  ".test.ts",
+  ".test.tsx",
+  ".stories.ts",
+  ".stories.tsx",
+  ".d.ts",
+];
+
+async function collectSourceFiles(dir) {
+  const out = [];
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const dirent of entries) {
+    const full = resolve(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      out.push(...(await collectSourceFiles(full)));
+      continue;
+    }
+    if (!dirent.isFile()) continue;
+    if (!SOURCE_EXTENSIONS.some((ext) => dirent.name.endsWith(ext))) continue;
+    if (EXCLUDED_SUFFIXES.some((suffix) => dirent.name.endsWith(suffix)))
+      continue;
+    out.push(full);
+  }
+  return out;
+}
+
+function stripSourceExtension(filePath) {
+  for (const ext of SOURCE_EXTENSIONS) {
+    if (filePath.endsWith(ext)) return filePath.slice(0, -ext.length);
+  }
+  return filePath;
+}
+
+const pkgJson = JSON.parse(
+  await readFile(resolve(packageRoot, "package.json"), "utf8"),
+);
+const exportsMap = pkgJson.exports ?? {};
+
+const wildcardPrefixes = Object.entries(exportsMap)
+  .filter(([key, value]) => {
+    if (!key.endsWith("/*") || key.endsWith(".css")) return false;
+    const target =
+      typeof value === "string" ? value : (value.import ?? value.default ?? "");
+    return (
+      typeof target === "string" &&
+      target.startsWith("./dist/") &&
+      target.endsWith(".js")
+    );
+  })
+  .map(([key]) => key.slice(2, -2)); // "./cloud/*" -> "cloud"
+
+const subpathExports = [];
+for (const prefix of wildcardPrefixes) {
+  const dir = resolve(packageRoot, "src", prefix);
+  const files = await collectSourceFiles(dir);
+  for (const file of files) {
+    const relFromSrc = relative(resolve(packageRoot, "src"), file).replaceAll(
+      "\\",
+      "/",
+    );
+    subpathExports.push({
+      specifier: `@elizaos/ui/${stripSourceExtension(relFromSrc)}`,
+      source: relative(packageRoot, file).replaceAll("\\", "/"),
+    });
+  }
+}
+subpathExports.sort((left, right) =>
+  left.specifier.localeCompare(right.specifier),
+);
+
+const report = {
+  exports: api,
+  count: api.length,
+  subpathExports,
+  subpathCount: subpathExports.length,
+};
+
 if (updateBaseline) {
   await writeFile(baselinePath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`Updated public API baseline (${api.length} root exports).`);
+  console.log(
+    `Updated public API baseline (${api.length} root exports, ${subpathExports.length} subpath entry points).`,
+  );
   process.exit(0);
 }
 
@@ -69,18 +174,55 @@ if (currentText !== baselineText) {
     (entry) =>
       previous.has(entry.name) && previous.get(entry.name) !== entry.source,
   );
+
+  const previousSubpaths = new Map(
+    (baseline.subpathExports ?? []).map((entry) => [
+      entry.specifier,
+      entry.source,
+    ]),
+  );
+  const currentSubpaths = new Map(
+    subpathExports.map((entry) => [entry.specifier, entry.source]),
+  );
+  const addedSubpaths = subpathExports.filter(
+    (entry) => !previousSubpaths.has(entry.specifier),
+  );
+  const removedSubpaths = (baseline.subpathExports ?? []).filter(
+    (entry) => !currentSubpaths.has(entry.specifier),
+  );
+  const movedSubpaths = subpathExports.filter(
+    (entry) =>
+      previousSubpaths.has(entry.specifier) &&
+      previousSubpaths.get(entry.specifier) !== entry.source,
+  );
+
   throw new Error(
     [
-      "Root public API changed. Prefer an explicit subpath; update the baseline only for an intentional compatibility decision.",
-      added.length ? `Added: ${added.map((entry) => entry.name).join(", ")}` : "",
-      removed.length
-        ? `Removed: ${removed.map((entry) => entry.name).join(", ")}`
+      "Public API changed. Prefer an explicit subpath; update the baseline only for an intentional compatibility decision.",
+      added.length
+        ? `Root added: ${added.map((entry) => entry.name).join(", ")}`
         : "",
-      moved.length ? `Moved: ${moved.map((entry) => entry.name).join(", ")}` : "",
+      removed.length
+        ? `Root removed: ${removed.map((entry) => entry.name).join(", ")}`
+        : "",
+      moved.length
+        ? `Root moved: ${moved.map((entry) => entry.name).join(", ")}`
+        : "",
+      addedSubpaths.length
+        ? `Subpath added: ${addedSubpaths.map((entry) => entry.specifier).join(", ")}`
+        : "",
+      removedSubpaths.length
+        ? `Subpath removed: ${removedSubpaths.map((entry) => entry.specifier).join(", ")}`
+        : "",
+      movedSubpaths.length
+        ? `Subpath moved: ${movedSubpaths.map((entry) => entry.specifier).join(", ")}`
+        : "",
     ]
       .filter(Boolean)
       .join("\n"),
   );
 }
 
-console.log(`Public API matches baseline (${api.length} root exports).`);
+console.log(
+  `Public API matches baseline (${api.length} root exports, ${subpathExports.length} subpath entry points).`,
+);

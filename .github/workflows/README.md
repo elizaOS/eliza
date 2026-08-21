@@ -162,6 +162,33 @@ Representative examples:
   `APP_STORE_API_ISSUER_ID`, and `APP_STORE_API_KEY_P8`. The API-backed first
   upload still depends on the corresponding organization account, application
   record, agreements, and roles already existing in each publisher portal.
+
+  The authored inventory of those names, together with the prerequisite,
+  owner, rotation cadence, and revocation path for each lane, lives in
+  `packages/scripts/lib/store-release-credentials.mjs`.
+  `bun run release:store-credentials` prints it and fails on drift between the
+  contract and the names these workflows reference.
+  `bun run release:store-credentials:audit` additionally reads the live
+  `production-release` environment through `gh api`: the credential-name
+  inventory a repository owner still has to provision, plus the resolved
+  required-reviewer principals, `prevent_self_review`, and the custom
+  deployment branch/tag policy patterns, validated against the repo-owned
+  `RELEASE_ENVIRONMENT_POLICY` (reviewer allowlist, self-review prevention,
+  and only the `develop` branch and `v*` tag deployment patterns). Any
+  protection setting the API cannot prove is reported as an owner-verification
+  blocker, never a pass, and the reviewer allowlist ships empty so the audit
+  cannot report READY until an owner verifies and commits it. Both operations
+  compare names and policy metadata only; the GitHub API never exposes secret
+  values and the preflight never reads, prints, or stores one. Name presence
+  cannot prove a credential value is valid — only a real protected store
+  publish proves that. Exit codes are `0` ready, `1` contract drift or
+  unreadable live state, `2` live environment not provisioned or its
+  protection policy unproven or in violation.
+
+  Creating `production-release`, selecting its required reviewers and
+  deployment branch/tag policy, and adding any credential are owner-only
+  actions taken in the GitHub UI with authorized confirmation at action time.
+  No automation in this repository creates them.
 - `infra.yml` is the only Terraform plan, apply, and state-edit entry point.
   Each protected Environment supplies a distinct RSA public-key variable
   `TERRAFORM_PLAN_ARTIFACT_PUBLIC_KEY` and apply-only private-key secret

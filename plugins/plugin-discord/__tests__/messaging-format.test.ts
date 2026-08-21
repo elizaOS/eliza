@@ -14,15 +14,16 @@ import {
 	parseMessageLink,
 	sanitizeThreadName,
 	stripDiscordFormatting,
+	truncateText,
 	truncateUtf16Safe,
 } from "../messaging.ts";
 
 /**
  * Discord text helpers. Escaping the markdown metacharacters stops user text
  * forging formatting/mentions; mention build/extract must round-trip (incl. the
- * <@!id> nickname form); truncateUtf16Safe must never cut a surrogate pair in
- * half (which would corrupt an emoji); and the message-link build/parse pair
- * must agree.
+ * <@!id> nickname form); truncateUtf16Safe and truncateText must never cut a
+ * surrogate pair in half (which would corrupt an emoji); and the message-link
+ * build/parse pair must agree.
  */
 
 describe("escapeDiscordMarkdown", () => {
@@ -57,6 +58,44 @@ describe("mentions round-trip", () => {
 	});
 });
 
+describe("truncateText", () => {
+	it("does not split a surrogate pair across the truncation boundary", () => {
+		const text = `aaaa🦊${"b".repeat(20)}`;
+		const out = truncateText(text, 5, "…");
+		expect(out).toBe("aaaa…");
+		expect(out.isWellFormed()).toBe(true);
+		expect(out.length).toBeLessThanOrEqual(5);
+	});
+
+	it("sanitizes either lone surrogate half before truncation", () => {
+		for (const text of ["a\ud800bc", "a\udc00bc"]) {
+			const out = truncateText(text, 10, "…");
+			expect(out).toBe("a\ufffdbc");
+			expect(out.isWellFormed()).toBe(true);
+		}
+	});
+
+	it("preserves an emoji that fits under the cap", () => {
+		const text = "hello 🦊";
+		expect(truncateText(text, 10, "…")).toBe("hello 🦊");
+	});
+
+	it("returns short text unchanged", () => {
+		expect(truncateText("short", 20)).toBe("short");
+	});
+
+	it("keeps a long or astral ellipsis inside the exact output budget", () => {
+		expect(truncateText("abcdef", 3, "[truncated]")).toBe("[tr");
+		expect(truncateText("abcdef", 1, "🦊")).toBe("a");
+		expect(truncateText("abcdef", 0, "🦊")).toBe("");
+		for (const maxLength of [0, 1, 3]) {
+			const out = truncateText("abcdef", maxLength, "🦊[truncated]");
+			expect(out.length).toBeLessThanOrEqual(maxLength);
+			expect(out.isWellFormed()).toBe(true);
+		}
+	});
+});
+
 describe("truncateUtf16Safe", () => {
 	it("does not split a surrogate pair (emoji stays intact or is dropped whole)", () => {
 		const text = `abc${"😀".repeat(5)}`; // each 😀 is a surrogate pair (length 2)
@@ -67,6 +106,7 @@ describe("truncateUtf16Safe", () => {
 		expect(Number.isNaN(last)).toBe(false);
 		// round-trips through a JSON encode/decode without replacement chars.
 		expect(JSON.parse(JSON.stringify(out))).toBe(out);
+		expect(out.isWellFormed()).toBe(true);
 	});
 
 	it("returns the text unchanged when within the limit", () => {

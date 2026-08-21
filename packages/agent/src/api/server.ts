@@ -1320,6 +1320,7 @@ import {
   isAllowedHost as _isAllowedHost,
   isAuthorized as _isAuthorized,
   isBoundaryRoleAuthorized as _isBoundaryRoleAuthorized,
+  isCredentialedCorsOrigin as _isCredentialedCorsOrigin,
   isServerTokenAuthorized as _isServerTokenAuthorized,
   isSharedTerminalClientId as _isSharedTerminalClientId,
   isTrustedLocalRequest as _isTrustedLocalRequest,
@@ -1368,6 +1369,7 @@ const isAuthorized = _isAuthorized;
 const resolveBoundaryRole = _resolveBoundaryRole;
 const isTrustedLocalRequest = _isTrustedLocalRequest;
 const isBoundaryRoleAuthorized = _isBoundaryRoleAuthorized;
+const isCredentialedCorsOrigin = _isCredentialedCorsOrigin;
 const isServerTokenAuthorized = _isServerTokenAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1571,6 +1573,13 @@ async function handleRequest(
   // the port (LAN/wildcard bind) read the owner's cloud userId, organizationId,
   // and live credit balance (W1-010).
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
+  const requestOrigin =
+    typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+  // A same-origin navigation commonly omits Origin. When an Origin is present,
+  // ambient cookie authority is available only to the narrower credentialed
+  // CORS trust set; arbitrary reflected origins remain bearer-only.
+  const allowHostCookieAuth =
+    requestOrigin === undefined || isCredentialedCorsOrigin(requestOrigin);
   let hostSessionAuthorization: AgentHttpRequestAuthorization = {
     ok: false,
     role: "NONE",
@@ -1586,12 +1595,16 @@ async function handleRequest(
         hostSessionAuthorization = await resolveAuthorization(
           req,
           state.runtime,
+          { allowCookieAuth: allowHostCookieAuth },
         );
         return hostSessionAuthorization;
       }
       const authorize = bridge.isHttpRequestAuthorized;
+      // A legacy boolean-only bridge cannot separate cookie from bearer
+      // authority. Do not consult it for an explicitly untrusted origin;
+      // standalone bearer schemes are evaluated by the normal server gates.
       const authorized =
-        typeof authorize === "function"
+        allowHostCookieAuth && typeof authorize === "function"
           ? await authorize(req, state.runtime)
           : false;
       // Legacy boolean-only hosts can still pass the coarse request gate, but

@@ -30,6 +30,38 @@ export function stripSqlBlockComments(sql: string): string {
   return result;
 }
 
+function sqlLineTerminatorLength(sql: string, index: number): number {
+  const char = sql.charCodeAt(index);
+  if (char === 0x0a || char === 0x2028 || char === 0x2029) return 1;
+  if (char === 0x0d) return sql.charCodeAt(index + 1) === 0x0a ? 2 : 1;
+  return 0;
+}
+
+/** Strip double-dash comments through the next line ending in one forward pass. */
+export function stripSqlLineComments(sql: string): string {
+  const chunks: string[] = [];
+  let cursor = 0;
+  while (cursor < sql.length) {
+    const open = sql.indexOf("--", cursor);
+    if (open < 0) {
+      chunks.push(sql.slice(cursor));
+      break;
+    }
+    chunks.push(sql.slice(cursor, open));
+    let terminator = open + 2;
+    let terminatorLength = 0;
+    while (terminator < sql.length) {
+      terminatorLength = sqlLineTerminatorLength(sql, terminator);
+      if (terminatorLength > 0) break;
+      terminator += 1;
+    }
+    if (terminatorLength === 0) break;
+    chunks.push(sql.slice(terminator, terminator + terminatorLength));
+    cursor = terminator + terminatorLength;
+  }
+  return chunks.join("");
+}
+
 /**
  * Strip PostgreSQL dollar-quoted literals (`$$...$$`, `$tag$...$tag$`) in a
  * single pass. Unterminated literals are left intact so the read-only guard
@@ -131,7 +163,7 @@ export function scanSqlForReadOnly(sql: string): ReadOnlySqlScan {
   while (i < sql.length) {
     if (sql.startsWith("--", i)) {
       i += 2;
-      while (i < sql.length && sql[i] !== "\n" && sql[i] !== "\r") i += 1;
+      while (i < sql.length && sqlLineTerminatorLength(sql, i) === 0) i += 1;
       appendOutside(" ");
       continue;
     }

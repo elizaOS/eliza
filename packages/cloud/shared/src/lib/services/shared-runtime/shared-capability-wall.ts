@@ -1,4 +1,6 @@
-/** Keeps Shared honest when a request requires stateful tools or device control. */
+/** Keeps Shared honest and returns a resumable setup handoff for unavailable work. */
+
+import type { CapabilityHandoffRequest } from "@elizaos/shared";
 
 export type SharedDedicatedCapability =
   | "calendar"
@@ -236,7 +238,44 @@ export function resolveSharedCapabilityIntent(
   };
 }
 
-export function capabilityWallActionResult(wall: SharedCapabilityWall) {
+export function capabilityWallActionResult(
+  wall: SharedCapabilityWall,
+  context: {
+    agentId?: string;
+    originalIntent?: string;
+    clientMessageId?: string;
+  } = {},
+) {
+  const originalIntent = context.originalIntent?.trim().slice(0, 4_000) || undefined;
+  const clientMessageId = context.clientMessageId?.trim().slice(0, 128) || undefined;
+  const handoff: CapabilityHandoffRequest = {
+    version: 1,
+    kind: "capability_handoff",
+    capabilityId: wall.capability,
+    label: wall.label,
+    availability: "needs_workspace",
+    reason: wall.constraint,
+    currentTier: "shared",
+    requiredTier: "personal",
+    nextAction: "upgrade_workspace",
+    // This receipt offers a paid-workspace setup flow; it never authorizes
+    // setup or the original capability request automatically.
+    requiresConfirmation: true,
+    cta: {
+      label: "Set up personal workspace",
+      href: context.agentId
+        ? `/cloud/agents/${encodeURIComponent(context.agentId)}`
+        : "/cloud/agents",
+    },
+    ...(originalIntent || clientMessageId
+      ? {
+          continuation: {
+            ...(originalIntent ? { originalIntent } : {}),
+            ...(clientMessageId ? { clientMessageId } : {}),
+          },
+        }
+      : {}),
+  };
   return {
     actionName: "DEDICATED_CAPABILITY_REQUIRED" as const,
     success: false as const,
@@ -247,6 +286,7 @@ export function capabilityWallActionResult(wall: SharedCapabilityWall) {
       requiredExecutionTier: "dedicated-always" as const,
       automatic: false as const,
       source: "agent" as const,
+      capabilityHandoff: handoff,
     },
   };
 }

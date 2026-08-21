@@ -27,6 +27,23 @@ const LINKEDIN_OAUTH_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken"
 // (LinkedIn requires at least one location facet on every campaign).
 const LINKEDIN_WORLDWIDE_GEO = "urn:li:geo:92000000";
 
+const LINKEDIN_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every LinkedIn REST hop so a hung or rate-limited API cannot pin the
+ * ad-provider worker indefinitely. A caller-provided abort signal wins.
+ */
+export function linkedinFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = LINKEDIN_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 function linkedinVersion(): string {
   return process.env.LINKEDIN_ADS_API_VERSION ?? "202606";
 }
@@ -107,7 +124,7 @@ async function linkedinRequest<T>(
   options: RequestInit & { rawQuery?: string } = {},
 ): Promise<LinkedInRequestResult<T>> {
   const url = `${LINKEDIN_API_BASE_URL}${endpoint}${options.rawQuery ? `?${options.rawQuery}` : ""}`;
-  const response = await fetch(url, {
+  const response = await linkedinFetch(url, {
     ...options,
     headers: {
       Authorization: `Bearer ${credentials.accessToken}`,
@@ -459,7 +476,7 @@ export const linkedinAdsProvider: AdProvider = {
     if (!clientId || !clientSecret) {
       throw new Error("LinkedIn Ads client credentials are not configured");
     }
-    const response = await fetch(LINKEDIN_OAUTH_TOKEN_URL, {
+    const response = await linkedinFetch(LINKEDIN_OAUTH_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -757,7 +774,7 @@ export const linkedinAdsProvider: AdProvider = {
         if (!uploadUrl || !imageUrn) {
           throw new Error("LinkedIn image upload initialization returned no upload URL");
         }
-        const upload = await fetch(uploadUrl, {
+        const upload = await linkedinFetch(uploadUrl, {
           method: "PUT",
           headers: { Authorization: `Bearer ${credentials.accessToken}` },
           body: bytes,
@@ -792,7 +809,7 @@ export const linkedinAdsProvider: AdProvider = {
       }
       const uploadedPartIds: string[] = [];
       for (const instruction of instructions) {
-        const part = await fetch(instruction.uploadUrl, {
+        const part = await linkedinFetch(instruction.uploadUrl, {
           method: "PUT",
           headers: { Authorization: `Bearer ${credentials.accessToken}` },
           body: bytes.slice(instruction.firstByte, instruction.lastByte + 1),

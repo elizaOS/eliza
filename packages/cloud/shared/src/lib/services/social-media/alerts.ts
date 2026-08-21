@@ -1,6 +1,24 @@
 // Coordinates cloud service alerts behavior behind route handlers.
 import { logger } from "../../utils/logger";
 
+const ALERT_REQUEST_TIMEOUT_MS = 15_000;
+
+/**
+ * Bound every alert delivery hop so a hung or rate-limited webhook / API
+ * cannot pin the alert worker indefinitely. A caller-provided abort signal
+ * wins.
+ */
+export function alertFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 type AlertSeverity = "critical" | "high" | "medium" | "low";
 
 interface AlertPayload {
@@ -20,7 +38,7 @@ const SEVERITY_COLORS: Record<AlertSeverity, { hex: string; emoji: string }> = {
 async function sendDiscordAlert(webhookUrl: string, payload: AlertPayload): Promise<void> {
   const { hex, emoji } = SEVERITY_COLORS[payload.severity];
 
-  await fetch(webhookUrl, {
+  await alertFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -48,7 +66,7 @@ async function sendDiscordAlert(webhookUrl: string, payload: AlertPayload): Prom
 async function sendSlackAlert(webhookUrl: string, payload: AlertPayload): Promise<void> {
   const { emoji } = SEVERITY_COLORS[payload.severity];
 
-  await fetch(webhookUrl, {
+  await alertFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -93,7 +111,7 @@ async function sendTelegramAlert(
     ...(payload.platforms?.length ? ["", `Platforms: ${payload.platforms.join(", ")}`] : []),
   ].join("\n");
 
-  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+  await alertFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
@@ -114,7 +132,7 @@ async function sendWhatsAppAlert(
     ...(payload.platforms?.length ? ["", `Platforms: ${payload.platforms.join(", ")}`] : []),
   ].join("\n");
 
-  await fetch(apiUrl, {
+  await alertFetch(apiUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -1,0 +1,83 @@
+{
+  "id": "notion",
+  "name": "Notion",
+  "description": "Notion connector for workspace search, page reads with citation deep links, page creation, and appends. Uses workspace-bound OAuth; local mode accepts an internal integration token.",
+  "npmName": "@elizaos/plugin-notion",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "notion",
+    "notes",
+    "documents",
+    "connector",
+    "productivity"
+  ],
+  "config": {
+    "NOTION_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "OAuth Client ID",
+      "help": "Notion public-integration OAuth client ID. Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "NOTION_CLIENT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "OAuth Client Secret",
+      "help": "Notion public-integration OAuth client secret. Not needed when using Eliza Cloud OAuth.",
+      "advanced": true
+    },
+    "NOTION_REDIRECT_URI": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "OAuth Redirect URI",
+      "help": "Redirect URI registered on the Notion integration.",
+      "advanced": true
+    },
+    "NOTION_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Internal Integration Token",
+      "help": "Local BYO internal-integration token for self-hosted mode. The integration only sees pages shared with it.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "FileText",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": [
+      "enable",
+      "configure",
+      "setup-guide"
+    ]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-notion#readme",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "other",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": [
+      "NOTION_TOKEN"
+    ]
+  },
+  "accounts": {
+    "owner": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [],
+      "notes": "The user's Notion workspace, connected via OAuth. The grant is scoped to exactly the pages and databases the user shares with the connection inside Notion's consent UI."
+    }
+  }
+}

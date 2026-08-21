@@ -38,6 +38,7 @@ import {
 import { createSharedRemindersEdgePlugin } from "@elizaos/plugin-scheduling/edge";
 import { createTodosEdgePlugin } from "@elizaos/plugin-todos/edge";
 import { webSearchEdgeAction, webSearchEdgePlugin } from "@elizaos/plugin-web-search/edge";
+import type { AgentCapabilityTransport } from "@elizaos/shared";
 import {
   generateText,
   type JSONSchema7,
@@ -59,6 +60,7 @@ import type {
   SharedTurnMessage,
 } from "./run-shared-agent-turn";
 import { appendSharedInput, appendSharedTurn } from "./run-shared-agent-turn";
+import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import {
   createSharedRuntimeCapabilitiesPlugin,
   REQUEST_DEDICATED_UPGRADE_ACTION,
@@ -232,6 +234,7 @@ function createRuntime(options: {
   adapter: InMemoryDatabaseAdapter;
   character: RunSharedAgentTurnInput["character"];
   modelPlugin: Plugin;
+  transport?: AgentCapabilityTransport;
   mediaPlugin?: Plugin;
   reminderPlugin?: Plugin;
   todoPlugin?: Plugin;
@@ -242,6 +245,7 @@ function createRuntime(options: {
     reminders: options.actionsEnabled && Boolean(options.reminderPlugin),
     todos: options.actionsEnabled && Boolean(options.todoPlugin),
     media: options.actionsEnabled && Boolean(options.mediaPlugin),
+    transport: options.transport,
   });
   return new AgentRuntime({
     agentId: options.agentId ?? stringToUuid(options.agentKey),
@@ -687,6 +691,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     adapter,
     character: input.character,
     modelPlugin,
+    transport: sharedCapabilityTransportForSource(input.execution.channel.source),
     mediaPlugin,
     reminderPlugin,
     todoPlugin,
@@ -825,7 +830,6 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       roomId,
       content: {
         text: input.message.trim(),
-        ...(input.attachments?.length ? { attachments: input.attachments } : {}),
         // Only the server-owned execution attestation may translate a Shared
         // turn to authenticated client-chat provenance. Connector payloads and
         // direct runtime callers remain on the fail-closed Shared source.

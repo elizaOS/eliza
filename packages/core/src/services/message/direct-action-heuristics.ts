@@ -209,15 +209,84 @@ const EXPLICIT_WEB_SEARCH_PATTERN =
 	/\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?(?:live\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
 const EXPLICIT_URL_FETCH_PATTERN =
 	/\b(?:fetch|read|retrieve|load|open|visit|summari[sz]e)\b[^\n]{0,160}https:\/\/[^\s<>"']+/iu;
-const INTENT_CLAUSE_BOUNDARY_PATTERN =
-	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
-
 function intentClauses(text: string): string[] {
-	return text
-		.toLowerCase()
-		.split(INTENT_CLAUSE_BOUNDARY_PATTERN)
-		.map((clause) => clause.trim())
-		.filter(Boolean);
+	const value = text.toLowerCase();
+	const clauses: string[] = [];
+	let start = 0;
+	let cursor = 0;
+	while (cursor < value.length) {
+		let width = value[cursor] === ";" ? 1 : 0;
+		if (width === 0) {
+			for (const word of ["but", "however", "instead"]) {
+				if (
+					value.startsWith(word, cursor) &&
+					(cursor === 0 || !/[a-z0-9_]/i.test(value[cursor - 1])) &&
+					!/[a-z0-9_]/i.test(value[cursor + word.length] ?? "")
+				) {
+					width = word.length;
+					break;
+				}
+			}
+		}
+		if (width === 0) {
+			cursor += 1;
+			continue;
+		}
+		const clause = value.slice(start, cursor).trim();
+		if (clause) clauses.push(clause);
+		start = cursor + width;
+		cursor = start;
+	}
+	const tail = value.slice(start).trim();
+	if (tail) clauses.push(tail);
+	return clauses;
+}
+
+function quotedSpanContains(
+	text: string,
+	predicate: (span: string) => boolean,
+): boolean {
+	for (const [open, close] of [
+		['"', '"'],
+		["“", "”"],
+		["‘", "’"],
+	] as const) {
+		let cursor = 0;
+		while (cursor < text.length) {
+			const start = text.indexOf(open, cursor);
+			if (start < 0) break;
+			const end = text.indexOf(close, start + open.length);
+			if (end < 0) break;
+			if (predicate(text.slice(start + open.length, end))) return true;
+			cursor = end + close.length;
+		}
+	}
+	let cursor = 0;
+	while (cursor < text.length) {
+		const start = text.indexOf("'", cursor);
+		if (start < 0) break;
+		const before = text[start - 1];
+		if (before && /[\p{L}\p{N}]/u.test(before)) {
+			cursor = start + 1;
+			continue;
+		}
+		let endCursor = start + 1;
+		let end = -1;
+		while (endCursor < text.length) {
+			const candidate = text.indexOf("'", endCursor);
+			if (candidate < 0) return false;
+			const after = text[candidate + 1];
+			if (!after || !/[\p{L}\p{N}]/u.test(after)) {
+				end = candidate;
+				break;
+			}
+			endCursor = candidate + 1;
+		}
+		if (end < 0) return false;
+		if (predicate(text.slice(start + 1, end))) return true;
+		cursor = end + 1;
+	}
+	return false;
 }
 
 function explicitlyAsksWebSearch(text: string): boolean {
@@ -962,8 +1031,9 @@ function detectOwnerLifeReadDomain(
 		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
 			normalized,
 		) ||
-		/["“][^"”]*\b(?:how much|what)\b[^"”]*["”]/u.test(normalized) ||
-		/‘[^’]*\b(?:how much|what)\b[^’]*’/u.test(normalized)
+		quotedSpanContains(normalized, (span) =>
+			/\b(?:how much|what)\b/u.test(span),
+		)
 	) {
 		return BLOCKED_OWNER_LIFE_READ;
 	}
@@ -1026,11 +1096,7 @@ function detectOwnerLifeReadDomain(
 		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
 			normalized,
 		) ||
-		/["“][^"”]*\b(?:my|our)\b[^"”]*["”]/u.test(normalized) ||
-		/‘[^’]*\b(?:my|our)\b[^’]*’/u.test(normalized) ||
-		/(?:^|[^\p{L}\p{N}])'[^'\r\n]*\b(?:my|our)\b[^'\r\n]*'(?![\p{L}\p{N}])/u.test(
-			normalized,
-		) ||
+		quotedSpanContains(normalized, (span) => /\b(?:my|our)\b/u.test(span)) ||
 		/\b(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b(?:(?!\b(?:but|however|instead)\b)[^.!?;]){0,96}\b(?:list|show|tell|give|read|check|see|look|review|go\s+over)\b/iu.test(
 			normalized,
 		)
@@ -1870,10 +1936,87 @@ const CONTINUATION_DIRECTIVE_RE = new RegExp(
 // bare "yes"). They only resolve when the agent's latest visible turn still
 // looks pending — an ack or a question — so praise after a delivered result
 // does not re-trigger the finished request.
-const CONTINUATION_APPROVAL_RE = new RegExp(
-	`^${CONTINUATION_LEAD_IN}(?:yes|yep|yeah|(?:that|this|it)(?:'s|\\s+is)?\\s+(?:good|great|perfect|fine|right|correct)|(?:that|this|it)\\s+works|sounds\\s+good|looks\\s+good)(?:\\s*[,.!]?\\s*(?:please\\s+)?(?:go\\s+ahead|do\\s+it|proceed|finish(?:\\s+it)?|continue|thanks?|thank\\s+you))?$`,
-	"iu",
-);
+const CONTINUATION_APPROVAL_BASES = new Set([
+	"yes",
+	"yep",
+	"yeah",
+	...(["that", "this", "it"] as const).flatMap((subject) =>
+		["good", "great", "perfect", "fine", "right", "correct"].flatMap(
+			(adjective) => [
+				`${subject}'s ${adjective}`,
+				`${subject} is ${adjective}`,
+			],
+		),
+	),
+	"that works",
+	"this works",
+	"it works",
+	"sounds good",
+	"looks good",
+]);
+
+function isApprovalBaseWithOptionalTail(value: string): boolean {
+	if (CONTINUATION_APPROVAL_BASES.has(value)) return true;
+	for (const tail of [
+		"go ahead",
+		"do it",
+		"proceed",
+		"finish",
+		"finish it",
+		"continue",
+		"thank",
+		"thanks",
+		"thank you",
+	]) {
+		if (!value.endsWith(` ${tail}`)) continue;
+		let base = value.slice(0, -tail.length).trimEnd();
+		if (base.endsWith(" please")) base = base.slice(0, -" please".length);
+		base = base.trimEnd();
+		if (",.!".includes(base[base.length - 1] ?? ""))
+			base = base.slice(0, -1).trimEnd();
+		if (CONTINUATION_APPROVAL_BASES.has(base)) return true;
+	}
+	return false;
+}
+
+function stripContinuationLeadIn(value: string): string {
+	let cursor = 0;
+	while (cursor < value.length && /[a-z]/.test(value[cursor])) cursor += 1;
+	const word = value.slice(0, cursor);
+	if (
+		![
+			"ok",
+			"okay",
+			"yes",
+			"yep",
+			"yeah",
+			"sure",
+			"alright",
+			"great",
+			"perfect",
+		].includes(word)
+	) {
+		cursor = 0;
+	} else if (",.!".includes(value[cursor] ?? "")) {
+		cursor += 1;
+	}
+	while (/\s/u.test(value[cursor] ?? "")) cursor += 1;
+	if (value.startsWith("please", cursor)) {
+		const end = cursor + "please".length;
+		if (/\s/u.test(value[end] ?? "")) {
+			cursor = end;
+			while (/\s/u.test(value[cursor] ?? "")) cursor += 1;
+		}
+	}
+	return value.slice(cursor);
+}
+
+function isContinuationApproval(value: string): boolean {
+	return (
+		isApprovalBaseWithOptionalTail(value) ||
+		isApprovalBaseWithOptionalTail(stripContinuationLeadIn(value))
+	);
+}
 
 function normalizeContinuationText(text: string): string {
 	return trimEndCharacters(text.trim(), ".!…").replace(/\s+/gu, " ");
@@ -1894,7 +2037,7 @@ export function classifyExplicitContinuationTurn(
 	if (normalized.length === 0 || normalized.length > 60) return null;
 	if (normalized.includes("?")) return null;
 	if (CONTINUATION_DIRECTIVE_RE.test(normalized)) return "directive";
-	if (CONTINUATION_APPROVAL_RE.test(normalized)) return "approval";
+	if (isContinuationApproval(normalized.toLowerCase())) return "approval";
 	return null;
 }
 

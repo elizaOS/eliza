@@ -339,6 +339,16 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     expect(variablesTf).toContain("var.backup_retention_days >= 7");
   });
 
+  test("bounds backup_s3_prefix at plan time so the purge sweep can't widen to the bucket root", () => {
+    const start = variablesTf.indexOf('variable "backup_s3_prefix"');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const block = variablesTf.slice(start, variablesTf.indexOf("}\n", start));
+    expect(block).toContain("validation {");
+    expect(block).toContain('regex("^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"');
+    expect(block).toContain('regex("\\\\.\\\\.", var.backup_s3_prefix)');
+    expect(block).toContain('endswith(var.backup_s3_prefix, "/")');
+  });
+
   test("arms all-or-nothing via a server precondition", () => {
     expect(mainTf).toContain("backup_enabled = alltrue(");
     const server = terraformResource(mainTf, "hcloud_server", "tenant_db");
@@ -359,6 +369,17 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     expect(tenantDbInit).toContain(
       "openssl enc -aes-256-cbc -pbkdf2 -iter 210000 -salt",
     );
+    const sourceAt = tenantDbInit.indexOf('. "$ENV_FILE"');
+    const stopExportAt = tenantDbInit.indexOf("set +a", sourceAt);
+    const decodeAt = tenantDbInit.indexOf("base64 --decode", sourceAt);
+    expect(stopExportAt).toBeGreaterThan(sourceAt);
+    expect(stopExportAt).toBeLessThan(decodeAt);
+    expect(tenantDbInit).toContain(
+      'BACKUP_ENCRYPTION_PASSPHRASE="$BACKUP_ENCRYPTION_PASSPHRASE"',
+    );
+    expect(
+      tenantDbInit.indexOf("unset BACKUP_ENCRYPTION_PASSPHRASE"),
+    ).toBeLessThan(tenantDbInit.indexOf("export RCLONE_S3_PROVIDER"));
     expect(tenantDbInit).toContain("rclone copyto backup.tar.gz.enc");
   });
 
@@ -391,8 +412,94 @@ describe("Apps tenant-DB off-host encrypted recovery (#21729)", () => {
     );
     expect(tenantDbInit).toContain("rclone purge");
     expect(tenantDbInit).toContain(
+      'RETENTION_DIRS=$(rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX")',
+    );
+    expect(tenantDbInit).toContain(
+      '[[ "$listed_dir" =~ ^[0-9]{8}T[0-9]{6}Z/$ ]]',
+    );
+    expect(tenantDbInit.indexOf('[[ "$listed_dir" =~')).toBeLessThan(
+      tenantDbInit.indexOf("rclone purge"),
+    );
+    expect(tenantDbInit).not.toContain(
+      'rclone lsf --dirs-only ":s3:$BACKUP_S3_BUCKET/$BACKUP_S3_PREFIX" 2>/dev/null || true',
+    );
+    expect(tenantDbInit).toContain(
       'log "off-host backup not configured; skipping."',
     );
+  });
+
+  describe("BACKUP_S3_PREFIX runtime validation", () => {
+    const snippetStart = tenantDbInit.indexOf(
+      "# --- begin BACKUP_S3_PREFIX validation",
+    );
+    const snippetEnd = tenantDbInit.indexOf(
+      "# --- end BACKUP_S3_PREFIX validation ---",
+    );
+    const snippet =
+      snippetStart >= 0 && snippetEnd > snippetStart
+        ? tenantDbInit.slice(snippetStart, snippetEnd)
+        : "";
+
+    test("is present and runs before the retention purge loop and the upload destination is built", () => {
+      expect(snippetStart).toBeGreaterThanOrEqual(0);
+      expect(snippetEnd).toBeGreaterThan(snippetStart);
+      const purgeIndex = tenantDbInit.indexOf("rclone purge");
+      const copyIndex = tenantDbInit.indexOf("rclone copyto backup.tar.gz.enc");
+      const destIndex = tenantDbInit.indexOf('DEST=":s3:$BACKUP_S3_BUCKET');
+      expect(snippetStart).toBeLessThan(destIndex);
+      expect(snippetStart).toBeLessThan(copyIndex);
+      expect(snippetStart).toBeLessThan(purgeIndex);
+    });
+
+    // Executes the extracted bash guard directly (bash -u so an unset
+    // BACKUP_S3_PREFIX itself errors, matching the script's `set -u`) against
+    // representative values, proving the guard's actual runtime behavior
+    // rather than only its presence in the template text.
+    function runGuard(
+      prefix: string | undefined,
+    ): ReturnType<typeof spawnSync> {
+      const script = [
+        "#!/usr/bin/env bash",
+        "set -u",
+        "log() { :; }",
+        prefix === undefined
+          ? ""
+          : `BACKUP_S3_PREFIX=${JSON.stringify(prefix)}`,
+        snippet,
+        "echo ACCEPTED",
+      ].join("\n");
+      return spawnSync("bash", ["-c", script], { encoding: "utf-8" });
+    }
+
+    test("accepts the documented default and other safe prefixes", () => {
+      for (const prefix of ["tenant-db", "tenant-db/eu", "a", "A.b_c-9/x"]) {
+        const result = runGuard(prefix);
+        expect(result.stdout.trim()).toBe("ACCEPTED");
+        expect(result.status).toBe(0);
+      }
+    });
+
+    test("fails closed on empty, whitespace, and unset values", () => {
+      for (const prefix of ["", " ", "\t", undefined]) {
+        const result = runGuard(prefix);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).not.toContain("ACCEPTED");
+      }
+    });
+
+    test("fails closed on traversal-ish, absolute, and oversized values", () => {
+      for (const prefix of [
+        "../etc/passwd",
+        "tenant-db/../../etc",
+        "/etc/passwd",
+        "tenant-db/",
+        "a".repeat(201),
+      ]) {
+        const result = runGuard(prefix);
+        expect(result.status).not.toBe(0);
+        expect(result.stdout).not.toContain("ACCEPTED");
+      }
+    });
   });
 
   test("exposes arming state without exposing credentials", () => {

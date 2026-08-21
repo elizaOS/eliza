@@ -16,7 +16,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
@@ -76,6 +77,23 @@ describe("buildCacheKey", () => {
 });
 
 describe("ToolCallCache", () => {
+  it("logs the unkeyable reason and still executes by default", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      cache.run(desc, cyclic, async () => ({ result: "live" })),
+    ).resolves.toEqual({ result: "live" });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      { toolName: "web_search", reason: "cycle" },
+      "[ToolCallCache] Bypassing cache for unkeyable tool arguments",
+    );
+  });
+
   it("miss → run → populated → hit returns cached value without re-running", async () => {
     const cache = makeCache();
     const desc = resolveToolDescriptor("web_search");

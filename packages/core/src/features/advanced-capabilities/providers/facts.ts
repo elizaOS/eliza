@@ -113,15 +113,24 @@ function readFactKind(memory: Memory): FactKind {
  * back to `createdAt` so legacy facts and current facts that omit
  * `valid_at` still rank consistently.
  */
+function isRenderableTimestamp(value: number): boolean {
+	// Match packages/core/src/utils/time-format.ts: construct the Date first and
+	// require a finite getTime(). `Number.isFinite` alone admits values outside
+	// the ±8.64e15 Date range — a microsecond-precision timestamp from a
+	// connector, say — which then throws `RangeError: Invalid time value` from
+	// `toISOString()` and takes the whole provider down with it.
+	return Number.isFinite(new Date(value).getTime());
+}
+
 function readEffectiveTimestampMs(memory: Memory): number | null {
 	const validAt = readFactMetadata(memory).validAt;
 	if (typeof validAt === "string") {
 		const parsed = Date.parse(validAt);
-		if (Number.isFinite(parsed)) return parsed;
+		if (isRenderableTimestamp(parsed)) return parsed;
 	}
 	if (
 		typeof memory.createdAt === "number" &&
-		Number.isFinite(memory.createdAt)
+		isRenderableTimestamp(memory.createdAt)
 	) {
 		return memory.createdAt;
 	}

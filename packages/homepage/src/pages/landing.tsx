@@ -4,8 +4,8 @@
  * The first action opens a native message handler where supported and copies
  * the number elsewhere; account and app setup stay out of the way until someone
  * wants the richer companion experience. The phone demo shows Eliza inside a
- * group conversation. Advanced examples name the connected source, room scope,
- * or permission behind them instead of implying silent external access. It is
+ * group conversation. Advanced examples explain their connected context in the
+ * conversation instead of implying silent external access. It is
  * decorative and intentionally English-only. Reduced motion shows its settled
  * first room while keeping the five-room contract in the DOM.
  */
@@ -23,7 +23,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { LandingDemoCardBubble } from "@/components/landing-demo-card";
+import {
+  isLandingDemoAttachmentStep,
+  LandingDemoAttachment,
+  type LandingDemoAttachmentStep,
+} from "@/components/landing-demo-attachment";
 import {
   buildElizaDiscordHref,
   buildElizaTelegramHref,
@@ -34,7 +38,6 @@ import {
 import {
   LANDING_DEMO_MEMBER_AVATARS,
   LANDING_DEMO_SCENARIOS,
-  type LandingDemoCard,
   type LandingDemoScenario,
   type LandingDemoScenarioId,
   type LandingDemoStep,
@@ -70,7 +73,6 @@ function DeferredShaderBackground(): React.JSX.Element | null {
   );
 }
 
-type DemoCard = LandingDemoCard;
 type DemoStep = LandingDemoStep;
 
 type DemoItem =
@@ -81,7 +83,12 @@ type DemoItem =
       name?: string;
       text: string;
     }
-  | { from: "eliza"; id: number; kind: "card"; card: DemoCard };
+  | {
+      attachment: LandingDemoAttachmentStep;
+      from: "eliza";
+      id: number;
+      kind: "attachment";
+    };
 
 interface DemoSender {
   avatar: string;
@@ -103,18 +110,18 @@ const DEMO_SENDERS: Record<string, DemoSender> = {
 
 const DEMO_SCENARIOS: readonly LandingDemoScenario[] = LANDING_DEMO_SCENARIOS;
 const PREFILLED_INTRO_ITEMS = 4;
-const USER_KEYSTROKE_MS = 34;
-const HUMAN_REPLY_BASE_MS = 950;
-const HUMAN_REPLY_PER_CHARACTER_MS = 16;
-const HUMAN_REPLY_MAX_MS = 1_650;
-const ELIZA_TYPING_MS = 420;
-const BEAT_PAUSE_MS = 270;
-const PRE_USER_MS = 560;
-const PRE_ELIZA_MS = 150;
-const PRE_CARD_MS = 300;
-const SEND_HOLD_MS = 260;
-const SCENARIO_OPENING_PAUSE_MS = 2_000;
-const SCENARIO_READING_HOLD_MS = 6_500;
+const USER_KEYSTROKE_MS = 82;
+const HUMAN_REPLY_BASE_MS = 1_450;
+const HUMAN_REPLY_PER_CHARACTER_MS = 26;
+const HUMAN_REPLY_MAX_MS = 2_700;
+const ELIZA_TYPING_MS = 900;
+const BEAT_PAUSE_MS = 700;
+const PRE_USER_MS = 800;
+const PRE_ELIZA_MS = 240;
+const PRE_ATTACHMENT_MS = 650;
+const SEND_HOLD_MS = 420;
+const SCENARIO_OPENING_PAUSE_MS = 2_500;
+const SCENARIO_READING_HOLD_MS = 8_500;
 const SCENARIO_SWITCH_MS = 450;
 
 type LandingAudioWindow = Window &
@@ -197,12 +204,12 @@ function scenarioItems(
   scenarioIndex: number,
 ): DemoItem[] {
   return scenario.steps.map((step, index) =>
-    step.kind === "card"
+    isLandingDemoAttachmentStep(step)
       ? {
-          id: scenarioIndex * 100 + index,
+          attachment: step,
           from: "eliza",
-          kind: "card",
-          card: step.card,
+          id: scenarioIndex * 100 + index,
+          kind: "attachment",
         }
       : {
           id: scenarioIndex * 100 + index,
@@ -337,11 +344,16 @@ function PhoneMockup() {
             { id, from: "eliza", kind: "text", text: step.text },
           ]);
         } else {
-          await sleep(PRE_CARD_MS);
+          await sleep(PRE_ATTACHMENT_MS);
           if (cancelled) return;
           setItems((previous) => [
             ...previous,
-            { id, from: "eliza", kind: "card", card: step.card },
+            {
+              attachment: step,
+              id,
+              from: "eliza",
+              kind: "attachment",
+            },
           ]);
         }
         await sleep(
@@ -551,7 +563,7 @@ function PhoneMockup() {
               <div
                 key={item.id}
                 data-demo-item="true"
-                className={`landing-message landing-message--${item.from}${item.kind === "card" ? " landing-message--card" : ""}`}
+                className={`landing-message landing-message--${item.from}${item.kind !== "text" ? " landing-message--attachment" : ""}`}
               >
                 {sender ? (
                   <span className="landing-message-avatar-slot">
@@ -564,10 +576,8 @@ function PhoneMockup() {
                       {sender.name}
                     </span>
                   ) : null}
-                  {item.kind === "card" ? (
-                    <div className="landing-bubble-card">
-                      <LandingDemoCardBubble card={item.card} />
-                    </div>
+                  {item.kind === "attachment" ? (
+                    <LandingDemoAttachment step={item.attachment} />
                   ) : (
                     <p
                       className={`landing-bubble landing-bubble--${item.from}`}

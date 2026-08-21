@@ -25,6 +25,11 @@ import type {
 	ProviderResult,
 	State,
 } from "../types";
+import {
+	deepToWellFormedUnicode,
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 
 /** Newest N distinct-by-code errors surfaced into the prompt. */
 const MAX_RECENT_ERRORS = 5;
@@ -62,15 +67,19 @@ export function serializeContext(
 	if (!context || Object.keys(context).length === 0) return undefined;
 	let text: string;
 	try {
-		text = JSON.stringify(context);
+		const safeContext = deepToWellFormedUnicode(context);
+		text = JSON.stringify(safeContext);
 	} catch {
 		// error-policy:J3 untrusted-input sanitizing — context may hold a
 		// circular/non-serializable value; drop it rather than fabricate one.
 		return undefined;
 	}
-	return text.length > MAX_CONTEXT_CHARS
-		? `${text.slice(0, MAX_CONTEXT_CHARS - 1)}…`
-		: text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= MAX_CONTEXT_CHARS) {
+		return wellFormed;
+	}
+	const budget = Math.max(0, MAX_CONTEXT_CHARS - 1);
+	return `${truncateWellFormed(wellFormed, budget).trimEnd()}…`;
 }
 
 /**

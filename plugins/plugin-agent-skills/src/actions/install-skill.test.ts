@@ -258,4 +258,34 @@ describe("SKILL install with security-enveloped input", () => {
 			text: expect.stringContaining("download deadline elapsed"),
 		});
 	});
+
+	it("keeps surrogate pairs intact when truncating install results", async () => {
+		const longInstructions = `${"a".repeat(2999)}🦊${"b".repeat(50)}`;
+		const service = {
+			getLoadedSkills: vi.fn(() => []),
+			install: vi.fn(async () => true),
+			search: vi.fn(async () => [
+				{ slug: "weather", displayName: longInstructions },
+			]),
+			getSkillScanStatus: vi.fn(() => "clean"),
+		};
+		const runtime = {
+			getService: vi.fn(() => service),
+		} as unknown as IAgentRuntime;
+		const callback = vi.fn();
+
+		const result = await installSkillAction.handler(
+			runtime,
+			{ content: { text: "install weather" } } as unknown as Memory,
+			undefined,
+			{ parameters: { slug: "weather" } },
+			callback,
+		);
+
+		expect(result.success).toBe(true);
+		const echoed = callback.mock.calls.at(-1)?.[0]?.text ?? "";
+		expect(echoed.isWellFormed()).toBe(true);
+		expect(echoed).toContain("[truncated install result]");
+		expect(echoed.endsWith("\n\n[truncated install result]")).toBe(true);
+	});
 });

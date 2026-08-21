@@ -2,6 +2,12 @@
  * Full Hono application — imported asynchronously from `index.ts` so the Worker
  * does not evaluate hundreds of route modules during Cloudflare startup validation
  * (error 10021: Script startup exceeded CPU time limit).
+ *
+ * The generated route graph is additionally sharded (issue #22550): passing a
+ * request pathname to `createApp` mounts only the shard of route modules that
+ * can match it, so a cold isolate evaluates tens of route modules instead of
+ * all ~677. Omitting the pathname mounts everything (tests, dev server, and
+ * any dispatch that has no concrete request path).
  */
 
 import { Hono } from "hono";
@@ -35,11 +41,12 @@ import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
-import { mountRoutes } from "./_router.generated";
+import { mountRoutes, mountShardRoutes } from "./_router.generated";
 import { appsDeployTriggerDecision } from "./lib/apps-deploy-gate";
 import { redactSensitiveRequestPath } from "./lib/observability/request-path-redaction";
 import { authMiddleware } from "./middleware/auth";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
+import { routeShardKey } from "./router-shards";
 import { initAuditDispatcher } from "./services/audit-dispatcher-singleton";
 import { embeddedStewardHandler } from "./steward/embedded";
 
@@ -211,10 +218,28 @@ function logProviderEnvDiagnostics(): void {
   }
 }
 
-export function createApp(): Hono<AppEnv> {
+export interface CreateAppOptions {
+  /**
+   * When set, only the generated route shard that can match this pathname is
+   * mounted; the resulting app must only be dispatched requests whose shard
+   * key equals `routeShardKey(requestPath)`. Omit to mount every route.
+   */
+  readonly requestPath?: string;
+}
+
+/**
+ * Process-global wiring that must happen exactly once per isolate. Sharding
+ * builds several apps in one isolate, but these calls mutate module-level
+ * singletons — re-running them would replace a dispatcher that in-flight
+ * requests (or a test's `setAuditDispatcher`) already hold.
+ */
+let globalWiringInstalled = false;
+
+function installProcessGlobalWiring(): void {
+  if (globalWiringInstalled) return;
+
   // Initialise the global audit dispatcher (auth_events sink + optional
-  // console sink) before any route handlers run. Idempotent — safe to
-  // call from tests too.
+  // console sink) before any route handlers run.
   initAuditDispatcher();
 
   // Apps (Product 2): when enabled, wire the deploy trigger so
@@ -235,6 +260,21 @@ export function createApp(): Hono<AppEnv> {
       "[bootstrap-app] APPS_DEPLOY_ENABLED=1 ignored in production without APPS_DEPLOY_ALLOWED_ORG_IDS",
     );
   }
+
+  // Publish completion only after every required singleton mutation succeeds.
+  // A failed initialization must remain retryable in the same isolate.
+  globalWiringInstalled = true;
+}
+
+/** Reset the once-per-isolate guard so a test can assert the wiring reruns. */
+export function resetProcessGlobalWiringForTests(): void {
+  globalWiringInstalled = false;
+}
+
+export async function createApp(
+  options?: CreateAppOptions,
+): Promise<Hono<AppEnv>> {
+  installProcessGlobalWiring();
 
   const app = new Hono<AppEnv>({ strict: false });
 
@@ -519,7 +559,11 @@ export function createApp(): Hono<AppEnv> {
     return c.json({ language });
   });
 
-  mountRoutes(app);
+  if (options?.requestPath === undefined) {
+    await mountRoutes(app);
+  } else {
+    await mountShardRoutes(app, routeShardKey(options.requestPath));
+  }
 
   app.notFound((c) =>
     c.json(

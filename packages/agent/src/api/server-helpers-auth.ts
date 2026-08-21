@@ -31,6 +31,8 @@ const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
 const APP_ORIGIN_RE =
   /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+const CREDENTIALED_APP_ORIGIN_RE =
+  /^(capacitor|capacitor-electron|app|tauri|electrobun):\/\/.*$/i;
 
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
@@ -148,17 +150,21 @@ export function resolveCorsOrigin(origin?: string): string | null {
  * binds may reflect an origin for explicit bearer-token clients, but ambient
  * cookies are enabled only for configured or app-owned origin classes.
  */
-function isCredentialedCorsOrigin(origin: string | undefined): boolean {
+export function isCredentialedCorsOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
   const trimmed = origin.trim();
-  if (!trimmed || trimmed === "null" || trimmed === "file://") return false;
+  if (!trimmed || trimmed === "null" || trimmed.startsWith("file:")) {
+    return false;
+  }
 
   const configuredOrigin = resolveAllowedOrigins(process.env).find(
     (allowedOrigin) => allowedOrigin === trimmed,
   );
   if (configuredOrigin) return true;
 
-  return LOCAL_ORIGIN_RE.test(trimmed) || APP_ORIGIN_RE.test(trimmed);
+  return (
+    LOCAL_ORIGIN_RE.test(trimmed) || CREDENTIALED_APP_ORIGIN_RE.test(trimmed)
+  );
 }
 
 function isBrowserCompanionExtensionOrigin(

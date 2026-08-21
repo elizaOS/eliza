@@ -26,7 +26,7 @@ cask "elizaos-app" do
 
   name "elizaOS App"
   desc "Personal AI assistant — cute agents for the acceleration"
-  homepage "https://github.com/elizaos/elizaos-app"
+  homepage "https://github.com/elizaOS/eliza"
 
   livecheck do
     url "https://github.com/elizaos/elizaos-app/releases"

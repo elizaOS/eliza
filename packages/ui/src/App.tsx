@@ -137,7 +137,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
   listenForConnectRequests,
-  NAVIGATE_VIEW_EVENT,
+  listenForNavigateViewRequests,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
@@ -2770,7 +2770,12 @@ function AppContent() {
     // deep-links a section. Route it through the same settings state the
     // slash-command path uses (initialSection + #hash) instead of the generic
     // path nav, which would drop the requested section.
-    const handleNavigateView = (event: Event) => {
+    // Returns whether the request was actually applied — this is the
+    // canonical, single-owner handler `listenForNavigateViewRequests` claims
+    // the intent for, so an accurate `true`/`false` here (not just "was
+    // invoked") is what lets a cold-boot Android deep link only get
+    // acknowledged once its navigation genuinely landed (see events/index.ts).
+    const handleNavigateView = (event: Event): boolean => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
       if (
         detail?.subview &&
@@ -2784,15 +2789,15 @@ function AppContent() {
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
         markCompletedActionNavigationHandled(event, detail);
-        return;
+        return true;
       }
-      if (baseHandler(event)) {
+      const handled = baseHandler(event);
+      if (handled) {
         markCompletedActionNavigationHandled(event, detail);
       }
+      return handled;
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
-    return () =>
-      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
+    return listenForNavigateViewRequests(handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,

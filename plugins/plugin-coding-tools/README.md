@@ -14,7 +14,7 @@ The plugin registers three umbrella actions and a set of supporting services:
 
 Supporting services (automatically started):
 
-- **SandboxService** — path policy engine. Blocks user-private and OS-system paths by default; optionally constrains access to configured workspace roots.
+- **SandboxService** — path policy engine for FILE, WORKTREE, and the SHELL working directory. Blocks user-private and OS-system paths by default; optionally constrains those validated paths to configured workspace roots. It does not confine paths referenced by a shell command.
 - **FileStateService** — tracks file mtimes per conversation so write/edit operations are rejected if the file was externally modified since the agent last read it.
 - **SessionCwdService** — per-conversation working directory used by relative file operations and default-path tools. Defaults to `process.cwd()`; updated by WORKTREE operations.
 - **BackgroundShellService** — owns per-conversation background shell sessions and reaps all child process groups on plugin teardown.
@@ -46,7 +46,7 @@ All settings are optional. Configure via environment variables or agent settings
 
 | Setting | Default | Description |
 |---|---|---|
-| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute paths the tools may access. Files outside these roots are rejected. |
+| `CODING_TOOLS_WORKSPACE_ROOTS` | `process.cwd()` | Comma-separated absolute roots for FILE and WORKTREE paths and the SHELL working directory. This does not restrict paths that a SHELL command reads or writes. |
 | `CODING_TOOLS_BLOCKED_PATHS` | (built-in) | Comma-separated absolute paths to block — replaces the default blocklist. |
 | `CODING_TOOLS_BLOCKED_PATHS_ADD` | — | Paths to add to the default blocklist. |
 | `CODING_TOOLS_SHELL_TIMEOUT_MS` | `120000` | Optional canonical decimal integer from `100` through `600000` used as the default SHELL timeout (ms); invalid values fail before execution and per-call `timeout` takes precedence within the same range. |
@@ -56,6 +56,15 @@ All settings are optional. Configure via environment variables or agent settings
 | `CODING_TOOLS_MAX_READ_LINES` | `2000` | Max lines returned by FILE action=read. |
 | `CODING_TOOLS_MAX_FILE_SIZE_BYTES` | `262144` | File size cap for reads (bytes). Larger files are rejected. |
 | `CODING_TOOLS_GREP_HEAD_LIMIT` | `250` | Max output lines for GREP. Set to 0 to disable. |
+
+### SHELL trust boundary
+
+SHELL is an owner-only trusted command executor, not an OS filesystem sandbox.
+`CODING_TOOLS_WORKSPACE_ROOTS` validates where a command starts, but an
+arbitrary shell command can still address paths outside those roots. Deploy the
+plugin only where the OWNER role and host/container boundary are trusted for
+that access. Static command analysis and the command denylist are safety checks,
+not filesystem confinement.
 
 The folded `ShellService` retains these compatibility settings for external
 callers of `runtime.getService("shell").exec()` / `executeCommand()`; the
