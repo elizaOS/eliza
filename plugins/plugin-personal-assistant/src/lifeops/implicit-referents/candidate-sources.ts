@@ -19,6 +19,7 @@
  */
 
 import type { FactMetadata, IAgentRuntime, Memory } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { resolveOwnerFactStore } from "../owner/fact-store.js";
 import type {
   ImplicitReferentCandidate,
@@ -96,8 +97,11 @@ function factToCandidate(
   const summary = factText(memory);
   if (!summary) return null;
   const source: ImplicitReferentSource = "owner_fact";
+  const wellFormedSummary = toWellFormedUnicode(summary);
   const label =
-    summary.length > 60 ? `${summary.slice(0, 59).trimEnd()}…` : summary;
+    wellFormedSummary.length > 60
+      ? `${truncateWellFormed(wellFormedSummary, 59).trimEnd()}…`
+      : wellFormedSummary;
   const prior = factPrior(memory);
   const tags = factTags(memory);
   const occurredAt = factOccurredAt(memory);
