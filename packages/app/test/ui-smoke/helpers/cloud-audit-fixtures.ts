@@ -195,6 +195,16 @@ const STUB_RULES: StubRule[] = [
     body: { text: "Hello from Eliza" },
   },
   {
+    // Chat history hydration/pagination for the conversation created above —
+    // the shell requests /messages (optionally with ?before=) once the
+    // conversation mounts; an unmatched fall-through 404s and trips the
+    // zero-diagnostics guard in specs that assert a clean console.
+    match: prefix(
+      "/api/conversations/cloud-management-smoke-conversation/messages",
+    ),
+    body: { messages: [], hasMore: false },
+  },
+  {
     match: path_("/api/agent/events"),
     body: {
       events: [],
