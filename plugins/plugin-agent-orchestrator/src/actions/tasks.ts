@@ -32,9 +32,9 @@ import {
 } from "@elizaos/core";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
+  acceptanceCriteriaForTask,
   detectTaskType,
   type OrchestratorTaskType,
-  staticAcceptanceCriteria,
   workspaceMutationExpected,
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
@@ -1083,10 +1083,10 @@ async function runCreateLegacy(
   // display title/goal, which may be as terse as "Hello Agent V2". This keeps
   // a one-file script task from inheriting the broad coding fallback
   // (typecheck/lint/tests/diff) that can never be proven in a bare workspace.
-  const acceptanceCriteria =
-    requestedAcceptanceCriteria.length > 0
-      ? requestedAcceptanceCriteria
-      : staticAcceptanceCriteria(tasks.join("\n"));
+  const acceptanceCriteria = acceptanceCriteriaForTask(
+    tasks.join("\n"),
+    requestedAcceptanceCriteria,
+  );
   const taskRoomId =
     typeof swarmRoomMetadata.taskRoomId === "string"
       ? swarmRoomMetadata.taskRoomId
@@ -2301,10 +2301,10 @@ async function runSpawnAgent(
             // The child is already live at this point. Supply the deterministic
             // contract so createTask cannot block durable ownership on an
             // optional model refinement before attachSession runs.
-            acceptanceCriteria:
-              requestedAcceptanceCriteria.length > 0
-                ? requestedAcceptanceCriteria
-                : staticAcceptanceCriteria(task),
+            acceptanceCriteria: acceptanceCriteriaForTask(
+              task,
+              requestedAcceptanceCriteria,
+            ),
             originalRequest: requestText(message),
             ...(session.workdir ? { workdir: session.workdir } : {}),
             ...(message.roomId ? { roomId: message.roomId } : {}),

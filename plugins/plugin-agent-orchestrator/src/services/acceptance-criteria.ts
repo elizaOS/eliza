@@ -220,6 +220,37 @@ export function staticAcceptanceCriteria(
   return [...DEFAULT_CRITERIA_TEMPLATES[type]];
 }
 
+/**
+ * Resolve planner-supplied criteria without letting the planner's generic
+ * coding template override a more specific deterministic task type. Guided
+ * planners commonly populate every optional array with the coding defaults;
+ * for a standalone script that manufactures impossible typecheck/lint gates.
+ * Truly custom criteria remain authoritative.
+ */
+export function acceptanceCriteriaForTask(
+  goal: string,
+  requested: readonly string[],
+): string[] {
+  const specialized = staticAcceptanceCriteria(goal);
+  if (requested.length === 0) return specialized;
+  if (detectTaskType(goal) === "coding") return [...requested];
+
+  const generic = staticAcceptanceCriteria(goal, "coding");
+  const normalized = (items: readonly string[]) =>
+    items.map((item) => item.trim().toLowerCase());
+  const normalizedRequested = normalized(requested);
+  const normalizedGeneric = normalized(generic);
+  if (
+    requested.length === generic.length &&
+    normalizedRequested.every(
+      (item, index) => item === normalizedGeneric[index],
+    )
+  ) {
+    return specialized;
+  }
+  return [...requested];
+}
+
 /** Build the refinement prompt: hand the model the goal + the static template
  *  and ask it to return 3-5 concrete, measurable criteria as a JSON object. */
 function buildRefinePrompt(

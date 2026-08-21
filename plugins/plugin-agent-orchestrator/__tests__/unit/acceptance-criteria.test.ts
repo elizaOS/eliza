@@ -7,6 +7,7 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
+  acceptanceCriteriaForTask,
   DEFAULT_CRITERIA_TEMPLATES,
   detectTaskType,
   generateDefaultAcceptanceCriteria,
@@ -191,6 +192,40 @@ describe("staticAcceptanceCriteria", () => {
     expect(staticAcceptanceCriteria("deploy to prod", "view-create")).toEqual(
       staticAcceptanceCriteria("any", "view-create"),
     );
+  });
+});
+
+describe("acceptanceCriteriaForTask", () => {
+  it("replaces planner-filled generic coding gates for a standalone script", () => {
+    expect(
+      acceptanceCriteriaForTask(
+        "Create a Python script that prints prime numbers from 1 to 20 and run it",
+        [
+          "typecheck passes",
+          "lint passes",
+          "tests pass",
+          "the change is summarized in the diff",
+        ],
+      ),
+    ).toEqual([
+      "the requested script file exists in the workdir",
+      "the script exits successfully when run",
+      "the run output matches the requested examples",
+    ]);
+  });
+
+  it("preserves genuinely custom planner criteria", () => {
+    expect(
+      acceptanceCriteriaForTask("create and run check.py", [
+        "check.py prints exactly READY",
+        "the command exits with status zero",
+        "the file contains no network access",
+      ]),
+    ).toEqual([
+      "check.py prints exactly READY",
+      "the command exits with status zero",
+      "the file contains no network access",
+    ]);
   });
 });
 
