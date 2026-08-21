@@ -3963,7 +3963,7 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
  *  no [tool output] markers, that response IS the deliverable — relay it
  *  verbatim. */
 const OUTPUT_ASK_RE =
-  /\b(?:show|print|display|give|tell|share)\b[\s\S]{0,40}\b(?:output|result|results)\b|\bwhat(?:'s| is) the (?:output|result)\b|\b(?:run|execute|rerun|re-run)\b[\s\S]{0,30}\b(?:it|again)\b/i;
+  /\b(?:show|print|display|give|tell|share)\b[\s\S]{0,40}\b(?:output|result|results)\b|\bwhat(?:'s| is) the (?:output|result)\b|\b(?:run|execute|rerun|re-run)\b[\s\S]{0,40}\b(?:it|again|once\s+more|one\s+more\s+time)\b/i;
 
 export function extractAskedOutputDeliverable(
   data: unknown,

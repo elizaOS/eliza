@@ -18,7 +18,7 @@ import { TERMINAL_SESSION_STATUSES } from "../services/types.js";
 /** Run/show verb aimed at prior work ("it", "again", the/that <thing>) or an
  *  output ask. Bare coding asks ("write me a script") carry none of these. */
 const RUN_FOLLOWUP_RE =
-  /\b(?:run|execute|rerun|re-run)\b[\s\S]{0,60}\b(?:it|its|again|that|the)\b|\bshow\s+me\b[\s\S]{0,60}\b(?:output|result|prints?)\b|\bwhat\s+(?:does|did)\s+it\s+print\b/i;
+  /\b(?:run|execute|rerun|re-run)\b[\s\S]{0,60}\b(?:it|its|again|that|the|once\s+more|one\s+more\s+time)\b|\bshow\s+me\b[\s\S]{0,60}\b(?:output|result|prints?)\b|\bwhat\s+(?:does|did)\s+it\s+print\b/i;
 
 const RECENT_TERMINAL_WINDOW_MS = 30 * 60_000;
 

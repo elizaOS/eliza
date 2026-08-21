@@ -2032,10 +2032,15 @@ async function runCreate(
       ) &&
       !claimCreateForMessage(runtime, originId)
     ) {
-      return duplicateSpawnGuardResult(runtime, callback, {
-        name: "this request",
-        status: "already launched",
-      });
+      // Planner-facing only: the first lane's kickoff already told the user
+      // work started — a visible "already launched" bubble is pure noise
+      // (live 2026-08-21). continueChain:false ends the turn quietly.
+      return {
+        success: true,
+        text: "This request already launched a lane this turn; no second lane started. Do not retry.",
+        data: { actionName: "TASKS", duplicateSpawnGuard: true },
+        continueChain: false,
+      };
     }
   }
   // Fail fast on empty/derived-only tasks BEFORE any planner or ACP work; this
