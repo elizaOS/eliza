@@ -13,6 +13,8 @@ export interface ClockAdapter {
 
 interface ScheduledTimer {
   id: string;
+  /** Monotonic registration order; ties on dueMs run strictly FIFO by seq. */
+  seq: number;
   dueMs: number;
   callback: () => void | Promise<void>;
   intervalMs?: number;
@@ -154,10 +156,7 @@ export class VirtualClock {
       timezone: this.timezone,
       sequence: this.sequence,
       timers: [...this.timers.values()]
-        .sort(
-          (left, right) =>
-            left.dueMs - right.dueMs || left.id.localeCompare(right.id),
-        )
+        .sort((left, right) => left.dueMs - right.dueMs || left.seq - right.seq)
         .map((timer) => ({
           id: timer.id,
           dueAt: new Date(timer.dueMs).toISOString(),
@@ -175,9 +174,11 @@ export class VirtualClock {
   ): string {
     if (!Number.isFinite(delayMs) || delayMs < 0)
       throw new RangeError("Virtual timer delay must be non-negative");
-    const id = `timer-${++this.sequence}`;
+    const seq = ++this.sequence;
+    const id = `timer-${seq}`;
     this.timers.set(id, {
       id,
+      seq,
       dueMs: this.currentMs + delayMs,
       callback,
       intervalMs,
@@ -189,8 +190,7 @@ export class VirtualClock {
     return [...this.timers.values()]
       .filter((timer) => timer.dueMs <= targetMs)
       .sort(
-        (left, right) =>
-          left.dueMs - right.dueMs || left.id.localeCompare(right.id),
+        (left, right) => left.dueMs - right.dueMs || left.seq - right.seq,
       )[0];
   }
 }

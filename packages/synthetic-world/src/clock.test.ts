@@ -23,6 +23,30 @@ describe("VirtualClock", () => {
     expect(clock.nowIso()).toBe("2030-01-01T00:00:00.020Z");
   });
 
+  it("preserves exact FIFO registration order past ten same-deadline timers", async () => {
+    const clock = new VirtualClock("2030-01-01T00:00:00.000Z");
+    const events: number[] = [];
+    const total = 12;
+    for (let i = 1; i <= total; i += 1) {
+      if (i % 2 === 0) {
+        clock.setTimeout(async () => {
+          await Promise.resolve();
+          events.push(i);
+        }, 10);
+      } else {
+        clock.setTimeout(() => {
+          events.push(i);
+        }, 10);
+      }
+    }
+    const snapshotIds = clock.snapshot().timers.map((timer) => timer.id);
+    expect(snapshotIds).toEqual(
+      Array.from({ length: total }, (_, i) => `timer-${i + 1}`),
+    );
+    expect(await clock.advanceBy(10)).toBe(total);
+    expect(events).toEqual(Array.from({ length: total }, (_, i) => i + 1));
+  });
+
   it("drives sleep and recurring work through explicit advancement", async () => {
     const clock = new VirtualClock("2030-01-01T00:00:00.000Z");
     let intervals = 0;
