@@ -5236,6 +5236,19 @@ describe("runV5MessageRuntimeStage1", () => {
 				expect(decision.text).not.toContain("finished");
 			});
 
+			it("recovers a mixed-outcome early-ack turn because one failed action may own the handoff", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: true }, { success: false }],
+					stageOneAck: "On it.",
+					earlyReplySent: true,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toContain("Some steps completed and some failed");
+				expect(decision.text).not.toBe("On it.");
+			});
+
 			it("declines to recover a successful early-ack turn with nothing grounded to say", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "",

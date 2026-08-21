@@ -2019,7 +2019,7 @@ export type ZeroDeliveryRecoverySource =
  * Stage-1 ack ONLY when no early ack already shipped it, then a hardcoded
  * fallback whose wording is failure-aware — it claims completion only when at
  * least one tool actually succeeded. After an early progress ack the turn
- * recovers only when grounded text exists or every tool failed: a successful
+ * recovers only when grounded text exists or any tool failed: a successful
  * async handoff reports through a later completion relay, so manufacturing a
  * "finished" line behind its ack would be a lie, while a failed handoff will
  * never relay anything and the ack's promise must be corrected.
@@ -2077,7 +2077,7 @@ export function resolveZeroDeliveryRecovery(args: {
 		!args.earlyReplySent ||
 		Boolean(args.plannedText) ||
 		lastActionUserFacingText.length > 0 ||
-		actionSuccessCount === 0;
+		actionFailureCount > 0;
 	return { recover, text, source, actionSuccessCount, actionFailureCount };
 }
 
@@ -9906,7 +9906,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// twice (#20086). One asymmetry is deliberate: the early ack only
 		// ships ahead of an async handoff, whose completion arrives through a
 		// later relay turn — after an ack, recover only when grounded terminal
-		// text exists or every tool failed (a failed handoff will never relay
+		// text exists or any tool failed (a failed handoff will never relay
 		// a completion, so the ack's promise must be corrected). A successful
 		// ack-then-background turn with nothing grounded to say stays silent.
 		const zeroDeliveryRecovery = resolveZeroDeliveryRecovery({
