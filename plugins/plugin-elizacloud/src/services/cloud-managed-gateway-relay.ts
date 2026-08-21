@@ -116,12 +116,19 @@ function toJsonRecord(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
 }
 
-function toJsonMetadataRecord(value: unknown): Record<string, JsonValue> | undefined {
+export function toJsonMetadataRecord(
+  value: unknown,
+): Record<string, JsonValue> | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
+  } catch {
+    // error-policy:J3 untrusted metadata may contain circular references or invalid JSON values; fail closed to undefined.
+    return undefined;
+  }
 }
 
 type GatewayMessagePayload = {
