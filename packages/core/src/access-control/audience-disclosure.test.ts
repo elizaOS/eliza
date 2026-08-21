@@ -366,3 +366,45 @@ describe("owner-DM parity with decisionFromAudience", () => {
 		);
 	});
 });
+
+// A resolver that throws denies the member, which is correct — but it must not
+// be indistinguishable from a deliberate deny, or a broken viewer lookup reads
+// as a policy decision forever. This module is pure, so it records the fault
+// instead of reporting it, and the gate caller surfaces it.
+describe("resolver failures are distinguishable from denials", () => {
+	it("records the member and still admits nothing", () => {
+		const audience = {
+			agentEntityId: "00000000-0000-0000-0000-0000000000a0",
+			participantEntityIds: ["00000000-0000-0000-0000-0000000000b1"],
+		} as never;
+
+		const admission = resolveAudienceAdmission(
+			{ scope: "room" } as never,
+			audience,
+			() => {
+				throw new Error("viewer lookup exploded");
+			},
+		);
+
+		expect(admission.level).toBe("none");
+		expect(admission.resolverFailureEntityIds).toEqual([
+			"00000000-0000-0000-0000-0000000000b1",
+		]);
+	});
+
+	it("reports no failures when every resolver answers", () => {
+		const audience = {
+			agentEntityId: "00000000-0000-0000-0000-0000000000a0",
+			participantEntityIds: ["00000000-0000-0000-0000-0000000000b1"],
+		} as never;
+
+		const admission = resolveAudienceAdmission(
+			{ scope: "room" } as never,
+			audience,
+			() => "none",
+		);
+
+		expect(admission.level).toBe("none");
+		expect(admission.resolverFailureEntityIds).toEqual([]);
+	});
+});

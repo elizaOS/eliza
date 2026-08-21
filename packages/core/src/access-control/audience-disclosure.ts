@@ -75,6 +75,13 @@ export interface AudienceAdmission {
 	 * subject as stored; a redacted-capped member still blocks full delivery).
 	 */
 	blockingEntityIds: readonly UUID[];
+	/**
+	 * Members whose resolver threw. They are admitted nothing, exactly like an
+	 * explicit deny — but a caller reporting "who blocked this" must be able to
+	 * tell a deliberate denial from a resolver that failed, or a broken viewer
+	 * lookup looks like a policy decision forever.
+	 */
+	resolverFailureEntityIds: readonly UUID[];
 }
 
 const LEVEL_RANK: Readonly<Record<DisclosureLevel, number>> = Object.freeze({
@@ -183,15 +190,19 @@ export function resolveAudienceAdmission(
 	const members = audienceMembers(audience);
 	const perEntity = new Map<UUID, DisclosureLevel>();
 	if (members === null || members.length === 0) {
-		// error-policy:J4 fail closed — no verifiable census means no audience
-		// earns anything; an empty room has nobody to disclose to.
+		// Fail closed: no verifiable census means no audience earns anything,
+		// and an empty room has nobody to disclose to. (Not an error-policy
+		// case — this is an ordinary guard, and tagging it would pollute the
+		// grep that exists to audit retained catches.)
 		return Object.freeze({
 			level: "none" as const,
 			perEntity,
 			blockingEntityIds: EMPTY_UUIDS,
+			resolverFailureEntityIds: EMPTY_UUIDS,
 		});
 	}
 	const blocking: UUID[] = [];
+	const resolverFailures: UUID[] = [];
 	let level: DisclosureLevel = "full";
 	for (const entityId of members) {
 		let memberLevel: DisclosureLevel = "none";
@@ -201,8 +212,15 @@ export function resolveAudienceAdmission(
 				memberLevel = isDisclosureLevel(resolved) ? resolved : "none";
 			} catch {
 				// error-policy:J4 a viewer that cannot be evaluated is admitted
-				// nothing; the lookup failure never degrades into access.
+				// nothing, so a lookup failure never degrades into access. This
+				// module is deliberately pure, so it cannot report the fault
+				// itself — instead the member is recorded in
+				// `resolverFailureEntityIds`, which makes the failure a visibly
+				// distinct state rather than one indistinguishable from a
+				// deliberate deny. The gate caller is responsible for surfacing
+				// it.
 				memberLevel = "none";
+				resolverFailures.push(entityId);
 			}
 		}
 		perEntity.set(entityId, memberLevel);
@@ -215,5 +233,6 @@ export function resolveAudienceAdmission(
 		level,
 		perEntity,
 		blockingEntityIds: Object.freeze(blocking),
+		resolverFailureEntityIds: Object.freeze(resolverFailures),
 	});
 }
