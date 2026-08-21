@@ -14,7 +14,11 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
-import { downloadSocialMediaBytes } from "../media-download";
+import {
+  assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+} from "../media-download";
 import { withRetry } from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
@@ -251,9 +255,10 @@ export const blueskyProvider: SocialMediaProvider = {
 
           let imageData: Buffer;
           if (media.data) {
+            assertSocialMediaBytesWithinBudget(media.data.length, { platform: "bluesky" });
             imageData = media.data;
           } else if (media.base64) {
-            imageData = Buffer.from(media.base64, "base64");
+            imageData = decodeSocialMediaBase64(media.base64, { platform: "bluesky" });
           } else if (media.url) {
             imageData = await downloadSocialMediaBytes(media.url);
           } else {
@@ -427,9 +432,10 @@ export const blueskyProvider: SocialMediaProvider = {
 
     let imageData: Buffer;
     if (media.data) {
+      assertSocialMediaBytesWithinBudget(media.data.length, { platform: "bluesky" });
       imageData = media.data;
     } else if (media.base64) {
-      imageData = Buffer.from(media.base64, "base64");
+      imageData = decodeSocialMediaBase64(media.base64, { platform: "bluesky" });
     } else if (media.url) {
       imageData = await downloadSocialMediaBytes(media.url);
     } else {
