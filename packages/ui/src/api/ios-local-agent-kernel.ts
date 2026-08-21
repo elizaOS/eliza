@@ -64,6 +64,7 @@ import {
   positiveFiniteNumber,
 } from "./ios-local-agent-mobile-policy";
 import type { IttpAgentRequestContext } from "./ittp-agent-transport";
+import { createTimeoutSignal, isTimeoutAbortError } from "./timeout-signal";
 
 const STORAGE_PREFIX = "eliza:ios-local-agent";
 const CONVERSATIONS_KEY = `${STORAGE_PREFIX}:conversations:v1`;
@@ -83,6 +84,12 @@ const DEFAULT_CLOUD_MARKET_PREVIEW_BASE_URL = "https://eliza.app";
 const CLOUD_WALLET_MARKET_OVERVIEW_PATH = "/market/preview/wallet-overview";
 const WALLET_MARKET_OVERVIEW_CACHE_TTL_MS = 120_000;
 const WALLET_MARKET_OVERVIEW_FETCH_TIMEOUT_MS = 8_000;
+// Cloud bridge relays a full LLM turn; 60 s matches the model gateway's server
+// timeout so the client does not hang forever on a cold regional worker.
+export const CLOUD_BRIDGE_REQUEST_TIMEOUT_MS = 60_000;
+// Eliza-1 manifest is a small JSON (< 50 KB) over Hugging Face CDN; 30 s is
+// generous even for a cold link while still bounding a hung fetch.
+export const IOS_BUNDLE_MANIFEST_TIMEOUT_MS = 30_000;
 const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   preferredProvider: {},
   policy: {},
@@ -2389,51 +2396,67 @@ async function sendPromptToIosCloud(
     throw new IosCloudNotPairedError("Eliza Cloud is not paired.");
   }
 
-  const response = await fetch(
-    `${pairing.apiBase}/api/v1/eliza/agents/${encodeURIComponent(pairing.agentId)}/bridge`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        authorization: `Bearer ${pairing.token}`,
+  // Portable 60 s bound — `AbortSignal.timeout` is missing on iOS 16.0-16.3.
+  const { signal: cloudBridgeSignal, dispose: disposeCloudBridgeSignal } =
+    createTimeoutSignal(CLOUD_BRIDGE_REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(
+      `${pairing.apiBase}/api/v1/eliza/agents/${encodeURIComponent(pairing.agentId)}/bridge`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          authorization: `Bearer ${pairing.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: randomId("cloud"),
+          method: "message.send",
+          params: { text: prompt },
+        }),
+        signal: cloudBridgeSignal,
       },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: randomId("cloud"),
-        method: "message.send",
-        params: { text: prompt },
-      }),
-    },
-  );
-  if (!response.ok) {
-    throw new Error(`Cloud bridge failed: HTTP ${response.status}`);
-  }
-
-  // error-policy:J3 body-parse failure becomes the explicit non-object throw
-  // below instead of a fabricated bridge reply.
-  const body = asRecord(await response.json().catch(() => null));
-  if (!body) {
-    throw new Error("Cloud bridge returned a non-object response.");
-  }
-  const error = asRecord(body.error);
-  if (error) {
-    throw new Error(
-      stringValue(error.message) ?? "Cloud bridge returned an error.",
     );
+    if (!response.ok) {
+      throw new Error(`Cloud bridge failed: HTTP ${response.status}`);
+    }
+
+    // Keep the timeout signal alive through the body stream — headers may
+    // arrive well before the timeout while the body is still stalled.
+    // error-policy:J3 body-parse failure becomes the explicit non-object
+    // throw below instead of a fabricated bridge reply; timeout aborts
+    // rethrow so handleIosCloudChat surfaces the 502 bridge failure.
+    const body = asRecord(
+      await response.json().catch((err: unknown) => {
+        if (isTimeoutAbortError(err)) throw err;
+        return null;
+      }),
+    );
+    if (!body) {
+      throw new Error("Cloud bridge returned a non-object response.");
+    }
+    const error = asRecord(body.error);
+    if (error) {
+      throw new Error(
+        stringValue(error.message) ?? "Cloud bridge returned an error.",
+      );
+    }
+    const result = asRecord(body.result);
+    const text = cloudBridgeResultText(result);
+    if (!text) {
+      throw new Error("Cloud bridge response missing text.");
+    }
+    const modelId = stringValue(result?.model);
+    return {
+      text,
+      promptTokens: 0,
+      completionTokens: 0,
+      ...(modelId ? { modelId } : {}),
+    };
+  } finally {
+    disposeCloudBridgeSignal();
   }
-  const result = asRecord(body.result);
-  const text = cloudBridgeResultText(result);
-  if (!text) {
-    throw new Error("Cloud bridge response missing text.");
-  }
-  const modelId = stringValue(result?.model);
-  return {
-    text,
-    promptTokens: 0,
-    completionTokens: 0,
-    ...(modelId ? { modelId } : {}),
-  };
 }
 
 async function handleIosCloudChat(request: Request): Promise<Response> {
@@ -2857,13 +2880,43 @@ async function downloadIosBundle(
     model,
     model.bundleManifestFile,
   );
-  const manifestResponse = await fetch(manifestUrl, { redirect: "follow" });
-  if (!manifestResponse.ok) {
-    throw new PublicLocalModelDownloadError(
-      `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
+  // Portable 30 s bound — small JSON over Hugging Face CDN; keep the signal
+  // alive through `response.json()` so a headers-received + stalled-body hang
+  // is still bounded. `AbortSignal.timeout` would throw on iOS 16.0-16.3.
+  // Fetch, parse, and timeout aborts all propagate to startDownload's job
+  // boundary, which records the failed download state.
+  const manifest = await (async () => {
+    const { signal, dispose } = createTimeoutSignal(
+      IOS_BUNDLE_MANIFEST_TIMEOUT_MS,
     );
-  }
-  const manifest = parseIosBundleManifest(await manifestResponse.json(), model);
+    try {
+      const manifestResponse = await fetch(manifestUrl, {
+        redirect: "follow",
+        signal,
+      });
+      if (!manifestResponse.ok) {
+        throw new PublicLocalModelDownloadError(
+          `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
+        );
+      }
+      return parseIosBundleManifest(await manifestResponse.json(), model);
+    } catch (err) {
+      // error-policy:J2 a manifest timeout becomes a public download error so
+      // the models UI names the cause; other failures keep their contained
+      // "Model download failed" diagnostics from startDownload's boundary.
+      if (isTimeoutAbortError(err)) {
+        throw new PublicLocalModelDownloadError(
+          `Timed out fetching ${model.displayName} manifest after ${Math.round(
+            IOS_BUNDLE_MANIFEST_TIMEOUT_MS / 1000,
+          )} s`,
+          { cause: err },
+        );
+      }
+      throw err;
+    } finally {
+      dispose();
+    }
+  })();
 
   const files: Record<string, string> = {};
   let bundleSizeBytes = 0;
