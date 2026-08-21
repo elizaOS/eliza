@@ -6,7 +6,13 @@
  */
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,
@@ -229,12 +235,20 @@ function newReportId(): string {
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function clip(text: string, maxLength = 220): string {
+export function clip(text: string, maxLength = 220): string {
   const trimmed = text.replace(/\s+/g, " ").trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
+  const wellFormed = toWellFormedUnicode(trimmed);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+  if (maxLength <= 0) {
+    return "";
+  }
+  const suffix = "...";
+  if (maxLength <= suffix.length) {
+    return truncateWellFormed(suffix, maxLength);
+  }
+  return `${truncateWellFormed(wellFormed, maxLength - suffix.length).trimEnd()}${suffix}`;
 }
 
 function parseMs(value: string | null | undefined): number | null {

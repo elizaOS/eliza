@@ -6,6 +6,7 @@ import {
   sortBriefingItems,
   toFiniteNonNegativeNumber,
 } from "./checkin-briefing-ranking.js";
+import { clip } from "./checkin-service.js";
 import type { CheckinBriefingItem } from "./types.js";
 
 function item(
@@ -72,5 +73,37 @@ describe("check-in briefing ranking", () => {
     expect(toFiniteNonNegativeNumber(Number.NaN)).toBe(0);
     expect(toFiniteNonNegativeNumber(-3)).toBe(0);
     expect(toFiniteNonNegativeNumber(7)).toBe(7);
+  });
+});
+
+describe("check-in item detail clip", () => {
+  it("never splits surrogate pairs at the truncation boundary", () => {
+    const text = `${"a".repeat(216)}🦊${"b".repeat(50)}`;
+    const clipped = clip(text, 220);
+    expect(clipped.isWellFormed()).toBe(true);
+    expect(clipped).toBe(`${"a".repeat(216)}...`);
+    expect(clipped.length).toBe(219);
+  });
+
+  it("sanitizes lone surrogates before clipping", () => {
+    const text = `bad ${String.fromCharCode(0xd800)} item detail`;
+    const clipped = clip(text, 220);
+    expect(clipped.isWellFormed()).toBe(true);
+    expect(clipped).toBe("bad \uFFFD item detail");
+  });
+
+  it("preserves fitting emoji without truncation", () => {
+    const text = "meeting with team 🦊";
+    const clipped = clip(text, 220);
+    expect(clipped).toBe("meeting with team 🦊");
+    expect(clipped.isWellFormed()).toBe(true);
+  });
+
+  it("handles boundary lengths and edge cases cleanly", () => {
+    expect(clip("hello", 0)).toBe("");
+    expect(clip("hello", -1)).toBe("");
+    expect(clip("hello", 2)).toBe("..");
+    expect(clip("hello", 3)).toBe("...");
+    expect(clip("hello", 5)).toBe("hello");
   });
 });
