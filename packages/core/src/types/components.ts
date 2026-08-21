@@ -14,7 +14,7 @@ import type {
 	RoleGate,
 } from "./contexts";
 import type { EffectReceipt } from "./effects";
-import type { Memory } from "./memory";
+import type { DisclosureSubject, Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
 import type { ActionPlan, State } from "./state";
@@ -342,10 +342,20 @@ export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const;
  * Non-overridable policy for components whose prompt or result can contain
  * owner-private data. Unlike a role gate, this binds access to the attested
  * destination audience as well as the actor.
+ *
+ * Two forms, both fail-closed:
+ *  - `owner_exclusive` (the original, unchanged): the destination must be a
+ *    verified owner-only room — evaluated by `decisionFromAudience`.
+ *  - `audience_admission` (added with the min-over-members policy wiring): the
+ *    gate admits the component only when the ATTESTED delivery audience as a
+ *    whole earns full disclosure for `subject`, computed by
+ *    `resolveAudienceAdmission` over the same attested census. One ungranted
+ *    non-agent member caps the room, exactly like `owner_exclusive` is the
+ *    degenerate two-party-owner-DM case of this policy.
  */
-export interface DisclosureGate {
-	require: "owner_exclusive";
-}
+export type DisclosureGate =
+	| { require: "owner_exclusive" }
+	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
 	/** Action name */
