@@ -5,6 +5,7 @@
 export const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
 export const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
   30 * 24 * 60 * 60 * 1000;
+export const MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS = 5 * 60 * 1000;
 
 type BrowserBridgeCompanionPairingTokenEnv = {
   readonly [key: string]: string | undefined;
@@ -28,10 +29,17 @@ export function resolveBrowserBridgeCompanionPairingTokenTtlMs(
 export function resolveBrowserBridgeCompanionPairingTokenExpiresAt(
   nowMs = Date.now(),
   env?: Parameters<typeof resolveBrowserBridgeCompanionPairingTokenTtlMs>[0],
+  pairingKind: "manual" | "native_enrollment" = "manual",
 ): string {
-  return new Date(
-    nowMs + resolveBrowserBridgeCompanionPairingTokenTtlMs(env),
-  ).toISOString();
+  const configuredTtlMs = resolveBrowserBridgeCompanionPairingTokenTtlMs(env);
+  const ttlMs =
+    pairingKind === "native_enrollment"
+      ? Math.min(
+          configuredTtlMs,
+          MAX_NATIVE_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS,
+        )
+      : configuredTtlMs;
+  return new Date(nowMs + ttlMs).toISOString();
 }
 
 export function browserBridgeDomainFromUrl(url: string): string | null {
