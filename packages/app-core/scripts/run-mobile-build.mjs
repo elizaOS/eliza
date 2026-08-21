@@ -6067,6 +6067,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 
 import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -6110,6 +6112,19 @@ ${cloudBrandUserAgentMarkerLines()}
         registerPlugin(ElizaPlayVoicePlugin.class);
 
         super.onCreate(savedInstanceState);
+
+        // Draw the minimal Cloud shell behind transparent system bars while
+        // keeping both bars visible and user-controlled. This uses only the
+        // public AndroidX edge-to-edge API and avoids white-on-white status
+        // icons on the signed-out screen.
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        WindowInsetsControllerCompat systemBars =
+            WindowCompat.getInsetsController(
+                getWindow(), getWindow().getDecorView());
+        if (systemBars != null) {
+            systemBars.setAppearanceLightStatusBars(false);
+            systemBars.setAppearanceLightNavigationBars(false);
+        }
 
         if (getBridge() != null && getBridge().getWebView() != null) {
             WebSettings settings = getBridge().getWebView().getSettings();
