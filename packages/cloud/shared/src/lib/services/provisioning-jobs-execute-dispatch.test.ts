@@ -117,7 +117,7 @@ function harness(job: Job) {
     },
   };
   const recoverSpy = spyOn(jobsRepository, "recoverStaleJobs").mockResolvedValue(EMPTY_RECOVERY);
-  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(undefined);
+  const updateStatusSpy = spyOn(jobsRepository, "settleExecution").mockResolvedValue(true);
   const updateSpy = spyOn(jobsRepository, "updateForExecution").mockImplementation(
     async (claimedJob, updates) => ({
       ...claimedJob,
@@ -772,6 +772,37 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     }
   });
 
+  test("agent_delete does not honor legacy authority without complete provenance", async () => {
+    const ctx = harness(
+      makeJob(JOB_TYPES.AGENT_DELETE, {
+        authorization: "user_request",
+        stateLossAcknowledged: true,
+      }),
+    );
+    const executeDeletionSpy = stub("executeDeletion", {
+      success: true,
+      containerStopped: true,
+      rowDeleted: true,
+    });
+
+    try {
+      const res = await run(JOB_TYPES.AGENT_DELETE);
+      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request");
+      const result = completedCall(ctx)?.[2]?.result as Record<string, unknown> | undefined;
+      expect(result?.stateLossAcknowledged).toBeUndefined();
+      expect(result?.stateLossAcknowledgedByUserId).toBeUndefined();
+      expect(result?.stateLossAcknowledgedAt).toBeUndefined();
+    } finally {
+      ctx.claimSpy.mockRestore();
+      ctx.recoverSpy.mockRestore();
+      ctx.updateStatusSpy.mockRestore();
+      ctx.updateSpy.mockRestore();
+      ctx.incrementSpy.mockRestore();
+      ctx.retryLaterSpy.mockRestore();
+    }
+  });
+
   test("agent_delete honors an acknowledgement upgraded after this execution was claimed", async () => {
     // Race regression: the claimed in-memory job snapshot has no waiver, but a
     // concurrent acknowledged DELETE upgraded the durable row via upgradeReuse.
@@ -822,10 +853,9 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
 
     try {
       const res = await run(JOB_TYPES.AGENT_DELETE);
-      expect(res).toMatchObject({ succeeded: 1, failed: 0, retried: 0 });
+      expect(res).toMatchObject({ succeeded: 0, failed: 1, retried: 0 });
       expect(executeDeletionSpy).toHaveBeenCalledWith(AGENT, ORG, "user_request");
-      const result = completedCall(ctx)?.[2]?.result as Record<string, unknown> | undefined;
-      expect(result?.stateLossAcknowledged).toBeUndefined();
+      expect(completedCall(ctx)).toBeUndefined();
     } finally {
       ctx.claimSpy.mockRestore();
       ctx.recoverSpy.mockRestore();
@@ -1370,7 +1400,7 @@ describe("executeJob dispatch — type-specific disposition rules", () => {
     stub("executeSuspend", { success: true, containerStopped: true });
     ctx.updateStatusSpy
       .mockRejectedValueOnce(new Error("temporary database disconnect"))
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     try {
       const res = await run(JOB_TYPES.AGENT_SUSPEND);
       expect(res.succeeded).toBe(1);

@@ -1466,7 +1466,8 @@ export class JobsRepository {
     status: "completed" | "cancelled",
     additionalFields?: Partial<Job>,
     executionOwnerId?: string,
-  ): Promise<void> {
+    additionalFence?: SQL,
+  ): Promise<boolean> {
     const generation = requireExecutionGeneration(claimedJob);
     if (!executionOwnerId) {
       throw new Error(`Execution owner is required to settle claimed job ${claimedJob.id}`);
@@ -1484,7 +1485,7 @@ export class JobsRepository {
       updates = await prepareJobPayload(updates, claimedJob);
     }
 
-    await dbWrite.transaction(async (tx) => {
+    return await dbWrite.transaction(async (tx) => {
       if (hasAgentLifecycleFence(claimedJob)) {
         await configureElizaLifecycleTransaction(tx);
         await tx.execute(
@@ -1522,6 +1523,7 @@ export class JobsRepository {
             eq(jobs.status, "in_progress"),
             eq(jobs.execution_generation, generation),
             sql`${jobs.execution_quiesced_at} IS NULL`,
+            ...(additionalFence ? [additionalFence] : []),
             sql`EXISTS (
               SELECT 1
               FROM ${jobExecutionLeases}
@@ -1533,7 +1535,10 @@ export class JobsRepository {
           ),
         )
         .returning({ id: jobs.id });
-      if (!updated) throw new StaleJobExecutionError(claimedJob.id);
+      if (!updated) {
+        if (additionalFence) return false;
+        throw new StaleJobExecutionError(claimedJob.id);
+      }
 
       await tx
         .delete(jobExecutionLeases)
@@ -1561,6 +1566,7 @@ export class JobsRepository {
             ),
           );
       }
+      return true;
     });
   }
 

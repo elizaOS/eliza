@@ -594,12 +594,23 @@ app.delete("/", async (c) => {
       typeof enqueueResult.job.data?.stateLossAcknowledgedAt === "string"
         ? enqueueResult.job.data.stateLossAcknowledgedAt
         : undefined;
-    if (
-      stateLossAcknowledged &&
-      (!durableStateLossAcknowledged ||
-        durableAcknowledgingUserId === undefined ||
-        durableAcknowledgedAt === undefined)
-    ) {
+    const durableAcknowledgedTimestamp =
+      durableAcknowledgedAt === undefined
+        ? Number.NaN
+        : Date.parse(durableAcknowledgedAt);
+    const durableProvenanceComplete =
+      durableAcknowledgingUserId !== undefined &&
+      durableAcknowledgingUserId.length > 0 &&
+      durableAcknowledgedAt !== undefined &&
+      Number.isFinite(durableAcknowledgedTimestamp) &&
+      new Date(durableAcknowledgedTimestamp).toISOString() ===
+        durableAcknowledgedAt;
+    if (durableStateLossAcknowledged && !durableProvenanceComplete) {
+      throw new Error(
+        "Delete state-loss acknowledgement provenance is incomplete",
+      );
+    }
+    if (stateLossAcknowledged && !durableStateLossAcknowledged) {
       throw new Error("Delete state-loss acknowledgement was not persisted");
     }
 

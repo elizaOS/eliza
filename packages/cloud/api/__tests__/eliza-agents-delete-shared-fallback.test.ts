@@ -25,7 +25,9 @@ const deleteAgent = mock(
     error: "Failed to delete sandbox",
   }),
 );
-type CancelAgentDeletionResult = { success: true } | { success: false; error: string };
+type CancelAgentDeletionResult =
+  | { success: true }
+  | { success: false; error: string };
 
 const cancelAgentDeletion = mock(
   async (): Promise<CancelAgentDeletionResult> => ({ success: true }),
@@ -66,7 +68,10 @@ mock.module("@/db/schemas/agent-server-wallets", () => ({
 }));
 
 mock.module("@/lib/api/cloud-worker-errors", () => ({
-  failureResponse: (c: { json: (body: unknown, status?: number) => Response }, error: unknown) =>
+  failureResponse: (
+    c: { json: (body: unknown, status?: number) => Response },
+    error: unknown,
+  ) =>
     c.json(
       {
         success: false,
@@ -120,7 +125,9 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-const { default: agentRoute } = await import("../v1/eliza/agents/[agentId]/route");
+const { default: agentRoute } = await import(
+  "../v1/eliza/agents/[agentId]/route"
+);
 
 const app = new Hono();
 app.route("/api/v1/eliza/agents/:agentId", agentRoute);
@@ -320,7 +327,26 @@ describe("agent deletion lifecycle", () => {
       },
     });
 
-    const response = await deleteRequest({ stateLossAcknowledged: true });
+    const response = await deleteRequest({ stateLossAcknowledged: false });
+
+    expect(response.status).toBe(500);
+  });
+
+  test("fails closed when durable authority provenance is malformed", async () => {
+    enqueueAgentDeleteOnce.mockResolvedValueOnce({
+      created: false,
+      job: {
+        id: "malformed-delete-job",
+        status: "in_progress",
+        data: {
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: "",
+          stateLossAcknowledgedAt: "not-an-iso-timestamp",
+        },
+      },
+    });
+
+    const response = await deleteRequest({ stateLossAcknowledged: false });
 
     expect(response.status).toBe(500);
   });

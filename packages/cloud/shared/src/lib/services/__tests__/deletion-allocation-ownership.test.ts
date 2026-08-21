@@ -1008,6 +1008,90 @@ describe("enqueueAgentDeleteOnce initializes ownership from the pre-delete state
   );
 
   test(
+    "an acknowledgement committed during successful capture is present in the completed result",
+    async () => {
+      if (!pgliteReady) return;
+      const { agentId, orgId, userId } = await seedAgentViaService();
+      const [acknowledgingUser] = await dbWrite
+        .insert(users)
+        .values({ steward_user_id: uniq("steward"), organization_id: orgId })
+        .returning();
+      const service = new ProvisioningJobService({
+        executionOwnerId: crypto.randomUUID(),
+        executionLeaseMs: 10_000,
+        executionLeaseHeartbeatMs: 1_000,
+      });
+      await dbWrite
+        .update(jobs)
+        .set({ status: "completed", completed_at: new Date() })
+        .where(and(eq(jobs.type, JOB_TYPES.AGENT_DELETE), eq(jobs.status, "pending")));
+      const first = await service.enqueueAgentDeleteOnce({
+        agentId,
+        organizationId: orgId,
+        userId,
+        authorization: "user_request",
+      });
+
+      let enterCapture!: () => void;
+      let releaseCapture!: () => void;
+      const captureEntered = new Promise<void>((resolve) => {
+        enterCapture = resolve;
+      });
+      const captureRelease = new Promise<void>((resolve) => {
+        releaseCapture = resolve;
+      });
+      const deletionSpy = spyOn(elizaSandboxService, "executeDeletion").mockImplementation(
+        async () => {
+          enterCapture();
+          await captureRelease;
+          return { success: true, containerStopped: true, rowDeleted: true };
+        },
+      );
+
+      try {
+        const processing = service.processPendingJobs(1, {
+          jobTypes: [JOB_TYPES.AGENT_DELETE],
+        });
+        await captureEntered;
+        const upgraded = await service.enqueueAgentDeleteOnce({
+          agentId,
+          organizationId: orgId,
+          userId: acknowledgingUser.id,
+          authorization: "user_request",
+          stateLossAcknowledged: true,
+        });
+        const acknowledgedAt = upgraded.job.data.stateLossAcknowledgedAt;
+        expect(acknowledgedAt).toBeString();
+        releaseCapture();
+
+        expect(await processing).toMatchObject({
+          succeeded: 1,
+          retried: 0,
+          failed: 0,
+        });
+        const [completed] = await dbWrite.select().from(jobs).where(eq(jobs.id, first.job.id));
+        expect(completed).toMatchObject({ status: "completed", attempts: 0 });
+        expect(completed.data).toMatchObject({
+          userId,
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+          stateLossAcknowledgedAt: acknowledgedAt,
+        });
+        expect(completed.result).toMatchObject({
+          stateLossAcknowledged: true,
+          stateLossAcknowledgedByUserId: acknowledgingUser.id,
+          stateLossAcknowledgedAt: acknowledgedAt,
+          rowDeleted: true,
+        });
+      } finally {
+        releaseCapture();
+        deletionSpy.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "a placed, running agent starts its deletion owning one slot; a re-enqueue keeps that answer",
     async () => {
       if (!pgliteReady) return;
