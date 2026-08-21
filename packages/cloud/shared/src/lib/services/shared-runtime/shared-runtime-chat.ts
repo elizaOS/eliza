@@ -73,6 +73,7 @@ import {
   buildSharedFactsContext,
   extractSharedTurnFacts,
   SHARED_FACTS_CONTEXT_MAX_FACTS,
+  SHARED_FACTS_EXTRACTION_TIMEOUT_MS,
   sharedFactsEnabled,
 } from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
@@ -662,6 +663,9 @@ function extractSharedTurnFactsOffPath(
             temperature: 0,
             maxOutputTokens: 512,
             maxRetries: 0,
+            // A stalled provider request must not pin the waitUntil task open;
+            // the deadline surfaces as a distinct AbortError in the J7 warn.
+            abortSignal: AbortSignal.timeout(SHARED_FACTS_EXTRACTION_TIMEOUT_MS),
           });
           return result.text;
         },
