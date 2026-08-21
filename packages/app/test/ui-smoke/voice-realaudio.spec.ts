@@ -1275,14 +1275,11 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
       }
     }
 
-    const trajectoryListResponse = await page.request.get(
-      "/api/trajectories?limit=50",
-    );
-    expect(
-      trajectoryListResponse.ok(),
-      "the live lane must export the correlated agent trajectory",
-    ).toBe(true);
-    const trajectoryList = (await trajectoryListResponse.json()) as {
+    // Trajectory persistence completes asynchronously after the streamed turn
+    // finishes (run 32433520248 listed zero trajectories on an immediate
+    // read), so poll the export until the exactly-one correlated trajectory
+    // appears rather than asserting a single instant snapshot.
+    type VoiceTrajectoryList = {
       trajectories?: Array<{
         id?: unknown;
         startTime?: unknown;
@@ -1291,14 +1288,40 @@ test.describe("live cloud voice round-trip (Railway path)", () => {
         metadata?: unknown;
       }>;
     };
-    const trajectory = selectVoiceTrajectory(
-      trajectoryList.trajectories ?? [],
-      {
-        startedAt,
-        roomId: String(conversation?.roomId),
-        userMessageId: String(streamDone?.userMessageId),
-      },
-    );
+    let trajectory: ReturnType<typeof selectVoiceTrajectory> | null = null;
+    await expect
+      .poll(
+        async () => {
+          const listResponse = await page.request.get(
+            "/api/trajectories?limit=50",
+          );
+          if (!listResponse.ok()) return `list HTTP ${listResponse.status()}`;
+          const trajectoryList = (await listResponse.json()) as
+            | VoiceTrajectoryList
+            | undefined;
+          try {
+            trajectory = selectVoiceTrajectory(
+              trajectoryList?.trajectories ?? [],
+              {
+                startedAt,
+                roomId: String(conversation?.roomId),
+                userMessageId: String(streamDone?.userMessageId),
+              },
+            );
+            return "found";
+          } catch (error) {
+            // error-policy:J4 not-yet-persisted reads retry; the poll timeout
+            // converts a persistent absence into the visible failure below.
+            return error instanceof Error ? error.message : String(error);
+          }
+        },
+        {
+          timeout: 90_000,
+          message:
+            "the live lane must export exactly one correlated agent trajectory",
+        },
+      )
+      .toBe("found");
     expect(
       trajectory?.id,
       "a new live-model trajectory with at least one LLM call is required",
