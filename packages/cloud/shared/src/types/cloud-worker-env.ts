@@ -5,6 +5,7 @@
  * Variables: per-request values populated by middleware (e.g. resolved user).
  */
 
+import type { BrowserWorker } from "@cloudflare/playwright";
 import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
@@ -89,6 +90,9 @@ export interface Bindings {
    * prefers it when bound. Read via getCloudBinding("CACHE_KV").
    */
   CACHE_KV?: KvNamespaceLike;
+
+  /** Cloudflare Browser Run endpoint used by the managed DoorDash adapter. */
+  BROWSER?: BrowserWorker;
 
   /**
    * One strongly ordered coordinator per shared agent conversation. The object

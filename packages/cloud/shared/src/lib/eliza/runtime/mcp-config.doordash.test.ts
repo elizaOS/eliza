@@ -6,7 +6,6 @@ import type { UserContext } from "../user-context";
 import { buildMcpSettings, getConnectedMcpPlatforms, shouldEnableMcp } from "./mcp-config";
 
 const originalUrl = process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
-const originalFirecrawlKey = process.env.FIRECRAWL_API_KEY;
 
 function context(): UserContext {
   return {
@@ -23,14 +22,11 @@ function context(): UserContext {
 afterEach(() => {
   if (originalUrl === undefined) delete process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
   else process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL = originalUrl;
-  if (originalFirecrawlKey === undefined) delete process.env.FIRECRAWL_API_KEY;
-  else process.env.FIRECRAWL_API_KEY = originalFirecrawlKey;
 });
 
 describe("DoorDash MCP cloud configuration", () => {
   test("stays disabled when no upstream is configured", () => {
     delete process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
-    delete process.env.FIRECRAWL_API_KEY;
     expect(getConnectedMcpPlatforms(context())).not.toContain("doordash");
     expect(shouldEnableMcp(context())).toBe(false);
   });
@@ -54,16 +50,7 @@ describe("DoorDash MCP cloud configuration", () => {
 
   test("injects the internal cloud bridge for the managed browser provider", () => {
     delete process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
-    process.env.FIRECRAWL_API_KEY = "firecrawl-test-key";
-    expect(getConnectedMcpPlatforms(context())).toContain("doordash");
-    expect(shouldEnableMcp(context())).toBe(true);
-  });
-
-  test("reads managed provider configuration from request-scoped Worker bindings", () => {
-    delete process.env.MCP_DOORDASH_STREAMABLE_HTTP_URL;
-    delete process.env.FIRECRAWL_API_KEY;
-
-    runWithCloudBindings({ FIRECRAWL_API_KEY: "worker-binding-key" }, () => {
+    runWithCloudBindings({ BROWSER: { fetch } }, () => {
       expect(getConnectedMcpPlatforms(context())).toContain("doordash");
       expect(shouldEnableMcp(context())).toBe(true);
     });

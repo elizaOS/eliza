@@ -139,7 +139,7 @@ test("availability derives from the transport contract", () => {
   ).toBe("unconfigured");
   expect(
     resolveIntegrationAvailability(
-      { FIRECRAWL_API_KEY: "managed-browser-key" },
+      { BROWSER: { fetch } },
       "doordash",
       "/api/mcps/doordash/streamable-http",
     ),

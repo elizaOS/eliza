@@ -24,10 +24,10 @@ The plugin recognizes both reviewed community adapters:
 See [ADAPTER_REVIEW.md](./ADAPTER_REVIEW.md) for the pinned-source comparison,
 security findings, integration decision, and Cloud acceptance checklist.
 
-It does not embed either community adapter. Eliza Cloud uses its existing
-Firecrawl hosted-browser boundary; self-hosted agents can configure either
-reviewed adapter. All browser-based consumer automation can break when
-DoorDash changes and may be incompatible with DoorDash's terms.
+It does not embed either community adapter. Eliza Cloud uses Cloudflare Browser
+Run with outbound-domain guardrails; self-hosted agents can configure either
+reviewed adapter. All browser-based consumer automation can break when DoorDash
+changes and may be incompatible with DoorDash's terms.
 
 ## Configure a local adapter
 
@@ -64,10 +64,12 @@ MCP_SERVER_DOORDASH_TYPE=streamable-http
 ```
 
 Eliza Cloud exposes the same authenticated transport at
-`/api/mcps/doordash/streamable-http`. When `FIRECRAWL_API_KEY` is configured,
-the route creates a short-lived browser session bound to the exact Cloud user
-and returns an interactive login view through `status`. DoorDash credentials
-and cookies remain inside that provider session. An operator can instead set
+`/api/mcps/doordash/streamable-http`. The Worker's `BROWSER` binding creates a
+short-lived Browser Run session bound to the exact Cloud user and returns a
+Cloudflare Live View through `status`. Installed desktop and mobile apps open
+that URL with `/browser?browse=...`, which uses the app's isolated native
+Browser surface. DoorDash credentials and cookies remain inside Browser Run.
+An operator can instead set
 `MCP_DOORDASH_STREAMABLE_HTTP_URL` to use a reviewed external implementation.
 
 ## Checkout safety
@@ -87,7 +89,9 @@ can still work while checkout fails closed.
 The first-party Cloud path:
 
 - authenticates every MCP request and isolates hosted sessions per Eliza user;
-- returns an interactive provider login view without accepting credentials;
+- returns a Cloudflare Live View plus an in-app Browser path without accepting credentials;
+- restricts new browser sessions to DoorDash, supported identity/payment domains,
+  and Cloudflare's common-CDN set;
 - never returns or persists browser cookies through MCP;
 - makes `confirm=false` non-purchasing and guards a confirmed checkout state
   against duplicate submission;

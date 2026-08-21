@@ -9,7 +9,7 @@ Reviewed on 2026-08-21 at these immutable commits:
 
 elizaOS uses neither repository as an embedded dependency. The first-party
 plugin is a narrow facade over `@elizaos/plugin-mcp`. Cloud runs its own
-authenticated adapter on the existing Firecrawl hosted-browser boundary and
+authenticated adapter on Cloudflare Browser Run and
 retains an operator-controlled streamable-HTTP override. This keeps one stable
 agent action while allowing the browser implementation to be replaced when
 DoorDash changes.
@@ -43,7 +43,8 @@ subject to website changes and DoorDash policy.
   behavior. The facade normalizes both tool vocabularies.
 - Cloud authenticates each request, binds the hosted browser to the exact user,
   supports revocation, and never returns cookies to the agent. Credentials are
-  entered only in Firecrawl's interactive provider view.
+  entered only in Cloudflare Live View. Installed Eliza apps open that URL in
+  their isolated native Browser surface when possible.
 - Raw DoorDash MCP tools are not registered as agent actions in Cloud. This
   prevents a model from bypassing the first-party checkout gate.
 - `place_order` always refreshes the cart and non-purchasing preview, binds the

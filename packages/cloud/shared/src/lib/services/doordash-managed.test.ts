@@ -6,9 +6,10 @@ const values = new Map<string, unknown>();
 const guards = new Map<string, Record<string, unknown> | null>();
 const deletedSessions: string[] = [];
 const createdSessions: string[] = [];
-const scripts: string[] = [];
+const operations: Array<{ name: string; args: Record<string, unknown> }> = [];
 let nextSession = 1;
 let executionOutputs: unknown[] = [];
+let scopedBindings: Record<string, unknown> | undefined;
 
 mock.module("../cache/client", () => ({
   cache: {
@@ -29,55 +30,71 @@ mock.module("../cache/client", () => ({
 }));
 
 mock.module("../runtime/cloud-bindings", () => ({
-  getCloudBinding: () => ({
-    getByName: () => ({
-      fetch: async (request: Request) => {
-        const body = (await request.json()) as {
-          digest: string;
-          receipt?: Record<string, unknown>;
-        };
-        if (new URL(request.url).pathname === "/complete") {
-          if (!guards.has(body.digest) || !body.receipt) {
-            return Response.json({ completed: false }, { status: 409 });
-          }
-          guards.set(body.digest, body.receipt);
-          return Response.json({ completed: true, receipt: body.receipt });
+  getCloudAwareEnv: () => process.env,
+  runWithCloudBindings: <T>(bindings: Record<string, unknown>, fn: () => T) => {
+    const previous = scopedBindings;
+    scopedBindings = bindings;
+    try {
+      return fn();
+    } finally {
+      scopedBindings = previous;
+    }
+  },
+  getCloudBinding: (name: string) =>
+    scopedBindings?.[name] ??
+    (name === "DOORDASH_CHECKOUT_GATES"
+      ? {
+          getByName: () => ({
+            fetch: async (request: Request) => {
+              const body = (await request.json()) as {
+                digest: string;
+                receipt?: Record<string, unknown>;
+              };
+              if (new URL(request.url).pathname === "/complete") {
+                if (!guards.has(body.digest) || !body.receipt) {
+                  return Response.json({ completed: false }, { status: 409 });
+                }
+                guards.set(body.digest, body.receipt);
+                return Response.json({ completed: true, receipt: body.receipt });
+              }
+              if (guards.has(body.digest)) {
+                const receipt = guards.get(body.digest);
+                if (receipt) {
+                  return Response.json({ completed: true, receipt });
+                }
+                return Response.json({ claimed: false }, { status: 409 });
+              }
+              guards.set(body.digest, null);
+              return Response.json({ claimed: true }, { status: 201 });
+            },
+          }),
         }
-        if (guards.has(body.digest)) {
-          const receipt = guards.get(body.digest);
-          if (receipt) {
-            return Response.json({ completed: true, receipt });
-          }
-          return Response.json({ claimed: false }, { status: 409 });
-        }
-        guards.set(body.digest, null);
-        return Response.json({ claimed: true }, { status: 201 });
-      },
-    }),
-  }),
+      : undefined),
 }));
 
-mock.module("./browser-tools", () => ({
-  createHostedBrowserSession: async () => {
+mock.module("./doordash-browser-run", () => ({
+  createDoorDashBrowserSession: async () => {
     const id = `session-${nextSession++}`;
     createdSessions.push(id);
     return {
       id,
       interactiveLiveViewUrl: `https://login.example/${id}`,
-      liveViewUrl: null,
     };
   },
-  getHostedBrowserSession: async (id: string) => ({
+  getDoorDashBrowserSession: async (id: string) => ({
     id,
     interactiveLiveViewUrl: `https://login.example/${id}`,
-    liveViewUrl: null,
   }),
-  deleteHostedBrowserSession: async (id: string) => {
+  deleteDoorDashBrowserSession: async (id: string) => {
     deletedSessions.push(id);
   },
-  executeHostedBrowserCommand: async (_id: string, command: { script?: string }) => {
-    scripts.push(command.script ?? "");
-    return { output: executionOutputs.shift() };
+  executeDoorDashBrowserOperation: async (
+    _id: string,
+    name: string,
+    args: Record<string, unknown>,
+  ) => {
+    operations.push({ name, args });
+    return executionOutputs.shift();
   },
 }));
 
@@ -92,7 +109,7 @@ beforeEach(() => {
   guards.clear();
   deletedSessions.length = 0;
   createdSessions.length = 0;
-  scripts.length = 0;
+  operations.length = 0;
   nextSession = 1;
   executionOutputs = [];
 });
@@ -105,6 +122,7 @@ describe("managed DoorDash", () => {
       success: true,
       authRequired: true,
       loginUrl: "https://login.example/session-1",
+      appBrowserPath: "/browser?browse=https%3A%2F%2Flogin.example%2Fsession-1",
     });
   });
 
@@ -138,7 +156,7 @@ describe("managed DoorDash", () => {
     );
     expect(replay).toEqual(first);
     expect(createdSessions).toEqual(["session-1", "session-2"]);
-    expect(scripts).toHaveLength(3);
+    expect(operations).toHaveLength(3);
   });
 
   test("rejects a synthetic checkout receipt", async () => {
@@ -161,6 +179,6 @@ describe("managed DoorDash", () => {
       ),
     ).rejects.toThrow("quantity must be an integer");
     expect(createdSessions).toEqual([]);
-    expect(scripts).toEqual([]);
+    expect(operations).toEqual([]);
   });
 });

@@ -106,6 +106,9 @@ crons = [
 binding = "BLOB"
 bucket_name = "eliza-cloud-blob"
 
+[browser]
+binding = "BROWSER"
+
 [[ratelimits]]
 name = "GLOBAL_RATE_LIMITER"
 namespace_id = "1615301"
@@ -523,6 +526,9 @@ routes = [
 __dirname = '"/"'
 __filename = '"/worker.js"'
 
+[env.staging.browser]
+binding = "BROWSER"
+
 [env.staging.vars]
 NODE_ENV = "production"
 # Capture every staging turn while validating voice and cross-channel routing.
@@ -820,6 +826,9 @@ routes = [
 [env.production.define]
 __dirname = '"/"'
 __filename = '"/worker.js"'
+
+[env.production.browser]
+binding = "BROWSER"
 
 [env.production.vars]
 NODE_ENV = "production"

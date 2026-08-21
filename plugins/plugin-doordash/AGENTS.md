@@ -7,7 +7,8 @@ self-hosted MCP adapter into the stable `DOORDASH` action.
 ## Boundaries
 
 - The plugin never stores DoorDash credentials, passwords, browser profiles, or
-  cookies. Cloud authentication stays in a user-bound hosted browser session.
+  cookies. Cloud authentication stays in a user-bound Cloudflare Browser Run
+  session and uses Live View for human login.
 - The plugin supports the tool dialects exposed by
   `markswendsen-code/mcp-doordash` and `SpunkySarb/doordash-mcp`; do not import or
   copy their browser automation into this package.

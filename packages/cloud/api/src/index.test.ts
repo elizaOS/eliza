@@ -1276,19 +1276,30 @@ describe("cloud-api worker entrypoint", () => {
     });
   });
 
-  test("binds the DoorDash checkout gate in every Worker environment", async () => {
+  test("binds Browser Run and the DoorDash checkout gate in every Worker environment", async () => {
     type DurableBinding = { name?: string; class_name?: string };
     type DurableConfig = { bindings?: DurableBinding[] };
     const config = Bun.TOML.parse(
       await Bun.file(new URL("../wrangler.toml", import.meta.url)).text(),
     ) as {
+      browser?: { binding?: string };
       durable_objects?: DurableConfig;
       env?: {
-        staging?: { durable_objects?: DurableConfig };
-        production?: { durable_objects?: DurableConfig };
+        staging?: {
+          browser?: { binding?: string };
+          durable_objects?: DurableConfig;
+        };
+        production?: {
+          browser?: { binding?: string };
+          durable_objects?: DurableConfig;
+        };
       };
       migrations?: Array<{ tag?: string; new_sqlite_classes?: string[] }>;
     };
+
+    expect(config.browser?.binding).toBe("BROWSER");
+    expect(config.env?.staging?.browser?.binding).toBe("BROWSER");
+    expect(config.env?.production?.browser?.binding).toBe("BROWSER");
 
     for (const durableObjects of [
       config.durable_objects,
