@@ -10,6 +10,8 @@
 // Stage-direction vocabulary
 // ---------------------------------------------------------------------------
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 const STAGE_DIRECTION_FIRST_WORDS = new Set([
   "beam",
   "beams",
@@ -176,7 +178,10 @@ function stripWrappedStageDirections(input: string, pattern: RegExp): string {
 }
 
 function tidyAssistantTextSpacing(input: string): string {
-  const safe = input.length > 100_000 ? input.slice(0, 100_000) : input;
+  const safe =
+    input.length > 100_000
+      ? truncateWellFormed(toWellFormedUnicode(input), 100_000)
+      : toWellFormedUnicode(input);
   return safe
     .replace(/[ \t]{1,1024}\n/g, "\n")
     .replace(/\n[ \t]{1,1024}/g, "\n")
