@@ -22,6 +22,8 @@ import {
   type SwarmCoordinatorTaskContext,
   type SwarmEvent,
   stringToUuid,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import { sanitizeCompletionRelay } from "@elizaos/plugin-agent-orchestrator";
@@ -421,7 +423,19 @@ async function buildSynthesisResultText(payload: {
     : `${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
 }
 
-async function buildTaskResultLine(task: {
+export const SWARM_TASK_PREVIEW_CAP = 140;
+
+/**
+ * Surrogate-safe preview clamp for swarm task relay lines. Truncating with
+ * String.slice() can split an astral surrogate pair (e.g. fox emoji at the
+ * 140-char boundary) leaving a lone high surrogate that strict JSON parsers
+ * reject.
+ */
+export function formatSwarmTaskPreview(text: string): string {
+  return truncateWellFormed(toWellFormedUnicode(text), SWARM_TASK_PREVIEW_CAP);
+}
+
+export async function buildTaskResultLine(task: {
   label?: string;
   originalTask: string;
   completionSummary: string;
@@ -449,7 +463,7 @@ async function buildTaskResultLine(task: {
       label ||
       (task.originalTask.includes("--- Swarm Coordination ---")
         ? "coding task"
-        : firstLine.slice(0, 140) || "coding task");
+        : formatSwarmTaskPreview(firstLine) || "coding task");
     return `${ask} — ${task.status} before completion.`;
   }
   // Defense-in-depth for issue elizaOS/eliza#11578: strip any captured
@@ -481,7 +495,9 @@ async function buildTaskResultLine(task: {
   // kickoff-shaped task is unusable; otherwise one capped line.
   const taskLine = task.originalTask.includes("--- Swarm Coordination ---")
     ? task.label?.trim() || "Task completed."
-    : task.originalTask.split("\n", 1)[0]?.trim().slice(0, 140) ||
+    : formatSwarmTaskPreview(
+        task.originalTask.split("\n", 1)[0]?.trim() ?? "",
+      ) ||
       task.label?.trim() ||
       "Task completed.";
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
