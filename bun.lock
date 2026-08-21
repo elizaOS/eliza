@@ -327,6 +327,7 @@
         "@elizaos/agent": "workspace:*",
         "@elizaos/auth": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/logger": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
