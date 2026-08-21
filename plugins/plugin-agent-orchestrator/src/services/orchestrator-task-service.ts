@@ -6250,14 +6250,15 @@ export class OrchestratorTaskService extends Service {
   private async stopActiveSessions(
     doc: OrchestratorTaskDocument,
   ): Promise<void> {
-    const active = doc.sessions.filter(
-      (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
-    );
-    if (active.length === 0) return;
     const acp = this.acp();
+    const candidates = doc.sessions.filter((session) => {
+      if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) return true;
+      return session.metadata?.keepAliveAfterComplete === true;
+    });
+    if (candidates.length === 0) return;
     if (!acp) {
       await Promise.all(
-        active.map((session) =>
+        candidates.map((session) =>
           this.store.updateSession(session.sessionId, {
             status: "stop_failed",
           }),
@@ -6268,6 +6269,20 @@ export class OrchestratorTaskService extends Service {
         "ACP service unavailable; cannot stop active sessions",
       );
     }
+    const active = (
+      await Promise.all(
+        candidates.map(async (session) => {
+          if (!TERMINAL_TASK_SESSION_STATUSES.has(session.status)) {
+            return session;
+          }
+          const live = await acp.getSession(session.sessionId);
+          return live && !TERMINAL_SESSION_STATUSES.has(live.status)
+            ? session
+            : null;
+        }),
+      )
+    ).filter((session): session is OrchestratorTaskSession => session !== null);
+    if (active.length === 0) return;
     const failures: Array<{ sessionId: string; error: string }> = [];
     await Promise.all(
       active.map(async (session) => {

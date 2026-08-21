@@ -308,12 +308,13 @@ async function settleStatus(
  * fake ACP wired to its event bridge. */
 async function withSpawnedSession(): Promise<{
   service: OrchestratorTaskService;
+  store: OrchestratorTaskStore;
   acp: FakeAcp;
   taskId: string;
   sessionId: string;
 }> {
   const acp = new FakeAcp();
-  const service = makeService(acp);
+  const { service, store } = makeServiceWithStore(acp);
   await service.start();
   const task = await service.createTask(createInput());
   const detail = must(
@@ -321,7 +322,7 @@ async function withSpawnedSession(): Promise<{
     "expected spawn detail",
   );
   const sessionId = must(detail.sessions[0], "expected session").sessionId;
-  return { service, acp, taskId: task.id, sessionId };
+  return { service, store, acp, taskId: task.id, sessionId };
 }
 
 /** Like {@link withSpawnedSession} but the spawn carries an explicit
@@ -534,6 +535,25 @@ describe("OrchestratorTaskService — lifecycle", () => {
     const reopened = must(await service.reopenTask(taskId), "reopened");
     expect(reopened.status).toBe("active");
     expect(reopened.archivedAt).toBeNull();
+  });
+
+  it("archives by stopping a live keep-alive child whose task session already completed", async () => {
+    const { service, store, acp, taskId, sessionId } =
+      await withSpawnedSession();
+    await store.updateSession(sessionId, {
+      status: "completed",
+      metadata: { keepAliveAfterComplete: true },
+    });
+    await store.updateTask(taskId, {
+      status: "done",
+      closedAt: new Date().toISOString(),
+    });
+
+    const archived = must(await service.archiveTask(taskId), "archived");
+
+    expect(archived.status).toBe("archived");
+    expect(acp.stopped).toContain(sessionId);
+    expect(must(archived.sessions[0], "session").status).toBe("stopped");
   });
 
   it("reopens a session-less task to open", async () => {
