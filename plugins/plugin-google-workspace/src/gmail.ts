@@ -709,20 +709,45 @@ function parseEmailAddresses(value: string | undefined): GoogleEmailAddress[] {
     return [];
   }
 
-  return value
-    .split(",")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const match = part.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
-      if (!match) {
-        return { email: part };
-      }
-      return {
-        name: match[1]?.trim() || undefined,
-        email: match[2].trim(),
-      };
-    });
+  return splitAddressList(value).map((token) => parseMailbox(token));
+}
+
+// RFC 5322 address lists are comma-separated, but a comma inside a quoted
+// display name (`"Smith, Jane"`) or inside an angle-bracket route
+// (`<a,b@x>`) is not a separator. A naive `value.split(",")` cuts the common
+// corporate "Last, First" mailbox in half and yields a phantom `"Smith`
+// address, so split on top-level commas only and let `parseMailbox` strip the
+// quotes — unifying this list path with the single-mailbox path.
+function splitAddressList(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  let angleDepth = 0;
+  for (const char of value) {
+    if (char === '"' && angleDepth === 0) {
+      inQuotes = !inQuotes;
+      current += char;
+      continue;
+    }
+    if (!inQuotes && char === "<") {
+      angleDepth += 1;
+      current += char;
+      continue;
+    }
+    if (!inQuotes && char === ">" && angleDepth > 0) {
+      angleDepth -= 1;
+      current += char;
+      continue;
+    }
+    if (char === "," && !inQuotes && angleDepth === 0) {
+      tokens.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  tokens.push(current);
+  return tokens.map((token) => token.trim()).filter(Boolean);
 }
 
 function collectMessageBody(
