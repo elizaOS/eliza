@@ -1467,6 +1467,26 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		if (!state.client) {
 			state.client = this.createDiscordJsClient();
+			// discord.js builds its Client with `captureRejections: true`
+			// (BaseClient.js) and installs no Symbol.for("nodejs.rejection")
+			// handler, so a rejected async gateway listener is routed into
+			// `client.emit("error", ...)`. EventEmitter THROWS when "error" is
+			// emitted with no listener, and that throw lands on a process.nextTick
+			// stack that no call-stack try/catch can reach — an uncaughtException,
+			// which the agent crash guard turns into a whole-process restart.
+			//
+			// The per-attempt `once(Events.Error)` below is consumed by the FIRST
+			// such rejection, leaving the client error-listener-less from the
+			// second one on. This durable listener is what guarantees the client
+			// always has one. It owns the logging; the `once` keeps only the
+			// login-retry decision, so a single error still produces one line.
+			state.client.on(Events.Error, (error: unknown) => {
+				this.runtime.logger.error(
+					`Discord client error for account ${state.accountId}: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			});
 		}
 		const client = state.client;
 		// Rebind message/reaction/guild listeners onto this (possibly fresh)
@@ -1610,12 +1630,9 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			scheduleRetry(closeEvent);
 		});
+		// Logging lives on the durable listener attached at client creation; this
+		// one only carries the login-retry decision for the current attempt.
 		client.once(Events.Error, (error: unknown) => {
-			this.runtime.logger.error(
-				`Discord client error for account ${state.accountId}: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-			);
 			scheduleRetry(error);
 		});
 		client.login(token).catch((error: unknown) => {
