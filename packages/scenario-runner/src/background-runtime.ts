@@ -13,6 +13,7 @@ import {
   type TaskWorker,
 } from "@elizaos/core";
 import {
+  type JsonValue,
   type LedgerEntry,
   ObservationLedger,
   payloadHash,
@@ -85,6 +86,15 @@ export interface BackgroundRuntimeInspection {
     message: string;
   }[];
   readonly ledger: readonly LedgerEntry[];
+  readonly resetReceipt?: BackgroundRuntimeResetReceipt;
+}
+
+/** Exact state comparison emitted whenever a shared scenario runtime resets. */
+export interface BackgroundRuntimeResetReceipt {
+  readonly baselineStateHash: string;
+  readonly dirtyStateHash: string;
+  readonly restoredStateHash: string;
+  readonly restored: boolean;
 }
 
 export interface BackgroundDrainResult {
@@ -140,8 +150,11 @@ export class ScenarioBackgroundRuntime {
   private stateValue: BackgroundRuntimeState = "created";
   private taskService: TaskService | null = null;
   private baselineTasks: Task[] = [];
+  private baselineStateHash: string | null = null;
+  private lastResetReceiptValue: BackgroundRuntimeResetReceipt | undefined;
   private readonly workerNames: string[];
   private readonly originalWorkers = new Map<string, TaskWorker>();
+  private readonly readyDrivers = new Set<string>();
   private reportedErrorCursor = 0;
 
   constructor(
@@ -166,7 +179,14 @@ export class ScenarioBackgroundRuntime {
   }
 
   async captureBaseline(): Promise<void> {
+    await this.ensureDriversReady();
     this.baselineTasks = cloneTasks(await this.queueTasks());
+    this.baselineStateHash = await this.resetStateHash(this.baselineTasks);
+    this.lastResetReceiptValue = undefined;
+  }
+
+  get lastResetReceipt(): BackgroundRuntimeResetReceipt | undefined {
+    return this.lastResetReceiptValue;
   }
 
   /** Wait for detached plugin-init ensures to materialize declared worker rows. */
@@ -382,10 +402,23 @@ export class ScenarioBackgroundRuntime {
         .slice(this.reportedErrorCursor)
         .map(({ scope, code, message }) => ({ scope, code, message })),
       ledger: this.ledger.all(),
+      ...(this.lastResetReceiptValue
+        ? { resetReceipt: this.lastResetReceiptValue }
+        : {}),
     };
   }
 
-  async resetSharedRuntime(): Promise<void> {
+  async resetSharedRuntime(): Promise<BackgroundRuntimeResetReceipt> {
+    if (!this.baselineStateHash) {
+      throw new ElizaError(
+        "Cannot reset background runtime before capturing a baseline",
+        {
+          code: "SCENARIO_BACKGROUND_BASELINE_MISSING",
+          severity: "fatal",
+        },
+      );
+    }
+    const dirtyStateHash = await this.resetStateHash(await this.queueTasks());
     await this.taskService?.enterManualExecution(() =>
       this.clock.now().getTime(),
     );
@@ -400,10 +433,36 @@ export class ScenarioBackgroundRuntime {
     this.ledger.clear();
     this.reportedErrorCursor = this.runtime.getRecentReportedErrors().length;
     this.stateValue = "paused";
-    this.appendLifecycle("background-runtime.reset", "succeeded", {
-      state: "paused",
-      restoredTasks: this.baselineTasks.length,
-    });
+    const restoredStateHash = await this.resetStateHash(
+      await this.queueTasks(),
+    );
+    const receipt: BackgroundRuntimeResetReceipt = {
+      baselineStateHash: this.baselineStateHash,
+      dirtyStateHash,
+      restoredStateHash,
+      restored: restoredStateHash === this.baselineStateHash,
+    };
+    this.lastResetReceiptValue = receipt;
+    this.appendLifecycle(
+      "background-runtime.reset",
+      receipt.restored ? "succeeded" : "failed",
+      {
+        state: "paused",
+        restoredTasks: this.baselineTasks.length,
+        restored: receipt.restored ? 1 : 0,
+      },
+    );
+    if (!receipt.restored) {
+      throw new ElizaError(
+        "Background runtime reset did not restore the captured baseline",
+        {
+          code: "SCENARIO_BACKGROUND_RESET_HASH_MISMATCH",
+          context: receipt,
+          severity: "fatal",
+        },
+      );
+    }
+    return receipt;
   }
 
   async stop(): Promise<void> {
@@ -427,6 +486,39 @@ export class ScenarioBackgroundRuntime {
     );
   }
 
+  private async resetStateHash(tasks: readonly Task[]): Promise<string> {
+    const driverPending = (
+      await Promise.all(
+        this.requiredDrivers().map((driver) =>
+          driver.inspect(this.clock.now()),
+        ),
+      )
+    )
+      .flat()
+      .map((work) => ({ ...work }))
+      .sort((left, right) =>
+        `${left.name}\0${left.id}`.localeCompare(`${right.name}\0${right.id}`),
+      );
+    const normalizedTasks = tasks
+      .map((task) => this.toJsonValue(task))
+      .sort((left, right) =>
+        JSON.stringify(left).localeCompare(JSON.stringify(right)),
+      );
+    return payloadHash({
+      clock: this.clock.nowIso(),
+      drivers: driverPending,
+      tasks: normalizedTasks,
+    });
+  }
+
+  private toJsonValue(value: unknown): JsonValue {
+    const serialized = JSON.stringify(value, (_key, child: unknown) =>
+      typeof child === "bigint" ? child.toString() : child,
+    );
+    if (serialized === undefined) return null;
+    return JSON.parse(serialized) as JsonValue;
+  }
+
   private async assertWorkerReadiness(): Promise<void> {
     const drivers = backgroundDrivers.get(this.runtime);
     const missing = this.workerNames.filter(
@@ -443,7 +535,15 @@ export class ScenarioBackgroundRuntime {
         },
       );
     }
-    await Promise.all(this.requiredDrivers().map((driver) => driver.ready()));
+    await this.ensureDriversReady();
+  }
+
+  private async ensureDriversReady(): Promise<void> {
+    for (const driver of this.requiredDrivers()) {
+      if (this.readyDrivers.has(driver.name)) continue;
+      await driver.ready();
+      this.readyDrivers.add(driver.name);
+    }
   }
 
   private requiredDrivers(): ScenarioBackgroundDriver[] {

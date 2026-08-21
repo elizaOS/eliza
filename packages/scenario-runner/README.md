@@ -88,6 +88,12 @@ register a `ScenarioBackgroundDriver` that delegates `step`, `inspect`, reset,
 crash, and restart to that processor; the driver is a control adapter, not a
 replacement implementation.
 
+Shared-runtime reset hashes the captured queue rows, virtual clock, and every
+declared driver's authoritative pending-work readback. Reports retain the
+baseline, dirty, and restored hashes; cleanup fails when the restored hash does
+not exactly match the baseline, even if a driver's `reset()` call returned
+success.
+
 ### Assertions
 
 **Per-turn:**

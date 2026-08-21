@@ -275,7 +275,12 @@ describe("ScenarioBackgroundRuntime production TaskService control", () => {
       }),
     ]);
 
-    await background.resetSharedRuntime();
+    const resetReceipt = await background.resetSharedRuntime();
+    expect(resetReceipt).toMatchObject({ restored: true });
+    expect(resetReceipt.restoredStateHash).toBe(resetReceipt.baselineStateHash);
+    expect(resetReceipt.dirtyStateHash).not.toBe(
+      resetReceipt.baselineStateHash,
+    );
     expect((await background.inspect()).pending).toEqual([]);
     expect(background.ledger.all()).toHaveLength(1);
     await background.stop();
@@ -295,6 +300,52 @@ describe("ScenarioBackgroundRuntime production TaskService control", () => {
     await expect(background.start()).rejects.toMatchObject({
       code: "SCENARIO_BACKGROUND_WORKER_UNAVAILABLE",
     });
+  });
+
+  it("fails closed when a production driver does not restore its baseline", async () => {
+    const harness = createHarness();
+    await startTaskService(harness);
+    let pending = true;
+    const unregister = registerScenarioBackgroundDriver(
+      harness.runtime as unknown as AgentRuntime,
+      {
+        name: "NON_RESETTING_DRIVER",
+        ready: async () => undefined,
+        step: async () => {
+          pending = false;
+        },
+        inspect: async () =>
+          pending
+            ? [
+                {
+                  id: "pending",
+                  name: "NON_RESETTING_DRIVER",
+                  dueAt: EPOCH,
+                  due: true,
+                  paused: false,
+                },
+              ]
+            : [],
+        reset: async () => undefined,
+      },
+    );
+    const background = new ScenarioBackgroundRuntime(
+      harness.runtime as unknown as AgentRuntime,
+      {
+        namespace: "scenario:non-resetting-driver",
+        epoch: EPOCH,
+        workers: ["NON_RESETTING_DRIVER"],
+      },
+    );
+    await background.captureBaseline();
+    await background.start();
+    await background.step();
+    await expect(background.resetSharedRuntime()).rejects.toMatchObject({
+      code: "SCENARIO_BACKGROUND_RESET_HASH_MISMATCH",
+    });
+    expect(background.lastResetReceipt).toMatchObject({ restored: false });
+    await background.stop();
+    unregister();
   });
 
   it("resets only this agent and restores TaskService scheduling ownership on stop", async () => {
@@ -535,11 +586,6 @@ describe("ScenarioBackgroundRuntime external production-driver port", () => {
         return Response.json({ id: "message" });
       },
     );
-    await queue.enqueue({
-      id: "a".repeat(64),
-      eventTimestamp: EPOCH,
-      user: { id: "498273781589213185", globalName: "Synthetic Owner" },
-    });
     let crashed = false;
     let resetCount = 0;
     const unregister = registerScenarioBackgroundDriver(
@@ -585,6 +631,11 @@ describe("ScenarioBackgroundRuntime external production-driver port", () => {
     );
     await background.captureBaseline();
     await background.start();
+    await queue.enqueue({
+      id: "a".repeat(64),
+      eventTimestamp: EPOCH,
+      user: { id: "498273781589213185", globalName: "Synthetic Owner" },
+    });
     await background.step();
     expect(redis.pendingCount()).toBe(1);
     await background.crash();

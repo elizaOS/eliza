@@ -804,7 +804,8 @@ describe("TaskService manual deterministic execution", () => {
 		(runtime as { getTasks: IAgentRuntime["getTasks"] }).getTasks = async () =>
 			query;
 		service = (await TaskService.start(runtime)) as TaskService;
-		await vi.advanceTimersByTimeAsync(1_000);
+		vi.advanceTimersByTime(1_000);
+		await Promise.resolve();
 
 		let acquired = false;
 		const acquisition = service
@@ -814,10 +815,12 @@ describe("TaskService manual deterministic execution", () => {
 			});
 		await Promise.resolve();
 		expect(acquired).toBe(false);
+		expect(service.currentTime().getTime()).toBe(T0);
 
 		resolveQuery([]);
 		await acquisition;
 		expect(acquired).toBe(true);
+		expect(service.currentTime().getTime()).toBe(T0 + 10_000);
 		expect(service.getSchedulingMode()).toBe("manual");
 	});
 

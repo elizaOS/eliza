@@ -18,6 +18,7 @@ import type {
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import type { LedgerEntry } from "@elizaos/synthetic-world";
+import type { BackgroundRuntimeResetReceipt } from "./background-runtime.ts";
 
 /** A tuple used where empty evidence would make a qualification claim unsound. */
 export type NonEmptyEvidenceList<T> = readonly [T, ...T[]];
@@ -320,6 +321,7 @@ export interface ScenarioReport {
     pendingTimers: number;
     errors: readonly { scope: string; code: string; message: string }[];
     ledger: readonly LedgerEntry[];
+    resetReceipt?: BackgroundRuntimeResetReceipt;
   };
   /**
    * Trusted, hashed evidence captured outside the action-result/model-prose

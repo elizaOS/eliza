@@ -282,16 +282,19 @@ export class TaskService extends Service {
 		}
 		this.manualExecution = true;
 		this.schedulingMode = "manual";
-		this.clock = clock;
-		this.startedAt = now;
 		unregisterTaskSchedulerRuntime(this.runtime.agentId);
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
 		}
+		// The tick already owns the previous scheduler clock. Changing it before
+		// settlement would splice virtual time into a production tick midway
+		// through its query/execute transaction.
 		if (this.activeTick) {
 			await this.activeTick;
 		}
+		this.clock = clock;
+		this.startedAt = now;
 	}
 
 	/** Restore the exact scheduler mode that was active before manual control. */

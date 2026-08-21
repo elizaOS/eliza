@@ -1969,8 +1969,10 @@ async function executeBackgroundTurn(args: {
       result = await args.background.inspect();
       break;
     case "reset":
-      await args.background.resetSharedRuntime();
-      result = await args.background.inspect();
+      result = {
+        resetReceipt: await args.background.resetSharedRuntime(),
+        inspection: await args.background.inspect(),
+      };
       break;
     default:
       throw new Error(
@@ -2824,15 +2826,31 @@ export async function runScenario(
       try {
         report.background ??= await backgroundRuntime.inspect();
         await backgroundRuntime.resetSharedRuntime();
-        await backgroundRuntime.stop();
+        report.background = await backgroundRuntime.inspect();
       } catch (error) {
         // error-policy:J1 Scenario teardown is the owner boundary: an
         // unreset worker runtime makes shared-state isolation untrustworthy.
+        const resetReceipt = backgroundRuntime.lastResetReceipt;
+        if (resetReceipt && report.background) {
+          report.background = { ...report.background, resetReceipt };
+        }
         report.status = "failed";
         report.failedAssertions.push({
           label: "backgroundRuntimeCleanup",
           detail: error instanceof Error ? error.message : String(error),
         });
+      } finally {
+        try {
+          await backgroundRuntime.stop();
+        } catch (error) {
+          // error-policy:J1 Releasing production scheduler ownership is an
+          // independent teardown boundary even when reset already failed.
+          report.status = "failed";
+          report.failedAssertions.push({
+            label: "backgroundRuntimeStop",
+            detail: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
     (
