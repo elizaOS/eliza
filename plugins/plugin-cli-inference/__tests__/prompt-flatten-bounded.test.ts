@@ -197,4 +197,30 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
       `[tool_result WEB_FETCH: ${JSON.stringify(nested)}]`
     );
   });
+
+  const MiB = 1024 * 1024;
+
+  it("charges strings nested in a JSON object against the character budget", () => {
+    // Every string on the JSON projection path used to be handed back free, so
+    // an object could carry unlimited large fields past the declared char cap
+    // while the node budget counted only one node per field.
+    const out = contentToText([
+      toolResult({ a: "a".repeat(3 * MiB), b: "b".repeat(3 * MiB), c: "c".repeat(3 * MiB) }),
+    ]);
+    expect(out).toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(out.length).toBeLessThan(9 * MiB);
+  });
+
+  it("still returns a single oversized body whole, nested or bare", () => {
+    // `chargeChars` checks before it charges, so the first oversized body comes
+    // back untouched. That contract must hold identically whether the body
+    // arrives as a bare string or inside an object.
+    const body = "x".repeat(10 * MiB);
+    const bare = contentToText([toolResult(body)]);
+    const wrapped = contentToText([toolResult({ body })]);
+    expect(bare).not.toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(bare).toContain(body);
+    expect(wrapped).not.toContain(TOOL_PAYLOAD_BUDGET_MARKER);
+    expect(wrapped).toBe(`[tool_result WEB_FETCH: ${JSON.stringify({ body })}]`);
+  });
 });
