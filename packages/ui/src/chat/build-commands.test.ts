@@ -31,6 +31,7 @@ function args(over: Partial<BuildCommandsArgs> = {}): BuildCommandsArgs {
     openBugReport: vi.fn(),
     desktopRuntime: false,
     focusDesktopMainWindow: vi.fn(),
+    openDesktopWorkspaceWindow: vi.fn(),
     openDesktopSettingsWindow: vi.fn(),
     openDesktopSurfaceWindow: vi.fn(),
     ...over,
@@ -38,6 +39,25 @@ function args(over: Partial<BuildCommandsArgs> = {}): BuildCommandsArgs {
 }
 
 describe("buildCommands — palette launcher (#8792)", () => {
+  it("opens Desktop Workspace through the full managed-shell launcher", () => {
+    const openDesktopWorkspaceWindow = vi.fn();
+    const openDesktopSettingsWindow = vi.fn();
+    const commands = buildCommands(
+      args({
+        desktopRuntime: true,
+        openDesktopWorkspaceWindow,
+        openDesktopSettingsWindow,
+      }),
+    );
+
+    commands
+      .find((command) => command.id === "desktop-open-workspace")
+      ?.action();
+
+    expect(openDesktopWorkspaceWindow).toHaveBeenCalledOnce();
+    expect(openDesktopSettingsWindow).not.toHaveBeenCalled();
+  });
+
   it("navigates built-in tabs through navigateTab (which reports VIEW_SWITCHED)", () => {
     const navigateTab = vi.fn();
     const commands = buildCommands(args({ navigateTab }));
