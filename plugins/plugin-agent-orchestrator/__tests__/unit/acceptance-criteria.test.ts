@@ -165,6 +165,25 @@ describe("staticAcceptanceCriteria", () => {
     ]);
   });
 
+  it("treats a normal-person Python program request as a standalone script", () => {
+    const goal =
+      "Create a Python program that prints the prime numbers from 1 to 20 and run it.";
+
+    expect(detectTaskType(goal)).toBe("script");
+    expect(
+      acceptanceCriteriaForTask(goal, [
+        "typecheck passes",
+        "lint passes",
+        "tests pass",
+        "the change is summarized in the diff",
+      ]),
+    ).toEqual([
+      "the requested script file exists in the workdir",
+      "the script exits successfully when run",
+      "the run output matches the requested examples",
+    ]);
+  });
+
   it("produces DIFFERENT sets for coding vs app-build vs view-create", () => {
     const coding = staticAcceptanceCriteria("fix bug", "coding");
     const appBuild = staticAcceptanceCriteria("build a site", "app-build");
