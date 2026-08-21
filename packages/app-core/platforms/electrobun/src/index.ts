@@ -61,7 +61,10 @@ import {
   shouldEnableTrayPopover,
   shouldStartTrayFirst,
 } from "./desktop-tray-config";
-import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
+import {
+  prepareDevtoolsOpen,
+  scheduleDevtoolsLayoutRefresh,
+} from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import {
   appendKioskShellModeParam,
@@ -103,6 +106,7 @@ import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
   disableBackForwardNavigationGestures,
   ensureWindowTransparentBackground,
+  prepareDetachedWebInspector,
   refreshWindowInteractiveMaterial,
   setNativeDragRegion,
   setWindowShadow,
@@ -1735,6 +1739,8 @@ function toggleFocusedWindowDevTools(): void {
     void openBrowserDevtoolsFallback(targetWindow);
     return;
   }
+
+  prepareDevtoolsOpen(process.platform, prepareDetachedWebInspector);
 
   if (typeof webview?.toggleDevTools === "function") {
     webview.toggleDevTools();

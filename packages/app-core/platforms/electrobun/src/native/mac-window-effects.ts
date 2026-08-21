@@ -24,6 +24,7 @@ type MacEffectsSymbols = {
     cornerRadius: number,
   ): boolean;
   refreshWindowInteractiveMaterial(ptr: Pointer): boolean;
+  prepareDetachedWebInspector(): boolean;
   pollWindowOutsideClick(ptr: Pointer): boolean;
   setWindowShadowEnabled(ptr: Pointer, enabled: boolean): boolean;
   setWindowUserResizable(ptr: Pointer, enabled: boolean): boolean;
@@ -97,6 +98,10 @@ function loadLib(): MacEffectsLib {
       },
       refreshWindowInteractiveMaterial: {
         args: [FFIType.ptr],
+        returns: FFIType.bool,
+      },
+      prepareDetachedWebInspector: {
+        args: [],
         returns: FFIType.bool,
       },
       pollWindowOutsideClick: {
@@ -226,6 +231,11 @@ export function setWindowInteractiveMaterialSize(
 /** Re-stack saved detached-host drag strips after WKWebView native layout. */
 export function refreshWindowInteractiveMaterial(ptr: Pointer): boolean {
   return getLib()?.symbols.refreshWindowInteractiveMaterial(ptr) ?? false;
+}
+
+/** Persist WebKit's safe separate-window inspector presentation on macOS. */
+export function prepareDetachedWebInspector(): boolean {
+  return getLib()?.symbols.prepareDetachedWebInspector() ?? false;
 }
 
 export function setWindowShadow(ptr: Pointer, enabled: boolean): boolean {

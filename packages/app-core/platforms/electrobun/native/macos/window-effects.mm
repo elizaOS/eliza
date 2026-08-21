@@ -2865,6 +2865,23 @@ extern "C" bool refreshWindowInteractiveMaterial(void *windowPtr) {
 	return success;
 }
 
+/**
+ * Keep Web Inspector in its own standard window. Docked WKWebView inspection
+ * can leave the inspected app view present but unpainted on current macOS;
+ * WebKit's page-group preference is durable and is read before each open.
+ */
+extern "C" bool prepareDetachedWebInspector(void) {
+	__block BOOL success = NO;
+	dispatch_sync(dispatch_get_main_queue(), ^{
+		NSString *key =
+			@"__WebInspectorPageGroupLevel1__.WebKit2InspectorStartsAttached";
+		NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+		[defaults setBool:NO forKey:key];
+		success = [defaults boolForKey:key] == NO;
+	});
+	return success;
+}
+
 /** Consume one click that landed outside the painted interactive material. */
 extern "C" bool pollWindowOutsideClick(void *windowPtr) {
 	if (windowPtr == nullptr) return false;
