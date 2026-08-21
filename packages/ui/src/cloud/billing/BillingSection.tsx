@@ -3,8 +3,9 @@
  * section (`/settings#cloud-billing`) and the standalone `dashboard/billing`
  * console page.
  *
- * Fetches the current user/account (the `BillingTab` needs the billing identity
- * and seed credit balance), then renders the consumer billing controls. Internal
+ * Fetches the current user/account (the `BillingTab` needs a freshly confirmed
+ * billing identity), then renders the consumer billing controls. Balance and
+ * active compute come from the canonical billing snapshot v2. Internal
  * infrastructure quotas remain available to their owning diagnostics surfaces;
  * they are not part of the normal billing experience.
  * Wraps the subtree in {@link ConditionalWalletProviders} so the crypto
