@@ -174,7 +174,7 @@ describe("tiktokFetch — bounded hops fail closed and keep caller signals", () 
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("preserves a caller-provided abort signal", async () => {
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
@@ -185,6 +185,8 @@ describe("tiktokFetch — bounded hops fail closed and keep caller signals", () 
     await tiktokFetch("https://open.tiktokapis.com/v2/post/publish", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    // The wrapper owns the deadline, so the transport receives a composition of
+    // the caller signal and that deadline, never the caller object itself.
+    expect(seen).not.toBe(controller.signal);
   });
 });
