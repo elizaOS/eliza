@@ -154,8 +154,9 @@ export function truncate(
 ): { text: string; truncated: boolean } {
   const wellFormed = toWellFormedUnicode(s);
   if (wellFormed.length <= max) return { text: wellFormed, truncated: false };
+  const truncatedPrefix = truncateWellFormed(wellFormed, max);
   return {
-    text: `${truncateWellFormed(wellFormed, max)}\n…[truncated, ${wellFormed.length - max} more chars]`,
+    text: `${truncatedPrefix}\n…[truncated, ${wellFormed.length - truncatedPrefix.length} more chars]`,
     truncated: true,
   };
 }

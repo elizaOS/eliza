@@ -111,6 +111,7 @@ describe("truncate", () => {
     expect(r.text.startsWith("a".repeat(9))).toBe(true);
     expect(r.text.split("\n")[0].isWellFormed()).toBe(true);
     expect(r.text.split("\n")[0].length).toBe(9);
+    expect(r.text).toContain("102 more chars");
   });
   it("preserves a fitting emoji under the cap", () => {
     const s = `${"a".repeat(8)}🦊`;
