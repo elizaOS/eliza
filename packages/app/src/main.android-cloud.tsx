@@ -355,11 +355,17 @@ export const androidCloudVoice: AndroidCloudVoiceAdapter = {
     } catch (error) {
       nativeStopError = error;
     }
-    if (nativeStopError !== undefined) throw nativeStopError;
-    const removalFailure = removalResults.find(
-      (result): result is PromiseRejectedResult => result.status === "rejected",
+    const teardownErrors = removalResults.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
     );
-    if (removalFailure) throw removalFailure.reason;
+    if (nativeStopError !== undefined) teardownErrors.push(nativeStopError);
+    if (teardownErrors.length === 1) throw teardownErrors[0];
+    if (teardownErrors.length > 1) {
+      throw new AggregateError(
+        teardownErrors,
+        "Voice dictation teardown failed at multiple boundaries.",
+      );
+    }
   },
   async speak(text) {
     await PlayVoice.speak({ text, language: navigator.language || "en-US" });

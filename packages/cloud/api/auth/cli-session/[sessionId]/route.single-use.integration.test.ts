@@ -13,6 +13,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import crypto from "node:crypto";
 import { Hono } from "hono";
 
 const databaseUrl =
@@ -25,7 +26,9 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 const OTHER_USER_ID = "44444444-4444-4444-8444-444444444444";
 const ORG_ID = "22222222-2222-4222-8222-222222222222";
 const API_KEY_ID = "33333333-3333-4333-8333-333333333333";
+const OTHER_API_KEY_ID = "55555555-5555-4555-8555-555555555555";
 const PLAINTEXT = "eliza_single_winner_plaintext";
+const OTHER_PLAINTEXT = "eliza_newer_login_plaintext";
 
 let decryptMode: "success" | "failure" = "success";
 let decryptCalls = 0;
@@ -71,6 +74,7 @@ let closeDb:
   | undefined;
 let cliAuthSessionsRepository: typeof import("../../../../shared/src/db/repositories/cli-auth-sessions").cliAuthSessionsRepository;
 let apiKeysRepository: typeof import("../../../../shared/src/db/repositories/api-keys").apiKeysRepository;
+let apiKeysService: typeof import("../../../../shared/src/lib/services/api-keys").apiKeysService;
 let cliAuthSessionsService: typeof import("../../../../shared/src/lib/services/cli-auth-sessions").cliAuthSessionsService;
 let pollApp: Hono;
 let legacyPollApp: Hono;
@@ -100,6 +104,9 @@ beforeAll(async () => {
   ));
   ({ apiKeysRepository } = await import(
     "../../../../shared/src/db/repositories/api-keys"
+  ));
+  ({ apiKeysService } = await import(
+    "../../../../shared/src/lib/services/api-keys"
   ));
   ({ cliAuthSessionsService } = await import(
     "../../../../shared/src/lib/services/cli-auth-sessions"
@@ -139,10 +146,11 @@ async function seedAuthenticatedSession(
 ): Promise<void> {
   const completeEncryptedKey = options.completeEncryptedKey ?? true;
   const sessionUserId = options.sessionUserId ?? USER_ID;
+  const keyHash = crypto.createHash("sha256").update(PLAINTEXT).digest("hex");
   await dbWrite.execute(`INSERT INTO api_keys
     (id, name, key_hash, key_prefix, key_ciphertext, key_nonce, key_auth_tag,
       key_kms_key_id, key_kms_key_version, organization_id, user_id)
-    VALUES ('${API_KEY_ID}', 'CLI key', 'hash', 'eliza_single',
+    VALUES ('${API_KEY_ID}', 'CLI key', '${keyHash}', 'eliza_single',
       ${completeEncryptedKey ? "'ciphertext'" : "NULL"}, 'nonce', 'auth-tag',
       'kms-key', 1, '${ORG_ID}', '${USER_ID}')`);
   await dbWrite.execute(`INSERT INTO cli_auth_sessions
@@ -251,6 +259,53 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
       status: "authenticated",
       consumed_at: expect.any(String),
     });
+  });
+
+  test("exact consumed-key revocation disables only abandoned A while B remains valid", async () => {
+    const firstSession = "11111111-aaaa-4111-8111-111111111111";
+    const secondSession = "22222222-bbbb-4222-8222-222222222222";
+    await seedAuthenticatedSession(firstSession);
+    const revealed = await pollApp.request(
+      `/api/auth/cli-session/${firstSession}`,
+    );
+    expect(revealed.status).toBe(200);
+    expect(await revealed.json()).toMatchObject({ apiKey: PLAINTEXT });
+
+    const otherHash = crypto
+      .createHash("sha256")
+      .update(OTHER_PLAINTEXT)
+      .digest("hex");
+    await dbWrite.execute(`INSERT INTO api_keys
+      (id, name, key_hash, key_prefix, key_ciphertext, key_nonce, key_auth_tag,
+        key_kms_key_id, key_kms_key_version, organization_id, user_id)
+      VALUES ('${OTHER_API_KEY_ID}', 'Newer CLI key', '${otherHash}', 'eliza_newer',
+        'ciphertext', 'nonce', 'auth-tag', 'kms-key', 1, '${ORG_ID}', '${USER_ID}')`);
+    await dbWrite.execute(`INSERT INTO cli_auth_sessions
+      (session_id, user_id, api_key_id, consumed_at, status, expires_at, authenticated_at)
+      VALUES ('${secondSession}', '${USER_ID}', '${OTHER_API_KEY_ID}', now(),
+        'authenticated', now() + interval '10 minutes', now())`);
+
+    const mismatched = await pollApp.request(
+      `/api/auth/cli-session/${firstSession}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${OTHER_PLAINTEXT}` },
+      },
+    );
+    expect(mismatched.status).toBe(403);
+
+    const revoked = await pollApp.request(
+      `/api/auth/cli-session/${firstSession}`,
+      {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${PLAINTEXT}` },
+      },
+    );
+    expect(revoked.status).toBe(204);
+    await expect(apiKeysService.validateApiKey(PLAINTEXT)).resolves.toBeNull();
+    await expect(
+      apiKeysService.validateApiKey(OTHER_PLAINTEXT),
+    ).resolves.toMatchObject({ id: OTHER_API_KEY_ID, is_active: true });
   });
 
   test("a decrypt failure does not consume the session and a retry can win", async () => {

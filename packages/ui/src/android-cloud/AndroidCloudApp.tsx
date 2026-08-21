@@ -137,7 +137,17 @@ export function AndroidCloudApp({
         setPhase(restored ? "ready" : "signed-out");
         return true;
       } catch (restoreError) {
-        if (await abandonStaleLogin()) return false;
+        if (!isCurrent()) {
+          try {
+            await abandonStaleLogin();
+            return false;
+          } catch (cleanupError) {
+            throw new AggregateError(
+              [restoreError, cleanupError],
+              "The canceled sign-in credential could not be cleaned up.",
+            );
+          }
+        }
         // error-policy:J4 session verification failure becomes an explicit
         // signed-out error state with a retry affordance.
         setSession(null);
@@ -206,16 +216,36 @@ export function AndroidCloudApp({
           await client.discardLoginAttempt(attempt.sessionId, result.token);
           return;
         }
-        await restore(attemptNumber, {
+        const restoredCurrentSession = await restore(attemptNumber, {
           sessionId: attempt.sessionId,
           token: result.token,
         });
+        if (!restoredCurrentSession) {
+          if (loginAttemptRef.current === attemptNumber) {
+            await client.discardLoginAttempt(attempt.sessionId, result.token);
+          }
+          return;
+        }
+        if (loginAttemptRef.current !== attemptNumber) {
+          await client.discardLoginAttempt(attempt.sessionId, result.token);
+          return;
+        }
         client.acceptLoginAttempt(attempt.sessionId);
         return;
       }
       throw new Error("Sign-in timed out. Please try again.");
     } catch (signInError) {
-      if (loginAttemptRef.current !== attemptNumber) return;
+      if (loginAttemptRef.current !== attemptNumber) {
+        if (
+          !(signInError instanceof Error) ||
+          signInError.name !== "AbortError"
+        ) {
+          setError(
+            `Sign-in was canceled, but credential cleanup needs attention: ${errorMessage(signInError)}`,
+          );
+        }
+        return;
+      }
       // error-policy:J4 the sign-in boundary renders the actionable failure.
       setError(errorMessage(signInError));
     } finally {

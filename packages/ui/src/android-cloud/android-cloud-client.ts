@@ -21,6 +21,8 @@ const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MANAGED_RUNTIME_HOST_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.cloud(?:-staging)?\.eliza\.app$/i;
+const CANCELLED_CREDENTIAL_TOMBSTONE = "eliza_cancelled_login_credential_v1";
+const DEFAULT_LOGIN_REVOCATION_TIMEOUT_MS = 5_000;
 
 export interface AndroidCloudIdentity {
   id: string;
@@ -53,6 +55,7 @@ export interface AndroidCloudClientOptions {
   cloudApiBase?: string;
   fetchImpl?: typeof fetch;
   credentialStore?: AndroidCloudCredentialStore;
+  loginRevocationTimeoutMs?: number;
 }
 
 export interface AndroidCloudCredentialStore {
@@ -160,14 +163,20 @@ export class AndroidCloudClient {
   readonly apiBase: string;
   private readonly fetchImpl: typeof fetch;
   private readonly credentialStore: AndroidCloudCredentialStore;
+  private readonly loginRevocationTimeoutMs: number;
   private credentialMutation: Promise<void> = Promise.resolve();
   private credentialRevision = 0;
-  private readonly loginCredentialRevisions = new Map<string, number>();
+  private readonly loginCredentials = new Map<
+    string,
+    { revision: number; token: string }
+  >();
 
   constructor(options: AndroidCloudClientOptions = {}) {
     this.apiBase = resolveCanonicalDirectCloudApiBase(options.cloudApiBase);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.credentialStore = options.credentialStore ?? browserCredentialStore;
+    this.loginRevocationTimeoutMs =
+      options.loginRevocationTimeoutMs ?? DEFAULT_LOGIN_REVOCATION_TIMEOUT_MS;
   }
 
   async readToken(): Promise<string | null> {
@@ -179,9 +188,14 @@ export class AndroidCloudClient {
     revision: number;
   }> {
     return this.mutateCredential(async () => ({
-      token: (await this.credentialStore.read())?.trim() || null,
+      token: this.normalizeStoredToken(await this.credentialStore.read()),
       revision: this.credentialRevision,
     }));
+  }
+
+  private normalizeStoredToken(value: string | null): string | null {
+    const token = value?.trim() || null;
+    return token === CANCELLED_CREDENTIAL_TOMBSTONE ? null : token;
   }
 
   private mutateCredential<T>(operation: () => Promise<T>): Promise<T> {
@@ -219,7 +233,9 @@ export class AndroidCloudClient {
       ) {
         return false;
       }
-      const current = (await this.credentialStore.read())?.trim() || null;
+      const current = this.normalizeStoredToken(
+        await this.credentialStore.read(),
+      );
       if (current !== expectedToken) return false;
       await this.credentialStore.clear();
       this.credentialRevision += 1;
@@ -338,10 +354,12 @@ export class AndroidCloudClient {
       if (!token) throw new Error("Sign-in completed without a session token.");
       signal?.throwIfAborted();
       const credentialRevision = await this.writeToken(token);
-      this.loginCredentialRevisions.set(sessionId, credentialRevision);
+      this.loginCredentials.set(sessionId, {
+        revision: credentialRevision,
+        token,
+      });
       if (signal?.aborted) {
-        await this.clearTokenIfCurrent(token, credentialRevision);
-        this.loginCredentialRevisions.delete(sessionId);
+        await this.discardLoginAttempt(sessionId, token);
         signal.throwIfAborted();
       }
       return { status: "authenticated", token };
@@ -439,33 +457,85 @@ export class AndroidCloudClient {
   }
 
   acceptLoginAttempt(sessionId: string): void {
-    this.loginCredentialRevisions.delete(sessionId);
+    this.loginCredentials.delete(sessionId);
   }
 
   async discardLoginAttempt(sessionId: string, token: string): Promise<void> {
     const expectedToken = token.trim();
     if (!expectedToken) return;
-    const expectedRevision = this.loginCredentialRevisions.get(sessionId);
-    this.loginCredentialRevisions.delete(sessionId);
-    if (expectedRevision === undefined) return;
-    await this.mutateCredential(async () => {
-      const current = (await this.credentialStore.read())?.trim() || null;
-      const revisionIsCurrent = this.credentialRevision === expectedRevision;
-      if (!revisionIsCurrent && current === expectedToken) return;
-      if (revisionIsCurrent && current === expectedToken) {
-        await this.credentialStore.clear();
+    const owned = this.loginCredentials.get(sessionId);
+    if (!owned) return;
+    if (owned.token !== expectedToken) {
+      throw new Error(
+        "The canceled sign-in credential does not match its attempt.",
+      );
+    }
+
+    const shouldRevoke = await this.mutateCredential(async () => {
+      if (this.credentialRevision === owned.revision) {
+        try {
+          await this.credentialStore.clear();
+        } catch (clearError) {
+          try {
+            // A non-secret tombstone prevents a failed remove operation from
+            // becoming an authenticated boot on the next app launch.
+            await this.credentialStore.write(CANCELLED_CREDENTIAL_TOMBSTONE);
+          } catch (tombstoneError) {
+            throw new AggregateError(
+              [clearError, tombstoneError],
+              "The canceled sign-in credential could not be removed.",
+            );
+          }
+        }
         this.credentialRevision += 1;
+        return true;
       }
-      try {
-        await this.fetchImpl(`${this.apiBase}/api/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${expectedToken}` },
-        });
-      } catch {
-        // error-policy:J6 stale-attempt remote logout is best-effort after its
-        // attempt-owned local credential has been compared and removed.
-      }
+
+      const current = this.normalizeStoredToken(
+        await this.credentialStore.read(),
+      );
+      return current !== expectedToken;
     });
+
+    if (!shouldRevoke) {
+      this.loginCredentials.delete(sessionId);
+      return;
+    }
+
+    await this.revokeLoginCredential(sessionId, expectedToken);
+    this.loginCredentials.delete(sessionId);
+  }
+
+  private async revokeLoginCredential(
+    sessionId: string,
+    token: string,
+  ): Promise<void> {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(
+      () => controller.abort(),
+      this.loginRevocationTimeoutMs,
+    );
+    try {
+      const response = await this.fetchImpl(
+        `${this.apiBase}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(
+          `The canceled sign-in credential could not be revoked (${response.status}).`,
+        );
+      }
+    } catch (error) {
+      throw new Error("The canceled sign-in credential could not be revoked.", {
+        cause: error,
+      });
+    } finally {
+      window.clearTimeout(timeout);
+    }
   }
 
   async getConversationMessages(

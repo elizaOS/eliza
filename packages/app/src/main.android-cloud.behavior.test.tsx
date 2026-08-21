@@ -265,6 +265,34 @@ describe("Android Cloud renderer behavior", () => {
     expect(playEntry.voiceStop).toHaveBeenCalledOnce();
   });
 
+  it("reports every listener and native teardown failure", async () => {
+    await entry.androidCloudVoice.requestAndStart(vi.fn(), vi.fn());
+    playEntry.voiceStop.mockClear();
+    const transcriptFailure = new Error("transcript teardown failed");
+    const errorFailure = new Error("error teardown failed");
+    const nativeFailure = new Error("native stop failed");
+    playEntry.voiceListenerRemovers[0]?.mockRejectedValueOnce(
+      transcriptFailure,
+    );
+    playEntry.voiceListenerRemovers[1]?.mockRejectedValueOnce(errorFailure);
+    playEntry.voiceStop.mockRejectedValueOnce(nativeFailure);
+
+    let failure: unknown;
+    try {
+      await entry.androidCloudVoice.stop();
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect((failure as AggregateError).errors).toEqual([
+      transcriptFailure,
+      errorFailure,
+      nativeFailure,
+    ]);
+    expect(playEntry.voiceStop).toHaveBeenCalledOnce();
+  });
+
   it("cleans up a transcript listener when error-listener setup fails", async () => {
     playEntry.voiceListenerSetupFailure = "error";
 

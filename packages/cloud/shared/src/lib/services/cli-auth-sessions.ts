@@ -3,6 +3,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import crypto from "crypto";
 import { decryptApiKey } from "../../db/crypto/api-keys";
 import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
@@ -293,6 +294,53 @@ export class CliAuthSessionsService {
       keyPrefix: apiKeyRecord.key_prefix,
       expiresAt: apiKeyRecord.expires_at,
     };
+  }
+
+  /**
+   * Revokes only the consumed API key bound to one CLI login session.
+   *
+   * The session id is public, so authority comes from possession of the exact
+   * revealed plaintext key and its immutable session-to-key binding. A token
+   * from a newer login cannot revoke this row, even for the same user or org.
+   */
+  async revokeConsumedCredential(sessionId: string, presentedToken: string): Promise<boolean> {
+    const token = presentedToken.trim();
+    if (!token) return false;
+    const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
+    if (
+      !state ||
+      state.session.status !== "authenticated" ||
+      !state.session.consumed_at ||
+      !state.session.api_key_id ||
+      !state.session.user_id ||
+      !state.apiKey ||
+      state.apiKey.id !== state.session.api_key_id ||
+      state.apiKey.user_id !== state.session.user_id
+    ) {
+      return false;
+    }
+
+    const presentedHash = crypto.createHash("sha256").update(token).digest();
+    const storedHash = Buffer.from(state.apiKey.key_hash, "hex");
+    if (
+      storedHash.length !== presentedHash.length ||
+      !crypto.timingSafeEqual(storedHash, presentedHash)
+    ) {
+      return false;
+    }
+
+    if (state.apiKey.is_active && !state.apiKey.deleted_at) {
+      const revoked = await apiKeysService.update(state.apiKey.id, {
+        is_active: false,
+      });
+      return Boolean(revoked && !revoked.is_active);
+    }
+
+    // A prior response may have been lost after the database mutation but
+    // before cache invalidation was confirmed. Retrying the exact credential
+    // must re-confirm that denial boundary before reporting success.
+    await apiKeysService.invalidateCache(state.apiKey.key_hash);
+    return true;
   }
 
   /**

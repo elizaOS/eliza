@@ -312,6 +312,50 @@ describe("AndroidCloudApp", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("retries and surfaces a canceled-login cleanup failure", async () => {
+    const client = createClient();
+    let finishRestore: (value: AndroidCloudSession | null) => void = () => {};
+    client.restoreSession = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockReturnValueOnce(
+        new Promise<AndroidCloudSession | null>((resolve) => {
+          finishRestore = resolve;
+        }),
+      );
+    vi.spyOn(client, "beginLogin").mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      browserUrl: "https://cloud.eliza.app/auth/cli-login",
+    });
+    vi.spyOn(client, "pollLogin").mockResolvedValue({
+      status: "authenticated",
+      token: "cancelled-token",
+    });
+    const discardLoginAttempt = vi
+      .spyOn(client, "discardLoginAttempt")
+      .mockRejectedValue(new Error("secure clear unavailable"));
+    accelerateLoginPollTimers();
+
+    render(
+      <AndroidCloudApp
+        client={client}
+        openExternal={vi.fn(async () => undefined)}
+        closeExternal={vi.fn(async () => undefined)}
+        voice={createVoice()}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(client.restoreSession).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel sign-in" }));
+    finishRestore(session);
+
+    await waitFor(() => expect(discardLoginAttempt).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("alert").textContent).toContain(
+      "credential cleanup needs attention",
+    );
+    expect(screen.queryByText("Ada")).toBeNull();
+  });
+
   it("does not let stale attempt cleanup replace a newer successful login", async () => {
     const client = createClient();
     const newerSession: AndroidCloudSession = {

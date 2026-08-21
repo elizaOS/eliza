@@ -15,6 +15,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
+function bearerToken(authorization: string | undefined): string | null {
+  return authorization?.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+}
+
 app.options("/", (c) => {
   return new Response(null, {
     status: 204,
@@ -75,6 +79,43 @@ app.get("/", async (c) => {
   } catch (error) {
     logger.error("[CLI Auth] Error getting CLI auth session", { error });
     return c.json({ error: "Failed to get session status" }, 500, corsHeaders);
+  }
+});
+
+app.delete("/", async (c) => {
+  const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
+  try {
+    const sessionId = c.req.param("sessionId");
+    if (!sessionId || !looksLikeCliAuthSessionId(sessionId)) {
+      return c.json({ error: "Invalid session ID format" }, 400, corsHeaders);
+    }
+    const token = bearerToken(c.req.header("authorization"));
+    if (!token) {
+      return c.json({ error: "Credential required" }, 401, corsHeaders);
+    }
+    const revoked = await cliAuthSessionsService.revokeConsumedCredential(
+      sessionId,
+      token,
+    );
+    if (!revoked) {
+      return c.json(
+        { error: "Credential does not match session" },
+        403,
+        corsHeaders,
+      );
+    }
+    return new Response(null, { status: 204, headers: corsHeaders });
+  } catch (error) {
+    // error-policy:J1 the HTTP boundary reports an unavailable revocation
+    // rather than claiming that the presented credential was disabled.
+    logger.error("[CLI Auth] Error revoking consumed session credential", {
+      error,
+    });
+    return c.json(
+      { error: "Failed to revoke session credential" },
+      500,
+      corsHeaders,
+    );
   }
 });
 
