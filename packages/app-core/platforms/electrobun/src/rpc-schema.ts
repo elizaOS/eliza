@@ -1649,6 +1649,7 @@ export type ElizaDesktopRPCSchema = {
           sshPort: number;
           remoteApiPort: number;
           identityFile?: string;
+          credentialRef?: string;
         };
         response: { apiBase: string; localPort: number };
       };

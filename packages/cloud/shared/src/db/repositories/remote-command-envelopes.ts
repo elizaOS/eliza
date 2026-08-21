@@ -1,7 +1,7 @@
 /** Durable opaque relay with controller sequence and host claim-lease enforcement. */
 
 import type { EncryptedRemoteCommand } from "@elizaos/shared";
-import { and, asc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { Database } from "../client";
 import { dbWrite } from "../helpers";
 import {
@@ -11,7 +11,11 @@ import {
 import { remoteHosts } from "../schemas/remote-hosts";
 import { remoteSessions } from "../schemas/remote-sessions";
 
-const CLAIM_LEASE_MS = 30_000;
+// A claimed command may legitimately spend ten minutes in model/tool work. The
+// lease therefore covers the controller's complete result-wait window; a
+// second host must never execute the same signed command while the first is
+// still allowed to publish its result.
+const CLAIM_RESULT_GRACE_MS = 10 * 60_000;
 
 export type EnqueueRemoteCommandResult =
   | { kind: "queued"; command: RemoteCommandEnvelope }
@@ -115,8 +119,16 @@ export class RemoteCommandEnvelopesRepository {
         .where(
           and(
             eq(remoteCommandEnvelopes.session_id, sessionId),
-            inArray(remoteCommandEnvelopes.status, ["pending", "claimed"]),
-            lt(remoteCommandEnvelopes.expires_at, now),
+            or(
+              and(
+                eq(remoteCommandEnvelopes.status, "pending"),
+                lt(remoteCommandEnvelopes.expires_at, now),
+              ),
+              and(
+                eq(remoteCommandEnvelopes.status, "claimed"),
+                lt(remoteCommandEnvelopes.claim_expires_at, now),
+              ),
+            ),
           ),
         );
       const [candidate] = await tx
@@ -126,13 +138,7 @@ export class RemoteCommandEnvelopesRepository {
           and(
             eq(remoteCommandEnvelopes.session_id, sessionId),
             gt(remoteCommandEnvelopes.expires_at, now),
-            or(
-              eq(remoteCommandEnvelopes.status, "pending"),
-              and(
-                eq(remoteCommandEnvelopes.status, "claimed"),
-                lt(remoteCommandEnvelopes.claim_expires_at, now),
-              ),
-            ),
+            eq(remoteCommandEnvelopes.status, "pending"),
           ),
         )
         .orderBy(asc(remoteCommandEnvelopes.created_at))
@@ -144,7 +150,7 @@ export class RemoteCommandEnvelopesRepository {
         .set({
           status: "claimed",
           attempts: sql`${remoteCommandEnvelopes.attempts} + 1`,
-          claim_expires_at: new Date(now.getTime() + CLAIM_LEASE_MS),
+          claim_expires_at: new Date(candidate.expires_at.getTime() + CLAIM_RESULT_GRACE_MS),
           updated_at: now,
         })
         .where(eq(remoteCommandEnvelopes.id, candidate.id))
@@ -157,6 +163,7 @@ export class RemoteCommandEnvelopesRepository {
     sessionId: string;
     commandId: string;
     hostId: string;
+    claimAttempt: number;
     resultEnvelope: EncryptedRemoteCommand;
   }): Promise<RemoteCommandEnvelope | undefined> {
     return this.database.transaction(async (tx) => {
@@ -198,6 +205,8 @@ export class RemoteCommandEnvelopesRepository {
             eq(remoteCommandEnvelopes.session_id, input.sessionId),
             eq(remoteCommandEnvelopes.command_id, input.commandId),
             eq(remoteCommandEnvelopes.status, "claimed"),
+            eq(remoteCommandEnvelopes.attempts, input.claimAttempt),
+            gt(remoteCommandEnvelopes.claim_expires_at, now),
           ),
         )
         .returning();

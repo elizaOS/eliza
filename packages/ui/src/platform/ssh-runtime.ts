@@ -7,6 +7,7 @@ export interface SshRuntimeEnrollment {
   sshPort: number;
   remoteApiPort: number;
   identityFile?: string;
+  credentialRef?: string;
 }
 
 export async function startSshRuntime(

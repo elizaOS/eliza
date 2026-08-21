@@ -29,6 +29,17 @@ interface RelayClient {
 
 const sequenceLocks = new Map<string, Promise<void>>();
 
+function incrementPersistedSequence(sessionId: string): number {
+  const key = `eliza.remote-relay.sequence.v1:${sessionId}`;
+  const existing = Number(globalThis.localStorage?.getItem(key) ?? "0");
+  const sequence =
+    Number.isSafeInteger(existing) && existing >= 0 ? existing + 1 : 1;
+  runAsPrivilegedShell(() =>
+    globalThis.localStorage?.setItem(key, String(sequence)),
+  );
+  return sequence;
+}
+
 function relayProfileForUrl(url: string): AgentProfile | null {
   let base: string;
   try {
@@ -48,27 +59,28 @@ function relayProfileForUrl(url: string): AgentProfile | null {
 }
 
 async function nextSequence(sessionId: string): Promise<number> {
-  const key = `eliza.remote-relay.sequence.v1:${sessionId}`;
+  const lockManager = globalThis.navigator?.locks;
+  if (lockManager) {
+    return lockManager.request(
+      `eliza.remote-relay.sequence.v1:${sessionId}`,
+      () => incrementPersistedSequence(sessionId),
+    );
+  }
   const prior = sequenceLocks.get(sessionId) ?? Promise.resolve();
   let release!: () => void;
   const current = new Promise<void>((resolve) => {
     release = resolve;
   });
-  sequenceLocks.set(
-    sessionId,
-    prior.then(() => current),
-  );
+  const queued = prior.then(() => current);
+  sequenceLocks.set(sessionId, queued);
   await prior;
   try {
-    const existing = Number(globalThis.localStorage?.getItem(key) ?? "0");
-    const sequence =
-      Number.isSafeInteger(existing) && existing >= 0 ? existing + 1 : 1;
-    runAsPrivilegedShell(() =>
-      globalThis.localStorage?.setItem(key, String(sequence)),
-    );
-    return sequence;
+    return incrementPersistedSequence(sessionId);
   } finally {
     release();
+    if (sequenceLocks.get(sessionId) === queued) {
+      sequenceLocks.delete(sessionId);
+    }
   }
 }
 

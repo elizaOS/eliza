@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 import type { EncryptedRemoteCommand } from "@elizaos/shared";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import type { Database } from "../client";
 import { remoteCommandEnvelopes } from "../schemas/remote-command-envelopes";
@@ -127,13 +127,38 @@ describe("remote command relay persistence", () => {
     const claimed = await repository.claimNext(sessionId, hostId);
     expect(claimed?.command.command_id).toBe(commandId);
     expect(claimed?.session.controller_key_id).toBe("phone-key");
+    await db
+      .update(remoteCommandEnvelopes)
+      .set({ expires_at: new Date(Date.now() - 1_000) })
+      .where(eq(remoteCommandEnvelopes.command_id, commandId));
     await expect(repository.claimNext(sessionId, hostId)).resolves.toBeNull();
+    expect(await repository.readOwnedResult(sessionId, commandId, orgId, userId)).toMatchObject({
+      status: "claimed",
+    });
+
+    const claimAttempt = claimed?.command.attempts;
+    if (!claimAttempt) throw new Error("claim attempt missing");
 
     await expect(
       repository.complete({
         sessionId,
         commandId,
         hostId,
+        claimAttempt: claimAttempt + 1,
+        resultEnvelope: {
+          ...envelope,
+          senderKeyId: "host-key",
+          recipientKeyId: "phone-key",
+        },
+      }),
+    ).resolves.toBeUndefined();
+
+    await expect(
+      repository.complete({
+        sessionId,
+        commandId,
+        hostId,
+        claimAttempt,
         resultEnvelope: {
           ...envelope,
           senderKeyId: "attacker-key",
@@ -151,6 +176,7 @@ describe("remote command relay persistence", () => {
       sessionId,
       commandId,
       hostId,
+      claimAttempt,
       resultEnvelope,
     });
     expect(completed?.status).toBe("completed");

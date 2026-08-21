@@ -96,6 +96,7 @@ app.get("/", async (c) => {
       data: claimed
         ? {
             commandId: claimed.command.command_id,
+            claimAttempt: claimed.command.attempts,
             sequence: claimed.command.sequence,
             expiresAt: claimed.command.expires_at,
             envelope: claimed.command.envelope,

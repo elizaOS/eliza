@@ -201,6 +201,7 @@ export interface CloudRemoteSession {
 
 export interface CloudClaimedRemoteCommand {
   commandId: string;
+  claimAttempt: number;
   sequence: number;
   expiresAt: string;
   envelope: EncryptedRemoteCommand;
@@ -1588,6 +1589,7 @@ declare module "./client-base" {
     enqueueCloudRemoteCommand(input: {
       sessionId: string;
       commandId: string;
+      claimAttempt: number;
       sequence: number;
       expiresAt: number;
       envelope: EncryptedRemoteCommand;
@@ -2637,7 +2639,10 @@ ElizaClient.prototype.completeCloudRemoteCommand = async function (
           "X-Eliza-Remote-Host-Id": input.hostId,
           "X-Eliza-Remote-Host-Token": input.hostToken,
         },
-        body: JSON.stringify({ resultEnvelope: input.resultEnvelope }),
+        body: JSON.stringify({
+          claimAttempt: input.claimAttempt,
+          resultEnvelope: input.resultEnvelope,
+        }),
       },
     ),
   );

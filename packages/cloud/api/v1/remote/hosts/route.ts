@@ -14,27 +14,33 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const REMOTE_HOST_TAG = "tag:eliza-remote-host";
 const ENROLLMENT_TTL_MS = 15 * 60 * 1000;
 
-const enrollmentSchema = z.object({
-  displayName: z.string().trim().min(1).max(120),
-  platform: z.enum(["macos", "linux", "windows"]),
-  hostIdentity: z.object({
-    keyId: z.string().trim().min(1).max(256),
-    signingPublicKeyJwk: z.object({
-      kty: z.literal("EC"),
-      crv: z.literal("P-256"),
-      x: z.string().min(40).max(50),
-      y: z.string().min(40).max(50),
-      d: z.never().optional(),
+const enrollmentSchema = z
+  .object({
+    displayName: z.string().trim().min(1).max(120),
+    platform: z.enum(["macos", "linux", "windows"]),
+    hostIdentity: z.object({
+      keyId: z.string().trim().min(1).max(256),
+      signingPublicKeyJwk: z
+        .object({
+          kty: z.literal("EC"),
+          crv: z.literal("P-256"),
+          x: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+          y: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+          d: z.never().optional(),
+        })
+        .strict(),
+      encryptionPublicKeyJwk: z
+        .object({
+          kty: z.literal("EC"),
+          crv: z.literal("P-256"),
+          x: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+          y: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+          d: z.never().optional(),
+        })
+        .strict(),
     }),
-    encryptionPublicKeyJwk: z.object({
-      kty: z.literal("EC"),
-      crv: z.literal("P-256"),
-      x: z.string().min(40).max(50),
-      y: z.string().min(40).max(50),
-      d: z.never().optional(),
-    }),
-  }),
-});
+  })
+  .strict();
 
 function readEnv(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -101,19 +107,6 @@ app.post("/", async (c) => {
       : null;
     const hostToken = generateRemoteHostToken();
     const hostTokenHash = await hashRemoteHostToken(hostToken);
-    const expiration = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString();
-    const preAuthKey = managedHeadscale
-      ? await new HeadscaleClient({
-          apiUrl: apiUrl as string,
-          apiKey: apiKey as string,
-          user: userName,
-        }).createPreAuthKey({
-          reusable: false,
-          ephemeral: false,
-          expiration,
-          aclTags: [REMOTE_HOST_TAG],
-        })
-      : null;
     const host = await remoteHostsRepository.create({
       id: hostId,
       organization_id: user.organization_id,
@@ -131,6 +124,21 @@ app.post("/", async (c) => {
       host_token_hash: hostTokenHash,
       status: "pending",
     });
+    // Persist ownership before minting an externally valid enrollment secret.
+    // A database failure must never leave an untracked Headscale key behind.
+    const expiration = new Date(Date.now() + ENROLLMENT_TTL_MS).toISOString();
+    const preAuthKey = managedHeadscale
+      ? await new HeadscaleClient({
+          apiUrl: apiUrl as string,
+          apiKey: apiKey as string,
+          user: userName,
+        }).createPreAuthKey({
+          reusable: false,
+          ephemeral: false,
+          expiration,
+          aclTags: [REMOTE_HOST_TAG],
+        })
+      : null;
     c.header("Cache-Control", "no-store");
     return c.json({
       success: true,

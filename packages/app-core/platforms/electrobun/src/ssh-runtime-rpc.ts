@@ -10,12 +10,14 @@ interface SshRuntimeParams {
   sshPort: number;
   remoteApiPort: number;
   identityFile?: string;
+  credentialRef?: string;
 }
 
 interface SshTunnel {
   child: ChildProcess;
   localPort: number;
   fingerprint: string;
+  credentialRef: string | null;
 }
 
 const tunnels = new Map<string, SshTunnel>();
@@ -27,6 +29,7 @@ function tunnelFingerprint(input: SshRuntimeParams): string {
     input.sshPort,
     input.remoteApiPort,
     input.identityFile ?? null,
+    input.credentialRef ?? null,
   ]);
 }
 
@@ -39,6 +42,7 @@ function parseParams(params: unknown): SshRuntimeParams {
   const sshPort = Reflect.get(params, "sshPort");
   const remoteApiPort = Reflect.get(params, "remoteApiPort");
   const identityFile = Reflect.get(params, "identityFile");
+  const credentialRef = Reflect.get(params, "credentialRef");
   if (
     typeof runtimeId !== "string" ||
     !runtimeId.trim() ||
@@ -54,7 +58,11 @@ function parseParams(params: unknown): SshRuntimeParams {
     (identityFile !== undefined &&
       (typeof identityFile !== "string" ||
         !identityFile.startsWith("/") ||
-        identityFile.length > 4096))
+        identityFile.length > 4096)) ||
+    (credentialRef !== undefined &&
+      (typeof credentialRef !== "string" ||
+        !credentialRef.trim() ||
+        credentialRef.length > 256))
   ) {
     throw new Error("SSH runtime fields are invalid");
   }
@@ -64,6 +72,9 @@ function parseParams(params: unknown): SshRuntimeParams {
     sshPort,
     remoteApiPort,
     ...(identityFile ? { identityFile } : {}),
+    ...(typeof credentialRef === "string"
+      ? { credentialRef: credentialRef.trim() }
+      : {}),
   };
 }
 
@@ -181,7 +192,12 @@ export async function desktopStartSshRuntime(
           : "SSH tunnel failed",
     );
   }
-  const tunnel = { child, localPort, fingerprint };
+  const tunnel = {
+    child,
+    localPort,
+    fingerprint,
+    credentialRef: input.credentialRef ?? null,
+  };
   tunnels.set(input.runtimeId, tunnel);
   child.once("exit", () => {
     if (tunnels.get(input.runtimeId) === tunnel)
@@ -303,6 +319,9 @@ export async function desktopSshRuntimeRequest(params: unknown): Promise<{
   if (!tunnel || tunnel.child.exitCode !== null) {
     throw new Error("SSH runtime tunnel is not running");
   }
+  if ((request.credentialRef ?? null) !== tunnel.credentialRef) {
+    throw new Error("SSH runtime credential is not bound to this tunnel");
+  }
   const token = request.credentialRef
     ? await loadRemoteRuntimeAccessToken(
         createNodePlatformSecureStore(),
@@ -325,14 +344,47 @@ export async function desktopSshRuntimeRequest(params: unknown): Promise<{
       },
     );
     const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.length <= 256) {
+      headers["content-type"] = contentType;
+    }
+    const declaredLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > 4 * 1024 * 1024) {
+      await response.body?.cancel();
+      throw new Error("SSH runtime response exceeds the 4 MiB limit");
+    }
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    if (reader) {
+      while (true) {
+        const item = await reader.read();
+        if (item.done) break;
+        total += item.value.byteLength;
+        if (total > 4 * 1024 * 1024) {
+          await reader.cancel();
+          throw new Error("SSH runtime response exceeds the 4 MiB limit");
+        }
+        chunks.push(item.value);
+      }
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    let responseBody: string;
+    try {
+      responseBody = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("SSH runtime response is not valid UTF-8");
+    }
     return {
       status: response.status,
       statusText: response.statusText,
       headers,
-      body: await response.text(),
+      body: responseBody,
     };
   } finally {
     clearTimeout(timeout);

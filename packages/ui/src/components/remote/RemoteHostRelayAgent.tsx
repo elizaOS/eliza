@@ -71,7 +71,12 @@ export async function dispatchAgentRequest(
     if (!response) throw new Error("The local agent transport is unavailable");
     return response;
   }
-  const tunnel = await startSshRuntime(target.profile.sshGateway);
+  const tunnel = await startSshRuntime({
+    ...target.profile.sshGateway,
+    ...(target.profile.credentialRef
+      ? { credentialRef: target.profile.credentialRef }
+      : {}),
+  });
   if (target.profile.apiBase !== tunnel.apiBase) {
     updateAgentProfile(target.profile.id, { apiBase: tunnel.apiBase });
   }
@@ -281,6 +286,7 @@ export async function processClaim(
   await client.completeCloudRemoteCommand({
     sessionId,
     commandId: claim.commandId,
+    claimAttempt: claim.claimAttempt,
     hostId,
     hostToken,
     resultEnvelope,
@@ -308,7 +314,12 @@ export function RemoteHostRelayAgent() {
           active?.sshGateway &&
           !bootstrappedSshRuntimes.has(active.sshGateway.runtimeId)
         ) {
-          const tunnel = await startSshRuntime(active.sshGateway);
+          const tunnel = await startSshRuntime({
+            ...active.sshGateway,
+            ...(active.credentialRef
+              ? { credentialRef: active.credentialRef }
+              : {}),
+          });
           if (active.apiBase !== tunnel.apiBase) {
             updateAgentProfile(active.id, { apiBase: tunnel.apiBase });
           }

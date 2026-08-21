@@ -94,7 +94,27 @@ describe("remote command relay route", () => {
 
   test("claims only for the authenticated host identity", async () => {
     authenticate.mockResolvedValue({ id: "host-1" });
-    claimNext.mockResolvedValue(null);
+    claimNext.mockResolvedValue({
+      command: {
+        command_id: "55555555-5555-4555-8555-555555555555",
+        attempts: 3,
+        sequence: 1,
+        expires_at: new Date(Date.now() + 30_000),
+        envelope,
+      },
+      session: {
+        id: "44444444-4444-4444-8444-444444444444",
+        user_id: "owner-1",
+        host_id: "host-1",
+        controller_device_id: "phone-1",
+        controller_key_id: "phone-key",
+        controller_display_name: "Phone",
+        controller_platform: "ios",
+        controller_signing_public_jwk: publicKey,
+        controller_encryption_public_jwk: publicKey,
+        created_at: new Date(),
+      },
+    });
     const response = await app.fetch(
       new Request(
         "https://api.example.test/api/v1/remote/sessions/44444444-4444-4444-8444-444444444444/commands",
@@ -105,6 +125,11 @@ describe("remote command relay route", () => {
     expect(claimNext).toHaveBeenCalledWith(
       "44444444-4444-4444-8444-444444444444",
       "host-1",
+    );
+    expect(await response.json()).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({ claimAttempt: 3 }),
+      }),
     );
   });
 });

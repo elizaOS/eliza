@@ -31,6 +31,7 @@ app.post("/", async (c) => {
       sessionId,
       commandId,
       hostId: host.id,
+      claimAttempt: parsed.data.claimAttempt,
       resultEnvelope: parsed.data.resultEnvelope,
     });
     if (!command) {

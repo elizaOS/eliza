@@ -144,4 +144,27 @@ describe("remoteRelayTransportForUrl", () => {
       remoteRelayTransportForUrl("eliza-remote://other/value", cloud),
     ).toBeNull();
   });
+
+  it("serializes concurrent sequence allocation when Web Locks are unavailable", async () => {
+    const cloud = {
+      enqueueCloudRemoteCommand: vi.fn().mockResolvedValue(undefined),
+      readCloudRemoteCommandResult: vi.fn().mockResolvedValue({
+        status: "completed",
+        resultEnvelope: envelope,
+      }),
+    };
+    const transport = remoteRelayTransportForUrl(`${BASE}/api/health`, cloud);
+    if (!transport) throw new Error("relay transport missing");
+
+    await Promise.all([
+      transport.request(`${BASE}/api/health`, { method: "GET" }),
+      transport.request(`${BASE}/api/health`, { method: "GET" }),
+    ]);
+
+    expect(
+      cloud.enqueueCloudRemoteCommand.mock.calls.map(
+        ([input]) => input.sequence,
+      ),
+    ).toEqual([1, 2]);
+  });
 });

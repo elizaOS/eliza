@@ -77,9 +77,10 @@ describe("RemoteHostRelayAgent SSH dispatch", () => {
       status: 200,
       body: "ok",
     });
-    expect(mocks.startSshRuntime).toHaveBeenCalledWith(
-      target.profile.sshGateway,
-    );
+    expect(mocks.startSshRuntime).toHaveBeenCalledWith({
+      ...target.profile.sshGateway,
+      credentialRef: "credential-1",
+    });
     expect(mocks.updateAgentProfile).toHaveBeenCalledWith("profile-1", {
       apiBase: "http://127.0.0.1:42000",
     });
@@ -126,6 +127,7 @@ describe("RemoteHostRelayAgent SSH dispatch", () => {
     };
     mocks.claimCloudRemoteCommand.mockResolvedValue({
       commandId: "command-1",
+      claimAttempt: 1,
       authority,
       envelope: { ciphertext: "opaque" },
     });
@@ -171,6 +173,7 @@ describe("RemoteHostRelayAgent SSH dispatch", () => {
       expect.objectContaining({
         sessionId: "session-1",
         commandId: "command-1",
+        claimAttempt: 1,
         hostId: "host-vps-1",
         hostToken: "eliza_host_token",
         resultEnvelope: { ciphertext: "sealed-result" },

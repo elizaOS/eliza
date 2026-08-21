@@ -126,7 +126,12 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
           (profile) => profile.id === id,
         );
         if (target?.sshGateway) {
-          const tunnel = await startSshRuntime(target.sshGateway);
+          const tunnel = await startSshRuntime({
+            ...target.sshGateway,
+            ...(target.credentialRef
+              ? { credentialRef: target.credentialRef }
+              : {}),
+          });
           if (target.apiBase !== tunnel.apiBase) {
             updateAgentProfile(target.id, { apiBase: tunnel.apiBase });
             target = { ...target, apiBase: tunnel.apiBase };
@@ -431,6 +436,7 @@ export function MyRuntimesContainer({ className }: MyRuntimesContainerProps) {
           sshPort: entry.sshPort,
           remoteApiPort: entry.remoteApiPort,
           ...(entry.identityFile ? { identityFile: entry.identityFile } : {}),
+          ...(entry.accessToken ? { credentialRef: runtimeId } : {}),
         };
         const tunnel = await startSshRuntime(sshGateway);
         tunnelStarted = true;
