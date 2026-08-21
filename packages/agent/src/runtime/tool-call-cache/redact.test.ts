@@ -65,6 +65,36 @@ describe("defaultPrivacyRedactor", () => {
     expect(out).not.toContain("37.7749");
   });
 
+  it("redacts coordinate objects with additional scalar fields", () => {
+    const out = defaultPrivacyRedactor(
+      '{"coords" : { "latitude" : 37.7749, "longitude" : -122.4194, "accuracy" : 12, "source_name": "gps" }}',
+    ) as string;
+    expect(out).toBe("{[REDACTED_GEO]}");
+  });
+
+  it("scans adversarial coordinate-like text in linear time", () => {
+    const input = `{"coords":{"latitude":0,"longitude":0${',"A":+\t'.repeat(50_000)}}}`;
+    expect(defaultPrivacyRedactor(input)).toBe("{[REDACTED_GEO]}");
+  });
+
+  it("scans many overlapping malformed coordinate candidates in linear time", () => {
+    // Every "coords" marker starts a candidate whose scan runs to the end of
+    // the unterminated input; a non-monotonic cursor would rescan each
+    // remaining suffix and go quadratic.
+    const input = '"coords":{"latitude":0,"longitude":0,'.repeat(50_000);
+    const out = defaultPrivacyRedactor(input) as string;
+    expect(out).toContain("[REDACTED_GEO]");
+    expect(out).not.toContain('"latitude":0');
+  });
+
+  it("still redacts a valid coords block after malformed candidates", () => {
+    const out = defaultPrivacyRedactor(
+      '"coords": nope, "coords" {}, {"coords":{"latitude":1.5,"longitude":2.5}}',
+    ) as string;
+    expect(out).toContain("{[REDACTED_GEO]}");
+    expect(out).not.toContain("1.5");
+  });
+
   it("redacts lat/lng pair", () => {
     const out = defaultPrivacyRedactor(
       '{"latitude": 48.8566, "longitude": 2.3522}',
