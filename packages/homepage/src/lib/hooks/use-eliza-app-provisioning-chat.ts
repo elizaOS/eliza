@@ -111,6 +111,7 @@ export function useElizaAppProvisioningChat(
   );
   const stoppedRef = useRef(false);
   const pollStartRef = useRef<number | null>(null);
+  const hasAnnouncedReadyRef = useRef(false);
 
   const isReady = containerStatus === "running" && bridgeUrl !== null;
   const isDedicatedOff = containerStatus === "none";
@@ -176,6 +177,7 @@ export function useElizaAppProvisioningChat(
       setBridgeUrl(null);
       setMessages([WELCOME]);
       setIsLoading(false);
+      hasAnnouncedReadyRef.current = false;
       if (timeoutRef.current) {
         window.clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
@@ -184,7 +186,7 @@ export function useElizaAppProvisioningChat(
   }, [onboardingSessionId]);
 
   useEffect(() => {
-    if (!active || isReady || isDedicatedOff || provisioningError) return;
+    if (!active || isDedicatedOff || provisioningError) return;
     stoppedRef.current = false;
     if (pollStartRef.current === null) pollStartRef.current = Date.now();
     generationRef.current += 1;
@@ -198,9 +200,8 @@ export function useElizaAppProvisioningChat(
         generation !== generationRef.current
       )
         return;
-      const elapsed = pollStartRef.current
-        ? Date.now() - pollStartRef.current
-        : 0;
+      if (pollStartRef.current === null) pollStartRef.current = Date.now();
+      const elapsed = Date.now() - pollStartRef.current;
       if (elapsed > POLL_DEADLINE_MS) {
         if (generation !== generationRef.current) return;
         stoppedRef.current = true;
@@ -234,17 +235,22 @@ export function useElizaAppProvisioningChat(
               newStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
             );
             if (newStatus === "running" && res.data.bridgeUrl) {
-              stoppedRef.current = true;
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: uid(),
-                  role: "assistant",
-                  content:
-                    "Your AI space is ready! You can start chatting in full now.",
-                },
-              ]);
-              return;
+              pollStartRef.current = null;
+              // Multiple status requests can resolve together across an
+              // effect generation change. Claim the receipt synchronously so
+              // those responses still append exactly one ready handoff.
+              if (!hasAnnouncedReadyRef.current) {
+                hasAnnouncedReadyRef.current = true;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: uid(),
+                    role: "assistant",
+                    content:
+                      "Your AI space is ready! You can start chatting in full now.",
+                  },
+                ]);
+              }
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -287,8 +293,7 @@ export function useElizaAppProvisioningChat(
               provisioning?.status ?? containerStatusRef.current;
             applyOnboardingResponse(res.data);
             if (newStatus === "running" && provisioning?.bridgeUrl) {
-              stoppedRef.current = true;
-              return;
+              pollStartRef.current = null;
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -338,7 +343,6 @@ export function useElizaAppProvisioningChat(
   }, [
     active,
     applyOnboardingResponse,
-    isReady,
     isDedicatedOff,
     onboardingSessionId,
     provisioningError,

@@ -1,6 +1,9 @@
 /** Exercises Worker-safe core stub behavior with deterministic fixtures. */
 import { describe, expect, test } from "bun:test";
 
+import { stripHtmlRawTextElements as stripHtmlRawTextElementsFromCore } from "../../../core/src/utils/html-raw-text";
+import { toWellFormedUnicode as toWellFormedUnicodeFromCore } from "../../../core/src/utils/well-formed";
+
 import {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
@@ -29,13 +32,35 @@ describe("elizaos-core Worker stub", () => {
     ).resolves.toBe("ok");
   });
 
-  test("re-exports canonical pure text sanitizers used by Worker consumers", () => {
-    expect(
-      stripHtmlRawTextElements(
-        "before<script><!--<script>hidden</script>still-hidden</script>after",
-      ),
-    ).toBe("before after");
-    expect(toWellFormedUnicode("before\ud83dafter")).toBe("before�after");
+  test("keeps Worker raw-text stripping in parity with core", () => {
+    const cases = [
+      "plain text",
+      "before<SCRIPT type='text/javascript'>hidden</SCRIPT >after",
+      'before<style media="screen > print">hidden</style/ >after',
+      "before<script><!--<script>hidden</script>still-hidden</script>after",
+      "before<script>unterminated",
+      "before<scripture>visible</scripture>after",
+    ];
+    for (const input of cases) {
+      expect(stripHtmlRawTextElements(input)).toBe(
+        stripHtmlRawTextElementsFromCore(input),
+      );
+    }
+  });
+
+  test("keeps Worker Unicode repair in parity with core", () => {
+    const cases = [
+      "plain text",
+      "before\ud83dafter",
+      "before\udc80after",
+      "valid pair 💀",
+      "\ud83d\udc80\ud83d",
+    ];
+    for (const input of cases) {
+      expect(toWellFormedUnicode(input)).toBe(
+        toWellFormedUnicodeFromCore(input),
+      );
+    }
   });
 
   test("strips document augmentation before Worker-side persistence", () => {
