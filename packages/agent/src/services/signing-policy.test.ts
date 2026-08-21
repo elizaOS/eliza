@@ -68,19 +68,24 @@ describe("SigningPolicyEvaluator", () => {
     );
   });
 
-  it.each(["0x1", "0x1234", "0x1234567", "0x1234567g", "12345678"])(
-    "rejects incomplete or non-hex calldata %s",
-    (data) => {
-      const evaluator = new SigningPolicyEvaluator(
-        createPolicy({ allowedMethodSelectors: ["0x12345678"] }),
-      );
+  it.each([
+    "0x1",
+    "0x1234",
+    "0x1234567",
+    "0x1234567g",
+    "12345678",
+    "0x123456789",
+    "0x12345678zz",
+  ])("rejects incomplete, odd-length, or non-hex calldata %s", (data) => {
+    const evaluator = new SigningPolicyEvaluator(
+      createPolicy({ allowedMethodSelectors: ["0x12345678"] }),
+    );
 
-      expect(evaluator.evaluate(createRequest({ data }))).toMatchObject({
-        allowed: false,
-        matchedRule: "method_selector_format",
-      });
-    },
-  );
+    expect(evaluator.evaluate(createRequest({ data }))).toMatchObject({
+      allowed: false,
+      matchedRule: "method_selector_format",
+    });
+  });
 
   it("compares complete selectors case-insensitively", () => {
     const evaluator = new SigningPolicyEvaluator(
@@ -96,6 +101,28 @@ describe("SigningPolicyEvaluator", () => {
       allowed: false,
       matchedRule: "method_selector_allowlist",
     });
+  });
+
+  it("is immune to mutation of caller-held and returned policy arrays", () => {
+    const input = createPolicy({ allowedMethodSelectors: ["0x12345678"] });
+    const evaluator = new SigningPolicyEvaluator(input);
+
+    input.deniedContracts.push("0x0000000000000000000000000000000000000001");
+    evaluator.getPolicy().allowedMethodSelectors.length = 0;
+
+    expect(
+      evaluator.evaluate(createRequest({ data: "0x12345678" })),
+    ).toMatchObject({ allowed: true, matchedRule: "allowed" });
+
+    const update = createPolicy({ allowedMethodSelectors: ["0x12345678"] });
+    evaluator.updatePolicy(update);
+    update.allowedMethodSelectors[0] = "0xdeadbeef";
+
+    expect(
+      evaluator.evaluate(
+        createRequest({ requestId: "request-2", data: "0x12345678" }),
+      ),
+    ).toMatchObject({ allowed: true, matchedRule: "allowed" });
   });
 
   it("enforces the hourly limit using only recorded public requests", () => {
