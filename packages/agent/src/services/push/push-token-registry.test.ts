@@ -228,10 +228,7 @@ describe("PushTokenRegistry", () => {
         createdAt: i + 1,
       });
     }
-    ctx.cache.set(
-      "push-tokens:00000000-0000-0000-0000-0000000000aa",
-      dumped,
-    );
+    ctx.cache.set("push-tokens:00000000-0000-0000-0000-0000000000aa", dumped);
     const fresh = new PushTokenRegistry(ctx.runtime);
     const list = await fresh.list();
     expect(list).toHaveLength(MAX_PUSH_TOKENS_PER_AGENT);
