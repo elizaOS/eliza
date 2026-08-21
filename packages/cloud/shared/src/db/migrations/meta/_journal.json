@@ -1907,17 +1907,17 @@
       "breakpoints": true
     },
     {
-      "idx": 271,
-      "version": "7",
-      "when": 1792958400000,
-      "tag": "0272_remote_command_relay",
-      "breakpoints": true
-    },
-    {
       "idx": 272,
       "version": "7",
       "when": 1793044800000,
-      "tag": "0273_remote_cloud_relay_fallback",
+      "tag": "0278_remote_command_relay",
+      "breakpoints": true
+    },
+    {
+      "idx": 273,
+      "version": "7",
+      "when": 1793131200000,
+      "tag": "0279_remote_cloud_relay_fallback",
       "breakpoints": true
     }
   ]
