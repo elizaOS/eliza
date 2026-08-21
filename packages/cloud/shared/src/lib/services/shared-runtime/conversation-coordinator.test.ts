@@ -35,6 +35,7 @@ const {
   coordinateSharedHistory,
   coordinateSharedLifecycleEvent,
   coordinateSharedStream,
+  coordinatorFetch,
   preparePersonalProvisionalHistoryConvergence,
   purgeSharedConversationRooms,
 } = await import("./conversation-coordinator");
@@ -114,7 +115,10 @@ describe("shared conversation coordinator", () => {
       "prewarm",
       "history",
     ]);
-    expect(signals).toEqual([undefined, abortController.signal, undefined, undefined]);
+    expect(signals[1]).toBe(abortController.signal);
+    // bridge / prewarm / history carry no caller signal, so they now fail
+    // closed at the shared-runtime hop timeout instead of pinning forever.
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
     expect(envelopes[1]).toMatchObject({ traceId: "trace-coordinator-stream" });
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
@@ -437,5 +441,38 @@ describe("shared conversation coordinator", () => {
 
     expect(result).toEqual({ purged: 1, failures: 2 });
     expect(names).toEqual(["agent-1:room-throws", "agent-1:room-500", "agent-1:room-ok"]);
+  });
+
+  test("coordinatorFetch aborts a hung Durable Object hop at the timeout", async () => {
+    // A coordinator that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the default shared-runtime hop timeout).
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    };
+    const start = Date.now();
+    await expect(
+      coordinatorFetch(hungStub, "https://shared-runtime.internal/history", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("coordinatorFetch preserves a caller-provided abort signal", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return Response.json({ ok: true });
+      },
+    };
+    await coordinatorFetch(stub, "https://shared-runtime.internal/bridge", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
