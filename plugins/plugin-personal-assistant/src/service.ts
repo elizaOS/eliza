@@ -10,6 +10,7 @@ import {
   type BrowserBridgeCompanionPairingResponse,
   type BrowserBridgeCompanionPreflightRequest,
   type BrowserBridgeCompanionPreflightResponse,
+  type BrowserBridgeCompanionRevocationResetResponse,
   type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionSessionBeginRequest,
   type BrowserBridgeCompanionSessionProgressRequest,
@@ -108,6 +109,15 @@ export class BrowserBridgePluginService
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionRevokeResponse> {
     return this.lifeOps(ownerEntityId).revokeBrowserCompanion(companionId);
+  }
+
+  async resetBrowserCompanionRevocation(
+    companionId: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse> {
+    return this.lifeOps(ownerEntityId).resetBrowserCompanionRevocation(
+      companionId,
+    );
   }
 
   async revokeBrowserCompanionFromCompanion(

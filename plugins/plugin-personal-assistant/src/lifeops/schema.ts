@@ -947,6 +947,31 @@ export const lifeWorkflowBrowserSessions = appLifeopsPgSchema.table(
   ],
 );
 
+/** Owner-scoped browser profile revocations survive extension reinstall and token rotation. */
+export const lifeBrowserCompanionRevocations = appLifeopsPgSchema.table(
+  "life_browser_companion_revocations",
+  {
+    agentId: text("agent_id").notNull(),
+    ownerEntityId: text("owner_entity_id").notNull(),
+    browser: text("browser").notNull(),
+    profileId: text("profile_id").notNull(),
+    companionId: text("companion_id").notNull(),
+    revokedAt: text("revoked_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    primaryKey({
+      columns: [t.agentId, t.ownerEntityId, t.browser, t.profileId],
+    }),
+    index("idx_life_browser_companion_revocations_companion").on(
+      t.agentId,
+      t.ownerEntityId,
+      t.companionId,
+    ),
+  ],
+);
+
 export const lifeEscalationStates = appLifeopsPgSchema.table(
   "life_escalation_states",
   {
@@ -2031,6 +2056,7 @@ export const lifeOpsSchema = {
   lifeWorkflowDefinitions,
   lifeWorkflowRuns,
   lifeWorkflowBrowserSessions,
+  lifeBrowserCompanionRevocations,
   lifeEscalationStates,
   lifeIntents,
   lifeCheckinReports,

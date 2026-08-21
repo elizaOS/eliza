@@ -7,6 +7,7 @@ import type {
   BrowserBridgeCompanionPairingResponse,
   BrowserBridgeCompanionPreflightRequest,
   BrowserBridgeCompanionPreflightResponse,
+  BrowserBridgeCompanionRevocationResetResponse,
   BrowserBridgeCompanionRevokeResponse,
   BrowserBridgeCompanionSessionBeginRequest,
   BrowserBridgeCompanionSessionProgressRequest,
@@ -63,6 +64,10 @@ export interface BrowserBridgeRouteService extends Service {
     companionId: string,
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionRevokeResponse>;
+  resetBrowserCompanionRevocation(
+    companionId: string,
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeCompanionRevocationResetResponse>;
   revokeBrowserCompanionFromCompanion(
     companionId: string,
     pairingToken: string,
