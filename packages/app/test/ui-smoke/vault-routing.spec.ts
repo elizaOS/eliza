@@ -14,7 +14,7 @@
 // deletes the rule and the seeded key so the live vault is left clean.
 
 import { expect, type Page, test } from "@playwright/test";
-import { openAppPath, openSettingsSection, seedAppStorage } from "./helpers";
+import { openAppPath, seedAppStorage } from "./helpers";
 
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 
@@ -37,17 +37,34 @@ function countRoutingWrites(page: Page): () => number {
   return () => n;
 }
 
-async function openVaultModal(page: Page): Promise<void> {
-  await openAppPath(page, "/settings");
-  await openSettingsSection(page, /^Vault$/);
-  await page.locator('[data-agent-id="secrets-manage"]').click();
-  await expect(page.getByTestId("vault-tab-overview")).toBeVisible({
+async function completeFirstRunForRealLocalStack(page: Page): Promise<void> {
+  const status = await page.request.get("/api/first-run/status");
+  expect(status.ok()).toBe(true);
+  const body = (await status.json()) as { complete?: boolean };
+  if (body.complete) return;
+
+  const completed = await page.request.post("/api/first-run", {
+    data: { name: "Vault Routing E2E" },
+  });
+  expect(completed.ok()).toBe(true);
+}
+
+async function openVaultPage(page: Page): Promise<void> {
+  await openAppPath(page, "/vault");
+  const overviewTab = page.getByTestId("vault-tab-overview");
+  // A direct deep link can preserve an already-expanded chat sheet. The Vault
+  // deliberately keeps sensitive controls out of that occluded interaction
+  // layer, so collapse the sheet exactly as a keyboard user would.
+  if (!(await overviewTab.isVisible().catch(() => false))) {
+    await page.keyboard.press("Escape");
+  }
+  await expect(overviewTab).toBeVisible({
     timeout: 20_000,
   });
 }
 
-async function closeVaultModal(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
+async function leaveVaultPage(page: Page): Promise<void> {
+  await openAppPath(page, "/settings");
   await expect(page.getByTestId("vault-tab-overview")).toHaveCount(0, {
     timeout: 10_000,
   });
@@ -85,14 +102,17 @@ test.describe("vault routing deep round-trip", () => {
   );
 
   test.beforeEach(async ({ page }) => {
-    await seedAppStorage(page);
+    await seedAppStorage(page, {
+      "app-workspace-chrome:chat-collapsed": "true",
+    });
+    await completeFirstRunForRealLocalStack(page);
   });
 
   test("adds a routing rule and persists it across a tab reopen", async ({
     page,
   }) => {
     const routingWrites = countRoutingWrites(page);
-    await openVaultModal(page);
+    await openVaultPage(page);
 
     // Clean any residue from a prior aborted run.
     await deleteSeedKeyIfPresent(page);
@@ -204,6 +224,6 @@ test.describe("vault routing deep round-trip", () => {
     await expect(routingWrites()).toBeGreaterThan(0);
 
     await deleteSeedKeyIfPresent(page);
-    await closeVaultModal(page);
+    await leaveVaultPage(page);
   });
 });

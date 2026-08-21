@@ -42,6 +42,10 @@ import { ApiError } from "../lib/api-client";
 import { useCloudT } from "../shell/CloudI18nProvider";
 import type { UserMcpRecord } from "./lib/api-types";
 import {
+  formatCloudCreditUsd,
+  formatMcpUsageTotal,
+} from "./lib/format-cloud-credit";
+import {
   useDeleteMcp,
   usePublishMcp,
   useUnpublishMcp,
@@ -258,15 +262,15 @@ export function McpDetailDrawer({
                     />
                     <Stat
                       label={t("cloud.mcps.statCredits", {
-                        defaultValue: "Credits earned",
+                        defaultValue: "Total cloud credits charged",
                       })}
-                      value={stats.totalCreditsEarned.toLocaleString()}
+                      value={formatMcpUsageTotal(stats)}
                     />
                     <Stat
                       label={t("cloud.mcps.statX402", {
                         defaultValue: "x402 (USD)",
                       })}
-                      value={`$${stats.totalX402EarnedUsd.toFixed(4)}`}
+                      value={formatCloudCreditUsd(stats.totalX402EarnedUsd)}
                     />
                     <Stat
                       label={t("cloud.mcps.statUsers", {

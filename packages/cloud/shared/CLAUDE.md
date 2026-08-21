@@ -68,7 +68,7 @@ bun run --cwd packages/cloud/shared lint:fix
 bun run --cwd packages/cloud/shared test                   # scripts/run-bun-tests.mjs (bun test --isolate; win32: PGlite quarantine, #15785)
 bun run --cwd packages/cloud/shared db:generate            # drizzle-kit generate
 bun run --cwd packages/cloud/shared db:migrate             # migrate-with-diagnostics.ts
-bun run --cwd packages/cloud/shared db:migrate:drizzle     # drizzle-kit migrate
+bun run --cwd packages/cloud/shared db:migrate:drizzle     # alias of guarded db:migrate
 bun run --cwd packages/cloud/shared db:studio              # drizzle-kit studio
 bun run --cwd packages/cloud/shared db:check-migrations    # drizzle-kit check
 bun run --cwd packages/cloud/shared preflight:messaging-gateways
@@ -85,6 +85,12 @@ bun run --cwd packages/cloud/shared generate:email-templates
 `CREDIT_COST_BUFFER` (`credits-config.ts`, default `1.5`) sizes the safety margin on every pre-request credit reservation and affiliate-admission check (`credits.ts`'s `reserve()` and `organization-inference-admission.ts`). Must be one auditable canonical decimal spelling from `1` through `1000` (`1` = no buffer) — no leading zeros, no exponent notation, no leading `+`/`.`, no `_` separators (e.g. `"01"`, `"0001.5"`, `"1e1"`, `".5"`, `"1_000"` are all rejected as non-canonical, not just out of range); unset/blank uses the default, anything else throws `ElizaError` (`INVALID_CREDIT_COST_BUFFER`) at module load. The minimum is `1`, not `0` — a buffer below `1` underflows the reservation calculation back toward `MIN_RESERVATION`, defeating the purpose of the setting; the canonical grammar's ban on a leading-zero integer part means no string can represent a value below `1` in the first place, so this bound can never be affected by float-rounding. The `1000` ceiling is compared against the decimal text exactly (integer-part length/value, then an all-zero-or-absent fraction), not the `Number()`-converted value — `"1000.0000000000000001"` is textually above `1000` even though it rounds to exactly `1000` in double precision, and is rejected accordingly.
 
 `INFERENCE_AUTH_HYDRATION_DEADLINE_MS` (`inference-auth-context.ts`, default `10000`) bounds a background auth hydration attempt. It must be a canonical decimal integer from `1` through `2147483647`; unset/blank uses the default, and invalid values throw `ElizaError` (`INVALID_INFERENCE_AUTH_HYDRATION_DEADLINE`) at module load.
+
+Plaid uses `PLAID_CLIENT_ID` plus an environment-specific secret:
+`PLAID_SANDBOX_SECRET`, `PLAID_DEVELOPMENT_SECRET`, or
+`PLAID_PRODUCTION_SECRET`. `PLAID_SECRET` remains a compatibility alias only
+for the active `PLAID_ENV`; cross-environment Item cleanup fails closed unless
+the stored Item environment's explicit secret is configured.
 
 ## How to extend
 

@@ -15,15 +15,17 @@
  *     rejected without allocating a values array.
  *   - Property values are read from data descriptors only. An accessor
  *     (getter/setter) property is rejected outright, so no user getter and no
- *     Proxy `get` trap is ever invoked.
- *   - Every reflection call is guarded. A revoked or throwing Proxy surfaces
- *     as a `reflection` rejection instead of leaking a raw `TypeError` onto
- *     the caller's success path.
+ *     user property getter is ever invoked.
+ *   - Proxies are rejected with Node's trap-free Proxy detector before any
+ *     JavaScript reflection runs. Guarded reflection calls then keep unusual
+ *     non-Proxy objects from leaking raw errors onto the caller's success path.
  *   - Depth, node count, aggregate key width, per-string length and aggregate
  *     bytes are all budgeted, and the budget is shared across the whole walk.
  *   - Cycle detection is path-local (`seen.delete` on container exit) so valid
  *     DAGs / repeated references are preserved; only true cycles reject.
  */
+
+import { types as nodeUtilTypes } from "node:util";
 
 export interface BoundedWalkLimits {
   /** Maximum container nesting. Depth 0 is the root value. */
@@ -65,7 +67,7 @@ export type BoundedWalkRejection =
   | "keys"
   /** Node budget exhausted. */
   | "nodes"
-  /** A reflection call threw (revoked/hostile Proxy). */
+  /** Reflection was unsafe (including any Proxy) or a reflection call threw. */
   | "reflection"
   /** A single string leaf exceeded the per-string cap. */
   | "string-length"
@@ -116,10 +118,16 @@ type ContainerShape =
 
 /**
  * Classify a container and report its width without reading any property
- * value. Every reflection call is guarded so a revoked Proxy rejects rather
- * than throwing.
+ * value. Proxies are rejected before reflection, and every subsequent
+ * reflection call is guarded so unusual host objects reject rather than throw.
  */
 function describeContainer(value: object): ContainerShape {
+  // `util.types.isProxy` inspects the engine object directly and never invokes
+  // user traps, including for revoked proxies.
+  if (nodeUtilTypes.isProxy(value)) {
+    return { kind: "reject", reason: "reflection" };
+  }
+
   let isArray: boolean;
   try {
     isArray = Array.isArray(value);

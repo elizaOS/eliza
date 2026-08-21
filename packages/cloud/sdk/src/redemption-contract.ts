@@ -17,7 +17,14 @@ export type RedemptionNetwork = (typeof REDEMPTION_NETWORKS)[number];
 export type CanonicalRedemptionNetwork = Exclude<RedemptionNetwork, "bsc">;
 export type RedemptionAsset = "eliza" | "usdc";
 
-/** Existing API contract: one USD is represented by 100 integer points. */
+/**
+ * Canonical stored unit for redeemable earnings is USD (NUMERIC(18,4)).
+ * "Points" exist ONLY at this HTTP boundary: one USD is represented by 100
+ * integer points (one point = $0.01). All SERVER-side conversions between the
+ * two units go through `earnings-units.ts` (cloud-shared) — never recompute
+ * the ratio inline. The browser UI keeps its dependency-free string parser
+ * (same 100:1 ratio, its own tests). See issue #22960.
+ */
 export const REDEMPTION_POINTS_PER_USD = 100;
 export const REDEMPTION_MIN_POINTS = 100;
 export const REDEMPTION_MAX_POINTS = 100_000;

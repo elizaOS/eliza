@@ -39,7 +39,10 @@ mock.module("@/api-app/services/audit-dispatcher-singleton", () => ({
 
 mock.module("@/lib/services/api-keys", () => ({
   apiKeysService: {
-    getById: async () => existing,
+    // route.ts guards both DELETE and PATCH with getManageableById (excludes
+    // mobile-issued credentials from generic key management) rather than
+    // getById — an incomplete mock leaves it undefined and every call 500s.
+    getManageableById: async () => existing,
     update,
     delete: async () => undefined,
   },

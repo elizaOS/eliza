@@ -317,7 +317,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
   it("invalidates a mounted shared Cloud shell immediately when Steward expires", async () => {
     const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
     setBootConfig({ branding: {}, apiBase });
-    writeStoredStewardToken(makeJwt(3600));
+    await writeStoredStewardToken(makeJwt(3600));
     savePersistedActiveServer({
       id: "cloud:shared-agent",
       kind: "cloud",
@@ -353,7 +353,7 @@ describe("primeAuthStatusProbe + activation reuse", () => {
   it("invalidates a peer tab when the canonical Steward token is removed", async () => {
     const apiBase = "https://api.eliza.app/api/v1/eliza/agents/shared-agent";
     setBootConfig({ branding: {}, apiBase });
-    writeStoredStewardToken(makeJwt(3600));
+    await writeStoredStewardToken(makeJwt(3600));
     savePersistedActiveServer({
       id: "cloud:shared-agent",
       kind: "cloud",

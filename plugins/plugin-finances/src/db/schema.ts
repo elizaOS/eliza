@@ -9,13 +9,16 @@
  * qualify them with the `app_finances.` prefix.
  */
 
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  index,
   integer,
   pgSchema,
   real,
   text,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const financesSchema = pgSchema("app_finances");
@@ -122,13 +125,16 @@ export const lifePaymentTransactions = financesSchema.table(
     createdAt: text("created_at").notNull(),
   },
   (t) => [
-    unique().on(
-      t.agentId,
-      t.sourceId,
-      t.postedAt,
-      t.amountUsd,
-      t.merchantNormalized,
-    ),
+    // Provider transaction ids are the lossless authority when present. Two
+    // legitimate card transactions can otherwise share every display field.
+    index("life_payment_transactions_provider_id_idx")
+      .on(t.agentId, t.sourceId, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
+    // Preserve legacy/manual import deduplication only for rows that have no
+    // provider identity to use as the stronger key.
+    uniqueIndex("life_payment_transactions_legacy_tuple_unique")
+      .on(t.agentId, t.sourceId, t.postedAt, t.amountUsd, t.merchantNormalized)
+      .where(sql`${t.externalId} IS NULL`),
   ],
 );
 

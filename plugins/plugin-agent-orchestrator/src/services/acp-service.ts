@@ -40,6 +40,8 @@ import {
   type IAgentRuntime,
   Service,
   TRACE_ENV,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { isAndroidMobile } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
@@ -361,10 +363,34 @@ function findExecutableOnPath(name: string): string | undefined {
 export function normalizeClaudeAcpModelId(
   model: string | undefined,
 ): string | undefined {
-  const normalized = model
-    ?.trim()
-    .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
-    .trim();
+  const value = model?.trim();
+  if (!value) return undefined;
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "]") {
+    const tokenStart = value.lastIndexOf("[", end - 1);
+    if (tokenStart < 0) break;
+    const token = value.slice(tokenStart + 1, end - 1);
+    let cursor = 0;
+    while (
+      cursor < token.length &&
+      (token[cursor] ?? "") >= "0" &&
+      (token[cursor] ?? "") <= "9"
+    ) {
+      cursor += 1;
+    }
+    const digitEnd = cursor;
+    while (
+      cursor < token.length &&
+      (((token[cursor] ?? "") >= "A" && (token[cursor] ?? "") <= "Z") ||
+        ((token[cursor] ?? "") >= "a" && (token[cursor] ?? "") <= "z"))
+    ) {
+      cursor += 1;
+    }
+    if (digitEnd === 0 || cursor === digitEnd || cursor !== token.length) break;
+    end = tokenStart;
+    while (end > 0 && value[end - 1]?.trim() === "") end -= 1;
+  }
+  const normalized = value.slice(0, end).trim();
   return normalized || undefined;
 }
 
@@ -3883,7 +3909,7 @@ export class AcpService extends Service {
       // an explicit invalid (null) result the caller skips.
       this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
-        line: line.slice(0, 200),
+        line: truncateWellFormed(toWellFormedUnicode(line), 200),
       });
       return null;
     }
@@ -4843,7 +4869,12 @@ export class AcpService extends Service {
       return "acpx session was not found. This is likely an internal session bookkeeping error.";
     if (code === 5) return "acpx permission denied.";
     if (code === 3) return "acpx prompt timed out.";
-    if (stderr.trim()) return stderr.trim().slice(0, 500);
+    if (stderr.trim()) {
+      const wellFormed = toWellFormedUnicode(stderr.trim());
+      return wellFormed.length > 500
+        ? truncateWellFormed(wellFormed, 500)
+        : wellFormed;
+    }
     return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
@@ -5384,10 +5415,11 @@ function captureTerminalToolOutput(
   const key = `${toolCall.id}\0${output}`;
   if (capturedToolOutputs.has(key)) return undefined;
   capturedToolOutputs.add(key);
+  const wellFormed = toWellFormedUnicode(output);
   const truncated =
-    output.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
-      ? `${output.slice(0, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
-      : output;
+    wellFormed.length > MAX_CAPTURED_TOOL_OUTPUT_CHARS
+      ? `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated]`
+      : wellFormed;
   const title = toolCall.title?.trim() || "tool output";
   return `[tool output: ${title}]\n${truncated}\n${TOOL_OUTPUT_END_MARKER}`;
 }
@@ -5451,7 +5483,10 @@ function execRecordOutputTail(record: Record<string, unknown>): string {
     .filter((entry) => entry.length > 0);
   if (candidates.length === 0) return "";
   const joined = candidates.join("\n").trim();
-  return joined.length > 200 ? `${joined.slice(0, 200)}…` : joined;
+  const wellFormed = toWellFormedUnicode(joined);
+  return wellFormed.length > 200
+    ? `${truncateWellFormed(wellFormed, 200)}…`
+    : wellFormed;
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | undefined {
@@ -5524,7 +5559,7 @@ function capStderr(text: string): string {
 }
 
 function preview(text: string): string {
-  return text.replace(/\s+/g, " ").slice(0, 80);
+  return truncateWellFormed(toWellFormedUnicode(text.replace(/\s+/g, " ")), 80);
 }
 
 function errorMessage(err: unknown): string {

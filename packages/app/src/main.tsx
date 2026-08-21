@@ -41,7 +41,6 @@ import "./renderer-build-stamp";
 
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
-import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 // #18056: desktop shell is loaded only via dynamic import / React.lazy so the
 // cold anonymous /login entry does not static-import app-core/ui browser graphs.
@@ -93,9 +92,10 @@ import {
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  createNavigateViewEvent,
   dispatchAppEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
+  dispatchOpenNotificationCenter,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -125,6 +125,7 @@ import {
 } from "@elizaos/ui/navigation";
 import type { ShareTargetPayload } from "@elizaos/ui/platform";
 import { isStandalonePwa } from "@elizaos/ui/platform";
+import { isAndroidCloudBuild } from "@elizaos/ui/platform/android-runtime";
 import {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -460,7 +461,6 @@ let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileAgentTunnelListener: PluginListenerHandle | null = null;
 let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
-let keyboardListenersRegistered = false;
 let iosOnboardingSmokeStarted = false;
 let iosCloudOnboardingSmokeStarted = false;
 let iosOnboardingRelaunchSmokeStarted = false;
@@ -692,7 +692,7 @@ installPackagedShellStorageTestBridge();
 // install lands in onboarding; when that build explicitly enables the runtime
 // chooser, the local agent starts on demand only after the user picks it.
 // No-op on iOS/desktop/web and cloud builds.
-if (!hasFirstRunRuntimeOverride()) {
+if (!isAndroidCloudBuild() && !hasFirstRunRuntimeOverride()) {
   preSeedAndroidLocalRuntimeIfFresh();
 }
 
@@ -1847,7 +1847,7 @@ async function initializePlatform(): Promise<void> {
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();
-    await initializeKeyboard();
+    await getMobileLifecycle().initializeKeyboard();
     initializeMobileRuntimeModeListener();
     void initializeMobileDeviceBridge();
     void initializeMobileAgentTunnel();
@@ -1927,41 +1927,9 @@ async function initializeStatusBar(): Promise<void> {
   }
 }
 
-async function initializeKeyboard(): Promise<void> {
-  if (keyboardListenersRegistered) return;
-
-  // A Keyboard-bridge throw (pod/plugin skew) must not reject and strand the
-  // rest of bootstrap (deep links, hardware back, pause/resume, network) —
-  // guard it exactly like the sibling initializeStatusBar.
-  try {
-    if (isIOS) {
-      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-      await Keyboard.setScroll({ isDisabled: true });
-      await Keyboard.setAccessoryBarVisible({ isVisible: true });
-    }
-
-    keyboardListenersRegistered = true;
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      document.body.style.setProperty(
-        "--keyboard-height",
-        `${info.keyboardHeight}px`,
-      );
-      document.body.classList.add("keyboard-open");
-    });
-
-    Keyboard.addListener("keyboardWillHide", () => {
-      document.body.style.setProperty("--keyboard-height", "0px");
-      document.body.classList.remove("keyboard-open");
-    });
-  } catch (error) {
-    // error-policy:J4 optional native plugin — absence is a designed degrade
-    logNativePluginUnavailable("Keyboard", error);
-  }
-}
-
 /**
- * Live cross-platform lifecycle helper. `main.tsx` keeps its own
- * status-bar / keyboard wiring, but the app-lifecycle path (foreground/
+ * Live cross-platform lifecycle helper. `main.tsx` keeps its own status-bar
+ * wiring, but keyboard setup and the app-lifecycle path (foreground/
  * background events + the `visibilitychange` fallback, the hardware-back
  * contract — `dispatchBackIntent()` first, then `history.back()` /
  * `minimizeApp()` when unhandled (#9148) — and the deep-link bootstrap) and
@@ -2186,7 +2154,14 @@ async function handleAuthCallbackDeepLink(
   );
 }
 
-function handleDeepLink(url: string): void {
+/**
+ * Returns `void` for every branch except the top-level-surface navigation
+ * intent, which returns the `dispatchNavigateViewRequest` promise so a caller
+ * that needs to know the intent actually LANDED (not merely enqueued) — today
+ * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
+ * can await it instead of acking on dispatch alone.
+ */
+function handleDeepLink(url: string): undefined | Promise<boolean> {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2245,8 +2220,7 @@ function handleDeepLink(url: string): void {
   // from the hash directly.)
   const navigationIntent = resolveDeepLinkNavigationIntent(path);
   if (navigationIntent) {
-    dispatchDeepLinkNavigation(navigationIntent);
-    return;
+    return dispatchDeepLinkNavigation(navigationIntent);
   }
 
   const assistantLaunchHashRoute = buildAssistantLaunchHashRoute(
@@ -2269,6 +2243,12 @@ function handleDeepLink(url: string): void {
       break;
     case "contacts":
       setHashRoute("contacts", parsed.searchParams);
+      break;
+    case "notifications":
+      // AppDelegate delivers the fallback notification URL through the native
+      // appUrlOpen lifecycle. The Home notification center is event-driven, so
+      // a hash write cannot open it on the Capacitor composition root.
+      dispatchOpenNotificationCenter();
       break;
     case "aec-loop":
       // On-device AEC acoustic-loop evidence harness (#11373): the hash route
@@ -2379,8 +2359,10 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  * the rest of the app uses; a raw `window.location.hash` write does not open a
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
-function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+function dispatchDeepLinkNavigation(
+  intent: DeepLinkNavigationIntent,
+): Promise<boolean> {
+  return dispatchNavigateViewRequest(intent);
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -2586,7 +2568,7 @@ async function initializeDesktopShell(): Promise<void> {
       if (typeof url !== "string" || url.trim().length === 0) {
         return;
       }
-      handleDeepLink(url);
+      void handleDeepLink(url);
     },
   });
 }
@@ -3541,24 +3523,26 @@ async function main(): Promise<void> {
     (await voiceModuleReady)?.installAecLoopHarness();
   } else if (isAndroid) {
     initializeCapacitorBridge();
-    installAndroidNativeAgentFetchBridge();
-    // Renderer-pulled screen-capture bridge (#9105): poll the agent for
-    // capture requests and serve frames via the Capacitor ScreenCapture
-    // plugin. Idempotent + native-gated; runs only after the Android fetch
-    // bridge is installed so `/api/...` routes resolve to the agent.
-    initVisionBridgesIfEnabled();
-    // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
-    // window.__jniVoice (the in-process JNI voice pipeline — the four fused
-    // voice classifiers running IN the bionic app process via the ElizaVoice
-    // host, replacing the musl bun-agent transport) so both can be driven +
-    // read on-device via CDP.
-    const voice = await voiceModuleReady;
-    if (voice) {
-      voice.installDiarizationPumpHarness();
-      voice.installJniVoiceHarness();
-      // On-device AEC acoustic-loop evidence harness (#11373):
-      // window.__aecLoop plus the `elizaos://aec-loop?...` tap-free trigger.
-      voice.installAecLoopHarness();
+    if (!isAndroidCloudBuild()) {
+      installAndroidNativeAgentFetchBridge();
+      // Renderer-pulled screen-capture bridge (#9105): poll the agent for
+      // capture requests and serve frames via the Capacitor ScreenCapture
+      // plugin. Idempotent + native-gated; runs only after the Android fetch
+      // bridge is installed so `/api/...` routes resolve to the agent.
+      initVisionBridgesIfEnabled();
+      // Expose window.__diarizationPump (WebView→bun-agent PCM pump) and
+      // window.__jniVoice (the in-process JNI voice pipeline — the four fused
+      // voice classifiers running IN the bionic app process via the ElizaVoice
+      // host, replacing the musl bun-agent transport) so both can be driven +
+      // read on-device via CDP.
+      const voice = await voiceModuleReady;
+      if (voice) {
+        voice.installDiarizationPumpHarness();
+        voice.installJniVoiceHarness();
+        // On-device AEC acoustic-loop evidence harness (#11373):
+        // window.__aecLoop plus the `elizaos://aec-loop?...` tap-free trigger.
+        voice.installAecLoopHarness();
+      }
     }
   }
   // Desktop fused on-device wake (#10351): forward native libwakeword fires from

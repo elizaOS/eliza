@@ -75,7 +75,11 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import { useBranding } from "../config/branding";
 import { APP_RESUME_EVENT } from "../events";
-import { ACCENT_PRESETS, useAppSelectorShallow } from "../state";
+import {
+  ACCENT_PRESETS,
+  useAppSelector,
+  useAppSelectorShallow,
+} from "../state";
 import { useConversationMessages } from "../state/ConversationMessagesContext.hooks";
 import {
   claimCloudLoginWindow,
@@ -83,6 +87,10 @@ import {
   releaseClaimedCloudLoginWindow,
 } from "../state/cloud-login-launch";
 import { hasUsableStoredStewardToken } from "../state/cloud-steward-login";
+import {
+  createFirstRunTranscriptEpoch,
+  observeFirstRunTranscriptEpoch,
+} from "../state/first-run-transcript-epoch";
 import { startTutorial } from "../tutorial/tutorial-service";
 import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import {
@@ -1596,7 +1604,19 @@ export function useFirstRunConductor(): void {
           if (refreshTimeout) clearTimeout(refreshTimeout);
           if (cancelled) return;
           if (refreshed?.token) {
-            writeStoredStewardToken(refreshed.token);
+            try {
+              await writeStoredStewardToken(refreshed.token);
+            } catch (error) {
+              // error-policy:J4 a rejected protected-store write keeps the
+              // user visibly signed out instead of claiming a volatile login.
+              logger.error(
+                { error },
+                "[first-run-conductor] could not persist recovered Steward session",
+              );
+              silentCloudEntryRef.current = false;
+              seedSignInGreetingAndPoll();
+              return;
+            }
             try {
               window.dispatchEvent(new CustomEvent("steward-token-sync"));
             } catch (error) {
@@ -1685,8 +1705,49 @@ export function useFirstRunConductor(): void {
   ]);
 }
 
-/** Mount point — call once inside the AppContext provider tree. Renders null. */
-export function FirstRunConductorMount(): null {
+/**
+ * Mount point for the conductor. The callback fires only after an active
+ * conductor has produced a first-run turn in the shared transcript.
+ */
+export function FirstRunConductorMount({
+  onFirstRunTranscriptMounted,
+  firstRunMountEpoch = null,
+  firstRunAuthorityEpoch = null,
+}: {
+  onFirstRunTranscriptMounted?: (epoch: number) => void;
+  firstRunMountEpoch?: number | null;
+  firstRunAuthorityEpoch?: number | null;
+} = {}): null {
   useFirstRunConductor();
+  const firstRunIncomplete = useAppSelector(
+    (state) => state.firstRunComplete === false,
+  );
+  const { conversationMessages } = useConversationMessages();
+  const transcriptEpochRef = React.useRef(
+    createFirstRunTranscriptEpoch(conversationMessages, firstRunIncomplete),
+  );
+  React.useLayoutEffect(() => {
+    const transcriptWasMounted = transcriptEpochRef.current.transcriptMounted;
+    transcriptEpochRef.current = observeFirstRunTranscriptEpoch(
+      transcriptEpochRef.current,
+      conversationMessages,
+      firstRunIncomplete,
+    );
+    if (
+      firstRunMountEpoch !== null &&
+      ((!transcriptWasMounted &&
+        transcriptEpochRef.current.transcriptMounted) ||
+        (firstRunAuthorityEpoch === firstRunMountEpoch &&
+          transcriptEpochRef.current.transcriptMounted))
+    ) {
+      onFirstRunTranscriptMounted?.(firstRunMountEpoch);
+    }
+  }, [
+    conversationMessages,
+    firstRunAuthorityEpoch,
+    firstRunIncomplete,
+    firstRunMountEpoch,
+    onFirstRunTranscriptMounted,
+  ]);
   return null;
 }

@@ -21,6 +21,8 @@
 		LCLZ00010000000000000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = LCLZ00010000000000000101 /* Localizable.xcstrings */; };
 		SHCT00010000000000000001 /* AppShortcuts.strings in Resources */ = {isa = PBXBuildFile; fileRef = SHCT00010000000000000101 /* AppShortcuts.strings */; };
 		MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = MIPL00010000000000000002 /* ElizaIntentPlugin.swift */; };
+		NTPY00010000000000000001 /* ElizaNotificationTriggerPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTPY00010000000000000003 /* ElizaNotificationTriggerPolicy.swift */; };
+		NTPY00010000000000000002 /* ElizaNotificationTriggerPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTPY00010000000000000003 /* ElizaNotificationTriggerPolicy.swift */; };
 		AWDG00010000000000000001 /* AgentWatchdog.swift in Sources */ = {isa = PBXBuildFile; fileRef = AWDG00010000000000000002 /* AgentWatchdog.swift */; };
 		NTRN00010000000000000001 /* NativeTranscriptReducer.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTRN00010000000000000002 /* NativeTranscriptReducer.swift */; };
 		NTRN00010000000000000003 /* NativeTranscriptBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = NTRN00010000000000000004 /* NativeTranscriptBridge.swift */; };
@@ -140,6 +142,7 @@
 		SHCT00010000000000000103 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/AppShortcuts.strings; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
 		MIPL00010000000000000002 /* ElizaIntentPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaIntentPlugin.swift; sourceTree = "<group>"; };
+		NTPY00010000000000000003 /* ElizaNotificationTriggerPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaNotificationTriggerPolicy.swift; sourceTree = "<group>"; };
 		AWDG00010000000000000002 /* AgentWatchdog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentWatchdog.swift; sourceTree = "<group>"; };
 		NTRN00010000000000000002 /* NativeTranscriptReducer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptReducer.swift; sourceTree = "<group>"; };
 		NTRN00010000000000000004 /* NativeTranscriptBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeTranscriptBridge.swift; sourceTree = "<group>"; };
@@ -284,6 +287,7 @@
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
+				NTPY00010000000000000003 /* ElizaNotificationTriggerPolicy.swift */,
 				ELIZALIVEACT000000000002 /* ElizaLiveActivityBridge.swift */,
 				ELIZAKBDBRIDGE0000000002 /* ElizaKeyboardBridge.swift */,
 				GLASSBRIDGE0000000000002 /* GlassBridge.swift */,
@@ -711,6 +715,7 @@
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
+				NTPY00010000000000000001 /* ElizaNotificationTriggerPolicy.swift in Sources */,
 				ELIZALIVEACT000000000001 /* ElizaLiveActivityBridge.swift in Sources */,
 				ELIZAKBDBRIDGE0000000001 /* ElizaKeyboardBridge.swift in Sources */,
 				GLASSBRIDGE0000000000001 /* GlassBridge.swift in Sources */,
@@ -758,6 +763,7 @@
 				AUIT0001000000000000000B /* DeviceLifecycleUITests.swift in Sources */,
 				AUIT0001000000000000000D /* ChatFailureStrings.generated.swift in Sources */,
 				AUIT0001000000000000000F /* DeviceExtensionSurfaceUITests.swift in Sources */,
+				NTPY00010000000000000002 /* ElizaNotificationTriggerPolicy.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

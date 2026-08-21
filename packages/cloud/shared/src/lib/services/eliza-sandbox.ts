@@ -155,7 +155,12 @@ export interface CreateAgentParams {
   environmentVars?: Record<string, string>;
   characterId?: string;
   dockerImage?: string;
-  executionTier?: AgentExecutionTier;
+  /**
+   * Explicit placement authority for the new row. Callers must decide whether
+   * the agent is container-free Shared or owns dedicated/custom compute; the
+   * persistence seam must never make that product decision by default.
+   */
+  executionTier: AgentExecutionTier;
   /**
    * Opt-in idempotency for single-agent-per-org flows (e.g. the onboarding
    * `POST /api/v1/eliza/agents` path and the eliza-app provisioner). When set,
@@ -225,6 +230,28 @@ export class AgentQuotaExceededError extends Error {
   }
 }
 
+function assertAgentExecutionTier(
+  executionTier: unknown,
+): asserts executionTier is AgentExecutionTier {
+  if (
+    executionTier !== "shared" &&
+    executionTier !== "dedicated-lazy" &&
+    executionTier !== "dedicated-always" &&
+    executionTier !== "custom"
+  ) {
+    throw new ElizaError(
+      "createAgent requires an explicit valid executionTier; refusing to default placement",
+      {
+        code: "INVALID_AGENT_EXECUTION_TIER",
+        context: {
+          executionTier: typeof executionTier === "string" ? executionTier : null,
+          receivedType: typeof executionTier,
+        },
+      },
+    );
+  }
+}
+
 /**
  * Canonical value builder for a fresh `agent_sandboxes` insert. Every create
  * path — the sandbox service's own create/coding-container methods and the
@@ -240,8 +267,9 @@ export class AgentQuotaExceededError extends Error {
  * claim push, and the first-boot bootstrap agreeing on one persona.
  */
 export function buildAgentSandboxInsertValues(params: CreateAgentParams): NewAgentSandbox {
+  const executionTier = params.executionTier;
+  assertAgentExecutionTier(executionTier);
   const sanitizedConfig = stripReservedElizaConfigKeys(params.agentConfig);
-  const executionTier: AgentExecutionTier = params.executionTier ?? "shared";
   const agentConfig = params.characterId
     ? withReusedElizaCharacterOwnership(sanitizedConfig)
     : executionTier === "custom"
@@ -417,7 +445,7 @@ export type DeleteAgentResult =
     }
   | { success: false; error: string; retryable?: true };
 
-export type DeleteAuthorization = "user_request" | "billing_request";
+export type DeleteAuthorization = "user_request" | "billing_request" | "account_deletion";
 
 /**
  * Outcome of the bounded container teardown attempted during `deleteAgent`:
@@ -1490,6 +1518,7 @@ export class ElizaSandboxService {
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
+    assertAgentExecutionTier(params.executionTier);
     // SECURITY (H1, #12230): gate a caller-supplied image against the managed-
     // agent allowlist BEFORE any DB write or provisioning. Throws
     // AgentImageNotAllowedError (→ 4xx at the route) so a non-allowlisted image
@@ -1595,9 +1624,9 @@ export class ElizaSandboxService {
     agent: AgentSandbox;
     idempotent: boolean;
   }> {
+    assertAgentExecutionTier(params.executionTier);
     const createParams: CreateAgentParams & { dockerImage: string } = {
       ...params,
-      executionTier: params.executionTier ?? "custom",
       // Coding-container env carries caller secrets (tokens, provider keys) —
       // encrypt them before the row is inserted (#11332).
       environmentVars: params.environmentVars
@@ -1993,7 +2022,12 @@ export class ElizaSandboxService {
     // exists to protect.
     const captureSkippedForUnauthorizedRunning =
       !options.authorization && snapshotSource?.status === "running";
-    if (!captureSkippedForUnauthorizedRunning && this.requiresPreDeleteCapture(snapshotSource)) {
+    const captureSkippedForAccountDeletion = options.authorization === "account_deletion";
+    if (
+      !captureSkippedForUnauthorizedRunning &&
+      !captureSkippedForAccountDeletion &&
+      this.requiresPreDeleteCapture(snapshotSource)
+    ) {
       // A deletion retry whose earlier attempt already captured (or recorded
       // the image's supported no-snapshot response) must not contact a bridge
       // the teardown may already have killed. Both candidates are revalidated
@@ -2440,7 +2474,7 @@ export class ElizaSandboxService {
         stateData: AgentBackupStateData;
         sizeBytes: number;
       } | null = null;
-      if (this.requiresPreDeleteCapture(rec)) {
+      if (authorization !== "account_deletion" && this.requiresPreDeleteCapture(rec)) {
         const existingBackup = preDeleteCapture?.existingBackup ?? null;
         if (
           existingBackup &&
@@ -3899,11 +3933,16 @@ export class ElizaSandboxService {
     init: RequestInit,
     canonicalBridgeBase: unknown,
   ): Promise<Response> {
+    const trimTrailingSlashes = (value: string): string => {
+      let end = value.length;
+      while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+      return value.slice(0, end);
+    };
     const requestedBase =
       typeof canonicalBridgeBase === "string"
-        ? canonicalBridgeBase.trim().replace(/\/+$/, "")
+        ? trimTrailingSlashes(canonicalBridgeBase.trim())
         : null;
-    const storedBase = rec.bridge_url?.trim().replace(/\/+$/, "") ?? null;
+    const storedBase = rec.bridge_url ? trimTrailingSlashes(rec.bridge_url.trim()) : null;
     if (requestedBase && requestedBase === storedBase) {
       const url = new URL(requestedBase);
       const isLoopback =
@@ -4333,6 +4372,7 @@ export class ElizaSandboxService {
         message: text,
         execution: {
           agentKey: rec.id,
+          roomKey: channelId,
           channel: { type: ChannelType.DM, source: "shared-runtime" },
         },
       });
@@ -4499,6 +4539,7 @@ export class ElizaSandboxService {
         message: text,
         execution: {
           agentKey: rec.id,
+          roomKey: channelId,
           channel: { type: ChannelType.DM, source: "shared-runtime" },
         },
       });
@@ -5555,11 +5596,11 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: { code: -32601, message: `Method not found: ${rpc.method}` },
       };
-    } catch (error) {
+    } catch {
       logger.warn("[agent-sandbox] Bridge request failed", {
         agentId,
         method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
+        failureClass: "sandbox_bridge_failed",
       });
       return {
         jsonrpc: "2.0",
@@ -5593,11 +5634,11 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: { code: -32601, message: `Method not found: ${rpc.method}` },
       };
-    } catch (error) {
+    } catch {
       logger.warn("[agent-sandbox] Bootstrap bridge request failed", {
         agentId: rec.id,
         method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
+        failureClass: "sandbox_bridge_failed",
       });
       return {
         jsonrpc: "2.0",
@@ -6115,11 +6156,74 @@ export class ElizaSandboxService {
     const text = typeof params.text === "string" ? params.text.trim() : "";
     if (!text) return null;
 
-    const exactWords =
-      /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(text) ??
-      /\breply\s+(?:briefly\s+)?with\s+["']([^"']+)["']/i.exec(text);
-    if (exactWords?.[1]?.trim()) {
-      return exactWords[1].trim();
+    const lower = text.toLowerCase();
+    let searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("exact word", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "exact word".length;
+      if (lower.charCodeAt(cursor) === 115) cursor++;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (lower.charCodeAt(cursor) !== 58) continue;
+      cursor++;
+      while (cursor < text.length && /\s/.test(text[cursor] ?? "")) cursor++;
+
+      let end = text.length;
+      while (end > cursor && /\s/.test(text[end - 1] ?? "")) end--;
+      if (cursor < end && (text[cursor] === '"' || text[cursor] === "'")) cursor++;
+      if (cursor < end && (text[end - 1] === '"' || text[end - 1] === "'")) end--;
+      const exact = text.slice(cursor, end).trim();
+      if (exact && !exact.includes("\n") && !exact.includes("\r")) return exact;
+    }
+
+    searchFrom = 0;
+    while (searchFrom < lower.length) {
+      const start = lower.indexOf("reply", searchFrom);
+      if (start === -1) break;
+      searchFrom = start + 1;
+      const preceding = start > 0 ? lower.charCodeAt(start - 1) : 0;
+      const precededByWord =
+        (preceding >= 48 && preceding <= 57) ||
+        (preceding >= 97 && preceding <= 122) ||
+        preceding === 95;
+      if (precededByWord) continue;
+
+      let cursor = start + "reply".length;
+      const whitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === whitespaceStart) continue;
+      if (lower.startsWith("briefly", cursor)) {
+        cursor += "briefly".length;
+        const brieflyWhitespaceStart = cursor;
+        while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+        if (cursor === brieflyWhitespaceStart) continue;
+      }
+      if (!lower.startsWith("with", cursor)) continue;
+      cursor += "with".length;
+      const withWhitespaceStart = cursor;
+      while (cursor < lower.length && /\s/.test(lower[cursor] ?? "")) cursor++;
+      if (cursor === withWhitespaceStart) continue;
+      const quote = text[cursor];
+      if (quote !== '"' && quote !== "'") continue;
+      const singleQuoteClose = text.indexOf("'", cursor + 1);
+      const doubleQuoteClose = text.indexOf('"', cursor + 1);
+      const close =
+        singleQuoteClose === -1
+          ? doubleQuoteClose
+          : doubleQuoteClose === -1
+            ? singleQuoteClose
+            : Math.min(singleQuoteClose, doubleQuoteClose);
+      if (close === -1) continue;
+      const reply = text.slice(cursor + 1, close).trim();
+      if (reply) return reply;
     }
 
     return "Agent runtime is online, but no model response was produced before the cloud bridge timeout.";

@@ -153,3 +153,56 @@ describe("countRepeatedFailures / assertRepeatedFailureLimit", () => {
 		}
 	});
 });
+
+describe("repeated-failure provenance", () => {
+	// classifyStructuredFailureCause (services/message/fallback-reply.ts) reads
+	// error.failureProvenance?.kind to tell the user *why* a tool kept failing.
+	// The field has to survive the throw or that reader silently degrades every
+	// repeated-failure abort to generic planner exhaustion.
+	const persistenceFailure = {
+		success: false as const,
+		toolName: "SAVE_MEMORY",
+		error: "datastore unreachable",
+		failureProvenance: {
+			kind: "persistence_error" as const,
+			boundary: "persistence" as const,
+			code: "ACTION_PERSISTENCE_FAILED",
+			retryable: true,
+		},
+	};
+
+	it("carries the underlying failure provenance onto the thrown limit", () => {
+		expect(() =>
+			assertRepeatedFailureLimit({
+				failures: [persistenceFailure, persistenceFailure],
+				latestFailure: persistenceFailure,
+				maxRepeatedFailures: 1,
+			}),
+		).toThrow(TrajectoryLimitExceeded);
+
+		try {
+			assertRepeatedFailureLimit({
+				failures: [persistenceFailure, persistenceFailure],
+				latestFailure: persistenceFailure,
+				maxRepeatedFailures: 1,
+			});
+		} catch (e) {
+			expect((e as TrajectoryLimitExceeded).failureProvenance?.kind).toBe(
+				"persistence_error",
+			);
+		}
+	});
+
+	it("leaves provenance undefined when the failure carries none", () => {
+		try {
+			const bare = { success: false as const, toolName: "X", error: "boom" };
+			assertRepeatedFailureLimit({
+				failures: [bare, bare],
+				latestFailure: bare,
+				maxRepeatedFailures: 1,
+			});
+		} catch (e) {
+			expect((e as TrajectoryLimitExceeded).failureProvenance).toBeUndefined();
+		}
+	});
+});

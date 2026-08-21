@@ -61,7 +61,7 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -633,7 +633,7 @@ async function probeAnthropicUsage(accessToken: string): Promise<{
       return {
         ok: false,
         status: response.status,
-        error: `Anthropic ${response.status}: ${text.slice(0, 200)}`,
+        error: `Anthropic ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         latencyMs,
       };
     }
@@ -756,7 +756,7 @@ async function probeCodingPlanKey(
       return {
         ok: false,
         status: response.status,
-        error: `${providerId} ${response.status}: ${text.slice(0, 200)}`,
+        error: `${providerId} ${response.status}: ${truncateWellFormed(toWellFormedUnicode(text), 200)}`,
         latencyMs,
       };
     }

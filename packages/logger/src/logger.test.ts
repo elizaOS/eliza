@@ -724,6 +724,35 @@ describe("secret redaction", () => {
     }
   });
 
+  it("scrubs a quoted credential key the ENV-style row cannot reach", () => {
+    // Mirrors core's redact.test.ts case: the ENV-style pattern requires
+    // `=`/`:` immediately after the key's word boundary, which a quoted
+    // key's closing quote always intervenes on. Fixture assembled at
+    // runtime so no scannable secret-shaped literal sits in source.
+    const logger = redactLogger();
+    const value = ["sk", "_live_51H8xQ2LmNpQrStUv"].join("");
+    logger.info({ payload: `{"api_key": "${value}"}` }, "ctx");
+    expect(recentLogs()).not.toContain(value);
+  });
+
+  it("scrubs Google OAuth refresh and access tokens from string values", () => {
+    const logger = redactLogger();
+    const refreshToken = ["1//0", "AbCdEfGhIjKlMnOpQrStUvWxYz1234567890"].join(
+      "",
+    );
+    const accessToken = [
+      "ya29.",
+      "AbCdEfGhIjKlMnOpQrStUvWxYz1234-5678_90",
+    ].join("");
+    logger.info(
+      { payload: `token endpoint returned ${refreshToken} and ${accessToken}` },
+      "ctx",
+    );
+    const logs = recentLogs();
+    expect(logs).not.toContain(refreshToken);
+    expect(logs).not.toContain(accessToken);
+  });
+
   it("scrubs credential patterns from the Error headline message (W5-026)", () => {
     const logger = redactLogger();
     logger.error(

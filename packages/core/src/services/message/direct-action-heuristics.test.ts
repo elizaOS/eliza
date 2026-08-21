@@ -828,6 +828,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"never please under any circumstances show my reminders",
 			"what happens when I say show my reminders",
 			'write a story where she says "show my goals"',
+			"i can't explain 'list my todos'",
+			"i'm quoting 'list my todos'",
+			"i'd rephrase 'list my todos'",
 			"explain the phrase show my routines",
 		]) {
 			expect(
@@ -850,6 +853,17 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 				"what's on my todo list? i'd like to know",
 			),
 		).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		for (const message of [
+			"'hello!' then list my todos '...world'",
+			"'okay.' now show my todos '  thanks'",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, ...readers],
+					message,
+				),
+			).toEqual({ names: ["OWNER_TODOS"], kind: "owner-reads" });
+		}
 		for (const message of [
 			"search the web for ways to organize my finances",
 			"look up advice about my finances",
@@ -1164,11 +1178,102 @@ describe("cloud-apps surface request inference", () => {
 		}
 	});
 
-	it("falls back to local APP when no cloud-apps action is registered", () => {
+	it("never degrades a cloud-qualified ask to local APP when no cloud-apps action is registered (#17363)", () => {
 		expect(
 			inferDirectCurrentRequestCandidateActions(
 				[viewsAction, appAction],
 				"list my cloud apps",
+			),
+		).toEqual(["VIEWS"]);
+	});
+
+	it("keeps cloud lifecycle/mutation asks off the deterministic cloud candidate (#17363)", () => {
+		for (const message of [
+			"launch my cloud app",
+			"delete my cloud app",
+			"open the settings for my cloud app",
+			"create a cloud app for my portfolio",
+			"deploy my cloud app",
+			"withdraw earnings from my cloud app",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).toEqual([]);
+		}
+	});
+
+	// The candidate array must be EXACTLY empty, not merely free of the cloud
+	// action: narrowing the turn to [VIEWS] alone still dropped the ranked
+	// WEB_SEARCH/SEND_EMAIL candidates the other clauses asked for (#17363).
+	it("yields no deterministic candidate for compound/multi-tool cloud turns (#17363)", () => {
+		for (const message of [
+			"list my cloud apps and then deploy the first one",
+			"list my cloud apps; delete the oldest one",
+			"show my cloud apps. Then launch acme.",
+			"list my cloud apps and also check the deploy status",
+			// Verbs absent from any denylist: the structural clause split, not an
+			// enumerated downstream verb, is what keeps these with the planner.
+			"list my cloud apps and search the web for reviews",
+			"list my cloud apps and search the web for reviews and email me the results",
+			"list my cloud apps and archive the oldest one",
+			"list my cloud apps and compare their traffic",
+			"list my cloud apps and export them to a spreadsheet",
+			"list my cloud apps, summarize their uptime",
+			"list my cloud apps plus tell me what they cost",
+			"show my deployed apps and draft a tweet about them",
+			"what apps do I have on eliza cloud and who visited them",
+			"show my hosted apps then message the team",
+			"list my cloud apps as well as my calendar for today",
+			"list my cloud apps while you check my email",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).toEqual([]);
+		}
+	});
+
+	// The conservative split must not swallow single-intent phrasing whose
+	// conjunction joins another hosted-inventory noun phrase or a politeness
+	// tail — those still deserve the deterministic cloud read.
+	it("still claims single-intent cloud reads that carry a noun-phrase or politeness tail (#17363)", () => {
+		for (const message of [
+			"list my cloud apps and sites",
+			"show me my cloud apps and my deployed sites",
+			"list my cloud apps, please",
+			"what apps do I have deployed on eliza cloud?",
+		]) {
+			expect(
+				inferDirectCurrentRequestCandidateActions(
+					[viewsAction, appAction, cloudAppsAction],
+					message,
+				),
+			).toEqual(["VIEWS", "LIST_CLOUD_APPS"]);
+		}
+	});
+
+	// A compound cloud turn must yield nothing even when no cloud-apps action is
+	// registered: falling through to [VIEWS] is the same narrowing bug.
+	it("yields no candidate for a compound cloud turn with no cloud action registered (#17363)", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction],
+				"list my cloud apps and search the web for reviews",
+			),
+		).toEqual([]);
+	});
+
+	// Non-cloud app turns are untouched by the cloud short-circuit.
+	it("leaves compound local installed-app turns on their existing path", () => {
+		expect(
+			inferDirectCurrentRequestCandidateActions(
+				[viewsAction, appAction, cloudAppsAction],
+				"show me the apps",
 			),
 		).toEqual(["VIEWS", "APP"]);
 	});
@@ -1498,6 +1603,12 @@ describe("classifyExplicitContinuationTurn", () => {
 		expect(classifyExplicitContinuationTurn("yes")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("sounds good")).toBe("approval");
 		expect(classifyExplicitContinuationTurn("that works")).toBe("approval");
+		expect(
+			classifyExplicitContinuationTurn("sure, that's great, go ahead"),
+		).toBe("approval");
+		expect(classifyExplicitContinuationTurn("please this is fine")).toBe(
+			"approval",
+		);
 	});
 
 	it("rejects ordinary chat, topic switches, and questions", () => {

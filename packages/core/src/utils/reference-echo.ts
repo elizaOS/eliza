@@ -9,6 +9,8 @@
  * single-line strings, a rendered prompt never is.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "./well-formed.ts";
+
 /**
  * Render a reference for user-facing text: quoted only when it is name-shaped
  * (non-empty, single line, ≤64 chars), otherwise the neutral `fallback` noun.
@@ -32,6 +34,9 @@ export function describeUserReference(
  */
 export function userReferenceLogView(reference: string): string {
 	const safeRef = typeof reference === "string" ? reference : "";
-	const collapsed = safeRef.replace(/\s+/g, " ").trim();
-	return collapsed.length > 120 ? `${collapsed.slice(0, 119)}…` : collapsed;
+	const collapsed = toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim());
+	if (collapsed.length <= 120) {
+		return collapsed;
+	}
+	return `${truncateWellFormed(collapsed, 119).trimEnd()}…`;
 }

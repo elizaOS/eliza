@@ -7,7 +7,7 @@
  * Prefer the advertised context with a conservative chars-per-token ratio, and
  * fall back to a known-safe default when the daemon cannot be probed.
  */
-import { logger } from "@elizaos/core";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 /** Hard ceiling so a huge advertised context cannot blow memory on one embed. */
 export const EMBED_SOFT_CAP_CHARS = 32_000;
@@ -40,13 +40,18 @@ export function embedMaxCharsForContext(contextLength: number): number {
 
 export function truncateEmbedInput(input: string | string[], maxChars: number): string | string[] {
   if (typeof input === "string") {
-    if (input.length <= maxChars) return input;
+    const wellFormed = toWellFormedUnicode(input);
+    if (wellFormed.length <= maxChars) return wellFormed;
     logger.warn(
-      `[Ollama] Embedding input too long (${input.length} chars), truncating to ${maxChars}`
+      `[Ollama] Embedding input too long (${wellFormed.length} chars), truncating to ${maxChars}`
     );
-    return input.slice(0, maxChars);
+    return truncateWellFormed(wellFormed, maxChars);
   }
-  return input.map((text) => (text.length > maxChars ? text.slice(0, maxChars) : text));
+  return input.map((text) => {
+    const wellFormed = toWellFormedUnicode(text);
+    if (wellFormed.length <= maxChars) return wellFormed;
+    return truncateWellFormed(wellFormed, maxChars);
+  });
 }
 
 export function isEmbedContextOverflow(error: unknown): boolean {

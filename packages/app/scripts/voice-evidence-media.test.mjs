@@ -1,6 +1,11 @@
 /**
  * Exercises voice evidence finalization with real ffmpeg/ffprobe processes,
  * including revision, correlation, missing-loopback, and silent-audio reds.
+ *
+ * The media suites require ffmpeg and ffprobe on PATH (or via
+ * ELIZA_FFMPEG_BIN / ELIZA_FFPROBE_BIN / the packaged statics). Where the
+ * runner has neither they report an explicit skip; the snapshot suites and the
+ * fail-closed resolution contract run unconditionally.
  */
 
 import { spawnSync } from "node:child_process";
@@ -13,11 +18,22 @@ import {
   correlateAudioWindow,
   finalizeDesktopVoiceEvidence,
   finalizeWebVoiceEvidence,
+  findMediaTools,
   inspectAudibleMp4,
   resolveMediaTools,
   snapshotEvidenceDirectory,
   snapshotEvidenceFile,
 } from "./voice-evidence-media.mjs";
+
+// The media suites drive real ffmpeg/ffprobe processes. Runners in the
+// zero-key lanes install neither, and a hard failure there takes out the whole
+// required gate for a tool the lane never claimed to provision. Skip those
+// suites explicitly instead — the snapshot suites and the fail-closed contract
+// below still run everywhere, and any runner that DOES have the tools (every
+// evidence-producing lane, after `bun run evidence:install-tools`) runs the
+// full media coverage unchanged.
+const mediaTools = findMediaTools();
+const describeWithMedia = describe.skipIf(!mediaTools);
 
 const roots = [];
 
@@ -99,6 +115,30 @@ test("evidence directory snapshot rejects symlink aliases and owns its bytes", (
   ).toThrow(/symlink entry/);
   expect(fs.existsSync(path.join(snapshotRoot, "rejected"))).toBe(false);
 });
+
+test("media tool resolution fails closed and matches the skip probe", () => {
+  if (mediaTools) {
+    expect(resolveMediaTools()).toEqual(mediaTools);
+    expect(mediaTools.ffmpeg).toBeTruthy();
+    expect(mediaTools.ffprobe).toBeTruthy();
+    return;
+  }
+  // Evidence production must never silently continue without the tools; only
+  // the media suites above degrade, and they degrade to an explicit skip.
+  expect(() => resolveMediaTools()).toThrow(/evidence:install-tools/);
+});
+
+// A lane that claims to produce media evidence must not be allowed to degrade
+// to a skip: a present-but-broken ffmpeg (wrong arch, missing shared library,
+// nonzero `-version` exit) probes exactly like an absent one. Provisioned
+// lanes export ELIZA_REQUIRE_MEDIA_TOOLS=1 so a lost or corrupted install
+// fails loudly instead of turning nine media contracts into silent skips.
+test.skipIf(process.env.ELIZA_REQUIRE_MEDIA_TOOLS !== "1")(
+  "this lane provisioned working ffmpeg/ffprobe",
+  () => {
+    expect(mediaTools).toBeTruthy();
+  },
+);
 
 function run(bin, args) {
   const result = spawnSync(bin, args, { encoding: "utf8" });
@@ -237,7 +277,7 @@ function webFixture(root, tools) {
   };
 }
 
-describe("web voice media evidence", () => {
+describeWithMedia("web voice media evidence", () => {
   test("muxes actual system loopback into a revision-bound MP4", () => {
     const tools = resolveMediaTools();
     const root = fixtureRoot();
@@ -345,7 +385,7 @@ describe("web voice media evidence", () => {
   });
 });
 
-describe("packaged desktop voice media evidence", () => {
+describeWithMedia("packaged desktop voice media evidence", () => {
   test("requires real mic mode and separate audible speaker loopback", () => {
     const tools = resolveMediaTools();
     const root = fixtureRoot();
@@ -636,7 +676,7 @@ describe("packaged desktop voice media evidence", () => {
   });
 });
 
-describe("hardware audio fingerprint correlation", () => {
+describeWithMedia("hardware audio fingerprint correlation", () => {
   test("accepts bounded latency and noise but rejects unrelated audio", () => {
     const tools = resolveMediaTools();
     const root = fixtureRoot();

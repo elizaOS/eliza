@@ -34,4 +34,21 @@ describe("AgentRuntime.rerankMemories", () => {
 
 		expect(reranked).toEqual([keywordMatch, semanticOnly, attachmentOnly]);
 	});
+
+	it("does not throw when an attachment-only memory carries an empty text field", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "rerank-memory-test" } as Character,
+		});
+
+		const keywordMatch = memory("keyword-match", "automobile purchase receipt");
+		const emptyText = memory("empty-text", "");
+
+		const reranked = await runtime.rerankMemories("automobile purchase", [
+			keywordMatch,
+			emptyText,
+		]);
+
+		expect(reranked[0]).toBe(keywordMatch);
+		expect(reranked).toContain(emptyText);
+	});
 });

@@ -32,6 +32,10 @@ export interface PlannerToolCall {
 
 export type EvaluatorRoute = EvaluationResult["decision"];
 
+export type EvaluatorModelResult =
+	| string
+	| (Partial<GenerateTextResult> & { object?: unknown });
+
 export interface EvaluatorRuntime {
 	/** True when useModel invokes prepareModelAttempt before every provider handler. */
 	supportsModelAttemptPreparation?: boolean;
@@ -64,9 +68,7 @@ export interface EvaluatorRuntime {
 			) => Promise<void> | void;
 		},
 		provider?: string,
-	): Promise<
-		string | { text?: string; object?: unknown; providerMetadata?: unknown }
-	>;
+	): Promise<EvaluatorModelResult>;
 	logger?: {
 		warn?: (context: unknown, message?: string) => void;
 		debug?: (context: unknown, message?: string) => void;

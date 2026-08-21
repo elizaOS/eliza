@@ -62,8 +62,11 @@ export const AndroidUpdateChecker = {
 
       const lastCheck = localStorage.getItem(LAST_CHECK_KEY);
       if (lastCheck !== null) {
-        const elapsed = Date.now() - parseInt(lastCheck, 10);
-        if (elapsed < CHECK_INTERVAL_MS) return null;
+        const lastCheckTimestamp = Number(lastCheck);
+        if (Number.isFinite(lastCheckTimestamp)) {
+          const elapsed = Date.now() - lastCheckTimestamp;
+          if (elapsed >= 0 && elapsed < CHECK_INTERVAL_MS) return null;
+        }
       }
 
       const manifestUrl = MANIFEST_URLS[channel];

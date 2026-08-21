@@ -75,10 +75,12 @@ describe("Shared turn AgentRuntime boundary", () => {
       agentKey: "shared:Nova",
       execution: {
         agentKey: "shared:Nova",
+        roomKey: "shared:Nova",
         channel: { type: ChannelType.DM, source: "shared-runtime" },
       },
     });
-    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime boundaries");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime capabilities");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("prerequisites:");
   });
 
   test("preserves server-owned voice execution semantics", async () => {
@@ -88,6 +90,7 @@ describe("Shared turn AgentRuntime boundary", () => {
       message: "hello",
       execution: {
         agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
         authenticatedPersonalSharedUser: true,
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
       },

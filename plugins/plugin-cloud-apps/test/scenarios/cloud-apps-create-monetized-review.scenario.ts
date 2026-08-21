@@ -192,6 +192,11 @@ function runtimeFromContext(ctx: ScenarioContext): CloudAppsScenarioRuntime {
 export default scenario({
   id: "cloud-apps-create-monetized-review",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Create-a-monetized-app degrades gracefully: app created, monetization off, review step surfaced",
   domain: "cloud-apps",

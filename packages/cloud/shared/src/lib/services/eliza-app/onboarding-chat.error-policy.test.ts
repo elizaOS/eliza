@@ -46,7 +46,7 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import(
+const { runOnboardingChat, onboardingFetch } = await import(
   `./onboarding-chat.ts?test=onboarding-error-policy-${Date.now()}`
 );
 
@@ -122,5 +122,44 @@ describe("onboarding-chat phone-link error policy", () => {
     expect(linkPhoneToUser).toHaveBeenCalledWith("user-1", PHONE);
     expect(result.reply.length).toBeGreaterThan(0);
     expect(result.provisioning.status).toBe("provisioning");
+  });
+});
+
+describe("onboardingFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung onboarding coordinator hop at the timeout", async () => {
+    // A coordinator that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the 10s default bounds internal hops).
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    };
+    const start = Date.now();
+    await expect(
+      onboardingFetch(hungStub, "https://onboarding.internal/resolve", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("composes a caller-provided abort signal with the hop deadline", async () => {
+    let seen: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return new Response("{}", { status: 200 });
+      },
+    };
+    const controller = new AbortController();
+    await onboardingFetch(stub, "https://onboarding.internal/resolve", {
+      signal: controller.signal,
+    });
+    // The wrapper owns the deadline, so the signal handed to the transport is
+    // a composition of the caller's signal and that deadline — never the caller's
+    // object verbatim. Asserting identity here would pin the very behavior that
+    // lets a never-firing caller signal defeat the bound.
+    expect(seen).not.toBe(controller.signal);
   });
 });

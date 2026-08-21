@@ -32,7 +32,7 @@ export const CRON_FANOUT: Record<string, string[]> = {
     // TTL (48h default, MANAGED_DOMAIN_UNVERIFIED_TTL_MS override).
     "/api/cron/reclaim-stale-domains",
   ],
-  "0 * * * *": ["/api/cron/agent-billing"],
+  "0 * * * *": ["/api/cron/agent-billing", "/api/cron/process-account-deletions"],
   "*/5 * * * *": [
     // Keep the cache-only shared first-turn gates warm for recently active
     // agents (admission snapshot / pricing / character projection) so idle
@@ -67,6 +67,9 @@ export const CRON_FANOUT: Record<string, string[]> = {
   "*/15 * * * *": [
     "/api/cron/auto-top-up",
     "/api/cron/agent-budgets",
+    // Native authorization codes expire after five minutes. A bounded drain
+    // keeps inactive exchange credentials short-lived without an unbounded run.
+    "/api/cron/cleanup-mobile-app-auth",
     "/api/v1/cron/refresh-model-catalog",
     "/api/cron/domain-health",
   ],

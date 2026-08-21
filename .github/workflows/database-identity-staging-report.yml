@@ -1,0 +1,61 @@
+name: Database identity staging report
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_cloud_commit:
+        description: Exact 40-character develop commit to inspect
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    concurrency:
+      group: database-identity-staging-report
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_IDENTITY_GATE_MODE: report
+      DATABASE_IDENTITY_ENVIRONMENT: staging
+
+    steps:
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+
+      - name: Require exact develop commit
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
+          CHECKED_OUT_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          bun -e '
+            const expected = process.env.EXPECTED_COMMIT ?? "";
+            const checkedOut = process.env.CHECKED_OUT_COMMIT ?? "";
+            if (process.env.SOURCE_REF !== "refs/heads/develop") process.exit(1);
+            if (!/^[0-9a-f]{40}$/.test(expected)) process.exit(1);
+            if (expected !== checkedOut) process.exit(1);
+          '
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install deterministic dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Validate identity reporter contracts
+        run: bun test packages/cloud/scripts/admin/preflight-database-identity.test.ts packages/cloud/scripts/admin/database-identity-staging-report-workflow.test.ts
+
+      - name: Emit redacted staging identity receipts
+        run: bun run packages/cloud/scripts/admin/preflight-database-identity.ts

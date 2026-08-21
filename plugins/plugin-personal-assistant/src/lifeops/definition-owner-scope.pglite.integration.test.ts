@@ -41,7 +41,17 @@ function makeDefinition(
     status: "active",
     priority: 3,
     cadence: { kind: "once", dueAt: "2027-01-05T09:00:00.000Z" },
-    windowPolicy: { timezone: "UTC", windows: [] },
+    windowPolicy: {
+      timezone: "UTC",
+      windows: [
+        {
+          name: "morning",
+          label: "Morning",
+          startMinute: 480,
+          endMinute: 720,
+        },
+      ],
+    },
     progressionRule: { kind: "none" },
     websiteAccess: null,
     reminderPlanId: null,
@@ -190,8 +200,230 @@ describe("LifeOps definition persistence — owner scope and revision predicates
       await expect(service.deleteDefinition(hiddenId)).rejects.toMatchObject({
         status: 404,
       });
+      await expect(
+        service.getReminderPreference(hiddenId),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        service.setReminderPreference({
+          definitionId: hiddenId,
+          intensity: "normal",
+        }),
+      ).rejects.toMatchObject({ status: 404 });
       expect(await repository.getDefinition(agentId, hiddenId)).not.toBeNull();
     }
+  });
+
+  it("moves a caller-owned definition between supported domains atomically", async () => {
+    const movable = makeDefinition(agentId, ownerA, "move between domains");
+    await repository.createDefinition(movable);
+    const moved = await service.updateDefinition(movable.id, {
+      ownership: {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      },
+    });
+    expect(moved.definition).toMatchObject({
+      domain: "agent_ops",
+      subjectType: "agent",
+      subjectId: agentId,
+    });
+    await expect(
+      repository.getDefinition(agentId, movable.id, {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: ownerA,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      repository.getDefinition(agentId, movable.id, {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      }),
+    ).resolves.toMatchObject({ id: movable.id });
+    await repository.deleteDefinition(agentId, movable.id, {
+      scope: {
+        domain: "agent_ops",
+        subjectType: "agent",
+        subjectId: agentId,
+      },
+      expectedUpdatedAt: moved.definition.updatedAt,
+    });
+  });
+
+  it("denies occurrence mutation and reminder inspection for a hidden definition", async () => {
+    const now = new Date("2027-01-05T08:30:00.000Z");
+    const occurrences = await service.refreshDefinitionOccurrences(
+      crossDomain,
+      now,
+    );
+    expect(occurrences).toHaveLength(1);
+    const occurrence = occurrences[0];
+
+    const callerScope = {
+      domain: "user_lifeops" as const,
+      subjectType: "owner" as const,
+      subjectId: ownerA,
+    };
+    await expect(
+      repository.getOccurrence(agentId, occurrence.id, callerScope),
+    ).resolves.toBeNull();
+    await expect(
+      repository.getOccurrenceView(agentId, occurrence.id, callerScope),
+    ).resolves.toBeNull();
+    await expect(
+      repository.listOccurrenceViewsForOverview(
+        agentId,
+        "2027-01-06T00:00:00.000Z",
+        [callerScope],
+      ),
+    ).resolves.not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: occurrence.id })]),
+    );
+
+    await expect(
+      service.completeOccurrence(occurrence.id, {}, now),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.inspectReminder("occurrence", occurrence.id),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.acknowledgeReminder({
+        ownerType: "occurrence",
+        ownerId: occurrence.id,
+        note: "must remain private",
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      repository.getOccurrence(agentId, occurrence.id),
+    ).resolves.toMatchObject({ state: "pending", metadata: {} });
+    const overview = await service.getOverview(now);
+    expect(overview.owner.occurrences.map((item) => item.id)).not.toContain(
+      occurrence.id,
+    );
+    expect(overview.agentOps.occurrences.map((item) => item.id)).not.toContain(
+      occurrence.id,
+    );
+  });
+
+  it("rejects a stale occurrence mutation after its agent definition moves to another owner", async () => {
+    const now = new Date("2027-01-05T08:30:00.000Z");
+    const ownerBService = new LifeOpsService(runtimeResult.runtime, {
+      ownerEntityId: OWNER_B,
+    });
+    const sharedDefinition: LifeOpsTaskDefinition = {
+      ...makeDefinition(agentId, agentId, "shared agent task"),
+      domain: "agent_ops",
+      subjectType: "agent",
+      subjectId: agentId,
+      visibilityScope: "agent_and_admin",
+      contextPolicy: "never",
+    };
+    await repository.createDefinition(sharedDefinition);
+    const [occurrence] = await service.refreshDefinitionOccurrences(
+      sharedDefinition,
+      now,
+    );
+    if (!occurrence) throw new Error("expected shared occurrence");
+
+    // Completion writes go through the scope-guarded atomic transition, so
+    // the ownership move is injected immediately before that write lands.
+    const originalComplete =
+      service.repository.completeOccurrenceIfNonTerminal.bind(
+        service.repository,
+      );
+    service.repository.completeOccurrenceIfNonTerminal = async (
+      candidate,
+      options,
+    ) => {
+      await ownerBService.updateDefinition(sharedDefinition.id, {
+        ownership: {
+          domain: "user_lifeops",
+          subjectType: "owner",
+          subjectId: OWNER_B,
+        },
+      });
+      return originalComplete(candidate, options);
+    };
+
+    try {
+      await expect(
+        service.completeOccurrence(occurrence.id, {}, now),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof ElizaError &&
+          error.code === "LIFEOPS_OCCURRENCE_CONFLICT",
+      );
+    } finally {
+      service.repository.completeOccurrenceIfNonTerminal = originalComplete;
+    }
+    const persisted = await repository.getOccurrence(agentId, occurrence.id);
+    expect(persisted).toMatchObject({
+      state: "pending",
+      domain: "user_lifeops",
+      subjectType: "owner",
+      subjectId: OWNER_B,
+    });
+  });
+
+  it("keeps another owner's completed items out of owner recaps", async () => {
+    const now = new Date("2027-01-05T10:00:00.000Z");
+    const ownDefinition = makeDefinition(agentId, ownerA, "owner A completed");
+    const foreignDefinition = makeDefinition(
+      agentId,
+      OWNER_B,
+      "owner B private completion",
+    );
+    await repository.createDefinition(ownDefinition);
+    await repository.createDefinition(foreignDefinition);
+
+    const [ownOccurrence] = await service.refreshDefinitionOccurrences(
+      ownDefinition,
+      now,
+    );
+    const [foreignOccurrence] = await service.refreshDefinitionOccurrences(
+      foreignDefinition,
+      now,
+    );
+    if (!ownOccurrence || !foreignOccurrence) {
+      throw new Error("expected both owner occurrences to materialize");
+    }
+    await repository.updateOccurrence({
+      ...ownOccurrence,
+      state: "completed",
+      updatedAt: now.toISOString(),
+    });
+    await repository.updateOccurrence({
+      ...foreignOccurrence,
+      state: "completed",
+      updatedAt: now.toISOString(),
+    });
+
+    const completed = await service.listOwnerOccurrencesCompletedToday(now);
+    expect(completed.map((item) => item.id)).toContain(ownOccurrence.id);
+    expect(completed.map((item) => item.id)).not.toContain(
+      foreignOccurrence.id,
+    );
+    expect(completed.map((item) => item.title)).not.toContain(
+      foreignDefinition.title,
+    );
+    await repository.deleteDefinition(agentId, ownDefinition.id, {
+      scope: {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: ownerA,
+      },
+      expectedUpdatedAt: ownDefinition.updatedAt,
+    });
+    await repository.deleteDefinition(agentId, foreignDefinition.id, {
+      scope: {
+        domain: "user_lifeops",
+        subjectType: "owner",
+        subjectId: OWNER_B,
+      },
+      expectedUpdatedAt: foreignDefinition.updatedAt,
+    });
   });
 
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {

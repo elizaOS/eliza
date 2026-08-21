@@ -14,13 +14,16 @@ on:
   workflow_call:
   workflow_dispatch:
 
-# A manual run is a diagnostic: it must not share the push ref group, or a
-# develop push storm parks it `pending` forever and then supersedes it, so
-# branch health can never be read on demand. Give workflow_dispatch its own
-# run-scoped identity — the same shape test.yml already uses.
+# Manual diagnostics keep a run-scoped identity, while PR and merge-queue runs
+# still supersede stale work. A develop push uses a stable terminal-v2 group
+# with the default single-pending queue: the running verification finishes and
+# GitHub retains only the newest waiting tip. The versioned group also avoids
+# inheriting the pre-fix ci-refs/heads/develop run that can remain retained.
+# Do not add queue: max here; it is incompatible with cancellable PR/merge
+# events and would retain every merge-wave push instead of only the latest.
 concurrency:
-  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push' }}
+  group: ci-${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'push' && format('terminal-v2-{0}', github.ref) || github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 permissions:
   contents: read

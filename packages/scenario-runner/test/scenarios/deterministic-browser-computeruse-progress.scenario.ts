@@ -292,6 +292,11 @@ async function seedScenario(ctx: {
 export default scenario({
   id: "deterministic-browser-computeruse-progress",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Browser and computer-use progress streaming",
   domain: "scenario-runner",
   tags: [

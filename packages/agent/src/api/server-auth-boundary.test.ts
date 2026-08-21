@@ -117,11 +117,15 @@ async function bootServer(
   configureServer?: NonNullable<
     Parameters<typeof startApiServer>[0]
   >["configureServer"],
+  authorizeWebSocket?: NonNullable<
+    Parameters<typeof startApiServer>[0]
+  >["authorizeWebSocket"],
 ): Promise<string> {
   api = await startApiServer({
     port: 0,
     skipDeferredStartupWork: true,
     configureServer,
+    authorizeWebSocket,
   });
   process.env.ELIZA_PORT = String(api.port);
   process.env.ELIZA_API_PORT = String(api.port);
@@ -411,6 +415,26 @@ describe("unauthenticated /ws bounds (W5-015)", () => {
       });
     });
   }
+
+  it("admits a credential recognized by the host authorizer", async () => {
+    const hostToken = "revocable-host-machine-session";
+    const baseUrl = await bootServer(undefined, (_request, url) => {
+      return url.searchParams.get("token") === hostToken;
+    });
+    const port = Number(new URL(baseUrl).port);
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${port}/ws?token=${encodeURIComponent(hostToken)}`,
+    );
+
+    await waitForFrame(ws, "status");
+    const pong = waitForFrame(ws, "pong");
+    ws.send(JSON.stringify({ type: "ping" }));
+    await pong;
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    expect(pendingWebSocketCount("127.0.0.1")).toBe(0);
+    ws.close();
+  });
 
   it("closes a socket that never authenticates after the grace period", async () => {
     const baseUrl = await bootServer();

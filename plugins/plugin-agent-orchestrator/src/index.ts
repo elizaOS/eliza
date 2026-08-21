@@ -25,6 +25,8 @@ import {
   ModelType,
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -557,16 +559,85 @@ export function createAgentOrchestratorPlugin(): Plugin {
 // memory rewriting lands upstream, intercept user-facing text and replace
 // the teardown-retry phrases with the canonical self-heal recovery line so
 // the user never sees instructions to do something the runtime already does.
-const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
-  /[^.!?\n]*\b(restart|kick(?:[\s-]?off)?|bounce)[^.!?\n]*\bacpx[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bacpx[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\b(clear|clean|wipe)[^.!?\n]*\bstale\s+sessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bmanually\s+clear[^.!?\n]*\bsessions?[^.!?\n]*[.!?]?/gi,
-  /[^.!?\n]*\bdaemon\b[^.!?\n]*\b(restart|reboot|not\s+accepting|isn'?t\s+accepting)[^.!?\n]*[.!?]?/gi,
-];
-
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
+
+function containsWord(value: string, word: string): boolean {
+  let cursor = 0;
+  while (cursor < value.length) {
+    const index = value.indexOf(word, cursor);
+    if (index < 0) return false;
+    const before = value[index - 1] ?? " ";
+    const after = value[index + word.length] ?? " ";
+    const isWord = (character: string): boolean => /[a-z0-9_]/.test(character);
+    if (!isWord(before) && !isWord(after)) return true;
+    cursor = index + 1;
+  }
+  return false;
+}
+
+function isForbiddenCleanupSentence(sentence: string): boolean {
+  const lower = sentence.toLowerCase();
+  const hasRecoveryVerb =
+    containsWord(lower, "restart") ||
+    containsWord(lower, "reboot") ||
+    containsWord(lower, "bounce") ||
+    containsWord(lower, "kick") ||
+    containsWord(lower, "kickoff") ||
+    containsWord(lower, "kick-off") ||
+    lower.includes("not accepting") ||
+    lower.includes("isn't accepting") ||
+    lower.includes("isnt accepting");
+  if (containsWord(lower, "acpx") && hasRecoveryVerb) return true;
+  if (containsWord(lower, "daemon") && hasRecoveryVerb) return true;
+  const clears =
+    containsWord(lower, "clear") ||
+    containsWord(lower, "clean") ||
+    containsWord(lower, "wipe");
+  if (clears && lower.includes("stale session")) return true;
+  return (
+    lower.includes("manually clear") &&
+    (containsWord(lower, "session") || containsWord(lower, "sessions"))
+  );
+}
+
+function stripForbiddenCleanupSentences(text: string): string {
+  const out: string[] = [];
+  let segmentStart = 0;
+  for (let index = 0; index <= text.length; index += 1) {
+    const character = text[index];
+    const boundary =
+      index === text.length ||
+      character === "." ||
+      character === "!" ||
+      character === "?" ||
+      character === "\n";
+    if (!boundary) continue;
+    const includePunctuation = character !== "\n" && index < text.length;
+    const segmentEnd = index + (includePunctuation ? 1 : 0);
+    const segment = text.slice(segmentStart, segmentEnd);
+    if (!isForbiddenCleanupSentence(segment)) out.push(segment);
+    if (character === "\n") out.push("\n");
+    segmentStart = index + 1;
+  }
+  return out.join("");
+}
+
+function collapseWhitespaceRuns(text: string): string {
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (text[cursor]?.trim() !== "") {
+      out.push(text[cursor] ?? "");
+      cursor += 1;
+      continue;
+    }
+    const start = cursor;
+    while (cursor < text.length && text[cursor]?.trim() === "") cursor += 1;
+    out.push(cursor - start >= 2 ? " " : (text[start] ?? ""));
+  }
+  return out.join("");
+}
 
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
@@ -699,12 +770,9 @@ export function plannerAlreadyAckedSpawn(
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
-  let cleaned = text;
-  for (const pattern of FORBIDDEN_CLEANUP_PATTERNS) {
-    cleaned = cleaned.replace(pattern, "");
-  }
+  let cleaned = stripForbiddenCleanupSentences(text);
   if (cleaned === text) return text;
-  cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
+  cleaned = collapseWhitespaceRuns(cleaned).trim();
   return cleaned.length > 0
     ? `${cleaned} ${SELF_HEAL_REPLACEMENT}`
     : SELF_HEAL_REPLACEMENT;
@@ -787,7 +855,11 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
 export function buildSpawnAckUserPrompt(task: string): string {
   const trimmed = task.trim();
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
-  const clipped = what.length > 400 ? `${what.slice(0, 397)}…` : what;
+  const wellFormed = toWellFormedUnicode(what);
+  const clipped =
+    wellFormed.length > 400
+      ? `${truncateWellFormed(wellFormed, 397)}…`
+      : wellFormed;
   return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
 }
 
@@ -832,9 +904,10 @@ export function sanitizeSpawnAck(raw: string): string {
   }
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   if (!cleaned) return "";
-  return cleaned.length > SPAWN_ACK_MAX_CHARS
-    ? `${cleaned.slice(0, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
-    : cleaned;
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed.length > SPAWN_ACK_MAX_CHARS
+    ? `${truncateWellFormed(wellFormed, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
+    : wellFormed;
 }
 
 function stripToolTranscripts(raw: string): string {
@@ -874,7 +947,10 @@ export function extractCompletionSummary(raw: string): string {
     .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
   const last = lines[lines.length - 1] ?? "";
   if (!last) return "done";
-  return last.length > 300 ? `${last.slice(0, 297).trimEnd()}…` : last;
+  const wellFormed = toWellFormedUnicode(last);
+  return wellFormed.length > 300
+    ? `${truncateWellFormed(wellFormed, 297).trimEnd()}…`
+    : wellFormed;
 }
 
 /**
@@ -955,8 +1031,12 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
     const parts = p.split("/").filter(Boolean);
     return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
   };
-  const trimCmd = (c: string): string =>
-    c.length > 80 ? `${c.slice(0, 77)}...` : c;
+  const trimCmd = (c: string): string => {
+    const wellFormed = toWellFormedUnicode(c);
+    return wellFormed.length > 80
+      ? `${truncateWellFormed(wellFormed, 77)}...`
+      : wellFormed;
+  };
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1338,7 +1418,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const prevSummary = lastHeartbeatSummary.get(sessionId);
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
-        const text = `⏳ [${label}] ${trimmedSummary.length > 200 ? `${trimmedSummary.slice(0, 197)}...` : trimmedSummary}`;
+        const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
+        const text = `⏳ [${label}] ${wellFormedSummary.length > 200 ? `${truncateWellFormed(wellFormedSummary, 197)}...` : wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -1984,7 +2065,8 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // duplicates the final summary the response evaluator builds. A 800-char
     // window fits short tables and a few bullet points; longer dumps get
     // truncated and the canonical version lands via the summary.
-    const text = `💬 [${label}] ${trimmed.length > 800 ? `${trimmed.slice(0, 793)}…[+]` : trimmed}`;
+    const wellFormed = toWellFormedUnicode(trimmed);
+    const text = `💬 [${label}] ${wellFormed.length > 800 ? `${truncateWellFormed(wellFormed, 793)}…[+]` : wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());

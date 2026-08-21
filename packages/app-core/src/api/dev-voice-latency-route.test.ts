@@ -5,7 +5,14 @@
  * loopback-only rejection, and prod-disabled behavior.
  */
 import { Socket } from "node:net";
-import { AgentRuntime, type Log, type UUID } from "@elizaos/core";
+import {
+  AgentRuntime,
+  INFERENCE_TRACE_ID_PATTERN,
+  InferenceTurnTimer,
+  type Log,
+  persistInferenceTimingSummary,
+  type UUID,
+} from "@elizaos/core";
 import {
   afterAll,
   afterEach,
@@ -271,6 +278,9 @@ describe("GET /api/dev/inference-timing", () => {
     expect(payload.turns).toHaveLength(1);
     expect(payload.turns[0]).toMatchObject({
       turnId: "persisted-flow-1",
+      // Persisted before trace correlation existed: rehydrates as an explicit
+      // null rather than a fabricated id.
+      traceId: null,
       timeToFirstTokenMs: 90,
       timeToFirstVisibleMs: 100,
       timeToReplyMs: 140,
@@ -286,6 +296,87 @@ describe("GET /api/dev/inference-timing", () => {
       providerName: "KNOWLEDGE",
       successes: 1,
     });
+  });
+
+  it("round-trips a real turn's trace id through persistence and rehydration", async () => {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    const roomId = "00000000-0000-0000-0000-000000000043" as UUID;
+    const timer = new InferenceTurnTimer({
+      turnId: "trace-roundtrip-1",
+      label: "chat-request",
+    });
+    const created: Array<{ body: unknown }> = [];
+    vi.spyOn(runtime, "createLogs").mockImplementation(async (logs) => {
+      created.push(...logs);
+    });
+    await persistInferenceTimingSummary(
+      runtime,
+      { id: "00000000-0000-0000-0000-0000000000aa" as UUID, roomId } as never,
+      timer.close(),
+    );
+    expect(created).toHaveLength(1);
+
+    vi.spyOn(runtime, "getLogs").mockResolvedValue([
+      {
+        type: "inference_timing",
+        entityId: runtime.agentId,
+        roomId,
+        createdAt: new Date(),
+        body: created[0].body,
+      } as Log,
+    ]);
+    const state: CompatRuntimeState = {
+      current: runtime,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    };
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/inference-timing?limit=1",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, state)).resolves.toBe(true);
+
+    const payload = JSON.parse(captured.body ?? "{}");
+    expect(timer.traceId).toMatch(INFERENCE_TRACE_ID_PATTERN);
+    expect(payload.turns[0].traceId).toBe(timer.traceId);
+  });
+
+  it("rehydrates a malformed persisted trace id as null rather than surfacing it", async () => {
+    const runtime = new AgentRuntime({ logLevel: "fatal" });
+    vi.spyOn(runtime, "getLogs").mockResolvedValue([
+      {
+        type: "inference_timing",
+        entityId: runtime.agentId,
+        roomId: "00000000-0000-0000-0000-000000000044" as UUID,
+        createdAt: new Date(),
+        body: {
+          runId: "trace-malformed-1",
+          source: "inference_timing",
+          startTime: 1_000,
+          endTime: 1_010,
+          duration: 10,
+          metadata: {
+            label: "chat-request",
+            traceId: "<script>alert(1)</script>",
+            spans: [],
+            marks: [],
+            byName: {},
+            anomalies: [],
+          },
+        },
+      } as Log,
+    ]);
+    const state: CompatRuntimeState = {
+      current: runtime,
+      pendingAgentName: null,
+      pendingRestartReasons: [],
+    };
+    const { req, res, captured } = makeReqRes({
+      url: "/api/dev/inference-timing?limit=1",
+    });
+
+    await expect(handleDevCompatRoutes(req, res, state)).resolves.toBe(true);
+    expect(JSON.parse(captured.body ?? "{}").turns[0].traceId).toBeNull();
   });
 
   it("rejects non-loopback callers before reading persisted telemetry", async () => {

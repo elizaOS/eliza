@@ -638,7 +638,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
         clearPersistedAvatarIndex: clearAvatarIndex,
         setClientBaseUrl: (url) => client.setBaseUrl(url),
         setClientToken: (token) => client.setToken(token),
-        clearElizaCloudSessionUi: () => {
+        clearElizaCloudSessionUi: async () => {
           elizaCloudPreferDisconnectedUntilLoginRef.current = false;
           setElizaCloudEnabled(false);
           setElizaCloudConnected(false);
@@ -675,7 +675,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           // token clear happens on every reset path that uses the
           // shared cascade. (The cascade is the sole caller; there
           // is no path that calls one without the other.)
-          clearStoredStewardToken();
+          await clearStoredStewardToken();
         },
         markFirstRunReset: () => {
           enableForceFreshFirstRun();

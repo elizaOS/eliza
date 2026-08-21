@@ -20,6 +20,8 @@ export interface ContainerProvisionJobData {
   containerId: string;
   organizationId: string;
   userId: string;
+  /** Immutable app deployment generation; absent only for legacy/generic containers. */
+  deploymentGeneration?: string;
 }
 
 export interface ContainerDeleteJobData {
@@ -56,7 +58,15 @@ function hasStrings(value: unknown, keys: readonly string[]): boolean {
 }
 
 export function isContainerProvisionJobData(value: unknown): value is ContainerProvisionJobData {
-  return hasStrings(value, ["containerId", "organizationId", "userId"]);
+  return (
+    hasStrings(value, ["containerId", "organizationId", "userId"]) &&
+    (!isRecord(value) ||
+      value.deploymentGeneration === undefined ||
+      (typeof value.deploymentGeneration === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          value.deploymentGeneration,
+        )))
+  );
 }
 
 export function isContainerDeleteJobData(value: unknown): value is ContainerDeleteJobData {

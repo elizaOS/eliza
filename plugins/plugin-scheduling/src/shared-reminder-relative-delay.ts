@@ -75,10 +75,37 @@ interface DelayCandidate {
 }
 
 function maskQuotedText(text: string): string {
-  return text.replace(
-    /"[^"\n]*"|'[^'\n]*'|`[^`\n]*`|“[^”\n]*”|‘[^’\n]*’/g,
-    (match) => " ".repeat(match.length),
-  );
+  const closingQuote = new Map([
+    ['"', '"'],
+    ["'", "'"],
+    ["`", "`"],
+    ["“", "”"],
+    ["‘", "’"],
+  ]);
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const closer = closingQuote.get(text[cursor] ?? "");
+    if (!closer) {
+      out.push(text[cursor] ?? "");
+      cursor += 1;
+      continue;
+    }
+    let end = cursor + 1;
+    while (end < text.length && text[end] !== "\n" && text[end] !== closer) {
+      end += 1;
+    }
+    if (text[end] === closer) {
+      out.push(" ".repeat(end - cursor + 1));
+      cursor = end + 1;
+      continue;
+    }
+    // Unmatched opener (e.g. a contraction apostrophe): emit just the opener
+    // and rescan from the next char so a later quoted span is still masked.
+    out.push(text[cursor] ?? "");
+    cursor += 1;
+  }
+  return out.join("");
 }
 
 function candidateIsExample(text: string, index: number): boolean {

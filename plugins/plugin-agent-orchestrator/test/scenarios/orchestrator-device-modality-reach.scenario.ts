@@ -33,6 +33,11 @@ function asRecords(value: unknown): Record<string, unknown>[] {
 export default scenario({
   id: "orchestrator-device-modality-reach",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title:
     "Device and voice reach: desktop/Android spawn, iOS/store stubs, voice remote control",
   domain: "agent-orchestrator",

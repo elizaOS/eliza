@@ -86,4 +86,19 @@ describe("renderer API proxy", () => {
     ).toBe(180);
     expect(resolveRendererProxyIdleTimeoutSeconds({})).toBe(255);
   });
+
+  it("ignores a trailing-garbage idle timeout instead of parsing its prefix", () => {
+    // parseInt("1junk") is 1 — a one-second proxy idle timeout that would tear
+    // down in-flight renderer requests, from a value nobody meant as a setting.
+    expect(
+      resolveRendererProxyIdleTimeoutSeconds({
+        ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS: "1junk",
+      }),
+    ).toBe(255);
+    expect(
+      resolveRendererProxyIdleTimeoutSeconds({
+        ELIZA_RENDERER_PROXY_IDLE_TIMEOUT_SECONDS: "30",
+      }),
+    ).toBe(30);
+  });
 });

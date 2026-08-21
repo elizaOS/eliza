@@ -86,7 +86,11 @@ function stableStringifyValue(value: unknown, seen: WeakSet<object>): string {
 					entryType !== "symbol"
 				);
 			})
-			.sort(([left], [right]) => left.localeCompare(right))
+			// Code-unit order, not localeCompare: ICU collation depends on the
+			// host locale, so the same object would hash differently under
+			// LC_ALL=sv_SE than under LC_ALL=C — defeating the cross-run
+			// identity this module exists to provide.
+			.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
 			.map(
 				([key, entryValue]) =>
 					`${JSON.stringify(key)}:${stableStringifyValue(entryValue, seen)}`,

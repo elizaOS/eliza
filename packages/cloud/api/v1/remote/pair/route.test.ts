@@ -98,8 +98,10 @@ describe("remote pairing route", () => {
       id: string;
       requester_identity: string;
       pairing_token_hash: string;
+      expires_at: Date;
     };
     expect(persisted.id).toBe(body.data.sessionId);
+    expect(persisted.expires_at.toISOString()).toBe(body.data.expiresAt);
     expect(persisted.requester_identity).toBe(
       "11111111-1111-4111-8111-111111111111",
     );
@@ -239,6 +241,18 @@ describe("remote pairing route", () => {
     const response = await postPair("{");
 
     expect(response.status).toBe(400);
+    expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
+  });
+
+  test("rejects JSON null and non-object bodies without touching the repository", async () => {
+    for (const payload of ["null", "[]", '"agent"', "7"]) {
+      const response = await postPair(payload);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toMatchObject({
+        success: false,
+        error: "Request body must be a JSON object",
+      });
+    }
     expect(createPendingForOwnedAgent).not.toHaveBeenCalled();
   });
 

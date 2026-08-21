@@ -157,7 +157,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   },
 }));
 
-const { default: app } = await import("./route");
+const { default: app, findCheckoutSessionForOrder } = await import("./route");
 
 describe("credits checkout service-key agent bridge", () => {
   beforeEach(() => {
@@ -227,6 +227,68 @@ describe("credits checkout service-key agent bridge", () => {
     );
   });
 
+  test("grants one USD-denominated credit for a one-dollar checkout", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-usd-1",
+        },
+        body: JSON.stringify({
+          amountUsd: 1,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(createOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creditsToGrant: "1.000000",
+        chargeAmountCents: 100,
+        currency: "usd",
+      }),
+    );
+    const createParams = checkoutCreate.mock.calls[0]?.[0];
+    if (!createParams) throw new Error("Stripe Checkout was not invoked");
+    const lineItems = (
+      createParams as {
+        line_items?: Array<{ price_data?: { unit_amount?: number } }>;
+      }
+    ).line_items;
+    expect(lineItems?.[0]?.price_data?.unit_amount).toBe(100);
+  });
+
+  test("rejects conflicting canonical and compatibility amounts", async () => {
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-unit-conflict",
+        },
+        body: JSON.stringify({
+          amountUsd: 1,
+          credits: 100,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(400);
+    expect(createOrder).not.toHaveBeenCalled();
+    expect(checkoutCreate).not.toHaveBeenCalled();
+  });
+
   test("recovers an ambiguous provider response without creating another session", async () => {
     const orderId = "30000000-0000-4000-8000-000000000001";
     createOrder.mockImplementationOnce(async () => ({
@@ -275,6 +337,92 @@ describe("credits checkout service-key agent bridge", () => {
       expect.objectContaining({ customer: "cus_order_winner" }),
     );
     expect(markProviderStarted).not.toHaveBeenCalled();
+  });
+
+  test("reconciles beyond the former ten-page Stripe search ceiling", async () => {
+    const orderId = "30000000-0000-4000-8000-000000000001";
+    createOrder.mockImplementationOnce(async () => ({
+      id: orderId,
+      status: "provider_ambiguous",
+      stripe_customer_id: "cus_order_winner",
+      updated_at: new Date(),
+    }));
+    ensureStripeCustomer.mockResolvedValueOnce("cus_order_winner");
+    checkoutList.mockImplementation(async () => {
+      const page = checkoutList.mock.calls.length;
+      return {
+        data: [
+          page === 11
+            ? {
+                id: "cs_recovered_late",
+                url: "https://checkout.stripe.test/recovered-late",
+                client_reference_id: orderId,
+                metadata: { checkout_order_id: orderId },
+              }
+            : { id: `cs_unrelated_${page}` },
+        ],
+        has_more: page < 11,
+      };
+    });
+
+    const response = await app.fetch(
+      new Request("https://api.example.test/", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Service-Key": "svc",
+          "Idempotency-Key": "agent-checkout-request-late-recovery",
+        },
+        body: JSON.stringify({
+          credits: 5,
+          agent_id: agentId,
+          success_url: "https://waifu.example.test/success",
+          cancel_url: "https://waifu.example.test/cancel",
+        }),
+      }),
+      { WAIFU_SERVICE_KEY: "svc" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(checkoutList).toHaveBeenCalledTimes(11);
+    const checkoutCalls = checkoutList.mock.calls as unknown as Array<
+      [Record<string, unknown>]
+    >;
+    expect(checkoutCalls[10]?.[0]).toMatchObject({
+      starting_after: "cs_unrelated_10",
+    });
+    await expect(response.json()).resolves.toEqual({
+      url: "https://checkout.stripe.test/recovered-late",
+      sessionId: "cs_recovered_late",
+    });
+  });
+
+  test("bounds endlessly advancing Stripe cursors by one reconciliation deadline", async () => {
+    const orderId = "30000000-0000-4000-8000-000000000001";
+    let clock = 0;
+    const list = mock(async () => {
+      clock += 5_000;
+      return {
+        data: [{ id: `cs_unique_${clock}` }],
+        has_more: true,
+      };
+    });
+    const stripe = { checkout: { sessions: { list } } } as never;
+
+    await expect(
+      findCheckoutSessionForOrder(
+        stripe,
+        {
+          id: orderId,
+          stripe_customer_id: "cus_order_winner",
+          updated_at: new Date("2026-08-21T00:00:00.000Z"),
+        },
+        () => clock,
+      ),
+    ).rejects.toThrow(
+      "Stripe Checkout reconciliation exceeded its operation deadline",
+    );
+    expect(list).toHaveBeenCalledTimes(2);
   });
 
   test("uses shared durable customer authority when the organization is unbound", async () => {

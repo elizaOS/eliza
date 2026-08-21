@@ -21,6 +21,12 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/core\/edge$/,
+        replacement: fileURLToPath(
+          new URL("../../../packages/core/src/index.edge.ts", import.meta.url),
+        ),
+      },
+      {
         // Vite's SSR resolver does not consistently honor custom export
         // conditions. Pin the real node source so pre-build coverage exercises
         // PGlite instead of falling through to plugin-sql's absent dist entry.
@@ -39,6 +45,8 @@ export default defineConfig({
       // lane filters against include, matches nothing, and hard-fails with
       // "No test files found" for any PR touching it.
       "src/lib/services/headscale-client.test.ts",
+      "src/lib/services/steward-platform-users.error-policy.test.ts",
+      "src/lib/utils/whatsapp-api.test.ts",
     ],
     environment: "node",
     // PGlite's WASM worker outlives Vitest's fork shutdown grace even after

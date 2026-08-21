@@ -546,6 +546,43 @@ describe("deepToWellFormedUnicode unbounded input", () => {
 		expect(getterCalls).toBe(0);
 	});
 
+	it("rejects an enumerable getter without invoking it", () => {
+		let getterCalls = 0;
+		const input = {};
+		Object.defineProperty(input, "hostile", {
+			enumerable: true,
+			get() {
+				getterCalls += 1;
+				return "observed";
+			},
+		});
+
+		expect(() => deepToWellFormedUnicode(input)).toThrowError(
+			expect.objectContaining({
+				code: "WELL_FORMED_UNSAFE_VALUE",
+				context: { operation: "accessor" },
+			}),
+		);
+		expect(getterCalls).toBe(0);
+	});
+
+	it("wraps revoked proxy reflection as a typed wire failure", () => {
+		const { proxy, revoke } = Proxy.revocable({ value: "opaque" }, {});
+		revoke();
+
+		try {
+			deepToWellFormedUnicode(proxy);
+			expect.unreachable("revoked proxy must fail closed");
+		} catch (error) {
+			expect(error).toBeInstanceOf(ElizaError);
+			expect((error as ElizaError).code).toBe("WELL_FORMED_UNSAFE_VALUE");
+			expect((error as ElizaError).context).toEqual({
+				operation: "reflection",
+			});
+			expect((error as Error).cause).toBeInstanceOf(TypeError);
+		}
+	});
+
 	it("throws WELL_FORMED_UNBOUNDED on a visit-budget array of strings", () => {
 		const input = new Array<string>(MAX_WELL_FORMED_VISITS).fill("ok");
 		try {

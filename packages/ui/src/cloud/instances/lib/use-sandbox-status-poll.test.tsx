@@ -1,4 +1,4 @@
-/** Exercises the authenticated, validated agents-list background poll with real React effects. */
+/** Exercises sandbox status and authenticated list polling with real React effects and deterministic transport doubles. */
 // @vitest-environment jsdom
 
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -36,6 +36,7 @@ function agent(status: "provisioning" | "running") {
 
 beforeEach(() => {
   mockedApi.mockReset();
+  vi.restoreAllMocks();
 });
 
 afterEach(() => {
@@ -158,5 +159,191 @@ describe("useSandboxListPoll", () => {
     });
     expect(hungFetch.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe("useSandboxStatusPoll", () => {
+  it("ignores a stale terminal response and keeps replacement polling active", async () => {
+    vi.useFakeTimers();
+    let resolveAgentA: ((response: Response) => void) | undefined;
+    let resolveAgentBFirst: ((response: Response) => void) | undefined;
+    let resolveAgentBNext: ((response: Response) => void) | undefined;
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce((_input, init) => {
+        requestSignals.push(init?.signal);
+        return new Promise((resolve) => {
+          resolveAgentA = resolve;
+        });
+      })
+      .mockImplementationOnce((_input, init) => {
+        requestSignals.push(init?.signal);
+        return new Promise((resolve) => {
+          resolveAgentBFirst = resolve;
+        });
+      })
+      .mockImplementationOnce((_input, init) => {
+        requestSignals.push(init?.signal);
+        return new Promise((resolve) => {
+          resolveAgentBNext = resolve;
+        });
+      });
+
+    const { result, rerender, unmount } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 1_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    rerender({ agentId: "agent-b" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(requestSignals[0]?.aborted).toBe(true);
+
+    await act(async () => {
+      resolveAgentBFirst?.(
+        Response.json({
+          data: { status: "provisioning", lastHeartbeatAt: null },
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("provisioning");
+
+    await act(async () => {
+      resolveAgentA?.(
+        Response.json({
+          data: { status: "running", lastHeartbeatAt: null },
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("provisioning");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/v1/eliza/agents/agent-b");
+
+    unmount();
+    expect(requestSignals[2]?.aborted).toBe(true);
+    await act(async () => {
+      resolveAgentBNext?.(
+        Response.json({ data: { status: "running", lastHeartbeatAt: null } }),
+      );
+      await Promise.resolve();
+    });
+  });
+
+  it("keeps an active request alive across interval ticks until its deadline", async () => {
+    vi.useFakeTimers();
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce((_input, init) => {
+        requestSignals.push(init?.signal);
+        return new Promise((resolve) => {
+          resolveFirst = resolve;
+        });
+      })
+      .mockResolvedValueOnce(
+        Response.json({
+          data: { status: "running", lastHeartbeatAt: null },
+        }),
+      );
+
+    const { result, unmount } = renderHook(() =>
+      useSandboxStatusPoll("agent-a", { intervalMs: 1_000 }),
+    );
+    expect(fetchMock).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(requestSignals[0]?.aborted).toBe(false);
+
+    await act(async () => {
+      resolveFirst?.(
+        Response.json({
+          data: { status: "provisioning", lastHeartbeatAt: null },
+        }),
+      );
+      await Promise.resolve();
+    });
+    expect(result.current.status).toBe("provisioning");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.current.status).toBe("running");
+    unmount();
+  });
+
+  it("starts polling a replacement agent after the previous agent reached a terminal state", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "running", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "provisioning", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 60_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("running"));
+    rerender({ agentId: "agent-b" });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.lastCall?.[0]).toBe("/api/v1/eliza/agents/agent-b");
+    await waitFor(() => expect(result.current.status).toBe("provisioning"));
+  });
+
+  // The previous agent's terminal status must not be attributed to the new one.
+  // Resetting only the ref left the visible result untouched, so if agent-b's
+  // first fetch failed the catch merely bumped an error counter and agent-a's
+  // "running" stayed on screen indefinitely — a status we never loaded
+  // rendering as a healthy one we did.
+  it("clears a previous agent's status when the polled agent changes", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: { status: "running", lastHeartbeatAt: null },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockRejectedValue(new Error("agent-b is unreachable"));
+
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useSandboxStatusPoll(agentId, { intervalMs: 60_000 }),
+      { initialProps: { agentId: "agent-a" } },
+    );
+
+    await waitFor(() => expect(result.current.status).toBe("running"));
+
+    rerender({ agentId: "agent-b" });
+
+    await waitFor(() => expect(result.current.status).not.toBe("running"));
+    expect(result.current.status).toBe("pending");
+    expect(result.current.lastHeartbeat).toBeNull();
   });
 });

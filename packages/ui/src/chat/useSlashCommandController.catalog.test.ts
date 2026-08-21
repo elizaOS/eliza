@@ -37,6 +37,7 @@ const { listCommands, listCustomActions } = vi.hoisted(() => ({
 
 vi.mock("../api", () => ({
   client: {
+    getBaseUrl: () => "http://localhost:2138",
     listCommands: (surface?: string, init?: RequestInit) =>
       listCommands(surface, init),
     listCustomActions: (init?: RequestInit) => listCustomActions(init),

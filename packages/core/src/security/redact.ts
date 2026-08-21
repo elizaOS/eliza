@@ -1,3 +1,7 @@
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../utils/well-formed.ts";
 /** Masks credential patterns and configured character secrets before logging or display. */
 
 /**
@@ -35,6 +39,21 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1`,
 	// JSON fields.
 	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+	// Quoted credential keys with arbitrary naming. The ENV-style row above
+	// requires the key's word boundary to be followed immediately by `=`/`:`,
+	// which a quoted key never is — the closing quote intervenes — so
+	// `{"api_key": "…"}` matched nothing at all. Serialized provider error
+	// bodies are exactly this shape, and they are the payloads most likely to
+	// be logged verbatim, so the blind spot pointed at the highest-risk input.
+	// The name vocabulary is open-ended: an optional separator-terminated
+	// prefix followed by a credential word, which keeps ordinary words that
+	// merely end in one ("monkey", "turkey") from matching because they have no
+	// separator before the suffix. Both quote styles are accepted so JS/Python
+	// reprs are covered alongside JSON. The prefix repeat is capped at 8
+	// segments (real key names never nest that deep) rather than left
+	// unbounded, keeping worst-case matching linear in input length instead of
+	// letting the engine explore every possible split of a long benign run.
+	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
 	// CLI flags (space-separated and --flag=value forms).
 	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// Authorization credentials are either one token68 value or a complete
@@ -85,6 +104,13 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
 	String.raw`\b(pplx-[A-Za-z0-9_-]{10,})\b`,
 	String.raw`\b(npm_[A-Za-z0-9]{10,})\b`,
 	String.raw`\b(\d{6,}:[A-Za-z0-9_-]{20,})\b`,
+	// Google OAuth credentials. Refresh tokens (`1//0…`) and access tokens
+	// (`ya29.…`) carry no key name when echoed by a token-endpoint error body,
+	// and neither shape survives a `\b`-anchored alphanumeric pattern: `1//`
+	// opens with a digit followed by slashes. Case-sensitive `ya29.` avoids
+	// folding unrelated prose.
+	String.raw`/(1\/\/[A-Za-z0-9_\-]{10,})/g`,
+	String.raw`/\b(ya29\.[A-Za-z0-9_\-.]{10,})/g`,
 ];
 
 /**
@@ -235,12 +261,23 @@ function resolvePatterns(value?: string[]): readonly RegExp[] {
 	return value.map(parsePattern).filter((re): re is RegExp => Boolean(re));
 }
 
-function maskToken(token: string): string {
+function maskToken(tokenInput: string): string {
+	const token = toWellFormedUnicode(tokenInput);
 	if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
 		return "***";
 	}
-	const start = token.slice(0, DEFAULT_REDACT_KEEP_START);
-	const end = token.slice(-DEFAULT_REDACT_KEEP_END);
+	const start = truncateWellFormed(token, DEFAULT_REDACT_KEEP_START);
+	let tailStart = token.length - DEFAULT_REDACT_KEEP_END;
+	if (
+		tailStart > 0 &&
+		token.charCodeAt(tailStart - 1) >= 0xd800 &&
+		token.charCodeAt(tailStart - 1) <= 0xdbff &&
+		token.charCodeAt(tailStart) >= 0xdc00 &&
+		token.charCodeAt(tailStart) <= 0xdfff
+	) {
+		tailStart += 1;
+	}
+	const end = token.slice(tailStart);
 	return `${start}…${end}`;
 }
 
@@ -284,7 +321,8 @@ function redactMatch(match: string, groups: string[]): string {
 	// the scheme/prefix, so splice the known tail position directly.
 	const tailIndex = match.length - token.length;
 	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
-		return `${match.slice(0, tailIndex)}${masked}`;
+		const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex);
+		return `${head}${masked}`;
 	}
 	// Use a replacer function so `masked` is inserted literally. `masked` keeps
 	// the token's first/last characters verbatim, and String.replace treats a

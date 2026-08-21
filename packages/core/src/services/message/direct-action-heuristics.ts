@@ -209,15 +209,84 @@ const EXPLICIT_WEB_SEARCH_PATTERN =
 	/\b(?:search\s+(?:the\s+)?(?:live\s+)?web|web\s+search|search\s+online|look\s+up|lookup|google|browse\s+(?:the\s+)?(?:live\s+)?web|search\s+(?:the\s+)?internet)\b/iu;
 const EXPLICIT_URL_FETCH_PATTERN =
 	/\b(?:fetch|read|retrieve|load|open|visit|summari[sz]e)\b[^\n]{0,160}https:\/\/[^\s<>"']+/iu;
-const INTENT_CLAUSE_BOUNDARY_PATTERN =
-	/\s*(?:;|\b(?:but|however|instead)\b)\s*/iu;
-
 function intentClauses(text: string): string[] {
-	return text
-		.toLowerCase()
-		.split(INTENT_CLAUSE_BOUNDARY_PATTERN)
-		.map((clause) => clause.trim())
-		.filter(Boolean);
+	const value = text.toLowerCase();
+	const clauses: string[] = [];
+	let start = 0;
+	let cursor = 0;
+	while (cursor < value.length) {
+		let width = value[cursor] === ";" ? 1 : 0;
+		if (width === 0) {
+			for (const word of ["but", "however", "instead"]) {
+				if (
+					value.startsWith(word, cursor) &&
+					(cursor === 0 || !/[a-z0-9_]/i.test(value[cursor - 1])) &&
+					!/[a-z0-9_]/i.test(value[cursor + word.length] ?? "")
+				) {
+					width = word.length;
+					break;
+				}
+			}
+		}
+		if (width === 0) {
+			cursor += 1;
+			continue;
+		}
+		const clause = value.slice(start, cursor).trim();
+		if (clause) clauses.push(clause);
+		start = cursor + width;
+		cursor = start;
+	}
+	const tail = value.slice(start).trim();
+	if (tail) clauses.push(tail);
+	return clauses;
+}
+
+function quotedSpanContains(
+	text: string,
+	predicate: (span: string) => boolean,
+): boolean {
+	for (const [open, close] of [
+		['"', '"'],
+		["“", "”"],
+		["‘", "’"],
+	] as const) {
+		let cursor = 0;
+		while (cursor < text.length) {
+			const start = text.indexOf(open, cursor);
+			if (start < 0) break;
+			const end = text.indexOf(close, start + open.length);
+			if (end < 0) break;
+			if (predicate(text.slice(start + open.length, end))) return true;
+			cursor = end + close.length;
+		}
+	}
+	let cursor = 0;
+	while (cursor < text.length) {
+		const start = text.indexOf("'", cursor);
+		if (start < 0) break;
+		const before = text[start - 1];
+		if (before && /[\p{L}\p{N}]/u.test(before)) {
+			cursor = start + 1;
+			continue;
+		}
+		let endCursor = start + 1;
+		let end = -1;
+		while (endCursor < text.length) {
+			const candidate = text.indexOf("'", endCursor);
+			if (candidate < 0) return false;
+			const after = text[candidate + 1];
+			if (!after || !/[\p{L}\p{N}]/u.test(after)) {
+				end = candidate;
+				break;
+			}
+			endCursor = candidate + 1;
+		}
+		if (end < 0) return false;
+		if (predicate(text.slice(start + 1, end))) return true;
+		cursor = end + 1;
+	}
+	return false;
 }
 
 function explicitlyAsksWebSearch(text: string): boolean {
@@ -962,8 +1031,9 @@ function detectOwnerLifeReadDomain(
 		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
 			normalized,
 		) ||
-		/["“][^"”]*\b(?:how much|what)\b[^"”]*["”]/u.test(normalized) ||
-		/‘[^’]*\b(?:how much|what)\b[^’]*’/u.test(normalized)
+		quotedSpanContains(normalized, (span) =>
+			/\b(?:how much|what)\b/u.test(span),
+		)
 	) {
 		return BLOCKED_OWNER_LIFE_READ;
 	}
@@ -1026,11 +1096,7 @@ function detectOwnerLifeReadDomain(
 		/\b(?:the\s+)?(?:phrase|sentence|wording|utterance|quote|quoted)\b/iu.test(
 			normalized,
 		) ||
-		/["“][^"”]*\b(?:my|our)\b[^"”]*["”]/u.test(normalized) ||
-		/‘[^’]*\b(?:my|our)\b[^’]*’/u.test(normalized) ||
-		/(?:^|[^\p{L}\p{N}])'[^'\r\n]*\b(?:my|our)\b[^'\r\n]*'(?![\p{L}\p{N}])/u.test(
-			normalized,
-		) ||
+		quotedSpanContains(normalized, (span) => /\b(?:my|our)\b/u.test(span)) ||
 		/\b(?:do\s+not|don['’]?t|never(?!\s+mind\b))\b(?:(?!\b(?:but|however|instead)\b)[^.!?;]){0,96}\b(?:list|show|tell|give|read|check|see|look|review|go\s+over)\b/iu.test(
 			normalized,
 		)
@@ -1094,6 +1160,12 @@ export function inferDirectCurrentRequestCandidateInference(
 		if (settingsAction) {
 			return { names: [settingsAction], kind: "settings-write" };
 		}
+	}
+	// Ordered before the view-shell fallback: a compound or lifecycle cloud-app
+	// turn must not be narrowed to VIEWS (+ the cloud read) while the tools its
+	// other clauses asked for are dropped by candidate narrowing (#17363).
+	if (shouldDeferCloudAppTurnToPlanner(messageText)) {
+		return EMPTY_DIRECT_CANDIDATE_INFERENCE;
 	}
 	const viewShellAction = findViewShellActionName(actions, messageText);
 	if (viewShellAction) {
@@ -1519,13 +1591,140 @@ const CLOUD_APP_QUALIFIER_TOKENS: ReadonlySet<string> = new Set<string>([
 	"HOSTED",
 ]);
 
+// Lifecycle/mutation vocabulary that disqualifies the cloud-apps INVENTORY
+// candidate: launch/open, delete, create/deploy, settings, and money/domain
+// operations belong to their own gated actions and must go through the full
+// planner, never a deterministic read hint (#17363). Singular-normalized.
+const CLOUD_APP_LIFECYCLE_TOKENS: ReadonlySet<string> = new Set<string>([
+	"LAUNCH",
+	"OPEN",
+	"START",
+	"RUN",
+	"RESTART",
+	"STOP",
+	"CLOSE",
+	"QUIT",
+	"KILL",
+	"DELETE",
+	"REMOVE",
+	"UNINSTALL",
+	"DESTROY",
+	"CREATE",
+	"BUILD",
+	"MAKE",
+	"DEPLOY",
+	"REDEPLOY",
+	"PUBLISH",
+	"UPDATE",
+	"EDIT",
+	"RENAME",
+	"CONFIGURE",
+	"CONFIG",
+	"SETTING",
+	"ROLLBACK",
+	"WITHDRAW",
+	"REGENERATE",
+	"ROTATE",
+	"MONETIZE",
+	"MONETIZATION",
+	"DOMAIN",
+	"BACKUP",
+]);
+
+// Structural clause separators. The compound test is closed over PUNCTUATION
+// AND CONJUNCTIONS rather than over the verbs that may follow one, because a
+// downstream verb list can never be complete: "search", "archive", "compare"
+// and "export" are all ordinary second clauses that an enumerated verb denylist
+// silently admitted, letting the deterministic hint narrow a genuine multi-tool
+// turn (#17363). Splitting here means an unrecognized continuation counts as a
+// second clause and the full planner keeps the turn.
+const CLOUD_APP_CLAUSE_SEPARATOR_PATTERN =
+	/\s*(?:[;:,!?&]+|\.(?:\s|$)|\bafter\s+that\b|\bas\s+well\s+as\b|\band\b|\balso\b|\bplus\b|\bthen\b|\bnext\b|\bafterwards?\b|\bmeanwhile\b|\bwhile\b)\s*/giu;
+
+// The only continuations a single-intent inventory read may carry: another bare
+// hosted-inventory noun phrase ("... and my deployed sites") or a politeness
+// tail. This is an allowlist, so anything it does not recognize — a pronoun, a
+// verb, a new object — is treated as a second clause.
+const CLOUD_APP_INVENTORY_CONTINUATION_PATTERN =
+	/^(?:(?:please|pls|thanks|thank\s+you|thx)|(?:(?:the|my|our|their|any|all|of)\s+)*(?:(?:eliza\s+)?(?:cloud|deployed|hosted|live|published|web)\s+)*(?:app|application|site|website|project|deployment|page)s?)$/iu;
+
+/**
+ * True when the message carries a structural second clause, so the turn may be
+ * multi-tool and must stay with the full planner.
+ */
+function isCompoundCloudAppTurn(messageText: string): boolean {
+	const trimmed = messageText
+		.trim()
+		.replace(/[.!?]+$/u, "")
+		.trim();
+	const segments = trimmed
+		.split(CLOUD_APP_CLAUSE_SEPARATOR_PATTERN)
+		.map((segment) => segment.trim())
+		.filter((segment) => segment.length > 0);
+	if (segments.length <= 1) return false;
+	return segments
+		.slice(1)
+		.some((segment) => !CLOUD_APP_INVENTORY_CONTINUATION_PATTERN.test(segment));
+}
+
+// Read-shaped inventory phrasing: the request asks WHAT hosted apps exist, not
+// to do anything to one of them.
+const CLOUD_APP_INVENTORY_READ_PATTERN =
+	/\b(?:list|show|see|view|enumerate|check|get|give\s+me|tell\s+me|what|which|how\s+many|do\s+i\s+have|have\s+i\s+got)\b/iu;
+
+/**
+ * True only for a single-clause, explicitly cloud-qualified inventory read
+ * ("list my cloud apps", "what apps do I have deployed on eliza cloud").
+ * Lifecycle/mutation verbs and compound turns disqualify the message so the
+ * full planner keeps arbitration (#17363: "delete my cloud app" and "list my
+ * cloud apps and deploy the first one" were hijacked into LIST_CLOUD_APPS).
+ */
+function looksLikeCloudAppInventoryRequest(messageText: string): boolean {
+	const trimmed = messageText.trim().replace(/[.!?]+\s*$/u, "");
+	if (isCompoundCloudAppTurn(trimmed)) return false;
+	if (!CLOUD_APP_INVENTORY_READ_PATTERN.test(trimmed)) return false;
+	const tokens = tokenizeActionMetadata(trimmed).map(normalizeSingularToken);
+	return !tokens.some((token) => CLOUD_APP_LIFECYCLE_TOKENS.has(token));
+}
+
+/**
+ * True when the message names the application surface AND pins it to the user's
+ * hosted Eliza Cloud apps. Used to decide ownership of the turn before any
+ * deterministic candidate is offered.
+ */
+function looksLikeCloudQualifiedAppRequest(messageText: string): boolean {
+	const tokens = tokenizeActionMetadata(messageText).map(
+		normalizeSingularToken,
+	);
+	if (!tokens.some((token) => token === "APP" || token === "APPLICATION")) {
+		return false;
+	}
+	return tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token));
+}
+
+/**
+ * A cloud-qualified app message that is not a single-clause inventory read is
+ * full-planner territory: it may be a lifecycle mutation or a multi-tool turn
+ * whose other tools (WEB_SEARCH, SEND_EMAIL, …) must stay on the candidate
+ * surface. Answering it with the view-shell fallback narrowed the catalog to
+ * VIEWS and dropped the requested second tool, so this yields NO deterministic
+ * candidate at all (#17363).
+ */
+export function shouldDeferCloudAppTurnToPlanner(messageText: string): boolean {
+	if (!looksLikeCloudQualifiedAppRequest(messageText)) return false;
+	return !looksLikeCloudAppInventoryRequest(messageText);
+}
+
 // Resolve the app action an app-shaped message targets. A cloud qualifier next
 // to the APP token pins the ask to the user's hosted Eliza Cloud apps, where
 // the local app-control action is wrong by its own routing contract — without
 // this the cloud-apps action is never on the planner surface and the local APP
-// action wins by forfeit. Falls back to the local app-control surface when no
-// cloud-apps action is registered, so those runtimes keep their previous
-// candidates.
+// action wins by forfeit. The cloud candidate is offered only for a
+// single-clause inventory read; cloud lifecycle/mutation and compound turns
+// yield NO app candidate so the full planner arbitrates. A cloud-qualified
+// message never degrades to the local-device APP action — with no cloud-apps
+// action registered the correct answer is an honest capability gap, not the
+// installed-app list (#17363).
 function findAppActionNameForAppRequest(
 	actions: ReadonlyArray<Pick<Action, "name" | "similes">>,
 	messageText: string,
@@ -1537,11 +1736,8 @@ function findAppActionNameForAppRequest(
 		return undefined;
 	}
 	if (tokens.some((token) => CLOUD_APP_QUALIFIER_TOKENS.has(token))) {
-		const cloudAppsAction = findAvailableActionName(
-			actions,
-			CLOUD_APPS_ACTION_NAMES,
-		);
-		if (cloudAppsAction) return cloudAppsAction;
+		if (!looksLikeCloudAppInventoryRequest(messageText)) return undefined;
+		return findAvailableActionName(actions, CLOUD_APPS_ACTION_NAMES);
 	}
 	return findAvailableActionName(actions, APP_CONTROL_ACTION_NAMES);
 }
@@ -1870,10 +2066,87 @@ const CONTINUATION_DIRECTIVE_RE = new RegExp(
 // bare "yes"). They only resolve when the agent's latest visible turn still
 // looks pending — an ack or a question — so praise after a delivered result
 // does not re-trigger the finished request.
-const CONTINUATION_APPROVAL_RE = new RegExp(
-	`^${CONTINUATION_LEAD_IN}(?:yes|yep|yeah|(?:that|this|it)(?:'s|\\s+is)?\\s+(?:good|great|perfect|fine|right|correct)|(?:that|this|it)\\s+works|sounds\\s+good|looks\\s+good)(?:\\s*[,.!]?\\s*(?:please\\s+)?(?:go\\s+ahead|do\\s+it|proceed|finish(?:\\s+it)?|continue|thanks?|thank\\s+you))?$`,
-	"iu",
-);
+const CONTINUATION_APPROVAL_BASES = new Set([
+	"yes",
+	"yep",
+	"yeah",
+	...(["that", "this", "it"] as const).flatMap((subject) =>
+		["good", "great", "perfect", "fine", "right", "correct"].flatMap(
+			(adjective) => [
+				`${subject}'s ${adjective}`,
+				`${subject} is ${adjective}`,
+			],
+		),
+	),
+	"that works",
+	"this works",
+	"it works",
+	"sounds good",
+	"looks good",
+]);
+
+function isApprovalBaseWithOptionalTail(value: string): boolean {
+	if (CONTINUATION_APPROVAL_BASES.has(value)) return true;
+	for (const tail of [
+		"go ahead",
+		"do it",
+		"proceed",
+		"finish",
+		"finish it",
+		"continue",
+		"thank",
+		"thanks",
+		"thank you",
+	]) {
+		if (!value.endsWith(` ${tail}`)) continue;
+		let base = value.slice(0, -tail.length).trimEnd();
+		if (base.endsWith(" please")) base = base.slice(0, -" please".length);
+		base = base.trimEnd();
+		if (",.!".includes(base[base.length - 1] ?? ""))
+			base = base.slice(0, -1).trimEnd();
+		if (CONTINUATION_APPROVAL_BASES.has(base)) return true;
+	}
+	return false;
+}
+
+function stripContinuationLeadIn(value: string): string {
+	let cursor = 0;
+	while (cursor < value.length && /[a-z]/.test(value[cursor])) cursor += 1;
+	const word = value.slice(0, cursor);
+	if (
+		![
+			"ok",
+			"okay",
+			"yes",
+			"yep",
+			"yeah",
+			"sure",
+			"alright",
+			"great",
+			"perfect",
+		].includes(word)
+	) {
+		cursor = 0;
+	} else if (",.!".includes(value[cursor] ?? "")) {
+		cursor += 1;
+	}
+	while (/\s/u.test(value[cursor] ?? "")) cursor += 1;
+	if (value.startsWith("please", cursor)) {
+		const end = cursor + "please".length;
+		if (/\s/u.test(value[end] ?? "")) {
+			cursor = end;
+			while (/\s/u.test(value[cursor] ?? "")) cursor += 1;
+		}
+	}
+	return value.slice(cursor);
+}
+
+function isContinuationApproval(value: string): boolean {
+	return (
+		isApprovalBaseWithOptionalTail(value) ||
+		isApprovalBaseWithOptionalTail(stripContinuationLeadIn(value))
+	);
+}
 
 function normalizeContinuationText(text: string): string {
 	return trimEndCharacters(text.trim(), ".!…").replace(/\s+/gu, " ");
@@ -1894,7 +2167,7 @@ export function classifyExplicitContinuationTurn(
 	if (normalized.length === 0 || normalized.length > 60) return null;
 	if (normalized.includes("?")) return null;
 	if (CONTINUATION_DIRECTIVE_RE.test(normalized)) return "directive";
-	if (CONTINUATION_APPROVAL_RE.test(normalized)) return "approval";
+	if (isContinuationApproval(normalized.toLowerCase())) return "approval";
 	return null;
 }
 

@@ -39,7 +39,7 @@
     "db:check-migrations": "drizzle-kit check",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "bun --conditions=eliza-source ../../../packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
-    "db:migrate:drizzle": "drizzle-kit migrate",
+    "db:migrate:drizzle": "bun run db:migrate",
     "db:studio": "drizzle-kit studio",
     "pglite:server": "bun run ../../../packages/cloud/scripts/admin/dev/pglite-server.ts",
     "generate:email-templates": "node scripts/generate-email-templates.mjs"

@@ -1,0 +1,88 @@
+{
+  "name": "@elizaos/plugin-dropbox",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "files": ["registry-entry.json", "dist"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.8",
+    "@types/node": "^25.6.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "eliza": {
+    "platforms": ["node"],
+    "runtime": "node"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "DROPBOX_CLIENT_ID": {
+        "type": "string",
+        "description": "Dropbox app key (OAuth client ID)",
+        "required": false,
+        "sensitive": false
+      },
+      "DROPBOX_CLIENT_SECRET": {
+        "type": "string",
+        "description": "Dropbox app secret (OAuth client secret)",
+        "required": false,
+        "sensitive": true
+      },
+      "DROPBOX_REDIRECT_URI": {
+        "type": "string",
+        "description": "Dropbox OAuth redirect URI registered on the app",
+        "required": false,
+        "sensitive": false
+      },
+      "DROPBOX_ACCESS_TOKEN": {
+        "type": "string",
+        "description": "Local BYO access token (self-hosted mode)",
+        "required": false,
+        "sensitive": true
+      }
+    }
+  }
+}

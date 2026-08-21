@@ -31,6 +31,7 @@ describe("Android mobile build target table", () => {
       "android-cloud",
       "android-cloud-debug",
       "android-cloud-hybrid",
+      "android-host-e2e",
       "android-sms-gateway",
       "android-system",
     ]);
@@ -42,6 +43,27 @@ describe("Android mobile build target table", () => {
       cleartextPolicy: { allowCleartext: true, label: "sideload" },
       agentRuntime: { bunChannel: "stable" },
     });
+    expect(ANDROID_BUILD_TARGETS["android-host-e2e"]).toMatchObject({
+      target: "android-host-e2e",
+      webTarget: "android",
+      env: {
+        ELIZA_ANDROID_HOST_E2E_BUILD: "1",
+        ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1",
+      },
+      cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
+      gradle: {
+        flags: ["-PelizaStripAgentAssets=true"],
+        metadataVariant: "debug",
+        finalTask: ":app:assembleDebug",
+      },
+      artifactAuditKey: "hostE2e",
+    });
+    expect(ANDROID_BUILD_TARGETS["android-host-e2e"]).not.toHaveProperty(
+      "buildMobileAgentBundle",
+    );
+    expect(ANDROID_BUILD_TARGETS["android-host-e2e"].agentRuntime).toBe(
+      undefined,
+    );
     expect(ANDROID_BUILD_TARGETS["android-cloud"]).toMatchObject({
       target: "android-cloud",
       webTarget: "android-cloud",
@@ -91,7 +113,10 @@ describe("Android mobile build target table", () => {
   });
 
   it("runs the exact mobile CLI through a pre-mutation Android guard", () => {
-    const result = spawnSync(process.execPath, [mobileBuildScript, "android"], {
+    // The production package scripts invoke this CLI with Node. `process.execPath`
+    // points at Bun under `bun test`, which spends long enough compiling this
+    // large orchestrator to hit Bun's per-test timeout before the guard runs.
+    const result = spawnSync("node", [mobileBuildScript, "android"], {
       encoding: "utf8",
       env: {
         ...process.env,
@@ -173,6 +198,18 @@ describe("Android mobile build target table", () => {
     } finally {
       fs.rmSync(fixtureRoot, { recursive: true, force: true });
     }
+  });
+
+  it("exposes and dispatches the host-emulator build target", () => {
+    const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
+
+    expect(packageJson.scripts["build:android:host-e2e"]).toBe(
+      "node ../../packages/app-core/scripts/run-mobile-build.mjs android-host-e2e",
+    );
+    expect(runMobileBuildSource).toContain('target !== "android-host-e2e"');
+    expect(runMobileBuildSource).toContain(
+      'await runAndroidBuild("android-host-e2e")',
+    );
   });
 
   it("fails loudly for unknown public Android targets", () => {

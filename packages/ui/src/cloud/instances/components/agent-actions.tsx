@@ -443,7 +443,7 @@ export function ElizaAgentActions({
 
       const cloudApiBase =
         getBootConfig().cloudApiBase?.trim() || window.location.origin;
-      const authToken = readCloudBearerToken();
+      const authToken = await readCloudBearerToken();
       if (!authToken) {
         throw new Error(
           "Cloud session token unavailable — reload the page and try again.",

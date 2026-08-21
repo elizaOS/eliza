@@ -177,10 +177,16 @@ const NOUN_FIRST_SIDE_EFFECT_CLAIM_PATTERN =
 /**
  * One locale's fabricated-completion claim tier. `claims` are the
  * perfective/completed assertion shapes (global regexes); a match counts only
- * when the containing sentence also names a `subjectNoun`, is not a question
- * (terminator, embedded `? ？ ¿`, or `questionTail` particle), and the
- * sentence prefix before the match does not end in a `nonAssertiveLead`
- * (negation, subordination, second-person subject, or offer scaffolding).
+ * when the containing sentence also names a `subjectNoun`, the claim's own
+ * clause is not a question (terminator, embedded `? ？ ¿`, or `questionTail`
+ * particle), the sentence prefix before the match does not end in a
+ * `nonAssertiveLead` (negation, subordination, second-person subject, or
+ * offer scaffolding), and the text right after the match does not continue
+ * into a `subordinateTail` that makes the completed verb non-factive.
+ *
+ * `questionTail`, `subordinateTail`, and `courtesyTag` are matched with the
+ * sticky flag at a computed offset so no per-match copy of the remaining text
+ * is allocated; every consumer sets `lastIndex` immediately before testing.
  */
 interface LocaleSideEffectClaimShapes {
 	readonly locale: string;
@@ -188,12 +194,47 @@ interface LocaleSideEffectClaimShapes {
 	readonly claims: readonly RegExp[];
 	readonly nonAssertiveLead: RegExp;
 	readonly questionTail?: RegExp;
+	/**
+	 * Agglutinating locales attach conditional/embedded-question/quotative
+	 * endings directly to the same completed stem the claim matches, so the
+	 * claim shape alone cannot tell "설정했어요" (a report) from "설정했으면"
+	 * (a conditional). Sticky-matched at the offset immediately following the
+	 * claim; a hit means the verb is not asserted as fact.
+	 */
+	readonly subordinateTail?: RegExp;
+	/**
+	 * Closing courtesy question this locale's assistant replies append after a
+	 * completed report ("¿algo más?", "还需要别的吗？"). Sticky-matched at the
+	 * offset just past a punctuation boundary: only a POSITIVE match here
+	 * severs the clause, because punctuation alone cannot tell a trailing tag
+	 * from coordination ("Criei, salvei e agendei o lembrete?") or a
+	 * parenthetical ("He guardado, por error, el recordatorio?").
+	 */
+	readonly courtesyTag?: RegExp;
 }
 
 // Sentence terminators across the shipped locales: ASCII plus the full-width
 // CJK set. Commas (including 、，) deliberately do NOT split — the noun gate
 // should see the whole clause chain ("好了，提醒已保存。").
 const MULTILINGUAL_SENTENCE_TERMINATOR = /[.!?。！？\n]/u;
+
+// Punctuation that MAY introduce a trailing courtesy tag ("…, ¿algo más?",
+// "…：还需要别的吗？", "… — mais alguma coisa?", "…… cần gì nữa không?", "…: ¿algo
+// más?", "…- mais alguma coisa?"). This is only a candidate set: severing the
+// clause additionally requires the locale's `courtesyTag` to match past the
+// boundary, because the same punctuation also coordinates ("Criei, salvei e
+// agendei o lembrete?") and brackets parentheticals ("He guardado, por error,
+// el recordatorio?") — a punctuation hit alone never derives a clause span.
+// Collected once per reply into a sorted offset array by
+// `collectClauseTagBoundaries`; every lookup is a binary search against that
+// array rather than a fresh `exec` scan (see its doc comment for why a
+// per-match scan was quadratic on long boundary-sparse input).
+const MULTILINGUAL_CLAUSE_TAG_BOUNDARY = /[,，、;；—–:：…-]/gu;
+
+// Question-mark variants across the shipped locales, collected once per reply
+// by `collectQuestionMarkPositions` rather than re-tested against a fresh
+// clause slice per match — see that function's doc comment.
+const MULTILINGUAL_QUESTION_MARK = /[?？¿]/gu;
 
 const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 	[
@@ -217,6 +258,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			],
 			nonAssertiveLead:
 				/(?:(?<![\p{L}])(?:no|nunca|jamás|todav[íi]a\s+no|a[úu]n\s+no)\s+(?:(?:lo|la|los|las|le|les|te|me|se)\s+)?|(?:^|[,;—–-]\s*)(?:si|cuando|una\s+vez\s+que|en\s+cuanto|apenas|antes\s+de\s+que|mientras)\s+[^.!?\n]*)$/iu,
+			courtesyTag:
+				/[¿\s…]*(?:algo\s+m[áa]s|alguna\s+(?:otra\s+)?cosa|(?:necesitas|quieres|deseas|quer[íi]as)\s+algo|(?:te\s+)?ayudo\s+en\s+algo|puedo\s+ayudarte\s+en\s+(?:algo|otra)|en\s+qu[ée]\s+m[áa]s)/iuy,
 		},
 		{
 			locale: "pt",
@@ -234,6 +277,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			],
 			nonAssertiveLead:
 				/(?:(?<![\p{L}])(?:n[ãa]o|nunca|jamais|ainda\s+n[ãa]o)\s+(?:(?:o|a|os|as|lhe|lhes|te|me|se)\s+)?|(?:^|[,;—–-]\s*)(?:se|quando|assim\s+que|antes\s+de|depois\s+que|caso)\s+[^.!?\n]*)$/iu,
+			courtesyTag:
+				/[\s…]*(?:mais\s+alguma\s+coisa|algo\s+mais|(?:precisa|deseja|quer)\s+de?\s*mais|posso\s+ajudar\s+em\s+(?:mais|algo)|em\s+que\s+mais)/iuy,
 		},
 		{
 			locale: "ko",
@@ -249,6 +294,18 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			],
 			nonAssertiveLead: /(?:안|못)\s*$/u,
 			questionTail: /(?:까요|나요|가요|을까)$/u,
+			// Non-factive continuations of the same stem: conditionals
+			// ("설정했으면", "설정했을 경우", "설정했을 때"), embedded/rhetorical
+			// questions ("설정했는지", "설정했는가", "설정했을까"), and quotatives
+			// that are explicitly hypothetical because a suppositional matrix
+			// verb follows ("저장했다고 가정해", "…라고 치면"). A bare quotative is
+			// NOT listed: "설정했다고 말씀드렸어요" reports the save as fact and
+			// must keep firing. Factive-but-subordinate endings (-지만, -으니까)
+			// are likewise absent: "설정했지만 알림이 안 왔어요" still asserts it.
+			subordinateTail:
+				/(?:으면|더라면|다면|라면|는지|은지|을지|는가|은가|을까|[을ㄹ]\s*(?:경우|때)|[다라]고\s*(?:[^\s]{1,6}\s*)?(?:가정|상상|치[고면]|셈\s*치))/uy,
+			courtesyTag:
+				/[\s…]*(?:더|또|다른|그\s*밖에)\s*(?:필요|도와|도움|궁금|원하시)/uy,
 		},
 		{
 			locale: "tl",
@@ -266,6 +323,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			nonAssertiveLead:
 				/(?:(?<![\p{L}])(?:hindi|di)(?:\s+ko)?(?:\s+pa)?\s+|(?:^|[,;]\s*)(?:kung|kapag|bago|pagkatapos|para)\s+[^.!?\n]*)$/iu,
 			questionTail: /\sba$/iu,
+			courtesyTag:
+				/[\s…]*(?:may\s+iba\s+pa|iba\s+pa\s+ba|meron\s+pa\s+ba|kailangan\s+mo\s+pa|ano\s+pa)/iuy,
 		},
 		{
 			locale: "vi",
@@ -285,6 +344,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			nonAssertiveLead:
 				/(?:(?:chưa|không|sẽ|định|sắp|muốn|nên|hãy|bạn|anh|chị|em|cậu)\s+|(?:^|[,;]\s*)(?:nếu|khi|trước\s+khi|giả\s+sử)\s+[^.!?\n]*)$/iu,
 			questionTail: /(?:không|chưa|hả|à|phải\s+không)$/iu,
+			courtesyTag:
+				/[\s…]*(?:(?:bạn\s+)?c[ầa]n\s+(?:gì|chi)\s+(?:nữa|thêm)|còn\s+(?:gì|việc)\s+(?:gì\s+)?nữa|có\s+c[ầa]n\s+(?:gì|thêm)|tôi\s+có\s+thể\s+giúp\s+gì)/iuy,
 		},
 		{
 			locale: "zh-CN",
@@ -303,6 +364,8 @@ const LOCALE_SIDE_EFFECT_CLAIM_SHAPES: readonly LocaleSideEffectClaimShapes[] =
 			nonAssertiveLead:
 				/(?:(?:没|没有|还没|尚未|未|不会|无法|不能|别|不用|无需)\s*|^(?:你|您)(?:(?!我)[^。！？!?\n])*|(?:^|[，,；;]\s*)(?:如果|要是|假如|万一|一旦)(?:(?!。)[^。！？!?\n])*)$/u,
 			questionTail: /(?:吗|吧|呢|么)$/u,
+			courtesyTag:
+				/[\s…]*(?:还(?:需要|要|有)(?:别的|其他|什么|其它)|需要(?:别的|其他|其它)|(?:还有|其他)什么(?:需要|可以)|我还能(?:帮|做))/uy,
 		},
 	];
 
@@ -331,7 +394,165 @@ function localeClauseAround(
 	};
 }
 
+/**
+ * All clause-tag boundary offsets in `text`, collected with one forward pass.
+ * Every consumer below queries this array by binary search instead of
+ * re-running `MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec` from its own `from` —
+ * an exec-per-match scan degrades to O(matches × distance-to-next-boundary),
+ * which is quadratic on a long boundary-sparse sentence carrying many claim
+ * tokens (measured: a repeated-claim Korean input with no punctuation went
+ * from single-digit ms at ~3.5k chars to hundreds of ms at ~28k chars before
+ * this change). Collecting once up front makes every subsequent lookup
+ * O(log k) against the fixed boundary count `k`, so the whole scan stays
+ * linear in `text.length`.
+ */
+function collectClauseTagBoundaries(text: string): readonly number[] {
+	const boundaries: number[] = [];
+	MULTILINGUAL_CLAUSE_TAG_BOUNDARY.lastIndex = 0;
+	let boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
+	while (boundary) {
+		boundaries.push(boundary.index);
+		boundary = MULTILINGUAL_CLAUSE_TAG_BOUNDARY.exec(text);
+	}
+	return boundaries;
+}
+
+/** Index of the first entry in the sorted `boundaries` array that is `>= from`. */
+function firstBoundaryIndexAtOrAfter(
+	boundaries: readonly number[],
+	from: number,
+): number {
+	let lo = 0;
+	let hi = boundaries.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if ((boundaries[mid] as number) < from) {
+			lo = mid + 1;
+		} else {
+			hi = mid;
+		}
+	}
+	return lo;
+}
+
+/**
+ * Offset of the first punctuation boundary at or after `from` (and before
+ * `sentenceEnd`) that a locale `courtesyTag` positively matches past, or -1
+ * when the sentence carries no trailing tag. Punctuation alone never severs
+ * the clause: coordination ("Criei, salvei e agendei o lembrete?") and
+ * parentheticals ("He guardado, por error, el recordatorio?") use the same
+ * marks, and treating those as tags turns claim-governed questions into
+ * fabricated-completion findings.
+ */
+function localeCourtesyTagStart(
+	text: string,
+	boundaries: readonly number[],
+	from: number,
+	sentenceEnd: number,
+	courtesyTag: RegExp | undefined,
+): number {
+	if (!courtesyTag) return -1;
+	let i = firstBoundaryIndexAtOrAfter(boundaries, from);
+	while (i < boundaries.length) {
+		const boundaryIndex = boundaries[i] as number;
+		if (boundaryIndex >= sentenceEnd) break;
+		// Every boundary char class member is a single UTF-16 code unit, so the
+		// tag starts immediately after it.
+		courtesyTag.lastIndex = boundaryIndex + 1;
+		if (courtesyTag.test(text)) return boundaryIndex;
+		i += 1;
+	}
+	return -1;
+}
+
+/** Offset of the first boundary at or after `from`, or `sentenceEnd`. */
+function localeClauseCut(
+	boundaries: readonly number[],
+	from: number,
+	sentenceEnd: number,
+): number {
+	const i = firstBoundaryIndexAtOrAfter(boundaries, from);
+	const boundaryIndex = i < boundaries.length ? (boundaries[i] as number) : -1;
+	return boundaryIndex >= 0 && boundaryIndex < sentenceEnd
+		? boundaryIndex
+		: sentenceEnd;
+}
+
+/**
+ * All `?`/`？`/`¿` offsets in `text`, collected with the same one-pass
+ * discipline as `collectClauseTagBoundaries`. "Does this clause contain a
+ * question mark" is then a binary-search range check instead of a fresh
+ * `RegExp.test` over a freshly sliced clause — on a long boundary-sparse
+ * sentence the clause span can be nearly the whole reply, and re-slicing it
+ * per match is exactly the quadratic cost this module was flagged for.
+ */
+function collectQuestionMarkPositions(text: string): readonly number[] {
+	const positions: number[] = [];
+	MULTILINGUAL_QUESTION_MARK.lastIndex = 0;
+	let mark = MULTILINGUAL_QUESTION_MARK.exec(text);
+	while (mark) {
+		positions.push(mark.index);
+		mark = MULTILINGUAL_QUESTION_MARK.exec(text);
+	}
+	return positions;
+}
+
+/** True when a collected question-mark position falls in `[start, end)`. */
+function hasQuestionMarkInRange(
+	positions: readonly number[],
+	start: number,
+	end: number,
+): boolean {
+	const i = firstBoundaryIndexAtOrAfter(positions, start);
+	return i < positions.length && (positions[i] as number) < end;
+}
+
+// The longest fixed suffix any locale's `questionTail` pattern can match
+// ("phải không" is the longest, at 10 characters). Trailing-tail detection
+// only needs to see this many trimmed characters before the cut point, so
+// bounding the lookback window keeps the check O(1) instead of O(clause
+// length) regardless of how long the surrounding clause is.
+const QUESTION_TAIL_LOOKBEHIND_WINDOW = 32;
+
+/**
+ * The trimmed window of `text` ending at `end`, capped to `maxLen`
+ * characters. `questionTail` patterns are all `$`-anchored fixed suffixes, so
+ * a bounded trailing window is sufficient — slicing the FULL clause (which,
+ * on a long boundary-sparse sentence, can be nearly the whole reply) would
+ * reintroduce the O(clause length)-per-match cost this module was flagged
+ * for.
+ */
+function trailingTrimmedWindow(
+	text: string,
+	end: number,
+	maxLen: number,
+): string {
+	let e = end;
+	while (e > 0 && /\s/u.test(text[e - 1] as string)) {
+		e -= 1;
+	}
+	const windowStart = Math.max(0, e - maxLen);
+	return text.slice(windowStart, e);
+}
+
+// `nonAssertiveLead` clauses (negation, subordinators, second-person leads)
+// are ordinary assistant-reply prose in every shipped locale, always far
+// shorter than this. The cap only ever bites on adversarial/pathological
+// input — the same long boundary-sparse sentence this module was flagged
+// for — and keeps `text.slice(..., claimIndex)` bounded instead of growing
+// with the claim's distance into a multi-kilobyte sentence.
+const NON_ASSERTIVE_LEAD_LOOKBEHIND_WINDOW = 512;
+
 function localeReplyClaimsCompletedSideEffect(text: string): boolean {
+	// Sentence spans depend only on `text`, and repeated claim tokens inside one
+	// long sentence would otherwise rescan it once per match. Reusing the span
+	// while the next match falls inside it keeps the scan linear.
+	let cached: { sentence: string; start: number; terminator: string } | null =
+		null;
+	// One forward pass over the whole reply, shared by every locale/claim/match
+	// below — see `collectClauseTagBoundaries` and `collectQuestionMarkPositions`.
+	const clauseTagBoundaries = collectClauseTagBoundaries(text);
+	const questionMarkPositions = collectQuestionMarkPositions(text);
 	for (const shapes of LOCALE_SIDE_EFFECT_CLAIM_SHAPES) {
 		if (!shapes.subjectNoun.test(text)) continue;
 		for (const claim of shapes.claims) {
@@ -339,15 +560,72 @@ function localeReplyClaimsCompletedSideEffect(text: string): boolean {
 				const firstWordOffset = match[0].search(/[\p{L}\p{N}]/u);
 				const claimIndex =
 					(match.index ?? 0) + (firstWordOffset >= 0 ? firstWordOffset : 0);
-				const { sentence, start, terminator } = localeClauseAround(
-					text,
-					claimIndex,
-				);
+				if (
+					!cached ||
+					claimIndex < cached.start ||
+					claimIndex >= cached.start + cached.sentence.length
+				) {
+					cached = localeClauseAround(text, claimIndex);
+				}
+				const { sentence, start, terminator } = cached;
 				if (!shapes.subjectNoun.test(sentence)) continue;
-				if (terminator === "?" || terminator === "？") continue;
-				if (/[?？¿]/u.test(sentence)) continue;
-				if (shapes.questionTail?.test(sentence.trim())) continue;
-				if (shapes.nonAssertiveLead.test(text.slice(start, claimIndex))) {
+				const matchEnd = (match.index ?? 0) + match[0].length;
+				const sentenceEnd = start + sentence.length;
+				if (shapes.subordinateTail) {
+					shapes.subordinateTail.lastIndex = matchEnd;
+					if (shapes.subordinateTail.test(text)) continue;
+				}
+
+				// A particle-final question mark on the claim's OWN clause — the
+				// span up to the first punctuation break — is claim-governed even
+				// when a coordinated alternative follows ("我把提醒设置好了吗，还是
+				// 没有？", "알림을 설정했나요, 아니면 아직인가요?").
+				const ownClauseEnd = localeClauseCut(
+					clauseTagBoundaries,
+					matchEnd,
+					sentenceEnd,
+				);
+				if (
+					shapes.questionTail?.test(
+						trailingTrimmedWindow(
+							text,
+							ownClauseEnd,
+							QUESTION_TAIL_LOOKBEHIND_WINDOW,
+						),
+					)
+				) {
+					continue;
+				}
+
+				// Interrogativity otherwise governs the whole sentence, EXCEPT when a
+				// recognized courtesy tag closes it: "He creado tus recordatorios —
+				// ¿algo más?" is a report plus a separate follow-up, and the English
+				// tier fires on exactly that shape by design.
+				const tagStart = localeCourtesyTagStart(
+					text,
+					clauseTagBoundaries,
+					matchEnd,
+					sentenceEnd,
+					shapes.courtesyTag,
+				);
+				const claimClauseEnd = tagStart >= 0 ? tagStart : sentenceEnd;
+				if (
+					hasQuestionMarkInRange(questionMarkPositions, start, claimClauseEnd)
+				) {
+					continue;
+				}
+				if (tagStart < 0 && (terminator === "?" || terminator === "？")) {
+					continue;
+				}
+				const nonAssertiveLeadWindowStart = Math.max(
+					start,
+					claimIndex - NON_ASSERTIVE_LEAD_LOOKBEHIND_WINDOW,
+				);
+				if (
+					shapes.nonAssertiveLead.test(
+						text.slice(nonAssertiveLeadWindowStart, claimIndex),
+					)
+				) {
 					continue;
 				}
 				return true;

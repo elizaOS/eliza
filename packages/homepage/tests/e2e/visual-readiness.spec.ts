@@ -66,19 +66,16 @@ test("reduced motion renders the settled household room without category labels"
     "data-demo-visited",
     "household,co-parenting,friends,trip,community",
   );
-  await expect(demo).toHaveAttribute("data-demo-messages", "24");
+  await expect(demo).toHaveAttribute("data-demo-messages", "21");
   await expect(page.locator(".landing-scenario-strip")).toHaveCount(0);
-  await expect(page.locator(".landing-demo-card")).toHaveCount(4);
+  await expect(page.locator(".landing-demo-card")).toHaveCount(0);
   await expect(page.getByText(/of 5$/, { exact: false })).toHaveCount(0);
 
   const assistantMessages = await page
     .locator(".landing-bubble--eliza")
     .allTextContents();
   expect(assistantMessages).toContain(
-    "I balanced this against the house rotation: coffee and laundry are yours, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants.",
-  );
-  await expect(page.locator('[data-demo-source="memory"]').first()).toHaveText(
-    "Household memory · room only",
+    "I checked the house rotation. You have coffee and laundry, Noor has the dishwasher, Eli's recycling counts, and Jules has the plants. That's even.",
   );
   const messageAuthors = await page
     .locator(".landing-message-author")
@@ -94,10 +91,6 @@ test("reduced motion renders the settled household room without category labels"
   await expect(page.locator('img[src="/elizapfp.webp"]')).toHaveCount(0);
   expect(await page.locator(".landing-message-avatar").count()).toBeGreaterThan(
     5,
-  );
-  await expect(page.locator(".landing-demo-card").first()).toHaveCSS(
-    "background-color",
-    "rgb(242, 242, 247)",
   );
   await expect(
     page.locator(".landing-message-author", { hasText: "Eliza" }).first(),

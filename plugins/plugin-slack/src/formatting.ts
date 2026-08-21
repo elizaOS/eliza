@@ -30,8 +30,6 @@ function escapeSlackMrkdwnSegment(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
-const SLACK_ANGLE_TOKEN_RE = /<[^>\n]+>/g;
-
 /**
  * Checks if an angle-bracket token is an allowed Slack format
  */
@@ -60,25 +58,28 @@ function escapeSlackMrkdwnContent(text: string): string {
     return text;
   }
 
-  SLACK_ANGLE_TOKEN_RE.lastIndex = 0;
   const out: string[] = [];
-  let lastIndex = 0;
-
-  for (
-    let match = SLACK_ANGLE_TOKEN_RE.exec(text);
-    match;
-    match = SLACK_ANGLE_TOKEN_RE.exec(text)
-  ) {
-    const matchIndex = match.index;
-    out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex, matchIndex)));
-    const token = match[0] ?? "";
+  let cursor = 0;
+  while (cursor < text.length) {
+    const tokenStart = text.indexOf("<", cursor);
+    if (tokenStart < 0) break;
+    out.push(escapeSlackMrkdwnSegment(text.slice(cursor, tokenStart)));
+    const lineEnd = text.indexOf("\n", tokenStart + 1);
+    const tokenEnd = text.indexOf(">", tokenStart + 1);
+    if (tokenEnd < 0 || (lineEnd >= 0 && lineEnd < tokenEnd)) {
+      const plainEnd = lineEnd < 0 ? text.length : lineEnd + 1;
+      out.push(escapeSlackMrkdwnSegment(text.slice(tokenStart, plainEnd)));
+      cursor = plainEnd;
+      continue;
+    }
+    const token = text.slice(tokenStart, tokenEnd + 1);
     out.push(
       isAllowedSlackAngleToken(token) ? token : escapeSlackMrkdwnSegment(token),
     );
-    lastIndex = matchIndex + token.length;
+    cursor = tokenEnd + 1;
   }
 
-  out.push(escapeSlackMrkdwnSegment(text.slice(lastIndex)));
+  out.push(escapeSlackMrkdwnSegment(text.slice(cursor)));
   return out.join("");
 }
 
@@ -137,7 +138,35 @@ function convertStrikethrough(text: string): string {
  */
 function convertCodeBlocks(text: string): string {
   // Slack code blocks don't support language hints in the same way
-  return text.replace(/```(\w*)\n?([\s\S]*?)```/g, "```\n$2```");
+  const out: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const opener = text.indexOf("```", cursor);
+    if (opener < 0) break;
+    let bodyStart = opener + 3;
+    while (bodyStart < text.length) {
+      const code = text.charCodeAt(bodyStart);
+      const isWord =
+        (code >= 48 && code <= 57) ||
+        (code >= 65 && code <= 90) ||
+        code === 95 ||
+        (code >= 97 && code <= 122);
+      if (!isWord) break;
+      bodyStart += 1;
+    }
+    if (text[bodyStart] === "\n") bodyStart += 1;
+    const closer = text.indexOf("```", bodyStart);
+    if (closer < 0) break;
+    out.push(
+      text.slice(cursor, opener),
+      "```\n",
+      text.slice(bodyStart, closer),
+      "```",
+    );
+    cursor = closer + 3;
+  }
+  out.push(text.slice(cursor));
+  return out.join("");
 }
 
 /**

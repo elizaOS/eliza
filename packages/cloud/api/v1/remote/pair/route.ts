@@ -67,9 +67,9 @@ app.post("/", async (c) => {
       );
     }
 
-    let body: PairRequestBody;
+    let parsed: unknown;
     try {
-      body = (await c.req.json()) as PairRequestBody;
+      parsed = await c.req.json();
     } catch {
       // error-policy:J3 malformed request JSON is an explicit client error.
       return c.json(
@@ -77,6 +77,17 @@ app.post("/", async (c) => {
         400,
       );
     }
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      return c.json(
+        { success: false, error: "Request body must be a JSON object" },
+        400,
+      );
+    }
+    const body = parsed as PairRequestBody;
     const agentId = typeof body.agentId === "string" ? body.agentId.trim() : "";
     if (!agentId) {
       return c.json({ success: false, error: "agentId is required" }, 400);
@@ -108,6 +119,7 @@ app.post("/", async (c) => {
       status: "pending",
       requester_identity: user.id,
       pairing_token_hash: tokenHash,
+      expires_at: expiresAt,
     });
     if (!session) {
       return c.json({ success: false, error: "Agent not found" }, 404);

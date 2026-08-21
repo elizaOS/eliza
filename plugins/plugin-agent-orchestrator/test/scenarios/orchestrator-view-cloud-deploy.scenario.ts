@@ -59,6 +59,11 @@ function headersValue(
 export default scenario({
   id: "orchestrator-view-cloud-deploy",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "model-free",
+    reason:
+      "Direct action turns exercise runtime contracts without model calls.",
+  },
   title: "Cloud-targeted view-plugin guidance records apps.create and viewKind",
   domain: "agent-orchestrator",
   tags: [

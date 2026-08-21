@@ -1,8 +1,25 @@
 /** Persists apps and serializes their database-backed cache identities across processes. */
 import { ElizaError } from "@elizaos/core";
-import { and, count, countDistinct, desc, eq, gte, lte, notInArray, sql } from "drizzle-orm";
+import {
+  and,
+  count,
+  countDistinct,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNull,
+  lte,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import { cache } from "../../lib/cache/client";
 import { CacheKeys } from "../../lib/cache/keys";
+import {
+  APP_DEPLOYMENT_GENERATION_KEY,
+  metadataForDeploymentGeneration,
+} from "../../lib/services/app-deployment-generation";
 import { invalidateInferenceAppByIdState } from "../../lib/services/inference-app-memory-cache";
 import type { DbTransaction } from "../client";
 import { sqlRows } from "../execute-helpers";
@@ -21,8 +38,10 @@ import {
   type NewAppRequest,
   type NewAppUser,
 } from "../schemas";
+import { apiKeys } from "../schemas/api-keys";
 import { appConfig } from "../schemas/app-config";
 import { appDomains } from "../schemas/app-domains";
+import { mobileAppAuthGrants } from "../schemas/mobile-app-auth-grants";
 import { organizations } from "../schemas/organizations";
 
 interface AppCacheFenceIdentity {
@@ -103,6 +122,11 @@ export type {
   NewAppRequest,
   NewAppUser,
 };
+
+export interface AppMobileAuthRevocationMutation {
+  app: App | undefined;
+  revokedKeyHashes: string[];
+}
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -551,6 +575,16 @@ export class AppsRepository {
    * Updates an existing app.
    */
   async update(id: string, data: Partial<NewApp>): Promise<App | undefined> {
+    if (data.is_active === false || data.is_approved === false) {
+      throw new ElizaError(
+        "App deactivation must use updateWithMobileAuthRevocation so mobile credentials are revoked",
+        {
+          code: "APP_MOBILE_AUTH_REVOCATION_REQUIRED",
+          context: { appId: id },
+          severity: "fatal",
+        },
+      );
+    }
     /* global-scope: by-id mutation; route handlers authorize org ownership before calling. */
     const [updated] = await dbWrite
       .update(apps)
@@ -575,6 +609,7 @@ export class AppsRepository {
    */
   async claimDeploymentStart(
     id: string,
+    generation: string,
     data: Pick<NewApp, "last_deployed_at"> & { metadata?: Record<string, unknown> },
   ): Promise<App | undefined> {
     const [updated] = await dbWrite
@@ -582,7 +617,7 @@ export class AppsRepository {
       .set({
         deployment_status: "building",
         last_deployed_at: data.last_deployed_at,
-        ...(data.metadata ? { metadata: data.metadata } : {}),
+        metadata: metadataForDeploymentGeneration(data.metadata, generation),
         updated_at: new Date(),
       })
       .where(and(eq(apps.id, id), notInArray(apps.deployment_status, ["building", "deploying"])))
@@ -594,20 +629,233 @@ export class AppsRepository {
     return updated;
   }
 
-  /**
-   * Deletes an app by ID.
-   */
-  async delete(id: string): Promise<void> {
-    /* global-scope: by-id deletion; route handlers authorize org ownership before calling. */
-    // Read the row first so we know the slug + api_key_id keys to evict.
-    // Bypass the cache so a stale cached row does not point at the wrong slug.
-    const existing = await dbRead.query.apps.findFirst({ where: eq(apps.id, id) });
-    await dbWrite.delete(apps).where(eq(apps.id, id));
-    if (existing) {
-      await invalidateAppCacheEntries(id, existing.api_key_id, existing.slug);
+  /** Reads one app only when the caller still owns its persisted generation. */
+  async findByDeploymentGeneration(id: string, generation: string): Promise<App | undefined> {
+    const [app] = await dbWrite
+      .select()
+      .from(apps)
+      .where(
+        and(
+          eq(apps.id, id),
+          sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`,
+        ),
+      )
+      .limit(1);
+    return app;
+  }
+
+  /** Applies a generation-owned transition without touching a newer deployment. */
+  async updateDeploymentGeneration(
+    id: string,
+    generation: string | null,
+    data: Partial<NewApp>,
+    expectedStatuses?: readonly NonNullable<NewApp["deployment_status"]>[],
+  ): Promise<App | undefined> {
+    const generationFilter = generation
+      ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
+      : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
+    const statusFilter = expectedStatuses?.length
+      ? inArray(apps.deployment_status, [...expectedStatuses])
+      : undefined;
+    const nextData =
+      generation && data.metadata
+        ? { ...data, metadata: metadataForDeploymentGeneration(data.metadata, generation) }
+        : data;
+    const [updated] = await dbWrite
+      .update(apps)
+      .set({ ...nextData, updated_at: new Date() })
+      .where(and(eq(apps.id, id), generationFilter, statusFilter))
+      .returning();
+
+    if (updated) {
+      await invalidateAppCacheEntries(id, updated.api_key_id, updated.slug);
+    }
+    return updated;
+  }
+
+  /** Uses the primary row to fence provider work for current and legacy deployments. */
+  async isDeploymentGenerationCurrent(id: string, generation: string | null): Promise<boolean> {
+    const generationFilter = generation
+      ? sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} = ${generation}`
+      : sql`${apps.metadata}->>${APP_DEPLOYMENT_GENERATION_KEY} IS NULL`;
+    const [current] = await dbWrite
+      .select({ id: apps.id })
+      .from(apps)
+      .where(
+        and(
+          eq(apps.id, id),
+          generationFilter,
+          inArray(apps.deployment_status, ["building", "deploying"]),
+        ),
+      )
+      .limit(1);
+    return current !== undefined;
+  }
+
+  async updateWithMobileAuthRevocation(
+    id: string,
+    data: Partial<NewApp>,
+    now = new Date(),
+  ): Promise<AppMobileAuthRevocationMutation> {
+    /* global-scope: by-id revocation transaction; AppsService authorizes org ownership before calling. */
+    if (data.is_active !== false && data.is_approved !== false) {
+      throw new ElizaError(
+        "Mobile credential revocation requires app deactivation or de-approval",
+        {
+          code: "APP_MOBILE_AUTH_REVOCATION_REQUIRED",
+          context: { appId: id },
+          severity: "fatal",
+        },
+      );
+    }
+
+    const mutation = await dbWrite.transaction(async (tx) => {
+      const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
+      if (!existing) {
+        return { existing: undefined, updated: undefined, revokedKeyHashes: [] };
+      }
+      const [updated] = await tx
+        .update(apps)
+        .set({ ...data, updated_at: now })
+        .where(eq(apps.id, id))
+        .returning();
+      if (!updated) {
+        throw new ElizaError("Failed to persist app deactivation", {
+          code: "APP_DEACTIVATION_PERSIST_FAILED",
+          context: { appId: id },
+          severity: "fatal",
+        });
+      }
+
+      await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
+      const credentials = await tx
+        .select({ keyHash: apiKeys.key_hash })
+        .from(apiKeys)
+        .where(eq(apiKeys.source_app_id, id))
+        .for("update");
+      await tx
+        .update(apiKeys)
+        .set({
+          is_active: false,
+          deleted_at: sql<Date>`COALESCE(${apiKeys.deleted_at}, ${now})`,
+          updated_at: now,
+          key_ciphertext: null,
+          key_nonce: null,
+          key_auth_tag: null,
+          key_kms_key_id: null,
+          key_kms_key_version: null,
+        })
+        .where(eq(apiKeys.source_app_id, id));
+      return {
+        existing,
+        updated,
+        revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+      };
+    });
+
+    if (mutation.updated) {
+      await Promise.all([
+        invalidateAppCacheEntries(id, mutation.existing?.api_key_id, mutation.existing?.slug),
+        invalidateAppCacheEntries(id, mutation.updated.api_key_id, mutation.updated.slug),
+      ]);
+    }
+    return { app: mutation.updated, revokedKeyHashes: mutation.revokedKeyHashes };
+  }
+
+  async prepareDeleteWithMobileAuthRevocation(
+    id: string,
+    now = new Date(),
+  ): Promise<AppMobileAuthRevocationMutation> {
+    /* global-scope: by-id deletion tombstone transaction; AppsService authorizes org ownership before calling. */
+    const mutation = await dbWrite.transaction(async (tx) => {
+      const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
+      let inactive = existing;
+      if (existing) {
+        [inactive] = await tx
+          .update(apps)
+          .set({ is_active: false, updated_at: now })
+          .where(eq(apps.id, id))
+          .returning();
+        if (!inactive) {
+          throw new ElizaError("Failed to persist app deletion tombstone", {
+            code: "APP_DELETE_TOMBSTONE_PERSIST_FAILED",
+            context: { appId: id },
+            severity: "fatal",
+          });
+        }
+        await tx.delete(mobileAppAuthGrants).where(eq(mobileAppAuthGrants.app_id, id));
+      }
+      const credentials = await tx
+        .select({ keyHash: apiKeys.key_hash })
+        .from(apiKeys)
+        .where(eq(apiKeys.source_app_id, id))
+        .for("update");
+      await tx
+        .update(apiKeys)
+        .set({
+          is_active: false,
+          deleted_at: sql<Date>`COALESCE(${apiKeys.deleted_at}, ${now})`,
+          updated_at: now,
+          key_ciphertext: null,
+          key_nonce: null,
+          key_auth_tag: null,
+          key_kms_key_id: null,
+          key_kms_key_version: null,
+        })
+        .where(eq(apiKeys.source_app_id, id));
+      return {
+        inactive,
+        revokedKeyHashes: credentials.map((credential) => credential.keyHash),
+      };
+    });
+
+    if (mutation.inactive) {
+      await invalidateAppCacheEntries(id, mutation.inactive.api_key_id, mutation.inactive.slug);
     } else {
       await invalidateAppCacheEntries(id);
     }
+    return { app: mutation.inactive, revokedKeyHashes: mutation.revokedKeyHashes };
+  }
+
+  /** Permanently removes only an app whose mobile authorization is already revoked. */
+  async finalizeDelete(id: string): Promise<App | undefined> {
+    /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
+    const deleted = await dbWrite.transaction(async (tx) => {
+      const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
+      if (!existing) return undefined;
+
+      const [grant] = await tx
+        .select({ id: mobileAppAuthGrants.id })
+        .from(mobileAppAuthGrants)
+        .where(eq(mobileAppAuthGrants.app_id, id))
+        .limit(1);
+      const [usableCredential] = await tx
+        .select({ id: apiKeys.id })
+        .from(apiKeys)
+        .where(
+          and(
+            eq(apiKeys.source_app_id, id),
+            or(eq(apiKeys.is_active, true), isNull(apiKeys.deleted_at)),
+          ),
+        )
+        .limit(1);
+      if (existing.is_active || grant || usableCredential) {
+        throw new ElizaError("App deletion requires completed mobile credential revocation", {
+          code: "APP_DELETE_MOBILE_AUTH_REVOCATION_INCOMPLETE",
+          context: { appId: id },
+          severity: "fatal",
+        });
+      }
+      const [removed] = await tx.delete(apps).where(eq(apps.id, id)).returning();
+      return removed;
+    });
+
+    if (deleted) {
+      await invalidateAppCacheEntries(id, deleted.api_key_id, deleted.slug);
+    } else {
+      await invalidateAppCacheEntries(id);
+    }
+    return deleted;
   }
 
   /**

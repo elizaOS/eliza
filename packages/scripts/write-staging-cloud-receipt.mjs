@@ -16,6 +16,8 @@ const EXPECTED_ARGUMENTS = new Set([
   "outcome",
   "started-ms",
   "completed-ms",
+  "first-turn-latency-ms",
+  "continuity-evidence",
 ]);
 
 function fail(message) {
@@ -88,8 +90,31 @@ export function createStagingCloudReceipt(argv) {
     fail("completed-ms must not precede started-ms");
   }
 
+  const latencyValue = values.get("first-turn-latency-ms");
+  let firstTurnLatencyMs = null;
+  if (outcome === "success") {
+    if (latencyValue === "unavailable") {
+      fail("successful outcome requires first-turn-latency-ms");
+    }
+    firstTurnLatencyMs = positiveInteger(latencyValue, "first-turn-latency-ms");
+    if (firstTurnLatencyMs > completedAtMs - startedAtMs) {
+      fail("first-turn-latency-ms must not exceed the whole lane duration");
+    }
+  } else if (latencyValue !== "unavailable") {
+    fail("failed outcome must mark first-turn-latency-ms unavailable");
+  }
+
+  const continuityValue = values.get("continuity-evidence");
+  const continuityVerified = continuityValue === "verified";
+  if (outcome === "success" && !continuityVerified) {
+    fail("successful outcome requires verified continuity-evidence");
+  }
+  if (outcome === "failure" && continuityValue !== "unavailable") {
+    fail("failed outcome must mark continuity-evidence unavailable");
+  }
+
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     lane: "app-live-e2e-cloud-staging",
     sourceSha,
     workflow: {
@@ -102,12 +127,38 @@ export function createStagingCloudReceipt(argv) {
       completedAtMs,
       durationMs: completedAtMs - startedAtMs,
     },
+    measurements: {
+      firstTurnLatencyDefinition:
+        "composer-send-click-to-settled-valid-assistant-turn: starts immediately before the UI send click; ends after the same fresh non-empty assistant row settles and passes the liveness contract; not first-token latency",
+      firstTurnLatencyMs,
+    },
+    continuity: {
+      verified: continuityVerified,
+      challengeTurnCount: continuityVerified ? 1 : null,
+      noAdditionalChatSendAfterChallenge: continuityVerified ? true : null,
+      personalIdentityEndpointPassed: continuityVerified ? true : null,
+      reloadHistoryPassed: continuityVerified ? true : null,
+      freshContextHistoryPassed: continuityVerified ? true : null,
+      personalIdentityReused: continuityVerified ? true : null,
+      runtimeBindingReused: continuityVerified ? true : null,
+      apiBaseReused: continuityVerified ? true : null,
+      forbiddenAgentMutationCount: continuityVerified ? 0 : null,
+    },
+    cleanup: {
+      cleanupDisposition: continuityVerified
+        ? "no-test-owned-agent"
+        : "unavailable",
+      conversationHistoryDisposition: continuityVerified
+        ? "preserved"
+        : "unavailable",
+    },
     annotations: {
       cloudApiOrigin: "https://api-staging.eliza.app",
       cloudEnvironment: "staging",
       rendererSource: "local-checkout",
       deployedRendererTested: false,
-      loginProvisionChatPassed: outcome === "success",
+      loginPersonalIdentityChatPassed: outcome === "success",
+      historyContinuityPassed: continuityVerified,
     },
   };
 }

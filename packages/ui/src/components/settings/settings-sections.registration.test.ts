@@ -45,6 +45,14 @@ describe("settings-sections registration (lazy boot seam)", () => {
     expect(voice?.developerOnly).not.toBe(true);
   });
 
+  it("keeps the Vault user-visible as a secondary owner entry point", () => {
+    const vault = getAllSettingsSections().find(
+      (section) => section.id === "secrets",
+    );
+    expect(vault).toBeDefined();
+    expect(vault?.developerOnly).not.toBe(true);
+  });
+
   it("also registers the folded-in cloud + runtime sections", () => {
     // These used to be ad-hoc `registerSettingsSection(...)` bypass calls; they
     // are now single-source entries in BUILTIN_SECTION_DEFINITIONS carrying

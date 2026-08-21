@@ -113,6 +113,91 @@ describe("scenario() strict scenario metadata validation", () => {
       } as unknown as ScenarioDefinition),
     ).toThrow(/invalid status "known-red"/);
   });
+
+  it("validates serializable model fixture manifests at definition time", () => {
+    expect(() =>
+      scenario({
+        ...base,
+        modelFixtures: {
+          mode: "fixtures",
+          fixtures: [
+            {
+              name: "answer",
+              match: {
+                modelType: "TEXT_SMALL",
+                input: { pattern: "^hello$", flags: "i" },
+                toolNames: ["REPLY"],
+              },
+              response: { text: "hi" },
+              cardinality: { min: 1, max: 2 },
+              behavior: { stream: { chunkSize: 2, intervalMs: 0 } },
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      scenario({
+        ...base,
+        modelFixtures: {
+          mode: "fixtures",
+          fixtures: [
+            {
+              name: "bad-regex",
+              match: {
+                modelType: "TEXT_SMALL",
+                input: { pattern: "[" },
+              },
+              response: { text: "never" },
+            },
+          ],
+        },
+      }),
+    ).toThrow(/invalid input pattern/);
+    expect(() =>
+      scenario({
+        ...base,
+        modelFixtures: {
+          mode: "fixtures",
+          fixtures: [
+            {
+              name: "unsupported-model",
+              match: { modelType: "TEXT_IMAGINARY" },
+              response: { text: "never" },
+            },
+          ],
+        },
+      } as unknown as ScenarioDefinition),
+    ).toThrow(/unsupported modelType value\(s\): TEXT_IMAGINARY/);
+  });
+
+  it("requires an explicit reason for model-free declarations", () => {
+    expect(() =>
+      scenario({
+        ...base,
+        modelFixtures: { mode: "model-free", reason: "" },
+      }),
+    ).toThrow(/requires a reason/);
+    expect(() =>
+      scenario({
+        ...base,
+        turns: [{ kind: "api", name: "direct", path: "/health" }],
+        modelFixtures: {
+          mode: "model-free",
+          reason: "Direct API contract",
+        },
+      } as ScenarioDefinition),
+    ).not.toThrow();
+    expect(() =>
+      scenario({
+        ...base,
+        modelFixtures: {
+          mode: "model-free",
+          reason: "Incorrectly claims no model",
+        },
+      }),
+    ).toThrow(/contains model-backed work/);
+  });
 });
 
 describe("loadScenarioFile strict validation", () => {

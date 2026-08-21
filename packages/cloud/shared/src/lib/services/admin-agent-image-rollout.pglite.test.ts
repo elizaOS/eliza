@@ -1646,6 +1646,7 @@ describe("admin agent image rollout on primary PGlite", () => {
         user_id: seeded.actorUserId,
         agent_name: "Warm Claim Canary",
         status: "pending",
+        execution_tier: "dedicated-always",
       },
       {
         id: poolRowId,

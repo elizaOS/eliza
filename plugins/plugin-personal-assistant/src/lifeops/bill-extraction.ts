@@ -17,6 +17,8 @@ import {
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { wrapUntrustedEmailContent } from "@elizaos/shared";
 import type { EmailLikeMessage } from "./email-classifier.js";
@@ -285,7 +287,7 @@ function buildLlmPrompt(message: EmailLikeMessage): string {
         `Subject: ${message.subject ?? ""}`,
         `From: ${message.from ?? ""}`,
         `From email: ${message.fromEmail ?? ""}`,
-        `Snippet: ${(message.snippet ?? "").slice(0, 1000)}`,
+        `Snippet: ${truncateWellFormed(toWellFormedUnicode(message.snippet ?? ""), 1000)}`,
       ].join("\n"),
     ),
   ].join("\n");
@@ -330,7 +332,7 @@ function parseLlmExtraction(raw: unknown): BillExtraction | null {
   }
   const merchant =
     typeof merchantRaw === "string" && merchantRaw.trim().length > 0
-      ? merchantRaw.trim().slice(0, 120)
+      ? truncateWellFormed(toWellFormedUnicode(merchantRaw.trim()), 120)
       : "Unknown merchant";
   const currency =
     typeof currencyRaw === "string" &&

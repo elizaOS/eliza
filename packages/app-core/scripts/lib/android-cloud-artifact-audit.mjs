@@ -42,6 +42,25 @@ export const ANDROID_LP3_POLICY_PERMISSIONS = Object.freeze([
 
 export const ANDROID_LP3_POLICY_MARKERS = Object.freeze(["lp3_color_policy"]);
 
+// Product-specific local-runtime and sideload implementation markers that must
+// never survive R8 into the Google Play Cloud artifact. Keep this list narrow:
+// generic strings such as "localhost" occur legitimately in AndroidX/vendor
+// bytecode and are audited at the renderer/source boundary instead.
+export const ANDROID_PLAY_FORBIDDEN_DEX_MARKERS = Object.freeze([
+  "10.0.2.2",
+  "31337",
+  "31338",
+  "32437",
+  "32438",
+  "__ELIZA_ANDROID_IPC_FETCH_BRIDGE__",
+  "adb reverse",
+  "eliza-local-agent:",
+  "eliza_bionic_infer_v1",
+  "Landroid/net/LocalSocket;",
+  "remote-mac",
+  "TalkModePlugin",
+]);
+
 const AAB_MANIFEST_ENTRY = /^([^/\\]+)\/manifest\/AndroidManifest\.xml$/;
 const AAB_DEX_ENTRY = /^([^/\\]+)\/dex\/classes\d*\.dex$/;
 const AAB_STRAY_DEX_ENTRY = /\.dex$/i;
@@ -617,9 +636,11 @@ export function runCheckedBundletool(
 
 function parseXmlOpeningTags(xml) {
   const tags = [];
+  const ancestors = [];
   const parser = new SaxesParser({ xmlns: true });
   parser.on("opentag", (tag) => {
     tags.push({
+      ancestors: [...ancestors],
       attributes: Object.values(tag.attributes).map((attribute) => ({
         localName: attribute.local,
         name: attribute.name,
@@ -630,6 +651,10 @@ function parseXmlOpeningTags(xml) {
       namespaceUri: tag.uri,
       qualifiedName: tag.name,
     });
+    ancestors.push(tag.local);
+  });
+  parser.on("closetag", () => {
+    ancestors.pop();
   });
   try {
     parser.write(xml).close();
@@ -676,8 +701,27 @@ function manifestPolicyEvidence(moduleName, manifestText) {
         .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, localName))
         .filter(Boolean),
     );
+  const application = tags.find((tag) => tag.name === "application");
+  const usesSdk = tags.find((tag) => tag.name === "uses-sdk");
+  const isInsideQueries = (tag) => tag.ancestors.includes("queries");
   return {
     actions: androidAttributeValues(["action"], "name"),
+    application: {
+      allowBackup: application
+        ? readXmlAttribute(application, ANDROID_XML_NAMESPACE, "allowBackup")
+        : null,
+      debuggable: application
+        ? (readXmlAttribute(application, ANDROID_XML_NAMESPACE, "debuggable") ??
+          "false")
+        : "false",
+      usesCleartextTraffic: application
+        ? readXmlAttribute(
+            application,
+            ANDROID_XML_NAMESPACE,
+            "usesCleartextTraffic",
+          )
+        : null,
+    },
     components: uniqueSorted(
       tags
         .filter((tag) => MANIFEST_COMPONENT_ELEMENTS.includes(tag.name))
@@ -698,9 +742,111 @@ function manifestPolicyEvidence(moduleName, manifestText) {
       ["uses-permission", "uses-permission-sdk-23"],
       "name",
     ),
+    queryActions: uniqueSorted(
+      tags
+        .filter((tag) => tag.name === "action" && isInsideQueries(tag))
+        .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, "name"))
+        .filter(Boolean),
+    ),
+    queryPackages: uniqueSorted(
+      tags
+        .filter((tag) => tag.name === "package" && isInsideQueries(tag))
+        .map((tag) => readXmlAttribute(tag, ANDROID_XML_NAMESPACE, "name"))
+        .filter(Boolean),
+    ),
     sha256: sha256(Buffer.from(manifestText, "utf8")),
     sizeBytes: Buffer.byteLength(manifestText, "utf8"),
+    targetSdkVersion: usesSdk
+      ? readXmlAttribute(usesSdk, ANDROID_XML_NAMESPACE, "targetSdkVersion")
+      : null,
   };
+}
+
+function appendExactSetFindings(findings, actual, expected, label) {
+  const actualValues = uniqueSorted(actual);
+  const expectedValues = uniqueSorted(expected);
+  for (const value of actualValues.filter(
+    (candidate) => !expectedValues.includes(candidate),
+  )) {
+    findings.push(
+      `android-cloud manifest contains unexpected ${label}: ${value}`,
+    );
+  }
+  for (const value of expectedValues.filter(
+    (candidate) => !actualValues.includes(candidate),
+  )) {
+    findings.push(
+      `android-cloud manifest is missing required ${label}: ${value}`,
+    );
+  }
+}
+
+/**
+ * Enforces the deliberately small Play-client manifest as a positive contract.
+ * Every field is exact so dependency-manifest expansion fails closed.
+ */
+export function assertAndroidPlayManifestPolicyEvidence(evidence, policy) {
+  if (!evidence || typeof evidence !== "object") {
+    throw androidAabAuditError(
+      "[mobile-build] Android Play manifest evidence must be an object.",
+    );
+  }
+  if (!policy || typeof policy !== "object") {
+    throw androidAabAuditError(
+      "[mobile-build] Android Play manifest policy must be an object.",
+    );
+  }
+  const findings = [];
+  for (const [field, label] of [
+    ["permissions", "permission"],
+    ["components", "component"],
+    ["actions", "action"],
+    ["metadataNames", "metadata entry"],
+    ["queryActions", "query action"],
+    ["queryPackages", "query package"],
+  ]) {
+    requireStringArray(evidence[field], `Android Play manifest ${field}`);
+    requireStringArray(policy[field], `allowed Android Play manifest ${field}`);
+    appendExactSetFindings(findings, evidence[field], policy[field], label);
+  }
+
+  if (String(evidence.targetSdkVersion) !== String(policy.targetSdkVersion)) {
+    findings.push(
+      `android-cloud manifest targetSdkVersion ${String(evidence.targetSdkVersion)} does not equal ${String(policy.targetSdkVersion)}`,
+    );
+  }
+  for (const field of ["allowBackup", "usesCleartextTraffic"]) {
+    if (
+      String(evidence.application?.[field]) !==
+      String(policy.application?.[field])
+    ) {
+      findings.push(
+        `android-cloud manifest application ${field}=${String(evidence.application?.[field])} does not equal ${String(policy.application?.[field])}`,
+      );
+    }
+  }
+  if (
+    policy.application?.debuggable !== undefined &&
+    String(evidence.application?.debuggable) !==
+      String(policy.application.debuggable)
+  ) {
+    findings.push(
+      `android-cloud manifest application debuggable=${String(evidence.application?.debuggable)} does not equal ${String(policy.application.debuggable)}`,
+    );
+  }
+
+  if (findings.length > 0) {
+    const uniqueFindings = uniqueSorted(findings);
+    throw androidAabAuditError(
+      `[mobile-build] Android Play manifest allowlist failed:\n${uniqueFindings
+        .map((finding) => `  - ${finding}`)
+        .join("\n")}`,
+      {
+        code: "ANDROID_PLAY_MANIFEST_ALLOWLIST_FAILED",
+        context: { findings: uniqueFindings },
+      },
+    );
+  }
 }
 
 function collectManifestPolicyFinding(
@@ -723,6 +869,7 @@ function collectManifestPolicyFinding(
 export function assertAabManifestPolicy({
   manifests,
   appId,
+  playPolicy,
   strippedComponents,
   strippedPermissions,
 }) {
@@ -860,6 +1007,50 @@ export function assertAabManifestPolicy({
       },
     );
   }
+  if (playPolicy) {
+    const manifestEvidence = [...manifests.entries()].map(
+      ([moduleName, manifestText]) =>
+        manifestPolicyEvidence(moduleName, manifestText),
+    );
+    const baseEvidence = manifestEvidence.find(
+      (moduleEvidence) => moduleEvidence.module === "base",
+    );
+    assertAndroidPlayManifestPolicyEvidence(
+      {
+        actions: uniqueSorted(
+          manifestEvidence.flatMap((moduleEvidence) => moduleEvidence.actions),
+        ),
+        application: baseEvidence.application,
+        components: uniqueSorted(
+          manifestEvidence.flatMap(
+            (moduleEvidence) => moduleEvidence.components,
+          ),
+        ),
+        metadataNames: uniqueSorted(
+          manifestEvidence.flatMap(
+            (moduleEvidence) => moduleEvidence.metadataNames,
+          ),
+        ),
+        permissions: uniqueSorted(
+          manifestEvidence.flatMap(
+            (moduleEvidence) => moduleEvidence.permissions,
+          ),
+        ),
+        queryActions: uniqueSorted(
+          manifestEvidence.flatMap(
+            (moduleEvidence) => moduleEvidence.queryActions,
+          ),
+        ),
+        queryPackages: uniqueSorted(
+          manifestEvidence.flatMap(
+            (moduleEvidence) => moduleEvidence.queryPackages,
+          ),
+        ),
+        targetSdkVersion: baseEvidence.targetSdkVersion,
+      },
+      playPolicy,
+    );
+  }
 }
 
 function normalizeDexBuffers(dexEntries, dexBuffers) {
@@ -884,8 +1075,9 @@ function normalizeDexBuffers(dexEntries, dexBuffers) {
 }
 
 /**
- * Scans every DEX payload for stripped repo-owned classes and private LP3
- * control-plane markers, including features that a universal APK can omit.
+ * Scans every DEX payload for stripped repo-owned classes, private LP3
+ * control-plane markers, and sideload/local-runtime implementation markers,
+ * including features that a universal APK can omit.
  */
 export function assertAabDexPolicy({
   appId,
@@ -913,6 +1105,9 @@ export function assertAabDexPolicy({
     marker,
     payload: Buffer.from(marker, "utf8"),
   }));
+  const forbiddenPlayMarkers = ANDROID_PLAY_FORBIDDEN_DEX_MARKERS.map(
+    (marker) => ({ marker, payload: Buffer.from(marker, "utf8") }),
+  );
 
   for (let index = 0; index < buffers.length; index += 1) {
     for (const { className, marker } of forbiddenClassDescriptors) {
@@ -926,6 +1121,13 @@ export function assertAabDexPolicy({
       if (buffers[index].includes(payload)) {
         throw androidAabAuditError(
           `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden LP3 marker: ${marker}`,
+        );
+      }
+    }
+    for (const { marker, payload } of forbiddenPlayMarkers) {
+      if (buffers[index].includes(payload)) {
+        throw androidAabAuditError(
+          `[mobile-build] android-cloud AAB DEX ${dexEntries[index]} contains forbidden Play local-runtime marker: ${marker}`,
         );
       }
     }
@@ -947,6 +1149,7 @@ export function inspectAndroidAppBundle(
     strippedComponents,
     strippedPermissions,
     javaHome,
+    playPolicy,
     env = process.env,
     readDexEntries,
   },
@@ -1090,6 +1293,7 @@ export function inspectAndroidAppBundle(
   assertAabManifestPolicy({
     manifests,
     appId,
+    playPolicy,
     strippedComponents,
     strippedPermissions,
   });

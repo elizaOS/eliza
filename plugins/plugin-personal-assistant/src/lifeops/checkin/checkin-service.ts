@@ -6,12 +6,19 @@
  */
 import { resolveKnowledgeGraphService } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryPurpose } from "@elizaos/core";
+import {
+  logger,
+  ModelType,
+  runWithTrajectoryPurpose,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type GetLifeOpsCalendarFeedRequest,
   type GetLifeOpsGmailTriageRequest,
   type GetLifeOpsInboxRequest,
   LIFEOPS_OCCURRENCE_STATES,
+  type LifeOpsCadence,
   type LifeOpsCalendarFeed,
   type LifeOpsGmailTriageFeed,
   type LifeOpsInbox,
@@ -228,12 +235,20 @@ function newReportId(): string {
   return `checkin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function clip(text: string, maxLength = 220): string {
+export function clip(text: string, maxLength = 220): string {
   const trimmed = text.replace(/\s+/g, " ").trim();
-  if (trimmed.length <= maxLength) {
-    return trimmed;
+  const wellFormed = toWellFormedUnicode(trimmed);
+  if (wellFormed.length <= maxLength) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, maxLength - 3).trimEnd()}...`;
+  if (maxLength <= 0) {
+    return "";
+  }
+  const suffix = "...";
+  if (maxLength <= suffix.length) {
+    return truncateWellFormed(suffix, maxLength);
+  }
+  return `${truncateWellFormed(wellFormed, maxLength - suffix.length).trimEnd()}${suffix}`;
 }
 
 function parseMs(value: string | null | undefined): number | null {
@@ -315,15 +330,18 @@ type HabitCollectorRow = {
   definition_title: unknown;
   definition_kind: unknown;
   definition_metadata_json: unknown;
+  definition_cadence_json: unknown;
   occurrence_state: unknown;
   occurrence_due_at: unknown;
   occurrence_updated_at: unknown;
+  occurrence_progress_total: unknown;
 };
 
-type HabitOccurrence = {
+export type HabitOccurrence = {
   state: LifeOpsOccurrenceState;
   dueAtMs: number;
   updatedAtMs: number;
+  progressTotal: number;
 };
 
 const LIFEOPS_OCCURRENCE_STATE_SET: ReadonlySet<string> = new Set(
@@ -366,12 +384,19 @@ function resolvePausedUntil(
   return new Date(pauseUntilMs).toISOString();
 }
 
-function buildHabitSummary(args: {
+/**
+ * Projects one definition's occurrences into the client-facing `HabitSummary`.
+ * For `count_per_day` cadences the summary carries the server-derived quota
+ * progress for the current active day so clients render remaining counts
+ * instead of recomputing them; every other cadence gets `progress: null`.
+ */
+export function buildHabitSummary(args: {
   definitionId: string;
   title: string;
   kind: "habit" | "routine";
   metadata: Record<string, unknown>;
   occurrences: HabitOccurrence[];
+  cadence: LifeOpsCadence;
   now: Date;
 }): HabitSummary {
   const pauseUntil = resolvePausedUntil(args.metadata, args.now);
@@ -388,6 +413,18 @@ function buildHabitSummary(args: {
   }));
   const completedStreak = computeOccurrenceStreaks(streakInput);
   const missedStreak = computeMissedOccurrenceStreak(streakInput);
+  const quotaOccurrence =
+    args.cadence.kind === "count_per_day"
+      ? args.occurrences
+          .filter((occurrence) => occurrence.dueAtMs >= args.now.getTime())
+          .sort((left, right) => left.dueAtMs - right.dueAtMs)[0]
+      : undefined;
+  const completedCount = quotaOccurrence
+    ? Math.min(
+        quotaOccurrence.progressTotal,
+        args.cadence.kind === "count_per_day" ? args.cadence.targetCount : 0,
+      )
+    : 0;
   return {
     definitionId: args.definitionId,
     title: args.title,
@@ -397,6 +434,19 @@ function buildHabitSummary(args: {
     missedOccurrenceStreak: pauseUntil ? 0 : missedStreak.current,
     pauseUntil,
     isPaused: pauseUntil !== null,
+    progress:
+      args.cadence.kind === "count_per_day" && quotaOccurrence
+        ? {
+            completedCount,
+            targetCount: args.cadence.targetCount,
+            remainingCount: Math.max(
+              args.cadence.targetCount - completedCount,
+              0,
+            ),
+            unit: args.cadence.unit,
+            perOccurrenceWork: args.cadence.perOccurrenceWork,
+          }
+        : null,
   };
 }
 
@@ -414,6 +464,7 @@ async function collectHabitSummaries(
               title AS definition_title,
               kind AS definition_kind,
               metadata_json AS definition_metadata_json
+              ,cadence_json AS definition_cadence_json
          FROM app_lifeops.life_task_definitions
         WHERE agent_id = ${sqlQuote(agentId)}
           AND kind IN ('habit', 'routine')
@@ -430,6 +481,10 @@ async function collectHabitSummaries(
               state AS occurrence_state,
               due_at AS occurrence_due_at,
               updated_at AS occurrence_updated_at
+              ,(SELECT COALESCE(SUM(progress.quantity), 0)
+                  FROM app_lifeops.life_task_progress_events progress
+                 WHERE progress.agent_id = app_lifeops.life_task_occurrences.agent_id
+                   AND progress.occurrence_id = app_lifeops.life_task_occurrences.id) AS occurrence_progress_total
          FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id IN (${definitionRows.map((row) => sqlQuote(toText(row.definition_id))).join(", ")})
@@ -450,11 +505,18 @@ async function collectHabitSummaries(
       ) {
         continue;
       }
+      const rawProgressTotal = Number(row.occurrence_progress_total);
+      if (!Number.isFinite(rawProgressTotal)) {
+        throw new Error(
+          `Invalid quota progress total for LifeOps definition ${definitionId}`,
+        );
+      }
       const current = occurrencesByDefinitionId.get(definitionId);
       const nextOccurrence: HabitOccurrence = {
         state,
         dueAtMs,
         updatedAtMs,
+        progressTotal: Math.max(0, Math.trunc(rawProgressTotal)),
       };
       if (current) {
         current.push(nextOccurrence);
@@ -470,6 +532,9 @@ async function collectHabitSummaries(
       const title = toText(row.definition_title);
       const kind = toText(row.definition_kind);
       const metadata = parseJsonRecord(row.definition_metadata_json);
+      const cadence = parseJsonRecord(
+        row.definition_cadence_json,
+      ) as LifeOpsCadence;
       if (!definitionId || !title || (kind !== "habit" && kind !== "routine")) {
         continue;
       }
@@ -478,6 +543,7 @@ async function collectHabitSummaries(
         title,
         kind,
         metadata,
+        cadence,
         occurrences: occurrencesByDefinitionId.get(definitionId) ?? [],
         now,
       });

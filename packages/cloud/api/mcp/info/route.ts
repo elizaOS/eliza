@@ -5,6 +5,10 @@
  * This endpoint does not require authentication.
  */
 
+import {
+  MCP_USAGE_BASED_COST_LABEL,
+  PLATFORM_MCP_TOOL_PRICING,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -136,15 +140,17 @@ app.get("/", (c) =>
     categories,
     pricing: {
       type: "credits",
-      description: "Uses your organization's credit balance",
+      description:
+        "Uses your organization's USD-denominated cloud-credit balance",
+      creditUnit: "USD",
       rates: {
         generate_text: "Varies by model and tokens",
-        generate_image: "Fixed cost per image",
-        search_web: "Usage-based credits",
-        extract_page: "Usage-based credits",
-        browser_session: "Usage-based credits",
-        save_memory: "0.0001 credits",
-        retrieve_memories: "0.0001 - 0.001 credits",
+        generate_image: MCP_USAGE_BASED_COST_LABEL,
+        search_web: MCP_USAGE_BASED_COST_LABEL,
+        extract_page: MCP_USAGE_BASED_COST_LABEL,
+        browser_session: MCP_USAGE_BASED_COST_LABEL,
+        save_memory: PLATFORM_MCP_TOOL_PRICING.save_memory.label,
+        retrieve_memories: PLATFORM_MCP_TOOL_PRICING.retrieve_memories.label,
       },
     },
     authentication: {

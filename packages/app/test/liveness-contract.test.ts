@@ -14,6 +14,7 @@ import {
   assertLiveReply,
   buildLivenessChallenge,
   extractLivenessChallengeToken,
+  findAnchoredLiveTurn,
   isLiveReply,
   LivenessAssertionError,
   STUB_FIXTURE_MARKER,
@@ -173,5 +174,130 @@ describe("liveness challenge reply assertion", () => {
         label: "ios-cloud-onboarding tap",
       }),
     ).toThrow(/ios-cloud-onboarding tap: /);
+  });
+});
+
+describe("structural user-turn anchoring", () => {
+  const anchorToken = "9f8e7d";
+
+  it("selects a valid assistant row after the exact token-bearing user row without requiring an echo", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "assistant", text: "cached greeting", phase: "reply" },
+          {
+            role: "user",
+            text: `Reply with exactly this code: ${anchorToken}`,
+          },
+          {
+            role: "assistant",
+            text: "Hello from the live model",
+            phase: "reply",
+          },
+        ],
+        { anchorToken },
+      ),
+    ).toEqual({
+      userLineIndex: 1,
+      assistantLineIndex: 2,
+      reply: "Hello from the live model",
+    });
+  });
+
+  it("never skips the first assistant row to accept an unrelated later row", () => {
+    const invalidFirstRows = [
+      { text: "failed", failureKind: "handler_error", phase: "reply" },
+      { text: "retry", hasRetry: true, phase: "reply" },
+      { text: "partial answer", interrupted: true, phase: "reply" },
+      { text: "Thinking", phase: "status" },
+      {
+        text: "Download generated file",
+        hasMessageText: false,
+        phase: "reply",
+      },
+    ];
+
+    for (const invalidFirstRow of invalidFirstRows) {
+      expect(
+        findAnchoredLiveTurn(
+          [
+            { role: "user", text: `challenge ${anchorToken}` },
+            { role: "assistant", ...invalidFirstRow },
+            {
+              role: "assistant",
+              text: "unrelated later answer",
+              hasMessageText: true,
+              phase: "reply",
+            },
+          ],
+          { anchorToken },
+        ),
+      ).toBeNull();
+    }
+  });
+
+  it("accepts the same first assistant row only after pending becomes a text reply", () => {
+    const user = { role: "user", text: `challenge ${anchorToken}` };
+    expect(
+      findAnchoredLiveTurn(
+        [user, { role: "assistant", text: "Thinking", phase: "status" }],
+        { anchorToken },
+      ),
+    ).toBeNull();
+
+    expect(
+      findAnchoredLiveTurn(
+        [
+          user,
+          {
+            role: "assistant",
+            text: "The settled live answer",
+            hasMessageText: true,
+            phase: "reply",
+          },
+        ],
+        { anchorToken },
+      ),
+    ).toEqual({
+      userLineIndex: 0,
+      assistantLineIndex: 1,
+      reply: "The settled live answer",
+    });
+  });
+
+  it("never crosses into a later user turn", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "user", text: `challenge ${anchorToken}` },
+          { role: "user", text: `a later duplicated ${anchorToken}` },
+          { role: "assistant", text: "later answer", phase: "reply" },
+        ],
+        { anchorToken },
+      ),
+    ).toBeNull();
+  });
+
+  it("fails closed without a token-bearing user row or a later valid assistant row", () => {
+    expect(
+      findAnchoredLiveTurn(
+        [{ role: "assistant", text: anchorToken, phase: "reply" }],
+        { anchorToken },
+      ),
+    ).toBeNull();
+    expect(
+      findAnchoredLiveTurn([{ role: "user", text: anchorToken }], {
+        anchorToken,
+      }),
+    ).toBeNull();
+    expect(
+      findAnchoredLiveTurn(
+        [
+          { role: "user", text: anchorToken },
+          { role: "assistant", text: "answer", phase: "reply" },
+        ],
+        { anchorToken: "" },
+      ),
+    ).toBeNull();
   });
 });

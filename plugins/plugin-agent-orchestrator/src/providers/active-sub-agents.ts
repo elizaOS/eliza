@@ -5,12 +5,14 @@
  * spend-capped, or round-trip-capped session to resolve.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  Service,
-  State,
+import {
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type Service,
+  type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
@@ -491,8 +493,10 @@ function summarizeOutputTail(raw: string): string {
     );
   const last = lines.slice(-3).join(" / ");
   if (!last) return "";
-  // Truncate to keep the provider compact in the planner context.
-  return last.length > 120 ? `${last.slice(0, 117)}...` : last;
+  const wellFormed = toWellFormedUnicode(last);
+  return wellFormed.length > 120
+    ? `${truncateWellFormed(wellFormed, 117)}...`
+    : wellFormed;
 }
 
 function labelOf(session: SessionInfo): string {

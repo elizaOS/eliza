@@ -3,27 +3,26 @@
  * Steward login section with the terms/privacy links. Listens for device-code
  * auth completion on same-origin tabs so an orphaned sign-in form does not
  * stay live after the session already finished (#18001).
+ *
+ * The same bundle serves canonical app hosts, dedicated managed-agent hosts,
+ * and self-hosted origins. `/login` renders Steward locally on every one of
+ * them. Canonical app hosts must keep passwordless login on-origin, while the
+ * SSO bridge deliberately excludes dedicated subdomains because they may host
+ * user-controlled content. Routing dedicated hosts through the bridge would
+ * therefore be dead code that immediately falls back to this same page.
  */
 
 import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
-import { isElizaManagedCloudUiHostname } from "@elizaos/shared/elizacloud";
 import { CheckCircle2 } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/primitives";
-import { isAppModeHost } from "../../../app-mode/app-mode";
 import { subscribeCloudAuthComplete } from "../../../auth/cloud-auth-complete-signal";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
-import {
-  redirectToSsoBridge,
-  sanitizeBridgeReturnTo,
-  shouldAutoBridgeToSso,
-} from "../../../sso-bridge/sso-bridge";
 import { usePageTitle } from "../../lib/use-page-title";
 import { LoginOptionsSkeleton } from "./login-section-skeleton";
 
 const StewardLoginSection = lazy(() => import("./steward-login-section"));
-const MANAGED_CLOUD_HANDOFF_TIMEOUT_MS = 5_000;
 
 // Chunk-load fallback with the SAME geometry as the section's own
 // provider-discovery skeleton and the final option stack, so the card holds
@@ -91,54 +90,6 @@ function sessionIdFromLoginReturnTo(returnTo: string | null): string | null {
     void error;
     return null;
   }
-}
-
-function ManagedCloudLoginHandoff(): React.JSX.Element {
-  const [searchParams] = useSearchParams();
-  const [handoffRequired] = useState(() => shouldAutoBridgeToSso());
-  const [failed, setFailed] = useState(false);
-  const attemptRef = useRef<Promise<boolean> | null>(null);
-  const returnTo = sanitizeBridgeReturnTo(searchParams.get("returnTo"));
-
-  useEffect(() => {
-    if (!handoffRequired) return;
-    let attempt = attemptRef.current;
-    if (!attempt) {
-      attempt = redirectToSsoBridge(returnTo);
-      attemptRef.current = attempt;
-    }
-
-    let active = true;
-    const timeout = window.setTimeout(() => {
-      if (!active) return;
-      active = false;
-      setFailed(true);
-    }, MANAGED_CLOUD_HANDOFF_TIMEOUT_MS);
-
-    void attempt
-      .then((started) => {
-        if (active && !started) setFailed(true);
-      })
-      .catch(() => {
-        // error-policy:J4 bridge initiation failed before navigation; keep
-        // sign-in available on this host through the normal Steward form.
-        if (active) setFailed(true);
-      });
-
-    return () => {
-      active = false;
-      window.clearTimeout(timeout);
-    };
-  }, [handoffRequired, returnTo]);
-
-  if (!handoffRequired || failed) return <PublicLoginPage />;
-  return (
-    <LoginBackground>
-      <p className="text-center font-mono text-[11px] uppercase tracking-[0.32em] text-muted">
-        Taking you to Eliza sign in
-      </p>
-    </LoginBackground>
-  );
 }
 
 function PublicLoginPage(): React.JSX.Element {
@@ -249,9 +200,5 @@ function PublicLoginPage(): React.JSX.Element {
 }
 
 export default function LoginPage(): React.JSX.Element {
-  const managedCloudHost =
-    isAppModeHost() ||
-    (typeof window !== "undefined" &&
-      isElizaManagedCloudUiHostname(window.location.hostname));
-  return managedCloudHost ? <ManagedCloudLoginHandoff /> : <PublicLoginPage />;
+  return <PublicLoginPage />;
 }

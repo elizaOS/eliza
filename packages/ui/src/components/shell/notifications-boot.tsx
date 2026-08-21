@@ -11,8 +11,10 @@
 import { logger } from "@elizaos/logger";
 import { useEffect } from "react";
 import { client } from "../../api/client";
+import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
 import { useAppSelector } from "../../state";
+import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
 import {
   initNotifications,
   seedDevNotificationsIfEmpty,
@@ -21,6 +23,9 @@ import {
   initPushRegistration,
   refreshPushRegistrationAuthority,
 } from "../../state/notifications/push-registration";
+import { goHome } from "../../state/shell-surface-store";
+
+const LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS = [250, 1_000] as const;
 
 /**
  * Boots data ingress independently of the paintable app shell. Startup, auth,
@@ -31,6 +36,46 @@ import {
 export function NotificationsDataBoot(): null {
   useEffect(() => {
     initNotifications();
+    // Capacitor retains a notification action only until the first listener is
+    // attached. This boot lives above AppContent's startup/auth early returns,
+    // so install the listener here: a tap that launches into LoginView must be
+    // retained by the canonical navigator instead of waiting for the signed-in
+    // shell (which may never mount during this process lifetime).
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryIndex = 0;
+
+    const registerTapRouting = async (): Promise<void> => {
+      try {
+        await initLocalNotificationTapRouting();
+      } catch (error: unknown) {
+        // error-policy:J1 native notification tap registration is a transport
+        // boundary; retry briefly while this app-lifetime owner remains mounted.
+        if (cancelled) return;
+        const retryDelay = LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS[retryIndex];
+        if (retryDelay === undefined) {
+          logger.error(
+            { src: "local-notification-tap", error },
+            "[local-notification-tap] exhausted native tap routing retries",
+          );
+          return;
+        }
+        retryIndex += 1;
+        logger.warn(
+          { src: "local-notification-tap", error, retryDelay },
+          "[local-notification-tap] retrying native tap routing",
+        );
+        retryTimer = setTimeout(() => {
+          void registerTapRouting();
+        }, retryDelay);
+      }
+    };
+
+    void registerTapRouting();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, []);
   return null;
 }
@@ -72,13 +117,18 @@ export function NotificationsShellBoot(): null {
     };
   }, []);
 
-  // Route every "open notifications" entry point to the combined home/apps
-  // dashboard, where the notification widget is always inline.
   useEffect(() => {
     const onOpen = () => {
+      goHome();
       setTab("chat");
     };
     window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    // A fallback AppDelegate URL can be replayed by getLaunchUrl() after the
+    // root mounts but before this effect commits. The dispatcher retained that
+    // request, so complete its navigation instead of waiting for another tap.
+    if (peekNotificationCenterOpenRequest() !== null) {
+      onOpen();
+    }
     return () =>
       window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
   }, [setTab]);

@@ -17,7 +17,11 @@ import type {
   Logger,
   Memory,
 } from "@elizaos/core";
-import { requireConfirmation } from "@elizaos/core";
+import {
+  requireConfirmation,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { bindProjectCloudApp } from "./project-binding.js";
 import {
@@ -777,10 +781,11 @@ function normalizeArgs(raw: unknown): ParentAgentBrokerArgs {
   };
 }
 
-function truncate(value: string, maxChars: number): string {
-  const compact = value.replace(/\s+/g, " ").trim();
+export function truncate(value: string, maxChars: number): string {
+  const compact = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
   if (compact.length <= maxChars) return compact;
-  return `${compact.slice(0, maxChars - 3).trimEnd()}...`;
+  const budget = Math.max(0, maxChars - 3);
+  return `${truncateWellFormed(compact, budget).trimEnd()}...`;
 }
 
 function actionDescription(action: {

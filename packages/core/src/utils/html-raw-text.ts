@@ -2,9 +2,12 @@
  * Removes HTML script and style elements with a bounded tokenizer pass.
  *
  * An appropriate HTML raw-text end-tag name transitions only on ASCII
- * whitespace, a slash, or `>`. Regex-based filters routinely accept broader
- * punctuation lookalikes or miss parser-accepted trailing material, exposing
- * raw script/style bodies as visible text after a later generic tag strip.
+ * whitespace, a slash, `>`, or end of input. Regex-based filters routinely
+ * accept broader punctuation lookalikes or miss parser-accepted trailing
+ * material, exposing raw script/style bodies as visible text after a later
+ * generic tag strip. End of input stays a delimiter: the WHATWG tokenizer's
+ * eof-in-tag path emits nothing for a buffered `<script` at EOF, so treating
+ * EOF as a delimiter (and stripping through end of input) matches browsers.
  */
 
 const RAW_TEXT_TAGS = ["script", "style"] as const;
@@ -35,9 +38,10 @@ function matchesAsciiCaseInsensitive(
 
 function isTagNameDelimiter(character: string | undefined): boolean {
 	return (
+		character === undefined ||
 		character === ">" ||
 		character === "/" ||
-		(character !== undefined && isAsciiWhitespace(character))
+		isAsciiWhitespace(character)
 	);
 }
 

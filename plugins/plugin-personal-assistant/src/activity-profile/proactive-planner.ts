@@ -6,6 +6,7 @@
  * ProactiveAction[] describing what to send, when, and where.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import { resolveEffectiveDayKey, wasActiveToday } from "./analyzer.js";
 import type {
@@ -817,14 +818,14 @@ function formatInboxHighlight(highlight: InboxDigestHighlightSlim): string {
 }
 
 function summarizeSnippet(value: string): string | null {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length === 0) {
     return null;
   }
-  if (trimmed.length <= 72) {
-    return trimmed;
+  if (wellFormed.length <= 72) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, 69).trimEnd()}...`;
+  return `${truncateWellFormed(wellFormed, 69).trimEnd()}...`;
 }
 
 function isBusyDay(

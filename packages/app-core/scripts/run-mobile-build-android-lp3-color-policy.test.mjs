@@ -238,9 +238,8 @@ describe("LP3 direct Cloud build flag", () => {
 
     expect(direct.components).toContain("ElizaAgentService");
     expect(direct.permissions).toContain("MANAGE_APP_OPS_MODES");
-    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).not.toContain(
-      "POST_NOTIFICATIONS",
-    );
+    expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain("POST_NOTIFICATIONS");
+    expect(direct.permissions).not.toContain("POST_NOTIFICATIONS");
     expect(direct.javaFiles).toContain("ElizaAgentService.java");
   });
 
@@ -422,5 +421,4 @@ describe("LP3 direct Cloud build flag", () => {
     expect(readme).toContain("channel-level block");
     expect(readme).toContain("permission-prompt loop");
   });
-
 });

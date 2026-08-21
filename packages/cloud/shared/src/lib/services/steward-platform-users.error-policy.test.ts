@@ -1,6 +1,8 @@
-// Exercises Steward platform user provisioning failure boundaries with deterministic cloud-shared fixtures.
+/** Exercises Steward platform user failure boundaries with deterministic service fixtures. */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  deleteStewardPlatformUser,
   isStewardPlatformConfigured,
   provisionStewardPlatformUser,
 } from "./steward-platform-users";
@@ -68,5 +70,59 @@ describe("steward platform users error policy", () => {
         }),
       }),
     );
+  });
+
+  it("deletes the exact personal tenant before deleting the Steward identity", async () => {
+    process.env.STEWARD_API_URL = "https://steward.example";
+    process.env.STEWARD_PLATFORM_KEYS = "platform-key";
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      ) as typeof fetch;
+
+    await expect(deleteStewardPlatformUser("user-123")).resolves.toEqual({
+      userId: "user-123",
+    });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      "https://steward.example/platform/tenants/personal-user-123",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      2,
+      "https://steward.example/platform/users/user-123",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("fails closed without deleting the identity when personal tenant cleanup is blocked", async () => {
+    process.env.STEWARD_API_URL = "https://steward.example";
+    process.env.STEWARD_PLATFORM_KEYS = "platform-key";
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: false, error: "Tenant has retained provider state" }), {
+          status: 409,
+        }),
+    ) as typeof fetch;
+
+    await expect(deleteStewardPlatformUser("user-456")).rejects.toThrow(
+      "Tenant has retained provider state",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats already-removed tenant and identity as an idempotent purge", async () => {
+    process.env.STEWARD_API_URL = "https://steward.example";
+    process.env.STEWARD_PLATFORM_KEYS = "platform-key";
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(new Response(null, { status: 404 })) as typeof fetch;
+
+    await expect(deleteStewardPlatformUser("user-789")).resolves.toEqual({
+      userId: "user-789",
+    });
   });
 });

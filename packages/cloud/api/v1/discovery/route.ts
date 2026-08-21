@@ -20,6 +20,7 @@ import { charactersService } from "@/lib/services/characters/characters";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import { serializeLegacyMcpCreditPricing } from "./pricing";
 
 const serviceTypeSchema = z.enum(["agent", "mcp"]);
 type ServiceType = z.infer<typeof serviceTypeSchema>;
@@ -27,7 +28,13 @@ type ServiceSource = "cloud" | "local";
 
 interface ServicePricing {
   type: "free" | "credits" | "x402" | "subscription";
+  /** Present on priced rows; false when a stored price could not be read. */
+  priceAvailable?: boolean;
+  /** @deprecated Legacy MCP amount; credits rows use cent-like pricing points. */
   amount?: number;
+  /** Canonical dollar amount for USD-denominated prices. */
+  amountUsd?: number;
+  amountUnit?: "legacy_mcp_pricing_points" | "USD";
   currency?: string;
   description?: string;
 }
@@ -587,14 +594,14 @@ async function fetchLocalMcps(
         mcp.pricing_type === "free"
           ? { type: "free", description: "Free to use" }
           : mcp.pricing_type === "credits"
-            ? {
-                type: "credits",
-                amount: Number(mcp.credits_per_request),
-                description: `${mcp.credits_per_request} credits per request`,
-              }
+            ? serializeLegacyMcpCreditPricing(mcp.credits_per_request, {
+                mcpId: mcp.id,
+              })
             : {
                 type: "x402",
                 amount: Number(mcp.x402_price_usd),
+                amountUsd: Number(mcp.x402_price_usd),
+                amountUnit: "USD",
                 currency: "USD",
                 description: `$${mcp.x402_price_usd} per request`,
               },

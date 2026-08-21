@@ -527,7 +527,7 @@ export async function performSsoExchange(
       return { ok: false, error: "Exchange returned no usable session" };
     }
 
-    writeStoredStewardToken(token);
+    await writeStoredStewardToken(token);
 
     // Same call the login flow makes: sets the HttpOnly steward cookies + the
     // authed marker for this environment. It stays best-effort for an ordinary
@@ -626,6 +626,6 @@ export async function signOutFromSsoBridgedHost(
     : // error-policy:J6 best-effort server teardown — the local marker is
       // already set and the local scrub below always runs.
       Promise.resolve(undefined);
-  clearStaleStewardSession();
+  await clearStaleStewardSession();
   await serverLogout;
 }

@@ -96,6 +96,8 @@ export interface WorkflowStepExecuteArgs {
   readonly definition: LifeOpsWorkflowDefinition;
   readonly startedAt: string;
   readonly confirmBrowserActions: boolean;
+  /** Trigger ancestry inherited by native workflows dispatched from this run. */
+  readonly triggerChainDepth: number;
   readonly request: Record<string, unknown>;
   readonly outputs: Record<string, unknown>;
   readonly previousStepValue: unknown;

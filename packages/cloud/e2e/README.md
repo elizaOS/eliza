@@ -58,6 +58,7 @@ secondary identities (attacker / other-user / end-user).
 | ----------------------------- | ----------------------------------------------------------------------------- |
 | `tests/siwe-login.spec.ts`    | real nonce → sign → verify mints a usable key; forged sig 401s; re-login is idempotent; fixture identity is real-login-minted |
 | `tests/dashboard.spec.ts`     | seeded user reaches dashboard with test-auth session, localStorage writable   |
+| `tests/account-deletion.spec.ts` | authenticated public deletion page → explicit confirmation → Steward deactivation + Cloud user/org/API-key deactivation, with unrelated-tenant preservation |
 | `tests/provision.spec.ts`     | create agent → cron tick → sandbox `running`, control-plane sees the sandbox  |
 | `tests/bluebubbles-gateway.spec.ts` | real local registration/auth/DB/router plus the relay subprocess onboards an unknown sender, completes an authenticated phone link, routes the next text to that user's agent, sends its reply through BlueBubbles, reports connected status, and rejects the revoked credential |
 | `tests/deprovision.spec.ts`   | DELETE agent → async `agent_delete` job → polls to `deleted` / 404            |
@@ -79,6 +80,11 @@ cleanup semantics: [docs/domain-purchase-live.md](docs/domain-purchase-live.md).
 
 - The mocks live at `packages/cloud/test-mocks`; the harness imports from
   `@elizaos/cloud-test-mocks/hetzner`.
+- `src/fixtures/mock-llm.ts` can take the same strict core fixture registry used
+  by scenarios. Its loopback OpenAI adapter supports JSON and SSE completions,
+  tool calls, usage, latency, declared provider errors, timeouts, and client
+  cancellation. Fixed/echo replies remain compatibility fixtures for existing
+  journeys; new tests should pass named fixtures and assert their consumption.
 - The memory sandbox provider is guarded by `NODE_ENV=test` or `CLOUD_E2E=1`;
   it is not selectable in production.
 - The cloud-api adapter avoids Wrangler in CI while still exercising the real

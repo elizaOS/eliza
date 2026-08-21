@@ -313,6 +313,24 @@ export interface ScheduledTask {
  */
 export type ScheduledTaskInput = Omit<ScheduledTask, "taskId" | "state">;
 
+/**
+ * Keys `apply("edit")` refuses outright, checked with `Object.hasOwn` before
+ * anything merges onto the task.
+ *
+ * `taskId` and `state` are server-managed — the verbs own the state machine.
+ * `__proto__` is refused for a different reason: `applyEdit` merges the patch
+ * with `Object.assign`, which writes through `[[Set]]`, so a
+ * `JSON.parse`-produced own `"__proto__"` key reaches `Object.prototype`'s
+ * setter and re-parents the task instead of adding a field. Zod's `.strict()`
+ * does not report that key as unrecognized, so this explicit list is what makes
+ * the refusal visible to the caller rather than a silent drop.
+ */
+export const SCHEDULED_TASK_EDIT_READONLY_KEYS = [
+  "taskId",
+  "state",
+  "__proto__",
+] as const;
+
 export type ScheduledTaskRef = string | ScheduledTask;
 export type EventFilter = unknown; // typed via EventKindRegistry per kind
 export type GateParams = unknown; // typed via TaskGateRegistry per kind

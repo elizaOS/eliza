@@ -559,7 +559,11 @@ export function startLifeOpsActivitySignalCapture(
   };
 
   const mobileSignals =
-    isNativeCapacitorRuntime() && !isElectrobunRuntime() ? MobileSignals : null;
+    isNativeCapacitorRuntime() &&
+    !isElectrobunRuntime() &&
+    Capacitor.isPluginAvailable("MobileSignals")
+      ? MobileSignals
+      : null;
   let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
   let mobileSignalsStarted = false;
   let mobileSignalsStarting = false;

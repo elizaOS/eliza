@@ -6,6 +6,7 @@
  */
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { LifeOpsCommitmentLedgerRecord } from "../commitments/index.js";
 import {
   asObject,
@@ -871,7 +872,7 @@ export class HouseholdCoordinationRepository {
       this.runtime,
       `UPDATE app_lifeops.life_household_grant_expiry_warning_claims
           SET cancellation_attempt_count = cancellation_attempt_count + 1,
-              cancellation_last_error = ${sqlQuote(input.error.slice(0, 512))},
+              cancellation_last_error = ${sqlQuote(truncateWellFormed(toWellFormedUnicode(input.error), 512))},
               updated_at = ${sqlQuote(input.failedAt)}
         WHERE agent_id = ${sqlQuote(this.agentId)}
           AND grant_id = ${sqlQuote(input.grantId)}

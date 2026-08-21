@@ -47,6 +47,7 @@ export interface ExtractedTaskParams {
     | "daily"
     | "weekly"
     | "times_per_day"
+    | "count_per_day"
     | "interval"
     | null;
   windows: string[] | null;
@@ -55,6 +56,16 @@ export interface ExtractedTaskParams {
   timeZone: string | null;
   everyMinutes: number | null;
   timesPerDay: number | null;
+  /** Count that completes one flexible daily quota. */
+  quotaTargetCount: number | null;
+  /** Singular unit for one increment (for example "set" or "glass"). */
+  quotaUnit: string | null;
+  /** Work represented by one increment (for example "25 pushups"). */
+  perOccurrenceWork: string | null;
+  /** Whether the owner explicitly asked for adaptive progress check-ins. */
+  checkInRequested: boolean | null;
+  /** Named windows in which quota check-ins may be delivered. */
+  checkInWindows: string[] | null;
   priority: number | null;
   durationMinutes: number | null;
   /**
@@ -91,6 +102,7 @@ const VALID_CADENCE_KINDS = new Set([
   "daily",
   "weekly",
   "times_per_day",
+  "count_per_day",
   "interval",
 ]);
 const VALID_REQUEST_KINDS = new Set(["alarm", "reminder"]);
@@ -152,6 +164,11 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   timeZone: null,
   everyMinutes: null,
   timesPerDay: null,
+  quotaTargetCount: null,
+  quotaUnit: null,
+  perOccurrenceWork: null,
+  checkInRequested: null,
+  checkInWindows: null,
   priority: null,
   durationMinutes: null,
   dueDate: null,
@@ -215,12 +232,13 @@ function buildExtractionPrompt(
     '- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise null',
     "- title: short name for the task (2-5 words)",
     "- description: brief description if the user provided context",
-    '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "interval"',
+    '- cadenceKind: one of "unscheduled", "once", "daily", "weekly", "times_per_day", "count_per_day", "interval"',
     UNDATED_TODO_EXTRACTION_GUIDANCE,
     '  - "once" — a specific dated and/or timed event that happens a single time (e.g. "april 17 at 8pm", "tomorrow at 9", "set an alarm for 7am")',
     '  - "daily" — happens every day, typically with one time or window (e.g. "every morning", "every night")',
     '  - "weekly" — happens on specific weekdays (e.g. "every Sunday", "Mon/Wed/Fri")',
-    '  - "times_per_day" — happens multiple times on the SAME recurring day, with multiple times or windows (e.g. "morning and night", "three times a day")',
+    '  - "times_per_day" — fixed wall-clock occurrences on the same day, only when the owner names explicit times (e.g. "at 8am and 8pm")',
+    '  - "count_per_day" — a flexible count quota with no invented clock slots (e.g. "25 pushups, 3 sets a day, whenever")',
     '  - "interval" — happens every N minutes/hours (e.g. "every 2 hours")',
     '  If the request names a specific calendar date OR a specific wall-clock time without a recurrence word, pick "once".',
     '  A deadline phrase IS a dated "once" task: "by the 20th" / "before Friday" / "due on the 28th" means cadenceKind="once" with the deadline as its date (dueDate for a named date, dueWeekday for a weekday). Never use mode="respond" to ask for an exact time on a deadline ask — the owner already gave the date that matters.',
@@ -231,6 +249,11 @@ function buildExtractionPrompt(
     '- timeZone: IANA timezone like "America/Denver" when the user explicitly gives one',
     '- everyMinutes: interval in minutes for recurring tasks (e.g., 120 for "every 2 hours")',
     '- timesPerDay: number of times per day if mentioned (e.g., 4 for "four times a day")',
+    '- quotaTargetCount: for count_per_day, the number of increments that completes the day (3 for "3 sets")',
+    '- quotaUnit: for count_per_day, the singular increment unit ("set" for "3 sets")',
+    '- perOccurrenceWork: for count_per_day, the work in one increment ("25 pushups" for "25 pushups, 3 sets")',
+    "- checkInRequested: true only when the owner asks to be checked in with, nudged, or reminded about remaining quota progress; false when they explicitly decline; otherwise null",
+    "- checkInWindows: named windows (morning/afternoon/evening/night) the owner allows for those check-ins, otherwise null",
     "- priority: 1-5 (1=critical, 2=high, 3=medium, 4-5=low) based on urgency/importance language",
     "- durationMinutes: how long the activity takes if mentioned",
     '- dueDate: for "once" tasks, the local calendar date "YYYY-MM-DD" when the user names a specific calendar date (e.g. "april 17" — infer the next future occurrence from the current date above)',
@@ -240,7 +263,8 @@ function buildExtractionPrompt(
     "  Fill at most ONE of dueDate/dueInDays/dueWeekday/dueInMinutes. Leave all four null for recurring tasks, and when the request has a time expression you cannot resolve into any of these forms.",
     '- multiStep: true when the user asks to be reminded about MORE THAN ONE distinct task or milestone in this request (e.g. "set reminders for outline, rough draft, and final proofread"), false when it is a single task ("remind me to pay the electric bill on the 28th")',
     "",
-    'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
+    'Example quota: {"mode":"create","response":null,"requestKind":null,"title":"Pushups","description":null,"cadenceKind":"count_per_day","windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":3,"quotaTargetCount":3,"quotaUnit":"set","perOccurrenceWork":"25 pushups","checkInRequested":true,"checkInWindows":["afternoon","evening"],"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
+    'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"quotaTargetCount":null,"quotaUnit":null,"perOccurrenceWork":null,"checkInRequested":null,"checkInWindows":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
     'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
     'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
     "",
@@ -392,6 +416,14 @@ function buildTaskCreatePlan(
     timeZone: validateTimeZone(parsed.timeZone),
     everyMinutes: validatePositiveNumber(parsed.everyMinutes),
     timesPerDay: validatePositiveNumber(parsed.timesPerDay),
+    quotaTargetCount: validatePositiveNumber(parsed.quotaTargetCount),
+    quotaUnit: validateTitle(parsed.quotaUnit),
+    perOccurrenceWork: validateTitle(parsed.perOccurrenceWork),
+    checkInRequested:
+      typeof parsed.checkInRequested === "boolean"
+        ? parsed.checkInRequested
+        : null,
+    checkInWindows: validateWindows(parsed.checkInWindows),
     priority: validatePriority(parsed.priority),
     durationMinutes: validatePositiveNumber(parsed.durationMinutes),
     dueDate: validateDueDate(parsed.dueDate),
@@ -412,7 +444,7 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
     "Return ONLY valid JSON with these exact fields:",
-    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
+    "mode, response, requestKind, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",

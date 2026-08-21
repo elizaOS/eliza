@@ -8,6 +8,8 @@
 
 export * from "./access-context";
 export * from "./access-control/artifact-disclosure";
+export * from "./access-control/audience-disclosure";
+export * from "./access-control/audience-egress";
 export * from "./access-control/filter";
 export * from "./access-control/provenance-envelope";
 // Export all core modules
@@ -202,6 +204,8 @@ export * from "./generated/action-docs";
 export * from "./generated/spec-helpers";
 export * from "./identity-clusters";
 export * from "./inference-timing";
+// Export the managed-provider adapter SDK (connection, transport, health)
+export * from "./integrations/managed-provider";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 // Export markdown utilities

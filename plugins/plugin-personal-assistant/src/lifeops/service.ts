@@ -7,18 +7,24 @@
  * still exported from the `service-mixin-*.ts` files that consumers import.
  */
 
-export { LifeOpsServiceError } from "./service-types.js";
+export {
+  LifeOpsServiceError,
+  LifeOpsWorkflowRunFailedUncompensatedError,
+} from "./service-types.js";
 
 import type {
-  BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionPreflightRequest,
+  BrowserBridgeCompanionPreflightResponse,
   BrowserBridgeCompanionRevokeResponse,
+  BrowserBridgeCompanionSessionBeginRequest,
+  BrowserBridgeCompanionSessionProgressRequest,
   BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncRequest,
   BrowserBridgeCompanionSyncResponse,
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
   CreateBrowserBridgeCompanionPairingRequest,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
@@ -156,6 +162,8 @@ import type {
   LifeOpsXDm,
   LifeOpsXPostResponse,
   ManageLifeOpsGmailMessagesRequest,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
@@ -1452,9 +1460,21 @@ export class LifeOpsService extends LifeOpsServiceBase {
   syncBrowserCompanion(
     companionId: string,
     pairingToken: string,
-    request: SyncBrowserBridgeStateRequest,
+    request: BrowserBridgeCompanionSyncRequest,
   ): Promise<BrowserBridgeCompanionSyncResponse> {
     return this.browserDomain.syncBrowserCompanion(
+      companionId,
+      pairingToken,
+      request,
+    );
+  }
+
+  preflightBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: BrowserBridgeCompanionPreflightRequest,
+  ): Promise<BrowserBridgeCompanionPreflightResponse> {
+    return this.browserDomain.preflightBrowserCompanion(
       companionId,
       pairingToken,
       request,
@@ -1500,9 +1520,23 @@ export class LifeOpsService extends LifeOpsServiceBase {
     companionId: string,
     pairingToken: string,
     sessionId: string,
-    request: UpdateLifeOpsBrowserSessionProgressRequest,
+    request: BrowserBridgeCompanionSessionProgressRequest,
   ): Promise<LifeOpsBrowserSession> {
     return this.browserDomain.updateBrowserSessionProgressFromCompanion(
+      companionId,
+      pairingToken,
+      sessionId,
+      request,
+    );
+  }
+
+  beginBrowserSessionActionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: BrowserBridgeCompanionSessionBeginRequest,
+  ): Promise<LifeOpsBrowserSession> {
+    return this.browserDomain.beginBrowserSessionActionFromCompanion(
       companionId,
       pairingToken,
       sessionId,
@@ -1522,13 +1556,6 @@ export class LifeOpsService extends LifeOpsServiceBase {
       sessionId,
       request,
     );
-  }
-
-  autoPairBrowserCompanion(
-    request: CreateBrowserBridgeCompanionAutoPairRequest,
-    apiBaseUrl: string,
-  ): Promise<BrowserBridgeCompanionAutoPairResponse> {
-    return this.browserDomain.autoPairBrowserCompanion(request, apiBaseUrl);
   }
 
   revokeBrowserCompanion(
@@ -1671,6 +1698,18 @@ export class LifeOpsService extends LifeOpsServiceBase {
     );
   }
 
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult> {
+    return this.definitionsDomain.recordOccurrenceProgress(
+      occurrenceId,
+      request,
+      now,
+    );
+  }
+
   skipOccurrence(
     occurrenceId: string,
     now?: Date,
@@ -1795,7 +1834,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
-      { subjectType: "owner", limit: 200 },
+      {
+        subjectType: "owner",
+        definitionScopes: [
+          {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityId(),
+          },
+        ],
+        limit: 200,
+      },
     );
     return views
       .filter(

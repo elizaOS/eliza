@@ -9,6 +9,10 @@
  * to replace it wholesale.
  */
 import { v4 } from "uuid";
+import {
+	parseEgressDisclosureSubject,
+	resolveEgressAudienceAdmission,
+} from "../access-control/audience-egress";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
@@ -207,6 +211,7 @@ import {
 	type RecordedStage,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { withSemanticStageFanOut } from "../runtime/trajectory-semantic-stage-sink";
 import { TurnAbortedError } from "../runtime/turn-controller";
 import {
 	sanitizeUserVisibleModelOutput,
@@ -221,6 +226,7 @@ import {
 } from "../security/outbound-envelope-guard";
 import {
 	attestDeliveryAudienceFromCanonicalRoom,
+	getTrustedDeliveryAudience,
 	ownerExclusiveDisclosureWasUsed,
 	PRIVACY_DENIED_TEXT,
 	revalidateOwnerExclusiveDisclosure,
@@ -339,7 +345,7 @@ import {
 	extractFirstSentence,
 } from "../utils/text-splitting";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
-import { truncateWellFormed } from "../utils/well-formed";
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/well-formed";
 import { maybeHandleAnalysisActivation } from "./analysis-mode-handler";
 import { ChannelTopicsService } from "./channel-topics";
 import { runPostTurnEvaluators } from "./evaluator";
@@ -658,6 +664,29 @@ function parseInlinePlannerParams(
 	}
 }
 
+function splitInlinePlannerParams(
+	value: string,
+): { name: string; body: string } | null {
+	const lower = value.toLowerCase();
+	let open = lower.indexOf("<params");
+	while (open >= 0) {
+		const boundary = lower[open + "<params".length];
+		if (!boundary || !/[a-z0-9_]/i.test(boundary)) break;
+		open = lower.indexOf("<params", open + "<params".length);
+	}
+	if (open < 0) return null;
+	const bodyStart = value.indexOf(">", open + "<params".length);
+	if (bodyStart < 0) return null;
+	const close = lower.indexOf("</params>", bodyStart + 1);
+	if (close < 0 || value.slice(close + "</params>".length).trim() !== "") {
+		return null;
+	}
+	return {
+		name: value.slice(0, open).trimEnd(),
+		body: value.slice(bodyStart + 1, close),
+	};
+}
+
 function extractInlinePlannerActionParams(value: string): {
 	name: string;
 	params?: Record<string, unknown>;
@@ -675,13 +704,11 @@ function extractInlinePlannerActionParams(value: string): {
 		}
 	}
 
-	const inlineParamsMatch = value.match(
-		/^([\s\S]*?)\s*<params\b[^>]*>([\s\S]*?)<\/params>\s*$/i,
-	);
-	if (inlineParamsMatch) {
+	const inlineParams = splitInlinePlannerParams(value);
+	if (inlineParams) {
 		return {
-			name: unwrapPlannerIdentifier(inlineParamsMatch[1]),
-			params: parseInlinePlannerParams(inlineParamsMatch[2]) ?? undefined,
+			name: unwrapPlannerIdentifier(inlineParams.name),
+			params: parseInlinePlannerParams(inlineParams.body) ?? undefined,
 		};
 	}
 
@@ -1887,9 +1914,9 @@ export function subAgentCompletionRelayBody(
 	const body = trimmed.slice(headerEnd + 1).trim();
 	if (!body) return undefined;
 	const maxLength = 1500;
-	return body.length > maxLength
-		? `${body.slice(0, maxLength - 1).trimEnd()}…`
-		: body;
+	const wellFormed = toWellFormedUnicode(body);
+	if (wellFormed.length <= maxLength) return wellFormed;
+	return `${truncateWellFormed(wellFormed, maxLength - 1).trimEnd()}…`;
 }
 
 /**
@@ -2081,10 +2108,126 @@ export function resolveZeroDeliveryRecovery(args: {
 	return { recover, text, source, actionSuccessCount, actionFailureCount };
 }
 
-/** Zerollama/OpenAI-style async media endpoints should be delivered as attachments, not echoed as chat copy. */
-const MEDIA_CONTENT_URL_RE =
-	/<?\s*https?:\/\/[^\s<>]+\/v1\/(?:videos|images|audio)\/[^\s<>/]+\/content\s*>?/gi;
+function mediaContentUrlRegions(
+	text: string,
+): Array<{ start: number; end: number }> {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lowerText = text.toLowerCase();
+	let cursor = 0;
+	while (cursor < text.length) {
+		const http = lowerText.indexOf("http", cursor);
+		if (http < 0) break;
+		let end = http;
+		while (
+			end < text.length &&
+			!/\s/u.test(text[end]) &&
+			text[end] !== "<" &&
+			text[end] !== ">"
+		)
+			end += 1;
+		const lower = lowerText.slice(http, end);
+		const scheme = lower.startsWith("https://")
+			? 8
+			: lower.startsWith("http://")
+				? 7
+				: 0;
+		if (scheme) {
+			// The endpoint may sit mid-token (trailing punctuation, query strings)
+			// and after any of several `/v1/` segments; the region ends right after
+			// `/content` so surrounding punctuation survives for later cleanup.
+			let matchEnd = -1;
+			let marker = lower.indexOf("/v1/", scheme);
+			while (marker >= 0) {
+				const kindEnd = lower.indexOf("/", marker + 4);
+				if (kindEnd >= 0) {
+					const kind = lower.slice(marker + 4, kindEnd);
+					const idEnd = lower.indexOf("/", kindEnd + 1);
+					if (
+						["videos", "images", "audio"].includes(kind) &&
+						idEnd > kindEnd + 1 &&
+						lower.startsWith("content", idEnd + 1)
+					) {
+						matchEnd = idEnd + 1 + "content".length;
+					}
+				}
+				marker = lower.indexOf("/v1/", marker + 4);
+			}
+			if (matchEnd > 0) {
+				regions.push({ start: http, end: http + matchEnd });
+			}
+		}
+		cursor = Math.max(end, http + 1);
+	}
+	return regions;
+}
 
+function removeRegions(
+	text: string,
+	regions: Array<{ start: number; end: number }>,
+): string {
+	if (regions.length === 0) return text;
+	const chunks: string[] = [];
+	let cursor = 0;
+	for (const region of regions) {
+		let start = region.start;
+		let end = region.end;
+		while (start > cursor && /\s/u.test(text[start - 1])) start -= 1;
+		if (text[start - 1] === "<") start -= 1;
+		while (end < text.length && /\s/u.test(text[end])) end += 1;
+		if (text[end] === ">") end += 1;
+		chunks.push(text.slice(cursor, start));
+		cursor = end;
+	}
+	chunks.push(text.slice(cursor));
+	return chunks.join("");
+}
+
+function removeDeliveredUrl(text: string, url: string): string {
+	const regions: Array<{ start: number; end: number }> = [];
+	const lower = text.toLowerCase();
+	const needle = url.toLowerCase();
+	let cursor = 0;
+	while (needle && cursor < text.length) {
+		const start = lower.indexOf(needle, cursor);
+		if (start < 0) break;
+		regions.push({ start, end: start + url.length });
+		cursor = start + url.length;
+	}
+	return removeRegions(text, regions);
+}
+
+const MEDIA_DELIVERY_PREAMBLES = [
+	...["here", "here's", "here is", "here you go"].flatMap((base) => [
+		`${base} it is`,
+		base,
+	]),
+	"done.",
+	...["video", "video'", "videos", "video's"].flatMap((subject) =>
+		["up", "live", "ready"].map((state) => `done ${subject} ${state}`),
+	),
+	"done",
+	"your video is ready",
+	"your video",
+].sort((left, right) => right.length - left.length);
+
+function stripMediaDeliveryPreamble(text: string): string {
+	const lower = text.toLowerCase();
+	for (const prefix of MEDIA_DELIVERY_PREAMBLES) {
+		if (!lower.startsWith(prefix)) continue;
+		let cursor = prefix.length;
+		if (
+			cursor < text.length &&
+			!/\s/u.test(text[cursor]) &&
+			text[cursor] !== ":"
+		)
+			continue;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		if (text[cursor] === ":") cursor += 1;
+		while (cursor < text.length && /\s/u.test(text[cursor])) cursor += 1;
+		return text.slice(cursor);
+	}
+	return text;
+}
 function collectMediaDeliveryUrls(actionResults: ActionResult[]): string[] {
 	const urls = new Set<string>();
 	for (const result of actionResults) {
@@ -2122,23 +2265,17 @@ export function sanitizeReplyTextAfterMediaDelivery(
 	// `\s{2,}` matches `\n` + indentation (observed: every HumanEval
 	// completion through the eliza harness lost its newlines and failed with
 	// SyntaxError).
-	const hasEmbeddedMediaUrl = new RegExp(MEDIA_CONTENT_URL_RE.source, "i").test(
-		cleaned,
-	);
+	const embeddedRegions = mediaContentUrlRegions(cleaned);
+	const hasEmbeddedMediaUrl = embeddedRegions.length > 0;
 	if (deliveredUrls.length === 0 && !hasEmbeddedMediaUrl) {
 		return cleaned;
 	}
 
 	for (const url of deliveredUrls) {
-		const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		cleaned = cleaned.replace(new RegExp(`<?\\s*${escaped}\\s*>?`, "gi"), "");
+		cleaned = removeDeliveredUrl(cleaned, url);
 	}
-	cleaned = cleaned.replace(MEDIA_CONTENT_URL_RE, "");
+	cleaned = removeRegions(cleaned, mediaContentUrlRegions(cleaned));
 	cleaned = cleaned
-		.replace(
-			/^\s*(?:here(?:'s| is| you go)?(?:\s+it\s+is)?|done(?:\.|\s+video'?s?\s+(?:up|live|ready))?|your video(?: is ready)?)\s*:?\s*/i,
-			"",
-		)
 		.replace(/:\s*$/g, "")
 		.replace(/<\s*>/g, "")
 		.replace(/\(\s*\)/g, "")
@@ -2146,6 +2283,7 @@ export function sanitizeReplyTextAfterMediaDelivery(
 		// newlines are reply formatting and must survive.
 		.replace(/[^\S\n]{2,}/g, " ")
 		.trim();
+	cleaned = stripMediaDeliveryPreamble(cleaned).trim();
 
 	if (
 		/^(?:here|done|your video\b|it is|video'?s?\s+(?:up|live|ready))[^.?!]*:?\s*$/i.test(
@@ -2303,11 +2441,16 @@ function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
-function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+export function cleanPriorDialogueSpeakerName(
+	value: unknown,
+): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	const wellFormed = toWellFormedUnicode(normalized);
+	return wellFormed.length > 80
+		? `${truncateWellFormed(wellFormed, 77)}...`
+		: wellFormed;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
@@ -5106,21 +5249,218 @@ export async function renderMessageHandlerStablePrefix(
 		.join("\n\n");
 }
 
-function canonicalJsonValue(value: unknown): string {
+/**
+ * Budget for the Stage-1 duplicated-stream canonicalizer. The values walked
+ * here are `JSON.parse` products of planner output — `error-policy:J3 planner
+ * output is untrusted model input` — so the walk is bounded the way
+ * `database/connector-json.ts` bounds connector JSON: a depth cap, a node
+ * budget charged BEFORE any per-child allocation, an output-size budget, and a
+ * path-local cycle guard that still accepts an honest DAG.
+ *
+ * Overflow is a typed failure, never a truncated canonical form. A lossy
+ * normalizer (`services/trajectory-json.ts` replaces an over-depth branch with
+ * `"[MaxDepth]"`) cannot back this comparison: two DIFFERENT over-budget
+ * fragments would canonicalize to the same string and the equality check below
+ * would accept a stream the model never actually repeated.
+ */
+const MAX_TOOL_ARGUMENT_CANONICAL_DEPTH = 32;
+const MAX_TOOL_ARGUMENT_CANONICAL_NODES = 20_000;
+const MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS = 4 * 1024 * 1024;
+const TOOL_ARGUMENT_CANONICAL_UNBOUNDED = "TOOL_ARGUMENT_CANONICAL_UNBOUNDED";
+
+type CanonicalJsonOverflowReason =
+	| "accessor"
+	| "chars"
+	| "cycle"
+	| "depth"
+	| "nodes"
+	| "reflection";
+
+type CanonicalJsonState = {
+	nodes: number;
+	chars: number;
+	readonly visiting: WeakSet<object>;
+};
+
+function createCanonicalJsonState(): CanonicalJsonState {
+	return { nodes: 0, chars: 0, visiting: new WeakSet<object>() };
+}
+
+function failCanonicalJsonUnbounded(
+	reason: CanonicalJsonOverflowReason,
+	context: Record<string, unknown> = {},
+	cause?: unknown,
+): never {
+	throw new ElizaError(`planner tool arguments are unbounded (${reason})`, {
+		code: TOOL_ARGUMENT_CANONICAL_UNBOUNDED,
+		severity: "ephemeral",
+		context: {
+			reason,
+			maxDepth: MAX_TOOL_ARGUMENT_CANONICAL_DEPTH,
+			maxNodes: MAX_TOOL_ARGUMENT_CANONICAL_NODES,
+			maxOutputChars: MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS,
+			...context,
+		},
+		...(cause !== undefined ? { cause } : {}),
+	});
+}
+
+function isCanonicalJsonUnboundedError(error: unknown): boolean {
+	return (
+		error instanceof ElizaError &&
+		error.code === TOOL_ARGUMENT_CANONICAL_UNBOUNDED
+	);
+}
+
+function chargeCanonicalNodes(state: CanonicalJsonState, count: number): void {
+	state.nodes += count;
+	if (state.nodes > MAX_TOOL_ARGUMENT_CANONICAL_NODES) {
+		failCanonicalJsonUnbounded("nodes", { nodes: state.nodes });
+	}
+}
+
+function chargeCanonicalChars(state: CanonicalJsonState, count: number): void {
+	state.chars += count;
+	if (state.chars > MAX_TOOL_ARGUMENT_CANONICAL_OUTPUT_CHARS) {
+		failCanonicalJsonUnbounded("chars", { chars: state.chars });
+	}
+}
+
+function canonicalOwnDescriptor(
+	value: object,
+	key: PropertyKey,
+): PropertyDescriptor | undefined {
+	try {
+		return Object.getOwnPropertyDescriptor(value, key);
+	} catch (error) {
+		// error-policy:J2 a hostile or revoked Proxy can make
+		// getOwnPropertyDescriptor throw; rethrow as the typed unbounded
+		// failure with the original preserved as `cause`, so the caller sees
+		// one failure shape rather than a raw reflection error.
+		failCanonicalJsonUnbounded("reflection", { key: String(key) }, error);
+	}
+}
+
+/**
+ * Own enumerable string-keyed data properties, read through descriptors only —
+ * a getter is never invoked and a Proxy `get` trap never runs on untrusted
+ * input. A `JSON.parse` product carries only data properties, so this selects
+ * exactly the same keys `Object.entries` did for every value the live path
+ * accepts today.
+ */
+function canonicalOwnEntries(
+	value: object,
+	state: CanonicalJsonState,
+): Array<[string, unknown]> {
+	let keys: readonly PropertyKey[];
+	try {
+		keys = Reflect.ownKeys(value);
+	} catch (error) {
+		// error-policy:J2 same shape as the descriptor read above — a revoked
+		// Proxy makes Reflect.ownKeys throw, and it is rethrown as the typed
+		// unbounded failure with the original as `cause`.
+		failCanonicalJsonUnbounded("reflection", {}, error);
+	}
+	// Width is charged before the entry array is allocated.
+	chargeCanonicalNodes(state, keys.length);
+	const entries: Array<[string, unknown]> = [];
+	for (const key of keys) {
+		if (typeof key !== "string") continue;
+		const descriptor = canonicalOwnDescriptor(value, key);
+		if (!descriptor?.enumerable) continue;
+		if (!("value" in descriptor)) {
+			failCanonicalJsonUnbounded("accessor", { key });
+		}
+		entries.push([key, descriptor.value]);
+	}
+	return entries;
+}
+
+function canonicalArrayLength(
+	value: object,
+	state: CanonicalJsonState,
+): number {
+	const descriptor = canonicalOwnDescriptor(value, "length");
+	if (
+		!descriptor ||
+		!("value" in descriptor) ||
+		typeof descriptor.value !== "number" ||
+		!Number.isSafeInteger(descriptor.value) ||
+		descriptor.value < 0
+	) {
+		failCanonicalJsonUnbounded("reflection", { field: "length" });
+	}
+	// Width is charged before the element array is allocated.
+	chargeCanonicalNodes(state, descriptor.value);
+	return descriptor.value;
+}
+
+function canonicalJsonValue(
+	value: unknown,
+	state: CanonicalJsonState,
+	depth: number,
+): string {
+	chargeCanonicalNodes(state, 1);
 	if (Array.isArray(value)) {
-		return `[${value.map(canonicalJsonValue).join(",")}]`;
+		if (depth >= MAX_TOOL_ARGUMENT_CANONICAL_DEPTH) {
+			failCanonicalJsonUnbounded("depth", { depth });
+		}
+		// Path-local: a repeated sibling reference (an honest DAG) still
+		// canonicalizes; only a reference back into the current path is a cycle.
+		if (state.visiting.has(value)) {
+			failCanonicalJsonUnbounded("cycle", { depth });
+		}
+		const length = canonicalArrayLength(value, state);
+		chargeCanonicalChars(state, 2 + Math.max(0, length - 1));
+		state.visiting.add(value);
+		try {
+			const parts: string[] = [];
+			for (let index = 0; index < length; index += 1) {
+				const descriptor = canonicalOwnDescriptor(value, String(index));
+				if (!descriptor) {
+					// A hole: `Array.prototype.map` skipped it and `join` rendered it
+					// as the empty string. Preserved byte-for-byte.
+					parts.push("");
+					continue;
+				}
+				if (!("value" in descriptor)) {
+					failCanonicalJsonUnbounded("accessor", { index });
+				}
+				parts.push(canonicalJsonValue(descriptor.value, state, depth + 1));
+			}
+			return `[${parts.join(",")}]`;
+		} finally {
+			state.visiting.delete(value);
+		}
 	}
 	if (value && typeof value === "object") {
-		const entries = Object.entries(value as Record<string, unknown>).sort(
-			([left], [right]) => left.localeCompare(right),
-		);
-		return `{${entries
-			.map(
-				([key, entry]) => `${JSON.stringify(key)}:${canonicalJsonValue(entry)}`,
-			)
-			.join(",")}}`;
+		if (depth >= MAX_TOOL_ARGUMENT_CANONICAL_DEPTH) {
+			failCanonicalJsonUnbounded("depth", { depth });
+		}
+		if (state.visiting.has(value)) {
+			failCanonicalJsonUnbounded("cycle", { depth });
+		}
+		const entries = canonicalOwnEntries(value, state);
+		chargeCanonicalChars(state, 2 + Math.max(0, entries.length - 1));
+		entries.sort(([left], [right]) => left.localeCompare(right));
+		state.visiting.add(value);
+		try {
+			const parts: string[] = [];
+			for (const [key, entry] of entries) {
+				const encodedKey = JSON.stringify(key);
+				chargeCanonicalChars(state, encodedKey.length + 1);
+				parts.push(
+					`${encodedKey}:${canonicalJsonValue(entry, state, depth + 1)}`,
+				);
+			}
+			return `{${parts.join(",")}}`;
+		} finally {
+			state.visiting.delete(value);
+		}
 	}
-	return JSON.stringify(value) ?? "undefined";
+	const encoded = JSON.stringify(value) ?? "undefined";
+	chargeCanonicalChars(state, encoded.length);
+	return encoded;
 }
 
 function parseToolArgumentsString(
@@ -5167,8 +5507,27 @@ function parseToolArgumentsString(
 	}
 
 	const [first, ...rest] = parsedObjects as Record<string, unknown>[];
-	const canonical = canonicalJsonValue(first);
-	if (rest.some((entry) => canonicalJsonValue(entry) !== canonical)) {
+	try {
+		// A fresh budget per fragment: one fragment must never exhaust the budget
+		// of the next, or the comparison would depend on stream position.
+		const canonical = canonicalJsonValue(first, createCanonicalJsonState(), 0);
+		if (
+			rest.some(
+				(entry) =>
+					canonicalJsonValue(entry, createCanonicalJsonState(), 0) !==
+					canonical,
+			)
+		) {
+			return null;
+		}
+	} catch (error) {
+		if (!isCanonicalJsonUnboundedError(error)) throw error;
+		// error-policy:J3 an over-budget fragment is untrusted model input. The
+		// duplicated-stream recovery declines it through the documented `null`
+		// failure signal — Stage 1 then classifies the tool call as malformed and
+		// runs its recovery chain — instead of exhausting the stack inside
+		// `runV5MessageRuntimeStage1`, whose only catch rethrows to the message
+		// boundary and ends the turn.
 		return null;
 	}
 	return first;
@@ -6945,6 +7304,77 @@ export function __buildV5ExecutorContextForTests(
 	return buildV5ExecutorContext(args);
 }
 
+/**
+ * Providers whose output is a retrieval over the turn's query text, so their
+ * turn-cached result goes stale the moment an action introduces new textual
+ * evidence mid-turn (an ATTACHMENT page read, a WEB_FETCH body). Names, not
+ * references: the agent-side relevant-conversations provider registers by
+ * name and core never imports it.
+ */
+const EVIDENCE_SENSITIVE_PROVIDER_NAMES = [
+	"FACTS",
+	"relevant-conversations",
+] as const;
+
+/**
+ * Minimum characters of new action-result text that count as "new textual
+ * evidence". Filters out terse control results (REPLY echoes, IGNORE, status
+ * one-liners) so ordinary tool turns do not pay the re-retrieval cost.
+ */
+const EVIDENCE_INVALIDATION_MIN_CHARS = 200;
+
+function actionResultEvidenceTextLength(result: ActionResult): number {
+	let length = 0;
+	if (typeof result.text === "string") length += result.text.length;
+	if (typeof result.userFacingText === "string") {
+		length += result.userFacingText.length;
+	}
+	const content = (result.data as Record<string, unknown> | undefined)?.content;
+	if (typeof content === "string") length += content.length;
+	return length;
+}
+
+/**
+ * Within-turn freshness for retrieval providers (the c-node/Zcash gap): when
+ * an action settles carrying substantive new text, evict the FACTS and
+ * relevant-conversations entries from the turn's cached provider state so the
+ * NEXT composeState — planner recompose with maximum reuse, the REPLY
+ * action's compose, a continuation compose — re-runs retrieval with the new
+ * evidence tokens in scope instead of reusing the pre-action output
+ * (`provider-cache:FACTS cacheHit:true` was exactly how "ZCash" on a
+ * just-read page never reached fact recall in the same turn). Eviction only;
+ * nothing recomputes until a caller actually composes again, and the re-runs
+ * are ~tens of ms against multi-second model calls.
+ */
+function invalidateEvidenceSensitiveProviderCache(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	if (!message.id) return;
+	if (
+		actionResultEvidenceTextLength(result) < EVIDENCE_INVALIDATION_MIN_CHARS
+	) {
+		return;
+	}
+	const cached = runtime.stateCache?.get?.(message.id);
+	const providers = cached?.data?.providers as
+		| Record<string, unknown>
+		| undefined;
+	if (!providers || typeof providers !== "object") return;
+	for (const name of EVIDENCE_SENSITIVE_PROVIDER_NAMES) {
+		if (name in providers) delete providers[name];
+	}
+}
+
+export function __invalidateEvidenceSensitiveProviderCacheForTests(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: ActionResult,
+): void {
+	invalidateEvidenceSensitiveProviderCache(runtime, message, result);
+}
+
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
@@ -7036,6 +7466,11 @@ async function executeV5PlannedToolCall(
 		toolCall,
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
+	invalidateEvidenceSensitiveProviderCache(
+		args.runtime,
+		args.executorCtx.message,
+		rawActionResult,
+	);
 	const actionResult = projectActionResultForClipboard(
 		action,
 		rawActionResult,
@@ -7090,9 +7525,9 @@ interface SubPlannerSubStep {
 const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 
 function truncateSubStepText(text: string): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+	const wellFormed = toWellFormedUnicode(text.trim());
+	if (wellFormed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return wellFormed;
+	return `${truncateWellFormed(wellFormed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(
@@ -7782,19 +8217,25 @@ export async function runV5MessageRuntimeStage1(args: {
 	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
+	// Every stage emitted below also mirrors into the turn's database
+	// trajectory step (#17030) so the app viewer carries the same
+	// Stage-1/planner/tool/evaluation semantics as the file trajectory.
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
-		? createJsonFileTrajectoryRecorder({
-				logger: args.runtime.logger as {
-					warn?: (context: unknown, message?: string) => void;
-				},
-				reportError: args.runtime.reportError.bind(args.runtime),
-				// Final-persistence tool-diagnostic projection: the recorder always
-				// runs the shared tool-shape pattern pass; this adds the runtime's
-				// character-configured secret masking on top. Optional-bound because
-				// lightweight/test runtimes may not implement redactSecrets — the
-				// pattern pass must keep running for them.
-				redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
-			})
+		? withSemanticStageFanOut(
+				createJsonFileTrajectoryRecorder({
+					logger: args.runtime.logger as {
+						warn?: (context: unknown, message?: string) => void;
+					},
+					reportError: args.runtime.reportError.bind(args.runtime),
+					// Final-persistence tool-diagnostic projection: the recorder always
+					// runs the shared tool-shape pattern pass; this adds the runtime's
+					// character-configured secret masking on top. Optional-bound because
+					// lightweight/test runtimes may not implement redactSecrets — the
+					// pattern pass must keep running for them.
+					redactSecrets: args.runtime.redactSecrets?.bind(args.runtime),
+				}),
+				args.runtime,
+			)
 		: undefined;
 	const trajectoryId = recorder
 		? recorder.startTrajectory({
@@ -10450,6 +10891,7 @@ export async function persistInferenceTimingSummary(
 				duration: summary.totalMs ?? undefined,
 				metadata: {
 					label: summary.label,
+					traceId: summary.traceId,
 					modelProvider: summary.modelProvider,
 					timeToFirstTokenMs: summary.timeToFirstTokenMs,
 					timeToFirstVisibleMs: summary.timeToFirstVisibleMs,
@@ -11377,15 +11819,103 @@ function enforceEffectGroundedVisibleContent(
 }
 
 /**
+ * Withhold a response whose declared disclosure subject the attested delivery
+ * audience does not admit in FULL. Built from constants so nothing from the
+ * withheld payload survives; `privacyReason` carries `audience_admission` plus
+ * the min level the room earned, so the model-visible note and downstream
+ * tooling can tell an audience-admission withholding apart from the
+ * owner-exclusive revalidation denial.
+ */
+function audienceAdmissionWithheld(
+	runtime: IAgentRuntime,
+	message: Memory,
+	level: "redacted" | "none",
+	blockingCount: number,
+): Content {
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			messageId: message.id,
+			roomId: message.roomId,
+			admissionLevel: level,
+			blockingCount,
+		},
+		"Withheld scoped response the delivery audience does not admit in full",
+	);
+	return {
+		text: PRIVACY_DENIED_TEXT,
+		actions: ["PRIVACY_DENIED"],
+		data: {
+			privacyDenied: true,
+			privacyReason: `audience_admission:${level}`,
+		},
+	};
+}
+
+/**
+ * Enforce min-over-members audience admission at egress for a response that
+ * declares the disclosure subject it requires of its recipients
+ * (`content.data.disclosureSubject`). The attested delivery audience is joined
+ * with the subject through the pure policy core
+ * ({@link resolveEgressAudienceAdmission}); anything short of a FULL admission
+ * withholds the response. Fail-closed: a declared subject with NO attested
+ * audience earns nothing and is withheld, so a scoped reply cannot ship into an
+ * unverified room. A response with no declared subject is not narrowed here and
+ * falls through to the caller's other egress checks unchanged.
+ */
+function enforceAudienceAdmissionAtEgress(
+	runtime: IAgentRuntime,
+	message: Memory,
+	response: Content,
+): Content {
+	const data = isRecord(response.data) ? response.data : undefined;
+	if (!data || !("disclosureSubject" in data)) return response;
+	const subject = parseEgressDisclosureSubject(data.disclosureSubject);
+	// A `disclosureSubject` key present but unparseable never means "unscoped":
+	// `parseEgressDisclosureSubject` fails closed to owner-private, so `subject`
+	// is defined whenever the key exists. Guard anyway for undefined markers.
+	if (!subject) return response;
+	const audience = getTrustedDeliveryAudience(message);
+	if (!audience) {
+		// A scoped response with no attested audience earns nothing — withhold
+		// rather than ship into an unverified room. (Not an error-policy case:
+		// there is no catch here, and tagging an ordinary guard pollutes the
+		// grep that exists to audit retained catches.)
+		return audienceAdmissionWithheld(runtime, message, "none", 0);
+	}
+	const admission = resolveEgressAudienceAdmission(subject, audience);
+	if (admission.level === "full") return response;
+	return audienceAdmissionWithheld(
+		runtime,
+		message,
+		admission.level,
+		admission.blockingEntityIds.length,
+	);
+}
+
+/**
  * Revalidate a turn that consumed owner-private data immediately before any
  * visible or durable egress. The replacement is constructed from constants so
  * no text, attachment, or structured payload from the private result survives.
+ *
+ * Two independent, both-fail-closed seams run here: first the per-recipient
+ * audience-admission check for a response that declares its own disclosure
+ * subject ({@link enforceAudienceAdmissionAtEgress}), then the owner-exclusive
+ * revalidation for turns that consumed owner-private context. Either may
+ * withhold; a withholding from the first short-circuits the second because its
+ * replacement carries no owner-private data to revalidate.
  */
 export async function enforceTrustedDeliveryAudienceAtEgress(
 	runtime: IAgentRuntime,
 	message: Memory,
 	response: Content,
 ): Promise<Content> {
+	const admissionChecked = enforceAudienceAdmissionAtEgress(
+		runtime,
+		message,
+		response,
+	);
+	if (admissionChecked !== response) return admissionChecked;
 	if (!ownerExclusiveDisclosureWasUsed(message)) return response;
 	const disclosure = await revalidateOwnerExclusiveDisclosure(runtime, message);
 	if (disclosure.allowed) return response;
@@ -11422,7 +11952,14 @@ export async function enforceTrustedDeliveryAudienceOnResult(
 	responseContent: Content | null;
 	responseMessages: Memory[];
 }> {
-	if (!ownerExclusiveDisclosureWasUsed(message)) {
+	// Two egress seams can withhold here: the owner-exclusive revalidation (only
+	// relevant when the turn consumed owner-private data) and the per-recipient
+	// audience-admission check (relevant whenever the response declares its own
+	// disclosure subject). Skip the pass only when NEITHER can fire.
+	const declaresDisclosureSubject =
+		isRecord(responseContent?.data) &&
+		"disclosureSubject" in responseContent.data;
+	if (!ownerExclusiveDisclosureWasUsed(message) && !declaresDisclosureSubject) {
 		return { responseContent, responseMessages };
 	}
 	const finalContent = await enforceTrustedDeliveryAudienceAtEgress(

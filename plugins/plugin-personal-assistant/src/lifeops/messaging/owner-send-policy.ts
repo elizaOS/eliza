@@ -20,7 +20,12 @@ import type {
   MessageSource,
   SendPolicy,
 } from "@elizaos/core";
-import { getDefaultTriageService, logger } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  logger,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import { getConnectorRegistry } from "../connectors/registry.js";
 
 /**
@@ -286,15 +291,19 @@ function makeApprovalDescription(draft: DraftRequest): string {
     .filter(Boolean)
     .join(", ");
   const subject = draft.subject ? ` (${draft.subject})` : "";
+  const wellFormedBody = toWellFormedUnicode(draft.body);
   const preview =
-    draft.body.length > 240 ? `${draft.body.slice(0, 237)}...` : draft.body;
+    wellFormedBody.length > 240
+      ? `${truncateWellFormed(wellFormedBody, 237)}...`
+      : wellFormedBody;
   const target = recipients.length > 0 ? recipients : "(no recipients)";
   return `Approve sending ${draft.source} to ${target}${subject}: ${preview}`;
 }
 
 function previewDraft(draft: DraftRequest): string {
-  if (draft.body.length <= 200) return draft.body;
-  return `${draft.body.slice(0, 197)}...`;
+  const wellFormed = toWellFormedUnicode(draft.body);
+  if (wellFormed.length <= 200) return wellFormed;
+  return `${truncateWellFormed(wellFormed, 197)}...`;
 }
 
 export function createOwnerSendPolicy(): SendPolicy {

@@ -36,6 +36,12 @@ import type {
   World,
 } from "@elizaos/core";
 import { ElizaError, type ElizaErrorOptions, logger } from "@elizaos/core";
+import {
+  type CanonicalJsonOptions,
+  canonicalJsonString,
+  isCanonicalJsonArray,
+  readCanonicalArrayLength,
+} from "@elizaos/shared/canonical-json";
 import * as zod from "zod";
 import {
   isStoredMediaUrl,
@@ -230,18 +236,17 @@ export class AgentExportError extends ElizaError {
   }
 }
 
-type CanonicalizeWalkContext = {
-  visits: number;
-  visiting: WeakSet<object>;
-};
-
+/**
+ * Rejection hook for the shared walk, so `AgentExportError` (and its
+ * `AGENT_EXPORT_CANONICALIZE_UNBOUNDED` code) stays what export/import callers
+ * catch. Context is deliberately structural only (never a reflected property
+ * name): the walk runs on attacker-supplied import payloads and the error
+ * surfaces in API responses and logs.
+ */
 function failCanonicalizeUnbounded(
   context: Record<string, unknown>,
   cause?: unknown,
 ): never {
-  // Context is deliberately structural only (never a reflected property name):
-  // the walk runs on attacker-supplied import payloads and the error surfaces
-  // in API responses and logs.
   throw new AgentExportError(
     "Export payload exceeds the canonicalize walk budget",
     {
@@ -253,175 +258,24 @@ function failCanonicalizeUnbounded(
   );
 }
 
-function reserveCanonicalizeVisits(
-  ctx: CanonicalizeWalkContext,
-  count: number,
-): void {
-  if (count > MAX_AGENT_EXPORT_CANONICALIZE_NODES - ctx.visits) {
-    failCanonicalizeUnbounded({
-      visits: ctx.visits + count,
-      maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
-    });
-  }
-  ctx.visits += count;
-}
-
-function enterCanonicalizeContainer(
-  value: object,
-  ctx: CanonicalizeWalkContext,
-): void {
-  if (ctx.visiting.has(value)) {
-    failCanonicalizeUnbounded({ cycle: true });
-  }
-  ctx.visiting.add(value);
-}
-
-function inspectCanonicalize<T>(operation: string, inspect: () => T): T {
-  try {
-    return inspect();
-  } catch (cause) {
-    // error-policy:J2 Proxy inspection failures wrap with cause as unbounded.
-    failCanonicalizeUnbounded({ inspection: operation }, cause);
-  }
-}
-
-function isCanonicalizeArray(value: object): boolean {
-  return inspectCanonicalize("isArray", () => Array.isArray(value));
-}
-
 /**
- * Reads `length` off an array exactly once, as an own data descriptor, so a
- * Proxy cannot serve a different value to a second reader. Callers that also
- * need the length (e.g. a manifest `count`) must reuse the returned number
- * rather than calling this again.
+ * `sparseArrayHoles: "omit"` keeps the empty-slot rendering
+ * `array.map(canonicalize).join(",")` published before the walk was bounded —
+ * export manifests already carry digests taken over those bytes.
+ *
+ * No `maxOutputChars`: an import payload is already capped upstream by
+ * {@link MAX_IMPORT_DECOMPRESSED_BYTES}, and an export payload is this
+ * process's own rows.
  */
-function ownArrayLength(value: object): number {
-  const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
-    Object.getOwnPropertyDescriptor(value, "length"),
-  );
-  if (descriptor && !("value" in descriptor)) {
-    failCanonicalizeUnbounded({ accessor: true, property: "length" });
-  }
-  if (
-    !descriptor ||
-    typeof descriptor.value !== "number" ||
-    !Number.isSafeInteger(descriptor.value) ||
-    descriptor.value < 0
-  ) {
-    failCanonicalizeUnbounded({ invalidArrayLength: true });
-  }
-  return descriptor.value as number;
-}
-
-type CanonicalizeDataSnapshot = {
-  key: string;
-  value: unknown;
+const EXPORT_CANONICAL_JSON: CanonicalJsonOptions = {
+  maxDepth: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
+  maxNodes: MAX_AGENT_EXPORT_CANONICALIZE_NODES,
+  sparseArrayHoles: "omit",
+  onUnbounded: failCanonicalizeUnbounded,
 };
 
-/**
- * One getOwnPropertyDescriptor per key (prevents Proxy descriptor drift), with
- * the object's breadth charged to the node budget BEFORE any descriptor trap
- * runs, before the snapshot array is allocated and before the O(n log n) sort.
- * A hostile wide object or `ownKeys` Proxy is rejected on the key list alone.
- * The reservation covers every child, so the walks below run with
- * `visitAlreadyReserved`.
- */
-function ownEnumerableDataSnapshot(
-  value: object,
-  ctx: CanonicalizeWalkContext,
-): CanonicalizeDataSnapshot[] {
-  const keys = inspectCanonicalize("ownKeys", () => Reflect.ownKeys(value));
-  reserveCanonicalizeVisits(ctx, keys.length);
-  const snapshot: CanonicalizeDataSnapshot[] = [];
-  for (const key of keys) {
-    if (typeof key !== "string") continue;
-    const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
-      Object.getOwnPropertyDescriptor(value, key),
-    );
-    if (!descriptor?.enumerable) continue;
-    if (!("value" in descriptor)) {
-      failCanonicalizeUnbounded({ accessor: true, container: "object" });
-    }
-    if (descriptor.value === undefined) continue;
-    snapshot.push({ key, value: descriptor.value });
-  }
-  snapshot.sort((left, right) =>
-    left.key < right.key ? -1 : left.key > right.key ? 1 : 0,
-  );
-  return snapshot;
-}
-
-function canonicalizeWalk(
-  value: unknown,
-  depth: number,
-  ctx: CanonicalizeWalkContext,
-  visitAlreadyReserved = false,
-  /**
-   * Array length already read by the caller (root only). Reusing it keeps the
-   * digest and the manifest `count` on one immutable snapshot.
-   */
-  knownArrayLength?: number,
-): string {
-  if (depth > MAX_AGENT_EXPORT_CANONICALIZE_DEPTH) {
-    failCanonicalizeUnbounded({
-      depth,
-      max: MAX_AGENT_EXPORT_CANONICALIZE_DEPTH,
-    });
-  }
-  if (!visitAlreadyReserved) reserveCanonicalizeVisits(ctx, 1);
-  if (value === null || typeof value !== "object") {
-    return JSON.stringify(value ?? null);
-  }
-
-  enterCanonicalizeContainer(value, ctx);
-  try {
-    if (isCanonicalizeArray(value)) {
-      const length = knownArrayLength ?? ownArrayLength(value);
-      reserveCanonicalizeVisits(ctx, length);
-      // String-build so inherited Array.prototype index accessors cannot
-      // trap assignment into a preallocated parts array.
-      let body = "";
-      for (let index = 0; index < length; index += 1) {
-        if (index > 0) body += ",";
-        const descriptor = inspectCanonicalize("getOwnPropertyDescriptor", () =>
-          Object.getOwnPropertyDescriptor(value, String(index)),
-        );
-        if (!descriptor) {
-          // Sparse hole: keep the prior map()+join() empty-slot string.
-          continue;
-        }
-        if (!("value" in descriptor)) {
-          failCanonicalizeUnbounded({
-            accessor: true,
-            container: "array",
-            index,
-          });
-        }
-        body += canonicalizeWalk(descriptor.value, depth + 1, ctx, true);
-      }
-      return `[${body}]`;
-    }
-
-    const snapshot = ownEnumerableDataSnapshot(value, ctx);
-    return `{${snapshot
-      .map(
-        (entry) =>
-          `${JSON.stringify(entry.key)}:${canonicalizeWalk(entry.value, depth + 1, ctx, true)}`,
-      )
-      .join(",")}}`;
-  } finally {
-    ctx.visiting.delete(value);
-  }
-}
-
 function canonicalizeRoot(value: unknown, knownArrayLength?: number): string {
-  return canonicalizeWalk(
-    value,
-    0,
-    { visits: 0, visiting: new WeakSet<object>() },
-    false,
-    knownArrayLength,
-  );
+  return canonicalJsonString(value, EXPORT_CANONICAL_JSON, knownArrayLength);
 }
 
 export function canonicalize(value: unknown): string {
@@ -439,12 +293,12 @@ export function digestCollection(items: unknown[]): AgentExportComponentDigest {
   if (
     items != null &&
     typeof items === "object" &&
-    isCanonicalizeArray(items)
+    isCanonicalJsonArray(items, EXPORT_CANONICAL_JSON)
   ) {
     // One `length` descriptor read feeds BOTH the canonical bytes and `count`.
     // Reading it twice let a legal Array Proxy drift (or throw) between the two
     // reads and publish a digest and a count taken from different snapshots.
-    const length = ownArrayLength(items);
+    const length = readCanonicalArrayLength(items, EXPORT_CANONICAL_JSON);
     return {
       sha256: sha256Hex(canonicalizeRoot(items, length)),
       count: length,

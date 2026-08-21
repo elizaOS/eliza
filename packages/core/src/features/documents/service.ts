@@ -20,7 +20,6 @@ import {
 	canRequesterMutateDocument,
 	DOCUMENT_LIST_MAX_LIMIT,
 	DOCUMENT_LIST_MAX_OFFSET,
-	DOCUMENT_LIST_MAX_PINNED_PAGES,
 	documentRoleHasGlobalVisibility,
 	isDocumentVisibleToRequester,
 	queryDocumentsWithCapability,
@@ -715,22 +714,7 @@ export class DocumentService extends Service {
 		const pinnedDocuments: Memory[] = [];
 		let cursor: DocumentListCursor | undefined;
 		const seenCursors = new Set<string>();
-		let pageCount = 0;
 		do {
-			pageCount += 1;
-			if (pageCount > DOCUMENT_LIST_MAX_PINNED_PAGES) {
-				throw new ElizaError(
-					"Pinned document list exceeded maximum page limit",
-					{
-						code: "DOCUMENT_LIST_PAGE_LIMIT_EXCEEDED",
-						context: {
-							pageCount,
-							maxPages: DOCUMENT_LIST_MAX_PINNED_PAGES,
-						},
-						severity: "fatal",
-					},
-				);
-			}
 			const page = await this.listDocumentsDetailedWithRequester(
 				{
 					limit: DOCUMENT_LIST_MAX_LIMIT,
@@ -2307,11 +2291,6 @@ export class DocumentService extends Service {
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
 		};
-		// Stage the complete replacement generation BEFORE touching the parent.
-		// Fragments inherit documentRevision R+1 from updatedMetadata while the
-		// parent still publishes revision R, and the adapter's fragment reader
-		// joins on matching fragment/parent documentRevision, so staged fragments
-		// stay invisible to concurrent readers until the CAS commit below.
 		const fragments = await this.splitAndCreateFragments(
 			{
 				id: options.documentId,
@@ -2322,43 +2301,22 @@ export class DocumentService extends Service {
 			200,
 			{
 				roomId: existingDocument.roomId,
+				// Original ingestion coerces fragment worldId to the agent id when the
+				// parent document has none; replacement fragments must match or they
+				// fall out of worldId-scoped retrieval that still sees the old ones.
 				worldId: existingDocument.worldId ?? this.runtime.agentId,
 				entityId: existingDocument.entityId,
 			},
 		);
-		try {
-			await this.processDocumentFragmentsBatched(fragments, {
-				continueOnError: false,
-			});
-		} catch (stagingError) {
-			// error-policy:J2 Discard the partially staged (reader-invisible)
-			// generation, then rethrow with document identity; the committed
-			// revision R parent and its fragments are untouched.
-			await this.discardStagedFragments(options.documentId, fragments);
-			throw new ElizaError(
-				`Failed to stage replacement fragments for document ${options.documentId}`,
-				{
-					code: "DOCUMENT_UPDATE_STAGING_FAILED",
-					context: {
-						documentId: options.documentId,
-						stagedFragmentCount: fragments.length,
-					},
-					cause: stagingError,
-				},
-			);
-		}
-
-		// The single-statement compare-and-swap is the atomic commit point on
-		// real SQL adapters: it flips the parent from revision R to R+1, which
-		// simultaneously hides the old generation and exposes the staged one.
-		const mutation = await this.runtime.adapter.compareAndSwapDocument({
+		await this.prepareDocumentFragmentEmbeddings(fragments);
+		const mutation = await this.runtime.adapter.replaceDocumentRevision({
 			...requestContext,
 			documentId: options.documentId,
 			expected: snapshot,
 			replacement,
+			fragments,
 		});
 		if (mutation.status !== "updated") {
-			await this.discardStagedFragments(options.documentId, fragments);
 			throw new ElizaError("Document authorization changed before update", {
 				code:
 					mutation.status === "forbidden"
@@ -2370,94 +2328,58 @@ export class DocumentService extends Service {
 			});
 		}
 
-		await this.removeSupersededFragments(options.documentId, fragments, {
-			roomId: existingDocument.roomId,
-		});
-
 		return {
 			documentId: options.documentId,
 			fragmentCount: fragments.length,
 		};
 	}
 
-	/**
-	 * Delete a staged-but-never-committed fragment generation. Callers invoke
-	 * this only while the parent still publishes the prior revision, so every
-	 * row removed here was reader-invisible; any row this pass fails to delete
-	 * stays invisible and is swept by the next successful update's
-	 * {@link removeSupersededFragments} pass.
-	 */
-	private async discardStagedFragments(
-		documentId: UUID,
+	/** Stages every embedding before the atomic parent/fragment replacement. */
+	private async prepareDocumentFragmentEmbeddings(
 		fragments: Memory[],
 	): Promise<void> {
-		for (const fragment of fragments) {
-			if (typeof fragment.id !== "string") continue;
+		if (fragments.length === 0 || !hasDocumentEmbeddingModel(this.runtime))
+			return;
+		const batchModel = this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH);
+		if (batchModel) {
 			try {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			} catch (cleanupError) {
-				// error-policy:J7 Discard is best effort and must not mask the
-				// staging or CAS failure being propagated; the leftover row is
-				// reader-invisible (revision mismatch) and swept later.
+				const texts = fragments.map((fragment) => {
+					if (typeof fragment.content.text !== "string") {
+						throw new Error("Document fragment is missing text");
+					}
+					return fragment.content.text;
+				});
+				const vectors = await this.runtime.useModel(
+					ModelType.TEXT_EMBEDDING_BATCH,
+					{ texts },
+				);
+				if (
+					!Array.isArray(vectors) ||
+					vectors.length !== fragments.length ||
+					vectors.some(
+						(vector) => !Array.isArray(vector) || vector.length === 0,
+					)
+				) {
+					throw new Error(
+						"Batch embedding returned an incomplete fragment set",
+					);
+				}
+				for (let index = 0; index < fragments.length; index++) {
+					fragments[index].embedding = vectors[index];
+				}
+				return;
+			} catch (error) {
+				// error-policy:J4 The serial embedding provider is the documented
+				// fallback, and no storage mutation has happened at this point.
 				this.runtime.reportError(
-					"DocumentService.discardStagedFragments",
-					cleanupError instanceof Error
-						? cleanupError
-						: new Error(String(cleanupError)),
-					{ documentId, fragmentId: fragment.id },
+					"DocumentService.stageBatchFragmentEmbedding",
+					error,
+					{ fragmentCount: fragments.length },
 				);
 			}
 		}
-	}
-
-	/**
-	 * Remove every fragment of a document that is not part of the just-committed
-	 * generation. Runs only after the parent CAS commit, so every row deleted
-	 * here is already invisible to readers (its documentRevision no longer
-	 * matches the parent); failure is storage garbage, not data exposure.
-	 */
-	private async removeSupersededFragments(
-		documentId: UUID,
-		committedFragments: Memory[],
-		scope: { roomId: UUID },
-	): Promise<void> {
-		const committedIds = new Set(
-			committedFragments
-				.map((fragment) => fragment.id)
-				.filter((id): id is UUID => typeof id === "string"),
-		);
-		try {
-			const existingFragments = await this.runtime.getMemories({
-				tableName: DOCUMENT_FRAGMENTS_TABLE,
-				agentId: this.runtime.agentId,
-				roomId: scope.roomId,
-				count: 10_000,
-			});
-			for (const fragment of existingFragments) {
-				const metadata = fragment.metadata as
-					| Record<string, unknown>
-					| undefined;
-				if (
-					!this.isDocumentFragmentMemory(fragment) ||
-					metadata?.documentId !== documentId ||
-					typeof fragment.id !== "string" ||
-					committedIds.has(fragment.id as UUID)
-				) {
-					continue;
-				}
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
-		} catch (cleanupError) {
-			// error-policy:J7 The update already committed; superseded rows are
-			// reader-invisible and the next successful update sweeps them again,
-			// so cleanup failure is reported instead of failing the update.
-			this.runtime.reportError(
-				"DocumentService.removeSupersededFragments",
-				cleanupError instanceof Error
-					? cleanupError
-					: new Error(String(cleanupError)),
-				{ documentId },
-			);
+		for (const fragment of fragments) {
+			await this.runtime.addEmbeddingToMemory(fragment);
 		}
 	}
 
@@ -2745,7 +2667,7 @@ export class DocumentService extends Service {
 		document: StoredDocument,
 		targetTokens: number,
 		overlap: number,
-		scope: { roomId: UUID; worldId: UUID; entityId: UUID },
+		scope: { roomId: UUID; worldId?: UUID; entityId: UUID },
 	): Promise<Memory[]> {
 		if (!document.content.text) {
 			return [];

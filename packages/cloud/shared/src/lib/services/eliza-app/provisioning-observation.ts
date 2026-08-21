@@ -9,9 +9,7 @@ import type { AgentSandbox, AgentSandboxStatus } from "../../../db/schemas/agent
  * OLDER running row to canonical — which is both a hidden lifecycle failure
  * and a transcript handoff into the wrong agent.
  */
-const ACTIVELY_DELETING_STATUSES = new Set<AgentSandboxStatus>([
-  "deletion_pending",
-]);
+const ACTIVELY_DELETING_STATUSES = new Set<AgentSandboxStatus>(["deletion_pending"]);
 
 function isElizaAppProvisioningTarget(sandbox: AgentSandbox, userId: string): boolean {
   return (
@@ -22,8 +20,7 @@ function isElizaAppProvisioningTarget(sandbox: AgentSandbox, userId: string): bo
     // Every user-written `deletion_failed` row carries a non-null attempt id
     // (eliza-sandbox.ts sets the status under a WHERE bound to it), so the
     // attempt-id check would exclude it a second time.
-    (sandbox.deletion_attempt_id == null ||
-      sandbox.status === "deletion_failed") &&
+    (sandbox.deletion_attempt_id == null || sandbox.status === "deletion_failed") &&
     !ACTIVELY_DELETING_STATUSES.has(sandbox.status)
   );
 }

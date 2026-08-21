@@ -9,6 +9,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
 
 export type NativeAcpEventCallback = (
@@ -985,15 +986,16 @@ function jsonRpcError(error: unknown): Error {
   return new AcpRequestError(message, code, data);
 }
 
-function compactJson(value: unknown): string | undefined {
+export function compactJson(value: unknown): string | undefined {
   try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) {
+    const raw = JSON.stringify(value);
+    if (raw === undefined) {
       return undefined;
     }
+    const serialized = toWellFormedUnicode(raw);
     const limit = 2000;
     return serialized.length > limit
-      ? `${serialized.slice(0, limit)}…`
+      ? `${truncateWellFormed(serialized, limit)}…`
       : serialized;
   } catch {
     // error-policy:J3 untrusted-input sanitizing — an unserializable diagnostic

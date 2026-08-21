@@ -28,7 +28,7 @@ describe("checkReadOnly hardening", () => {
     });
   });
 
-  it.each(["\r", "\r\n", "\n"])(
+  it.each(["\r", "\r\n", "\n", "\u2028", "\u2029"])(
     "recognizes %j as a line-comment terminator",
     (lineEnding) => {
       expect(
@@ -45,7 +45,6 @@ describe("checkReadOnly hardening", () => {
       ok: true,
     });
   });
-
   it('rejects unicode-escaped identifiers (U&"...") that can hide dangerous functions', () => {
     expect(
       checkReadOnly("SELECT U&\"\\0070g_read_file\"('/etc/passwd')"),

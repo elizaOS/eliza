@@ -70,6 +70,25 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
     );
   });
 
+  it("loads the subscription catalog without sending stored credentials", async () => {
+    const { client, requests } = createClientRecorder({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+
+    const result = await client.getSubscriptionPlans();
+
+    expect(result).toEqual({
+      success: true,
+      data: { catalogVersion: "v1", plans: [] },
+    });
+    expect(requests[0]).toMatchObject({
+      url: "https://cloud.test/api/v1/subscriptions/plans",
+      method: "GET",
+    });
+    expect(requests[0]?.headers.authorization).toBeUndefined();
+  });
+
   it("rejects apiBaseUrl values that already include a resource path or URL components", () => {
     expect(
       () =>
@@ -328,6 +347,14 @@ describe("ElizaCloudClient.createContainer wire contract", () => {
 });
 
 describe("ElizaCloudClient path parameter encoding", () => {
+  it("normalizes 100k trailing API base-url slashes", () => {
+    const client = new ElizaCloudClient({
+      apiBaseUrl: `https://api.eliza.app/api/v1${"/".repeat(100_000)}`,
+    });
+
+    expect(client.apiBaseUrl).toBe("https://api.eliza.app/api/v1");
+  });
+
   it("percent-encodes path parameters that contain slashes, query markers, and fragments", async () => {
     const { client, requests } = createClientRecorder();
 
@@ -349,6 +376,22 @@ describe("ElizaCloudClient path parameter encoding", () => {
         skipAuth: true,
       }),
     ).toThrow("Missing path parameter: sessionId");
+  });
+
+  it("leaves 100k unmatched template openers unchanged without backtracking", async () => {
+    const { client, requests } = createClientRecorder();
+    const unmatched = "{".repeat(100_000);
+
+    await client.callEndpoint("GET", `/api/literal/${unmatched}`, {
+      pathParams: { unused: "value" },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(
+      decodeURIComponent(new URL(requests[0]?.url ?? "").pathname).endsWith(
+        unmatched,
+      ),
+    ).toBe(true);
   });
 });
 

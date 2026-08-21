@@ -5,6 +5,57 @@ import * as z from "zod";
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const opaqueText = (max: number) => z.string().min(1).max(max);
 
+export const MAX_MAPS_PROVIDERS = 32;
+export const MAX_MAPS_PROVIDER_ID_LENGTH = 64;
+export const MAX_MAPS_ATTRIBUTION_LENGTH = 500;
+export const MAX_MAPS_PROVIDER_GENERATION = Number.MAX_SAFE_INTEGER;
+
+/** Validates the canonical identity used to join adapter and browser metadata. */
+export const mapsProviderIdSchema = z
+  .string()
+  .min(1)
+  .max(MAX_MAPS_PROVIDER_ID_LENGTH)
+  .regex(/^[a-z0-9][a-z0-9_-]*$/i);
+
+/** Trims bounded provider-owned legal text while rejecting blank attribution. */
+export const mapsAttributionSchema = z
+  .string()
+  .max(MAX_MAPS_ATTRIBUTION_LENGTH)
+  .trim()
+  .min(1);
+
+/** Couples one canonical provider id to legal text or explicit unavailability. */
+export const mapsProviderGenerationSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(MAX_MAPS_PROVIDER_GENERATION);
+
+export const mapsProviderDescriptionSchema = z
+  .object({
+    id: mapsProviderIdSchema,
+    attribution: mapsAttributionSchema.nullable(),
+    generation: mapsProviderGenerationSchema,
+  })
+  .strict();
+
+export const mapsProviderIdsSchema = z
+  .array(mapsProviderIdSchema)
+  .max(MAX_MAPS_PROVIDERS)
+  .refine((providers) => new Set(providers).size === providers.length, {
+    message: "Maps provider lookup ids must be unique.",
+  });
+
+export const mapsProviderDescriptionsSchema = z
+  .array(mapsProviderDescriptionSchema)
+  .max(MAX_MAPS_PROVIDERS)
+  .refine(
+    (providers) =>
+      new Set(providers.map((provider) => provider.id)).size ===
+      providers.length,
+    { message: "Maps provider metadata must contain unique provider ids." },
+  );
+
 /** Accepts canonical UUIDs, including deterministic elizaOS version-0 IDs. */
 export const elizaUuidSchema = z
   .string()
@@ -72,6 +123,45 @@ export const placePageSchema = z
   })
   .strict();
 
+/** Binds one page to the exact adapter registration that generated it. */
+export const mapsPlacePageResultSchema = z
+  .object({
+    page: placePageSchema,
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine(
+    (result) =>
+      result.page.places.every(
+        (place) => place.provider === result.provider.id,
+      ),
+    { message: "Maps page provider binding does not match its places." },
+  );
+
+/** Binds one detail read to the exact adapter registration that generated it. */
+export const mapsPlaceResultSchema = z
+  .object({
+    place: placeRefSchema.nullable(),
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine(
+    (result) =>
+      result.place === null || result.place.provider === result.provider.id,
+    { message: "Maps detail provider binding does not match its place." },
+  );
+
+/** Binds one route to the exact adapter registration that generated it. */
+export const mapsRouteResultSchema = z
+  .object({
+    route: routePlanSchema,
+    provider: mapsProviderDescriptionSchema,
+  })
+  .strict()
+  .refine((result) => result.route.provider === result.provider.id, {
+    message: "Maps route provider binding does not match its route.",
+  });
+
 export const placeSearchRequestSchema = z
   .object({
     query: boundedText(500),
@@ -90,12 +180,18 @@ export const routePlanRequestSchema = z
   .strict();
 
 export type Coordinates = z.infer<typeof coordinatesSchema>;
+export type MapsProviderDescription = z.infer<
+  typeof mapsProviderDescriptionSchema
+>;
 export type CoordinateBinding = z.infer<typeof coordinateBindingSchema>;
 export type PlaceRef = z.infer<typeof placeRefSchema>;
 export type TravelMode = z.infer<typeof travelModeSchema>;
 export type RoutePlan = z.infer<typeof routePlanSchema>;
 export type SavedPlace = z.infer<typeof savedPlaceSchema>;
 export type PlacePage = z.infer<typeof placePageSchema>;
+export type MapsPlacePageResult = z.infer<typeof mapsPlacePageResultSchema>;
+export type MapsPlaceResult = z.infer<typeof mapsPlaceResultSchema>;
+export type MapsRouteResult = z.infer<typeof mapsRouteResultSchema>;
 
 export interface PlaceSearchRequest {
   query: string;

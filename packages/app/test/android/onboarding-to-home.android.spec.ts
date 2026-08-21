@@ -55,6 +55,22 @@ const URL_SCHEME = "elizaos";
 const FIRST_RUN_REMOTE_DEEPLINK = `${URL_SCHEME}://first-run/runtime/remote?api=${encodeURIComponent(
   HOST_AGENT_BASE,
 )}`;
+
+async function readHostPairingCode(): Promise<string> {
+  const response = await fetch(
+    `http://127.0.0.1:${HOST_AGENT_PORT}/api/auth/pair-code`,
+  );
+  if (!response.ok) {
+    throw new Error(
+      `Host pairing-code request failed (${response.status}): ${await response.text()}`,
+    );
+  }
+  const body = (await response.json()) as { code?: unknown };
+  if (typeof body.code !== "string" || !body.code.trim()) {
+    throw new Error("Host pairing-code response did not contain a code.");
+  }
+  return body.code;
+}
 const ARTIFACT_DIR = path.join(
   process.env.ELIZA_ANDROID_ARTIFACT_DIR ??
     path.join(process.cwd(), "test-results", "android"),
@@ -104,6 +120,15 @@ test.describe
           FIRST_RUN_REMOTE_DEEPLINK,
           APP_ID,
         ]);
+
+        // OS deep links deliberately never carry bearer credentials. Complete
+        // the production remote-device pairing flow against the real host,
+        // obtaining the short-lived code through its loopback-only operator
+        // endpoint and entering it through the rendered device UI.
+        const pairingInput = page.getByPlaceholder("Enter pairing code");
+        await expect(pairingInput).toBeVisible({ timeout: 60_000 });
+        await pairingInput.fill(await readHostPairingCode());
+        await page.getByRole("button", { name: "Submit" }).click();
 
         const surface = page.getByTestId("home-launcher-surface");
         await expect(surface).toBeVisible({ timeout: 90_000 });

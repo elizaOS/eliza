@@ -22,4 +22,17 @@ describe("buildAppAuthorizeUrl", () => {
     );
     expect(url.searchParams.get("state")).toBe("csrf-value");
   });
+
+  it("normalizes 100k trailing base-url slashes", () => {
+    const url = new URL(
+      buildAppAuthorizeUrl({
+        appId: "app_123",
+        redirectUri: "https://example.app/auth/callback",
+        baseUrl: `https://elizacloud.ai${"/".repeat(100_000)}`,
+      }),
+    );
+
+    expect(url.origin).toBe("https://elizacloud.ai");
+    expect(url.pathname).toBe(APP_AUTHORIZE_PATH);
+  });
 });

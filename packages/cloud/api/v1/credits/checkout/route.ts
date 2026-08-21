@@ -32,12 +32,41 @@ import { decodeRequestJson } from "@/lib/utils/json-parsing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const CheckoutSchema = z.object({
-  credits: z.number().min(1).max(1000),
-  agent_id: z.string().uuid().optional(),
-  success_url: z.string().url(),
-  cancel_url: z.string().url(),
-});
+const CHECKOUT_RECONCILIATION_TIMEOUT_MS = 10_000;
+
+const checkoutAmountSchema = z.number().min(1).max(1000);
+
+const CheckoutSchema = z
+  .object({
+    /** Canonical USD-denominated organization-credit purchase amount. */
+    amountUsd: checkoutAmountSchema.optional(),
+    /** @deprecated Compatibility alias; this number has always meant USD. */
+    credits: checkoutAmountSchema.optional(),
+    agent_id: z.string().uuid().optional(),
+    success_url: z.string().url(),
+    cancel_url: z.string().url(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.amountUsd === undefined && value.credits === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["amountUsd"],
+        message: "amountUsd is required",
+      });
+      return;
+    }
+    if (
+      value.amountUsd !== undefined &&
+      value.credits !== undefined &&
+      value.amountUsd !== value.credits
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["credits"],
+        message: "credits must equal amountUsd when both are supplied",
+      });
+    }
+  });
 
 const app = new Hono<AppEnv>();
 
@@ -59,12 +88,12 @@ app.post("/", async (c) => {
       );
     }
 
-    const {
-      credits: amount,
-      agent_id,
-      success_url,
-      cancel_url,
-    } = validation.data;
+    const { amountUsd, credits, agent_id, success_url, cancel_url } =
+      validation.data;
+    const amount = amountUsd ?? credits;
+    if (amount === undefined) {
+      throw ValidationError("amountUsd is required");
+    }
     const user = await resolveCreditUser(c, agent_id);
     const stripeCurrency = (
       (c.env.STRIPE_CURRENCY as string | undefined) || "usd"
@@ -249,16 +278,24 @@ app.post("/", async (c) => {
 
 export default app;
 
-async function findCheckoutSessionForOrder(
+export async function findCheckoutSessionForOrder(
   stripe: Stripe,
   order: { id: string; stripe_customer_id: string | null; updated_at: Date },
+  now: () => number = Date.now,
 ): Promise<Stripe.Checkout.Session | null> {
   if (!order.stripe_customer_id) {
     throw new Error("Checkout order has no pinned Stripe customer");
   }
   const providerAttemptSeconds = Math.floor(order.updated_at.getTime() / 1000);
+  const deadlineAt = now() + CHECKOUT_RECONCILIATION_TIMEOUT_MS;
   let startingAfter: string | undefined;
-  for (let page = 0; page < 10; page += 1) {
+  const seenCursors = new Set<string>();
+  while (true) {
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const sessions = await stripe.checkout.sessions.list({
       customer: order.stripe_customer_id,
       created: {
@@ -268,18 +305,32 @@ async function findCheckoutSessionForOrder(
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
+    if (now() >= deadlineAt) {
+      throw new Error(
+        "Stripe Checkout reconciliation exceeded its operation deadline",
+      );
+    }
     const match = sessions.data.find(
       (session) =>
         session.client_reference_id === order.id &&
         session.metadata?.checkout_order_id === order.id,
     );
     if (match) return match;
-    if (!sessions.has_more || sessions.data.length === 0) return null;
-    startingAfter = sessions.data.at(-1)?.id;
+    if (!sessions.has_more) return null;
+    if (sessions.data.length === 0) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned an empty continuation page",
+      );
+    }
+    const nextCursor = sessions.data.at(-1)?.id;
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      throw new Error(
+        "Stripe Checkout reconciliation returned invalid pagination",
+      );
+    }
+    seenCursors.add(nextCursor);
+    startingAfter = nextCursor;
   }
-  throw new Error(
-    "Stripe Checkout reconciliation exceeded its safe search bound",
-  );
 }
 
 async function resolveCreditUser(

@@ -69,6 +69,7 @@ async function seedSleepingAgent(): Promise<{
       user_id: user.id,
       agent_name: uniq("agent"),
       status: "sleeping",
+      execution_tier: "dedicated-lazy",
     })
     .returning();
   return { agentId: sandbox.id, organizationId: org.id, userId: user.id };

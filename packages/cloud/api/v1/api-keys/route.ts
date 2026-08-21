@@ -1,8 +1,9 @@
 /**
- * GET /api/v1/api-keys — list keys for the authenticated user's organization.
+ * GET /api/v1/api-keys — list user-managed keys for the authenticated organization.
  * POST /api/v1/api-keys — create a new key (returns plainKey once).
  *
- * API key management requires a session — API keys cannot manage other API keys.
+ * Mobile lifecycle credentials are deliberately absent. API key management
+ * requires a session — API keys cannot manage other API keys.
  */
 
 import { Hono } from "hono";

@@ -35,11 +35,24 @@ const {
   coordinateSharedHistory,
   coordinateSharedLifecycleEvent,
   coordinateSharedStream,
+  coordinatorFetch,
   preparePersonalProvisionalHistoryConvergence,
   purgeSharedConversationRooms,
 } = await import("./conversation-coordinator");
+const { normalizeSharedRuntimeRoom, sharedRuntimeChannelId, sharedRuntimeRoomKey } = await import(
+  "./shared-runtime-chat"
+);
 
 describe("shared conversation coordinator", () => {
+  test("uses one exact room normalization for coordinator and runtime identities", () => {
+    expect(normalizeSharedRuntimeRoom("  room-1  ", "fallback-user")).toBe("room-1");
+    expect(normalizeSharedRuntimeRoom(" ", "  fallback-user  ")).toBe("fallback-user");
+    expect(normalizeSharedRuntimeRoom(undefined, " ")).toBe("default");
+    expect(sharedRuntimeRoomKey("agent-1", "  room-1  ", "fallback-user")).toBe(
+      sharedRuntimeChannelId("agent-1", "room-1"),
+    );
+  });
+
   test("routes bridge, stream, prewarm, and history through one room object", async () => {
     const names: string[] = [];
     const envelopes: unknown[] = [];
@@ -114,7 +127,12 @@ describe("shared conversation coordinator", () => {
       "prewarm",
       "history",
     ]);
-    expect(signals).toEqual([undefined, abortController.signal, undefined, undefined]);
+    expect(signals[1]).not.toBe(abortController.signal);
+    // bridge / prewarm / history carry no caller signal, so they now fail
+    // closed at the shared-runtime hop timeout instead of pinning forever.
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
+    abortController.abort();
+    expect(signals[1]?.aborted).toBe(true);
     expect(envelopes[1]).toMatchObject({ traceId: "trace-coordinator-stream" });
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
@@ -153,8 +171,10 @@ describe("shared conversation coordinator", () => {
       executionCtx,
       agentKind: "personal",
       trustedMessageRole: "system",
+      trustedHistoryCutoffAt: 1_725_000_000_000,
       trustedUserUtterance: "email Bob now",
       channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+      transientInput: true,
     });
     await coordinateSharedLifecycleEvent(
       agent.id,
@@ -169,8 +189,10 @@ describe("shared conversation coordinator", () => {
         agent,
         rpc,
         trustedMessageRole: "system",
+        trustedHistoryCutoffAt: 1_725_000_000_000,
         trustedUserUtterance: "email Bob now",
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
+        transientInput: true,
       },
       {
         operation: "lifecycle",
@@ -437,5 +459,153 @@ describe("shared conversation coordinator", () => {
 
     expect(result).toEqual({ purged: 1, failures: 2 });
     expect(names).toEqual(["agent-1:room-throws", "agent-1:room-500", "agent-1:room-ok"]);
+  });
+
+  test("coordinatorFetch aborts a hung Durable Object hop at the timeout", async () => {
+    // A coordinator that never settles on its own: the only way out is the
+    // caller's AbortSignal firing (the default shared-runtime hop timeout).
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    };
+    const start = Date.now();
+    await expect(
+      coordinatorFetch(hungStub, "https://shared-runtime.internal/history", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("coordinatorFetch composes caller cancellation with the hop deadline", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seen = init?.signal;
+        return Response.json({ ok: true });
+      },
+    };
+    await coordinatorFetch(stub, "https://shared-runtime.internal/bridge", {
+      signal: controller.signal,
+    });
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+    controller.abort();
+    expect(seen?.aborted).toBe(true);
+  });
+
+  test("coordinatorFetch preserves Request inputs through the deadline wrapper", async () => {
+    const controller = new AbortController();
+    const request = new Request("https://shared-runtime.internal/bridge", {
+      method: "POST",
+      body: "{}",
+      signal: controller.signal,
+    });
+    let seenInput: RequestInfo | URL | undefined;
+    let seenSignal: AbortSignal | undefined;
+    const stub = {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        seenInput = input;
+        seenSignal = init?.signal ?? undefined;
+        return Response.json({ ok: true });
+      },
+    };
+
+    await coordinatorFetch(stub, request);
+
+    expect(seenInput).toBe(request);
+    expect(seenSignal).not.toBe(controller.signal);
+    expect(seenSignal?.aborted).toBe(false);
+    controller.abort();
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  test("an explicit init signal overrides a Request-carried signal", async () => {
+    const requestController = new AbortController();
+    const initController = new AbortController();
+    const request = new Request("https://shared-runtime.internal/bridge", {
+      signal: requestController.signal,
+    });
+    let seenSignal: AbortSignal | undefined;
+    const stub = {
+      fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+        seenSignal = init?.signal ?? undefined;
+        return Response.json({ ok: true });
+      },
+    };
+
+    await coordinatorFetch(stub, request, { signal: initController.signal });
+
+    requestController.abort();
+    expect(seenSignal?.aborted).toBe(false);
+    initController.abort();
+    expect(seenSignal?.aborted).toBe(true);
+  });
+
+  test("coordinatorFetch still times out when the caller signal never aborts", async () => {
+    const caller = new AbortController();
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    };
+
+    await expect(
+      coordinatorFetch(
+        hungStub,
+        "https://shared-runtime.internal/stream",
+        { signal: caller.signal },
+        100,
+      ),
+    ).rejects.toThrow(/timed out|timeout/i);
+    expect(caller.signal.aborted).toBe(false);
+  });
+
+  test("coordinateSharedStream keeps the caller abort signal on the DO hop", async () => {
+    let seen: AbortSignal | undefined;
+    const controller = new AbortController();
+    const namespace = {
+      getByName: () => ({
+        fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+          seen = init?.signal;
+          return new Response("event: done\ndata: {}\n\n", {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      }),
+    };
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: "rpc-1",
+      method: "message.send",
+      params: { text: "hi", roomId: "room-1" },
+    };
+    await (
+      await coordinateSharedStream(
+        {
+          id: "agent-1",
+          organization_id: "org-1",
+          user_id: "user-1",
+          execution_tier: "shared",
+        } as never,
+        rpc,
+        {
+          abortSignal: controller.signal,
+          namespace,
+          executionCtx: { waitUntil() {} },
+        },
+      )
+    )?.text();
+    expect(seen).not.toBe(controller.signal);
+    controller.abort();
+    expect(seen?.aborted).toBe(true);
   });
 });

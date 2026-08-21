@@ -9,6 +9,7 @@
  */
 
 import {
+  registerStewardTokenRemoval,
   STEWARD_REFRESH_TOKEN_KEY,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/shared/steward-session-client";
@@ -133,7 +134,7 @@ describe("clearStaleStewardSession", () => {
     localStorage.clear();
   });
 
-  it("drops a shared Cloud agent selection so the next account resolves its own agent", () => {
+  it("drops a shared Cloud agent selection so the next account resolves its own agent", async () => {
     savePersistedActiveServer({
       id: "cloud:old-agent",
       kind: "cloud",
@@ -142,12 +143,12 @@ describe("clearStaleStewardSession", () => {
       accessToken: "expired-steward-token",
     });
 
-    clearStaleStewardSession();
+    await clearStaleStewardSession();
 
     expect(loadPersistedActiveServer()).toBeNull();
   });
 
-  it("preserves a dedicated target selection while scrubbing its rejected bearer", () => {
+  it("preserves a dedicated target selection while scrubbing its rejected bearer", async () => {
     savePersistedActiveServer({
       id: "cloud:dedicated-agent",
       kind: "cloud",
@@ -156,7 +157,7 @@ describe("clearStaleStewardSession", () => {
       accessToken: "rejected-agent-token",
     });
 
-    clearStaleStewardSession();
+    await clearStaleStewardSession();
 
     expect(loadPersistedActiveServer()).toEqual({
       id: "cloud:dedicated-agent",
@@ -166,7 +167,7 @@ describe("clearStaleStewardSession", () => {
     });
   });
 
-  it("finishes credential teardown before rethrowing obsolete refresh-key cleanup failure", () => {
+  it("finishes credential teardown before rethrowing obsolete refresh-key cleanup failure", async () => {
     localStorage.setItem(STEWARD_TOKEN_KEY, "expired-steward-token");
     localStorage.setItem(STEWARD_REFRESH_TOKEN_KEY, "obsolete-refresh-token");
     savePersistedActiveServer({
@@ -211,7 +212,7 @@ describe("clearStaleStewardSession", () => {
       .mockResolvedValue(new Response(null, { status: 204 }));
 
     try {
-      expect(() => clearStaleStewardSession()).toThrow(storageFailure);
+      await expect(clearStaleStewardSession()).rejects.toThrow(storageFailure);
     } finally {
       removeItem.mockRestore();
     }
@@ -222,6 +223,36 @@ describe("clearStaleStewardSession", () => {
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ method: "DELETE", credentials: "include" }),
+    );
+  });
+
+  it("retains logical account state when canonical protected removal fails", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, "still-durable-token");
+    savePersistedActiveServer({
+      id: "cloud:old-agent",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://api.eliza.app/api/v1/eliza/agents/old-agent",
+      accessToken: "still-durable-token",
+    });
+    const deletionFailure = new Error("native secure deletion denied");
+    const unregister = registerStewardTokenRemoval(async () => {
+      throw deletionFailure;
+    });
+
+    try {
+      await expect(clearStaleStewardSession()).rejects.toMatchObject({
+        name: "StewardTokenRemovalError",
+        message: deletionFailure.message,
+        cause: deletionFailure,
+      });
+    } finally {
+      unregister();
+    }
+
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBe("still-durable-token");
+    expect(loadPersistedActiveServer()?.accessToken).toBe(
+      "still-durable-token",
     );
   });
 });

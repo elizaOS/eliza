@@ -5,6 +5,7 @@
  */
 import { execFile } from "node:child_process";
 import os from "node:os";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { TerminalActionResult } from "../types.js";
 import { checkDangerousCommand, sanitizeChildEnv } from "./security.js";
 
@@ -19,8 +20,9 @@ const sessions = new Map<string, TerminalSession>();
 let sessionCounter = 0;
 let lastOutputBuffer = "";
 
-function truncateOutput(output: string): string {
-  return output.slice(0, 5000);
+export function truncateOutput(output: string): string {
+  const wellFormed = toWellFormedUnicode(output);
+  return truncateWellFormed(wellFormed, 5000);
 }
 
 function resolveShell(): {

@@ -47,6 +47,7 @@ const mocks = vi.hoisted(() => ({
         status: 200,
       }),
   ),
+  androidCloudBuild: vi.fn(() => false),
 }));
 
 vi.mock("../api", () => ({
@@ -55,6 +56,10 @@ vi.mock("../api", () => ({
 
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: mocks.fetchCurrentView,
+}));
+
+vi.mock("../platform/android-runtime", () => ({
+  isAndroidCloudBuild: mocks.androidCloudBuild,
 }));
 
 const observedNavigations: NavigateViewDetail[] = [];
@@ -133,6 +138,7 @@ describe("useAppLifecycleEvents", () => {
     mocks.client.fetch.mockClear();
     mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
     mocks.fetchCurrentView.mockClear();
+    mocks.androidCloudBuild.mockReturnValue(false);
     observedNavigations.length = 0;
     window.addEventListener(NAVIGATE_VIEW_EVENT, recordNavigation);
     window.localStorage.clear();
@@ -254,6 +260,21 @@ describe("useAppLifecycleEvents", () => {
 
     expect(mocks.client.fetch).not.toHaveBeenCalled();
     expect(mocks.client.resetConnection).not.toHaveBeenCalled();
+    expect(loadConversationMessages).not.toHaveBeenCalled();
+  });
+
+  it("does not run agent-runtime resume recovery in the Android Cloud shell", () => {
+    mocks.androidCloudBuild.mockReturnValue(true);
+    const { loadConversationMessages } = setup({
+      activeId: "conv-android-cloud",
+    });
+
+    dispatchResume();
+    vi.advanceTimersByTime(RESUME_DEBOUNCE_MS);
+
+    expect(mocks.client.fetch).not.toHaveBeenCalled();
+    expect(mocks.client.resetConnection).not.toHaveBeenCalled();
+    expect(mocks.fetchCurrentView).not.toHaveBeenCalled();
     expect(loadConversationMessages).not.toHaveBeenCalled();
   });
 

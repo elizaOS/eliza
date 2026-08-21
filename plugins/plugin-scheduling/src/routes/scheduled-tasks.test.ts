@@ -66,7 +66,12 @@ function setRemoteAddress(socket: Socket, remoteAddress: string): void {
   });
 }
 
-function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
+function buildCtx(args: {
+  method: string;
+  pathname: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+}): {
   ctx: SchedulingRouteContext;
   res: MockResponse;
 } {
@@ -75,9 +80,11 @@ function buildCtx(args: { method: string; pathname: string; body?: unknown }): {
   setRemoteAddress(socket, "127.0.0.1");
   const httpReq = new IncomingMessage(socket);
   httpReq.method = args.method;
-  httpReq.headers = args.body
-    ? { "content-type": "application/json", "content-length": "1" }
-    : {};
+  httpReq.headers =
+    args.headers ??
+    (args.body
+      ? { "content-type": "application/json", "content-length": "1" }
+      : {});
   const httpRes = new ServerResponse(httpReq);
 
   const ctx: SchedulingRouteContext = {
@@ -493,5 +500,225 @@ describe("scheduled-tasks REST handler", () => {
     expect(payload.gates).toEqual(
       expect.arrayContaining(["weekend_skip", "quiet_hours"]),
     );
+  });
+
+  describe("POST /:id/edit validates the body like its sibling snooze verb", () => {
+    const BASE_INPUT = {
+      kind: "reminder",
+      promptInstructions: "drink water",
+      trigger: { kind: "manual" },
+      priority: "low",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: "tester",
+      ownerVisible: true,
+    } as const;
+
+    async function seed(): Promise<{
+      runner: ScheduledTaskRunnerHandle;
+      handler: (ctx: SchedulingRouteContext) => Promise<boolean>;
+      task: ScheduledTask;
+    }> {
+      const runner = makeRunner();
+      const handler = makeScheduledTasksRouteHandler({
+        resolveRunner: async () => runner,
+      });
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: "/api/lifeops/scheduled-tasks",
+        body: BASE_INPUT,
+      });
+      await handler(ctx);
+      expect(res.statusCode).toBe(201);
+      return {
+        runner,
+        handler,
+        task: JSON.parse(res.body ?? "{}").task as ScheduledTask,
+      };
+    }
+
+    async function edit(
+      handler: (ctx: SchedulingRouteContext) => Promise<boolean>,
+      taskId: string,
+      body?: unknown,
+      headers?: Record<string, string>,
+    ): Promise<MockResponse> {
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: `/api/lifeops/scheduled-tasks/${taskId}/edit`,
+        body,
+        headers,
+      });
+      await handler(ctx);
+      return res;
+    }
+
+    it("rejects a body-less edit before the runner can persist an empty patch", async () => {
+      const { runner, handler, task } = await seed();
+      let applyCalls = 0;
+      const originalApply = runner.apply.bind(runner);
+      runner.apply = async (taskId, verb, payload) => {
+        applyCalls += 1;
+        return originalApply(taskId, verb, payload);
+      };
+
+      const res = await edit(handler, task.taskId);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("request body is required");
+      expect(applyCalls).toBe(0);
+      expect(
+        (await runner.list()).find((item) => item.taskId === task.taskId),
+      ).toEqual(task);
+    });
+
+    it("reads and applies a chunked edit without a content-length header", async () => {
+      const { runner, handler, task } = await seed();
+      const res = await edit(
+        handler,
+        task.taskId,
+        { priority: "high" },
+        {
+          "content-type": "application/json",
+          "transfer-encoding": "chunked",
+        },
+      );
+
+      expect(res.statusCode).toBe(200);
+      expect(
+        (await runner.list()).find((item) => item.taskId === task.taskId)
+          ?.priority,
+      ).toBe("high");
+    });
+
+    it("keeps the sibling body-less snooze contract at 400", async () => {
+      const { runner, handler, task } = await seed();
+      let applyCalls = 0;
+      const originalApply = runner.apply.bind(runner);
+      runner.apply = async (taskId, verb, payload) => {
+        applyCalls += 1;
+        return originalApply(taskId, verb, payload);
+      };
+      const { ctx, res } = buildCtx({
+        method: "POST",
+        pathname: `/api/lifeops/scheduled-tasks/${task.taskId}/snooze`,
+      });
+
+      await handler(ctx);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("invalid snooze payload");
+      expect(applyCalls).toBe(0);
+    });
+
+    it("still accepts every editable ScheduledTaskInput field (no over-rejection)", async () => {
+      const { runner, handler, task } = await seed();
+      const fullPatch = {
+        kind: "checkin",
+        promptInstructions: "updated text",
+        contextRequest: {
+          includeOwnerFacts: ["timezone"],
+          includeEventPayload: true,
+        },
+        trigger: { kind: "interval", everyMinutes: 30 },
+        priority: "high",
+        shouldFire: { compose: "all", gates: [{ kind: "quiet_hours" }] },
+        completionCheck: {
+          kind: "user_acknowledged",
+          followupAfterMinutes: 10,
+        },
+        escalation: { steps: [{ delayMinutes: 5, channelKey: "chat" }] },
+        output: { destination: "in_app_card" },
+        pipeline: { onComplete: [] },
+        subject: { kind: "self", id: "owner" },
+        idempotencyKey: "idem-1",
+        respectsGlobalPause: false,
+        source: "plugin",
+        createdBy: "someone-else",
+        ownerVisible: false,
+        metadata: { note: "kept" },
+        executionProfile: "bg-light-30s",
+      };
+      const res = await edit(handler, task.taskId, fullPatch);
+      expect(res.statusCode).toBe(200);
+      const persisted = (await runner.list()).find(
+        (t) => t.taskId === task.taskId,
+      );
+      for (const [key, value] of Object.entries(fullPatch)) {
+        if (key === "metadata") continue;
+        expect(persisted?.[key as keyof ScheduledTask]).toEqual(value);
+      }
+      expect(persisted?.metadata?.note).toBe("kept");
+    });
+
+    it("returns 400 (not 500) for a malformed trigger", async () => {
+      const { runner, handler, task } = await seed();
+      const res = await edit(
+        handler,
+        task.taskId,
+        JSON.parse('{"trigger":null}'),
+      );
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("invalid edit payload");
+      const persisted = (await runner.list()).find(
+        (t) => t.taskId === task.taskId,
+      );
+      expect(persisted?.trigger).toEqual({ kind: "manual" });
+    });
+
+    it("rejects wrong-typed fields the create path already rejects, leaving the task untouched", async () => {
+      const { runner, handler, task } = await seed();
+      const res = await edit(
+        handler,
+        task.taskId,
+        JSON.parse(
+          '{"kind":12345,"priority":{"$ne":1},"ownerVisible":"yes","createdBy":null}',
+        ),
+      );
+      expect(res.statusCode).toBe(400);
+      const persisted = (await runner.list()).find(
+        (t) => t.taskId === task.taskId,
+      );
+      expect(persisted?.kind).toBe("reminder");
+      expect(persisted?.priority).toBe("low");
+      expect(persisted?.ownerVisible).toBe(true);
+      expect(persisted?.createdBy).toBe("tester");
+    });
+
+    it("rejects an unknown field instead of silently dropping it", async () => {
+      const { handler, task } = await seed();
+      const res = await edit(handler, task.taskId, { whatever: "junk" });
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("whatever");
+    });
+
+    it("does not re-parent the task when the body carries an own __proto__ key", async () => {
+      const { runner, handler, task } = await seed();
+      const body = JSON.parse(
+        '{"promptInstructions":"edited","__proto__":{"isAdmin":true}}',
+      );
+      expect(Object.hasOwn(body, "__proto__")).toBe(true);
+      const res = await edit(handler, task.taskId, body);
+      expect(res.statusCode).toBe(409);
+      expect(res.body).toContain("edit: __proto__ is read-only");
+      const persisted = (await runner.list()).find(
+        (t) => t.taskId === task.taskId,
+      );
+      expect(Object.getPrototypeOf(persisted)).toBe(Object.prototype);
+      expect((persisted as unknown as { isAdmin?: unknown }).isAdmin).toBe(
+        undefined,
+      );
+      expect(({} as { isAdmin?: unknown }).isAdmin).toBe(undefined);
+      expect(persisted?.promptInstructions).toBe("drink water");
+    });
+
+    it("keeps the 409 read-only contract for the server-managed keys", async () => {
+      const { handler, task } = await seed();
+      for (const key of ["taskId", "state"] as const) {
+        const res = await edit(handler, task.taskId, { [key]: "anything" });
+        expect(res.statusCode).toBe(409);
+        expect(res.body).toContain(`edit: ${key} is read-only`);
+      }
+    });
   });
 });

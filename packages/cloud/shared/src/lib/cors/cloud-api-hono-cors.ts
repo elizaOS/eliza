@@ -64,6 +64,7 @@ const PUBLIC_TOKEN_API_PATHS = new Set<string>([
   "/api/v1/generate-video",
   "/api/v1/models",
   "/api/v1/responses",
+  "/api/v1/subscriptions/plans",
   "/api/v1/voice",
   "/api/v1/voice-models",
   "/api/v1/voice-models/catalog",

@@ -4,16 +4,29 @@
  * target. Pairing and bootstrap exchange both route through this boundary.
  */
 
+import { setStorageValue } from "../bridge/storage-bridge";
 import { getActiveProfile, updateAgentProfile } from "./agent-profiles";
 import {
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
 
-export function persistActiveServerCredential(token: string): void {
+const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
+
+export async function persistActiveServerCredential(
+  token: string,
+): Promise<void> {
   const activeServer = loadPersistedActiveServer();
   if (activeServer && activeServer.kind !== "local") {
-    savePersistedActiveServer({ ...activeServer, accessToken: token });
+    const authenticatedServer = { ...activeServer, accessToken: token };
+    savePersistedActiveServer(authenticatedServer);
+    // Native storage mirroring is normally fire-and-forget, but pairing reloads
+    // immediately after this boundary. Await the authoritative Preferences write
+    // so hydration cannot restore the pre-pair, tokenless server on the next boot.
+    await setStorageValue(
+      ACTIVE_SERVER_STORAGE_KEY,
+      JSON.stringify(authenticatedServer),
+    );
   }
 
   const activeProfile = getActiveProfile();

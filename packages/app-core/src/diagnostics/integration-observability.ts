@@ -76,9 +76,26 @@ function inferErrorKind(error: unknown): string | undefined {
 
 function sanitizeToken(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const token = value.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-  const normalized = token.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-  return normalized ? normalized.slice(0, 64) : undefined;
+  const lower = value.toLowerCase();
+  let normalized = "";
+  let pendingUnderscore = false;
+  for (let index = 0; index < lower.length; index++) {
+    const code = lower.charCodeAt(index);
+    const isAllowed =
+      (code >= 48 && code <= 57) || (code >= 97 && code <= 122) || code === 45;
+    if (!isAllowed) {
+      if (normalized.length > 0) pendingUnderscore = true;
+      continue;
+    }
+    if (pendingUnderscore) {
+      normalized += "_";
+      if (normalized.length === 64) break;
+      pendingUnderscore = false;
+    }
+    normalized += lower[index];
+    if (normalized.length === 64) break;
+  }
+  return normalized || undefined;
 }
 
 function emitEvent(

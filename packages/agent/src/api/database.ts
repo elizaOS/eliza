@@ -47,6 +47,7 @@ import { decodePathComponent } from "./server-helpers.ts";
 export {
   stripSqlBlockComments,
   stripSqlDollarQuotedLiterals,
+  stripSqlLineComments,
 } from "../shared/sql-sanitizers.ts";
 
 import { scanSqlForReadOnly } from "../shared/sql-sanitizers.ts";

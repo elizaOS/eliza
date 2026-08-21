@@ -49,6 +49,7 @@ import {
 import type { SlashCommandController } from "../../chat/useSlashCommandController";
 import {
   type BackIntentEventDetail,
+  CHAT_CLOSE_EVENT,
   CHAT_OPEN_EVENT,
   CHAT_PREFILL_EVENT,
   type ChatPrefillEventDetail,
@@ -157,6 +158,7 @@ import {
   resolveChatPanelHalfDetentHeight,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
+import { setChatComposerAccessoryBarHidden } from "./ios-chat-accessory-bar";
 import { LIQUID_GLASS_SHEEN, liquidGlassEdgeShadow } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -1629,6 +1631,23 @@ export function ChatOverlay({
     (epoch: number) => epoch + 1,
     0,
   );
+  React.useEffect(
+    () => () => {
+      // The setting is WebView-global. Always restore it when chat leaves the
+      // tree so a later settings or onboarding field retains its accessory.
+      setChatComposerAccessoryBarHidden(false);
+    },
+    [],
+  );
+  React.useLayoutEffect(() => {
+    if (!transcriptionComposerActive && !realtimeVoiceComposerVisible) return;
+    // Removing a focused textarea does not reliably emit blur in WebKit. Give
+    // the WebView-global accessory back in the same commit that installs the
+    // voice/transcription surface, otherwise every later form can inherit
+    // chat's hidden state until the overlay itself unmounts.
+    setChatComposerAccessoryBarHidden(false);
+    setComposerFocused(false);
+  }, [realtimeVoiceComposerVisible, transcriptionComposerActive]);
   // Whether the sheet was collapsed when the composer last gained focus — so
   // dismissing the keyboard (tap the handle, tap the scrim, tap outside) returns
   // to the prior resting state (collapsed → input) instead of leaving the sheet
@@ -1997,19 +2016,34 @@ export function ChatOverlay({
   // never prepend into the newly active one.
   const loadOlderConversationIdRef = React.useRef(activeConversationId);
   loadOlderConversationIdRef.current = activeConversationId;
+  const loadOlderResumeRef = React.useRef<{
+    conversationId: string | null;
+    before?: number;
+  }>({ conversationId: activeConversationId });
   const fetchOlder = React.useCallback(async () => {
     const conversationId = activeConversationId;
     if (!conversationId) return { hasMore: false, prependedCount: 0 };
-    return await loadOlderConversationMessages({
+    if (loadOlderResumeRef.current.conversationId !== conversationId) {
+      loadOlderResumeRef.current = { conversationId };
+    }
+    const result = await loadOlderConversationMessages({
       client,
       conversationId,
       currentMessages: conversationMessages,
+      before: loadOlderResumeRef.current.before,
       prependMessages: (older) => {
         if (loadOlderConversationIdRef.current === conversationId) {
           prependConversationMessages(older);
         }
       },
     });
+    if (loadOlderConversationIdRef.current === conversationId) {
+      loadOlderResumeRef.current = {
+        conversationId,
+        before: result.resumeBefore,
+      };
+    }
+    return result;
   }, [activeConversationId, conversationMessages, prependConversationMessages]);
   // The render window slides UP as the reader scrolls into history (#14329,
   // #15281): it opens at MAX_RENDERED_SHELL_MESSAGES (lean idle/drag DOM) and
@@ -3886,9 +3920,18 @@ export function ChatOverlay({
       setMaximized(false);
       return;
     }
-    if (was || releaseFirstRunToFull) {
+    if (releaseFirstRunToFull) {
       goToDetent("full");
       onFirstRunReleaseHandled?.();
+      return;
+    }
+    if (was) {
+      // A bare false -> true status probe is not onboarding completion. Until
+      // the shell supplies mounted transcript-epoch authority, return to the
+      // regular compact composer instead of manufacturing a FULL release.
+      setFreeH(null);
+      setMode("input");
+      setMaximized(false);
     }
   }, [
     cloudLoginWaiting,
@@ -4146,6 +4189,18 @@ export function ChatOverlay({
     window.addEventListener(CHAT_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CHAT_OPEN_EVENT, onOpen);
   }, [pinnedOpen, expand]);
+
+  // Control-heavy views can explicitly ask the ambient sheet to yield focus.
+  // Keep onboarding pinned: its chat choices are the active first-run UI and
+  // must not be dismissed by background navigation.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onClose = () => {
+      if (!pinnedOpen) collapse();
+    };
+    window.addEventListener(CHAT_CLOSE_EVENT, onClose);
+    return () => window.removeEventListener(CHAT_CLOSE_EVENT, onClose);
+  }, [pinnedOpen, collapse]);
 
   // The structural OS-intent authority routes untrusted launch text as a local
   // composer-prefill event (or targeted cross-window delivery), never as an
@@ -5642,6 +5697,7 @@ export function ChatOverlay({
             : "calc(var(--eliza-mobile-nav-offset, 0px) + max(var(--safe-area-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.5rem)",
       }}
       data-testid="chat-overlay"
+      data-chat-overlay=""
       data-chat-gesture-surface=""
       data-open={sheetOpen ? "true" : undefined}
     >
@@ -6649,6 +6705,7 @@ export function ChatOverlay({
                     if (nextDraft.trim().length > 0) expandFromTyping();
                   }}
                   onFocus={() => {
+                    setChatComposerAccessoryBarHidden(true);
                     // Widen out of the short-landscape compact affordance (#14173)
                     // on focus, before the first keystroke.
                     setComposerFocused(true);
@@ -6669,6 +6726,7 @@ export function ChatOverlay({
                     if (cloudLoginWaiting) expand();
                   }}
                   onBlur={() => {
+                    setChatComposerAccessoryBarHidden(false);
                     setComposerFocused(false);
                     // A suppress-expand flag armed for a focus that never landed
                     // (openFromPill arms it BEFORE focusing) must not survive to

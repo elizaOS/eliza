@@ -26,6 +26,16 @@ type MessageSender = {
   bridgeMessageSend(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse>;
 };
 
+type HostParserInternals = {
+  buildBridgeNoReplyFallbackText(params: Record<string, unknown>): string | null;
+  fetchCanonicalConversationApi(
+    rec: AgentSandbox,
+    path: string,
+    init: RequestInit,
+    canonicalBridgeBase: unknown,
+  ): Promise<Response>;
+};
+
 const rec = {
   id: "sandbox-1",
   bridge_url: "http://sandbox.test",
@@ -128,6 +138,52 @@ function installNativeBridgeFetchStub(result: Record<string, unknown>): string[]
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+});
+
+describe("ElizaSandboxService linear bridge boundary parsing", () => {
+  test("parses an exact-words directive after 100k spaces", () => {
+    const host = new ElizaSandboxService() as unknown as HostParserInternals;
+
+    expect(
+      host.buildBridgeNoReplyFallbackText({
+        text: `Please reply with exact words${" ".repeat(100_000)}: "pong"`,
+      }),
+    ).toBe("pong");
+  });
+
+  test("parses a reply-with directive after 100k spaces", () => {
+    const host = new ElizaSandboxService() as unknown as HostParserInternals;
+
+    expect(
+      host.buildBridgeNoReplyFallbackText({
+        text: `Please reply${" ".repeat(100_000)}briefly with "pong"`,
+      }),
+    ).toBe("pong");
+  });
+
+  test("normalizes 100k canonical bridge URL slashes before exact comparison", async () => {
+    const host = new ElizaSandboxService() as unknown as HostParserInternals &
+      Record<string, unknown>;
+    const fetchAgentTarget = async (_rec: AgentSandbox, target: { url: string }) =>
+      Response.json({ url: target.url });
+    Object.assign(host, { fetchAgentTarget });
+    const slashes = "/".repeat(100_000);
+    const localRecord = {
+      ...rec,
+      bridge_url: `http://127.0.0.1:31337${slashes}`,
+    };
+
+    const response = await host.fetchCanonicalConversationApi(
+      localRecord,
+      "/api/conversations/conv-1/messages",
+      {},
+      `http://127.0.0.1:31337${slashes}`,
+    );
+
+    await expect(response.json()).resolves.toEqual({
+      url: "http://127.0.0.1:31337/api/conversations/conv-1/messages",
+    });
+  });
 });
 
 describe("ElizaSandboxService native bridge failureKind propagation", () => {

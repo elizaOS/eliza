@@ -24,6 +24,8 @@ import {
   logger,
   type Memory,
   type State,
+  toWellFormedUnicode,
+  truncateWellFormed,
   type UUID,
 } from "@elizaos/core";
 import type { FormService } from "../service";
@@ -33,10 +35,11 @@ const FORM_SUBACTIONS = ["restore"] as const;
 const RESTORE_FIELD_LIMIT = 12;
 const RESTORE_RESPONSE_MAX_CHARS = 4_000;
 
-function truncateRestoreResponse(text: string): string {
-  return text.length <= RESTORE_RESPONSE_MAX_CHARS
-    ? text
-    : `${text.slice(0, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
+export function truncateRestoreResponse(text: string): string {
+  const wellFormed = toWellFormedUnicode(text);
+  return wellFormed.length <= RESTORE_RESPONSE_MAX_CHARS
+    ? wellFormed
+    : `${truncateWellFormed(wellFormed, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
 }
 
 async function handleRestore(

@@ -16,7 +16,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { logger } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
@@ -76,6 +77,23 @@ describe("buildCacheKey", () => {
 });
 
 describe("ToolCallCache", () => {
+  it("logs the unkeyable reason and still executes by default", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+
+    await expect(
+      cache.run(desc, cyclic, async () => ({ result: "live" })),
+    ).resolves.toEqual({ result: "live" });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      { toolName: "web_search", reason: "cycle" },
+      "[ToolCallCache] Bypassing cache for unkeyable tool arguments",
+    );
+  });
+
   it("miss → run → populated → hit returns cached value without re-running", async () => {
     const cache = makeCache();
     const desc = resolveToolDescriptor("web_search");
@@ -649,8 +667,13 @@ describe("ToolCallCache", () => {
     expect(getterCalls).toBe(0);
   });
 
-  it("returns a reflection-hostile proxy uncached without running its get trap", async () => {
-    let getTrapCalls = 0;
+  it("returns a proxy uncached without running any reflection trap", async () => {
+    const trapCalls = {
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    };
     // Wrapped in a plain object: a bare proxy as a resolved promise value
     // would trip the runtime's own `then` lookup before the cache sees it.
     const makeHostile = (): unknown => ({
@@ -658,11 +681,20 @@ describe("ToolCallCache", () => {
       nested: new Proxy(
         { payload: "value" },
         {
-          get(target, property, receiver) {
-            getTrapCalls += 1;
-            return Reflect.get(target, property, receiver);
+          get() {
+            trapCalls.get += 1;
+            throw new TypeError("hostile get trap");
+          },
+          getOwnPropertyDescriptor() {
+            trapCalls.getOwnPropertyDescriptor += 1;
+            throw new TypeError("hostile descriptor trap");
+          },
+          getPrototypeOf() {
+            trapCalls.getPrototypeOf += 1;
+            throw new TypeError("hostile prototype trap");
           },
           ownKeys() {
+            trapCalls.ownKeys += 1;
             throw new TypeError("hostile ownKeys trap");
           },
         },
@@ -670,7 +702,12 @@ describe("ToolCallCache", () => {
     });
     expect(isCacheableToolOutput(makeHostile())).toBe(false);
     await expectUncacheableOnEveryRoute("hostile-proxy", makeHostile);
-    expect(getTrapCalls).toBe(0);
+    expect(trapCalls).toEqual({
+      get: 0,
+      getOwnPropertyDescriptor: 0,
+      getPrototypeOf: 0,
+      ownKeys: 0,
+    });
   });
 
   it("returns a revoked proxy uncached instead of leaking a raw TypeError", async () => {
