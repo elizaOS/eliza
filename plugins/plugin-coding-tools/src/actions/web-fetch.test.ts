@@ -284,12 +284,22 @@ describe("coding-tools WEB_FETCH", () => {
     expect(htmlToReadableText("<p>&quot;&apos;&nbsp;x</p>")).toBe("\"' x");
   });
 
-  it("removes script and style blocks whose closing tags contain whitespace", () => {
+  it("removes script and style blocks whose closing tags carry whitespace or attributes", () => {
     expect(
       htmlToReadableText(
         "<p>visible</p><script>steal()</script ><style>hidden{}</style ><p>after</p>",
       ),
     ).toBe("visible\n\nafter");
+    expect(
+      htmlToReadableText(
+        '<p>visible</p><script>steal()</script \t\n bar><style>hidden{}</style data-x="1"><p>after</p>',
+      ),
+    ).toBe("visible\n\nafter");
+    // A non-boundary suffix is not a real closer; the block must keep consuming
+    // until an accepted end tag so early content cannot leak.
+    expect(
+      htmlToReadableText("<p>a</p><script>steal()</scriptx></script><p>b</p>"),
+    ).toBe("a\n\nb");
   });
 
   it("degrades invalid numeric entities without throwing and keeps surrounding text", () => {

@@ -194,10 +194,10 @@ describe("linkExtractionEvaluator", () => {
 		);
 	});
 
-	it("decodes title entities once and strips script/style tags with spaced closers", async () => {
+	it("decodes title entities once and strips script/style tags with malformed closers", async () => {
 		stubPreviewFetch(
 			makeFetchResponse(
-				"<title>&amp;lt;literal&amp;gt;</title><body>safe<script>steal()</script ><style>hidden{}</style ></body>",
+				'<title>&amp;lt;literal&amp;gt;</title><body>safe<script>steal()</script \t\n bar><style>hidden{}</style data-x="1"></body>',
 			),
 		);
 		const runtime = makeRuntime(async (_modelType, params) => {

@@ -110,9 +110,9 @@ describe("gmail.ts error-policy — fail-closed vs designed-empty", () => {
     expect(result.messages[0]?.subject).toBe("Hello");
   });
 
-  test("body normalization decodes entities once and strips spaced script/style end tags", async () => {
+  test("body normalization decodes entities once and strips malformed script/style end tags", async () => {
     const body =
-      "<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script ><style>hidden{}</style >";
+      '<p>&amp;lt;kept&amp;gt;</p><script>credential-stealer()</script \t\n bar><style>hidden{}</style data-x="1">';
     fetchImpl = async () =>
       jsonResponse({
         id: "m1",
