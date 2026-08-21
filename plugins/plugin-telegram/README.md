@@ -63,6 +63,8 @@ The plugin reads the token from the runtime setting `TELEGRAM_BOT_TOKEN` or `pro
 | `TELEGRAM_API_ROOT` | No | Override Bot API base URL (e.g. local Bot API server). Default: `https://api.telegram.org` |
 | `TELEGRAM_ALLOWED_CHATS` | No | JSON array of chat ID strings the bot will respond to; authoritative for every chat type when set. Example: `["-100123456789"]` |
 | `TELEGRAM_DM_POLICY` | No | `open` / `pairing` / `allowlist` / `disabled` — gates private chats when no allowlist is configured. Default `pairing`: unknown senders get a one-time pairing code (core PairingService handshake) instead of full bot access, so an unconfigured bot is never default-open. Group chats are unaffected; a bot only sees groups it was invited to. |
+| `TELEGRAM_GROUP_RESPONSE_POLICY` | No | `mention_only` (default) / `ambient` / `disabled`. Mention-only replies to bot commands, direct `@bot` mentions, and replies to the bot while storing ambient messages silently. Existing `TELEGRAM_AUTO_REPLY=true` deployments retain ambient behavior until this is set explicitly. |
+| `TELEGRAM_AUTO_REPLY` | No | Legacy explicit auto-reply switch for DMs and backward-compatible ambient group behavior. |
 | `TELEGRAM_TEST_CHAT_ID` | No | Chat ID used by the live smoke-test suite |
 
 ## Enabling the plugin
@@ -111,6 +113,10 @@ Supported `kind` values: `"login"` (Telegram login widget), `"url"` (plain URL b
 ## Owner pairing
 
 The plugin registers a `/eliza_pair <code>` bot command that lets the Telegram user matching a 6-digit code shown in the agent dashboard bind their Telegram identity to the owner account. Rate-limited to 5 attempts per minute per user.
+
+## Group response behavior
+
+The default `mention_only` policy makes group use predictable: add the bot, grant it permission to read/send messages, then use a bot command, mention its exact username, or reply to one of its messages. Ambient messages remain available in that group's scoped history but do not trigger a reply. Operators can deliberately choose `ambient` for a conversational group or `disabled` for read-only ingestion. Telegram privacy mode can prevent the bot from receiving ambient messages at all; disable privacy in BotFather only when ambient history or replies are intended.
 
 ## 409 Conflict errors
 

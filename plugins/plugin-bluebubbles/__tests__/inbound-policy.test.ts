@@ -7,7 +7,12 @@
  * server password. Uses a stub runtime with a mocked PairingService and
  * message service — no live server.
  */
-import { type IAgentRuntime, ServiceType, type UUID } from "@elizaos/core";
+import {
+	type IAgentRuntime,
+	type Memory,
+	ServiceType,
+	type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BlueBubblesService } from "../src/service";
 import type { BlueBubblesHandle, BlueBubblesMessage } from "../src/types";
@@ -33,6 +38,7 @@ function makeRuntime(
 	};
 	const handleMessage = vi.fn(async () => undefined);
 	const createMemory = vi.fn(async () => undefined);
+	const cache = new Map<string, unknown>();
 	const runtime = {
 		agentId: "agent-1" as UUID,
 		character: { name: "Test Agent", settings: {} },
@@ -45,6 +51,11 @@ function makeRuntime(
 		createEntity: vi.fn(async () => undefined),
 		ensureConnection: vi.fn(async () => undefined),
 		createMemory,
+		getMemoryById: vi.fn(async () => null),
+		getCache: vi.fn(async (key: string) => cache.get(key)),
+		setCache: vi.fn(async (key: string, value: unknown) => {
+			cache.set(key, value);
+		}),
 		getRoom: vi.fn(async () => ({ id: "room-1" as UUID })),
 		messageService: { handleMessage },
 		reportError: vi.fn(),
@@ -276,5 +287,100 @@ describe("BlueBubbles inbound DM pairing gate", () => {
 		expect(handleMessage).not.toHaveBeenCalled();
 		expect(sendMessage).toHaveBeenCalledTimes(1);
 		expect(sendMessage.mock.calls[0]?.[1]).not.toContain("PAIRCODE1");
+	});
+});
+
+describe("BlueBubbles inbound group response and delivery policy", () => {
+	function groupMessage(text: string, guid = "group-msg-1") {
+		const sender = makeHandle("+1 (415) 555-2671");
+		const participant = makeHandle("+1 (415) 555-9999");
+		return makeMessage({
+			guid,
+			text,
+			handle: sender,
+			chats: [
+				{
+					guid: "iMessage;+;group-1",
+					chatIdentifier: "group-1",
+					displayName: "Friends",
+					participants: [sender, participant],
+					lastMessage: null,
+					style: 43,
+					isArchived: false,
+					isFiltered: false,
+					isPinned: false,
+					hasUnreadMessages: false,
+				},
+			],
+		});
+	}
+
+	it("stores ambient group messages without invoking the agent by default", async () => {
+		const { runtime, createMemory, handleMessage } = makeRuntime(
+			baseSettings({ BLUEBUBBLES_GROUP_POLICY: "open" }),
+			{ pairingAllowed: false },
+		);
+		const service = new BlueBubblesService(runtime);
+
+		await service.handleWebhook({
+			type: "new-message",
+			data: groupMessage("anyone want lunch?"),
+		});
+
+		expect(createMemory).toHaveBeenCalledTimes(1);
+		expect(handleMessage).not.toHaveBeenCalled();
+		const memory = createMemory.mock.calls[0]?.[0] as Memory;
+		expect(memory.metadata?.bluebubbles).toMatchObject({
+			invocation: "ambient",
+			responsePolicy: "mention_only",
+		});
+	});
+
+	it("uses the group chat GUID even when only one participant is present", async () => {
+		const { runtime, createMemory, handleMessage } = makeRuntime(
+			baseSettings({ BLUEBUBBLES_GROUP_POLICY: "open" }),
+			{ pairingAllowed: false },
+		);
+		const service = new BlueBubblesService(runtime);
+		const message = groupMessage("quiet context", "group-msg-guid");
+		message.chats[0].participants = [makeHandle("+1 (415) 555-2671")];
+
+		await service.handleWebhook({ type: "new-message", data: message });
+
+		expect(createMemory).toHaveBeenCalledTimes(1);
+		expect(handleMessage).not.toHaveBeenCalled();
+	});
+
+	it("invokes on an explicit agent mention and suppresses redelivery", async () => {
+		const { runtime, createMemory, handleMessage } = makeRuntime(
+			baseSettings({ BLUEBUBBLES_GROUP_POLICY: "open" }),
+			{ pairingAllowed: false },
+		);
+		const service = new BlueBubblesService(runtime);
+		const message = groupMessage("@Test Agent, summarize this", "group-msg-2");
+
+		await service.handleWebhook({ type: "new-message", data: message });
+		await service.handleWebhook({ type: "new-message", data: message });
+
+		expect(createMemory).toHaveBeenCalledTimes(1);
+		expect(handleMessage).toHaveBeenCalledTimes(1);
+	});
+
+	it("allows deliberate ambient group mode", async () => {
+		const { runtime, handleMessage } = makeRuntime(
+			baseSettings({
+				BLUEBUBBLES_GROUP_POLICY: "open",
+				BLUEBUBBLES_GROUP_RESPONSE_POLICY: "ambient",
+			}),
+			{ pairingAllowed: false },
+		);
+		const service = new BlueBubblesService(runtime);
+
+		await service.handleWebhook({
+			type: "new-message",
+			data: groupMessage("ambient turn", "group-msg-3"),
+		});
+
+		expect(handleMessage).toHaveBeenCalledTimes(1);
 	});
 });

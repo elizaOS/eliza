@@ -48,6 +48,11 @@ import type { Context, NarrowedContext, Telegraf } from "telegraf";
 import { Markup } from "telegraf";
 import { resolveTelegramSenderAuth } from "./command-registration";
 import {
+  classifyTelegramGroupInvocation,
+  resolveTelegramGroupResponsePolicy,
+  shouldReplyToTelegramGroup,
+} from "./group-response-policy";
+import {
   resolveTelegramRuntimeEntityId,
   telegramIdentityMetadata,
 } from "./identity";
@@ -1563,6 +1568,33 @@ export class MessageManager {
       // Get chat type and determine channel type
       const chat = message.chat as Chat;
       const channelType = getChannelType(chat);
+      const isGroupChat = chat.type !== "private";
+      const telegramAutoReplyRaw = this.runtime.getSetting(
+        "TELEGRAM_AUTO_REPLY",
+      );
+      const localRepliesEnabled = !lifeOpsPassiveConnectorsEnabled(
+        this.runtime,
+      );
+      const telegramAutoReply =
+        localRepliesEnabled &&
+        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
+      const groupResponsePolicy = resolveTelegramGroupResponsePolicy(
+        this.runtime.getSetting("TELEGRAM_GROUP_RESPONSE_POLICY"),
+        telegramAutoReplyRaw,
+      );
+      const groupInvocation = isGroupChat
+        ? classifyTelegramGroupInvocation(message, {
+            id: this.bot.botInfo?.id,
+            username: this.bot.botInfo?.username,
+          })
+        : undefined;
+      const shouldReply = isGroupChat
+        ? groupResponsePolicy !== "disabled" &&
+          (options?.forceReply === true ||
+            (localRepliesEnabled &&
+              groupInvocation !== undefined &&
+              shouldReplyToTelegramGroup(groupResponsePolicy, groupInvocation)))
+        : options?.forceReply === true || telegramAutoReply;
 
       await this.runtime.ensureConnection({
         entityId,
@@ -1641,6 +1673,8 @@ export class MessageManager {
             chatId: telegramChatId,
             messageId: telegramMessageId,
             threadId,
+            ...(groupInvocation ? { invocation: groupInvocation } : {}),
+            ...(isGroupChat ? { responsePolicy: groupResponsePolicy } : {}),
           },
           telegramUserId,
           telegramChatId,
@@ -1749,20 +1783,6 @@ export class MessageManager {
         threadId: threadIdNum,
       });
 
-      // Inbound messages are always persisted to memory above. The agent only
-      // auto-generates a reply when TELEGRAM_AUTO_REPLY is explicitly enabled —
-      // default-off prevents the runtime from speaking on the user's behalf.
-      // A forced reply (explicit slash-command invocation) always routes to the
-      // agent regardless of the auto-reply gate, since the user explicitly asked
-      // for a response by typing a command.
-      const telegramAutoReplyRaw = this.runtime.getSetting(
-        "TELEGRAM_AUTO_REPLY",
-      );
-      const telegramAutoReply =
-        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
-        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
-      const shouldReply = options?.forceReply === true || telegramAutoReply;
-
       if (!shouldReply) {
         try {
           await this.runtime.createMemory(memory, "messages");
@@ -1805,8 +1825,16 @@ export class MessageManager {
           throw persistError;
         }
         logger.debug(
-          { src: "plugin:telegram", agentId: this.runtime.agentId },
-          "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
+          {
+            src: "plugin:telegram",
+            agentId: this.runtime.agentId,
+            chatType: chat.type,
+            groupInvocation,
+            groupResponsePolicy: isGroupChat ? groupResponsePolicy : undefined,
+          },
+          isGroupChat
+            ? "Telegram group message ingested without response by invocation policy"
+            : "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
         );
       } else if (this.runtime.messageService) {
         // The stored attachment URLs are token-free `telegram-file:` capability

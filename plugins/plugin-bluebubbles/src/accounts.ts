@@ -14,7 +14,12 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { BlueBubblesConfig, DmPolicy, GroupPolicy } from "./types";
+import type {
+	BlueBubblesConfig,
+	DmPolicy,
+	GroupPolicy,
+	GroupResponsePolicy,
+} from "./types";
 
 /**
  * Default account identifier used when no specific account is configured.
@@ -47,6 +52,8 @@ export interface BlueBubblesAccountConfig {
 	dmPolicy?: DmPolicy;
 	/** Group message access policy */
 	groupPolicy?: GroupPolicy;
+	/** Group invocation policy after access is admitted */
+	groupResponsePolicy?: GroupResponsePolicy;
 	/** Allowlist for DM senders */
 	allowFrom?: string[];
 	/** Allowlist for groups */
@@ -69,6 +76,7 @@ export interface BlueBubblesMultiAccountConfig {
 	autoStartWaitMs?: number;
 	dmPolicy?: DmPolicy;
 	groupPolicy?: GroupPolicy;
+	groupResponsePolicy?: GroupResponsePolicy;
 	allowFrom?: string[];
 	groupAllowFrom?: string[];
 	sendReadReceipts?: boolean;
@@ -123,6 +131,7 @@ export function getMultiAccountConfig(
 		autoStartWaitMs: characterBlueBubbles?.autoStartWaitMs,
 		dmPolicy: characterBlueBubbles?.dmPolicy,
 		groupPolicy: characterBlueBubbles?.groupPolicy,
+		groupResponsePolicy: characterBlueBubbles?.groupResponsePolicy,
 		allowFrom: characterBlueBubbles?.allowFrom,
 		groupAllowFrom: characterBlueBubbles?.groupAllowFrom,
 		sendReadReceipts: characterBlueBubbles?.sendReadReceipts,
@@ -337,6 +346,14 @@ export function resolveBlueBubblesAccount(
 		multiConfig.groupPolicy ??
 		(getStringSetting(runtime, "BLUEBUBBLES_GROUP_POLICY") as GroupPolicy) ??
 		"allowlist";
+	const groupResponsePolicy =
+		accountConfig.groupResponsePolicy ??
+		multiConfig.groupResponsePolicy ??
+		(getStringSetting(
+			runtime,
+			"BLUEBUBBLES_GROUP_RESPONSE_POLICY",
+		) as GroupResponsePolicy) ??
+		"mention_only";
 	const allowFrom =
 		accountConfig.allowFrom ?? multiConfig.allowFrom ?? envAllowFrom;
 	const groupAllowFrom =
@@ -359,6 +376,7 @@ export function resolveBlueBubblesAccount(
 				autoStartWaitMs,
 				dmPolicy,
 				groupPolicy,
+				groupResponsePolicy,
 				allowFrom,
 				groupAllowFrom,
 				sendReadReceipts,

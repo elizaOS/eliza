@@ -7,10 +7,16 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { z } from "zod";
-import type { BlueBubblesConfig, DmPolicy, GroupPolicy } from "./types";
+import type {
+	BlueBubblesConfig,
+	DmPolicy,
+	GroupPolicy,
+	GroupResponsePolicy,
+} from "./types";
 
 const DmPolicySchema = z.enum(["open", "pairing", "allowlist", "disabled"]);
 const GroupPolicySchema = z.enum(["open", "allowlist", "disabled"]);
+const GroupResponsePolicySchema = z.enum(["mention_only", "ambient"]);
 
 export const BlueBubblesConfigSchema = z.object({
 	serverUrl: z.string().url("Server URL must be a valid URL"),
@@ -22,6 +28,8 @@ export const BlueBubblesConfigSchema = z.object({
 	autoStartWaitMs: z.number().int().nonnegative().optional().default(15000),
 	dmPolicy: DmPolicySchema.optional().default("pairing"),
 	groupPolicy: GroupPolicySchema.optional().default("allowlist"),
+	groupResponsePolicy:
+		GroupResponsePolicySchema.optional().default("mention_only"),
 	allowFrom: z.array(z.string()).optional().default([]),
 	groupAllowFrom: z.array(z.string()).optional().default([]),
 	sendReadReceipts: z.boolean().optional().default(true),
@@ -123,6 +131,10 @@ export function getConfigFromRuntime(
 		groupPolicy:
 			(getStringSetting("BLUEBUBBLES_GROUP_POLICY") as GroupPolicy) ??
 			"allowlist",
+		groupResponsePolicy:
+			(getStringSetting(
+				"BLUEBUBBLES_GROUP_RESPONSE_POLICY",
+			) as GroupResponsePolicy) ?? "mention_only",
 		allowFrom: parseAllowList(allowFromRaw),
 		groupAllowFrom: parseAllowList(groupAllowFromRaw),
 		sendReadReceipts:

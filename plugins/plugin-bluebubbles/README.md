@@ -50,6 +50,7 @@ Set the following environment variables (or character settings):
 | `BLUEBUBBLES_WEBHOOK_PATH` | no | Override the default webhook path (`/webhooks/bluebubbles`) |
 | `BLUEBUBBLES_DM_POLICY` | no | `open` \| `pairing` (default) \| `allowlist` \| `disabled` |
 | `BLUEBUBBLES_GROUP_POLICY` | no | `open` \| `allowlist` (default) \| `disabled` |
+| `BLUEBUBBLES_GROUP_RESPONSE_POLICY` | no | `mention_only` (default) \| `ambient`; controls whether admitted group traffic invokes the agent or is stored silently. |
 | `BLUEBUBBLES_ALLOW_FROM` | no | Comma-separated handles allowed to DM the agent |
 | `BLUEBUBBLES_GROUP_ALLOW_FROM` | no | Comma-separated handles allowed in group chats |
 | `BLUEBUBBLES_SEND_READ_RECEIPTS` | no | Send read receipts; default `true` |
@@ -89,6 +90,16 @@ In the BlueBubbles server app → Webhooks, add an entry:
 | `pairing` (default for DMs) | Accept handles in `BLUEBUBBLES_ALLOW_FROM` immediately; unknown senders are held through the core PairingService handshake — they receive a one-time pairing code and are admitted once the owner approves it (`pairing approve imessage <code>` or the pairing UI) |
 | `allowlist` (default for groups) | Accept only from handles in the allow list |
 | `disabled` | Reject all messages of this type |
+
+Group admission and group speech are intentionally separate. With the default
+`mention_only` response policy, an admitted participant invokes the agent by
+replying to one of its messages, writing `@Eliza`, or directly addressing the
+configured character name (for example, `Eliza: summarize this`). Other group
+messages are stored as scoped room history without a reply. Set `ambient` only
+for groups where every admitted message should invoke the agent. Replayed
+webhooks are suppressed with a durable delivery marker; if delivery begins but
+the acknowledgement is lost, the connector reports an uncertain outcome and
+does not risk a duplicate response.
 
 Attachment URLs stored on inbound memories are bare capability URLs. The
 BlueBubbles server password is appended only at fetch time inside

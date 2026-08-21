@@ -14,6 +14,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { checkTelegramDmAccess, resolveTelegramDmPolicy } from "../dm-policy";
+import {
+  classifyTelegramGroupInvocation,
+  resolveTelegramGroupResponsePolicy,
+  shouldReplyToTelegramGroup,
+} from "../group-response-policy";
 import { resolveTelegramRuntimeEntityId } from "../identity";
 
 function formatError(err: unknown): string {
@@ -42,13 +47,18 @@ type TelegramStandaloneMessage = {
   from?: TelegramStandaloneUser;
   chat?: TelegramStandaloneChat;
   message_thread_id?: number | string;
-  reply_to_message?: { message_id?: number | string };
+  reply_to_message?: {
+    message_id?: number | string;
+    from?: TelegramStandaloneUser;
+  };
 };
 
 export type TelegramStandaloneContext = {
   message?: TelegramStandaloneMessage;
   from?: TelegramStandaloneUser;
   chat?: TelegramStandaloneChat;
+  /** Bot username supplied by Telegraf on the live context. */
+  me?: string;
   reply: (text: string) => Promise<unknown>;
 };
 
@@ -245,6 +255,21 @@ export async function handleTelegramStandaloneMessage(
       telegramStandaloneMemoryKey(accountId, chatId, telegramMessageId),
     ) as UUID;
     const channelType = getTelegramChannelType(chat.type);
+    const isGroupChat = chat.type !== "private";
+    const groupResponsePolicy = resolveTelegramGroupResponsePolicy(
+      runtime.getSetting("TELEGRAM_GROUP_RESPONSE_POLICY") ??
+        process.env.TELEGRAM_GROUP_RESPONSE_POLICY,
+      runtime.getSetting("TELEGRAM_AUTO_REPLY") ??
+        process.env.TELEGRAM_AUTO_REPLY,
+    );
+    const groupInvocation = isGroupChat
+      ? classifyTelegramGroupInvocation(message, { username: ctx.me })
+      : undefined;
+    const shouldReply = isGroupChat
+      ? groupResponsePolicy !== "disabled" &&
+        groupInvocation !== undefined &&
+        shouldReplyToTelegramGroup(groupResponsePolicy, groupInvocation)
+      : true;
     const createdAt =
       typeof message.date === "number" ? message.date * 1000 : Date.now();
 
@@ -309,12 +334,29 @@ export async function handleTelegramStandaloneMessage(
           chatId,
           messageId: String(message.message_id ?? ""),
           threadId,
+          ...(groupInvocation ? { invocation: groupInvocation } : {}),
+          ...(isGroupChat ? { responsePolicy: groupResponsePolicy } : {}),
         },
         telegramUserId,
         telegramChatId: chatId,
       },
       createdAt,
     };
+
+    if (!shouldReply) {
+      await runtime.createMemory(memory, "messages");
+      await runtime.setCache(dedupeKey, {
+        state: "processed",
+        processedAt: Date.now(),
+        accountId,
+        chatId,
+        messageId: telegramMessageId,
+      });
+      logger.debug(
+        `[telegram-standalone] group message ingested without response chat=${chatId} invocation=${groupInvocation} policy=${groupResponsePolicy}`,
+      );
+      return;
+    }
 
     const callback: HandlerCallback = async (
       content: Content,

@@ -34,6 +34,11 @@ import {
 import { BlueBubblesClient } from "./client";
 import { BLUEBUBBLES_SERVICE_NAME, DEFAULT_WEBHOOK_PATH } from "./constants";
 import { isHandleAllowed, normalizeHandle } from "./environment";
+import {
+	classifyBlueBubblesGroupInvocation,
+	resolveBlueBubblesGroupResponsePolicy,
+	shouldReplyToBlueBubblesGroup,
+} from "./group-response-policy";
 import { renderBlueBubblesInteractionText } from "./interactions";
 import type {
 	BlueBubblesChat,
@@ -512,6 +517,7 @@ export class BlueBubblesService extends Service {
 	private knownChats: Map<string, BlueBubblesChat> = new Map();
 	private entityCache: Map<string, UUID> = new Map();
 	private roomCache: Map<string, UUID> = new Map();
+	private inboundInFlight: Set<string> = new Set();
 	private webhookPath: string = DEFAULT_WEBHOOK_PATH;
 	private isRunning = false;
 
@@ -1118,9 +1124,23 @@ export class BlueBubblesService extends Service {
 		};
 
 		switch (event.type) {
-			case "new-message":
-				await this.handleIncomingMessage(event.data as BlueBubblesMessage);
+			case "new-message": {
+				const message = event.data as BlueBubblesMessage;
+				const inFlightKey = `${this.accountId}:${message.guid}`;
+				if (this.inboundInFlight.has(inFlightKey)) {
+					logger.debug(
+						`Skipping concurrent duplicate BlueBubbles webhook: ${message.guid}`,
+					);
+					return;
+				}
+				this.inboundInFlight.add(inFlightKey);
+				try {
+					await this.handleIncomingMessage(message);
+				} finally {
+					this.inboundInFlight.delete(inFlightKey);
+				}
 				break;
+			}
 			case "updated-message":
 				await this.handleMessageUpdate(event.data as BlueBubblesMessage);
 				break;
@@ -1160,14 +1180,35 @@ export class BlueBubblesService extends Service {
 			return;
 		}
 
+		const deliveryKey = `bluebubbles:processed:${this.accountId}:${message.guid}`;
+		const deliveryMarker = await this.runtime.getCache<{
+			state?: "delivery_started" | "processed";
+		}>(deliveryKey);
+		if (deliveryMarker !== undefined) {
+			if (deliveryMarker.state === "delivery_started") {
+				this.runtime.reportError(
+					"bluebubbles:delivery-uncertain",
+					new Error(
+						`BlueBubbles delivery outcome is uncertain for ${this.accountId}/${message.guid}; refusing duplicate egress`,
+					),
+					{ accountId: this.accountId, messageGuid: message.guid },
+				);
+			}
+			logger.debug(`Skipping duplicate BlueBubbles webhook: ${message.guid}`);
+			return;
+		}
+
 		const chat = message.chats[0];
 		if (!chat) {
 			logger.warn(`Received message without chat info: ${message.guid}`);
 			return;
 		}
 
-		const isGroup = chat.participants.length > 1;
+		const isGroup = chat.participants.length > 1 || chat.guid.includes(";+;");
 		const senderHandle = message.handle?.address ?? "";
+		const participantHandles = chat.participants
+			.map((participant) => normalizeHandle(participant.address))
+			.filter(Boolean);
 
 		// Check access policies
 		if (isGroup) {
@@ -1230,6 +1271,27 @@ export class BlueBubblesService extends Service {
 		const replyToMessageId = replyToGuid
 			? (createUniqueUuid(this.runtime, `bluebubbles:${replyToGuid}`) as UUID)
 			: undefined;
+		const repliedToMemory = replyToMessageId
+			? await this.runtime.getMemoryById(replyToMessageId)
+			: null;
+		const groupResponsePolicy = resolveBlueBubblesGroupResponsePolicy(
+			config.groupResponsePolicy,
+		);
+		const characterName = this.runtime.character?.name;
+		const groupInvocation = isGroup
+			? classifyBlueBubblesGroupInvocation({
+					text: message.text,
+					agentNames: [
+						typeof characterName === "string" ? characterName : "",
+						"Eliza",
+					],
+					isReplyToAgent: repliedToMemory?.entityId === this.runtime.agentId,
+				})
+			: undefined;
+		const shouldReply =
+			!isGroup ||
+			(groupInvocation !== undefined &&
+				shouldReplyToBlueBubblesGroup(groupResponsePolicy, groupInvocation));
 		const attachments = message.attachments.map((att) => ({
 			id: att.guid,
 			// Bare capability URL only — the server password is appended at fetch
@@ -1257,6 +1319,7 @@ export class BlueBubblesService extends Service {
 				bluebubblesChatGuid: chat.guid,
 				bluebubblesChatIdentifier: chat.chatIdentifier,
 				bluebubblesHandle: senderHandle,
+				bluebubblesParticipants: participantHandles,
 			},
 		});
 
@@ -1302,6 +1365,10 @@ export class BlueBubblesService extends Service {
 				chatGuid: chat.guid,
 				chatIdentifier: chat.chatIdentifier,
 				messageGuid: message.guid,
+				participants: participantHandles,
+				displayName: chat.displayName ?? undefined,
+				...(groupInvocation ? { invocation: groupInvocation } : {}),
+				...(isGroup ? { responsePolicy: groupResponsePolicy } : {}),
 			},
 			bluebubblesChatGuid: chat.guid,
 			bluebubblesChatIdentifier: chat.chatIdentifier,
@@ -1312,6 +1379,19 @@ export class BlueBubblesService extends Service {
 
 		await this.runtime.createMemory(memory, "messages");
 
+		if (!shouldReply) {
+			await this.runtime.setCache(deliveryKey, {
+				state: "processed",
+				processedAt: Date.now(),
+				accountId: this.accountId,
+				messageGuid: message.guid,
+			});
+			logger.debug(
+				`BlueBubbles group message ingested without response: invocation=${groupInvocation} policy=${groupResponsePolicy}`,
+			);
+			return;
+		}
+
 		const room = await this.runtime.getRoom(roomId);
 		if (!room) {
 			logger.warn(
@@ -1320,7 +1400,13 @@ export class BlueBubblesService extends Service {
 			return;
 		}
 
-		await this.processMessage(memory, room, chat.guid);
+		await this.processMessage(memory, room, chat.guid, deliveryKey);
+		await this.runtime.setCache(deliveryKey, {
+			state: "processed",
+			processedAt: Date.now(),
+			accountId: this.accountId,
+			messageGuid: message.guid,
+		});
 	}
 
 	/**
@@ -1468,6 +1554,7 @@ export class BlueBubblesService extends Service {
 		memory: Memory,
 		room: { id: UUID; channelId?: string | null },
 		chatGuid: string,
+		deliveryKey: string,
 	): Promise<void> {
 		const messageService = getMessageService(this.runtime);
 		if (!messageService) {
@@ -1484,6 +1571,21 @@ export class BlueBubblesService extends Service {
 			if (!responseText) {
 				return [];
 			}
+
+			// Persist the no-replay barrier before touching BlueBubbles. If the
+			// send result is lost, a repeated webhook fails visibly instead of
+			// risking a second iMessage whose first delivery may have succeeded.
+			await this.runtime.setCache(deliveryKey, {
+				state: "delivery_started",
+				processedAt: Date.now(),
+				accountId: this.accountId,
+				messageGuid:
+					typeof (memory.metadata as Record<string, unknown> | undefined)
+						?.bluebubblesMessageGuid === "string"
+						? (memory.metadata as Record<string, unknown>)
+								.bluebubblesMessageGuid
+						: undefined,
+			});
 
 			let selectedMessageGuid: string | undefined;
 			if (

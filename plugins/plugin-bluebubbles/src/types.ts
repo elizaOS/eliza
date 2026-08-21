@@ -2,6 +2,7 @@
 
 export type DmPolicy = "open" | "pairing" | "allowlist" | "disabled";
 export type GroupPolicy = "open" | "allowlist" | "disabled";
+export type GroupResponsePolicy = "mention_only" | "ambient";
 
 export interface BlueBubblesConfig {
 	serverUrl: string;
@@ -13,6 +14,7 @@ export interface BlueBubblesConfig {
 	autoStartWaitMs?: number;
 	dmPolicy?: DmPolicy;
 	groupPolicy?: GroupPolicy;
+	groupResponsePolicy?: GroupResponsePolicy;
 	allowFrom?: string[];
 	groupAllowFrom?: string[];
 	sendReadReceipts?: boolean;

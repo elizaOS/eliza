@@ -79,6 +79,7 @@ bun run --cwd plugins/plugin-bluebubbles typecheck
 | `BLUEBUBBLES_WEBHOOK_PATH` | no | `/webhooks/bluebubbles` | Override inbound webhook path |
 | `BLUEBUBBLES_DM_POLICY` | no | `pairing` | `open` \| `pairing` \| `allowlist` \| `disabled` — `pairing` holds unknown senders through the core PairingService code handshake; it never defaults open |
 | `BLUEBUBBLES_GROUP_POLICY` | no | `allowlist` | `open` \| `allowlist` \| `disabled` |
+| `BLUEBUBBLES_GROUP_RESPONSE_POLICY` | no | `mention_only` | `mention_only` stores ambient group turns silently and replies only to `@Eliza`/agent-name direct address or a reply to the agent; `ambient` invokes on every admitted group message. |
 | `BLUEBUBBLES_ALLOW_FROM` | no | — | Comma-separated allowlist for DM senders |
 | `BLUEBUBBLES_GROUP_ALLOW_FROM` | no | — | Comma-separated allowlist for group senders |
 | `BLUEBUBBLES_SEND_READ_RECEIPTS` | no | `true` | Send read receipts on inbound messages |
@@ -127,6 +128,13 @@ blocks under `character.settings.bluebubbles.accounts.<id>`.
 - **No credentials in stored attachment URLs.** Memories carry the bare
   `/api/v1/attachment/<guid>` capability URL; the server password is appended
   only at fetch time via `BlueBubblesClient.getAttachmentUrl()`.
+- **Group access and response are separate.** `BLUEBUBBLES_GROUP_POLICY`
+  decides which participants are admitted. The response policy defaults to
+  `mention_only`, so admitted ambient messages remain in scoped room history
+  without interrupting the conversation. Replies to an agent-authored message
+  and explicit `@Eliza`/agent-name addresses invoke it. Durable delivery
+  markers suppress webhook redelivery; an uncertain send fails closed instead
+  of emitting a duplicate iMessage.
 - **Private API required for edit/unsend.** `BlueBubblesClient.editMessage()`
   and `.unsendMessage()` require the BlueBubbles Private API to be enabled.
   Check `probeResult.privateApiEnabled` before using those paths.

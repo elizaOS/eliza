@@ -203,9 +203,29 @@ describe("standalone Telegram DM policy gate", () => {
     expect(handleMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps group chats open when nothing is configured", async () => {
-    const { runtime, handleMessage } = makeRuntime({
+  it("keeps group access open but stores ambient turns silently by default", async () => {
+    const { runtime, createMemory, handleMessage } = makeRuntime({
       settings: { TELEGRAM_DM_POLICY: undefined },
+    });
+    const update = context(111) as {
+      chat: { type: string };
+      message: { chat: { type: string } };
+    };
+    update.chat.type = "supergroup";
+    update.message.chat.type = "supergroup";
+
+    await handleTelegramStandaloneMessage(runtime, update as never);
+
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(handleMessage).not.toHaveBeenCalled();
+  });
+
+  it("allows deliberate ambient replies in an admitted group", async () => {
+    const { runtime, handleMessage } = makeRuntime({
+      settings: {
+        TELEGRAM_DM_POLICY: undefined,
+        TELEGRAM_GROUP_RESPONSE_POLICY: "ambient",
+      },
     });
     const update = context(111) as {
       chat: { type: string };
