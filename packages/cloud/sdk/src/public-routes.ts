@@ -1177,6 +1177,24 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/connections/[platform]/route.ts",
   },
+  "GET /api/v1/connections/accounts": {
+    method: "GET",
+    path: "/api/v1/connections/accounts",
+    methodName: "getApiV1ConnectionsAccounts",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/accounts/route.ts",
+  },
+  "GET /api/v1/connections/accounts/{accountId}": {
+    method: "GET",
+    path: "/api/v1/connections/accounts/{accountId}",
+    methodName: "getApiV1ConnectionsAccountsByAccountId",
+    responseMode: "json",
+    pathParams: ["accountId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/connections/accounts/[accountId]/route.ts",
+  },
   "GET /api/v1/containers": {
     method: "GET",
     path: "/api/v1/containers",
@@ -5061,6 +5079,10 @@ export interface PublicRoutePathParams {
   };
   "GET /api/v1/cli-auth/{session}/token": { session: string | number };
   "GET /api/v1/connections/{platform}": { platform: string | number };
+  "GET /api/v1/connections/accounts": Record<never, never>;
+  "GET /api/v1/connections/accounts/{accountId}": {
+    accountId: string | number;
+  };
   "GET /api/v1/containers": Record<never, never>;
   "GET /api/v1/credits/balance": Record<never, never>;
   "GET /api/v1/credits/summary": Record<never, never>;
@@ -5775,6 +5797,8 @@ export interface PublicRouteHeaders {
   "GET /api/v1/chain/transfers/{chain}/{address}": never;
   "GET /api/v1/cli-auth/{session}/token": never;
   "GET /api/v1/connections/{platform}": never;
+  "GET /api/v1/connections/accounts": never;
+  "GET /api/v1/connections/accounts/{accountId}": never;
   "GET /api/v1/containers": never;
   "GET /api/v1/credits/balance": never;
   "GET /api/v1/credits/summary": never;
@@ -7510,6 +7534,24 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/connections/{platform}", TResponse>(
       "GET /api/v1/connections/{platform}",
+      options,
+    );
+  }
+
+  getApiV1ConnectionsAccounts<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/connections/accounts", TResponse>(
+      "GET /api/v1/connections/accounts",
+      options,
+    );
+  }
+
+  getApiV1ConnectionsAccountsByAccountId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts/{accountId}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/connections/accounts/{accountId}", TResponse>(
+      "GET /api/v1/connections/accounts/{accountId}",
       options,
     );
   }
@@ -12059,6 +12101,21 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/connections/{platform}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/connections/{platform}", options);
+  }
+
+  getApiV1ConnectionsAccountsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/connections/accounts", options);
+  }
+
+  getApiV1ConnectionsAccountsByAccountIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/connections/accounts/{accountId}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/connections/accounts/{accountId}",
+      options,
+    );
   }
 
   getApiV1ContainersRaw(
