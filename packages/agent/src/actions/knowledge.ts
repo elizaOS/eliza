@@ -32,6 +32,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
   asRecord,
   asUuid,
@@ -430,7 +431,7 @@ export const searchKnowledgeAction: Action = {
             "Untitled",
           mediaFormat: documentMediaFormat(meta, tags),
           similarity: r.similarity,
-          snippet: (r.content.text ?? "").slice(0, 240),
+          snippet: truncateWellFormed(toWellFormedUnicode(r.content.text ?? ""), 240),
         };
       });
 
