@@ -857,6 +857,58 @@ describe("useChatSend always streams (#9174)", () => {
       expect.arrayContaining(["persisted-user", "persisted-assistant"]),
     );
   });
+
+  it("reloads server history after /reset so deleted messages disappear immediately", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Reset this room: cleared command settings and 2 message(s).",
+      completed: true,
+      userMessageId: "persisted-reset-user",
+      messageId: "persisted-reset-assistant",
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.conversationMessagesRef.current = [
+      {
+        id: "old-message",
+        role: "user",
+        text: "This should be deleted",
+        timestamp: 1,
+      },
+    ];
+    vi.mocked(deps.loadConversationMessages).mockImplementation(async () => {
+      deps.setConversationMessages([
+        {
+          id: "persisted-reset-user",
+          role: "user",
+          text: "/reset",
+          timestamp: 2,
+        },
+        {
+          id: "persisted-reset-assistant",
+          role: "assistant",
+          text: "Reset this room: cleared command settings and 2 message(s).",
+          timestamp: 3,
+        },
+      ]);
+      return { ok: true };
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("/reset", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.loadConversationMessages).toHaveBeenCalledWith("conv-1");
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.id === "old-message",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("useChatSend action handoff", () => {

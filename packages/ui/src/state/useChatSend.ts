@@ -1396,6 +1396,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const hasAttachedImages = Boolean(turn.images?.length);
       const rawText = turn.rawInput.trim();
       if (!rawText && !hasAttachedImages) return;
+      const clearsRoomHistory = /^\/reset(?:\s|$)/i.test(rawText);
 
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
@@ -1690,7 +1691,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         // topology that may commit extra rows outside the streamed bubble.
         if (
           activeConversationIdRef.current === convId &&
-          (data.historyRefreshRequired ||
+          (clearsRoomHistory ||
+            data.historyRefreshRequired ||
             !data.completed ||
             (!data.messageId && !data.assistantEphemeral) ||
             !data.userMessageId)
