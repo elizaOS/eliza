@@ -115,10 +115,12 @@ describe("shared conversation coordinator", () => {
       "prewarm",
       "history",
     ]);
-    expect(signals[1]).toBe(abortController.signal);
+    expect(signals[1]).not.toBe(abortController.signal);
     // bridge / prewarm / history carry no caller signal, so they now fail
     // closed at the shared-runtime hop timeout instead of pinning forever.
     expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
+    abortController.abort();
+    expect(signals[1]?.aborted).toBe(true);
     expect(envelopes[1]).toMatchObject({ traceId: "trace-coordinator-stream" });
     expect(directBridge).not.toHaveBeenCalled();
     expect(directStream).not.toHaveBeenCalled();
@@ -461,7 +463,7 @@ describe("shared conversation coordinator", () => {
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  test("coordinatorFetch preserves a caller-provided abort signal", async () => {
+  test("coordinatorFetch composes caller cancellation with the hop deadline", async () => {
     const controller = new AbortController();
     let seen: AbortSignal | undefined;
     const stub = {
@@ -473,7 +475,34 @@ describe("shared conversation coordinator", () => {
     await coordinatorFetch(stub, "https://shared-runtime.internal/bridge", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    expect(seen).not.toBe(controller.signal);
+    expect(seen?.aborted).toBe(false);
+    controller.abort();
+    expect(seen?.aborted).toBe(true);
+  });
+
+  test("coordinatorFetch still times out when the caller signal never aborts", async () => {
+    const caller = new AbortController();
+    const hungStub = {
+      fetch: (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(
+              init.signal?.reason ?? new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+        }),
+    };
+
+    await expect(
+      coordinatorFetch(
+        hungStub,
+        "https://shared-runtime.internal/stream",
+        { signal: caller.signal },
+        100,
+      ),
+    ).rejects.toThrow(/timed out|timeout/i);
+    expect(caller.signal.aborted).toBe(false);
   });
 
   test("coordinateSharedStream keeps the caller abort signal on the DO hop", async () => {
@@ -511,6 +540,8 @@ describe("shared conversation coordinator", () => {
         },
       )
     )?.text();
-    expect(seen).toBe(controller.signal);
+    expect(seen).not.toBe(controller.signal);
+    controller.abort();
+    expect(seen?.aborted).toBe(true);
   });
 });

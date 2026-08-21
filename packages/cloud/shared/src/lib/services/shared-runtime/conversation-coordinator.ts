@@ -209,8 +209,8 @@ const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Bound every shared-runtime Durable Object hop so a hung or overloaded
- * coordinator cannot pin the calling worker indefinitely. A caller-provided
- * abort signal wins; without one the hop fails closed at the timeout.
+ * coordinator cannot pin the calling worker indefinitely. Caller cancellation
+ * and the hop deadline are composed so whichever fires first aborts the fetch.
  */
 export function coordinatorFetch(
   stub: { fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> },
@@ -218,9 +218,10 @@ export function coordinatorFetch(
   init?: RequestInit,
   timeoutMs: number = SHARED_RUNTIME_FETCH_TIMEOUT_MS,
 ): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   return stub.fetch(url, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal,
   });
 }
 
