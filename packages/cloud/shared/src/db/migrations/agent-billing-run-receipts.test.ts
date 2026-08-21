@@ -7,20 +7,27 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { PGlite } from "@electric-sql/pglite";
 
-const migrationUrl = new URL("./0274_agent_billing_run_receipts.sql", import.meta.url);
+const receiptMigrationUrl = new URL("./0274_agent_billing_run_receipts.sql", import.meta.url);
+const pendingWarningMigrationUrl = new URL(
+  "./0275_agent_billing_warning_pending.sql",
+  import.meta.url,
+);
 let pg: PGlite;
-let migrationSource = "";
+let receiptMigrationSource = "";
+let pendingWarningMigrationSource = "";
 
-async function applyMigration(): Promise<void> {
-  for (const statement of migrationSource.split("--> statement-breakpoint")) {
+async function applyMigration(source: string): Promise<void> {
+  for (const statement of source.split("--> statement-breakpoint")) {
     if (statement.trim()) await pg.exec(statement);
   }
 }
 
 beforeAll(async () => {
   pg = new PGlite();
-  migrationSource = await Bun.file(migrationUrl).text();
-  await applyMigration();
+  receiptMigrationSource = await Bun.file(receiptMigrationUrl).text();
+  pendingWarningMigrationSource = await Bun.file(pendingWarningMigrationUrl).text();
+  await applyMigration(receiptMigrationSource);
+  await applyMigration(pendingWarningMigrationSource);
 });
 
 beforeEach(async () => {
@@ -33,7 +40,7 @@ afterAll(async () => {
 
 describe("0274 agent billing run receipts", () => {
   test("re-applies idempotently without replacing durable tables", async () => {
-    await applyMigration();
+    await applyMigration(receiptMigrationSource);
     const tables = await pg.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
        WHERE table_schema = 'public' AND table_name LIKE 'agent_billing_run%'
@@ -43,6 +50,39 @@ describe("0274 agent billing run receipts", () => {
       "agent_billing_run_items",
       "agent_billing_runs",
     ]);
+  });
+
+  test("upgrades an already-created receipt table to admit pending warning recovery", async () => {
+    const run = await pg.query<{ id: string }>(
+      `INSERT INTO agent_billing_runs
+        (invocation_key, trigger_kind, started_at, lease_token, lease_expires_at)
+       VALUES ('manual:pending-warning-migration', 'manual', now(), gen_random_uuid(),
+         now() + interval '5 minutes')
+       RETURNING id`,
+    );
+
+    await expect(
+      pg.query(
+        `INSERT INTO agent_billing_run_items
+          (run_id, sandbox_id, organization_id, agent_name, action,
+           detail_code, detail_message)
+         VALUES ($1, '423e4567-e89b-42d3-a456-426614174003',
+           '123e4567-e89b-42d3-a456-426614174010', 'Pending Warning',
+           'warning_pending', 'warning_delivery_pending',
+           'Shutdown warning delivery is pending')`,
+        [run.rows[0]?.id],
+      ),
+    ).resolves.toBeDefined();
+    await expect(
+      pg.query(
+        `INSERT INTO agent_billing_run_items
+          (run_id, sandbox_id, organization_id, agent_name, action)
+         VALUES ($1, '523e4567-e89b-42d3-a456-426614174004',
+           '123e4567-e89b-42d3-a456-426614174010', 'Invalid Action',
+           'warning_delivered')`,
+        [run.rows[0]?.id],
+      ),
+    ).rejects.toThrow();
   });
 
   test("stores started before one exact terminal partial-failure outcome", async () => {
