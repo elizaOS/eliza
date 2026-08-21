@@ -655,6 +655,28 @@ describe("policy evaluation robustness", () => {
     expect(decision.policyId).toBe("null-returner");
   });
 
+  it("blocks when a decision object's verdict accessor throws", () => {
+    registerBrowserDomainPolicy({
+      id: "getter-bomb",
+      evaluate: (() => ({
+        get verdict(): never {
+          throw new Error("boom-from-getter");
+        },
+      })) as unknown as BrowserDomainPolicy["evaluate"],
+    });
+    const decision = evaluateBrowserDomainPolicies({
+      subaction: "navigate",
+      effect: "navigate",
+      domain: "example.com",
+      url: "https://example.com/",
+      targetId: null,
+      phase: "dispatch",
+    });
+    expect(decision.verdict).toBe("block");
+    expect(decision.reason).toContain("boom-from-getter");
+    expect(decision.policyId).toBe("getter-bomb");
+  });
+
   it("supplies a reason when a blocking policy omits one", () => {
     registerBrowserDomainPolicy({
       id: "terse",

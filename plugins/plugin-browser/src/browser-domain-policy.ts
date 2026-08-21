@@ -196,7 +196,24 @@ export function evaluateBrowserDomainPolicies(
         policyId: policy.id,
       };
     }
-    const verdict = (decision as { verdict?: unknown }).verdict;
+    let verdict: unknown;
+    let reason: unknown;
+    try {
+      // Accessor properties on a hook's decision object are as untrusted as
+      // the hook itself: a throwing getter must block, not escape as an
+      // untyped error past this fail-closed boundary.
+      verdict = (decision as { verdict?: unknown }).verdict;
+      reason = (decision as { reason?: unknown }).reason;
+    } catch (error) {
+      // error-policy:J3 untrusted-hook sanitizing — a decision property getter
+      // that throws must fail closed as a block, never fall through to allow.
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        verdict: "block",
+        reason: `Domain policy "${policy.id}" returned a decision whose properties threw: ${message}`,
+        policyId: policy.id,
+      };
+    }
     if (
       verdict !== "allow" &&
       verdict !== "block" &&
@@ -209,7 +226,6 @@ export function evaluateBrowserDomainPolicies(
       };
     }
     if (verdict !== "allow") {
-      const reason = (decision as { reason?: unknown }).reason;
       return {
         verdict,
         reason:
