@@ -23,8 +23,14 @@ Full evidence chain: elizaOS/eliza discussion #18309 (2026-08-13 comments).
 
 ## Enforcement state
 
-Runner installations live OUTSIDE this repo (hand-provisioned on the Hetzner
-robot hosts), so this policy cannot be enforced by repo code today. The
+Runner registrations live OUTSIDE this repo (hand-provisioned on the Hetzner
+robot hosts), so this placement policy cannot be enforced by repo code today.
+The systemd process-lifetime policy for those hosts IS repo-owned:
+`cloud/runners/actions-runner@.service` is the canonical template unit
+(`KillMode=control-group` — the previously deployed `KillMode=process` left a
+stale `Runner.Listener` alive across restarts and caused the `eliza-robot-20`
+`_diag/pages` collision, issue #19708), and
+`cloud/runners/repair-runner-slot.sh` is the single-slot repair runbook. The
 2026-08-13 remediation enforced it at three operational levels on the four
 affected hosts: runner services **stopped**, **disabled** (reboot-safe, with
 `/opt/actions-runners/WHY-DISABLED-20260813.md` on each box), and
