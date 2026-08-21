@@ -6,6 +6,8 @@
  */
 
 import { randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { resolveDirectCloudAuthApiBase } from "@elizaos/ui/api/direct-cloud-endpoints";
 import { isPersonalSharedElizaId } from "@elizaos/ui/utils/cloud-agent-base";
 import {
@@ -15,7 +17,10 @@ import {
   type Page,
   test,
 } from "@playwright/test";
-import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
+import {
+  resolveCloudLiveBrowserAuthSeed,
+  seedCloudLiveBrowserAuth,
+} from "../cloud-live-browser-auth";
 import {
   type CloudLiveBindingReuse,
   type CloudLiveContinuityEvidenceInput,
@@ -40,6 +45,11 @@ const CLOUD_LIVE_ENABLED =
   process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1" &&
   process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
+const DEPLOYED_RENDERER_ENABLED =
+  process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
+const DEPLOYED_RENDERER_ALIAS = "https://develop.eliza-app.pages.dev";
+const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
+const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v1";
 
 const PERSONAL_IDENTITY_ATTEMPT_TIMEOUT_MS = 180_000;
 const PERSONAL_IDENTITY_ATTEMPTS = 2;
@@ -97,18 +107,24 @@ async function chooseCloudRuntime(page: Page): Promise<void> {
 }
 
 async function seedProtectedCloudBlankStart(page: Page): Promise<void> {
-  expect(
-    await seedCloudLiveBrowserAuth({
-      async addInitScript(script, seed) {
-        await page.addInitScript(script, seed);
-      },
-    }),
-    "Cloud-live mode must hand its validated workflow bearer to the browser",
-  ).toBe(true);
+  // A local renderer is already controlled by the checked-out process, so its
+  // established init-script handoff remains safe. A deployed renderer must be
+  // reached and origin-verified before the bearer is ever handed to the page.
+  if (!DEPLOYED_RENDERER_ENABLED) {
+    expect(
+      await seedCloudLiveBrowserAuth({
+        async addInitScript(script, seed) {
+          await page.addInitScript(script, seed);
+        },
+      }),
+      "Cloud-live mode must hand its validated workflow bearer to the browser",
+    ).toBe(true);
+  }
   await page.addInitScript(() => {
     // Do not use the general smoke seed: its local active-server fixture would
-    // invalidate a fresh-context continuity claim. These explicit empty values
-    // plus the protected bearer above are the only values the test seeds.
+    // invalidate a fresh-context continuity claim. These non-secret empty values
+    // are safe before navigation; deployed mode seeds the bearer only after the
+    // exact top-level Pages origin and renderer identity are verified.
     if (localStorage.getItem("eliza:first-run-complete") === null) {
       localStorage.setItem("eliza:first-run-complete", "");
     }
@@ -116,6 +132,217 @@ async function seedProtectedCloudBlankStart(page: Page): Promise<void> {
       localStorage.setItem("elizaos:active-server", "");
     }
   });
+}
+
+async function seedVerifiedDeployedCloudBrowserAuth(page: Page): Promise<void> {
+  const seed = resolveCloudLiveBrowserAuthSeed(process.env);
+  expect(
+    seed,
+    "deployed Cloud-live mode requires a validated workflow bearer",
+  ).not.toBeNull();
+  if (!seed) throw new Error("missing deployed Cloud-live browser auth seed");
+
+  expect(
+    new URL(page.url()).origin,
+    "the bearer must never be handed to a document outside the Pages alias",
+  ).toBe(DEPLOYED_RENDERER_ALIAS);
+  await page.evaluate(
+    ({ expectedOrigin, storageKey, token }) => {
+      if (window.top !== window || window.location.origin !== expectedOrigin) {
+        throw new Error(
+          "refusing to seed deployed Cloud auth outside the verified top-level origin",
+        );
+      }
+      localStorage.setItem(storageKey, token);
+    },
+    { expectedOrigin: DEPLOYED_RENDERER_ALIAS, ...seed },
+  );
+}
+
+interface DeployedRendererIdentity {
+  buildId: string;
+  commit: string;
+  origin: string;
+}
+
+interface ProtectedCloudBlankStart {
+  deployedRenderer: DeployedRendererIdentity | null;
+  rendererApiOrigin: string;
+}
+
+async function requireDeployedRendererIdentity(
+  page: Page,
+  baseURL: string | undefined,
+): Promise<DeployedRendererIdentity | null> {
+  if (!DEPLOYED_RENDERER_ENABLED) return null;
+  const sourceSha =
+    process.env.ELIZA_UI_SMOKE_DEPLOYED_SOURCE_SHA?.trim() ?? "";
+  expect(
+    sourceSha,
+    "deployed renderer mode requires an exact source SHA",
+  ).toMatch(/^[0-9a-f]{40}$/);
+  expect(
+    new URL(baseURL ?? "https://missing.invalid").origin,
+    "deployed Playwright must be hard-pinned to the canonical develop Pages alias",
+  ).toBe(DEPLOYED_RENDERER_ALIAS);
+  expect(
+    new URL(page.url()).origin,
+    "the browser document must not redirect away from the deployment alias",
+  ).toBe(DEPLOYED_RENDERER_ALIAS);
+
+  const observed = await page.evaluate(async (expectedOrigin) => {
+    const response = await fetch(
+      `/eliza-renderer-build.json?deployed-browser-proof=${Date.now()}`,
+      { cache: "no-store", headers: { "cache-control": "no-cache" } },
+    );
+    const responseUrl = new URL(response.url);
+    if (
+      !response.ok ||
+      responseUrl.origin !== expectedOrigin ||
+      responseUrl.pathname !== "/eliza-renderer-build.json"
+    ) {
+      throw new Error(
+        "renderer manifest did not come from the deployment alias",
+      );
+    }
+    return (await response.json()) as Record<string, unknown>;
+  }, DEPLOYED_RENDERER_ALIAS);
+  expect(Object.keys(observed).sort()).toEqual(
+    [
+      "assetCount",
+      "buildId",
+      "builtAt",
+      "capacitorTarget",
+      "commit",
+      "indexHtmlSha256",
+      "iosApnsEnabled",
+      "playwrightTestAuth",
+      "runtimeMode",
+      "schema",
+      "variant",
+    ].sort(),
+  );
+  expect(observed.schema).toBe(DEPLOYED_RENDERER_MANIFEST_SCHEMA);
+  expect(observed.commit).toBe(sourceSha);
+  expect(observed.buildId).toMatch(/^[0-9a-f]{64}$/);
+  expect(observed.indexHtmlSha256).toMatch(/^[0-9a-f]{64}$/);
+  expect(observed.assetCount).toEqual(expect.any(Number));
+  expect(observed.assetCount).toBeGreaterThan(0);
+  expect(observed.playwrightTestAuth).toBe(false);
+  return {
+    buildId: observed.buildId as string,
+    commit: sourceSha,
+    origin: DEPLOYED_RENDERER_ALIAS,
+  };
+}
+
+async function requireRendererCloudApiOrigin(
+  page: Page,
+  expectedApiOrigin: string,
+): Promise<string> {
+  // The renderer carries its own Cloud base, resolved at BUILD time from
+  // VITE_ELIZA_CLOUD_BASE and otherwise defaulted. In deployed mode this check
+  // runs on the first public load, before the staging bearer reaches the page.
+  const readRendererCloudBase = () =>
+    page.evaluate(() => {
+      const config = (
+        window as unknown as {
+          __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
+        }
+      ).__ELIZAOS_APP_BOOT_CONFIG__;
+      return config?.cloudApiBase?.trim() ?? "";
+    });
+  await expect
+    .poll(readRendererCloudBase, {
+      message: "renderer boot config must expose its Cloud base",
+      timeout: 30_000,
+    })
+    .not.toBe("");
+  const rendererCloudBase = await readRendererCloudBase();
+  const rendererApiOrigin = (() => {
+    if (!rendererCloudBase) return "";
+    try {
+      return new URL(resolveDirectCloudAuthApiBase(rendererCloudBase)).origin;
+    } catch {
+      // error-policy:J3 a malformed boot value is reported as an explicit
+      // mismatch carrying the offending string, never as a raw TypeError.
+      return `<unparseable: ${rendererCloudBase}>`;
+    }
+  })();
+  expect(
+    rendererApiOrigin,
+    `renderer bundle resolves ${rendererCloudBase || "<unset>"} -> ${rendererApiOrigin || "<empty>"}; the lane pinned ${expectedApiOrigin}`,
+  ).toBe(expectedApiOrigin);
+  return rendererApiOrigin;
+}
+
+async function openProtectedCloudBlankStart(
+  page: Page,
+  baseURL: string | undefined,
+  expectedApiOrigin: string,
+): Promise<ProtectedCloudBlankStart> {
+  await seedProtectedCloudBlankStart(page);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const publicIdentity = await requireDeployedRendererIdentity(page, baseURL);
+  const publicApiOrigin = await requireRendererCloudApiOrigin(
+    page,
+    expectedApiOrigin,
+  );
+  if (!DEPLOYED_RENDERER_ENABLED) {
+    return {
+      deployedRenderer: publicIdentity,
+      rendererApiOrigin: publicApiOrigin,
+    };
+  }
+
+  // The first load is deliberately public. Only after the document origin,
+  // exact renderer manifest, and build-time Cloud API origin close do we expose
+  // the bearer to that top-level origin, then reload so application boot
+  // observes the authenticated store.
+  expect(publicIdentity).not.toBeNull();
+  await seedVerifiedDeployedCloudBrowserAuth(page);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const authenticatedIdentity = await requireDeployedRendererIdentity(
+    page,
+    baseURL,
+  );
+  expect(authenticatedIdentity).toEqual(publicIdentity);
+  const authenticatedApiOrigin = await requireRendererCloudApiOrigin(
+    page,
+    expectedApiOrigin,
+  );
+  expect(authenticatedApiOrigin).toBe(publicApiOrigin);
+  return {
+    deployedRenderer: authenticatedIdentity,
+    rendererApiOrigin: authenticatedApiOrigin,
+  };
+}
+
+async function writeDeployedBrowserSmokeEvidence(
+  path: string,
+  renderer: DeployedRendererIdentity,
+  cloudApiOrigin: string,
+): Promise<void> {
+  const outputPath = resolve(path);
+  await mkdir(dirname(outputPath), { recursive: true });
+  await writeFile(
+    outputPath,
+    `${JSON.stringify(
+      {
+        schema: DEPLOYED_BROWSER_SMOKE_SCHEMA,
+        sourceSha: renderer.commit,
+        rendererOrigin: renderer.origin,
+        rendererManifestCommit: renderer.commit,
+        rendererBuildId: renderer.buildId,
+        cloudApiOrigin,
+        cloudEnvironment: "staging",
+        outcome: "success",
+      },
+      null,
+      2,
+    )}\n`,
+    { encoding: "utf8", flag: "wx", mode: 0o600 },
+  );
 }
 
 async function readActiveBinding(
@@ -277,13 +504,18 @@ test.describe("real cloud login + personal identity + chat", () => {
       { type: "cloud-api-origin", description: originContract.origin },
       { type: "cloud-environment", description: originContract.environment },
       {
-        // This lane always drives the renderer bundle built from the checked-out
-        // revision through the live stack; it does NOT drive a deployed Pages
-        // artifact. Recorded so run artifacts state what was exercised.
         type: "renderer-source",
-        description: "locally built renderer bundle (not a deployed artifact)",
+        description: DEPLOYED_RENDERER_ENABLED
+          ? "Cloudflare Pages deployment alias"
+          : "locally built renderer bundle (not a deployed artifact)",
       },
     );
+    if (DEPLOYED_RENDERER_ENABLED) {
+      test.info().annotations.push({
+        type: "cloudflare-pages-alias",
+        description: DEPLOYED_RENDERER_ALIAS,
+      });
+    }
     expect(
       originContract.ok,
       originContract.reason ??
@@ -295,6 +527,8 @@ test.describe("real cloud login + personal identity + chat", () => {
       "";
     const stagingContinuityEvidencePath =
       process.env.ELIZA_UI_SMOKE_STAGING_CONTINUITY_EVIDENCE_PATH?.trim() ?? "";
+    const deployedBrowserEvidencePath =
+      process.env.ELIZA_UI_SMOKE_DEPLOYED_BROWSER_EVIDENCE_PATH?.trim() ?? "";
     if (originContract.environment === "staging") {
       expect(
         stagingLatencyEvidencePath,
@@ -304,59 +538,21 @@ test.describe("real cloud login + personal identity + chat", () => {
         stagingContinuityEvidencePath,
         "the staging lane must persist its privacy-safe continuity artifact",
       ).toBeTruthy();
+      if (DEPLOYED_RENDERER_ENABLED) {
+        expect(
+          deployedBrowserEvidencePath,
+          "deployed mode must persist its closed remote-browser proof",
+        ).toBeTruthy();
+      }
     }
 
     const primaryAudit = installNetworkAudit(context);
-    await seedProtectedCloudBlankStart(page);
-    await page.goto("/", { waitUntil: "domcontentloaded" });
-
-    // The process-level contract above only pins the spawned runtime's proxy.
-    // The renderer carries its own Cloud base, resolved at BUILD time from
-    // VITE_ELIZA_CLOUD_BASE and otherwise defaulted, and the shared-agent base
-    // for the chat leg is derived from it
-    // (client-cloud.ts buildCloudSharedAgentApiBase). A bundle built for the
-    // wrong deployment therefore talks to the wrong Cloud with this lane's
-    // bearer. Compare through resolveDirectCloudAuthApiBase because the boot
-    // value is a SITE base ("https://eliza.app") while the contract exposes an
-    // API origin ("https://api.eliza.app") -- equivalent, differently spelled.
-    const readRendererCloudBase = () =>
-      page.evaluate(() => {
-        const config = (
-          window as unknown as {
-            __ELIZAOS_APP_BOOT_CONFIG__?: { cloudApiBase?: string };
-          }
-        ).__ELIZAOS_APP_BOOT_CONFIG__;
-        return config?.cloudApiBase?.trim() ?? "";
-      });
-    // The public shell hands off to the full app asynchronously after the
-    // document event. Wait only for the non-secret boot mirror to exist; once
-    // present, the exact-origin assertion below still fails immediately on a
-    // production or malformed value.
-    await expect
-      .poll(readRendererCloudBase, {
-        message: "renderer boot config must expose its Cloud base",
-        timeout: 30_000,
-      })
-      .not.toBe("");
-    const rendererCloudBase = await readRendererCloudBase();
-    const rendererApiOrigin = (() => {
-      if (!rendererCloudBase) return "";
-      try {
-        return new URL(resolveDirectCloudAuthApiBase(rendererCloudBase)).origin;
-      } catch {
-        // error-policy:J3 a malformed boot value is reported as an explicit
-        // mismatch carrying the offending string, never as a raw TypeError.
-        return `<unparseable: ${rendererCloudBase}>`;
-      }
-    })();
+    const { deployedRenderer, rendererApiOrigin } =
+      await openProtectedCloudBlankStart(page, baseURL, originContract.origin);
     test.info().annotations.push({
       type: "renderer-cloud-origin",
       description: rendererApiOrigin,
     });
-    expect(
-      rendererApiOrigin,
-      `renderer bundle resolves ${rendererCloudBase || "<unset>"} -> ${rendererApiOrigin || "<empty>"}; the lane pinned ${originContract.origin}`,
-    ).toBe(originContract.origin);
 
     // The current Cloud join flow resolves the account-derived Personal Eliza
     // identity through the read-only Personal endpoint. It persists the
@@ -514,7 +710,8 @@ test.describe("real cloud login + personal identity + chat", () => {
     const freshResult = await (async () => {
       // Deliberately omit storageState. The new context gets no cookies or
       // origins from the first one, blocks the production service worker, and
-      // receives only the protected bearer + explicit blank boot values.
+      // receives only explicit blank boot values. Deployed mode hands it the
+      // protected bearer only after its public top-level origin is verified.
       const freshContext = await browser.newContext({
         baseURL,
         serviceWorkers: "block",
@@ -528,8 +725,15 @@ test.describe("real cloud login + personal identity + chat", () => {
 
         const freshPage = await freshContext.newPage();
         const freshAudit = installNetworkAudit(freshContext);
-        await seedProtectedCloudBlankStart(freshPage);
-        await freshPage.goto("/", { waitUntil: "domcontentloaded" });
+        const { deployedRenderer: freshDeployedRenderer } =
+          await openProtectedCloudBlankStart(
+            freshPage,
+            baseURL,
+            originContract.origin,
+          );
+        if (DEPLOYED_RENDERER_ENABLED) {
+          expect(freshDeployedRenderer).toEqual(deployedRenderer);
+        }
         const freshBinding = await resolvePersonalIdentity(freshPage);
         const freshHistoryBefore =
           freshAudit.snapshot().successfulHistoryGetCount;
@@ -609,6 +813,14 @@ test.describe("real cloud login + personal identity + chat", () => {
         stagingContinuityEvidencePath,
         continuityEvidenceInput,
       );
+      if (DEPLOYED_RENDERER_ENABLED) {
+        expect(deployedRenderer).not.toBeNull();
+        await writeDeployedBrowserSmokeEvidence(
+          deployedBrowserEvidencePath,
+          deployedRenderer as DeployedRendererIdentity,
+          originContract.origin,
+        );
+      }
     }
   });
 });
