@@ -39,6 +39,11 @@ const ADMIN_NAV: ReadonlyArray<{
     labelKey: "cloud.admin.nav.rpcStatus",
     fallback: "RPC status",
   },
+  {
+    path: "/cloud/admin/integrations",
+    labelKey: "cloud.admin.nav.integrations",
+    fallback: "Integrations",
+  },
 ];
 
 function GateState({ children }: { children: ReactNode }): React.JSX.Element {

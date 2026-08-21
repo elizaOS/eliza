@@ -36,11 +36,15 @@ export {
 export const ADMIN_MODERATION_ROUTE_PATH = "cloud/admin";
 export const ADMIN_REDEMPTIONS_ROUTE_PATH = "cloud/admin/redemptions";
 export const ADMIN_RPC_STATUS_ROUTE_PATH = "cloud/admin/rpc-status";
+export const ADMIN_INTEGRATIONS_ROUTE_PATH = "cloud/admin/integrations";
 
 /** Lazy page elements (code-split). The shell applies the `admin` gate. */
 const ModerationPageLazy = lazy(() => import("./ModerationPage"));
 const RedemptionsPageLazy = lazy(() => import("./RedemptionsPage"));
 const RpcStatusPageLazy = lazy(() => import("./RpcStatusPage"));
+const IntegrationReliabilityPageLazy = lazy(
+  () => import("./IntegrationReliabilityPage"),
+);
 
 /** Cloud-route definition for the moderation panel (`cloud/admin`). */
 export const adminModerationCloudRoute: CloudRouteDef = {
@@ -66,6 +70,14 @@ export const adminRpcStatusCloudRoute: CloudRouteDef = {
   gate: ADMIN_ROUTE_GATE,
 };
 
+/** Cloud-route definition for the integration reliability dashboard. */
+export const adminIntegrationReliabilityCloudRoute: CloudRouteDef = {
+  path: ADMIN_INTEGRATIONS_ROUTE_PATH,
+  element: IntegrationReliabilityPageLazy,
+  group: "admin",
+  gate: ADMIN_ROUTE_GATE,
+};
+
 /**
  * Register (or re-register) all admin routes + the `admin` gate. Exported for
  * an explicit mount; the default registration below runs at import time.
@@ -75,6 +87,7 @@ export function registerAdminCloudRoutes(): void {
   registerCloudRoute(adminModerationCloudRoute);
   registerCloudRoute(adminRedemptionsCloudRoute);
   registerCloudRoute(adminRpcStatusCloudRoute);
+  registerCloudRoute(adminIntegrationReliabilityCloudRoute);
 }
 
 registerAdminCloudRoutes();
