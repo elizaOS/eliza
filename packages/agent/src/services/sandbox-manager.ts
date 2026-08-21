@@ -2,6 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import path, { join } from "node:path";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 import {
   createEngine,
@@ -463,7 +464,7 @@ export class SandboxManager {
     this.emitEvent({
       timestamp: Date.now(),
       type: "exec",
-      detail: options.command.substring(0, 200),
+      detail: truncateWellFormed(toWellFormedUnicode(options.command), 200),
       metadata: {
         workdir: options.workdir ?? this.config.workdir ?? "/workspace",
       },
@@ -488,7 +489,10 @@ export class SandboxManager {
         type: "error",
         detail: `Sandbox exec failed: ${String(err)}`,
         metadata: {
-          command: options.command.substring(0, 200),
+          command: truncateWellFormed(
+            toWellFormedUnicode(options.command),
+            200,
+          ),
         },
       });
       return {
