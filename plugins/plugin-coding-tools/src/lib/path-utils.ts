@@ -1,9 +1,12 @@
 /**
  * Path predicates and resolution used by the sandbox policy and file handlers.
  * Relative FILE inputs resolve through the conversation's session cwd, while
- * device and `/proc/<pid>/fd` pseudo-paths remain blocked. Missing leaves
- * realpath through the longest existing parent so symlink directories cannot
- * smuggle a write outside the workspace.
+ * pseudo-paths remain blocked unconditionally: the special `/dev` character
+ * devices, the `/dev/fd` descriptor namespace, and the Linux per-process and
+ * per-thread descriptor entries under `/proc` (`fd`, `root`, `cwd`, `exe`, and
+ * `map_files`, in their numeric-pid, `self`, `thread-self`, and `task/<tid>`
+ * forms). Missing leaves realpath through the longest existing parent so
+ * symlink directories cannot smuggle a write outside the workspace.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -26,8 +29,13 @@ const BLOCKED_PATHS = new Set([
 ]);
 
 const BLOCKED_DEVICE_FD = /^\/dev\/fd(?:\/|$)/;
-const BLOCKED_PROC_FD =
-  /^\/proc\/(?:(?:\d+|self)(?:\/task\/\d+)?|thread-self)\/fd(?:\/|$)/;
+// Every `/proc` entry named here is a descriptor- or namespace-backed symlink
+// that re-enters an open file, the process root, or a mapped region, so it
+// escapes workspace containment even when its lexical path looks contained.
+// The trailing boundary group keeps siblings such as `/proc/<pid>/fdinfo` and
+// `/proc/<pid>/root_squash`-style names outside the match.
+const BLOCKED_PROC_DESCRIPTOR =
+  /^\/proc\/(?:(?:\d+|self)(?:\/task\/\d+)?|thread-self)\/(?:fd|root|cwd|exe|map_files)(?:\/|$)/;
 
 type SessionCwdReader = Service & Pick<SessionCwdService, "getCwd">;
 
@@ -48,7 +56,7 @@ export function isAbsolutePath(p: string): boolean {
 export function isBlockedPath(p: string): boolean {
   if (BLOCKED_PATHS.has(p)) return true;
   if (BLOCKED_DEVICE_FD.test(p)) return true;
-  if (BLOCKED_PROC_FD.test(p)) return true;
+  if (BLOCKED_PROC_DESCRIPTOR.test(p)) return true;
   return false;
 }
 
@@ -98,9 +106,11 @@ export async function traversesBlockedPath(p: string): Promise<boolean> {
 
     if (!followedLink) return false;
   }
-  // The final iteration may have expanded the fortieth (OS-maximum) symlink
-  // directly to a blocked target. Inspect that target before returning rather
-  // than dropping its identity at the traversal bound.
+  // The fortieth (OS-maximum) hop rewrites `candidate` and then exits the loop,
+  // so its result is never seen by the top-of-loop check. The rewrite joins the
+  // expanded link target with the unconsumed tail, which can form a blocked
+  // pseudo-path even when the target alone is not blocked. Inspect it here
+  // instead of dropping its identity at the traversal bound.
   return isBlockedPath(candidate);
 }
 
