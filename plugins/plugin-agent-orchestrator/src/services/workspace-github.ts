@@ -64,11 +64,14 @@ export function parseOwnerRepo(repo: string): {
 } {
   // Handle URLs like https://github.com/owner/repo or owner/repo. GitHub
   // repository names may contain dots, so do not use a dot as a delimiter.
-  const normalized = repo
-    .trim()
-    .replace(/^https?:\/\/github\.com\//i, "")
-    .replace(/[?#].*$/, "")
-    .replace(/\.git$/, "");
+  const withoutHost = repo.trim().replace(/^https?:\/\/github\.com\//i, "");
+  const query = withoutHost.indexOf("?");
+  const fragment = withoutHost.indexOf("#");
+  const suffixStart =
+    query < 0 ? fragment : fragment < 0 ? query : Math.min(query, fragment);
+  const normalized = (
+    suffixStart < 0 ? withoutHost : withoutHost.slice(0, suffixStart)
+  ).replace(/\.git$/, "");
   const parts = normalized.split("/");
   if (
     parts.length !== 2 ||

@@ -252,6 +252,134 @@ describe("platform probe factories", () => {
 		}
 	});
 
+	// Regression for #23026: Low Data Mode (`NWPath.isConstrained === true`)
+	// is a first-class metering signal per the plugin contract in
+	// `plugin-native-network-policy/src/definitions.ts`. An iOS user on
+	// unmetered Wi-Fi who enabled Low Data Mode reports
+	// `isExpensive=false, isConstrained=true`; the probe must classify that
+	// as metered so a multi-GB voice-model pull prompts instead of silently
+	// downloading against the user's explicit "limit non-essential traffic".
+	function withIosPathHints<T>(
+		hints: { isExpensive: boolean; isConstrained: boolean } | "throws",
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const g = globalThis as unknown as {
+			ElizaNetworkPolicy?: {
+				getPathHints?: () => Promise<{
+					isExpensive: boolean;
+					isConstrained: boolean;
+				}>;
+			};
+		};
+		const prev = g.ElizaNetworkPolicy;
+		g.ElizaNetworkPolicy = {
+			getPathHints: async () => {
+				if (hints === "throws") throw new Error("simulated native error");
+				return hints;
+			},
+		};
+		const restore = () => {
+			if (prev === undefined) delete g.ElizaNetworkPolicy;
+			else g.ElizaNetworkPolicy = prev;
+		};
+		return fn().finally(restore);
+	}
+
+	it("Capacitor iOS probe treats Low Data Mode (isConstrained=true) as metered", async () => {
+		await withIosPathHints(
+			{ isExpensive: false, isConstrained: true },
+			async () => {
+				const state = await capacitorIosProbe().probe();
+				expect(state.metered).toBe(true);
+			},
+		);
+	});
+
+	it("Capacitor iOS probe reports metered=false when neither flag is set", async () => {
+		await withIosPathHints(
+			{ isExpensive: false, isConstrained: false },
+			async () => {
+				const state = await capacitorIosProbe().probe();
+				expect(state.metered).toBe(false);
+			},
+		);
+	});
+
+	it("Capacitor iOS probe keeps metered=true when only isExpensive is set (regression guard)", async () => {
+		await withIosPathHints(
+			{ isExpensive: true, isConstrained: false },
+			async () => {
+				const state = await capacitorIosProbe().probe();
+				expect(state.metered).toBe(true);
+			},
+		);
+	});
+
+	it("Capacitor iOS probe reports metered=true when both flags are set", async () => {
+		await withIosPathHints(
+			{ isExpensive: true, isConstrained: true },
+			async () => {
+				const state = await capacitorIosProbe().probe();
+				expect(state.metered).toBe(true);
+			},
+		);
+	});
+
+	it("Capacitor iOS probe falls back to metered=null when the path-hints shim throws", async () => {
+		await withIosPathHints("throws", async () => {
+			const state = await capacitorIosProbe().probe();
+			expect(state.metered).toBeNull();
+		});
+	});
+
+	it("Low Data Mode iOS state flips the download decision from auto to metered-ask", async () => {
+		// End-to-end proof through describeRuntimeNetwork: a Wi-Fi link with
+		// Low Data Mode engaged and a 3 GB estimated pull must no longer
+		// auto-download. Stub both the Capacitor connection-type bridge and
+		// the iOS path-hints shim so the injected iOS probe sees `wifi`.
+		const g = globalThis as unknown as {
+			Capacitor?: unknown;
+		};
+		const prevCap = g.Capacitor;
+		g.Capacitor = {
+			Plugins: {
+				Network: {
+					getStatus: async () => ({
+						connected: true,
+						connectionType: "wifi" as const,
+					}),
+				},
+			},
+		};
+		const threeGigabytes = 3 * 1024 * 1024 * 1024;
+		// Outside the default 22:00-08:00 quiet hours so the flip is caused by
+		// metering, not the clock.
+		const noon = new Date(2024, 0, 1, 12, 0, 0);
+		try {
+			await withIosPathHints(
+				{ isExpensive: false, isConstrained: true },
+				async () => {
+					const snapshot = await describeRuntimeNetwork({
+						probe: capacitorIosProbe(),
+						estimatedBytes: threeGigabytes,
+						now: noon,
+					});
+					expect(snapshot.state).toEqual({
+						connectionType: "wifi",
+						metered: true,
+					});
+					expect(snapshot.class).toBe("wifi-metered");
+					expect(snapshot.decision.allow).toBe(false);
+					expect(snapshot.decision.reason).toBe("metered-ask");
+					expect(snapshot.decision.estimatedBytes).toBe(threeGigabytes);
+				},
+			);
+		} finally {
+			if (prevCap === undefined) delete g.Capacitor;
+			else g.Capacitor = prevCap;
+		}
+	});
+
 	it("Capacitor Android probe falls back to metered=null when the native shim throws", async () => {
 		const g = globalThis as unknown as {
 			ElizaNetworkPolicy?: {

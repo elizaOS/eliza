@@ -45,6 +45,9 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
   rateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
     await next();
   },
+  moneyRateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
 }));
 
 mock.module("@/lib/queue/redis-queue", () => ({

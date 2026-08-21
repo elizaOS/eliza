@@ -277,6 +277,12 @@ describe("service agent provisioning route", () => {
         token_address: "0x0000000000000000000000000000000000000009",
         token_chain: "bsc",
       }),
+      {
+        policy: {
+          mode: "trusted",
+          caller: "service-api-v1-agents",
+        },
+      },
     );
     expect(createAgent).toHaveBeenCalledWith(
       expect.objectContaining({

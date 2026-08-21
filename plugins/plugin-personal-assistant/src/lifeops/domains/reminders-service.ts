@@ -240,7 +240,14 @@ import {
   runTelemetryRetention,
 } from "../telemetry-retention.js";
 import { addMinutes, getLocalDateKey, getZonedDateParts } from "../time.js";
-import { callerDefinitionScopes } from "./definition-authorization.js";
+import {
+  callerDefinitionScopes,
+  getCallerDefinition,
+  getCallerOccurrence,
+  getCallerOccurrenceView,
+  listCallerDefinitions,
+  nextMutationRevision,
+} from "./definition-authorization.js";
 import { resolveReminderNotificationPriority } from "./reminder-notification-priority.js";
 
 export { REMINDER_DISPATCH_INSTRUCTIONS } from "../optimized-prompt-instructions.js";
@@ -1789,15 +1796,11 @@ export class RemindersDomain {
     definitionId: string,
     now = new Date(),
   ): Promise<LifeOpsDefinitionRecord> {
-    let definition: LifeOpsTaskDefinition | null = null;
-    for (const scope of callerDefinitionScopes(this.ctx)) {
-      definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
-        definitionId,
-        scope,
-      );
-      if (definition) break;
-    }
+    const definition = await getCallerDefinition(
+      this.ctx.repository,
+      this.ctx,
+      definitionId,
+    );
     if (!definition) {
       fail(404, "life-ops definition not found");
     }
@@ -2428,15 +2431,17 @@ export class RemindersDomain {
     definition: LifeOpsTaskDefinition;
     occurrence: LifeOpsOccurrence;
   }> {
-    const occurrence = await this.ctx.repository.getOccurrence(
-      this.ctx.agentId(),
+    const occurrence = await getCallerOccurrence(
+      this.ctx.repository,
+      this.ctx,
       occurrenceId,
     );
     if (!occurrence) {
       fail(404, "life-ops occurrence not found");
     }
-    const definition = await this.ctx.repository.getDefinition(
-      this.ctx.agentId(),
+    const definition = await getCallerDefinition(
+      this.ctx.repository,
+      this.ctx,
       occurrence.definitionId,
     );
     if (!definition) {
@@ -2448,6 +2453,11 @@ export class RemindersDomain {
     const freshOccurrence = await this.ctx.repository.getOccurrence(
       this.ctx.agentId(),
       occurrenceId,
+      {
+        domain: definition.domain,
+        subjectType: definition.subjectType,
+        subjectId: definition.subjectId,
+      },
     );
     if (!freshOccurrence) {
       fail(404, "life-ops occurrence not found after refresh");
@@ -3308,7 +3318,7 @@ export class RemindersDomain {
             reminderAcknowledgedNote: acknowledgementNote,
             reminderAcknowledgedResolution: args.resolution,
           },
-          updatedAt: new Date().toISOString(),
+          updatedAt: nextMutationRevision(occurrence.updatedAt),
         });
       }
     } else {
@@ -3504,8 +3514,9 @@ export class RemindersDomain {
       }
 
       if (reviewAttempt.ownerType === "occurrence") {
-        const occurrence = await this.ctx.repository.getOccurrenceView(
-          this.ctx.agentId(),
+        const occurrence = await getCallerOccurrenceView(
+          this.ctx.repository,
+          this.ctx,
           reviewAttempt.ownerId,
         );
         if (!occurrence) {
@@ -3532,13 +3543,13 @@ export class RemindersDomain {
           });
           continue;
         }
-        const definition = await this.ctx.repository.getDefinition(
-          this.ctx.agentId(),
+        const definition = await getCallerDefinition(
+          this.ctx.repository,
+          this.ctx,
           occurrence.definitionId,
         );
-        const preference = definition
-          ? await this.getReminderPreference(definition.id)
-          : null;
+        if (!definition) continue;
+        const preference = await this.getReminderPreference(definition.id);
         const attempt = await this.dispatchDueReminderEscalation({
           plan,
           ownerType: "occurrence",
@@ -4037,7 +4048,7 @@ export class RemindersDomain {
 
   public async syncWebsiteAccessState(now = new Date()): Promise<void> {
     const definitions = (
-      await this.ctx.repository.listDefinitions(this.ctx.agentId())
+      await listCallerDefinitions(this.ctx.repository, this.ctx)
     ).filter(
       (definition) =>
         definition.status === "active" && definition.websiteAccess,
@@ -4576,8 +4587,9 @@ export class RemindersDomain {
     definitionId?: string | null,
   ): Promise<LifeOpsReminderPreference> {
     const definition = definitionId
-      ? await this.ctx.repository.getDefinition(
-          this.ctx.agentId(),
+      ? await getCallerDefinition(
+          this.ctx.repository,
+          this.ctx,
           requireNonEmptyString(definitionId, "definitionId"),
         )
       : null;
@@ -4601,8 +4613,9 @@ export class RemindersDomain {
     const updatedAt = new Date().toISOString();
     const definitionId = normalizeOptionalString(request.definitionId) ?? null;
     if (definitionId) {
-      const definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
         definitionId,
       );
       if (!definition) {
@@ -4619,7 +4632,14 @@ export class RemindersDomain {
         ),
         updatedAt,
       };
-      await this.ctx.repository.updateDefinition(nextDefinition);
+      await this.ctx.repository.updateDefinition(nextDefinition, {
+        expectedUpdatedAt: definition.updatedAt,
+        expectedScope: {
+          domain: definition.domain,
+          subjectType: definition.subjectType,
+          subjectId: definition.subjectId,
+        },
+      });
       await this.ctx.recordAudit(
         "definition_updated",
         "definition",
@@ -4972,8 +4992,10 @@ export class RemindersDomain {
       return dueAttempts;
     }
 
-    const definitions = await this.ctx.repository.listActiveDefinitions(
-      this.ctx.agentId(),
+    const definitions = await listCallerDefinitions(
+      this.ctx.repository,
+      this.ctx,
+      { activeOnly: true },
     );
     for (const definition of definitions) {
       await this.refreshDefinitionOccurrences(definition, now);
@@ -4983,11 +5005,13 @@ export class RemindersDomain {
     );
 
     const horizon = addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString();
-    const occurrenceViews =
+    const occurrenceViews = (
       await this.ctx.repository.listOccurrenceViewsForOverview(
         this.ctx.agentId(),
         horizon,
-      );
+        callerDefinitionScopes(this.ctx),
+      )
+    ).filter((occurrence) => definitionsById.has(occurrence.definitionId));
     const occurrencePlans =
       await this.ctx.repository.listReminderPlansForOwners(
         this.ctx.agentId(),
@@ -5973,17 +5997,22 @@ export class RemindersDomain {
   ): Promise<LifeOpsReminderInspection> {
     let plan: LifeOpsReminderPlan | null = null;
     if (ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
         ownerId,
       );
       if (!occurrence) {
         fail(404, "life-ops occurrence not found");
       }
-      const definition = await this.ctx.repository.getDefinition(
-        this.ctx.agentId(),
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
         occurrence.definitionId,
       );
+      if (!definition) {
+        fail(404, "life-ops reminder not found");
+      }
       if (definition?.reminderPlanId) {
         plan = await this.ctx.repository.getReminderPlan(
           this.ctx.agentId(),
@@ -6031,22 +6060,42 @@ export class RemindersDomain {
         : normalizeIsoString(request.acknowledgedAt, "acknowledgedAt");
     const note = normalizeOptionalString(request.note) ?? null;
     if (ownerType === "occurrence") {
-      const occurrence = await this.ctx.repository.getOccurrence(
-        this.ctx.agentId(),
+      const occurrence = await getCallerOccurrence(
+        this.ctx.repository,
+        this.ctx,
         ownerId,
       );
       if (!occurrence) {
         fail(404, "life-ops occurrence not found");
       }
-      await this.ctx.repository.updateOccurrence({
-        ...occurrence,
-        metadata: {
-          ...occurrence.metadata,
-          reminderAcknowledgedAt: acknowledgedAt,
-          reminderAcknowledgedNote: note,
+      const definition = await getCallerDefinition(
+        this.ctx.repository,
+        this.ctx,
+        occurrence.definitionId,
+      );
+      if (!definition) {
+        fail(404, "life-ops reminder not found");
+      }
+      await this.ctx.repository.updateOccurrence(
+        {
+          ...occurrence,
+          metadata: {
+            ...occurrence.metadata,
+            reminderAcknowledgedAt: acknowledgedAt,
+            reminderAcknowledgedNote: note,
+          },
+          updatedAt: new Date().toISOString(),
         },
-        updatedAt: new Date().toISOString(),
-      });
+        {
+          definitionScope: {
+            domain: definition.domain,
+            subjectType: definition.subjectType,
+            subjectId: definition.subjectId,
+          },
+          expectedUpdatedAt: occurrence.updatedAt,
+          expectedDefinitionUpdatedAt: definition.updatedAt,
+        },
+      );
     } else {
       const event = (
         await this.ctx.repository.listCalendarEvents(

@@ -11,16 +11,24 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse, ValidationError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox-bridge";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { coordinateSharedBridge } from "@/lib/services/shared-runtime/conversation-coordinator";
+import { isPersonalSharedAgentId } from "@/lib/services/shared-runtime/personal-shared-agent";
 import {
   resolveSharedAgent,
   resolveSharedRuntimeWorkerRequestContext,
 } from "@/lib/services/shared-runtime/resolve-shared-agent";
 import type { SharedRuntimeAgent } from "@/lib/services/shared-runtime/shared-runtime-agent";
 import type { BridgeExecutionContext } from "@/lib/services/shared-runtime/shared-runtime-chat";
+import {
+  classifyBridgeRequestMethod,
+  classifySharedTurnOutcome,
+  recordSharedTurnAttempt,
+  type SharedTurnRuntimeKind,
+} from "@/lib/services/shared-runtime/shared-turn-observability";
 import type {
   AppEnv,
   RuntimeDurableObjectNamespace,
@@ -170,59 +178,107 @@ async function dispatchToDedicatedSandbox(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) => {
-  const worker = resolveSharedRuntimeWorkerRequestContext(c);
-  if ("error" in worker) {
-    return applyCorsHeaders(
-      Response.json(
-        {
-          success: false,
-          error: worker.error,
-          code: worker.code,
-          retryable: worker.retryable,
-        },
-        { status: worker.status, headers: { "Retry-After": "1" } },
-      ),
-      CORS_METHODS,
-    );
-  }
-  const scope = await resolveSharedAgent(c, {
-    cacheOnly: true,
-    executionCtx: worker.executionCtx,
-  });
-  if ("error" in scope) {
-    // A dedicated agent is not a client error here — this route serves both
-    // tiers, and the shared resolver refusing it is the signal to take the
-    // sandbox path. #17076 collapsed this branch, so the internal discriminator
-    // escaped to callers as a terminal 404 (#18062).
-    if (scope.refusal === "dedicated-agent") {
-      return dispatchToDedicatedSandbox(c, worker.executionCtx);
+  const startedAt = performance.now();
+  const headers = c.req.raw.headers;
+  const traceId = c.get("traceId") ?? resolveElizaTraceId(headers);
+  const rpcMethodPromise = classifyBridgeRequestMethod(c.req.raw);
+  const unresolvedRuntimeKind: SharedTurnRuntimeKind = isPersonalSharedAgentId(
+    c.req.param("agentId") ?? "",
+  )
+    ? "personal"
+    : "unresolved";
+  const dispatch = async (): Promise<{
+    response: Response;
+    runtimeKind: SharedTurnRuntimeKind;
+  }> => {
+    const worker = resolveSharedRuntimeWorkerRequestContext(c);
+    if ("error" in worker) {
+      return {
+        response: applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: worker.error,
+              code: worker.code,
+              retryable: worker.retryable,
+            },
+            { status: worker.status, headers: { "Retry-After": "1" } },
+          ),
+          CORS_METHODS,
+        ),
+        runtimeKind: unresolvedRuntimeKind,
+      };
     }
-    return applyCorsHeaders(
-      Response.json(
+    const scope = await resolveSharedAgent(c, {
+      cacheOnly: true,
+      executionCtx: worker.executionCtx,
+    });
+    if ("error" in scope) {
+      // A dedicated agent is not a client error here — this route serves both
+      // tiers, and the shared resolver refusing it is the signal to take the
+      // sandbox path. #17076 collapsed this branch, so the internal discriminator
+      // escaped to callers as a terminal 404 (#18062).
+      if (scope.refusal === "dedicated-agent") {
+        return {
+          response: await dispatchToDedicatedSandbox(c, worker.executionCtx),
+          runtimeKind: "dedicated",
+        };
+      }
+      return {
+        response: applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: scope.error,
+              ...(scope.code ? { code: scope.code } : {}),
+              ...(scope.status === 503 ? { retryable: true } : {}),
+            },
+            {
+              status: scope.status,
+              ...(scope.status === 503
+                ? { headers: { "Retry-After": "1" } }
+                : {}),
+            },
+          ),
+          CORS_METHODS,
+        ),
+        runtimeKind: unresolvedRuntimeKind,
+      };
+    }
+    return {
+      response: await __hono_POST(
+        c.req.raw,
+        { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
         {
-          success: false,
-          error: scope.error,
-          ...(scope.code ? { code: scope.code } : {}),
-          ...(scope.status === 503 ? { retryable: true } : {}),
-        },
-        {
-          status: scope.status,
-          ...(scope.status === 503 ? { headers: { "Retry-After": "1" } } : {}),
+          agent: scope.agent,
+          ...("agentKind" in scope ? { agentKind: scope.agentKind } : {}),
+          namespace: worker.namespace,
+          executionCtx: worker.executionCtx,
         },
       ),
-      CORS_METHODS,
-    );
-  }
-  return __hono_POST(
-    c.req.raw,
-    { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
-    {
-      agent: scope.agent,
-      ...("agentKind" in scope ? { agentKind: scope.agentKind } : {}),
-      namespace: worker.namespace,
-      executionCtx: worker.executionCtx,
-    },
-  );
+      runtimeKind:
+        "agentKind" in scope && scope.agentKind === "personal"
+          ? "personal"
+          : "sandbox",
+    };
+  };
+
+  const [{ response, runtimeKind }, rpcMethod] = await Promise.all([
+    dispatch(),
+    rpcMethodPromise,
+  ]);
+  const outcome = await classifySharedTurnOutcome(response);
+  recordSharedTurnAttempt({
+    headers,
+    traceId,
+    durationMs: performance.now() - startedAt,
+    surface: "bridge",
+    rpcMethod,
+    runtimeKind,
+    status: response.status,
+    outcome,
+  });
+  return response;
 });
 export default __hono_app;
 

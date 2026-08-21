@@ -13,11 +13,13 @@ import {
   formatHourlyRate,
   formatMonthlyEstimate,
 } from "@elizaos/cloud-shared/lib/constants/agent-pricing-display";
+import type { AgentExecutionTier } from "@elizaos/cloud-shared/lib/types/cloud-api";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui/cloud-ui";
 import { useT } from "../lib/i18n";
 
 interface AgentCostBadgeProps {
   status: string;
+  executionTier: AgentExecutionTier;
 }
 
 function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
@@ -25,20 +27,23 @@ function formatBadgeHourlyRate(rate: number, isIdle: boolean) {
   return formatHourlyRate(rate);
 }
 
-export function AgentCostBadge({ status }: AgentCostBadgeProps) {
+export function AgentCostBadge({ status, executionTier }: AgentCostBadgeProps) {
   const t = useT();
+  const isShared = executionTier === "shared";
   const isRunning = status === "running" || status === "provisioning";
   const isIdle = status === "stopped" || status === "disconnected";
   const isSleeping = status === "sleeping";
 
-  if (!isRunning && !isIdle && !isSleeping) return null;
+  if (!isShared && !isRunning && !isIdle && !isSleeping) return null;
 
   const rate = isRunning
     ? AGENT_PRICING.RUNNING_HOURLY_RATE
     : isIdle
       ? AGENT_PRICING.IDLE_HOURLY_RATE
       : 0;
-  const hourlyRateLabel = formatBadgeHourlyRate(rate, isIdle);
+  const hourlyRateLabel = isShared
+    ? t("cloud.agents.detail.sharedFree", { defaultValue: "Free" })
+    : formatBadgeHourlyRate(rate, isIdle);
 
   return (
     <Tooltip>
@@ -51,7 +56,20 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
         </span>
       </TooltipTrigger>
       <TooltipContent className="bg-neutral-900 border-white/10 text-xs">
-        {isSleeping ? (
+        {isShared ? (
+          <>
+            <p className="font-medium text-white mb-0.5">
+              {t("cloud.agents.detail.sharedAgent", {
+                defaultValue: "Shared Agent",
+              })}
+            </p>
+            <p className="text-white/60">
+              {t("cloud.agents.detail.sharedIncluded", {
+                defaultValue: "Included at no hourly cost",
+              })}
+            </p>
+          </>
+        ) : isSleeping ? (
           <>
             <p className="font-medium text-white mb-0.5">
               {t("cloud.containers.costBadge.deactivated", {
@@ -61,7 +79,7 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
             <p className="text-white/60">
               {t("cloud.containers.costBadge.deactivatedDetail", {
                 defaultValue:
-                  "Not running — no hourly cost. Data is kept in an encrypted backup.",
+                  "Not running — no hourly cost. Your agent data is retained.",
               })}
             </p>
           </>

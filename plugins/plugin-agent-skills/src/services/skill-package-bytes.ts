@@ -13,7 +13,7 @@ export const MAX_SKILL_PACKAGE_BYTES = 10 * 1024 * 1024;
 /** Default wall-clock deadline shared by every request in one install. */
 export const DEFAULT_SKILL_DOWNLOAD_TIMEOUT_MS = 30_000;
 
-/** Largest delay Node can schedule without overflowing its timer implementation. */
+/** Largest single delay Node can schedule without clamping it to one millisecond. */
 export const MAX_SKILL_DOWNLOAD_TIMEOUT_MS = 2_147_483_647;
 
 /** Per-install controls for the shared download lifecycle. */
@@ -33,6 +33,8 @@ const SKILL_DOWNLOAD_ERROR_CODES = new Set([
 	"SKILL_PACKAGE_TOO_LARGE",
 ]);
 
+const OWNED_SKILL_DOWNLOAD_ERRORS = new WeakSet<ElizaError>();
+
 /** One signal and deadline spanning every request and body read in an install. */
 export interface SkillDownloadLifecycle {
 	readonly signal: AbortSignal;
@@ -42,16 +44,18 @@ export interface SkillDownloadLifecycle {
 }
 
 function cancellationError(cause?: unknown): ElizaError {
-	return new ElizaError("Skill download was cancelled by its caller", {
+	const error = new ElizaError("Skill download was cancelled by its caller", {
 		code: "SKILL_DOWNLOAD_ABORTED",
 		context: { boundary: "skill-package-download" },
 		cause,
 		severity: "ephemeral",
 	});
+	OWNED_SKILL_DOWNLOAD_ERRORS.add(error);
+	return error;
 }
 
 function timeoutError(timeoutMs: number): ElizaError {
-	return new ElizaError(
+	const error = new ElizaError(
 		`Skill download exceeded its ${timeoutMs}ms deadline`,
 		{
 			code: "SKILL_DOWNLOAD_TIMEOUT",
@@ -59,6 +63,8 @@ function timeoutError(timeoutMs: number): ElizaError {
 			severity: "ephemeral",
 		},
 	);
+	OWNED_SKILL_DOWNLOAD_ERRORS.add(error);
+	return error;
 }
 
 /** Normalize an aborted signal without replacing its authoritative typed reason. */
@@ -66,7 +72,8 @@ export function skillDownloadAbortError(
 	signal: AbortSignal,
 	cause?: unknown,
 ): ElizaError {
-	return signal.reason instanceof ElizaError
+	return signal.reason instanceof ElizaError &&
+		OWNED_SKILL_DOWNLOAD_ERRORS.has(signal.reason)
 		? signal.reason
 		: cancellationError(cause ?? signal.reason);
 }
@@ -107,12 +114,10 @@ export function createSkillDownloadLifecycle(
 			: options.downloadTimeoutMs;
 	if (
 		timeoutMs !== null &&
-		(!Number.isInteger(timeoutMs) ||
-			timeoutMs <= 0 ||
-			timeoutMs > MAX_SKILL_DOWNLOAD_TIMEOUT_MS)
+		(!Number.isFinite(timeoutMs) || timeoutMs <= 0)
 	) {
 		throw new ElizaError(
-			"Skill download timeout must be a positive bounded integer or null",
+			"Skill download timeout must be a positive finite number or null",
 			{
 				code: "SKILL_DOWNLOAD_INVALID_TIMEOUT",
 				context: { downloadTimeoutMs: timeoutMs },
@@ -134,24 +139,34 @@ export function createSkillDownloadLifecycle(
 		if (options.signal?.aborted) abortFromCaller();
 	}
 
-	const timeoutSignal =
-		timeoutMs === null ? undefined : AbortSignal.timeout(timeoutMs);
-	const abortFromTimeout = (): void => {
-		if (!controller.signal.aborted && timeoutMs !== null) {
-			controller.abort(timeoutError(timeoutMs));
-		}
-	};
-	if (timeoutSignal?.aborted) {
-		abortFromTimeout();
-	} else {
-		timeoutSignal?.addEventListener("abort", abortFromTimeout, { once: true });
+	let disposed = false;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	if (timeoutMs !== null && !controller.signal.aborted) {
+		const startedAt = performance.now();
+		const armDeadline = (remainingMs: number): void => {
+			timer = setTimeout(
+				() => {
+					if (disposed || controller.signal.aborted) return;
+					const nextRemaining = timeoutMs - (performance.now() - startedAt);
+					if (nextRemaining > 0) {
+						armDeadline(nextRemaining);
+						return;
+					}
+					controller.abort(timeoutError(timeoutMs));
+				},
+				Math.min(remainingMs, MAX_SKILL_DOWNLOAD_TIMEOUT_MS),
+			);
+		};
+		armDeadline(timeoutMs);
 	}
 
 	return {
 		signal: controller.signal,
 		timeoutMs,
 		dispose() {
-			timeoutSignal?.removeEventListener("abort", abortFromTimeout);
+			if (disposed) return;
+			disposed = true;
+			if (timer !== undefined) clearTimeout(timer);
 			options.signal?.removeEventListener("abort", abortFromCaller);
 		},
 		throwIfAborted(cause?: unknown) {
@@ -225,9 +240,13 @@ export async function readCappedSkillPackage(
 			total += value.byteLength;
 			if (total > MAX_SKILL_PACKAGE_BYTES) {
 				try {
-					await reader.cancel();
+					const cancellation = reader.cancel();
+					void Promise.resolve(cancellation).catch(() => {
+						// error-policy:J6 cancellation is teardown-only after the
+						// authoritative byte-cap failure has been established.
+					});
 				} catch {
-					// error-policy:J6 cancel is best-effort after the byte-cap failure.
+					// error-policy:J6 synchronous cancel is teardown-only after overflow.
 				}
 				throw tooLarge(total);
 			}

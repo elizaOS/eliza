@@ -95,6 +95,7 @@ import {
   resolveStewardTenantCredentials,
   type StewardTenantCredentials,
 } from "./steward-tenant-config";
+import { tailnetPathMonitor } from "./tailnet-path-monitor";
 
 // ---------------------------------------------------------------------------
 // Exported metadata type for strongly-typed provider metadata
@@ -2649,6 +2650,10 @@ export class DockerSandboxProvider implements SandboxProvider {
           logger.info(
             `[docker-sandbox] Tailnet health probe passed for ${meta.containerName} (${healthUrl})`,
           );
+          await tailnetPathMonitor.record({
+            containerName: meta.containerName,
+            outcome: "passed",
+          });
           return true;
         }
         logger.debug(
@@ -2670,6 +2675,13 @@ export class DockerSandboxProvider implements SandboxProvider {
     logger.warn(
       `[docker-sandbox] Tailnet health check timed out after ${HEALTH_CHECK_TIMEOUT_MS / 1000}s for ${meta.containerName} (${healthUrl})`,
     );
+    // A run of these across distinct containers is the severed-path signature
+    // (headscale ACL regression); the monitor pages ops instead of letting the
+    // outage hide inside per-container provisioning retries.
+    await tailnetPathMonitor.record({
+      containerName: meta.containerName,
+      outcome: "timed_out",
+    });
     return false;
   }
 

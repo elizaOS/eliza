@@ -1,15 +1,15 @@
 /** Exercises malformed X DM draft participant identifiers before service dispatch. */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { XDmAdapter } from "./lifeops-message-adapter.ts";
 
-const sendDirectMessageForAccount = mock(async () => ({
+const sendDirectMessageForAccount = vi.fn(async () => ({
   ok: true,
   status: 201,
   messageId: "sent-1",
 }));
-const fetchDirectMessagesForAccount = mock(async () => []);
+const fetchDirectMessagesForAccount = vi.fn(async () => []);
 
 function runtimeWithXService(): IAgentRuntime {
   return {

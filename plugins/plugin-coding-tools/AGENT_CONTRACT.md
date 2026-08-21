@@ -104,6 +104,9 @@ export const myAction: Action = {
   validated through SandboxService.
 - **SHELL** — runs with `cwd` defaulting to `SessionCwdService.getCwd(...)`.
   Optional `cwd` parameter overrides; must be absolute and within roots.
+  Workspace roots validate only this working directory. SHELL is trusted host
+  execution and commands may read or write outside configured roots; do not
+  describe the path policy or command analyzer as OS filesystem confinement.
 - **WORKTREE action=enter** — call `SandboxService.addRoot` and
   `SessionCwdService.pushWorktree` so the new path is reachable.
 

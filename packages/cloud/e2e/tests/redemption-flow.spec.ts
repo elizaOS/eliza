@@ -98,6 +98,7 @@ test.describe("creator payout / redemption lifecycle", () => {
       {
         pointsAmount: 100,
         network: "base",
+        asset: "eliza",
         payoutAddress: PAYOUT_ADDRESS,
         idempotencyKey: randomUUID(),
       },

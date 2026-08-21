@@ -687,6 +687,193 @@ describe("document list query (real SQL parity)", () => {
     await expect(adapter.getMemoryById(original.id!)).resolves.not.toBeNull();
   });
 
+  it("rolls back a complete revision when a staged fragment cannot be inserted", async () => {
+    const original = document(1, { metadata: { documentRevision: 0 } });
+    const oldFragment = {
+      ...document(2),
+      id: v4() as UUID,
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    const collision = document(3);
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+      { memory: collision, tableName: "documents" },
+    ]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+    };
+    const snapshot = readDocumentMutationSnapshot(original)!;
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const conflictingFragment = {
+      ...oldFragment,
+      id: collision.id,
+      content: { text: "new fragment" },
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    await expect(
+      adapter.replaceDocumentRevision({
+        ...context,
+        documentId: original.id!,
+        expected: snapshot,
+        replacement,
+        fragments: [conflictingFragment],
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
+
+    await expect(adapter.getMemoryById(original.id!)).resolves.toMatchObject({
+      content: { text: "Document body 1" },
+      metadata: { documentRevision: 0 },
+    });
+    await expect(adapter.getMemoryById(oldFragment.id!)).resolves.toMatchObject({
+      content: { text: "old fragment" },
+    });
+    await expect(adapter.getMemoryById(collision.id!)).resolves.toMatchObject({
+      metadata: { type: MemoryType.DOCUMENT },
+    });
+  });
+
+  it("rejects replacement fragment ids from the committed generation", async () => {
+    const original = document(10, { metadata: { documentRevision: 0 } });
+    const oldFragment = {
+      ...document(11),
+      id: v4() as UUID,
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+    };
+    const snapshot = readDocumentMutationSnapshot(original)!;
+    const replacement = {
+      ...original,
+      content: { text: "new body" },
+      metadata: { ...original.metadata, documentRevision: 1 },
+    };
+    const reusedFragment = {
+      ...oldFragment,
+      content: { text: "new fragment with reused id" },
+      metadata: { ...oldFragment.metadata, documentRevision: 1 },
+    };
+
+    await expect(
+      adapter.replaceDocumentRevision({
+        ...context,
+        documentId: original.id!,
+        expected: snapshot,
+        replacement,
+        fragments: [reusedFragment],
+      })
+    ).rejects.toMatchObject({ code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT" });
+    await expect(adapter.getMemoryById(original.id!)).resolves.toMatchObject({
+      content: { text: "Document body 10" },
+      metadata: { documentRevision: 0 },
+    });
+    await expect(adapter.getMemoryById(oldFragment.id!)).resolves.toMatchObject({
+      content: { text: "old fragment" },
+      metadata: { documentRevision: 0 },
+    });
+  });
+
+  it("serializes competing revisions and exposes one complete winning generation", async () => {
+    const original = document(1, { metadata: { documentRevision: 0 } });
+    const oldFragment = {
+      ...original,
+      id: v4() as UUID,
+      content: { text: "old fragment" },
+      metadata: {
+        type: MemoryType.FRAGMENT,
+        documentId: original.id,
+        documentRevision: 0,
+        position: 0,
+      },
+    };
+    await adapter.createMemories([
+      { memory: original, tableName: "documents" },
+      { memory: oldFragment, tableName: "document_fragments" },
+    ]);
+    const context = {
+      agentId,
+      requesterEntityId: REQUESTER_ID,
+      requesterRoomIds: [roomId],
+      requesterRole: "OWNER" as const,
+    };
+    const snapshot = readDocumentMutationSnapshot(original)!;
+    const revision = (label: string) => {
+      const fragmentId = v4() as UUID;
+      return {
+        ...context,
+        documentId: original.id!,
+        expected: snapshot,
+        replacement: {
+          ...original,
+          content: { text: `${label} body` },
+          metadata: { ...original.metadata, documentRevision: 1 },
+        },
+        fragments: [
+          {
+            ...original,
+            id: fragmentId,
+            content: { text: `${label} fragment` },
+            metadata: {
+              type: MemoryType.FRAGMENT,
+              documentId: original.id,
+              documentRevision: 1,
+              position: 0,
+            },
+          },
+        ],
+      };
+    };
+    const observations = Promise.all(
+      Array.from({ length: 12 }, () => adapter.queryDocumentFragments({ ...context, limit: 10 }))
+    );
+    const [left, right, observed] = await Promise.all([
+      adapter.replaceDocumentRevision(revision("left")),
+      adapter.replaceDocumentRevision(revision("right")),
+      observations,
+    ]);
+    expect([left.status, right.status].sort()).toEqual(["conflict", "updated"]);
+    const parent = await adapter.getDocument({ ...context, documentId: original.id! });
+    const fragments = await adapter.queryDocumentFragments({ ...context, limit: 10 });
+    expect(parent?.metadata?.documentRevision).toBe(1);
+    expect(fragments).toHaveLength(1);
+    expect(fragments[0]?.metadata?.documentRevision).toBe(1);
+    expect(fragments[0]?.content.text).toBe(
+      `${String(parent?.content.text).split(" ")[0]} fragment`
+    );
+    for (const snapshotFragments of observed) {
+      expect(snapshotFragments).toHaveLength(1);
+      expect([0, 1]).toContain(snapshotFragments[0]?.metadata?.documentRevision);
+    }
+  });
+
   it("installs the evidence-backed portable-token index", async () => {
     const db = adapter.getDatabase() as DrizzleDatabase;
     const result = await db.execute(sql`

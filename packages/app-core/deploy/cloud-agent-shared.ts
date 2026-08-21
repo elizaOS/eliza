@@ -38,6 +38,13 @@ const logger = {
   },
 };
 
+/** Warn that the loopback bridge uses an ephemeral credential without exposing it. */
+export function warnGeneratedBridgeSecret(): void {
+  logger.warn(
+    "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
+  );
+}
+
 /**
  * `.catch` handler for an optional plugin dynamic import: keeps the degrade
  * (agent boots without the plugin) but surfaces the import failure so a broken
@@ -115,6 +122,17 @@ export interface RuntimeWithDatabaseLiveness {
   checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
 
+/** Projects internal probe diagnostics into the public health-check contract. */
+export function publicDatabaseLiveness(
+  payload: DatabaseLivenessPayload,
+): Omit<DatabaseLivenessPayload, "message"> {
+  return {
+    ok: payload.ok,
+    status: payload.status,
+    terminal: payload.terminal,
+  };
+}
+
 const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /pglite is closed/i,
   /database is shutting down/i,
@@ -122,16 +140,57 @@ const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
   /cannot query.*closed/i,
   /closed database/i,
 ] as const;
+const DATABASE_LIVENESS_STATUSES = new Set<DatabaseLivenessPayload["status"]>([
+  "ok",
+  "unknown",
+  "transient_error",
+  "terminal_error",
+]);
+const MAX_DATABASE_DIAGNOSTIC_CHARS = 4_096;
+
+function readProbeDiagnosticProperty(
+  value: unknown,
+  property: PropertyKey,
+): unknown {
+  if (
+    value === null ||
+    (typeof value !== "object" && typeof value !== "function")
+  ) {
+    return undefined;
+  }
+  try {
+    return Reflect.get(value, property);
+  } catch {
+    // error-policy:J7 liveness diagnostics must not mask the probe failure.
+    return undefined;
+  }
+}
 
 function describeDatabaseProbeError(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    // error-policy:J3 diagnostic formatting fallback for non-serializable input
-    return String(error);
+  const message = readProbeDiagnosticProperty(error, "message");
+  let text =
+    typeof message === "string" && message.trim() ? message : undefined;
+  if (text === undefined) {
+    try {
+      text = String(error);
+    } catch {
+      // error-policy:J7 hostile coercion still needs a printable marker.
+      text = "[uninspectable thrown value]";
+    }
   }
+  const clipped =
+    text.length > MAX_DATABASE_DIAGNOSTIC_CHARS
+      ? `${text.slice(0, MAX_DATABASE_DIAGNOSTIC_CHARS)}…[truncated]`
+      : text;
+  return Array.from(clipped, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return code <= 0x1f ||
+      (code >= 0x7f && code <= 0x9f) ||
+      (code >= 0x2028 && code <= 0x202e) ||
+      (code >= 0x2066 && code <= 0x2069)
+      ? `\\u{${code.toString(16)}}`
+      : character;
+  }).join("");
 }
 
 function isTerminalDatabaseProbeError(error: unknown): boolean {
@@ -139,9 +198,10 @@ function isTerminalDatabaseProbeError(error: unknown): boolean {
   let current: unknown = error;
   while (current && !seen.has(current)) {
     seen.add(current);
+    const diagnosticMessage = readProbeDiagnosticProperty(current, "message");
     const message =
-      current instanceof Error
-        ? current.message
+      typeof diagnosticMessage === "string"
+        ? diagnosticMessage
         : typeof current === "string"
           ? current
           : "";
@@ -152,12 +212,7 @@ function isTerminalDatabaseProbeError(error: unknown): boolean {
     ) {
       return true;
     }
-    current =
-      current instanceof Error
-        ? (current as Error & { cause?: unknown }).cause
-        : typeof current === "object" && current !== null && "cause" in current
-          ? (current as { cause?: unknown }).cause
-          : null;
+    current = readProbeDiagnosticProperty(current, "cause") ?? null;
   }
   return false;
 }
@@ -184,12 +239,27 @@ export async function checkRuntimeDatabaseLiveness(
   runtime: RuntimeWithDatabaseLiveness | null,
 ): Promise<DatabaseLivenessPayload> {
   if (!runtime) return { status: "unknown", ok: false, terminal: false };
-  if (typeof runtime.checkDatabaseLiveness === "function") {
-    return runtime.checkDatabaseLiveness();
-  }
-  const adapter = runtime.adapter;
-  if (!adapter) return { status: "unknown", ok: true, terminal: false };
   try {
+    if (typeof runtime.checkDatabaseLiveness === "function") {
+      const result = await runtime.checkDatabaseLiveness();
+      if (
+        !DATABASE_LIVENESS_STATUSES.has(result.status) ||
+        typeof result.ok !== "boolean" ||
+        typeof result.terminal !== "boolean"
+      ) {
+        throw new Error("runtime returned an invalid database liveness result");
+      }
+      return {
+        status: result.status,
+        ok: result.ok,
+        terminal: result.terminal,
+        ...(typeof result.message === "string"
+          ? { message: describeDatabaseProbeError(result.message) }
+          : {}),
+      };
+    }
+    const adapter = runtime.adapter;
+    if (!adapter) return { status: "unknown", ok: true, terminal: false };
     if (typeof adapter.getRawConnection === "function") {
       await probeDatabaseHandle(adapter.getRawConnection());
     } else if (typeof adapter.getConnection === "function") {
@@ -209,6 +279,10 @@ export async function checkRuntimeDatabaseLiveness(
   } catch (error) {
     // error-policy:J4 health probe translates database failure into liveness state
     const terminal = isTerminalDatabaseProbeError(error);
+    logger.error("database liveness probe failed", {
+      error: describeDatabaseProbeError(error),
+      terminal,
+    });
     return {
       status: terminal ? "terminal_error" : "transient_error",
       ok: false,
@@ -775,7 +849,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           memoryUsage: process.memoryUsage().rss,
           runtimeReady: agentRuntime !== null,
           database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-          databaseLiveness,
+          databaseLiveness: publicDatabaseLiveness(databaseLiveness),
         }),
       );
       return;
@@ -976,7 +1050,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
               memoriesCount: state.memories.length,
               startedAt: state.startedAt,
               database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
-              databaseLiveness,
+              // The bridge RPC is renderer/cloud-readable; project away the
+              // internal probe diagnostic just like the HTTP health boundary.
+              databaseLiveness: publicDatabaseLiveness(databaseLiveness),
             },
           }),
         );
@@ -1019,10 +1095,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
     );
     if (bridgeSecretGenerated) {
-      logger.warn(
-        "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
-      );
-      logger.info(`Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
+      warnGeneratedBridgeSecret();
     }
   });
 

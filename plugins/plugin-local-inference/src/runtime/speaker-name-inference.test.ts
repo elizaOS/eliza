@@ -49,7 +49,7 @@ describe("inferSpeakerName", () => {
 		expect(result.reasonCodes).toContain("low_confidence_name");
 	});
 
-	it("prefers self-introduction over a borrowed laptop platform label", () => {
+	it("withholds self-introduction that conflicts with a borrowed laptop platform label", () => {
 		const result = inferSpeakerName({
 			speakerId: "speaker-1",
 			evidence: [
@@ -67,10 +67,10 @@ describe("inferSpeakerName", () => {
 			],
 		});
 
-		expect(result.resolution).toBe("confirmed");
-		expect(result.displayName).toBe("Mina Chen");
+		expect(result.resolution).toBe("withheld");
+		expect(result.displayName).toBeUndefined();
 		expect(result.reasonCodes).toContain("borrowed_device_guardrail");
-		expect(result.bindingPlan.action).toBe("create_entity");
+		expect(result.bindingPlan.action).toBe("none");
 	});
 
 	it("confirms voice-profile matches with entity/profile provenance", () => {

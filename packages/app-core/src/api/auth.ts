@@ -402,6 +402,7 @@ type AuthorizedRouteRoleOptions =
   | {
       state: CompatStateLike;
       store?: never;
+      allowCookieAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: never;
@@ -409,6 +410,7 @@ type AuthorizedRouteRoleOptions =
   | {
       store: AuthStore;
       state?: never;
+      allowCookieAuth?: boolean;
       skipCsrf?: boolean;
       now?: number;
       readSetting?: (key: string) => unknown;
@@ -481,7 +483,10 @@ export async function resolveAuthorizedRouteRole(
   const method = (req.method ?? "GET").toUpperCase();
   const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 
-  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  const sessionCookie =
+    options.allowCookieAuth === false
+      ? null
+      : readCookie(req, SESSION_COOKIE_NAME);
   if (sessionCookie) {
     const session = await findActiveSession(
       store,

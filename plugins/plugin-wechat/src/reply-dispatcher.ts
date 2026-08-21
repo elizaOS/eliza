@@ -2,6 +2,11 @@
  * Outbound send path for WeChat replies: splits long text into proxy-safe chunks
  * and sends each chunk (and images) through the `ProxyClient`.
  */
+import {
+  ElizaError,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import type { ProxyClient } from "./proxy-client";
 
 const DEFAULT_CHUNK_SIZE = 2000;
@@ -17,7 +22,17 @@ export class ReplyDispatcher {
 
   constructor(options: ReplyDispatcherOptions) {
     this.client = options.client;
-    this.chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
+    const chunkSize = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
+    if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) {
+      throw new ElizaError(
+        "WeChat reply chunk size must be a positive integer",
+        {
+          code: "WECHAT_REPLY_CHUNK_SIZE_INVALID",
+          context: { chunkSize },
+        },
+      );
+    }
+    this.chunkSize = chunkSize;
   }
 
   async sendText(to: string, text: string): Promise<void> {
@@ -46,12 +61,13 @@ export class ReplyDispatcher {
   }
 
   private chunk(text: string): string[] {
-    if (text.length <= this.chunkSize) {
-      return [text];
+    const wellFormedText = toWellFormedUnicode(text);
+    if (wellFormedText.length <= this.chunkSize) {
+      return [wellFormedText];
     }
 
     const chunks: string[] = [];
-    let remaining = text;
+    let remaining = wellFormedText;
 
     while (remaining.length > 0) {
       if (remaining.length <= this.chunkSize) {
@@ -70,8 +86,19 @@ export class ReplyDispatcher {
         breakAt = this.chunkSize;
       }
 
-      chunks.push(remaining.slice(0, breakAt));
-      remaining = remaining.slice(breakAt).trimStart();
+      const chunkCandidate = truncateWellFormed(remaining, breakAt);
+      if (chunkCandidate.length === 0) {
+        throw new ElizaError(
+          "WeChat reply chunk size cannot fit the next Unicode character",
+          {
+            code: "WECHAT_REPLY_CHUNK_SIZE_TOO_SMALL",
+            context: { chunkSize: this.chunkSize },
+          },
+        );
+      }
+      const cutPoint = chunkCandidate.length;
+      chunks.push(remaining.slice(0, cutPoint));
+      remaining = remaining.slice(cutPoint).trimStart();
     }
 
     return chunks;

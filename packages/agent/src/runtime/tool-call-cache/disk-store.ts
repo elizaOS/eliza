@@ -19,6 +19,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { isRedactionDegraded } from "./redact.ts";
 import type { PrivacyRedactor, ToolCacheEntry } from "./types.ts";
 
 export class DiskStore {
@@ -45,9 +46,17 @@ export class DiskStore {
     const dir = path.dirname(file);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
+    const output = this.redact(entry.output);
+    // A truncated or cyclic walk must not persist as a successful disk hit.
+    // Evict any existing row so a later degraded rewrite cannot leave the
+    // previous successful value to be served by a fresh process.
+    if (isRedactionDegraded(output)) {
+      this.delete(entry.key);
+      return;
+    }
     const sanitized: ToolCacheEntry = {
       ...entry,
-      output: this.redact(entry.output) as ToolCacheEntry["output"],
+      output: output as ToolCacheEntry["output"],
     };
     writeFileSync(file, JSON.stringify(sanitized), "utf8");
   }

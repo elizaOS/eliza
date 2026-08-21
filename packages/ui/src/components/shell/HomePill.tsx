@@ -16,12 +16,14 @@
  */
 
 import { AudioWaveform, Plus, Square } from "lucide-react";
+import { useReducedMotion } from "motion/react";
 import * as React from "react";
 
 import { useBranding } from "../../config/branding";
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { computeWaveBarScales, FLATLINE_SCALE } from "./home-pill-wave";
 import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
@@ -39,6 +41,13 @@ export interface HomePillProps {
   onHoldEnd?: () => void;
   /** Abandon hold-to-talk without sending (Esc mid-hold, slide-off). */
   onHoldCancel?: () => void;
+  /** Live capture analyser while recording (`controller.analyser`). When
+   *  present, the listening chip's bars are metered from real microphone
+   *  energy — a flat line means the mic is dead, the honest failure signal.
+   *  Absent (mic still opening, host without capture, permission or device
+   *  failure) the bars hold the static flatline: decorative motion must never
+   *  imply a hot mic. */
+  analyser?: AnalyserNode | null;
   /** True while the assistant reply is being spoken aloud. Sharpens the
    *  responding glow so "speaking" and "thinking" read differently. */
   speaking?: boolean;
@@ -66,26 +75,26 @@ export const HOLD_THRESHOLD_MS = 150;
  *  the iOS "slide off to cancel" convention. */
 export const SLIDE_CANCEL_PX = 44;
 
-/** Listening-state waveform bars: nine bars with center-weighted, symmetric
- *  stagger delays so the chip reads as a live waveform (shimmering from the
- *  middle out) rather than a marching sequence — mirroring the density of the
- *  studied Wispr Flow bar. Ids are stable keys; delays repeat symmetrically. */
+/** Listening-state waveform bars: fifteen bars with a center-weighted,
+ *  symmetric height silhouette — mirroring the density of the studied Wispr
+ *  Flow bar. Ids are stable keys. Motion comes only from live analyser
+ *  frames; without them the bars rest at the flatline. */
 const WAVE_BARS = [
-  { id: "l7", delayMs: 420, height: 10 },
-  { id: "l6", delayMs: 320, height: 13 },
-  { id: "l5", delayMs: 240, height: 17 },
-  { id: "l4", delayMs: 180, height: 16 },
-  { id: "l3", delayMs: 120, height: 21 },
-  { id: "l2", delayMs: 80, height: 22 },
-  { id: "l1", delayMs: 40, height: 26 },
-  { id: "c0", delayMs: 0, height: 28 },
-  { id: "r1", delayMs: 40, height: 26 },
-  { id: "r2", delayMs: 80, height: 22 },
-  { id: "r3", delayMs: 120, height: 21 },
-  { id: "r4", delayMs: 180, height: 16 },
-  { id: "r5", delayMs: 240, height: 17 },
-  { id: "r6", delayMs: 320, height: 13 },
-  { id: "r7", delayMs: 420, height: 10 },
+  { id: "l7", height: 10 },
+  { id: "l6", height: 13 },
+  { id: "l5", height: 17 },
+  { id: "l4", height: 16 },
+  { id: "l3", height: 21 },
+  { id: "l2", height: 22 },
+  { id: "l1", height: 26 },
+  { id: "c0", height: 28 },
+  { id: "r1", height: 26 },
+  { id: "r2", height: 22 },
+  { id: "r3", height: 21 },
+  { id: "r4", height: 16 },
+  { id: "r5", height: 17 },
+  { id: "r6", height: 13 },
+  { id: "r7", height: 10 },
 ] as const;
 
 /** Processing-state dots: the mic closed but transcription is in flight —
@@ -125,6 +134,7 @@ export function HomePill({
   onHoldStart,
   onHoldEnd,
   onHoldCancel,
+  analyser = null,
   speaking = false,
   signingIn = false,
   onPreviewHoverChange,
@@ -260,6 +270,37 @@ export function HomePill({
   const signInLabel = `Sign in with ${appName} Cloud`;
   const previewVisible = previewHovered && previewHostReady;
   const listening = phase === "listening";
+  const reduceMotion = useReducedMotion() ?? false;
+  // Bars go live only when real audio frames exist to drive them; without an
+  // analyser (or under reduced motion) they hold the static flatline.
+  const metered = listening && analyser !== null && !reduceMotion;
+  const waveBarRefs = React.useRef<Array<HTMLSpanElement | null>>([]);
+
+  // Audio-frame writes stay imperative (direct style.transform) so live mic
+  // activity never rerenders the pill while a hold is in flight.
+  React.useEffect(() => {
+    if (!metered || !analyser) return undefined;
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    const renderFrame = () => {
+      analyser.getByteTimeDomainData(samples);
+      const scales = computeWaveBarScales(samples, WAVE_BARS.length);
+      waveBarRefs.current.forEach((bar, index) => {
+        if (!bar) return;
+        bar.style.transform = `scaleY(${scales[index] ?? FLATLINE_SCALE})`;
+      });
+      frame = window.requestAnimationFrame(renderFrame);
+    };
+    frame = window.requestAnimationFrame(renderFrame);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      // Return the bars to the honest resting flatline; a stale live scale
+      // must not survive an analyser teardown mid-listen (device loss).
+      waveBarRefs.current.forEach((bar) => {
+        if (bar) bar.style.transform = `scaleY(${FLATLINE_SCALE})`;
+      });
+    };
+  }, [metered, analyser]);
   const listeningExpanded = listening && previewHostReady;
   const chipExpanded = listening || phase === "processing";
   const composerSized = previewVisible || listeningExpanded;
@@ -369,14 +410,26 @@ export function HomePill({
           <>
             <span className="w-5 shrink-0" aria-hidden="true" />
             <span className="flex flex-1 items-center justify-center gap-2 px-6">
-              {WAVE_BARS.map((bar) => (
+              {WAVE_BARS.map((bar, index) => (
                 <span
                   key={bar.id}
+                  ref={(node) => {
+                    waveBarRefs.current[index] = node;
+                  }}
                   data-testid="shell-home-pill-wave-bar"
-                  className="home-pill-wave-bar w-1 origin-center rounded-full bg-white/95 shadow-[0_0_9px_rgba(255,255,255,0.4)] motion-reduce:animate-none"
+                  data-live={metered || undefined}
+                  className={cn(
+                    "w-1 origin-center rounded-full bg-white/95 shadow-[0_0_9px_rgba(255,255,255,0.4)]",
+                    // Live-metered: the analyser drives scaleY each frame; in
+                    // silence the bars flatline — the honest dead-mic signal.
+                    metered && "transition-transform duration-75",
+                  )}
                   style={{
-                    animationDelay: `${bar.delayMs}ms`,
                     height: `${bar.height}px`,
+                    // Flat is the truthful rest state: no analyser frames (mic
+                    // opening, capture-less host, reduced motion) means no
+                    // motion — never a decorative shimmer.
+                    transform: `scaleY(${FLATLINE_SCALE})`,
                   }}
                 />
               ))}

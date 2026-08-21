@@ -14,14 +14,17 @@ import {
   setActiveViewContext,
 } from "../runtime/view-action-affinity.ts";
 import {
+  getView,
   registerBuiltinViews,
   registerPluginViews,
   unregisterPluginViews,
 } from "./views-registry.ts";
 import {
   clearCurrentViewState,
+  dispatchViewInteract,
   getCurrentViewState,
   handleViewsRoutes,
+  resolveViewInteractResult,
   type ViewsRouteContext,
 } from "./views-routes.ts";
 
@@ -36,6 +39,14 @@ import {
 // interact promise so its handler responds with the posted result.
 
 const TEST_PLUGIN = "@test/views-interact-result";
+const mixedServerInteract = vi.fn(
+  async (capability: string, params?: Record<string, unknown>) => ({
+    success: true,
+    source: "server",
+    capability,
+    params,
+  }),
+);
 
 function makeCtx(
   method: "POST",
@@ -75,6 +86,7 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
   beforeEach(async () => {
     registerBuiltinViews();
     clearCurrentViewState();
+    mixedServerInteract.mockClear();
     await registerPluginViews(
       {
         name: TEST_PLUGIN,
@@ -89,6 +101,19 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
             capabilities: [
               { id: "get-state", description: "Read view state." },
             ],
+          },
+          {
+            id: "mixed-view",
+            label: "Mixed View",
+            path: "/mixed-view",
+            surface: { capabilities: ["agent-surface"] },
+            capabilities: [
+              {
+                id: "maps-search-places",
+                description: "Search normalized map places.",
+              },
+            ],
+            serverInteract: mixedServerInteract,
           },
         ],
       },
@@ -160,6 +185,195 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
         result: { text: "state was read", value: 42 },
       }),
     );
+  });
+
+  it("routes a mixed view's agent-surface capability to its targeted mounted frontend", async () => {
+    const { ctx, json, broadcastWs, broadcastWsToClientId } = makeCtx(
+      "POST",
+      "/api/views/mixed-view/interact",
+      {
+        capability: "agent-click",
+        params: { id: "maps-search-submit" },
+        clientId: "maps-shell",
+        timeoutMs: 5_000,
+      },
+    );
+    const interactPromise = handleViewsRoutes(ctx);
+
+    let frame: Record<string, unknown> | undefined;
+    for (let i = 0; i < 50 && !frame; i++) {
+      frame = broadcastWsToClientId.mock.calls
+        .filter(([clientId]) => clientId === "maps-shell")
+        .map((call) => call[1] as Record<string, unknown>)
+        .find((payload) => payload.type === "view:interact");
+      if (!frame) await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    expect(frame).toMatchObject({
+      type: "view:interact",
+      viewId: "mixed-view",
+      capability: "agent-click",
+      params: { id: "maps-search-submit" },
+    });
+    expect(mixedServerInteract).not.toHaveBeenCalled();
+    expect(broadcastWs).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "view:interact" }),
+    );
+
+    const { ctx: resultCtx } = makeCtx("POST", "/api/views/interact-result", {
+      requestId: frame?.requestId,
+      success: true,
+      result: { ok: true, activated: "maps-search-submit" },
+    });
+    await handleViewsRoutes(resultCtx);
+    await interactPromise;
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        success: true,
+        result: { ok: true, activated: "maps-search-submit" },
+      }),
+    );
+  });
+
+  it("keeps a mixed view's declared read capability on serverInteract", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeCtx(
+      "POST",
+      "/api/views/mixed-view/interact",
+      {
+        capability: "maps-search-places",
+        params: { query: "cafe" },
+        clientId: "maps-shell",
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(mixedServerInteract).toHaveBeenCalledWith(
+      "maps-search-places",
+      { query: "cafe" },
+      { runtime: ctx.runtime },
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        success: true,
+        result: expect.objectContaining({ source: "server" }),
+      }),
+    );
+  });
+
+  it("preserves the structured serverInteract exception response", async () => {
+    mixedServerInteract.mockRejectedValueOnce(new Error("provider exploded"));
+    const { ctx, json } = makeCtx("POST", "/api/views/mixed-view/interact", {
+      capability: "maps-search-places",
+      params: { query: "cafe" },
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(ctx.res, {
+      requestId: expect.any(String),
+      success: false,
+      error: "provider exploded",
+      result: {
+        success: false,
+        text: 'Cannot invoke capability "maps-search-places" on view "mixed-view": provider exploded.',
+      },
+    });
+  });
+
+  it("preserves headless serverInteract fallback for standard capabilities", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeCtx(
+      "POST",
+      "/api/views/mixed-view/interact",
+      {
+        capability: "get-text",
+        params: {},
+      },
+    );
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(mixedServerInteract).toHaveBeenCalledWith(
+      "get-text",
+      {},
+      {
+        runtime: ctx.runtime,
+      },
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ success: true }),
+    );
+  });
+
+  it("falls back to serverInteract when a targeted client is no longer connected", async () => {
+    const { ctx, json, broadcastWsToClientId } = makeCtx(
+      "POST",
+      "/api/views/mixed-view/interact",
+      {
+        capability: "agent-click",
+        params: { id: "maps-retry-search" },
+        clientId: "gone-shell",
+      },
+    );
+    broadcastWsToClientId.mockReturnValue(0);
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWsToClientId).toHaveBeenCalledWith(
+      "gone-shell",
+      expect.objectContaining({ capability: "agent-click" }),
+    );
+    expect(mixedServerInteract).toHaveBeenCalledWith(
+      "agent-click",
+      { id: "maps-retry-search" },
+      { runtime: ctx.runtime },
+    );
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ success: true }),
+    );
+  });
+
+  it("uses the same targeted frontend selection for internal dispatch", async () => {
+    const entry = getView("mixed-view");
+    if (!entry) throw new Error("mixed view is missing");
+    let frame: Record<string, unknown> | undefined;
+    const dispatchPromise = dispatchViewInteract(
+      entry,
+      "mixed-view",
+      "agent-focus",
+      { id: "maps-search-query" },
+      {
+        clientId: "internal-shell",
+        broadcastWsToClientId: (clientId, payload) => {
+          expect(clientId).toBe("internal-shell");
+          frame = payload as Record<string, unknown>;
+          return 1;
+        },
+      },
+      5_000,
+    );
+
+    expect(frame).toMatchObject({
+      type: "view:interact",
+      capability: "agent-focus",
+      params: { id: "maps-search-query" },
+    });
+    resolveViewInteractResult({
+      requestId: String(frame?.requestId),
+      success: true,
+      result: { ok: true },
+    });
+    await expect(dispatchPromise).resolves.toMatchObject({
+      success: true,
+      result: { ok: true },
+    });
+    expect(mixedServerInteract).not.toHaveBeenCalled();
   });
 
   it("rejects frontend interact dispatch without global broadcast when client id is missing", async () => {

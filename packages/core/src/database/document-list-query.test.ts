@@ -119,7 +119,7 @@ describe("document-list capability contract", () => {
 		const adapter = new InMemoryDatabaseAdapter();
 		Object.defineProperty(adapter, "documentListQueryCapability", {
 			configurable: true,
-			value: 3,
+			value: 4,
 		});
 		const queryDocuments = vi.spyOn(adapter, "queryDocuments");
 
@@ -128,8 +128,8 @@ describe("document-list capability contract", () => {
 		).rejects.toMatchObject({
 			code: "DOCUMENT_STORE_CAPABILITY_REQUIRED",
 			context: expect.objectContaining({
-				expectedVersion: 2,
-				advertisedVersion: 3,
+				expectedVersion: 3,
+				advertisedVersion: 4,
 			}),
 		});
 		expect(queryDocuments).not.toHaveBeenCalled();

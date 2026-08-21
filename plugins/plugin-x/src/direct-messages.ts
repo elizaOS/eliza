@@ -27,6 +27,7 @@ import {
 import type { ClientBase } from "./base";
 import type { AuthenticatedTwitterSession } from "./client/auth";
 import { checkTwitterDmAccess, resolveTwitterDmPolicy } from "./dm-policy";
+import { parseTwitterInterval } from "./environment";
 import type { TwitterClientState } from "./types";
 import { createMemorySafe, reconcileTwitterWorld } from "./utils/memory";
 import { normalizeXReceiptId } from "./utils/provider-receipt";
@@ -66,13 +67,15 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 }
 
 function parsePollIntervalMs(value: unknown): number {
-  const seconds =
+  const seconds = parseTwitterInterval(
     typeof value === "number"
-      ? value
+      ? String(value)
       : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  return Math.max(15, Number.isFinite(seconds) ? seconds : 60) * 1_000;
+        ? value
+        : undefined,
+    60,
+  );
+  return Math.max(15, seconds) * 1_000;
 }
 
 function compareEventIds(left: string, right: string): number {

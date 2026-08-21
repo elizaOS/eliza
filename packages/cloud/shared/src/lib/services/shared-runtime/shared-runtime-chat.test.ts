@@ -816,6 +816,9 @@ describe("SharedRuntimeChatService", () => {
     expect(body).toContain(JSON.stringify(expectedTodoActionResult));
     expect(body).toContain('"actionName":"DEDICATED_CAPABILITY_REQUIRED"');
     expect(body).toContain('"capability":"communications"');
+    expect(body).toContain('"kind":"capability_handoff"');
+    expect(body).toContain('"originalIntent":"hello"');
+    expect(body).toContain(`/cloud/agents/${encodeURIComponent(agent.id)}`);
     expect(memoryPairs).toEqual([
       expect.objectContaining({
         assistantReply: "Created: [ ] Buy milk\n\nI can't initiate a separate email.",

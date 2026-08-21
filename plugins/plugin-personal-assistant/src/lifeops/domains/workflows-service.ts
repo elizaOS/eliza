@@ -20,6 +20,7 @@ import type {
 import { LIFEOPS_WORKFLOW_STATUSES } from "../../contracts/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
+  type AnyWorkflowStepContribution,
   getWorkflowStepRegistry,
   UnknownWorkflowStepError,
   type WorkflowStepExecuteArgs,
@@ -42,6 +43,7 @@ import {
   normalizeEnumValue,
   normalizeIsoString,
   normalizeOptionalBoolean,
+  normalizeOptionalString,
   requireNonEmptyString,
 } from "../service-normalize.js";
 import {
@@ -473,6 +475,7 @@ export class WorkflowsDomain {
             request: {
               scheduledExecution: true,
             },
+            idempotencyKey: `schedule:${nextWorkflow.id}:${dueAt}`,
           },
         );
         runs.push(run);
@@ -613,6 +616,7 @@ export class WorkflowsDomain {
                   htmlLink: event.htmlLink,
                 },
               },
+              idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.endAt}`,
             },
           );
           runs.push(run);
@@ -686,6 +690,7 @@ export class WorkflowsDomain {
                   payload: event.payload,
                 },
               },
+              idempotencyKey: `event:${nextWorkflow.id}:${event.id}:${event.occurredAt}`,
             },
           );
           runs.push(run);
@@ -874,14 +879,89 @@ export class WorkflowsDomain {
     return this.getWorkflow(nextDefinition.id);
   }
 
+  /**
+   * Runs for the same workflow definition are serialized through this
+   * per-workflow promise chain so scheduled, event-triggered, and manual
+   * executions within this runtime process never interleave their step side
+   * effects. The guarantee is process-local: it also makes the replay-guard
+   * check-then-persist below atomic per workflow, but it does not fence
+   * concurrent independent runtime processes sharing one repository.
+   */
+  private readonly executionChains = new Map<string, Promise<unknown>>();
+
   async executeWorkflowDefinition(
     definition: LifeOpsWorkflowDefinition,
     args: {
       startedAt: string;
       confirmBrowserActions: boolean;
       request: Record<string, unknown>;
+      /**
+       * Replay guard. When set, a prior persisted run of this workflow whose
+       * result carries the same key is returned instead of re-executing the
+       * steps; a prior failed run is surfaced as a typed error rather than
+       * re-executed. Scheduled and event loops pass deterministic keys
+       * derived from the due instant / source event so a crash between run
+       * persistence and scheduler-cursor persistence cannot double-run side
+       * effects. Best-effort: a crash after a step's side effect but before
+       * the run row is persisted is not covered.
+       */
+      idempotencyKey?: string | null;
     },
   ): Promise<ExecuteWorkflowResult> {
+    const tail = this.executionChains.get(definition.id) ?? Promise.resolve();
+    const execution = tail.then(
+      () => this.executeWorkflowDefinitionSerialized(definition, args),
+      () => this.executeWorkflowDefinitionSerialized(definition, args),
+    );
+    const settled = execution.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.executionChains.set(definition.id, settled);
+    void settled.then(() => {
+      if (this.executionChains.get(definition.id) === settled) {
+        this.executionChains.delete(definition.id);
+      }
+    });
+    return execution;
+  }
+
+  private async executeWorkflowDefinitionSerialized(
+    definition: LifeOpsWorkflowDefinition,
+    args: {
+      startedAt: string;
+      confirmBrowserActions: boolean;
+      request: Record<string, unknown>;
+      idempotencyKey?: string | null;
+    },
+  ): Promise<ExecuteWorkflowResult> {
+    const idempotencyKey = args.idempotencyKey ?? null;
+    if (idempotencyKey) {
+      const priorRuns = await this.ctx.repository.listWorkflowRuns(
+        this.ctx.agentId(),
+        definition.id,
+      );
+      const replayed = priorRuns.find(
+        (run) =>
+          isRecord(run.result) && run.result.idempotencyKey === idempotencyKey,
+      );
+      if (replayed) {
+        // A prior failed run under the same key is terminal for that key:
+        // surface the recorded failure instead of masking it as success.
+        if (replayed.status === "failed") {
+          return {
+            run: replayed,
+            error: new LifeOpsServiceError(
+              409,
+              `workflow run ${replayed.id} already failed for idempotency key "${idempotencyKey}"; use a new key to re-execute`,
+              "WORKFLOW_RUN_ALREADY_FAILED",
+            ),
+          };
+        }
+        return { run: replayed, error: null };
+      }
+    }
+
     const outputs: Record<string, unknown> = {};
     const steps: Array<Record<string, unknown>> = [];
     let status: LifeOpsWorkflowRun["status"] = "success";
@@ -893,6 +973,12 @@ export class WorkflowsDomain {
       );
     }
     const ctx = this.deps.workflowStepContext;
+    // Executed steps retained for reverse-order compensation on failure.
+    const executed: Array<{
+      contribution: AnyWorkflowStepContribution;
+      validated: { kind: string };
+      value: unknown;
+    }> = [];
 
     try {
       for (const [index, step] of definition.actionPlan.steps.entries()) {
@@ -912,23 +998,71 @@ export class WorkflowsDomain {
           outputs,
           previousStepValue: steps.at(-1)?.value ?? null,
         };
+        // Lineage: which upstream resultKeys were visible to this step, and
+        // which registered provider produced its value.
+        const inputKeys = Object.keys(outputs);
         const value = await contribution.execute(validated, stepArgs, ctx);
         const stepRecord = {
           index,
           kind: step.kind,
+          provider: contribution.describe.provider,
           resultKey: step.resultKey ?? null,
+          inputKeys,
           value,
         };
         if (step.resultKey) {
           outputs[step.resultKey] = value;
         }
         steps.push(stepRecord);
+        executed.push({ contribution, validated, value });
       }
     } catch (error) {
       status = "failed";
       steps.push({
         error: error instanceof Error ? error.message : String(error),
       });
+      const compensations: Array<Record<string, unknown>> = [];
+      for (const entry of executed.reverse()) {
+        if (!entry.contribution.compensate) {
+          continue;
+        }
+        try {
+          await entry.contribution.compensate(
+            entry.validated,
+            {
+              definition,
+              startedAt: args.startedAt,
+              request: args.request,
+              executedValue: entry.value,
+            },
+            ctx,
+          );
+          compensations.push({
+            kind: entry.contribution.kind,
+            status: "compensated",
+          });
+        } catch (compensationError) {
+          // error-policy:J6 compensation is best-effort teardown of earlier
+          // side effects; a failure is recorded on the run and logged while
+          // the remaining compensations still execute.
+          compensations.push({
+            kind: entry.contribution.kind,
+            status: "compensation_failed",
+            error:
+              compensationError instanceof Error
+                ? compensationError.message
+                : String(compensationError),
+          });
+          this.ctx.logLifeOpsError(
+            "workflow_step_compensation",
+            compensationError,
+            {
+              workflowId: definition.id,
+              stepKind: entry.contribution.kind,
+            },
+          );
+        }
+      }
       const audit = await this.deps.recordWorkflowAudit(
         "workflow_run",
         definition.id,
@@ -940,6 +1074,7 @@ export class WorkflowsDomain {
         {
           status,
           steps,
+          compensations,
         },
       );
       const run = createLifeOpsWorkflowRun({
@@ -948,7 +1083,12 @@ export class WorkflowsDomain {
         startedAt: args.startedAt,
         finishedAt: new Date().toISOString(),
         status,
-        result: { steps, outputs },
+        result: {
+          steps,
+          outputs,
+          compensations,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+        },
         auditRef: audit.id,
       });
       await this.ctx.repository.createWorkflowRun(run);
@@ -977,7 +1117,11 @@ export class WorkflowsDomain {
       startedAt: args.startedAt,
       finishedAt: new Date().toISOString(),
       status,
-      result: { steps, outputs },
+      result: {
+        steps,
+        outputs,
+        ...(idempotencyKey ? { idempotencyKey } : {}),
+      },
       auditRef: audit.id,
     });
     await this.ctx.repository.createWorkflowRun(run);
@@ -989,7 +1133,11 @@ export class WorkflowsDomain {
 
   async runWorkflow(
     workflowId: string,
-    request: { now?: string; confirmBrowserActions?: boolean } = {},
+    request: {
+      now?: string;
+      confirmBrowserActions?: boolean;
+      idempotencyKey?: string;
+    } = {},
   ): Promise<LifeOpsWorkflowRun> {
     const definition = await this.deps.getWorkflowDefinition(workflowId);
     if (definition.status !== "active") {
@@ -1004,10 +1152,16 @@ export class WorkflowsDomain {
         request.confirmBrowserActions,
         "confirmBrowserActions",
       ) ?? false;
+    const idempotencyKey =
+      normalizeOptionalString(request.idempotencyKey) ?? null;
+    if (idempotencyKey !== null && idempotencyKey.length > 256) {
+      fail(400, "idempotencyKey must be at most 256 characters");
+    }
     const result = await this.executeWorkflowDefinition(definition, {
       startedAt,
       confirmBrowserActions,
       request: request as Record<string, unknown>,
+      idempotencyKey,
     });
     if (result.error instanceof LifeOpsServiceError) {
       throw result.error;

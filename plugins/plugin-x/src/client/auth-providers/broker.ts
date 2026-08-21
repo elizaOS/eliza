@@ -6,6 +6,8 @@
  * every cached credential is additionally capped at a short TTL so a
  * broker-side rotation (owner reconnect, refresh-token rotate) propagates
  * without a restart. `invalidate()` drops the cache immediately on rejection.
+ * Broker HTTP uses AbortSignal.timeout so a hung cloud token hop cannot stall
+ * every X action that needs credentials.
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { getSetting } from "../../utils/settings";
@@ -29,6 +31,7 @@ type BrokerToken = BrokerOAuth1Token | BrokerOAuth2Token;
 
 const BROKER_CACHE_MS = 5 * 60 * 1000;
 const OAUTH2_REFRESH_MARGIN_MS = 60 * 1000;
+export const BROKER_FETCH_TIMEOUT_MS = 30_000;
 
 function isBrokerToken(value: unknown): value is BrokerToken {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -145,6 +148,7 @@ export class BrokerAuthProvider implements TwitterBrokerProvider {
           Accept: "application/json",
           Authorization: `Bearer ${this.brokerToken()}`,
         },
+        signal: AbortSignal.timeout(BROKER_FETCH_TIMEOUT_MS),
       },
     );
     if (response.status === 401 || response.status === 403) {

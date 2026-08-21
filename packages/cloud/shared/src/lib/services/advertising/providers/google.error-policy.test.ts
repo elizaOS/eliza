@@ -9,7 +9,7 @@ mock.module("../../../utils/logger", () => ({
   logger: { info() {}, warn() {}, error() {}, debug() {} },
 }));
 
-const { googleAdsProvider } = await import("./google");
+const { googleAdsProvider, googleAdsFetch } = await import("./google");
 
 const originalFetch = globalThis.fetch;
 const credentials = { accessToken: "token" };
@@ -121,5 +121,44 @@ describe("googleAdsProvider.getCampaignMetrics money-path distinctness", () => {
       success: true,
       metrics: { spend: 0, impressions: 0, clicks: 0, conversions: 0 },
     });
+  });
+});
+
+describe("googleAdsFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Google Ads API hop at the timeout", async () => {
+    // An API that never settles on its own: the only way out is the caller's
+    // AbortSignal firing (the 30s default bounds every ads / upload hop).
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      googleAdsFetch(
+        "https://googleads.googleapis.com/v24/customers:listAccessibleCustomers",
+        undefined,
+        100,
+      ),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return jsonResponse({ resourceNames: [] });
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await googleAdsFetch("https://googleads.googleapis.com/v24/customers:listAccessibleCustomers", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

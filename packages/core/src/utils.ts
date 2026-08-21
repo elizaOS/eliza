@@ -32,6 +32,7 @@ import { ModelType } from "./types/model";
 import { type Content, ContentType, type UUID } from "./types/primitives";
 import type { IAgentRuntime } from "./types/runtime";
 import type { State } from "./types/state";
+import { unwrapWholeCodeFence } from "./utils/code-fence.ts";
 import {
 	buildDeterministicSeed,
 	getDeterministicNames,
@@ -659,8 +660,7 @@ export const formatTimestamp = formatTimestampBase;
 
 function parseStructuredResponseFence(text: string): string {
 	const trimmed = text.trim();
-	const match = /^```(?:toon|text)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
-	return match?.[1]?.trim() ?? trimmed;
+	return (unwrapWholeCodeFence(trimmed, ["toon", "text"]) ?? trimmed).trim();
 }
 
 function parseToonScalar(value: string): unknown {
@@ -682,6 +682,24 @@ function parseToonScalar(value: string): unknown {
 	return value;
 }
 
+function parseToonKey(
+	rawKey: string,
+): { key: string; arrayIndex?: string } | null {
+	const keyWithIndex = rawKey.trimEnd();
+	let key = keyWithIndex;
+	let arrayIndex: string | undefined;
+	if (keyWithIndex.endsWith("]")) {
+		const openBracket = keyWithIndex.lastIndexOf("[");
+		if (openBracket < 0) return null;
+		const candidateIndex = keyWithIndex.slice(openBracket + 1, -1);
+		if (!/^\d+$/.test(candidateIndex)) return null;
+		key = keyWithIndex.slice(0, openBracket);
+		arrayIndex = candidateIndex;
+	}
+	if (!/^[A-Za-z_][\w.-]*$/.test(key)) return null;
+	return arrayIndex === undefined ? { key } : { key, arrayIndex };
+}
+
 /**
  * Parses the simple TOON key-value shape used by generated plugin prompts.
  *
@@ -701,11 +719,14 @@ export function parseToonKeyValue<T = Record<string, unknown>>(
 		const line = rawLine.trim();
 		if (!line || line.startsWith("#")) continue;
 
-		const match = /^([A-Za-z_][\w.-]*)(?:\[(\d+)\])?\s*:\s*(.*)$/.exec(line);
-		if (!match) continue;
+		const colonIndex = line.indexOf(":");
+		if (colonIndex < 0) continue;
+		const parsedKey = parseToonKey(line.slice(0, colonIndex));
+		if (!parsedKey) continue;
 
 		found = true;
-		const [, key, arrayIndex, rawValue] = match;
+		const { key, arrayIndex } = parsedKey;
+		const rawValue = line.slice(colonIndex + 1).trimStart();
 		const value = parseToonScalar(rawValue.trim());
 		if (arrayIndex === undefined) {
 			result[key] = value;

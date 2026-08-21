@@ -262,6 +262,50 @@ describe("SharedAgentMemoriesReader.listRecentByRoom (real PGlite)", () => {
   });
 });
 
+describe("SharedAgentMemoriesReader.listRecentByType (real PGlite)", () => {
+  test("returns only the scoped tenant's rows of that type, newest first, capped", async () => {
+    const base = Date.now() - 60_000;
+    for (let index = 0; index < 4; index += 1) {
+      await sharedAgentMemoriesWriter.insertMemory({
+        scope: scopeA,
+        roomId: ROOM_A,
+        type: "facts",
+        content: { text: `tenant A fact ${index}` },
+        createdAt: new Date(base + index * 1000),
+      });
+    }
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeA,
+      roomId: ROOM_A,
+      type: "messages",
+      content: { text: "tenant A message row" },
+      createdAt: new Date(base + 10_000),
+    });
+    await sharedAgentMemoriesWriter.insertMemory({
+      scope: scopeB,
+      roomId: ROOM_A,
+      type: "facts",
+      content: { text: "tenant B fact" },
+      createdAt: new Date(base + 20_000),
+    });
+
+    const rows = await sharedAgentMemoriesReader.listRecentByType(scopeA, "facts", 3);
+    expect(rows).toHaveLength(3);
+    expect(rows.map((row) => row.content.text)).toEqual([
+      "tenant A fact 3",
+      "tenant A fact 2",
+      "tenant A fact 1",
+    ]);
+    expect(rows.every((row) => row.organization_id === ORG_A && row.type === "facts")).toBe(true);
+  });
+
+  test("rejects a blank type instead of returning an unscoped listing", async () => {
+    await expect(sharedAgentMemoriesReader.listRecentByType(scopeA, "  ", 5)).rejects.toThrow(
+      "Shared agent memory type is required",
+    );
+  });
+});
+
 describe("SharedAgentMemoriesReader.searchByEmbedding (real PGlite + pgvector)", () => {
   test("ranks the tenant's rows by true cosine distance and never leaks across tenants", async () => {
     await sharedAgentMemoriesWriter.insertMemory({

@@ -6,6 +6,10 @@ import { Hono } from "hono";
 import type Stripe from "stripe";
 import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
+import {
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -169,7 +173,7 @@ async function handlePOST(c: AppContext): Promise<Response> {
 }
 
 const honoRouter = new Hono<AppEnv>();
-honoRouter.post("/", async (c) => {
+honoRouter.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   try {
     return await handlePOST(c);
   } catch (error) {

@@ -180,6 +180,13 @@ function activeBackupLanes(activeStates: SQL): SQL {
  * authority. Before the first scheduled proof, activation completion starts
  * the exposure clock. A protected-but-not-yet-reconciled operation is excluded
  * only when the same strict manifest-v3 evidence used by reconciliation exists.
+ *
+ * `activation_phase` is RETAINED (not removed) as this gate's admission
+ * evidence, and the backup consequence of it never being written is explicit
+ * here rather than silent: a running dedicated row whose activation authority
+ * is incomplete is not eligible for capture, so it is counted as overdue
+ * immediately and stays visible in this number instead of dropping out of
+ * scheduling unobserved (#22548).
  */
 export async function countOverdueAgentBackupSchedules(): Promise<number> {
   const protectedStates = sql.join(

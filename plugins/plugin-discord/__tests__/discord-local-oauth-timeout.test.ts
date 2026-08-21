@@ -37,6 +37,7 @@ function tempSessionPath(): string {
 }
 
 function service(): DiscordLocalService {
+	vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
 	const instance = new DiscordLocalService(makeRuntime());
 	Object.assign(instance, { sessionPath: tempSessionPath() });
 	installRpcStubs(instance);

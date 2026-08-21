@@ -30,7 +30,9 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
+  ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
@@ -63,6 +65,7 @@ import {
   rankMessageSearch,
   type Task,
   type UUID,
+  validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
   type World,
   withinCreatedAtWindow,
@@ -96,6 +99,123 @@ interface StoredMemory {
   unique?: boolean;
   similarity?: number;
   metadata?: MemoryMetadata;
+}
+
+const PATCH_PATH_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*(?:\.(?:[a-zA-Z_][a-zA-Z0-9_]*|\d+))*$/;
+const BLOCKED_PATCH_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+const MAX_PATCH_PATH_LENGTH = 256;
+const MAX_PATCH_PATH_SEGMENTS = 16;
+const MAX_PATCH_ARRAY_INDEX = 100_000;
+
+function invalidPatchPath(context: Record<string, unknown>, cause?: unknown): ElizaError {
+  return new ElizaError("Component patch path is invalid", {
+    code: "COMPONENT_PATCH_PATH_INVALID",
+    context,
+    cause,
+    severity: "fatal",
+  });
+}
+
+function patchPathSegments(path: string): string[] {
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_PATCH_PATH_LENGTH) {
+    throw invalidPatchPath({ pathLength: typeof path === "string" ? path.length : null });
+  }
+  const parts = path.split(".");
+  if (
+    parts.length > MAX_PATCH_PATH_SEGMENTS ||
+    !PATCH_PATH_PATTERN.test(path) ||
+    parts.some(
+      (part) =>
+        BLOCKED_PATCH_KEYS.has(part) || (/^\d+$/.test(part) && Number(part) > MAX_PATCH_ARRAY_INDEX)
+    )
+  ) {
+    throw invalidPatchPath({ pathLength: path.length, segmentCount: parts.length });
+  }
+  return parts;
+}
+
+function definePatchValue(target: Record<string, unknown>, key: string, value: unknown): void {
+  try {
+    Object.defineProperty(target, key, {
+      configurable: true,
+      enumerable: true,
+      value,
+      writable: true,
+    });
+  } catch (cause) {
+    throw invalidPatchPath({ key, reason: "write" }, cause);
+  }
+}
+
+function ownPatchValue(
+  target: Record<string, unknown>,
+  key: string
+): { found: boolean; value?: unknown } {
+  let descriptor: PropertyDescriptor | undefined;
+  try {
+    descriptor = Object.getOwnPropertyDescriptor(target, key);
+  } catch (cause) {
+    throw invalidPatchPath({ key, reason: "descriptor" }, cause);
+  }
+  if (!descriptor) return { found: false };
+  if (!("value" in descriptor)) {
+    throw invalidPatchPath({ key, reason: "accessor" });
+  }
+  return { found: true, value: descriptor.value };
+}
+
+function assertPatchContainer(
+  value: unknown,
+  key: string
+): asserts value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) {
+    throw invalidPatchPath({ key, reason: "container" });
+  }
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    const safePrototype = Array.isArray(value) ? Array.prototype : Object.prototype;
+    if (prototype !== safePrototype && prototype !== null) {
+      throw invalidPatchPath({ key, reason: "nested-prototype" });
+    }
+  } catch (cause) {
+    if (cause instanceof ElizaError) throw cause;
+    throw invalidPatchPath({ key, reason: "prototype" }, cause);
+  }
+}
+
+function clonePatchRoot(value: unknown): Record<string, unknown> {
+  if (value == null) return Object.create(null) as Record<string, unknown>;
+  assertPatchContainer(value, "data");
+  if (Array.isArray(value)) {
+    throw invalidPatchPath({ key: "data", reason: "root-array" });
+  }
+  let descriptors: Record<string, PropertyDescriptor>;
+  try {
+    descriptors = Object.getOwnPropertyDescriptors(value);
+  } catch (cause) {
+    throw invalidPatchPath({ key: "data", reason: "descriptors" }, cause);
+  }
+  const clone = Object.create(null) as Record<string, unknown>;
+  for (const [key, descriptor] of Object.entries(descriptors)) {
+    if (BLOCKED_PATCH_KEYS.has(key) || !("value" in descriptor)) {
+      throw invalidPatchPath({ key, reason: "root-property" });
+    }
+    definePatchValue(clone, key, descriptor.value);
+  }
+  return clone;
+}
+
+function appendPatchValue(target: unknown[], key: string, value: unknown): void {
+  const length = ownPatchValue(target as unknown as Record<string, unknown>, "length").value;
+  if (
+    typeof length !== "number" ||
+    !Number.isSafeInteger(length) ||
+    length < 0 ||
+    length > MAX_PATCH_ARRAY_INDEX
+  ) {
+    throw invalidPatchPath({ key, reason: "array-length" });
+  }
+  definePatchValue(target as unknown as Record<string, unknown>, String(length), value);
 }
 
 interface StoredRelationship {
@@ -159,42 +279,60 @@ function relationshipFromStored(r: StoredRelationship, fallbackAgentId: UUID): R
  */
 function applyPatchOp(target: Record<string, unknown>, op: PatchOp): void {
   if (!op.path) return;
-  const parts = op.path.split(".");
+  const parts = patchPathSegments(op.path);
   const last = parts.pop();
   if (last === undefined) return;
 
   let parent: Record<string, unknown> = target;
   for (const segment of parts) {
-    const next = parent[segment];
-    if (next === null || typeof next !== "object") {
-      const created: Record<string, unknown> = {};
-      parent[segment] = created;
+    if (Array.isArray(parent) && !/^\d+$/.test(segment)) {
+      throw invalidPatchPath({ key: segment, reason: "array-key" });
+    }
+    const next = ownPatchValue(parent, segment);
+    if (!next.found || next.value === null || typeof next.value !== "object") {
+      const created = Object.create(null) as Record<string, unknown>;
+      definePatchValue(parent, segment, created);
       parent = created;
     } else {
-      parent = next as Record<string, unknown>;
+      assertPatchContainer(next.value, segment);
+      parent = next.value;
     }
   }
 
+  if (Array.isArray(parent) && !/^\d+$/.test(last)) {
+    throw invalidPatchPath({ key: last, reason: "array-key" });
+  }
+  const existing = ownPatchValue(parent, last);
+
   switch (op.op) {
     case "set":
-      parent[last] = op.value;
+      definePatchValue(parent, last, op.value);
       break;
     case "remove":
-      delete parent[last];
+      if (existing.found) {
+        try {
+          delete parent[last];
+        } catch (cause) {
+          throw invalidPatchPath({ key: last, reason: "delete" }, cause);
+        }
+      }
       break;
     case "push": {
-      const existing = parent[last];
-      if (Array.isArray(existing)) {
-        existing.push(op.value);
+      if (Array.isArray(existing.value)) {
+        assertPatchContainer(existing.value, last);
+        appendPatchValue(existing.value, last, op.value);
       } else {
-        parent[last] = [op.value];
+        definePatchValue(parent, last, [op.value]);
       }
       break;
     }
     case "increment": {
-      const existing = parent[last];
       const delta = typeof op.value === "number" ? op.value : 1;
-      parent[last] = typeof existing === "number" ? existing + delta : delta;
+      definePatchValue(
+        parent,
+        last,
+        typeof existing.value === "number" ? existing.value + delta : delta
+      );
       break;
     }
   }
@@ -582,7 +720,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         update.componentId
       );
       if (!component) continue;
-      const data = { ...(component.data ?? {}) } as Record<string, unknown>;
+      const data = clonePatchRoot(component.data);
       for (const op of update.ops) {
         applyPatchOp(data, op);
       }
@@ -700,6 +838,100 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         metadata: params.replacement.metadata,
       };
       await this.storage.set(COLLECTIONS.MEMORIES, params.documentId, replacement);
+      return { status: "updated", document: toMemory(replacement) };
+    });
+  }
+
+  async replaceDocumentRevision(
+    params: DocumentRevisionReplaceParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRevisionReplacement(params);
+    return this.withDocumentMutationLock(async () => {
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return { status: "not_found" };
+      }
+      const existing = toMemory(stored);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!isDocumentVisibleToRequester(existing, params)) return { status: "not_found" };
+      if (!canRequesterMutateDocument(existing, params)) return { status: "forbidden" };
+      if (!this.storage.applyBatch) {
+        throw new ElizaError(
+          "The configured in-memory storage cannot atomically replace documents",
+          {
+            code: "DOCUMENT_REVISION_ATOMIC_STORAGE_REQUIRED",
+            context: { documentId: params.documentId },
+          }
+        );
+      }
+      const oldFragments = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          memory.agentId === params.agentId &&
+          memory.metadata?.type === MemoryType.FRAGMENT &&
+          memory.metadata.documentId === params.documentId
+      );
+      const oldIds = oldFragments
+        .map(({ id }) => id)
+        .filter((id): id is string => typeof id === "string");
+      for (const fragment of params.fragments) {
+        const collision = await this.storage.get<StoredMemory>(
+          COLLECTIONS.MEMORIES,
+          fragment.id as UUID
+        );
+        if (collision) {
+          throw new ElizaError("Atomic document fragment id already exists", {
+            code: "DOCUMENT_REVISION_FRAGMENT_ID_CONFLICT",
+            context: { documentId: params.documentId, fragmentId: fragment.id },
+          });
+        }
+      }
+      const replacement: StoredMemory = {
+        ...stored,
+        ...params.replacement,
+        id: params.documentId,
+        tableName: "documents",
+        agentId: params.agentId,
+      };
+      const newFragments: StoredMemory[] = params.fragments.map((fragment) => ({
+        ...fragment,
+        id: fragment.id,
+        tableName: "document_fragments",
+        agentId: params.agentId,
+        createdAt: fragment.createdAt ?? Date.now(),
+      }));
+      const indexedNewIds: string[] = [];
+      try {
+        for (const fragment of newFragments) {
+          if (!fragment.embedding || fragment.embedding.length === 0) continue;
+          await this.vectorIndex.add(fragment.id as string, fragment.embedding);
+          indexedNewIds.push(fragment.id as string);
+        }
+        await this.storage.applyBatch({
+          collection: COLLECTIONS.MEMORIES,
+          deletes: oldIds,
+          sets: [
+            { id: params.documentId, data: replacement },
+            ...newFragments.map((data) => ({ id: data.id as string, data })),
+          ],
+        });
+      } catch (error) {
+        // error-policy:J2 Staged vector entries are not a committed revision;
+        // remove them before surfacing the storage/vector failure.
+        await Promise.all(indexedNewIds.map((id) => this.vectorIndex.remove(id)));
+        throw new ElizaError("Failed to stage an atomic document revision", {
+          code: "DOCUMENT_REVISION_STAGE_FAILED",
+          context: { documentId: params.documentId },
+          cause: error,
+        });
+      }
+      await Promise.all(oldIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "updated", document: toMemory(replacement) };
     });
   }
@@ -944,24 +1176,48 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    const threshold = params.match_threshold ?? 0.5;
-    const limit = params.count ?? params.limit ?? 10;
+    return this.withDocumentMutationLock(async () => {
+      const threshold = params.match_threshold ?? 0.5;
+      const limit = params.count ?? params.limit ?? 10;
 
-    const results = await this.vectorIndex.search(params.embedding, limit * 2, threshold);
+      // Scope eligibility must be applied BEFORE the top-K cut so the result is
+      // "top K among eligible memories". Mirrors the plugin-sql adapter, whose
+      // searchMemories comment (base.ts) warns that a two-stage form — a global
+      // vector top-K followed by a post-hoc scope filter — "silently drops
+      // eligible matches whenever closer out-of-scope vectors outnumber the
+      // candidate pool (multi-agent and room-scoped recall starve first)".
+      // The approximate HNSW `search` cannot serve this: it navigates the graph
+      // and can leave in-scope-but-unvisited vectors out of the ranking entirely
+      // (a dense cluster of closer out-of-scope duplicates traps the beam), so
+      // even requesting the full size does not guarantee the eligible set. The
+      // exact scan ranks every eligible indexed vector, so the bounded top-K
+      // heap yields the true top K among eligible memories. Threshold
+      // stays outside scope filtering: it is monotone in the similarity ordering,
+      // so applying it during ranking is identical to applying it after the cut.
+      const eligibleMemories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          (!params.tableName || storedMemoryTableName(memory) === params.tableName) &&
+          (!params.roomId || memory.roomId === params.roomId) &&
+          (!params.worldId || memory.worldId === params.worldId) &&
+          (!params.entityId || memory.entityId === params.entityId) &&
+          (!params.unique || !!memory.unique)
+      );
+      const memoriesById = new Map(
+        eligibleMemories.flatMap((memory) => (memory.id ? [[memory.id, memory] as const] : []))
+      );
+      const results = await this.vectorIndex.searchExact(
+        params.embedding,
+        limit,
+        threshold,
+        new Set(memoriesById.keys())
+      );
 
-    const memories: Memory[] = [];
-    for (const result of results) {
-      const memory = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, result.id);
-      if (!memory) continue;
-      if (params.tableName && storedMemoryTableName(memory) !== params.tableName) continue;
-      if (params.roomId && memory.roomId !== params.roomId) continue;
-      if (params.worldId && memory.worldId !== params.worldId) continue;
-      if (params.entityId && memory.entityId !== params.entityId) continue;
-      if (params.unique && !memory.unique) continue;
-      memories.push({ ...toMemory(memory), similarity: result.similarity });
-    }
-
-    return memories.slice(0, limit);
+      return results.flatMap((result) => {
+        const memory = memoriesById.get(result.id);
+        return memory ? [{ ...toMemory(memory), similarity: result.similarity }] : [];
+      });
+    });
   }
 
   async createMemories(

@@ -413,7 +413,7 @@ export default scenario({
   ],
   isolation: "shared-runtime",
   requires: {
-    plugins: ["@elizaos/plugin-app-control", "scenario-active-view-routes"],
+    plugins: ["@elizaos/plugin-app-control"],
   },
   seed: [
     {

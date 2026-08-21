@@ -4,9 +4,21 @@
  * and a minimal Service base class — so unit tests run without the full runtime.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { vi } from "vitest";
 
-vi.mock("@elizaos/core", () => {
+vi.mock("@elizaos/core", async () => {
+	// Use the real spawn-environment policy: a stub cannot prove that injection
+	// primitives are removed at the production boundary.
+	const { sanitizeSpawnEnv } = await import(
+		"../../../../packages/core/src/security/spawn-env-policy"
+	);
+	const { toWellFormedUnicode, truncateWellFormed } = await import(
+		"../../../../packages/core/src/utils/well-formed"
+	);
+	const streamingContext = new AsyncLocalStorage<
+		{ abortSignal?: AbortSignal } | undefined
+	>();
 	const logger = {
 		debug: vi.fn(),
 		error: vi.fn(),
@@ -140,9 +152,17 @@ vi.mock("@elizaos/core", () => {
 		// immediate "confirmed" so handlers run to completion in one call.
 		requireConfirmation: vi.fn(async () => ({ status: "confirmed" })),
 		getTrajectoryContext: vi.fn(() => undefined),
+		getStreamingContext: () => streamingContext.getStore(),
+		runWithStreamingContext: <T>(
+			context: { abortSignal?: AbortSignal } | undefined,
+			fn: () => T,
+		): T => streamingContext.run(context, fn),
 		captureSkillInvocationIO,
 		promoteSubactionsToActions: (action: unknown) => [action],
 		unwrapUserMessageText,
+		sanitizeSpawnEnv,
+		toWellFormedUnicode,
+		truncateWellFormed,
 		Service: class {
 			constructor(public runtime?: unknown) {}
 			static serviceType = "mock-service";

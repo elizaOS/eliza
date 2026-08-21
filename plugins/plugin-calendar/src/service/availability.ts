@@ -180,8 +180,30 @@ const DEFAULT_POLICY: Required<CalendarAvailabilityPolicy> = {
   allDay: "block",
 };
 
-const EXPLICIT_OFFSET_PATTERN = /T.+(?:Z|[+-]\d{2}:?\d{2})$/i;
 const LOCAL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function hasExplicitOffset(value: string): boolean {
+  // RFC 3339 permits a lowercase time separator (`2026-01-01t10:00:00z`).
+  const timeSeparator = value.toUpperCase().indexOf("T");
+  if (timeSeparator < 0 || timeSeparator >= value.length - 1) return false;
+  if (value.endsWith("Z") || value.endsWith("z")) {
+    return value.length - 1 > timeSeparator + 1;
+  }
+  const compactStart = value.length - 5;
+  const colonStart = value.length - 6;
+  const offsetStart = value[colonStart + 3] === ":" ? colonStart : compactStart;
+  if (offsetStart <= timeSeparator + 1) return false;
+  const sign = value[offsetStart];
+  if (sign !== "+" && sign !== "-") return false;
+  const digits =
+    offsetStart === colonStart
+      ? `${value.slice(offsetStart + 1, offsetStart + 3)}${value.slice(offsetStart + 4)}`
+      : value.slice(offsetStart + 1);
+  return (
+    digits.length === 4 &&
+    [...digits].every((digit) => digit >= "0" && digit <= "9")
+  );
+}
 
 function invalidAvailabilityInput(
   message: string,
@@ -195,7 +217,7 @@ function invalidAvailabilityInput(
 }
 
 function parseInstant(value: string, field: string, eventId?: string): number {
-  if (!EXPLICIT_OFFSET_PATTERN.test(value)) {
+  if (!hasExplicitOffset(value)) {
     return invalidAvailabilityInput(
       `${field} must be an RFC 3339 instant with an explicit offset.`,
       { field, value, ...(eventId ? { eventId } : {}) },

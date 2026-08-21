@@ -2292,6 +2292,9 @@ export class DocumentService extends Service {
 			timestamp: Date.now(),
 			editedAt: Date.now(),
 			documentRevision: snapshot.revision + 1,
+			// Fences this attempt's staged fragments: concurrent updates stage the
+			// same revision number, so readers additionally match this token.
+			revisionAttemptId: this.runtime.createRunId(),
 		};
 
 		const replacement: Memory = {
@@ -2304,11 +2307,30 @@ export class DocumentService extends Service {
 			metadata: updatedMetadata,
 			createdAt: existingDocument.createdAt,
 		};
-		const mutation = await this.runtime.adapter.compareAndSwapDocument({
+		const fragments = await this.splitAndCreateFragments(
+			{
+				id: options.documentId,
+				content: { text: options.content },
+				metadata: updatedMetadata,
+			},
+			1500,
+			200,
+			{
+				roomId: existingDocument.roomId,
+				// Original ingestion coerces fragment worldId to the agent id when the
+				// parent document has none; replacement fragments must match or they
+				// fall out of worldId-scoped retrieval that still sees the old ones.
+				worldId: existingDocument.worldId ?? this.runtime.agentId,
+				entityId: existingDocument.entityId,
+			},
+		);
+		await this.prepareDocumentFragmentEmbeddings(fragments);
+		const mutation = await this.runtime.adapter.replaceDocumentRevision({
 			...requestContext,
 			documentId: options.documentId,
 			expected: snapshot,
 			replacement,
+			fragments,
 		});
 		if (mutation.status !== "updated") {
 			throw new ElizaError("Document authorization changed before update", {
@@ -2322,49 +2344,59 @@ export class DocumentService extends Service {
 			});
 		}
 
-		const existingFragments = await this.runtime.getMemories({
-			tableName: DOCUMENT_FRAGMENTS_TABLE,
-			agentId: this.runtime.agentId,
-			roomId: existingDocument.roomId,
-			count: 10_000,
-		});
-		const relatedFragments = existingFragments.filter((fragment) => {
-			const metadata = fragment.metadata as Record<string, unknown> | undefined;
-			return (
-				this.isDocumentFragmentMemory(fragment) &&
-				metadata?.documentId === options.documentId
-			);
-		});
-
-		for (const fragment of relatedFragments) {
-			if (typeof fragment.id === "string") {
-				await this.runtime.deleteMemory(fragment.id as UUID);
-			}
-		}
-
-		const fragments = await this.splitAndCreateFragments(
-			{
-				id: options.documentId,
-				content: { text: options.content },
-				metadata: updatedMetadata,
-			},
-			1500,
-			200,
-			{
-				roomId: existingDocument.roomId,
-				worldId: existingDocument.worldId ?? this.runtime.agentId,
-				entityId: existingDocument.entityId,
-			},
-		);
-
-		await this.processDocumentFragmentsBatched(fragments, {
-			continueOnError: false,
-		});
-
 		return {
 			documentId: options.documentId,
 			fragmentCount: fragments.length,
 		};
+	}
+
+	/** Stages every embedding before the atomic parent/fragment replacement. */
+	private async prepareDocumentFragmentEmbeddings(
+		fragments: Memory[],
+	): Promise<void> {
+		if (fragments.length === 0 || !hasDocumentEmbeddingModel(this.runtime))
+			return;
+		const batchModel = this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH);
+		if (batchModel) {
+			try {
+				const texts = fragments.map((fragment) => {
+					if (typeof fragment.content.text !== "string") {
+						throw new Error("Document fragment is missing text");
+					}
+					return fragment.content.text;
+				});
+				const vectors = await this.runtime.useModel(
+					ModelType.TEXT_EMBEDDING_BATCH,
+					{ texts },
+				);
+				if (
+					!Array.isArray(vectors) ||
+					vectors.length !== fragments.length ||
+					vectors.some(
+						(vector) => !Array.isArray(vector) || vector.length === 0,
+					)
+				) {
+					throw new Error(
+						"Batch embedding returned an incomplete fragment set",
+					);
+				}
+				for (let index = 0; index < fragments.length; index++) {
+					fragments[index].embedding = vectors[index];
+				}
+				return;
+			} catch (error) {
+				// error-policy:J4 The serial embedding provider is the documented
+				// fallback, and no storage mutation has happened at this point.
+				this.runtime.reportError(
+					"DocumentService.stageBatchFragmentEmbedding",
+					error,
+					{ fragmentCount: fragments.length },
+				);
+			}
+		}
+		for (const fragment of fragments) {
+			await this.runtime.addEmbeddingToMemory(fragment);
+		}
 	}
 
 	async _internalAddDocument(
@@ -2651,7 +2683,7 @@ export class DocumentService extends Service {
 		document: StoredDocument,
 		targetTokens: number,
 		overlap: number,
-		scope: { roomId: UUID; worldId: UUID; entityId: UUID },
+		scope: { roomId: UUID; worldId?: UUID; entityId: UUID },
 	): Promise<Memory[]> {
 		if (!document.content.text) {
 			return [];

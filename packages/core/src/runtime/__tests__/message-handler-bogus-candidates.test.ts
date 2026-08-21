@@ -45,6 +45,7 @@ function makeAction(name: string, similes: string[] = []): Action {
 const TASKS_SPAWN_AGENT = makeAction("TASKS_SPAWN_AGENT");
 const SHELL = makeAction("SHELL");
 const SEARCH = makeAction("SEARCH");
+const WEB_SEARCH = makeAction("WEB_SEARCH");
 const BROWSER = makeAction("BROWSER");
 const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT, SHELL, SEARCH];
 
@@ -685,13 +686,32 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
-	// (removed) "promotes current market-data requests to search even when Stage 1
-	// underclaims browsing" — that promotion depended on the honesty/refusal
-	// detector vetoing the underclaiming reply as a non-complete direct reply and
-	// force-planning the turn. With the honesty detectors removed (#10471), an
-	// underclaiming "I can't look that up" reply is taken at face value on the
-	// direct path; web-lookup routing now relies on the model emitting a
-	// WEB_SEARCH candidate itself.
+	it("promotes explicit live-web requests when Stage 1 underclaims browsing", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["web"],
+				candidateActionNames: [],
+				replyText:
+					"I can't browse the live web from here to fetch current updates and cite sources.",
+				intents: ["search web", "summarize updates", "cite sources"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [WEB_SEARCH],
+				messageText:
+					"What are the latest substantive elizaOS project updates? Search the live web, summarize briefly, and cite the sources you used.",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["web"]);
+		expect(handler.plan.candidateActions).toEqual(["WEB_SEARCH"]);
+		expect(handler.plan.requiredToolEvidence).toBe("inferred");
+	});
 
 	it("infers TASKS for direct app-build requests without explicit sub-agent wording", () => {
 		const handler = messageHandlerFromFieldResult(

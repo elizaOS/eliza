@@ -3877,17 +3877,46 @@ function formatGitHubAuthPrompt(
   );
 }
 
-function extractBulkItems(
+export function extractBulkItems(
   text: string,
 ): Array<{ title: string; body?: string }> {
   if (!text) return [];
 
-  const numberedPattern =
-    /(?:^|\s)(\d+)[).:-]\s*(.+?)(?=(?:\s+\d+[).:-]\s)|$)/gs;
   const items: Array<{ title: string; body?: string }> = [];
-
-  for (const match of text.matchAll(numberedPattern)) {
-    const raw = match[2].trim();
+  const markers: Array<{ start: number; contentStart: number }> = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (cursor > 0 && text[cursor - 1]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    let digitEnd = cursor;
+    while (
+      digitEnd < text.length &&
+      (text[digitEnd] ?? "") >= "0" &&
+      (text[digitEnd] ?? "") <= "9"
+    ) {
+      digitEnd += 1;
+    }
+    if (digitEnd === cursor || !").:-".includes(text[digitEnd] ?? "")) {
+      cursor += 1;
+      continue;
+    }
+    let contentStart = digitEnd + 1;
+    if (text[contentStart]?.trim() !== "") {
+      cursor += 1;
+      continue;
+    }
+    while (contentStart < text.length && text[contentStart]?.trim() === "") {
+      contentStart += 1;
+    }
+    markers.push({ start: cursor, contentStart });
+    cursor = contentStart;
+  }
+  for (const [index, marker] of markers.entries()) {
+    const raw = text
+      .slice(marker.contentStart, markers[index + 1]?.start ?? text.length)
+      .trim();
     if (raw.length > 0) {
       items.push({ title: raw });
     }
@@ -3895,10 +3924,12 @@ function extractBulkItems(
 
   if (items.length >= 2) return items;
 
-  const bulletPattern = /(?:^|\n)\s*[-*•]\s+(.+)/g;
   const bulletItems: Array<{ title: string; body?: string }> = [];
-  for (const match of text.matchAll(bulletPattern)) {
-    const raw = match[1].trim();
+  for (const line of text.split("\n")) {
+    const candidate = line.trimStart();
+    if (!"-*•".includes(candidate[0] ?? "")) continue;
+    if (candidate.length < 2 || candidate[1]?.trim() !== "") continue;
+    const raw = candidate.slice(2).trim();
     if (raw.length > 0) {
       bulletItems.push({ title: raw });
     }

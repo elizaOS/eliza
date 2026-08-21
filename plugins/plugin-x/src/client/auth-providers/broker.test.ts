@@ -14,6 +14,7 @@ function runtime(settings: Record<string, string>): IAgentRuntime {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("BrokerAuthProvider", () => {
@@ -46,8 +47,51 @@ describe("BrokerAuthProvider", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer agent-cloud-key",
         }),
+        signal: expect.any(AbortSignal),
       }),
     );
+  });
+
+  it("times out a hung broker token hop instead of waiting forever", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => {
+      const controller = new AbortController();
+      setTimeout(() => {
+        controller.abort(
+          Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          }),
+        );
+      }, 50);
+      return controller.signal;
+    });
+    const fetchMock = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_resolve, reject) => {
+          const signal = init?.signal;
+          if (!signal) return;
+          if (signal.aborted) {
+            reject(signal.reason);
+            return;
+          }
+          signal.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new BrokerAuthProvider(
+      runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+    );
+    const started = performance.now();
+    try {
+      await provider.getAccessToken();
+      expect.unreachable("hung broker fetch should fail closed");
+    } catch (error) {
+      expect((error as Error).name).toBe("TimeoutError");
+    }
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.eliza.app/api/v1/twitter/token?connectionRole=agent",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   it("fails closed when the broker returns an invalid response", async () => {

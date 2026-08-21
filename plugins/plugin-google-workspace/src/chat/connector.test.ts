@@ -101,12 +101,40 @@ describe("Google Chat message connector", () => {
     );
   });
 
+  it("does not let a named account inherit owner application-default credentials", async () => {
+    const previous = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = "/owner/application-default.json";
+    try {
+      const runtimeInstance = runtime({
+        getSetting: vi.fn((key: string) =>
+          key === "GOOGLE_CHAT_ACCOUNTS"
+            ? JSON.stringify({
+                workspace: {
+                  enabled: true,
+                  audience: "https://example.com/googlechat",
+                },
+              })
+            : null
+        ),
+        reportError: vi.fn(),
+      });
+
+      await expect(GoogleChatService.start(runtimeInstance)).rejects.toBeInstanceOf(
+        GoogleChatConfigurationError
+      );
+    } finally {
+      if (previous === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      else process.env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    }
+  });
+
   it("registers connector metadata and routes space sends", async () => {
     const runtimeInstance = runtime();
     const service = Object.create(GoogleChatService.prototype) as GoogleChatService;
     (service as { settings: { accountId: string } }).settings = {
       accountId: "workspace",
     };
+    (service as { auth: object }).auth = {};
     const sendMessageSpy = vi
       .spyOn(service, "sendMessage")
       .mockResolvedValue({ success: true, space: "spaces/AAA" });

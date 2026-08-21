@@ -252,11 +252,13 @@ function createFishAudioStream(
   const socket = openSocket(config.apiKey, config.model);
   socket.binaryType = "arraybuffer";
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let unlistenAbort: (() => void) | undefined;
 
   const finish = () => {
     if (done) return;
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
+    unlistenAbort?.();
     resolveBytes(concatBytes(bufferedChunks, totalBytes));
     while (waiters.length > 0) {
       waiters.shift()?.({ done: true, value: undefined });
@@ -266,6 +268,7 @@ function createFishAudioStream(
     if (done) return;
     done = true;
     if (deadlineTimer) clearTimeout(deadlineTimer);
+    unlistenAbort?.();
     failure = error;
     rejectBytes(error);
     while (waiters.length > 0) {
@@ -391,8 +394,9 @@ function createFishAudioStream(
   };
   if (config.signal?.aborted) {
     abort();
-  } else {
-    config.signal?.addEventListener("abort", abort, { once: true });
+  } else if (config.signal) {
+    config.signal.addEventListener("abort", abort, { once: true });
+    unlistenAbort = () => config.signal?.removeEventListener("abort", abort);
   }
 
   const audioStream: AsyncIterable<Uint8Array> = {

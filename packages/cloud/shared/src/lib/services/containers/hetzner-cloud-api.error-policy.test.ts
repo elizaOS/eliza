@@ -6,7 +6,7 @@
  * "no servers" / "success". This suite drives the real exported client (fetch
  * stubbed at `globalThis.fetch`) and proves two things stay distinguishable:
  *   - an internal failure (5xx, transport reject, non-JSON body) PROPAGATES;
- *   - a legitimately-empty 200 (`{servers: []}`) and the designed not_found→null
+ *   - a legitimately-empty paginated 200 and the designed not_found→null
  *     degrade do NOT get conflated with that failure.
  *
  * `mock.module` neutralises the logger + env dependencies so the module under
@@ -136,7 +136,10 @@ describe("hetzner-cloud-api fail-closed on internal failure", () => {
 describe("hetzner-cloud-api designed-empty stays distinct from failure", () => {
   test("listServers on a 200 empty list returns [] (empty, no throw)", async () => {
     const { HetznerCloudClient } = await load();
-    queueJson({ servers: [] });
+    queueJson({
+      servers: [],
+      meta: { pagination: { next_page: null } },
+    });
 
     const servers = await HetznerCloudClient.withToken(TOKEN).listServers();
     expect(servers).toEqual([]);

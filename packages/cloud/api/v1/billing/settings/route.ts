@@ -15,6 +15,7 @@ import { organizationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
+  moneyRateLimit,
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -81,117 +82,113 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
 });
 
-app.put(
-  "/",
-  rateLimit({ ...RateLimitPresets.STANDARD, failClosed: true }),
-  async (c) => {
-    try {
-      const user = await requireUserOrApiKeyWithOrg(c);
+app.put("/", moneyRateLimit(RateLimitPresets.STANDARD), async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
 
-      const decodedBody = await decodeRequestJson(c.req);
-      if (!decodedBody.ok) {
-        // error-policy:J3 malformed JSON is an explicit invalid request.
-        return c.json({ error: "Invalid JSON body" }, 400);
-      }
-      const body = decodedBody.value;
-      const validation = UpdateSettingsSchema.safeParse(body);
-
-      if (!validation.success) {
-        return c.json(
-          {
-            success: false,
-            error: "Invalid request data",
-            details: validation.error.format(),
-          },
-          400,
-        );
-      }
-
-      const { autoTopUp, payAsYouGoFromEarnings } = validation.data;
-
-      if (autoTopUp) {
-        try {
-          await autoTopUpService.updateSettings(user.organization_id, {
-            enabled: autoTopUp.enabled,
-            amount: autoTopUp.amount,
-            threshold: autoTopUp.threshold,
-          });
-        } catch (err) {
-          if (err instanceof AutoTopUpSettingsValidationError) {
-            return c.json(
-              {
-                success: false,
-                error:
-                  "Valid auto top-up values are required to replace corrupt settings.",
-                code: "validation_error" as const,
-              },
-              400,
-            );
-          }
-          // Allow domain-specific validation messages through (e.g. "Cannot
-          // enable auto-top-up without a payment method") — they don't leak
-          // internals.
-          const message = err instanceof Error ? err.message : "";
-          const isValidationError =
-            message.includes("Cannot enable") ||
-            message.includes("must be") ||
-            message.includes("cannot exceed");
-          if (isValidationError) {
-            return c.json(
-              {
-                success: false,
-                error: message,
-                code: "validation_error" as const,
-              },
-              400,
-            );
-          }
-          throw err;
-        }
-
-        logger.info("[Billing Settings API] Updated auto-top-up settings", {
-          organizationId: user.organization_id,
-          userId: user.id,
-          settings: autoTopUp,
-        });
-      }
-
-      if (payAsYouGoFromEarnings !== undefined) {
-        await organizationsRepository.update(user.organization_id, {
-          pay_as_you_go_from_earnings: payAsYouGoFromEarnings,
-          updated_at: new Date(),
-        });
-
-        logger.info("[Billing Settings API] Updated pay-as-you-go toggle", {
-          organizationId: user.organization_id,
-          userId: user.id,
-          enabled: payAsYouGoFromEarnings,
-        });
-      }
-
-      const [updatedSettings, org] = await Promise.all([
-        autoTopUpService.getSettings(user.organization_id),
-        organizationsRepository.findById(user.organization_id),
-      ]);
-
-      return c.json({
-        success: true,
-        message: "Billing settings updated successfully",
-        settings: {
-          autoTopUp: {
-            enabled: updatedSettings.enabled,
-            amount: updatedSettings.amount,
-            threshold: updatedSettings.threshold,
-            hasPaymentMethod: updatedSettings.hasPaymentMethod,
-          },
-          payAsYouGoFromEarnings: org?.pay_as_you_go_from_earnings ?? true,
-        },
-      });
-    } catch (error) {
-      logger.error("[Billing Settings API] Error updating settings:", error);
-      return failureResponse(c, error);
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      // error-policy:J3 malformed JSON is an explicit invalid request.
+      return c.json({ error: "Invalid JSON body" }, 400);
     }
-  },
-);
+    const body = decodedBody.value;
+    const validation = UpdateSettingsSchema.safeParse(body);
+
+    if (!validation.success) {
+      return c.json(
+        {
+          success: false,
+          error: "Invalid request data",
+          details: validation.error.format(),
+        },
+        400,
+      );
+    }
+
+    const { autoTopUp, payAsYouGoFromEarnings } = validation.data;
+
+    if (autoTopUp) {
+      try {
+        await autoTopUpService.updateSettings(user.organization_id, {
+          enabled: autoTopUp.enabled,
+          amount: autoTopUp.amount,
+          threshold: autoTopUp.threshold,
+        });
+      } catch (err) {
+        if (err instanceof AutoTopUpSettingsValidationError) {
+          return c.json(
+            {
+              success: false,
+              error:
+                "Valid auto top-up values are required to replace corrupt settings.",
+              code: "validation_error" as const,
+            },
+            400,
+          );
+        }
+        // Allow domain-specific validation messages through (e.g. "Cannot
+        // enable auto-top-up without a payment method") — they don't leak
+        // internals.
+        const message = err instanceof Error ? err.message : "";
+        const isValidationError =
+          message.includes("Cannot enable") ||
+          message.includes("must be") ||
+          message.includes("cannot exceed");
+        if (isValidationError) {
+          return c.json(
+            {
+              success: false,
+              error: message,
+              code: "validation_error" as const,
+            },
+            400,
+          );
+        }
+        throw err;
+      }
+
+      logger.info("[Billing Settings API] Updated auto-top-up settings", {
+        organizationId: user.organization_id,
+        userId: user.id,
+        settings: autoTopUp,
+      });
+    }
+
+    if (payAsYouGoFromEarnings !== undefined) {
+      await organizationsRepository.update(user.organization_id, {
+        pay_as_you_go_from_earnings: payAsYouGoFromEarnings,
+        updated_at: new Date(),
+      });
+
+      logger.info("[Billing Settings API] Updated pay-as-you-go toggle", {
+        organizationId: user.organization_id,
+        userId: user.id,
+        enabled: payAsYouGoFromEarnings,
+      });
+    }
+
+    const [updatedSettings, org] = await Promise.all([
+      autoTopUpService.getSettings(user.organization_id),
+      organizationsRepository.findById(user.organization_id),
+    ]);
+
+    return c.json({
+      success: true,
+      message: "Billing settings updated successfully",
+      settings: {
+        autoTopUp: {
+          enabled: updatedSettings.enabled,
+          amount: updatedSettings.amount,
+          threshold: updatedSettings.threshold,
+          hasPaymentMethod: updatedSettings.hasPaymentMethod,
+        },
+        payAsYouGoFromEarnings: org?.pay_as_you_go_from_earnings ?? true,
+      },
+    });
+  } catch (error) {
+    logger.error("[Billing Settings API] Error updating settings:", error);
+    return failureResponse(c, error);
+  }
+});
 
 export default app;

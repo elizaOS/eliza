@@ -92,8 +92,9 @@ That means apps, public agents, and MCP products can all participate in monetize
 
 Payout requests use `/api/v1/redemptions`. The creator chooses a payout network
 (`base`, `bsc`/`bnb`, `ethereum`, or `solana`) and a payout address. The request
-is fixed to a dollar value at request time; admin review and payout processing
-send the equivalent elizaOS token amount for that fixed USD value.
+must set `asset: "eliza"` and is fixed to a dollar value at request time; admin
+review and payout processing send the equivalent elizaOS token amount for that
+fixed USD value.
 
 ## Affiliate And Marked-Up Usage
 

@@ -13,6 +13,11 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  stripHtmlRawTextElements,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
+import {
   failureToActionResult,
   readStringParam,
   successActionResult,
@@ -70,10 +75,8 @@ function normalizeWhitespace(text: string): string {
 
 export function htmlToReadableText(html: string): string {
   const title = /<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1];
-  const withoutNoise = html
+  const withoutNoise = stripHtmlRawTextElements(html)
     .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
     .replace(/<noscript\b[^>]*>[\s\S]*?<\/noscript>/gi, " ")
     .replace(/<svg\b[^>]*>[\s\S]*?<\/svg>/gi, " ");
   const text = withoutNoise
@@ -211,10 +214,11 @@ export const webFetchAction: Action = {
         response.contentType,
         extract,
       );
+      const wellFormed = toWellFormedUnicode(extracted.value);
       const value =
-        extracted.value.length > WEB_FETCH_RESULT_CHARS
-          ? `${extracted.value.slice(0, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
-          : extracted.value;
+        wellFormed.length > WEB_FETCH_RESULT_CHARS
+          ? `${truncateWellFormed(wellFormed, WEB_FETCH_RESULT_CHARS)}\n[truncated]`
+          : wellFormed;
       return successActionResult(value, {
         action: "WEB_FETCH",
         url,
@@ -223,7 +227,7 @@ export const webFetchAction: Action = {
         content_type: response.contentType,
         kind: extracted.kind,
         truncated:
-          response.truncated || extracted.value.length > WEB_FETCH_RESULT_CHARS,
+          response.truncated || wellFormed.length > WEB_FETCH_RESULT_CHARS,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

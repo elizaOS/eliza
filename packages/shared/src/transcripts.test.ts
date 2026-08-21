@@ -123,6 +123,62 @@ describe("transcriptPreview", () => {
     expect(transcriptPreview(segs)).toBe("hello there hi bye");
     expect(transcriptPreview(segs, 8)).toBe("hello t…");
   });
+
+  it("keeps UTF-16 surrogate pairs intact across the truncation boundary", () => {
+    const emojiSegs: TranscriptSegment[] = [
+      { id: "s1", text: "hello🦊world", words: [], startMs: 0, endMs: 1000 },
+    ];
+    const truncated = transcriptPreview(emojiSegs, 7);
+    expect(truncated).toBe("hello…");
+    expect(truncated.isWellFormed()).toBe(true);
+    expect(truncated.length).toBeLessThanOrEqual(7);
+  });
+
+  it("backs off by one unit when the cut lands mid-pair at max-1", () => {
+    const emojiSegs: TranscriptSegment[] = [
+      { id: "s1", text: "hello🦊world", words: [], startMs: 0, endMs: 1000 },
+    ];
+    expect(transcriptPreview(emojiSegs, 7)).toBe("hello…");
+    expect(transcriptPreview(emojiSegs, 7).isWellFormed()).toBe(true);
+    expect(transcriptPreview(emojiSegs, 8)).toBe("hello🦊…");
+    expect(transcriptPreview(emojiSegs, 8).isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes pre-existing lone surrogates before truncating", () => {
+    const loneSegs: TranscriptSegment[] = [
+      { id: "s1", text: "a\ud800bcdef", words: [], startMs: 0, endMs: 1000 },
+    ];
+    const truncated = transcriptPreview(loneSegs, 4);
+    expect(truncated).toBe("a\ufffdb…");
+    expect(truncated.isWellFormed()).toBe(true);
+  });
+
+  it("sanitizes a lone surrogate without truncation when under the limit", () => {
+    const loneSegs: TranscriptSegment[] = [
+      { id: "s1", text: "a\ud800bc", words: [], startMs: 0, endMs: 1000 },
+    ];
+    const out = transcriptPreview(loneSegs, 10);
+    expect(out).toBe("a\ufffdbc");
+    expect(out.isWellFormed()).toBe(true);
+  });
+
+  it("honors zero- and one-character limits", () => {
+    const seg: TranscriptSegment[] = [
+      { id: "s1", text: "hello world", words: [], startMs: 0, endMs: 1000 },
+    ];
+    expect(transcriptPreview(seg, 0)).toBe("");
+    expect(transcriptPreview(seg, 1)).toBe("…");
+    expect(transcriptPreview(seg, 1).isWellFormed()).toBe(true);
+  });
+
+  it.each([-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid max (%s)",
+    (max) => {
+      expect(() => transcriptPreview(segs, max)).toThrow(
+        /max must be a non-negative integer/,
+      );
+    },
+  );
 });
 
 describe("flattenTranscriptWords", () => {

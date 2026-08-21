@@ -18,11 +18,6 @@ const resolvePersonalDelivery = mock(async () => ({
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
 }));
-const findOrCreateByPhone = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000012" },
-  organization: { id: "00000000-0000-4000-8000-000000000011" },
-  isNew: true,
-}));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -113,7 +108,6 @@ const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByPhone,
     resolvePersonalDelivery,
   },
 }));
@@ -204,7 +198,6 @@ const validPhone = {
 
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
-    findOrCreateByPhone.mockClear();
     activeTarget = null;
     personalDeliveryIsNew = false;
     resolvePersonalDelivery.mockClear();
@@ -452,6 +445,54 @@ describe("personal Shared messaging deliveries", () => {
     });
   });
 
+  test("classifies a both-path account resolution failure as a retryable 503", async () => {
+    const { PersonalDeliveryAccountResolutionError } = await import(
+      "@/api-app/personal-delivery-projection"
+    );
+    const errorLog = mock(() => undefined);
+    const originalError = logger.error;
+    logger.error = errorLog;
+    resolvePersonalDelivery.mockImplementationOnce(async () => {
+      throw new PersonalDeliveryAccountResolutionError(
+        "status-502:TypeError",
+        new Error("private SQL detail"),
+      );
+    });
+
+    try {
+      const response = await request(valid);
+
+      expect(response.status).toBe(503);
+      expect(response.headers.get("retry-after")).toBe("1");
+      expect(response.headers.get("x-eliza-failure-stage")).toBe(
+        "account_resolution",
+      );
+      expect(response.headers.get("x-eliza-failure-name")).toBe(
+        "PersonalDeliveryAccountResolutionError",
+      );
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error:
+          "Account resolution is temporarily unavailable. Retry this turn shortly.",
+        code: "service_unavailable",
+        retryable: true,
+      });
+      expect(errorLog).toHaveBeenCalledWith(
+        "[personal-shared-messaging] delivery failed",
+        expect.objectContaining({
+          stage: "account_resolution",
+          errorName: "PersonalDeliveryAccountResolutionError",
+          projectionFailure: "status-502:TypeError",
+        }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "private SQL detail",
+      );
+    } finally {
+      logger.error = originalError;
+    }
+  });
+
   test("redacts an unrecognized error name from headers and logs", async () => {
     const errorLog = mock(() => undefined);
     const originalError = logger.error;
@@ -655,22 +696,25 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("auto-registers a first phone message without provisioning an agent row", async () => {
+    personalDeliveryIsNew = true;
     const response = await request(validPhone);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       data: { identity: { id: string }; account: { userId: string } };
     };
-    expect(findOrCreateByPhone).toHaveBeenCalledWith("+15551234567");
-    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
-    expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
-      "00000000-0000-4000-8000-000000000012",
+      "00000000-0000-4000-8000-000000000002",
     );
     expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
       expect.objectContaining({
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
       { warmConversation: true },
@@ -678,8 +722,8 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
         id: body.data.identity.id,
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
         execution_tier: "shared",
       }),
       body.data.identity.id,
@@ -695,6 +739,34 @@ describe("personal Shared messaging deliveries", () => {
         phoneNumber: "+15551234567",
       },
     );
+  });
+
+  test("routes a phone transport to the same Dedicated primary after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request(validPhone);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledTimes(1);
   });
 
   test("auto-registers a first Discord DM in the same personal room", async () => {
@@ -1077,7 +1149,6 @@ describe("personal Shared messaging deliveries", () => {
     { ...valid, message: "" },
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
-    expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 });
