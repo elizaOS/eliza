@@ -4,6 +4,7 @@
  * small pure utilities shared across the domains.
  */
 import type { IAgentRuntime } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,
@@ -699,9 +700,10 @@ export function normalizeGeneratedLifeOpsAssistantText(
   if (!cleaned) {
     return null;
   }
-  return cleaned.length > 280
-    ? `${cleaned.slice(0, 277).trimEnd()}...`
-    : cleaned;
+  const wellFormedCleaned = toWellFormedUnicode(cleaned);
+  return wellFormedCleaned.length > 280
+    ? `${truncateWellFormed(wellFormedCleaned, 277).trimEnd()}...`
+    : wellFormedCleaned;
 }
 
 export function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
