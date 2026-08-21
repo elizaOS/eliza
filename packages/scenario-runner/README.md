@@ -128,6 +128,32 @@ same-process observations cannot satisfy these contracts.
 
 Any one of `GROQ_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, or `OPENROUTER_API_KEY` satisfies the live-provider requirement when deterministic mode is disabled.
 
+## Production manifest persistence
+
+`applyProductionManifest` seeds the scenario runtime through the same
+`AgentRuntime` repository methods used in production. Version 1 supports
+world-scoped entities, rooms and participants, message memories,
+relationships, and tasks. It does not maintain a parallel mutable world store.
+
+Every apply returns a JSON-serializable receipt containing the exact created
+identifiers. `readProductionManifestSnapshot` projects canonical state back
+from the authoritative stores, while `resetProductionManifest` accepts that
+receipt in a later process, strictly reparses its keys, hashes, UUID sets, and
+participant containment, and requires its canonical hash to match the
+finalized receipt hash in authoritative world metadata before public read or
+reset. Reset then verifies namespace ownership, deletes through the production
+boundaries, and proves absence. Public reset is intentionally once-only: an
+absent world has no authoritative provenance and a replay or never-issued
+receipt is rejected rather than reported as successful. Manifest metadata is
+recursively validated as lossless JSON before any write. `proveProductionManifestReset`
+captures initial/readback/reset/reseed artifacts and requires byte-equivalent
+canonical snapshots.
+
+Version 1 rejects schedules, notifications, approvals, and provider-state
+fields as unsupported. Those domains must be added through their existing
+production services and readback contracts; they must not be represented by
+fixture-only records or a second world-state architecture.
+
 ## Strict model fixtures
 
 Deterministic scenarios can declare a serializable `modelFixtures` manifest on
