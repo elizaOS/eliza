@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ToolCallCache } from "./cache.ts";
+import { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
 import {
   defaultPrivacyRedactor,
@@ -574,6 +574,113 @@ describe("ToolCallCache", () => {
       redact: defaultPrivacyRedactor,
     });
     expect(fresh.get(desc, args)).toBeUndefined();
+  });
+
+  /**
+   * Hostile-input regressions. Each fixture must be returned to the caller
+   * untouched and must never enter either tier, on all three write routes:
+   * direct `set()`, the default `run()` predicate, and a lenient custom
+   * `run()` predicate that says "cache everything".
+   */
+  async function expectUncacheableOnEveryRoute(
+    label: string,
+    make: () => unknown,
+  ): Promise<void> {
+    const cache = makeCache();
+    const desc = resolveToolDescriptor("web_search");
+    const lenient = (_output: unknown): _output is ToolOutput => true;
+
+    const viaDefault = make();
+    await expect(
+      cache.run(
+        desc,
+        { q: `${label}-default` },
+        async () => viaDefault as ToolOutput,
+      ),
+    ).resolves.toBe(viaDefault);
+    expect(cache.get(desc, { q: `${label}-default` })).toBeUndefined();
+
+    const viaLenient = make();
+    await expect(
+      cache.run(
+        desc,
+        { q: `${label}-lenient` },
+        async () => viaLenient,
+        lenient,
+      ),
+    ).resolves.toBe(viaLenient);
+    expect(cache.get(desc, { q: `${label}-lenient` })).toBeUndefined();
+
+    const viaSet = make();
+    expect(() =>
+      cache.set(desc, { q: `${label}-set` }, viaSet as ToolOutput),
+    ).not.toThrow();
+    expect(cache.get(desc, { q: `${label}-set` })).toBeUndefined();
+  }
+
+  it("returns a flat-wide result uncached on set, default run and lenient run", async () => {
+    const makeWide = (): Record<string, number> => {
+      const wide: Record<string, number> = {};
+      for (let i = 0; i < 150_000; i += 1) wide[`k${i}`] = i;
+      return wide;
+    };
+    // Width is reserved before any per-entry work, so the verdict is stable.
+    expect(isCacheableToolOutput(makeWide())).toBe(false);
+    expect(isCacheableToolOutput(makeWide())).toBe(false);
+    await expectUncacheableOnEveryRoute("wide", makeWide);
+  });
+
+  it("returns an accessor-bearing result uncached without invoking the getter", async () => {
+    let getterCalls = 0;
+    const makeAccessor = (): Record<string, unknown> => {
+      const value: Record<string, unknown> = { ok: "plain" };
+      Object.defineProperty(value, "leak", {
+        configurable: true,
+        enumerable: true,
+        get() {
+          getterCalls += 1;
+          return "secret";
+        },
+      });
+      return value;
+    };
+    expect(isCacheableToolOutput(makeAccessor())).toBe(false);
+    await expectUncacheableOnEveryRoute("accessor", makeAccessor);
+    expect(getterCalls).toBe(0);
+  });
+
+  it("returns a reflection-hostile proxy uncached without running its get trap", async () => {
+    let getTrapCalls = 0;
+    // Wrapped in a plain object: a bare proxy as a resolved promise value
+    // would trip the runtime's own `then` lookup before the cache sees it.
+    const makeHostile = (): unknown => ({
+      ok: "plain",
+      nested: new Proxy(
+        { payload: "value" },
+        {
+          get(target, property, receiver) {
+            getTrapCalls += 1;
+            return Reflect.get(target, property, receiver);
+          },
+          ownKeys() {
+            throw new TypeError("hostile ownKeys trap");
+          },
+        },
+      ),
+    });
+    expect(isCacheableToolOutput(makeHostile())).toBe(false);
+    await expectUncacheableOnEveryRoute("hostile-proxy", makeHostile);
+    expect(getTrapCalls).toBe(0);
+  });
+
+  it("returns a revoked proxy uncached instead of leaking a raw TypeError", async () => {
+    const makeRevoked = (): unknown => {
+      const revocable = Proxy.revocable({ payload: "value" }, {});
+      revocable.revoke();
+      return { ok: "plain", nested: revocable.proxy };
+    };
+    expect(isCacheableToolOutput(makeRevoked())).toBe(false);
+    await expectUncacheableOnEveryRoute("revoked-proxy", makeRevoked);
   });
 
   it("registry includes web_search, web_fetch, file_read, rag_search, knowledge_lookup", () => {

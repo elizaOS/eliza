@@ -4,6 +4,12 @@
  * redactor, the cacheable-tool registry (descriptor lookup + isCacheable), and
  * the shared cache types.
  */
+export type {
+  BoundedWalkOptions,
+  BoundedWalkRejection,
+  BoundedWalkResult,
+} from "./bounded-walk.ts";
+export { boundedWalk, TOOL_OUTPUT_LIMITS } from "./bounded-walk.ts";
 export type { ToolCallCacheOptions } from "./cache.ts";
 export { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
 export { buildCacheKey, canonicalizeJson } from "./key.ts";
