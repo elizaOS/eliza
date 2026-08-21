@@ -15,6 +15,8 @@ import {
   type MessageRef,
   type MessageSource,
   NotYetImplementedError,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core/node";
 
 type XRuntimeServiceLike = {
@@ -89,7 +91,7 @@ function memoryToMessageRef(memory: Memory): MessageRef {
       displayName: senderHandle,
     },
     to: [],
-    snippet: body.slice(0, 200),
+    snippet: truncateWellFormed(toWellFormedUnicode(body), 200),
     body,
     receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
     hasAttachments: false,
@@ -202,8 +204,11 @@ export class XDmAdapter extends BaseMessageAdapter {
       throw new Error("[XDmAdapter] createDraft requires non-empty body");
     }
     const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
+    const wellFormedBody = toWellFormedUnicode(draft.body);
     const preview =
-      draft.body.length > 200 ? `${draft.body.slice(0, 197)}...` : draft.body;
+      wellFormedBody.length > 200
+        ? `${truncateWellFormed(wellFormedBody, 197)}...`
+        : wellFormedBody;
     return { draftId, preview };
   }
 
