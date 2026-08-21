@@ -1860,11 +1860,17 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
           ),
         )
         .for("update")
         .limit(1);
       if (!userRow) return null;
+      if (!CONTAINER_BACKED_EXECUTION_TIERS.some((tier) => tier === userRow.execution_tier)) {
+        return null;
+      }
 
       // Pool claim is for fresh provisions only. If the user's row already
       // has a database, fall through to the existing provision flow which
@@ -1942,6 +1948,9 @@ export class AgentSandboxesRepository {
           and(
             eq(agentSandboxes.id, params.userAgentId),
             eq(agentSandboxes.organization_id, params.organizationId),
+            inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
+            isNull(agentSandboxes.pool_status),
+            isNull(agentSandboxes.deleted_at),
             ...(params.expectedLifecycleRevision === undefined
               ? []
               : [eq(agentSandboxes.lifecycle_revision, params.expectedLifecycleRevision)]),
@@ -1964,7 +1973,18 @@ export class AgentSandboxesRepository {
 
   /** Insert a pool entry pre-bound to the sentinel pool org. */
   async createPoolEntry(
-    data: Omit<NewAgentSandbox, "organization_id" | "user_id" | "pool_status">,
+    data: Omit<
+      NewAgentSandbox,
+      | "organization_id"
+      | "user_id"
+      | "pool_status"
+      | "execution_tier"
+      | "billing_status"
+      | "last_billed_at"
+      | "hourly_rate"
+      | "shutdown_warning_sent_at"
+      | "scheduled_shutdown_at"
+    >,
   ): Promise<AgentSandbox> {
     await ensureAgentSandboxSchema();
     const [row] = await dbWrite
@@ -1974,6 +1994,17 @@ export class AgentSandboxesRepository {
         organization_id: WARM_POOL_ORG_ID,
         user_id: WARM_POOL_USER_ID,
         pool_status: "unclaimed",
+        // Pool placeholders own a real prewarmed container. Never inherit the
+        // schema's container-free Shared default at this creation seam.
+        execution_tier: "dedicated-always",
+        // The sentinel org owns capacity, not a customer subscription. Keep
+        // pool generations outside elapsed charging until a claim transfers
+        // infrastructure onto an already-container-backed user row.
+        billing_status: "exempt",
+        last_billed_at: null,
+        hourly_rate: "0.0000",
+        shutdown_warning_sent_at: null,
+        scheduled_shutdown_at: null,
       })
       .returning();
     if (!row) throw new Error("Failed to create warm pool entry");
