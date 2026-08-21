@@ -38,6 +38,10 @@ import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
 import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+} from "../../../../utils/well-formed.ts";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
@@ -615,7 +619,10 @@ async function runModify(
 				{
 					scope: effectiveScope,
 					requestSource: requestResolution.requestSource,
-					messageText: messageText.substring(0, 100),
+					messageText: truncateWellFormed(
+						toWellFormedUnicode(messageText),
+						100,
+					),
 				},
 				"Evaluating CHARACTER.modify with LLM",
 			);
@@ -682,7 +689,10 @@ async function runModify(
 				// stays in the result for the evaluator to voice, not dumped in chat.
 				logger.warn(
 					{
-						messageText: messageText.substring(0, 100),
+						messageText: truncateWellFormed(
+							toWellFormedUnicode(messageText),
+							100,
+						),
 						concerns: safety.concerns,
 						reasoning: safety.reasoning,
 					},
@@ -1585,7 +1595,10 @@ async function handleUserPreference(
 					type: MemoryType.CUSTOM,
 					category: preference.category,
 					timestamp: Date.now(),
-					originalRequest: messageText.substring(0, 200),
+					originalRequest: truncateWellFormed(
+						toWellFormedUnicode(messageText),
+						200,
+					),
 				},
 			},
 			USER_PREFS_TABLE,
