@@ -275,7 +275,9 @@ function quotedSpanContains(
 		) {
 			return true;
 		}
-		cursor = end + 1;
+		// An apostrophe inside a contraction is not an opening quote. Advance one
+		// delimiter so a later real opening quote is still considered.
+		cursor = start + 1;
 	}
 	return false;
 }

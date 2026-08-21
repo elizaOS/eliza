@@ -191,6 +191,13 @@ describe("parse", () => {
 		expect(cleanedText).toContain("[FORM]");
 	});
 
+	it("rejects a form whose closing marker is not on a new line", () => {
+		const text = '[FORM]\n{"title":"Login","fields":[]}[/FORM]';
+		const { blocks, cleanedText } = parseInteractionBlocks(text);
+		expect(blocks).toHaveLength(0);
+		expect(cleanedText).toBe(text);
+	});
+
 	it("parses a task block and validates the threadId shape", () => {
 		const id = "abc12345-def6-7890-abcd-ef1234567890";
 		const { blocks } = parseInteractionBlocks(

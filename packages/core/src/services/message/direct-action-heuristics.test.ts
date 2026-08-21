@@ -828,6 +828,9 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			"never please under any circumstances show my reminders",
 			"what happens when I say show my reminders",
 			'write a story where she says "show my goals"',
+			"i can't explain 'list my todos'",
+			"i'm quoting 'list my todos'",
+			"i'd rephrase 'list my todos'",
 			"explain the phrase show my routines",
 		]) {
 			expect(

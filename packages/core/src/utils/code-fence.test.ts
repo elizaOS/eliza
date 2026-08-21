@@ -11,6 +11,17 @@ describe("unwrapWholeCodeFence", () => {
 		expect(unwrapWholeCodeFence("```ts\n{}\n```", ["json"])).toBeNull();
 	});
 
+	it("keeps compact unlabeled bodies distinct from language labels", () => {
+		expect(unwrapWholeCodeFence("```true```", ["json"])).toBe("true");
+		expect(unwrapWholeCodeFence("```jsontrue```", ["json"])).toBe("true");
+		expect(unwrapWholeCodeFence("```name: eliza```", ["toon"])).toBe(
+			"name: eliza",
+		);
+		expect(
+			unwrapWholeCodeFence("```typescript\ntrue\n```", ["json"]),
+		).toBeNull();
+	});
+
 	it("scans a 100k-character body without backtracking", () => {
 		const body = "\t".repeat(100_000);
 		expect(unwrapWholeCodeFence(`\`\`\`json\n${body}x\n\`\`\``, ["json"])).toBe(

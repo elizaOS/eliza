@@ -298,6 +298,7 @@ function scanRawInteractionRegions(text: string): RawInteractionRegion[] {
 		if (marker.rest !== "") continue;
 		const opening = active.get(marker.kind);
 		if (!opening) continue;
+		if (marker.kind !== "TASK" && text[start - 1] !== "\n") continue;
 		active.delete(marker.kind);
 		let bodyEnd = start;
 		if (marker.kind !== "TASK" && text[bodyEnd - 1] === "\n") {
