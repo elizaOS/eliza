@@ -128,6 +128,7 @@ interface TestHarness {
   handleMessage: ReturnType<typeof vi.fn>;
   emitEvent: ReturnType<typeof vi.fn>;
   createMemory: ReturnType<typeof vi.fn>;
+  updateMemory: ReturnType<typeof vi.fn>;
   storedMemories: Memory[];
   deleteManyMemories: ReturnType<typeof vi.fn>;
   deleteRoom: ReturnType<typeof vi.fn>;
@@ -141,7 +142,11 @@ interface TestHarness {
  *  memories are retained and served back through `getMemories`, so the dupe
  *  branches' persisted-first-reply lookup reads the real write path's output. */
 function createHarness(
-  options: { maxPendingPerRoom?: number; scheduling?: boolean } = {},
+  options: {
+    maxPendingPerRoom?: number;
+    scheduling?: boolean;
+    failOutcomeSettlementOnce?: boolean;
+  } = {},
 ): TestHarness {
   const handleMessage = vi.fn(
     async (
@@ -171,7 +176,19 @@ function createHarness(
     storedMemories.push(memory);
     return memory.id ?? stringToUuid("created-memory");
   });
+  let shouldFailOutcomeSettlement = options.failOutcomeSettlementOnce === true;
   const updateMemory = vi.fn(async (memory: Partial<Memory> & { id: UUID }) => {
+    const marker = memory.content?.chatIdempotency;
+    if (
+      shouldFailOutcomeSettlement &&
+      marker &&
+      typeof marker === "object" &&
+      !Array.isArray(marker) &&
+      "outcomeJson" in marker
+    ) {
+      shouldFailOutcomeSettlement = false;
+      throw new Error("simulated outcome marker write failure");
+    }
     const index = storedMemories.findIndex((stored) => stored.id === memory.id);
     if (index < 0) throw new Error("memory not found");
     storedMemories[index] = { ...storedMemories[index], ...memory };
@@ -285,6 +302,7 @@ function createHarness(
     handleMessage,
     emitEvent,
     createMemory,
+    updateMemory,
     storedMemories,
     deleteManyMemories,
     deleteRoom,
@@ -1030,6 +1048,50 @@ describe("conversation-route chat idempotency wiring", () => {
     expect(
       parseDataFrames(retry.record).find((frame) => frame.type === "done"),
     ).toEqual(firstDone);
+  });
+
+  it("SSE: a persisted interrupted receipt survives outcome-marker settlement failure and restart", async () => {
+    const { state, handleMessage, updateMemory, createMemory, storedMemories } =
+      createHarness({ failOutcomeSettlementOnce: true });
+    const abortError = Object.assign(new Error("client stopped"), {
+      code: "TURN_ABORTED",
+    });
+    handleMessage.mockImplementationOnce(async () => {
+      throw abortError;
+    });
+    const body = {
+      text: "hello",
+      clientMessageId: "sse-abort-settlement-failure-1",
+    };
+
+    const first = await runRoute("POST", STREAM_PATH, state, body);
+    const firstDone = parseDataFrames(first.record).find(
+      (frame) => frame.type === "done",
+    );
+    expect(firstDone).toMatchObject({
+      type: "done",
+      fullText: "",
+      interrupted: true,
+      messageId: expect.any(String),
+    });
+    expect(updateMemory).toHaveBeenCalledTimes(1);
+    const receipt = storedMemories.find(
+      (memory) => memory.id === firstDone?.messageId,
+    );
+    expect(receipt?.content).toMatchObject({ interrupted: true, text: "" });
+    const persistsAfterAbort = createMemory.mock.calls.length;
+
+    // Simulate a fresh process: the failed outcome marker is absent, so
+    // recovery must reconstruct the exact terminal from the durable receipt.
+    resetChatDedupe();
+    const retry = await runRoute("POST", STREAM_PATH, state, body);
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledTimes(persistsAfterAbort);
+    expect(
+      parseDataFrames(retry.record).find((frame) => frame.type === "done"),
+    ).toEqual(firstDone);
+    expect(updateMemory.mock.calls.length).toBeGreaterThan(1);
   });
 
   it("SSE: a completed turn survives transport disconnect and the retry replays it", async () => {

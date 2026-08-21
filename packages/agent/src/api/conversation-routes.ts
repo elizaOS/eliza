@@ -1538,6 +1538,7 @@ function buildRecoveredConversationChatOutcome(
     ...(content.noResponseReason === "ignored"
       ? { noResponseReason: "ignored" as const }
       : {}),
+    ...(content.interrupted === true ? { interrupted: true } : {}),
   };
 }
 
@@ -3936,6 +3937,17 @@ export async function handleConversationRoutes(
       preferredLanguage,
       metadata: chatMetadata,
     });
+    const settleTurnReservationInMemory = (
+      outcome: ChatMessageIdOutcome,
+    ): void => {
+      setChatMessageIdOutcome(
+        chatIdempotencyScope,
+        clientMessageId ?? null,
+        outcome,
+        chatReservation,
+      );
+      reservationSettled = true;
+    };
     const settleTurnReservation = async (
       outcome: ChatMessageIdOutcome,
     ): Promise<void> => {
@@ -3956,13 +3968,7 @@ export async function handleConversationRoutes(
           runtimeTurnLease,
         );
       }
-      setChatMessageIdOutcome(
-        chatIdempotencyScope,
-        clientMessageId ?? null,
-        outcome,
-        chatReservation,
-      );
-      reservationSettled = true;
+      settleTurnReservationInMemory(outcome);
     };
     const idempotencyAdmission = await awaitConversationChatAdmission(
       chatIdempotencyScope,
@@ -4489,7 +4495,34 @@ export async function handleConversationRoutes(
                   userMessageId: messageToStore.id,
                   interrupted: true,
                 };
-                await settleTurnReservation(interruptedOutcome);
+                try {
+                  await settleTurnReservation(interruptedOutcome);
+                } catch (settlementError) {
+                  // error-policy:J7 the receipt is already durable and remains
+                  // recoverable through its deterministic in-reply-to link;
+                  // preserve that terminal outcome locally while reporting the
+                  // failed optimization that writes it onto the user marker.
+                  settleTurnReservationInMemory(interruptedOutcome);
+                  runtime.reportError(
+                    "ConversationStream.interruptedReceiptSettlement",
+                    settlementError,
+                    {
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      clientMessageId,
+                      receiptId: persisted.id,
+                    },
+                  );
+                  logger.warn(
+                    {
+                      err: getErrorMessage(settlementError),
+                      conversationId: conv.id,
+                      roomId: conv.roomId,
+                      receiptId: persisted.id,
+                    },
+                    "[ConversationStream] interrupted receipt persisted but outcome marker settlement failed",
+                  );
+                }
                 if (!disconnectTracker.isAborted()) {
                   writeConversationDoneSse(res, interruptedOutcome);
                 }
