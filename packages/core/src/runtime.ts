@@ -9333,8 +9333,8 @@ ${section_end}`;
 								? [parseErrorMessage]
 								: [];
 					if (repairIssues.length > 0) {
-						const priorOutput = this.redactSecrets(cleanResponse).slice(
-							0,
+						const priorOutput = truncateWellFormed(
+							toWellFormedUnicode(this.redactSecrets(cleanResponse)),
 							AgentRuntime.STRUCTURED_FAILURE_PREVIEW_LIMIT,
 						);
 						const issueList = repairIssues
