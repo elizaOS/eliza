@@ -1418,23 +1418,30 @@ describe("runtime event trigger bridge", () => {
     // emit to a later round (the previous shape here) inverts that, and made
     // this test pass against a chain guard that never fired in production.
     let runSeq = 0;
-    const execute = vi.fn(async (workflowId: string) => {
-      runSeq += 1;
-      const runId = `run-${runSeq}`;
-      // Bound the harness itself so a genuinely unbounded chain fails the
-      // assertion below instead of hanging the suite.
-      if (runSeq <= 30) {
-        await handle.runtime.emitEvent("workflow_run_event", {
-          event: {
-            id: `${runId}:1`,
-            runId,
-            workflowId,
-            type: "NodeFinished",
-          },
-        } as never);
-      }
-      return { ok: true as const, executionId: runId };
-    });
+    const execute = vi.fn(
+      async (
+        workflowId: string,
+        _triggerData: Record<string, unknown>,
+        options?: { triggerChainDepth?: number },
+      ) => {
+        runSeq += 1;
+        const runId = `run-${runSeq}`;
+        // Bound the harness itself so a genuinely unbounded chain fails the
+        // assertion below instead of hanging the suite.
+        if (runSeq <= 30) {
+          await handle.runtime.emitEvent("workflow_run_event", {
+            event: {
+              id: `${runId}:1`,
+              runId,
+              workflowId,
+              type: "NodeFinished",
+            },
+            triggerChainDepth: options?.triggerChainDepth,
+          } as never);
+        }
+        return { ok: true as const, executionId: runId };
+      },
+    );
     (
       handle.runtime.getService("WORKFLOW_DISPATCH") as unknown as {
         execute: typeof execute;
@@ -1459,9 +1466,24 @@ describe("runtime event trigger bridge", () => {
       5, // MAX_EVENT_TRIGGER_CHAIN_DEPTH (4) + the seed hop
     );
     expect(execute.mock.calls.length).toBeGreaterThan(0);
+
+    // An ancestry limit belongs to one execution chain, not the workflow id.
+    // A later external event for the same workflow must still be eligible.
+    const priorCalls = execute.mock.calls.length;
+    handle.setTasks([aToB]);
+    await handle.runtime.emitEvent("workflow_run_event", {
+      event: {
+        id: "later:1",
+        runId: "run-later",
+        workflowId: "wf-a",
+        type: "NodeFinished",
+      },
+    } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(execute.mock.calls.length).toBe(priorCalls + 1);
   });
 
-  it("cuts off a saved trigger that exceeds the sustained dispatch ceiling", async () => {
+  it("dispatches more than sixty distinct valid events without loss", async () => {
     const target = makeTriggerTask(
       {
         triggerType: "event",
@@ -1485,14 +1507,14 @@ describe("runtime event trigger bridge", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    expect(handle.dispatchCalls).toHaveLength(60);
+    expect(handle.dispatchCalls).toHaveLength(65);
     expect(
       handle.reportedErrors.filter(
         (entry) =>
           (entry.error as { code?: string }).code ===
           "TRIGGER_EVENT_DISPATCH_RATE_EXCEEDED",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it("reads the task store once per event instead of once per tag set", async () => {

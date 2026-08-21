@@ -171,6 +171,8 @@ export interface WorkflowExecution {
   events?: WorkflowRunEvent[];
   approvals?: WorkflowApproval[];
   idempotencyKey?: string;
+  /** Internal ancestry carried across native workflow-trigger executions. */
+  triggerChainDepth?: number;
 }
 
 export interface WorkflowCreationResult {
