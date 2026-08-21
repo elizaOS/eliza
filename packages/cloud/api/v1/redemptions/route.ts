@@ -33,8 +33,8 @@ import {
   REDEMPTION_MAX_POINTS,
   REDEMPTION_MIN_POINTS,
   REDEMPTION_NETWORKS,
-  REDEMPTION_POINTS_PER_USD,
 } from "@/types/redemption-contract";
+import { usdFromPoints } from "@/lib/services/earnings-units";
 
 const CreateRedemptionSchema = z.object({
   appId: z.string().uuid().optional(),
@@ -249,7 +249,7 @@ app.post("/", moneyRateLimit(RateLimitPresets.CRITICAL), async (c) => {
       userId: `${user.id.slice(0, 8)}...`,
       appId,
       pointsAmount,
-      usdValue: (pointsAmount / REDEMPTION_POINTS_PER_USD).toFixed(2),
+      usdValue: usdFromPoints(pointsAmount).toFixed(2),
       network,
       payoutAddress: maskedAddress,
       hasSignature: !!signature,
