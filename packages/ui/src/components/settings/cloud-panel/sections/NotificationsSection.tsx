@@ -9,6 +9,8 @@
 import { Bell, Circle, Volume2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useWebPush } from "../../../../state/notifications/useWebPush";
+import { isDesktopPlatform } from "../../../../platform";
+import { invokeDesktopBridgeRequest } from "../../../../bridge";
 import {
   NuphyActionButton,
   NuphyRow,
@@ -88,9 +90,20 @@ export function NotificationsSection() {
   const [doNotDisturb, setDoNotDisturb] = useState(false);
 
   const onTestNotification = useCallback(() => {
-    // Dispatched to the desktop/native bridge; the host listens and fires a
-    // real system notification so the user can verify delivery + styling.
-    window.dispatchEvent(new CustomEvent("eliza:desktop-notify-test"));
+    if (isDesktopPlatform()) {
+      // On desktop, fire a real system notification through the desktop bridge.
+      void invokeDesktopBridgeRequest<void>({
+        rpcMethod: "desktopShowNotification",
+        ipcChannel: "desktop:showNotification",
+        params: {
+          title: "Eliza — Test Notification",
+          body: "If you can see this, notifications are working correctly.",
+        },
+      });
+    } else {
+      // Web/iOS fallback: dispatch a DOM event the host listens for.
+      window.dispatchEvent(new CustomEvent("eliza:desktop-notify-test"));
+    }
   }, []);
 
   return (
@@ -170,7 +183,7 @@ export function NotificationsSection() {
           label="Send test notification"
           buttonLabel="Send test notification"
           onActivate={onTestNotification}
-          disabled={!push.on}
+          disabled={!push.on && !isDesktopPlatform()}
           variant="secondary"
         />
       </SettingsGroup>

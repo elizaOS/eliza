@@ -165,7 +165,7 @@ export function NuphySelectRow({
   testId,
 }: NuphySelectRowProps) {
   const resolvedLabel = agentLabel ?? labelToString(label, agentId);
-  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+  const { ref, agentProps } = useAgentElement<HTMLDivElement>({
     id: agentId,
     role: "select",
     label: resolvedLabel,
@@ -184,13 +184,15 @@ export function NuphySelectRow({
         typeof description === "string" ? description : undefined
       }
       control={
-        <SelectPill
-          options={options}
-          value={value}
-          onValueChange={onValueChange}
-          disabled={disabled}
-          {...(selectAgentProps as Record<string, unknown>)}
-        />
+        <div ref={ref} {...selectAgentProps} data-testid={testId}>
+          <SelectPill
+            options={options}
+            value={value}
+            onValueChange={onValueChange}
+            disabled={disabled}
+            aria-label={resolvedLabel}
+          />
+        </div>
       }
     />
   );
@@ -244,13 +246,14 @@ export function NuphySegmentedRow({
         typeof description === "string" ? description : undefined
       }
       control={
-        <Segmented
-          options={options}
-          value={value}
-          onValueChange={onValueChange}
-          aria-label={resolvedLabel}
-          {...agentProps}
-        />
+        <div ref={ref} {...agentProps}>
+          <Segmented
+            options={options}
+            value={value}
+            onValueChange={onValueChange}
+            aria-label={resolvedLabel}
+          />
+        </div>
       }
     />
   );
@@ -508,5 +511,225 @@ export function NuphyRow({
       </div>
       {below}
     </div>
+  );
+}
+
+// ── Modal / dialog primitives ───────────────────────────────────────────
+
+export interface NuphyModalProps {
+  open: boolean;
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+  /** Max width in tailwind class. Default max-w-md. */
+  maxWidth?: string;
+}
+
+/**
+ * A centered overlay dialog with backdrop, used for connector setup forms
+ * and MCP configuration. Renders above the settings panel with focus trap
+ * and Escape-to-close.
+ */
+export function NuphyModal({
+  open,
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+  maxWidth = "max-w-md",
+}: NuphyModalProps) {
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "relative z-10 w-full rounded-xl border border-hairline bg-surface shadow-lg",
+          maxWidth,
+          "mx-4 max-h-[85vh] overflow-y-auto",
+        )}
+      >
+        <div className="border-b border-hairline px-5 py-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold leading-6 text-foreground">
+                {title}
+              </h2>
+              {description ? (
+                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                  {description}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-fill hover:text-foreground"
+              aria-label="Close dialog"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+        {footer ? (
+          <div className="border-t border-hairline px-5 py-3">{footer}</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+export interface NuphyConfirmDialogProps {
+  open: boolean;
+  title: string;
+  description: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}
+
+/**
+ * A simple confirmation dialog for destructive actions (disconnect, remove).
+ */
+export function NuphyConfirmDialog({
+  open,
+  title,
+  description,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel",
+  destructive = false,
+  onConfirm,
+  onClose,
+}: NuphyConfirmDialogProps) {
+  return (
+    <NuphyModal
+      open={open}
+      title={title}
+      onClose={onClose}
+      maxWidth="max-w-sm"
+      footer={
+        <div className="flex justify-end gap-2">
+          <NuphyButton variant="ghost" size="sm" onClick={onClose}>
+            {cancelLabel}
+          </NuphyButton>
+          <NuphyButton
+            variant={destructive ? "destructive" : "primary"}
+            size="sm"
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+          >
+            {confirmLabel}
+          </NuphyButton>
+        </div>
+      }
+    >
+      <p className="text-[14px] leading-5 text-muted-foreground">{description}</p>
+    </NuphyModal>
+  );
+}
+
+/** A labeled form field wrapper for use inside modals. */
+export function NuphyFormField({
+  label,
+  description,
+  children,
+  htmlFor,
+}: {
+  label: string;
+  description?: string;
+  children: React.ReactNode;
+  htmlFor?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label
+        htmlFor={htmlFor}
+        className="text-[13px] font-medium leading-5 text-foreground"
+      >
+        {label}
+      </label>
+      {description ? (
+        <p className="text-[12px] leading-4 text-muted-foreground">
+          {description}
+        </p>
+      ) : null}
+      {children}
+    </div>
+  );
+}
+
+/** A text input styled to match the NuPhy settings panel. */
+export function NuphyTextInput({
+  id,
+  type = "text",
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  autoComplete,
+}: {
+  id?: string;
+  type?: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  autoComplete?: string;
+}) {
+  return (
+    <input
+      id={id}
+      type={type}
+      value={value}
+      disabled={disabled}
+      placeholder={placeholder}
+      autoComplete={autoComplete}
+      onChange={(e) => onChange(e.target.value)}
+      className={cn(
+        "w-full rounded-md border border-hairline bg-surface px-3 py-2",
+        "text-[14px] leading-5 text-foreground placeholder:text-muted-foreground/60",
+        "focus:border-accent/50 focus:outline-none focus:ring-2 focus:ring-accent/20",
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        "transition-colors",
+      )}
+    />
   );
 }
