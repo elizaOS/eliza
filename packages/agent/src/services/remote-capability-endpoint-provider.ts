@@ -376,7 +376,19 @@ function normalizeEndpoint(
 }
 
 function normalizeBaseUrl(value: string): string {
-  const url = new URL(value.trim());
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error("Remote capability endpoint baseUrl must be a valid URL.");
+  }
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    // error-policy:J3 untrusted endpoint baseUrl tokens. `new URL` throws
+    // TypeError on raw invalid input; map that to a structured boundary so
+    // provision/install cannot 500 a capability-router connect.
+    throw new Error("Remote capability endpoint baseUrl must be a valid URL.");
+  }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("Remote capability endpoint baseUrl must be http(s).");
   }

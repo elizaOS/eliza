@@ -17,6 +17,7 @@ import {
   buildRemoteCapabilityEndpointTrustPolicy,
   connectRemoteCapabilityEndpointProvider,
   directRemoteCapabilityEndpointProvider,
+  installRemoteCapabilityEndpoint,
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import {
@@ -671,6 +672,44 @@ describe("remote capability endpoint providers", () => {
       },
       allowedModuleIds: ["mobile-plugin"],
     });
+  });
+
+  it("fail-closes on raw malformed direct endpoint baseUrl tokens instead of TypeError", async () => {
+    const tokens = ["::::", "not a url", "http://[", "   "];
+    for (const baseUrl of tokens) {
+      try {
+        await directRemoteCapabilityEndpointProvider().provision({
+          endpoint: { id: "bad", baseUrl },
+        });
+        throw new Error(`expected reject for ${JSON.stringify(baseUrl)}`);
+      } catch (err) {
+        expect(err).toBeInstanceOf(Error);
+        expect(err).not.toBeInstanceOf(TypeError);
+        expect((err as Error).message).toMatch(/must be a valid URL/);
+      }
+    }
+
+    await expect(
+      directRemoteCapabilityEndpointProvider().provision({
+        endpoint: { id: "file", baseUrl: "file:///tmp/capability" },
+      }),
+    ).rejects.toThrow("must be http(s)");
+  });
+
+  it("fail-closes installRemoteCapabilityEndpoint on raw invalid endpoint URLs", () => {
+    const runtime = makeRuntime();
+    expect(() =>
+      installRemoteCapabilityEndpoint(runtime, {
+        environment: "server",
+        endpoints: [{ id: "bad", baseUrl: "::::" }],
+      }),
+    ).toThrow(/must be a valid URL/);
+    expect(() =>
+      installRemoteCapabilityEndpoint(runtime, {
+        environment: "server",
+        endpoints: [{ id: "bad", baseUrl: "::::" }],
+      }),
+    ).not.toThrow(TypeError);
   });
 
   it("normalizes and validates URL-backed provider endpoints before sync", async () => {
