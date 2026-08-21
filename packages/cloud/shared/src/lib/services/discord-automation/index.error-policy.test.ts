@@ -2,7 +2,7 @@
 // Discord REST call must PROPAGATE as a throw, while a legitimately-empty guild
 // (no text channels) must stay a distinct, successful [] result. Deterministic
 // harness — global fetch and the DB repositories are mocked; no live Discord.
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, jest, mock } from "bun:test";
 
 // Env is read at module load, so it must be set before the dynamic import below.
 process.env.DISCORD_CLIENT_ID = "test-client-id";
@@ -16,6 +16,14 @@ const guildUpsert = mock(async () => {});
 // unrelated Core Unicode helper hermetic so the focused test does not require
 // a built @elizaos/core workspace package.
 mock.module("@elizaos/core", () => ({
+  ElizaError: class extends Error {
+    readonly code: string;
+
+    constructor(message: string, options: { code: string }) {
+      super(message);
+      this.code = options.code;
+    }
+  },
   truncateWellFormed: (value: string, maxUnits: number) => value.slice(0, maxUnits),
 }));
 mock.module("../../../db/repositories/discord-channels", () => ({
@@ -43,19 +51,17 @@ const realFetch = globalThis.fetch;
 function jsonResponse(body: unknown, init?: { ok?: boolean; status?: number }): Response {
   const ok = init?.ok ?? true;
   const status = init?.status ?? (ok ? 200 : 500);
-  return {
-    ok,
+  return new Response(typeof body === "string" ? body : JSON.stringify(body), {
     status,
-    json: async () => body,
-    text: async () => (typeof body === "string" ? body : JSON.stringify(body)),
-  } as unknown as Response;
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function hungResponse(
   init?: RequestInit,
   onSignal?: (signal: AbortSignal | undefined) => void,
 ): Promise<Response> {
-  onSignal?.(init?.signal);
+  onSignal?.(init?.signal ?? undefined);
   return new Promise<Response>((_resolve, reject) => {
     const guard = setTimeout(
       () => reject(new Error("test guard elapsed before Discord deadline")),
@@ -232,7 +238,7 @@ describe("sendMessage — shared Discord deadline boundary", () => {
   it("passes the shared deadline signal to the message transport", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
+      seen = init?.signal ?? undefined;
       return jsonResponse({ id: "message-1" });
     }) as unknown as typeof fetch;
 
@@ -240,5 +246,71 @@ describe("sendMessage — shared Discord deadline boundary", () => {
 
     expect(result).toEqual({ success: true, messageId: "message-1" });
     expect(seen).toBeInstanceOf(AbortSignal);
+  });
+
+  it("aborts the underlying hung transport at the overall deadline", async () => {
+    jest.useFakeTimers();
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal ?? undefined;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
+
+    const pending = discordAutomationService.sendMessage("channel-1", "hello");
+    await Promise.resolve();
+    expect(seen?.aborted).toBe(false);
+    jest.advanceTimersByTime(25_000);
+
+    await expect(pending).resolves.toEqual({ success: false, error: "Failed to send message" });
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("rejects over-budget chunk work before the first REST mutation", async () => {
+    const fetchMock = mock(async () => jsonResponse({ id: "unexpected" }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await discordAutomationService.sendMessage(
+      "channel-1",
+      "x".repeat(2_000 * 25 + 1),
+    );
+    expect(result).toEqual({
+      success: false,
+      error: "Message exceeds the 25-chunk delivery limit",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not report full success after a later chunk fails", async () => {
+    let requestCount = 0;
+    globalThis.fetch = mock(async () => {
+      requestCount += 1;
+      return requestCount === 1
+        ? jsonResponse({ id: "partial-message" })
+        : jsonResponse("rate limited", { ok: false, status: 429 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      discordAutomationService.sendMessage("channel-1", "x".repeat(2_001)),
+    ).resolves.toEqual({ success: false, error: "Failed to send message" });
+    expect(requestCount).toBe(2);
+  });
+
+  it("clears the overall deadline after a completed multi-chunk send", async () => {
+    jest.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal);
+      return jsonResponse({ id: `message-${signals.length}` });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      discordAutomationService.sendMessage("channel-1", "x".repeat(2_001)),
+    ).resolves.toEqual({ success: true, messageId: "message-2" });
+    jest.advanceTimersByTime(25_000);
+    expect(signals).toHaveLength(2);
+    expect(signals.every((signal) => !signal.aborted)).toBe(true);
   });
 });

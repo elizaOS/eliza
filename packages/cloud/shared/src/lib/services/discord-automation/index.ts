@@ -8,7 +8,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
-import { discordFetch } from "../../utils/discord-api";
+import { DISCORD_REQUEST_TIMEOUT_MS, discordFetch } from "../../utils/discord-api";
 import {
   DISCORD_RATE_LIMITS,
   getGuildIconUrl,
@@ -28,6 +28,7 @@ import type {
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
+const MAX_DISCORD_MESSAGE_CHUNKS = 25;
 
 export { discordFetch };
 
@@ -564,9 +565,20 @@ class DiscordAutomationService {
       return { success: false, error: "Bot token not configured" };
     }
 
+    const deadline = new AbortController();
+    const timeoutId = setTimeout(() => {
+      deadline.abort(new DOMException("Discord message send timed out", "TimeoutError"));
+    }, DISCORD_REQUEST_TIMEOUT_MS);
+
     try {
       // Split message if too long
       const chunks = splitMessage(content, DISCORD_RATE_LIMITS.MAX_MESSAGE_LENGTH);
+      if (chunks.length > MAX_DISCORD_MESSAGE_CHUNKS) {
+        return {
+          success: false,
+          error: `Message exceeds the ${MAX_DISCORD_MESSAGE_CHUNKS}-chunk delivery limit`,
+        };
+      }
       let lastMessageId: string | undefined;
 
       for (let i = 0; i < chunks.length; i++) {
@@ -588,6 +600,7 @@ class DiscordAutomationService {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(body),
+          signal: deadline.signal,
         });
 
         if (!response.ok) {
@@ -613,6 +626,8 @@ class DiscordAutomationService {
         error: error instanceof Error ? error.message : "Unknown error",
       });
       return { success: false, error: "Failed to send message" };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

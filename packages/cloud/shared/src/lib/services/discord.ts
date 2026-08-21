@@ -1,10 +1,11 @@
 // Coordinates cloud service discord behavior behind route handlers.
+import { discordFetch } from "../utils/discord-api";
 import { logger } from "../utils/logger";
 
 const DISCORD_API = "https://discord.com/api/v10";
 
 async function discordPost(token: string, path: string, body: unknown): Promise<Response> {
-  return fetch(`${DISCORD_API}${path}`, {
+  return discordFetch(`${DISCORD_API}${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bot ${token}`,
