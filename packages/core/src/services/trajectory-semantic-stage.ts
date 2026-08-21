@@ -18,7 +18,12 @@ export const TRAJECTORY_SEMANTIC_STAGE_SCHEMA_VERSION = 1 as const;
 
 export const TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS = 250;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_DEPTH = 20;
-const TRAJECTORY_SEMANTIC_STAGE_MAX_NODES = 5_000;
+// Node budget is shared across a step's whole stage array on read. A planner
+// stage carries the full tool surface (every registered tool's schema) and
+// alone runs ~8.5k nodes on a live agent; at 5k every planner stage was
+// rejected and the database mirror never held a planner decision (live
+// 2026-08-21). The byte budget below is the real bound against oversize rows.
+const TRAJECTORY_SEMANTIC_STAGE_MAX_NODES = 50_000;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_STRING_CHARS = 64 * 1024;
 const TRAJECTORY_SEMANTIC_STAGE_MAX_ID_CHARS = 256;
 const TRAJECTORY_SEMANTIC_STAGES_MAX_JSON_BYTES = 1024 * 1024;

@@ -129,6 +129,34 @@ describe("trajectory semantic stages", () => {
 		).toThrow(/semantic stage is invalid/i);
 	});
 
+	it("accepts a planner stage carrying a live-sized tool surface", () => {
+		const semantic = recordedStageToSemanticStage(toolSearchStage);
+		// ~80 tools × ~110 schema nodes: the shape a live planner stage records.
+		const tools = Array.from({ length: 80 }, (_, index) => ({
+			name: `TOOL_${index}`,
+			description: "tool",
+			parameters: {
+				type: "object",
+				properties: Object.fromEntries(
+					Array.from({ length: 25 }, (_, field) => [
+						`param${field}`,
+						{ type: "string", description: "field" },
+					]),
+				),
+				required: ["param0"],
+			},
+		}));
+		const planner = { ...semantic, stageId: "planner-1", payload: { model: { tools } } };
+		expect(parseTrajectorySemanticStage(planner).stageId).toBe("planner-1");
+		expect(
+			parseTrajectorySemanticStages([
+				planner,
+				{ ...planner, stageId: "planner-2" },
+				{ ...planner, stageId: "planner-3" },
+			]),
+		).toHaveLength(3);
+	});
+
 	it("applies node and byte budgets across the complete stage array", () => {
 		const semantic = recordedStageToSemanticStage(toolSearchStage);
 		expect(() =>
