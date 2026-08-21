@@ -590,7 +590,7 @@ export function residualsCorrection(result: CompletionResidualsResult): string {
     switch (residual.kind) {
       case "uncommitted_changes":
         lines.push(
-          `- Uncommitted changes remain (${residual.detail}). Commit (or intentionally discard) every leftover path:`,
+          `- Uncommitted changes remain (${residual.detail}). Reconcile only paths this task changed, staging named paths rather than repo-wide shortcuts:`,
         );
         break;
       case "unpushed_commits":
@@ -608,6 +608,7 @@ export function residualsCorrection(result: CompletionResidualsResult): string {
   }
   lines.push(
     "",
+    "Never commit, discard, reset, or overwrite a path that existed before this session or belongs to another task. If any listed path is not yours, stop and report the baseline mismatch instead of cleaning it.",
     "When everything above is resolved, report completion again with a valid CompletionEnvelope reflecting the clean state.",
   );
   return lines.join("\n");

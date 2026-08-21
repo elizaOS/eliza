@@ -618,6 +618,9 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
     expect(correction).toContain("NOT done");
     expect(correction).toContain("wip.ts");
     expect(correction).toContain("vitest (exit 2)");
+    expect(correction).toContain("staging named paths");
+    expect(correction).toContain("If any listed path is not yours, stop");
+    expect(correction).not.toContain("every leftover path");
     expect(correction).not.toContain("flaky retry loop");
   });
 });
