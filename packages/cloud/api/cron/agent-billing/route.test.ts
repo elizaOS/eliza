@@ -158,7 +158,9 @@ const scheduleShutdownWarningForRun = mock(
     now: Date;
   }) => "claimed" as const,
 );
-const completeShutdownWarningForRun = mock(async () => "sent" as const);
+const completeShutdownWarningForRun = mock(
+  async (input: { outcome: "sent" | "skipped" | "error" }) => input.outcome,
+);
 const renewBillingRunLease = mock(
   async (runId: string, leaseToken: string, leaseDurationMs: number) => {
     const started = startedRuns.get(runId);

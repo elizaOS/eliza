@@ -289,8 +289,8 @@ export class AgentBillingRepository {
     organizationId: string;
     now: Date;
     shutdownTime: Date;
-    outcome: "sent" | "error";
-  }): Promise<"sent" | "error"> {
+    outcome: "sent" | "skipped" | "error";
+  }): Promise<"sent" | "skipped" | "error"> {
     return dbWrite.transaction(async (tx) => {
       await assertAgentBillingRunLeaseInTransaction(tx, input);
       const [pending] = await tx
@@ -305,7 +305,9 @@ export class AgentBillingRepository {
         .for("update")
         .limit(1);
       if (!pending || pending.action !== "warning_pending") {
-        return pending?.action === "warning_sent" ? "sent" : "error";
+        if (pending?.action === "warning_sent") return "sent";
+        if (pending?.action === "skipped") return "skipped";
+        return "error";
       }
       let finalOutcome = input.outcome;
       if (finalOutcome === "sent") {
@@ -339,12 +341,19 @@ export class AgentBillingRepository {
                 detail_message: null,
                 completed_at: input.now,
               }
-            : {
-                action: "error",
-                detail_code: "warning_delivery_failed",
-                detail_message: "Shutdown warning delivery failed",
-                completed_at: input.now,
-              },
+            : finalOutcome === "skipped"
+              ? {
+                  action: "skipped",
+                  detail_code: "balance_recovered",
+                  detail_message: "Balance recovered before warning could be sent",
+                  completed_at: input.now,
+                }
+              : {
+                  action: "error",
+                  detail_code: "warning_delivery_failed",
+                  detail_message: "Shutdown warning delivery failed",
+                  completed_at: input.now,
+                },
         )
         .where(eq(agentBillingRunItems.id, pending.id));
       return finalOutcome;

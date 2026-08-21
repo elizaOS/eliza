@@ -214,9 +214,11 @@ export type AgentBillingRun = InferSelectModel<typeof agentBillingRuns>;
 export type NewAgentBillingRun = InferInsertModel<typeof agentBillingRuns>;
 
 /**
- * One immutable terminal outcome per sandbox within a run. Financial outcomes
- * are inserted in the same transaction as their debit, making this table the
- * recovery source of truth after a worker crashes before aggregate completion.
+ * One durable outcome per sandbox within a run. Warning delivery uses a
+ * `warning_pending` intent that is finalized in place; all other outcomes are
+ * immutable. Financial outcomes are inserted in the same transaction as their
+ * debit, making this table the recovery source of truth after a worker crashes
+ * before aggregate completion.
  */
 export const agentBillingRunItems = pgTable(
   "agent_billing_run_items",

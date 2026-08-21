@@ -140,38 +140,6 @@ async function processSandboxBilling(
     hourlyRate * ((now.getTime() - periodStart.getTime()) / (60 * 60 * 1000));
 
   async function queueShutdownWarning(): Promise<BillingResult> {
-    if (
-      sandbox.billing_status === "shutdown_pending" ||
-      sandbox.shutdown_warning_sent_at
-    ) {
-      return {
-        sandboxId,
-        agentName,
-        organizationId,
-        action: "skipped",
-        error: "Waiting for scheduled shutdown",
-      };
-    }
-
-    const liveBalance = (await getOrgBalance(organizationId)) ?? currentBalance;
-    if (liveBalance >= amountDue) {
-      logger.info(
-        `[Agent Billing] Skipping shutdown warning for ${agentName}; balance recovered before warning`,
-        {
-          sandboxId,
-          amountDue,
-          liveBalance,
-        },
-      );
-      return {
-        sandboxId,
-        agentName,
-        organizationId,
-        action: "skipped",
-        error: "Balance recovered before warning could be sent",
-      };
-    }
-
     const shutdownTime = new Date(
       now.getTime() + AGENT_PRICING.GRACE_PERIOD_HOURS * 60 * 60 * 1000,
     );
@@ -196,6 +164,42 @@ async function processSandboxBilling(
     }
 
     try {
+      const liveBalance =
+        (await getOrgBalance(organizationId)) ?? currentBalance;
+      if (liveBalance >= amountDue) {
+        logger.info(
+          `[Agent Billing] Skipping shutdown warning for ${agentName}; balance recovered before warning`,
+          {
+            sandboxId,
+            amountDue,
+            liveBalance,
+          },
+        );
+        const recoveryOutcome =
+          await agentBillingRepository.completeShutdownWarningForRun({
+            ...runAuthority,
+            sandboxId,
+            organizationId,
+            now,
+            shutdownTime,
+            outcome: "skipped",
+          });
+        if (recoveryOutcome !== "skipped") {
+          throw new ElizaError("Shutdown warning cancellation commit failed", {
+            code: "AGENT_BILLING_WARNING_CANCELLATION_COMMIT_FAILED",
+            context: { sandboxId, organizationId },
+            severity: "fatal",
+          });
+        }
+        return {
+          sandboxId,
+          agentName,
+          organizationId,
+          action: "skipped",
+          error: "Balance recovered before warning could be sent",
+        };
+      }
+
       const recipientEmail =
         org.billing_email || (await getOrgUserEmail(organizationId));
       if (recipientEmail) {

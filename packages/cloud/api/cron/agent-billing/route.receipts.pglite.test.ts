@@ -101,7 +101,7 @@ const scheduleShutdownWarningForRun = mock(
   },
 );
 const completeShutdownWarningForRun = mock(
-  async (input: { outcome: "sent" | "error" }) => {
+  async (input: { outcome: "sent" | "skipped" | "error" }) => {
     warningCallOrder.push(`complete:${input.outcome}`);
     return input.outcome;
   },
@@ -570,6 +570,36 @@ describe("agent billing durable run receipts on PGlite", () => {
       action: "skipped",
       detail_message: "Shutdown warning was no longer applicable",
     });
+  });
+
+  test("terminally cancels a claimed warning when the live balance recovered", async () => {
+    recordHourlyBilling.mockImplementation(async () => ({
+      status: "insufficient_credits",
+    }));
+    getOrganizationCreditBalance.mockImplementation(async () => 100);
+
+    const response = await dispatchManualRequest();
+
+    expect(response.status).toBe(200);
+    expect(warningCallOrder).toEqual(["claim", "complete:skipped"]);
+    expect(sendContainerShutdownWarningEmail).not.toHaveBeenCalled();
+    expect(completeShutdownWarningForRun).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "skipped" }),
+    );
+    const [receipt] = await dbWrite.select().from(agentBillingRuns);
+    expect(receipt).toMatchObject({
+      status: "succeeded",
+      sandboxes_processed: 1,
+      warnings_sent: 0,
+      errors: 0,
+    });
+    expect(await dbWrite.select().from(agentBillingRunItems)).toMatchObject([
+      {
+        sandbox_id: firstSandbox.id,
+        action: "skipped",
+        detail_message: "Balance recovered before warning could be sent",
+      },
+    ]);
   });
 
   test("a crashed pending warning intent is delivered by the scheduled retry", async () => {

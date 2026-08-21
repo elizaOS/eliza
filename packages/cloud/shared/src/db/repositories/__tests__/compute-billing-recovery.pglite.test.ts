@@ -350,6 +350,51 @@ describe("compute billing recovery", () => {
     });
   });
 
+  test("a recovered balance terminally cancels a pending warning intent", async () => {
+    const { org, sandbox } = await seed("0.000000");
+    const now = new Date("2026-08-19T04:30:00.000Z");
+    const authority = await claimBillingRun(now);
+    const input = {
+      ...authority,
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      agentName: sandbox.agent_name ?? sandbox.id,
+      now,
+      shutdownTime: new Date("2026-08-21T04:30:00.000Z"),
+    };
+
+    await expect(agentBillingRepository.scheduleShutdownWarningForRun(input)).resolves.toBe(
+      "claimed",
+    );
+    await expect(
+      agentBillingRepository.completeShutdownWarningForRun({
+        ...input,
+        outcome: "skipped",
+      }),
+    ).resolves.toBe("skipped");
+
+    expect(await dbWrite.select().from(agentBillingRunItems)).toMatchObject([
+      {
+        action: "skipped",
+        detail_code: "balance_recovered",
+        detail_message: "Balance recovered before warning could be sent",
+      },
+    ]);
+    const [unchanged] = await dbWrite
+      .select({
+        billingStatus: agentSandboxes.billing_status,
+        warningSentAt: agentSandboxes.shutdown_warning_sent_at,
+        scheduledShutdownAt: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(unchanged).toEqual({
+      billingStatus: "active",
+      warningSentAt: null,
+      scheduledShutdownAt: null,
+    });
+  });
+
   test("Dedicated warm-pool capacity is outside every billing lifecycle path", async () => {
     const { org, user, sandbox, lastBilledAt } = await seed();
     await dbWrite
