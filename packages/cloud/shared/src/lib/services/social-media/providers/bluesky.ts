@@ -19,6 +19,23 @@ import { withRetry } from "../rate-limit";
 
 const BLUESKY_SERVICE = "https://bsky.social";
 
+const BLUESKY_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Bluesky / AT Protocol hop so a hung or rate-limited API cannot
+ * pin the publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function blueskyFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLUESKY_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface BskySession {
   did: string;
   handle: string;
@@ -44,7 +61,7 @@ interface BskyFacet {
 async function createSession(handle: string, appPassword: string): Promise<BskySession> {
   const { data } = await withRetry<BskySession>(
     () =>
-      fetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.server.createSession`, {
+      blueskyFetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.server.createSession`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier: handle, password: appPassword }),
@@ -66,7 +83,7 @@ async function bskyApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
-      fetch(`${BLUESKY_SERVICE}/xrpc/${endpoint}`, {
+      blueskyFetch(`${BLUESKY_SERVICE}/xrpc/${endpoint}`, {
         ...options,
         headers: {
           Authorization: `Bearer ${accessJwt}`,
@@ -96,7 +113,7 @@ async function uploadBlob(
     size: number;
   };
 }> {
-  const response = await fetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.repo.uploadBlob`, {
+  const response = await blueskyFetch(`${BLUESKY_SERVICE}/xrpc/com.atproto.repo.uploadBlob`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessJwt}`,

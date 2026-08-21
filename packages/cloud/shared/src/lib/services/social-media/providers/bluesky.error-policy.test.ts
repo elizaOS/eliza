@@ -9,7 +9,7 @@ mock.module("../../../utils/logger", () => ({
   logger: { info: mock(), warn: mock(), error: mock(), debug: mock() },
 }));
 
-const { blueskyProvider } = await import("./bluesky");
+const { blueskyProvider, blueskyFetch } = await import("./bluesky");
 
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -125,5 +125,38 @@ describe("blueskyProvider analytics error policy", () => {
     }) as typeof fetch;
 
     await expect(blueskyProvider.getAccountAnalytics?.(CREDS)).rejects.toThrow();
+  });
+});
+
+describe("blueskyFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Bluesky API hop at the timeout", async () => {
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      blueskyFetch("https://bsky.social/xrpc/com.atproto.server.createSession", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await blueskyFetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });
