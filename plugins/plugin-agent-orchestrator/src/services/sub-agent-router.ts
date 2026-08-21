@@ -100,6 +100,17 @@ type RuntimeWithSendTarget = IAgentRuntime & {
   ) => SendHandlerResult;
 };
 
+function usesParentOwnedAppVerification(session: SessionInfo): boolean {
+  const metadata = session.metadata as Record<string, unknown> | undefined;
+  const validator = metadata?.validator;
+  return (
+    typeof validator === "object" &&
+    validator !== null &&
+    !Array.isArray(validator) &&
+    (validator as Record<string, unknown>).service === "app-verification"
+  );
+}
+
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Display name of the ONE shared entity every router post is attributed to.
@@ -1056,6 +1067,19 @@ export class SubAgentRouter extends Service {
     const session =
       sessionSnapshot ?? (await acp.getSession(sessionId)) ?? undefined;
     if (!session) return;
+    // APP/PLUGIN create sessions have a parent-owned verifier and verdict bridge.
+    // Their raw child task_complete is provisional: routing it into chat exposes
+    // tool/file narration immediately, then the clean verified link arrives as a
+    // second message. Let SwarmCoordinator validate first and let the bridge own
+    // the sole user-facing terminal result.
+    if (event === "task_complete" && usesParentOwnedAppVerification(session)) {
+      this.log(
+        "debug",
+        "suppressing provisional app-verification task_complete; parent verdict bridge owns delivery",
+        { sessionId },
+      );
+      return;
+    }
     if (this.verifyRetryHandedOffSessions.has(sessionId)) {
       this.log(
         "debug",

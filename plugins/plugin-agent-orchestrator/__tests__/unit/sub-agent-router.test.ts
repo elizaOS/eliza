@@ -319,6 +319,33 @@ describe("SubAgentRouter", () => {
     await router.stop();
   });
 
+  it("withholds provisional app-builder completion until parent verification", async () => {
+    session.metadata = {
+      ...(session.metadata ?? {}),
+      validator: {
+        service: "app-verification",
+        method: "verifyApp",
+        params: { appName: "nubs-demo" },
+      },
+    };
+    acp = makeAcpService(session);
+    const { runtime, handleMessage, createMemory, sendMessageToTarget } =
+      makeRuntime({ acp: acp.service });
+    const router = await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response:
+        'APP_CREATE_DONE {"appName":"nubs-demo","files":["src/index.tsx"]}',
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).not.toHaveBeenCalled();
+    expect(sendMessageToTarget).not.toHaveBeenCalled();
+    expect(createMemory).not.toHaveBeenCalled();
+
+    await router.stop();
+  });
+
   it("routes human completion prose without the internal CompletionEnvelope", async () => {
     const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
     const router = await SubAgentRouter.start(runtime);
