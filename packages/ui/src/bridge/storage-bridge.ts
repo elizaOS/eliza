@@ -251,9 +251,14 @@ function getNativeLocalStorageMethods(): NativeStorageMethods {
   const prototypeRemoveItem = prototype.removeItem;
   nativeLocalStorageMethods = {
     storage,
-    setItem: prototypeSetItem.bind(storage),
-    getItem: prototypeGetItem.bind(storage),
-    removeItem: prototypeRemoveItem.bind(storage),
+    // Bind the functions the instance itself resolves rather than the
+    // prototype slots. Hosts that hand out `localStorage` through a proxy
+    // (jsdom does) reject a prototype method invoked with the proxy as `this`
+    // on their branded internal-slot check; the instance-resolved function
+    // works on both a proxied and a plain Storage object.
+    setItem: storage.setItem.bind(storage),
+    getItem: storage.getItem.bind(storage),
+    removeItem: storage.removeItem.bind(storage),
     prototypeSetItem,
     prototypeGetItem,
     prototypeRemoveItem,
@@ -604,36 +609,63 @@ function setupStorageProxy(): void {
     }
   };
 
+  function storageBridgeSetItem(this: Storage, key: string, value: string) {
+    if (this === localStorageInstance) return secureSetItem(key, value);
+    return prototypeSetItem.call(this, key, value);
+  }
+  function storageBridgeGetItem(this: Storage, key: string) {
+    if (this === localStorageInstance) return secureGetItem(key);
+    return prototypeGetItem.call(this, key);
+  }
+  function storageBridgeRemoveItem(this: Storage, key: string) {
+    if (this === localStorageInstance) return secureRemoveItem(key);
+    return prototypeRemoveItem.call(this, key);
+  }
+
   Object.defineProperties(storagePrototype, {
     setItem: {
       configurable: true,
       writable: true,
-      value: function storageBridgeSetItem(
-        this: Storage,
-        key: string,
-        value: string,
-      ) {
-        if (this === localStorageInstance) return secureSetItem(key, value);
-        return prototypeSetItem.call(this, key, value);
-      },
+      value: storageBridgeSetItem,
     },
     getItem: {
       configurable: true,
       writable: true,
-      value: function storageBridgeGetItem(this: Storage, key: string) {
-        if (this === localStorageInstance) return secureGetItem(key);
-        return prototypeGetItem.call(this, key);
-      },
+      value: storageBridgeGetItem,
     },
     removeItem: {
       configurable: true,
       writable: true,
-      value: function storageBridgeRemoveItem(this: Storage, key: string) {
-        if (this === localStorageInstance) return secureRemoveItem(key);
-        return prototypeRemoveItem.call(this, key);
-      },
+      value: storageBridgeRemoveItem,
     },
   });
+
+  // A host may hand out `localStorage` through a wrapper that does not resolve
+  // method lookups through the prototype patched above (jsdom's proxy does
+  // not). Interception is a security boundary, so verify it rather than assume
+  // it, and install the same branch directly on the instance when the
+  // prototype patch is not observable there. `defineProperty` is used instead
+  // of plain assignment because a Web Storage `[[Set]]` on an unknown name is
+  // a named-property write that would persist a bogus "setItem" entry.
+  if (localStorageInstance.getItem !== storageBridgeGetItem) {
+    Object.defineProperties(localStorageInstance, {
+      setItem: {
+        configurable: true,
+        writable: true,
+        value: secureSetItem,
+      },
+      getItem: {
+        configurable: true,
+        writable: true,
+        value: secureGetItem,
+      },
+      removeItem: {
+        configurable: true,
+        writable: true,
+        value: secureRemoveItem,
+      },
+    });
+  }
   storageProxyInstalled = true;
 }
 

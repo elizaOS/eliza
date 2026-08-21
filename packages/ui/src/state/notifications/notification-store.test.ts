@@ -1316,7 +1316,7 @@ describe("notification-store — authority isolation (#18391)", () => {
       // client-cloud's dedicated-agent 401 path calls this canonical clear
       // while the unrelated Eliza API bearer remains present.
       expect(hasToken()).toBe(true);
-      clearStoredStewardToken();
+      await clearStoredStewardToken();
 
       expect(__getStateForTests().notifications).toHaveLength(0);
       expect(__getStateForTests().hydrationStatus).toBe("idle");
