@@ -6,6 +6,8 @@
  * irrelevant action params to reduce context window usage.
  */
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
 // ---------------------------------------------------------------------------
 // Prompt compaction helpers
 // ---------------------------------------------------------------------------
@@ -152,7 +154,10 @@ const OPTIONAL_PLUGIN_ACTIONS = new Set(["TASKS"]);
 
 export function hasIntent(prompt: string, keywords: RegExp): boolean {
   const taskMatch = prompt.match(/<task>([\s\S]*?)<\/task>/i);
-  const taskText = (taskMatch?.[1] ?? "").slice(0, 2000);
+  const taskText = truncateWellFormed(
+    toWellFormedUnicode(taskMatch?.[1] ?? ""),
+    2000,
+  );
   if (keywords.test(taskText)) return true;
 
   // Extract just the user's message line(s) from "# Received Message".
@@ -166,7 +171,7 @@ export function hasIntent(prompt: string, keywords: RegExp): boolean {
     const userMsg = (
       nextSection !== -1
         ? afterHeader.slice(0, nextSection)
-        : afterHeader.slice(0, 500)
+        : truncateWellFormed(toWellFormedUnicode(afterHeader), 500)
     ).trim();
     if (keywords.test(userMsg)) return true;
   }
