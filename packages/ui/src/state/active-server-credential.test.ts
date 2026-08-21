@@ -23,7 +23,7 @@ describe("persistActiveServerCredential", () => {
     localStorage.clear();
   });
 
-  it("updates the active remote server and its active profile", () => {
+  it("updates the active remote server and its active profile", async () => {
     savePersistedActiveServer(
       createPersistedActiveServer({
         kind: "cloud",
@@ -33,13 +33,13 @@ describe("persistActiveServerCredential", () => {
       }),
     );
 
-    persistActiveServerCredential("session-token");
+    await persistActiveServerCredential("session-token");
 
     expect(loadPersistedActiveServer()?.accessToken).toBe("session-token");
     expect(getActiveProfile()?.accessToken).toBe("session-token");
   });
 
-  it("scrubs a rejected active credential without dropping the target", () => {
+  it("scrubs a rejected active credential without dropping the target", async () => {
     savePersistedActiveServer(
       createPersistedActiveServer({
         kind: "remote",
@@ -47,7 +47,7 @@ describe("persistActiveServerCredential", () => {
         accessToken: "stale-token",
       }),
     );
-    persistActiveServerCredential("stale-token");
+    await persistActiveServerCredential("stale-token");
 
     scrubRejectedActiveServerCredential("stale-token");
 

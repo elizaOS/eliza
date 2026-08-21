@@ -6,11 +6,15 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-host-e2e
+ *                     Debug APK for hosted emulator evidence. Keeps the real
+ *                     Android renderer and native bridge but omits the unused
+ *                     embedded agent payload.
  *   - android-cloud-hybrid
  *                     Sideload-only debug APK with the on-device agent runtime
  *                     bundled and a cloud-hybrid renderer. NOT Play-Store-shippable.
@@ -2247,7 +2251,9 @@ export function injectCopyForkLlamaLibTask(content) {
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
     `    def abiToken = project.ext.forkLlamaAbiTokens[abi]\n` +
-    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
+    `    def candidates = [\n` +
+    `        new File(elizaRepoRoot, "packages/app/android/app/src/main/assets/agent/\${abi}").toString()\n` +
+    `    ] + ['vulkan', 'cpu'].collect { backend ->\n` +
     `        "\${stateDir}/local-inference/bin/mtp/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() }\n` +
@@ -6904,6 +6910,7 @@ const ANDROID_SOURCE_AUDITS = Object.freeze({
 
 const ANDROID_ARTIFACT_AUDITS = Object.freeze({
   sideload: ({ javaHome }) => auditAndroidSideloadArtifact({ javaHome }),
+  hostE2e: ({ javaHome }) => auditAndroidHostE2eArtifact({ javaHome }),
   cloud: ({ env, javaHome }) => auditAndroidCloudArtifact({ env, javaHome }),
   cloudDebug: ({ env, javaHome }) =>
     auditAndroidCloudArtifact({ debug: true, env, javaHome }),
@@ -7131,6 +7138,37 @@ function auditAndroidSideloadArtifact({ javaHome } = {}) {
   });
   console.log(
     `[mobile-build] android sideload artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+/** Audit the hosted-emulator debug APK without requiring a local agent payload. */
+function auditAndroidHostE2eArtifact({ javaHome } = {}) {
+  const artifact = findAndroidCloudDebugApk();
+  if (!artifact) {
+    throw new Error(
+      "[mobile-build] android host-e2e debug APK was not found under app/build/outputs/.",
+    );
+  }
+  const entries = listAndroidArtifactEntries(artifact, javaHome);
+  assertAndroidArtifactShipsWebPayload(artifact, entries, {
+    requireAgent: false,
+    label: "android-host-e2e",
+  });
+  const packagedAgent = entries.find((entry) =>
+    /(^|\/)assets\/agent\//i.test(entry.replaceAll("\\", "/")),
+  );
+  if (packagedAgent) {
+    throw mobileBuildError(
+      `[mobile-build] android-host-e2e artifact unexpectedly contains the embedded agent payload: ${packagedAgent}`,
+      {
+        code: "ANDROID_HOST_E2E_AGENT_PAYLOAD_PRESENT",
+        context: { artifact, packagedAgent },
+      },
+    );
+  }
+  console.log(
+    `[mobile-build] android host-e2e artifact audit passed: ${artifact}`,
   );
   return artifact;
 }
@@ -8763,6 +8801,7 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-host-e2e" &&
     target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
@@ -8774,12 +8813,14 @@ export async function main(argv = process.argv.slice(2)) {
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-host-e2e|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-audit [aab-path]|android-cloud-debug|android-system|ios|ios-local|ios-overlay>",
     );
     process.exit(1);
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-host-e2e") {
+    await runAndroidBuild("android-host-e2e");
   } else if (target === "android-cloud-hybrid") {
     await runAndroidBuild("android-cloud-hybrid");
   } else if (target === "android-sms-gateway") {

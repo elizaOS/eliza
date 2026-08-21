@@ -44,6 +44,25 @@ export const ANDROID_BUILD_TARGETS = Object.freeze({
     },
     artifactAuditKey: "sideload",
   }),
+  "android-host-e2e": freezeAndroidBuildTarget({
+    target: "android-host-e2e",
+    webTarget: "android",
+    env: {
+      ELIZA_ANDROID_HOST_E2E_BUILD: "1",
+      ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1",
+    },
+    overlayOptions: { includeAospRoleLaunchers: false },
+    cleartextPolicy: { allowCleartext: true, label: "host-e2e" },
+    gradle: {
+      flags: ["-PelizaStripAgentAssets=true"],
+      metadataVariant: "debug",
+      finalTask: ":app:assembleDebug",
+      includeWebsiteBlockerUnitTest: true,
+      includeAospFlagFromEnv: true,
+      passFlagsToMetadata: false,
+    },
+    artifactAuditKey: "hostE2e",
+  }),
   "android-cloud-hybrid": freezeAndroidBuildTarget({
     target: "android-cloud-hybrid",
     webTarget: "android-cloud-hybrid",

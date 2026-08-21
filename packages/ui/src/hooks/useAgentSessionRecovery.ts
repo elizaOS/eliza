@@ -261,7 +261,7 @@ export function useAgentSessionRecovery(
           // must not re-adopt the stale active-server/profile token after the
           // live client has already accepted the fresh paired bearer.
           persistCloudPairApiToken(apiToken, decision.agentId);
-          persistActiveServerCredential(apiToken);
+          await persistActiveServerCredential(apiToken);
           client.setToken(apiToken);
           onRecovered?.();
         },

@@ -60,6 +60,8 @@ jobs:
     name: Android emulator bundle
     if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'android'
     runs-on: ubuntu-24.04
+    # The host-backed emulator target omits the unused embedded-agent build;
+    # this cap covers the real renderer build, APK install, and device probes.
     timeout-minutes: 90
     env:
       ELIZA_MOBILE_REPO_ROOT: ${{ github.workspace }}

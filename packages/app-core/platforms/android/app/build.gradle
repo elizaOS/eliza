@@ -284,7 +284,9 @@ def resolveForkLlamaLibDir = { String abi ->
     if (fromEnv) return fromEnv
     def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
     def abiToken = project.ext.forkLlamaAbiTokens[abi]
-    def candidates = ['vulkan', 'cpu'].collect { backend ->
+    def candidates = [
+        new File(elizaRepoRoot, "packages/app/android/app/src/main/assets/agent/${abi}").toString()
+    ] + ['vulkan', 'cpu'].collect { backend ->
         "${stateDir}/local-inference/bin/mtp/${abiToken}-${backend}"
     }
     return candidates.find { new File(it).isDirectory() }

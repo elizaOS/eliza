@@ -311,6 +311,7 @@ describe("mobile smoke native command boundaries", () => {
     });
     smoke.preseedAndroidLocalRuntime(fakeAndroidContext);
     smoke.forceStopConflictingAndroidAgents(fakeAndroidContext);
+    smoke.removeAndroidReverse(fakeAndroidContext, 31337);
     await smoke.stageAndroidSmokeModel(fakeAndroidContext);
     smoke.writeAndroidSmokeModelManifest(
       fakeAndroidContext,
