@@ -378,7 +378,6 @@ const STUB_RULES: StubRule[] = [
   },
   {
     // auto-top-up-card.tsx reads settings.autoTopUp.* + settings.limits.*;
-    // pay-as-you-go-card.tsx reads settings.payAsYouGoFromEarnings.
     match: path_("/api/v1/billing/settings"),
     body: {
       settings: {
