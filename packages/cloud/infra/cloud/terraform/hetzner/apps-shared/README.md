@@ -189,10 +189,12 @@ Run at least monthly, and after any Postgres/pgbouncer config change:
 
    The harness inventories existing target roles before restore and refuses
    any collision with `globals.sql`. It also verifies the server-side identity
-   in the same psql session before globals, each database drop/create, and
-   after every pg_restore-generated reconnect. A DNS alias, alternate address,
-   or SSH tunnel cannot redirect a later destructive connection to another
-   server. Never reuse an identity; destroy the target after the drill.
+   in the same psql session before globals, each database drop/create, and each
+   database's rendered pg_restore SQL. Restore sessions use `--no-psqlrc`, and
+   the harness renders without pg_restore `--create`, so no unguarded reconnect
+   exists. A DNS alias, alternate address, or SSH tunnel cannot redirect a
+   later destructive connection to another server. Never reuse an identity;
+   destroy the target after the drill.
 
 3. Prepare a root-readable `tenant-probes.json` that covers every opaque dump
    id in `dbmap.tsv` and references password environment variables rather

@@ -337,18 +337,25 @@ SELECT COALESCE(current_setting('eliza.restore_target_id', true) = :'expected_ta
 \\if :eliza_restore_target_ok
 \\else
 \\echo 'restore target identity mismatch'
-\\quit 3
+DO $$ BEGIN RAISE EXCEPTION 'restore target identity mismatch'; END $$;
 \\endif
 `;
 
-/** Guard the initial connection and every pg_restore-generated reconnect. */
+/** Guard one psql session before its first destructive statement. */
 export function guardPsqlScript(sql: string): string {
-  let guarded = TARGET_GUARD_SQL;
-  for (const line of sql.split(/(?<=\n)/)) {
-    guarded += line;
-    if (/^\s*\\connect\b/.test(line)) guarded += TARGET_GUARD_SQL;
-  }
-  return guarded;
+  return `${TARGET_GUARD_SQL}${sql}`;
+}
+
+/** Quote an archive-provided PostgreSQL identifier for generated drill SQL. */
+export function quoteSqlIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+/** Point a guarded restore session at one database on the same target. */
+export function targetDatabaseDsn(targetDsn: string, database: string): string {
+  const url = new URL(targetDsn);
+  url.pathname = `/${encodeURIComponent(database)}`;
+  return url.toString();
 }
 
 export interface PgEndpoint {
@@ -787,6 +794,7 @@ function executeDrill(options: CliOptions): DrillReport {
   const targetUrl = assertDirectTarget(options.targetDsn);
   const authority = parseRestoreTargetAuthority(
     run("psql", [
+      "--no-psqlrc",
       "--tuples-only",
       "--no-align",
       "--set",
@@ -883,6 +891,7 @@ function executeDrill(options: CliOptions): DrillReport {
     const guardedGlobals = join(work, "guarded-globals.sql");
     writeFileSync(guardedGlobals, guardPsqlScript(globalsSql));
     run("psql", [
+      "--no-psqlrc",
       "--set",
       `expected_target_id=${options.targetId}`,
       "--dbname",
@@ -892,14 +901,30 @@ function executeDrill(options: CliOptions): DrillReport {
     ]);
     for (const entry of dbMap) {
       const dumpFile = join(work, "dumps", `${entry.dumpId}.dump`);
+      const probe = probeById.get(entry.dumpId);
+      if (probe === undefined) {
+        throw new RecoveryDrillError(
+          "INVALID_PROBE_METADATA",
+          "database has no tenant role probe",
+        );
+      }
+      const databaseIdentifier = quoteSqlIdentifier(entry.databaseName);
+      const ownerIdentifier = quoteSqlIdentifier(probe.role);
       const guardedDrop = join(work, `${entry.dumpId}.drop.sql`);
       writeFileSync(
         guardedDrop,
         guardPsqlScript(
-          `DROP DATABASE IF EXISTS "${entry.databaseName.replaceAll('"', '""')}";\n`,
+          [
+            `DROP DATABASE IF EXISTS ${databaseIdentifier};`,
+            `CREATE DATABASE ${databaseIdentifier} OWNER ${ownerIdentifier};`,
+            `REVOKE CONNECT ON DATABASE ${databaseIdentifier} FROM PUBLIC;`,
+            `GRANT CONNECT ON DATABASE ${databaseIdentifier} TO ${ownerIdentifier};`,
+            "",
+          ].join("\n"),
         ),
       );
       run("psql", [
+        "--no-psqlrc",
         "--set",
         `expected_target_id=${options.targetId}`,
         "--dbname",
@@ -908,17 +933,18 @@ function executeDrill(options: CliOptions): DrillReport {
         guardedDrop,
       ]);
       const rawRestore = join(work, `${entry.dumpId}.restore.sql`);
-      run("pg_restore", ["--create", "--file", rawRestore, dumpFile]);
+      run("pg_restore", ["--file", rawRestore, dumpFile]);
       const guardedRestore = join(work, `${entry.dumpId}.guarded-restore.sql`);
       writeFileSync(
         guardedRestore,
         guardPsqlScript(readFileSync(rawRestore, "utf-8")),
       );
       run("psql", [
+        "--no-psqlrc",
         "--set",
         `expected_target_id=${options.targetId}`,
         "--dbname",
-        options.targetDsn,
+        targetDatabaseDsn(options.targetDsn, entry.databaseName),
         "--file",
         guardedRestore,
       ]);
@@ -963,6 +989,7 @@ function executeDrill(options: CliOptions): DrillReport {
           const out = run(
             "psql",
             [
+              "--no-psqlrc",
               "--tuples-only",
               "--no-align",
               "--set",
@@ -983,6 +1010,7 @@ function executeDrill(options: CliOptions): DrillReport {
           expectCommandFailure(
             "psql",
             [
+              "--no-psqlrc",
               "--tuples-only",
               "--no-align",
               "--set",

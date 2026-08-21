@@ -33,8 +33,10 @@ import {
   parsePoolerEndpoint,
   parseRestoreTargetAuthority,
   parseTenantProbes,
+  quoteSqlIdentifier,
   RecoveryDrillError,
   redactDsn,
+  targetDatabaseDsn,
   verifyChecksums,
 } from "./apps-tenant-db-recovery";
 
@@ -195,22 +197,25 @@ describe("restore target authority", () => {
     );
   });
 
-  test("guards the initial session and every pg_restore reconnect", () => {
-    const guarded = guardPsqlScript(
-      "CREATE DATABASE tenant;\n\\connect tenant\nCREATE TABLE data(id int);\n",
+  test("guards one exact session before any supplied SQL", () => {
+    const guarded = guardPsqlScript("CREATE TABLE data(id int);\n");
+    expect(guarded).not.toContain("\\quit");
+    expect(guarded).toContain(
+      "RAISE EXCEPTION 'restore target identity mismatch'",
     );
-    expect(
-      guarded.match(/current_setting\('eliza\.restore_target_id'/g),
-    ).toHaveLength(2);
     expect(guarded.indexOf("current_setting")).toBeLessThan(
-      guarded.indexOf("CREATE DATABASE"),
-    );
-    expect(guarded.indexOf("\\connect tenant")).toBeLessThan(
-      guarded.lastIndexOf("current_setting"),
-    );
-    expect(guarded.lastIndexOf("current_setting")).toBeLessThan(
       guarded.indexOf("CREATE TABLE"),
     );
+  });
+
+  test("quotes tenant identifiers and targets the restored database", () => {
+    expect(quoteSqlIdentifier('tenant"quoted')).toBe('"tenant""quoted"');
+    expect(
+      targetDatabaseDsn(
+        "postgresql://restore:pw@127.0.0.1:5433/postgres",
+        "tenant/a b",
+      ),
+    ).toBe("postgresql://restore:pw@127.0.0.1:5433/tenant%2Fa%20b");
   });
 });
 
