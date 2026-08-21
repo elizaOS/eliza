@@ -97,7 +97,8 @@ export interface RuntimeSurfaceRow {
     | "#22901"
     | "#22902"
     | "#22904"
-    | "unassigned";
+    | "#23268"
+    | "#23270";
   status: RuntimeSurfaceStatus;
   reason: string;
 }
@@ -173,6 +174,24 @@ interface ExtractionContext {
 }
 
 const EVIDENCE_AST_CACHE = new Map<string, ts.SourceFile>();
+let WORKSPACE_PACKAGE_DIRS_BY_NAME: Map<string, string> | null = null;
+const RESOLVED_IDENTIFIER_HINTS = new Map<
+  string,
+  { file: string; declarationName: string }
+>();
+const RESOLVED_WORKSPACE_SYMBOLS = new Map<
+  string,
+  { file: string; declarationName: string } | null
+>();
+const SCENARIO_METADATA_CACHE = new Map<
+  string,
+  {
+    id: string | null;
+    plugins: string[];
+    runtimeSurfaceIds: string[];
+    lane: string | null;
+  }
+>();
 
 const PLUGIN_FIELDS = new Map<string, RuntimeSurfaceKind>([
   ["actions", "action"],
@@ -269,6 +288,7 @@ function stableToken(value: string): string {
   return value
     .normalize("NFKC")
     .toLowerCase()
+    .replaceAll("*", "star")
     .replace(/[^a-z0-9._:/-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 180);
@@ -362,6 +382,33 @@ function resolveModule(from: string, specifier: string): string | null {
     ...EXECUTABLE_EXTENSIONS.map((ext) => `${withoutJs}${ext}`),
     ...EXECUTABLE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
   ];
+  return (
+    candidates.find(
+      (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
+    ) ?? null
+  );
+}
+
+function resolveWorkspaceModule(specifier: string): string | null {
+  WORKSPACE_PACKAGE_DIRS_BY_NAME ??= new Map(
+    workspacePackageDirs().flatMap((dir) => {
+      const name = readJson(path.join(dir, "package.json")).name;
+      return typeof name === "string" ? [[name, dir] as const] : [];
+    }),
+  );
+  const packageName = specifier.startsWith("@")
+    ? specifier.split("/").slice(0, 2).join("/")
+    : specifier.split("/")[0];
+  const packageDir = WORKSPACE_PACKAGE_DIRS_BY_NAME.get(packageName);
+  if (!packageDir) return null;
+  const subpath = specifier.slice(packageName.length).replace(/^\//, "");
+  const bases = subpath
+    ? [path.join(packageDir, "src", subpath), path.join(packageDir, subpath)]
+    : [path.join(packageDir, "src", "index"), path.join(packageDir, "index")];
+  const candidates = bases.flatMap((base) => [
+    ...EXECUTABLE_EXTENSIONS.map((ext) => `${base}${ext}`),
+    ...EXECUTABLE_EXTENSIONS.map((ext) => path.join(base, `index${ext}`)),
+  ]);
   return (
     candidates.find(
       (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
@@ -498,7 +545,8 @@ function unitFor(file: string, units: Map<string, SourceUnit>): SourceUnit {
       }
     } else if (
       (ts.isFunctionDeclaration(statement) ||
-        ts.isClassDeclaration(statement)) &&
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement)) &&
       statement.name
     ) {
       declarations.set(statement.name.text, statement);
@@ -605,11 +653,73 @@ function resolveIdentifier(
   name: string,
   unit: SourceUnit,
   context: ExtractionContext,
+  seen = new Set<string>(),
 ): { node: ts.Node; unit: SourceUnit } | null {
+  const key = `${unit.file}:${name}`;
+  if (seen.has(key)) return null;
+  seen.add(key);
+  const hint = RESOLVED_IDENTIFIER_HINTS.get(key);
+  if (hint) {
+    const hintedUnit = unitFor(hint.file, context.units);
+    const hintedNode = hintedUnit.declarations.get(hint.declarationName);
+    if (hintedNode) return { node: hintedNode, unit: hintedUnit };
+    RESOLVED_IDENTIFIER_HINTS.delete(key);
+  }
+  const remember = (
+    result: { node: ts.Node; unit: SourceUnit } | null,
+  ): { node: ts.Node; unit: SourceUnit } | null => {
+    if (!result) return null;
+    const declarationName =
+      (ts.isVariableDeclaration(result.node) &&
+      ts.isIdentifier(result.node.name)
+        ? result.node.name.text
+        : (ts.isFunctionDeclaration(result.node) ||
+              ts.isClassDeclaration(result.node) ||
+              ts.isEnumDeclaration(result.node)) &&
+            result.node.name
+          ? result.node.name.text
+          : null) ?? null;
+    if (declarationName) {
+      RESOLVED_IDENTIFIER_HINTS.set(key, {
+        file: result.unit.file,
+        declarationName,
+      });
+    }
+    return result;
+  };
   const local = unit.declarations.get(name);
-  if (local) return { node: local, unit };
+  if (local) return remember({ node: local, unit });
   const imported = unit.imports.get(name);
-  if (!imported) return null;
+  if (!imported) {
+    for (const statement of unit.ast.statements) {
+      if (!ts.isExportDeclaration(statement) || !statement.moduleSpecifier)
+        continue;
+      if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const exportedFile = resolveModule(
+        unit.file,
+        statement.moduleSpecifier.text,
+      );
+      if (!exportedFile) continue;
+      const exportedUnit = unitFor(exportedFile, context.units);
+      if (statement.exportClause && ts.isNamedExports(statement.exportClause)) {
+        const element = statement.exportClause.elements.find(
+          (entry) => entry.name.text === name,
+        );
+        if (!element) continue;
+        const resolved = resolveIdentifier(
+          element.propertyName?.text ?? element.name.text,
+          exportedUnit,
+          context,
+          seen,
+        );
+        if (resolved) return remember(resolved);
+      } else if (!statement.exportClause) {
+        const resolved = resolveIdentifier(name, exportedUnit, context, seen);
+        if (resolved) return remember(resolved);
+      }
+    }
+    return null;
+  }
   const target = unitFor(imported.file, context.units);
   if (imported.imported === "default") {
     for (const statement of target.ast.statements) {
@@ -632,8 +742,62 @@ function resolveIdentifier(
       }
     }
   }
-  const declaration = target.declarations.get(imported.imported);
-  return declaration ? { node: declaration, unit: target } : null;
+  return remember(resolveIdentifier(imported.imported, target, context, seen));
+}
+
+function resolveWorkspaceImportedIdentifier(
+  name: string,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): { node: ts.Node; unit: SourceUnit } | null {
+  for (const statement of unit.ast.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text.startsWith(".")
+    ) {
+      continue;
+    }
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    const element = bindings.elements.find((entry) => entry.name.text === name);
+    if (!element) continue;
+    const specifier = statement.moduleSpecifier.text;
+    const targetFile = resolveWorkspaceModule(specifier);
+    if (!targetFile) return null;
+    const target = unitFor(targetFile, context.units);
+    const importedName = element.propertyName?.text ?? element.name.text;
+    const exported = resolveIdentifier(importedName, target, context);
+    if (exported) return exported;
+    const packageName = specifier.startsWith("@")
+      ? specifier.split("/").slice(0, 2).join("/")
+      : specifier.split("/")[0];
+    const packageDir = WORKSPACE_PACKAGE_DIRS_BY_NAME?.get(packageName);
+    if (!packageDir) return null;
+    const cacheKey = `${packageDir}:${importedName}`;
+    const cached = RESOLVED_WORKSPACE_SYMBOLS.get(cacheKey);
+    if (cached === null) return null;
+    if (cached) {
+      const cachedUnit = unitFor(cached.file, context.units);
+      const cachedNode = cachedUnit.declarations.get(cached.declarationName);
+      return cachedNode ? { node: cachedNode, unit: cachedUnit } : null;
+    }
+    const matches = reachableProductionFiles(packageDir).flatMap((file) => {
+      const candidateUnit = unitFor(file, context.units);
+      const declaration = candidateUnit.declarations.get(importedName);
+      return declaration ? [{ node: declaration, unit: candidateUnit }] : [];
+    });
+    if (matches.length !== 1) {
+      RESOLVED_WORKSPACE_SYMBOLS.set(cacheKey, null);
+      return null;
+    }
+    RESOLVED_WORKSPACE_SYMBOLS.set(cacheKey, {
+      file: matches[0].unit.file,
+      declarationName: importedName,
+    });
+    return matches[0];
+  }
+  return null;
 }
 
 function nearestLocalDeclaration(
@@ -689,12 +853,46 @@ function resolvedScalar(
   const literal = literalText(current);
   if (literal !== null) return literal;
   if (ts.isIdentifier(current)) {
-    const resolved = resolveIdentifier(current.text, unit, context);
+    const resolved =
+      resolveIdentifier(current.text, unit, context) ??
+      resolveWorkspaceImportedIdentifier(current.text, unit, context);
     return resolved
       ? resolvedScalar(resolved.node, resolved.unit, context)
       : null;
   }
-  if (ts.isPropertyAccessExpression(current)) return current.name.text;
+  if (ts.isPropertyAccessExpression(current)) {
+    if (ts.isIdentifier(current.expression)) {
+      const resolved =
+        resolveIdentifier(current.expression.text, unit, context) ??
+        resolveWorkspaceImportedIdentifier(
+          current.expression.text,
+          unit,
+          context,
+        );
+      if (resolved) {
+        const owner = unwrap(nodeInitializer(resolved.node) ?? resolved.node);
+        if (ts.isObjectLiteralExpression(owner)) {
+          const property = owner.properties.find(
+            (candidate): candidate is ts.PropertyAssignment =>
+              ts.isPropertyAssignment(candidate) &&
+              propertyName(candidate.name) === current.name.text,
+          );
+          if (property) {
+            return resolvedScalar(property.initializer, resolved.unit, context);
+          }
+        } else if (ts.isEnumDeclaration(owner)) {
+          const member = owner.members.find(
+            (candidate) => propertyName(candidate.name) === current.name.text,
+          );
+          if (member?.initializer) {
+            return resolvedScalar(member.initializer, resolved.unit, context);
+          }
+        }
+      }
+      if (current.expression.text === "EventType") return current.name.text;
+    }
+    return null;
+  }
   return null;
 }
 
@@ -717,7 +915,11 @@ function nameFromObject(
   return null;
 }
 
-function staticClassServiceType(node: ts.ClassDeclaration): string | null {
+function staticClassServiceType(
+  node: ts.ClassDeclaration,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): string | null {
   for (const member of node.members) {
     if (
       !ts.isPropertyDeclaration(member) ||
@@ -730,7 +932,8 @@ function staticClassServiceType(node: ts.ClassDeclaration): string | null {
       )
     )
       continue;
-    if (member.initializer) return literalText(unwrap(member.initializer));
+    if (member.initializer)
+      return resolvedScalar(member.initializer, unit, context);
   }
   return null;
 }
@@ -1185,7 +1388,9 @@ function extractEntries(
       if (ts.isClassDeclaration(resolved.node) && kind === "service") {
         return [
           {
-            name: staticClassServiceType(resolved.node) ?? current.text,
+            name:
+              staticClassServiceType(resolved.node, resolved.unit, context) ??
+              current.text,
             sourceFile: resolved.unit.file,
           },
         ];
@@ -1405,16 +1610,55 @@ export function collectCallRegisteredSurfaces(
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node)) {
         const callee = node.expression.getText(ast);
-        const calleeName = ts.isIdentifier(node.expression)
-          ? node.expression.text
-          : ts.isPropertyAccessExpression(node.expression)
-            ? node.expression.name.text
+        const reflectiveTarget =
+          callee === "Reflect.apply" &&
+          node.arguments[0] &&
+          ts.isPropertyAccessExpression(unwrap(node.arguments[0]))
+            ? (unwrap(node.arguments[0]) as ts.PropertyAccessExpression)
             : null;
+        if (
+          reflectiveTarget?.name.text === "registerService" &&
+          node.arguments[2] &&
+          ts.isArrayLiteralExpression(unwrap(node.arguments[2]))
+        ) {
+          const serviceArguments = unwrap(
+            node.arguments[2],
+          ) as ts.ArrayLiteralExpression;
+          for (const serviceArgument of serviceArguments.elements) {
+            for (const entry of extractEntries(
+              serviceArgument,
+              unit,
+              "service",
+              context,
+            )) {
+              result.push({
+                kind: "service",
+                name: entry.name,
+                sourcePath: toRepoPath(entry.sourceFile),
+                registrationField: "Reflect.apply(runtime.registerService)",
+                package: packageInfo,
+              });
+            }
+          }
+          ts.forEachChild(node, visit);
+          return;
+        }
+        const calleeName = reflectiveTarget
+          ? reflectiveTarget.name.text
+          : ts.isIdentifier(node.expression)
+            ? node.expression.text
+            : ts.isPropertyAccessExpression(node.expression)
+              ? node.expression.name.text
+              : null;
         let kind: RuntimeSurfaceKind | null = null;
-        const isMethodCall = ts.isPropertyAccessExpression(node.expression);
-        const receiver = isMethodCall
-          ? node.expression.expression.getText(ast)
-          : "";
+        const isMethodCall =
+          reflectiveTarget !== null ||
+          ts.isPropertyAccessExpression(node.expression);
+        const receiver = reflectiveTarget
+          ? reflectiveTarget.expression.getText(ast)
+          : ts.isPropertyAccessExpression(node.expression)
+            ? node.expression.expression.getText(ast)
+            : "";
         const isRuntimeCall =
           isMethodCall && /(?:runtime|withRegistry)/i.test(receiver);
         if (
@@ -1488,8 +1732,29 @@ export function collectCallRegisteredSurfaces(
         ) {
           kind = "queue";
         }
+        if (kind === "scheduled-worker") {
+          let ancestor: ts.Node | undefined = node.parent;
+          while (ancestor) {
+            if (
+              ts.isMethodDeclaration(ancestor) &&
+              propertyName(ancestor.name) === "createTestTasks"
+            ) {
+              kind = null;
+              break;
+            }
+            ancestor = ancestor.parent;
+          }
+        }
         if (kind) {
-          const firstArgument = node.arguments[0];
+          const reflectiveArguments = node.arguments[2]
+            ? unwrap(node.arguments[2])
+            : null;
+          const firstArgument =
+            reflectiveTarget &&
+            reflectiveArguments &&
+            ts.isArrayLiteralExpression(reflectiveArguments)
+              ? reflectiveArguments.elements[0]
+              : node.arguments[0];
           const localArgument =
             firstArgument && ts.isIdentifier(unwrap(firstArgument))
               ? (nearestLocalDeclaration(
@@ -1501,19 +1766,47 @@ export function collectCallRegisteredSurfaces(
           const registeredObject = localArgument
             ? resolveObject(localArgument, unit, context)
             : null;
+          const unresolvedDynamicProperty = Boolean(
+            localArgument &&
+              ts.isPropertyAccessExpression(unwrap(localArgument)) &&
+              !registeredObject,
+          );
+          const registeredServiceType = (() => {
+            if (kind !== "service" || !localArgument) return null;
+            const current = unwrap(localArgument);
+            const classIdentifier = ts.isIdentifier(current)
+              ? current
+              : ts.isNewExpression(current) &&
+                  ts.isIdentifier(current.expression)
+                ? current.expression
+                : null;
+            if (!classIdentifier) return null;
+            const resolved = resolveIdentifier(
+              classIdentifier.text,
+              unit,
+              context,
+            );
+            return resolved && ts.isClassDeclaration(resolved.node)
+              ? staticClassServiceType(resolved.node, resolved.unit, context)
+              : null;
+          })();
           const registeredName =
             calleeName === "registerDatabaseAdapter"
               ? "database-adapter"
-              : registeredObject
-                ? nameFromObject(
-                    registeredObject.object,
-                    kind,
-                    registeredObject.unit,
-                    context,
-                  )
-                : localArgument
-                  ? resolvedScalar(localArgument, unit, context)
-                  : null;
+              : registeredServiceType
+                ? registeredServiceType
+                : unresolvedDynamicProperty
+                  ? null
+                  : registeredObject
+                    ? nameFromObject(
+                        registeredObject.object,
+                        kind,
+                        registeredObject.unit,
+                        context,
+                      )
+                    : localArgument
+                      ? resolvedScalar(localArgument, unit, context)
+                      : null;
           const registeredNames = registeredName
             ? [registeredName]
             : kind === "model-handler" && firstArgument
@@ -1541,24 +1834,6 @@ export function collectCallRegisteredSurfaces(
         registrationField: "runtime.registerModel",
         package: packageInfo,
       });
-    }
-    if (/\bregisterService\b/.test(source)) {
-      const visitServices = (node: ts.Node): void => {
-        if (ts.isClassDeclaration(node)) {
-          const serviceType = staticClassServiceType(node);
-          if (serviceType) {
-            result.push({
-              kind: "service",
-              name: serviceType,
-              sourcePath: toRepoPath(file),
-              registrationField: "runtime.registerService",
-              package: packageInfo,
-            });
-          }
-        }
-        ts.forEachChild(node, visitServices);
-      };
-      visitServices(ast);
     }
   }
   return result;
@@ -2056,6 +2331,8 @@ export function scenarioMetadataFromSource(source: string): {
   runtimeSurfaceIds: string[];
   lane: string | null;
 } {
+  const cached = SCENARIO_METADATA_CACHE.get(source);
+  if (cached) return cached;
   const ast = ts.createSourceFile(
     "scenario.ts",
     source,
@@ -2077,6 +2354,14 @@ export function scenarioMetadataFromSource(source: string): {
   ): ts.ObjectLiteralExpression | null => {
     const current = unwrap(expression);
     if (ts.isObjectLiteralExpression(current)) return current;
+    if (ts.isCallExpression(current) && current.arguments.length === 1) {
+      const argument = unwrap(current.arguments[0]);
+      if (ts.isObjectLiteralExpression(argument)) return argument;
+      if (ts.isIdentifier(argument)) {
+        const initializer = declarations.get(argument.text);
+        return initializer ? resolveScenarioObject(initializer) : null;
+      }
+    }
     if (ts.isIdentifier(current)) {
       const initializer = declarations.get(current.text);
       return initializer ? resolveScenarioObject(initializer) : null;
@@ -2114,8 +2399,16 @@ export function scenarioMetadataFromSource(source: string): {
         }
       }
     }
-  if (!scenarioObject)
-    return { id: null, plugins: [], runtimeSurfaceIds: [], lane: null };
+  if (!scenarioObject) {
+    const missing = {
+      id: null,
+      plugins: [],
+      runtimeSurfaceIds: [],
+      lane: null,
+    };
+    SCENARIO_METADATA_CACHE.set(source, missing);
+    return missing;
+  }
   const idProperty = scenarioObject.properties.find(
     (property): property is ts.PropertyAssignment =>
       ts.isPropertyAssignment(property) && propertyName(property.name) === "id",
@@ -2170,12 +2463,14 @@ export function scenarioMetadataFromSource(source: string): {
       if (value) runtimeSurfaceIds.add(value);
     }
   }
-  return {
+  const metadata = {
     id,
     plugins: [...plugins].sort(),
     runtimeSurfaceIds: [...runtimeSurfaceIds].sort(),
     lane,
   };
+  SCENARIO_METADATA_CACHE.set(source, metadata);
+  return metadata;
 }
 
 function scenarioRecords(): ScenarioRecord[] {
@@ -2282,6 +2577,142 @@ export function isExecutableBoundaryEvidence(
   if (!fullSurfaceId) return false;
   const metadata = scenarioMetadataFromSource(source);
   const scenarioDeclaresId = metadata.runtimeSurfaceIds.includes(fullSurfaceId);
+  const scenarioDeclarations = new Map<string, ts.Node>();
+  for (const statement of ast.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name))
+          scenarioDeclarations.set(declaration.name.text, declaration);
+      }
+    } else if (
+      (ts.isFunctionDeclaration(statement) ||
+        ts.isClassDeclaration(statement)) &&
+      statement.name
+    ) {
+      scenarioDeclarations.set(statement.name.text, statement);
+    }
+  }
+  const resolveScenarioRoot = (
+    expression: ts.Expression,
+    seen = new Set<string>(),
+  ): ts.ObjectLiteralExpression | null => {
+    const current = unwrap(expression);
+    if (ts.isObjectLiteralExpression(current)) return current;
+    if (ts.isCallExpression(current) && current.arguments.length === 1) {
+      return resolveScenarioRoot(unwrap(current.arguments[0]), seen);
+    }
+    if (ts.isIdentifier(current) && !seen.has(current.text)) {
+      seen.add(current.text);
+      const declaration = scenarioDeclarations.get(current.text);
+      if (
+        declaration &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer
+      ) {
+        return resolveScenarioRoot(declaration.initializer, seen);
+      }
+    }
+    return null;
+  };
+  const scenarioRoot = scenarioDeclaresId
+    ? ast.statements
+        .filter(ts.isExportAssignment)
+        .map((statement) => resolveScenarioRoot(statement.expression))
+        .find((candidate) => candidate !== null)
+    : null;
+  const resolveScenarioArray = (
+    expression: ts.Expression,
+  ): ts.ArrayLiteralExpression | null => {
+    const current = unwrap(expression);
+    if (ts.isArrayLiteralExpression(current)) return current;
+    if (ts.isIdentifier(current)) {
+      const declaration = scenarioDeclarations.get(current.text);
+      if (
+        declaration &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer
+      ) {
+        const initializer = unwrap(declaration.initializer);
+        return ts.isArrayLiteralExpression(initializer) ? initializer : null;
+      }
+    }
+    return null;
+  };
+  const scenarioArray = (key: string): ts.ArrayLiteralExpression | null => {
+    if (!scenarioRoot) return null;
+    const property = scenarioRoot.properties.find(
+      (candidate): candidate is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(candidate) &&
+        propertyName(candidate.name) === key,
+    );
+    return property ? resolveScenarioArray(property.initializer) : null;
+  };
+  const scenarioAssertionReachable = new Set<ts.Node>();
+  if (scenarioRoot) {
+    const expandedDeclarations = new Set<ts.Node>();
+    const isReferenceIdentifier = (node: ts.Node): node is ts.Identifier =>
+      ts.isIdentifier(node) &&
+      !ts.isDeclarationName(node) &&
+      !(
+        ts.isPropertyAccessExpression(node.parent) && node.parent.name === node
+      );
+    const collect = (node: ts.Node): void => {
+      if (scenarioAssertionReachable.has(node)) return;
+      if (ts.isFunctionDeclaration(node) && !expandedDeclarations.has(node)) {
+        return;
+      }
+      scenarioAssertionReachable.add(node);
+      if (isReferenceIdentifier(node)) {
+        const declaration = scenarioDeclarations.get(node.text);
+        if (declaration && !expandedDeclarations.has(declaration)) {
+          expandedDeclarations.add(declaration);
+          collect(declaration);
+        }
+      }
+      ts.forEachChild(node, collect);
+    };
+    for (const property of scenarioRoot.properties) {
+      if (
+        ts.isMethodDeclaration(property) &&
+        ["finalChecks", "checks", "assertions"].includes(
+          propertyName(property.name) ?? "",
+        )
+      ) {
+        collect(property);
+      }
+    }
+    for (const turn of scenarioArray("turns")?.elements ?? []) {
+      if (!ts.isObjectLiteralExpression(turn)) continue;
+      for (const property of turn.properties) {
+        if (
+          ts.isPropertyAssignment(property) &&
+          ["assertTurn", "assertResponse"].includes(
+            propertyName(property.name) ?? "",
+          )
+        ) {
+          collect(property.initializer);
+        }
+      }
+    }
+    for (const key of ["finalChecks", "checks", "assertions"]) {
+      for (const check of scenarioArray(key)?.elements ?? []) {
+        if (!ts.isObjectLiteralExpression(check)) {
+          collect(check);
+          continue;
+        }
+        for (const property of check.properties) {
+          if (
+            ts.isPropertyAssignment(property) &&
+            ["predicate", "check", "assertion"].includes(
+              propertyName(property.name) ?? "",
+            )
+          ) {
+            collect(property.initializer);
+          }
+        }
+      }
+    }
+  }
   let testDeclaresId = false;
   const findTestDeclaration = (node: ts.Node): void => {
     if (
@@ -2310,21 +2741,7 @@ export function isExecutableBoundaryEvidence(
     );
   };
   const isScenarioCallback = (fn: ts.Node): boolean => {
-    if (!scenarioDeclaresId) return false;
-    if (
-      ts.isMethodDeclaration(fn) &&
-      /^(?:setup|run|execute|steps|finalChecks|checks|assertions)$/.test(
-        propertyName(fn.name) ?? "",
-      )
-    ) {
-      return true;
-    }
-    return (
-      ts.isPropertyAssignment(fn.parent) &&
-      /^(?:setup|run|execute|steps|finalChecks|checks|assertions)$/.test(
-        propertyName(fn.parent.name) ?? "",
-      )
-    );
+    return scenarioDeclaresId && scenarioAssertionReachable.has(fn);
   };
   const executable = (node: ts.Node): boolean => {
     let parent: ts.Node | undefined = node.parent;
@@ -2343,6 +2760,58 @@ export function isExecutableBoundaryEvidence(
     });
     return found;
   };
+  if (
+    scenarioRoot &&
+    (surface.kind === "action" || surface.kind === "subaction")
+  ) {
+    const subactionSignal =
+      rawName.split(/[_/]/).at(-1)?.toLowerCase() ?? rawName.toLowerCase();
+    const matchesSubactionData = (
+      object: ts.ObjectLiteralExpression,
+    ): boolean =>
+      object.properties.some((property) => {
+        if (!ts.isPropertyAssignment(property)) return false;
+        const key = propertyName(property.name) ?? "";
+        if (["assertTurn", "assertResponse", "predicate"].includes(key))
+          return false;
+        const value = unwrap(property.initializer);
+        if (
+          ["action", "operation"].includes(key) &&
+          literalText(value)?.toLowerCase() === subactionSignal
+        ) {
+          return true;
+        }
+        return (
+          ts.isObjectLiteralExpression(value) && matchesSubactionData(value)
+        );
+      });
+    for (const turn of scenarioArray("turns")?.elements ?? []) {
+      if (!ts.isObjectLiteralExpression(turn)) continue;
+      const properties = new Map(
+        turn.properties
+          .filter(ts.isPropertyAssignment)
+          .map((property) => [propertyName(property.name), property] as const),
+      );
+      const assertionProperty =
+        properties.get("assertTurn") ?? properties.get("assertResponse");
+      const assertion = assertionProperty
+        ? unwrap(assertionProperty.initializer)
+        : null;
+      const hasExecutableAssertion =
+        assertion !== null &&
+        (ts.isFunctionLike(assertion) ||
+          ts.isIdentifier(assertion) ||
+          ts.isCallExpression(assertion));
+      if (!hasExecutableAssertion) continue;
+      const actionNameProperty = properties.get("actionName");
+      const actionName = actionNameProperty
+        ? literalText(unwrap(actionNameProperty.initializer))
+        : null;
+      if (surface.kind === "action" && actionName === rawName) return true;
+      if (surface.kind === "subaction" && matchesSubactionData(turn))
+        return true;
+    }
+  }
   if (surface.kind === "route") {
     let routeProved = false;
     const inspect = (node: ts.Node): void => {
@@ -2368,6 +2837,15 @@ export function isExecutableBoundaryEvidence(
           if (!routeProved) ts.forEachChild(candidate, inspectAssertion);
         };
         for (const argument of node.arguments) inspectAssertion(argument);
+      }
+      if (
+        scenarioAssertionReachable.has(node) &&
+        /(?:request|fetch|client)/i.test(node.expression.getText(ast))
+      ) {
+        const pathArgument = node.arguments[0]
+          ? literalText(unwrap(node.arguments[0]))
+          : null;
+        if (pathArgument === signal) routeProved = true;
       }
       if (!routeProved) ts.forEachChild(node, inspect);
     };
@@ -2439,6 +2917,10 @@ export function isExecutableBoundaryEvidence(
       ts.forEachChild(node, visit);
       return;
     }
+    if (scenarioAssertionReachable.has(node)) {
+      proved = true;
+      return;
+    }
     let ancestor: ts.Node | undefined = node.parent;
     while (ancestor && !ts.isExpressionStatement(ancestor)) {
       if (
@@ -2458,18 +2940,38 @@ export function isExecutableBoundaryEvidence(
 }
 
 function defaultWorkstream(
-  kind: RuntimeSurfaceKind,
+  surface: RawSurface,
 ): RuntimeSurfaceRow["workstream"] {
-  if (kind === "model-handler") return "#22901";
-  if (["provider", "connector-ingress", "connector-egress"].includes(kind))
+  if (
+    surface.kind === "native-bridge" ||
+    surface.package.platformRequirements.includes("native-host")
+  ) {
+    return "#23270";
+  }
+  if (surface.kind === "model-handler") return "#22901";
+  if (
+    ["provider", "connector-ingress", "connector-egress"].includes(surface.kind)
+  )
     return "#22899";
-  if (kind === "route" || kind === "cloud-service") return "#22904";
-  return "unassigned";
+  if (
+    surface.package.dir.startsWith("packages/cloud/") &&
+    ["route", "cloud-service", "scheduled-worker", "queue"].includes(
+      surface.kind,
+    )
+  ) {
+    return "#22904";
+  }
+  if (surface.kind === "scheduled-worker" || surface.kind === "queue")
+    return "#22902";
+  if (surface.kind === "route" || surface.kind === "cloud-service")
+    return "#22904";
+  return "#23268";
 }
 
 function uniqueRawSurfaces(rows: RawSurface[]): RawSurface[] {
   const byId = new Map<string, RawSurface>();
   for (const row of rows) {
+    if (!row.name.trim()) continue;
     const normalized = normalizeName(row.name);
     if (
       !normalized ||
@@ -2610,7 +3112,7 @@ export function buildRuntimeSurfaceInventory(
           : "none",
       boundaryArtifacts,
       boundarySignals: covered ? [id, normalizeName(surface.name)] : [],
-      workstream: defaultWorkstream(surface.kind),
+      workstream: defaultWorkstream(surface),
       status,
       reason,
     };

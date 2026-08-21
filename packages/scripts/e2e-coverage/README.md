@@ -50,8 +50,11 @@ registered boundary name; moving an implementation file does not expand or
 invalidate the baseline.
 
 `covered` is derived, never baselined. A deterministic scenario declares the
-full canonical id in its exported `runtimeSurfaceIds` array and exercises the
-exact registered boundary in an executable scenario callback. A Cloud E2E test
+full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare
+objects and `scenario({...})` exports are both resolved; action evidence must
+come from an asserted turn, and other runtime calls must be reachable from a
+turn assertion or final-check callback. Setup, seed, unused-helper, comment,
+and prefix collisions never count. A Cloud E2E test
 uses the exact title `runtime-surface:<canonical-id>` and asserts the matching
 request or runtime call in that same test callback. Package ownership, an id,
 or a boundary-name substring alone never counts. All other current rows live

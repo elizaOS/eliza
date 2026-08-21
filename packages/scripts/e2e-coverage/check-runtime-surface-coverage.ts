@@ -260,10 +260,7 @@ export function candidateClassification(
   }
   return {
     status: "uncovered",
-    reason:
-      context?.workstream === "unassigned"
-        ? `${subject} has no boundary-specific executable synthetic-world artifact and remains an explicitly unassigned implementation gap.`
-        : `${subject} has no boundary-specific executable synthetic-world artifact; implementation is assigned to ${workstream}.`,
+    reason: `${subject} has no boundary-specific executable synthetic-world artifact; implementation is assigned to ${workstream}.`,
   };
 }
 
