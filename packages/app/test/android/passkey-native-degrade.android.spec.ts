@@ -1,8 +1,8 @@
-// On-device proof for #15828 on the real Android Capacitor WebView: the shipped
-// shell exposes no native WebAuthn bridge, so tapping "Sign in to Eliza Cloud"
-// must route through the external device-code flow (Capacitor Browser plugin →
-// /auth/cli-login) and must never invoke the browser's `navigator.credentials`
-// WebAuthn calls. Screen-recorded; run with ELIZA_ANDROID_ALLOW_FIRST_RUN=1.
+/**
+ * Proves the shipped Android Capacitor shell has no native WebAuthn bridge.
+ * The real-device harness requires Cloud sign-in to use the external device
+ * flow and rejects any invocation of browser credential APIs.
+ */
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import { expect, ORIGIN, test } from "./android-harness";

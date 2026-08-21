@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Exercises the Play-safe Cloud shell through its rendered auth, compose,
+ * conversation, and persistence boundaries in a deterministic DOM harness.
+ */
+
 import {
   act,
   cleanup,

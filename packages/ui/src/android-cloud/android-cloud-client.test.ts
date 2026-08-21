@@ -1,5 +1,10 @@
 // @vitest-environment jsdom
 
+/**
+ * Exercises the Play-safe Cloud transport with deterministic HTTP responses,
+ * including authority, session, transcript, logout, and malformed-body cases.
+ */
+
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
