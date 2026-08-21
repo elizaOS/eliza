@@ -1,3 +1,4 @@
+import { types as nodeUtilTypes } from "node:util";
 import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core";
 
 /**
@@ -65,6 +66,8 @@ export const TOOL_PAYLOAD_DEPTH_MARKER = `[tool payload omitted: deeper than ${M
 export const TOOL_PAYLOAD_CYCLE_MARKER = "[tool payload omitted: cycle]";
 /** Emitted once the node or character budget for one part is spent. */
 export const TOOL_PAYLOAD_BUDGET_MARKER = "[tool payload omitted: over budget]";
+/** Emitted for a Proxy, whose reflection hooks can execute attacker code. */
+export const TOOL_PAYLOAD_PROXY_MARKER = "[tool payload omitted: proxy]";
 
 interface PayloadBudget {
   nodes: number;
@@ -156,6 +159,40 @@ function ownDataProperty(target: object, key: string): unknown {
   return descriptor && "value" in descriptor ? descriptor.value : undefined;
 }
 
+/** Array holes and accessors both project to JSON's positional `null`. */
+function ownArrayElementOrNull(target: unknown[], index: number): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(target, String(index));
+  return descriptor && "value" in descriptor ? descriptor.value : null;
+}
+
+/** Reject direct or prototype-chain Proxies before any reflective operation. */
+function hasProxyInPrototypeChain(value: object): boolean {
+  let current: object | null = value;
+  while (current !== null) {
+    if (nodeUtilTypes.isProxy(current)) return true;
+    current = Object.getPrototypeOf(current) as object | null;
+  }
+  return false;
+}
+
+const typedArrayLengthGetter = Object.getOwnPropertyDescriptor(
+  Object.getPrototypeOf(Uint8Array.prototype),
+  "length"
+)?.get;
+
+/** Read Buffer width without consulting an overridable own `length`. */
+function bufferLength(value: Uint8Array): number {
+  if (!typedArrayLengthGetter) throw new Error("TypedArray length getter is unavailable.");
+  return typedArrayLengthGetter.call(value) as number;
+}
+
+/** Copy Buffer bytes without consulting the payload's `@@iterator`. */
+function bufferBytes(value: Uint8Array, length: number): number[] {
+  const bytes = new Array<number>(length);
+  for (let index = 0; index < length; index += 1) bytes[index] = value[index];
+  return bytes;
+}
+
 type JsonSafe = string | number | boolean | null | JsonSafe[] | { [key: string]: JsonSafe };
 
 /**
@@ -184,6 +221,11 @@ function toBoundedJsonValue(
   if (kind === "bigint") return (value as bigint).toString();
   if (kind !== "object") return undefined; // undefined / function / symbol: dropped, as today
   const object = value as object;
+  if (hasProxyInPrototypeChain(object)) {
+    // error-policy:J3 Proxy reflection can execute arbitrary traps; represent
+    // the unsupported input explicitly instead of consulting it.
+    return TOOL_PAYLOAD_PROXY_MARKER;
+  }
   // Brand check, not `instanceof`: a Date from another realm fails the
   // prototype test and used to fall through to the object branch, rendering
   // `{}` and losing the timestamp entirely. Dispatch through the builtins so an
@@ -199,11 +241,12 @@ function toBoundedJsonValue(
   // pre-bounded `JSON.stringify` path produced for each.
   if (isBufferValue(object)) {
     // Charge the byte count before materializing: the generic object branch
-    // used to charge one node per index key, so skipping straight to
-    // `Array.from` would let a multi-megabyte buffer through the node bound.
-    const bytes = object as Uint8Array;
-    if (!chargeWidth(budget, bytes.length)) return TOOL_PAYLOAD_BUDGET_MARKER;
-    return { type: "Buffer", data: Array.from(bytes) };
+    // used to charge one node per index key, so materializing first would let a
+    // multi-megabyte buffer through the node bound.
+    const buffer = object as Uint8Array;
+    const length = bufferLength(buffer);
+    if (!chargeWidth(budget, length)) return TOOL_PAYLOAD_BUDGET_MARKER;
+    return { type: "Buffer", data: bufferBytes(buffer, length) };
   }
   const href = urlHrefOrNull(object);
   if (href !== null) return href;
@@ -215,7 +258,8 @@ function toBoundedJsonValue(
     try {
       const items: JsonSafe[] = [];
       for (let index = 0; index < object.length; index += 1) {
-        items.push(toBoundedJsonValue(object[index], budget, depth + 1) ?? null);
+        const element = ownArrayElementOrNull(object, index);
+        items.push(toBoundedJsonValue(element, budget, depth + 1) ?? null);
       }
       return items;
     } finally {
@@ -266,6 +310,10 @@ function toolOutputToText(
   if (output == null) return "";
   if (typeof output === "string") return chargeChars(budget, output);
   if (typeof output !== "object") return chargeChars(budget, String(output));
+  if (hasProxyInPrototypeChain(output)) {
+    // error-policy:J3 never reflect on a Proxy-backed tool envelope.
+    return TOOL_PAYLOAD_PROXY_MARKER;
+  }
   if (depth >= MAX_TOOL_PAYLOAD_DEPTH) return TOOL_PAYLOAD_DEPTH_MARKER;
   if (budget.ancestors.has(output)) return TOOL_PAYLOAD_CYCLE_MARKER;
   if (Array.isArray(output)) {
@@ -274,7 +322,7 @@ function toolOutputToText(
     try {
       const parts: string[] = [];
       for (let index = 0; index < output.length; index += 1) {
-        const text = toolOutputToText(output[index], budget, depth + 1);
+        const text = toolOutputToText(ownArrayElementOrNull(output, index), budget, depth + 1);
         if (text) parts.push(text);
       }
       return parts.join("\n");

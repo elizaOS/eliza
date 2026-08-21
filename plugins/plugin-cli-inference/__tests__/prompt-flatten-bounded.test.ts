@@ -25,6 +25,7 @@ import {
   TOOL_PAYLOAD_BUDGET_MARKER,
   TOOL_PAYLOAD_CYCLE_MARKER,
   TOOL_PAYLOAD_DEPTH_MARKER,
+  TOOL_PAYLOAD_PROXY_MARKER,
 } from "../src/prompt-flatten";
 
 const toolResult = (output: unknown): ChatMessageContentPart =>
@@ -133,6 +134,57 @@ describe("toolOutputToText — hostile tool payloads no longer throw", () => {
     const text = contentToText([toolResult(trap)]);
     expect(invoked).toBe(0);
     expect(text).not.toContain("pwned");
+  });
+
+  it("never invokes array accessors and preserves their positions as null", () => {
+    let invoked = 0;
+    const payload: unknown[] = [];
+    Object.defineProperty(payload, 0, {
+      enumerable: true,
+      get() {
+        invoked += 1;
+        return "pwned";
+      },
+    });
+    payload.length = 2;
+    expect(contentToText([toolResult({ payload })])).toBe(
+      '[tool_result WEB_FETCH: {"payload":[null,null]}]'
+    );
+    expect(contentToText([toolResult(payload)])).toBe("");
+    expect(invoked).toBe(0);
+  });
+
+  it("rejects Proxy payloads without invoking traps, including revoked proxies", () => {
+    let invoked = 0;
+    const proxy = new Proxy(Buffer.from("x"), {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+      ownKeys() {
+        invoked += 1;
+        throw new Error("proxy trap ran");
+      },
+    });
+    const revocable = Proxy.revocable({}, {});
+    revocable.revoke();
+    const proxyPrototype = new Proxy(Buffer.prototype, {
+      getPrototypeOf() {
+        invoked += 1;
+        throw new Error("prototype-chain trap ran");
+      },
+    });
+    const bufferWithProxyPrototype = Buffer.from("y");
+    Object.setPrototypeOf(bufferWithProxyPrototype, proxyPrototype);
+    expect(contentToText([toolResult(proxy)])).toContain(TOOL_PAYLOAD_PROXY_MARKER);
+    expect(contentToText([toolResult(revocable.proxy)])).toContain(TOOL_PAYLOAD_PROXY_MARKER);
+    expect(contentToText([toolResult(bufferWithProxyPrototype)])).toContain(
+      TOOL_PAYLOAD_PROXY_MARKER
+    );
+    expect(contentToText([toolResult({ proxy, revoked: revocable.proxy })])).toContain(
+      TOOL_PAYLOAD_PROXY_MARKER
+    );
+    expect(invoked).toBe(0);
   });
 });
 
@@ -269,6 +321,29 @@ describe("toolOutputToText — no over-rejection of ordinary payloads", () => {
     expect(contentToText([toolResult(Buffer.alloc(200_000))])).toContain(
       TOOL_PAYLOAD_BUDGET_MARKER
     );
+  });
+
+  it("copies Buffer bytes without consulting payload length or @@iterator", () => {
+    let invoked = 0;
+    const payload = Buffer.from("hi");
+    Object.defineProperties(payload, {
+      length: {
+        get() {
+          invoked += 1;
+          throw new Error("length getter ran");
+        },
+      },
+      [Symbol.iterator]: {
+        value() {
+          invoked += 1;
+          throw new Error("iterator ran");
+        },
+      },
+    });
+    expect(contentToText([toolResult(payload)])).toBe(
+      '[tool_result WEB_FETCH: {"type":"Buffer","data":[104,105]}]'
+    );
+    expect(invoked).toBe(0);
   });
 
   it("never consults an attacker-controlled Symbol.toStringTag", () => {
