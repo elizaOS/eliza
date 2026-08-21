@@ -74,14 +74,12 @@ describe("subscription plans route", () => {
     );
   });
 
-  test("returns the verified DTO with bounded public caching", async () => {
+  test("returns the verified DTO without bypassing provider verification at an edge cache", async () => {
     const app = createSubscriptionPlansRoute({ loadPlans: async () => PLANS });
     const response = await app.request("/");
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe(
-      "public, max-age=60, s-maxage=300, must-revalidate",
-    );
-    expect(response.headers.get("etag")).toBe('"subscription-catalog-v1"');
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("etag")).toBeNull();
     expect((await response.json()) as unknown).toEqual({
       success: true,
       data: PLANS,
