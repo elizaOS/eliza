@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+/** Verifies the Vault overview's device-protection trust-domain disclosure. */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { ProtectionCard } from "./OverviewTab";
@@ -17,8 +18,11 @@ const protection: VaultProtectionStatus = {
       access: "app_only",
     },
   },
-  appleKeychainSync: false,
-  appleKeychainScope: "app-only",
+  nativeSessionState: {
+    policy: "platform-protected-store",
+    synchronized: false,
+    plaintextFallback: false,
+  },
   connectorSessions: {
     telegramPersonal: "vault-master-key-encrypted",
   },
@@ -26,14 +30,14 @@ const protection: VaultProtectionStatus = {
 };
 
 describe("Vault protection card", () => {
-  it("shows device protection, non-sync, extension isolation, and Cloud separation", () => {
+  it("shows device protection, fail-closed native sessions, and Cloud separation", () => {
     render(<ProtectionCard protection={protection} />);
 
     expect(screen.getByText("Protected by this device")).toBeTruthy();
-    expect(screen.getByText(/Apple Keychain sync is off/)).toBeTruthy();
     expect(
-      screen.getByText(/not shared with widgets or keyboards/),
+      screen.getByText(/require the platform protected store/),
     ).toBeTruthy();
+    expect(screen.getByText(/plaintext fallback are off/)).toBeTruthy();
     expect(screen.getByText(/separate KMS trust domain/)).toBeTruthy();
     expect(
       screen.getByText(/Telegram Personal session state is encrypted/),

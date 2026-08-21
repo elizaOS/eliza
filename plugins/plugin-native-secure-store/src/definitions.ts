@@ -23,8 +23,11 @@ export interface ElizaSecureStoreResult {
 export interface ElizaSecureStoreStatus {
   ok: boolean;
   available: boolean;
-  backend: "apple_keychain" | "unavailable";
-  accessibility: "after_first_unlock_this_device_only" | "unavailable";
+  backend: "apple_keychain" | "android_keystore" | "unavailable";
+  accessibility:
+    | "after_first_unlock_this_device_only"
+    | "credential_encrypted_device_only"
+    | "unavailable";
   synchronized: false;
   accessGroup: "app_only";
   error?: ElizaSecureStoreError;

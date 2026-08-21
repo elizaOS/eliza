@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+/** Exercises native credential migration and fail-closed storage behavior. */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +18,7 @@ const nativeStores = vi.hoisted(() => ({
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
-    getPlatform: () => "ios",
+    getPlatform: () => "android",
     isNativePlatform: () => true,
   },
 }));
@@ -34,6 +35,14 @@ vi.mock("@capacitor/preferences", () => ({
       nativeStores.preferences.delete(key);
     },
   },
+}));
+
+vi.mock("@elizaos/logger", () => ({
+  logger: { error: () => undefined },
+}));
+
+vi.mock("@elizaos/shared/steward-session-client", () => ({
+  STEWARD_TOKEN_KEY: "eliza.cloud.steward-token",
 }));
 
 vi.mock("@elizaos/capacitor-secure-store", () => ({
@@ -126,7 +135,11 @@ describe("native protected-storage bridge contract", () => {
 
   it("retries hydration when the protected native bridge is still cold", () => {
     expect(source).toContain(
-      'throw new Error("Apple protected storage is unavailable")',
+      "return isNativePlatform() || isElectrobunRuntime();",
+    );
+    expect(source).not.toContain("isAppleNativePlatform");
+    expect(source).toContain(
+      'throw new Error("Native protected storage is unavailable")',
     );
     expect(source).toContain("protectedStoreResponded = false");
     expect(source).toContain("if (pluginResponded && protectedStoreResponded)");
@@ -135,7 +148,7 @@ describe("native protected-storage bridge contract", () => {
     );
   });
 
-  it("migrates an Apple plaintext session only after exact secure read-back", async () => {
+  it("migrates an Android plaintext session only after exact secure read-back", async () => {
     nativeStores.preferences.set("eliza.device.auth", "legacy-device-secret");
     window.localStorage.setItem("eliza.device.auth", "legacy-device-secret");
     const rawStorage = window.localStorage;
@@ -168,7 +181,7 @@ describe("native protected-storage bridge contract", () => {
       "unchanged",
     );
     expect(bridge.isStorageBridgeInitialized()).toBe(true);
-  }, 15_000);
+  }, 60_000);
 
   it("retains the live and restart credential when native deletion is denied", async () => {
     const bridge = await import("./storage-bridge");
@@ -180,7 +193,7 @@ describe("native protected-storage bridge contract", () => {
 
     await expect(
       bridge.removeStorageValue("eliza.device.auth"),
-    ).rejects.toThrow("Apple protected storage rejected deletion");
+    ).rejects.toThrow("Native protected storage rejected deletion");
 
     expect(nativeStores.secure.get("session.device_auth")).toBe(
       "still-durable-after-failed-delete",

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-secure-store",
   "version": "2.0.3-beta.7",
-  "description": "Device-only Apple Keychain storage for Eliza app credentials.",
+  "description": "Device-only Apple Keychain and Android Keystore storage for Eliza app credentials.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
@@ -18,6 +18,8 @@
   },
   "unpkg": "dist/plugin.js",
   "files": [
+    "android/src/main/",
+    "android/build.gradle",
     "dist/",
     "ios/Sources/",
     "*.podspec"
@@ -40,6 +42,9 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "capacitor": {
+    "android": {
+      "src": "android"
+    },
     "ios": {
       "src": "ios",
       "podName": "ElizaosCapacitorSecureStore"
@@ -66,6 +71,7 @@
     "runtime": "both",
     "platformDetails": {
       "browser": "Unavailable fallback; secrets are never persisted on web by this plugin.",
+      "android": "Android Keystore AES-GCM key with atomic ciphertexts in the app no-backup directory.",
       "ios": true,
       "node": "macOS uses the Electrobun secure-store bridge."
     }

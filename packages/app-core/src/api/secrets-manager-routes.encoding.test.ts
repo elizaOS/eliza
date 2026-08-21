@@ -182,8 +182,11 @@ describe("GET /api/secrets/manager/protection", () => {
           cipher: "AES-256-GCM",
           masterKey: secureStoreMocks.protection,
         },
-        appleKeychainSync: false,
-        appleKeychainScope: "app-only",
+        nativeSessionState: {
+          policy: "platform-protected-store",
+          synchronized: false,
+          plaintextFallback: false,
+        },
         connectorSessions: {
           telegramPersonal: "vault-master-key-encrypted",
         },

@@ -1,6 +1,7 @@
 /**
- * Provides the iOS Keychain boundary for the fixed, app-scoped credential
- * slots shared by the renderer storage bridge.
+ * Provides device-bound Apple Keychain storage to the Capacitor renderer.
+ * The bridge fixes the service, accounts, synchronization, and accessibility
+ * policy so renderer input cannot widen the credential trust domain.
  */
 import Capacitor
 import Foundation
@@ -50,6 +51,7 @@ public class ElizaSecureStorePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func set(_ call: CAPPluginCall) {
         guard let key = validatedKey(call) else { return }
         guard let value = call.getString("value"),
+              !value.isEmpty,
               let valueData = value.data(using: .utf8),
               valueData.count <= maximumValueBytes
         else {

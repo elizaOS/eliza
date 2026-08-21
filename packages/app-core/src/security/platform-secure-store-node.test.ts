@@ -1,3 +1,4 @@
+/** Verifies desktop secure-store adapters and renderer boundary hardening. */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
@@ -28,19 +29,25 @@ const subscriptionCredentialSource = readFileSync(
   "utf8",
 );
 
-describe("macOS platform secure-store boundary", () => {
-  it("uses the native keyring binding and never launches the security CLI", () => {
+describe("desktop platform secure-store boundary", () => {
+  it("uses the cross-platform native keyring binding and never launches the security CLI", () => {
     expect(source).toContain('import("@napi-rs/keyring")');
     expect(source).not.toContain('spawn("security"');
     expect(source).not.toContain('execFileAsync("security"');
     expect(source).not.toContain('"/usr/bin/security"');
   });
 
-  it("reports non-synchronizing app-only protection", () => {
+  it("reports honest non-synchronizing user-session protection", () => {
     expect(source).toContain("synchronized: false");
-    expect(source).toContain(
-      'store.backend === "macos_keychain" ? "app_only" : "user_session"',
+    expect(source).toContain('access: "user_session"');
+    expect(source).not.toContain(
+      'store.backend === "macos_keychain" ? "app_only"',
     );
+  });
+
+  it("maps Windows to its native Credential Manager backend", () => {
+    expect(source).toContain('return process.platform === "win32"');
+    expect(source).toContain('"windows_credential_manager"');
   });
 
   it("does not scrape third-party Keychain entries during provider discovery", () => {
@@ -84,5 +91,24 @@ describe("macOS platform secure-store boundary", () => {
     expect(rendererBridgeSource).toContain(
       "requireRendererSecureStoreValue(params?.value)",
     );
+  });
+
+  it("never returns platform stderr or swallows credential deletion failures", () => {
+    expect(source).not.toContain("message: stderr");
+    expect(source).toContain("Native credential store deletion failed.");
+    expect(source).not.toContain("// ignore — item may not exist");
+  });
+
+  it("round-trips Linux secrets without trimming credential bytes", () => {
+    expect(source).toContain('LINUX_SECRET_WIRE_PREFIX = "eliza-v1:"');
+    expect(source).toContain("encodeLinuxSecret(value)");
+    expect(source).toContain("decodeLinuxSecret(value)");
+    expect(source).not.toContain("stdout.trim()");
+  });
+
+  it("does not report a binary-only Linux install as an available secret service", () => {
+    expect(source).toContain("linuxSecretServiceSessionReachable()");
+    expect(source).toContain("process.env.DBUS_SESSION_BUS_ADDRESS");
+    expect(source).toContain('path.join(runtimeDir, "bus")');
   });
 });

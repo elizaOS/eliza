@@ -1,3 +1,4 @@
+/** Verifies the static security contract of the Apple Keychain bridge. */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -36,6 +37,7 @@ describe("Apple secure-store bridge contract", () => {
     }
     expect(source).toContain("allowedKeys.contains(key)");
     expect(source).not.toContain('call.getString("service")');
+    expect(source).toContain("!value.isEmpty");
   });
 
   it("distinguishes deleted and already-absent items", () => {

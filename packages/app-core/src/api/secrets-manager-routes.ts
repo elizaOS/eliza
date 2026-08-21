@@ -177,8 +177,11 @@ export async function handleSecretsManagerRoute(
           cipher: "AES-256-GCM",
           masterKey: keyProtection,
         },
-        appleKeychainSync: false,
-        appleKeychainScope: "app-only",
+        nativeSessionState: {
+          policy: "platform-protected-store",
+          synchronized: false,
+          plaintextFallback: false,
+        },
         connectorSessions: {
           telegramPersonal: "vault-master-key-encrypted",
         },

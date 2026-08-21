@@ -10,7 +10,9 @@ the Vault inventory endpoint.
 | Host | Backend | Scope |
 | --- | --- | --- |
 | iOS | Security.framework generic-password items | Fixed `ai.elizaos.secure-store` service, allowlisted accounts, app-only, `AfterFirstUnlockThisDeviceOnly`, iCloud synchronization disabled |
-| macOS desktop | Native `@napi-rs/keyring` Keychain binding in the signed main process | Per-state-directory opaque Vault id; no `/usr/bin/security` subprocess |
+| Android | Android Keystore AES-GCM key plus atomic ciphertext files | Non-exportable randomized key, allowlisted accounts, app-private `noBackupFilesDir`, ciphertext bound to its account with AAD |
+| macOS desktop | Native `@napi-rs/keyring` Keychain binding in the signed main process | Per-state-directory opaque Vault id and OS user session; no `/usr/bin/security` subprocess |
+| Windows desktop | Native `@napi-rs/keyring` Windows Credential Manager binding | Per-state-directory opaque Vault id and OS user session |
 | Linux desktop | Secret Service through `secret-tool` | Per-state-directory opaque Vault id and user session |
 | Headless hosts | Explicit passphrase resolver | `ELIZA_VAULT_PASSPHRASE`; no plaintext fallback |
 
@@ -24,7 +26,7 @@ account record.
 
 ## Native renderer migration
 
-The iOS and Electrobun storage bridge protects device auth, the Steward/Cloud
+The iOS, Android, and Electrobun storage bridge protects device auth, the Steward/Cloud
 session token, the active runtime record, and the agent-profile registry. On
 first launch after upgrade it:
 

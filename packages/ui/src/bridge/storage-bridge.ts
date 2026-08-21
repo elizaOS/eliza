@@ -45,7 +45,7 @@ function loadPreferences() {
   return import("@capacitor/preferences");
 }
 
-function loadAppleSecureStore() {
+function loadNativeSecureStore() {
   return import("@elizaos/capacitor-secure-store");
 }
 
@@ -69,9 +69,8 @@ function isNativePlatform(): boolean {
 const SYNCED_KEYS = new Set([
   "eliza.control.settings.v1",
   "eliza.device.identity",
-  // Android continues to use Preferences for these records. Apple native
-  // hosts intercept them through PROTECTED_STORAGE_KIND before this set is
-  // consulted, so credentials never land in Preferences there.
+  // Native hosts intercept these through PROTECTED_STORAGE_KIND before this
+  // set is consulted, so credentials never land in Preferences.
   "eliza.device.auth",
   STEWARD_TOKEN_KEY,
   "elizaos:active-server",
@@ -123,29 +122,21 @@ function markProtectedStorageMutation(key: string): number {
   return version;
 }
 
-function isAppleNativePlatform(): boolean {
-  try {
-    return Capacitor.getPlatform() === "ios" && isNativePlatform();
-  } catch {
-    return false;
-  }
-}
-
 function isProtectedStorageHost(): boolean {
-  return isAppleNativePlatform() || isElectrobunRuntime();
+  return isNativePlatform() || isElectrobunRuntime();
 }
 
 async function protectedStoreGet(key: string): Promise<string | null> {
   const kind = PROTECTED_STORAGE_KIND.get(key);
   if (!kind) return null;
-  if (isAppleNativePlatform()) {
-    const { ElizaSecureStore } = await loadAppleSecureStore();
+  if (isNativePlatform()) {
+    const { ElizaSecureStore } = await loadNativeSecureStore();
     const result = await ElizaSecureStore.get({ key: kind });
     if (result.ok) {
       return typeof result.value === "string" ? result.value : null;
     }
     if (result.error === "not_found") return null;
-    throw new Error("Apple protected storage is unavailable");
+    throw new Error("Native protected storage is unavailable");
   }
   if (isElectrobunRuntime()) {
     const result = await desktopSecureStoreGet(kind);
@@ -161,8 +152,8 @@ async function protectedStoreGet(key: string): Promise<string | null> {
 async function protectedStoreSet(key: string, value: string): Promise<boolean> {
   const kind = PROTECTED_STORAGE_KIND.get(key);
   if (!kind) return false;
-  if (isAppleNativePlatform()) {
-    const { ElizaSecureStore } = await loadAppleSecureStore();
+  if (isNativePlatform()) {
+    const { ElizaSecureStore } = await loadNativeSecureStore();
     return (await ElizaSecureStore.set({ key: kind, value })).ok;
   }
   if (isElectrobunRuntime()) {
@@ -176,11 +167,11 @@ async function protectedStoreDelete(key: string): Promise<void> {
   if (!kind) {
     throw new Error("Protected storage kind is not registered");
   }
-  if (isAppleNativePlatform()) {
-    const { ElizaSecureStore } = await loadAppleSecureStore();
+  if (isNativePlatform()) {
+    const { ElizaSecureStore } = await loadNativeSecureStore();
     const result = await ElizaSecureStore.remove({ key: kind });
     if (result.ok || result.error === "not_found") return;
-    throw new Error("Apple protected storage rejected deletion");
+    throw new Error("Native protected storage rejected deletion");
   }
   if (isElectrobunRuntime()) {
     const result = await desktopSecureStoreDelete(kind);
@@ -328,7 +319,7 @@ export async function initializeStorageBridge(): Promise<void> {
   const entries = isNativePlatform()
     ? await Promise.all(
         Array.from(
-          isAppleNativePlatform()
+          isProtectedStorageHost()
             ? [...SYNCED_KEYS].filter((key) => !PROTECTED_STORAGE_KIND.has(key))
             : SYNCED_KEYS,
           async (key) => [key, await readPreferenceWithTimeout(key)] as const,

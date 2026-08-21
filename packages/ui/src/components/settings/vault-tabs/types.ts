@@ -41,8 +41,11 @@ export interface VaultProtectionStatus {
       access: "app_only" | "user_session" | "unavailable";
     };
   };
-  appleKeychainSync: false;
-  appleKeychainScope: "app-only";
+  nativeSessionState: {
+    policy: "platform-protected-store";
+    synchronized: false;
+    plaintextFallback: false;
+  };
   connectorSessions: {
     telegramPersonal: "vault-master-key-encrypted";
   };

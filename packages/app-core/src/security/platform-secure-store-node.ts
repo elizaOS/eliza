@@ -25,6 +25,41 @@ import type {
 } from "./platform-secure-store";
 
 const execFileAsync = promisify(execFile);
+const LINUX_SECRET_WIRE_PREFIX = "eliza-v1:";
+
+function encodeLinuxSecret(value: string): string {
+  return `${LINUX_SECRET_WIRE_PREFIX}${Buffer.from(value, "utf8").toString("base64url")}`;
+}
+
+function decodeLinuxSecret(value: string): SecureStoreGetResult {
+  if (!value.startsWith(LINUX_SECRET_WIRE_PREFIX)) {
+    return value.length > 0
+      ? { ok: true, value }
+      : { ok: false, reason: "not_found" };
+  }
+  try {
+    const encoded = value.slice(LINUX_SECRET_WIRE_PREFIX.length);
+    const bytes = Buffer.from(encoded, "base64url");
+    // Buffer's decoder is permissive, so exact re-encoding prevents corrupted
+    // or attacker-edited payloads from becoming a different credential.
+    if (bytes.toString("base64url") !== encoded) {
+      return {
+        ok: false,
+        reason: "error",
+        message: "Stored credential is corrupt.",
+      };
+    }
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { ok: true, value: decoded };
+  } catch {
+    // error-policy:J3 persisted Secret Service data is untrusted input.
+    return {
+      ok: false,
+      reason: "error",
+      message: "Stored credential is corrupt.",
+    };
+  }
+}
 
 function isDarwin(): boolean {
   return process.platform === "darwin";
@@ -32,6 +67,10 @@ function isDarwin(): boolean {
 
 function isLinux(): boolean {
   return process.platform === "linux";
+}
+
+function isWindows(): boolean {
+  return process.platform === "win32";
 }
 
 /** Write to Linux Secret Service via stdin so the secret never enters argv. */
@@ -64,6 +103,9 @@ function secretToolStoreWithStdin(
         ),
       );
     });
+    // error-policy:J5 an early child exit can make stdin emit EPIPE; the same
+    // failure is observed and rejected by the close/error handlers above.
+    child.stdin.on("error", () => {});
     const line = secretLine.endsWith("\n") ? secretLine : `${secretLine}\n`;
     child.stdin.write(line, "utf8");
     child.stdin.end();
@@ -88,6 +130,14 @@ function secretToolOnPathSync(): boolean {
     }
   }
   return false;
+}
+
+function linuxSecretServiceSessionReachable(): boolean {
+  if ((process.env.DBUS_SESSION_BUS_ADDRESS ?? "").trim().length > 0) {
+    return true;
+  }
+  const runtimeDir = (process.env.XDG_RUNTIME_DIR ?? "").trim();
+  return runtimeDir.length > 0 && fs.existsSync(path.join(runtimeDir, "bus"));
 }
 
 async function secretToolOnPath(): Promise<boolean> {
@@ -123,19 +173,19 @@ function nativeStoreReason(error: unknown): SecureStoreFailure {
   };
 }
 
-let macKeyringModule: Promise<typeof import("@napi-rs/keyring")> | undefined;
+let nativeKeyringModule: Promise<typeof import("@napi-rs/keyring")> | undefined;
 
-function loadMacKeyring(): Promise<typeof import("@napi-rs/keyring")> {
-  macKeyringModule ??= import("@napi-rs/keyring");
-  return macKeyringModule;
+function loadNativeKeyring(): Promise<typeof import("@napi-rs/keyring")> {
+  nativeKeyringModule ??= import("@napi-rs/keyring");
+  return nativeKeyringModule;
 }
 
-class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
-  readonly backend: PlatformSecureStoreBackend = "macos_keychain";
+class NativeKeyringPlatformSecureStore implements PlatformSecureStore {
+  constructor(readonly backend: PlatformSecureStoreBackend) {}
 
   async isAvailable(): Promise<boolean> {
     try {
-      await loadMacKeyring();
+      await loadNativeKeyring();
       return true;
     } catch {
       // error-policy:J4 native Keychain binding unavailable (probe)
@@ -149,7 +199,7 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreGetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadMacKeyring();
+      const { AsyncEntry } = await loadNativeKeyring();
       const value = await new AsyncEntry(
         ELIZA_AGENT_VAULT_SERVICE,
         account,
@@ -170,7 +220,7 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreSetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadMacKeyring();
+      const { AsyncEntry } = await loadNativeKeyring();
       await new AsyncEntry(ELIZA_AGENT_VAULT_SERVICE, account).setPassword(
         value,
       );
@@ -186,7 +236,7 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreDeleteResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      const { AsyncEntry } = await loadMacKeyring();
+      const { AsyncEntry } = await loadNativeKeyring();
       await new AsyncEntry(
         ELIZA_AGENT_VAULT_SERVICE,
         account,
@@ -230,7 +280,7 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
   readonly backend: PlatformSecureStoreBackend = "linux_secret_service";
 
   async isAvailable(): Promise<boolean> {
-    return secretToolOnPath();
+    return (await secretToolOnPath()) && linuxSecretServiceSessionReachable();
   }
 
   private account(vaultId: string, kind: SecureStoreSecretKind): string {
@@ -248,9 +298,8 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
         ["lookup", "service", ELIZA_AGENT_VAULT_SERVICE, "account", account],
         { encoding: "utf8" },
       );
-      const value = stdout.trim();
-      if (!value) return { ok: false, reason: "not_found" };
-      return { ok: true, value };
+      const value = stdout.endsWith("\n") ? stdout.slice(0, -1) : stdout;
+      return decodeLinuxSecret(value);
     } catch (err: unknown) {
       const e = err as { stderr?: string; code?: number };
       const stderr = String(e.stderr ?? "");
@@ -261,11 +310,7 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
       ) {
         return { ok: false, reason: "not_found" };
       }
-      return {
-        ok: false,
-        reason: "error",
-        message: stderr.trim().slice(0, 300),
-      };
+      return nativeStoreReason(err);
     }
   }
 
@@ -285,18 +330,11 @@ class LinuxSecretToolPlatformSecureStore implements PlatformSecureStore {
           "account",
           account,
         ],
-        value,
+        encodeLinuxSecret(value),
       );
       return { ok: true };
     } catch (err: unknown) {
-      const e = err as { stderr?: string };
-      return {
-        ok: false,
-        reason: "error",
-        message: String(e.stderr ?? err)
-          .trim()
-          .slice(0, 300),
-      };
+      return nativeStoreReason(err);
     }
   }
 
@@ -362,7 +400,10 @@ class NonePlatformSecureStore implements PlatformSecureStore {
  */
 export function createNodePlatformSecureStore(): PlatformSecureStore {
   if (isDarwin()) {
-    return new MacOSKeychainPlatformSecureStore();
+    return new NativeKeyringPlatformSecureStore("macos_keychain");
+  }
+  if (isWindows()) {
+    return new NativeKeyringPlatformSecureStore("windows_credential_manager");
   }
   if (isLinux()) {
     return new LinuxSecretToolPlatformSecureStore();
@@ -389,7 +430,9 @@ export async function describeNodePlatformSecureStore(
     available: true,
     synchronized: false,
     scope: "host",
-    access: store.backend === "macos_keychain" ? "app_only" : "user_session",
+    // Desktop credential managers isolate by logged-in OS user. Service and
+    // account names prevent collisions, but are not an application sandbox.
+    access: "user_session",
   };
 }
 
@@ -397,8 +440,10 @@ const WALLET_OS_STORE_TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 const WALLET_OS_STORE_FALSE_VALUES = new Set(["0", "false", "off", "no"]);
 
 export function isNodePlatformSecureStoreDefaultAvailable(): boolean {
-  if (isDarwin()) return true;
-  if (isLinux()) return secretToolOnPathSync();
+  if (isDarwin() || isWindows()) return true;
+  if (isLinux()) {
+    return secretToolOnPathSync() && linuxSecretServiceSessionReachable();
+  }
   return false;
 }
 

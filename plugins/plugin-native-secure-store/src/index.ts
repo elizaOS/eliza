@@ -1,3 +1,4 @@
+/** Registers the native secure-store proxy and its fail-closed web fallback. */
 import { registerPlugin } from "@capacitor/core";
 import type { ElizaSecureStorePlugin } from "./definitions";
 

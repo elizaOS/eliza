@@ -288,9 +288,9 @@ export function ProtectionCard({
           </p>
           <p className="text-2xs leading-relaxed text-muted">
             Local Vault values use {protection.localVault.cipher}; the master
-            key is held by {key.backend.replaceAll("_", " ")}. Apple Keychain
-            sync is off, and app credentials are not shared with widgets or
-            keyboards.
+            key is held by {key.backend.replaceAll("_", " ")}. Native app
+            session records require the platform protected store; sync and
+            plaintext fallback are off.
           </p>
           <p className="text-2xs leading-relaxed text-muted">
             Eliza Cloud organization secrets remain in a separate KMS trust

@@ -11,7 +11,7 @@ vault.
 | Eliza Cloud organization pool | One Cloud organization | Cloud database secrets protected by organization-scoped envelope encryption and KMS. List responses are masked and never return plaintext. | Cloud organization credential settings |
 | Wallet material | One local owner/agent | Local Vault wallet category and wallet-specific policy | Wallet and `/vault` views |
 | Browser logins | One local browser profile | Local Vault or an external password-manager reference | Saved logins tab in `/vault` |
-| Native app session state | One installed Eliza app | iOS Apple Keychain (`AfterFirstUnlockThisDeviceOnly`, app-only, non-synchronizing) or the desktop OS credential store. Native migrations are write/read verified before legacy Preferences or localStorage is removed. | Protection status in `/vault` |
+| Native app session state | One installed Eliza app | iOS Apple Keychain (`AfterFirstUnlockThisDeviceOnly`, app-only, non-synchronizing), Android Keystore with app-private no-backup ciphertexts, or the desktop OS user-session credential store. Native migrations are write/read verified before legacy Preferences or localStorage is removed. | Protection status in `/vault` |
 | Connector login state | One connector account on a local host | Local Vault master-key encryption. Telegram Personal stores both its GramJS `StringSession` and transient app credentials as AES-256-GCM envelopes. | Connected accounts and protection status in `/vault` |
 
 ## Required boundaries
