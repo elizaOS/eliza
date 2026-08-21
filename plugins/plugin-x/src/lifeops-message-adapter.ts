@@ -65,7 +65,18 @@ function decodeDraftBody(encoded: string): string {
   return Buffer.from(encoded, "base64url").toString("utf8");
 }
 
-function memoryToMessageRef(memory: Memory): MessageRef {
+export function formatDmSnippet(body: string): string {
+  return truncateWellFormed(toWellFormedUnicode(body), 200);
+}
+
+export function formatDraftPreview(body: string): string {
+  const wellFormedBody = toWellFormedUnicode(body);
+  return wellFormedBody.length > 200
+    ? `${truncateWellFormed(wellFormedBody, 197)}...`
+    : wellFormedBody;
+}
+
+export function memoryToMessageRef(memory: Memory): MessageRef {
   const metadata = record(memory.metadata);
   const content = record(memory.content);
   const x = record(metadata.x);
@@ -91,7 +102,7 @@ function memoryToMessageRef(memory: Memory): MessageRef {
       displayName: senderHandle,
     },
     to: [],
-    snippet: truncateWellFormed(toWellFormedUnicode(body), 200),
+    snippet: formatDmSnippet(body),
     body,
     receivedAtMs: Number.isFinite(receivedAtMs) ? receivedAtMs : Date.now(),
     hasAttachments: false,
@@ -204,11 +215,7 @@ export class XDmAdapter extends BaseMessageAdapter {
       throw new Error("[XDmAdapter] createDraft requires non-empty body");
     }
     const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
-    const wellFormedBody = toWellFormedUnicode(draft.body);
-    const preview =
-      wellFormedBody.length > 200
-        ? `${truncateWellFormed(wellFormedBody, 197)}...`
-        : wellFormedBody;
+    const preview = formatDraftPreview(draft.body);
     return { draftId, preview };
   }
 
