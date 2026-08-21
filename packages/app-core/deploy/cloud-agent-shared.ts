@@ -38,6 +38,13 @@ const logger = {
   },
 };
 
+/** Warn that the loopback bridge uses an ephemeral credential without exposing it. */
+export function warnGeneratedBridgeSecret(): void {
+  logger.warn(
+    "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
+  );
+}
+
 /**
  * `.catch` handler for an optional plugin dynamic import: keeps the degrade
  * (agent boots without the plugin) but surfaces the import failure so a broken
@@ -1019,10 +1026,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       `Bridge server listening on ${bridgeBindAddress}:${BRIDGE_PORT}`,
     );
     if (bridgeSecretGenerated) {
-      logger.warn(
-        "CRITICAL: No BRIDGE_SECRET configured — generated ephemeral secret and bound to 127.0.0.1 only",
-      );
-      logger.info(`Generated BRIDGE_SECRET: ${BRIDGE_SECRET}`);
+      warnGeneratedBridgeSecret();
     }
   });
 
