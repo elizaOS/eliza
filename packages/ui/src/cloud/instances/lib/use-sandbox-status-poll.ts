@@ -90,7 +90,11 @@ export function useSandboxStatusPoll(
       setResult((prev) => ({ ...prev, isLoading: true }));
 
       try {
-        const res = await fetch(`/api/v1/eliza/agents/${agentId}`);
+        // Bound each poll hop so a hung status endpoint cannot leave
+        // isLoading pinned forever (the error path only fires on rejection).
+        const res = await fetch(`/api/v1/eliza/agents/${agentId}`, {
+          signal: AbortSignal.timeout(10_000),
+        });
         if (cancelledRef.current) return;
 
         if (!res.ok) {

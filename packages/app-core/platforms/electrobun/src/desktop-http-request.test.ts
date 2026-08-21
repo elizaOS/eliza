@@ -35,6 +35,7 @@ describe("desktopHttpRequest", () => {
       statusText: "Created",
       headers: { "content-type": "text/plain" },
       body: "ok",
+      bodyBase64: null,
     });
     expect(fetchMock).toHaveBeenCalledWith(
       "http://agent.example:2138/api/auth/status",
