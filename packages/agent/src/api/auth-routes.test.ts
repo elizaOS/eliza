@@ -3,16 +3,18 @@
  * /status token state, loopback-only /pair-code, and rate-limited timing-safe
  * /pair exchange.
  */
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { handleAuthRoutes } from "./auth-routes.ts";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthRouteContext } from "./auth-routes.ts";
+import { handleAuthRoutes } from "./auth-routes.ts";
 
 type JsonFn = (res: unknown, data: unknown, status?: number) => void;
 type ErrorFn = (res: unknown, message: string, status?: number) => void;
 
-function makeCtx(
-  overrides: Partial<AuthRouteContext> = {},
-): { ctx: AuthRouteContext; json: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> } {
+function makeCtx(overrides: Partial<AuthRouteContext> = {}): {
+  ctx: AuthRouteContext;
+  json: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+} {
   const json = vi.fn() as unknown as JsonFn;
   const error = vi.fn() as unknown as ErrorFn;
   const ctx = {
@@ -24,7 +26,9 @@ function makeCtx(
     json: ((_res, data, status) =>
       status === undefined ? json(data) : json(data, status)) as JsonFn,
     error: ((_res, message, status) =>
-      status === undefined ? error(message) : error(message, status)) as ErrorFn,
+      status === undefined
+        ? error(message)
+        : error(message, status)) as ErrorFn,
     pairingEnabled: vi.fn(() => true),
     ensurePairingCode: vi.fn(() => "ABCD-EFGH"),
     normalizePairingCode: vi.fn((s: string) => s.replace(/-/g, "")),
@@ -50,8 +54,16 @@ vi.mock("@elizaos/shared", () => ({
   },
 }));
 
-import { isAuthorized, isTrustedLocalRequest, resolveBoundaryRole } from "./server-helpers-auth.ts";
-import { isCloudProvisionedContainer, PostAuthPairRequestSchema, resolveApiToken } from "@elizaos/shared";
+import {
+  isCloudProvisionedContainer,
+  PostAuthPairRequestSchema,
+  resolveApiToken,
+} from "@elizaos/shared";
+import {
+  isAuthorized,
+  isTrustedLocalRequest,
+  resolveBoundaryRole,
+} from "./server-helpers-auth.ts";
 
 const mockIsAuthorized = vi.mocked(isAuthorized);
 const mockIsTrustedLocalRequest = vi.mocked(isTrustedLocalRequest);
@@ -65,7 +77,10 @@ beforeEach(() => {
   mockResolveBoundaryRole.mockReturnValue("GUEST");
   mockIsCloud.mockReturnValue(false);
   vi.mocked(resolveApiToken).mockReturnValue(undefined);
-  mockParse.mockReturnValue({ success: true, data: { code: "ABCDEFGH" } } as never);
+  mockParse.mockReturnValue({
+    success: true,
+    data: { code: "ABCDEFGH" },
+  } as never);
 });
 
 describe("GET /api/auth/me", () => {
@@ -86,7 +101,9 @@ describe("GET /api/auth/me", () => {
 
   it("returns 401 remote_auth_required when token configured", async () => {
     mockIsAuthorized.mockReturnValue(false);
-    vi.mocked((await import("@elizaos/shared")).resolveApiToken).mockReturnValue("secret");
+    vi.mocked(
+      (await import("@elizaos/shared")).resolveApiToken,
+    ).mockReturnValue("secret");
     const { ctx, json } = makeCtx({ method: "GET", pathname: "/api/auth/me" });
     await handleAuthRoutes(ctx);
     expect(json).toHaveBeenCalledWith(
@@ -103,7 +120,10 @@ describe("GET /api/auth/me", () => {
     await handleAuthRoutes(ctx);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
-        identity: expect.objectContaining({ id: "local-agent", kind: "machine" }),
+        identity: expect.objectContaining({
+          id: "local-agent",
+          kind: "machine",
+        }),
         access: expect.objectContaining({ role: "OWNER" }),
       }),
     );
@@ -126,17 +146,27 @@ describe("GET /api/auth/me", () => {
 describe("GET /api/auth/status", () => {
   it("reports disabled pairing in cloud containers", async () => {
     mockIsCloud.mockReturnValue(true);
-    const { ctx, json } = makeCtx({ method: "GET", pathname: "/api/auth/status" });
+    const { ctx, json } = makeCtx({
+      method: "GET",
+      pathname: "/api/auth/status",
+    });
     await handleAuthRoutes(ctx);
-    expect(json).toHaveBeenCalledWith(
-      { required: false, pairingEnabled: false, expiresAt: null },
-    );
+    expect(json).toHaveBeenCalledWith({
+      required: false,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
   });
 
   it("reports required + pairing state for standalone", async () => {
     mockIsCloud.mockReturnValue(false);
-    vi.mocked((await import("@elizaos/shared")).resolveApiToken).mockReturnValue(undefined);
-    const { ctx, json } = makeCtx({ method: "GET", pathname: "/api/auth/status" });
+    vi.mocked(
+      (await import("@elizaos/shared")).resolveApiToken,
+    ).mockReturnValue(undefined);
+    const { ctx, json } = makeCtx({
+      method: "GET",
+      pathname: "/api/auth/status",
+    });
     await handleAuthRoutes(ctx);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -151,15 +181,24 @@ describe("GET /api/auth/status", () => {
 describe("GET /api/auth/pair-code", () => {
   it("rejects non-loopback callers with 403", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(false);
-    const { ctx, error } = makeCtx({ method: "GET", pathname: "/api/auth/pair-code" });
+    const { ctx, error } = makeCtx({
+      method: "GET",
+      pathname: "/api/auth/pair-code",
+    });
     await handleAuthRoutes(ctx);
-    expect(error).toHaveBeenCalledWith("Pair code visible on loopback only", 403);
+    expect(error).toHaveBeenCalledWith(
+      "Pair code visible on loopback only",
+      403,
+    );
   });
 
   it("rejects cloud containers with 403", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(true);
     mockIsCloud.mockReturnValue(true);
-    const { ctx, error } = makeCtx({ method: "GET", pathname: "/api/auth/pair-code" });
+    const { ctx, error } = makeCtx({
+      method: "GET",
+      pathname: "/api/auth/pair-code",
+    });
     await handleAuthRoutes(ctx);
     expect(error).toHaveBeenCalledWith("Pairing disabled", 403);
   });
@@ -167,7 +206,10 @@ describe("GET /api/auth/pair-code", () => {
   it("returns the code on loopback", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(true);
     mockIsCloud.mockReturnValue(false);
-    const { ctx, json } = makeCtx({ method: "GET", pathname: "/api/auth/pair-code" });
+    const { ctx, json } = makeCtx({
+      method: "GET",
+      pathname: "/api/auth/pair-code",
+    });
     await handleAuthRoutes(ctx);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({ code: "ABCD-EFGH" }),
@@ -191,8 +233,13 @@ describe("POST /api/auth/pair", () => {
   it("accepts the raw token from a trusted loopback caller", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(true);
     mockIsCloud.mockReturnValue(false);
-    vi.mocked((await import("@elizaos/shared")).resolveApiToken).mockReturnValue("correct-token");
-    mockParse.mockReturnValue({ success: true, data: { code: "correct-token" } } as never);
+    vi.mocked(
+      (await import("@elizaos/shared")).resolveApiToken,
+    ).mockReturnValue("correct-token");
+    mockParse.mockReturnValue({
+      success: true,
+      data: { code: "correct-token" },
+    } as never);
     const { ctx, json } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
@@ -205,8 +252,13 @@ describe("POST /api/auth/pair", () => {
   it("rejects a wrong token from loopback with 403", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(true);
     mockIsCloud.mockReturnValue(false);
-    vi.mocked((await import("@elizaos/shared")).resolveApiToken).mockReturnValue("real-token");
-    mockParse.mockReturnValue({ success: true, data: { code: "wrong-token" } } as never);
+    vi.mocked(
+      (await import("@elizaos/shared")).resolveApiToken,
+    ).mockReturnValue("real-token");
+    mockParse.mockReturnValue({
+      success: true,
+      data: { code: "wrong-token" },
+    } as never);
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
@@ -227,7 +279,10 @@ describe("POST /api/auth/pair", () => {
       rateLimitPairing: vi.fn(() => false),
     });
     await handleAuthRoutes(ctx);
-    expect(error).toHaveBeenCalledWith("Too many attempts. Try again later.", 429);
+    expect(error).toHaveBeenCalledWith(
+      "Too many attempts. Try again later.",
+      429,
+    );
   });
 
   it("returns 400 on invalid body schema", async () => {
@@ -250,8 +305,13 @@ describe("POST /api/auth/pair", () => {
   it("returns 410 when the pairing code expired", async () => {
     mockIsTrustedLocalRequest.mockReturnValue(false);
     mockIsCloud.mockReturnValue(false);
-    vi.mocked((await import("@elizaos/shared")).resolveApiToken).mockReturnValue("token");
-    mockParse.mockReturnValue({ success: true, data: { code: "WRONG" } } as never);
+    vi.mocked(
+      (await import("@elizaos/shared")).resolveApiToken,
+    ).mockReturnValue("token");
+    mockParse.mockReturnValue({
+      success: true,
+      data: { code: "WRONG" },
+    } as never);
     const { ctx, error } = makeCtx({
       method: "POST",
       pathname: "/api/auth/pair",
