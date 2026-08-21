@@ -93,9 +93,9 @@ import {
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  createNavigateViewEvent,
   dispatchAppEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -2186,7 +2186,14 @@ async function handleAuthCallbackDeepLink(
   );
 }
 
-function handleDeepLink(url: string): void {
+/**
+ * Returns `void` for every branch except the top-level-surface navigation
+ * intent, which returns the `dispatchNavigateViewRequest` promise so a caller
+ * that needs to know the intent actually LANDED (not merely enqueued) — today
+ * `mobile-lifecycle.ts`, gating its Android deep-link-buffer acknowledgement —
+ * can await it instead of acking on dispatch alone.
+ */
+function handleDeepLink(url: string): undefined | Promise<boolean> {
   const firstRunRemote = parseFirstRunRemoteConnectDeepLink(
     url,
     APP_URL_SCHEME,
@@ -2245,8 +2252,7 @@ function handleDeepLink(url: string): void {
   // from the hash directly.)
   const navigationIntent = resolveDeepLinkNavigationIntent(path);
   if (navigationIntent) {
-    dispatchDeepLinkNavigation(navigationIntent);
-    return;
+    return dispatchDeepLinkNavigation(navigationIntent);
   }
 
   const assistantLaunchHashRoute = buildAssistantLaunchHashRoute(
@@ -2379,8 +2385,10 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  * the rest of the app uses; a raw `window.location.hash` write does not open a
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
-function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+function dispatchDeepLinkNavigation(
+  intent: DeepLinkNavigationIntent,
+): Promise<boolean> {
+  return dispatchNavigateViewRequest(intent);
 }
 
 async function initializeDesktopShell(): Promise<void> {
@@ -2586,7 +2594,7 @@ async function initializeDesktopShell(): Promise<void> {
       if (typeof url !== "string" || url.trim().length === 0) {
         return;
       }
-      handleDeepLink(url);
+      void handleDeepLink(url);
     },
   });
 }

@@ -113,23 +113,26 @@ describe("eliza preset failure templates", () => {
       // "Genuinely useful, not cute": every reply must carry a remedy, not
       // just an announcement that something failed.
       expect(text().toLowerCase()).toMatch(
-        /\b(?:try|retry|send|check|fix|add|raise|set|sign in|wait)\b/,
+        /\b(?:try|retry|fix|add|needs?|finish)\b/,
       );
     });
   });
 
-  it("says the credits case is not fixed by waiting, and the rate-limit case is", () => {
+  it("distinguishes exhausted account usage from a temporary rate limit", () => {
     // The two are easy to confuse and the remedies are opposite: telling a
     // drained account to "try again" is the exact failure this replaces.
     const templates = elizaDefinition?.templates ?? {};
     expect(templates.insufficientCreditsReply?.toLowerCase()).toMatch(
-      /credits/,
+      /no usage left/,
     );
     expect(templates.insufficientCreditsReply?.toLowerCase()).toMatch(
-      /won't fix|add credits|raise the quota/,
+      /account owner needs to add more/,
+    );
+    expect(templates.insufficientCreditsReply?.toLowerCase()).not.toMatch(
+      /try again|wait|few seconds/,
     );
     expect(templates.rateLimitedReply?.toLowerCase()).toMatch(
-      /throttl|rate|few seconds/,
+      /too many requests|few seconds/,
     );
     expect(templates.rateLimitedReply?.toLowerCase()).not.toMatch(/credits/);
   });
@@ -147,15 +150,13 @@ describe("eliza preset failure templates", () => {
     expect(rateLimit).not.toMatch(/authoriz|account owner/);
   });
 
-  it("keeps the no-provider reply actionable with real env var names", () => {
+  it("keeps the no-provider reply truthful and consumer-facing", () => {
     const text = elizaDefinition?.templates?.noModelProviderReply ?? "";
-    for (const envKey of [
-      "ANTHROPIC_API_KEY",
-      "OPENAI_API_KEY",
-      "OPENROUTER_API_KEY",
-    ]) {
-      expect(text).toContain(envKey);
-    }
+    expect(text).toContain("person setting me up");
+    expect(text).toContain("finish");
+    expect(text).not.toMatch(
+      /api_key|model provider|environment|server|anthropic|openai|openrouter|eliza cloud/i,
+    );
   });
 
   it("gives each failure kind a distinct string", () => {

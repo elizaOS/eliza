@@ -18,9 +18,16 @@ function stripGitSuffix(value: string): string {
   return value.replace(/\.git$/i, "");
 }
 
+function stripSlashEdges(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) === 47) start += 1;
+  while (end > start && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(start, end);
+}
+
 function normalizePathSegments(pathname: string): string[] {
-  return pathname
-    .replace(/^\/+|\/+$/g, "")
+  return stripSlashEdges(pathname)
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
@@ -40,7 +47,10 @@ export function normalizeRepositoryInput(repo: string): string {
     return trimmed;
   }
 
-  const withoutTrailingSlash = trimmed.replace(/\/+$/, "");
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end -= 1;
+  const withoutTrailingSlash =
+    end === trimmed.length ? trimmed : trimmed.slice(0, end);
 
   if (/^https?:\/\//i.test(withoutTrailingSlash)) {
     try {

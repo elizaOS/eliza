@@ -184,7 +184,7 @@ export function useElizaAppProvisioningChat(
   }, [onboardingSessionId]);
 
   useEffect(() => {
-    if (!active || isReady || isDedicatedOff || provisioningError) return;
+    if (!active || isDedicatedOff || provisioningError) return;
     stoppedRef.current = false;
     if (pollStartRef.current === null) pollStartRef.current = Date.now();
     generationRef.current += 1;
@@ -201,7 +201,10 @@ export function useElizaAppProvisioningChat(
       const elapsed = pollStartRef.current
         ? Date.now() - pollStartRef.current
         : 0;
-      if (elapsed > POLL_DEADLINE_MS) {
+      if (
+        elapsed > POLL_DEADLINE_MS &&
+        containerStatusRef.current !== "running"
+      ) {
         if (generation !== generationRef.current) return;
         stoppedRef.current = true;
         setProvisioningError(
@@ -234,17 +237,26 @@ export function useElizaAppProvisioningChat(
               newStatus === "running" ? (res.data.bridgeUrl ?? null) : null,
             );
             if (newStatus === "running" && res.data.bridgeUrl) {
-              stoppedRef.current = true;
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: uid(),
-                  role: "assistant",
-                  content:
-                    "Your AI space is ready! You can start chatting in full now.",
-                },
-              ]);
-              return;
+              // A running target is not immutable: deletion, replacement, or
+              // lifecycle changes can make a later status response the new
+              // authority. Keep observing it and avoid duplicating the ready
+              // announcement on every successful poll.
+              pollStartRef.current = Date.now();
+              setMessages((prev) =>
+                prev.some((message) =>
+                  message.content.includes("Your AI space is ready!"),
+                )
+                  ? prev
+                  : [
+                      ...prev,
+                      {
+                        id: uid(),
+                        role: "assistant" as const,
+                        content:
+                          "Your AI space is ready! You can start chatting in full now.",
+                      },
+                    ],
+              );
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -287,8 +299,7 @@ export function useElizaAppProvisioningChat(
               provisioning?.status ?? containerStatusRef.current;
             applyOnboardingResponse(res.data);
             if (newStatus === "running" && provisioning?.bridgeUrl) {
-              stoppedRef.current = true;
-              return;
+              pollStartRef.current = Date.now();
             }
             if (newStatus === "none") {
               stoppedRef.current = true;
@@ -338,7 +349,6 @@ export function useElizaAppProvisioningChat(
   }, [
     active,
     applyOnboardingResponse,
-    isReady,
     isDedicatedOff,
     onboardingSessionId,
     provisioningError,

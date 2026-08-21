@@ -10,6 +10,12 @@ import type {
 
 const LIFEOPS_SCHEDULE_REQUEST_TIMEOUT_MS = 20_000;
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 export class LifeOpsScheduleSyncClientError extends Error {
   constructor(
     public readonly status: number,
@@ -70,7 +76,7 @@ export function resolveLifeOpsScheduleSyncConfig(
     return {
       configured: true,
       mode: "remote",
-      baseUrl: remoteApiBase.replace(/\/+$/, ""),
+      baseUrl: stripTrailingSlashes(remoteApiBase),
       accessToken:
         normalizeLifeOpsScheduleSyncSecret(config.remoteAccessToken) ??
         normalizeLifeOpsScheduleSyncSecret(process.env.ELIZA_REMOTE_ACCESS_TOKEN),

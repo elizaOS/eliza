@@ -65,7 +65,7 @@ describe("classifyDestructiveCommand — fires", () => {
     ["ri -R C:\\temp\\old"],
     ["rmdir -Recurse C:\\temp\\old"],
   ])("PowerShell recursive delete: %s", (command) => {
-    const verdict = classifyDestructiveCommand(command);
+    const verdict = classifyDestructiveCommand(command, "powershell");
     expect(verdict.destructive).toBe(true);
     expect(verdict.reason).toBe("recursive delete");
     expect(verdict.targets).toContain("C:\\temp\\old");
@@ -114,6 +114,295 @@ describe("classifyDestructiveCommand — fires", () => {
     expect(v.destructive).toBe(true);
     expect(v.targets[0]).toContain("eliza");
   });
+
+  it.each([
+    ["command substitution", "printf '%s' $(rm -rf ./nested)"],
+    ["double-quoted command substitution", 'printf "%s" "$(rm -rf ./nested)"'],
+    ["backtick substitution", "printf '%s' `rm -rf ./nested`"],
+    [
+      "nested legacy backticks",
+      "printf '%s' `printf '%s' \\`rm -rf ./nested\\``",
+    ],
+    [
+      "command substitution inside backticks",
+      "printf '%s' `printf '%s' \"$(rm -rf ./nested)\"`",
+    ],
+    [
+      "mixed nested substitutions",
+      'printf "%s" "$(printf \'%s\' "$(rm -rf ./nested)")"',
+    ],
+    [
+      "substitution after an apostrophe inside double quotes",
+      'printf "%s" "prefix \' $(rm -rf ./nested)"',
+    ],
+    [
+      "substitution after a commented closing parenthesis",
+      'printf "%s" "$(printf safe # )\nrm -rf ./nested\n)"',
+    ],
+  ])("recursive delete inside %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["./nested"],
+    });
+  });
+
+  it.each([
+    ["command substitution", "cat <<EOF\n$(rm -rf ./nested)\nEOF"],
+    ["backtick substitution", "cat <<EOF\n`rm -rf ./nested`\nEOF"],
+    [
+      "quoted-looking payload around an expansion",
+      "cat <<EOF\n'$(rm -rf ./nested)'\nEOF",
+    ],
+  ])("recursive delete inside an unquoted heredoc %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "recursive delete",
+      targets: ["./nested"],
+    });
+  });
+
+  it.each([
+    ["unterminated command substitution", "printf '%s' $(rm -rf ./nested"],
+    ["unterminated backtick substitution", "printf '%s' `rm -rf ./nested"],
+  ])("fails safe for an %s", (_name, command) => {
+    expect(classifyDestructiveCommand(command)).toMatchObject({
+      destructive: true,
+      reason: "shell syntax requires confirmation (unterminated posix token)",
+    });
+  });
+
+  it("fails safe when nested expansion depth exceeds the inspection bound", () => {
+    const command = `${"$(printf %s ".repeat(18)}safe${")".repeat(18)}`;
+    expect(classifyDestructiveCommand(command).destructive).toBe(true);
+  });
+});
+
+describe("classifyDestructiveCommand — lexical bypass resistance", () => {
+  it.each([
+    ["'r''m' -rf ./quoted", "posix"],
+    ["r\\m -rf ./escaped", "posix"],
+    ["m\\\nkfs.ext4 /dev/sdz1", "posix"],
+    [
+      "printf safe # '\" comment cannot poison quote state\nmkfs.ext4 /dev/sdz1",
+      "posix",
+    ],
+    ["(printf ready; rm -rf ./grouped)", "posix"],
+    ["printf '%s' \"$(rm -rf ./substitution)\"", "posix"],
+    ["printf '%s' \"$(printf ')'; rm -rf ./quoted-paren)\"", "posix"],
+    ["printf '%s' `rm -rf ./legacy-substitution`", "posix"],
+    ["sh -c 'rm -rf ./nested-shell'", "posix"],
+    ["bash -lc 'rm -rf ./login-shell'", "posix"],
+    ["zsh -fc 'rm -rf ./fast-shell'", "posix"],
+    ["sh -xc 'rm -rf ./traced-shell'", "posix"],
+    ["env -u UNUSED bash -lc 'rm -rf ./wrapped-shell'", "posix"],
+    ["exec rm -rf ./exec-wrapped", "posix"],
+    ["timeout --signal TERM 10 rm -rf ./timeout-wrapped", "posix"],
+    ["setsid rm -rf ./setsid-wrapped", "posix"],
+    ["stdbuf -o L rm -rf ./stdbuf-wrapped", "posix"],
+    ["chroot /srv/root rm -rf ./chroot-wrapped", "posix"],
+    ["chrt -f 50 rm -rf ./chrt-wrapped", "posix"],
+    ["ionice -c 2 rm -rf ./ionice-wrapped", "posix"],
+    ["unshare --mount rm -rf ./unshare-wrapped", "posix"],
+    ["runuser -u root -- rm -rf ./runuser-wrapped", "posix"],
+    ["su -c 'rm -rf ./su-wrapped' root", "posix"],
+    ["watch -n 2 rm -rf ./watch-wrapped", "posix"],
+    ["script -q -c 'rm -rf ./script-wrapped' /dev/null", "posix"],
+    ["noglob rm -rf ./noglob-wrapped", "posix"],
+    ["repeat 2 rm -rf ./repeat-wrapped", "posix"],
+    ["flock /tmp/eliza.lock rm -rf ./flock-wrapped", "posix"],
+    ["taskset ff rm -rf ./taskset-wrapped", "posix"],
+    ["! rm -rf ./negated", "posix"],
+    ["if rm -rf ./if-condition; then :; fi", "posix"],
+    ["printf ready; then rm -rf ./then-body", "posix"],
+    ["env -S 'rm -rf ./split-string'", "posix"],
+    ["env -S'rm -rf ./attached-split-string'", "posix"],
+    ["env -S 'rm\\_-rf\\_./escaped-split-string'", "posix"],
+    ["$'rm' -rf ./ansi-quoted", "posix"],
+    ["/bin/r? -rf ./globbed-executable", "posix"],
+    ["@(rm) -rf ./extglobbed-executable", "posix"],
+    ["rm -{r,r}f ./brace-expanded", "posix"],
+    ["printf 'rm -rf ./piped-shell' | bash", "posix"],
+    ["bash <<EOF\nprintf safe\nEOF", "posix"],
+    ["bash <<< 'printf safe'", "posix"],
+    ["cat <<EOF\n$(rm -rf ./heredoc-substitution)\nEOF", "posix"],
+    ["cat ./migration.sql | psql", "posix"],
+    ["psql --file ./migration.sql", "posix"],
+    ["alias cleanup='rm -rf'; cleanup ./aliased", "posix"],
+    ["trap 'rm -rf ./trapped' EXIT", "posix"],
+    ["hash -p /bin/rm cleanup", "posix"],
+    ["Set-Alias cleanup Remove-Item", "powershell"],
+    ["Start-Process rm -ArgumentList '-rf ./started-native'", "powershell"],
+    ["saps -FilePath rm -ArgumentList '-rf ./started-alias'", "powershell"],
+    [
+      "start pwsh -ArgumentList \"-Command 'Remove-Item C:\\temp\\started -Recurse'\"",
+      "powershell",
+    ],
+    ["busybox rm -rf ./busybox-wrapped", "posix"],
+    ["rm --recurs ./gnu-long-option", "posix"],
+    ["Remove-Item C:\\temp\\* -Force", "powershell"],
+    ["bash --rcfile /dev/null -lc 'rm -rf ./rcfile-shell'", "posix"],
+    ["eval 'rm -rf ./evaluated'", "posix"],
+    ["printf 'DROP DATABASE eliza' | cat | psql", "posix"],
+    ["find ./cache -type f -exec rm -rf {} +", "posix"],
+    ["env -u UNUSED sudo -u root rm -rf ./wrapped", "posix"],
+    ["printf '%s\\n' ./cache | xargs -n 1 rm -rf", "posix"],
+    ["Remove-`Item C:\\temp\\old -Recurse", "powershell"],
+    ["Remove-`\nItem C:\\temp\\old -Recurse", "powershell"],
+    ["Remove-`\r\nItem C:\\temp\\old -Recurse", "powershell"],
+    [
+      "Write-Output safe # '\" cannot poison state\nRemove-Item C:\\temp\\old -Recurse",
+      "powershell",
+    ],
+    ["& 'Remove-Item' -LiteralPath C:\\temp\\old -Recurse", "powershell"],
+    ["& { Remove-Item C:\\temp\\old -Recurse }", "powershell"],
+    ["pwsh -Command 'Remove-Item C:\\temp\\old -Recurse'", "powershell"],
+    ["pwsh -Command Remove-Item C:\\temp\\old -Recurse", "powershell"],
+    ["pwsh -Com 'Remove-Item C:\\temp\\old -Recurse'", "powershell"],
+    ["rm -Recurse:$true C:\\temp\\old", "powershell"],
+    ["Invoke-Expression 'Remove-Item C:\\temp\\old -Recurse'", "powershell"],
+    ["Write-Output $((Remove-Item C:\\temp\\old -Recurse))", "powershell"],
+    ["find /bin -name rm -exec {} -rf ./placeholder-target \\;", "posix"],
+    ["printf /bin/rm | xargs -I CMD env CMD -rf ./placeholder-target", "posix"],
+    ["env --argv0 fake rm -rf ./shifted-env", "posix"],
+    ["sudo -T 10 rm -rf ./shifted-sudo", "posix"],
+    ["unshare --setuid 0 rm -rf ./shifted-unshare", "posix"],
+    ["runuser -u root -w FOO rm -rf ./shifted-runuser", "posix"],
+    ["flock --start 0 /tmp/lock rm -rf ./shifted-flock", "posix"],
+    ["bash ./cleanup.sh", "posix"],
+    [". /dev/stdin <<'EOF'\nrm -rf ./sourced\nEOF", "posix"],
+    ["source <(printf 'rm -rf ./sourced')", "posix"],
+    ["Start-Process rm -ArgumentList:'-rf ./attached'", "powershell"],
+    ["Start-Process rm -Args:'-rf ./abbreviated'", "powershell"],
+    ["Start-Process rm -ArgumentList [string]'-rf ./typed'", "powershell"],
+    ["Start-Process rm -ArgumentList @'\n-rf ./here-string\n'@", "powershell"],
+  ] as const)("%s (%s)", (command, dialect) => {
+    expect(classifyDestructiveCommand(command, dialect).destructive).toBe(true);
+  });
+
+  it.each([
+    ["$command -rf ./unknown", "posix"],
+    ['sh -c "$program"', "posix"],
+    ['eval "$program"', "posix"],
+    ["& $command -Recurse C:\\temp\\old", "powershell"],
+    ["Invoke-Expression $program", "powershell"],
+    ["& ('Remove-' + 'Item') C:\\temp\\old -Recurse", "powershell"],
+    ["pwsh -EncodedCommand UgBlAG0AbwB2AGUALQBJAHQAZQBtAA==", "powershell"],
+    ["pwsh -Command -", "powershell"],
+    ["pwsh -File ./cleanup.ps1", "powershell"],
+    ["opts=-rf; rm $opts ./dynamic-options", "posix"],
+    ["opts=-rf; rm $" + "{opts} ./dynamic-braced-options", "posix"],
+    ["rm -f $pattern", "posix"],
+    ["timeout $options 10 rm -rf ./dynamic-timeout", "posix"],
+    ["dd if=/dev/zero of=$device", "posix"],
+    ["find ./cache $expression", "posix"],
+    ["psql -c $query", "posix"],
+    ["Remove-Item @removeArgs", "powershell"],
+    ["Start-Process $tool -ArgumentList '-rf ./dynamic-tool'", "powershell"],
+    ["Start-Process rm -ArgumentList $arguments", "powershell"],
+    ["Start-Process rm -ArgumentList '-rf','./opaque-array'", "powershell"],
+    ["printf 'unterminated", "posix"],
+    ["Write-Output 'unterminated", "powershell"],
+  ] as const)(
+    "fails to confirmation for unprovable syntax: %s",
+    (command, dialect) => {
+      const verdict = classifyDestructiveCommand(command, dialect);
+      expect(verdict.destructive).toBe(true);
+      expect(verdict.reason).toContain("requires confirmation");
+    },
+  );
+});
+
+describe("classifyDestructiveCommand — dialect-safe controls", () => {
+  it.each([
+    ["printf '%s\\n' 'rm -rf ./mentioned'", "posix"],
+    ["printf '%s\\n' '$(rm -rf ./not-executed)'", "posix"],
+    ["printf '%s\\n' \"r\\m -rf ./still-text\"", "posix"],
+    ["printf '%s\\n' \"$(printf ')')\"", "posix"],
+    ["printf safe # rm -rf ./commented", "posix"],
+    ["printf safe # '\"\nprintf done", "posix"],
+    ["sh -c 'printf safe'", "posix"],
+    ["bash -lc 'printf safe'", "posix"],
+    ["sh -xc 'printf safe'", "posix"],
+    ["bash -o noclobber -lc 'printf safe'", "posix"],
+    ["bash --rcfile /dev/null -lc 'printf safe'", "posix"],
+    ["if printf safe; then :; fi", "posix"],
+    ['do [ -e "$path" ]', "posix"],
+    ["env -S 'printf safe'", "posix"],
+    ["env -S'printf safe'", "posix"],
+    ["chrt -f 50 printf '%s' rm -rf", "posix"],
+    ["ionice -c 2 printf '%s' rm -rf", "posix"],
+    ["unshare --mount printf '%s' rm -rf", "posix"],
+    ["runuser -u root -- printf '%s' rm -rf", "posix"],
+    ["su -c 'printf safe' root", "posix"],
+    ["watch -n 2 printf safe", "posix"],
+    ["script -q -c 'printf safe' /dev/null", "posix"],
+    ["repeat 2 printf safe", "posix"],
+    ["flock /tmp/eliza.lock printf '%s' rm -rf", "posix"],
+    ["taskset ff printf '%s' rm -rf", "posix"],
+    ["eval 'printf safe'", "posix"],
+    ["rm -f ./one-file", "posix"],
+    ["rm -f './literal-*'", "posix"],
+    ["rm -- $singleFile", "posix"],
+    ["printf '%s' $" + "{dynamicValue}", "posix"],
+    ["alias p='printf safe'", "posix"],
+    ["trap 'printf safe' EXIT", "posix"],
+    ["trap -l", "posix"],
+    ["cat <<EOF\nrm -rf ./heredoc-documentation\nEOF", "posix"],
+    ["cat <<'EOF'\n$(rm -rf ./quoted-heredoc)\nEOF", "posix"],
+    ["cat <<-EOF\n\trm -rf ./tabbed-heredoc-documentation\n\tEOF", "posix"],
+    ["cat <<< 'rm -rf ./here-string-documentation'", "posix"],
+    ["env -u UNUSED printf safe", "posix"],
+    ["sudo -u root printf safe", "posix"],
+    ["printf safe | xargs -n 1 printf '%s\\n'", "posix"],
+    ["printf '%s\\n' 'DROP DATABASE documentation'", "posix"],
+    ["Write-Output 'Remove-Item C:\\temp\\old -Recurse'", "powershell"],
+    ["Write-Output '# Remove-Item C:\\temp\\old -Recurse'", "powershell"],
+    ["Write-Output '<# Remove-Item C:\\temp\\old -Recurse #>'", "powershell"],
+    ["Write-Output 'Remove-`Item C:\\temp\\old -Recurse'", "powershell"],
+    ["pwsh -Command 'Write-Output safe'", "powershell"],
+    ["Remove-Item C:\\temp\\one.txt", "powershell"],
+    ["Remove-Item $singleFile", "powershell"],
+    ["Start-Process printf -ArgumentList safe", "powershell"],
+    ["start -FilePath printf -ArgumentList safe", "powershell"],
+    ["Start-Process printf -Wait", "powershell"],
+  ] as const)("%s (%s)", (command, dialect) => {
+    expect(classifyDestructiveCommand(command, dialect).destructive).toBe(
+      false,
+    );
+  });
+});
+
+describe("classifyDestructiveCommand — bounded failure policy", () => {
+  it("requires confirmation when the source limit is exceeded", () => {
+    const verdict = classifyDestructiveCommand(`printf ${"x".repeat(65_536)}`);
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toContain("source length limit exceeded");
+  });
+
+  it("requires confirmation when the token limit is exceeded", () => {
+    const verdict = classifyDestructiveCommand(
+      Array.from({ length: 4_097 }, () => "x").join(" "),
+    );
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toContain("token limit exceeded");
+  });
+
+  it("requires confirmation when nested substitutions exceed the depth limit", () => {
+    const verdict = classifyDestructiveCommand(
+      `${"$(".repeat(14)}printf safe${")".repeat(14)}`,
+    );
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toContain("nesting limit exceeded");
+  });
+
+  it("requires confirmation when wrapper nesting exceeds the depth limit", () => {
+    const verdict = classifyDestructiveCommand(
+      `${"env ".repeat(14)}printf safe`,
+    );
+    expect(verdict.destructive).toBe(true);
+    expect(verdict.reason).toContain("nesting limit exceeded");
+  });
 });
 
 describe("classifyDestructiveCommand — must NOT fire", () => {
@@ -140,6 +429,31 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
     expect(
       classifyDestructiveCommand('echo "rm -rf would be bad"').destructive,
     ).toBe(false);
+  });
+  it.each([
+    ["single-quoted command substitution", "printf '%s' '$(rm -rf ./data)'"],
+    ["escaped command substitution", "printf '%s' \\$(rm -rf ./data)"],
+    ["single-quoted backticks", "printf '%s' '`rm -rf ./data`'"],
+    ["escaped backticks", "printf '%s' \\`rm -rf ./data\\`"],
+    ["benign nested substitution", "printf '%s' \"$(printf safe)\""],
+    [
+      "apostrophe before a benign double-quoted substitution",
+      'printf "%s" "prefix \' $(printf safe)"',
+    ],
+    [
+      "closing parenthesis quoted inside a substitution",
+      "printf \"%s\" \"$(printf '%s' '# )')\"",
+    ],
+    [
+      "destructive-looking text inside a substitution comment",
+      'printf "%s" "$(printf safe # rm -rf ./data )\n)"',
+    ],
+    [
+      "escaped comment marker before the substitution delimiter",
+      'printf "%s" "$(printf \\# )"',
+    ],
+  ])("%s remains literal or benign", (_name, command) => {
+    expect(classifyDestructiveCommand(command).destructive).toBe(false);
   });
   it.each([
     ["line feed", "printf 'safe\nrm -rf ./data'"],
@@ -235,5 +549,13 @@ describe("classifyDestructiveCommand — must NOT fire", () => {
       classifyDestructiveCommand("cat <<'EOF'\nEO\\\nF\nrm -rf ./data\nEOF")
         .destructive,
     ).toBe(false);
+  });
+
+  it.each([
+    ["single-quoted", "cat <<'EOF'\n$(rm -rf ./data)\nEOF"],
+    ["double-quoted", 'cat <<"EOF"\n`rm -rf ./data`\nEOF'],
+    ["backslash-quoted", "cat <<\\EOF\n$(rm -rf ./data)\nEOF"],
+  ])("keeps expansions in a %s heredoc literal", (_name, command) => {
+    expect(classifyDestructiveCommand(command).destructive).toBe(false);
   });
 });

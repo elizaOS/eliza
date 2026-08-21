@@ -12,7 +12,11 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import {
+	toWellFormedUnicode,
+	truncateWellFormed,
+	unwrapUserMessageText,
+} from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
@@ -27,9 +31,10 @@ type GetSkillDetailsOptions = {
 const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
 
 function truncateSkillDetailsText(text: string): string {
-	return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS
-		? text
-		: `${text.slice(0, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
+	const wellFormed = toWellFormedUnicode(text);
+	return wellFormed.length <= SKILL_DETAILS_TEXT_MAX_CHARS
+		? wellFormed
+		: `${truncateWellFormed(wellFormed, SKILL_DETAILS_TEXT_MAX_CHARS)}\n\n[truncated skill details]`;
 }
 
 export const getSkillDetailsAction = {

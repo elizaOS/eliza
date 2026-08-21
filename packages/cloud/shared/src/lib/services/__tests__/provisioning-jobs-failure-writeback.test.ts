@@ -20,11 +20,18 @@ import { ProvisioningJobService } from "../provisioning-jobs";
 const APP_ID = "11111111-2222-4333-8444-555555555555";
 const ORG_ID = "99999999-aaaa-4bbb-8ccc-dddddddddddd";
 const CONTAINER_ID = "cccccccc-dddd-4eee-8fff-000000000000";
+const DEPLOYMENT_GENERATION = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 
 // Minimal DbTransaction stand-in: serves one container row for the select chain
 // (project_name + organization_id, since the writeback org-scopes the flip) and
 // records every update(table).set(values) the writeback issues.
-function mockTx(containerRow: { projectName: string; organizationId: string } | null) {
+function mockTx(
+  containerRow: {
+    projectName: string;
+    organizationId: string;
+    metadata?: Record<string, unknown>;
+  } | null,
+) {
   const updates: Array<{ table: unknown; values: Record<string, unknown> }> = [];
   const inserts: Array<{ table: unknown; values: Record<string, unknown> }> = [];
   const tx = {
@@ -96,7 +103,11 @@ describe("buildPermanentFailureWriteback: CONTAINER_PROVISION", () => {
   test("app container (UUID project_name) -> apps.deployment_status flipped to failed", async () => {
     const { job, cb } = containerProvisionWriteback();
     expect(cb).toBeDefined();
-    const { tx, updates, inserts } = mockTx({ projectName: APP_ID, organizationId: ORG_ID });
+    const { tx, updates, inserts } = mockTx({
+      projectName: APP_ID,
+      organizationId: ORG_ID,
+      metadata: { deploymentGeneration: DEPLOYMENT_GENERATION },
+    });
     await cb!(tx, job);
     expect(updates).toHaveLength(1);
     expect(updates[0].table).toBe(apps);

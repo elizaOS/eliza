@@ -155,10 +155,10 @@ export async function resolveProvisioningAgentChatTarget(
 
   // A superseded or foreign id. Not worth a second round-trip per message to
   // classify it: the canonical target is authoritative either way.
-  logger.info(
-    "[provisioning-agent-chat] ignoring non-canonical client agent id",
-    { requestedAgentId: agentId, canonicalAgentId: canonical.id },
-  );
+  logger.info("[provisioning-agent-chat] ignoring non-canonical client agent id", {
+    requestedAgentId: agentId,
+    canonicalAgentId: canonical.id,
+  });
   return canonical;
 }
 

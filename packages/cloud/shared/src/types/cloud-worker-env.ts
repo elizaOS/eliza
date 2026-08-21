@@ -305,6 +305,12 @@ export interface Bindings {
   SQL_HEAVY_PAYLOAD_STORAGE?: string;
   SQL_HEAVY_PAYLOAD_MIN_BYTES?: string;
   SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES?: string;
+  /**
+   * Hard ceiling, in bytes, on a single field persisted inline in a SQL text or
+   * jsonb column when object storage is unavailable. Defaults to 1 MiB; values
+   * below 1024 are ignored.
+   */
+  SQL_HEAVY_PAYLOAD_MAX_INLINE_BYTES?: string;
   LLM_TRAJECTORY_STORAGE?: string;
 
   // ---- Steward (auth provider) ----
@@ -410,6 +416,14 @@ export interface Bindings {
    */
   STRIPE_CONNECT_WEBHOOK_SECRET?: string;
   STRIPE_CURRENCY?: string;
+  /** Server-only recurring Plus plan Stripe Price binding. */
+  STRIPE_PLUS_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Plus plan. */
+  STRIPE_PLUS_PRODUCT_ID?: string;
+  /** Server-only recurring Pro plan Stripe Price binding. */
+  STRIPE_PRO_MONTHLY_PRICE_ID?: string;
+  /** Server-only approved Stripe Product for the Pro plan. */
+  STRIPE_PRO_PRODUCT_ID?: string;
 
   // ---- Crypto payments ----
   OXAPAY_WEBHOOK_IPS?: string;

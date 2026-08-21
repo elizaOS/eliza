@@ -151,10 +151,10 @@ describe("POST /api/v1/user/wallets/provision JSON body", () => {
   });
 
   test("preserves non-syntax request decoding failures as server errors", async () => {
-    const originalJson = HonoRequest.prototype.json;
-    HonoRequest.prototype.json = mock(async () => {
+    const originalText = HonoRequest.prototype.text;
+    HonoRequest.prototype.text = mock(async () => {
       throw new Error("request stream failed");
-    }) as typeof HonoRequest.prototype.json;
+    }) as typeof HonoRequest.prototype.text;
 
     try {
       const res = await post(JSON.stringify(validBody));
@@ -162,7 +162,7 @@ describe("POST /api/v1/user/wallets/provision JSON body", () => {
       expect(provisionServerWallet).not.toHaveBeenCalled();
       expect(failureResponse).toHaveBeenCalled();
     } finally {
-      HonoRequest.prototype.json = originalJson;
+      HonoRequest.prototype.text = originalText;
     }
   });
 

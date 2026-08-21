@@ -11,6 +11,8 @@ import {
   logger,
   ServiceType,
   stableStringify,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   executeRawSql,
@@ -888,7 +890,7 @@ export class PgApprovalQueue implements ApprovalQueue {
       void notifier
         .notify({
           title: "Approval needed",
-          body: input.reason.slice(0, 200),
+          body: truncateWellFormed(toWellFormedUnicode(input.reason), 200),
           category: "approval",
           priority: "high",
           source: "lifeops",

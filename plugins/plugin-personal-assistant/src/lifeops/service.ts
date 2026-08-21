@@ -1809,7 +1809,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
-      { subjectType: "owner", limit: 200 },
+      {
+        subjectType: "owner",
+        definitionScopes: [
+          {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: this.ownerEntityId(),
+          },
+        ],
+        limit: 200,
+      },
     );
     return views
       .filter(

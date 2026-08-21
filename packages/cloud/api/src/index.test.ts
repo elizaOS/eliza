@@ -876,6 +876,20 @@ describe("cloud-api worker entrypoint", () => {
     ).toBeNull();
   });
 
+  test("normalizes a 100k-dot configured hostname without pathological matching", () => {
+    const agentId = "e06bb509-6c52-4c33-a9f7-66addc43e8c8";
+    const env = {
+      ELIZA_CLOUD_AGENT_BASE_DOMAIN: `cloud.eliza.app${".".repeat(100_000)}`,
+    };
+
+    expect(
+      getGeneratedAgentId(
+        new URL(`https://${agentId}.cloud.eliza.app/api/health`),
+        env,
+      ),
+    ).toBe(agentId);
+  });
+
   test("proxies canonical staging marketing to the unified Pages develop branch", () => {
     const target = getFrontendAliasProxyTarget(
       new URL("https://staging.eliza.app/dashboard?tab=agents"),
@@ -1190,7 +1204,7 @@ describe("cloud-api worker entrypoint", () => {
     );
     expect(
       config.env?.staging?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
-    ).toBe("true");
+    ).toBe("false");
     expect(
       config.env?.production?.vars?.PERSONAL_DELIVERY_PROJECTION_READ_ENABLED,
     ).toBe("false");

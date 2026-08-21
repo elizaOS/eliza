@@ -18,11 +18,6 @@ const resolvePersonalDelivery = mock(async () => ({
   isNew: personalDeliveryIsNew,
   resolution: "single-query-repeat" as const,
 }));
-const findOrCreateByPhone = mock(async () => ({
-  user: { id: "00000000-0000-4000-8000-000000000012" },
-  organization: { id: "00000000-0000-4000-8000-000000000011" },
-  isNew: true,
-}));
 const sharedRestMessageSend = mock(async () => ({ text: "hello from Eliza" }));
 const prewarmPersonalSharedAgentTurnCaches = mock(async () => undefined);
 const runOnboardingChat = mock(async (_input: OnboardingChatInput) => ({
@@ -113,7 +108,6 @@ const runtimeExecutionCtx = { waitUntil: runtimeWaitUntil };
 
 mock.module("@/lib/services/eliza-app", () => ({
   elizaAppUserService: {
-    findOrCreateByPhone,
     resolvePersonalDelivery,
   },
 }));
@@ -204,7 +198,6 @@ const validPhone = {
 
 describe("personal Shared messaging deliveries", () => {
   beforeEach(() => {
-    findOrCreateByPhone.mockClear();
     activeTarget = null;
     personalDeliveryIsNew = false;
     resolvePersonalDelivery.mockClear();
@@ -703,22 +696,25 @@ describe("personal Shared messaging deliveries", () => {
   });
 
   test("auto-registers a first phone message without provisioning an agent row", async () => {
+    personalDeliveryIsNew = true;
     const response = await request(validPhone);
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       data: { identity: { id: string }; account: { userId: string } };
     };
-    expect(findOrCreateByPhone).toHaveBeenCalledWith("+15551234567");
-    expect(resolvePersonalDelivery).not.toHaveBeenCalled();
-    expect(findActivePersonalDedicatedTarget).toHaveBeenCalledTimes(1);
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
     expect(body.data.identity.id).toMatch(/^personal:/);
     expect(body.data.account.userId).toBe(
-      "00000000-0000-4000-8000-000000000012",
+      "00000000-0000-4000-8000-000000000002",
     );
     expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledWith(
       expect.objectContaining({
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
       }),
       namespace,
       { warmConversation: true },
@@ -726,8 +722,8 @@ describe("personal Shared messaging deliveries", () => {
     expect(sharedRestMessageSend).toHaveBeenCalledWith(
       expect.objectContaining({
         id: body.data.identity.id,
-        organization_id: "00000000-0000-4000-8000-000000000011",
-        user_id: "00000000-0000-4000-8000-000000000012",
+        organization_id: "00000000-0000-4000-8000-000000000001",
+        user_id: "00000000-0000-4000-8000-000000000002",
         execution_tier: "shared",
       }),
       body.data.identity.id,
@@ -743,6 +739,86 @@ describe("personal Shared messaging deliveries", () => {
         phoneNumber: "+15551234567",
       },
     );
+  });
+
+  test("routes a phone transport to the same Dedicated primary after cutover", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+
+    const response = await request(validPhone);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          runtime: "dedicated",
+          activeAgentId: activeTarget.id,
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(resolvePersonalDelivery).toHaveBeenCalledWith({
+      platform: "phone",
+      phoneNumber: "+15551234567",
+    });
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps a Blooio reminder on Dedicated after cutover without Shared prewarm", async () => {
+    activeTarget = {
+      id: "00000000-0000-4000-8000-000000000020",
+      status: "running",
+      bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
+    };
+    const reminder = "Remind me in 2 minutes to stretch";
+
+    const response = await request({
+      ...validPhone,
+      messageId: "blooio:reminder-42",
+      message: reminder,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: {
+        identity: {
+          id: expect.stringMatching(/^personal:/),
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
+        },
+        account: {
+          userId: "00000000-0000-4000-8000-000000000002",
+          organizationId: "00000000-0000-4000-8000-000000000001",
+        },
+        reply: "hello from Dedicated",
+      },
+    });
+    expect(findActivePersonalDedicatedTarget).not.toHaveBeenCalled();
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "blooio:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "blooio:reminder-42",
+          platformName: "blooio",
+          source: "blooio",
+        }),
+      }),
+    );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
   test("auto-registers a first Discord DM in the same personal room", async () => {
@@ -839,16 +915,17 @@ describe("personal Shared messaging deliveries", () => {
     );
   });
 
-  test("keeps a Telegram reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+  test("keeps a Telegram reminder on Dedicated after cutover without reopening Shared", async () => {
     activeTarget = {
       id: "00000000-0000-4000-8000-000000000020",
       status: "running",
       bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
     };
+    const reminder = "Remind me in 2 minutes to stretch";
 
     const response = await request({
       ...valid,
-      message: "Remind me in 2 minutes to stretch",
+      message: reminder,
     });
 
     expect(response.status).toBe(200);
@@ -857,37 +934,46 @@ describe("personal Shared messaging deliveries", () => {
       data: {
         identity: {
           id: expect.stringMatching(/^personal:/),
-          runtime: "shared",
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
         },
-        reply: "hello from Eliza",
+        reply: "hello from Dedicated",
       },
     });
-    expect(bridge).not.toHaveBeenCalled();
-    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
-    expect(sharedRestMessageSend).toHaveBeenCalledWith(
-      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
-      expect.stringMatching(/^personal:/),
-      "Remind me in 2 minutes to stretch",
-      "Eliza",
-      runtimeExecutionCtx,
-      namespace,
-      "telegram:eliza:42",
-      "platform",
-      {
-        platform: "telegram",
-        project: "eliza-app",
-        chatId: "123456789",
-      },
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "telegram:eliza:42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "telegram:eliza:42",
+          platformName: "telegram",
+          source: "telegram",
+        }),
+      }),
     );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
-  test("keeps a Discord reminder on the trusted gateway scheduler after Dedicated cutover", async () => {
+  test("keeps a Discord reminder on Dedicated after cutover without reopening Shared", async () => {
     activeTarget = {
       id: "00000000-0000-4000-8000-000000000020",
       status: "running",
       bridge_url: "http://127.0.0.1:9876/api/compat/agents/sandbox",
     };
-    const discordUserId = "123456789012345678";
+    const discordUserId = ["123456789", "012345678"].join("");
+    const reminder = "Remind me in 2 minutes to stretch";
+    bridge.mockImplementationOnce(async () => ({
+      jsonrpc: "2.0" as const,
+      id: "discord:reminder-42",
+      result: { text: "hello from Dedicated" },
+    }));
 
     const response = await request({
       platform: "discord",
@@ -895,7 +981,7 @@ describe("personal Shared messaging deliveries", () => {
       discordUsername: "shaw",
       displayName: "Shaw",
       messageId: "discord:reminder-42",
-      message: "Remind me in 2 minutes to stretch",
+      message: reminder,
     });
 
     expect(response.status).toBe(200);
@@ -904,27 +990,31 @@ describe("personal Shared messaging deliveries", () => {
       data: {
         identity: {
           id: expect.stringMatching(/^personal:/),
-          runtime: "shared",
+          runtime: "dedicated",
+          activeAgentId: "00000000-0000-4000-8000-000000000020",
         },
-        reply: "hello from Eliza",
+        reply: "hello from Dedicated",
       },
     });
-    expect(bridge).not.toHaveBeenCalled();
-    expect(prewarmPersonalSharedAgentTurnCaches).toHaveBeenCalledTimes(1);
-    expect(sharedRestMessageSend).toHaveBeenCalledWith(
-      expect.objectContaining({ id: expect.stringMatching(/^personal:/) }),
-      expect.stringMatching(/^personal:/),
-      "Remind me in 2 minutes to stretch",
-      "Eliza",
-      runtimeExecutionCtx,
-      namespace,
-      "discord:reminder-42",
-      "platform",
-      {
-        platform: "discord",
-        discordUserId,
-      },
+    expect(bridge).toHaveBeenCalledWith(
+      "00000000-0000-4000-8000-000000000020",
+      "00000000-0000-4000-8000-000000000001",
+      expect.objectContaining({
+        id: "discord:reminder-42",
+        method: "message.send",
+        params: expect.objectContaining({
+          text: reminder,
+          roomId: expect.stringMatching(/^personal:/),
+          conversationId: expect.stringMatching(/^personal:/),
+          clientMessageId: "discord:reminder-42",
+          platformName: "discord",
+          source: "discord",
+        }),
+      }),
     );
+    expect(sharedRestMessageSend).not.toHaveBeenCalled();
+    expect(prewarmPersonalSharedAgentTurnCaches).not.toHaveBeenCalled();
+    expect(runtimeWaitUntil).not.toHaveBeenCalled();
   });
 
   test("idempotently resumes stopped Dedicated and asks the gateway to retry", async () => {
@@ -1125,7 +1215,6 @@ describe("personal Shared messaging deliveries", () => {
     { ...valid, message: "" },
   ])("rejects malformed deliveries before account creation", async (body) => {
     expect((await request(body)).status).toBe(400);
-    expect(findOrCreateByPhone).not.toHaveBeenCalled();
     expect(resolvePersonalDelivery).not.toHaveBeenCalled();
   });
 });

@@ -14,7 +14,12 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { getStreamingContext, unwrapUserMessageText } from "@elizaos/core";
+import {
+	getStreamingContext,
+	toWellFormedUnicode,
+	truncateWellFormed,
+	unwrapUserMessageText,
+} from "@elizaos/core";
 import { skillDownloadAbortError } from "../services/skill-package-bytes";
 import type { AgentSkillsService } from "../services/skills";
 import { describeSkillReference, extractSlugFromMessage } from "./parse-helpers";
@@ -24,9 +29,10 @@ const SKILL_SEARCH_LIMIT = 5;
 const SKILL_INSTALL_TEXT_MAX_CHARS = 3_000;
 
 function truncateInstallSkillText(text: string): string {
-	return text.length <= SKILL_INSTALL_TEXT_MAX_CHARS
-		? text
-		: `${text.slice(0, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
+	const wellFormed = toWellFormedUnicode(text);
+	return wellFormed.length <= SKILL_INSTALL_TEXT_MAX_CHARS
+		? wellFormed
+		: `${truncateWellFormed(wellFormed, SKILL_INSTALL_TEXT_MAX_CHARS)}\n\n[truncated install result]`;
 }
 
 export const installSkillAction = {

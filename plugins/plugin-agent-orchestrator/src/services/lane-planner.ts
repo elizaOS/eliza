@@ -113,10 +113,14 @@ export function collisionProviderFromWorkspaceService(
 }
 
 function normalizePath(raw: string): string | undefined {
-  const trimmed = raw
-    .trim()
-    .replace(/^['"`([{<]+/, "")
-    .replace(/['"`)\]}>.,;:]+$/, "");
+  const value = raw.trim();
+  const leading = "'\"`([{<";
+  const trailing = "'\"`)]}>.,;:";
+  let start = 0;
+  let end = value.length;
+  while (start < end && leading.includes(value[start] ?? "")) start += 1;
+  while (end > start && trailing.includes(value[end - 1] ?? "")) end -= 1;
+  const trimmed = value.slice(start, end);
   if (!trimmed || trimmed === "." || trimmed === "/") return undefined;
   if (trimmed.includes("..")) return undefined;
   if (/^(?:https?:|file:)/i.test(trimmed)) return undefined;

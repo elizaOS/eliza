@@ -138,6 +138,7 @@ import {
   type SnapshotType,
   type SubmitPressReleaseInput,
   type SubmitPressReleaseResponse,
+  type SubscriptionPlansResponse,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -158,7 +159,9 @@ import {
 } from "./types.js";
 
 function trimTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end--;
+  return value.slice(0, end);
 }
 
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
@@ -260,13 +263,30 @@ function withPathParams(
   params?: Record<string, string | number>,
 ): string {
   if (!params) return path;
-  return path.replace(/\{([^}]+)\}/g, (_match, key: string) => {
+  let cursor = 0;
+  let searchFrom = 0;
+  const output: string[] = [];
+  while (searchFrom < path.length) {
+    const open = path.indexOf("{", searchFrom);
+    if (open === -1) break;
+    const close = path.indexOf("}", open + 1);
+    if (close === -1) break;
+    if (close === open + 1) {
+      searchFrom = open + 1;
+      continue;
+    }
+    const key = path.slice(open + 1, close);
     const value = params[key];
     if (value === undefined) {
       throw new Error(`Missing path parameter: ${key}`);
     }
-    return encodePathParam(value);
-  });
+    output.push(path.slice(cursor, open), encodePathParam(value));
+    cursor = close + 1;
+    searchFrom = cursor;
+  }
+  if (output.length === 0) return path;
+  output.push(path.slice(cursor));
+  return output.join("");
 }
 
 function createCliLoginRequestId(): string {
@@ -452,6 +472,12 @@ export class ElizaCloudClient {
 
   listModels(): Promise<ModelListResponse> {
     return this.v1.get<ModelListResponse>("/models", { skipAuth: true });
+  }
+
+  getSubscriptionPlans(): Promise<SubscriptionPlansResponse> {
+    return this.v1.get<SubscriptionPlansResponse>("/subscriptions/plans", {
+      skipAuth: true,
+    });
   }
 
   createResponse(

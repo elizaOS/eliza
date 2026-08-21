@@ -115,11 +115,10 @@ export class ApiKeysService {
       });
     }
 
-    const replicaApiKey = await apiKeysRepository.findActiveByHash(hash);
-    const primaryApiKey = replicaApiKey
-      ? undefined
-      : await apiKeysRepository.findActiveByHashConsistent(hash);
-    const apiKey = replicaApiKey ?? primaryApiKey;
+    // A cache miss is a lifecycle boundary, not an eventually-consistent read.
+    // Confirm on the primary before caching a positive entry so a replica that
+    // still exposes a just-revoked row cannot repopulate the validation cache.
+    const apiKey = await apiKeysRepository.findActiveByHashConsistent(hash);
 
     if (apiKey) {
       await cache.set(cacheKey, apiKey, CacheTTL.apiKey.validation);
@@ -359,8 +358,7 @@ export class ApiKeysService {
   }
 
   async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
-    // Get the key first to invalidate cache
-    const existing = await apiKeysRepository.findById(id);
+    const existing = await apiKeysRepository.findByIdConsistent(id);
     if (existing) {
       if (data.is_active === true && existing.is_active === false) {
         throw new ElizaError("Revoked API keys cannot be reactivated; create a new key instead", {
@@ -371,10 +369,13 @@ export class ApiKeysService {
       if (data.is_active === false) {
         await revokeInferenceApiKey(existing.organization_id, existing.id);
       }
-      await this.invalidateCache(existing.key_hash);
     }
 
-    return await apiKeysRepository.update(id, data);
+    const updated = await apiKeysRepository.update(id, data);
+    if (existing) {
+      await this.invalidateCache(existing.key_hash);
+    }
+    return updated;
   }
 
   async incrementUsage(id: string): Promise<void> {
@@ -382,14 +383,15 @@ export class ApiKeysService {
   }
 
   async delete(id: string): Promise<void> {
-    // Get the key first to invalidate cache
-    const existing = await apiKeysRepository.findById(id);
+    const existing = await apiKeysRepository.findByIdConsistent(id);
     if (existing) {
       await revokeInferenceApiKey(existing.organization_id, existing.id);
-      await this.invalidateCache(existing.key_hash);
     }
 
     await apiKeysRepository.delete(id);
+    if (existing) {
+      await this.invalidateCache(existing.key_hash);
+    }
   }
 
   /**
@@ -401,7 +403,7 @@ export class ApiKeysService {
    * atomic database replacement creates the new row identity.
    */
   async regenerate(id: string): Promise<{ apiKey: ApiKey; plainKey: string }> {
-    const existing = await apiKeysRepository.findById(id);
+    const existing = await apiKeysRepository.findByIdConsistent(id);
     if (!existing) {
       throw new ElizaError("API key not found", {
         code: "API_KEY_NOT_FOUND",
@@ -416,8 +418,6 @@ export class ApiKeysService {
     }
 
     await revokeInferenceApiKey(existing.organization_id, existing.id);
-    await this.invalidateCache(existing.key_hash);
-
     const { apiKey: replacement, plainKey } = await this.buildApiKeyInsert({
       name: existing.name,
       description: existing.description,
@@ -428,32 +428,33 @@ export class ApiKeysService {
       expires_at: existing.expires_at,
     });
     const apiKey = await apiKeysRepository.replace(existing.id, replacement);
+    await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
-    const existingKeys = await apiKeysRepository.findByUserAndName(userId, name);
+    const existingKeys = await apiKeysRepository.findActiveByUserAndNameConsistent(userId, name);
 
     for (const key of existingKeys) {
       await revokeInferenceApiKey(key.organization_id, key.id);
-      await this.invalidateCache(key.key_hash);
     }
 
     await apiKeysRepository.deactivateUserKeysByName(userId, name);
+    await this.confirmRevocationAfterCommit(existingKeys.map((key) => key.key_hash));
   }
 
   async deactivateByUserAndOrganization(userId: string, organizationId: string): Promise<void> {
-    const existingKeys = await apiKeysRepository.listByUser(userId);
-    const keysInOrganization = existingKeys.filter(
-      (key) => key.organization_id === organizationId && key.is_active,
+    const keysInOrganization = await apiKeysRepository.listActiveByUserAndOrganizationConsistent(
+      userId,
+      organizationId,
     );
 
     for (const key of keysInOrganization) {
       await revokeInferenceApiKey(key.organization_id, key.id);
-      await this.invalidateCache(key.key_hash);
     }
 
     await apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId);
+    await this.confirmRevocationAfterCommit(keysInOrganization.map((key) => key.key_hash));
   }
 
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that

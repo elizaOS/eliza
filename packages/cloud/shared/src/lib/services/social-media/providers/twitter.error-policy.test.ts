@@ -45,7 +45,7 @@ mock.module("../rate-limit", () => ({
   },
 }));
 
-const { twitterProvider } = await import("./twitter");
+const { twitterProvider, twitterFetch } = await import("./twitter");
 
 const CREDS = { accessToken: "tok" } as SocialCredentials;
 
@@ -180,5 +180,40 @@ describe("twitterProvider J1 boundaries — upstream failure becomes a structure
     const result = await twitterProvider.deletePost?.(CREDS, "post-1");
     expect(result?.success).toBe(false);
     expect(result?.error).toContain("not found");
+  });
+});
+
+describe("twitterFetch — bounded hops fail closed and keep caller signals", () => {
+  it("aborts a hung X/Twitter API hop at the timeout", async () => {
+    // An API that never settles on its own: the only way out is the caller's
+    // AbortSignal firing (the 30s default bounds every media-upload hop).
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation was aborted.", "AbortError"));
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      twitterFetch("https://upload.twitter.com/media/upload.json", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  it("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return okJson({ media_id_string: "m1" });
+    }) as unknown as typeof fetch;
+
+    const controller = new AbortController();
+    await twitterFetch("https://upload.twitter.com/media/upload.json", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

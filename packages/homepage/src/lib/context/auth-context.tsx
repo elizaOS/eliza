@@ -8,11 +8,15 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
 import { signInWithSolana as siwsSignIn } from "@/lib/api/siws";
-import { confirmSiwsSession } from "@/lib/context/siws-session";
+import {
+  assertCanonicalSiwsIdentity,
+  confirmSiwsSession,
+} from "@/lib/context/siws-session";
 
 export interface TelegramAuthData {
   id: number;
@@ -184,6 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const siwsAttemptRef = useRef(0);
 
   const setSessionToken = useCallback((token: string | null) => {
     if (typeof window === "undefined") return;
@@ -194,27 +199,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loadUserInfo = useCallback(
+    async (token: string): Promise<UserInfoResponse> =>
+      elizacloudFetch<UserInfoResponse>("/api/eliza-app/user/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+    [],
+  );
+
+  const commitUserInfo = useCallback((data: UserInfoResponse) => {
+    setUser(data.user);
+    setOrganization(data.organization);
+  }, []);
+
   const fetchUserInfo = useCallback(
     async (tokenOverride?: string): Promise<boolean> => {
       const token = tokenOverride || getAuthToken();
-      if (!token) {
-        return false;
-      }
+      if (!token) return false;
 
-      const data = await elizacloudFetch<UserInfoResponse>(
-        "/api/eliza-app/user/me",
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
-      setUser(data.user);
-      setOrganization(data.organization);
+      const data = await loadUserInfo(token);
+      commitUserInfo(data);
       return true;
     },
-    [],
+    [loadUserInfo, commitUserInfo],
   );
 
   useEffect(() => {
@@ -452,33 +461,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const loginWithSolana = useCallback(async (): Promise<SolanaLoginResult> => {
+    const attempt = ++siwsAttemptRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const result = await siwsSignIn();
       await confirmSiwsSession(result.apiKey, {
-        storeToken: setSessionToken,
-        loadCanonicalUser: fetchUserInfo,
-        clearIdentity: () => {
-          setUser(null);
-          setOrganization(null);
+        loadCanonicalUser: loadUserInfo,
+        validateCanonicalUser: (canonicalUser) => {
+          assertCanonicalSiwsIdentity(result, canonicalUser);
         },
+        isCurrentAttempt: () => attempt === siwsAttemptRef.current,
+        storeToken: setSessionToken,
+        publishCanonicalUser: commitUserInfo,
       });
       return { success: true, address: result.address };
     } catch (err) {
       const result = parseAuthError(err);
-      setError(result.error ?? "Solana sign-in failed");
+      if (attempt === siwsAttemptRef.current) {
+        setError(result.error ?? "Solana sign-in failed");
+      }
       return result;
     } finally {
-      setIsLoading(false);
+      if (attempt === siwsAttemptRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [setSessionToken, fetchUserInfo]);
+  }, [setSessionToken, loadUserInfo, commitUserInfo]);
 
   const logout = useCallback(() => {
+    siwsAttemptRef.current += 1;
     setSessionToken(null);
     setUser(null);
     setOrganization(null);
     setError(null);
+    setIsLoading(false);
   }, [setSessionToken]);
 
   const refreshUser = useCallback(async () => {

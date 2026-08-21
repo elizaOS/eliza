@@ -244,15 +244,22 @@ export function buildContainerExecutorDeps(): ContainerExecutorDeps {
       listVerifiedAppOrigins(appId).then((origins) =>
         origins.map((origin) => origin.replace(/^https?:\/\//, "").replace(/\/+$/, "")),
       ),
-    markAppDeployed: async (appId, productionUrl) => {
+    isAppDeploymentCurrent: (appId, deploymentGeneration) =>
+      appsService.isDeploymentGenerationCurrent(appId, deploymentGeneration),
+    markAppDeployed: async (appId, deploymentGeneration, productionUrl) => {
       // App ids are UUIDs; a non-UUID project_name (a plain /v1/containers row,
       // which is not an app) is skipped so this never mis-updates or UUID-casts.
       if (!isValidUUID(appId)) return;
-      await appsService.update(appId, {
-        deployment_status: "deployed",
-        production_url: productionUrl,
-        last_deployed_at: new Date(),
-      });
+      await appsService.updateDeploymentGeneration(
+        appId,
+        deploymentGeneration,
+        {
+          deployment_status: "deployed",
+          production_url: productionUrl,
+          last_deployed_at: new Date(),
+        },
+        ["deploying"],
+      );
     },
     ...ingress,
   };

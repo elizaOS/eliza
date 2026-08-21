@@ -78,7 +78,8 @@ describe("Shared turn AgentRuntime boundary", () => {
         channel: { type: ChannelType.DM, source: "shared-runtime" },
       },
     });
-    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime boundaries");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("Shared runtime capabilities");
+    expect(JSON.stringify(runtimeInputs[0])).toContain("prerequisites:");
   });
 
   test("preserves server-owned voice execution semantics", async () => {

@@ -13,8 +13,14 @@
  *
  * OPTIONS preflight for these paths is also eligible for the thin shell.
  */
+function removeTrailingSlashes(pathname: string): string {
+  let end = pathname.length;
+  while (end > 0 && pathname.charCodeAt(end - 1) === 47) end--;
+  return end === 0 ? "/" : pathname.slice(0, end);
+}
+
 export function isThinStewardPublicPath(pathname: string): boolean {
-  const normalized = pathname.replace(/\/+$/, "") || "/";
+  const normalized = removeTrailingSlashes(pathname);
   return (
     normalized === "/steward/auth/providers" ||
     normalized === "/steward/tenants/config"
@@ -52,7 +58,7 @@ export function isThinStewardPublicPath(pathname: string): boolean {
  * payments) stay on the full app.
  */
 export function isThinStewardEmailAuthPath(pathname: string): boolean {
-  const normalized = pathname.replace(/\/+$/, "") || "/";
+  const normalized = removeTrailingSlashes(pathname);
   return (
     normalized === "/steward/auth/email/send" ||
     normalized === "/steward/auth/email/code/verify" ||

@@ -117,6 +117,8 @@ async function prepareContainerInsertPayload(
     organizationId: data.organization_id,
     objectId: context.id,
     field: "deployment_log",
+    // Deployment logs are diagnostics; bound them when offload is unavailable.
+    oversizeInline: "clamp" as const,
     createdAt: data.created_at ?? context.created_at,
     value: data.deployment_log,
   });
@@ -142,6 +144,8 @@ async function prepareContainerUpdatePayload(
     organizationId: data.organization_id ?? context.organization_id,
     objectId: context.id,
     field: "deployment_log",
+    // Deployment logs are diagnostics; bound them when offload is unavailable.
+    oversizeInline: "clamp" as const,
     createdAt: data.created_at ?? context.created_at ?? new Date(),
     value: data.deployment_log,
   });

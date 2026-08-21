@@ -5,7 +5,7 @@
  * global fetch is mocked and restored per test.
  */
 import { afterEach, describe, expect, test } from "bun:test";
-import { getTuningJobStatus, listTuningJobs } from "./vertex-tuning";
+import { getTuningJobStatus, listTuningJobs, vertexTuningFetch } from "./vertex-tuning";
 
 const realFetch = globalThis.fetch;
 
@@ -65,5 +65,39 @@ describe("getTuningJobStatus — internal failure propagates", () => {
     const result = await getTuningJobStatus(job.name, "token");
     expect(result.state).toBe("JOB_STATE_SUCCEEDED");
     expect(result.tunedModelDisplayName).toBe("tuned-x");
+  });
+});
+
+describe("vertexTuningFetch — bounded hops fail closed and keep caller signals", () => {
+  test("aborts a hung Vertex AI API hop at the timeout", async () => {
+    // An API that never settles on its own: the only way out is the caller's
+    // AbortSignal firing (the 30s default bounds every tuning hop).
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        });
+      });
+    }) as typeof fetch;
+
+    const start = Date.now();
+    await expect(
+      vertexTuningFetch("https://aiplatform.googleapis.com/v1/jobs/x", undefined, 100),
+    ).rejects.toThrow(/aborted/i);
+    expect(Date.now() - start).toBeLessThan(5_000);
+  });
+
+  test("preserves a caller-provided abort signal", async () => {
+    let seen: AbortSignal | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init?.signal;
+      return new Response(JSON.stringify({ tuningJobs: [] }), { status: 200 });
+    }) as typeof fetch;
+
+    const controller = new AbortController();
+    await vertexTuningFetch("https://aiplatform.googleapis.com/v1/jobs/x", {
+      signal: controller.signal,
+    });
+    expect(seen).toBe(controller.signal);
   });
 });

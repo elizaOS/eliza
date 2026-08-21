@@ -15,7 +15,11 @@
  * to defend against unbounded growth in a noisy chat.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 
 type RuntimeCacheLike = Pick<
   IAgentRuntime,
@@ -134,11 +138,11 @@ function roomCacheKey(roomId: string): string {
 }
 
 function clampSnippet(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length <= PROMPT_SNIPPET_MAX_LENGTH) {
-    return trimmed;
+  const wellFormed = toWellFormedUnicode(value.trim());
+  if (wellFormed.length <= PROMPT_SNIPPET_MAX_LENGTH) {
+    return wellFormed;
   }
-  return `${trimmed.slice(0, PROMPT_SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
+  return `${truncateWellFormed(wellFormed, PROMPT_SNIPPET_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function isValidIso(value: unknown): value is string {

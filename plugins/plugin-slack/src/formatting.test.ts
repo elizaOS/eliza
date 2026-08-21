@@ -33,6 +33,11 @@ describe("escapeSlackMrkdwn", () => {
     expect(escapeSlackMrkdwn("a & b < c > d")).toBe("a &amp; b &lt; c &gt; d");
     expect(escapeSlackMrkdwn("plain text")).toBe("plain text");
   });
+
+  it("handles a 100k unterminated Slack control run in one pass", () => {
+    const adversarial = `<${"a".repeat(100_000)}`;
+    expect(escapeSlackMrkdwn(adversarial)).toBe(`&lt;${"a".repeat(100_000)}`);
+  });
 });
 
 describe("markdownToSlackMrkdwn", () => {
@@ -41,6 +46,11 @@ describe("markdownToSlackMrkdwn", () => {
     expect(markdownToSlackMrkdwn("*italic*")).toBe("_italic_");
     expect(markdownToSlackMrkdwn("~~struck~~")).toBe("~struck~");
     expect(markdownToSlackMrkdwn("")).toBe("");
+  });
+
+  it("handles a 100k unterminated code fence without backtracking", () => {
+    const adversarial = `\`\`\`json\n${"x".repeat(100_000)}`;
+    expect(markdownToSlackMrkdwn(adversarial)).toContain("x".repeat(100_000));
   });
 });
 

@@ -14,6 +14,23 @@ import { withRetry } from "../rate-limit";
 
 const SLACK_API_BASE = "https://slack.com/api";
 
+const SLACK_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Slack hop so a hung or rate-limited API cannot pin the
+ * publishing worker indefinitely. A caller-provided abort signal wins.
+ */
+export function slackFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = SLACK_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+  });
+}
+
 interface SlackResponse<_T = unknown> {
   ok: boolean;
   error?: string;
@@ -60,7 +77,7 @@ async function slackApiRequest<T>(
 ): Promise<T> {
   const { data } = await withRetry<SlackResponse<T>>(
     () =>
-      fetch(`${SLACK_API_BASE}/${method}`, {
+      slackFetch(`${SLACK_API_BASE}/${method}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${botToken}`,
@@ -82,7 +99,7 @@ async function slackApiRequest<T>(
 }
 
 async function sendWebhook(webhookUrl: string, payload: Record<string, unknown>): Promise<void> {
-  const response = await fetch(webhookUrl, {
+  const response = await slackFetch(webhookUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -358,7 +375,7 @@ export const slackProvider: SocialMediaProvider = {
     formData.append("file", new Blob([fileBytes], { type: media.mimeType }), filename);
     formData.append("filename", filename);
 
-    const response = await fetch(`${SLACK_API_BASE}/files.upload`, {
+    const response = await slackFetch(`${SLACK_API_BASE}/files.upload`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${credentials.botToken}`,

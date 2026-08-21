@@ -328,12 +328,29 @@ export type LifeOpsDefinitionScope = {
   subjectId: string;
 };
 
-function definitionScopePredicate(scope?: LifeOpsDefinitionScope): string {
+function definitionScopePredicate(
+  scope?: LifeOpsDefinitionScope,
+  tableAlias?: string,
+): string {
   if (!scope) return "";
+  const prefix = tableAlias ? `${tableAlias}.` : "";
   return `
-          AND domain = ${sqlQuote(scope.domain)}
-          AND subject_type = ${sqlQuote(scope.subjectType)}
-          AND subject_id = ${sqlQuote(scope.subjectId)}`;
+          AND ${prefix}domain = ${sqlQuote(scope.domain)}
+          AND ${prefix}subject_type = ${sqlQuote(scope.subjectType)}
+          AND ${prefix}subject_id = ${sqlQuote(scope.subjectId)}`;
+}
+
+function definitionScopeSetPredicate(
+  scopes?: readonly LifeOpsDefinitionScope[],
+  tableAlias = "definition",
+): string {
+  if (scopes === undefined) return "";
+  if (scopes.length === 0) return " AND FALSE";
+  const clauses = scopes.map(
+    (scope) =>
+      `(${tableAlias}.domain = ${sqlQuote(scope.domain)} AND ${tableAlias}.subject_type = ${sqlQuote(scope.subjectType)} AND ${tableAlias}.subject_id = ${sqlQuote(scope.subjectId)})`,
+  );
+  return ` AND (${clauses.join(" OR ")})`;
 }
 
 function parseOwnershipFields(row: Record<string, unknown>) {
@@ -3431,22 +3448,29 @@ export class LifeOpsRepository {
   }
 
   /**
-   * Persist a definition mutation. The predicate binds the row to the
-   * definition's own subject identity so a write can never land on another
-   * subject's record, and an optional `expectedUpdatedAt` turns the write
-   * into an optimistic-concurrency mutation: when the stored revision has
-   * moved (or the row is gone / owned by another subject) exactly zero rows
-   * match and a typed `LIFEOPS_DEFINITION_CONFLICT` error is thrown for the
-   * caller to re-resolve.
+   * Persist a definition mutation. The predicate binds the row to the supplied
+   * expected scope, or to the definition's target scope when no move is being
+   * made, so an authorized caller can move a row without making its old scope
+   * writable by unrelated callers. `expectedUpdatedAt` adds optimistic
+   * concurrency; a stale, missing, or differently scoped row raises a typed
+   * `LIFEOPS_DEFINITION_CONFLICT` for the caller to re-resolve.
    */
   async updateDefinition(
     definition: LifeOpsTaskDefinition,
-    options?: { expectedUpdatedAt?: string },
+    options?: {
+      expectedUpdatedAt?: string;
+      expectedScope?: LifeOpsDefinitionScope;
+    },
   ): Promise<void> {
     const revisionPredicate = options?.expectedUpdatedAt
       ? `
          AND updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
       : "";
+    const expectedScope = options?.expectedScope ?? {
+      domain: definition.domain,
+      subjectType: definition.subjectType,
+      subjectId: definition.subjectId,
+    };
     const rows = await executeRawSql(
       this.runtime,
       `UPDATE app_lifeops.life_task_definitions
@@ -3481,9 +3505,9 @@ export class LifeOpsRepository {
              updated_at = ${sqlQuote(definition.updatedAt)}
        WHERE id = ${sqlQuote(definition.id)}
          AND agent_id = ${sqlQuote(definition.agentId)}
-         AND domain = ${sqlQuote(definition.domain)}
-         AND subject_type = ${sqlQuote(definition.subjectType)}
-         AND subject_id = ${sqlQuote(definition.subjectId)}${revisionPredicate}
+         AND domain = ${sqlQuote(expectedScope.domain)}
+         AND subject_type = ${sqlQuote(expectedScope.subjectType)}
+         AND subject_id = ${sqlQuote(expectedScope.subjectId)}${revisionPredicate}
        RETURNING id`,
     );
     if (rows.length !== 1) {
@@ -3496,6 +3520,9 @@ export class LifeOpsRepository {
             agentId: definition.agentId,
             domain: definition.domain,
             subjectType: definition.subjectType,
+            expectedDomain: expectedScope.domain,
+            expectedSubjectType: expectedScope.subjectType,
+            expectedSubjectId: expectedScope.subjectId,
             expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
           },
         },
@@ -3725,13 +3752,17 @@ export class LifeOpsRepository {
   async getOccurrence(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrence | null> {
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT *
-         FROM app_lifeops.life_task_occurrences
-        WHERE agent_id = ${sqlQuote(agentId)}
-          AND id = ${sqlQuote(occurrenceId)}
+      `SELECT occurrence.*
+         FROM app_lifeops.life_task_occurrences AS occurrence
+         JOIN app_lifeops.life_task_definitions AS definition
+           ON definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id
+        WHERE occurrence.agent_id = ${sqlQuote(agentId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3741,6 +3772,7 @@ export class LifeOpsRepository {
   async getOccurrenceView(
     agentId: string,
     occurrenceId: string,
+    definitionScope?: LifeOpsDefinitionScope,
   ): Promise<LifeOpsOccurrenceView | null> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3763,7 +3795,7 @@ export class LifeOpsRepository {
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND occurrence.id = ${sqlQuote(occurrenceId)}
+          AND occurrence.id = ${sqlQuote(occurrenceId)}${definitionScopePredicate(definitionScope, "definition")}
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3773,6 +3805,7 @@ export class LifeOpsRepository {
   async listOccurrenceViewsForOverview(
     agentId: string,
     horizonIso: string,
+    definitionScopes?: readonly LifeOpsDefinitionScope[],
   ): Promise<LifeOpsOccurrenceView[]> {
     const rows = await executeRawSql(
       this.runtime,
@@ -3795,7 +3828,7 @@ export class LifeOpsRepository {
            ON definition.id = occurrence.definition_id
           AND definition.agent_id = occurrence.agent_id
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
-          AND definition.status = 'active'
+          AND definition.status = 'active'${definitionScopeSetPredicate(definitionScopes)}
           AND (
             occurrence.state IN ('visible', 'snoozed')
             OR (
@@ -3817,15 +3850,19 @@ export class LifeOpsRepository {
    * `sinceIso` bounds on `updated_at` (completion bumps it); callers narrow to
    * the owner's local day in TypeScript where timezone math belongs.
    *
-   * `subjectType` is pushed into SQL rather than filtered by the caller so the
-   * LIMIT can never evict matching rows: under multi-room load, agent-subject
-   * completions interleaved with the owner's would otherwise consume the
-   * window and silently drop owner wins from the evening brief.
+   * Ownership filters are pushed into SQL rather than applied after the LIMIT.
+   * Callers serving one owner must pass the exact definition scope: filtering
+   * only on `subjectType` would mix every owner under the same agent and expose
+   * another owner's completed-item titles through recap surfaces.
    */
   async listCompletedOccurrenceViewsSince(
     agentId: string,
     sinceIso: string,
-    options: { subjectType?: "owner" | "agent"; limit?: number } = {},
+    options: {
+      subjectType?: "owner" | "agent";
+      definitionScopes?: readonly LifeOpsDefinitionScope[];
+      limit?: number;
+    } = {},
   ): Promise<LifeOpsOccurrenceView[]> {
     const limit = options.limit ?? 24;
     const subjectFilter = options.subjectType
@@ -3854,17 +3891,38 @@ export class LifeOpsRepository {
         WHERE occurrence.agent_id = ${sqlQuote(agentId)}
           AND occurrence.state = 'completed'
           AND occurrence.updated_at >= ${sqlQuote(sinceIso)}
-          ${subjectFilter}
+          ${subjectFilter}${definitionScopeSetPredicate(options.definitionScopes)}
         ORDER BY occurrence.updated_at DESC
         LIMIT ${sqlInteger(limit)}`,
     );
     return rows.map(parseOccurrenceView);
   }
 
-  async updateOccurrence(occurrence: LifeOpsOccurrence): Promise<void> {
-    await executeRawSql(
+  /**
+   * Persist an occurrence mutation under the owning definition's current
+   * scope and optional occurrence/definition revisions. Caller-facing flows
+   * pass every guard so an ownership move cannot turn a previously authorized
+   * read into a stale write against another owner's row.
+   */
+  async updateOccurrence(
+    occurrence: LifeOpsOccurrence,
+    options?: {
+      definitionScope?: LifeOpsDefinitionScope;
+      expectedUpdatedAt?: string;
+      expectedDefinitionUpdatedAt?: string;
+    },
+  ): Promise<void> {
+    const occurrenceRevisionPredicate = options?.expectedUpdatedAt
+      ? `
+          AND occurrence.updated_at = ${sqlQuote(options.expectedUpdatedAt)}`
+      : "";
+    const definitionRevisionPredicate = options?.expectedDefinitionUpdatedAt
+      ? `
+          AND definition.updated_at = ${sqlQuote(options.expectedDefinitionUpdatedAt)}`
+      : "";
+    const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
           SET domain = ${sqlQuote(occurrence.domain)},
               subject_type = ${sqlQuote(occurrence.subjectType)},
               subject_id = ${sqlQuote(occurrence.subjectId)},
@@ -3881,30 +3939,60 @@ export class LifeOpsRepository {
               derived_target_json = ${occurrence.derivedTarget ? sqlJson(occurrence.derivedTarget) : "NULL"},
               metadata_json = ${sqlJson(occurrence.metadata)},
               updated_at = ${sqlQuote(occurrence.updatedAt)}
-        WHERE id = ${sqlQuote(occurrence.id)}
-          AND agent_id = ${sqlQuote(occurrence.agentId)}`,
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}${occurrenceRevisionPredicate}${definitionRevisionPredicate}
+       RETURNING occurrence.id`,
     );
+    if (rows.length !== 1) {
+      throw new ElizaError(
+        "[LifeOpsRepository] occurrence update matched no row for this definition scope and revision",
+        {
+          code: "LIFEOPS_OCCURRENCE_CONFLICT",
+          context: {
+            occurrenceId: occurrence.id,
+            definitionId: occurrence.definitionId,
+            agentId: occurrence.agentId,
+            expectedDomain: options?.definitionScope?.domain ?? null,
+            expectedSubjectType: options?.definitionScope?.subjectType ?? null,
+            expectedSubjectId: options?.definitionScope?.subjectId ?? null,
+            expectedUpdatedAt: options?.expectedUpdatedAt ?? null,
+            expectedDefinitionUpdatedAt:
+              options?.expectedDefinitionUpdatedAt ?? null,
+          },
+        },
+      );
+    }
   }
 
   /**
-   * Atomically wins one nonterminal-to-completed transition. Callers perform
-   * completion side effects only when this returns true, preventing duplicate
-   * rollups and grants when concurrent quota increments reach the target.
+   * Atomically wins one nonterminal-to-completed transition under the owning
+   * definition's current scope. Callers perform completion side effects only
+   * when this returns true, preventing duplicate rollups and grants when
+   * concurrent quota increments reach the target. Unlike updateOccurrence it
+   * deliberately carries no occurrence-revision guard: the terminal-state
+   * predicate is the race arbiter.
    */
   async completeOccurrenceIfNonTerminal(
     occurrence: LifeOpsOccurrence,
+    options?: { definitionScope?: LifeOpsDefinitionScope },
   ): Promise<boolean> {
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_task_occurrences
+      `UPDATE app_lifeops.life_task_occurrences AS occurrence
           SET state = 'completed',
               snoozed_until = NULL,
               completion_payload_json = ${occurrence.completionPayload ? sqlJson(occurrence.completionPayload) : "NULL"},
               updated_at = ${sqlQuote(occurrence.updatedAt)}
-        WHERE id = ${sqlQuote(occurrence.id)}
-          AND agent_id = ${sqlQuote(occurrence.agentId)}
-          AND state NOT IN ('completed', 'skipped', 'expired', 'muted')
-      RETURNING id`,
+         FROM app_lifeops.life_task_definitions AS definition
+        WHERE occurrence.id = ${sqlQuote(occurrence.id)}
+          AND occurrence.agent_id = ${sqlQuote(occurrence.agentId)}
+          AND definition.id = occurrence.definition_id
+          AND definition.agent_id = occurrence.agent_id${definitionScopePredicate(options?.definitionScope, "definition")}
+          AND occurrence.state NOT IN ('completed', 'skipped', 'expired', 'muted')
+      RETURNING occurrence.id`,
     );
     return rows.length === 1;
   }
