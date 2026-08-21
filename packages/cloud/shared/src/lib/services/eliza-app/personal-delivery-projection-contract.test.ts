@@ -11,6 +11,9 @@ describe("personal delivery projection contract", () => {
   test("uses one stable object name per platform sender", () => {
     expect(personalDeliveryProjectionObjectName("telegram", " 123456 ")).toBe("telegram:123456");
     expect(personalDeliveryProjectionObjectName("discord", "987654")).toBe("discord:987654");
+    expect(personalDeliveryProjectionObjectName("phone", " +15551234567 ")).toBe(
+      "phone:+15551234567",
+    );
   });
 
   test("sends an explicit invalidation to the bound sender object", async () => {

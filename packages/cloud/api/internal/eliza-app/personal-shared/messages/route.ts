@@ -328,14 +328,21 @@ app.post("/", async (c) => {
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
     } else {
-      const phoneAccount = await elizaAppUserService.findOrCreateByPhone(
-        parsed.data.phoneNumber,
+      const delivery = await resolvePersonalDeliveryProjection(
+        c.env,
+        {
+          platform: "phone",
+          phoneNumber: parsed.data.phoneNumber,
+        },
+        elizaAppUserService,
       );
       account = {
-        userId: phoneAccount.user.id,
-        organizationId: phoneAccount.organization.id,
+        userId: delivery.userId,
+        organizationId: delivery.organizationId,
       };
-      isNewPersonalAccount = phoneAccount.isNew;
+      accountResolution = delivery.resolution;
+      dedicated = delivery.dedicatedTarget;
+      isNewPersonalAccount = delivery.isNew;
     }
     const accountMs = performance.now() - accountStartedAt;
     const accountTiming = `account;dur=${accountMs.toFixed(1)};desc="${accountResolution}"`;
