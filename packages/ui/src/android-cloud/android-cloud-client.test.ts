@@ -188,6 +188,50 @@ describe("AndroidCloudClient", () => {
     await expect(restarted.restoreSession()).resolves.toBeNull();
   });
 
+  it("retains attempt ownership when secure clear and tombstone both fail", async () => {
+    let storedToken: string | null = null;
+    let rejectTombstone = true;
+    const credentialStore = {
+      read: vi.fn(async () => storedToken),
+      write: vi.fn(async (token: string) => {
+        if (token !== "cancelled-token" && rejectTombstone) {
+          throw new Error("secure tombstone unavailable");
+        }
+        storedToken = token;
+      }),
+      clear: vi
+        .fn<() => Promise<void>>()
+        .mockRejectedValueOnce(new Error("secure clear unavailable"))
+        .mockImplementation(async () => {
+          storedToken = null;
+        }),
+    };
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json(200, { status: "authenticated", apiKey: "cancelled-token" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const client = new AndroidCloudClient({ fetchImpl, credentialStore });
+
+    await client.pollLogin(SESSION_ID);
+    await expect(
+      client.discardLoginAttempt(SESSION_ID, "cancelled-token"),
+    ).rejects.toThrow("could not be removed");
+    expect(storedToken).toBe("cancelled-token");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    rejectTombstone = false;
+    await client.discardLoginAttempt(SESSION_ID, "cancelled-token");
+    expect(storedToken).toBeNull();
+    expect(credentialStore.clear).toHaveBeenCalledTimes(2);
+    const restarted = new AndroidCloudClient({
+      credentialStore,
+      fetchImpl: vi.fn<typeof fetch>(),
+    });
+    await expect(restarted.restoreSession()).resolves.toBeNull();
+  });
+
   it("does not revoke or clear a newer login when stale cleanup finishes last", async () => {
     let storedToken: string | null = null;
     const credentialStore = {
