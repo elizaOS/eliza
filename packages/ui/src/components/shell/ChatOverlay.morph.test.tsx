@@ -30,6 +30,7 @@ vi.mock("../../api/client", () => ({
 
 import {
   ChatOverlay,
+  desktopPillTravelerOpacity,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -167,6 +168,23 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
     expect(grabberBarOpacity(0, 0)).toBe(0);
     expect(grabberBarOpacity(0.55, 0)).toBe(0);
     expect(grabberBarOpacity(0.95, 0)).toBeCloseTo(1, 10);
+  });
+});
+
+describe("detached desktop pill traveler handoff", () => {
+  it("keeps exactly one mark visible while handing off to the grabber", () => {
+    for (const progress of [0, 0.25, 0.55, 0.75, 0.95, 1]) {
+      expect(
+        desktopPillTravelerOpacity(progress, 0) +
+          grabberBarOpacity(progress, 0),
+      ).toBeCloseTo(1, 10);
+    }
+  });
+
+  it("never resurrects the traveler in full bleed", () => {
+    expect(desktopPillTravelerOpacity(0, 1)).toBe(0);
+    expect(desktopPillTravelerOpacity(0.75, 1)).toBe(0);
+    expect(desktopPillTravelerOpacity(1, 1)).toBe(0);
   });
 });
 

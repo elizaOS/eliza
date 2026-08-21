@@ -138,6 +138,7 @@ import {
 import { Textarea } from "../ui/textarea";
 import {
   clamp01,
+  desktopPillTravelerOpacity,
   grabberBarOpacity,
   pillHandleCounterScale,
   pillMorphScale,
@@ -454,6 +455,7 @@ const FULLSCREEN_SNAP_VH = 0.9;
 const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
+  desktopPillTravelerOpacity,
   grabberBarOpacity,
   PILL_MORPH_MIN_SCALE,
   pillHandleCounterScale,
@@ -1089,6 +1091,8 @@ function PillHandle({
   breathing,
   pilled,
   desktopOverlayHost,
+  desktopMorphScaleX = 1,
+  desktopMorphScaleY = 1,
 }: {
   binding: PullGestureBinding;
   // Inverse of the panel's pill-morph scale. It wraps the complete painted
@@ -1104,12 +1108,17 @@ function PillHandle({
   // pass through to the textarea once the input has formed.
   pilled: boolean;
   desktopOverlayHost: boolean;
+  desktopMorphScaleX?: MotionValue<number> | number;
+  desktopMorphScaleY?: MotionValue<number> | number;
 }): React.JSX.Element {
   return (
     <motion.div
       className="h-1.5 w-12 origin-bottom"
       style={{
         scale: counterScale,
+        scaleX: desktopMorphScaleX,
+        scaleY: desktopMorphScaleY,
+        transformOrigin: desktopOverlayHost ? "center" : "bottom center",
         ...(desktopOverlayHost
           ? {
               width: CHAT_OVERLAY_RESTING_WINDOW_WIDTH,
@@ -3585,6 +3594,35 @@ export function ChatOverlay({
   const grabberOpacity = useTransform(
     [openProgress, fullBleedT] as MotionValue<number>[],
     ([p, t]: number[]) => grabberBarOpacity(p, t),
+  );
+  // Detached macOS uses one continuous white mark instead of two bars with a
+  // dead crossfade between them. The resting 64x12 pill travels from the
+  // wrapper's bottom edge to its top while shrinking to the composer's 48x6
+  // grabber. At the endpoint it hands off at the exact same pixels to the real
+  // SheetGrabber, which retains all open-state interaction semantics. Embedded
+  // and browser surfaces keep their established capsule/grabber treatment.
+  const desktopPillTravelerTop = useTransform(openProgress, (progress) =>
+    `${(1 - clamp01(progress)) * 100}%`,
+  );
+  const desktopPillTravelerY = useTransform(
+    openProgress,
+    (progress) => -CHAT_OVERLAY_RESTING_WINDOW_HEIGHT * (1 - clamp01(progress)),
+  );
+  const desktopPillTravelerScaleX = useTransform(
+    openProgress,
+    [0, 1],
+    [1, 48 / CHAT_OVERLAY_RESTING_WINDOW_WIDTH],
+    { clamp: true },
+  );
+  const desktopPillTravelerScaleY = useTransform(
+    openProgress,
+    [0, 1],
+    [1, 6 / CHAT_OVERLAY_RESTING_WINDOW_HEIGHT],
+    { clamp: true },
+  );
+  const desktopPillTravelerAlpha = useTransform(
+    [openProgress, fullBleedT] as MotionValue<number>[],
+    ([p, t]: number[]) => desktopPillTravelerOpacity(p, t),
   );
   // Header reveal tracks the LIVE height: as the panel approaches the half
   // detent the top buttons FADE in and their space LERPS open; pulling back
@@ -7419,12 +7457,16 @@ export function ChatOverlay({
         </motion.fieldset>
         {!firstRunOpen && desktopOverlayHost ? (
           // Keep the detached rest button OUTSIDE the panel's pill-morph
-          // transform. Counter-scaling made the bar LOOK 64px wide inside a
-          // much narrower transformed parent, but WKWebView clipped hit-testing
-          // to that parent's center. This sibling owns the full visible bar.
+          // transform. It is the one visible traveling mark during pill ->
+          // composer: bottom 64x12 at rest, top 48x6 at the handoff. The real
+          // SheetGrabber takes over at those exact pixels once fully formed.
           <motion.div
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
-            style={{ opacity: pillOpacity }}
+            className="pointer-events-none absolute inset-x-0 z-30 flex justify-center"
+            style={{
+              top: desktopPillTravelerTop,
+              y: desktopPillTravelerY,
+              opacity: desktopPillTravelerAlpha,
+            }}
           >
             <PillHandle
               binding={pullBinding}
@@ -7433,6 +7475,8 @@ export function ChatOverlay({
               breathing={listening || responding || recording}
               pilled={pilled}
               desktopOverlayHost
+              desktopMorphScaleX={desktopPillTravelerScaleX}
+              desktopMorphScaleY={desktopPillTravelerScaleY}
             />
           </motion.div>
         ) : null}

@@ -29,6 +29,20 @@ export function grabberBarOpacity(
 }
 
 /**
+ * Opacity for the detached desktop's traveling resting handle. It remains one
+ * continuous mark through the pill-to-composer motion, then hands off in place
+ * to the sheet grabber. Full-bleed always suppresses it so the restore handle
+ * is the only white mark at the top edge.
+ */
+export function desktopPillTravelerOpacity(
+  openProgress: number,
+  fullBleedProgress: number,
+): number {
+  const grabberHandoff = clamp01((openProgress - 0.55) / 0.4);
+  return (1 - grabberHandoff) * (1 - clamp01(fullBleedProgress));
+}
+
+/**
  * How far the sheet fill has blended from the resting translucent glass to the
  * opaque panel `--bg`. Rides the live drag: 0 with the thread closed (the
  * composer keeps its glass), 1 once the revealed thread reaches the HALF
