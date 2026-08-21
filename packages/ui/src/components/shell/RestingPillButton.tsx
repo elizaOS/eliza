@@ -39,7 +39,7 @@ export function RestingPillButton({
           aria-hidden="true"
           data-testid={markTestId}
           className={cn(
-            "h-full w-full rounded-full bg-white/95 opacity-100",
+            "pointer-events-none h-full w-full rounded-full bg-white/95 opacity-100",
             breathing && "eliza-chat-handle-breathe",
             markClassName,
           )}

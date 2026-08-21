@@ -56,6 +56,7 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 - (void)handleEvent:(NSEvent *)event;
 - (void)handleGlobalEvent:(NSEvent *)event;
 - (void)pollPointerState;
+- (BOOL)materialFillsContentBounds;
 - (BOOL)consumeOutsideClick;
 - (void)setMaterialWidth:(CGFloat)width
 				  height:(CGFloat)height
@@ -181,11 +182,26 @@ static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	return [materialPath containsPoint:contentPoint];
 }
 
+/**
+ * When renderer and native material have converged to the same exact frame,
+ * there is no surrounding transparent host to protect. Keep that window
+ * interactive continuously so a fast mouse-down on the resting bar cannot
+ * pass through while the hover poll is still catching up.
+ */
+- (BOOL)materialFillsContentBounds {
+	NSView *contentView = self.window.contentView;
+	if (contentView == nil) return NO;
+	NSSize boundsSize = contentView.bounds.size;
+	return fabs(self.materialSize.width - boundsSize.width) <= 0.5 &&
+		fabs(self.materialSize.height - boundsSize.height) <= 0.5;
+}
+
 - (void)applyForScreenPoint:(NSPoint)screenPoint {
 	NSWindow *window = self.window;
 	if (window == nil) return;
 	BOOL interactive =
-		self.interactionPinned || [self containsScreenPoint:screenPoint];
+		self.interactionPinned || [self materialFillsContentBounds] ||
+		[self containsScreenPoint:screenPoint];
 	if (window.ignoresMouseEvents == interactive) {
 		[window setIgnoresMouseEvents:!interactive];
 	}
