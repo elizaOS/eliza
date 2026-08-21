@@ -11,7 +11,14 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getExpiringSessions, getStaleSessions } from "./storage";
+import {
+  getExpiringSessions,
+  getStaleSessions,
+  saveAutofillData,
+  saveSession,
+  saveSubmission,
+  toComponentData,
+} from "./storage";
 import { FORM_SESSION_COMPONENT, type FormSession } from "./types";
 
 const NOW = 1_700_000_000_000;
@@ -173,5 +180,99 @@ describe("form storage session scans", () => {
       "expiring",
       "stashed",
     ]);
+  });
+});
+
+describe("toComponentData & circular structure tolerance", () => {
+  it("serializes normal plain objects cleanly", () => {
+    const data = { id: "123", name: "test", count: 42, active: true };
+    expect(toComponentData(data)).toEqual(data);
+  });
+
+  it("fails closed on circular structures without throwing", () => {
+    const circular: Record<string, unknown> = {
+      id: "123",
+      title: "form",
+    };
+    circular.self = circular;
+
+    const sanitized = toComponentData(circular);
+    expect(sanitized).toEqual({ id: "123", title: "form" });
+  });
+
+  it("fails closed on throwing getters without throwing", () => {
+    const throwingObj = {
+      id: "valid",
+      get boom() {
+        throw new Error("trap");
+      },
+    };
+
+    const sanitized = toComponentData(throwingObj);
+    expect(sanitized).toEqual({ id: "valid" });
+  });
+
+  it("safely persists sessions with circular properties", async () => {
+    const createComponent = vi.fn(async () => undefined);
+    const getComponent = vi.fn(async () => null);
+    const getRoom = vi.fn(async () => ({ id: roomId, worldId: agentId }));
+    const runtime = {
+      agentId,
+      createComponent,
+      getComponent,
+      getRoom,
+    } as unknown as IAgentRuntime;
+
+    const session = makeSession("cyclic-session");
+    (session.fields as Record<string, unknown>).cycle = session;
+
+    await expect(saveSession(runtime, session)).resolves.toBeUndefined();
+    expect(createComponent).toHaveBeenCalledTimes(1);
+    const saved = createComponent.mock.calls[0][0];
+    expect(saved.data.id).toBe("cyclic-session");
+    expect(saved.data.fields).toBeDefined();
+  });
+
+  it("safely persists submissions with circular data", async () => {
+    const createComponent = vi.fn(async () => undefined);
+    const getRoom = vi.fn(async () => ({ id: roomId, worldId: agentId }));
+    const runtime = {
+      agentId,
+      createComponent,
+      getRoom,
+    } as unknown as IAgentRuntime;
+
+    const submission: FormSubmission = {
+      id: "sub-1",
+      formId: "feedback",
+      formVersion: 1,
+      entityId,
+      submittedAt: NOW,
+      values: { comments: "great" },
+    };
+    (submission.values as Record<string, unknown>).cycle = submission;
+
+    await expect(saveSubmission(runtime, submission)).resolves.toBeUndefined();
+    expect(createComponent).toHaveBeenCalledTimes(1);
+  });
+
+  it("safely persists autofill data with circular values", async () => {
+    const createComponent = vi.fn(async () => undefined);
+    const getComponent = vi.fn(async () => null);
+    const getRoom = vi.fn(async () => ({ id: roomId, worldId: agentId }));
+    const runtime = {
+      agentId,
+      createComponent,
+      getComponent,
+      getRoom,
+    } as unknown as IAgentRuntime;
+
+    const values: Record<string, JsonValue> = { name: "Alice" };
+    (values as Record<string, unknown>).cycle = values;
+
+    await expect(
+      saveAutofillData(runtime, entityId, "feedback", values),
+    ).resolves.toBeUndefined();
+    expect(createComponent).toHaveBeenCalledTimes(1);
   });
 });

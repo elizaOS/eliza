@@ -94,6 +94,61 @@ const isFormSession = (data: JsonValue | object): data is FormSession => {
 
 const isLiveSession = (session: FormSession): boolean => !isExpired(session);
 
+function toComponentValue(
+  value: unknown,
+  seen = new WeakSet<object>(),
+): JsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value !== "object") {
+    return null;
+  }
+  if (seen.has(value)) {
+    return null;
+  }
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.map((item) => toComponentValue(item, seen));
+  }
+  const obj: Record<string, JsonValue> = {};
+  for (const k of Object.keys(value)) {
+    try {
+      const val = (value as Record<string, unknown>)[k];
+      if (typeof val === "object" && val !== null && seen.has(val)) {
+        continue;
+      }
+      const serialized = toComponentValue(val, seen);
+      if (serialized !== undefined) {
+        obj[k] = serialized;
+      }
+    } catch {
+      // error-policy:J3 drop throwing properties.
+    }
+  }
+  return obj;
+}
+
+/**
+ * Safely serialize data into plain JSON component data, guarding against
+ * circular structures and non-serializable objects.
+ */
+export function toComponentData<T extends object>(
+  value: T,
+): Record<string, JsonValue> {
+  try {
+    return JSON.parse(JSON.stringify(value)) as Record<string, JsonValue>;
+  } catch {
+    // error-policy:J3 untrusted form payload may contain circular references or invalid JSON values; fail closed to sanitized record.
+    return (toComponentValue(value) as Record<string, JsonValue>) ?? {};
+  }
+}
+
 /**
  * Build the component type (natural key suffix) for a session.
  *
@@ -403,7 +458,7 @@ export async function saveSession(
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
     // Store session as component data
-    data: JSON.parse(JSON.stringify(session)) as Record<string, JsonValue>,
+    data: toComponentData(session),
   };
 
   if (existing) {
@@ -479,7 +534,7 @@ export async function saveSubmission(
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: submission.submittedAt,
-    data: JSON.parse(JSON.stringify(submission)) as Record<string, JsonValue>,
+    data: toComponentData(submission),
   };
 
   await runtime.createComponent(component);
@@ -623,7 +678,7 @@ export async function saveAutofillData(
     sourceEntityId: runtime.agentId,
     type: componentType,
     createdAt: existing?.createdAt || Date.now(),
-    data: JSON.parse(JSON.stringify(data)) as Record<string, JsonValue>,
+    data: toComponentData(data),
   };
 
   if (existing) {
