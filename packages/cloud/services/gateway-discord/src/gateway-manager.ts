@@ -5,6 +5,7 @@ import {
   gatewayTokenRetryDelayMs,
   parseGatewayTokenResponse,
 } from "@elizaos/cloud-services-common/gateway-auth";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { Redis } from "@upstash/redis";
 import {
   type Attachment,
@@ -1670,7 +1671,9 @@ export class GatewayManager {
 
       if (response) {
         const truncated =
-          response.length > 2000 ? response.slice(0, 2000) : response;
+          response.length > 2000
+            ? truncateWellFormed(toWellFormedUnicode(response), 2000)
+            : toWellFormedUnicode(response);
         await message.reply(truncated);
       }
 
@@ -2723,7 +2726,9 @@ export class GatewayManager {
 
       const replyText = routed.replyText.trim();
       const truncated =
-        replyText.length > 2000 ? replyText.slice(0, 2000) : replyText;
+        replyText.length > 2000
+          ? truncateWellFormed(toWellFormedUnicode(replyText), 2000)
+          : toWellFormedUnicode(replyText);
       const replyOptions = buildManagedReplyOptions(
         message.id,
         truncated,
