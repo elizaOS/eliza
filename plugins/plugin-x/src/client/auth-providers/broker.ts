@@ -182,6 +182,19 @@ function abortReason(signal: AbortSignal): unknown {
   );
 }
 
+function cancelBrokerReaderWithoutWaiting(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  reason: unknown,
+): void {
+  void reader.cancel(reason).catch(() => {
+    // error-policy:J6 The authoritative boundary result remains; cancellation
+    // is observed but cannot delay reader-lock or guarded transport release.
+    logger.debug(
+      "[XBroker] Broker response cancellation failed during teardown",
+    );
+  });
+}
+
 async function cancelBrokerBody(
   body: ReadableStream<Uint8Array> | null,
   reason: string,
@@ -251,12 +264,10 @@ async function readBoundedJson(
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > BROKER_RESPONSE_MAX_BYTES) {
-        try {
-          await reader.cancel("X broker response exceeded the size limit");
-        } catch {
-          // error-policy:J6 The bounded-response failure remains authoritative;
-          // releasing the reader below permits guarded transport cleanup.
-        }
+        cancelBrokerReaderWithoutWaiting(
+          reader,
+          "X broker response exceeded the size limit",
+        );
         throw brokerError(
           "X broker response exceeded the size limit",
           "X_BROKER_RESPONSE_TOO_LARGE",
@@ -266,13 +277,7 @@ async function readBoundedJson(
     }
   } catch (error) {
     if (signal.aborted) {
-      void reader.cancel(abortReason(signal)).catch(() => {
-        // error-policy:J6 The authoritative timeout/invalidation error remains;
-        // cancellation is observed but cannot delay guarded transport release.
-        logger.debug(
-          "[XBroker] Broker response cancellation failed during teardown",
-        );
-      });
+      cancelBrokerReaderWithoutWaiting(reader, abortReason(signal));
     }
     throw error;
   } finally {

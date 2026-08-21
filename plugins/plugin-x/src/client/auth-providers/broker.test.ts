@@ -215,25 +215,32 @@ describe("BrokerAuthProvider", () => {
   });
 
   it("cancels a chunked response once its cumulative size is exceeded", async () => {
-    const cancel = vi.fn();
+    const cancel = vi.fn(() => new Promise<void>(() => undefined));
+    const release = vi.fn(async () => undefined);
     const body = new ReadableStream<Uint8Array>({
       pull(controller) {
         controller.enqueue(new Uint8Array(9 * 1024));
       },
       cancel,
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(body)),
+    const guardedFetch = vi.fn(
+      async (): Promise<GuardedFetchResult> => ({
+        response: new Response(body),
+        finalUrl:
+          "https://api.eliza.app/api/v1/twitter/token?connectionRole=agent",
+        release,
+      }),
     );
-    const provider = newTestProvider(
+    const provider = new BrokerAuthProvider(
       runtime({ ELIZAOS_CLOUD_API_KEY: "agent-cloud-key" }),
+      guardedFetch,
     );
 
-    await expect(provider.getAccessToken()).rejects.toThrow(
+    await expect(settleWithin(provider.getAccessToken())).rejects.toThrow(
       "X broker response exceeded the size limit",
     );
     expect(cancel).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("rejects invalid lengths, malformed UTF-8, and malformed JSON without reflection", async () => {
