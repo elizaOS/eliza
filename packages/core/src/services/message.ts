@@ -5395,6 +5395,7 @@ export function messageHandlerFromFieldResult(
 			candidateActions,
 			currentMessageText,
 			directCandidateActions: directCurrentCandidateActions,
+			directInferenceKind: directCurrentInference.kind,
 			actions: runtimeContext?.actions,
 		});
 	const inferredDirectCandidateActions =
@@ -5814,7 +5815,8 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 	const stageOneCandidateActions =
 		getMessageHandlerCandidateActions(messageHandler);
 	const composedCandidateActions =
-		directCurrentInference.kind === "owner-reads"
+		directCurrentInference.kind === "owner-reads" ||
+		directCurrentInference.kind === "app-lifecycle"
 			? directCurrentCandidateActions
 			: uniqueActionNames([
 					...stageOneCandidateActions,
@@ -6046,6 +6048,7 @@ export function shouldPreferDirectCurrentCandidateActions(args: {
 	candidateActions: readonly string[];
 	currentMessageText: string;
 	directCandidateActions: readonly string[];
+	directInferenceKind?: DirectCurrentRequestCandidateInference["kind"];
 	// Optional live action registry. When supplied, shell-direct membership is
 	// resolved through the declared SHELL_DIRECT_ACTION_TAGS contract (with the
 	// legacy name set as a covered fallback) instead of a hardcoded literal set;
@@ -6054,6 +6057,17 @@ export function shouldPreferDirectCurrentCandidateActions(args: {
 	actions?: ReadonlyArray<Pick<Action, "name" | "similes" | "tags">>;
 }): boolean {
 	if (args.candidateActions.length === 0) return false;
+	// APP owns the full edit/create -> verify -> register -> optional Browser
+	// handoff. Once the deterministic lifecycle matcher selects it, a Stage-1
+	// VIEWS guess is not additive: planning both actions makes the view open
+	// before the async build is ready, then forces a redundant post-tool
+	// evaluator round. Keep this route single-owner just like owner data reads.
+	if (
+		args.directInferenceKind === "app-lifecycle" &&
+		args.directCandidateActions.length > 0
+	) {
+		return true;
+	}
 	// A normal coding work order can be phrased with "run"/"try" language, and
 	// weak Stage-1 models often reduce the whole request to SHELL (live: "make
 	// me a little program ... try it" tried to execute a file that did not
@@ -8620,7 +8634,8 @@ export async function runV5MessageRuntimeStage1(args: {
 			!responseHandlerEvaluation.candidateActionsClearedByEvaluators
 		) {
 			messageHandler.plan.candidateActions =
-				directPlannerInference.kind === "owner-reads"
+				directPlannerInference.kind === "owner-reads" ||
+				directPlannerInference.kind === "app-lifecycle"
 					? directPlannerCandidateActions
 					: uniqueActionNames([
 							...getMessageHandlerCandidateActions(messageHandler),

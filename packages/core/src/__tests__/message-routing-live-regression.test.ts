@@ -661,6 +661,7 @@ describe("live routing regressions", () => {
 	it("routes a normal existing-site edit with an open request through APP", () => {
 		const actions: Array<Pick<Action, "name" | "similes" | "tags">> = [
 			{ name: "APP", similes: ["UPDATE_WEBSITE"], tags: ["apps"] },
+			{ name: "VIEWS", similes: ["OPEN_VIEW"], tags: ["navigation"] },
 			{
 				name: "TASKS_SPAWN_AGENT",
 				similes: ["SPAWN_AGENT"],
@@ -673,6 +674,23 @@ describe("live routing regressions", () => {
 		expect(
 			inferDirectCurrentRequestCandidateActions(actions, messageText),
 		).toEqual(["APP"]);
+
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				intents: ["update website content", "open website page"],
+				replyText: "On it.",
+				candidateActionNames: ["VIEWS"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions, messageText },
+		);
+
+		expect(routed.plan.candidateActions).toEqual(["APP"]);
 	});
 
 	it("replaces a weak SHELL-only guess with the promoted coding sub-agent for a normie program request", () => {
