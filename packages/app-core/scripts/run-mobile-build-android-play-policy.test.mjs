@@ -127,6 +127,7 @@ describe("Android Play manifest policy", () => {
       "BIND_NOTIFICATION_LISTENER_SERVICE",
       "CALL_PHONE",
       "CAMERA",
+      "MODIFY_AUDIO_SETTINGS",
       "POST_NOTIFICATIONS",
       "READ_SMS",
       "SYSTEM_ALERT_WINDOW",

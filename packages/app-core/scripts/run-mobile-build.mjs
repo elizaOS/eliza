@@ -5491,6 +5491,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // camera, location, Bluetooth, health, telephony, or shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "CAMERA",
+  "MODIFY_AUDIO_SETTINGS",
   "ACCESS_FINE_LOCATION",
   "ACCESS_COARSE_LOCATION",
   "BLUETOOTH_SCAN",
