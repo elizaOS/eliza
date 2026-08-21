@@ -47,6 +47,11 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/MAX_INTERACTION_HISTORY/,
 		/trimmedInteractions/,
 	],
+	"packages/core/src/features/basic-capabilities/actions/choice.ts": [
+		/task\.id\.(?:slice|substring)\(/,
+		/shortId/,
+		/Short or full ID/,
+	],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,

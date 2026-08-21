@@ -3,10 +3,12 @@
  * agent's way to resolve a pending choice task (tasks tagged AWAITING_CHOICE
  * whose metadata carries `options`). validate() gates on the declared
  * `roleGate: { minRole: "ADMIN" }` plus the existence of such a task — it never
- * re-derives the role itself. handler() matches the caller's taskId (short
- * 8-char prefix or full UUID) and selectedOption, then runs the matching task
+ * re-derives the role itself. handler() matches the caller's complete taskId
+ * and selectedOption, then runs the matching task
  * worker (or deletes the task on the "ABORT" option); with no valid selection it
- * replies with the formatted menu of tasks and their options.
+ * replies with the formatted menu of tasks and their options. Task identifiers
+ * remain complete in both the menu and lookup so chat context cannot hide a
+ * distinguishing suffix or create an eight-character collision.
  */
 import { requireActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
@@ -146,13 +148,11 @@ export const choiceAction: Action = {
 				},
 			)
 			.map((task) => {
-				const shortId = task.id.substring(0, 8);
 				const taskMetadata = task.metadata;
 				const taskOptions = taskMetadata?.options;
 
 				return {
-					taskId: shortId,
-					fullId: task.id,
+					taskId: task.id,
 					name: task.name,
 					options: taskOptions
 						? taskOptions.map((opt) => ({
@@ -167,14 +167,9 @@ export const choiceAction: Action = {
 		const { taskId, selectedOption } = _readChoiceParameters(message, _options);
 
 		if (taskId && selectedOption) {
-			// The taskId parameter accepts the "Short or full ID of the pending
-			// choice task" — key the lookup by both so a model passing the full
-			// UUID (as stored on the task) is not rejected with TASK_NOT_FOUND.
-			const taskMap = new Map<string, (typeof formattedTasks)[0]>();
-			for (const task of formattedTasks) {
-				taskMap.set(task.taskId, task);
-				taskMap.set(task.fullId, task);
-			}
+			const taskMap = new Map(
+				formattedTasks.map((task) => [task.taskId, task] as const),
+			);
 			const taskInfo = taskMap.get(taskId);
 
 			if (!taskInfo) {
@@ -198,7 +193,7 @@ export const choiceAction: Action = {
 
 			// Find the actual task using the full UUID
 			const selectedTask = tasksWithOptions.find(
-				(task) => task.id === taskInfo.fullId,
+				(task) => task.id === taskInfo.taskId,
 			);
 
 			if (!selectedTask) {
@@ -319,9 +314,7 @@ export const choiceAction: Action = {
 			"Please select a valid option from one of these tasks:\n\n";
 
 		tasksWithOptions.forEach((task) => {
-			const shortId = task.id?.substring(0, 8);
-
-			optionsText += `**${task.name}** (ID: ${shortId}):\n`;
+			optionsText += `**${task.name}** (ID: ${task.id}):\n`;
 			const taskMetadata = task.metadata;
 			const options = taskMetadata?.options
 				? taskMetadata.options.map((opt) =>
@@ -367,7 +360,7 @@ export const choiceAction: Action = {
 	parameters: [
 		{
 			name: "taskId",
-			description: "Short or full ID of the pending choice task.",
+			description: "Complete ID of the pending choice task.",
 			required: true,
 			schema: { type: "string" as const, minLength: 1 },
 		},
