@@ -208,7 +208,11 @@ export type AgentBackupCatalogRuntimePublicationState =
   | "secondary_pending";
 
 export interface AgentBackupCatalogRuntimePublicationExecutor {
-  execute(params: { claim: Readonly<AgentBackupOperationClaim>; leaseMs: number }): Promise<
+  execute(params: {
+    claim: Readonly<AgentBackupOperationClaim>;
+    leaseMs: number;
+    signal?: AbortSignal;
+  }): Promise<
     | { state: "protected" }
     | {
         state: "retryable-failure";
@@ -672,6 +676,8 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   if (!params.registry) {
     throw new Error("Backup catalogue runtime requires both configured storage authorities");
   }
+  const throwIfAborted = (): void => params.signal?.throwIfAborted();
+  throwIfAborted();
 
   const dependencies = params.dependencies ?? DEFAULT_DEPENDENCIES;
   const alertCodes = new Set<string>();
@@ -684,6 +690,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       summary.scheduleProtected += reconciled.protected;
       summary.scheduleRecycled += reconciled.recycled;
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
@@ -696,18 +703,21 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(SCHEDULE_RPO_OVERDUE_CODE);
       }
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
   };
 
   if (params.config.scheduleEnabled) {
+    throwIfAborted();
     await reconcileSchedules();
     try {
       summary.scheduleEnrolled = await dependencies.enrollSchedules({
         limit: params.config.scheduleBatchSize,
       });
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
@@ -721,14 +731,17 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       });
       summary.scheduleClaimed = scheduleClaims.length;
     } catch {
+      throwIfAborted();
       summary.scheduleIndeterminate += 1;
       alertCodes.add(SCHEDULE_RECONCILE_CODE);
     }
     for (const claim of scheduleClaims) {
+      throwIfAborted();
       try {
         await dependencies.reserveSchedule({ claim });
         summary.scheduleReserved += 1;
       } catch {
+        throwIfAborted();
         try {
           if (
             await dependencies.deferSchedule({
@@ -744,6 +757,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             alertCodes.add(SCHEDULE_RECONCILE_CODE);
           }
         } catch {
+          throwIfAborted();
           summary.scheduleIndeterminate += 1;
           alertCodes.add(SCHEDULE_RECONCILE_CODE);
         }
@@ -753,9 +767,11 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
 
   // Emit the strict RPO signal before unrelated catalogue/GC dependencies can
   // fail. A later pass refreshes it when this tick may have published proof.
+  throwIfAborted();
   await countOverdueSchedules();
 
   let operationClaims: AgentBackupOperationClaim[] = [];
+  throwIfAborted();
   try {
     operationClaims = await dependencies.claimOperations({
       ownerId: params.config.ownerId,
@@ -764,16 +780,19 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
     });
     summary.operationClaimed = operationClaims.length;
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.operationIndeterminate += 1;
     alertCodes.add(OPERATION_RECONCILE_CODE);
   }
   for (const claim of operationClaims) {
+    throwIfAborted();
     if (params.captureExecutor && isCaptureOperationClaim(claim)) {
       let normalized: AgentBackupOperationClaim;
       try {
         normalized = await normalizeCaptureOperationClaim({ claim, dependencies });
       } catch {
+        throwIfAborted();
         // A lost transition response is indeterminate. The exact lease/state
         // will reconcile on a later claim without running a second executor.
         summary.operationIndeterminate += 1;
@@ -791,6 +810,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         }
         summary.operationCaptured += 1;
       } catch (error) {
+        throwIfAborted();
         const identity = claimIdentity(normalized);
         if (!identity) {
           summary.operationIndeterminate += 1;
@@ -813,6 +833,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
               terminalErrorCode: OPERATION_CAPTURE_TERMINAL_CODE,
             });
           } catch {
+            throwIfAborted();
             // The non-authorizing local candidate is the crash bridge between
             // the terminal database CAS and cleanup. Never commit terminal when
             // that bridge is not durably confirmed.
@@ -857,6 +878,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
             alertCodes.add(OPERATION_CAPTURE_RETRY_CODE);
           }
         } catch {
+          throwIfAborted();
           // recordCaptured or the failure write may have committed before a lost
           // response. Never overwrite that ambiguity with a synthetic success.
           summary.operationIndeterminate += 1;
@@ -870,6 +892,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         const result = await params.publicationExecutor.execute({
           claim,
           leaseMs: params.config.operationLeaseMs,
+          signal: params.signal,
         });
         if (result.state === "protected") {
           summary.operationProtected += 1;
@@ -900,6 +923,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         summary.operationPublicationRetryScheduled += 1;
         alertCodes.add(OPERATION_PUBLICATION_RETRY_CODE);
       } catch {
+        throwIfAborted();
         // A transition or retry write may have committed before response loss.
         // Leave the exact leased row for reconciliation rather than guessing.
         summary.operationIndeterminate += 1;
@@ -923,6 +947,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(OPERATION_RECONCILE_CODE);
       }
     } catch {
+      throwIfAborted();
       // error-policy:J1 the daemon receives static aggregate evidence; the
       // durable lease/state is reconciled after expiry without leaking locator data.
       summary.operationIndeterminate += 1;
@@ -933,9 +958,11 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   // A publication executor may have reached `protected` in this cycle. Run a
   // second bounded exact-proof pass so its DB-clock RPO deadline is visible
   // immediately; response-loss cases are picked up here as well.
+  throwIfAborted();
   await reconcileSchedules();
   if (operationClaims.length > 0) await countOverdueSchedules();
 
+  throwIfAborted();
   if (params.spoolCleanupJanitor) {
     try {
       const cleanup = await params.spoolCleanupJanitor.runCycle();
@@ -951,27 +978,32 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
         alertCodes.add(SPOOL_CLEANUP_RECONCILE_CODE);
       }
     } catch {
+      throwIfAborted();
       summary.spoolCleanup.indeterminate += 1;
       alertCodes.add(SPOOL_CLEANUP_RECONCILE_CODE);
     }
   }
 
   let dueDeletions: AgentBackupDeletionCandidate[] = [];
+  throwIfAborted();
   try {
     dueDeletions = await dependencies.listDueDeletions({
       limit: params.config.deletionBatchSize,
     });
     summary.deletionCandidates = dueDeletions.length;
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.deletionEnqueueIndeterminate += 1;
     alertCodes.add(DELETION_ENQUEUE_RECONCILE_CODE);
   }
   for (const candidate of dueDeletions) {
+    throwIfAborted();
     try {
       const result = await dependencies.enqueueDeletion(candidate);
       summary.deletionEnqueued += result.enqueued;
     } catch {
+      throwIfAborted();
       // error-policy:J1 enqueue revalidates under lock; a stale or lost response
       // is retried from durable catalogue state without logging its locator.
       summary.deletionEnqueueIndeterminate += 1;
@@ -980,6 +1012,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   }
 
   let gcClaims: AgentBackupGcClaim[] = [];
+  throwIfAborted();
   try {
     gcClaims = await dependencies.claimGc({
       ownerId: params.config.ownerId,
@@ -988,11 +1021,13 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
     });
     summary.gcClaimed = gcClaims.length;
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.gcIndeterminate += 1;
     alertCodes.add(GC_RECONCILE_CODE);
   }
   for (const claim of gcClaims) {
+    throwIfAborted();
     try {
       const result = await dependencies.executeGcClaims({
         claims: [claim],
@@ -1008,6 +1043,7 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
       summary.gcFailed += result.failed;
       if (result.failed > 0) alertCodes.add(GC_RETRY_CODE);
     } catch {
+      throwIfAborted();
       // A lost settlement response is deliberately indeterminate: the durable
       // completed row wins, or the lease expires and the exact claim is retried.
       summary.gcIndeterminate += 1;
@@ -1016,20 +1052,24 @@ export async function runAgentBackupCatalogRuntimeCycle(params: {
   }
 
   let finalizable: AgentBackupDeletionCandidate[] = [];
+  throwIfAborted();
   try {
     finalizable = await dependencies.listFinalizableDeletions({
       limit: params.config.deletionBatchSize,
     });
   } catch (error) {
+    throwIfAborted();
     if (!params.config.scheduleEnabled) throw error;
     summary.deletionFinalizeIndeterminate += 1;
     alertCodes.add(DELETION_FINALIZE_RECONCILE_CODE);
   }
   for (const candidate of finalizable) {
+    throwIfAborted();
     try {
       await dependencies.finalizeDeletion(candidate);
       summary.deletionFinalized += 1;
     } catch {
+      throwIfAborted();
       // error-policy:J1 finalization is receipt/CAS guarded; an ambiguous
       // response is harmless and a later bounded tick reconciles the tombstone.
       summary.deletionFinalizeIndeterminate += 1;
