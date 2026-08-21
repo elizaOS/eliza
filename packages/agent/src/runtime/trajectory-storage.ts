@@ -15,6 +15,7 @@ import {
   type IAgentRuntime,
   type JsonValue,
   omitUnvalidatedProviderSpans,
+  parseTrajectorySemanticStages,
   projectModelCallDiagnosticValue,
   projectToolDiagnosticValue,
   type RecordedStage,
@@ -1262,7 +1263,31 @@ async function appendSemanticStage(
       },
     });
   }
-  step.semanticStages = [...stages, semantic];
+  const nextStages = [...stages, semantic];
+  // Write ⊆ read: each stage is validated with a fresh budget on the way in,
+  // but the read path decodes the whole array against one shared budget, so a
+  // run of individually-valid stages can produce a step that no longer
+  // normalizes. That poisons the entire trajectory row on read, not just this
+  // step, so the offending stage is rejected here as an invalid capture
+  // instead.
+  try {
+    parseTrajectorySemanticStages(nextStages);
+  } catch (cause) {
+    throw new ElizaError(
+      "Trajectory step semantic stages exceed the decode budget",
+      {
+        code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
+        context: {
+          trajectoryId: trajectory.id,
+          stepId,
+          stageId: semantic.stageId,
+          stageCount: nextStages.length,
+        },
+        cause,
+      },
+    );
+  }
+  step.semanticStages = nextStages;
   trajectory.startTime = Math.min(trajectory.startTime, now);
   trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
   trajectory.updatedAt = nextTrajectoryUpdatedAt(expectedUpdatedAt, now);

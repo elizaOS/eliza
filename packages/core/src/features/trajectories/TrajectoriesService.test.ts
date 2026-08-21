@@ -726,6 +726,90 @@ describe("TrajectoriesService", () => {
 		expect(readBack?.steps[0].semanticStages).toHaveLength(1);
 	});
 
+	it("never writes a stage run the strict step reader cannot decode back", async () => {
+		const trajectoryId = "00000000-0000-4000-8000-000000000070";
+		const stepId = "00000000-0000-4000-8000-000000000071";
+		const row = makeTrajectoryRow(trajectoryId, stepId);
+		const reported: string[] = [];
+		const runtime = {
+			...createRuntimeWithoutSql(),
+			reportError: (scope: string) => {
+				reported.push(scope);
+			},
+		} as IAgentRuntime;
+		const service = new TrajectoriesService(runtime);
+		const serviceInternals = service as unknown as {
+			stepToTrajectory: Map<string, string>;
+			executeRawSql: (
+				sqlText: string,
+			) => Promise<{ rows: Array<Record<string, unknown>>; columns: string[] }>;
+		};
+		serviceInternals.stepToTrajectory.set(stepId, trajectoryId);
+		serviceInternals.executeRawSql = async (sqlText: string) => {
+			if (sqlText.includes("SELECT * FROM trajectories")) {
+				return { rows: [row], columns: Object.keys(row) };
+			}
+			if (sqlText.includes("UPDATE trajectories SET")) {
+				const stepsJson = extractSqlStringAssignment(sqlText, "steps_json");
+				if (stepsJson) row.steps_json = stepsJson;
+			}
+			return { rows: [], columns: [] };
+		};
+
+		// Each of these stages validates individually with a fresh budget, but the
+		// read path decodes the whole array against one shared budget. Writing
+		// enough of them used to produce a row that `getTrajectoryById` rejects
+		// wholesale as TRAJECTORY_ROW_INVALID — taking every other step with it,
+		// and making the row unwritable. The write path must refuse first.
+		for (let index = 0; index < 250; index += 1) {
+			service.logSemanticStage({
+				stepId,
+				stage: {
+					stageId: `stage-tool-${index}`,
+					kind: "toolSearch" as const,
+					iteration: index,
+					startedAt: 100 + index,
+					endedAt: 112 + index,
+					latencyMs: 12,
+					toolSearch: {
+						query: { candidateActions: ["OWNER_ROUTINES", "VIEWS"] },
+						// A realistic 10-candidate search. At this payload size the
+						// shared read budget is exhausted around 103 stages, far under
+						// the 250 the writer will accept.
+						results: Array.from({ length: 10 }, (_unused, rank) => ({
+							name: `ACTION_${rank}`,
+							score: 0.4,
+							rank: rank + 1,
+						})),
+						selectedActions: ["ACTION_0"],
+					},
+				},
+			});
+		}
+		// The turn's persistence barrier must survive: `flushWriteQueue` rethrows
+		// the queued write (J2), so a stage bound must never land in that queue.
+		await expect(
+			service.flushWriteQueue(trajectoryId),
+		).resolves.toBeUndefined();
+
+		// Whatever was accepted must read back cleanly — no throw, no poisoned row.
+		const readBack = await (
+			service as unknown as {
+				getTrajectoryById: (id: string) => Promise<{
+					steps: Array<{ semanticStages?: unknown[] }>;
+				} | null>;
+			}
+		).getTrajectoryById(trajectoryId);
+		expect(readBack).not.toBeNull();
+		const written = readBack?.steps[0].semanticStages ?? [];
+		expect(written.length).toBeGreaterThan(0);
+		// Anything the budget refused is a J7 diagnostic, never a silent corrupt
+		// write and never a thrown turn.
+		if (written.length < 250) {
+			expect(reported.length).toBeGreaterThan(0);
+		}
+	});
+
 	it("reports an invalid decision stage under J7 instead of persisting garbage", async () => {
 		const trajectoryId = "00000000-0000-4000-8000-000000000062";
 		const stepId = "00000000-0000-4000-8000-000000000063";

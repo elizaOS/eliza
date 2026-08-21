@@ -2183,19 +2183,102 @@ export class TrajectoriesService extends Service {
 
 			const step = await this.ensureStepExists(trajectory, stepId);
 			const stages = step.semanticStages ?? [];
-			// Idempotent across retries: the stageId is minted once per emit.
-			if (stages.some((entry) => entry.stageId === semantic.stageId)) return;
+			// Idempotent across retries: the stageId is minted once per emit, so a
+			// retry re-presents the identical envelope and is dropped. stageIds are
+			// timestamp-derived (`stage-tool-${name}-${startedAt}`), though, so two
+			// genuinely distinct stages starting in the same millisecond — routine
+			// under parallel tool execution — collide here. The file recorder
+			// appends unconditionally and keeps both, so a silent drop would break
+			// file/DB parity exactly in the concurrent case #17030 exists to
+			// diagnose. Warn when the payload differs so the loss is visible.
+			const existing = stages.find(
+				(entry) => entry.stageId === semantic.stageId,
+			);
+			if (existing) {
+				if (JSON.stringify(existing) !== JSON.stringify(semantic)) {
+					logger.warn(
+						{
+							trajectoryId,
+							stepId,
+							stageId: semantic.stageId,
+							kind: semantic.kind,
+						},
+						"[trajectory-logger] Dropped a distinct semantic stage that collided on stageId; file/DB stage parity is broken for this step",
+					);
+				}
+				return;
+			}
+			// Bounds are expected diagnostics, not write faults, and must be
+			// reported *inside* the lock task rather than thrown out of it. The
+			// task's promise is what `withTrajectoryWriteLock` stores in
+			// `writeQueues`, and `flushWriteQueue` deliberately rethrows that
+			// promise as an awaited persistence barrier (J2). Throwing here would
+			// therefore let a stage bound — reachable on any turn that emits more
+			// stages than the cap — reject the turn's own flush, which is exactly
+			// what a diagnostics mirror must never do.
 			if (stages.length >= TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS) {
-				throw new ElizaError("Trajectory step semantic stages are full", {
-					code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
-					context: {
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Dropped a semantic stage: step is at the stage cap",
+					{
 						trajectoryId,
 						stepId,
+						stageId: semantic.stageId,
 						limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
 					},
-				});
+					new ElizaError("Trajectory step semantic stages are full", {
+						code: "TRAJECTORY_SEMANTIC_STAGE_OVERFLOW",
+						context: {
+							trajectoryId,
+							stepId,
+							limit: TRAJECTORY_SEMANTIC_STAGES_MAX_ITEMS,
+						},
+					}),
+				);
+				return;
 			}
-			step.semanticStages = [...stages, semantic];
+			const nextStages = [...stages, semantic];
+			// Write ⊆ read by construction. `parseTrajectorySemanticStage` gives
+			// each stage a fresh validation budget on the way in, but the read
+			// path (`normalizeTrajectoryStep`) shares one budget across the whole
+			// array — so a run of individually-valid stages can decode to an
+			// invalid array. That is not recoverable on read: the step
+			// normalizes to null and `getTrajectoryById` throws
+			// TRAJECTORY_ROW_INVALID for the *entire* trajectory, taking every
+			// other step, llmCall, and providerAccess with it, and making the row
+			// unwritable too. Validating the candidate array with the read-path
+			// decoder before persisting keeps that state unreachable: the stage
+			// that would exceed the aggregate budget is rejected as a J7
+			// diagnostic instead, exactly like a cap overflow.
+			try {
+				parseTrajectorySemanticStages(nextStages);
+			} catch (cause) {
+				// error-policy:J7 an exceeded decode budget is a diagnostics bound:
+				// report and drop the stage, never poison the row or the flush.
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Dropped a semantic stage: step would exceed the stage decode budget",
+					{
+						trajectoryId,
+						stepId,
+						stageId: semantic.stageId,
+						stageCount: nextStages.length,
+					},
+					new ElizaError(
+						"Trajectory step semantic stages exceed the decode budget",
+						{
+							code: "TRAJECTORY_SEMANTIC_STAGE_BUDGET_EXCEEDED",
+							context: {
+								trajectoryId,
+								stepId,
+								stageId: semantic.stageId,
+								stageCount: nextStages.length,
+							},
+							cause,
+						},
+					),
+				);
+				return;
+			}
+			step.semanticStages = nextStages;
 
 			const updatedAtIso = new Date().toISOString();
 			await this.executeRawSql(`
