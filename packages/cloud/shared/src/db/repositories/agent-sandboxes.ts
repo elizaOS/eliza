@@ -68,6 +68,7 @@ import {
   type AgentSandboxStatus,
   agentSandboxBackups,
   agentSandboxes,
+  CONTAINER_BACKED_EXECUTION_TIERS,
   type NewAgentSandbox,
   type NewAgentSandboxBackup,
   type StoredAgentSandboxBackup,
@@ -523,30 +524,45 @@ export class AgentSandboxesRepository {
   }
 
   /**
-   * Status census of the dedicated (non-shared) tenant fleet, for the
-   * fleet-liveness monitor (#22548). Counts every non-deleted, non-warm-pool
-   * dedicated row grouped by status so a caller can answer "do dedicated
-   * agents exist that should be reachable and are not?" — a question the
-   * heartbeat sweep structurally cannot ask, because a fleet whose every row
-   * sits in `error` gives it nothing to iterate and it reports healthy by
-   * having nothing to say.
+   * Tier x status census of the container-backed tenant fleet, for the
+   * fleet-liveness monitor (#22548). Grouping by BOTH keys is the point: the
+   * monitor cannot decide whether a row "should be reachable right now" from
+   * its status alone, because the tiers carry different serving contracts —
+   * `dedicated-lazy` is allowed to sleep, `dedicated-always`/`custom` are not.
+   * The caller applies that contract with `isFleetRowExpectedReachable`.
+   *
+   * The tier filter is an explicit allowlist rather than `<> 'shared'` so a
+   * tier added later cannot silently join the paging census: shared rows are
+   * container-free by design, and any new tier must state its own serving
+   * contract before it can raise a fleet alarm. Soft-deleted rows and
+   * unclaimed warm-pool rows are excluded because neither belongs to a
+   * tenant-serving agent.
+   *
+   * Status is deliberately NOT filtered here: the monitor needs the off-state
+   * counts (`sleeping`, `stopped`, ...) to report the whole fleet picture
+   * alongside the alarm, and a fleet whose every row sits in `error` — the
+   * exact shape the heartbeat sweep cannot see, since it iterates only
+   * `running` rows — must still appear in the census.
    */
-  async summarizeDedicatedFleet(): Promise<Array<{ status: string; count: number }>> {
+  async summarizeDedicatedFleet(): Promise<
+    Array<{ execution_tier: string; status: string; count: number }>
+  > {
     await ensureAgentSandboxSchema();
     return dbRead
       .select({
+        execution_tier: agentSandboxes.execution_tier,
         status: agentSandboxes.status,
         count: sql<number>`count(*)::int`,
       })
       .from(agentSandboxes)
       .where(
         and(
-          ne(agentSandboxes.execution_tier, "shared"),
+          inArray(agentSandboxes.execution_tier, [...CONTAINER_BACKED_EXECUTION_TIERS]),
           isNull(agentSandboxes.deleted_at),
           isNull(agentSandboxes.pool_status),
         ),
       )
-      .groupBy(agentSandboxes.status);
+      .groupBy(agentSandboxes.execution_tier, agentSandboxes.status);
   }
 
   /**
