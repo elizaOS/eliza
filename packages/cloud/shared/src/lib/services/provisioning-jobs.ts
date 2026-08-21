@@ -4306,6 +4306,10 @@ export class ProvisioningJobService {
           throw new Error(`No identity parser for agent job type ${job.type}`);
       }
     } catch (cause) {
+      // error-policy:J3 an unparseable job payload becomes an explicit terminal
+      // rejection, never a fake-valid identity. The cause is carried as a
+      // string rather than the Error so a malformed payload cannot smuggle a
+      // value into the persisted failure row.
       throw new RejectedAgentExecutionError(`Invalid agent job payload for job ${job.id}`, {
         jobId: job.id,
         jobType: job.type,
