@@ -1,32 +1,17 @@
 /**
- * Regression tests for Kamino provider surrogate safety.
+ * Surrogate safety for Kamino providers — exercises real providers at 8k/4k caps.
  */
 
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-
-const MAX_KAMINO_REPORT_CHARS = 8000;
-const KAMINO_POOL_TEXT_LIMIT = 4000;
-const KAMINO_LIQUIDITY_TEXT_LIMIT = 4000;
-
-function formatKaminoReport(report: string): string {
-  return truncateWellFormed(
-    toWellFormedUnicode(report),
-    MAX_KAMINO_REPORT_CHARS,
-  );
-}
-
-function formatKaminoText(info: string, limit: number): string {
-  return truncateWellFormed(toWellFormedUnicode(`${info}\n`), limit);
-}
+import { kaminoLiquidityProvider } from "./kaminoLiquidityProvider.ts";
+import { kaminoPoolProvider } from "./kaminoPoolProvider.ts";
+import { kaminoProvider } from "./kaminoProvider.ts";
 
 function isWellFormed(v: string): boolean {
   if (!v) return true;
-  if (
-    typeof (v as unknown as { isWellFormed?: () => boolean }).isWellFormed ===
-    "function"
-  )
-    return (v as unknown as { isWellFormed: () => boolean }).isWellFormed();
+  const maybe = v as unknown as { isWellFormed?: () => boolean };
+  if (typeof maybe.isWellFormed === "function") return maybe.isWellFormed();
   for (let i = 0; i < v.length; i++) {
     const c = v.charCodeAt(i);
     if (c >= 0xd800 && c <= 0xdbff) {
@@ -38,39 +23,239 @@ function isWellFormed(v: string): boolean {
   return true;
 }
 
-describe("Kamino providers surrogate safety", () => {
-  it("keeps surrogate pairs intact at 8,000-char boundary in kaminoProvider", () => {
-    const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"k".repeat(7999)}${fox}${"m".repeat(100)}`;
-    const out = formatKaminoReport(input);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(7999);
-    expect(out).not.toContain("\uD83E");
+const fox = String.fromCharCode(0xd83e, 0xdd8a);
+const loneHigh = String.fromCharCode(0xd800);
+
+function makeLendingRuntime(poisonedModelOutput: string) {
+  const mockKaminoService = {
+    getUserPositions: async () => ({
+      lending: [],
+      borrowing: [],
+      markets: [],
+      userAccounts: 0,
+    }),
+    getAvailableReserves: async () => [],
+    getMarketOverview: async () => null,
+    discoverMarkets: async () => [],
+  };
+  const entity = {
+    id: "entity-1",
+    names: ["Alice"],
+    metadata: {
+      account: {
+        username: "alice",
+        name: "Alice",
+        metawallets: [
+          {
+            keypairs: {
+              solana: {
+                publicKey: "So11111111111111111111111111111111111111112",
+              },
+            },
+          },
+        ],
+      },
+    },
+  };
+  return {
+    getEntityById: async () => entity as never,
+    getService: (name: string) =>
+      name === "KAMINO_SERVICE" ? (mockKaminoService as never) : null,
+    useModel: async () => poisonedModelOutput,
+    logger: {
+      warn: () => {},
+      error: () => {},
+      info: () => {},
+      debug: () => {},
+    },
+  } as unknown as IAgentRuntime;
+}
+
+function makePoolRuntime(poisonedModelOutput: string) {
+  const poolData = {
+    address: "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC",
+    timestamp: Date.now(),
+    strategy: {
+      address: "strat1",
+      strategyType: "test",
+      estimatedTvl: 1000,
+      volume24h: 100,
+      apy: 5.5,
+      feeTier: "0.3%",
+      rebalancing: "auto",
+      lastRebalance: Date.now(),
+      tokenA: "SOL",
+      tokenB: "USDC",
+      positions: [],
+    },
+  };
+  const mockLiquidityService = {
+    getPoolByAddress: async () => poolData as never,
+    testConnection: async () => ({
+      connectionTest: true,
+      programId: "Kamino",
+      rpcEndpoint: "https://api.mainnet-beta.solana.com",
+      strategyCount: 1,
+    }),
+  };
+  return {
+    getService: (name: string) =>
+      name === "KAMINO_LIQUIDITY_SERVICE"
+        ? (mockLiquidityService as never)
+        : null,
+    useModel: async () => poisonedModelOutput,
+    logger: {
+      warn: () => {},
+      error: () => {},
+      info: () => {},
+      debug: () => {},
+    },
+  } as unknown as IAgentRuntime;
+}
+
+function makeLiquidityRuntime(poisonedModelOutput: string) {
+  const mockLiquidityService = {
+    resolveTokenWithBirdeye: async (addr: string) => ({
+      name: "Test Token",
+      symbol: "TST",
+      address: addr,
+      price: 1,
+      liquidity: 1000,
+      marketCap: 10000,
+      priceChange24h: 1.5,
+      decimals: 6,
+    }),
+    getTokenLiquidityStats: async () => ({
+      tokenName: "Test",
+      totalTvl: 1000,
+      totalVolume: 500,
+      apyRange: { min: 1, max: 5 },
+      strategies: [],
+    }),
+    getMarketStatistics: async () => ({
+      timestamp: Date.now(),
+      stakingYields: { total: 0, averageApy: 0, maxApy: 0, minApy: 0 },
+      medianYields: { total: 0, averageApy: 0 },
+      limoTrades: {
+        total: 0,
+        totalVolume: 0,
+        averageTip: 0,
+        averageSurplus: 0,
+      },
+    }),
+    testConnection: async () => ({
+      connectionTest: true,
+      programId: "Kamino",
+      rpcEndpoint: "https://api.mainnet-beta.solana.com",
+      strategyCount: 1,
+    }),
+    getPoolByAddress: async () => null,
+  };
+  return {
+    getService: (name: string) =>
+      name === "KAMINO_LIQUIDITY_SERVICE"
+        ? (mockLiquidityService as never)
+        : null,
+    useModel: async () => poisonedModelOutput,
+    logger: {
+      warn: () => {},
+      error: () => {},
+      info: () => {},
+      debug: () => {},
+    },
+  } as unknown as IAgentRuntime;
+}
+
+describe("Kamino providers surrogate safety via real providers", () => {
+  it("KAMINO_LENDING: astral boundary at 8,000 via real provider", async () => {
+    const poisoned = `${"a".repeat(7999)}${fox}${"b".repeat(200)}`;
+    const runtime = makeLendingRuntime(poisoned);
+    const message = {
+      content: { text: "kamino", channelType: "DM" },
+      entityId: "entity-1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoProvider.get(runtime, message, {} as State);
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.length).toBeLessThanOrEqual(8000);
+    expect(() => JSON.stringify(result)).not.toThrow();
   });
 
-  it("keeps surrogate pairs intact at 4,000-char boundary in kaminoPoolProvider", () => {
-    const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"p".repeat(3999)}${fox}${"q".repeat(100)}`;
-    const out = formatKaminoText(input, KAMINO_POOL_TEXT_LIMIT);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(3999);
-    expect(out).not.toContain("\uD83E");
+  it("KAMINO_LENDING: lone surrogate sanitized via real provider", async () => {
+    const poisoned = `Lending report ${loneHigh} broken ${"a".repeat(9000)}`;
+    const runtime = makeLendingRuntime(poisoned);
+    const message = {
+      content: { text: "kamino", channelType: "DM" },
+      entityId: "entity-1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoProvider.get(runtime, message, {} as State);
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.includes("\uD800")).toBe(false);
+    expect(() => JSON.stringify(result)).not.toThrow();
   });
 
-  it("keeps surrogate pairs intact at 4,000-char boundary in kaminoLiquidityProvider", () => {
-    const fox = String.fromCharCode(0xd83e, 0xdd8a);
-    const input = `${"l".repeat(3999)}${fox}${"x".repeat(100)}`;
-    const out = formatKaminoText(input, KAMINO_LIQUIDITY_TEXT_LIMIT);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.length).toBe(3999);
-    expect(out).not.toContain("\uD83E");
+  it("KAMINO_POOL: astral boundary at 4,000 via real provider", async () => {
+    const poisoned = `${"p".repeat(3999)}${fox}${"q".repeat(200)}`;
+    const runtime = makePoolRuntime(poisoned);
+    const message = {
+      content: { text: "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC" },
+      entityId: "e1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoPoolProvider.get(runtime, message, {} as State);
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.length).toBeLessThanOrEqual(4000);
+    expect(() => JSON.stringify(result)).not.toThrow();
   });
 
-  it("sanitizes lone surrogate in report payloads", () => {
-    const lone = `Kamino vault ${String.fromCharCode(0xd800)} details ${"z".repeat(10000)}`;
-    const out = formatKaminoReport(lone);
-    expect(isWellFormed(out)).toBe(true);
-    expect(out.includes("\uFFFD")).toBe(true);
-    expect(out.length).toBeLessThanOrEqual(MAX_KAMINO_REPORT_CHARS);
+  it("KAMINO_POOL: lone surrogate sanitized via real provider", async () => {
+    const poisoned = `Pool ${loneHigh} data ${"p".repeat(5000)}`;
+    const runtime = makePoolRuntime(poisoned);
+    const message = {
+      content: { text: "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC" },
+      entityId: "e1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoPoolProvider.get(runtime, message, {} as State);
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.includes("\uD800")).toBe(false);
+    expect(() => JSON.stringify(result)).not.toThrow();
+  });
+
+  it("KAMINO_LIQUIDITY: astral boundary at 4,000 via real provider", async () => {
+    const poisoned = `${"l".repeat(3999)}${fox}${"x".repeat(200)}`;
+    const runtime = makeLiquidityRuntime(poisoned);
+    const message = {
+      content: { text: "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC" },
+      entityId: "e1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoLiquidityProvider.get(
+      runtime,
+      message,
+      {} as State,
+    );
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.length).toBeLessThanOrEqual(4000);
+    expect(() => JSON.stringify(result)).not.toThrow();
+  });
+
+  it("KAMINO_LIQUIDITY: lone surrogate sanitized via real provider", async () => {
+    const poisoned = `Liquidity ${loneHigh} stats ${"l".repeat(5000)}`;
+    const runtime = makeLiquidityRuntime(poisoned);
+    const message = {
+      content: { text: "HeLp6NuQkmYB4pYWo2zYs22mESHXPQYzXbB8n4V98jwC" },
+      entityId: "e1",
+      roomId: "r1",
+    } as unknown as Memory;
+    const result = await kaminoLiquidityProvider.get(
+      runtime,
+      message,
+      {} as State,
+    );
+    expect(isWellFormed(result.text)).toBe(true);
+    expect(result.text.includes("\uD800")).toBe(false);
+    expect(() => JSON.stringify(result)).not.toThrow();
   });
 });
