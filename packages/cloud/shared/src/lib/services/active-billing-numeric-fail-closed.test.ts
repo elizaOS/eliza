@@ -89,6 +89,7 @@ mock.module("../../db/client", () => ({
     select: () => makeBuilder(),
   },
   dbWrite: {
+    select: () => makeBuilder(),
     update() {
       dbWriteUpdateCalls += 1;
       const builder = {

@@ -189,6 +189,103 @@ async function seed(balance = "10.000000") {
 }
 
 describe("compute billing recovery", () => {
+  test("Dedicated warm-pool capacity is outside every billing lifecycle path", async () => {
+    const { org, user, sandbox, lastBilledAt } = await seed();
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ pool_status: "unclaimed" })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const now = new Date("2026-08-19T04:30:00.000Z");
+
+    const billableWhileRunning = await agentBillingRepository.listBillableSandboxes(
+      now,
+      new Date("2026-08-19T03:30:00.000Z"),
+    );
+    expect(billableWhileRunning.runningSandboxes.map((row) => row.id)).not.toContain(sandbox.id);
+
+    const input = {
+      sandboxId: sandbox.id,
+      organizationId: org.id,
+      userId: user.id,
+      agentName: "pool-capacity",
+      hourlyRate: 0.01,
+      billingDescription: "must remain exempt",
+      lowCreditWarningAmount: 1,
+      now,
+    };
+    await expect(agentBillingRepository.recordHourlyBilling(input)).resolves.toEqual({
+      status: "already_billed_recently",
+    });
+    await expect(
+      agentBillingRepository.settleAccruedBillingBeforeLifecycle(sandbox.id, org.id, now),
+    ).resolves.toEqual({ status: "already_billed_recently" });
+
+    await agentBillingRepository.scheduleShutdownWarning(
+      sandbox.id,
+      org.id,
+      now,
+      new Date("2026-08-19T05:30:00.000Z"),
+    );
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandbox.id, org.id, now);
+
+    const [afterRejectedTransitions] = await dbWrite
+      .select({
+        billing_status: agentSandboxes.billing_status,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(afterRejectedTransitions).toEqual({
+      billing_status: "active",
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ status: "stopped", last_backup_at: now })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    const billableWhileStopped = await agentBillingRepository.listBillableSandboxes(
+      now,
+      new Date("2026-08-19T03:30:00.000Z"),
+    );
+    expect(billableWhileStopped.stoppedWithBackups.map((row) => row.id)).not.toContain(sandbox.id);
+
+    await dbWrite
+      .update(agentSandboxes)
+      .set({ billing_status: "suspended" })
+      .where(eq(agentSandboxes.id, sandbox.id));
+    await agentBillingRepository.reactivateSandboxBillingAfterFunding(
+      sandbox.id,
+      new Date("2026-08-19T04:31:00.000Z"),
+      org.id,
+    );
+
+    const [stored] = await dbWrite
+      .select({
+        billing_status: agentSandboxes.billing_status,
+        last_billed_at: agentSandboxes.last_billed_at,
+        shutdown_warning_sent_at: agentSandboxes.shutdown_warning_sent_at,
+        scheduled_shutdown_at: agentSandboxes.scheduled_shutdown_at,
+      })
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.id, sandbox.id));
+    expect(stored).toEqual({
+      billing_status: "suspended",
+      last_billed_at: lastBilledAt,
+      shutdown_warning_sent_at: null,
+      scheduled_shutdown_at: null,
+    });
+    const [balance] = await dbWrite
+      .select({ credit_balance: organizations.credit_balance })
+      .from(organizations)
+      .where(eq(organizations.id, org.id));
+    expect(balance.credit_balance).toBe("10.000000");
+    expect(await dbWrite.select().from(agentBillingRecords)).toHaveLength(0);
+    expect(await dbWrite.select().from(creditTransactions)).toHaveLength(0);
+  });
+
   test("a delayed run charges the full elapsed interval and a concurrent replay is a no-op", async () => {
     const { org, user, sandbox } = await seed();
     const now = new Date("2026-08-19T04:30:00.000Z");

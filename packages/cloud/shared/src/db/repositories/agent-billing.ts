@@ -111,6 +111,7 @@ export class AgentBillingRepository {
             eq(agentSandboxes.status, "running"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
             isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.pool_status),
             // Defence in depth, aligned with the six sibling predicates here.
             // The charge itself is already safe: recordHourlyBillingWithOptions
             // claims the row with this same guard on its SELECT ... FOR UPDATE,
@@ -139,6 +140,7 @@ export class AgentBillingRepository {
             eq(agentSandboxes.status, "stopped"),
             sql`${agentSandboxes.execution_tier} <> 'shared'`,
             isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.pool_status),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
             inArray(agentSandboxes.billing_status, BILLABLE_BILLING_STATUSES),
             isNotNull(agentSandboxes.last_backup_at),
@@ -203,6 +205,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
+          isNull(agentSandboxes.pool_status),
           sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
       );
@@ -223,6 +226,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
+          isNull(agentSandboxes.pool_status),
           sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
       );
@@ -245,6 +249,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           ...(organizationId ? [eq(agentSandboxes.organization_id, organizationId)] : []),
+          isNull(agentSandboxes.pool_status),
           ne(agentSandboxes.billing_status, "exempt"),
           sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
@@ -295,6 +300,7 @@ export class AgentBillingRepository {
         and(
           eq(agentSandboxes.id, sandboxId),
           eq(agentSandboxes.organization_id, organizationId),
+          isNull(agentSandboxes.pool_status),
           sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
         ),
       )
@@ -338,6 +344,7 @@ export class AgentBillingRepository {
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
             isNull(agentSandboxes.deleted_at),
+            isNull(agentSandboxes.pool_status),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         )
@@ -442,6 +449,7 @@ export class AgentBillingRepository {
           and(
             eq(agentSandboxes.id, input.sandboxId),
             eq(agentSandboxes.organization_id, input.organizationId),
+            isNull(agentSandboxes.pool_status),
             sql`${agentSandboxes.deletion_attempt_id} IS NULL`,
           ),
         );
