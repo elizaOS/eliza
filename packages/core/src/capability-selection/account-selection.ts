@@ -6,7 +6,10 @@
  * `requestedAccountId` is honored exactly or fails loudly: an ineligible
  * pinned account is never silently substituted with a different account
  * (wrong-account prevention). Failures reuse the typed policy-denial and
- * unavailable codes from `types/provider-integrations`.
+ * unavailable codes from `types/provider-integrations`, and a policy denial
+ * always outranks mere unavailability: an account-independent denial is
+ * decided before any account is inspected, and an account-scoped denial is
+ * preferred over any unavailability collected across candidates.
  */
 import { ElizaError } from "../errors";
 import {
@@ -14,6 +17,7 @@ import {
 	type CapabilityPolicyDenialCode,
 	type CapabilityRiskLevel,
 	type CapabilityUnavailableCode,
+	CONNECTED_ACCOUNT_STATUSES,
 	type ConnectedAccount,
 	type ConnectedAccountMode,
 } from "../types/provider-integrations";
@@ -140,6 +144,12 @@ function validateSelectionFacts(
 		}
 	}
 	for (const account of accounts) {
+		if (!CONNECTED_ACCOUNT_STATUSES.includes(account.status)) {
+			invalidSelectionInput("Connected account has an unknown status.", {
+				accountId: account.accountId,
+				status: account.status,
+			});
+		}
 		if (!signalsById.has(account.accountId)) {
 			invalidSelectionInput(
 				"Every connected account requires a selection signal.",
@@ -255,9 +265,6 @@ function evaluateAccount(
 			retryable: UNAVAILABLE_RETRYABLE[capability.status],
 		};
 	}
-	if (RISK_RANK[intent.riskLevel] > RISK_RANK[policy.maxRiskLevel]) {
-		return { kind: "denied", reasonCode: "risk_policy_denied" };
-	}
 	if (RISK_RANK[intent.riskLevel] > RISK_RANK[capability.riskLevel]) {
 		return { kind: "unavailable", code: "needs_scope", retryable: false };
 	}
@@ -340,6 +347,18 @@ export function selectConnectedAccount(
 		);
 	}
 	validateSelectionFacts(accounts, policy, signals, signalsById);
+
+	// The intent-vs-policy risk comparison names no field of any account, so it
+	// is decided once before any account is inspected. Leaving it inside the
+	// per-account loop let an unavailable account mask a categorical denial and
+	// send the caller down a reauth path that could never unblock the request.
+	if (RISK_RANK[intent.riskLevel] > RISK_RANK[policy.maxRiskLevel]) {
+		return {
+			outcome: "denied",
+			reasonCode: "risk_policy_denied",
+			accountId: null,
+		};
+	}
 
 	if (intent.requestedAccountId !== null) {
 		const account = accounts.find(
