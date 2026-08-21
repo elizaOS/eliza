@@ -86,6 +86,29 @@ describe("withRetry — internal failure propagates vs designed-empty passes thr
     expect(warn).toHaveBeenCalledWith("[twitter] Rate limited, waiting 0ms before retry 1/1");
   });
 
+  it("aborts an oversized Retry-After wait without starting another mutation", async () => {
+    const controller = new AbortController();
+    let calls = 0;
+    const fn = async () => {
+      calls += 1;
+      return new Response("", { status: 429, headers: { "retry-after": "3600" } });
+    };
+    const reason = new Error("overall deadline reached");
+    const timeout = setTimeout(() => controller.abort(reason), 25);
+    try {
+      await expect(
+        withRetry(fn, async (response) => response.json(), {
+          platform: "twitter",
+          maxRetries: 3,
+          signal: controller.signal,
+        }),
+      ).rejects.toBe(reason);
+      expect(calls).toBe(1);
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+
   it("PROPAGATES a thrown fn (network/parse) as the final error, not a default", async () => {
     const fn = async () => {
       throw new Error("ECONNRESET");

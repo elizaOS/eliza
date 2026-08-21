@@ -203,17 +203,63 @@ describe("twitterFetch — bounded hops fail closed and keep caller signals", ()
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("composes caller cancellation with the hop deadline", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      seen = init?.signal;
-      return okJson({ media_id_string: "m1" });
-    }) as unknown as typeof fetch;
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          seen = init?.signal;
+          seen?.addEventListener("abort", () => reject(seen?.reason), { once: true });
+        }),
+    ) as unknown as typeof fetch;
 
     const controller = new AbortController();
-    await twitterFetch("https://upload.twitter.com/media/upload.json", {
+    const pending = twitterFetch("https://upload.twitter.com/media/upload.json", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    await Promise.resolve();
+    expect(seen).not.toBe(controller.signal);
+    controller.abort(new Error("caller cancelled"));
+    await expect(pending).rejects.toThrow(/caller cancelled/);
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it("keeps the deadline when a supplied caller signal never aborts", async () => {
+    const controller = new AbortController();
+    globalThis.fetch = mock(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), {
+            once: true,
+          });
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      twitterFetch(
+        "https://upload.twitter.com/media/upload.json",
+        { signal: controller.signal },
+        100,
+      ),
+    ).rejects.toThrow(/timed out/i);
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  it("rejects over-budget post media before the first upload mutation", async () => {
+    let fetched = false;
+    fetchImpl = async () => {
+      fetched = true;
+      return okJson({});
+    };
+    const media = Array.from({ length: 5 }, () => ({
+      type: "image" as const,
+      mimeType: "image/png",
+      data: Buffer.from([1]),
+    }));
+
+    const result = await twitterProvider.createPost(CREDS, { text: "hello", media });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("at most 4 media items");
+    expect(fetched).toBe(false);
   });
 });

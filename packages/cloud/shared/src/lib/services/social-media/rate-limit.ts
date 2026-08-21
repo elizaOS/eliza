@@ -18,6 +18,7 @@ interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   platform: SocialPlatform;
+  signal?: AbortSignal;
 }
 
 const PLATFORM_RATE_LIMITS: Record<
@@ -37,7 +38,23 @@ const PLATFORM_RATE_LIMITS: Record<
   mastodon: { requestsPerWindow: 300, windowMs: 5 * 60 * 1000 },
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = (): void => {
+      if (timeout !== undefined) clearTimeout(timeout);
+      reject(signal?.reason);
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 
 function parseRetryAfter(response: Response): number | undefined {
   const header = response.headers.get("retry-after");
@@ -68,11 +85,12 @@ export async function withRetry<T>(
   parser: (response: Response) => Promise<T>,
   options: RetryOptions,
 ): Promise<ApiResponse<T>> {
-  const { maxRetries = 3, baseDelayMs = 1000, platform } = options;
+  const { maxRetries = 3, baseDelayMs = 1000, platform, signal } = options;
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      signal?.throwIfAborted();
       const response = await fn();
 
       if (isRateLimitResponse(response)) {
@@ -83,7 +101,7 @@ export async function withRetry<T>(
           logger.warn(
             `[${platform}] Rate limited, waiting ${waitMs}ms before retry ${attempt + 1}/${maxRetries}`,
           );
-          await sleep(waitMs);
+          await sleep(waitMs, signal);
           continue;
         }
         throw createRateLimitError(
@@ -112,7 +130,7 @@ export async function withRetry<T>(
       if (attempt < maxRetries) {
         const delayMs = baseDelayMs * 2 ** attempt;
         logger.warn(`[${platform}] Request failed, retrying in ${delayMs}ms: ${lastError.message}`);
-        await sleep(delayMs);
+        await sleep(delayMs, signal);
       }
     }
   }
