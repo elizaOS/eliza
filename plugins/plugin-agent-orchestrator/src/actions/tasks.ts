@@ -1206,6 +1206,21 @@ async function runCreateLegacy(
     if (duplicate) {
       return duplicateSpawnGuardResult(runtime, callback, duplicate);
     }
+    const originMessageId = typeof message.id === "string" ? message.id : "";
+    if (
+      originMessageId &&
+      content.source !== MESSAGE_SOURCE_SUB_AGENT &&
+      extraMetadata.subAgent !== true &&
+      !DUPLICATE_SPAWN_FORCE_RE.test(
+        typeof content.text === "string" ? content.text : "",
+      ) &&
+      !claimCreateForMessage(originMessageId)
+    ) {
+      return duplicateSpawnGuardResult(runtime, callback, {
+        name: "this request",
+        status: "already launched",
+      });
+    }
   }
 
   // Ack FIRST — before task-record creation (whose criteria generation can
@@ -4596,6 +4611,26 @@ const DUPLICATE_SPAWN_SIMILARITY_THRESHOLD = 0.6;
  * goal exists, report it instead of spawning; explicit "again/fresh/retry"
  * phrasing bypasses the guard.
  */
+/** One create per originating user message. The planner loop re-issues a
+ *  second TASKS create in the SAME turn after the first one's completion
+ *  relay lands (live 2026-08-21: "run the lunch spot picker" launched a
+ *  successor AND a spurious "run-lunch-picker" lane two seconds later — two
+ *  kickoff bubbles, one answer). The in-flight similarity guard misses it
+ *  because the first task is already done by then. Keyed on the exact message
+ *  id, so a genuinely new "run it again" message is never blocked. */
+const RECENT_CREATE_CLAIMS = new Map<string, number>();
+const RECENT_CREATE_CLAIM_TTL_MS = 10 * 60_000;
+
+function claimCreateForMessage(messageId: string): boolean {
+  const now = Date.now();
+  for (const [id, at] of RECENT_CREATE_CLAIMS) {
+    if (now - at > RECENT_CREATE_CLAIM_TTL_MS) RECENT_CREATE_CLAIMS.delete(id);
+  }
+  if (RECENT_CREATE_CLAIMS.has(messageId)) return false;
+  RECENT_CREATE_CLAIMS.set(messageId, now);
+  return true;
+}
+
 async function findNearDuplicateInFlightWork(args: {
   runtime: IAgentRuntime;
   taskService: OrchestratorTaskService | null | undefined;
