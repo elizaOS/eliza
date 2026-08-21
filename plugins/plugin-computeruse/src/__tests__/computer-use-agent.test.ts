@@ -531,4 +531,93 @@ describe("runComputerUseAgentLoop — fake Brain", () => {
       "failed: Coordinates",
     );
   });
+
+  it("truncates progress rationale and failure without tearing UTF-16 surrogate pairs at 180 limit", () => {
+    const rationale = `${"r".repeat(176)}\u{1F98A}zzzz`;
+    const stepProgress: ComputerUseAgentStepProgress = {
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale,
+      result: { success: true },
+    };
+
+    const formatted = formatComputerUseAgentProgress(stepProgress);
+    expect(formatted.isWellFormed()).toBe(true);
+    expect(formatted).toContain(`${"r".repeat(176)}...`);
+  });
+
+  it("preserves well-formed progress rationale at and below the 180-code-unit limit", () => {
+    for (const rationale of ["ready 🦊", "r".repeat(180)]) {
+      const formatted = formatComputerUseAgentProgress({
+        step: 1,
+        maxSteps: 5,
+        actionKind: "click",
+        rationale,
+        result: { success: true },
+      });
+
+      expect(formatted).toContain(rationale);
+      expect(formatted).not.toContain("...");
+      expect(formatted.isWellFormed()).toBe(true);
+    }
+  });
+
+  it("normalizes lone surrogates in short rationale and truncated failure status", () => {
+    const formatted = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "inspect\ud800status",
+      result: {
+        success: false,
+        error: `${"e".repeat(176)}\udc00tail`,
+      },
+    });
+
+    expect(formatted.isWellFormed()).toBe(true);
+    expect(formatted).toContain("inspect�status");
+    expect(formatted).toContain(`${"e".repeat(176)}�...`);
+  });
+
+  it("normalizes either lone-surrogate half before status retention or clipping", () => {
+    for (const rationale of [
+      "inspect\ud800status",
+      "inspect\udc00status",
+      `${"h".repeat(176)}\ud800tail`,
+      `${"l".repeat(176)}\udc00tail`,
+    ]) {
+      const formatted = formatComputerUseAgentProgress({
+        step: 1,
+        maxSteps: 5,
+        actionKind: "click",
+        rationale,
+        result: { success: true },
+      });
+
+      expect(formatted.isWellFormed()).toBe(true);
+      expect(formatted).toContain("�");
+    }
+  });
+
+  it("reserves the status suffix only after the 180-code-unit boundary", () => {
+    const atLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "m".repeat(180),
+      result: { success: true },
+    });
+    const overLimit = formatComputerUseAgentProgress({
+      step: 1,
+      maxSteps: 5,
+      actionKind: "click",
+      rationale: "n".repeat(181),
+      result: { success: true },
+    });
+
+    expect(atLimit).toContain("m".repeat(180));
+    expect(atLimit).not.toContain("...");
+    expect(overLimit).toContain(`${"n".repeat(177)}...`);
+  });
 });
