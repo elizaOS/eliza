@@ -8,6 +8,7 @@
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { AcpJsonRpcMessage, ApprovalPreset } from "./types.js";
 
