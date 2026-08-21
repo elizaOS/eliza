@@ -1408,6 +1408,21 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
 	});
 
+	// The separator between claim and courtesy tag is not always a comma or an
+	// em dash: colons, fullwidth colons, ASCII hyphens, and ellipses all appear
+	// in shipped assistant copy and must not launder the fabrication.
+	it.each([
+		"He creado tus recordatorios: ¿algo más?",
+		"He creado tus recordatorios - ¿algo más?",
+		"He creado tus recordatorios… ¿algo más?",
+		"Criei o lembrete: mais alguma coisa?",
+		"提醒设置好了：还需要别的吗？",
+		"提醒设置好了……还需要别的吗？",
+		"알림을 설정했어요: 더 필요한 거 있나요?",
+	])("flags claim-plus-tag across separator %p", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
 	// The mirror must keep holding: when the question governs the claim's own
 	// clause it is an offer or a clarification, not a report.
 	it.each([
@@ -1424,6 +1439,22 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 
+	// Punctuation alone must never sever the clause. A coordinated alternative
+	// or a parenthetical uses the same marks a courtesy tag does, and reading
+	// those as tags turns a genuine question into a fabricated-completion
+	// finding — the unwanted-planner-run harm the module header forbids.
+	it.each([
+		"我把提醒设置好了吗，还是没有？",
+		"提醒设置好了吗，对不对？",
+		"我已经设置、保存提醒了吗？",
+		"알림을 설정했나요, 아니면 아직인가요?",
+		"Mình đã đặt lời nhắc chưa, hay là quên rồi?",
+		"Criei, salvei e agendei o lembrete?",
+		"He creado, guardado y programado el recordatorio?",
+	])("passes coordinated/parenthetical question %p through", (reply) => {
+		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
+	});
+
 	// Korean attaches conditional, embedded-question, and quotative endings to
 	// the same completed stem the claim shape matches, so `설정했` alone cannot
 	// distinguish a report from a hypothesis.
@@ -1433,15 +1464,93 @@ describe("locale claim tiers: clause-scoped interrogativity and subordinate tail
 		"알림을 설정했는지 확인해 볼게요.",
 		"일정을 등록했는지 다시 봐야 해요.",
 		"알림을 저장했다고 가정해 볼게요.",
+		"알림을 설정했을 경우 자동으로 알림이 옵니다.",
+		"알림을 설정했을 때 소리가 나요.",
+		"알림을 설정했는가 다시 확인해 주세요.",
+		"리마인더를 저장했다고 치고 다음으로 넘어갈게요.",
 	])("passes Korean subordinate-tail %p through", (reply) => {
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(false);
 	});
 
-	// Factive subordination still asserts the save and must keep firing.
+	// Factive subordination still asserts the save and must keep firing. A bare
+	// quotative is assertive too: only an explicitly suppositional matrix verb
+	// ("가정해", "치고") makes -다고/-라고 non-factive, so the denylist must not
+	// swallow reported fact.
 	it.each([
 		"알림을 설정했지만 소리는 껐어요.",
 		"메모를 저장했으니까 걱정 마세요.",
+		"알림을 설정했다고 말씀드렸어요.",
+		"알림을 설정했다고 이미 말씀드렸습니다.",
 	])("still flags factive Korean subordination %p", (reply) => {
 		expect(replyClaimsCompletedSideEffect(reply)).toBe(true);
+	});
+
+	// The locale scan runs on every model reply from the Stage-1 evaluator, the
+	// planner REPLY guard, and the egress guard, so a per-match rescan of the
+	// remaining text is a live latency regression, not a micro-optimization.
+	it("stays linear on long repeated-claim Korean input", () => {
+		const long = "알림을 설정했으면 ".repeat(2200);
+		expect(long.length).toBeGreaterThan(20_000);
+		const started = performance.now();
+		expect(replyClaimsCompletedSideEffect(long)).toBe(false);
+		expect(performance.now() - started).toBeLessThan(150);
+	});
+});
+
+// The shape detector is not the product surface: the Stage-1 response-handler
+// evaluator and the planned-reply egress guard are what actually reroute or
+// block a reply. These exercise both consumers with one new must-flag and one
+// new must-pass so a regression in clause scoping cannot hide behind the
+// unit matrix.
+describe("locale clause scoping through the real consumer paths", () => {
+	const scheduledItemSurface: Action = {
+		name: "OWNER_REMINDERS",
+		description: "OWNER_REMINDERS",
+		tags: [
+			"resource:scheduled-item",
+			"capability:read",
+			"capability:write",
+			"capability:schedule",
+		],
+		validate: async () => true,
+		handler: async () => ({ success: true }),
+	};
+
+	it("reroutes a Chinese claim-plus-courtesy-tag reply at Stage 1", async () => {
+		const evaluator = getClaimEvaluator();
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("提醒设置好了，还需要别的吗？")),
+			),
+		).toBe(true);
+	});
+
+	it("leaves a Chinese coordinated question alone at Stage 1", async () => {
+		const evaluator = getClaimEvaluator();
+		expect(
+			await evaluator.shouldRun(
+				makeContext(simpleReplyHandler("我把提醒设置好了吗，还是没有？")),
+			),
+		).toBe(false);
+	});
+
+	it("blocks a Spanish claim-plus-courtesy-tag reply at planned-reply egress", () => {
+		const decision = evaluatePlannedReplyEgress({
+			reply: "He creado tus recordatorios: ¿algo más?",
+			actionResults: [],
+			actions: [scheduledItemSurface],
+		});
+		expect(decision.verdict).toBe("reject");
+		if (decision.verdict !== "reject") throw new Error("expected rejection");
+		expect(decision.kind).toBe("completed_side_effect");
+	});
+
+	it("lets a Korean hypothetical quotative through planned-reply egress", () => {
+		const decision = evaluatePlannedReplyEgress({
+			reply: "알림을 저장했다고 가정해 볼게요.",
+			actionResults: [],
+			actions: [scheduledItemSurface],
+		});
+		expect(decision.verdict).not.toBe("reject");
 	});
 });
