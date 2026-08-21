@@ -4,8 +4,9 @@ import { readChromiumSafeStoragePassword } from "./credentials.ts";
 
 function outputProcess(output: string, exitCode = 0) {
   const stdout = new Response(output).body;
-  if (!stdout) throw new Error("Expected an in-memory response body");
-  return { exited: Promise.resolve(exitCode), stdout };
+  const stderr = new Response("").body;
+  if (!stdout || !stderr) throw new Error("Expected in-memory response bodies");
+  return { exited: Promise.resolve(exitCode), kill: vi.fn(), stderr, stdout };
 }
 
 describe("readChromiumSafeStoragePassword", () => {
@@ -19,7 +20,7 @@ describe("readChromiumSafeStoragePassword", () => {
       }),
     ).resolves.toBe("safe-storage-password");
     expect(spawn).toHaveBeenCalledWith([
-      "security",
+      "/usr/bin/security",
       "find-generic-password",
       "-s",
       "Chrome Safe Storage",
@@ -38,6 +39,83 @@ describe("readChromiumSafeStoragePassword", () => {
         spawn,
       }),
     ).resolves.toBeNull();
+  });
+
+  it("returns null for a nonzero lookup and an empty password", async () => {
+    const failedSpawn = vi.fn(() => outputProcess("ignored", 44));
+    const emptySpawn = vi.fn(() => outputProcess("\n"));
+
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        platform: "darwin",
+        spawn: failedSpawn,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        platform: "darwin",
+        spawn: emptySpawn,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it("drains both pipes while the lookup is running", async () => {
+    let stdoutRead = false;
+    let stderrRead = false;
+    const stream = (markRead: () => void) =>
+      new ReadableStream<Uint8Array>({
+        pull(controller) {
+          markRead();
+          controller.close();
+        },
+      });
+    const spawn = vi.fn(() => ({
+      exited: Promise.resolve(0),
+      kill: vi.fn(),
+      stdout: stream(() => {
+        stdoutRead = true;
+      }),
+      stderr: stream(() => {
+        stderrRead = true;
+      }),
+    }));
+
+    await readChromiumSafeStoragePassword("Chrome Safe Storage", {
+      platform: "darwin",
+      spawn,
+    });
+    expect(stdoutRead).toBe(true);
+    expect(stderrRead).toBe(true);
+  });
+
+  it("bounds a stuck lookup, terminates it, and observes its exit", async () => {
+    let resolveExit: ((exitCode: number) => void) | undefined;
+    let exitObserved = false;
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    void exited.then(() => {
+      exitObserved = true;
+    });
+    const kill = vi.fn((signal?: number | NodeJS.Signals) => {
+      if (signal === "SIGTERM") resolveExit?.(143);
+    });
+    const stdout = new Response("").body;
+    const stderr = new Response("").body;
+    if (!stdout || !stderr)
+      throw new Error("Expected in-memory response bodies");
+    const spawn = vi.fn(() => ({ exited, kill, stderr, stdout }));
+
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        platform: "darwin",
+        spawn,
+        terminationGraceMs: 5,
+        timeoutMs: 5,
+      }),
+    ).resolves.toBeNull();
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(exitObserved).toBe(true);
   });
 
   it("does not spawn a Keychain lookup outside macOS", async () => {
