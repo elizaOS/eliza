@@ -54,6 +54,12 @@ app.post("/", async (c) => {
       agent.organization_id,
     );
     if (!result.success) {
+      const authoritativeAgent = result.reprovisioned
+        ? await elizaSandboxService.getAgentForWrite(
+            agentId,
+            agent.organization_id,
+          )
+        : null;
       const status =
         result.error === "Agent not found"
           ? 404
@@ -66,7 +72,7 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          status: agent.status,
+          status: authoritativeAgent?.status ?? agent.status,
           error: result.error,
         },
         status,
