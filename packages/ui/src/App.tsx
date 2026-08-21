@@ -137,7 +137,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
   listenForConnectRequests,
-  NAVIGATE_VIEW_EVENT,
+  listenForNavigateViewRequests,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
   type PushToTalkHoldDetail,
@@ -2790,9 +2790,7 @@ function AppContent() {
         markCompletedActionNavigationHandled(event, detail);
       }
     };
-    window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
-    return () =>
-      window.removeEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
+    return listenForNavigateViewRequests(handleNavigateView);
   }, [
     setTab,
     availableViewsForDesktopTabs,

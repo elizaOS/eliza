@@ -12,6 +12,10 @@
 
 import {
   CONNECT_EVENT,
+  createNavigateViewEvent,
+  NAVIGATE_VIEW_EVENT,
+  type NavigateViewDetail,
+  type NavigateViewEvent,
   type ElizaDocumentEventName as SharedDocumentEventName,
   type ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
@@ -326,6 +330,64 @@ export function listenForConnectRequests(
     }
   });
   return () => document.removeEventListener(CONNECT_EVENT, handle);
+}
+
+type NavigateViewRequestListener = (event: NavigateViewEvent) => void;
+
+const MAX_PENDING_NAVIGATE_VIEW_REQUESTS = 16;
+const navigateViewRequestClaims = new WeakMap<object, () => boolean>();
+const pendingNavigateViewRequests: NavigateViewDetail[] = [];
+
+function emitNavigateViewRequest(detail: NavigateViewDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(createNavigateViewEvent(detail));
+}
+
+/**
+ * Dispatches a native navigation intent without losing it during cold boot.
+ * Requests remain pending until one shell listener claims them; the bounded
+ * FIFO preserves ordering when an OS delivers several intents before mount.
+ */
+export function dispatchNavigateViewRequest(detail: NavigateViewDetail): void {
+  if (typeof window === "undefined") return;
+  let claimed = false;
+  const request: NavigateViewDetail = { ...detail };
+  navigateViewRequestClaims.set(request, () => {
+    if (claimed) return false;
+    claimed = true;
+    const pendingIndex = pendingNavigateViewRequests.indexOf(request);
+    if (pendingIndex >= 0) pendingNavigateViewRequests.splice(pendingIndex, 1);
+    return true;
+  });
+  pendingNavigateViewRequests.push(request);
+  if (pendingNavigateViewRequests.length > MAX_PENDING_NAVIGATE_VIEW_REQUESTS) {
+    pendingNavigateViewRequests.shift();
+  }
+  emitNavigateViewRequest(request);
+}
+
+/**
+ * Subscribes to navigation events and synchronously replays unclaimed native
+ * intents. Raw legacy CustomEvents still pass through without entering the
+ * replay queue.
+ */
+export function listenForNavigateViewRequests(
+  listener: NavigateViewRequestListener,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const handle = (event: Event): void => {
+    const detail = (event as CustomEvent<unknown>).detail;
+    if (!detail || typeof detail !== "object" || Array.isArray(detail)) return;
+    const claim = navigateViewRequestClaims.get(detail);
+    if (claim && !claim()) return;
+    listener(event as NavigateViewEvent);
+  };
+
+  window.addEventListener(NAVIGATE_VIEW_EVENT, handle);
+  for (const request of [...pendingNavigateViewRequests]) {
+    emitNavigateViewRequest(request);
+  }
+  return () => window.removeEventListener(NAVIGATE_VIEW_EVENT, handle);
 }
 
 /** Dispatch a typed custom event on `window`. */

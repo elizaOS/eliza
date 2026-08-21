@@ -93,9 +93,9 @@ import {
 import {
   AGENT_READY_EVENT,
   COMMAND_PALETTE_EVENT,
-  createNavigateViewEvent,
   dispatchAppEvent,
   dispatchConnectRequest,
+  dispatchNavigateViewRequest,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   PUSH_TO_TALK_HOLD_EVENT,
   PUSH_TO_TALK_TOGGLE_EVENT,
@@ -2380,7 +2380,7 @@ function setHashRoute(route: string, params: URLSearchParams): void {
  * tab on the mobile/Capacitor entrypoint (see `resolveDeepLinkNavigationIntent`).
  */
 function dispatchDeepLinkNavigation(intent: DeepLinkNavigationIntent): void {
-  window.dispatchEvent(createNavigateViewEvent(intent));
+  dispatchNavigateViewRequest(intent);
 }
 
 async function initializeDesktopShell(): Promise<void> {
