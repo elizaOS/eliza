@@ -12,7 +12,20 @@ export type {
 export { boundedWalk, TOOL_OUTPUT_LIMITS } from "./bounded-walk.ts";
 export type { ToolCallCacheOptions } from "./cache.ts";
 export { isCacheableToolOutput, ToolCallCache } from "./cache.ts";
-export { buildCacheKey, canonicalizeJson } from "./key.ts";
+export type {
+  CacheKeyRejection,
+  CacheKeyResult,
+  CanonicalizeLimits,
+  CanonicalizeResult,
+} from "./key.ts";
+export {
+  buildCacheKey,
+  CACHE_KEY_LIMITS,
+  canonicalizeJson,
+  ToolCacheKeyBoundError,
+  tryBuildCacheKey,
+  tryCanonicalizeJson,
+} from "./key.ts";
 export {
   defaultPrivacyRedactor,
   isRedactionDegraded,
