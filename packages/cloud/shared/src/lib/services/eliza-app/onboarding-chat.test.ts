@@ -2590,15 +2590,25 @@ describe("runOnboardingChat", () => {
           },
         });
 
-        await runOnboardingChat({
-          platform: "blooio",
-          sessionId: continuationToken(named),
-          confirmPlatformLink: true,
-          authenticatedUser: { userId: "user-1", organizationId: "org-1" },
-          statusOnly: true,
-        });
+        await Promise.all([
+          runOnboardingChat({
+            platform: "blooio",
+            sessionId: continuationToken(named),
+            confirmPlatformLink: true,
+            authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+            statusOnly: true,
+          }),
+          runOnboardingChat({
+            platform: "blooio",
+            sessionId: continuationToken(named),
+            confirmPlatformLink: true,
+            authenticatedUser: { userId: "user-1", organizationId: "org-1" },
+            statusOnly: true,
+          }),
+        ]);
 
-        // Exactly one remember call with a transcript containing no duplicates.
+        // The local fallback serializes concurrent polls just like the Durable
+        // Object owner, so exactly one poll earns the handoff receipt.
         expect(rememberRequests).toHaveLength(1);
         const firstRequest = rememberRequests[0];
         if (!firstRequest) throw new Error("Expected at least one remember request");
