@@ -32,6 +32,7 @@ import { Service as BaseService } from "../types/service.ts";
 import { formatActionResultsForPrompt } from "../utils/action-results.ts";
 import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 import {
+	tailWellFormed,
 	toWellFormedUnicode,
 	truncateWellFormed,
 } from "../utils/well-formed.ts";
@@ -119,14 +120,25 @@ type BoundedPrompt = {
 	originalSectionChars: Record<string, number>;
 };
 
+/**
+ * Keeps the newest `maxChars` of `text` for the prompt. The cut is taken with
+ * {@link tailWellFormed} and the input is sanitized with
+ * {@link toWellFormedUnicode} first: a raw negative slice can start on the low
+ * half of a surrogate pair, and the resulting lone surrogate travels into the
+ * merged evaluator prompt and out to the model provider, where strict JSON
+ * parsers reject the request body outright. This mirrors the boundary handling
+ * {@link trimHeadAndTailForPrompt} already performs.
+ */
 function trimTailForPrompt(text: string, maxChars: number): string {
 	if (maxChars <= 0) return "";
-	if (text.length <= maxChars) return text;
+	const wellFormed = toWellFormedUnicode(text);
+	if (wellFormed.length <= maxChars) return wellFormed;
 	if (maxChars <= EVALUATOR_PROMPT_TRUNCATION_MARKER.length) {
 		return EVALUATOR_PROMPT_TRUNCATION_MARKER.slice(0, maxChars);
 	}
-	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${text.slice(
-		-(maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length),
+	return `${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tailWellFormed(
+		wellFormed,
+		maxChars - EVALUATOR_PROMPT_TRUNCATION_MARKER.length,
 	)}`;
 }
 
@@ -141,20 +153,7 @@ function trimHeadAndTailForPrompt(text: string, maxChars: number): string {
 	const headBudget = Math.ceil(contentBudget / 3);
 	const tailBudget = contentBudget - headBudget;
 	const head = truncateWellFormed(wellFormed, headBudget);
-	let tail = "";
-	if (tailBudget > 0) {
-		let tailStart = wellFormed.length - tailBudget;
-		if (
-			tailStart > 0 &&
-			wellFormed.charCodeAt(tailStart - 1) >= 0xd800 &&
-			wellFormed.charCodeAt(tailStart - 1) <= 0xdbff &&
-			wellFormed.charCodeAt(tailStart) >= 0xdc00 &&
-			wellFormed.charCodeAt(tailStart) <= 0xdfff
-		) {
-			tailStart += 1;
-		}
-		tail = wellFormed.slice(tailStart);
-	}
+	const tail = tailWellFormed(wellFormed, tailBudget);
 	return `${head}${EVALUATOR_PROMPT_TRUNCATION_MARKER}${tail}`;
 }
 
