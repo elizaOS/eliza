@@ -18,10 +18,7 @@ mock.module("../../../../host-auth", () => ({
 
 const { default: route } = await import("./route");
 const app = new Hono<AppEnv>();
-app.route(
-  "/api/v1/remote/sessions/:id/commands/:commandId",
-  route,
-);
+app.route("/api/v1/remote/sessions/:id/commands/:commandId", route);
 
 const resultEnvelope = {
   version: 1,

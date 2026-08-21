@@ -24,12 +24,14 @@ export const encryptedRemoteEnvelopeSchema = z
   })
   .strict();
 
-export const enqueueRemoteCommandSchema = z.object({
-  commandId: z.string().uuid(),
-  sequence: z.number().int().safe().positive(),
-  expiresAt: z.number().int().safe(),
-  envelope: encryptedRemoteEnvelopeSchema,
-}).strict();
+export const enqueueRemoteCommandSchema = z
+  .object({
+    commandId: z.string().uuid(),
+    sequence: z.number().int().safe().positive(),
+    expiresAt: z.number().int().safe(),
+    envelope: encryptedRemoteEnvelopeSchema,
+  })
+  .strict();
 
 export const completeRemoteCommandSchema = z
   .object({

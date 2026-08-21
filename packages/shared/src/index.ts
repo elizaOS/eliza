@@ -210,7 +210,6 @@ export * from "./config/zod-schema.agent-runtime.js";
 export * from "./config/zod-schema.core.js";
 export * from "./connector-account-catalog.js";
 export * from "./connectors.js";
-export * from "./contracts/remote-control.js";
 export {
   getDirectAccountProviderForFirstRunProvider,
   getFirstRunProviderFamily,
@@ -227,6 +226,7 @@ export {
 // surface through `./themes`, which already re-exports the same identifiers.
 export * from "./contracts/index.js";
 export { PutCuratedSkillSourceRequestSchema } from "./contracts/plugin-routes.js";
+export * from "./contracts/remote-control.js";
 export {
   DEFAULT_CEREBRAS_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,

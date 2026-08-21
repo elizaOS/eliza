@@ -114,7 +114,10 @@ export async function createEncryptedRemoteCommand(input: {
   sequence: number;
   action: RemoteCommandAction;
   payload: unknown;
-}): Promise<{ command: SignedRemoteCommand; envelope: EncryptedRemoteCommand }> {
+}): Promise<{
+  command: SignedRemoteCommand;
+  envelope: EncryptedRemoteCommand;
+}> {
   const issuedAt = Date.now();
   const body: RemoteCommandBody = {
     version: REMOTE_CONTROL_PROTOCOL_VERSION,
