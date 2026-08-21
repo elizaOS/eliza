@@ -21,6 +21,7 @@ import {
 } from "@elizaos/core";
 import {
   CODING_AGENT_BACKENDS,
+  CODING_AGENT_BACKEND_PREFLIGHTS,
   type CodingAgentBackend,
   readAliasedEnv,
 } from "@elizaos/shared";
@@ -604,10 +605,6 @@ function hasElizaCloudApiKey(): boolean {
   return Boolean(readConfigCloudKey("apiKey"));
 }
 
-function hasOpencodeBinary(): boolean {
-  return hasBinaryOnPath("opencode") || Boolean(resolveVendoredOpencodeShim());
-}
-
 function isOpencodeLocalMode(): boolean {
   const flag = readConfigEnvKey("ELIZA_OPENCODE_LOCAL");
   return flag === "1" || flag?.toLowerCase() === "true";
@@ -658,29 +655,20 @@ function isCommandExecutableAvailable(command: string | undefined): boolean {
 }
 
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
-  switch (id) {
-    case "elizaos": {
-      const configured = readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("eliza-code-acp");
-    }
-    case "pi-agent": {
-      const configured = readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("pi-agent");
-    }
-    case "claude":
-      return hasBinaryOnPath("claude");
-    case "codex": {
-      const configured = readConfigEnvKey("ELIZA_CODEX_ACP_COMMAND");
-      return configured
-        ? isCommandExecutableAvailable(configured)
-        : hasBinaryOnPath("codex");
-    }
-    case "opencode":
-      return hasOpencodeBinary();
+  const preflight = CODING_AGENT_BACKEND_PREFLIGHTS[id];
+  const configured = readConfigEnvKey(preflight.commandConfigKey);
+  if (configured) return isCommandExecutableAvailable(configured);
+
+  switch (preflight.commandResolution) {
+    case "literal":
+      return isCommandExecutableAvailable(preflight.defaultCommand);
+    case "managed-codex":
+      return hasBinaryOnPath("npx");
+    case "vendored-opencode":
+      return (
+        Boolean(resolveVendoredOpencodeShim()) ||
+        isCommandExecutableAvailable(preflight.defaultCommand)
+      );
   }
 }
 
@@ -778,12 +766,8 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const nativeExplicit =
-        (id === "elizaos" || id === "pi-agent") && explicitDefault === id;
       const installed =
-        preflight?.installed === true ||
-        hasFrameworkBinary(id) ||
-        nativeExplicit;
+        preflight?.installed === true || hasFrameworkBinary(id);
       const subscriptionReady =
         id === "claude"
           ? claudeSubscriptionReady

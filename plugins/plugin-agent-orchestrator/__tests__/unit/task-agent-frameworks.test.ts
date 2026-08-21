@@ -156,6 +156,7 @@ describe("getTaskAgentFrameworkState", () => {
   });
 
   it("honors ElizaOS as an explicit native task-agent default", async () => {
+    writeExecutable(path.join(tempHome, "eliza-code-acp"));
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
       BENCHMARK_MODEL_PROVIDER: "cerebras",
@@ -174,6 +175,7 @@ describe("getTaskAgentFrameworkState", () => {
   });
 
   it("honors Pi Agent as an explicit native task-agent default", async () => {
+    writeExecutable(path.join(tempHome, "pi-agent"));
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "pi-agent",
       BENCHMARK_MODEL_PROVIDER: "cerebras",
@@ -190,6 +192,28 @@ describe("getTaskAgentFrameworkState", () => {
       state.frameworks.find((item) => item.id === "pi-agent")?.authReady,
     ).toBe(true);
   });
+
+  it.each(["elizaos", "pi-agent"] as const)(
+    "does not fabricate %s readiness from an explicit default",
+    async (agentType) => {
+      setEnv({
+        ELIZA_DEFAULT_AGENT_TYPE: agentType,
+        BENCHMARK_MODEL_PROVIDER: "cerebras",
+        CEREBRAS_API_KEY: "csk-test",
+      });
+
+      const state = await getTaskAgentFrameworkState(
+        runtime(),
+        installedProbe(),
+      );
+      const framework = state.frameworks.find(
+        (item) => item.id === agentType,
+      );
+
+      expect(framework?.installed).toBe(false);
+      expect(framework?.authReady).toBe(false);
+    },
+  );
 
   it("fails Pi Agent readiness closed when a configured ACP command is missing", async () => {
     writeExecutable(path.join(tempHome, "pi-agent"));
