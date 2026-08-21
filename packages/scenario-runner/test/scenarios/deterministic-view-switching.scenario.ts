@@ -119,9 +119,8 @@ export default scenario({
   id: "deterministic-view-switching",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [],
   },
   title: "Deterministic view switching across every built-in view",
   domain: "scenario-runner",

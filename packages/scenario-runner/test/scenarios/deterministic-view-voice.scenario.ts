@@ -158,9 +158,8 @@ export default scenario({
   id: "deterministic-view-voice",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [],
   },
   title: "Deterministic per-view voice-transcript navigation",
   domain: "scenario-runner",

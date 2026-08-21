@@ -428,7 +428,7 @@ export default scenario({
   lane: "pr-deterministic",
   modelFixtures: {
     mode: "fixtures",
-    fixtures: appControlModelFixtures(),
+    fixtures: [...appControlModelFixtures()],
   },
   title: "Deterministic app-control natural-language routing",
   domain: "scenario-runner",

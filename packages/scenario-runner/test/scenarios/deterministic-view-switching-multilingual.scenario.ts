@@ -132,9 +132,8 @@ export default scenario({
   id: "deterministic-view-switching-multilingual",
   lane: "pr-deterministic",
   modelFixtures: {
-    mode: "model-free",
-    reason:
-      "Direct action turns exercise runtime contracts without model calls.",
+    mode: "fixtures",
+    fixtures: [],
   },
   title:
     "Deterministic view switching across navigable views in every language",
