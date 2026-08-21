@@ -32,6 +32,8 @@ import {
   runWithTrajectoryPurpose,
   type SubactionsMap,
   stableStringify,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   readTwilioCredentialsFromEnv,
@@ -275,9 +277,13 @@ function formatPending(requests: ReadonlyArray<ApprovalRequest>): string {
 }
 
 /** Chip labels stay glanceable; the full reason lives in the queue row. */
-function truncateReason(reason: string, max = 48): string {
-  const trimmed = reason.trim();
-  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+export function truncateReason(reason: string, max = 48): string {
+  const trimmed = toWellFormedUnicode(reason.trim());
+  if (trimmed.length <= max) {
+    return trimmed;
+  }
+  const budget = Math.max(0, max - 1);
+  return `${truncateWellFormed(trimmed, budget)}…`;
 }
 
 /**

@@ -2436,11 +2436,16 @@ function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
 	return value as Record<string, unknown>;
 }
 
-function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+export function cleanPriorDialogueSpeakerName(
+	value: unknown,
+): string | undefined {
 	if (typeof value !== "string") return undefined;
 	const normalized = value.trim().split(/\s+/).join(" ");
 	if (!normalized) return undefined;
-	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+	const wellFormed = toWellFormedUnicode(normalized);
+	return wellFormed.length > 80
+		? `${truncateWellFormed(wellFormed, 77)}...`
+		: wellFormed;
 }
 
 function senderIdentityName(value: unknown): string | undefined {
@@ -7223,9 +7228,9 @@ interface SubPlannerSubStep {
 const SUB_STEP_SUMMARY_MAX_CHARS = 400;
 
 function truncateSubStepText(text: string): string {
-	const trimmed = text.trim();
-	if (trimmed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return trimmed;
-	return `${truncateWellFormed(trimmed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
+	const wellFormed = toWellFormedUnicode(text.trim());
+	if (wellFormed.length <= SUB_STEP_SUMMARY_MAX_CHARS) return wellFormed;
+	return `${truncateWellFormed(wellFormed, SUB_STEP_SUMMARY_MAX_CHARS)}...`;
 }
 
 function collectSubPlannerSubSteps(

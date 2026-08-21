@@ -21,6 +21,8 @@ import {
   type IAgentRuntime,
   isPrivateIpAddress,
   normalizeHostLike,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
@@ -571,7 +573,7 @@ async function readBodyTextCapped(
       if (done) break;
       text += decoder.decode(value, { stream: true });
       if (text.length >= maxChars) {
-        text = text.slice(0, maxChars);
+        text = truncateWellFormed(toWellFormedUnicode(text), maxChars);
         await reader.cancel();
         break;
       }
@@ -885,7 +887,10 @@ function buildHandler(
       return async (params) => {
         const result = await runCodeHandler(handler.code, params);
         const output = result !== undefined ? String(result) : "Done";
-        return { ok: true, output: output.slice(0, 4000) };
+        return {
+          ok: true,
+          output: truncateWellFormed(toWellFormedUnicode(output), 4000),
+        };
       };
 
     default:

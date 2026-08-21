@@ -59,6 +59,8 @@ import {
   roleRank,
   setRoomMuteUntil,
   setWorldMuteState,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import type { DiscordService as IDiscordService } from "@elizaos/plugin-discord/service";
 import {
@@ -1732,7 +1734,10 @@ function applyInboxChatMemory(
       latestDiscordChannelId: discordChannelId,
       latestDiscordMessageId: discordMessageId,
       source,
-      lastMessageText: text.slice(0, INBOX_CHAT_PREVIEW_LENGTH),
+      lastMessageText: truncateWellFormed(
+        toWellFormedUnicode(text),
+        INBOX_CHAT_PREVIEW_LENGTH,
+      ),
       lastMessageAt: ts,
       messageCount: 1,
       latestSenderAvatarUrl: senderAvatarUrl,
@@ -1746,7 +1751,10 @@ function applyInboxChatMemory(
   existing.messageCount += 1;
   if (ts > existing.lastMessageAt) {
     existing.lastMessageAt = ts;
-    existing.lastMessageText = text.slice(0, INBOX_CHAT_PREVIEW_LENGTH);
+    existing.lastMessageText = truncateWellFormed(
+      toWellFormedUnicode(text),
+      INBOX_CHAT_PREVIEW_LENGTH,
+    );
     existing.latestSenderAvatarUrl = senderAvatarUrl;
     existing.latestSenderEntityId = senderEntityId;
     existing.latestSenderName = senderName;

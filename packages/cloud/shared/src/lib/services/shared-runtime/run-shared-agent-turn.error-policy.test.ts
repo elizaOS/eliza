@@ -75,6 +75,7 @@ describe("Shared turn AgentRuntime boundary", () => {
       agentKey: "shared:Nova",
       execution: {
         agentKey: "shared:Nova",
+        roomKey: "shared:Nova",
         channel: { type: ChannelType.DM, source: "shared-runtime" },
       },
     });
@@ -89,6 +90,7 @@ describe("Shared turn AgentRuntime boundary", () => {
       message: "hello",
       execution: {
         agentKey: "personal:user-1",
+        roomKey: "personal:user-1",
         authenticatedPersonalSharedUser: true,
         channel: { type: ChannelType.VOICE_DM, source: "client_chat" },
       },

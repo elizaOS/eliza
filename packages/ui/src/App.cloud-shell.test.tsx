@@ -48,26 +48,39 @@ const CHATVIEW_TSX = readFileSync(
   "utf8",
 );
 
+/**
+ * Collapses runs of whitespace so a JSX-wiring assertion stays true when the
+ * formatter reflows the element across lines. Only the token order matters.
+ */
+function collapseWhitespace(source: string): string {
+  return source.replace(/\s+/g, " ");
+}
+
 describe("App standalone chat-overlay wiring", () => {
   it("mounts the chat overlay outside the full chat tab", () => {
     expect(APP_TSX).toContain('shellMode === "chat-overlay"');
-    expect(APP_TSX).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(collapseWhitespace(APP_TSX)).toContain(
+      "<ShellFoundationMount useWebChatPanel",
+    );
     expect(APP_TSX).toContain("pointer-events-none fixed inset-0");
     // The floating glass chat remains available in the main shell, including
     // the ambient /chat route.
     expect(APP_TSX).toContain("Chat overlay");
     expect(APP_TSX).toContain("<ChatOverlayMount");
     expect(APP_TSX).toContain(
-      "releaseFirstRunToFull={firstRunReleasePendingRef.current}",
+      "releaseFirstRunToFull={firstRunChatRelease.releasePending}",
     );
     expect(APP_TSX).toContain(
-      "onFirstRunReleaseHandled={handleFirstRunReleaseHandled}",
+      "onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}",
+    );
+    expect(APP_TSX).toContain(
+      "onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}",
     );
   });
 
   it("opens the packaged desktop pill into the shared mobile chat composer", () => {
     const overlayShell = APP_TSX.slice(
-      APP_TSX.indexOf("function ChatOverlayShell()"),
+      APP_TSX.indexOf("function ChatOverlayShell({"),
       APP_TSX.indexOf("function TrayPopoverShell()"),
     );
     const foundation = APP_TSX.slice(
@@ -76,14 +89,19 @@ describe("App standalone chat-overlay wiring", () => {
     );
 
     expect(overlayShell).toContain("<GlassStyles />");
-    expect(overlayShell).toContain("<ShellFoundationMount useWebChatPanel />");
+    expect(collapseWhitespace(overlayShell)).toContain(
+      "<ShellFoundationMount useWebChatPanel",
+    );
+    expect(overlayShell).toContain(
+      "releaseFirstRunToFull={releaseFirstRunToFull}",
+    );
     expect(overlayShell).not.toContain("useChatOverlayWindowBounds");
     expect(overlayShell).not.toContain("<AppBackground");
     expect(foundation).toContain("const firstRunJustCompleted =");
     expect(foundation).toContain("keepChatOpenAfterFirstRun");
     expect(foundation).toContain("const shouldMountWebChatPanel =");
     expect(foundation).toContain(
-      "const firstRunPinnedOpen = firstRunComplete === false;",
+      "const firstRunPinnedOpen = isAuthoritativeFirstRunOpen(",
     );
     expect(foundation).toContain("shouldMountWebChatPanel");
     expect(foundation).toContain("<ChatOverlayMount");
@@ -138,8 +156,12 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf('if (shellMode === "chat-overlay") {'),
       APP_TSX.indexOf('if (shellMode === "tray-popover") {'),
     );
-    expect(branch).toContain("<ChatOverlayShell />");
-    expect(branch).toContain("<FirstRunConductorMount />");
+    expect(branch).toContain("<ChatOverlayShell");
+    expect(branch).toContain("<FirstRunConductorMount");
+    expect(branch).toContain(
+      "releaseFirstRunToFull={firstRunChatRelease.releasePending}",
+    );
+    expect(branch).toContain("onFirstRunTranscriptMounted={");
     expect(branch).toContain("<ShellOverlays actionNotice={actionNotice} />");
   });
 

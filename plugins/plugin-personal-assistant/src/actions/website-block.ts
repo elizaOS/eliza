@@ -18,6 +18,8 @@ import {
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
+  toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 import {
   formatWebsiteList,
@@ -169,7 +171,9 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
     ...new Set(
       values
         .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim().slice(0, 1024))
+        .map((item) =>
+          truncateWellFormed(toWellFormedUnicode(item.trim()), 1024),
+        )
         .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
         .filter((item) => item.length > 0),
     ),

@@ -8,6 +8,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { discordChannelsRepository } from "../../../db/repositories/discord-channels";
 import { discordGuildsRepository } from "../../../db/repositories/discord-guilds";
+import { discordFetch } from "../../utils/discord-api";
 import {
   DISCORD_RATE_LIMITS,
   getGuildIconUrl,
@@ -28,28 +29,7 @@ import type {
 const DISCORD_API_BASE = "https://discord.com/api/v10";
 const _DISCORD_CDN_BASE = "https://cdn.discordapp.com";
 
-const DISCORD_REQUEST_TIMEOUT_MS = 25_000;
-
-/**
- * Bound every Discord REST hop so a hung or rate-limited Discord API cannot
- * pin the calling worker indefinitely. Matches the 25s bound the message-send
- * path already applies. A caller-provided signal is composed with the hop
- * deadline rather than replacing it: a caller that cancels still aborts early,
- * and a caller whose signal never fires still cannot outlive the bound.
- */
-export function discordFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-  const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
-    ...init,
-    signal: init?.signal
-      ? AbortSignal.any([init.signal, deadline])
-      : deadline,
-  });
-}
+export { discordFetch };
 
 // Required environment variables
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -601,19 +581,14 @@ class DiscordAutomationService {
           if (options?.components) body.components = options.components;
         }
 
-        const response = await Promise.race([
-          fetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
-            method: "POST",
-            headers: {
-              Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(body),
-          }),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error("Discord API timeout")), 25_000),
-          ),
-        ]);
+        const response = await discordFetch(`${DISCORD_API_BASE}/channels/${channelId}/messages`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        });
 
         if (!response.ok) {
           const error = await response.text();

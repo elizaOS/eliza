@@ -23,7 +23,7 @@ import type {
   Memory,
   SearchCategoryRegistration,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import type { ColumnInfo, TableInfo } from "@elizaos/shared";
 import { checkReadOnly } from "../security/sql-readonly-guard.ts";
 
@@ -536,7 +536,7 @@ async function opSearchVectors(
   const lines = results.slice(0, 5).map((hit, i) => {
     const score =
       typeof hit.similarity === "number" ? hit.similarity.toFixed(3) : "n/a";
-    const snippet = hit.text.slice(0, 160).replace(/\s+/g, " ");
+    const snippet = truncateWellFormed(toWellFormedUnicode(hit.text), 160).replace(/\s+/g, " ");
     return `${i + 1}. [${score}] ${snippet}`;
   });
 

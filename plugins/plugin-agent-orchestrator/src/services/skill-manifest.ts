@@ -13,6 +13,7 @@
  */
 
 import type { IAgentRuntime, Logger, Service } from "@elizaos/core";
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 
 const LOG_PREFIX = "[SkillManifest]";
 const MAX_DESCRIPTION_CHARS = 200;
@@ -64,10 +65,11 @@ export interface SkillsManifestResult {
   slugs: string[];
 }
 
-function truncateDescription(value: string): string {
-  const cleaned = value.replace(/\s+/g, " ").trim();
+export function truncateDescription(value: string): string {
+  const cleaned = toWellFormedUnicode(value.replace(/\s+/g, " ").trim());
   if (cleaned.length <= MAX_DESCRIPTION_CHARS) return cleaned;
-  return `${cleaned.slice(0, MAX_DESCRIPTION_CHARS - 1).trimEnd()}…`;
+  const budget = Math.max(0, MAX_DESCRIPTION_CHARS - 1);
+  return `${truncateWellFormed(cleaned, budget).trimEnd()}…`;
 }
 
 function getLogger(runtime: IAgentRuntime): Logger | Console {

@@ -9,27 +9,16 @@ import type {
   SocialCredentials,
   SocialMediaProvider,
 } from "../../../types/social-media";
-import { DISCORD_API_BASE, discordBotHeaders } from "../../../utils/discord-api";
+import {
+  DISCORD_API_BASE,
+  discordFetch as discordApiFetch,
+  discordBotHeaders,
+} from "../../../utils/discord-api";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { withRetry } from "../rate-limit";
 
-const DISCORD_REQUEST_TIMEOUT_MS = 30_000;
-
-/**
- * Bound every Discord bot / webhook hop so a hung or rate-limited API cannot
- * pin the publishing worker indefinitely. A caller-provided abort signal wins.
- */
-export function discordApiFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  timeoutMs: number = DISCORD_REQUEST_TIMEOUT_MS,
-): Promise<Response> {
-  return fetch(input, {
-    ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
-  });
-}
+export { discordApiFetch };
 
 interface DiscordMessage {
   id: string;

@@ -15,6 +15,7 @@ export interface CoordinationLLMResponse {
   permissionRequest?: ParsedPermissionRequest;
 }
 
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import { isPermissionId, type PermissionId } from "@elizaos/shared";
 
 /**
@@ -153,7 +154,7 @@ function isValidActionEnvelope(
  * Handles both fenced (```json ... ```) and bare JSON formats.
  */
 export function stripActionBlockFromDisplay(text: string): string {
-  const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+  const safeText = truncateWellFormed(toWellFormedUnicode(text), 100_000);
   // First: fenced ```json action blocks — only strip if the action value is
   // one of our known orchestrator actions to avoid false-positive stripping.
   let cleaned = safeText.replace(
@@ -196,7 +197,7 @@ export function stripActionBlockFromDisplay(text: string): string {
  */
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
-  const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+  const safeText = truncateWellFormed(toWellFormedUnicode(text), 100_000);
   // Try fenced ```json block first
   const fenced = safeText.match(
     /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?\})\s{0,32}\n?```/,

@@ -49,9 +49,10 @@ export function greetingFetch(
   init?: RequestInit,
   timeoutMs: number = GREETING_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return stub.fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

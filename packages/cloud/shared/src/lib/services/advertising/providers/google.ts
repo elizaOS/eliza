@@ -33,9 +33,10 @@ export function googleAdsFetch(
   init?: RequestInit,
   timeoutMs: number = GOOGLE_ADS_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
   return fetch(input, {
     ...init,
-    signal: init?.signal ?? AbortSignal.timeout(timeoutMs),
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
 }
 

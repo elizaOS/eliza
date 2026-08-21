@@ -5,6 +5,7 @@
  * See: https://discord.com/developers/docs/topics/oauth2
  */
 
+import { discordFetch } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
 import { elizaAppConfig } from "./config";
 
@@ -70,7 +71,7 @@ class DiscordAuthService {
     }
 
     // Step 1: Exchange the authorization code for an access token.
-    const tokenResponse = await fetch(`${DISCORD_API_BASE}/oauth2/token`, {
+    const tokenResponse = await discordFetch(`${DISCORD_API_BASE}/oauth2/token`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -114,7 +115,7 @@ class DiscordAuthService {
     // Step 2: Fetch the user profile with the access token. We now hold a valid
     // token, so any failure here is internal (transport/Discord/protocol) — never
     // a user-supplied-code problem — and must surface, not degrade to "invalid code".
-    const userResponse = await fetch(`${DISCORD_API_BASE}/users/@me`, {
+    const userResponse = await discordFetch(`${DISCORD_API_BASE}/users/@me`, {
       headers: {
         Authorization: `Bearer ${tokenData.access_token}`,
       },

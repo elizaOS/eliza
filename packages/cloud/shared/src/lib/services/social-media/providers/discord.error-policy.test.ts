@@ -29,6 +29,19 @@ const BOT_CREDS = { botToken: "bot-token", channelId: "chan-1" } as never;
 const BOT_CREDS_NO_CHANNEL = { botToken: "bot-token" } as never;
 const CONTENT = { text: "hello world" } as never;
 
+function hungResponse(init?: RequestInit): Promise<Response> {
+  return new Promise<Response>((_resolve, reject) => {
+    const guard = realSetTimeout(
+      () => reject(new Error("test guard elapsed before Discord deadline")),
+      2_000,
+    );
+    init?.signal?.addEventListener("abort", () => {
+      clearTimeout(guard);
+      reject(new DOMException("The operation was aborted.", "AbortError"));
+    });
+  });
+}
+
 beforeEach(() => {
   // Collapse exponential-backoff sleeps so a failing request exhausts its retries and rejects
   // without waiting out the real delays.
@@ -117,13 +130,8 @@ describe("discordProvider error policy", () => {
 
 describe("discordApiFetch — bounded hops fail closed and keep caller signals", () => {
   it("aborts a hung Discord API hop at the timeout", async () => {
-    globalThis.fetch = mock(
-      (_input: RequestInfo | URL, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          init?.signal?.addEventListener("abort", () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
-          });
-        }),
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) =>
+      hungResponse(init),
     ) as typeof fetch;
 
     const start = Date.now();
@@ -133,7 +141,7 @@ describe("discordApiFetch — bounded hops fail closed and keep caller signals",
     expect(Date.now() - start).toBeLessThan(5_000);
   });
 
-  it("preserves a caller-provided abort signal", async () => {
+  it("composes a caller-provided abort signal with the deadline", async () => {
     let seen: AbortSignal | undefined;
     globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
       seen = init?.signal;
@@ -144,6 +152,22 @@ describe("discordApiFetch — bounded hops fail closed and keep caller signals",
     await discordApiFetch("https://discord.com/api/v10/channels/1/messages", {
       signal: controller.signal,
     });
-    expect(seen).toBe(controller.signal);
+    expect(seen).toBeDefined();
+    expect(seen).not.toBe(controller.signal);
+  });
+
+  it("keeps the deadline when a caller signal never aborts", async () => {
+    globalThis.fetch = mock((_input: RequestInfo | URL, init?: RequestInit) =>
+      hungResponse(init),
+    ) as typeof fetch;
+    const never = new AbortController();
+
+    await expect(
+      discordApiFetch(
+        "https://discord.com/api/v10/channels/1/messages",
+        { signal: never.signal },
+        100,
+      ),
+    ).rejects.toThrow(/aborted/i);
   });
 });

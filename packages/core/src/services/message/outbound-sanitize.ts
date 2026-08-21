@@ -30,9 +30,8 @@
  *   4. inline single/multi-backtick code spans are protected like fences, so
  *      a coding answer such as "the `<tool_call>` tag …" is no longer
  *      truncated at the span.
- * Known pass-throughs shared with the original and left as-is: bare `<think>`
- * spans are handled upstream by `stripReasoningBlocks` at model-output parse
- * time, and `<|im_start|>` framing tokens are not stripped.
+ * Known pass-through shared with the original and left as-is: `<|im_start|>`
+ * framing tokens are not stripped.
  *
  * This is a delivery-boundary catch-all, distinct from the model-output parse
  * helpers (`stripReasoningBlocks` in `./fallback-reply.ts`,
@@ -41,12 +40,14 @@
  * here — the planner consumes `GenerateTextResult.toolCalls` directly, so
  * sanitizing delivered prose cannot delete a valid machine action.
  */
+import {
+	REASONING_TAG_NAMES,
+	stripPairedTagBlocks,
+	stripUnclosedTagSuffix,
+} from "../../utils/reasoning-tags";
+
 const MACHINE_SYNTAX_TAGS = [
-	"thinking",
-	"reasoning",
-	"reflection",
-	"thought",
-	"antthinking",
+	...REASONING_TAG_NAMES,
 	// Native model tool-call syntax (glm/qwen-family `<tool_call>`, gemini-style
 	// `<function_call>`). Machine syntax, never user-facing prose — strip it
 	// like reasoning tags.
@@ -54,14 +55,18 @@ const MACHINE_SYNTAX_TAGS = [
 	"function_call",
 ] as const;
 
+const MACHINE_SYNTAX_TAG_ALTERNATION = MACHINE_SYNTAX_TAGS.join("|");
+
 const SELF_CLOSING_ARTIFACTS_RE =
 	/<(?:STOP|END|end_turn|eot_id)\s*\/?>|<\|(?:end|stop|im_end|eot_id)\|>/gi;
 // Cheap pre-filter so clean text (the overwhelmingly common case) returns
 // without any code-block extraction or per-tag regex passes. Must recognize
 // every shape SELF_CLOSING_ARTIFACTS_RE strips (delta 1: the Discord original
 // omitted `eot_id` here, so a lone sentinel slipped through to the wire).
-const QUICK_TAG_RE =
-	/<\/?(?:thinking|reasoning|reflection|thought|antthinking|tool_call|function_call|final|STOP|END|end_turn|eot_id)\b|<\|(?:end|stop|im_end|eot_id)/i;
+const QUICK_TAG_RE = new RegExp(
+	`<\\s*\\/?\\s*(?:${MACHINE_SYNTAX_TAG_ALTERNATION})(?=[\\s/>])|<\\/?(?:final|STOP|END|end_turn|eot_id)\\b|<\\|(?:end|stop|im_end|eot_id)`,
+	"i",
+);
 const CODE_BLOCK_RE = /```[\s\S]*?```/g;
 // An inline code span: a backtick run, non-backtick single-line content, and a
 // closing run of exactly the same length (CommonMark's matched-run rule; the
@@ -183,11 +188,8 @@ export function sanitizeOutboundText(text: string): string {
 	processed = degradePseudoLinks(processed);
 
 	for (const tag of MACHINE_SYNTAX_TAGS) {
-		const paired = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
-		processed = processed.replace(paired, "");
-
-		const unclosed = new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*$`, "gi");
-		processed = processed.replace(unclosed, "");
+		processed = stripPairedTagBlocks(processed, tag);
+		processed = stripUnclosedTagSuffix(processed, tag);
 	}
 
 	processed = processed.replace(/<final\b[^>]*>([\s\S]*?)<\/final>/gi, "$1");
