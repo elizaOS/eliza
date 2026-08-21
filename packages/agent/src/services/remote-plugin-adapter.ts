@@ -1237,66 +1237,192 @@ function remotePluginModuleProvenancePayload(
 
 /** Nesting cap for untrusted remote-plugin provenance canonicalization. */
 const MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH = 32;
-/** Node cap so a wide DAG cannot exhaust the heap during digest hashing. */
+/**
+ * Width/work cap. Every slot the walk visits (one array element, one own
+ * enumerable string key) costs one node, and a container charges its whole
+ * declared width BEFORE any slot is allocated, read, or traversed, so a huge
+ * primitive-width array/object cannot burn CPU or heap ahead of the bound.
+ */
 const MAX_REMOTE_PLUGIN_PROVENANCE_NODES = 4_096;
 
-class RemotePluginProvenanceWalkBoundError extends Error {
-  readonly reason: "cycle" | "depth" | "nodes";
+type RemotePluginProvenanceWalkBound =
+  | "cycle"
+  | "depth"
+  | "nodes"
+  | "reflection";
 
-  constructor(reason: "cycle" | "depth" | "nodes") {
-    super(`Remote plugin provenance walk exceeded ${reason} bound`);
+type RemotePluginProvenanceWalkBudget = { remaining: number };
+
+class RemotePluginProvenanceWalkBoundError extends Error {
+  readonly reason: RemotePluginProvenanceWalkBound;
+
+  constructor(
+    reason: RemotePluginProvenanceWalkBound,
+    options?: { cause?: unknown },
+  ) {
+    super(
+      reason === "reflection"
+        ? "Remote plugin provenance walk could not reflect on the module value"
+        : `Remote plugin provenance walk exceeded ${reason} bound`,
+      options,
+    );
     this.name = "RemotePluginProvenanceWalkBoundError";
     this.reason = reason;
   }
 }
 
+/**
+ * Runs one descriptor-only reflection step on untrusted module data. A hostile
+ * or revoked proxy can throw from any trap; that failure becomes the typed
+ * walk-bound rejection (cause preserved internally) instead of leaking a raw
+ * TypeError out of the trust evaluation.
+ */
+function reflectForRemotePluginProvenance<T>(read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    throw new RemotePluginProvenanceWalkBoundError("reflection", {
+      cause: error,
+    });
+  }
+}
+
+function chargeRemotePluginProvenanceNodes(
+  budget: RemotePluginProvenanceWalkBudget,
+  cost: number,
+): void {
+  budget.remaining -= cost;
+  if (budget.remaining < 0) {
+    throw new RemotePluginProvenanceWalkBoundError("nodes");
+  }
+}
+
+/**
+ * Reads one own property descriptor's data value. Accessor properties are
+ * refused rather than invoked: running an untrusted getter during trust
+ * evaluation is exactly the execution this walk must not perform.
+ */
+function remotePluginProvenanceDescriptorValue(
+  descriptor: PropertyDescriptor | undefined,
+): unknown {
+  if (descriptor === undefined) return undefined;
+  if (!("value" in descriptor)) {
+    throw new RemotePluginProvenanceWalkBoundError("reflection");
+  }
+  return descriptor.value;
+}
+
 function canonicalizeForRemotePluginProvenance(
   value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
+  ancestors: Set<object> = new Set(),
   depth = 0,
-  budget = { remaining: MAX_REMOTE_PLUGIN_PROVENANCE_NODES },
+  budget: RemotePluginProvenanceWalkBudget = {
+    remaining: MAX_REMOTE_PLUGIN_PROVENANCE_NODES,
+  },
 ): unknown {
+  if (value === null || typeof value !== "object") return value;
   if (depth > MAX_REMOTE_PLUGIN_PROVENANCE_DEPTH) {
     throw new RemotePluginProvenanceWalkBoundError("depth");
   }
-  if (Array.isArray(value)) {
-    if (seen.has(value)) {
-      throw new RemotePluginProvenanceWalkBoundError("cycle");
-    }
-    seen.add(value);
-    budget.remaining -= 1;
-    if (budget.remaining < 0) {
-      throw new RemotePluginProvenanceWalkBoundError("nodes");
-    }
-    return value.map((entry) =>
-      canonicalizeForRemotePluginProvenance(entry, seen, depth + 1, budget),
+  // Path-local visiting: only the ancestors of the current path count as a
+  // cycle and each is dropped on unwind, so an acyclic DAG that repeats a
+  // shared reference still serializes at every path exactly like the
+  // unbounded walker did.
+  if (ancestors.has(value)) {
+    throw new RemotePluginProvenanceWalkBoundError("cycle");
+  }
+  const isArray = reflectForRemotePluginProvenance(() => Array.isArray(value));
+  ancestors.add(value);
+  try {
+    return isArray
+      ? canonicalizeRemotePluginProvenanceArray(value, ancestors, depth, budget)
+      : canonicalizeRemotePluginProvenanceObject(
+          value,
+          ancestors,
+          depth,
+          budget,
+        );
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function canonicalizeRemotePluginProvenanceArray(
+  value: object,
+  ancestors: Set<object>,
+  depth: number,
+  budget: RemotePluginProvenanceWalkBudget,
+): unknown[] {
+  const lengthDescriptor = reflectForRemotePluginProvenance(() =>
+    Object.getOwnPropertyDescriptor(value, "length"),
+  );
+  const length = remotePluginProvenanceDescriptorValue(lengthDescriptor);
+  if (
+    typeof length !== "number" ||
+    !Number.isSafeInteger(length) ||
+    length < 0
+  ) {
+    throw new RemotePluginProvenanceWalkBoundError("reflection");
+  }
+  chargeRemotePluginProvenanceNodes(budget, length);
+  const canonical: unknown[] = new Array(length);
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = reflectForRemotePluginProvenance(() =>
+      Object.getOwnPropertyDescriptor(value, String(index)),
+    );
+    canonical[index] = canonicalizeForRemotePluginProvenance(
+      remotePluginProvenanceDescriptorValue(descriptor),
+      ancestors,
+      depth + 1,
+      budget,
     );
   }
-  if (value && typeof value === "object") {
-    if (seen.has(value)) {
-      throw new RemotePluginProvenanceWalkBoundError("cycle");
-    }
-    seen.add(value);
-    budget.remaining -= 1;
-    if (budget.remaining < 0) {
-      throw new RemotePluginProvenanceWalkBoundError("nodes");
-    }
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, entry]) => entry !== undefined)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, entry]) => [
-          key,
-          canonicalizeForRemotePluginProvenance(entry, seen, depth + 1, budget),
-        ]),
+  return canonical;
+}
+
+function canonicalizeRemotePluginProvenanceObject(
+  value: object,
+  ancestors: Set<object>,
+  depth: number,
+  budget: RemotePluginProvenanceWalkBudget,
+): Record<string, unknown> {
+  const keys = reflectForRemotePluginProvenance(() => Reflect.ownKeys(value));
+  chargeRemotePluginProvenanceNodes(budget, keys.length);
+  const entries: Array<[string, unknown]> = [];
+  for (const key of keys) {
+    if (typeof key !== "string") continue;
+    const descriptor = reflectForRemotePluginProvenance(() =>
+      Object.getOwnPropertyDescriptor(value, key),
+    );
+    if (descriptor === undefined || !descriptor.enumerable) continue;
+    const entry = remotePluginProvenanceDescriptorValue(descriptor);
+    if (entry === undefined) continue;
+    entries.push([key, entry]);
+  }
+  entries.sort(([left], [right]) => left.localeCompare(right));
+  const canonical: Record<string, unknown> = {};
+  for (const [key, entry] of entries) {
+    canonical[key] = canonicalizeForRemotePluginProvenance(
+      entry,
+      ancestors,
+      depth + 1,
+      budget,
     );
   }
-  return value;
+  return canonical;
 }
 
 function remotePluginModuleProvenanceDigestResult(
   module: RemotePluginModuleManifest,
-): { ok: true } | { ok: false; reason: "mismatch" | "walk-bound" } {
+):
+  | { ok: true }
+  | { ok: false; reason: "mismatch" }
+  | {
+      ok: false;
+      reason: "walk-bound";
+      bound: RemotePluginProvenanceWalkBound;
+      cause: RemotePluginProvenanceWalkBoundError;
+    } {
   const provenance = module.provenance;
   if (!provenance) return { ok: false, reason: "mismatch" };
   try {
@@ -1309,16 +1435,17 @@ function remotePluginModuleProvenanceDigestResult(
     return { ok: false, reason: "mismatch" };
   } catch (error) {
     if (error instanceof RemotePluginProvenanceWalkBoundError) {
-      return { ok: false, reason: "walk-bound" };
+      // The bound and the underlying trap failure stay internal; the public
+      // trust decision only says the walk hit its bound.
+      return {
+        ok: false,
+        reason: "walk-bound",
+        bound: error.reason,
+        cause: error,
+      };
     }
     throw error;
   }
-}
-
-function remotePluginModuleProvenanceDigestMatches(
-  module: RemotePluginModuleManifest,
-): boolean {
-  return remotePluginModuleProvenanceDigestResult(module).ok;
 }
 
 function hashRemotePluginModuleForProvenance(
@@ -1332,12 +1459,16 @@ function hashRemotePluginModuleForProvenance(
 function canonicalJsonForRemotePluginProvenance(
   module: RemotePluginModuleManifest,
 ): string {
-  const {
-    capabilityEndpointId: _endpointId,
-    provenance: _provenance,
-    ...rest
-  } = module;
-  return JSON.stringify(canonicalizeForRemotePluginProvenance(rest));
+  const rest = reflectForRemotePluginProvenance(() => {
+    const {
+      capabilityEndpointId: _endpointId,
+      provenance: _provenance,
+      ...clone
+    } = module;
+    return clone;
+  });
+  const canonical = canonicalizeForRemotePluginProvenance(rest);
+  return reflectForRemotePluginProvenance(() => JSON.stringify(canonical));
 }
 
 function trustDecision(
