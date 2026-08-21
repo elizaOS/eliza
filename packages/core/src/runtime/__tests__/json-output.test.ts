@@ -149,6 +149,20 @@ describe("stripJsonStructuralJunkReply — leaked pseudo-tool markup", () => {
 			stripJsonStructuralJunkReply("the <AI> label means artificial"),
 		).toBe("the <AI> label means artificial");
 	});
+
+	it("strips adjacent leading tool protocol objects from Cerebras final prose", () => {
+		expect(
+			stripJsonStructuralJunkReply(
+				'{"action":"get-notes","view":"notes"}text: {"effect":"get-notes","status":"success","notes":[{"id":"note1","content":"test"}],"revision":1}Notes opened. You have one note: “test”.',
+			),
+		).toBe("Notes opened. You have one note: “test”.");
+	});
+
+	it("preserves an ordinary leading JSON answer", () => {
+		expect(stripJsonStructuralJunkReply('{"answer":42} is the payload')).toBe(
+			'{"answer":42} is the payload',
+		);
+	});
 });
 
 describe("parsePseudoTagToolInvocations — F38 strip-and-send recovery (tj-9129a432454364)", () => {

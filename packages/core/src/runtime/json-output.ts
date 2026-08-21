@@ -338,7 +338,7 @@ export function parsePseudoTagToolInvocations(
  * `<tool_call>` in prose is preserved.
  */
 export function stripJsonStructuralJunkReply(value: string): string {
-	const cleaned = value
+	const withoutMarkup = value
 		// Fully-serialized (paired) tool-call markup leaked as text.
 		.replace(/<tool_call\b[\s\S]*?<\/tool_call>/gi, "")
 		// Truncated-open markup (no closing tag): only strip to end when it is
@@ -360,6 +360,63 @@ export function stripJsonStructuralJunkReply(value: string): string {
 		.replace(PSEUDO_TOOL_TAG_BLOCK_RE, "")
 		.replace(PSEUDO_TOOL_TAG_OPEN_TAIL_RE, "")
 		.trim();
+	const cleaned = stripLeadingModelProtocolObjects(withoutMarkup);
 	if (!cleaned) return "";
 	return /^[\s{}[\]":,]+$/.test(cleaned) ? "" : cleaned;
+}
+
+const MODEL_PROTOCOL_OBJECT_KEYS = new Set([
+	"action",
+	"arguments",
+	"effect",
+	"parameters",
+	"tool",
+	"toolCall",
+	"toolName",
+]);
+
+/**
+ * Removes leading, balanced JSON objects that are unmistakably model/tool
+ * protocol before a natural-language reply. This is structural output cleanup,
+ * not semantic intent matching: the objects must parse as JSON, carry a tool
+ * protocol key, and be followed by more output. Ordinary JSON answers are left
+ * untouched.
+ *
+ * Cerebras gpt-oss has emitted adjacent protocol objects in a no-tools final
+ * synthesis, for example `{action...}text: {effect...}Notes opened.`. Letting
+ * that reach chat exposes internals even though the trailing prose is usable.
+ */
+function stripLeadingModelProtocolObjects(value: string): string {
+	let remaining = value.trim();
+	for (let count = 0; count < 4 && remaining.startsWith("{"); count++) {
+		const objectText = extractJsonObjects(remaining)[0];
+		if (!objectText || !remaining.startsWith(objectText)) break;
+
+		let parsed: Record<string, unknown>;
+		try {
+			const candidate: unknown = JSON.parse(objectText);
+			if (
+				!candidate ||
+				typeof candidate !== "object" ||
+				Array.isArray(candidate)
+			) {
+				break;
+			}
+			parsed = candidate as Record<string, unknown>;
+		} catch {
+			break;
+		}
+
+		if (
+			!Object.keys(parsed).some((key) => MODEL_PROTOCOL_OBJECT_KEYS.has(key))
+		) {
+			break;
+		}
+		const suffix = remaining.slice(objectText.length).trimStart();
+		if (!suffix) return "";
+		remaining = suffix.startsWith("text:")
+			? suffix.slice("text:".length).trimStart()
+			: suffix;
+	}
+	return remaining.trim();
 }
