@@ -434,6 +434,39 @@ describe("fetchCloudVoiceCatalog", () => {
     }
   });
 
+  it("reports a total outage once per backoff window, not once per caller", async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const { client, calls } = makeFakeClient({
+        premadeError: new Error("premade down"),
+        userError: new Error("user down"),
+      });
+      setCloudVoiceClientFactoryForTesting(() => client);
+      const runtime = makeRuntime();
+
+      await fetchCloudVoiceCatalog(runtime);
+      await fetchCloudVoiceCatalog(runtime);
+      await fetchCloudVoiceCatalog(runtime);
+
+      // The backoff shields upstream from the retries, and the outage report
+      // is a diagnostic about the outage, not about each caller that noticed
+      // it — three reads inside one window must not become three reports.
+      expect(calls).toEqual({ premade: 1, user: 1 });
+      expect(runtime.reportError).toHaveBeenCalledTimes(1);
+
+      // A window later the endpoints are retried, so the still-live outage is
+      // reported again — the diagnostic stays alive rather than going silent.
+      vi.advanceTimersByTime(31_000);
+      await fetchCloudVoiceCatalog(runtime);
+      expect(calls).toEqual({ premade: 2, user: 2 });
+      expect(runtime.reportError).toHaveBeenCalledTimes(2);
+    } finally {
+      warnSpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("caches a genuine empty catalog when both endpoints succeed", async () => {
     const { client, calls } = makeFakeClient({ premade: [], user: [] });
     setCloudVoiceClientFactoryForTesting(() => client);

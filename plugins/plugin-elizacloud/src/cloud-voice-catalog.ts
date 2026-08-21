@@ -247,19 +247,26 @@ function endpointCacheKey(
   return `${catalogKey}|${endpoint}`;
 }
 
+/**
+ * `attempted` distinguishes a fresh upstream failure from a remembered one.
+ * The outage report is a diagnostic about the outage, not about each caller
+ * that observed it, so only a pass that actually reached upstream may report.
+ */
+type EndpointLoadResult = EndpointVoiceResult & { attempted: boolean };
+
 async function loadEndpointVoices(
   runtime: IAgentRuntime,
   catalogKey: string,
   endpoint: "premade" | "user"
-): Promise<EndpointVoiceResult> {
+): Promise<EndpointLoadResult> {
   const key = endpointCacheKey(catalogKey, endpoint);
   const cached = cache.get(key);
   const age = cached ? Date.now() - cached.fetchedAt : Number.POSITIVE_INFINITY;
   if (cached?.kind === "success" && age < CACHE_TTL_MS) {
-    return { ok: true, voices: cached.voices };
+    return { ok: true, voices: cached.voices, attempted: false };
   }
   if (cached?.kind === "failure" && age < FAILURE_TTL_MS) {
-    return { ok: false, voices: [] };
+    return { ok: false, voices: [], attempted: false };
   }
 
   const result = await fetchEndpointVoices(runtime, endpoint);
@@ -269,7 +276,7 @@ async function loadEndpointVoices(
       ? { kind: "success", fetchedAt: Date.now(), voices: result.voices }
       : { kind: "failure", fetchedAt: Date.now() }
   );
-  return result;
+  return { ...result, attempted: true };
 }
 
 /**
@@ -325,7 +332,10 @@ export async function fetchCloudVoiceCatalog(
 
     // Total outage: both endpoint caches carry short-lived failure entries;
     // surface it observably (error-policy: "not loaded" must never read as
-    // "empty").
+    // "empty"). Reads served entirely from those failure entries stay silent —
+    // the next expiry re-attempts and re-reports, so a persistent outage keeps
+    // producing one diagnostic per backoff window instead of one per caller.
+    if (!premade.attempted && !user.attempted) return merged;
     runtime.reportError(
       "cloud-voice-catalog",
       new Error("cloud voice catalog: both premade and user endpoints failed"),
