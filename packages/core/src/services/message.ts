@@ -11877,8 +11877,10 @@ function enforceAudienceAdmissionAtEgress(
 	if (!subject) return response;
 	const audience = getTrustedDeliveryAudience(message);
 	if (!audience) {
-		// error-policy:J4 a scoped response with no attested audience earns
-		// nothing — withhold rather than ship into an unverified room.
+		// A scoped response with no attested audience earns nothing — withhold
+		// rather than ship into an unverified room. (Not an error-policy case:
+		// there is no catch here, and tagging an ordinary guard pollutes the
+		// grep that exists to audit retained catches.)
 		return audienceAdmissionWithheld(runtime, message, "none", 0);
 	}
 	const admission = resolveEgressAudienceAdmission(subject, audience);
