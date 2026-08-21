@@ -21,6 +21,7 @@ export const RUNTIME_SURFACE_SCHEMA = "eliza.synthetic-world-surfaces/v1";
 
 export const RUNTIME_SURFACE_STATUSES = [
   "covered",
+  "uncovered",
   "exempt",
   "platform-deferred",
   "provider-qualified-only",
@@ -63,6 +64,10 @@ export interface RuntimeSurfaceBaseline {
   schema: typeof RUNTIME_SURFACE_SCHEMA;
   generatedFrom: string;
   classifications: Record<string, RuntimeSurfaceClassification>;
+  packageClassifications: Record<
+    string,
+    { status: "no-runtime-registration"; reason: string }
+  >;
 }
 
 export interface RuntimeSurfaceRow {
@@ -86,7 +91,13 @@ export interface RuntimeSurfaceRow {
   evidenceClass: "synthetic" | "provider-qualified" | "none";
   boundaryArtifacts: string[];
   boundarySignals: string[];
-  workstream: "#22898" | "#22899" | "#22901" | "#22902" | "#22904";
+  workstream:
+    | "#22898"
+    | "#22899"
+    | "#22901"
+    | "#22902"
+    | "#22904"
+    | "unassigned";
   status: RuntimeSurfaceStatus;
   reason: string;
 }
@@ -160,6 +171,8 @@ interface ExtractionContext {
   seen: Set<string>;
 }
 
+const EVIDENCE_AST_CACHE = new Map<string, ts.SourceFile>();
+
 const PLUGIN_FIELDS = new Map<string, RuntimeSurfaceKind>([
   ["actions", "action"],
   ["providers", "provider"],
@@ -184,7 +197,7 @@ const NAME_KEYS: Record<RuntimeSurfaceKind, readonly string[]> = {
   "response-handler-field-evaluator": ["name"],
   "event-handler": ["eventName", "name"],
   route: ["path", "name"],
-  view: ["id", "path", "label"],
+  view: ["id", "path", "label", "name"],
   "model-handler": ["modelType", "name"],
   "connector-ingress": ["source", "name"],
   "connector-egress": ["source", "name"],
@@ -340,6 +353,100 @@ function resolveModule(from: string, specifier: string): string | null {
       (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
     ) ?? null
   );
+}
+
+export function packageEntryPoints(packageDir: string): string[] {
+  const candidates = new Set<string>();
+  for (const base of [packageDir, path.join(packageDir, "src")]) {
+    for (const entry of [
+      "index.ts",
+      "index.tsx",
+      "index.browser.ts",
+      "index.node.ts",
+      "plugin.ts",
+      "edge.ts",
+    ]) {
+      const file = path.join(base, entry);
+      if (existsSync(file)) candidates.add(file);
+    }
+  }
+  const manifest = readJson(path.join(packageDir, "package.json"));
+  const visit = (value: unknown): void => {
+    if (typeof value === "string") {
+      const normalized = value.replace(/^\.\//, "");
+      if (
+        /\.(?:ts|tsx|mts|cts)$/.test(normalized) &&
+        !/(?:^|\/)dist\//.test(normalized) &&
+        !/\.d\.(?:ts|mts|cts)$/.test(normalized)
+      ) {
+        const file = path.join(packageDir, normalized);
+        if (existsSync(file)) candidates.add(file);
+      }
+      return;
+    }
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      for (const child of Object.values(value as Record<string, unknown>))
+        visit(child);
+    }
+  };
+  visit(manifest.exports);
+  for (const field of ["main", "module", "source"]) {
+    const value = manifest[field];
+    if (typeof value !== "string") continue;
+    const source = value
+      .replace(/^dist\//, "src/")
+      .replace(/\.(?:m?js|cjs)$/, ".ts");
+    const file = path.join(packageDir, source);
+    if (existsSync(file)) candidates.add(file);
+  }
+  return [...candidates].sort();
+}
+
+export function reachableProductionFiles(packageDir: string): string[] {
+  const reached = new Set<string>();
+  const pending = [...packageEntryPoints(packageDir)];
+  while (pending.length > 0) {
+    const file = path.resolve(pending.pop() as string);
+    if (
+      reached.has(file) ||
+      !file.startsWith(`${packageDir}${path.sep}`) ||
+      !isProductionTypeScript(file)
+    )
+      continue;
+    reached.add(file);
+    const ast = ts.createSourceFile(
+      file,
+      readFileSync(file, "utf8"),
+      ts.ScriptTarget.Latest,
+      true,
+      file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    );
+    const visit = (node: ts.Node): void => {
+      let specifier: string | null = null;
+      if (
+        (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+        node.moduleSpecifier &&
+        ts.isStringLiteral(node.moduleSpecifier)
+      ) {
+        specifier = node.moduleSpecifier.text;
+      } else if (
+        ts.isCallExpression(node) &&
+        node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        node.arguments[0] &&
+        ts.isStringLiteral(node.arguments[0])
+      ) {
+        specifier = node.arguments[0].text;
+      }
+      if (specifier) {
+        const resolved = resolveModule(file, specifier);
+        if (resolved?.startsWith(`${packageDir}${path.sep}`))
+          pending.push(resolved);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(ast);
+  }
+  return [...reached].sort();
 }
 
 function unitFor(file: string, units: Map<string, SourceUnit>): SourceUnit {
@@ -624,6 +731,50 @@ function extractExplicitSubactions(
   return [...names].sort();
 }
 
+function directParameterSubactions(
+  object: ts.ObjectLiteralExpression,
+): string[] {
+  const names = new Set<string>();
+  const visit = (node: ts.Node): void => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const nameProperty = node.properties.find(
+        (property): property is ts.PropertyAssignment =>
+          ts.isPropertyAssignment(property) &&
+          propertyName(property.name) === "name",
+      );
+      const parameterName = nameProperty
+        ? literalText(unwrap(nameProperty.initializer))
+        : null;
+      if (
+        parameterName &&
+        ["action", "subaction", "op", "operation", "verb"].includes(
+          parameterName,
+        )
+      ) {
+        const collectEnums = (candidate: ts.Node): void => {
+          if (
+            ts.isPropertyAssignment(candidate) &&
+            propertyName(candidate.name) === "enum" &&
+            ts.isArrayLiteralExpression(unwrap(candidate.initializer))
+          ) {
+            for (const element of (
+              unwrap(candidate.initializer) as ts.ArrayLiteralExpression
+            ).elements) {
+              const value = literalText(unwrap(element));
+              if (value) names.add(value);
+            }
+          }
+          ts.forEachChild(candidate, collectEnums);
+        };
+        collectEnums(node);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(object);
+  return [...names].sort();
+}
+
 function extractPromotedSubactions(
   object: ts.ObjectLiteralExpression,
   unit: SourceUnit,
@@ -743,6 +894,208 @@ function resolveObject(
   return null;
 }
 
+function modelFactoryEntries(
+  call: ts.CallExpression,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): Array<{ name: string; sourceFile: string }> {
+  if (!ts.isIdentifier(call.expression)) return [];
+  const resolved = resolveIdentifier(call.expression.text, unit, context);
+  if (
+    !resolved ||
+    (!ts.isFunctionDeclaration(resolved.node) &&
+      !ts.isFunctionExpression(resolved.node) &&
+      !ts.isArrowFunction(resolved.node)) ||
+    !resolved.node.body
+  )
+    return [];
+  const names = new Set<string>();
+  const collect = (
+    candidate: ts.Node,
+    sourceUnit: SourceUnit,
+    seen = new Set<string>(),
+  ): void => {
+    const key = `${sourceUnit.file}:${candidate.pos}:${candidate.end}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const current = unwrap(nodeInitializer(candidate) ?? candidate);
+    if (ts.isPropertyAccessExpression(current)) {
+      if (current.expression.getText(sourceUnit.ast).endsWith("ModelType"))
+        names.add(current.name.text);
+      return;
+    }
+    if (ts.isIdentifier(current)) {
+      const declaration = resolveIdentifier(current.text, sourceUnit, context);
+      if (declaration) collect(declaration.node, declaration.unit, seen);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(current)) {
+      for (const element of current.elements)
+        collect(
+          ts.isSpreadElement(element) ? element.expression : element,
+          sourceUnit,
+          seen,
+        );
+      return;
+    }
+    if (ts.isConditionalExpression(current)) {
+      collect(current.whenTrue, sourceUnit, seen);
+      collect(current.whenFalse, sourceUnit, seen);
+    }
+  };
+  const visit = (candidate: ts.Node): void => {
+    if (
+      ts.isForOfStatement(candidate) &&
+      /\bmodels\s*\[/.test(candidate.statement.getText(resolved.unit.ast))
+    ) {
+      collect(candidate.expression, resolved.unit);
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(resolved.node.body);
+  return [...names]
+    .sort()
+    .map((name) => ({ name, sourceFile: resolved.unit.file }));
+}
+
+function modelNamesFromEnclosingLoop(
+  argument: ts.Node,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): string[] {
+  if (!ts.isIdentifier(unwrap(argument))) return [];
+  const argumentName = (unwrap(argument) as ts.Identifier).text;
+  let parent: ts.Node | undefined = argument.parent;
+  while (parent) {
+    if (ts.isForOfStatement(parent)) {
+      if (!ts.isVariableDeclarationList(parent.initializer)) {
+        parent = parent.parent;
+        continue;
+      }
+      const declaration = parent.initializer.declarations[0];
+      if (
+        declaration &&
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === argumentName
+      ) {
+        const names = new Set<string>();
+        const collect = (
+          candidate: ts.Node,
+          seen = new Set<string>(),
+        ): void => {
+          const key = `${unit.file}:${candidate.pos}:${candidate.end}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          const current = unwrap(nodeInitializer(candidate) ?? candidate);
+          if (
+            ts.isPropertyAccessExpression(current) &&
+            current.expression.getText(unit.ast).endsWith("ModelType")
+          ) {
+            names.add(current.name.text);
+          } else if (ts.isIdentifier(current)) {
+            const resolved = resolveIdentifier(current.text, unit, {
+              units: context.units,
+              seen: new Set(),
+            });
+            if (resolved) collect(resolved.node, seen);
+          } else if (ts.isArrayLiteralExpression(current)) {
+            for (const element of current.elements)
+              collect(
+                ts.isSpreadElement(element) ? element.expression : element,
+                seen,
+              );
+          }
+        };
+        collect(parent.expression);
+        return [...names].sort();
+      }
+    }
+    parent = parent.parent;
+  }
+  return [];
+}
+
+function directModelRegistrationNames(ast: ts.SourceFile): string[] {
+  const declarations = new Map<string, ts.Expression>();
+  const names = new Set<string>();
+  const collectExpression = (node: ts.Node): void => {
+    const current = unwrap(node);
+    if (
+      ts.isPropertyAccessExpression(current) &&
+      current.expression.getText(ast).endsWith("ModelType")
+    ) {
+      names.add(current.name.text);
+    } else if (ts.isIdentifier(current)) {
+      const initializer = declarations.get(current.text);
+      if (initializer) collectExpression(initializer);
+    } else if (ts.isArrayLiteralExpression(current)) {
+      for (const element of current.elements)
+        collectExpression(
+          ts.isSpreadElement(element) ? element.expression : element,
+        );
+    }
+  };
+  const index = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    )
+      declarations.set(node.name.text, node.initializer);
+    ts.forEachChild(node, index);
+  };
+  index(ast);
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "registerModel" &&
+      node.arguments[0]
+    ) {
+      const argument = unwrap(node.arguments[0]);
+      collectExpression(argument);
+      if (ts.isIdentifier(argument)) {
+        let parent: ts.Node | undefined = node.parent;
+        while (parent) {
+          if (ts.isForOfStatement(parent)) {
+            if (!ts.isVariableDeclarationList(parent.initializer)) break;
+            const declaration = parent.initializer.declarations[0];
+            if (
+              declaration &&
+              ts.isIdentifier(declaration.name) &&
+              declaration.name.text === argument.text
+            ) {
+              collectExpression(parent.expression);
+              if (ts.isIdentifier(parent.expression)) {
+                const arrayName = parent.expression.text;
+                const collectPushes = (candidate: ts.Node): void => {
+                  if (
+                    ts.isCallExpression(candidate) &&
+                    ts.isPropertyAccessExpression(candidate.expression) &&
+                    ts.isIdentifier(candidate.expression.expression) &&
+                    candidate.expression.expression.text === arrayName &&
+                    candidate.expression.name.text === "push"
+                  ) {
+                    for (const pushed of candidate.arguments)
+                      collectExpression(pushed);
+                  }
+                  ts.forEachChild(candidate, collectPushes);
+                };
+                collectPushes(ast);
+              }
+            }
+            break;
+          }
+          parent = parent.parent;
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return [...names].sort();
+}
+
 function extractEntries(
   node: ts.Node,
   unit: SourceUnit,
@@ -778,9 +1131,7 @@ function extractEntries(
     }
     return [
       {
-        name:
-          nameFromObject(current, kind, unit, context) ??
-          expressionIdentity(current, unit),
+        name: nameFromObject(current, kind, unit, context) ?? "",
         sourceFile: unit.file,
         object: current,
       },
@@ -801,10 +1152,14 @@ function extractEntries(
       const nested = extractEntries(resolvedNode, resolved.unit, kind, context);
       if (nested.length > 0) return nested;
     }
-    return [{ name: current.text, sourceFile: unit.file }];
+    return [];
   }
   if (ts.isCallExpression(current)) {
     const callee = expressionIdentity(current.expression, unit);
+    if (kind === "model-handler") {
+      const modelEntries = modelFactoryEntries(current, unit, context);
+      if (modelEntries.length > 0) return modelEntries;
+    }
     if (
       ts.isPropertyAccessExpression(current.expression) &&
       current.expression.name.text === "map"
@@ -824,12 +1179,7 @@ function extractEntries(
       ) {
         return sourceEntries;
       }
-      return [
-        {
-          name: `dynamic:${expressionIdentity(mappedExpression, unit)}`,
-          sourceFile: unit.file,
-        },
-      ];
+      return [];
     }
     if (callee.endsWith("promoteSubactionsToActions") && current.arguments[0]) {
       const parentEntries = extractEntries(
@@ -852,12 +1202,12 @@ function extractEntries(
       );
       if (nested.length > 0) return nested;
     }
-    return [{ name: expressionIdentity(current, unit), sourceFile: unit.file }];
+    return [];
   }
   if (ts.isPropertyAccessExpression(current)) {
     return [{ name: current.name.text, sourceFile: unit.file }];
   }
-  return [{ name: expressionIdentity(current, unit), sourceFile: unit.file }];
+  return [];
 }
 
 function pluginObjects(
@@ -866,7 +1216,13 @@ function pluginObjects(
   const roots: Array<{ object: ts.ObjectLiteralExpression; unit: SourceUnit }> =
     [];
   const visit = (node: ts.Node): void => {
-    if (pluginTyped(node)) {
+    if (
+      pluginTyped(node) ||
+      (ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        /plugin$/i.test(node.name.text) &&
+        Boolean(node.initializer))
+    ) {
       const resolved = resolveObject(node, unit, {
         units: new Map([[unit.file, unit]]),
         seen: new Set(),
@@ -883,7 +1239,7 @@ function extractPluginSurfaces(
   packageDir: string,
   packageInfo: PackageContext,
 ): RawSurface[] {
-  const files = walkFiles(packageDir, isProductionTypeScript);
+  const files = reachableProductionFiles(packageDir);
   const units = new Map<string, SourceUnit>();
   for (const file of files) {
     // Only files that can contain a typed Plugin root enter the first pass;
@@ -947,11 +1303,22 @@ function extractPluginSurfaces(
             package: packageInfo,
           });
           if (kind === "action" && entry.object) {
-            for (const subaction of extractExplicitSubactions(
+            const entryUnit = unitFor(entry.sourceFile, context.units);
+            const explicit = extractExplicitSubactions(
               entry.object,
-              root.unit,
-              context,
-            )) {
+              entryUnit,
+              { units: context.units, seen: new Set() },
+            );
+            const parameterEnums = extractPromotedSubactions(
+              entry.object,
+              entryUnit,
+              { units: context.units, seen: new Set() },
+            );
+            parameterEnums.push(...directParameterSubactions(entry.object));
+            const promoted = parameterEnums.map(
+              (name) => `${entry.name}_${name}`,
+            );
+            for (const subaction of [...new Set([...explicit, ...promoted])]) {
               raw.push({
                 kind: "subaction",
                 name: subaction,
@@ -983,12 +1350,12 @@ function extractPluginSurfaces(
   return raw;
 }
 
-function collectCallRegisteredSurfaces(
+export function collectCallRegisteredSurfaces(
   packageDir: string,
   packageInfo: PackageContext,
 ): RawSurface[] {
   const result: RawSurface[] = [];
-  const files = walkFiles(packageDir, isProductionTypeScript);
+  const files = reachableProductionFiles(packageDir);
   for (const file of files) {
     const units = new Map<string, SourceUnit>();
     const unit = unitFor(file, units);
@@ -1033,6 +1400,12 @@ function collectCallRegisteredSurfaces(
           kind = "provider";
         } else if (isRuntimeCall && calleeName === "registerService") {
           kind = "service";
+        } else if (
+          isMethodCall &&
+          calleeName === "registerDatabaseAdapter" &&
+          /(?:runtime|\br\b)/i.test(receiver)
+        ) {
+          kind = "service";
         } else if (isRuntimeCall && calleeName === "registerEvaluator") {
           kind = "evaluator";
         } else if (
@@ -1049,6 +1422,8 @@ function collectCallRegisteredSurfaces(
           kind = "model-handler";
         } else if (isRuntimeCall && calleeName === "registerEvent") {
           kind = "event-handler";
+        } else if (calleeName === "registerOverlayApp") {
+          kind = "view";
         } else if (
           calleeName !== null &&
           (/^registerNativePlugin$/i.test(calleeName) ||
@@ -1085,30 +1460,65 @@ function collectCallRegisteredSurfaces(
           const registeredObject = localArgument
             ? resolveObject(localArgument, unit, context)
             : null;
-          const registeredName = registeredObject
-            ? nameFromObject(
-                registeredObject.object,
-                kind,
-                registeredObject.unit,
-                context,
-              )
-            : localArgument
-              ? resolvedScalar(localArgument, unit, context)
-              : null;
-          result.push({
-            kind,
-            name:
-              registeredName ??
-              `dynamic:${expressionIdentity(firstArgument ?? node.expression, unit)}`,
-            sourcePath: toRepoPath(file),
-            registrationField: callee,
-            package: packageInfo,
-          });
+          const registeredName =
+            calleeName === "registerDatabaseAdapter"
+              ? "database-adapter"
+              : registeredObject
+                ? nameFromObject(
+                    registeredObject.object,
+                    kind,
+                    registeredObject.unit,
+                    context,
+                  )
+                : localArgument
+                  ? resolvedScalar(localArgument, unit, context)
+                  : null;
+          const registeredNames = registeredName
+            ? [registeredName]
+            : kind === "model-handler" && firstArgument
+              ? modelNamesFromEnclosingLoop(firstArgument, unit, context)
+              : [];
+          for (const name of registeredNames) {
+            result.push({
+              kind,
+              name,
+              sourcePath: toRepoPath(file),
+              registrationField: callee,
+              package: packageInfo,
+            });
+          }
         }
       }
       ts.forEachChild(node, visit);
     };
     visit(ast);
+    for (const name of directModelRegistrationNames(ast)) {
+      result.push({
+        kind: "model-handler",
+        name,
+        sourcePath: toRepoPath(file),
+        registrationField: "runtime.registerModel",
+        package: packageInfo,
+      });
+    }
+    if (/\bregisterService\b/.test(source)) {
+      const visitServices = (node: ts.Node): void => {
+        if (ts.isClassDeclaration(node)) {
+          const serviceType = staticClassServiceType(node);
+          if (serviceType) {
+            result.push({
+              kind: "service",
+              name: serviceType,
+              sourcePath: toRepoPath(file),
+              registrationField: "runtime.registerService",
+              package: packageInfo,
+            });
+          }
+        }
+        ts.forEachChild(node, visitServices);
+      };
+      visitServices(ast);
+    }
   }
   return result;
 }
@@ -1136,16 +1546,90 @@ function workspacePackageDirs(): string[] {
   return [...new Set(dirs)].sort();
 }
 
+function hostAssemblySurfaces(): RawSurface[] {
+  const hostFiles = [
+    path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/core"),
+    path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/agent"),
+    path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/app-core"),
+  ].flatMap(reachableProductionFiles);
+  const hostSources = hostFiles.map((file) => ({
+    file,
+    source: readFileSync(file, "utf8"),
+  }));
+  const pluginRoot = path.join(RUNTIME_SURFACE_REPO_ROOT, "plugins");
+  const rows: RawSurface[] = [];
+  for (const entry of readdirSync(pluginRoot).sort()) {
+    const packageDir = path.join(pluginRoot, entry);
+    const info = packageContext(packageDir);
+    if (!info) continue;
+    const consumers = hostSources.filter((host) =>
+      host.source.includes(info.packageName),
+    );
+    if (consumers.length === 0) continue;
+    for (const entrypoint of packageEntryPoints(packageDir)) {
+      const ast = ts.createSourceFile(
+        entrypoint,
+        readFileSync(entrypoint, "utf8"),
+        ts.ScriptTarget.Latest,
+        true,
+      );
+      for (const statement of ast.statements) {
+        if (
+          !ts.isExportDeclaration(statement) ||
+          !statement.exportClause ||
+          !ts.isNamedExports(statement.exportClause)
+        )
+          continue;
+        for (const exported of statement.exportClause.elements) {
+          if (exported.isTypeOnly) continue;
+          const name = exported.name.text;
+          const kind: RuntimeSurfaceKind | null = /^handle.*Routes$/.test(name)
+            ? "route"
+            : (/^[A-Z].*(?:Service|Manager)$/.test(name) &&
+                  !/^I[A-Z]/.test(name)) ||
+                (info.packageName === "@elizaos/plugin-registry" &&
+                  /^(?:installPlugin|uninstallPlugin|listInstalledPlugins)$/.test(
+                    name,
+                  ))
+              ? "service"
+              : null;
+          if (!kind || !consumers.some((host) => host.source.includes(name)))
+            continue;
+          rows.push({
+            kind,
+            name,
+            sourcePath: toRepoPath(entrypoint),
+            registrationField: "production host import/call",
+            package: info,
+          });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+/** Resolves only route modules mounted by the generated production router. */
+export function servedCloudRouteFiles(apiDir: string): string[] {
+  const generatedRouter = path.join(apiDir, "src", "_router.generated.ts");
+  const files = new Set<string>();
+  if (existsSync(generatedRouter)) {
+    const source = readFileSync(generatedRouter, "utf8");
+    for (const match of source.matchAll(
+      /from\s+["'`](\.\.\/[^"'`]+\/route)["'`]/g,
+    )) {
+      const resolved = resolveModule(generatedRouter, match[1]);
+      if (resolved) files.add(resolved);
+    }
+  }
+  return [...files].sort();
+}
+
 function cloudRouteSurfaces(): RawSurface[] {
   const apiDir = path.join(RUNTIME_SURFACE_REPO_ROOT, "packages/cloud/api");
   const info = packageContext(apiDir);
   if (!info) return [];
-  const files = walkFiles(
-    apiDir,
-    (file) =>
-      path.basename(file) === "route.ts" &&
-      !file.includes(`${path.sep}test${path.sep}`),
-  );
+  const files = servedCloudRouteFiles(apiDir);
   const rows: RawSurface[] = [];
   for (const file of files) {
     const source = readFileSync(file, "utf8");
@@ -1174,6 +1658,24 @@ function cloudRouteSurfaces(): RawSurface[] {
           registration.method === "ANY"
             ? "default Hono router export"
             : `Hono.${registration.method.toLowerCase()}`,
+        package: info,
+      });
+    }
+  }
+  for (const file of [
+    path.join(apiDir, "src", "bootstrap-app.ts"),
+    path.join(apiDir, "src", "index.ts"),
+  ]) {
+    if (!existsSync(file)) continue;
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(
+      /\b(?:app|router|routes)\s*\.\s*(get|post|put|patch|delete|all)\s*\(\s*["'`]([^"'`]+)["'`]/gi,
+    )) {
+      rows.push({
+        kind: "route",
+        name: `${match[1].toUpperCase()} ${match[2]}`,
+        sourcePath: toRepoPath(file),
+        registrationField: `manual Hono.${match[1].toLowerCase()}`,
         package: info,
       });
     }
@@ -1260,6 +1762,117 @@ function workerBindingSurfaces(): RawSurface[] {
   return rows;
 }
 
+/** Reads the declared lane; absent and live-only scenarios never count as deterministic. */
+export function isDeterministicScenarioSource(source: string): boolean {
+  return scenarioMetadataFromSource(source).lane === "pr-deterministic";
+}
+
+export function scenarioMetadataFromSource(source: string): {
+  id: string | null;
+  plugins: string[];
+  lane: string | null;
+} {
+  const ast = ts.createSourceFile(
+    "scenario.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const declarations = new Map<string, ts.Expression>();
+  for (const statement of ast.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer)
+          declarations.set(declaration.name.text, declaration.initializer);
+      }
+    }
+  }
+  const resolveScenarioObject = (
+    expression: ts.Expression,
+  ): ts.ObjectLiteralExpression | null => {
+    const current = unwrap(expression);
+    if (ts.isObjectLiteralExpression(current)) return current;
+    if (ts.isIdentifier(current)) {
+      const initializer = declarations.get(current.text);
+      return initializer ? resolveScenarioObject(initializer) : null;
+    }
+    return null;
+  };
+  let scenarioObject: ts.ObjectLiteralExpression | null = null;
+  for (const statement of ast.statements) {
+    if (ts.isExportAssignment(statement)) {
+      scenarioObject = resolveScenarioObject(statement.expression);
+      if (scenarioObject) break;
+    }
+  }
+  if (!scenarioObject)
+    for (const statement of ast.statements) {
+      if (
+        ts.isVariableStatement(statement) &&
+        statement.modifiers?.some(
+          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+        )
+      ) {
+        for (const declaration of statement.declarationList.declarations) {
+          if (!declaration.initializer) continue;
+          const candidate = resolveScenarioObject(declaration.initializer);
+          if (
+            candidate?.properties.some(
+              (property) =>
+                ts.isPropertyAssignment(property) &&
+                propertyName(property.name) === "id",
+            )
+          ) {
+            scenarioObject = candidate;
+            break;
+          }
+        }
+      }
+    }
+  if (!scenarioObject) return { id: null, plugins: [], lane: null };
+  const idProperty = scenarioObject.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && propertyName(property.name) === "id",
+  );
+  const laneProperty = scenarioObject.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      propertyName(property.name) === "lane",
+  );
+  const id = idProperty ? literalText(unwrap(idProperty.initializer)) : null;
+  const lane = laneProperty
+    ? literalText(unwrap(laneProperty.initializer))
+    : null;
+  const plugins = new Set<string>();
+  const requiresProperty = scenarioObject.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) &&
+      propertyName(property.name) === "requires" &&
+      ts.isObjectLiteralExpression(unwrap(property.initializer)),
+  );
+  if (requiresProperty) {
+    const requires = unwrap(
+      requiresProperty.initializer,
+    ) as ts.ObjectLiteralExpression;
+    const pluginProperty = requires.properties.find(
+      (property): property is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(property) &&
+        propertyName(property.name) === "plugins" &&
+        ts.isArrayLiteralExpression(unwrap(property.initializer)),
+    );
+    if (pluginProperty) {
+      for (const element of (
+        unwrap(pluginProperty.initializer) as ts.ArrayLiteralExpression
+      ).elements) {
+        const value = literalText(unwrap(element));
+        if (value) plugins.add(value);
+      }
+    }
+  }
+  return { id, plugins: [...plugins].sort(), lane };
+}
+
 function scenarioRecords(): ScenarioRecord[] {
   const roots = [
     path.join(
@@ -1275,25 +1888,18 @@ function scenarioRecords(): ScenarioRecord[] {
       candidate.endsWith(".scenario.ts"),
     )) {
       const source = readFileSync(file, "utf8");
-      const id = source.match(/\bid\s*:\s*["'`]([^"'`]+)["'`]/)?.[1];
+      const metadata = scenarioMetadataFromSource(source);
+      const id = metadata.id;
       if (!id) continue;
-      const laneText =
-        source.match(/\blane\s*:\s*["'`]([^"'`]+)["'`]/)?.[1] ?? "";
-      const deterministicCorpus = file.includes(
-        `${path.sep}scenario-runner${path.sep}test${path.sep}scenarios`,
-      );
       const lane =
-        deterministicCorpus || laneText === "pr-deterministic"
-          ? "deterministic"
-          : "live";
-      const pluginsBlock =
-        source.match(
-          /requires\s*:\s*{[\s\S]*?plugins\s*:\s*\[([\s\S]*?)\]/,
-        )?.[1] ?? "";
-      const plugins = [...pluginsBlock.matchAll(/["'`]([^"'`]+)["'`]/g)].map(
-        (match) => match[1],
-      );
-      records.push({ id, file: toRepoPath(file), source, plugins, lane });
+        metadata.lane === "pr-deterministic" ? "deterministic" : "live";
+      records.push({
+        id,
+        file: toRepoPath(file),
+        source,
+        plugins: metadata.plugins,
+        lane,
+      });
     }
   }
   return records;
@@ -1319,29 +1925,191 @@ function pluginAliases(row: RawSurface): string[] {
   return [row.package.packageName, base, base.replace(/^plugin-/, "")];
 }
 
-function containsBoundarySignal(source: string, surfaceName: string): boolean {
-  const candidates = [
-    surfaceName,
-    surfaceName.split(/\s+/).slice(-1)[0],
-  ].filter((value) => value.length >= 3);
-  return candidates.some((candidate) => source.includes(candidate));
+export function scenarioOwnsSurface(
+  _packageDir: string,
+  aliases: readonly string[],
+  declaredPlugins: readonly string[],
+): boolean {
+  return declaredPlugins.some((plugin) => aliases.includes(plugin));
+}
+
+/** Requires an executable call/assertion shape; name-only fixture text never qualifies. */
+export function isExecutableBoundaryEvidence(
+  surface: Pick<RawSurface, "kind" | "name">,
+  source: string,
+): boolean {
+  let ast = EVIDENCE_AST_CACHE.get(source);
+  if (!ast) {
+    ast = ts.createSourceFile(
+      "evidence.ts",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    EVIDENCE_AST_CACHE.set(source, ast);
+  }
+  const rawName =
+    surface.kind === "route"
+      ? surface.name.slice(surface.name.indexOf(" ") + 1)
+      : surface.name;
+  const name =
+    surface.kind === "subaction"
+      ? (rawName.split(/[_/]/).at(-1) ?? rawName)
+      : rawName;
+  const signal = surface.kind === "route" ? rawName : name;
+  const isTestCallback = (fn: ts.Node): boolean => {
+    const parent = fn.parent;
+    return (
+      ts.isCallExpression(parent) &&
+      /^(?:test|it)(?:\.|$)/.test(parent.expression.getText(ast))
+    );
+  };
+  const executable = (node: ts.Node): boolean => {
+    let parent: ts.Node | undefined = node.parent;
+    while (parent) {
+      if (ts.isFunctionLike(parent)) return isTestCallback(parent);
+      parent = parent.parent;
+    }
+    return true;
+  };
+  if (surface.kind === "route") {
+    let routeProved = false;
+    const inspect = (node: ts.Node): void => {
+      if (routeProved || !ts.isCallExpression(node) || !executable(node)) {
+        ts.forEachChild(node, inspect);
+        return;
+      }
+      if (
+        /^(?:expect|assert(?:Equal|Deep|Response))$/.test(
+          node.expression.getText(ast),
+        )
+      ) {
+        const inspectAssertion = (candidate: ts.Node): void => {
+          if (
+            ts.isCallExpression(candidate) &&
+            /(?:request|fetch|client)/i.test(candidate.expression.getText(ast))
+          ) {
+            const pathArgument = candidate.arguments[0]
+              ? literalText(unwrap(candidate.arguments[0]))
+              : null;
+            if (pathArgument === signal || pathArgument?.includes(signal))
+              routeProved = true;
+          }
+          if (!routeProved) ts.forEachChild(candidate, inspectAssertion);
+        };
+        for (const argument of node.arguments) inspectAssertion(argument);
+      }
+      if (!routeProved) ts.forEachChild(node, inspect);
+    };
+    inspect(ast);
+    return routeProved;
+  }
+  let proved = false;
+  const visit = (node: ts.Node): void => {
+    if (proved || !ts.isCallExpression(node) || !executable(node)) {
+      ts.forEachChild(node, visit);
+      return;
+    }
+    const callee = node.expression.getText(ast);
+    const callText = node.getText(ast);
+    if (!callText.includes(signal)) {
+      ts.forEachChild(node, visit);
+      return;
+    }
+    if (
+      (surface.kind === "action" || surface.kind === "subaction") &&
+      /(?:assertTurn|assertResponse|finalChecks)/.test(callee) &&
+      /actionCalled|selectedAction|selectedActionArguments/.test(callText)
+    ) {
+      proved = true;
+      return;
+    }
+    const boundaryApis: Record<string, RegExp> = {
+      route: /(?:request|fetch|client|page\.request)(?:\.|$)/i,
+      service: /(?:getService|registerService)/i,
+      provider: /(?:getProvider|providers?\.(?:find|get))/i,
+      "connector-ingress": /(?:handleMessage|inbound|webhook)/i,
+      "connector-egress": /(?:dispatch|deliver|sendMessage)/i,
+      "scheduled-worker": /(?:scheduled|worker|dispatch)/i,
+      queue: /(?:queue|dispatch|send)/i,
+      "cloud-service": /(?:request|fetch|dispatch)/i,
+      "event-handler": /(?:emitEvent|emit|publish)/i,
+      evaluator: /evaluate/i,
+      "response-handler-evaluator": /evaluate/i,
+      "response-handler-field-evaluator": /evaluate/i,
+      view: /(?:getView|listViews)/i,
+      "model-handler": /(?:useModel|registerModel)/i,
+      "native-bridge": /(?:invoke|registerPlugin)/i,
+      action: /$a/,
+      subaction: /$a/,
+    };
+    if (/^(?:expect|assert(?:Equal|Deep|Response))$/.test(callee)) {
+      const inspectArgument = (candidate: ts.Node): void => {
+        const candidateCallee = ts.isCallExpression(candidate)
+          ? candidate.expression.getText(ast)
+          : "";
+        const boundaryCall =
+          surface.kind === "route"
+            ? /(?:request|fetch|client)/i.test(candidateCallee)
+            : Boolean(boundaryApis[surface.kind]?.test(candidateCallee));
+        if (
+          ts.isCallExpression(candidate) &&
+          boundaryCall &&
+          candidate.arguments.some((argument) =>
+            argument.getText(ast).includes(signal),
+          )
+        )
+          proved = true;
+        if (!proved) ts.forEachChild(candidate, inspectArgument);
+      };
+      for (const argument of node.arguments) inspectArgument(argument);
+      if (proved) return;
+    }
+    if (!boundaryApis[surface.kind]?.test(callee)) {
+      ts.forEachChild(node, visit);
+      return;
+    }
+    let ancestor: ts.Node | undefined = node.parent;
+    while (ancestor && !ts.isExpressionStatement(ancestor)) {
+      if (
+        ts.isCallExpression(ancestor) &&
+        /^(?:expect|assert(?:Equal|Deep|Response))$/.test(
+          ancestor.expression.getText(ast),
+        )
+      ) {
+        proved = true;
+        return;
+      }
+      ancestor = ancestor.parent;
+    }
+  };
+  visit(ast);
+  return proved;
 }
 
 function defaultWorkstream(
   kind: RuntimeSurfaceKind,
 ): RuntimeSurfaceRow["workstream"] {
   if (kind === "model-handler") return "#22901";
-  if (["service", "event-handler", "scheduled-worker", "queue"].includes(kind))
-    return "#22902";
   if (["provider", "connector-ingress", "connector-egress"].includes(kind))
     return "#22899";
   if (kind === "route" || kind === "cloud-service") return "#22904";
-  return "#22898";
+  return "unassigned";
 }
 
 function uniqueRawSurfaces(rows: RawSurface[]): RawSurface[] {
   const byId = new Map<string, RawSurface>();
   for (const row of rows) {
+    const normalized = normalizeName(row.name);
+    if (
+      !normalized ||
+      /^(?:name|actions|providers|routes|specs|modelType)$/i.test(normalized) ||
+      /(?:dynamic:|=>|\?\?|\.filter\b|\.flatMap\b|\.map\b|\bnew Set\b)/.test(
+        normalized,
+      )
+    )
+      continue;
     const id = [
       row.package.packageName,
       row.kind,
@@ -1366,6 +2134,7 @@ export function discoverRuntimeSurfaces(): RawSurface[] {
     rows.push(...collectCallRegisteredSurfaces(dir, info));
   }
   rows.push(
+    ...hostAssemblySurfaces(),
     ...cloudRouteSurfaces(),
     ...cloudServiceSurfaces(),
     ...workerBindingSurfaces(),
@@ -1382,7 +2151,8 @@ export function loadRuntimeSurfaceBaseline(
   const parsed = readJson(file) as unknown as RuntimeSurfaceBaseline;
   if (
     parsed.schema !== RUNTIME_SURFACE_SCHEMA ||
-    typeof parsed.classifications !== "object"
+    typeof parsed.classifications !== "object" ||
+    typeof parsed.packageClassifications !== "object"
   ) {
     throw new Error(`Invalid runtime-surface baseline schema in ${file}`);
   }
@@ -1410,11 +2180,11 @@ export function buildRuntimeSurfaceInventory(
     const aliases = pluginAliases(surface);
     const matchingScenarios = scenarios.filter(
       (scenario) =>
-        scenario.plugins.some((plugin) => aliases.includes(plugin)) &&
-        containsBoundarySignal(scenario.source, surface.name),
+        scenarioOwnsSurface(surface.package.dir, aliases, scenario.plugins) &&
+        isExecutableBoundaryEvidence(surface, scenario.source),
     );
     const matchingCells = cloudCells.filter((cell) =>
-      containsBoundarySignal(cell.source, surface.name),
+      isExecutableBoundaryEvidence(surface, cell.source),
     );
     const deterministic = matchingScenarios.filter(
       (scenario) => scenario.lane === "deterministic",
@@ -1432,7 +2202,7 @@ export function buildRuntimeSurfaceInventory(
     const classification = baseline.classifications[id];
     const status: RuntimeSurfaceStatus = covered
       ? "covered"
-      : (classification?.status ?? "exempt");
+      : (classification?.status ?? "uncovered");
     const reason = covered
       ? "Executable keyless scenario or Cloud E2E cell contains the exact registered boundary signal."
       : (classification?.reason ??
@@ -1527,6 +2297,7 @@ export function buildRuntimeSurfaceInventory(
         .map((row) => row.id)
         .sort();
       const hasSurfaces = registeredSurfaceIds.length > 0;
+      const packageClassification = baseline.packageClassifications[entry.dir];
       return {
         owner: entry.owner,
         packageName: entry.packageName,
@@ -1540,7 +2311,8 @@ export function buildRuntimeSurfaceInventory(
           : "no-runtime-registration",
         reason: hasSurfaces
           ? "Production registration or export analysis found the listed canonical runtime surfaces."
-          : "The maintained package exports no Plugin field, runtime registration call, host route, queue, worker, or native bridge registration.",
+          : (packageClassification?.reason ??
+            "UNCLASSIFIED: scanner found no reachable production runtime registration."),
       };
     });
   return {

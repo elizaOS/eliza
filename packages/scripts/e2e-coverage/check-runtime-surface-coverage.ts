@@ -6,12 +6,14 @@
  * stale, silently covered, malformed, or duplicate rows fail the gate.
  */
 
+import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildRuntimeSurfaceInventory,
   discoverRuntimeSurfaces,
   loadRuntimeSurfaceBaseline,
+  RUNTIME_SURFACE_SCHEMA,
   RUNTIME_SURFACE_STATUSES,
   type RuntimeSurfaceBaseline,
   type RuntimeSurfaceInventory,
@@ -25,6 +27,10 @@ export interface RuntimeSurfaceGateResult {
   invalidClassifications: string[];
   invalidCoverage: string[];
   duplicateRows: string[];
+  unclassifiedPackages: string[];
+  stalePackageClassifications: string[];
+  invalidPackageClassifications: string[];
+  overbroadClassificationReasons: string[];
   ok: boolean;
 }
 
@@ -32,7 +38,7 @@ function validReason(reason: string): boolean {
   const trimmed = reason.trim();
   return (
     trimmed.length >= 24 &&
-    !/^(?:todo|tbd|n\/a|unknown|fixme)(?:\b|\s|[-:])/i.test(trimmed)
+    !/^(?:todo|tbd|n\/a|unknown|unreviewed|fixme)(?:\b|\s|[-:])/i.test(trimmed)
   );
 }
 
@@ -87,6 +93,39 @@ export function evaluateRuntimeSurfaceCoverage(
     )
     .map((row) => row.id)
     .sort();
+  const zeroSurfacePackages = inventory.packages
+    .filter((entry) => entry.registrationState === "no-runtime-registration")
+    .map((entry) => entry.packageDir)
+    .sort();
+  const unclassifiedPackages = zeroSurfacePackages.filter(
+    (packageDir) => !baseline.packageClassifications[packageDir],
+  );
+  const stalePackageClassifications = Object.keys(
+    baseline.packageClassifications,
+  )
+    .filter((packageDir) => !zeroSurfacePackages.includes(packageDir))
+    .sort();
+  const invalidPackageClassifications = Object.entries(
+    baseline.packageClassifications,
+  )
+    .filter(
+      ([, classification]) =>
+        classification.status !== "no-runtime-registration" ||
+        !validReason(classification.reason),
+    )
+    .map(([packageDir]) => packageDir)
+    .sort();
+  const reasonCounts = new Map<string, number>();
+  for (const classification of Object.values(baseline.classifications)) {
+    reasonCounts.set(
+      classification.reason,
+      (reasonCounts.get(classification.reason) ?? 0) + 1,
+    );
+  }
+  const overbroadClassificationReasons = [...reasonCounts.entries()]
+    .filter(([, count]) => count > 8)
+    .map(([reason, count]) => `${count}x ${reason}`)
+    .sort();
 
   return {
     newlyUnclassified,
@@ -95,13 +134,21 @@ export function evaluateRuntimeSurfaceCoverage(
     invalidClassifications,
     invalidCoverage,
     duplicateRows: [...new Set(duplicateRows)].sort(),
+    unclassifiedPackages,
+    stalePackageClassifications,
+    invalidPackageClassifications,
+    overbroadClassificationReasons,
     ok:
       newlyUnclassified.length === 0 &&
       staleClassifications.length === 0 &&
       silentlyCovered.length === 0 &&
       invalidClassifications.length === 0 &&
       invalidCoverage.length === 0 &&
-      duplicateRows.length === 0,
+      duplicateRows.length === 0 &&
+      unclassifiedPackages.length === 0 &&
+      stalePackageClassifications.length === 0 &&
+      invalidPackageClassifications.length === 0 &&
+      overbroadClassificationReasons.length === 0,
   };
 }
 
@@ -109,22 +156,25 @@ export function candidateClassification(
   kind: string,
   platformRequirements: readonly string[],
   externalDependencies: readonly string[],
+  context?: { packageName: string; surfaceName: string; workstream: string },
 ): { status: Exclude<RuntimeSurfaceStatus, "covered">; reason: string } {
+  const subject = context
+    ? `${context.packageName} ${kind} "${context.surfaceName}"`
+    : `This ${kind} surface`;
+  const workstream = context?.workstream ?? "its dependency workstream";
   if (
     kind === "native-bridge" ||
     platformRequirements.includes("native-host")
   ) {
     return {
       status: "platform-deferred",
-      reason:
-        "Requires a supported native host or device target; deterministic platform composition is tracked by #22904.",
+      reason: `${subject} requires a supported native host or device target; deterministic platform composition is tracked by ${workstream}.`,
     };
   }
   if (kind === "model-handler") {
     return {
       status: "provider-qualified-only",
-      reason:
-        "Real provider qualification remains fail-closed; strict deterministic model fixtures are tracked by #22901.",
+      reason: `${subject} has only real-provider qualification; strict deterministic model fixtures are tracked by ${workstream}.`,
     };
   }
   if (
@@ -133,15 +183,79 @@ export function candidateClassification(
   ) {
     return {
       status: "provider-qualified-only",
-      reason:
-        "The external protocol boundary lacks a resettable production-client mock; protocol fidelity is tracked by #22899.",
+      reason: `${subject} lacks a resettable production-client mock for its external protocol; fidelity is tracked by ${workstream}.`,
     };
   }
   return {
-    status: "exempt",
+    status: "uncovered",
     reason:
-      "No boundary-specific executable synthetic-world artifact exists yet; implementation is assigned to the row's dependency workstream.",
+      context?.workstream === "unassigned"
+        ? `${subject} has no boundary-specific executable synthetic-world artifact and remains an explicitly unassigned implementation gap.`
+        : `${subject} has no boundary-specific executable synthetic-world artifact; implementation is assigned to ${workstream}.`,
   };
+}
+
+function bootstrapReviewedBaseline(
+  baselineFile: string,
+  sourceRevision: string,
+): void {
+  const reviewedPackageReasons: Record<string, string> = {
+    "plugins/plugin-cli":
+      "@elizaos/plugin-cli exports Commander command construction, execution, parsing, and CLI utility contracts; its reachable entry graph does not register an AgentRuntime Plugin surface.",
+    "plugins/plugin-native-activity-tracker":
+      "@elizaos/native-activity-tracker is a Darwin subprocess client that spawns and parses the Swift activity collector; its consumer owns lifecycle wiring and the package registers no AgentRuntime surface.",
+    "plugins/plugin-native-reminders":
+      "@elizaos/macosreminders exports macOS reminder bridge policy helpers only; it contains no Plugin object, runtime registration call, or native bridge registration entrypoint.",
+    "plugins/plugin-native-shared-types":
+      "@elizaos/native-plugin-shared-types exports compile-time bridge callback and Web Speech contracts only; its entrypoint has no runtime values or registration side effects.",
+  };
+  const seed: RuntimeSurfaceBaseline = {
+    schema: RUNTIME_SURFACE_SCHEMA,
+    generatedFrom: sourceRevision,
+    classifications: {},
+    packageClassifications: {},
+  };
+  const inventory = buildRuntimeSurfaceInventory({ baseline: seed });
+  const classifications = Object.fromEntries(
+    inventory.rows
+      .filter((row) => row.status !== "covered")
+      .map((row) => [
+        row.id,
+        candidateClassification(
+          row.kind,
+          row.platformRequirements,
+          row.externalDependencies,
+          {
+            packageName: row.packageName,
+            surfaceName: row.surfaceName,
+            workstream: row.workstream,
+          },
+        ),
+      ]),
+  );
+  const packageClassifications = Object.fromEntries(
+    inventory.packages
+      .filter((entry) => entry.registrationState === "no-runtime-registration")
+      .map((entry) => [
+        entry.packageDir,
+        {
+          status: "no-runtime-registration" as const,
+          reason:
+            reviewedPackageReasons[entry.packageDir] ??
+            `UNREVIEWED zero-surface package ${entry.packageName}; add a package-specific production-entrypoint disposition before committing this baseline.`,
+        },
+      ]),
+  );
+  const baseline: RuntimeSurfaceBaseline = {
+    schema: RUNTIME_SURFACE_SCHEMA,
+    generatedFrom: sourceRevision,
+    classifications,
+    packageClassifications,
+  };
+  writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
+  process.stdout.write(
+    `Wrote reviewed baseline with ${Object.keys(classifications).length} surface classifications and ${Object.keys(packageClassifications).length} package dispositions. Review the complete diff before commit.\n`,
+  );
 }
 
 function printFailures(result: RuntimeSurfaceGateResult): void {
@@ -167,6 +281,22 @@ function printFailures(result: RuntimeSurfaceGateResult): void {
       "covered rows lack an executable artifact and exact boundary signal",
     ],
     ["duplicateRows", "duplicate canonical row ids were generated"],
+    [
+      "unclassifiedPackages",
+      "zero-surface packages need a reviewed no-runtime disposition",
+    ],
+    [
+      "stalePackageClassifications",
+      "package dispositions became stale after surfaces were discovered",
+    ],
+    [
+      "invalidPackageClassifications",
+      "package dispositions have an invalid status or reason",
+    ],
+    [
+      "overbroadClassificationReasons",
+      "one disposition reason was reused across too many surfaces",
+    ],
   ];
   for (const [key, description] of groups) {
     const values = result[key];
@@ -183,6 +313,14 @@ function main(): number {
     path.dirname(fileURLToPath(import.meta.url)),
     "runtime-surface-baseline.json",
   );
+  if (args.includes("--bootstrap-reviewed-baseline")) {
+    const sourceRevision =
+      args
+        .find((arg) => arg.startsWith("--source-revision="))
+        ?.slice("--source-revision=".length) ?? "reviewed-working-tree";
+    bootstrapReviewedBaseline(baselineFile, sourceRevision);
+    return 0;
+  }
   if (args.includes("--list-registrations")) {
     process.stdout.write(
       `${JSON.stringify(discoverRuntimeSurfaces(), null, 2)}\n`,
