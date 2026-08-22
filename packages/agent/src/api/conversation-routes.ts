@@ -51,7 +51,7 @@ import {
   isScheduledTask,
   type ScheduledTask,
 } from "@elizaos/plugin-scheduling";
-import type { ChatFailureKind } from "@elizaos/shared";
+import type { ChatFailureKind, ChatTerminalFailure } from "@elizaos/shared";
 import {
   isChatFailureKind,
   LOCAL_VOICE_RUNTIME_AGENT_HEADER,
@@ -62,6 +62,7 @@ import {
   PostConversationTruncateRequestSchema,
   PostSeedMessagesRequestSchema,
   parseChatFailureKind,
+  parseChatTerminalFailure,
   parsePositiveInteger,
 } from "@elizaos/shared";
 import {
@@ -1426,6 +1427,7 @@ const DURABLE_CHAT_OUTCOME_KEYS = new Set([
   "usage",
   "actionResults",
   "failureKind",
+  "terminalFailure",
   "accountConnect",
   "localInference",
   "noResponseReason",
@@ -1536,6 +1538,8 @@ function parseDurableConversationChatOutcome(
         !outcome.actionResults.every(isDurableChatActionResult))) ||
     (outcome.failureKind !== undefined &&
       !isChatFailureKind(outcome.failureKind)) ||
+    (outcome.terminalFailure !== undefined &&
+      parseChatTerminalFailure(outcome.terminalFailure) === undefined) ||
     (outcome.accountConnect !== undefined &&
       normalizeAccountConnectRequest(outcome.accountConnect) === null) ||
     (outcome.localInference !== undefined &&
@@ -1551,6 +1555,7 @@ function parseDurableConversationChatOutcome(
     outcome.accountConnect === undefined
       ? undefined
       : normalizeAccountConnectRequest(outcome.accountConnect);
+  const terminalFailure = parseChatTerminalFailure(outcome.terminalFailure);
   return {
     text: outcome.text,
     agentName: outcome.agentName,
@@ -1585,6 +1590,7 @@ function parseDurableConversationChatOutcome(
     ...(typeof outcome.failureKind === "string"
       ? { failureKind: outcome.failureKind as ChatFailureKind }
       : {}),
+    ...(terminalFailure ? { terminalFailure } : {}),
     ...(accountConnect ? { accountConnect } : {}),
     ...(outcome.localInference !== undefined
       ? {
@@ -1636,6 +1642,7 @@ function buildRecoveredConversationChatOutcome(
 ): ChatMessageIdOutcome {
   const content = memory.content as Content;
   const failureKind = parseChatFailureKind(content.failureKind);
+  const terminalFailure = parseChatTerminalFailure(content.terminalFailure);
   const accountConnect = normalizeAccountConnectRequest(content.accountConnect);
   const localInference =
     content.localInference && typeof content.localInference === "object"
@@ -1653,6 +1660,7 @@ function buildRecoveredConversationChatOutcome(
       ? { thought: content.thought }
       : {}),
     ...(failureKind ? { failureKind } : {}),
+    ...(terminalFailure ? { terminalFailure } : {}),
     ...(accountConnect ? { accountConnect } : {}),
     ...(localInference ? { localInference } : {}),
     ...(normalizeActionCallbackHistory(content.actionCallbackHistory).length > 0
@@ -2095,6 +2103,9 @@ function buildGenerationMessageIdOutcome(
       ? { actionResults: result.actionResults }
       : {}),
     ...(result.failureKind ? { failureKind: result.failureKind } : {}),
+    ...(result.terminalFailure
+      ? { terminalFailure: result.terminalFailure }
+      : {}),
     ...(result.accountConnect ? { accountConnect: result.accountConnect } : {}),
     ...(result.localInference ? { localInference: result.localInference } : {}),
     ...(result.noResponseReason
@@ -2120,6 +2131,9 @@ function buildConversationJsonOutcome(
       ? { actionResults: outcome.actionResults }
       : {}),
     ...(outcome.failureKind ? { failureKind: outcome.failureKind } : {}),
+    ...(outcome.terminalFailure
+      ? { terminalFailure: outcome.terminalFailure }
+      : {}),
     ...(outcome.accountConnect
       ? { accountConnect: outcome.accountConnect }
       : {}),
@@ -2450,6 +2464,8 @@ type ConversationRouteMessageRecord = {
    * here so the renderer's gate + Retry survive a GET /messages full-replace.
    */
   failureKind?: ChatFailureKind;
+  /** Complete typed terminal failure retained across history reloads. */
+  terminalFailure?: ChatTerminalFailure;
   /**
    * Structured "connect another account" request from the CONNECT_ACCOUNT
    * action. Persisted on the assistant memory as `content.accountConnect`
@@ -3145,6 +3161,9 @@ export async function handleConversationRoutes(
                 ? meta.chatFailureKind
                 : undefined;
           const failureKind = parseChatFailureKind(rawFailureKind);
+          const terminalFailure = parseChatTerminalFailure(
+            content.terminalFailure,
+          );
           // The CONNECT_ACCOUNT action stamps `content.accountConnect` on the
           // assistant memory. Validate + round-trip it so the inline
           // AddAccountDialog entry point survives the GET /messages replace.
@@ -3241,6 +3260,7 @@ export async function handleConversationRoutes(
             senderEntityId:
               typeof m.entityId === "string" ? m.entityId : undefined,
             ...(failureKind ? { failureKind } : {}),
+            ...(terminalFailure ? { terminalFailure } : {}),
             ...(accountConnect ? { accountConnect } : {}),
             ...(interrupted ? { interrupted: true } : {}),
           } satisfies ConversationRouteMessageRecord;
@@ -4148,6 +4168,38 @@ export async function handleConversationRoutes(
         }
         settleTurnReservationInMemory(outcome);
       };
+      const settleDurableAssistantOutcome = async (
+        outcome: ChatMessageIdOutcome,
+      ): Promise<void> => {
+        try {
+          await settleTurnReservation(outcome);
+        } catch (settlementError) {
+          assertLocalVoiceTurnFence();
+          // error-policy:J7 the assistant reply is already durable and can be
+          // reconstructed by its in-reply-to link after restart. Preserve the
+          // truthful terminal locally while reporting the failed marker write.
+          settleTurnReservationInMemory(outcome);
+          runtime.reportError(
+            "ConversationStream.durableReplySettlement",
+            settlementError,
+            {
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              clientMessageId,
+              messageId: outcome.messageId,
+            },
+          );
+          logger.warn(
+            {
+              err: getErrorMessage(settlementError),
+              conversationId: conv.id,
+              roomId: conv.roomId,
+              messageId: outcome.messageId,
+            },
+            "[ConversationStream] durable assistant reply persisted but outcome marker settlement failed",
+          );
+        }
+      };
       const idempotencyAdmission = await awaitConversationChatAdmission(
         chatIdempotencyScope,
         clientMessageId ?? null,
@@ -4657,7 +4709,11 @@ export async function handleConversationRoutes(
                   : {}),
               },
             );
-            await settleTurnReservation(outcome);
+            if (persistedAssistant.kind === "durable") {
+              await settleDurableAssistantOutcome(outcome);
+            } else {
+              await settleTurnReservation(outcome);
+            }
             assertConversationConnectionRuntime(
               state.runtime,
               connectionDescriptor,
