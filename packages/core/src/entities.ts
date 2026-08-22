@@ -1,19 +1,23 @@
 /**
  * Entity resolution, identity formatting, and component-visibility trust for the
- * agent runtime. `findEntityByName` combines a TEXT_SMALL model call with
- * recent-interaction and relationship signals to map a natural-language
- * reference in a message ("me", a name, an `@handle`) onto a known `Entity`;
+ * agent runtime. `findEntityByName` maps a natural-language reference onto a
+ * known `Entity`. The referent (`message.content.text`), sender, agent, room
+ * members, related contacts, and recent messages are bound into the TEXT_SMALL
+ * prompt; EXACT_MATCH is restricted to that candidate set. A unique exact
+ * name/handle hit returns without a model call. Component filtering copies the
+ * entity and keeps the target's own identity components.
  * `getEntityDetails` and `formatEntities` merge and render a room's entities for
  * prompt context; `createUniqueUuid` derives a stable per-agent UUID from a base
  * id.
  *
  * `resolveTrustedComponentSourceIds` gates which entity components are visible:
  * a component's data is trusted only when its source is the message sender, the
- * agent itself, or a source whose RESOLVED role (see roles.ts) is
- * ADMIN-or-higher — never a raw stored role grant. Sits on the runtime boundary
- * (getRoom / getWorld / getEntitiesForRoom / getRelationships / useModel) and
- * imports roles.ts lazily to avoid a cycle with createUniqueUuid.
- * Nested LLM `{ match: … }` unwraps are bounded in `entity-matches.ts`.
+ * entity the component belongs to, the agent itself, or a source whose RESOLVED
+ * role (see roles.ts) is ADMIN-or-higher — never a raw stored role grant. Sits
+ * on the runtime boundary (getRoom / getWorld / getEntitiesForRoom /
+ * getRelationships / useModel) and imports roles.ts lazily to avoid a cycle with
+ * createUniqueUuid. Nested LLM `{ match: … }` unwraps are bounded in
+ * `entity-matches.ts`.
  */
 import {
 	type EntityMatch,
@@ -178,9 +182,17 @@ const entityResolutionTemplate = `# Task: Resolve Entity Name
 Message Sender: {{senderName}} (ID: {{senderId}})
 Agent: {{agentName}} (ID: {{agentId}})
 
+# Referent to resolve:
+{{referent}}
+
 # Entities in Room:
 {{#if entitiesInRoom}}
 {{entitiesInRoom}}
+{{/if}}
+
+# Related contacts:
+{{#if relationshipEntities}}
+{{relationshipEntities}}
 {{/if}}
 
 {{recentMessages}}
@@ -192,6 +204,7 @@ Agent: {{agentName}} (ID: {{agentId}})
 4. Consider context from recent messages for pronouns and references
 5. If multiple matches exist, use context to disambiguate
 6. Consider recent interactions and relationship strength when resolving ambiguity
+7. Only return an entityId that appears in the entity lists above
 
 Return a JSON object with:
 - entityId: exact ID if known, otherwise null
@@ -200,11 +213,175 @@ Return a JSON object with:
 
 IMPORTANT: Your response must ONLY contain the JSON object above. Do not include any text, thinking, or reasoning before or after it.`;
 
-async function getRecentInteractions(
+function normalizeEntityName(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+function stripAtPrefix(value: string): string {
+	return normalizeEntityName(value).replace(/^@+/, "");
+}
+
+function referentTextOf(message: Memory): string {
+	return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function formatRecentMessagesForResolution(memories: Memory[]): string {
+	return memories
+		.map((memory) => {
+			const text =
+				typeof memory.content?.text === "string" ? memory.content.text : "";
+			return `${memory.entityId}: ${text}`;
+		})
+		.join("\n");
+}
+
+function visibleComponents(
+	entity: Entity,
+	messageEntityId: UUID,
+	agentId: UUID,
+	trustedSourceIds: Set<string>,
+): NonNullable<Entity["components"]> {
+	return (entity.components ?? []).filter((component) => {
+		if (component.sourceEntityId === messageEntityId) return true;
+		if (entity.id && component.sourceEntityId === entity.id) return true;
+		if (
+			component.sourceEntityId &&
+			trustedSourceIds.has(component.sourceEntityId)
+		) {
+			return true;
+		}
+		if (component.sourceEntityId === agentId) return true;
+		return false;
+	});
+}
+
+async function withVisibleComponents(
 	runtime: IAgentRuntime,
+	world: World | null,
+	entity: Entity,
+	messageEntityId: UUID,
+): Promise<Entity> {
+	if (!entity.components) {
+		return { ...entity };
+	}
+	const trustedSourceIds = await resolveTrustedComponentSourceIds(
+		runtime,
+		world,
+		entity.components,
+	);
+	return {
+		...entity,
+		components: visibleComponents(
+			entity,
+			messageEntityId,
+			runtime.agentId,
+			trustedSourceIds,
+		),
+	};
+}
+
+function uniqueEntitiesById(entities: Entity[]): Entity[] {
+	const seen = new Set<string>();
+	const unique: Entity[] = [];
+	for (const entity of entities) {
+		const id = entity.id;
+		if (!id) {
+			unique.push(entity);
+			continue;
+		}
+		if (seen.has(id)) continue;
+		seen.add(id);
+		unique.push(entity);
+	}
+	return unique;
+}
+
+type IndexedEntity = {
+	entity: Entity;
+	normalizedNames: Set<string>;
+	strippedNames: Set<string>;
+	normalizedUsernames: Set<string>;
+	strippedUsernames: Set<string>;
+	normalizedHandles: Set<string>;
+	strippedHandles: Set<string>;
+};
+
+function indexEntities(entities: Entity[]): IndexedEntity[] {
+	return entities.map((entity) => {
+		const normalizedNames = new Set<string>();
+		const strippedNames = new Set<string>();
+		for (const name of entity.names) {
+			normalizedNames.add(normalizeEntityName(name));
+			strippedNames.add(stripAtPrefix(name));
+		}
+
+		const normalizedUsernames = new Set<string>();
+		const strippedUsernames = new Set<string>();
+		const normalizedHandles = new Set<string>();
+		const strippedHandles = new Set<string>();
+		for (const component of entity.components ?? []) {
+			const username =
+				typeof component.data?.username === "string"
+					? component.data.username
+					: undefined;
+			if (username) {
+				normalizedUsernames.add(normalizeEntityName(username));
+				strippedUsernames.add(stripAtPrefix(username));
+			}
+
+			const handle =
+				typeof component.data?.handle === "string"
+					? component.data.handle
+					: undefined;
+			if (handle) {
+				normalizedHandles.add(normalizeEntityName(handle));
+				strippedHandles.add(stripAtPrefix(handle));
+			}
+		}
+
+		return {
+			entity,
+			normalizedNames,
+			strippedNames,
+			normalizedUsernames,
+			strippedUsernames,
+			normalizedHandles,
+			strippedHandles,
+		};
+	});
+}
+
+function indexedEntityMatches(
+	entry: IndexedEntity,
+	matchName: string,
+	matchKey: string,
+): boolean {
+	return (
+		entry.strippedNames.has(matchKey) ||
+		entry.normalizedNames.has(matchName) ||
+		entry.strippedUsernames.has(matchKey) ||
+		entry.normalizedUsernames.has(matchName) ||
+		entry.strippedHandles.has(matchKey) ||
+		entry.normalizedHandles.has(matchName)
+	);
+}
+
+function entitiesMatchingReferent(
+	indexed: IndexedEntity[],
+	referent: string,
+): Entity[] {
+	const matchName = normalizeEntityName(referent);
+	const matchKey = stripAtPrefix(referent);
+	if (!matchKey) return [];
+	return indexed
+		.filter((entry) => indexedEntityMatches(entry, matchName, matchKey))
+		.map((entry) => entry.entity);
+}
+
+async function getRecentInteractions(
 	sourceEntityId: UUID,
 	candidateEntities: Entity[],
-	roomId: UUID,
+	recentMessages: Memory[],
 	relationships: Relationship[],
 ): Promise<{ entity: Entity; interactions: Memory[]; count: number }[]> {
 	const results: Array<{
@@ -213,11 +390,6 @@ async function getRecentInteractions(
 		count: number;
 	}> = [];
 
-	const recentMessages = await runtime.getMemories({
-		tableName: "messages",
-		roomId,
-		limit: 20,
-	});
 	const messageEntityById = new Map<UUID, UUID>();
 	for (const recentMessage of recentMessages) {
 		if (recentMessage.id && recentMessage.entityId) {
@@ -287,37 +459,9 @@ export async function findEntityByName(
 		: null;
 
 	const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
-
-	const filteredEntities = await Promise.all(
-		entitiesInRoom.map(async (entity) => {
-			if (!entity.components) return entity;
-
-			const trustedSourceIds = await resolveTrustedComponentSourceIds(
-				runtime,
-				world,
-				entity.components,
-			);
-
-			entity.components = entity.components.filter((component) => {
-				if (component.sourceEntityId === message.entityId) return true;
-				if (
-					component.sourceEntityId &&
-					trustedSourceIds.has(component.sourceEntityId)
-				) {
-					return true;
-				}
-				if (component.sourceEntityId === runtime.agentId) return true;
-				return false;
-			});
-
-			return entity;
-		}),
-	);
-
 	const relationships = await runtime.getRelationships({
 		entityIds: [message.entityId],
 	});
-
 	const relationshipEntities = await Promise.all(
 		relationships.map(async (rel) => {
 			const entityId =
@@ -328,26 +472,65 @@ export async function findEntityByName(
 		}),
 	);
 
-	const allEntities = [
-		...filteredEntities,
-		...relationshipEntities.filter((e): e is Entity => e !== null),
-	];
+	const filteredEntities = await Promise.all(
+		entitiesInRoom.map((entity) =>
+			withVisibleComponents(runtime, world, entity, message.entityId),
+		),
+	);
+	const filteredRelationshipEntities = await Promise.all(
+		relationshipEntities
+			.filter((entity): entity is Entity => entity !== null)
+			.map((entity) =>
+				withVisibleComponents(runtime, world, entity, message.entityId),
+			),
+	);
 
+	const allEntities = uniqueEntitiesById([
+		...filteredEntities,
+		...filteredRelationshipEntities,
+	]);
+	const indexedEntities = indexEntities(allEntities);
+	const referent = referentTextOf(message);
+	const uniqueReferentHits = entitiesMatchingReferent(
+		indexedEntities,
+		referent,
+	);
+	if (uniqueReferentHits.length === 1) {
+		return uniqueReferentHits[0] ?? null;
+	}
+
+	const recentMessages = await runtime.getMemories({
+		tableName: "messages",
+		roomId: room.id,
+		limit: 20,
+	});
 	const interactionData = await getRecentInteractions(
-		runtime,
 		message.entityId,
 		allEntities,
-		room.id as UUID,
+		recentMessages,
 		relationships,
 	);
 
+	const senderEntity = allEntities.find(
+		(entity) => entity.id === message.entityId,
+	);
 	const prompt = utils.composePrompt({
 		state: {
 			roomName: room.name || room.id,
 			worldName: world?.name || "Unknown",
+			referent,
 			entitiesInRoom: JSON.stringify(filteredEntities, null, 2),
+			relationshipEntities: JSON.stringify(
+				filteredRelationshipEntities,
+				null,
+				2,
+			),
+			recentMessages: formatRecentMessagesForResolution(recentMessages),
 			entityId: message.entityId,
 			senderId: message.entityId,
+			senderName: senderEntity?.names[0] ?? "",
+			agentName: runtime.character?.name ?? "",
+			agentId: runtime.agentId,
 		},
 		template: entityResolutionTemplate,
 	});
@@ -359,12 +542,12 @@ export async function findEntityByName(
 	});
 
 	const resolution = parseEntityResolutionResponse(result);
+	const candidateById = new Map(
+		allEntities
+			.filter((entity): entity is Entity & { id: UUID } => Boolean(entity.id))
+			.map((entity) => [entity.id, entity]),
+	);
 	if (!resolution) {
-		// If the model output is malformed, fall back to a conservative heuristic:
-		// when there's only one candidate entity in context, return it.
-		if (filteredEntities.length === 1) {
-			return filteredEntities[0] ?? null;
-		}
 		logger.warn(
 			{ src: "core:entities" },
 			"Failed to parse entity resolution result",
@@ -373,27 +556,9 @@ export async function findEntityByName(
 	}
 
 	if (resolution.type === "EXACT_MATCH" && resolution.entityId) {
-		const entity = await runtime.getEntityById(resolution.entityId as UUID);
-		if (entity) {
-			if (entity.components) {
-				const trustedSourceIds = await resolveTrustedComponentSourceIds(
-					runtime,
-					world,
-					entity.components,
-				);
-				entity.components = entity.components.filter((component) => {
-					if (component.sourceEntityId === message.entityId) return true;
-					if (
-						component.sourceEntityId &&
-						trustedSourceIds.has(component.sourceEntityId)
-					) {
-						return true;
-					}
-					if (component.sourceEntityId === runtime.agentId) return true;
-					return false;
-				});
-			}
-			return entity;
+		const matched = candidateById.get(resolution.entityId as UUID);
+		if (matched) {
+			return matched;
 		}
 	}
 
@@ -405,118 +570,24 @@ export async function findEntityByName(
 		matchesArray = Array.isArray(matchValue) ? matchValue : [matchValue];
 	}
 
-	const normalize = (s: string): string => s.trim().toLowerCase();
-	const stripAt = (s: string): string => normalize(s).replace(/^@+/, "");
-	const indexedEntities = allEntities.map((entity) => {
-		const normalizedNames = new Set<string>();
-		const strippedNames = new Set<string>();
-		for (const name of entity.names) {
-			normalizedNames.add(normalize(name));
-			strippedNames.add(stripAt(name));
-		}
-
-		const normalizedUsernames = new Set<string>();
-		const strippedUsernames = new Set<string>();
-		const normalizedHandles = new Set<string>();
-		const strippedHandles = new Set<string>();
-		const fallbackTokens: string[] = [];
-		for (const component of entity.components ?? []) {
-			const username =
-				typeof component.data?.username === "string"
-					? component.data.username
-					: undefined;
-			if (username) {
-				normalizedUsernames.add(normalize(username));
-				strippedUsernames.add(stripAt(username));
-				fallbackTokens.push(normalize(username));
-			}
-
-			const handle =
-				typeof component.data?.handle === "string"
-					? component.data.handle
-					: undefined;
-			if (handle) {
-				const normalizedHandle = normalize(handle);
-				normalizedHandles.add(normalizedHandle);
-				strippedHandles.add(stripAt(handle));
-				fallbackTokens.push(normalizedHandle);
-				const handleNoAt = handle.replace(/^@+/, "");
-				if (handleNoAt) {
-					fallbackTokens.push(normalize(handleNoAt));
-				}
-			}
-		}
-
-		return {
-			entity,
-			normalizedNames,
-			strippedNames,
-			normalizedUsernames,
-			strippedUsernames,
-			normalizedHandles,
-			strippedHandles,
-			fallbackTokens,
-		};
-	});
-
-	const firstMatch = matchesArray[0];
-	if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
-		const matchName = normalize(firstMatch.name);
-		const matchKey = stripAt(firstMatch.name);
-
-		const matchingEntity = indexedEntities.find((entry) => {
-			if (
-				entry.strippedNames.has(matchKey) ||
-				entry.normalizedNames.has(matchName) ||
-				entry.strippedUsernames.has(matchKey) ||
-				entry.normalizedUsernames.has(matchName) ||
-				entry.strippedHandles.has(matchKey) ||
-				entry.normalizedHandles.has(matchName)
-			) {
-				return true;
-			}
-			return false;
-		})?.entity;
-
-		if (matchingEntity) {
-			if (resolution.type === "RELATIONSHIP_MATCH") {
-				const interactionInfo = interactionData.find(
-					(d) => d.entity.id === matchingEntity.id,
-				);
-				if (interactionInfo && interactionInfo.count > 0) {
-					return matchingEntity;
-				}
-			} else {
+	for (const match of matchesArray) {
+		if (!match?.name) continue;
+		const matchName = normalizeEntityName(match.name);
+		const matchKey = stripAtPrefix(match.name);
+		const matchingEntity = indexedEntities.find((entry) =>
+			indexedEntityMatches(entry, matchName, matchKey),
+		)?.entity;
+		if (!matchingEntity) continue;
+		if (resolution.type === "RELATIONSHIP_MATCH") {
+			const interactionInfo = interactionData.find(
+				(data) => data.entity.id === matchingEntity.id,
+			);
+			if (interactionInfo && interactionInfo.count > 0) {
 				return matchingEntity;
 			}
+			continue;
 		}
-	}
-
-	// Fallback: if parsing failed to produce a usable match list, try to detect
-	// usernames/handles mentioned in the raw model output.
-	const resultLower = JSON.stringify(result).toLowerCase();
-	const fallbackEntity = indexedEntities.find((entry) =>
-		entry.fallbackTokens.some((token) => resultLower.includes(token)),
-	)?.entity;
-	if (fallbackEntity) {
-		return fallbackEntity;
-	}
-
-	// Heuristic fallback: if the model indicates a name/username match but we
-	// couldn't map it, and there's only a single candidate entity in context,
-	// return it rather than failing closed.
-	if (
-		(resolution.type === "USERNAME_MATCH" ||
-			resolution.type === "NAME_MATCH") &&
-		filteredEntities.length === 1
-	) {
-		return filteredEntities[0] ?? null;
-	}
-
-	// Final fallback: if there's only one candidate entity in scope, return it.
-	// This prevents needless nulls in small rooms when the model response is noisy.
-	if (allEntities.length === 1) {
-		return allEntities[0] ?? null;
+		return matchingEntity;
 	}
 
 	return null;
