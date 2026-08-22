@@ -71,7 +71,6 @@ function emitApprovalChoiceEvent(
 
 const APPROVAL_ESCALATION_CHANNEL_ORDER = [
   "telegram",
-  "signal",
   "whatsapp",
   "discord",
   "sms",

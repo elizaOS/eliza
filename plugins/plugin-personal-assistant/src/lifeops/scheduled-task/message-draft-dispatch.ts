@@ -48,7 +48,6 @@ const draftSnapshotSchema = z.object({
     "telegram",
     "twitter",
     "imessage",
-    "signal",
     "whatsapp",
     "calendly",
     "browser_bridge",

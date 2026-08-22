@@ -114,11 +114,7 @@ describe("connector mode registry seam", () => {
         cloudProvisioned: true,
       }).map((mode) => mode.id),
     ).toContain("account");
-    expect(
-      getConnectorModes("signal", { cloudProvisioned: true }).map(
-        (mode) => mode.id,
-      ),
-    ).toContain("qr");
+    expect(getConnectorModes("signal", { cloudProvisioned: true })).toEqual([]);
     expect(
       getConnectorModes("whatsapp", { cloudProvisioned: true }).map(
         (mode) => mode.id,

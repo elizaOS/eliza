@@ -494,7 +494,7 @@ describe("LifeOps work threads", () => {
         worldId,
         roomId: ownerAPrivateRoom,
         entityId: ownerA,
-        source: "signal",
+        source: "imessage",
         name: "Owner A",
         channelType: ChannelType.DM,
       },
@@ -539,9 +539,9 @@ describe("LifeOps work threads", () => {
     const privateMessageA = (text: string) =>
       message(runtime, ownerAPrivateRoom, text, {
         entityId: ownerA,
-        source: "signal",
+        source: "imessage",
         channelType: ChannelType.DM,
-        groupName: "Owner A Signal",
+        groupName: "Owner A iMessage",
       });
     const privateMessageB = (text: string) =>
       message(runtime, ownerBPrivateRoom, text, {

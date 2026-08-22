@@ -54,7 +54,6 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
-  | "signal"
   | "whatsapp"
   | "slack"
   | "imessage"

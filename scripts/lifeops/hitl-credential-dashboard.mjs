@@ -351,7 +351,7 @@ function pathState(row, fields, slots, probe) {
   const slotFields = slots.flatMap((slot) => slot?.fields ?? []);
   if ([...fields, ...slotFields].some((field) => field.present))
     return "yellow";
-  // Env-less local bridges (Signal Desktop, macOS Messages) are "present" the
+  // Env-less local bridges (macOS Messages) are "present" the
   // moment their availability check passes — there is nothing to paste.
   if (fields.length === 0 && slotFields.length === 0) return "yellow";
   return "gray";
