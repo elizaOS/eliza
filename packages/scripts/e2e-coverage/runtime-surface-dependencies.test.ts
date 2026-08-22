@@ -127,7 +127,7 @@ describe("runtime surface dependency catalog", () => {
         "@elizaos/missing",
         "route",
         catalog([]),
-        "@elizaos/missing:route:/new-external",
+        "@elizaos/missing:route:get-/new-external",
         "plugins/missing/src/routes/new-external.ts",
       ).dependencyDisposition,
     ).toBe("unresolved");
@@ -224,7 +224,7 @@ describe("runtime surface dependency catalog", () => {
         "@elizaos/plugin-calendar",
         "route",
         undefined,
-        "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+        "@elizaos/plugin-calendar:route:post-/api/lifeops/calendar/google/webhook",
       ).externalServiceDependencies.map((entry) => entry.id),
     ).toEqual(["google-calendar-api"]);
     for (const [kind, surfaceId] of [
@@ -400,7 +400,7 @@ describe("runtime surface dependency catalog", () => {
       {
         packageName: "@elizaos/example",
         kinds: ["route"],
-        surfaceIds: ["@elizaos/example:route:/example"],
+        surfaceIds: ["@elizaos/example:route:get-/example"],
         externalServices: [
           {
             id: "stripe-api",
@@ -422,7 +422,7 @@ describe("runtime surface dependency catalog", () => {
           {
             packageName: "@elizaos/example",
             kind: "route",
-            id: "@elizaos/example:route:/example",
+            id: "@elizaos/example:route:get-/example",
           },
         ],
         invalid,
@@ -574,7 +574,7 @@ describe("runtime surface dependency catalog", () => {
       [
         "@elizaos/plugin-calendar",
         "route",
-        "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+        "@elizaos/plugin-calendar:route:post-/api/lifeops/calendar/google/webhook",
       ],
       [
         "@elizaos/plugin-anthropic-proxy",

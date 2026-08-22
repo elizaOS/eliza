@@ -4,10 +4,6 @@ import { loginWithTestWallet } from "../src/helpers/wallet-login";
 
 test.use({ stackOptions: { frontend: false } });
 
-function requestCanonicalRoute(canonicalPath: string, apiUrl: string) {
-  return fetch(`${apiUrl}${canonicalPath}`);
-}
-
 /**
  * Proves the REAL wallet sign-in path works end-to-end against the booted
  * cloud-api — the gap `seedTestUser` (direct DB insert) never covered.
@@ -25,7 +21,11 @@ test.describe("SIWE wallet login (real handshake)", () => {
     stack,
   }) => {
     expect(
-      (await requestCanonicalRoute("/api/i18n/locale", stack.urls.api)).status,
+      (
+        await fetch(new URL("/api/i18n/locale", stack.urls.api), {
+          method: "GET",
+        })
+      ).status,
     ).toBe(200);
   });
 

@@ -1539,6 +1539,27 @@ function nameFromObject(
   return null;
 }
 
+function surfaceNameFromObject(
+  object: ts.ObjectLiteralExpression,
+  kind: RuntimeSurfaceKind,
+  unit: SourceUnit,
+  context: ExtractionContext,
+): string | null {
+  const name = nameFromObject(object, kind, unit, context);
+  if (kind !== "route" || !name) return name;
+  const typeProperty = object.properties.find(
+    (candidate): candidate is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(candidate) &&
+      propertyName(candidate.name) === "type",
+  );
+  const method = typeProperty
+    ? resolvedScalar(typeProperty.initializer, unit, context)?.toUpperCase()
+    : null;
+  return method && MOCKOON_HTTP_METHODS.has(method)
+    ? `${method} ${name}`
+    : null;
+}
+
 function staticClassServiceType(
   node: ts.ClassDeclaration,
   unit: SourceUnit,
@@ -1999,7 +2020,7 @@ function extractEntries(
     }
     return [
       {
-        name: nameFromObject(current, kind, unit, context) ?? "",
+        name: surfaceNameFromObject(current, kind, unit, context) ?? "",
         sourceFile: unit.file,
         object: current,
       },
@@ -3030,6 +3051,34 @@ function workerBindingSurfaces(): RawSurface[] {
   return rows;
 }
 
+function scenarioExportExpressions(ast: ts.SourceFile): ts.Expression[] {
+  const expressions: ts.Expression[] = [];
+  for (const statement of ast.statements) {
+    if (ts.isExportAssignment(statement) && !statement.isExportEquals) {
+      expressions.push(statement.expression);
+      continue;
+    }
+    if (
+      !ts.isVariableStatement(statement) ||
+      !statement.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      )
+    ) {
+      continue;
+    }
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        ts.isIdentifier(declaration.name) &&
+        declaration.name.text === "scenario" &&
+        declaration.initializer
+      ) {
+        expressions.push(declaration.initializer);
+      }
+    }
+  }
+  return expressions;
+}
+
 /** Reads the declared lane; absent and live-only scenarios never count as deterministic. */
 export function isDeterministicScenarioSource(source: string): boolean {
   return scenarioMetadataFromSource(source).lane === "pr-deterministic";
@@ -3078,37 +3127,9 @@ export function scenarioMetadataFromSource(source: string): {
     }
     return null;
   };
-  let scenarioObject: ts.ObjectLiteralExpression | null = null;
-  for (const statement of ast.statements) {
-    if (ts.isExportAssignment(statement)) {
-      scenarioObject = resolveScenarioObject(statement.expression);
-      if (scenarioObject) break;
-    }
-  }
-  if (!scenarioObject)
-    for (const statement of ast.statements) {
-      if (
-        ts.isVariableStatement(statement) &&
-        statement.modifiers?.some(
-          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-        )
-      ) {
-        for (const declaration of statement.declarationList.declarations) {
-          if (!declaration.initializer) continue;
-          const candidate = resolveScenarioObject(declaration.initializer);
-          if (
-            candidate?.properties.some(
-              (property) =>
-                ts.isPropertyAssignment(property) &&
-                propertyName(property.name) === "id",
-            )
-          ) {
-            scenarioObject = candidate;
-            break;
-          }
-        }
-      }
-    }
+  const scenarioObject = scenarioExportExpressions(ast)
+    .map(resolveScenarioObject)
+    .find((candidate) => candidate !== null);
   if (!scenarioObject) {
     const missing = {
       id: null,
@@ -3279,10 +3300,11 @@ export function isExecutableBoundaryEvidence(
     );
     EVIDENCE_AST_CACHE.set(source, ast);
   }
-  const rawName =
+  const routeIdentity =
     surface.kind === "route"
-      ? surface.name.slice(surface.name.indexOf(" ") + 1)
-      : surface.name;
+      ? /^(DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT)\s+(.+)$/.exec(surface.name)
+      : null;
+  const rawName = routeIdentity ? routeIdentity[2] : surface.name;
   const signal = rawName;
   if (!fullSurfaceId) return false;
   const metadata = scenarioMetadataFromSource(source);
@@ -3325,9 +3347,8 @@ export function isExecutableBoundaryEvidence(
     return null;
   };
   const scenarioRoot = scenarioDeclaresId
-    ? ast.statements
-        .filter(ts.isExportAssignment)
-        .map((statement) => resolveScenarioRoot(statement.expression))
+    ? scenarioExportExpressions(ast)
+        .map((expression) => resolveScenarioRoot(expression))
         .find((candidate) => candidate !== null)
     : null;
   const resolveScenarioArray = (
@@ -3523,6 +3544,52 @@ export function isExecutableBoundaryEvidence(
     }
   }
   if (surface.kind === "route") {
+    if (!routeIdentity) return false;
+    const expectedMethod = routeIdentity[1];
+    const expectedPath = routeIdentity[2];
+    const fetchTargetPath = (node: ts.Expression): string | null => {
+      const target = unwrap(node);
+      const literal = literalText(target);
+      if (literal !== null) return literal;
+      if (
+        ts.isNewExpression(target) &&
+        ts.isIdentifier(target.expression) &&
+        target.expression.text === "URL" &&
+        target.arguments?.[0]
+      ) {
+        return literalText(unwrap(target.arguments[0]));
+      }
+      return null;
+    };
+    const fetchMethod = (node: ts.CallExpression): string | null => {
+      const options = node.arguments[1] ? unwrap(node.arguments[1]) : undefined;
+      if (!options) return "GET";
+      if (!ts.isObjectLiteralExpression(options)) return null;
+      const methodProperty = options.properties.find(
+        (candidate): candidate is ts.PropertyAssignment =>
+          ts.isPropertyAssignment(candidate) &&
+          propertyName(candidate.name) === "method",
+      );
+      if (!methodProperty) return "GET";
+      return (
+        literalText(unwrap(methodProperty.initializer))?.toUpperCase() ?? null
+      );
+    };
+    const matchesExplicitFetch = (node: ts.CallExpression): boolean => {
+      const callee = node.expression;
+      const isFetch =
+        (ts.isIdentifier(callee) && callee.text === "fetch") ||
+        (ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          ["globalThis", "window"].includes(callee.expression.text) &&
+          callee.name.text === "fetch");
+      return Boolean(
+        isFetch &&
+          node.arguments[0] &&
+          fetchTargetPath(node.arguments[0]) === expectedPath &&
+          fetchMethod(node) === expectedMethod,
+      );
+    };
     let routeProved = false;
     const inspect = (node: ts.Node): void => {
       if (routeProved || !ts.isCallExpression(node) || !executable(node)) {
@@ -3537,25 +3604,16 @@ export function isExecutableBoundaryEvidence(
         const inspectAssertion = (candidate: ts.Node): void => {
           if (
             ts.isCallExpression(candidate) &&
-            /(?:request|fetch|client)/i.test(candidate.expression.getText(ast))
+            matchesExplicitFetch(candidate)
           ) {
-            const pathArgument = candidate.arguments[0]
-              ? literalText(unwrap(candidate.arguments[0]))
-              : null;
-            if (pathArgument === signal) routeProved = true;
+            routeProved = true;
           }
           if (!routeProved) ts.forEachChild(candidate, inspectAssertion);
         };
         for (const argument of node.arguments) inspectAssertion(argument);
       }
-      if (
-        scenarioAssertionReachable.has(node) &&
-        /(?:request|fetch|client)/i.test(node.expression.getText(ast))
-      ) {
-        const pathArgument = node.arguments[0]
-          ? literalText(unwrap(node.arguments[0]))
-          : null;
-        if (pathArgument === signal) routeProved = true;
+      if (scenarioAssertionReachable.has(node) && matchesExplicitFetch(node)) {
+        routeProved = true;
       }
       if (!routeProved) ts.forEachChild(node, inspect);
     };
@@ -3721,6 +3779,33 @@ export function discoverRuntimeSurfaces(): RawSurface[] {
   return uniqueRawSurfaces(rows);
 }
 
+export function classifyRuntimeSurfaceStatus(input: {
+  kind: RuntimeSurfaceKind;
+  nativeHostRequired: boolean;
+  hasBoundaryEvidence: boolean;
+  dependencyDisposition: RuntimeSurfaceRow["dependencyDisposition"];
+}): RuntimeSurfaceStatus {
+  const dependencyEligible = ["local-only", "mock-owned"].includes(
+    input.dependencyDisposition,
+  );
+  if (input.hasBoundaryEvidence && dependencyEligible) return "covered";
+  if (input.kind === "native-bridge" || input.nativeHostRequired) {
+    return "platform-deferred";
+  }
+  if (
+    [
+      "provider",
+      "connector-ingress",
+      "connector-egress",
+      "model-handler",
+    ].includes(input.kind) &&
+    ["mock-missing", "unresolved"].includes(input.dependencyDisposition)
+  ) {
+    return "provider-qualified-only";
+  }
+  return "uncovered";
+}
+
 export function buildRuntimeSurfaceInventory(
   options: { generatedAt?: string; sourceRevision?: string } = {},
 ): RuntimeSurfaceInventory {
@@ -3770,26 +3855,17 @@ export function buildRuntimeSurfaceInventory(
       id,
       surface.sourcePath,
     );
-    const covered = boundaryArtifacts.length > 0;
-    const missingMock = runtimeDependencies.mockDependencies.some(
-      (dependency) => dependency.availability === "missing",
-    );
-    const providerBoundary = [
-      "provider",
-      "connector-ingress",
-      "connector-egress",
-      "model-handler",
-    ].includes(surface.kind);
+    const hasBoundaryEvidence = boundaryArtifacts.length > 0;
     const unresolvedDependencies =
       runtimeDependencies.dependencyDisposition === "unresolved";
-    const status: RuntimeSurfaceStatus = covered
-      ? "covered"
-      : surface.kind === "native-bridge" ||
-          surface.package.platformRequirements.includes("native-host")
-        ? "platform-deferred"
-        : providerBoundary && (missingMock || unresolvedDependencies)
-          ? "provider-qualified-only"
-          : "uncovered";
+    const status = classifyRuntimeSurfaceStatus({
+      kind: surface.kind,
+      nativeHostRequired:
+        surface.package.platformRequirements.includes("native-host"),
+      hasBoundaryEvidence,
+      dependencyDisposition: runtimeDependencies.dependencyDisposition,
+    });
+    const covered = status === "covered";
     const reason = covered
       ? "Executable keyless scenario or Cloud E2E cell exercises the exact registered boundary."
       : status === "platform-deferred"
@@ -3798,9 +3874,11 @@ export function buildRuntimeSurfaceInventory(
           ? unresolvedDependencies
             ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an unresolved external-service boundary; provider qualification is required until exact collaborators and mock ownership are declared.`
             : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicit external protocol but no owned mock source; the report records the gap without claiming coverage.`
-          : runtimeDependencies.dependencyDisposition === "unresolved"
-            ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicitly unresolved per-surface dependency boundary; the report refuses to classify it as local-only.`
-            : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
+          : hasBoundaryEvidence
+            ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has executable boundary evidence, but its ${runtimeDependencies.dependencyDisposition} dependency disposition cannot qualify as synthetic coverage.`
+            : runtimeDependencies.dependencyDisposition === "unresolved"
+              ? `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has an explicitly unresolved per-surface dependency boundary; the report refuses to classify it as local-only.`
+              : `${surface.package.packageName} ${surface.kind} ${normalizeName(surface.name)} has no executable synthetic-world boundary artifact in this report.`;
     const providerQualified = status === "provider-qualified-only";
     const mockAvailable = deterministic.length > 0;
     const partialMock = !mockAvailable && matchingCells.length > 0;
