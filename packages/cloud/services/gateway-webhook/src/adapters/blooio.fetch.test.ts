@@ -62,20 +62,18 @@ describe("blooioFetch — bounded Blooio hops fail closed and compose caller sig
 
   test("preserves caller cancellation (composed)", async () => {
     let seen: AbortSignal | undefined;
-    globalThis.fetch = vi
-      .fn()
-      .mockImplementation(
-        (_input: RequestInfo | URL, init?: RequestInit) =>
-          new Promise<Response>((resolve, reject) => {
-            seen = init?.signal ?? undefined;
-            seen?.addEventListener("abort", () => {
-              reject(
-                new DOMException("The operation was aborted.", "AbortError"),
-              );
-            });
-            setTimeout(() => resolve(new Response("{}", { status: 200 })), 500);
-          }),
-      ) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn().mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((resolve, reject) => {
+          seen = init?.signal ?? undefined;
+          seen?.addEventListener("abort", () => {
+            reject(
+              new DOMException("The operation was aborted.", "AbortError"),
+            );
+          });
+          setTimeout(() => resolve(new Response("{}", { status: 200 })), 500);
+        }),
+    ) as unknown as typeof fetch;
 
     const { blooioFetch } = await import("./blooio");
     const controller = new AbortController();
