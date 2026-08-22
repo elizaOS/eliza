@@ -3,9 +3,9 @@
  *
  * Developer toggles and destructive reset actions (reset app state, clear
  * cache, sign out of Cloud). Local-agent backups are deliberately absent from
- * this cloud-only surface. Reset actions guard with a confirmation prompt, and
- * "Sign out of Cloud" dispatches
- * the `eliza:cloud-sign-out-requested` custom event for the shell to handle.
+ * this cloud-only surface. Reset actions guard with a confirmation prompt and
+ * only touch elizaOS-owned storage; "Sign out of Cloud" calls the shared
+ * `handleCloudSignOut` boundary and reports success only after it resolves.
  */
 import { SlidersHorizontal } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -25,20 +25,55 @@ import {
 
 const ERROR_LOGGING_KEY = "errorLogging";
 
+/**
+ * elizaOS-owned Web Storage key prefixes and legacy unprefixed keys. Reset
+ * must only delete state this app wrote — on a shared origin (hosted shells,
+ * SSO-bridged hosts) blanket `.clear()` would destroy unrelated auth and
+ * application state that the UI copy never promised to touch.
+ */
+const ELIZA_STORAGE_PREFIXES = [
+  "eliza:",
+  "eliza.",
+  "eliza-",
+  "eliza_",
+  "elizaos",
+  "steward_",
+] as const;
+const ELIZA_LEGACY_STORAGE_KEYS = [
+  ERROR_LOGGING_KEY,
+  "pluginOrder",
+  "plugin.pref",
+  "cloud.lang",
+] as const;
+
+function isElizaOwnedStorageKey(key: string): boolean {
+  return (
+    ELIZA_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix)) ||
+    (ELIZA_LEGACY_STORAGE_KEYS as readonly string[]).includes(key)
+  );
+}
+
+function removeElizaOwnedKeys(storage: Storage): void {
+  const owned: string[] = [];
+  for (let i = 0; i < storage.length; i++) {
+    const key = storage.key(i);
+    if (key !== null && isElizaOwnedStorageKey(key)) owned.push(key);
+  }
+  for (const key of owned) storage.removeItem(key);
+}
+
 function readErrorLogging(): boolean {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem(ERROR_LOGGING_KEY) === "1";
 }
 
-function dispatchCloudSignOut(): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent("eliza:cloud-sign-out-requested"));
-}
-
 export function AdvancedSection() {
-  const { setActionNotice } = useAppSelectorShallow((s) => ({
-    setActionNotice: s.setActionNotice,
-  }));
+  const { setActionNotice, handleCloudSignOut } = useAppSelectorShallow(
+    (s) => ({
+      setActionNotice: s.setActionNotice,
+      handleCloudSignOut: s.handleCloudSignOut,
+    }),
+  );
   const developerMode = useIsDeveloperMode();
   const previewMode = useIsPreviewMode();
   const [errorLogging, setErrorLogging] = useState<boolean>(readErrorLogging);
@@ -60,8 +95,8 @@ export function AdvancedSection() {
     }
     try {
       if (typeof window !== "undefined") {
-        window.localStorage.clear();
-        window.sessionStorage.clear();
+        removeElizaOwnedKeys(window.localStorage);
+        removeElizaOwnedKeys(window.sessionStorage);
       }
       setDeveloperMode(false);
       setPreviewMode(false);
@@ -82,9 +117,12 @@ export function AdvancedSection() {
     }
     try {
       if (typeof caches !== "undefined") {
+        // Same-origin CacheStorage may hold entries owned by other software
+        // (service workers, host shells); only delete elizaOS-named caches.
         const keys = await caches.keys();
+        const ownedKeys = keys.filter((key) => isElizaOwnedStorageKey(key));
         const deleted = await Promise.all(
-          keys.map((key) => caches.delete(key)),
+          ownedKeys.map((key) => caches.delete(key)),
         );
         if (deleted.some((result) => !result)) {
           throw new Error("A cache could not be deleted.");
@@ -97,7 +135,7 @@ export function AdvancedSection() {
     }
   }, [setActionNotice]);
 
-  const handleSignOut = useCallback(() => {
+  const handleSignOut = useCallback(async () => {
     if (
       !window.confirm(
         "Sign out of Eliza Cloud? You will need to sign in again to use cloud features.",
@@ -105,9 +143,14 @@ export function AdvancedSection() {
     ) {
       return;
     }
-    dispatchCloudSignOut();
-    setActionNotice?.("Signed out of Eliza Cloud.", "success", 5000);
-  }, [setActionNotice]);
+    try {
+      await handleCloudSignOut();
+      setActionNotice?.("Signed out of Eliza Cloud.", "success", 5000);
+    } catch {
+      // error-policy:J4 sign-out failure stays visible; session state is unchanged.
+      setActionNotice?.("Could not sign out of Eliza Cloud.", "error", 5000);
+    }
+  }, [handleCloudSignOut, setActionNotice]);
 
   return (
     <SettingsStack>
@@ -177,7 +220,7 @@ export function AdvancedSection() {
           buttonLabel="Sign out of Cloud"
           variant="destructive"
           size="sm"
-          onActivate={handleSignOut}
+          onActivate={() => void handleSignOut()}
         />
       </SettingsGroup>
     </SettingsStack>

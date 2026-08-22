@@ -17,6 +17,11 @@ import {
 
 function CloudAccountFooter() {
   const elizaCloudConnected = useAppSelector((s) => s.elizaCloudConnected);
+  const handleInteractiveCloudLogin = useAppSelector(
+    (s) => s.handleInteractiveCloudLogin,
+  );
+  const handleCloudSignOut = useAppSelector((s) => s.handleCloudSignOut);
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
   const [open, setOpen] = useState(false);
 
   if (!elizaCloudConnected && !hasCloudManagementCredential()) {
@@ -26,9 +31,16 @@ function CloudAccountFooter() {
           type="button"
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-[var(--fill)]"
           onClick={() => {
-            window.dispatchEvent(
-              new CustomEvent("eliza:cloud-login-requested"),
-            );
+            void handleInteractiveCloudLogin().catch((error: unknown) => {
+              // error-policy:J4 login failure surfaces as a visible notice.
+              setActionNotice?.(
+                error instanceof Error
+                  ? error.message
+                  : "Could not start Cloud login.",
+                "error",
+                5000,
+              );
+            });
           }}
         >
           <Circle className="h-2.5 w-2.5 text-[var(--muted-foreground)]" />
@@ -69,10 +81,15 @@ function CloudAccountFooter() {
             type="button"
             className="flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm text-[var(--destructive)] transition-colors hover:bg-[var(--destructive)]/10"
             onClick={() => {
-              window.dispatchEvent(
-                new CustomEvent("eliza:cloud-sign-out-requested"),
-              );
               setOpen(false);
+              void handleCloudSignOut().catch(() => {
+                // error-policy:J4 sign-out failure surfaces as a visible notice.
+                setActionNotice?.(
+                  "Could not sign out of Eliza Cloud.",
+                  "error",
+                  5000,
+                );
+              });
             }}
           >
             Sign out

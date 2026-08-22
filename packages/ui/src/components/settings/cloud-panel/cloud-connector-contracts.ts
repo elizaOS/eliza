@@ -207,3 +207,44 @@ export function connectorFieldValidationError(
       return null;
   }
 }
+
+/**
+ * Affirmative success contract for connector mutations: only an explicit
+ * `success: true` counts. `{}`, a missing flag, or any malformed 2xx body must
+ * not fabricate a connected state.
+ */
+export function connectorMutationSucceeded(data: unknown): boolean {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { success?: unknown }).success === true
+  );
+}
+
+/**
+ * Request body for `POST /api/v1/mcps` from the settings panel. Field names
+ * must match the route schema exactly — unknown keys are stripped server-side,
+ * so a misnamed endpoint field would silently create a server with no
+ * endpoint.
+ */
+export function buildMcpCreatePayload(input: {
+  name: string;
+  slug: string;
+  endpointUrl: string;
+  description: string;
+}): {
+  name: string;
+  slug: string;
+  description: string;
+  endpointType: "external";
+  externalEndpoint: string;
+} {
+  return {
+    name: input.name.trim(),
+    slug:
+      input.slug.trim() || input.name.trim().toLowerCase().replace(/\s+/g, "-"),
+    description: input.description.trim(),
+    endpointType: "external",
+    externalEndpoint: input.endpointUrl.trim(),
+  };
+}

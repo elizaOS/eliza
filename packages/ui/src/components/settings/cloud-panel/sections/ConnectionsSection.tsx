@@ -21,9 +21,11 @@ import { useCloudConnectorConnections } from "../../../../hooks/useCloudConnecto
 import { useAppSelector } from "../../../../state";
 import { openExternalUrl } from "../../../../utils/openExternalUrl";
 import {
+  buildMcpCreatePayload,
   CLOUD_CONNECTORS,
   type ConnectorConfig,
   connectorFieldValidationError,
+  connectorMutationSucceeded,
 } from "../cloud-connector-contracts";
 import { hasCloudManagementCredential } from "../cloud-management-auth";
 import {
@@ -50,13 +52,34 @@ interface CloudAgentSummary {
   name?: unknown;
 }
 
-function firstCloudAgentId(
+interface CloudAgentChoice {
+  id: string;
+  name: string;
+}
+
+function cloudAgentChoices(
   agents: CloudAgentSummary[] | undefined,
-): string | null {
+): CloudAgentChoice[] {
+  const choices: CloudAgentChoice[] = [];
   for (const agent of agents ?? []) {
-    if (typeof agent.id === "string" && agent.id.length > 0) return agent.id;
+    if (typeof agent.id === "string" && agent.id.length > 0) {
+      choices.push({
+        id: agent.id,
+        name:
+          typeof agent.name === "string" && agent.name.length > 0
+            ? agent.name
+            : agent.id,
+      });
+    }
   }
-  return null;
+  return choices;
+}
+
+/** A single disconnectable identity (OAuth account or Discord bot). */
+interface ConnectionChoice {
+  id: string;
+  label: string;
+  active: boolean;
 }
 
 // ── Connector registry ──────────────────────────────────────────────────
@@ -148,13 +171,38 @@ function ConnectModal({
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentChoices, setAgentChoices] = useState<CloudAgentChoice[] | null>(
+    null,
+  );
+  const [selectedAgentId, setSelectedAgentId] = useState("");
 
-  // Reset form when a new connector opens.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connector identity intentionally resets the modal form.
+  // Reset form when a new connector opens. Discord binds a bot to a specific
+  // agent, so load the agent list up front and make the target explicit
+  // instead of silently picking the first unordered agent.
   useEffect(() => {
     setFieldValues({});
     setError(null);
     setBusy(false);
+    setAgentChoices(null);
+    setSelectedAgentId("");
+    if (connector?.id !== "discord") return;
+    let cancelled = false;
+    void api<{ agents?: CloudAgentSummary[] }>("/api/v1/dashboard")
+      .then((dashboard) => {
+        if (cancelled) return;
+        const choices = cloudAgentChoices(dashboard.agents);
+        setAgentChoices(choices);
+        if (choices.length === 1) setSelectedAgentId(choices[0].id);
+      })
+      .catch((cause: unknown) => {
+        // error-policy:J4 agent-list failure blocks connect with a visible error.
+        if (cancelled) return;
+        setAgentChoices([]);
+        setError(apiErrorMessage(cause, "Failed to load your agents."));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [connector?.id]);
 
   if (!connector) return null;
@@ -203,17 +251,17 @@ function ConnectModal({
         Object.entries(fieldValues).map(([key, value]) => [key, value.trim()]),
       );
       if (connector.id === "discord") {
-        const dashboard = await api<{ agents?: CloudAgentSummary[] }>(
-          "/api/v1/dashboard",
-        );
-        const characterId = firstCloudAgentId(dashboard.agents);
-        if (!characterId) {
+        if (agentChoices !== null && agentChoices.length === 0) {
           setError("Create an agent before connecting Discord.");
+          return;
+        }
+        if (!selectedAgentId) {
+          setError("Choose which agent this Discord bot should use.");
           return;
         }
         payload = {
           ...payload,
-          characterId,
+          characterId: selectedAgentId,
           metadata: { responseMode: "mention" },
         };
       }
@@ -221,10 +269,10 @@ function ConnectModal({
         connector.connectPath,
         { method: "POST", json: payload },
       );
-      if (data.success === false) {
-        setError(data.error ?? "Connection failed.");
-      } else {
+      if (connectorMutationSucceeded(data)) {
         onSuccess();
+      } else {
+        setError(data.error ?? "Connection failed.");
       }
     } catch (err) {
       setError(
@@ -299,6 +347,34 @@ function ConnectModal({
               />
             </NuphyFormField>
           ))}
+          {connector.id === "discord" && (
+            <NuphyFormField
+              label="Agent"
+              description="The agent this Discord bot responds as."
+              htmlFor="connect-agent"
+            >
+              <select
+                id="connect-agent"
+                className="w-full rounded-md border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-[14px] text-[var(--foreground)]"
+                value={selectedAgentId}
+                onChange={(event) => setSelectedAgentId(event.target.value)}
+                disabled={busy || agentChoices === null}
+              >
+                <option value="" disabled>
+                  {agentChoices === null
+                    ? "Loading agents…"
+                    : agentChoices.length === 0
+                      ? "No agents available"
+                      : "Choose an agent"}
+                </option>
+                {(agentChoices ?? []).map((choice) => (
+                  <option key={choice.id} value={choice.id}>
+                    {choice.name}
+                  </option>
+                ))}
+              </select>
+            </NuphyFormField>
+          )}
         </div>
       ) : (
         <p className="text-[14px] leading-5 text-muted-foreground">
@@ -312,6 +388,46 @@ function ConnectModal({
 
 // ── Disconnect confirm ──────────────────────────────────────────────────
 
+/**
+ * Whether disconnecting this connector must target one connection record by
+ * id. OAuth providers and Discord support several linked accounts/bots, so a
+ * revoke must never fall back to "the first record".
+ */
+function connectorRequiresConnectionChoice(
+  connector: ConnectorConfig,
+): boolean {
+  return connector.authMode === "oauth" || connector.id === "discord";
+}
+
+interface RawConnectionRecord {
+  id?: unknown;
+  status?: unknown;
+  displayName?: unknown;
+  externalAccountId?: unknown;
+  botUserId?: unknown;
+  applicationId?: unknown;
+  isActive?: unknown;
+}
+
+function toConnectionChoices(
+  records: RawConnectionRecord[] | undefined,
+): ConnectionChoice[] {
+  const choices: ConnectionChoice[] = [];
+  for (const record of records ?? []) {
+    if (typeof record.id !== "string" || record.id.length === 0) continue;
+    const label =
+      [record.displayName, record.externalAccountId, record.botUserId]
+        .map((value) => (typeof value === "string" ? value : ""))
+        .find((value) => value.length > 0) ?? record.id;
+    choices.push({
+      id: record.id,
+      label,
+      active: record.status === "active" || record.isActive === true,
+    });
+  }
+  return choices;
+}
+
 function DisconnectDialog({
   connector,
   onClose,
@@ -319,10 +435,44 @@ function DisconnectDialog({
 }: {
   connector: ConnectorConfig | null;
   onClose: () => void;
-  onConfirm: () => Promise<string | null>;
+  onConfirm: (connectionId: string | null) => Promise<string | null>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [choices, setChoices] = useState<ConnectionChoice[] | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+
+  const needsChoice =
+    connector !== null && connectorRequiresConnectionChoice(connector);
+
+  // Load the concrete connection records so the confirm binds an explicit
+  // identity instead of revoking an arbitrary account.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connector identity intentionally resets the dialog.
+  useEffect(() => {
+    setError(null);
+    setBusy(false);
+    setChoices(null);
+    setSelectedId("");
+    if (!connector || !connectorRequiresConnectionChoice(connector)) return;
+    let cancelled = false;
+    void api<{ connections?: RawConnectionRecord[] }>(connector.statusPath)
+      .then((data) => {
+        if (cancelled) return;
+        const loaded = toConnectionChoices(data.connections);
+        setChoices(loaded);
+        if (loaded.length === 1) setSelectedId(loaded[0].id);
+      })
+      .catch((cause: unknown) => {
+        // error-policy:J4 listing failure blocks the destructive action visibly.
+        if (cancelled) return;
+        setChoices([]);
+        setError(apiErrorMessage(cause, "Failed to load connections."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [connector?.id]);
+
   if (!connector) return null;
   return (
     <NuphyModal
@@ -351,13 +501,18 @@ function DisconnectDialog({
             <NuphyButton
               variant="destructive"
               size="sm"
-              disabled={busy}
+              disabled={
+                busy ||
+                (needsChoice && (choices === null || selectedId.length === 0))
+              }
               onClick={() =>
                 void (async () => {
                   setBusy(true);
                   setError(null);
                   try {
-                    const message = await onConfirm();
+                    const message = await onConfirm(
+                      needsChoice ? selectedId : null,
+                    );
                     if (message) setError(message);
                     else onClose();
                   } catch (cause) {
@@ -378,10 +533,41 @@ function DisconnectDialog({
         </div>
       }
     >
-      <p className="text-[14px] leading-5 text-muted-foreground">
-        This will remove the {connector.name} connection from your agent. You
-        can reconnect later.
-      </p>
+      <div className="space-y-3">
+        <p className="text-[14px] leading-5 text-muted-foreground">
+          This will remove the {connector.name} connection from your agent. You
+          can reconnect later.
+        </p>
+        {needsChoice && (
+          <NuphyFormField
+            label="Connection"
+            description="Exactly this connection will be disconnected."
+            htmlFor="disconnect-connection"
+          >
+            <select
+              id="disconnect-connection"
+              className="w-full rounded-md border border-[var(--hairline)] bg-[var(--surface)] px-3 py-2 text-[14px] text-[var(--foreground)]"
+              value={selectedId}
+              onChange={(event) => setSelectedId(event.target.value)}
+              disabled={busy || choices === null}
+            >
+              <option value="" disabled>
+                {choices === null
+                  ? "Loading connections…"
+                  : choices.length === 0
+                    ? "No connections found"
+                    : "Choose a connection"}
+              </option>
+              {(choices ?? []).map((choice) => (
+                <option key={choice.id} value={choice.id}>
+                  {choice.label}
+                  {choice.active ? "" : " (inactive)"}
+                </option>
+              ))}
+            </select>
+          </NuphyFormField>
+        )}
+      </div>
     </NuphyModal>
   );
 }
@@ -424,18 +610,16 @@ function McpAddModal({
       setError("Endpoint URL is required.");
       return;
     }
+    if (!description.trim()) {
+      setError("Description is required.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       await apiFetch("/api/v1/mcps", {
         method: "POST",
-        json: {
-          name: name.trim(),
-          slug: slug.trim() || name.trim().toLowerCase().replace(/\s+/g, "-"),
-          description: description.trim() || undefined,
-          transport: "external",
-          endpointUrl: endpointUrl.trim(),
-        },
+        json: buildMcpCreatePayload({ name, slug, endpointUrl, description }),
       });
       onSuccess();
     } catch (err) {
@@ -517,7 +701,11 @@ function McpAddModal({
             disabled={busy}
           />
         </NuphyFormField>
-        <NuphyFormField label="Description" htmlFor="mcp-desc">
+        <NuphyFormField
+          label="Description"
+          description="Required. Shown wherever this MCP server is listed."
+          htmlFor="mcp-desc"
+        >
           <NuphyTextInput
             id="mcp-desc"
             value={description}
@@ -733,53 +921,37 @@ export function ConnectionsSection() {
     refetch: refetchMcps,
   } = useMcpServers();
 
-  // Disconnect handler — calls the connector's DELETE endpoint.
-  const handleDisconnectConfirm = useCallback(async (): Promise<
-    string | null
-  > => {
-    if (!disconnectTarget) return "No connector was selected.";
-    try {
-      if (disconnectTarget.authMode === "oauth") {
-        // OAuth: need the connection id. Fetch it first.
-        const data = await api<{
-          connections?: Array<{ id: string; status?: string }>;
-        }>(disconnectTarget.statusPath);
-        const connection =
-          data.connections?.find(
-            (candidate) => candidate.status === "active",
-          ) ?? data.connections?.[0];
-        if (!connection) {
-          return `No active ${disconnectTarget.name} connection was found. Refresh and try again.`;
+  // Disconnect handler — calls the connector's DELETE endpoint. Connectors
+  // with multiple linked identities (OAuth accounts, Discord bots) receive the
+  // explicit connection id chosen in the dialog; a missing id aborts rather
+  // than revoking an arbitrary record.
+  const handleDisconnectConfirm = useCallback(
+    async (connectionId: string | null): Promise<string | null> => {
+      if (!disconnectTarget) return "No connector was selected.";
+      try {
+        if (connectorRequiresConnectionChoice(disconnectTarget)) {
+          if (!connectionId) {
+            return `Choose which ${disconnectTarget.name} connection to disconnect.`;
+          }
+          await apiFetch(`${disconnectTarget.disconnectPath}/${connectionId}`, {
+            method: "DELETE",
+          });
+        } else {
+          await api(disconnectTarget.disconnectPath, { method: "DELETE" });
         }
-        await apiFetch(`${disconnectTarget.disconnectPath}/${connection.id}`, {
-          method: "DELETE",
-        });
-      } else if (disconnectTarget.id === "discord") {
-        // Discord: delete the first connection.
-        const data = await api<{ connections?: Array<{ id: string }> }>(
-          disconnectTarget.statusPath,
+        setConnectorRefreshVersion((version) => version + 1);
+        return null;
+      } catch (error) {
+        // error-policy:J4 mutation failure stays visible while an authoritative refetch reconciles the row.
+        setConnectorRefreshVersion((version) => version + 1);
+        return apiErrorMessage(
+          error,
+          `Failed to disconnect ${disconnectTarget.name}.`,
         );
-        const first = data.connections?.[0];
-        if (!first) {
-          return "No Discord connection was found. Refresh and try again.";
-        }
-        await apiFetch(`${disconnectTarget.disconnectPath}/${first.id}`, {
-          method: "DELETE",
-        });
-      } else {
-        await api(disconnectTarget.disconnectPath, { method: "DELETE" });
       }
-      setConnectorRefreshVersion((version) => version + 1);
-      return null;
-    } catch (error) {
-      // error-policy:J4 mutation failure stays visible while an authoritative refetch reconciles the row.
-      setConnectorRefreshVersion((version) => version + 1);
-      return apiErrorMessage(
-        error,
-        `Failed to disconnect ${disconnectTarget.name}.`,
-      );
-    }
-  }, [disconnectTarget]);
+    },
+    [disconnectTarget],
+  );
 
   // MCP remove handler.
   const handleMcpRemoveConfirm = useCallback(async (): Promise<

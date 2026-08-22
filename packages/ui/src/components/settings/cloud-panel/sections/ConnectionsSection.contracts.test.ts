@@ -1,12 +1,15 @@
 /**
  * Pins the cloud settings connector registry to the request and route contracts
- * implemented by the Cloud API. The test is deterministic and does not send
- * credentials or contact provider services.
+ * implemented by the Cloud API, plus the mutation success contract and the
+ * `POST /api/v1/mcps` payload shape. The test is deterministic and does not
+ * send credentials or contact provider services.
  */
 
 import { describe, expect, it } from "vitest";
 import {
+  buildMcpCreatePayload,
   connectorFieldValidationError,
+  connectorMutationSucceeded,
   getConnectorConfig,
 } from "../cloud-connector-contracts";
 
@@ -88,5 +91,54 @@ describe("cloud settings connector contracts", () => {
     expect(
       connectorFieldValidationError(twilioPhone, "+15551234567"),
     ).toBeNull();
+  });
+});
+
+describe("connector mutation success contract", () => {
+  it("accepts only an explicit success flag", () => {
+    expect(connectorMutationSucceeded({ success: true })).toBe(true);
+  });
+
+  it.each([
+    ["empty object", {}],
+    ["missing flag with other fields", { connectionId: "abc" }],
+    ["truthy non-boolean", { success: "true" }],
+    ["numeric truthy", { success: 1 }],
+    ["explicit false", { success: false }],
+    ["null body", null],
+    ["undefined body", undefined],
+    ["string body", "ok"],
+  ])("rejects %s", (_label, body) => {
+    expect(connectorMutationSucceeded(body)).toBe(false);
+  });
+});
+
+describe("MCP create payload contract", () => {
+  it("sends the exact /api/v1/mcps field names", () => {
+    expect(
+      buildMcpCreatePayload({
+        name: " My Server ",
+        slug: "",
+        endpointUrl: " https://mcp.example.com/sse ",
+        description: " Does things ",
+      }),
+    ).toEqual({
+      name: "My Server",
+      slug: "my-server",
+      description: "Does things",
+      endpointType: "external",
+      externalEndpoint: "https://mcp.example.com/sse",
+    });
+  });
+
+  it("never emits the legacy transport/endpointUrl field names", () => {
+    const payload = buildMcpCreatePayload({
+      name: "S",
+      slug: "s",
+      endpointUrl: "https://mcp.example.com",
+      description: "d",
+    });
+    expect(payload).not.toHaveProperty("transport");
+    expect(payload).not.toHaveProperty("endpointUrl");
   });
 });
