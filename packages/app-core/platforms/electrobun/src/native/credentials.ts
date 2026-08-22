@@ -326,7 +326,13 @@ async function readPipeTextCapped(
         chunks.push(retained);
         storedBytes += retained.byteLength;
       }
-      if (value.byteLength > remaining) overflow = true;
+      if (value.byteLength > remaining) {
+        overflow = true;
+        void reader
+          .cancel("Chromium Safe Storage pipe exceeded byte cap")
+          .catch(() => undefined);
+        break;
+      }
     }
   } finally {
     reader.releaseLock();
@@ -337,6 +343,15 @@ async function readPipeTextCapped(
       "utf8",
     ),
   };
+}
+
+function signalPipeOverflow(
+  result: Promise<{ overflow: boolean; text: string }>,
+): Promise<"overflow"> {
+  return result.then((pipe) => {
+    if (pipe.overflow) return "overflow";
+    return new Promise<never>(() => undefined);
+  });
 }
 
 async function settlesWithin<T>(
@@ -356,6 +371,19 @@ async function settlesWithin<T>(
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+async function terminateAndObserve(
+  proc: ChromiumSafeStorageProcess,
+  exit: Promise<{ exitCode: number }>,
+  graceMs: number,
+): Promise<void> {
+  if (await settlesWithin(exit, 0)) return;
+  proc.kill("SIGTERM");
+  if (!(await settlesWithin(exit, graceMs))) {
+    proc.kill("SIGKILL");
+    await settlesWithin(exit, graceMs);
   }
 }
 
@@ -385,31 +413,35 @@ export async function readChromiumSafeStoragePassword(
     );
     const stdout = readPipeTextCapped(proc.stdout, maxPipeBytes);
     const stderr = readPipeTextCapped(proc.stderr, maxPipeBytes);
-    const completed = Promise.all([exit, stdout, stderr]);
+    const completed = Promise.all([exit, stdout, stderr]).then((value) => {
+      const [, stdoutResult, stderrResult] = value;
+      return stdoutResult.overflow || stderrResult.overflow
+        ? ({ kind: "overflow" } as const)
+        : { kind: "completed" as const, value };
+    });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
       completed,
-      new Promise<null>((resolve) => {
+      Promise.race([
+        signalPipeOverflow(stdout),
+        signalPipeOverflow(stderr),
+      ]).then(() => ({ kind: "overflow" as const })),
+      new Promise<{ kind: "timeout" }>((resolve) => {
         timer = setTimeout(
-          () => resolve(null),
+          () => resolve({ kind: "timeout" }),
           dependencies.timeoutMs ?? CHROMIUM_SAFE_STORAGE_TIMEOUT_MS,
         );
       }),
     ]);
     if (timer) clearTimeout(timer);
-    if (!result) {
+    if (result.kind !== "completed") {
       const graceMs =
         dependencies.terminationGraceMs ??
         CHROMIUM_SAFE_STORAGE_TERMINATION_GRACE_MS;
-      proc.kill("SIGTERM");
-      if (!(await settlesWithin(exit, graceMs))) {
-        proc.kill("SIGKILL");
-        await settlesWithin(exit, graceMs);
-      }
+      await terminateAndObserve(proc, exit, graceMs);
       return null;
     }
-    const [{ exitCode }, stdoutResult, stderrResult] = result;
-    if (stdoutResult.overflow || stderrResult.overflow) return null;
+    const [{ exitCode }, stdoutResult] = result.value;
     if (exitCode !== 0) return null;
     const trimmed = stdoutResult.text.trim();
     return trimmed.length > 0 ? trimmed : null;

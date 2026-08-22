@@ -112,6 +112,46 @@ describe("readChromiumSafeStoragePassword", () => {
     ).resolves.toBeNull();
   });
 
+  it("cancels an overflowing non-closing pipe and observes process termination", async () => {
+    let cancelled = false;
+    let resolveExit: ((exitCode: number) => void) | undefined;
+    let exitObserved = false;
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    void exited.then(() => {
+      exitObserved = true;
+    });
+    const kill = vi.fn((signal?: number | NodeJS.Signals) => {
+      if (signal === "SIGTERM") resolveExit?.(143);
+    });
+    const stdout = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(16));
+        controller.enqueue(new Uint8Array(17));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const stderr = new Response("").body;
+    if (!stderr) throw new Error("Expected in-memory response body");
+    const spawn = vi.fn(() => ({ exited, kill, stderr, stdout }));
+
+    await expect(
+      readChromiumSafeStoragePassword("Chrome Safe Storage", {
+        maxPipeBytes: 32,
+        platform: "darwin",
+        spawn,
+        terminationGraceMs: 5,
+        timeoutMs: 1_000,
+      }),
+    ).resolves.toBeNull();
+    expect(cancelled).toBe(true);
+    expect(kill).toHaveBeenCalledWith("SIGTERM");
+    expect(exitObserved).toBe(true);
+  });
+
   it("bounds a stuck lookup, terminates it, and observes its exit", async () => {
     let resolveExit: ((exitCode: number) => void) | undefined;
     let exitObserved = false;
