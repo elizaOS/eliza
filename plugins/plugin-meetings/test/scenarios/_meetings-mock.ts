@@ -128,26 +128,57 @@ export function finalizeMeetingMockLedger(): ScenarioCleanupStep {
     name: "finalize exact meetings provider ledger",
     apply: async (ctx) => {
       const runtime = ctx.runtime as IAgentRuntime;
-      const service = (
-        runtime as {
-          getService(name: string): {
-            listSessions(options?: { active?: boolean }): Array<{ id: UUID }>;
-            stopSession(id: UUID): boolean;
-            waitForSessionCompletion(id: UUID): Promise<unknown>;
-            pendingSessionWorkCount(): number;
-          } | null;
+      const problems: string[] = [];
+      try {
+        const service = (
+          runtime as {
+            getService(name: string): {
+              listSessions(options?: { active?: boolean }): Array<{ id: UUID }>;
+              stopSession(id: UUID): boolean;
+              waitForSessionCompletion(id: UUID): Promise<unknown>;
+              pendingSessionWorkCount(): number;
+            } | null;
+          }
+        ).getService("meetings");
+        if (!service) {
+          problems.push("meetings service missing during finalization");
+        } else {
+          const active = service.listSessions({ active: true });
+          for (const session of active) service.stopSession(session.id);
+          const completions = await Promise.allSettled(
+            active.map((session) =>
+              service.waitForSessionCompletion(session.id),
+            ),
+          );
+          for (const [index, completion] of completions.entries()) {
+            if (completion.status === "rejected") {
+              const sessionId = active[index]?.id ?? "unknown";
+              const detail =
+                completion.reason instanceof Error
+                  ? completion.reason.message
+                  : String(completion.reason);
+              problems.push(
+                `meeting session ${sessionId} failed to quiesce: ${detail}`,
+              );
+            }
+          }
+          const pending = service.pendingSessionWorkCount();
+          if (pending !== 0) {
+            problems.push(
+              `meetings service retained ${pending} pending session(s) after finalization`,
+            );
+          }
         }
-      ).getService("meetings");
-      if (!service) return "meetings service missing during finalization";
-      const active = service.listSessions({ active: true });
-      for (const session of active) service.stopSession(session.id);
-      await Promise.all(
-        active.map((session) => service.waitForSessionCompletion(session.id)),
-      );
-      if (service.pendingSessionWorkCount() !== 0) {
-        return `meetings service retained ${service.pendingSessionWorkCount()} pending session(s) after finalization`;
+      } catch (error) {
+        // error-policy:J1 scenario cleanup translates quiescence failure into a failed invariant.
+        problems.push(
+          `meetings service quiescence failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      } finally {
+        const ledgerProblem = finalizeMockMeetingProviderLedger(runtime);
+        if (ledgerProblem) problems.push(ledgerProblem);
       }
-      return finalizeMockMeetingProviderLedger(runtime);
+      return problems.length > 0 ? problems.join("; ") : undefined;
     },
   };
 }

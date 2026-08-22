@@ -88,6 +88,34 @@ describe("shared runtime plugin safety", () => {
     ).toThrow(/unsafe shared meetings batch.*mock.*live/u);
   });
 
+  it("rejects an undeclared action scenario that could inherit ambient meeting test support", () => {
+    const undeclaredActionScenario = {
+      id: "ambient-false-green",
+      title: "Ambient false green",
+      domain: "other",
+      turns: [
+        {
+          kind: "action",
+          name: "invokes meetings without declaring its dependency",
+          actionName: "JOIN_MEETING",
+          parameters: { meetingUrl: "https://meet.google.com/abc-defg-hij" },
+        },
+      ],
+    } as const;
+
+    expect(() =>
+      assertSharedRuntimePluginBatchSafe([
+        scenario("declared-mock", [
+          "@elizaos/plugin-meetings",
+          "@elizaos/plugin-meetings/test-support",
+        ]),
+        undeclaredActionScenario,
+      ]),
+    ).toThrow(
+      /every scenario sharing that runtime must explicitly declare.*ambient-false-green/u,
+    );
+  });
+
   it("rejects test support without its production plugin", () => {
     expect(() =>
       assertSharedRuntimePluginBatchSafe([

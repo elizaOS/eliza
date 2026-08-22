@@ -67,14 +67,12 @@ export function assertSharedRuntimePluginBatchSafe(
     }
   }
   if (withTestSupport.length === 0) return;
-  const productionOnly = meetingScenarios.filter(
-    ({ plugins }) =>
-      plugins.includes(MEETINGS_PLUGIN_PACKAGE) &&
-      !plugins.includes(MEETINGS_TEST_SUPPORT_PACKAGE),
+  const withoutTestSupport = meetingScenarios.filter(
+    ({ plugins }) => !plugins.includes(MEETINGS_TEST_SUPPORT_PACKAGE),
   );
-  if (productionOnly.length > 0) {
+  if (withoutTestSupport.length > 0) {
     throw new Error(
-      `[scenario-runner] unsafe shared meetings batch: test-support scenarios [${withTestSupport.map(({ id }) => id).join(", ")}] cannot share one runtime with production-dependency scenarios [${productionOnly.map(({ id }) => id).join(", ")}]; run them process-isolated or select a dependency-homogeneous batch`,
+      `[scenario-runner] unsafe shared meetings batch: once test support is loaded by [${withTestSupport.map(({ id }) => id).join(", ")}], every scenario sharing that runtime must explicitly declare ${MEETINGS_TEST_SUPPORT_PACKAGE}; missing declarations: [${withoutTestSupport.map(({ id }) => id).join(", ")}]. Run those scenarios process-isolated or select a dependency-homogeneous batch`,
     );
   }
 }
