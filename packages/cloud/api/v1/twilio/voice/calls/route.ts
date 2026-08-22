@@ -3,13 +3,13 @@
  * hands answered calls to the same signed realtime voice path used inbound.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, eq, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { dbWrite } from "@/db/helpers";
 import { usersRepository } from "@/db/repositories/users";
-import { idempotencyKeys } from "@/db/schemas";
+import { idempotencyKeys, twilioOutboundCalls } from "@/db/schemas";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/utils/phone-normalization";
 import { twilioApiRequest } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import { resolveTwilioPublicUrl } from "../lib/twilio-public-url";
 
 const app = new Hono<AppEnv>();
 const IDEMPOTENCY_TTL_MS = 10 * 60 * 1000;
@@ -45,10 +46,16 @@ interface TwilioCallResponse {
   status: string;
 }
 
-function resolveCallbackUrl(c: AppContext, configured?: string): string {
-  const url = new URL(configured?.trim() || c.req.url);
-  url.pathname = "/api/v1/twilio/voice/inbound";
+function resolveCallbackUrl(c: AppContext): string {
+  const url = resolveTwilioPublicUrl(c, "/api/v1/twilio/voice/inbound");
   url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function resolveStatusCallbackUrl(c: AppContext, requestId: string): string {
+  const url = resolveTwilioPublicUrl(c, "/api/v1/twilio/voice/status");
+  url.search = new URLSearchParams({ requestId }).toString();
   url.hash = "";
   return url.toString();
 }
@@ -159,6 +166,42 @@ app.post("/", async (c) => {
     .returning({ key: idempotencyKeys.key });
 
   if (!claim) {
+    const [existingCall] = await dbWrite
+      .select({
+        id: twilioOutboundCalls.id,
+        callSid: twilioOutboundCalls.call_sid,
+        status: twilioOutboundCalls.call_status,
+        to: twilioOutboundCalls.to_number,
+      })
+      .from(twilioOutboundCalls)
+      .where(
+        and(
+          eq(twilioOutboundCalls.request_digest, idempotencyDigest),
+          eq(twilioOutboundCalls.user_id, auth.id),
+          eq(twilioOutboundCalls.organization_id, auth.organization_id),
+        ),
+      )
+      .limit(1);
+    if (existingCall?.callSid) {
+      return c.json({
+        success: true,
+        callId: existingCall.id,
+        callSid: existingCall.callSid,
+        status: existingCall.status,
+        to: maskPhoneNumber(existingCall.to),
+        replayed: true,
+      });
+    }
+    if (existingCall) {
+      return c.json(
+        {
+          error: "This call request is already being reconciled",
+          code: "duplicate_call_pending",
+        },
+        409,
+      );
+    }
+
     const now = new Date();
     await dbWrite
       .delete(idempotencyKeys)
@@ -190,32 +233,38 @@ app.post("/", async (c) => {
     }
   }
 
+  const callId = randomUUID();
+  await dbWrite.insert(twilioOutboundCalls).values({
+    id: callId,
+    request_digest: idempotencyDigest,
+    account_sid: accountSid,
+    organization_id: auth.organization_id,
+    user_id: auth.id,
+    from_number: fromNumber,
+    to_number: requestedPhoneNumber,
+    call_status: "requesting",
+  });
+
+  let call: TwilioCallResponse;
   try {
     const form = new URLSearchParams();
     form.set("To", requestedPhoneNumber);
     form.set("From", fromNumber);
-    form.set("Url", resolveCallbackUrl(c, env.TWILIO_PUBLIC_URL));
+    form.set("Url", resolveCallbackUrl(c));
     form.set("Method", "POST");
+    form.set("StatusCallback", resolveStatusCallbackUrl(c, callId));
+    form.set("StatusCallbackMethod", "POST");
+    for (const event of ["initiated", "ringing", "answered", "completed"]) {
+      form.append("StatusCallbackEvent", event);
+    }
 
-    const call = await twilioApiRequest<TwilioCallResponse>(
+    call = await twilioApiRequest<TwilioCallResponse>(
       accountSid,
       authToken,
       "POST",
       "/Calls.json",
       form,
     );
-    logger.info("[twilio-voice-outbound] call queued", {
-      callSid: call.sid,
-      userId: auth.id,
-      organizationId: auth.organization_id,
-      to: maskPhoneNumber(requestedPhoneNumber),
-    });
-    return c.json({
-      success: true,
-      callSid: call.sid,
-      status: call.status,
-      to: maskPhoneNumber(requestedPhoneNumber),
-    });
   } catch (error) {
     // error-policy:J1 provider failure becomes a boundary response. Retain the
     // claim because Twilio may have accepted the call before the response was
@@ -225,11 +274,64 @@ app.post("/", async (c) => {
       organizationId: auth.organization_id,
       error: error instanceof Error ? error.message : String(error),
     });
+    await dbWrite
+      .update(twilioOutboundCalls)
+      .set({
+        call_status: "provider-error",
+        provider_error_code: "provider_unavailable",
+        terminal_at: new Date(),
+        updated_at: new Date(),
+      })
+      .where(eq(twilioOutboundCalls.id, callId));
     return c.json(
       { error: "Unable to start the call", code: "provider_unavailable" },
       502,
     );
   }
+
+  let auditPending = false;
+  try {
+    await dbWrite
+      .update(twilioOutboundCalls)
+      .set({
+        call_sid: call.sid,
+        call_status: call.status,
+        updated_at: new Date(),
+      })
+      .where(eq(twilioOutboundCalls.id, callId));
+  } catch (error) {
+    // error-policy:J4 Twilio accepted the call; the signed callback keyed by
+    // callId remains the authoritative reconciliation path for this row.
+    auditPending = true;
+    logger.error(
+      "[twilio-voice-outbound] queued call awaiting callback reconciliation",
+      {
+        callSid: call.sid,
+        callId,
+        userId: auth.id,
+        organizationId: auth.organization_id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
+  }
+  logger.info("[twilio-voice-outbound] call queued", {
+    callSid: call.sid,
+    callId,
+    userId: auth.id,
+    organizationId: auth.organization_id,
+    to: maskPhoneNumber(requestedPhoneNumber),
+  });
+  return c.json(
+    {
+      success: true,
+      callId,
+      callSid: call.sid,
+      status: call.status,
+      to: maskPhoneNumber(requestedPhoneNumber),
+      ...(auditPending ? { auditPending: true } : {}),
+    },
+    auditPending ? 202 : 200,
+  );
 });
 
 export default app;

@@ -126,6 +126,7 @@ export * from "./tenant-db-clusters";
 export * from "./token-redemptions";
 export * from "./tts-first-line-cache";
 export * from "./twilio-inbound-calls";
+export * from "./twilio-outbound-calls";
 export * from "./usage-records";
 export * from "./user-characters";
 export * from "./user-identities";

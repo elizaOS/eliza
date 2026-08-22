@@ -17,10 +17,11 @@ import { logger } from "@/lib/utils/logger";
 import { normalizePhoneNumber } from "@/lib/utils/phone-normalization";
 import { verifyTwilioSignature } from "@/lib/utils/twilio-api";
 import { recordVoiceSessionJti } from "@/lib/voice-session/jwt";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import { scheduleTwilioVoiceScopePrewarm } from "../lib/prewarm-voice-scope";
 import { resolveTwilioVoiceTarget } from "../lib/resolve-voice-target";
 import { resolveTwilioCallParticipants } from "../lib/twilio-call-direction";
+import { resolveTwilioPublicUrl } from "../lib/twilio-public-url";
 import {
   mintTwilioStreamToken,
   prepareTwilioStreamToken,
@@ -28,6 +29,7 @@ import {
 import {
   buildRealtimeVoiceTwiML,
   buildTerminalVoiceTwiML,
+  ELIZA_AI_CALL_DISCLOSURE,
 } from "../lib/twilio-voice-twiml";
 import {
   claimInboundCallOpeningContext,
@@ -50,21 +52,6 @@ const TwilioVoicePayloadSchema = z
 
 const NOT_CONFIGURED_PROMPT =
   "This phone number is not configured for Eliza voice yet. Please check the Eliza Cloud control panel.";
-
-function resolvePublicUrl(c: AppContext): URL {
-  const url = new URL(c.req.url);
-  const forwardedProto = c.req.header("x-forwarded-proto");
-  const forwardedHost = c.req.header("x-forwarded-host");
-  if (forwardedProto) url.protocol = `${forwardedProto}:`;
-  if (forwardedHost) url.host = forwardedHost;
-  const configured = (c.env.TWILIO_PUBLIC_URL as string | undefined)?.trim();
-  if (configured) {
-    const publicBase = new URL(configured);
-    url.protocol = publicBase.protocol;
-    url.host = publicBase.host;
-  }
-  return url;
-}
 
 app.post("/", async (c) => {
   const requestStartedAt = Date.now();
@@ -109,7 +96,7 @@ app.post("/", async (c) => {
     return new Response("Invalid account", { status: 403 });
   }
 
-  const publicUrl = resolvePublicUrl(c);
+  const publicUrl = resolveTwilioPublicUrl(c, "/api/v1/twilio/voice/inbound");
   const signature = c.req.header("x-twilio-signature") ?? "";
   if (
     !(await verifyTwilioSignature(
@@ -406,6 +393,7 @@ app.post("/", async (c) => {
       streamUrl: publicUrl.toString(),
       sessionId: minted.claims.sessionId,
       token: minted.token,
+      disclosure: ELIZA_AI_CALL_DISCLOSURE,
     }),
     {
       headers: { "Content-Type": "text/xml" },

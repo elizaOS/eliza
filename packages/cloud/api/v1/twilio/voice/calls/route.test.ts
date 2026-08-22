@@ -18,18 +18,33 @@ const queueCall = mock(
     _method: string,
     _endpoint: string,
     _form?: URLSearchParams,
-  ) => ({ sid: "CA123", status: "queued" }),
+  ) => ({ sid: "CA11111111111111111111111111111111", status: "queued" }),
 );
 const deleteWhere = mock(async () => undefined);
 const returning = mock(async () => [{ key: "claimed" }]);
+const selectLimit = mock(async () => [] as Record<string, unknown>[]);
+const updateWhere = mock(async () => undefined);
+const outboundInserts: Record<string, unknown>[] = [];
 
 const dbWrite = {
   insert: mock(() => ({
-    values: () => ({
-      onConflictDoNothing: () => ({ returning }),
-    }),
+    values: (values: Record<string, unknown>) => {
+      if ("key" in values) {
+        return {
+          onConflictDoNothing: () => ({ returning }),
+        };
+      }
+      outboundInserts.push(values);
+      return Promise.resolve();
+    },
   })),
   delete: mock(() => ({ where: deleteWhere })),
+  select: mock(() => ({
+    from: () => ({
+      where: () => ({ limit: selectLimit }),
+    }),
+  })),
+  update: mock(() => ({ set: () => ({ where: updateWhere }) })),
 };
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({
@@ -90,15 +105,20 @@ describe("POST Twilio outbound voice call", () => {
     returning.mockClear();
     returning.mockImplementation(async () => [{ key: "claimed" }]);
     deleteWhere.mockClear();
+    selectLimit.mockClear();
+    selectLimit.mockImplementation(async () => []);
+    updateWhere.mockClear();
+    outboundInserts.length = 0;
   });
 
   test("queues the verified number through the signed realtime callback", async () => {
     const response = await callRequest({ to: "+14155550100" });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       success: true,
-      callSid: "CA123",
+      callId: expect.any(String),
+      callSid: "CA11111111111111111111111111111111",
       status: "queued",
       to: "***0100",
     });
@@ -112,6 +132,30 @@ describe("POST Twilio outbound voice call", () => {
     expect((form as URLSearchParams).get("Url")).toBe(
       "https://api.eliza.app/api/v1/twilio/voice/inbound",
     );
+    const statusCallback = new URL(
+      (form as URLSearchParams).get("StatusCallback") ?? "",
+    );
+    expect(statusCallback.origin + statusCallback.pathname).toBe(
+      "https://api.eliza.app/api/v1/twilio/voice/status",
+    );
+    expect(statusCallback.searchParams.get("requestId")).toMatch(
+      /^[0-9a-f-]{36}$/,
+    );
+    expect((form as URLSearchParams).getAll("StatusCallbackEvent")).toEqual([
+      "initiated",
+      "ringing",
+      "answered",
+      "completed",
+    ]);
+    expect(outboundInserts).toHaveLength(1);
+    expect(outboundInserts[0]).toMatchObject({
+      user_id: "11111111-1111-4111-8111-111111111111",
+      organization_id: "22222222-2222-4222-8222-222222222222",
+      from_number: "+14484080429",
+      to_number: "+14155550100",
+      call_status: "requesting",
+    });
+    expect(updateWhere).toHaveBeenCalledTimes(1);
   });
 
   test("refuses a destination other than the verified account number", async () => {
@@ -169,5 +213,46 @@ describe("POST Twilio outbound voice call", () => {
     expect(deleteWhere).toHaveBeenCalledTimes(1);
     expect(returning).toHaveBeenCalledTimes(2);
     expect(queueCall).not.toHaveBeenCalled();
+  });
+
+  test("returns the persisted call for an exact idempotent replay", async () => {
+    returning.mockResolvedValue([]);
+    selectLimit.mockResolvedValue([
+      {
+        id: "33333333-3333-4333-8333-333333333333",
+        callSid: "CA22222222222222222222222222222222",
+        status: "ringing",
+        to: "+14155550100",
+      },
+    ]);
+
+    const response = await callRequest(
+      { to: "+14155550100" },
+      "00000000-0000-4000-8000-000000000003",
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      callId: "33333333-3333-4333-8333-333333333333",
+      callSid: "CA22222222222222222222222222222222",
+      status: "ringing",
+      to: "***0100",
+      replayed: true,
+    });
+    expect(queueCall).not.toHaveBeenCalled();
+  });
+
+  test("persists a fail-closed terminal provider error", async () => {
+    queueCall.mockRejectedValueOnce(new Error("Twilio unavailable"));
+
+    const response = await callRequest({ to: "+14155550100" });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "provider_unavailable",
+    });
+    expect(outboundInserts).toHaveLength(1);
+    expect(updateWhere).toHaveBeenCalledTimes(1);
   });
 });
