@@ -76,7 +76,6 @@ export function maybeAugmentChatMessageWithLanguage(
 // ---------------------------------------------------------------------------
 
 const CHAT_DOCUMENTS_THRESHOLD = 0.2;
-const CHAT_DOCUMENTS_LIMIT = 4;
 
 // Keyword search max-normalizes BM25 within each result set, so the BEST
 // positive match is always similarity 1.0 even when the lexical overlap is a
@@ -406,9 +405,9 @@ export async function maybeAugmentChatMessageWithDocuments(
     // recall belongs to the DOCUMENTS provider, where it composes in parallel
     // with the rest of the selected context instead of serially delaying chat.
     const keywordMatches = await loadMatchesAcrossScopes(userPrompt);
-    relevantMatches = selectRelevantMatches(keywordMatches)
-      .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
-      .slice(0, CHAT_DOCUMENTS_LIMIT);
+    relevantMatches = selectRelevantMatches(keywordMatches).sort(
+      (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
+    );
   } catch (error) {
     if (options.signal?.aborted) {
       throw options.signal.reason ?? error;

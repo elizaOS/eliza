@@ -5,7 +5,7 @@
  * that identity so callers can reconcile the effect instead of retrying it.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   Action,
   ActionExample,
@@ -17,6 +17,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  buildReadView,
   buildStoreVariantBlockedMessage,
   ContentType,
   ElizaError,
@@ -346,6 +347,40 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     .join("\n");
 }
 
+function terminalAttachmentReadView(
+  outputAttachment: TerminalOutputAttachment | undefined,
+  result: CapturedTerminalRun,
+) {
+  if (!outputAttachment?.memoryId) return undefined;
+  const content = outputAttachment.attachment.text ?? "";
+  const byteLength = Buffer.byteLength(content);
+  const digest = createHash("sha256").update(content).digest("hex");
+  return buildReadView({
+    reference: {
+      kind: "attachment",
+      ref: outputAttachment.attachment.id,
+      revision: outputAttachment.memoryId,
+    },
+    slice: {
+      range: {
+        unit: "byte",
+        start: 0,
+        end: byteLength,
+        ...(!result.truncated ? { total: byteLength } : {}),
+      },
+      hasPrevious: false,
+      hasMore: false,
+      revision: outputAttachment.memoryId,
+      completeness: result.truncated ? "partial-source-loss" : "complete",
+      sliceSha256: digest,
+      ...(!result.truncated ? { sourceSha256: digest } : {}),
+      ...(result.truncated
+        ? { reason: "terminal provider reported upstream output truncation" }
+        : {}),
+    },
+  });
+}
+
 /** @internal Exported for deterministic boundary tests. */
 export function completeOutputBlock(content: string): string {
   return formatOutputBlock(content.trimEnd());
@@ -374,7 +409,7 @@ async function createCommandOutputAttachment(
     url: `memory://terminal-output/${attachmentId}`,
     title,
     source: TERMINAL_ACTION_NAME,
-    description: `Full stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
+    description: `${result.truncated ? "Truncated captured" : "Complete captured"} stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
     text: buildCommandArtifactContent(result),
     contentType: ContentType.DOCUMENT,
   };
@@ -695,6 +730,7 @@ export const terminalAction: Action = {
       message,
       capturedRun,
     );
+    const readView = terminalAttachmentReadView(outputAttachment, capturedRun);
 
     const cleanStdout =
       capturedRun.exitCode === 0 &&
@@ -714,7 +750,12 @@ export const terminalAction: Action = {
       effectReceipt.outcome === "applied" && capturedRun.exitCode === 0;
 
     return {
-      text: buildCapturedResponseText(capturedRun, outputAttachment),
+      // A ReadView always describes the exact canonical page in `text`. When
+      // persistence failed there is no restart-safe view, so retain the legacy
+      // self-contained report as the explicit non-recoverable fallback.
+      text: readView
+        ? (outputAttachment?.attachment.text ?? "")
+        : buildCapturedResponseText(capturedRun, outputAttachment),
       success: succeeded,
       userFacingText,
       // Raw stdout stays available as the deterministic fallback relay for
@@ -739,6 +780,16 @@ export const terminalAction: Action = {
         outputAttachment: outputAttachment?.attachment,
         outputAttachmentMemoryId: outputAttachment?.memoryId,
         suppressVisibleCallback: true,
+      },
+      promptData: {
+        ...(readView ? { readView } : {}),
+        terminal: {
+          runId: capturedRun.runId,
+          exitCode: capturedRun.exitCode,
+          timedOut: capturedRun.timedOut,
+          truncated: capturedRun.truncated,
+          outputReferenceAvailable: Boolean(readView),
+        },
       },
     };
   },

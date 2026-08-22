@@ -1203,7 +1203,7 @@ describe("generateChatResponse token streaming", () => {
     expect(result.localInference?.provider).toBe("mobile-local-direct-reply");
   });
 
-  it("includes only six bounded recent messages and preserves multi-sentence replies", async () => {
+  it("includes complete recent-message history and preserves multi-sentence replies", async () => {
     const roomId = stringToUuid("room");
     const memories = Array.from({ length: 8 }, (_, index) => {
       const memory = createMessageMemory({
@@ -1250,14 +1250,10 @@ describe("generateChatResponse token streaming", () => {
     expect(runtime.getMemories).toHaveBeenCalledWith({
       roomId,
       tableName: "messages",
-      limit: 7,
       includeEmbedding: false,
     });
-    expect(params.prompt).not.toContain("0:");
-    expect(params.prompt).not.toContain("1:");
-    for (let index = 2; index < 8; index += 1) {
-      expect(params.prompt).toContain(`${index}:${"x".repeat(698)}`);
-      expect(params.prompt).not.toContain(`${index}:${"x".repeat(699)}`);
+    for (let index = 0; index < 8; index += 1) {
+      expect(params.prompt).toContain(`${index}:${"x".repeat(750)}`);
     }
     expect(params.prompt).toContain("Recent conversation (oldest to newest):");
     expect(params.prompt).toContain(

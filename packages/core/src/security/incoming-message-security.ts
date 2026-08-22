@@ -185,7 +185,16 @@ export function hardenIncomingUserMessage(message: Memory): void {
 	}
 
 	if (shouldTreatSourceAsUntrusted(source)) {
-		metadata.userPayloadText = text;
+		const connectorText = message.content.currentMessageText;
+		const trimmedConnectorText =
+			typeof connectorText === "string" ? connectorText.trim() : "";
+		// Bind the connector's raw payload to the rendered text before promoting
+		// it into the trusted retained stamp. A caller-supplied mismatched field
+		// must not steer resolvers to words the model never saw.
+		metadata.userPayloadText =
+			trimmedConnectorText && text.includes(trimmedConnectorText)
+				? trimmedConnectorText
+				: text;
 		message.content.text = wrapExternalContent(text, {
 			source: resolveExternalSource(source),
 			includeWarning: true,
@@ -202,8 +211,11 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 }
 
 /**
- * Shared resolution: the retained `metadata.userPayloadText` stamp when
- * present (the trusted copy taken before wrapping); otherwise, ONLY when the
+ * Shared resolution: the retained `metadata.userPayloadText` stamp (the
+ * trusted copy taken before wrapping). The inbound hook may promote a
+ * connector's raw `content.currentMessageText` into that stamp only after
+ * binding it to the rendered text; connector-only callers get the same bound
+ * fallback before the hook runs. Otherwise, ONLY when the
  * `externalContentWrapped` stamp attests the envelope came from this module, a
  * marker parse of `content.text` (legacy messages persisted before the
  * retained field existed); otherwise the raw text. Unstamped marker-shaped
@@ -219,6 +231,18 @@ function resolveRetainedCandidate(message: Memory): string {
 	const retained = metadata.userPayloadText;
 	if (typeof retained === "string" && retained.trim().length > 0) {
 		return retained.trim();
+	}
+	// Connector-only callers can resolve a message before the inbound hook has
+	// stamped metadata. Accept their raw field only when it occurs in the
+	// rendered text; an arbitrary currentMessageText cannot override a different
+	// visible payload (for example, forged "yes" beside a destructive request).
+	const connectorText = message.content?.currentMessageText;
+	if (
+		typeof connectorText === "string" &&
+		connectorText.trim().length > 0 &&
+		text.includes(connectorText.trim())
+	) {
+		return connectorText.trim();
 	}
 	if (metadata.externalContentWrapped === true) {
 		return (extractWrappedExternalContent(text) ?? text).trim();
@@ -295,10 +319,16 @@ export function registerCoreIncomingMessageSecurityHook(
 			if (text) {
 				ctx.message.content.text = scrubIncomingMessageTextForStorage(text);
 			}
-			// The retained payload persists to memory alongside content.text and is
-			// what unwrapUserMessageText prefers, so it must pass through the same
-			// storage scrub — otherwise a pasted secret the text scrub removed
-			// survives in metadata and re-echoes through every payload consumer.
+			// The retained payload and the connector's raw text persist to memory
+			// alongside content.text and are what unwrapUserMessageText prefers,
+			// so they must pass through the same storage scrub — otherwise a
+			// pasted secret the text scrub removed survives in content/metadata
+			// and re-echoes through every payload consumer.
+			const connectorText = ctx.message.content.currentMessageText;
+			if (typeof connectorText === "string" && connectorText) {
+				ctx.message.content.currentMessageText =
+					scrubIncomingMessageTextForStorage(connectorText);
+			}
 			const metadata = ctx.message.content.metadata;
 			if (typeof metadata === "object" && metadata !== null) {
 				const record = metadata as Record<string, unknown>;

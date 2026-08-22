@@ -354,7 +354,6 @@
     "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-pty": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
-    "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-notes": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",

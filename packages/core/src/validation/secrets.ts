@@ -254,11 +254,6 @@ export const SECRET_VALIDATION_PATTERNS: Record<
 		example: "http://localhost:11434",
 	},
 
-	SIGNAL_CLI_PATH: {
-		pattern: /^[/~].+$/,
-		description: "Signal CLI path must be an absolute path or start with ~",
-		example: "/usr/local/bin/signal-cli",
-	},
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════

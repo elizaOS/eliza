@@ -65,7 +65,7 @@ function looksLikeStructuredReply(raw: string): boolean {
   );
 }
 
-function stringifyPromptValue(value: unknown, _maxLength = 2_400): string {
+function stringifyPromptValue(value: unknown): string {
   try {
     const serialized = JSON.stringify(value);
     return normalizePromptText(serialized);
@@ -301,7 +301,6 @@ export async function renderGroundedActionReply(
     runtime: args.runtime,
     message: args.message,
     state: args.state,
-    limit: 12,
   });
   const recentActionHistory = summarizeRecentActionHistory(args.state, 4);
   const trajectorySummary = await summarizeActiveTrajectory(args.runtime);

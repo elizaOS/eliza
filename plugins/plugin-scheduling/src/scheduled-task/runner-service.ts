@@ -24,6 +24,7 @@
  */
 
 import {
+  ElizaError,
   type IAgentRuntime,
   logger,
   Service,
@@ -718,8 +719,12 @@ export function getScheduledTaskRunner(
     | null
     | undefined;
   if (!service) {
-    throw new Error(
+    throw new ElizaError(
       `[${SERVICE_TYPE}] ScheduledTaskRunnerService is not registered on this runtime. Add @elizaos/plugin-scheduling to the agent's plugin list.`,
+      {
+        code: "SCHEDULED_TASK_RUNNER_UNAVAILABLE",
+        context: { serviceType: SERVICE_TYPE, agentId: opts.agentId },
+      },
     );
   }
   return service.getRunner(opts);

@@ -63,6 +63,10 @@ import { resolveStateDir } from "../utils/state-dir";
 import { isPlainObject } from "../utils/type-guards";
 import { toWellFormedUnicode } from "../utils/well-formed";
 import {
+	buildContentProjectionDiagnostics,
+	isProgressiveContentProjectionEnabled,
+} from "./content-projection-policy";
+import {
 	computePrefixHashes,
 	hashString,
 	stableJsonStringify,
@@ -90,11 +94,14 @@ import {
 	TrajectoryLimitExceeded,
 } from "./limits";
 import {
+	buildContentProjectionBudget,
 	buildModelInputBudget,
+	type ContentProjectionBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
 import {
 	cacheProviderOptions,
+	type ToolResultProjectionStats,
 	trajectoryStepsToMessages,
 } from "./planner-rendering";
 import type {
@@ -188,9 +195,9 @@ function isCodingFullSurfaceMode(): boolean {
  * a real single-file app (the reference `tetris.html` is ~4.6k tokens once
  * escaped) blows straight past the chat default of {@link DEFAULT_PLANNER_MAX_TOKENS}
  * (1024), which truncates the tool-call argument mid-stream so the model either
- * narrates without ever completing the call or the provider 400s. opencode on
- * the same Cerebras `zai-glm-4.7` builds the same app reliably precisely because
- * it does not clamp the file-emitting completion to a chat-sized budget.
+ * narrates without ever completing the call or the provider 400s. Coding CLIs
+ * on the same Cerebras `zai-glm-4.7` build the same app reliably precisely
+ * because they do not clamp the file-emitting completion to a chat-sized budget.
  * Overridable via `ELIZA_CODING_PLANNER_MAX_TOKENS`. See issue #10132.
  */
 const DEFAULT_CODING_PLANNER_MAX_TOKENS = 16384;
@@ -557,7 +564,39 @@ async function runPlannerLoopIterations(
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
 			const synthesizingRequiredModelReply = pendingRequiredModelReply;
-			const plannerOutput = await callPlanner({
+			// Providers occasionally 400 with "Failed to generate tool_calls …
+			// tool_choice = 'required'": the model simply failed to emit a call
+			// this sample (Cerebras/gemma, live 2026-08-20 — a casual "surprise
+			// me" ask died to a canned apology). One bounded retry recovers it;
+			// a second identical failure propagates as before.
+			const callPlannerWithToolChoiceRetry = async (
+				args: Parameters<typeof callPlanner>[0],
+			): ReturnType<typeof callPlanner> => {
+				try {
+					return await callPlanner(args);
+				} catch (error) {
+					// The AI SDK often masks the cause: message says "Bad Request"
+					// while the actionable text lives on responseBody / cause. Match
+					// across all of them or the retry never engages (live 2026-08-20:
+					// two identical 400s, zero retries logged).
+					const detailParts = [
+						error instanceof Error ? error.message : String(error),
+						String((error as { responseBody?: unknown }).responseBody ?? ""),
+						String(
+							(error as { cause?: { message?: unknown } }).cause?.message ?? "",
+						),
+					];
+					if (!/failed to generate tool_call/i.test(detailParts.join(" "))) {
+						throw error;
+					}
+					params.runtime.logger?.warn?.(
+						{ src: "planner-loop", iteration },
+						"provider failed to generate a required tool call; retrying once",
+					);
+					return await callPlanner(args);
+				}
+			};
+			const plannerOutput = await callPlannerWithToolChoiceRetry({
 				runtime: params.runtime,
 				context: trajectory.context,
 				trajectory,
@@ -1753,18 +1792,34 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
+	projectionBudget?: ContentProjectionBudget;
+	omitRecoverableText?: boolean;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
 	cacheKeySegments: PromptSegment[];
+	projectionStats: ToolResultProjectionStats;
 } {
 	const renderedContext = renderContextObject(params.context);
 	const template = params.template ?? plannerTemplate;
 	const instructions = appendMandatoryPlannerPolicy(
 		template.split("context_object:")[0] ?? template,
 	).trim();
+	let projectionStats: ToolResultProjectionStats = {
+		resultCount: 0,
+		pagesIncluded: 0,
+		pagesOmitted: 0,
+		omissionReasons: {},
+	};
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		redactText: composeToolDiagnosticRedactor(params.runtime),
+		...(params.projectionBudget
+			? { projectionBudget: params.projectionBudget }
+			: {}),
+		...(params.omitRecoverableText ? { omitRecoverableText: true } : {}),
+		onProjectionStats: (stats) => {
+			projectionStats = stats;
+		},
 	});
 	// Action names + parameter schemas now ride directly on the tools array
 	// (each Action is exposed as its own native tool), so there is no separate
@@ -1821,7 +1876,7 @@ function renderPlannerModelInput(params: {
 		dynamicBlocks: [],
 		stepMessages,
 	});
-	return { messages, promptSegments, cacheKeySegments };
+	return { messages, promptSegments, cacheKeySegments, projectionStats };
 }
 
 function compactionReserveForBudget(
@@ -2307,27 +2362,56 @@ async function callPlanner(params: {
 	 */
 	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
-	const renderedInput = renderPlannerModelInput({
-		context: params.context,
-		trajectory: params.trajectory,
-		template: resolveOptimizedPlannerTemplate(params.runtime),
-		runtime: params.runtime,
-	});
-	const modelInputBudget = buildModelInputBudget({
-		messages: renderedInput.messages,
-		promptSegments: renderedInput.promptSegments,
+	const budgetOptions = {
 		tools: params.tools,
-		// `modelName` lets the per-model context-window lookup fire.
-		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
-		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
-		// spread is always non-empty; the lookup will still override it when
-		// contextWindowModelName resolves.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
 			: {}),
 		reserveTokens: compactionReserveForBudget(params.config),
+	};
+	const projectionEnabled = isProgressiveContentProjectionEnabled(
+		params.runtime,
+	);
+	const renderArgs = {
+		context: params.context,
+		trajectory: params.trajectory,
+		template: resolveOptimizedPlannerTemplate(params.runtime),
+		runtime: params.runtime,
+	};
+	const baselineInput = renderPlannerModelInput({
+		...renderArgs,
+		...(projectionEnabled ? { omitRecoverableText: true } : {}),
 	});
+	const baselineBudget = buildModelInputBudget({
+		messages: baselineInput.messages,
+		promptSegments: baselineInput.promptSegments,
+		...budgetOptions,
+	});
+	const projectionBudget = projectionEnabled
+		? buildContentProjectionBudget({
+				budget: baselineBudget,
+				resultCount: baselineInput.projectionStats.resultCount,
+			})
+		: undefined;
+	const renderedInput = projectionBudget
+		? renderPlannerModelInput({ ...renderArgs, projectionBudget })
+		: baselineInput;
+	const modelInputBudget = buildModelInputBudget({
+		messages: renderedInput.messages,
+		promptSegments: renderedInput.promptSegments,
+		...budgetOptions,
+	});
+	const contentProjection = buildContentProjectionDiagnostics({
+		enabled: projectionEnabled,
+		baselineBudget,
+		...(projectionBudget ? { projectionBudget } : {}),
+		stats: renderedInput.projectionStats,
+	});
+	params.runtime.logger?.debug?.(
+		{ src: "planner-loop", contentProjection },
+		"Computed progressive content projection",
+	);
 	const prefixHashes = computePrefixHashes(renderedInput.promptSegments);
 	const cachePrefixHashes = computePrefixHashes(renderedInput.cacheKeySegments);
 	const prefixHash =
@@ -2370,6 +2454,7 @@ async function callPlanner(params: {
 			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
 				.eliza ?? {}),
 			thinking: "off",
+			contentProjection,
 		},
 	};
 	if (hasTools) {
@@ -3574,15 +3659,94 @@ function latestUnresolvedFailedNonTerminalToolStep(
 		) {
 			continue;
 		}
+		// A tool-declared read-only failure (FILE ls/read/grep/glob miss) leaves
+		// no broken state and must not own the turn's terminal message: an
+		// exploratory first-step miss otherwise reads as "the last step failed"
+		// over a finished deliverable (live 2026-08-20).
+		if (
+			step.result.success === false &&
+			(step.result.data as { readOnlyOperation?: unknown } | undefined)
+				?.readOnlyOperation === true
+		) {
+			continue;
+		}
+		// A tool-declared COACHING failure (read-before-write guard) steers the
+		// model and leaves no broken state either — same authority rule.
+		if (
+			step.result.success === false &&
+			(step.result.data as { coachingFailure?: unknown } | undefined)
+				?.coachingFailure === true
+		) {
+			continue;
+		}
 		const operationKey = plannerToolOperationKey(step.toolCall, step.result);
 		if (step.result.success === false || step.result.error != null) {
 			unresolvedByOperation.delete(operationKey);
 			unresolvedByOperation.set(operationKey, step);
 		} else if (step.result.success === true) {
 			unresolvedByOperation.delete(operationKey);
+			resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
 		}
 	}
 	return [...unresolvedByOperation.values()].at(-1);
+}
+
+/**
+ * A successful SHELL run also resolves an earlier failed run whose exact
+ * command it re-executes with a corrective prefix. The operation key includes
+ * the command payload, so the canonical shell recovery shape — fail on
+ * `git commit …`, retry as `git config … && git commit …` — never matches by
+ * key, the recovered failure stayed "unresolved", and failure authority
+ * replaced the model's truthful terminal REPLY with the generic failed-step
+ * sentence (live 2026-08-18: the sub-agent committed its README change and
+ * the user was told the runtime step failed). Verbatim containment of the
+ * failed command at a token boundary, in the same cwd, is evidence the same
+ * operation re-ran and succeeded; unrelated sibling work still cannot
+ * launder a failure it did not re-execute.
+ */
+function resolveShellFailuresSubsumedBy(
+	step: PlannerStep,
+	unresolvedByOperation: Map<string, PlannerStep>,
+): void {
+	const call = step.toolCall;
+	if (call?.name.toUpperCase() !== "SHELL") return;
+	const command = shellCommandParam(call);
+	if (!command) return;
+	const cwd = shellCwdParam(call);
+	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
+		const failedCall = failed.toolCall;
+		if (failedCall?.name.toUpperCase() !== "SHELL") continue;
+		const failedCommand = shellCommandParam(failedCall);
+		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
+		if (containsCommandVerbatim(command, failedCommand)) {
+			unresolvedByOperation.delete(key);
+		}
+	}
+}
+
+function shellCommandParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.command;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+function shellCwdParam(call: PlannerToolCall): string {
+	const value = (call.params as Record<string, unknown> | undefined)?.cwd;
+	return typeof value === "string" ? value.trim() : "";
+}
+
+/** True when `needle` appears in `haystack` verbatim on shell token
+ *  boundaries (start/end, whitespace, or a control operator), so a failed
+ *  `git` cannot be "resolved" by an unrelated command that merely contains
+ *  those letters inside a longer word. */
+function containsCommandVerbatim(haystack: string, needle: string): boolean {
+	if (haystack === needle) return true;
+	// A corrective prefix is evidence only when the failed command is the final
+	// shell list element. Mere token-boundary containment is unsafe: a successful
+	// `echo <failed command>` or quoted diagnostic would otherwise launder the
+	// failure without re-executing it.
+	if (!haystack.endsWith(needle)) return false;
+	const prefix = haystack.slice(0, -needle.length).trimEnd();
+	return prefix.endsWith("&&") || prefix.endsWith("||") || prefix.endsWith(";");
 }
 
 /**

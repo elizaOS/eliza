@@ -38,11 +38,12 @@ function runtimeWithDocumentQuery(
 	return {
 		agentId,
 		adapter: {
-			documentListQueryCapability: 3,
+			documentListQueryCapability: 4,
 			queryDocuments,
 			queryDocumentFragments: vi.fn(async () => []),
 			getDocument: vi.fn(async () => null),
 			compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+			updateDocumentDirectGrants: vi.fn(async () => ({ status: "ok" })),
 			replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 			deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 		},
@@ -216,11 +217,12 @@ describe("pinned DOCUMENTS provider knowledge", () => {
 		const runtime = {
 			agentId,
 			adapter: {
-				documentListQueryCapability: 3,
+				documentListQueryCapability: 4,
 				queryDocuments: queryDocumentsMock,
 				queryDocumentFragments: vi.fn(async () => []),
 				getDocument: vi.fn(async () => null),
 				compareAndSwapDocument: vi.fn(async () => ({ status: "ok" })),
+				updateDocumentDirectGrants: vi.fn(async () => ({ status: "ok" })),
 				replaceDocumentRevision: vi.fn(async () => ({ status: "ok" })),
 				deleteDocumentWithSnapshot: vi.fn(async () => ({ status: "ok" })),
 			},

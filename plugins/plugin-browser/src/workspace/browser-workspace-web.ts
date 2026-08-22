@@ -966,10 +966,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
             collectBrowserWorkspaceInspectElements(document),
           ),
           value: {
-            bodyText: buildBrowserWorkspaceDocumentSnapshotText(document).slice(
-              0,
-              800,
-            ),
+            bodyText: buildBrowserWorkspaceDocumentSnapshotText(document),
             title: tab.title,
             url: tab.url,
           },

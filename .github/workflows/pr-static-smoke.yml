@@ -1,0 +1,150 @@
+# This workflow is the sole pull-request and merge-candidate validation authority.
+# It checks mergeability, changed secrets and workflow syntax, then builds and
+# statically validates the affected workspace closure without running test,
+# provider, device, deployment, or destructive-effect lanes.
+name: PR Static Smoke
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
+
+concurrency:
+  group: pr-static-smoke-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.14"
+  NODE_VERSION: "24.15.0"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=8192"
+
+jobs:
+  static-smoke:
+    name: All Tests Passed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+
+      - name: Resolve and validate candidate diff
+        id: diff
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          test -n "$merge_base"
+          git merge-tree --write-tree "$BASE_SHA" "$HEAD_SHA" >/dev/null
+          git diff --check "$merge_base"..."$HEAD_SHA"
+
+          status=0
+          git grep -n -E '^(<{7}|>{7})( |$)' "$HEAD_SHA" -- . || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "::error::Candidate source contains unresolved merge-conflict markers."
+            exit 1
+          fi
+          if [ "$status" -gt 1 ]; then
+            echo "::error::Merge-conflict marker scan failed with exit $status."
+            exit 1
+          fi
+
+          echo "merge_base=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./.github/scripts/install-gitleaks.sh "$RUNNER_TEMP/gitleaks"
+          echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
+
+      - name: Scan candidate commits for secrets
+        shell: bash
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: >-
+          gitleaks detect
+          --config .gitleaks.toml
+          --source .
+          --redact
+          --no-banner
+          --log-opts "${MERGE_BASE}..${HEAD_SHA}"
+
+      - name: Install pinned workflow linters
+        shell: bash
+        run: .github/scripts/install-workflow-linters.sh "$RUNNER_TEMP/workflow-linters"
+
+      - name: Lint changed workflows
+        shell: bash
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          workflows=()
+          while IFS= read -r -d '' file; do
+            workflows+=("$file")
+          done < <(git diff --diff-filter=ACMRT --name-only -z "$MERGE_BASE"..."$HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml')
+          if [ "${#workflows[@]}" -eq 0 ]; then
+            echo "No workflow definitions changed."
+            exit 0
+          fi
+          "$RUNNER_TEMP/workflow-linters/actionlint" \
+            -config-file .github/actionlint.yaml \
+            "${workflows[@]}"
+
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Validate CI Bun version pin contract
+        run: node packages/scripts/ci-bun-version-contract.mjs --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
+
+      - name: Upload Bun runtime resolution inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: bun-runtime-inventory
+          path: ${{ runner.temp }}/bun-runtime-inventory.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Build core contract
+        run: bun run build:core
+
+      - name: Lint affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.mjs run lint:check --concurrency=4 --affected
+
+      - name: Typecheck affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
+
+      - name: Build affected workspace closure
+        env:
+          TURBO_SCM_BASE: ${{ steps.diff.outputs.merge_base }}
+        run: node packages/scripts/run-turbo.mjs run build --concurrency=4 --affected --output-logs=errors-only

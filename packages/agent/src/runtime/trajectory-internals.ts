@@ -112,7 +112,7 @@ export type PersistedStep = TrajectoryStep & {
   childSteps?: string[];
   /** Full inline script source for script-backed dedicated rows. */
   script?: string;
-  /** sha256 hex digest of the original script when it exceeded the cap. */
+  /** Legacy digest retained when reading rows written before full script preservation. */
   scriptHash?: string;
   /** Skill names the step relied on (populated by Track C). */
   usedSkills?: string[];
@@ -1561,10 +1561,9 @@ function snapshotCaptureParams(
 }
 
 /**
- * Snapshot an LLM capture with its completeness fields first in the shared
- * byte budget. Optional prompts and metadata may exhaust that budget, but the
- * persisted record must still identify the model, purpose, action type, and
- * bounded response without adding data after sanitization.
+ * Snapshot a complete LLM capture after JSON-safe normalization. Field order
+ * keeps the required completeness contract visible without imposing a byte
+ * budget or dropping optional prompt and metadata fields.
  */
 function snapshotLlmCaptureParams(
   params: Record<string, unknown>,
@@ -1817,17 +1816,9 @@ function validateLlmCapture(
 }
 
 /**
- * Snapshot a provider capture with its completeness fields first in the shared
- * byte budget, mirroring {@link snapshotLlmCaptureParams}.
- *
- * `data` carries the provider's rendered output and routinely dominates the
- * row budget, and the canonical producer shape emits it BEFORE the required
- * `purpose` string. Bounding in producer order therefore starved `purpose`
- * into a truncation marker, and re-validating the deliberately lossy snapshot
- * against the same completeness contract discarded the ENTIRE provider access
- * — on exactly the context-heavy turns the record exists to explain. Reserving
- * the small required strings first keeps the record complete and lets `data`
- * degrade to a bounded object instead.
+ * Snapshot a complete provider capture after JSON-safe normalization, mirroring
+ * {@link snapshotLlmCaptureParams}. Required fields are ordered first for
+ * readability; provider data remains intact regardless of its serialized size.
  */
 function snapshotProviderCaptureParams(
   params: Record<string, unknown>,

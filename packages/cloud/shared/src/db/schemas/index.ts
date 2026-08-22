@@ -96,6 +96,7 @@ export * from "./organizations";
 export * from "./payment-request-receipts";
 export * from "./payment-requests";
 export * from "./personal-account-convergences";
+export * from "./personal-shared-groups";
 export * from "./phone-gateway-devices";
 export * from "./pii-scrub-markers";
 export * from "./platform-credentials";

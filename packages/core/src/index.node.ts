@@ -143,6 +143,9 @@ export type {
 	MessageAdapterCapabilities,
 	MessageRef,
 	MessageSource,
+	ReadMessageControl,
+	ReadMessageRequest,
+	ReadMessageResult,
 	ScoreContext,
 	SearchMessagesFilters,
 	SendPolicy,
@@ -337,6 +340,10 @@ export * from "./search/keyless-web-search";
 // Export security utilities
 export * from "./security";
 export * from "./security/basic-email";
+// Envelope unwrap for orchestration surfaces that forward a user message
+// onward (deterministic follow-up sends must never embed the security banner
+// in a child task — live 2026-08-21).
+export { extractWrappedExternalContent } from "./security/external-content";
 export {
 	isSensitiveKeyName,
 	redactLogArgs,

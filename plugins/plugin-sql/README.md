@@ -12,6 +12,24 @@ bun add @elizaos/plugin-sql
 
 This plugin registers a `DatabaseAdapter` with the elizaOS agent runtime so that all core runtime persistence (memories, entities, rooms, tasks, cache, logs, relationships, etc.) works against a real SQL backend. On Node/Bun it selects PostgreSQL when `POSTGRES_URL` is set, otherwise falls back to embedded PGlite. In the browser build it always uses PGlite (WASM).
 
+## Identity authority
+
+The plugin registers `SqlIdentityResolutionService` as the runtime's canonical
+identity authority. Its private person-link endpoints let an authenticated
+OWNER or ADMIN attest that two preserved principals represent the same person
+without merging or deleting either principal:
+
+- `POST /api/identity/person-links/attest` accepts the two principal IDs, the
+  exact expected identity generation, a reason, and an idempotency key. Actor,
+  role, authority kind, and transport evidence are derived from a required
+  authenticated `AccessContext`; missing context fails closed.
+- `GET /api/identity/person-links/verify` verifies the pair at an exact
+  generation and returns `attested` or `not_attested`.
+
+The attestation request rejects unknown fields, including client-authored
+`confirmed`, `verified`, actor, and role values. Attestations are immutable
+audit evidence and never create canonical redirects or merge-journal rows.
+
 ## Database Schema
 
 The plugin uses the following main tables:
@@ -104,6 +122,12 @@ export const plugin = {
 ```
 
 Destructive changes (column drops, type changes) are blocked by default. Set `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` to allow them.
+
+Document list, lookup, and fragment queries authorize each parent before
+pagination, counts, bytes, or ranking. A parent `roomId` is its room entitlement
+and is joined to current requester membership. Validated
+`directGrantEntityIds` provide read-only access independent of room membership,
+but never expose `agent-private` documents or grant mutation authority.
 
 Message-search DDL is also guarded on production Postgres. The generated column and GIN indexes are still installed automatically for development/test and embedded PGlite. For production Postgres, schedule the table rewrite/index creation and run with `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true` once the deployment window is approved.
 
