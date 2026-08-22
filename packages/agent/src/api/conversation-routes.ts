@@ -4794,9 +4794,9 @@ export async function handleConversationRoutes(
         runtimeTurnLease = null;
       }
     } catch (streamError) {
-      // error-policy:J2 context-adding rethrow: the terminal SSE `error` frame
-      // is emitted here, then the original failure is rethrown unchanged to the
-      // J1 HTTP boundary.
+      // error-policy:J1 boundary translation: emit the terminal SSE `error`
+      // frame owned by this streaming transport, then rethrow the original
+      // failure unchanged to the outer HTTP boundary for logging.
       // Everything past `initSse` reports failure as a structured SSE `error`
       // event; a throw out of turn setup must not become the one silent exit.
       try {
