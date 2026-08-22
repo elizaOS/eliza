@@ -1080,13 +1080,15 @@ describe("voice-session WS lifecycle", () => {
     const navigation = client.controlFrames.filter(
       (frame) => frame.t === "navigate_view",
     );
-    expect(firstText).toBeDefined();
+    if (!firstText) {
+      throw new Error("Expected an llm_first_text control frame");
+    }
     expect(navigation).toEqual([
       {
         t: "navigate_view",
         viewId: "browser",
         viewPath: "/browser?browse=%2Fapi%2Fapps%2Flocal%2Fdemo%2F",
-        traceId: firstText?.traceId,
+        traceId: firstText.traceId,
       },
     ]);
   });
