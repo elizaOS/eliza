@@ -219,17 +219,9 @@ export function formatActionResultsForPrompt(
 				lines.push(`Error: ${formatCompleteActionResultText(errorText, 0)}`);
 			}
 
-			if (includeData && result.data && Object.keys(result.data).length > 0) {
-				lines.push(`Data: ${formatActionResultDataForPrompt(result.data)}`);
-			}
-			if (
-				includeData &&
-				result.promptData &&
-				Object.keys(result.promptData).length > 0
-			) {
-				lines.push(
-					`Prompt data: ${formatActionResultDataForPrompt(result.promptData)}`,
-				);
+			const modelData = result.promptData ?? result.data;
+			if (includeData && modelData && Object.keys(modelData).length > 0) {
+				lines.push(`Data: ${formatActionResultDataForPrompt(modelData)}`);
 			}
 
 			const outputReference = getActionResultReference(result, "text");
