@@ -59,8 +59,9 @@ export interface SshConnectInput {
   expectedFingerprint: string;
 }
 
-export interface LinuxRemoteTargetView {
+export interface DesktopRemoteTargetView {
   hostId: string | null;
+  platform: "macos" | "windows" | "linux";
   enrolled: boolean;
   running: boolean;
   activeSessions: number;
@@ -71,7 +72,7 @@ export interface DevicesRuntimesSectionProps {
   targets: DeviceRuntimeTarget[];
   pairing?: DevicePairingView | null;
   sshInspection?: SshHostInspection | null;
-  linuxTarget?: LinuxRemoteTargetView | null;
+  desktopTarget?: DesktopRemoteTargetView | null;
   busy?: boolean;
   error?: string | null;
   cloudState?: "loading" | "available" | "signed-out" | "error";
@@ -86,17 +87,17 @@ export interface DevicesRuntimesSectionProps {
     sshPort: number;
   }) => void | Promise<void>;
   onConnectSsh: (input: SshConnectInput) => void | Promise<void>;
-  onEnrollLinuxTarget?: () => void | Promise<void>;
-  onActivateLinuxTarget?: (input: {
+  onEnrollDesktopTarget?: () => void | Promise<void>;
+  onActivateDesktopTarget?: (input: {
     sessionId: string;
     code: string;
   }) => void | Promise<void>;
-  onSetLinuxTargetRunning?: (running: boolean) => void | Promise<void>;
-  onRevokeLinuxTarget?: () => void | Promise<void>;
+  onSetDesktopTargetRunning?: (running: boolean) => void | Promise<void>;
+  onRevokeDesktopTarget?: () => void | Promise<void>;
   className?: string;
 }
 
-function LinuxTargetPanel({
+function DesktopTargetPanel({
   target,
   pairing,
   busy,
@@ -105,7 +106,7 @@ function LinuxTargetPanel({
   onSetRunning,
   onRevoke,
 }: {
-  target: LinuxRemoteTargetView;
+  target: DesktopRemoteTargetView;
   pairing?: DevicePairingView | null;
   busy: boolean;
   onEnroll?: () => void | Promise<void>;
@@ -122,7 +123,7 @@ function LinuxTargetPanel({
   const localPairing = pairing?.hostId === target.hostId ? pairing : null;
   return (
     <SettingsGroup
-      title="Share this Linux runtime"
+      title="Share this computer"
       description="Enroll this computer as an encrypted remote target, then approve a one-use pairing code shown on your controller device."
       footer="The host token and target private keys stay in the native OS credential store."
       bare
@@ -131,7 +132,11 @@ function LinuxTargetPanel({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-txt-strong">
-              This Linux computer
+              {target.platform === "macos"
+                ? "This Mac"
+                : target.platform === "windows"
+                  ? "This Windows PC"
+                  : "This Linux computer"}
             </p>
             <p className="mt-1 text-xs text-muted">
               {target.enrolled
@@ -233,7 +238,7 @@ function LinuxTargetPanel({
                     })
                   }
                 >
-                  Approve this pairing on this Linux computer
+                  Approve this pairing on this computer
                 </Button>
               </div>
             ) : null}
@@ -252,12 +257,12 @@ function LinuxTargetPanel({
               }}
             >
               <label
-                htmlFor="linux-target-session"
+                htmlFor="desktop-target-session"
                 className="grid gap-1.5 text-xs text-muted"
               >
                 Pairing session ID
                 <Input
-                  id="linux-target-session"
+                  id="desktop-target-session"
                   required
                   density="relaxed"
                   value={sessionId}
@@ -267,12 +272,12 @@ function LinuxTargetPanel({
                 />
               </label>
               <label
-                htmlFor="linux-target-code"
+                htmlFor="desktop-target-code"
                 className="grid gap-1.5 text-xs text-muted"
               >
                 6-digit code
                 <Input
-                  id="linux-target-code"
+                  id="desktop-target-code"
                   required
                   density="relaxed"
                   value={code}
@@ -797,7 +802,7 @@ export function DevicesRuntimesSection({
   targets,
   pairing,
   sshInspection,
-  linuxTarget,
+  desktopTarget,
   busy = false,
   error,
   cloudState = "loading",
@@ -809,10 +814,10 @@ export function DevicesRuntimesSection({
   onRemove,
   onInspectSsh,
   onConnectSsh,
-  onEnrollLinuxTarget,
-  onActivateLinuxTarget,
-  onSetLinuxTargetRunning,
-  onRevokeLinuxTarget,
+  onEnrollDesktopTarget,
+  onActivateDesktopTarget,
+  onSetDesktopTargetRunning,
+  onRevokeDesktopTarget,
   className,
 }: DevicesRuntimesSectionProps) {
   const { t } = useTranslation();
@@ -885,15 +890,15 @@ export function DevicesRuntimesSection({
           ))}
         </div>
       </SettingsGroup>
-      {linuxTarget ? (
-        <LinuxTargetPanel
-          target={linuxTarget}
+      {desktopTarget ? (
+        <DesktopTargetPanel
+          target={desktopTarget}
           pairing={pairing}
           busy={busy}
-          onEnroll={onEnrollLinuxTarget}
-          onActivate={onActivateLinuxTarget}
-          onSetRunning={onSetLinuxTargetRunning}
-          onRevoke={onRevokeLinuxTarget}
+          onEnroll={onEnrollDesktopTarget}
+          onActivate={onActivateDesktopTarget}
+          onSetRunning={onSetDesktopTargetRunning}
+          onRevoke={onRevokeDesktopTarget}
         />
       ) : null}
       <AdvancedSsh

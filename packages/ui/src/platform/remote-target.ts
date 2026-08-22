@@ -16,6 +16,7 @@ export async function enrollRemoteTarget(input: {
   ownerId: string;
   ownerAccessToken: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
 }): Promise<{ hostId: string; identity: RemoteTargetPublicIdentity }> {
   const result = await invokeDesktopBridgeRequest<{
     hostId: string;
@@ -27,7 +28,7 @@ export async function enrollRemoteTarget(input: {
     params: input,
   });
   if (!result)
-    throw new Error("Linux remote-target enrollment is unavailable.");
+    throw new Error("Desktop remote-target enrollment is unavailable.");
   return result;
 }
 

@@ -119,8 +119,7 @@ describe("Devices & Runtimes reconciliation", () => {
         events.push("revoke");
       }),
       clearSession: vi.fn(async () => events.push("clear")),
-      stopSsh: vi.fn(),
-      deleteCredential: vi.fn(),
+      removeSsh: vi.fn(),
       removeProfile,
     });
     expect(events).toEqual(["revoke", "clear", "remove"]);
@@ -132,17 +131,16 @@ describe("Devices & Runtimes reconciliation", () => {
           throw new Error("Cloud unavailable");
         }),
         clearSession: vi.fn(),
-        stopSsh: vi.fn(),
-        deleteCredential: vi.fn(),
+        removeSsh: vi.fn(),
         removeProfile: failedRemove,
       }),
     ).rejects.toThrow("Cloud unavailable");
     expect(failedRemove).not.toHaveBeenCalled();
   });
 
-  it("revokes a Linux host in Cloud before native credential cleanup", async () => {
+  it("revokes a desktop host in Cloud before native credential cleanup", async () => {
     const events: string[] = [];
-    await devicesRuntimesInternals.revokeLinuxHostCloudFirst("host-1", {
+    await devicesRuntimesInternals.revokeDesktopHostCloudFirst("host-1", {
       revokeHost: vi.fn(async () => {
         events.push("cloud");
       }),
@@ -155,7 +153,7 @@ describe("Devices & Runtimes reconciliation", () => {
 
     const finalizeLocal = vi.fn();
     await expect(
-      devicesRuntimesInternals.revokeLinuxHostCloudFirst("host-1", {
+      devicesRuntimesInternals.revokeDesktopHostCloudFirst("host-1", {
         revokeHost: vi.fn(async () => {
           throw new Error("Cloud unavailable");
         }),
@@ -165,32 +163,27 @@ describe("Devices & Runtimes reconciliation", () => {
     expect(finalizeLocal).not.toHaveBeenCalled();
   });
 
-  it("preserves the SSH start failure when credential cleanup also fails", async () => {
-    const startCause = new Error("Tunnel failed");
-    const cleanupCause = new Error("Credential cleanup failed");
-    const operation = devicesRuntimesInternals.startSshWithCredentialCleanup(
-      "runtime-1",
-      {
-        label: "Studio",
-        target: "studio.example.com",
-        sshPort: 22,
-        remoteApiPort: 3000,
-        expectedFingerprint: "SHA256:trusted",
-        accessToken: "secret-token",
-      },
-      {
-        start: vi.fn(async () => {
-          throw startCause;
-        }),
-        deleteCredential: vi.fn(async () => {
-          throw cleanupCause;
-        }),
-      },
-    );
-
-    await expect(operation).rejects.toMatchObject({
-      cause: startCause,
-      errors: [startCause, cleanupCause],
-    });
+  it("requires every persisted SSH cleanup receipt to finish", () => {
+    expect(() =>
+      devicesRuntimesInternals.requireCompleteSshCleanup([
+        {
+          complete: false,
+          failures: [],
+          receipt: {
+            version: 2,
+            operationId: "operation-1",
+            state: "removal",
+            runtimeId: "runtime-1",
+            profileId: "runtime-1",
+            createdAt: "2026-08-22T00:00:00.000Z",
+            pending: {
+              stopTunnel: true,
+              deleteCredential: false,
+              removeProfile: false,
+            },
+          },
+        },
+      ]),
+    ).toThrow(/cleanup is incomplete/i);
   });
 });

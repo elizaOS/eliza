@@ -46,6 +46,7 @@ export interface RemoteTargetEnrollmentRequest {
   ownerId: string;
   deviceId: string;
   displayName: string;
+  platform: "macos" | "windows" | "linux";
   runtimeKeyId: string;
   signingPublicKeyJwk: JsonWebKey;
   encryptionPublicKeyJwk: JsonWebKey;
@@ -290,7 +291,7 @@ export class HttpRemoteTargetRelayTransport
     const expectedPublic = {
       deviceId: input.deviceId,
       displayName: input.displayName,
-      platform: "linux",
+      platform: input.platform,
       connectionMode: "relay",
       runtimeKeyId: input.runtimeKeyId,
       signingPublicKeyJwk: input.signingPublicKeyJwk,
@@ -328,7 +329,7 @@ export class HttpRemoteTargetRelayTransport
         body: JSON.stringify({
           deviceId: input.deviceId,
           displayName: input.displayName,
-          platform: "linux",
+          platform: input.platform,
           connectionMode: "relay",
           runtimeKeyId: input.runtimeKeyId,
           signingPublicKeyJwk: input.signingPublicKeyJwk,

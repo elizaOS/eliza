@@ -42,6 +42,14 @@ import {
   stopSshRuntime,
 } from "../../platform/ssh-runtime";
 import {
+  removeSshRuntime,
+  resumePendingSshRuntimeCleanups,
+  retrySshRuntimeCleanup,
+  type SshRuntimeCleanupResult,
+  type SshRuntimeLifecycleDependencies,
+  setupSshRuntime,
+} from "../../platform/ssh-runtime-lifecycle";
+import {
   type AgentProfile,
   addAgentProfile,
   loadAgentProfileRegistry,
@@ -49,10 +57,10 @@ import {
   switchRuntimeNonDestructive,
 } from "../../state";
 import {
+  type DesktopRemoteTargetView,
   type DevicePairingView,
   type DeviceRuntimeTarget,
   DevicesRuntimesSection,
-  type LinuxRemoteTargetView,
   type SshConnectInput,
 } from "./DevicesRuntimesSection";
 
@@ -68,44 +76,21 @@ function isCloudAuthenticationRequired(cause: unknown): boolean {
   );
 }
 
-async function startSshWithCredentialCleanup(
-  runtimeId: string,
-  input: SshConnectInput,
-  dependencies: {
-    start: typeof startSshRuntime;
-    deleteCredential: typeof deleteRuntimeCredentialRecord;
-  } = {
-    start: startSshRuntime,
-    deleteCredential: deleteRuntimeCredentialRecord,
-  },
-): Promise<void> {
-  try {
-    await dependencies.start({
-      runtimeId,
-      target: input.target,
-      sshPort: input.sshPort,
-      remoteApiPort: input.remoteApiPort,
-      expectedFingerprint: input.expectedFingerprint,
-      identityFile: input.identityFile,
-      credentialRef: runtimeId,
-    });
-  } catch (cause) {
-    if (input.accessToken) {
-      try {
-        await dependencies.deleteCredential(runtimeId);
-      } catch (cleanupCause) {
-        // error-policy:J2 preserve both the primary tunnel failure and the
-        // security-relevant credential cleanup failure.
-        throw new AggregateError(
-          [cause, cleanupCause],
-          "SSH connection failed and its stored credential could not be removed.",
-          { cause },
-        );
-      }
-    }
-    // error-policy:J2 the primary start failure crosses unchanged after
-    // successful cleanup.
-    throw cause;
+const SSH_RUNTIME_LIFECYCLE_DEPENDENCIES: SshRuntimeLifecycleDependencies = {
+  startTunnel: startSshRuntime,
+  stopTunnel: stopSshRuntime,
+  storeCredential: storeRuntimeCredential,
+  deleteCredentialRecord: deleteRuntimeCredentialRecord,
+  addProfile: addAgentProfile,
+  removeProfile: removeAgentProfile,
+  loadRegistry: loadAgentProfileRegistry,
+};
+
+function requireCompleteSshCleanup(results: SshRuntimeCleanupResult[]): void {
+  if (results.some((result) => !result.complete)) {
+    throw new Error(
+      "SSH cleanup is incomplete. Refresh to retry before adding another server.",
+    );
   }
 }
 
@@ -116,6 +101,13 @@ function platformName(platform: RemoteHostSummary["platform"]): string {
   if (platform === "ios") return "iPhone or iPad";
   if (platform === "android") return "Android device";
   return "Web runtime";
+}
+
+function localDesktopPlatform(): "macos" | "windows" | "linux" {
+  const platform = navigator.platform.toLowerCase();
+  if (platform.includes("win")) return "windows";
+  if (platform.includes("linux")) return "linux";
+  return "macos";
 }
 
 function requireHostCreatedAt(value: string): number {
@@ -265,8 +257,7 @@ interface RuntimeRemovalDependencies {
     controllerDeviceId: string;
     sessionId: string;
   }) => Promise<unknown>;
-  stopSsh: (runtimeId: string) => Promise<unknown>;
-  deleteCredential: (runtimeId: string) => Promise<unknown>;
+  removeSsh: (profile: AgentProfile) => Promise<void>;
   removeProfile: (profileId: string) => void;
 }
 
@@ -283,13 +274,13 @@ async function removeRuntimeWithAuthority(
     });
   }
   if (profile.connectionMode === "ssh") {
-    await dependencies.stopSsh(profile.id);
-    await dependencies.deleteCredential(profile.credentialRef ?? profile.id);
+    await dependencies.removeSsh(profile);
+    return;
   }
   dependencies.removeProfile(profile.id);
 }
 
-async function revokeLinuxHostCloudFirst(
+async function revokeDesktopHostCloudFirst(
   hostId: string,
   dependencies: {
     revokeHost: (hostId: string) => Promise<void>;
@@ -299,7 +290,7 @@ async function revokeLinuxHostCloudFirst(
   await dependencies.revokeHost(hostId);
   if (!(await dependencies.finalizeLocal(hostId))) {
     throw new Error(
-      "Cloud revoked the Linux host, but local credential cleanup needs to be retried.",
+      "Cloud revoked this computer, but local credential cleanup needs to be retried.",
     );
   }
 }
@@ -319,9 +310,8 @@ export function DevicesRuntimesContainer({
   const [sshRunning, setSshRunning] = useState<Map<string, boolean>>(
     () => new Map(),
   );
-  const [linuxTarget, setLinuxTarget] = useState<LinuxRemoteTargetView | null>(
-    null,
-  );
+  const [desktopTarget, setDesktopTarget] =
+    useState<DesktopRemoteTargetView | null>(null);
   const [pairing, setPairing] = useState<{
     hostId: string;
     receipt: RemotePairingReceipt;
@@ -355,20 +345,18 @@ export function DevicesRuntimesContainer({
       ),
     );
     setSshRunning(new Map(statuses));
-    if (
-      isElectrobunRuntime() &&
-      navigator.platform.toLowerCase().includes("linux")
-    ) {
+    if (isElectrobunRuntime()) {
       const [status, identity] = await Promise.all([
         getRemoteTargetStatus(),
         getRemoteTargetIdentity(),
       ]);
-      setLinuxTarget({
+      setDesktopTarget({
         ...status,
+        platform: localDesktopPlatform(),
         hostId: identity.identity?.runtimeId ?? null,
       });
     } else {
-      setLinuxTarget(null);
+      setDesktopTarget(null);
     }
 
     try {
@@ -448,7 +436,12 @@ export function DevicesRuntimesContainer({
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void resumePendingSshRuntimeCleanups(SSH_RUNTIME_LIFECYCLE_DEPENDENCIES)
+      .then((results) => {
+        requireCompleteSshCleanup(results);
+        return refresh();
+      })
+      .catch((cause) => setError(messageFor(cause)));
   }, [refresh]);
 
   const run = useCallback(async (operation: () => Promise<void>) => {
@@ -555,8 +548,8 @@ export function DevicesRuntimesContainer({
       await removeRuntimeWithAuthority(profile, {
         revokeSession: (sessionId) => cloud.revokeSession(sessionId),
         clearSession: clearRemoteControllerSessionState,
-        stopSsh: stopSshRuntime,
-        deleteCredential: deleteRuntimeCredentialRecord,
+        removeSsh: (sshProfile) =>
+          removeSshRuntime(sshProfile, SSH_RUNTIME_LIFECYCLE_DEPENDENCIES),
         removeProfile: removeAgentProfile,
       });
     });
@@ -565,6 +558,15 @@ export function DevicesRuntimesContainer({
     run(async () => {
       const profile = registry.profiles.find((item) => item.id === id);
       if (profile?.connectionMode === "ssh" && profile.ssh) {
+        if (
+          await retrySshRuntimeCleanup(
+            profile.id,
+            SSH_RUNTIME_LIFECYCLE_DEPENDENCIES,
+          )
+        ) {
+          await refresh();
+          return;
+        }
         await startSshRuntime({
           runtimeId: profile.id,
           target: profile.ssh.target,
@@ -590,46 +592,50 @@ export function DevicesRuntimesContainer({
   const onConnectSsh = (input: SshConnectInput) =>
     run(async () => {
       const runtimeId = pendingSshId.current;
-      if (input.accessToken)
-        await storeRuntimeCredential(runtimeId, input.accessToken);
-      await startSshWithCredentialCleanup(runtimeId, input);
-      addAgentProfile(
+      await setupSshRuntime(
         {
-          kind: "remote",
+          runtimeId,
           label: input.label,
-          apiBase: `eliza-ssh://runtime/${runtimeId}`,
+          target: input.target,
+          sshPort: input.sshPort,
+          remoteApiPort: input.remoteApiPort,
+          expectedFingerprint: input.expectedFingerprint,
+          identityFile: input.identityFile,
           credentialRef: runtimeId,
-          connectionMode: "ssh",
-          ssh: {
-            target: input.target,
-            sshPort: input.sshPort,
-            remoteApiPort: input.remoteApiPort,
-            hostFingerprint: input.expectedFingerprint,
-            identityFile: input.identityFile,
-          },
+          accessToken: input.accessToken,
         },
-        { activate: false, id: runtimeId },
+        SSH_RUNTIME_LIFECYCLE_DEPENDENCIES,
       );
       pendingSshId.current = crypto.randomUUID();
       setSshInspection(null);
       await refresh();
     });
 
-  const onEnrollLinuxTarget = () =>
+  const onEnrollDesktopTarget = () =>
     run(async () => {
       const cloud = createDefaultRemoteControlCloudClient();
       const currentDirectory = directory ?? (await cloud.listHosts());
       const connection = getDefaultRemoteControlCloudConnection();
+      const platform = localDesktopPlatform();
       await enrollRemoteTarget({
         apiBaseUrl: connection.baseUrl,
         ownerId: currentDirectory.ownerId,
         ownerAccessToken: connection.authToken,
-        displayName: "My Linux computer",
+        displayName:
+          platform === "macos"
+            ? "My Mac"
+            : platform === "windows"
+              ? "My Windows PC"
+              : "My Linux computer",
+        platform,
       });
       await refresh();
     });
 
-  const onActivateLinuxTarget = (input: { sessionId: string; code: string }) =>
+  const onActivateDesktopTarget = (input: {
+    sessionId: string;
+    code: string;
+  }) =>
     run(async () => {
       await activateRemoteTarget(input);
       await startRemoteTarget();
@@ -637,19 +643,20 @@ export function DevicesRuntimesContainer({
       await refresh();
     });
 
-  const onSetLinuxTargetRunning = (running: boolean) =>
+  const onSetDesktopTargetRunning = (running: boolean) =>
     run(async () => {
       if (running) await startRemoteTarget();
       else await stopRemoteTarget();
       await refresh();
     });
 
-  const onRevokeLinuxTarget = () =>
+  const onRevokeDesktopTarget = () =>
     run(async () => {
-      const hostId = linuxTarget?.hostId;
-      if (!hostId) throw new Error("This Linux host identity is unavailable.");
+      const hostId = desktopTarget?.hostId;
+      if (!hostId)
+        throw new Error("This computer's host identity is unavailable.");
       const cloud = createDefaultRemoteControlCloudClient();
-      await revokeLinuxHostCloudFirst(hostId, {
+      await revokeDesktopHostCloudFirst(hostId, {
         revokeHost: (id) => cloud.revokeHost(id),
         finalizeLocal: finalizeRemoteTargetHostRevoke,
       });
@@ -663,11 +670,20 @@ export function DevicesRuntimesContainer({
       targets={targets}
       pairing={pairingView}
       sshInspection={sshInspection}
-      linuxTarget={linuxTarget}
+      desktopTarget={desktopTarget}
       busy={busy}
       error={error}
       cloudState={cloudState}
-      onRefresh={() => run(refresh)}
+      onRefresh={() =>
+        run(async () => {
+          requireCompleteSshCleanup(
+            await resumePendingSshRuntimeCleanups(
+              SSH_RUNTIME_LIFECYCLE_DEPENDENCIES,
+            ),
+          );
+          await refresh();
+        })
+      }
       onSelect={onSelect}
       onRetry={onRetry}
       onPair={onPair}
@@ -675,10 +691,10 @@ export function DevicesRuntimesContainer({
       onRemove={onRemove}
       onInspectSsh={onInspectSsh}
       onConnectSsh={onConnectSsh}
-      onEnrollLinuxTarget={onEnrollLinuxTarget}
-      onActivateLinuxTarget={onActivateLinuxTarget}
-      onSetLinuxTargetRunning={onSetLinuxTargetRunning}
-      onRevokeLinuxTarget={onRevokeLinuxTarget}
+      onEnrollDesktopTarget={onEnrollDesktopTarget}
+      onActivateDesktopTarget={onActivateDesktopTarget}
+      onSetDesktopTargetRunning={onSetDesktopTargetRunning}
+      onRevokeDesktopTarget={onRevokeDesktopTarget}
     />
   );
 }
@@ -687,6 +703,6 @@ export const devicesRuntimesInternals = {
   hostTarget,
   profileTarget,
   removeRuntimeWithAuthority,
-  revokeLinuxHostCloudFirst,
-  startSshWithCredentialCleanup,
+  revokeDesktopHostCloudFirst,
+  requireCompleteSshCleanup,
 };

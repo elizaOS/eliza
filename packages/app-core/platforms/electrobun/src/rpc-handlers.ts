@@ -375,7 +375,7 @@ async function configureRemoteTargetForCurrentLoopback(): Promise<void> {
   const { base, token } = apiBaseOwner.getCurrent();
   if (!base || !token.trim()) {
     throw new Error(
-      "The local Eliza runtime is not ready. Start it before enabling the Linux relay.",
+      "The local Eliza runtime is not ready. Start it before enabling the desktop relay.",
     );
   }
   let parsed: URL;
@@ -391,7 +391,7 @@ async function configureRemoteTargetForCurrentLoopback(): Promise<void> {
     )
   ) {
     throw new Error(
-      "The Linux relay can connect only to this computer's loopback runtime.",
+      "The desktop relay can connect only to this computer's loopback runtime.",
     );
   }
   await configureDesktopRemoteTarget({ apiBase: base, apiToken: token });

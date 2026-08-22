@@ -94,12 +94,12 @@ describe("DevicesRuntimesSection", () => {
     expect(screen.getByText(/Expires in 5:00|Expires in 4:59/)).toBeTruthy();
   });
 
-  it("offers one-click activation only when pairing authority matches this Linux host", async () => {
+  it("offers one-click activation only when pairing authority matches this desktop host", async () => {
     const user = userEvent.setup();
-    const onActivateLinuxTarget = vi.fn();
+    const onActivateDesktopTarget = vi.fn();
     const pairing = {
       hostId: "linux-host",
-      hostLabel: "This Linux computer",
+      hostLabel: "This Mac",
       sessionId: "session-1",
       code: "123456",
       expiresAt: new Date(Date.now() + 300_000).toISOString(),
@@ -109,23 +109,24 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection
         {...props({
           pairing,
-          linuxTarget: {
+          desktopTarget: {
             hostId: "linux-host",
+            platform: "macos",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
           },
-          onActivateLinuxTarget,
+          onActivateDesktopTarget,
         })}
       />,
     );
     await user.click(
       screen.getByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Approve this pairing on this computer",
       }),
     );
-    expect(onActivateLinuxTarget).toHaveBeenCalledWith({
+    expect(onActivateDesktopTarget).toHaveBeenCalledWith({
       sessionId: "session-1",
       code: "123456",
     });
@@ -134,20 +135,21 @@ describe("DevicesRuntimesSection", () => {
       <DevicesRuntimesSection
         {...props({
           pairing: { ...pairing, hostId: "foreign-host" },
-          linuxTarget: {
+          desktopTarget: {
             hostId: "linux-host",
+            platform: "macos",
             enrolled: true,
             running: false,
             activeSessions: 0,
             lastErrorCode: null,
           },
-          onActivateLinuxTarget,
+          onActivateDesktopTarget,
         })}
       />,
     );
     expect(
       screen.queryByRole("button", {
-        name: "Approve this pairing on this Linux computer",
+        name: "Approve this pairing on this computer",
       }),
     ).toBeNull();
   });
