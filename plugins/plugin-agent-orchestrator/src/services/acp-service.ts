@@ -5071,6 +5071,13 @@ export class AcpService extends Service {
         // disables env, auth.json, and per-model API-key precedence so an OAuth
         // preflight cannot silently execute as pay-as-you-go API billing.
         env.GROK_DISABLE_API_KEY_AUTH = "1";
+      } else {
+        // Kimi checks for and installs updates by default. An orchestrated ACP
+        // child must not mutate its own runtime version mid-task, and its
+        // built-in CronCreate surface must not establish a scheduler beside
+        // core TaskService and plugin-scheduling.
+        env.KIMI_CODE_NO_AUTO_UPDATE = "1";
+        env.KIMI_DISABLE_CRON = "1";
       }
       const removed = stripSubscriptionApiEnvironment(normalizedAgentType, env);
       if (removed.length > 0) {

@@ -851,14 +851,9 @@ describe("orchestrator routes — room, telemetry, agents", () => {
     expect(added.status).toBe(201);
     const sessions = added.json.sessions as Array<Record<string, unknown>>;
     expect(sessions).toHaveLength(1);
-    expect(sessions[0]?.metadata).toMatchObject({
-      subscriptionExecutionAuthorization: {
-        version: 1,
-        mode: "user-attended",
-        source: "interactive-task-control",
-        requestId: expect.any(String),
-      },
-    });
+    expect(sessions[0]?.metadata).not.toHaveProperty(
+      "subscriptionExecutionAuthorization",
+    );
 
     const stopped = await call(
       service,

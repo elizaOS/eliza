@@ -164,7 +164,13 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false`. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
 | `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Requires explicit user-attended execution authority. |
-| `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP stdio command. |
+| `ELIZA_GROK_ACP_COMMAND` | `grok --no-auto-update agent stdio` | Official Grok Build subscription ACP stdio command with provider-recommended update suppression. |
+
+Kimi ACP children disable the CLI's updater and built-in cron surface. This
+keeps executable versions stable during a task and leaves scheduled work under
+the repository's canonical `TaskService`/plugin-scheduling path. Kimi inventory
+also discloses that provider-managed Extra Usage may charge a prepaid balance
+after membership quota is exhausted when the account owner enabled it.
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
 | `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |
