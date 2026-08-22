@@ -221,13 +221,13 @@ describe("toolMessageContent", () => {
 		);
 	});
 
-	it("retains nested search references when oversized search prose is omitted", () => {
+	it("does not treat reference-only search metadata as a recoverable page", () => {
 		const reference = {
 			kind: "document" as const,
 			ref: "document:00000000-0000-0000-0000-000000000001",
 			revision: "rev:stable",
 		};
-		const parsed = JSON.parse(
+		expect(() =>
 			toolMessageContent(
 				{
 					success: true,
@@ -236,13 +236,7 @@ describe("toolMessageContent", () => {
 				},
 				{ maxSerializedTokens: 100 },
 			),
-		);
-		expect(parsed.text).toBeUndefined();
-		expect(parsed.promptData.results).toEqual([{ reference }]);
-		expect(parsed.contentProjection).toEqual({
-			textIncluded: false,
-			reason: "model-input-budget",
-		});
+		).toThrow(/Non-recoverable tool result exceeds/u);
 	});
 
 	it("does not treat an arbitrary nested reference as proof that result text is recoverable", () => {

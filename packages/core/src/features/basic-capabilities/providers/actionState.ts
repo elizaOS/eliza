@@ -207,9 +207,7 @@ export const actionStateProvider: Provider = {
 								const status = memContent.actionStatus || "unknown";
 								const planStep = memContent.planStep || "";
 								const rawText = memContent.text || "";
-								const text = projectionEnabled
-									? ""
-									: toWellFormedUnicode(rawText);
+								const text = toWellFormedUnicode(rawText);
 
 								let memText = `  - ${actionName} (${status})`;
 								if (planStep) {

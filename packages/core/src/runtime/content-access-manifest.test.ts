@@ -104,4 +104,56 @@ describe("deriveCompactionContentManifest", () => {
 			}),
 		);
 	});
+
+	it("rejects conflicting revisions for one native reference", () => {
+		const secondRevision = {
+			...readView(20, 40),
+			reference: {
+				kind: "file" as const,
+				ref: "opaque-file",
+				revision: "rev-2",
+			},
+			slice: { ...readView(20, 40).slice, revision: "rev-2" },
+		};
+		expect(() =>
+			deriveCompactionContentManifest(
+				{
+					archivedSteps: [
+						{
+							iteration: 1,
+							result: {
+								success: true,
+								promptData: { readView: readView(0, 20) },
+							},
+						},
+					],
+					steps: [
+						{
+							iteration: 2,
+							result: {
+								success: true,
+								promptData: { readView: secondRevision },
+							},
+						},
+					],
+				},
+				{ lastUsedAt: "2026-08-22T12:00:00.000Z" },
+			),
+		).toThrow(/conflicting source revisions/u);
+	});
+
+	it("rejects an object beyond the traversal depth instead of losing it", () => {
+		const nested = { a: { b: { c: { readView: readView(0, 20) } } } };
+		expect(() =>
+			deriveCompactionContentManifest(
+				{
+					archivedSteps: [],
+					steps: [
+						{ iteration: 1, result: { success: true, promptData: nested } },
+					],
+				},
+				{ lastUsedAt: "2026-08-22T12:00:00.000Z", maxDepth: 2 },
+			),
+		).toThrow(/depth bound/u);
+	});
 });

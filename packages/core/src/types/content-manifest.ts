@@ -126,6 +126,7 @@ export function validateCompactionContentManifest(
 	if (input.contentRefs.length > COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES) {
 		throw new TypeError("content manifest has too many references");
 	}
+	const seenReferences = new Map<string, string | undefined>();
 	const contentRefs = input.contentRefs.map((rawEntry, entryIndex) => {
 		const entry = record(rawEntry, `contentRefs[${entryIndex}]`);
 		exactKeys(entry, ENTRY_KEYS, `contentRefs[${entryIndex}]`);
@@ -141,6 +142,15 @@ export function validateCompactionContentManifest(
 		) {
 			throw new TypeError("content manifest reference revision mismatch");
 		}
+		const key = `${reference.kind}\u0000${reference.ref}`;
+		if (seenReferences.has(key)) {
+			const priorRevision = seenReferences.get(key);
+			if (priorRevision !== revision) {
+				throw new TypeError("content manifest contains conflicting revisions");
+			}
+			throw new TypeError("content manifest contains a duplicate reference");
+		}
+		seenReferences.set(key, revision);
 		if (!Array.isArray(entry.rangesUsed)) {
 			throw new TypeError(
 				`contentRefs[${entryIndex}].rangesUsed must be an array`,
@@ -209,6 +219,13 @@ export function validateCompactionContentManifest(
 			item.revision === undefined
 				? reference.revision
 				: nonempty(item.revision, `modifiedFiles[${index}].revision`);
+		if (
+			reference.revision !== undefined &&
+			revision !== undefined &&
+			reference.revision !== revision
+		) {
+			throw new TypeError("modified file reference revision mismatch");
+		}
 		return { reference, ...(revision ? { revision } : {}) };
 	});
 	if (!Array.isArray(input.pendingProcesses)) {

@@ -13,7 +13,7 @@ import {
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { ActionResult } from "../types/components";
-import { isContentReference, isReadView } from "../types/content";
+import { isReadView } from "../types/content";
 import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { getActionResultActionName } from "../utils/action-results";
@@ -329,22 +329,6 @@ export interface ToolResultProjectionObservation {
 }
 
 function hasRecoverableContentLocator(value: unknown): boolean {
-	if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-		const results = (value as Record<string, unknown>).results;
-		if (
-			Array.isArray(results) &&
-			results.length > 0 &&
-			results.every(
-				(item) =>
-					item !== null &&
-					typeof item === "object" &&
-					!Array.isArray(item) &&
-					isContentReference((item as Record<string, unknown>).reference),
-			)
-		) {
-			return true;
-		}
-	}
 	const pending: Array<{ value: unknown; depth: number }> = [
 		{ value, depth: 0 },
 	];

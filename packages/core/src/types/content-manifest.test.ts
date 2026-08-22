@@ -77,4 +77,34 @@ describe("validateCompactionContentManifest", () => {
 			}),
 		).toThrow(/too many ranges/u);
 	});
+
+	it("rejects duplicate locators, cross-entry conflicts, and modified-file mismatches", () => {
+		expect(() =>
+			validateCompactionContentManifest({
+				...baseManifest,
+				contentRefs: [
+					baseManifest.contentRefs[0],
+					{
+						...baseManifest.contentRefs[0],
+						revision: "r2",
+						reference: {
+							...baseManifest.contentRefs[0].reference,
+							revision: "r2",
+						},
+					},
+				],
+			}),
+		).toThrow(/conflicting revisions/u);
+		expect(() =>
+			validateCompactionContentManifest({
+				...baseManifest,
+				modifiedFiles: [
+					{
+						reference: { kind: "file", ref: "opaque-file", revision: "r1" },
+						revision: "r2",
+					},
+				],
+			}),
+		).toThrow(/modified file reference revision mismatch/u);
+	});
 });

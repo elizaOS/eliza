@@ -57,7 +57,7 @@ function canonicalTimestamp(value: string, label: string): string {
 }
 
 function referenceKey(reference: ContentReference): string {
-	return `${reference.kind}\u0000${reference.ref}\u0000${reference.revision ?? ""}`;
+	return `${reference.kind}\u0000${reference.ref}`;
 }
 
 function rangeKey(range: CompactionContentRange): string {
@@ -127,6 +127,26 @@ export function deriveCompactionContentManifest(
 				rangeKeys: new Set(),
 			};
 			entries.set(key, entry);
+		} else {
+			const existingRevision = entry.revision ?? entry.reference.revision;
+			const incomingRevision = reference.revision;
+			if (
+				existingRevision !== undefined &&
+				incomingRevision !== undefined &&
+				existingRevision !== incomingRevision
+			) {
+				throw new ElizaError(
+					"Content manifest encountered conflicting source revisions",
+					{
+						code: "CONTENT_MANIFEST_REVISION_CONFLICT",
+						context: { kind: reference.kind },
+					},
+				);
+			}
+			if (existingRevision === undefined && incomingRevision !== undefined) {
+				entry.reference = reference;
+				entry.revision = incomingRevision;
+			}
 		}
 		if (!range) return;
 		const keyForRange = rangeKey(range);
@@ -176,12 +196,17 @@ export function deriveCompactionContentManifest(
 				addReference(current.value, reason);
 				continue;
 			}
-			if (
-				current.depth >= maxDepth ||
-				current.value === null ||
-				typeof current.value !== "object"
-			) {
+			if (current.value === null || typeof current.value !== "object") {
 				continue;
+			}
+			if (current.depth >= maxDepth) {
+				throw new ElizaError(
+					"Content manifest traversal exceeds the configured depth bound",
+					{
+						code: "CONTENT_MANIFEST_BOUND_EXCEEDED",
+						context: { bound: "depth", maxDepth },
+					},
+				);
 			}
 			for (const child of Array.isArray(current.value)
 				? current.value
