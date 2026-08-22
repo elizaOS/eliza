@@ -57,7 +57,8 @@ function useDesktopToggles() {
           setShowInDock(dock.visible);
         }
       } catch {
-        // RPC unavailable — keep defaults.
+        // error-policy:J4 RPC unavailable — defaults render as the
+        // designed pre-bridge state.
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -78,6 +79,7 @@ function useDesktopToggles() {
           params: { enabled, openAsHidden: false },
         });
       } catch {
+        // error-policy:J4 toggle failure reverts the switch visibly.
         setLaunchOnLogin(!enabled);
       }
     },
@@ -95,6 +97,7 @@ function useDesktopToggles() {
           params: { visible },
         });
       } catch {
+        // error-policy:J4 toggle failure reverts the switch visibly.
         setShowInDock(!visible);
       }
     },

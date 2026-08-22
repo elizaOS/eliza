@@ -243,10 +243,13 @@ export function ShortcutsSection() {
           try {
             setPushToTalkAccelerator(comboToAccelerator(combo));
           } catch (persistenceError) {
+            // error-policy:J2 persistence failure rethrows with cause after a
+            // best-effort rollback to the previous shortcut.
             if (previousCombo) {
               try {
                 await syncShortcut(id, previousCombo);
               } catch (rollbackError) {
+                // error-policy:J2 rollback failure rethrows with both causes.
                 throw new Error(
                   `The shortcut changed but could not be saved or restored. Restart Eliza to restore the saved shortcut. ${String(rollbackError)}`,
                   { cause: persistenceError },
@@ -265,6 +268,7 @@ export function ShortcutsSection() {
         setPending(null);
         setShortcutError(null);
       } catch (error) {
+        // error-policy:J4 commit failure renders the visible shortcut error.
         setPending(null);
         setShortcutError(
           error instanceof Error ? error.message : String(error),
@@ -297,6 +301,8 @@ export function ShortcutsSection() {
         try {
           await syncShortcut(conflictId, conflictDef.defaultCombo);
         } catch (conflictError) {
+          // error-policy:J2 conflict-reset failure restores the original
+          // binding and rethrows for the outer visible-error boundary.
           await syncShortcut(id, current.combo);
           throw conflictError;
         }
@@ -311,6 +317,7 @@ export function ShortcutsSection() {
         setPending(null);
         setShortcutError(null);
       } catch (error) {
+        // error-policy:J4 override failure renders the visible shortcut error.
         setPending(null);
         setShortcutError(
           error instanceof Error ? error.message : String(error),

@@ -161,6 +161,7 @@ export function AgentSection() {
       );
       setAgents(list);
     } catch (err) {
+      // error-policy:J4 load failure renders the visible list error state.
       if (!ownsRefreshState()) return;
       setLoadError(
         err instanceof Error
@@ -297,8 +298,8 @@ export function AgentSection() {
             return;
           }
         } catch (err) {
-          // Readiness timed out — surface it and let the user retry rather
-          // than binding to a container that may still be coming up.
+          // error-policy:J4 readiness timeout surfaces visibly; the user
+          // retries rather than binding to a container still coming up.
           setActionNotice(
             err instanceof Error ? err.message : "Failed to start agent.",
             "error",
@@ -319,9 +320,11 @@ export function AgentSection() {
         const targetClient = new ElizaClient(apiBase, currentCloudToken());
         await targetClient.listConversations();
         bindAndReload(agent.agent_id, apiBase, label);
-      } catch {
+      } catch (probeError) {
+        // error-policy:J4 probe failure keeps the current agent bound and is
+        // reported visibly with the transport detail.
         setActionNotice(
-          `Could not connect to ${label}. Your current agent is still active.`,
+          `Could not connect to ${label}: ${probeError instanceof Error ? probeError.message : String(probeError)}. Your current agent is still active.`,
           "error",
           5000,
         );
@@ -367,6 +370,7 @@ export function AgentSection() {
       }
       bindAndReload(result.agentId, result.apiBase, name);
     } catch (err) {
+      // error-policy:J4 create failure surfaces inline and as a notice.
       const message =
         err instanceof Error ? err.message : "Failed to create agent.";
       setCreateError(message);
@@ -435,6 +439,7 @@ export function AgentSection() {
         clearStalePairCredentialsForAgent(agent.agent_id);
         setActionNotice(`Deleted ${agent.agent_name}.`, "success", 3000);
       } catch (err) {
+        // error-policy:J4 delete failure surfaces visibly; refresh re-syncs.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to delete agent.",
           "error",
@@ -487,6 +492,7 @@ export function AgentSection() {
         setActionNotice(`Renamed to ${name}.`, "success", 3000);
         setDetailsId(null);
       } catch (err) {
+        // error-policy:J4 rename failure surfaces visibly; row keeps its name.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to rename agent.",
           "error",
@@ -542,6 +548,7 @@ export function AgentSection() {
         );
         void resyncStatus(agent.agent_id);
       } catch (err) {
+        // error-policy:J4 shutdown failure surfaces visibly; status re-syncs.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to shut down agent.",
           "error",
@@ -570,6 +577,7 @@ export function AgentSection() {
         );
         void resyncStatus(agent.agent_id);
       } catch (err) {
+        // error-policy:J4 start failure surfaces visibly; status re-syncs.
         setActionNotice(
           err instanceof Error ? err.message : "Failed to start agent.",
           "error",

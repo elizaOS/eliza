@@ -210,6 +210,8 @@ function CloudPluginGrantsGroup() {
       );
       setState({ kind: "ready", grants: result.grants ?? [] });
     } catch (error) {
+      // error-policy:J4 404 renders the designed missing state; other
+      // failures render the visible error state.
       if (error instanceof ApiError && error.status === 404) {
         setState({ kind: "missing" });
         return;
@@ -235,6 +237,7 @@ function CloudPluginGrantsGroup() {
       );
       await load();
     } catch (error) {
+      // error-policy:J4 revoke failure renders the visible error state.
       setState({
         kind: "error",
         message:

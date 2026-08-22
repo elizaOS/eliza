@@ -119,6 +119,8 @@ export function useCloudConnectorConnections({
         loading: false,
       });
     } catch (error) {
+      // error-policy:J4 status-fetch failure renders the visible
+      // Unavailable row state instead of a fake connected state.
       setState({
         connected: false,
         statusText: "Unavailable",

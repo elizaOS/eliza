@@ -103,6 +103,7 @@ export function AdvancedSection() {
       setErrorLogging(false);
       setActionNotice?.("App state reset. Reload to finish.", "success", 5000);
     } catch {
+      // error-policy:J4 reset failure is reported as a visible error.
       setActionNotice?.("Could not reset app state.", "error", 5000);
     }
   }, [setActionNotice]);
