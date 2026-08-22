@@ -35,12 +35,33 @@ const recorded: Recorded[] = [];
 const store = new Map<string, string>();
 let failNextFetch = false;
 let nextPipelineResponse: unknown = null;
+let nextPipelineDelay: {
+  started: () => void;
+  wait: Promise<void>;
+} | null = null;
+
+function delayNextPipeline(): {
+  started: Promise<void>;
+  release: () => void;
+} {
+  let markStarted: () => void = () => {};
+  let release: () => void = () => {};
+  const started = new Promise<void>((resolve) => {
+    markStarted = resolve;
+  });
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  nextPipelineDelay = { started: markStarted, wait };
+  return { started, release };
+}
 
 function installFetch(): void {
   recorded.length = 0;
   store.clear();
   failNextFetch = false;
   nextPipelineResponse = null;
+  nextPipelineDelay = null;
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (failNextFetch) {
       failNextFetch = false;
@@ -51,6 +72,12 @@ function installFetch(): void {
     recorded.push({ url, body });
 
     if (url.endsWith("/pipeline")) {
+      const delay = nextPipelineDelay;
+      if (delay) {
+        nextPipelineDelay = null;
+        delay.started();
+        await delay.wait;
+      }
       if (nextPipelineResponse !== null) {
         return {
           ok: true,
@@ -201,6 +228,101 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
 
     reg.stopHeartbeat();
+  });
+
+  it("does not overlap heartbeat refreshes when a tick is still in flight", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextPipeline();
+    reg.startHeartbeat(30_000);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(2);
+
+    reg.stopHeartbeat();
+  });
+
+  it("unregister() drains an in-flight heartbeat before deleting its keys", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextPipeline();
+    reg.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = reg.unregister();
+    await Promise.resolve();
+    expect(
+      recorded.some(
+        (request) => Array.isArray(request.body) && request.body[0] === "EVAL",
+      ),
+    ).toBe(false);
+
+    delayed.release();
+    await unregistering;
+    expect(store.has("agent:char-123:server")).toBe(false);
+    expect(store.has("server:sandbox-abc:url")).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+  });
+
+  it("unregister() falls back within the shutdown margin without deleting keys", async () => {
+    vi.useFakeTimers();
+    const reg = new SandboxRegistry(baseConfig);
+    await reg.register();
+    recorded.length = 0;
+
+    const delayed = delayNextPipeline();
+    reg.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = reg.unregister();
+    const outcome = unregistering.then(
+      () => ({ status: "resolved" as const }),
+      (error: unknown) => ({ status: "rejected" as const, error }),
+    );
+    let settled = false;
+    const observed = outcome.then((result) => {
+      settled = true;
+      return result;
+    });
+
+    // The dev supervisor allows 15s while runtime service teardown may use
+    // 13s. Registry cleanup must settle well inside the remaining 2s margin.
+    await vi.advanceTimersByTimeAsync(999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(observed).resolves.toMatchObject({
+      status: "rejected",
+      error: { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
+    });
+
+    expect(
+      recorded.some(
+        (request) => Array.isArray(request.body) && request.body[0] === "EVAL",
+      ),
+    ).toBe(false);
+    expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
+    expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(0);
   });
 
   it("stopHeartbeat() halts the timer", async () => {

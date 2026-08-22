@@ -32,6 +32,12 @@ import { ElizaError, logger } from "@elizaos/core";
 
 /** Hard cap on a single TCP register/refresh round-trip. */
 const REGISTRY_TCP_TIMEOUT_MS = 10_000;
+/**
+ * Maximum graceful-shutdown wait before falling back to Redis key expiry.
+ * Runtime service teardown may use 13s of the dev supervisor's 15s ceiling,
+ * so registry cleanup must leave that path enough headroom to finish.
+ */
+const REGISTRY_HEARTBEAT_DRAIN_TIMEOUT_MS = 1_000;
 const MAX_REGISTRY_TCP_BYTES = 1_048_576;
 
 function formatErr(err: unknown): string {
@@ -80,6 +86,7 @@ export interface SandboxRegistryConfig {
 
 export class SandboxRegistry {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatInFlight: Promise<void> | null = null;
   private readonly tcp: boolean;
 
   constructor(private readonly config: SandboxRegistryConfig) {
@@ -98,6 +105,32 @@ export class SandboxRegistry {
   }
 
   async unregister(): Promise<void> {
+    this.stopHeartbeat();
+    const heartbeat = this.heartbeatInFlight;
+    if (heartbeat) {
+      let drainTimer: ReturnType<typeof setTimeout> | null = null;
+      try {
+        await Promise.race([
+          heartbeat,
+          new Promise<never>((_resolve, reject) => {
+            drainTimer = setTimeout(() => {
+              reject(
+                new ElizaError(
+                  "Timed out draining sandbox registry heartbeat; routing keys will expire through their TTL",
+                  { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
+                ),
+              );
+            }, REGISTRY_HEARTBEAT_DRAIN_TIMEOUT_MS);
+            if (typeof drainTimer === "object" && "unref" in drainTimer) {
+              drainTimer.unref();
+            }
+          }),
+        ]);
+      } finally {
+        if (drainTimer !== null) clearTimeout(drainTimer);
+      }
+    }
+
     const { serverName, serverUrl, agentId } = this.config;
     const serverUrlKey = `server:${serverName}:url`;
     const agentServerKey = `agent:${agentId}:server`;
@@ -126,11 +159,7 @@ export class SandboxRegistry {
     if (this.heartbeatTimer) return;
 
     this.heartbeatTimer = setInterval(() => {
-      void this.refresh().catch((err) => {
-        logger.warn(
-          `[sandbox-registry] Heartbeat refresh failed: ${formatErr(err)}`,
-        );
-      });
+      this.runHeartbeat();
     }, intervalMs);
 
     if (
@@ -146,6 +175,25 @@ export class SandboxRegistry {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
+  }
+
+  private runHeartbeat(): void {
+    if (this.heartbeatInFlight) return;
+
+    const heartbeat = this.refresh()
+      .catch((err) => {
+        // error-policy:J7 a transient heartbeat failure is warned without
+        // terminating the recurring liveness loop; the next tick retries.
+        logger.warn(
+          `[sandbox-registry] Heartbeat refresh failed: ${formatErr(err)}`,
+        );
+      })
+      .finally(() => {
+        if (this.heartbeatInFlight === heartbeat) {
+          this.heartbeatInFlight = null;
+        }
+      });
+    this.heartbeatInFlight = heartbeat;
   }
 
   /**
