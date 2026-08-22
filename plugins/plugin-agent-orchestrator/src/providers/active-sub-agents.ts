@@ -5,6 +5,7 @@
  * spend-capped, or round-trip-capped session to resolve.
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import {
   type IAgentRuntime,
   type Memory,
@@ -179,8 +180,19 @@ export const activeSubAgentsProvider: Provider = {
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
+    // Finished-work ground truth for follow-ups. With zero active sessions a
+    // "run it / show me" follow-up left the planner blind to where the
+    // deliverable lives — it guessed a wrong path, fell back to
+    // `find $HOME`, and timed out twice in a row (live 2026-08-20). Every
+    // lane finished within the 30-minute window is listed, newest first —
+    // the window (named in the section header) keeps older history out of
+    // context; nothing inside it is elided.
+    const recentDone = recentCompletedLines(Array.isArray(all) ? all : []);
     if (routed.length === 0)
-      return emptyResult(capacity, admission, waves, inFlightTaskLines);
+      return emptyResult(capacity, admission, waves, [
+        ...inFlightTaskLines,
+        ...recentDone,
+      ]);
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -195,6 +207,9 @@ export const activeSubAgentsProvider: Provider = {
     // just `status=busy`. The buffer mixes message chunks and captured
     // tool output — we take the last ~200 chars, strip noise, and surface
     // it as a one-line `live: …` suffix.
+    // NAMED PREVIEW: `live="…"` is a TAIL of the session output, never the
+    // output itself — a live-status indicator by design. The complete output
+    // is durable and resolvable via GET /api/coding-agents/:id/output?offset=.
     const liveByName = new Map<string, string>();
     if (typeof service.getSessionOutput === "function") {
       await Promise.all(
@@ -231,6 +246,7 @@ export const activeSubAgentsProvider: Provider = {
       );
     }
     lines.push(...inFlightTaskLines);
+    lines.push(...recentDone);
     const text = lines.join("\n");
 
     return {
@@ -244,6 +260,9 @@ export const activeSubAgentsProvider: Provider = {
           status: s.status,
           stalled: stalled.has(s.id),
           approachingCap: approaching.get(s.id) ?? null,
+          // Full absolute workdir is the canonical value; workdirTail is the
+          // NAMED PREVIEW used by the cache-stable text line (see formatLine).
+          workdir: s.workdir,
           workdirTail: workdirTail(s.workdir),
           originRoomId: (s.metadata as Record<string, unknown> | undefined)
             ?.roomId,
@@ -413,6 +432,74 @@ function formatWaveLines(waves: readonly WaveStatusSnapshot[]): string[] {
   );
 }
 
+const RECENT_COMPLETED_WINDOW_MS = 30 * 60_000;
+
+/** Compact "recently finished" lines: label, terminal status, sessionId, and
+ *  full workdir — the path ground truth a follow-up needs. Steers the planner
+ *  to SEND_TO_AGENT (whose dead-session redirect reopens the work in the same
+ *  workdir) instead of guessing paths or scanning the filesystem.
+ *
+ *  COMPLETE within its named scope (prompt integrity): every finished lane in
+ *  the 30-minute window is listed, newest-first — the window is the section's
+ *  definition of "recent", not a render bound, and the header names it.
+ *  Older history stays out by design; TASKS_HISTORY is its durable handle. */
+function recentCompletedLines(all: SessionInfo[]): string[] {
+  const now = Date.now();
+  const done = all
+    .filter(hasOrigin)
+    .filter((s) => TERMINAL_SESSION_STATUSES.has(s.status))
+    .filter((s) => {
+      const at = new Date(s.lastActivityAt ?? s.createdAt).getTime();
+      return Number.isFinite(at) && now - at < RECENT_COMPLETED_WINDOW_MS;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.lastActivityAt ?? b.createdAt).getTime() -
+        new Date(a.lastActivityAt ?? a.createdAt).getTime(),
+    );
+  if (done.length === 0) return [];
+  return [
+    "## Recently finished sub-agent work (last 30 min — complete list, newest first)",
+    "Ground truth for follow-ups on a finished deliverable. When files are listed, they are verified on disk in the workdir. When the workdir was cleaned up, the ONLY working route is SEND_TO_AGENT { sessionId, text } — the orchestrator rebuilds and reopens the work; a SHELL path there fails. Never guess paths or search the filesystem for these files. For work older than this window, call TASKS_HISTORY.",
+    ...done.map(
+      (s) =>
+        `- [${labelOf(s)}] sessionId=${s.id} status=${s.status} ${describeFinishedWorkdir(s.workdir)}`,
+    ),
+  ];
+}
+
+/** Scratch workdirs are garbage-collected shortly after completion, so a
+ *  listed path may already be gone — the planner then runs a doomed SHELL
+ *  against it (live 2026-08-20: python3 <gc'd workspace>/main.py errored and
+ *  the turn ended in an apology). Verify on disk and, when present, name every
+ *  visible top-level file so a run-it follow-up needs zero guessing. */
+function describeFinishedWorkdir(workdir: string): string {
+  try {
+    if (!workdir || !existsSync(workdir)) {
+      return "workdir=(cleaned up — reopen via SEND_TO_AGENT)";
+    }
+    const files = readdirSync(workdir)
+      .filter(
+        (name) =>
+          !name.startsWith(".") && name !== "node_modules" && name !== "venv",
+      )
+      // Deterministic: readdir order is fs-dependent; sort so the same names
+      // show in the same order every turn (cache-stable provider text).
+      .sort();
+    // COMPLETE listing (prompt integrity): every visible top-level entry is
+    // named with its exact count, so a run-it follow-up never needs to probe
+    // for a file the bound used to hide. The workdir path on the same line
+    // remains the durable on-disk location.
+    return files.length > 0
+      ? `workdir=${workdir} files(${files.length})=${files.join(",")}`
+      : `workdir=${workdir} (empty)`;
+  } catch {
+    // error-policy:J4 disk probe is per-line enrichment; an unreadable dir
+    // degrades to the bare path rather than dropping the session line.
+    return `workdir=${workdir}`;
+  }
+}
+
 function emptyResult(
   capacity: AcpCapacity | null = null,
   admission: AdmissionSnapshot | null = null,
@@ -460,6 +547,12 @@ function hasOrigin(session: SessionInfo): boolean {
   return typeof roomId === "string" && roomId.length > 0;
 }
 
+// NAMED PREVIEW: `workdir=…{tail}` shows only the last two path segments (the
+// `…` marker names the elision). The FULL absolute workdir rides in the data
+// payload (`sessions[].workdir`), and the sanctioned handle for acting on an
+// ACTIVE lane is SEND_TO_AGENT { sessionId } — never a path reconstructed from
+// this preview (truncated paths caused live path-guessing failures; the
+// finished-work section switched to full paths for exactly that reason).
 function formatLine(
   session: SessionInfo,
   live?: string,
