@@ -24,14 +24,18 @@ spreads and arrays, factories, promoted subactions, platform exports, host
 registration calls, generated-router-mounted Cloud route modules and service
 entry points, JSONC/TOML Worker queue and cron bindings, and Capacitor bridge
 registrations. It does not infer a surface from a directory name such as
-`actions/` or import application code.
+`actions/` or import application code. Generated Cloud `ROUTE_MOUNTS` records
+are parsed as the authority for both each dynamic import and its canonical
+`/api/...` path; filesystem directory names never substitute for the served
+path. Package source conditions such as `eliza-source` take precedence over
+compiled-output guesses and compatibility barrels.
 
 Each generated row records:
 
 - owner, package, production source and registration field;
 - runtime/platform requirements and package-manager dependencies;
 - explicit external service/protocol dependencies, their mock owner
-  and source, or an actionable missing-mock/local-only disposition;
+  and source, or an actionable missing-mock/local-only/unresolved disposition;
 - mock availability/fidelity and reset support;
 - deterministic and live-model scenario ids and Cloud E2E cells;
 - evidence class, exact boundary artifacts/signals and owning #22896 workstream;
@@ -52,25 +56,41 @@ registered boundary name; moving an implementation file does not change its id.
 
 `runtime-surface-dependencies.json` is the reviewed dependency authority for
 every discovered production surface kind, including actions, services,
-scheduled workers, queues, views, and native bridges. Each package is covered
-by exactly one explicit external-service rule or a reviewed package-wide local
-disposition; no unlisted kind falls through to an automatic local-only default.
+scheduled workers, queues, views, and native bridges. External-service rules
+select explicit kinds, exact canonical ids, or implementation source prefixes;
+remaining surfaces require a reviewed local package fallback or an explicit
+unresolved rule. No unlisted package falls through to an automatic local-only
+default, and unresolved Cloud routes remain visible rather than inheriting
+every dependency used anywhere in Cloud API.
 Package imports such as
 React, Zod, SDKs, parsers, and database
 drivers remain visible under `packageDependencies`, but never imply an external
 service or mock. A service rule names its protocol and either a repository-local
-mock source plus owner or a concrete missing-mock reason. A claimed source must
-exist inside the repository; mock/reset evidence remains row-specific and is
-not inferred from catalog ownership. The catalog records closed draft PR #23185
+mock source plus owner or a concrete missing-mock reason. Mock ownership also
+requires external-protocol contract metadata whose markers must exist in the
+fixture; file existence alone never establishes protocol fidelity. Empty
+fixtures and the internal Payments API therefore cannot claim an unrelated
+external protocol such as Stripe. Mock/reset evidence remains row-specific and
+is not inferred from catalog ownership. The catalog records closed draft PR #23185
 only as a design reference for a richer provider conformance catalog; it does
 not treat that unmerged work as present evidence or a required stack. The
-current-develop migration has 76 reviewed rules plus 40 reviewed local package
-boundaries, accounting for all 115 packages with discovered runtime surfaces.
-Forty-three rules declare external services, while the remaining rules record
-local or exact-surface dispositions. Package-wide external rules
-conservatively apply the named protocol and mock ownership to every registered
-row in that package; exact-surface rules narrow that result when a boundary is
-known not to invoke the package's other external collaborators.
+current-develop migration has 50 selected rules plus 109 reviewed local package
+fallbacks, accounting for all 114 packages with discovered runtime surfaces.
+No rule uses a package-wide `all` selector. Calendar's selected operational
+surfaces declare Google Calendar, Microsoft Graph, Apple EventKit, and guarded
+ICS-feed protocols, while its Google webhook, local migration, provider, and
+view have exact narrower dispositions. An unreviewed new Calendar surface
+fails closed. Cloud Stripe routes are selected by their implementation path and
+Stripe remains mock-missing until a genuine external fixture exists; all other
+Cloud route and worker dependencies remain explicitly unresolved instead of
+inheriting a package-wide protocol list. Vision's local bridge surfaces remain
+local while its runtime-selected model execution is unresolved; neither claims
+ownership of an unrelated HTTP fixture. Wallet's
+mixed RPC, indexer, RSS, hosted-trading, and local services remain unresolved
+except for its exact process-local profile service, rather than all being
+misreported as blockchain RPC.
+Browser bridge management is separated from browser automation, and Discord's
+web-app scraper is separated from the bot REST/Gateway protocol.
 
 Coverage and dependency status are derived, never baselined. A deterministic scenario declares the
 full canonical id in its exported `runtimeSurfaceIds` array. Canonical bare

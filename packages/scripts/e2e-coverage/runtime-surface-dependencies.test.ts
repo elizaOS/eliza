@@ -94,9 +94,9 @@ describe("runtime surface dependency catalog", () => {
     expect(() =>
       validateRuntimeDependencyCatalog(
         [{ packageName: "@elizaos/missing", kind: "provider" }],
-        catalog([localRule]),
+        catalog([]),
       ),
-    ).toThrow(/missing=.*@elizaos\/missing:provider.*stale=/);
+    ).toThrow(/missing=.*@elizaos\/missing:provider/);
     expect(() =>
       validateRuntimeDependencyCatalog(
         [{ packageName: "@elizaos/example", kind: "provider" }],
@@ -108,7 +108,11 @@ describe("runtime surface dependency catalog", () => {
   test("requires an explicit disposition for actions, services, and workers", () => {
     const allKindsRule = {
       packageName: "@elizaos/example",
-      kinds: "all" as const,
+      kinds: [
+        "action" as const,
+        "service" as const,
+        "scheduled-worker" as const,
+      ],
       noExternalServiceReason:
         "The example package uses only deterministic local production boundaries.",
     };
@@ -125,34 +129,195 @@ describe("runtime surface dependency catalog", () => {
     expect(() =>
       validateRuntimeDependencyCatalog(
         [{ packageName: "@elizaos/missing", kind: "service" }],
-        catalog([allKindsRule]),
+        catalog([]),
       ),
     ).toThrow(/missing=.*@elizaos\/missing:service/);
   });
 
-  test("applies external package boundaries to actions, services, and Cloud workers", () => {
-    for (const kind of ["action", "service"] as const) {
+  test("rejects empty, duplicate, and non-canonical selectors", () => {
+    const reason =
+      "The exact fixture surface reads only deterministic runtime-local state.";
+    for (const rule of [
+      {
+        packageName: "@elizaos/example",
+        kinds: [] as never[],
+        noExternalServiceReason: reason,
+      },
+      {
+        packageName: "@elizaos/example",
+        kinds: ["provider" as const, "provider" as const],
+        noExternalServiceReason: reason,
+      },
+      {
+        packageName: "@elizaos/example",
+        kinds: ["provider" as const],
+        sourcePathPrefixes: ["../outside"],
+        noExternalServiceReason: reason,
+      },
+    ]) {
+      expect(() =>
+        validateRuntimeDependencyCatalog(
+          [{ packageName: "@elizaos/example", kind: "provider" }],
+          catalog([rule]),
+        ),
+      ).toThrow(/unique explicit kinds|non-canonical sourcePathPrefixes/);
+    }
+  });
+
+  test("attributes selected implementations without package-wide dependency fiction", () => {
+    for (const [kind, surfaceId] of [
+      ["action", "@elizaos/plugin-calendar:action:calendar"],
+      ["service", "@elizaos/plugin-calendar:service:calendar"],
+    ] as const) {
+      const resolved = resolveRuntimeDependencies(
+        "@elizaos/plugin-calendar",
+        kind,
+        undefined,
+        surfaceId,
+      );
+      expect(resolved.dependencyDisposition).toBe("mock-missing");
       expect(
-        resolveRuntimeDependencies("@elizaos/plugin-calendar", kind),
-      ).toMatchObject({
-        dependencyDisposition: "mock-owned",
-        externalServiceDependencies: [
-          { id: "google-calendar-api", protocol: "Google Calendar API v3" },
-        ],
-      });
+        resolved.externalServiceDependencies.map((entry) => entry.id),
+      ).toEqual([
+        "google-calendar-api",
+        "microsoft-graph-calendar",
+        "apple-eventkit-calendar",
+        "ics-feed-http",
+      ]);
     }
     expect(
-      resolveRuntimeDependencies("@elizaos/cloud-api", "scheduled-worker"),
-    ).toMatchObject({
-      dependencyDisposition: "mock-missing",
-      externalServiceDependencies: expect.arrayContaining([
-        expect.objectContaining({ id: "postgresql" }),
-        expect.objectContaining({ id: "cloudflare-r2" }),
-        expect.objectContaining({ id: "redis" }),
-        expect.objectContaining({ id: "stripe-api" }),
-        expect.objectContaining({ id: "container-control-plane" }),
-      ]),
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-calendar",
+        "route",
+        undefined,
+        "@elizaos/plugin-calendar:route:/api/lifeops/calendar/google/webhook",
+      ).externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["google-calendar-api"]);
+    for (const [kind, surfaceId] of [
+      ["provider", "@elizaos/plugin-calendar:provider:calendarsources"],
+      ["service", "@elizaos/plugin-calendar:service:calendar_migration"],
+      ["view", "@elizaos/plugin-calendar:view:calendar"],
+    ] as const) {
+      expect(
+        resolveRuntimeDependencies(
+          "@elizaos/plugin-calendar",
+          kind,
+          undefined,
+          surfaceId,
+        ),
+      ).toEqual({
+        dependencyDisposition: "local-only",
+        externalServiceDependencies: [],
+        mockDependencies: [],
+      });
+    }
+    expect(() =>
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-calendar",
+        "action",
+        undefined,
+        "@elizaos/plugin-calendar:action:new_unreviewed_action",
+      ),
+    ).toThrow(/requires exactly one explicit runtime dependency rule; found 0/);
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-vision",
+        "service",
+        undefined,
+        "@elizaos/plugin-vision:service:vision-ocr-bridge",
+      ),
+    ).toEqual({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+      mockDependencies: [],
     });
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-browser",
+        "action",
+        undefined,
+        "@elizaos/plugin-browser:action:manage_browser_bridge",
+        "plugins/plugin-browser/src/actions/manage-browser-bridge.ts",
+      ).dependencyDisposition,
+    ).toBe("unresolved");
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-discord",
+        "service",
+        undefined,
+        "@elizaos/plugin-discord:service:discord_user_account_scraper",
+        "plugins/plugin-discord/user-account-scraper/service.ts",
+      ).externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["browser-automation"]);
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-vision",
+        "service",
+        undefined,
+        "@elizaos/plugin-vision:service:vision",
+      ),
+    ).toEqual({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+      mockDependencies: [],
+    });
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-wallet",
+        "service",
+        undefined,
+        "@elizaos/plugin-wallet:service:news_data_service",
+      ),
+    ).toEqual({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+      mockDependencies: [],
+    });
+    expect(
+      resolveRuntimeDependencies(
+        "@elizaos/plugin-wallet",
+        "service",
+        undefined,
+        "@elizaos/plugin-wallet:service:userlpprofileservice",
+      ),
+    ).toEqual({
+      dependencyDisposition: "local-only",
+      externalServiceDependencies: [],
+      mockDependencies: [],
+    });
+    expect(
+      resolveRuntimeDependencies("@elizaos/cloud-api", "scheduled-worker"),
+    ).toEqual({
+      dependencyDisposition: "unresolved",
+      externalServiceDependencies: [],
+      mockDependencies: [],
+    });
+    const stripe = resolveRuntimeDependencies(
+      "@elizaos/cloud-api",
+      "route",
+      undefined,
+      "@elizaos/cloud-api:route:post-/api/stripe/create-checkout-session",
+      "packages/cloud/api/stripe/create-checkout-session/route.ts",
+    );
+    expect(stripe.externalServiceDependencies.map((entry) => entry.id)).toEqual(
+      ["postgresql", "stripe-api"],
+    );
+    const v1StripeWebhook = resolveRuntimeDependencies(
+      "@elizaos/cloud-api",
+      "route",
+      undefined,
+      "@elizaos/cloud-api:route:post-/api/v1/stripe/webhook",
+      "packages/cloud/api/v1/stripe/webhook/route.ts",
+    );
+    expect(
+      v1StripeWebhook.externalServiceDependencies.map((entry) => entry.id),
+    ).toEqual(["postgresql", "stripe-api"]);
+    expect(stripe.mockDependencies).toContainEqual(
+      expect.objectContaining({
+        serviceId: "stripe-api",
+        availability: "missing",
+      }),
+    );
     expect(
       resolveRuntimeDependencies("@elizaos/plugin-goals", "service"),
     ).toEqual({
@@ -173,6 +338,10 @@ describe("runtime surface dependency catalog", () => {
             protocol: "Example HTTP API",
             mockOwner: "example",
             mockSource: "packages/does-not-exist/mock.json",
+            mockContract: {
+              kind: "external-protocol" as const,
+              markers: ["Example HTTP API"],
+            },
           },
         ],
       },
@@ -190,6 +359,34 @@ describe("runtime surface dependency catalog", () => {
     ).toThrow(/mockSource is missing/);
   });
 
+  test("rejects file-existence-only mock ownership for the wrong protocol", () => {
+    const invalid = catalog([
+      {
+        packageName: "@elizaos/example",
+        kinds: ["route"],
+        externalServices: [
+          {
+            id: "stripe-api",
+            protocol: "Stripe checkout API",
+            mockOwner: "internal-payments",
+            mockSource:
+              "packages/scenario-runner/test/mocks/environments/payments.json",
+            mockContract: {
+              kind: "external-protocol" as const,
+              markers: ["Stripe Checkout"],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(() =>
+      validateRuntimeDependencyCatalog(
+        [{ packageName: "@elizaos/example", kind: "route" }],
+        invalid,
+      ),
+    ).toThrow(/does not satisfy external protocol marker/);
+  });
+
   test("the committed catalog is versioned and records its closed design reference", () => {
     const committed = loadRuntimeDependencyCatalog();
     expect(committed.schema).toBe(RUNTIME_DEPENDENCY_SCHEMA);
@@ -197,14 +394,17 @@ describe("runtime surface dependency catalog", () => {
       pullRequest: 23185,
       head: "0f14c26c6ae4b28771d984c32e8d1fd79c7929ee",
     });
-    expect(committed.rules).toHaveLength(76);
-    expect(Object.keys(committed.localPackages)).toHaveLength(40);
+    expect(committed.rules).toHaveLength(50);
+    expect(Object.keys(committed.localPackages)).toHaveLength(109);
+    expect(committed.rules.every((rule) => Array.isArray(rule.kinds))).toBe(
+      true,
+    );
     expect(
       new Set([
         ...committed.rules.map((rule) => rule.packageName),
         ...Object.keys(committed.localPackages),
       ]).size,
-    ).toBe(115);
+    ).toBe(114);
     expect(
       resolveRuntimeDependencies(
         "@elizaos/cloud-api",
