@@ -48,6 +48,11 @@ import {
 
 const PREFIX = "/api/orchestrator";
 
+/** Canonical decimal unsigned integer — the ONLY accepted spelling for the
+ *  content-window `offset`/`limit` query params (no sign, no fraction, no
+ *  exponent, no leading zeros beyond "0", no trailing garbage). */
+const CONTENT_WINDOW_UINT_RE = /^(0|[1-9][0-9]*)$/;
+
 function decodeOrchestratorPathSegment(raw: string): string | null {
   try {
     return decodeURIComponent(raw);
@@ -225,16 +230,33 @@ async function dispatchOrchestratorRoutes(
     new RegExp(`^${PREFIX}/content/([0-9a-f]{64})$`),
   );
   if (method === "GET" && contentMatch) {
+    // Strict spelling: canonical decimal unsigned integers ONLY. Prefix
+    // spellings ("12abc"), fractions ("1.5"), signs ("+1"/"-1"), exponents,
+    // and whitespace are typed 400s — Number.parseInt would silently accept
+    // the first two and misread the caller's intended window.
     const offsetRaw = url.searchParams.get("offset");
     const limitRaw = url.searchParams.get("limit");
-    const offset = offsetRaw === null ? 0 : Number.parseInt(offsetRaw, 10);
-    const limit = limitRaw === null ? undefined : Number.parseInt(limitRaw, 10);
+    const offsetValid =
+      offsetRaw === null || CONTENT_WINDOW_UINT_RE.test(offsetRaw);
+    const limitValid =
+      limitRaw === null || CONTENT_WINDOW_UINT_RE.test(limitRaw);
+    const offset =
+      offsetRaw === null || !offsetValid ? 0 : Number.parseInt(offsetRaw, 10);
+    const limit =
+      limitRaw === null || !limitValid
+        ? undefined
+        : Number.parseInt(limitRaw, 10);
     if (
+      !offsetValid ||
+      !limitValid ||
       !Number.isSafeInteger(offset) ||
-      offset < 0 ||
       (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 1))
     ) {
-      sendError(res, "offset/limit must be nonnegative integers", 400);
+      sendError(
+        res,
+        "offset/limit must be canonical decimal unsigned integers (offset >= 0, limit >= 1); rejected spellings include prefixes ('12abc'), fractions ('1.5'), and signs ('+1')",
+        400,
+      );
       return true;
     }
     const window = readDurableContent(contentMatch[1] as string, {

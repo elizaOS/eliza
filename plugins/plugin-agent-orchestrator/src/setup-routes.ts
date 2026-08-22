@@ -79,6 +79,11 @@ function codingAgentRouteHandler(): LegacyRouteHandler {
  * resolve to the same dispatcher. */
 export const CODING_AGENT_ROUTE_PATHS: Array<{ type: string; path: string }> = [
   // Orchestrator durable-task surface
+  // Continuation resolver for durable-content projection markers
+  // (`GET /api/orchestrator/content/<sha256>?offset=&limit=`). Every bounded
+  // view that drops bytes names this route; it MUST be registered here or the
+  // marker's promise is a 404 at the runtime dispatcher.
+  { type: "GET", path: "/api/orchestrator/content/:sha256" },
   { type: "GET", path: "/api/orchestrator/status" },
   { type: "GET", path: "/api/orchestrator/capacity" },
   { type: "GET", path: "/api/orchestrator/accounts" },

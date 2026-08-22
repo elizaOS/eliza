@@ -11,6 +11,7 @@
  * memory store + a fake ACP (the admission-integration FakeAcp shape).
  */
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -24,6 +25,7 @@ import {
   OrchestratorTaskService,
 } from "../services/orchestrator-task-service.ts";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.ts";
+import { CodingWorkspaceService } from "../services/workspace-service.ts";
 import type {
   SessionInfo,
   SpawnOptions,
@@ -137,6 +139,7 @@ function makeRuntime(
       content: { text: string; agentVoiced?: boolean },
     ) => Promise<unknown>;
     useModel?: (type: string, params: unknown) => Promise<string>;
+    workspaceService?: unknown;
   } = {},
 ): Record<string, unknown> {
   return {
@@ -153,6 +156,7 @@ function makeRuntime(
     getService: (type: string) => {
       if (type === AcpService.serviceType) return acp;
       if (type === "ACPX_SUB_AGENT_ROUTER") return extras.router;
+      if (type === "CODING_WORKSPACE_SERVICE") return extras.workspaceService;
       return undefined;
     },
   };
@@ -181,15 +185,16 @@ afterEach(() => {
   }
 });
 
-async function harness(extras?: Parameters<typeof makeRuntime>[1]) {
+async function harness(
+  extras?: Parameters<typeof makeRuntime>[1],
+  opts: { store?: OrchestratorTaskStore } = {},
+) {
   const acp = new FakeAcp();
-  const store = new OrchestratorTaskStore({ backend: "memory" });
-  const service = new OrchestratorTaskService(
-    makeRuntime(acp, extras) as never,
-    { store },
-  );
+  const store = opts.store ?? new OrchestratorTaskStore({ backend: "memory" });
+  const runtime = makeRuntime(acp, extras);
+  const service = new OrchestratorTaskService(runtime as never, { store });
   await service.start();
-  return { acp, store, service };
+  return { acp, store, service, runtime };
 }
 
 type PrivateSurface = {
@@ -928,5 +933,468 @@ describe("child-trajectory ingest overflow manifest", () => {
         (a) => (a.metadata as { overflow?: unknown } | undefined)?.overflow,
       ),
     ).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-submit: typed intent authority + durable exactly-once claim (#PR-task-
+// service review). Real service + real memory store + real git repo on disk;
+// the workspace service is a real CodingWorkspaceService instance with its
+// remote-touching legs (getWorkspace/push/createPR) stubbed.
+// ---------------------------------------------------------------------------
+
+type SubmitPrivate = {
+  autoSubmitProvisionedWorkspace: (
+    taskId: string,
+    sessionId: string,
+  ) => Promise<void>;
+};
+
+/** Real git repo with one commit standing in for the child's committed work. */
+function makeChildRepo(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "orch-auto-submit-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", dir, ...args], { stdio: "pipe" });
+  execFileSync("git", ["init", "-q", dir], { stdio: "pipe" });
+  git("config", "user.email", "orchestrator-test@example.com");
+  git("config", "user.name", "Orchestrator Test");
+  git("config", "commit.gpgsign", "false");
+  fs.writeFileSync(path.join(dir, "work.txt"), "child work\n");
+  git("add", "work.txt");
+  git("commit", "-q", "-m", "child work");
+  return dir;
+}
+
+/** Real CodingWorkspaceService (instanceof matters to the service resolver)
+ * with the registry lookup and remote git legs stubbed. */
+function makeWorkspaceFake(repoDir: string) {
+  const wsService = new CodingWorkspaceService(
+    {
+      getSetting: () => undefined,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    } as never,
+    { baseDir: fs.mkdtempSync(path.join(os.tmpdir(), "orch-ws-base-")) },
+  );
+  const workspace = {
+    id: "ws-1",
+    path: repoDir,
+    branch: "eliza/pr-branch",
+  } as unknown as ReturnType<CodingWorkspaceService["getWorkspace"]>;
+  const push = vi.fn(async () => undefined);
+  const createPR = vi.fn(async () => ({
+    url: "https://github.com/acme/widgets/pull/7",
+    number: 7,
+  }));
+  wsService.getWorkspace = vi.fn(() => workspace) as never;
+  wsService.push = push as never;
+  wsService.createPR = createPR as never;
+  return { wsService, push, createPR };
+}
+
+/** Task created through the REAL createTask path (typed intent derivation),
+ * spawned onto the fake ACP, with the session tagged as workspace-backed. */
+async function provisionedTask(
+  service: OrchestratorTaskService,
+  acp: FakeAcp,
+  goal: string,
+  metadata?: Record<string, unknown>,
+) {
+  const detail = await service.createTask({
+    title: "auto-submit",
+    goal,
+    ...(metadata ? { metadata } : {}),
+  });
+  const taskId = detail.id;
+  await service.spawnAgentForTask(taskId);
+  const sessionId = acp.listSessions().at(-1)?.id as string;
+  await acp.updateSessionMetadata(sessionId, {
+    provisionedWorkspaceId: "ws-1",
+  });
+  return { taskId, sessionId };
+}
+
+describe("typed submitIntent is the persisted auto-submit authority", () => {
+  it("derives and persists submitIntent from the request text at create time", async () => {
+    const { store, service } = await harness();
+    const asked = await service.createTask({
+      title: "pr-ask",
+      goal: "add hello.md and open a pull request",
+    });
+    expect((await store.getTask(asked.id))?.task.metadata?.submitIntent).toBe(
+      true,
+    );
+    const declined = await service.createTask({
+      title: "pr-declined",
+      goal: "fix the typo in the readme, just commit it locally no pr needed",
+    });
+    expect(
+      (await store.getTask(declined.id))?.task.metadata?.submitIntent,
+    ).toBe(false);
+  });
+
+  it("honors an explicit caller-supplied submitIntent boolean over prose", async () => {
+    const { store, service } = await harness();
+    const optedOut = await service.createTask({
+      title: "opt-out",
+      goal: "add hello.md and open a pull request",
+      metadata: { submitIntent: false },
+    });
+    expect(
+      (await store.getTask(optedOut.id))?.task.metadata?.submitIntent,
+    ).toBe(false);
+    const optedIn = await service.createTask({
+      title: "opt-in",
+      goal: "improve the prompt wording",
+      metadata: { submitIntent: true },
+    });
+    expect((await store.getTask(optedIn.id))?.task.metadata?.submitIntent).toBe(
+      true,
+    );
+  });
+
+  it("never submits from goal prose alone: a record without the typed field is skipped even when the goal asks for a PR", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, push, createPR } = makeWorkspaceFake(repoDir);
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+    });
+    // Old-style record created straight on the store — PR prose, no typed
+    // field (what the removed completion-time regex used to act on).
+    const detail = await store.createTask({
+      title: "prose-only",
+      goal: "add hello.md and open a pull request",
+    });
+    const taskId = detail.task.id;
+    await service.spawnAgentForTask(taskId);
+    const sessionId = acp.listSessions()[0]?.id as string;
+    await acp.updateSessionMetadata(sessionId, {
+      provisionedWorkspaceId: "ws-1",
+    });
+
+    await (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+      taskId,
+      sessionId,
+    );
+
+    expect(createPR).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    const meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(meta.autoSubmitClaimedAt).toBeUndefined();
+    expect(meta.autoSubmittedAt).toBeUndefined();
+  });
+
+  it("submits from the typed field even when the goal prose has no PR wording", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, createPR } = makeWorkspaceFake(repoDir);
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+    });
+    const { taskId, sessionId } = await provisionedTask(
+      service,
+      acp,
+      "improve the prompt wording",
+      { submitIntent: true },
+    );
+
+    await (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+      taskId,
+      sessionId,
+    );
+
+    expect(createPR).toHaveBeenCalledTimes(1);
+    const meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(meta.autoSubmittedPrUrl).toBe(
+      "https://github.com/acme/widgets/pull/7",
+    );
+  });
+});
+
+describe("auto-submit durable exactly-once claim", () => {
+  it("two concurrent completion drives open exactly one PR", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, push, createPR } = makeWorkspaceFake(repoDir);
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+    });
+    const { taskId, sessionId } = await provisionedTask(
+      service,
+      acp,
+      "add hello.md and open a pull request",
+    );
+
+    const drive = () =>
+      (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+        taskId,
+        sessionId,
+      );
+    await Promise.all([drive(), drive()]);
+
+    expect(createPR).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledTimes(1);
+    const meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(typeof meta.autoSubmitClaimedAt).toBe("string");
+    expect(typeof meta.autoSubmittedAt).toBe("string");
+    expect(meta.prUrl).toBe("https://github.com/acme/widgets/pull/7");
+  });
+
+  it("a completion redelivered to a restarted service takes the sync leg, never a second PR", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, createPR } = makeWorkspaceFake(repoDir);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const first = await harness({ workspaceService: wsService }, { store });
+    const { taskId, sessionId } = await provisionedTask(
+      first.service,
+      first.acp,
+      "add hello.md and open a pull request",
+    );
+    await (
+      first.service as unknown as SubmitPrivate
+    ).autoSubmitProvisionedWorkspace(taskId, sessionId);
+    expect(createPR).toHaveBeenCalledTimes(1);
+
+    // Service restart: fresh service + fresh ACP, SAME durable store. The
+    // in-memory lock is gone — only the persisted claim protects the task.
+    const second = await harness({ workspaceService: wsService }, { store });
+    second.acp.sessions.set(sessionId, {
+      id: sessionId,
+      name: sessionId,
+      agentType: "opencode",
+      workdir: repoDir,
+      status: "completed",
+      approvalPreset: "standard",
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      metadata: { provisionedWorkspaceId: "ws-1" },
+    });
+    await (
+      second.service as unknown as SubmitPrivate
+    ).autoSubmitProvisionedWorkspace(taskId, sessionId);
+
+    expect(createPR).toHaveBeenCalledTimes(1);
+    const meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(meta.autoSubmittedPrUrl).toBe(
+      "https://github.com/acme/widgets/pull/7",
+    );
+  });
+
+  it("a persisted claim from a crashed submit blocks re-submit across restart", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, push, createPR } = makeWorkspaceFake(repoDir);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const first = await harness({ workspaceService: wsService }, { store });
+    const { taskId, sessionId } = await provisionedTask(
+      first.service,
+      first.acp,
+      "add hello.md and open a pull request",
+    );
+    // Simulate a crash mid-submit: the durable claim landed, the submit never
+    // finished (no autoSubmittedAt, no PR).
+    const doc = await store.getTask(taskId);
+    await store.updateTask(taskId, {
+      metadata: {
+        ...(doc?.task.metadata ?? {}),
+        autoSubmitClaimedAt: new Date().toISOString(),
+      },
+    });
+
+    const second = await harness({ workspaceService: wsService }, { store });
+    second.acp.sessions.set(sessionId, {
+      id: sessionId,
+      name: sessionId,
+      agentType: "opencode",
+      workdir: repoDir,
+      status: "completed",
+      approvalPreset: "standard",
+      createdAt: new Date(),
+      lastActivityAt: new Date(),
+      metadata: { provisionedWorkspaceId: "ws-1" },
+    });
+    await (
+      second.service as unknown as SubmitPrivate
+    ).autoSubmitProvisionedWorkspace(taskId, sessionId);
+
+    expect(createPR).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("a failed submit re-arms the claim so a later completion can retry", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, createPR } = makeWorkspaceFake(repoDir);
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+    });
+    const { taskId, sessionId } = await provisionedTask(
+      service,
+      acp,
+      "add hello.md and open a pull request",
+    );
+    createPR.mockRejectedValueOnce(new Error("gh 502"));
+
+    const drive = () =>
+      (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+        taskId,
+        sessionId,
+      );
+    await drive();
+    expect(createPR).toHaveBeenCalledTimes(1);
+    let meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(meta.autoSubmitClaimedAt).toBeUndefined();
+    expect(meta.autoSubmittedAt).toBeUndefined();
+    expect(meta.autoSubmittedPrUrl).toBeUndefined();
+
+    await drive();
+    expect(createPR).toHaveBeenCalledTimes(2);
+    meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(typeof meta.autoSubmittedAt).toBe("string");
+    expect(meta.autoSubmittedPrUrl).toBe(
+      "https://github.com/acme/widgets/pull/7",
+    );
+  });
+
+  it("keeps the claim when the PR was created and only a later leg failed", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, createPR } = makeWorkspaceFake(repoDir);
+    // The user-notify leg throws AFTER createPR succeeded: the claim must
+    // NOT re-arm (a redelivered completion would open a duplicate PR).
+    const sendMessageToTarget = vi.fn(async () => {
+      throw new Error("connector offline");
+    });
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+      sendMessageToTarget,
+    });
+    const detail = await service.createTask({
+      title: "notify-fails",
+      goal: "add hello.md and open a pull request",
+      roomId: ROOM,
+      metadata: { source: "discord" },
+    });
+    const taskId = detail.id;
+    await service.spawnAgentForTask(taskId);
+    const sessionId = acp.listSessions().at(-1)?.id as string;
+    await acp.updateSessionMetadata(sessionId, {
+      provisionedWorkspaceId: "ws-1",
+    });
+
+    const drive = () =>
+      (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+        taskId,
+        sessionId,
+      );
+    await drive();
+    expect(createPR).toHaveBeenCalledTimes(1);
+    expect(sendMessageToTarget).toHaveBeenCalled();
+    const meta = (await store.getTask(taskId))?.task.metadata ?? {};
+    expect(typeof meta.autoSubmittedAt).toBe("string");
+    expect(typeof meta.autoSubmitClaimedAt).toBe("string");
+
+    // The redelivered completion takes the sync leg — never a second PR.
+    await drive();
+    expect(createPR).toHaveBeenCalledTimes(1);
+  });
+
+  it("two racing task_complete events through the real bridge open exactly one PR", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService, createPR } = makeWorkspaceFake(repoDir);
+    const { acp, store, service } = await harness({
+      workspaceService: wsService,
+    });
+    const { taskId, sessionId } = await provisionedTask(
+      service,
+      acp,
+      "add hello.md and open a pull request",
+    );
+
+    // ACP can emit task_complete from two sites for one turn — replay that.
+    acp.emit(sessionId, "task_complete", { response: "done" });
+    acp.emit(sessionId, "task_complete", { response: "done" });
+
+    let prUrl: unknown;
+    for (let i = 0; i < 200 && !prUrl; i++) {
+      await new Promise((r) => setTimeout(r, 25));
+      prUrl = (await store.getTask(taskId))?.task.metadata?.autoSubmittedPrUrl;
+    }
+    expect(prUrl).toBe("https://github.com/acme/widgets/pull/7");
+    // Let the losing drive fully settle, then assert exact-once.
+    await new Promise((r) => setTimeout(r, 250));
+    expect(createPR).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("completion-path diagnostics are reported, not swallowed", () => {
+  it("reports corrective-lap event persistence failures through runtime.reportError", async () => {
+    const repoDir = makeChildRepo();
+    const { wsService } = makeWorkspaceFake(repoDir);
+    // Corrective lap against a workspace that is no longer registered.
+    wsService.getWorkspace = vi.fn(() => undefined) as never;
+    const { acp, store, service, runtime } = await harness({
+      workspaceService: wsService,
+    });
+    const { taskId, sessionId } = await provisionedTask(
+      service,
+      acp,
+      "add hello.md and open a pull request",
+    );
+    const doc = await store.getTask(taskId);
+    await store.updateTask(taskId, {
+      metadata: {
+        ...(doc?.task.metadata ?? {}),
+        autoSubmittedAt: new Date().toISOString(),
+      },
+    });
+    (store as unknown as { addEvent: () => Promise<never> }).addEvent = vi.fn(
+      async () => {
+        throw new Error("db down");
+      },
+    );
+
+    await (service as unknown as SubmitPrivate).autoSubmitProvisionedWorkspace(
+      taskId,
+      sessionId,
+    );
+
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "OrchestratorTaskService.autoSubmitProvisionedWorkspace",
+      expect.any(Error),
+      expect.objectContaining({
+        taskId,
+        sessionId,
+        phase: "corrective_push_failed_event",
+      }),
+    );
+  });
+
+  it("terminates the detached verification promise through runtime.reportError", async () => {
+    const { acp, store, service, runtime } = await harness();
+    const detail = await store.createTask({
+      title: "verify-terminal",
+      goal: "goal",
+      roomId: ROOM,
+    });
+    const taskId = detail.task.id;
+    await service.spawnAgentForTask(taskId);
+    const sessionId = acp.listSessions()[0]?.id as string;
+    Object.assign(service as object, {
+      buildCompletionEvidence: vi.fn(async () => {
+        throw new Error("evidence assembly exploded");
+      }),
+    });
+
+    acp.emit(sessionId, "task_complete", { response: "done" });
+
+    const reportError = runtime.reportError as ReturnType<typeof vi.fn>;
+    let reported = false;
+    for (let i = 0; i < 200 && !reported; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      reported = reportError.mock.calls.some(
+        (call) => call[0] === "OrchestratorTaskService.autoVerifyCompletion",
+      );
+    }
+    expect(reported).toBe(true);
+    const call = reportError.mock.calls.find(
+      (c) => c[0] === "OrchestratorTaskService.autoVerifyCompletion",
+    );
+    expect(call?.[1]).toBeInstanceOf(Error);
+    expect(call?.[2]).toMatchObject({ taskId, sessionId });
   });
 });

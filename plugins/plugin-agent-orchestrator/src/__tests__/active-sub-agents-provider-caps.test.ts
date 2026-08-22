@@ -1,11 +1,10 @@
 /**
- * Cap-disposition regressions for the ACTIVE_SUB_AGENTS provider surface:
- *  - the recently-finished section names its elision explicitly ("…and N
- *    more") with TASKS_HISTORY as the durable handle instead of silently
- *    hiding the 4th+ finished lane;
- *  - describeFinishedWorkdir sorts the listing (deterministic preview) and
- *    names the omission ("+N more") instead of an arbitrary readdir-order
- *    first four;
+ * Completeness regressions for the ACTIVE_SUB_AGENTS provider surface
+ * (prompt integrity: complete model context, no "most recent" windows):
+ *  - the recently-finished section lists EVERY lane finished inside its
+ *    30-minute window, newest-first, with no elision line and no lane cap;
+ *  - describeFinishedWorkdir lists EVERY visible top-level file, sorted,
+ *    with the exact total count — no "+N more" omission;
  *  - active-session rows carry the FULL workdir in the data payload while the
  *    text line stays the marked `workdir=…{tail}` preview.
  * Real provider + real fs for the finished workdir; fake ACP session list.
@@ -69,34 +68,69 @@ async function getProvider(sessions: Record<string, unknown>[]) {
   );
 }
 
-describe("recently-finished section elision handle", () => {
-  it("names the elided lanes and points at TASKS_HISTORY", async () => {
+describe("recently-finished section completeness", () => {
+  it("lists every finished lane in the window with no elision", async () => {
     const now = new Date();
     const sessions = Array.from({ length: 5 }, (_, i) =>
       session(`done-${i}`, "completed", "/nonexistent/gone", now),
     );
     const result = await getProvider(sessions);
-    // Only the newest RECENT_COMPLETED_MAX (3) lanes are listed…
     expect(result.text).toContain("## Recently finished sub-agent work");
-    // …and the bound is reference-bearing, never silent.
-    expect(result.text).toContain(
-      "…and 2 more finished lane(s) in this window — call TASKS_HISTORY for the complete list.",
-    );
+    for (let i = 0; i < 5; i++) {
+      expect(result.text).toContain(`sessionId=done-${i} `);
+    }
+    expect(result.text).not.toContain("more finished lane(s)");
   });
 
-  it("emits no elision line when everything fits", async () => {
-    const now = new Date();
-    const sessions = [session("done-solo", "completed", "/nonexistent/x", now)];
+  it('sorts the window newest-first so "recent" is true', async () => {
+    const now = Date.now();
+    const sessions = [
+      session(
+        "done-old",
+        "completed",
+        "/nonexistent/x",
+        new Date(now - 60_000),
+      ),
+      session("done-new", "completed", "/nonexistent/x", new Date(now)),
+      session(
+        "done-mid",
+        "completed",
+        "/nonexistent/x",
+        new Date(now - 30_000),
+      ),
+    ];
     const result = await getProvider(sessions);
-    expect(result.text).not.toContain("more finished lane(s)");
+    const newAt = result.text.indexOf("sessionId=done-new");
+    const midAt = result.text.indexOf("sessionId=done-mid");
+    const oldAt = result.text.indexOf("sessionId=done-old");
+    expect(newAt).toBeGreaterThan(-1);
+    expect(newAt).toBeLessThan(midAt);
+    expect(midAt).toBeLessThan(oldAt);
+  });
+
+  it("keeps lanes older than the window out (TASKS_HISTORY owns them)", async () => {
+    const now = Date.now();
+    const sessions = [
+      session("done-fresh", "completed", "/nonexistent/x", new Date(now)),
+      session(
+        "done-stale",
+        "completed",
+        "/nonexistent/x",
+        new Date(now - 31 * 60_000),
+      ),
+    ];
+    const result = await getProvider(sessions);
+    expect(result.text).toContain("sessionId=done-fresh");
+    expect(result.text).not.toContain("sessionId=done-stale");
+    expect(result.text).toContain("call TASKS_HISTORY");
   });
 });
 
-describe("finished-workdir file preview", () => {
-  it("sorts the listing and names the omission with +N more", async () => {
+describe("finished-workdir file listing", () => {
+  it("lists every visible file, sorted, with the exact total count", async () => {
     const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "finished-workdir-"));
     cleanups.push(() => fs.rmSync(workdir, { recursive: true, force: true }));
-    // Deliberately created out of order; the preview must be sorted.
+    // Deliberately created out of order; the listing must be sorted.
     for (const name of ["f.txt", "b.txt", "d.txt", "a.txt", "e.txt", "c.txt"]) {
       fs.writeFileSync(path.join(workdir, name), "x", "utf8");
     }
@@ -104,8 +138,9 @@ describe("finished-workdir file preview", () => {
       session("done-files", "completed", workdir, new Date()),
     ]);
     expect(result.text).toContain(
-      `workdir=${workdir} files=a.txt,b.txt,c.txt,d.txt (+2 more in this workdir)`,
+      `workdir=${workdir} files(6)=a.txt,b.txt,c.txt,d.txt,e.txt,f.txt`,
     );
+    expect(result.text).not.toContain("more in this workdir");
   });
 });
 

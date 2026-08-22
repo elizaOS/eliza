@@ -3724,7 +3724,11 @@ async function runSpawnAgent(
                 canonical &&
                 canonical.originMessageId === spawnRootMessageId
               ) {
-                bestText = (canonical.deliverable ?? canonical.text ?? "").trim();
+                bestText = (
+                  canonical.deliverable ??
+                  canonical.text ??
+                  ""
+                ).trim();
                 if (bestText) break;
               }
             }
@@ -4663,7 +4667,14 @@ async function runStopAgent(
     // coordinator-synthesized "stopped before completion" would be a duplicate.
     await markSessionAdministrativelyStopped(service, target.id, "user_stop");
     await service.stopSession(target.id);
-    await interruptOwningTask(runtime, target.id, "user_stop");
+    // Authoritative durable interrupt (see interruptOwningTask): a failure is
+    // reported and rides the result data — the stop confirmation still stands
+    // for the session itself.
+    const stopInterrupt = await interruptOwningTask(
+      runtime,
+      target.id,
+      "user_stop",
+    );
     if (
       (state as { codingSession?: { id?: string } } | undefined)?.codingSession
         ?.id === target.id
@@ -4685,7 +4696,17 @@ async function runStopAgent(
       userFacingText: stoppedText,
       verifiedUserFacing: true,
       turnComplete: true,
-      data: { sessionId: target.id, agentType: String(target.agentType) },
+      data: {
+        sessionId: target.id,
+        agentType: String(target.agentType),
+        ...(stopInterrupt.ok
+          ? {}
+          : {
+              taskInterruptFailures: [
+                { sessionId: target.id, error: stopInterrupt.error },
+              ],
+            }),
+      },
     };
   } catch (error) {
     // error-policy:J1 stop action boundary → structured failure to the
@@ -4766,31 +4787,95 @@ async function runListAgents(
 
 // ── action: cancel (CANCEL_TASK) ────────────────────────────────────────────
 
+/** Room stamps a session record carries. The create paths stamp
+ * `metadata.roomId` / `originRoomId` / `taskRoomId` plus the `swarmRooms`
+ * routing list; any of them ties the session to the requesting room. */
+function sessionRoomStamps(session: SessionInfo): string[] {
+  const meta = (session.metadata ?? {}) as Record<string, unknown>;
+  const rooms: string[] = [];
+  for (const key of ["roomId", "originRoomId", "taskRoomId"]) {
+    const value = meta[key];
+    if (typeof value === "string" && value.trim()) rooms.push(value.trim());
+  }
+  const swarmRooms = meta.swarmRooms;
+  if (Array.isArray(swarmRooms)) {
+    for (const entry of swarmRooms) {
+      const roomId =
+        entry && typeof entry === "object"
+          ? (entry as { roomId?: unknown }).roomId
+          : undefined;
+      if (typeof roomId === "string" && roomId.trim()) {
+        rooms.push(roomId.trim());
+      }
+    }
+  }
+  return rooms;
+}
+
+/**
+ * Ownership scope for cancel on a shared runtime: a non-elevated caller may
+ * only touch sessions spawned by their entity (`metadata.userId`) or stamped
+ * with their room (any room stamp). A session with NO stamps is
+ * unattributable — nobody's to cancel without an elevated role (fail closed;
+ * the all-path reports it as skipped instead of killing it).
+ */
+function requesterOwnsSession(session: SessionInfo, message: Memory): boolean {
+  const meta = (session.metadata ?? {}) as Record<string, unknown>;
+  const spawner = typeof meta.userId === "string" ? meta.userId : undefined;
+  if (spawner && message.entityId && spawner === String(message.entityId)) {
+    return true;
+  }
+  const requesterRoom = message.roomId ? String(message.roomId) : undefined;
+  return (
+    requesterRoom !== undefined &&
+    sessionRoomStamps(session).includes(requesterRoom)
+  );
+}
+
+type TaskInterruptOutcome =
+  | { ok: true; taskId?: string }
+  | { ok: false; error: string };
+
 /** A stopped/cancelled session's durable task must read user-interrupted too:
  * with only the session stopped, a sibling lane's completion still verified
- * and relayed, and the wave launched further lanes. Best-effort — the stop
- * confirmation stands even when the task lookup fails. */
+ * and relayed, and the wave launched further lanes. The outcome is
+ * AUTHORITATIVE: a failed interrupt is reported (reportError) and returned so
+ * the caller surfaces it — the old swallowed catch let the durable task
+ * respawn the very lane the user just cancelled while the reply claimed a
+ * clean cancel. */
 async function interruptOwningTask(
   runtime: IAgentRuntime,
   sessionId: string,
   reason: string,
-): Promise<void> {
+): Promise<TaskInterruptOutcome> {
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;
-  if (!taskService?.getTaskForSession) return;
+  if (!taskService?.getTaskForSession) return { ok: true };
   try {
     const record = await taskService.getTaskForSession(sessionId);
-    if (record?.id) await taskService.interruptTask(record.id, reason);
-  } catch {
-    // error-policy:J4 the session stop already succeeded; task marking is
-    // reinforcement, not a gate.
+    if (record?.id) {
+      await taskService.interruptTask(record.id, reason);
+      return { ok: true, taskId: record.id };
+    }
+    return { ok: true };
+  } catch (error) {
+    // error-policy:J1 durable-task interrupt failed at the service boundary.
+    // The session stop/cancel still proceeds (the user asked for it), but the
+    // failure must surface: reportError for the log/RECENT_ERRORS channel and
+    // a structured outcome the caller includes in its result — never a silent
+    // catch that lets the durable task resume the cancelled work.
+    runtime.reportError?.("tasks.interruptOwningTask", error, {
+      sessionId,
+      reason,
+    });
+    return { ok: false, error: failureMessage(error) };
   }
 }
 
 async function runCancel(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -4801,6 +4886,15 @@ async function runCancel(
     return errorResult("SERVICE_UNAVAILABLE", "ACP service is not available.");
   }
 
+  // Cancel is a privileged mutation like control/stop: it kills running
+  // agents, so it rides the same connector role policy as the other gated
+  // TASKS surfaces. Without this gate, any caller on a shared runtime could
+  // cancel other users' sessions.
+  const access = await requireTaskAgentAccess(runtime, message, "interact");
+  if (!access.allowed) {
+    return taskPolicyDenialResult("TASKS:cancel", access);
+  }
+
   try {
     const taskService = runtime.getService?.(
       OrchestratorTaskService.serviceType,
@@ -4808,9 +4902,9 @@ async function runCancel(
     // Interrupt the owning durable task BEFORE the session cancel so lane
     // verification and the terminal relay observe the user interrupt first
     // (interruptTask stamps interruptReason + dequeues admission). Single
-    // guarded call per session — the guarded interruptOwningTask overlay at
-    // the pre-cancel slot; it tolerates a task service without
-    // getTaskForSession and never blocks the cancel.
+    // call per session at the pre-cancel slot; it tolerates a task service
+    // without getTaskForSession and never blocks the cancel, but a FAILED
+    // interrupt is returned and surfaced, never swallowed.
     const interruptForSession = (selectedSessionId: string) =>
       interruptOwningTask(runtime, selectedSessionId, "user_cancel");
     const all = pickBoolean(params, content, "all") ?? false;
@@ -4821,11 +4915,37 @@ async function runCancel(
         ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
+    // Ownership scope on a shared runtime: role-elevated callers (and the
+    // agent's own internal turns, which resolve as OWNER) may touch any
+    // session; everyone else only sessions stamped with their room or their
+    // entity (see requesterOwnsSession). Search/newest targeting and the
+    // all-path operate on the scoped list so one room's "cancel everything"
+    // can never reach another room's work.
+    const elevated =
+      access.actualRole === "OWNER" || access.actualRole === "ADMIN";
+    const scopedSessions = elevated
+      ? sessions
+      : sessions.filter((session) => requesterOwnsSession(session, message));
 
     if (all) {
+      const skippedUnauthorized = elevated
+        ? []
+        : sessions
+            .filter((session) => !scopedSessions.includes(session))
+            .map((session) => session.id);
       const stoppedSessions: string[] = [];
-      for (const session of sessions) {
-        await interruptForSession(session.id);
+      const taskInterruptFailures: Array<{
+        sessionId: string;
+        error: string;
+      }> = [];
+      for (const session of scopedSessions) {
+        const interrupt = await interruptForSession(session.id);
+        if (!interrupt.ok) {
+          taskInterruptFailures.push({
+            sessionId: session.id,
+            error: interrupt.error,
+          });
+        }
         // Mark BEFORE cancelling so the terminal relay suppresses its own
         // stop notice — the cancel confirmation below is the single notice.
         await markSessionAdministrativelyStopped(
@@ -4839,13 +4959,23 @@ async function runCancel(
       }
       // The cancel confirmation is the complete answer to a single-operation
       // turn: verified + turnComplete make the callback the sole delivery.
+      // A failed durable interrupt rides in the facts and the canonical
+      // fallback — the reply must not claim a clean cancel over work that may
+      // resume.
       const { text } = await phraseForUser(
         runtime,
         {
           intent: "confirm",
-          facts: { canceledCount: stoppedSessions.length },
+          facts: {
+            canceledCount: stoppedSessions.length,
+            ...(taskInterruptFailures.length > 0
+              ? { durableInterruptFailures: taskInterruptFailures.length }
+              : {}),
+          },
         },
-        `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`,
+        taskInterruptFailures.length > 0
+          ? `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}, but ${taskInterruptFailures.length} durable task interrupt${taskInterruptFailures.length === 1 ? "" : "s"} failed — that work may resume; details logged.`
+          : `Canceled ${stoppedSessions.length} task${stoppedSessions.length === 1 ? "" : "s"}.`,
       );
       await callbackText(callback, text);
       return {
@@ -4854,34 +4984,71 @@ async function runCancel(
         userFacingText: text,
         verifiedUserFacing: true,
         turnComplete: true,
-        data: { canceledCount: stoppedSessions.length, stoppedSessions },
+        data: {
+          canceledCount: stoppedSessions.length,
+          stoppedSessions,
+          ...(skippedUnauthorized.length > 0 ? { skippedUnauthorized } : {}),
+          ...(taskInterruptFailures.length > 0
+            ? { taskInterruptFailures }
+            : {}),
+        },
       };
     }
 
     const target = sessionId
       ? await Promise.resolve(service.getSession(sessionId))
       : search
-        ? sessions.find((session) =>
+        ? scopedSessions.find((session) =>
             `${session.id} ${session.name ?? ""} ${session.metadata?.label ?? ""}`
               .toLowerCase()
               .includes(search),
           )
-        : newestSession(sessions);
+        : newestSession(scopedSessions);
 
-    if (!target && !sessionId && !search && _message.roomId) {
+    if (target && !elevated && !requesterOwnsSession(target, message)) {
+      // Explicit-id cancel of another room's/user's session on a shared
+      // runtime: deny without touching it. Planner-facing — the evaluator
+      // phrases the denial.
+      return failureResult(
+        "TASKS:cancel",
+        "FORBIDDEN",
+        `Session ${target.id} belongs to another room or user; cancel denied.`,
+        { reason: "session_scope_denied", sessionId: target.id },
+      );
+    }
+
+    if (!target && !sessionId && !search && message.roomId) {
       // No session yet, but the room's build may still be spawning: the
       // durable task exists and is what the user wants stopped. An unmatched
-      // `search` is a miss, not a room-wide stop.
-      const titles =
-        typeof taskService?.interruptInFlightTasksForRoom === "function"
-          ? await taskService
-              .interruptInFlightTasksForRoom(
-                String(_message.roomId),
-                "user_cancel",
-                String(_message.entityId),
-              )
-              .catch(() => [] as string[])
-          : [];
+      // `search` is a miss, not a room-wide stop. Already room-scoped: the
+      // task service only interrupts THIS room's in-flight tasks.
+      let titles: string[] = [];
+      if (typeof taskService?.interruptInFlightTasksForRoom === "function") {
+        try {
+          titles = await taskService.interruptInFlightTasksForRoom(
+            String(message.roomId),
+            "user_cancel",
+            String(message.entityId),
+          );
+        } catch (error) {
+          // error-policy:J1 durable-task interrupt failed at the service
+          // boundary. The old `.catch(() => [])` made an infra failure read
+          // as "no matching task" while the in-flight build kept running —
+          // the interruption result must be authoritative, so report and
+          // fail the cancel explicitly.
+          runtime.reportError?.(
+            "tasks.runCancel.interruptInFlightTasksForRoom",
+            error,
+            { roomId: message.roomId },
+          );
+          const msg = failureMessage(error);
+          return failureResult(
+            "TASKS:cancel",
+            "TASK_INTERRUPT_FAILED",
+            `Failed to interrupt the in-flight task: ${msg}`,
+          );
+        }
+      }
       if (titles.length > 0) {
         const label = titles[0];
         const { text } = await phraseForUser(
@@ -4917,21 +5084,29 @@ async function runCancel(
     }
 
     // Mark BEFORE cancelling (see the all-sessions branch above).
-    await interruptForSession(target.id);
+    const interrupt = await interruptForSession(target.id);
     await markSessionAdministrativelyStopped(service, target.id, "user_cancel");
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
     // Chat gets the task LABEL (findInFlightWork naming), never the raw
-    // session/thread id — structural ids stay in data as receipts.
+    // session/thread id — structural ids stay in data as receipts. A failed
+    // durable interrupt is part of the answer: the session died but its task
+    // may resume, and claiming a clean cancel would be false.
     const label = labelFor(target);
     const { text } = await phraseForUser(
       runtime,
       {
         intent: "confirm",
-        facts: { canceledCount: 1, label },
+        facts: {
+          canceledCount: 1,
+          label,
+          ...(interrupt.ok ? {} : { durableInterruptFailures: 1 }),
+        },
         mustInclude: [label],
       },
-      `Canceled "${label}".`,
+      interrupt.ok
+        ? `Canceled "${label}".`
+        : `Canceled "${label}", but its durable task interrupt failed — the work may resume; details logged.`,
     );
     await callbackText(callback, text);
     return {
@@ -4945,6 +5120,13 @@ async function runCancel(
         sessionId: target.id,
         stoppedSessions: [target.id],
         status: "canceled",
+        ...(interrupt.ok
+          ? {}
+          : {
+              taskInterruptFailures: [
+                { sessionId: target.id, error: interrupt.error },
+              ],
+            }),
       },
     };
   } catch (error) {
@@ -6789,35 +6971,99 @@ export async function handleIssueAction(
           if (items.length > 0) {
             const labels = parseLabels(params.labels);
             const created: IssueInfo[] = [];
+            const receipts: Array<
+              | {
+                  index: number;
+                  ok: true;
+                  issueNumber: number;
+                  title: string;
+                  url: string;
+                }
+              | { index: number; ok: false; title: string; error: string }
+            > = [];
             let bulkLabelNote = "";
-            // Every extracted item is created — no silent bulk cap. The
-            // per-item receipt list below reports each; a failure mid-loop
-            // surfaces through the surrounding try as ISSUE_OP_FAILED.
-            for (const item of items) {
-              const { issue, labelNote } =
-                await createIssueWithBestEffortLabels(service, repo, {
-                  title: item.title,
-                  body: item.body ?? "",
-                  labels,
+            // Every extracted item gets an attempt AND a settled receipt — no
+            // silent bulk cap, and no stop-on-first-failure: aborting mid-loop
+            // left items N+1.. both uncreated and unreported after partial
+            // writes. Contract (documented here, pinned by tests): `success`
+            // is true when at least one issue landed — per-item failures ride
+            // in data.receipts — and false only when EVERY item failed.
+            for (const [index, item] of items.entries()) {
+              try {
+                const { issue, labelNote } =
+                  await createIssueWithBestEffortLabels(service, repo, {
+                    title: item.title,
+                    body: item.body ?? "",
+                    labels,
+                  });
+                if (labelNote) bulkLabelNote = labelNote;
+                created.push(issue);
+                receipts.push({
+                  index,
+                  ok: true,
+                  issueNumber: issue.number,
+                  title: issue.title,
+                  url: issue.url,
                 });
-              if (labelNote) bulkLabelNote = labelNote;
-              created.push(issue);
+              } catch (error) {
+                // error-policy:J1 per-item provider boundary: one bad item
+                // must not void the rest of the batch. The failure becomes a
+                // per-item receipt (reported below) and the loop continues.
+                receipts.push({
+                  index,
+                  ok: false,
+                  title: item.title,
+                  error: failureMessage(error),
+                });
+              }
+            }
+            const failed = receipts.filter((receipt) => !receipt.ok);
+            if (created.length === 0) {
+              // All items failed: an explicit failure with every receipt —
+              // planner-facing (the evaluator phrases it), never a success
+              // that created nothing.
+              return {
+                success: false,
+                error: "BULK_CREATE_FAILED",
+                text: `Failed to create all ${items.length} issues on ${repo}: ${issueFailureReply(repo, failed[0] && !failed[0].ok ? failed[0].error : "unknown error")}`,
+                data: {
+                  issues: [],
+                  receipts,
+                  requestedCount: items.length,
+                  createdCount: 0,
+                  failedCount: failed.length,
+                },
+              };
             }
             // Create/list/get answers are the complete answer to the turn:
             // verified + turnComplete make the callback the sole delivery.
             // Missing-param clarifications stay planner-facing — the
             // evaluator owns asking the user, in voice. Issue numbers + URLs
-            // are receipts: they ride as a machine appendix, byte-identical.
-            const summary = created
-              .map((i) => `#${i.number}: ${i.title}\n  ${i.url}`)
+            // AND per-item failures are receipts: they ride as a machine
+            // appendix, byte-identical — a partial batch must never read as
+            // a clean sweep.
+            const summary = receipts
+              .map((receipt) =>
+                receipt.ok
+                  ? `#${receipt.issueNumber}: ${receipt.title}\n  ${receipt.url}`
+                  : `FAILED (item ${receipt.index + 1}) ${receipt.title}: ${receipt.error}`,
+              )
               .join("\n");
             const { text: bulkProse } = await phraseForUser(
               runtime,
               {
                 intent: "confirm",
-                facts: { action: "created issues", count: created.length },
+                facts: {
+                  action: "created issues",
+                  count: created.length,
+                  ...(failed.length > 0
+                    ? { requested: items.length, failedCount: failed.length }
+                    : {}),
+                },
               },
-              `Created ${created.length} issues:`,
+              failed.length > 0
+                ? `Created ${created.length} of ${items.length} issues (${failed.length} failed):`
+                : `Created ${created.length} issues:`,
             );
             // The chat confirmation stays clean; a label degrade is recorded
             // planner-side (`text` + data) so the model can answer honestly
@@ -6832,7 +7078,14 @@ export async function handleIssueAction(
               userFacingText: bulkText,
               verifiedUserFacing: true,
               turnComplete: true,
-              data: { issues: created, labelsApplied: !bulkLabelNote },
+              data: {
+                issues: created,
+                receipts,
+                requestedCount: items.length,
+                createdCount: created.length,
+                failedCount: failed.length,
+                labelsApplied: !bulkLabelNote,
+              },
             };
           }
 

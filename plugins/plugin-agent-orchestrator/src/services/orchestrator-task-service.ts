@@ -2069,32 +2069,56 @@ export class OrchestratorTaskService extends Service {
               () => this.autoSubmitProvisionedWorkspace(taskId, sessionId),
             ),
           ),
-        ).catch(() => undefined);
-        void submitSettled.then(async () => {
-          const { evidence: completionEvidence, bundle: completionBundle } =
-            await this.buildCompletionEvidence(
-              taskId,
-              sessionId,
-              summary ?? "",
-            );
-          return runWithTrajectoryContext(detachedContext, () =>
-            withStandaloneTrajectory(
-              this.runtime,
-              {
-                source: "orchestrator-task-verify",
-                metadata: { taskId, sessionId },
-              },
-              () =>
-                this.autoVerifyCompletion(
-                  taskId,
-                  sessionId,
-                  completionEvidence,
-                  summary ?? "",
-                  completionBundle,
-                ),
-            ),
+        ).catch((err) => {
+          // error-policy:J7 the detached submit leg must not kill the event
+          // bridge; autoSubmitProvisionedWorkspace catches internally, so a
+          // rejection here means the trajectory wrapper itself failed —
+          // reported, never silently swallowed.
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.autoSubmitProvisionedWorkspace",
+            err,
+            { taskId, sessionId },
           );
+          return undefined;
         });
+        void submitSettled
+          .then(async () => {
+            const { evidence: completionEvidence, bundle: completionBundle } =
+              await this.buildCompletionEvidence(
+                taskId,
+                sessionId,
+                summary ?? "",
+              );
+            return runWithTrajectoryContext(detachedContext, () =>
+              withStandaloneTrajectory(
+                this.runtime,
+                {
+                  source: "orchestrator-task-verify",
+                  metadata: { taskId, sessionId },
+                },
+                () =>
+                  this.autoVerifyCompletion(
+                    taskId,
+                    sessionId,
+                    completionEvidence,
+                    summary ?? "",
+                    completionBundle,
+                  ),
+              ),
+            );
+          })
+          .catch((err) => {
+            // error-policy:J7 terminal handler for the detached verification
+            // promise: evidence assembly or the verify pass failing must not
+            // become an unhandled rejection — a stalled verification would
+            // otherwise be invisible. Reported; the task stays in
+            // `validating` for the stuck-task reaper / a later completion.
+            this.runtime.reportError?.(
+              "OrchestratorTaskService.autoVerifyCompletion",
+              err,
+              { taskId, sessionId },
+            );
+          });
         // Terminalize the durable Smithers link. The original run path never
         // wrote state:"completed" (only the boot-recovery path did), so every
         // normally-completed task carried a pending/running link forever and
@@ -3631,9 +3655,18 @@ export class OrchestratorTaskService extends Service {
         else throw error;
       }
     }
+    // Typed PR intent, derived ONCE at create time from the user's request
+    // text and persisted on the record. External-write authority (push + PR)
+    // must come from a persisted typed field — the completion path reads only
+    // `metadata.submitIntent` and never re-parses goal prose. A caller that
+    // supplies an explicit boolean is authoritative over the derivation.
+    const submitIntent =
+      typeof input.metadata?.submitIntent === "boolean"
+        ? input.metadata.submitIntent
+        : OrchestratorTaskService.wantsPullRequest(inputText);
     const bound = this.bindProject({
       ...input,
-      metadata: { ...input.metadata, inputBaselines },
+      metadata: { ...input.metadata, inputBaselines, submitIntent },
     });
     const doc = await this.store.createTask(
       await this.withDefaultAcceptanceCriteria(bound),
@@ -3799,10 +3832,13 @@ export class OrchestratorTaskService extends Service {
    * the task has no origin room (e.g. an API-created task with no chat).
    */
   /**
-   * PR-intent gate for {@link autoSubmitProvisionedWorkspace}: submit only
-   * when the user actually asked for a pull/merge request. A repo task
-   * without PR intent ("fix the bug in <repo>") keeps its commits local for
-   * the user to review. Matched against the durable goal + original request.
+   * PR-intent derivation for {@link createTask}: true only when the user
+   * actually asked for a pull/merge request. A repo task without PR intent
+   * ("fix the bug in <repo>") keeps its commits local for the user to
+   * review. Evaluated ONCE at create time against the goal + original
+   * request and persisted as the typed `metadata.submitIntent` field — the
+   * completion path ({@link autoSubmitProvisionedWorkspace}) reads only that
+   * field and never re-parses prose.
    */
   static wantsPullRequest(text: string): boolean {
     // Negation-aware: "just commit it locally, no pr needed" matched the bare
@@ -3825,18 +3861,25 @@ export class OrchestratorTaskService extends Service {
    * cannot push (by design — the orchestrator owns credentials), so this is
    * the completion leg of every "…and open a PR" repo task. Fire-and-forget
    * from the task_complete bridge; every failure is loud in the log but never
-   * breaks the event path. The `autoSubmittedAt` metadata stamp makes it
-   * once-per-task (a verify re-engage's second task_complete must not race a
-   * second PR).
+   * breaks the event path. Gated by the typed `metadata.submitIntent` field
+   * persisted at create time, and made exactly-once by a durable claim: the
+   * `autoSubmitClaimedAt` stamp is CAS-set under the task write lock BEFORE
+   * any push, and `autoSubmittedAt` records the finished submit (a verify
+   * re-engage's second task_complete must not race a second PR — it either
+   * skips on the claim or takes the corrective sync leg).
    */
   private async autoSubmitProvisionedWorkspace(
     taskId: string,
     sessionId: string,
   ): Promise<void> {
+    // Set the moment createPR succeeds: once a PR exists the claim must NEVER
+    // be re-armed (a later failure in metadata write or user notify would
+    // otherwise release it and a redelivered completion would open a second
+    // PR — the exact duplicate the durable claim exists to prevent).
+    let submittedPrUrl: string | undefined;
     try {
       const doc = await this.store.getTask(taskId);
       if (!doc) return;
-      const alreadySubmitted = Boolean(doc.task.metadata?.autoSubmittedAt);
       const session = doc.sessions.find((s) => s.sessionId === sessionId);
       const acp = this.acp();
       const liveMeta = acp
@@ -3850,29 +3893,68 @@ export class OrchestratorTaskService extends Service {
           ? (session.metadata.provisionedWorkspaceId as string)
           : undefined);
       if (!workspaceId) return;
-      const intentText = `${doc.task.goal ?? ""} ${doc.task.originalRequest ?? ""}`;
-      if (!OrchestratorTaskService.wantsPullRequest(intentText)) return;
+      // Typed-intent gate: external-write authority (push + PR) comes ONLY
+      // from the persisted `submitIntent` field stamped at create time by
+      // {@link createTask} (derived there via {@link wantsPullRequest}).
+      // Completion never re-parses goal prose — a record without the typed
+      // field never auto-submits; the explicit TASKS_SUBMIT_WORKSPACE action
+      // remains the manual path.
+      if (doc.task.metadata?.submitIntent !== true) return;
       const workspaceService = getCodingWorkspaceService(this.runtime);
       if (!workspaceService) return;
       const workspace = workspaceService.getWorkspace(workspaceId);
-      if (!workspace) {
-        if (alreadySubmitted) {
-          await this.store
-            .addEvent({
-              id: randomUUID(),
-              taskId,
-              sessionId,
-              eventType: "corrective_push_failed",
-              summary: `Corrective-lap push skipped: workspace ${workspaceId} is no longer registered.`,
-              data: {},
-              timestamp: Date.now(),
-              createdAt: nowIso(),
-            })
-            .catch(() => undefined);
-        }
+      // Durable exactly-once claim, serialized by the task write lock: read
+      // the submit/claim stamps and CAS-set `autoSubmitClaimedAt` in one
+      // locked section BEFORE any push. ACP can emit task_complete from two
+      // sites for one turn — both invocations land here, and the loser must
+      // observe the winner's persisted claim instead of racing a second PR.
+      // The claim is task metadata, so it survives a service restart: a
+      // redelivered completion after a crash mid-submit stays claimed
+      // (at-most-once) rather than opening a duplicate PR.
+      const claim = await this.withTaskWriteLock(
+        taskId,
+        async (): Promise<"submit" | "sync" | "skip"> => {
+          const latest = await this.store.getTask(taskId);
+          if (!latest) return "skip";
+          const meta = latest.task.metadata ?? {};
+          if (meta.autoSubmittedAt) return "sync";
+          if (meta.autoSubmitClaimedAt) return "skip";
+          // Nothing submittable — do not burn the once-per-task claim on a
+          // workspace that is no longer registered.
+          if (!workspace) return "skip";
+          await this.store.updateTask(taskId, {
+            metadata: { ...meta, autoSubmitClaimedAt: nowIso() },
+          });
+          return "submit";
+        },
+      );
+      if (claim === "skip") return;
+      if (claim === "sync" && !workspace) {
+        await this.store
+          .addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "corrective_push_failed",
+            summary: `Corrective-lap push skipped: workspace ${workspaceId} is no longer registered.`,
+            data: {},
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          })
+          .catch((err) => {
+            // error-policy:J7 event persistence is diagnostics; a store
+            // failure must not kill the completion loop but is reported, not
+            // swallowed.
+            this.runtime.reportError?.(
+              "OrchestratorTaskService.autoSubmitProvisionedWorkspace",
+              err,
+              { taskId, sessionId, phase: "corrective_push_failed_event" },
+            );
+          });
         return;
       }
-      if (alreadySubmitted) {
+      if (!workspace) return;
+      if (claim === "sync") {
         // Sync leg for corrective laps: each verify-failed round makes the
         // child commit more work, but the full submit is claim-once — the
         // early return left every later commit UNPUSHED, so the residuals
@@ -3930,15 +4012,19 @@ export class OrchestratorTaskService extends Service {
               timestamp: Date.now(),
               createdAt: nowIso(),
             })
-            .catch(() => undefined);
+            .catch((eventErr) => {
+              // error-policy:J7 event persistence is diagnostics; a store
+              // failure must not kill the completion loop but is reported,
+              // not swallowed.
+              this.runtime.reportError?.(
+                "OrchestratorTaskService.autoSubmitProvisionedWorkspace",
+                eventErr,
+                { taskId, sessionId, phase: "corrective_push_failed_event" },
+              );
+            });
         }
         return;
       }
-      // Claim before the slow work so a redelivered task_complete cannot race
-      // a duplicate submit.
-      await this.store.updateTask(taskId, {
-        metadata: { ...doc.task.metadata, autoSubmittedAt: nowIso() },
-      });
       // The ACP git wrapper commits on its own exec branch; the workspace
       // service pushes/PRs its REGISTERED branch. Point the registered branch
       // at the child's actual work first, or the PR is opened from a branch
@@ -4027,10 +4113,13 @@ export class OrchestratorTaskService extends Service {
         title: providerPrTitle,
         body: `${canonicalPrBody}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
       });
+      submittedPrUrl = pr.url;
       await this.store.updateTask(taskId, {
         metadata: {
           ...(((await this.store.getTask(taskId))?.task.metadata ??
             {}) as Record<string, unknown>),
+          // The submit completed: later completion events take the sync leg.
+          autoSubmittedAt: nowIso(),
           autoSubmittedPrUrl: pr.url,
           canonicalPrTitle,
           providerPrTitle,
@@ -4098,16 +4187,35 @@ export class OrchestratorTaskService extends Service {
       );
       // Re-arm: a failed submit must not permanently claim the once-per-task
       // stamp — a later genuine task_complete (verify re-engage, retry)
-      // deserves another attempt.
-      try {
-        const latest = await this.store.getTask(taskId);
-        if (latest?.task.metadata?.autoSubmittedAt) {
-          const { autoSubmittedAt: _dropped, ...rest } = latest.task
-            .metadata as Record<string, unknown>;
-          await this.store.updateTask(taskId, { metadata: rest });
+      // deserves another attempt. ONLY when no PR was created: once
+      // `submittedPrUrl` is set the PR exists on the remote, and releasing
+      // the claim would let a redelivered completion open a duplicate.
+      if (submittedPrUrl === undefined) {
+        try {
+          await this.withTaskWriteLock(taskId, async () => {
+            const latest = await this.store.getTask(taskId);
+            const meta = latest?.task.metadata as
+              | Record<string, unknown>
+              | undefined;
+            if (meta && (meta.autoSubmittedAt || meta.autoSubmitClaimedAt)) {
+              const {
+                autoSubmittedAt: _droppedSubmit,
+                autoSubmitClaimedAt: _droppedClaim,
+                ...rest
+              } = meta;
+              await this.store.updateTask(taskId, { metadata: rest });
+            }
+          });
+        } catch (rearmError) {
+          // error-policy:J7 the re-arm write is claim bookkeeping; a store
+          // failure must not kill the completion loop but is reported so a
+          // permanently-stuck claim is visible, never silent.
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.autoSubmitProvisionedWorkspace",
+            rearmError,
+            { taskId, sessionId, phase: "re-arm" },
+          );
         }
-      } catch {
-        // error-policy:J6 best-effort re-arm; the warn above already reported the submit failure
       }
     }
   }

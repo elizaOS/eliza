@@ -178,6 +178,78 @@ const HANDOFF_PENDING_META_KEY = "routerHandoffPendingAt";
 // a first-class one without re-deriving it. Exported as a matching literal in
 // the tests (no cross-import). See sanitizeSuccessorMetadata below.
 export const SUCCESSOR_ROOM_INHERITED_META_KEY = "successorRoomInherited";
+
+// Durable stamp of every deferred (held) completion relay, keyed by sessionId
+// on the owning task's metadata. Written at defer time, cleared only after the
+// released relay actually posts, so a restart between defer and release
+// reconstructs the held completion from the store instead of swallowing it
+// (the in-memory map + timer die with the process).
+export const PENDING_COMPLETION_RELAYS_META_KEY = "pendingCompletionRelays";
+
+/** How long a deferred completion relay waits for a verification verdict
+ *  before the fallback releases it as `unverified`. */
+export const DEFERRED_RELAY_FALLBACK_MS = 5 * 60 * 1000;
+
+/** The three ways a held completion relay resolves. `passed` re-enters the
+ *  deferred task_complete; `failed` drops it (verify-retry/park messaging owns
+ *  the narrative); `unverified` re-enters it WITH an explicit disclosure — the
+ *  verdict never arrived, and the relay must never fabricate a pass. */
+export type DeferredRelayVerdict = "passed" | "failed" | "unverified";
+
+/** Body line appended to a relay released without a verification verdict. */
+export const UNVERIFIED_RELAY_DISCLOSURE =
+  "Note: verification did not complete — result delivered unverified.";
+
+/** Duck-typed task-service surface the durable relay stamps read and write. */
+interface RelayStampTaskService {
+  getTask: (taskId: string) => Promise<{
+    id?: string;
+    status?: string;
+    metadata?: Record<string, unknown> | null;
+  } | null>;
+  updateTask: (
+    taskId: string,
+    patch: { metadata?: Record<string, unknown> },
+  ) => Promise<unknown>;
+  listTasks?: (
+    filter: Record<string, unknown>,
+  ) => Promise<Array<{ id: string; status?: string }>>;
+}
+
+/** One durable pending-relay stamp (see PENDING_COMPLETION_RELAYS_META_KEY). */
+interface PendingRelayStamp {
+  taskId: string;
+  sessionId: string;
+  deferredAt: string;
+  data: unknown;
+  turnId?: string;
+}
+
+/** Parse the durable pending-relay stamps off a task metadata record.
+ *  Malformed entries are dropped (never thrown): the stamps are restart
+ *  recovery data, and a corrupt one must not block startup. */
+function readPendingRelayStamps(
+  metadata: Record<string, unknown> | null | undefined,
+): Record<string, PendingRelayStamp> {
+  const raw = metadata?.[PENDING_COMPLETION_RELAYS_META_KEY];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, PendingRelayStamp> = {};
+  for (const [sessionId, value] of Object.entries(
+    raw as Record<string, unknown>,
+  )) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const v = value as Record<string, unknown>;
+    out[sessionId] = {
+      taskId: typeof v.taskId === "string" ? v.taskId : "",
+      sessionId,
+      deferredAt: typeof v.deferredAt === "string" ? v.deferredAt : "",
+      data: v.data,
+      ...(typeof v.turnId === "string" ? { turnId: v.turnId } : {}),
+    };
+  }
+  return out;
+}
+
 const QUESTION_FOR_TASK_CREATOR = "QUESTION_FOR_TASK_CREATOR";
 const AGENT_COORDINATION = "AGENT_COORDINATION";
 const SWARM_ROLE_ORDER = ["task", "worktree", "origin"] as const;
@@ -695,6 +767,11 @@ export class SubAgentRouter extends Service {
   // 2026-08-20, dark-mode edit). Keyed by taskId; a fallback timer releases
   // the relay if no verdict ever lands (the verify body has silent
   // stay-validating exits), so this can delay but never swallow a completion.
+  // The in-memory map is a fast path only: every deferral is ALSO stamped
+  // durably on the task record (metadata.pendingCompletionRelays, cleared
+  // after the released relay posts) so a restart reconstructs held
+  // completions instead of swallowing them — see
+  // reconstructPendingRelayStamps.
   private readonly deferredCompletionRelays = new Map<
     string,
     {
@@ -708,6 +785,12 @@ export class SubAgentRouter extends Service {
   /** Sessions currently re-entering handleEvent from a deferral release —
    *  the defer check must not re-capture them. */
   private readonly releasingDeferredRelaySessions = new Set<string>();
+
+  /** Sessions whose deferred relay is being released WITHOUT a verification
+   *  verdict (fallback timeout, or restart reconstruction past the window).
+   *  handleEvent appends {@link UNVERIFIED_RELAY_DISCLOSURE} to their relay
+   *  body so the completion never reads as a verified pass. */
+  private readonly unverifiedReleaseSessions = new Set<string>();
 
   // Per-root-origin spawn cap. The completion-dedupe slot above only
   // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
@@ -1078,6 +1161,10 @@ export class SubAgentRouter extends Service {
     const acpBound = !!this.unsubscribe;
     if (acpBound) {
       this.log("info", "router bound to AcpService");
+      // Restart recovery: a deferral held only in the predecessor process's
+      // Map/timer would otherwise be swallowed. Rebuild pending relays from
+      // their durable task stamps now that the session source is available.
+      void this.reconstructPendingRelayStamps();
       return;
     }
     // Service startup is lazy and can happen outside this plugin's ordered
@@ -1104,6 +1191,7 @@ export class SubAgentRouter extends Service {
       clearTimeout(pending.timer);
     }
     this.deferredCompletionRelays.clear();
+    this.unverifiedReleaseSessions.clear();
     this.stopped = true;
     if (this.bindRetryTimer) {
       clearTimeout(this.bindRetryTimer);
@@ -1278,24 +1366,23 @@ export class SubAgentRouter extends Service {
         const deferKey = `${deferTaskId}\u0000${sessionId}`;
         const existing = this.deferredCompletionRelays.get(deferKey);
         if (existing) clearTimeout(existing.timer);
-        const timer = setTimeout(
-          () => {
-            // Never-silent fallback: a verdict that never lands (silent
-            // stay-validating exits in the verify body) must not swallow the
-            // completion forever.
-            this.log(
-              "warn",
-              "deferred completion relay released by timeout — no verification verdict arrived",
-              { taskId: deferTaskId, sessionId },
-            );
-            this.releaseDeferredCompletionRelay(
-              deferTaskId,
-              "passed",
-              sessionId,
-            );
-          },
-          5 * 60 * 1000,
-        );
+        const timer = setTimeout(() => {
+          // Never-silent fallback: a verdict that never lands (silent
+          // stay-validating exits in the verify body) must not swallow the
+          // completion forever. Released as `unverified`, never `passed` —
+          // the relay body discloses that verification did not complete
+          // instead of fabricating a pass.
+          this.log(
+            "warn",
+            "deferred completion relay released by timeout — no verification verdict arrived; relaying unverified",
+            { taskId: deferTaskId, sessionId },
+          );
+          this.releaseDeferredCompletionRelay(
+            deferTaskId,
+            "unverified",
+            sessionId,
+          );
+        }, DEFERRED_RELAY_FALLBACK_MS);
         timer.unref?.();
         this.deferredCompletionRelays.set(deferKey, {
           sessionId,
@@ -1303,6 +1390,14 @@ export class SubAgentRouter extends Service {
           turnId,
           timer,
         });
+        // Durable twin of the map entry: awaited so the completion is
+        // restart-recoverable BEFORE handleEvent yields the defer.
+        await this.persistPendingRelayStamp(
+          deferTaskId,
+          sessionId,
+          data,
+          turnId,
+        );
         this.log(
           "info",
           "deferring completion relay until the verification verdict",
@@ -2112,6 +2207,17 @@ export class SubAgentRouter extends Service {
       const header = firstNewline === -1 ? text : text.slice(0, firstNewline);
       text = `${header}\n${deliverable}`;
     }
+    if (
+      event === "task_complete" &&
+      this.unverifiedReleaseSessions.has(sessionId)
+    ) {
+      // The deferral released without a verdict (fallback timeout, or restart
+      // reconstruction past the window). Disclose it in the relay body so the
+      // completion never reads as a verified pass. Appended AFTER the
+      // verified-URL / deliverable substitutions above so the line survives
+      // every body rewrite.
+      text = `${text}\n${UNVERIFIED_RELAY_DISCLOSURE}`;
+    }
     if (event === "task_complete") {
       // Remember the best (longest) CLEAN result for this root origin so the
       // spawn cap (tasks.ts) can relay it instead of re-spawning when a weak
@@ -2492,13 +2598,16 @@ export class SubAgentRouter extends Service {
     }
   }
 
-  /** Called by OrchestratorTaskService when the auto-verifier's verdict lands.
-   *  `passed` re-enters the deferred task_complete with fresh state; `failed`
-   *  drops it — the verify-retry loop or the park notice owns messaging from
-   *  here. No-op when nothing is deferred for the task. */
+  /** Called by OrchestratorTaskService when the auto-verifier's verdict lands
+   *  (and by the fallback timeout / restart reconstruction). `passed`
+   *  re-enters the deferred task_complete with fresh state; `failed` drops it
+   *  — the verify-retry loop or the park notice owns messaging from here;
+   *  `unverified` re-enters it WITH an explicit no-verdict disclosure in the
+   *  relay body (never a fabricated pass). No-op when nothing is deferred for
+   *  the task. */
   releaseDeferredCompletionRelay(
     taskId: string,
-    verdict: "passed" | "failed",
+    verdict: DeferredRelayVerdict,
     sessionId?: string,
   ): void {
     const keys = [...this.deferredCompletionRelays.keys()].filter((key) => {
@@ -2510,22 +2619,28 @@ export class SubAgentRouter extends Service {
 
   private releaseDeferredRelayByKey(
     key: string,
-    verdict: "passed" | "failed",
+    verdict: DeferredRelayVerdict,
   ): void {
     const pending = this.deferredCompletionRelays.get(key);
     if (!pending) return;
     const taskId = key.split("\u0000")[0];
     this.deferredCompletionRelays.delete(key);
     clearTimeout(pending.timer);
-    if (verdict !== "passed") {
+    if (verdict === "failed") {
       this.log(
         "info",
         "dropping deferred completion relay after failed verification",
         { taskId, sessionId: pending.sessionId },
       );
+      // A dropped relay is resolved: clear the durable stamp so a restart
+      // does not resurrect a completion the verify-retry/park path owns.
+      void this.clearPendingRelayStamp(taskId, pending.sessionId);
       return;
     }
     this.releasingDeferredRelaySessions.add(pending.sessionId);
+    if (verdict === "unverified") {
+      this.unverifiedReleaseSessions.add(pending.sessionId);
+    }
     void this.waitForOriginTurnToSettle(pending.sessionId)
       .then(() =>
         this.handleEvent(
@@ -2535,6 +2650,12 @@ export class SubAgentRouter extends Service {
           undefined,
           pending.turnId,
         ),
+      )
+      .then(() =>
+        // Cleared only AFTER the relay posted: a crash mid-release leaves the
+        // stamp in place, and the next start() reconstructs the held
+        // completion instead of swallowing it.
+        this.clearPendingRelayStamp(taskId, pending.sessionId),
       )
       .catch((err) => {
         // error-policy:J7 the released relay is observability-critical; a
@@ -2546,7 +2667,212 @@ export class SubAgentRouter extends Service {
       })
       .finally(() => {
         this.releasingDeferredRelaySessions.delete(pending.sessionId);
+        this.unverifiedReleaseSessions.delete(pending.sessionId);
       });
+  }
+
+  /** Durably stamp a deferred completion relay on its task record so a
+   *  restart can reconstruct it (see reconstructPendingRelayStamps). */
+  private async persistPendingRelayStamp(
+    taskId: string,
+    sessionId: string,
+    data: unknown,
+    turnId?: string,
+  ): Promise<void> {
+    try {
+      const tasks = this.relayStampTaskService();
+      if (!tasks) return;
+      const record = await tasks.getTask(taskId);
+      if (!record?.id) return;
+      const existing = readPendingRelayStamps(record.metadata);
+      await tasks.updateTask(taskId, {
+        metadata: {
+          ...(record.metadata ?? {}),
+          [PENDING_COMPLETION_RELAYS_META_KEY]: {
+            ...existing,
+            [sessionId]: {
+              taskId,
+              sessionId,
+              deferredAt: new Date().toISOString(),
+              data,
+              ...(turnId !== undefined ? { turnId } : {}),
+            },
+          },
+        },
+      });
+    } catch (err) {
+      // error-policy:J7 the durable stamp is restart insurance alongside the
+      // live in-memory deferral; a failed write is reported (the fallback
+      // timer still guarantees in-process delivery) and must not kill routing.
+      this.log("warn", "pending completion relay stamp persistence failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Remove a session's durable pending-relay stamp from its task record. */
+  private async clearPendingRelayStamp(
+    taskId: string,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      const tasks = this.relayStampTaskService();
+      if (!tasks) return;
+      const record = await tasks.getTask(taskId);
+      if (!record?.id) return;
+      const existing = readPendingRelayStamps(record.metadata);
+      if (!(sessionId in existing)) return;
+      const { [sessionId]: _cleared, ...rest } = existing;
+      await tasks.updateTask(taskId, {
+        metadata: {
+          ...(record.metadata ?? {}),
+          [PENDING_COMPLETION_RELAYS_META_KEY]: rest,
+        },
+      });
+    } catch (err) {
+      // error-policy:J7 a failed clear risks (at worst) a duplicate relay on
+      // the next restart — strictly better than a swallowed completion — so
+      // it is reported, never rethrown into the release path.
+      this.log("warn", "pending completion relay stamp clear failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** The task service behind the durable relay stamps, or null when it (or a
+   *  required method) is unavailable. */
+  private relayStampTaskService(): RelayStampTaskService | null {
+    const tasks = this.runtime.getService(
+      "ORCHESTRATOR_TASK_SERVICE",
+    ) as Partial<RelayStampTaskService> | null;
+    if (
+      !tasks ||
+      typeof tasks.getTask !== "function" ||
+      typeof tasks.updateTask !== "function"
+    ) {
+      return null;
+    }
+    return tasks as RelayStampTaskService;
+  }
+
+  /** Restart recovery for held completions: rebuild every durable
+   *  pending-relay stamp into a live deferral, then resolve it from the
+   *  task's DURABLE state — `done` releases as passed (the store attests the
+   *  verdict; only the relay was lost), a failed terminal drops it, and a
+   *  still-pending task re-arms the fallback window (releasing as
+   *  `unverified` when the window already elapsed — no verdict is coming).
+   *  Runs once per bind, after the ACP source is available (the release path
+   *  re-enters handleEvent, which reads the session store). */
+  private async reconstructPendingRelayStamps(): Promise<void> {
+    try {
+      const tasks = this.relayStampTaskService();
+      if (!tasks || typeof tasks.listTasks !== "function") return;
+      const rows = await tasks.listTasks({});
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (!row?.id) continue;
+        const detail = await tasks.getTask(row.id).catch(() => null);
+        if (!detail?.id) continue;
+        const stamps = readPendingRelayStamps(detail.metadata);
+        const status = String(detail.status ?? "");
+        for (const stamp of Object.values(stamps)) {
+          this.rearmReconstructedRelay(detail.id, stamp);
+          if (status === "done") {
+            this.log(
+              "info",
+              "reconstructed deferred relay released: task already done",
+              { taskId: detail.id, sessionId: stamp.sessionId },
+            );
+            this.releaseDeferredCompletionRelay(
+              detail.id,
+              "passed",
+              stamp.sessionId,
+            );
+          } else if (
+            ["parked", "failed", "cancelled", "archived"].includes(status)
+          ) {
+            this.log(
+              "info",
+              "reconstructed deferred relay dropped: task reached a failed terminal",
+              { taskId: detail.id, sessionId: stamp.sessionId, status },
+            );
+            this.releaseDeferredCompletionRelay(
+              detail.id,
+              "failed",
+              stamp.sessionId,
+            );
+          } else {
+            const deferredAtMs = Date.parse(stamp.deferredAt);
+            const elapsed = Number.isFinite(deferredAtMs)
+              ? Date.now() - deferredAtMs
+              : Number.POSITIVE_INFINITY;
+            if (elapsed >= DEFERRED_RELAY_FALLBACK_MS) {
+              this.log(
+                "warn",
+                "reconstructed deferred relay past its fallback window; relaying unverified",
+                { taskId: detail.id, sessionId: stamp.sessionId },
+              );
+              this.releaseDeferredCompletionRelay(
+                detail.id,
+                "unverified",
+                stamp.sessionId,
+              );
+            } else {
+              this.log(
+                "info",
+                "re-armed deferred completion relay from durable stamp",
+                { taskId: detail.id, sessionId: stamp.sessionId },
+              );
+            }
+          }
+        }
+      }
+    } catch (err) {
+      // error-policy:J7 reconstruction is best-effort restart recovery; a
+      // failure is reported and must not block router startup.
+      this.log("warn", "pending completion relay reconstruction failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /** Put a durable stamp back into the in-memory deferral map with a fallback
+   *  timer for the REMAINDER of its window (0 when already elapsed — the
+   *  caller then releases it immediately after re-arming). */
+  private rearmReconstructedRelay(
+    taskId: string,
+    stamp: PendingRelayStamp,
+  ): void {
+    const deferKey = `${taskId}\u0000${stamp.sessionId}`;
+    const existing = this.deferredCompletionRelays.get(deferKey);
+    if (existing) clearTimeout(existing.timer);
+    const deferredAtMs = Date.parse(stamp.deferredAt);
+    const elapsed = Number.isFinite(deferredAtMs)
+      ? Date.now() - deferredAtMs
+      : DEFERRED_RELAY_FALLBACK_MS;
+    const remaining = Math.max(DEFERRED_RELAY_FALLBACK_MS - elapsed, 0);
+    const timer = setTimeout(() => {
+      this.log(
+        "warn",
+        "deferred completion relay released by timeout — no verification verdict arrived; relaying unverified",
+        { taskId, sessionId: stamp.sessionId },
+      );
+      this.releaseDeferredCompletionRelay(
+        taskId,
+        "unverified",
+        stamp.sessionId,
+      );
+    }, remaining);
+    timer.unref?.();
+    this.deferredCompletionRelays.set(deferKey, {
+      sessionId: stamp.sessionId,
+      data: stamp.data,
+      ...(stamp.turnId !== undefined ? { turnId: stamp.turnId } : {}),
+      timer,
+    });
   }
 
   /** Let the origin room's in-flight planner turn finish before the released

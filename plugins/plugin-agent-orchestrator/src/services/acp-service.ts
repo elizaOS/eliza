@@ -903,8 +903,16 @@ export class AcpService extends Service {
   // the completed turn through the session's next task metadata (#18490).
   private readonly promptTurns = new Map<
     string,
-    { id: string; sessionSnapshot: SessionInfo }
+    { id: string; generation: number; sessionSnapshot: SessionInfo }
   >();
+  // Monotonic per-session prompt-turn generation (the generation FENCE).
+  // Bumped when a new prompt turn starts and when the whole-turn watchdog
+  // abandons a wedged turn (ACP_PROMPT_TURN_WEDGED). Every turn captures its
+  // generation at start; any late event or effect (store status writes, lease
+  // revokes, busy-marker/handler teardown) from a turn whose generation is no
+  // longer current is DROPPED, so a wedged turn's late completion can never
+  // corrupt the session's next turn.
+  private readonly sessionGenerations = new Map<string, number>();
   private readonly acpCallbacks: AcpEventCallback[] = [];
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly nativeClients = new Map<string, NativeAcpClient>();
@@ -1862,6 +1870,7 @@ export class AcpService extends Service {
       this.outputBufferDrops.delete(id);
       this.turnOutputBuffers.delete(id);
       this.turnOutputBufferDrops.delete(id);
+      this.sessionGenerations.delete(id);
       this.eventTrails.delete(id);
       this.changedPathsBySession.delete(id);
       this.orchestratorOwnedArtifactsBySession.delete(id);
@@ -2333,6 +2342,7 @@ export class AcpService extends Service {
     }
     const turn = {
       id: randomUUID(),
+      generation: this.bumpSessionGeneration(sessionId),
       sessionSnapshot: {
         ...session,
         metadata: session.metadata ? { ...session.metadata } : undefined,
@@ -2373,6 +2383,13 @@ export class AcpService extends Service {
       if (err instanceof ElizaError && err.code === "ACP_PROMPT_TURN_WEDGED") {
         // error-policy:J1 watchdog boundary — the wedge becomes a structured
         // errored turn; the busy flag is released by the finally below.
+        // Fence FIRST: from here on, every late event/effect of the abandoned
+        // turn is a stale generation and gets dropped (it may still settle
+        // after a NEW prompt has claimed this session).
+        this.bumpSessionGeneration(sessionId);
+        // Then actually CANCEL the underlying turn (best-effort): the wedged
+        // request must not keep burning the agent/subprocess in the dark.
+        this.cancelWedgedPromptTurn(session);
         await this.store
           .updateStatus(sessionId, "errored", err.message)
           .catch(() => undefined);
@@ -2388,12 +2405,75 @@ export class AcpService extends Service {
     }
   }
 
+  private sessionGeneration(sessionId: string): number {
+    return this.sessionGenerations.get(sessionId) ?? 0;
+  }
+
+  private bumpSessionGeneration(sessionId: string): number {
+    const next = this.sessionGeneration(sessionId) + 1;
+    this.sessionGenerations.set(sessionId, next);
+    return next;
+  }
+
+  /** True when `generation` is no longer the session's current prompt-turn
+   *  generation — the turn was abandoned by the watchdog or superseded by a
+   *  newer prompt, so its late events/effects must be dropped. */
+  private isStaleGeneration(sessionId: string, generation: number): boolean {
+    return this.sessionGeneration(sessionId) !== generation;
+  }
+
+  /**
+   * Best-effort cancellation of a prompt turn the whole-turn watchdog
+   * abandoned. Native transport: fire the `session/cancel` notification
+   * WITHOUT awaiting the terminal response — the original `session/prompt`
+   * request is exactly what is wedged, so awaiting it would wedge the
+   * watchdog path too. CLI transport: mark and terminate the live subprocess.
+   * The generation fence (bumped before this is called) already guarantees
+   * that whatever the cancelled turn still emits is dropped.
+   */
+  private cancelWedgedPromptTurn(session: SessionInfo): void {
+    const sessionId = session.id;
+    try {
+      const transportMode = sessionTransportMode(session, this.transportMode);
+      if (transportMode === "native") {
+        const client = this.nativeClients.get(sessionId);
+        if (client) {
+          void client
+            .cancel(
+              session.acpxSessionId ?? session.agentSessionId ?? sessionId,
+            )
+            // error-policy:J6 best-effort teardown — the wedge error already
+            // stands; a cancel that itself fails cannot rescue or worsen it.
+            .catch(() => undefined);
+        }
+        return;
+      }
+      const active = this.activeProcesses.get(sessionId);
+      if (active) {
+        active.cancelled = true;
+        this.terminateProcess(sessionId, active);
+      }
+    } catch (err) {
+      // error-policy:J6 best-effort teardown of a wedged turn's transport; the
+      // watchdog's typed error is the primary signal either way.
+      this.log("warn", "failed to cancel wedged prompt turn", {
+        sessionId,
+        error: errorMessage(err),
+      });
+    }
+  }
+
   private async sendPromptTurn(
     session: SessionInfo,
     text: string,
     opts: SendOptions,
   ): Promise<PromptResult> {
     const sessionId = session.id;
+    // The fence value for THIS turn: sendPrompt bumped the generation and
+    // registered the turn just before calling here.
+    const generation =
+      this.promptTurns.get(sessionId)?.generation ??
+      this.sessionGeneration(sessionId);
     const transportMode = sessionTransportMode(session, this.transportMode);
     if (
       transportMode !== "native" &&
@@ -2429,6 +2509,10 @@ export class AcpService extends Service {
       // onto the same native session. Teardown on the pre-prompt error paths;
       // sendNativePrompt's own finally clears it on the normal path.
       this.nativePromptSessionIds.add(sessionId);
+      // A wedged predecessor turn's finally was generation-fenced (so it could
+      // not clobber this turn's state) — clear any cancel flag it left behind
+      // before this turn starts, or this turn would misreport as cancelled.
+      this.nativeCancelledPromptSessionIds.delete(sessionId);
       this.turnOutputBuffers.set(sessionId, []);
       this.turnOutputBufferDrops.delete(sessionId);
       try {
@@ -2438,6 +2522,7 @@ export class AcpService extends Service {
           text,
           { ...opts, model: promptModel },
           startedAt,
+          generation,
         );
       } catch (err) {
         // error-policy:J2 release the synchronous busy-claim on the pre-prompt
@@ -2521,6 +2606,19 @@ export class AcpService extends Service {
         ? { error: this.classifyExitError(result.code, result.stderr) }
         : {}),
     };
+
+    if (this.isStaleGeneration(sessionId, generation)) {
+      // Generation fence: the watchdog abandoned this turn (and possibly a new
+      // turn already owns the session). Its late settlement must not write
+      // session status or emit terminal events over the current turn's state.
+      this.log("warn", "dropping stale CLI prompt-turn completion", {
+        sessionId,
+        generation,
+        currentGeneration: this.sessionGeneration(sessionId),
+        stopReason,
+      });
+      return promptResult;
+    }
 
     if (result.cancelled || stopReason === "cancelled") {
       await this.store.updateStatus(sessionId, "cancelled");
@@ -2707,6 +2805,7 @@ export class AcpService extends Service {
     this.outputBufferDrops.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.turnOutputBufferDrops.delete(sessionId);
+    this.sessionGenerations.delete(sessionId);
     this.eventTrails.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
     this.orchestratorOwnedArtifactsBySession.delete(sessionId);
@@ -3077,13 +3176,20 @@ export class AcpService extends Service {
     const durable = await readSubagentStdout(sessionId, {
       limit: lines,
     }).catch((err: unknown) => {
-      // error-policy:J7 diagnostics fallback read; log the failure so a broken
-      // durable resolver is observable instead of silently reading "".
-      this.log("warn", "durable session output read failed", {
-        sessionId,
-        error: errorMessage(err),
-      });
-      return undefined;
+      // error-policy:J2 context-adding rethrow — a durable-read FAULT (the log
+      // exists but cannot be read) must surface as an explicit typed
+      // unavailable, never as the empty string: "" is indistinguishable from
+      // "session produced no output" and callers would treat broken storage
+      // as a clean empty result. (ENOENT/no-log is the undefined return of
+      // readSubagentStdout itself, not this path.)
+      throw new ElizaError(
+        `Durable session output is unavailable: read failed for ${sessionId}`,
+        {
+          code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+          context: { sessionId, readError: errorMessage(err) },
+          cause: err,
+        },
+      );
     });
     if (!durable) return "";
     if (durable.offset === 0 && !durable.hasMore) return durable.text;
@@ -3109,12 +3215,18 @@ export class AcpService extends Service {
   > {
     const durable = await readSubagentStdout(sessionId, opts).catch(
       (err: unknown) => {
-        // error-policy:J7 fallback read; log so resolver faults are observable.
-        this.log("warn", "durable session output read failed", {
-          sessionId,
-          error: errorMessage(err),
-        });
-        return undefined;
+        // error-policy:J2 context-adding rethrow — a durable-read FAULT must
+        // not silently degrade to the memory ring (or to undefined, which the
+        // contract defines as "session produced no output"); it surfaces as an
+        // explicit typed unavailable the caller's boundary translates.
+        throw new ElizaError(
+          `Durable session output window is unavailable: read failed for ${sessionId}`,
+          {
+            code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+            context: { sessionId, readError: errorMessage(err) },
+            cause: err,
+          },
+        );
       },
     );
     if (durable) return { ...durable, source: "durable" };
@@ -3683,6 +3795,7 @@ export class AcpService extends Service {
     text: string,
     opts: SendOptions,
     startedAt: number,
+    generation: number,
   ): Promise<PromptResult> {
     const { client, protocolSessionId } = await this.ensureNativeClientAttached(
       session,
@@ -3692,6 +3805,10 @@ export class AcpService extends Service {
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
     const previousOnAcp = (event: AcpJsonRpcMessage) => {
+      // Generation fence: after the watchdog abandons this turn, its still-
+      // attached event handler must not keep applying events (emitting session
+      // events, capturing tool output) over a newer turn.
+      if (this.isStaleGeneration(session.id, generation)) return;
       const handled = this.handleAcpEvent(
         event,
         session.id,
@@ -3730,6 +3847,18 @@ export class AcpService extends Service {
           ? { error: "ACP prompt ended with stopReason error" }
           : {}),
       };
+      if (this.isStaleGeneration(session.id, generation)) {
+        // Generation fence: the watchdog abandoned this turn; its late
+        // completion must not write session status or revoke the lease a
+        // NEWER turn may be using.
+        this.log("warn", "dropping stale native prompt-turn completion", {
+          sessionId: session.id,
+          generation,
+          currentGeneration: this.sessionGeneration(session.id),
+          stopReason: finalStopReason,
+        });
+        return promptResult;
+      }
       if (stopped) {
         await this.store.updateStatus(session.id, "stopped");
         void this.revokeModelLease(session.id, "native_prompt:stopped");
@@ -3759,6 +3888,26 @@ export class AcpService extends Service {
       // into a structured PromptResult (errored store + error event), never a
       // fake success.
       const message = errorMessage(err);
+      if (this.isStaleGeneration(session.id, generation)) {
+        // Generation fence: a late failure of the abandoned turn is dropped
+        // the same way as a late completion — no store write, no error event.
+        this.log("warn", "dropping stale native prompt-turn failure", {
+          sessionId: session.id,
+          generation,
+          currentGeneration: this.sessionGeneration(session.id),
+          error: message,
+        });
+        return {
+          sessionId: session.id,
+          response: finalText,
+          finalText,
+          stopReason: "error",
+          durationMs: Date.now() - startedAt,
+          exitCode: 1,
+          signal: null,
+          error: message,
+        };
+      }
       if (this.nativeStoppingSessionIds.has(session.id)) {
         await this.store.updateStatus(session.id, "stopped");
         void this.revokeModelLease(session.id, "native_prompt:stopped");
@@ -3798,32 +3947,43 @@ export class AcpService extends Service {
         error: message,
       };
     } finally {
-      client.setEventHandler((event, protocolSessionId) => {
-        this.handleAcpEvent(
-          event,
-          session.id,
-          "",
-          Date.now(),
-          false,
-          new Set<string>(),
-        );
-        if (protocolSessionId && protocolSessionId !== session.id) {
-          void this.store
-            .update(session.id, { acpxSessionId: protocolSessionId })
-            // error-policy:J7 mapping write runs inside the ACP event callback
-            // and must not throw into the transport, but a swallowed failure
-            // leaves the acpxSessionId unpersisted so later protocol lookups
-            // silently miss the session — report it.
-            .catch((err) =>
-              this.runtime.reportError("AcpService.persistAcpxSessionId", err, {
-                sessionId: session.id,
-              }),
-            );
-        }
-      });
-      this.nativePromptSessionIds.delete(session.id);
-      this.nativeCancelledPromptSessionIds.delete(session.id);
-      this.nativeStoppingSessionIds.delete(session.id);
+      // Generation fence: when the watchdog abandoned this turn, a NEWER turn
+      // may already own the session — its event handler and busy markers are
+      // not this turn's to tear down. (When no newer turn exists, the stale
+      // closure stays attached but is generation-fenced above, so late events
+      // are dropped rather than applied.)
+      if (!this.isStaleGeneration(session.id, generation)) {
+        client.setEventHandler((event, protocolSessionId) => {
+          this.handleAcpEvent(
+            event,
+            session.id,
+            "",
+            Date.now(),
+            false,
+            new Set<string>(),
+          );
+          if (protocolSessionId && protocolSessionId !== session.id) {
+            void this.store
+              .update(session.id, { acpxSessionId: protocolSessionId })
+              // error-policy:J7 mapping write runs inside the ACP event callback
+              // and must not throw into the transport, but a swallowed failure
+              // leaves the acpxSessionId unpersisted so later protocol lookups
+              // silently miss the session — report it.
+              .catch((err) =>
+                this.runtime.reportError(
+                  "AcpService.persistAcpxSessionId",
+                  err,
+                  {
+                    sessionId: session.id,
+                  },
+                ),
+              );
+          }
+        });
+        this.nativePromptSessionIds.delete(session.id);
+        this.nativeCancelledPromptSessionIds.delete(session.id);
+        this.nativeStoppingSessionIds.delete(session.id);
+      }
     }
   }
 
@@ -5941,10 +6101,13 @@ export function captureTerminalToolOutput(
         MAX_CAPTURED_TOOL_OUTPUT_CHARS,
       ).view;
     } catch (err) {
-      // error-policy:J7 the durable persist runs inside the transport event
-      // loop; a store fault must not kill the stream, but the emitted view
-      // still names exactly what was dropped and why it is unrecoverable.
-      bounded = `${truncateWellFormed(wellFormed, MAX_CAPTURED_TOOL_OUTPUT_CHARS)}\n[tool output truncated: showing ${MAX_CAPTURED_TOOL_OUTPUT_CHARS} of ${wellFormed.length} chars; durable persist failed: ${errorMessage(err)}]`;
+      // error-policy:J2 the durable persist is the PRECONDITION for dropping
+      // bytes from the view (prompt-integrity: partial views must be
+      // recoverable). When it fails, nothing may be dropped: emit the
+      // COMPLETE output inline with the fault declared — never a truncated
+      // view whose omitted bytes are unrecoverable. The store fault still
+      // must not kill the transport event loop, so it is declared, not thrown.
+      bounded = `${wellFormed}\n[durable content persist failed (${errorMessage(err)}); the complete ${wellFormed.length}-char output is emitted inline above]`;
     }
   }
   const title = toolCall.title?.trim() || "tool output";
@@ -6098,10 +6261,10 @@ export function capStderr(text: string): string {
     const sha = ref.ref.slice("acpx-content:".length);
     marker = `[stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
   } catch (err) {
-    // error-policy:J7 the persist is recoverability plumbing on a diagnostics
-    // path; when it fails the view must still DECLARE the drop — an unmarked
-    // tail posing as complete stderr is the violation.
-    marker = `[stderr tail — head dropped; durable persist failed: ${errorMessage(err)}]`;
+    // error-policy:J2 the durable persist is the PRECONDITION for slicing:
+    // when it fails, NOTHING may be dropped — return the complete stderr with
+    // the fault declared, never a tail whose head is unrecoverable.
+    return `[stderr durable persist failed (${errorMessage(err)}); complete stderr retained inline]\n${text}`;
   }
   return `${marker}\n${tailBytesWellFormed(text, STDERR_CAP_BYTES)}`;
 }

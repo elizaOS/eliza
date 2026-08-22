@@ -237,3 +237,66 @@ describe("AcpService session output windows", () => {
     expect(window?.text).toBe("12");
   });
 });
+
+describe("durable persist failure honesty (no silent partial views)", () => {
+  /** Point the trajectory dir at a regular FILE so persistDurableContent's
+   *  mkdir fails with ENOTDIR — a real store fault, not a mock. */
+  function breakDurableStore(): void {
+    const blocker = path.join(dir, "not-a-dir");
+    fs.writeFileSync(blocker, "occupied", "utf8");
+    process.env.ELIZA_TRAJECTORY_DIR = blocker;
+  }
+
+  it("captureTerminalToolOutput emits the COMPLETE output inline when the persist fails", () => {
+    breakDurableStore();
+    const full = "F".repeat(30_000);
+    const captured = captureTerminalToolOutput(
+      { id: "tool-broken-store", title: "bash" },
+      full,
+      new Set<string>(),
+    );
+    expect(captured).toBeDefined();
+    // Nothing dropped: the whole 30k-char output is present.
+    expect(captured).toContain(full);
+    // The fault is declared, and no truncation marker poses as a bounded view.
+    expect(captured).toContain("durable content persist failed");
+    expect(captured).not.toContain("[tool output truncated");
+    expect(captured).not.toContain("GET /api/orchestrator/content/");
+  });
+
+  it("capStderr returns the COMPLETE stderr when the persist fails", () => {
+    breakDurableStore();
+    const full = `${"H".repeat(40_000)}${"T".repeat(40_000)}`; // > 64 KiB cap
+    const view = capStderr(full);
+    expect(view.startsWith("[stderr durable persist failed")).toBe(true);
+    // The head is NOT dropped: the complete stderr follows the declaration.
+    expect(view.endsWith(full)).toBe(true);
+    expect(view).not.toContain("GET /api/orchestrator/content/");
+  });
+});
+
+describe("getSessionOutput durable-read fault (typed unavailable, never '')", () => {
+  it("throws ACP_SESSION_OUTPUT_UNAVAILABLE when the log exists but cannot be read", async () => {
+    const { svc } = makeService();
+    // A DIRECTORY at the exact log path makes readFile fail with EISDIR — a
+    // real read FAULT, distinct from the ENOENT "no log" case. Pre-fix this
+    // was swallowed into "", indistinguishable from "no output".
+    fs.mkdirSync(path.join(dir, "subagent-stdout", "s-fault.ndjson"), {
+      recursive: true,
+    });
+    await expect(svc.getSessionOutput("s-fault", 10)).rejects.toMatchObject({
+      code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+    });
+    await expect(
+      svc.getSessionOutputWindow("s-fault", { offset: 0, limit: 2 }),
+    ).rejects.toMatchObject({
+      code: "ACP_SESSION_OUTPUT_UNAVAILABLE",
+    });
+  });
+
+  it("still reports genuinely absent output as empty, not as a fault", async () => {
+    const { svc } = makeService();
+    expect(await svc.getSessionOutput("s-none", 10)).toBe("");
+    expect(await svc.getSessionOutputWindow("s-none", {})).toBeUndefined();
+  });
+});

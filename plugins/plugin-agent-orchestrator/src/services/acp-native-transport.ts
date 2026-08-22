@@ -1074,9 +1074,14 @@ export function appendBoundedStderr(current: string, chunk: string): string {
     const sha = ref.ref.slice("acpx-content:".length);
     marker = `[agent stderr tail — full stderr: GET /api/orchestrator/content/${sha}]`;
   } catch (err) {
-    // error-policy:J7 recoverability plumbing on a diagnostics path — the
-    // bounded view must still DECLARE the drop when the persist fails.
-    marker = `[agent stderr tail — head dropped; durable persist failed: ${err instanceof Error ? err.message : String(err)}]`;
+    // error-policy:J2 the durable persist is the PRECONDITION for keeping only
+    // a tail: when it fails, NOTHING may be dropped — retain the COMPLETE
+    // accumulation with the fault declared once (idempotent across repeated
+    // failing appends), never a tail whose head is unrecoverable.
+    if (combined.startsWith("[agent stderr durable persist failed")) {
+      return combined;
+    }
+    return `[agent stderr durable persist failed (${err instanceof Error ? err.message : String(err)}); complete stderr retained inline]\n${combined}`;
   }
   return `${marker}\n${toWellFormedUnicode(
     buf.subarray(buf.byteLength - AGENT_STDERR_TAIL_BYTES).toString("utf8"),

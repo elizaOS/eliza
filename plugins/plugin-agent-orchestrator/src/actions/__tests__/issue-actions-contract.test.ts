@@ -92,6 +92,104 @@ describe("bulk issue create", () => {
     // The receipt appendix reports every created issue, not a window.
     expect(result.text).toContain("#30:");
   });
+
+  it("continues through a mid-batch failure and returns settled per-item receipts", async () => {
+    let next = 0;
+    const service = {
+      createIssue: vi.fn(async (_repo: string, req: { title: string }) => {
+        if (req.title.includes("number 3")) {
+          throw new Error("boom on item three");
+        }
+        next += 1;
+        return { ...issue(next), title: req.title };
+      }),
+      addLabels: vi.fn(async () => undefined),
+    } as never;
+    const text = Array.from(
+      { length: 5 },
+      (_, i) => `${i + 1}. Fix problem number ${i + 1}`,
+    ).join("\n");
+    const result = must(
+      await handleIssueAction(
+        runtime,
+        service,
+        "o/r",
+        "create",
+        { text },
+        text,
+      ),
+    );
+    // Partial-success contract: success stays true when at least one issue
+    // landed; the failure is a per-item receipt, never a stop-on-first abort.
+    expect(result.success).toBe(true);
+    expect(
+      (service as { createIssue: ReturnType<typeof vi.fn> }).createIssue,
+    ).toHaveBeenCalledTimes(5);
+    const data = result.data as {
+      issues: unknown[];
+      receipts: Array<Record<string, unknown>>;
+      requestedCount: number;
+      createdCount: number;
+      failedCount: number;
+    };
+    expect(data.issues).toHaveLength(4);
+    expect(data.receipts).toHaveLength(5);
+    expect(data).toMatchObject({
+      requestedCount: 5,
+      createdCount: 4,
+      failedCount: 1,
+    });
+    expect(data.receipts[2]).toMatchObject({
+      index: 2,
+      ok: false,
+      error: "boom on item three",
+    });
+    expect(data.receipts[4]).toMatchObject({ index: 4, ok: true });
+    // The appendix names the failed item explicitly — a partial batch never
+    // reads as a clean sweep, and the items after the failure still report.
+    expect(result.text).toContain("FAILED (item 3)");
+    expect(result.text).toContain("Fix problem number 5");
+  });
+
+  it("all items failing is an explicit failure with every receipt — never a success that created nothing", async () => {
+    const service = {
+      createIssue: vi.fn(async () => {
+        throw new Error("permission denied");
+      }),
+      addLabels: vi.fn(async () => undefined),
+    } as never;
+    const text = ["1. first", "2. second", "3. third"].join("\n");
+    const result = must(
+      await handleIssueAction(
+        runtime,
+        service,
+        "o/r",
+        "create",
+        { text },
+        text,
+      ),
+    );
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("BULK_CREATE_FAILED");
+    expect(
+      (service as { createIssue: ReturnType<typeof vi.fn> }).createIssue,
+    ).toHaveBeenCalledTimes(3);
+    const data = result.data as {
+      issues: unknown[];
+      receipts: Array<Record<string, unknown>>;
+      createdCount: number;
+      failedCount: number;
+    };
+    expect(data.issues).toHaveLength(0);
+    expect(data.receipts).toHaveLength(3);
+    expect(data).toMatchObject({ createdCount: 0, failedCount: 3 });
+    for (const receipt of data.receipts) {
+      expect(receipt).toMatchObject({
+        ok: false,
+        error: "permission denied",
+      });
+    }
+  });
 });
 
 describe("issue list pagination contract", () => {

@@ -135,3 +135,27 @@ describe("appendBoundedStderr (persist-before-slice)", () => {
     expect(readAll(secondSha)).toContain(`content/${firstSha}]`);
   });
 });
+
+describe("appendBoundedStderr durable persist failure (no silent head drop)", () => {
+  it("retains the COMPLETE accumulation with one declared fault when the persist fails", () => {
+    // Point the trajectory dir at a regular FILE so persistDurableContent's
+    // mkdir fails with ENOTDIR — a real store fault, not a mock.
+    const blocker = path.join(dir, "not-a-dir");
+    fs.writeFileSync(blocker, "occupied", "utf8");
+    process.env.ELIZA_TRAJECTORY_DIR = blocker;
+
+    const first = appendBoundedStderr("", "A".repeat(20_000)); // > 16 KiB tail
+    expect(first.startsWith("[agent stderr durable persist failed")).toBe(true);
+    expect(first.endsWith("A".repeat(20_000))).toBe(true);
+    expect(first).not.toContain("GET /api/orchestrator/content/");
+
+    // A second failing append keeps everything and does NOT stack markers.
+    const second = appendBoundedStderr(first, "B".repeat(2_000));
+    expect(second.endsWith(`${"A".repeat(20_000)}${"B".repeat(2_000)}`)).toBe(
+      true,
+    );
+    expect(second.match(/\[agent stderr durable persist failed/g)?.length).toBe(
+      1,
+    );
+  });
+});
