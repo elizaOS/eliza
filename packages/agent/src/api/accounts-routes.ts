@@ -292,11 +292,25 @@ interface PoolFacade {
 
 let cachedPool: PoolFacade | null = null;
 
-async function getPool(): Promise<PoolFacade> {
-  if (!cachedPool) {
-    cachedPool = getAgentHostBridge().getDefaultAccountPool() as PoolFacade;
-  }
+async function getPool(): Promise<PoolFacade | null> {
+  if (cachedPool) return cachedPool;
+  const pool = getAgentHostBridge().getDefaultAccountPool();
+  if (pool) cachedPool = pool as PoolFacade;
   return cachedPool;
+}
+
+async function requirePool(
+  ctx: Pick<AccountsRouteContext, "error" | "res">,
+): Promise<PoolFacade | null> {
+  const pool = await getPool();
+  if (!pool) {
+    ctx.error(
+      ctx.res,
+      "Account service is not ready; retry after runtime startup completes",
+      503,
+    );
+  }
+  return pool;
 }
 
 function brokerAccountKey(
@@ -918,7 +932,8 @@ async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
   const { res, json } = ctx;
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   await pool.sweepExpired?.();
   const broker = brokerSnapshot();
   const providers = await Promise.all(
@@ -1019,7 +1034,8 @@ async function handleCreateApiKeyAccount(
   // lands, the pool's auto-assignment in `loadAllAccounts` would slot
   // the new account at the next default index, which would offset
   // `nextPriorityFromPool` by one.
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const replaceAccountId = parsed.data.replaceAccountId;
   const replacementTarget = replaceAccountId
     ? pool.get(replaceAccountId, providerId)
@@ -1183,7 +1199,8 @@ async function handleOAuthRoutes(
     // the post-save hook is monotonic regardless of concurrency since
     // the on-disk credential file appears strictly before the hook
     // fires.
-    const pool = await getPool();
+    const pool = await requirePool(ctx);
+    if (!pool) return true;
     const replaceAccountId = parsed.data.replaceAccountId;
     const replacementTarget = replaceAccountId
       ? pool.get(replaceAccountId, providerId)
@@ -1441,7 +1458,8 @@ async function handlePatchAccount(
   }
   assertCanonicalAccountId(accountId);
   const storagePolicy = accountStoragePolicy();
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const existing = pool.get(accountId, providerId);
   if (!existing || existing.providerId !== providerId) {
     error(res, "Account not found", 404);
@@ -1497,12 +1515,13 @@ async function handleDeleteAccount(
 ): Promise<boolean> {
   const { res, json } = ctx;
   assertCanonicalAccountId(accountId);
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const storagePolicy = accountStoragePolicy();
   const accountProvider = asAccountCredentialProvider(providerId);
   if (accountProvider) {
     deleteAccount(accountProvider, accountId, storagePolicy);
   }
-  const pool = await getPool();
   await pool.deleteMetadata(providerId, accountId);
   json(res, { deleted: true });
   return true;
@@ -1528,7 +1547,8 @@ async function handleTestAccount(
     json(res, { ok: false, error: "No credential available" });
     return true;
   }
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const linked = pool.get(accountId, providerId);
   const codexAccountId =
     linked?.providerId === "openai-codex" ? linked.organizationId : undefined;
@@ -1580,7 +1600,8 @@ async function handleRefreshUsage(
     error(res, `Usage refresh not supported for ${providerId}`, 501);
     return true;
   }
-  const pool = await getPool();
+  const pool = await requirePool(ctx);
+  if (!pool) return true;
   const linked = pool.get(accountId, providerId);
   if (!linked || linked.providerId !== providerId) {
     error(res, "Account not found", 404);
