@@ -7,6 +7,7 @@ import {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "../base";
+import { countTwitterWeightedLength } from "../tweet-length";
 import { addToRecentTweets, getRecentTweets, isDuplicateTweet } from "./memory";
 import { createTwitterPostCallback } from "./twitter-post-callback";
 
@@ -283,6 +284,20 @@ describe("createTwitterPostCallback", () => {
     expect(recentTweets).toHaveLength(1);
     expect(typeof recentTweets?.[0]).toBe("string");
     expect(recentTweets?.[0]?.length).toBeLessThanOrEqual(X_MAX_POST_LENGTH);
+  });
+
+  it("truncates generated CJK text to the X weighted cap before posting", async () => {
+    const runtime = makeRuntime();
+    const client = makeClient();
+    const callback = makeCallback({ client, runtime });
+    await callback({ text: "你".repeat(141) });
+    expect(client.twitterClient.sendTweet).toHaveBeenCalledTimes(1);
+    const posted = vi.mocked(client.twitterClient.sendTweet).mock.calls[0]?.[0];
+    expect(typeof posted).toBe("string");
+    expect(countTwitterWeightedLength(posted as string)).toBeLessThanOrEqual(
+      X_MAX_POST_LENGTH,
+    );
+    expect(posted).not.toBe("你".repeat(141));
   });
 
   it("partitions recent-post duplicate state by account and profile identity", async () => {

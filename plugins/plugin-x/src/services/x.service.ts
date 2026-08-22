@@ -44,6 +44,7 @@ import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
 import { TwitterPostClient } from "../post";
 import { TwitterTimelineClient } from "../timeline";
+import { countTwitterWeightedLength } from "../tweet-length";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
@@ -816,9 +817,10 @@ export class XService extends Service {
     if (!text) {
       throw new Error("X post connector requires non-empty text content.");
     }
-    if (text.length > X_MAX_POST_LENGTH) {
+    const weightedLength = countTwitterWeightedLength(text);
+    if (weightedLength > X_MAX_POST_LENGTH) {
       throw new Error(
-        `X post connector requires text <= ${X_MAX_POST_LENGTH} characters; received ${text.length}.`,
+        `X post connector requires text <= ${X_MAX_POST_LENGTH} weighted characters; received ${weightedLength}.`,
       );
     }
 
