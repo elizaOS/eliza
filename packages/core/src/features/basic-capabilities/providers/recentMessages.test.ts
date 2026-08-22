@@ -62,6 +62,7 @@ function makeRuntime(
 		getEntityById: vi.fn(async () => null),
 		getMemories: vi.fn(async () => memories),
 		getRoomsForParticipants: vi.fn(async () => []),
+		getRoomsForParticipant: vi.fn(async () => []),
 		getMemoriesByRoomIds: vi.fn(async () => []),
 		getService: vi.fn(() => null),
 		...overrides,
@@ -553,6 +554,7 @@ describe("recentMessagesProvider", () => {
 		);
 
 		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
 		expect(runtime.getMemoriesByRoomIds).not.toHaveBeenCalled();
 		expect(result.values?.recentMessageInteractions).toBe("");
 		expect(result.data?.recentInteractions).toEqual([]);
@@ -563,6 +565,8 @@ describe("recentMessagesProvider", () => {
 
 	it("fetches cross-room interactions on a turn recompose (cached state has this provider)", async () => {
 		const OTHER_ROOM_ID = "00000000-0000-0000-0000-00000000000a";
+		const SOURCE_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000b";
+		const TARGET_ONLY_ROOM_ID = "00000000-0000-0000-0000-00000000000c";
 		const memories = [
 			makeMemory("msg-1", USER_ID, "hello agent", "discord", 1000),
 		];
@@ -570,7 +574,16 @@ describe("recentMessagesProvider", () => {
 			memories,
 			{},
 			{
-				getRoomsForParticipants: vi.fn(async () => [ROOM_ID, OTHER_ROOM_ID]),
+				getRoomsForParticipants: vi.fn(async () => [
+					ROOM_ID,
+					OTHER_ROOM_ID,
+					SOURCE_ONLY_ROOM_ID,
+				]),
+				getRoomsForParticipant: vi.fn(async () => [
+					ROOM_ID,
+					OTHER_ROOM_ID,
+					TARGET_ONLY_ROOM_ID,
+				]),
 				getMemoriesByRoomIds: vi.fn(async () => [
 					{
 						id: "cross-1",
@@ -596,7 +609,8 @@ describe("recentMessagesProvider", () => {
 			},
 		);
 
-		expect(runtime.getRoomsForParticipants).toHaveBeenCalled();
+		expect(runtime.getRoomsForParticipants).toHaveBeenCalledWith([USER_ID]);
+		expect(runtime.getRoomsForParticipant).toHaveBeenCalledWith(AGENT_ID);
 		expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith({
 			tableName: "messages",
 			roomIds: [OTHER_ROOM_ID],
