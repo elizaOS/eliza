@@ -7,14 +7,19 @@
  * synthetic namespace lease for cross-process exclusion.
  */
 
-import { mkdir, open, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, open } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { ElizaError, redactSensitiveText } from "@elizaos/core";
 
 import { canonicalSha256 } from "./provider-qualified/manifest.ts";
 
 const REDACTED = "[REDACTED]";
+const MAX_IDENTITY_TEXT_BYTES = 4_096;
+const MAX_EVIDENCE_STRING_BYTES = 1_048_576;
+const MAX_EVIDENCE_KEY_BYTES = 4_096;
+const MAX_LEDGER_FRAME_BYTES = 2 * 1024 * 1024;
+const MAX_LEDGER_BYTES = 64 * 1024 * 1024;
 const SENSITIVE_KEY =
   /(?:api[-_]?key|authorization|cookie|credential|password|private[-_]?key|secret|session|token)/i;
 
@@ -39,6 +44,8 @@ export interface BoundaryRetryLineage {
 }
 
 export interface ProductionBoundaryIdentity {
+  tenantId: string;
+  runId: string;
   surface: string;
   target: string;
   idempotencyKey: string;
@@ -68,9 +75,11 @@ export type BoundaryObservationResult =
   | "stale_completion";
 
 export interface ProductionBoundaryObservation {
-  schemaVersion: 2;
+  schemaVersion: 3;
   observationId: string;
   order: number;
+  tenantId: string;
+  runId: string;
   surface: string;
   target: string;
   payloadSha256: string;
@@ -148,16 +157,28 @@ const ledgerAppenders = new WeakMap<
   BoundaryObservationLedger,
   (observation: PendingObservation) => Promise<ProductionBoundaryObservation>
 >();
+const ledgerCoordinationKeys = new WeakMap<BoundaryObservationLedger, object>();
 
-function requireNonEmpty(value: string, field: string): string {
-  const normalized = value.trim();
-  if (!normalized) {
-    throw new ElizaError(`${field} must be non-empty`, {
-      code: "BOUNDARY_OBSERVATION_INVALID",
-      context: { field },
-    });
+function requireNonEmpty(
+  value: unknown,
+  field: string,
+  maxBytes = MAX_IDENTITY_TEXT_BYTES,
+): string {
+  if (
+    typeof value !== "string" ||
+    value !== value.trim() ||
+    value.length === 0 ||
+    Buffer.byteLength(value, "utf8") > maxBytes
+  ) {
+    throw new ElizaError(
+      `${field} must be exact non-empty UTF-8 text within ${maxBytes} bytes`,
+      {
+        code: "BOUNDARY_OBSERVATION_INVALID",
+        context: { field },
+      },
+    );
   }
-  return normalized;
+  return value;
 }
 
 function isoTimestamp(now: () => Date): string {
@@ -199,7 +220,16 @@ function sanitizeValue(
   ) {
     return value;
   }
-  if (typeof value === "string") return redactText(value);
+  if (typeof value === "string") {
+    const redacted = redactText(value);
+    if (Buffer.byteLength(redacted, "utf8") > MAX_EVIDENCE_STRING_BYTES) {
+      throw new ElizaError("boundary evidence string exceeds byte limit", {
+        code: "BOUNDARY_EVIDENCE_TOO_COMPLEX",
+        context: { maxBytes: MAX_EVIDENCE_STRING_BYTES },
+      });
+    }
+    return redacted;
+  }
   if (typeof value === "bigint") return value.toString();
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) {
@@ -224,6 +254,12 @@ function sanitizeValue(
     state.seen.add(value);
     const output: Record<string, unknown> = {};
     for (const [entryKey, entryValue] of Object.entries(value)) {
+      if (Buffer.byteLength(entryKey, "utf8") > MAX_EVIDENCE_KEY_BYTES) {
+        throw new ElizaError("boundary evidence key exceeds byte limit", {
+          code: "BOUNDARY_EVIDENCE_TOO_COMPLEX",
+          context: { maxBytes: MAX_EVIDENCE_KEY_BYTES },
+        });
+      }
       output[entryKey] = sanitizeValue(
         entryValue,
         redactText,
@@ -380,6 +416,8 @@ function requireClassification(
 type RetryIdentity = Pick<
   PendingObservation,
   | "observationId"
+  | "tenantId"
+  | "runId"
   | "surface"
   | "target"
   | "payloadSha256"
@@ -397,6 +435,8 @@ function sameAttemptIdentity(
 ): boolean {
   return (
     left.observationId === right.observationId &&
+    left.tenantId === right.tenantId &&
+    left.runId === right.runId &&
     left.surface === right.surface &&
     left.target === right.target &&
     left.payloadSha256 === right.payloadSha256 &&
@@ -412,6 +452,7 @@ function sameAttemptIdentity(
 function assertRetryLineage(
   records: ProductionBoundaryObservation[],
   observation: RetryIdentity,
+  recordById?: ReadonlyMap<string, ProductionBoundaryObservation>,
 ): void {
   if (observation.attempt === 1) {
     if (observation.retryOfObservationId !== undefined) {
@@ -426,11 +467,14 @@ function assertRetryLineage(
   }
   const parentId = observation.retryOfObservationId;
   const parent = parentId
-    ? records.find((record) => record.observationId === parentId)
+    ? (recordById?.get(parentId) ??
+      records.find((record) => record.observationId === parentId))
     : undefined;
   if (
     !parent?.retryable ||
     parent.attempt !== observation.attempt - 1 ||
+    parent.tenantId !== observation.tenantId ||
+    parent.runId !== observation.runId ||
     parent.surface !== observation.surface ||
     parent.target !== observation.target ||
     parent.payloadSha256 !== observation.payloadSha256 ||
@@ -453,7 +497,7 @@ function assertRetryLineage(
 }
 
 const observationFlights = new WeakMap<
-  BoundaryObservationLedger,
+  object,
   Map<
     string,
     { identity: RetryIdentity; promise: Promise<ProductionBoundaryObservation> }
@@ -465,10 +509,11 @@ function runObservationSingleFlight(
   identity: RetryIdentity,
   operation: () => Promise<ProductionBoundaryObservation>,
 ): Promise<ProductionBoundaryObservation> {
-  let flights = observationFlights.get(ledger);
+  const coordinationKey = ledgerCoordinationKeys.get(ledger) ?? ledger;
+  let flights = observationFlights.get(coordinationKey);
   if (!flights) {
     flights = new Map();
-    observationFlights.set(ledger, flights);
+    observationFlights.set(coordinationKey, flights);
   }
   const existing = flights.get(identity.observationId);
   if (existing) {
@@ -506,18 +551,17 @@ export async function observeProductionBoundary<TResponse, TReadback>(
   const redactText = (text: string) =>
     redactSensitiveText(options.redactText ? options.redactText(text) : text);
   const identity = options.identity;
-  const surface = redactText(
-    requireNonEmpty(identity.surface, "identity.surface"),
+  const identityText = (value: unknown, field: string) =>
+    requireNonEmpty(redactText(requireNonEmpty(value, field)), field);
+  const tenantId = identityText(identity.tenantId, "identity.tenantId");
+  const runId = identityText(identity.runId, "identity.runId");
+  const surface = identityText(identity.surface, "identity.surface");
+  const target = identityText(identity.target, "identity.target");
+  const idempotencyKey = identityText(
+    identity.idempotencyKey,
+    "identity.idempotencyKey",
   );
-  const target = redactText(
-    requireNonEmpty(identity.target, "identity.target"),
-  );
-  const idempotencyKey = redactText(
-    requireNonEmpty(identity.idempotencyKey, "identity.idempotencyKey"),
-  );
-  const generation = redactText(
-    requireNonEmpty(identity.generation, "identity.generation"),
-  );
+  const generation = identityText(identity.generation, "identity.generation");
   if (
     !Number.isSafeInteger(identity.retry.attempt) ||
     identity.retry.attempt < 1
@@ -534,6 +578,8 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     "sanitizedBoundaryPayload",
   );
   const observationId = canonicalSha256({
+    tenantId,
+    runId,
     generation,
     idempotencyKey,
     attempt: identity.retry.attempt,
@@ -541,19 +587,29 @@ export async function observeProductionBoundary<TResponse, TReadback>(
     target,
   });
   const base = {
-    schemaVersion: 2 as const,
+    schemaVersion: 3 as const,
     observationId,
+    tenantId,
+    runId,
     surface,
     target,
     payloadSha256,
     idempotencyKey,
     generation,
-    ...(identity.workerId ? { workerId: redactText(identity.workerId) } : {}),
-    ...(identity.taskId ? { taskId: redactText(identity.taskId) } : {}),
+    ...(identity.workerId === undefined
+      ? {}
+      : { workerId: identityText(identity.workerId, "identity.workerId") }),
+    ...(identity.taskId === undefined
+      ? {}
+      : { taskId: identityText(identity.taskId, "identity.taskId") }),
     attempt: identity.retry.attempt,
-    ...(identity.retry.retryOfObservationId
+    ...(identity.retry.retryOfObservationId !== undefined
       ? {
-          retryOfObservationId: redactText(identity.retry.retryOfObservationId),
+          retryOfObservationId: requireNonEmpty(
+            identity.retry.retryOfObservationId,
+            "identity.retry.retryOfObservationId",
+            64,
+          ),
         }
       : {}),
     startedAt,
@@ -812,7 +868,10 @@ export async function observeProductionBoundary<TResponse, TReadback>(
                   ? "synthetic_ambiguous_dispatch"
                   : result === "stale_completion"
                     ? "stale_generation"
-                    : redactText(classification.code),
+                    : requireNonEmpty(
+                        redactText(classification.code),
+                        "classification.code",
+                      ),
             retryable: classification.retryable,
             ...(options.fault?.retryAfterMs !== undefined
               ? { retryAfterMs: options.fault.retryAfterMs }
@@ -865,6 +924,8 @@ const RESULTS = new Set<BoundaryObservationResult>([
 const RECORD_KEYS = new Set([
   "schemaVersion",
   "observationId",
+  "tenantId",
+  "runId",
   "order",
   "surface",
   "target",
@@ -892,6 +953,8 @@ const RECORD_KEYS = new Set([
 const REQUIRED_RECORD_KEYS = new Set([
   "schemaVersion",
   "observationId",
+  "tenantId",
+  "runId",
   "order",
   "surface",
   "target",
@@ -958,6 +1021,8 @@ function parseLedgerLine(
   }
   const stringFields = [
     "observationId",
+    "tenantId",
+    "runId",
     "surface",
     "target",
     "payloadSha256",
@@ -969,7 +1034,7 @@ function parseLedgerLine(
     "recordSha256",
   ];
   if (
-    raw.schemaVersion !== 2 ||
+    raw.schemaVersion !== 3 ||
     raw.order !== lineNumber ||
     stringFields.some(
       (field) =>
@@ -1061,6 +1126,8 @@ function parseLedgerLine(
     }
   }
   const expectedObservationId = canonicalSha256({
+    tenantId: raw.tenantId,
+    runId: raw.runId,
     generation: raw.generation,
     idempotencyKey: raw.idempotencyKey,
     attempt: raw.attempt,
@@ -1145,26 +1212,39 @@ async function syncParentDirectory(filePath: string): Promise<void> {
 }
 
 /** Durable JSONL observation store. Production state remains authoritative. */
+interface FileLedgerState {
+  pending: Promise<unknown>;
+}
+
+const fileLedgerStates = new Map<string, FileLedgerState>();
+
 export class JsonlBoundaryObservationLedger
   implements BoundaryObservationLedger
 {
   readonly #filePath: string;
   readonly #durabilityHooks: BoundaryLedgerDurabilityHooks;
-  #pending: Promise<unknown> = Promise.resolve();
+  readonly #state: FileLedgerState;
 
   constructor(
     filePath: string,
     durabilityHooks: BoundaryLedgerDurabilityHooks = {},
   ) {
-    this.#filePath = requireNonEmpty(filePath, "filePath");
+    this.#filePath = resolve(requireNonEmpty(filePath, "filePath"));
     this.#durabilityHooks = durabilityHooks;
+    let state = fileLedgerStates.get(this.#filePath);
+    if (!state) {
+      state = { pending: Promise.resolve() };
+      fileLedgerStates.set(this.#filePath, state);
+    }
+    this.#state = state;
+    ledgerCoordinationKeys.set(this, state);
     ledgerAppenders.set(this, (observation) => this.#append(observation));
   }
 
   async #readFromDisk(): Promise<ProductionBoundaryObservation[]> {
-    let contents: string;
+    let handle: Awaited<ReturnType<typeof open>>;
     try {
-      contents = await readFile(this.#filePath, "utf8");
+      handle = await open(this.#filePath, "r");
     } catch (error) {
       // error-policy:J3 a missing ledger is the explicit empty initial state;
       // every other filesystem failure remains fatal.
@@ -1175,6 +1255,42 @@ export class JsonlBoundaryObservationLedger
         context: { filePath: this.#filePath },
       });
     }
+    let contents: string;
+    try {
+      const before = await handle.stat();
+      if (before.size > MAX_LEDGER_BYTES) {
+        throw new ElizaError("boundary observation ledger exceeds byte limit", {
+          code: "BOUNDARY_LEDGER_TOO_LARGE",
+          context: { filePath: this.#filePath, maxBytes: MAX_LEDGER_BYTES },
+        });
+      }
+      const bytes = Buffer.alloc(before.size);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const read = await handle.read(
+          bytes,
+          offset,
+          bytes.length - offset,
+          offset,
+        );
+        if (read.bytesRead === 0) {
+          throw ledgerError("boundary ledger changed while being read", 0);
+        }
+        offset += read.bytesRead;
+      }
+      const after = await handle.stat();
+      if (after.size !== before.size) {
+        throw ledgerError("boundary ledger changed while being read", 0);
+      }
+      try {
+        contents = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      } catch (error) {
+        // error-policy:J2 Invalid UTF-8 is durable-ledger corruption with its decoder cause.
+        throw ledgerError("boundary ledger is not valid UTF-8", 0, error);
+      }
+    } finally {
+      await handle.close();
+    }
     if (contents === "") return [];
     if (!contents.endsWith("\n")) {
       throw ledgerError("boundary ledger has a truncated final frame", 0);
@@ -1184,31 +1300,54 @@ export class JsonlBoundaryObservationLedger
       throw ledgerError("boundary ledger contains a blank frame", 0);
     }
     const records: ProductionBoundaryObservation[] = [];
+    const recordById = new Map<string, ProductionBoundaryObservation>();
     let previousRecordSha256: string | null = null;
     for (const [index, line] of lines.entries()) {
+      if (Buffer.byteLength(line, "utf8") > MAX_LEDGER_FRAME_BYTES) {
+        throw ledgerError(
+          `boundary ledger frame exceeds byte limit at line ${index + 1}`,
+          index + 1,
+        );
+      }
       const record = parseLedgerLine(line, index + 1, previousRecordSha256);
+      if (recordById.has(record.observationId)) {
+        throw ledgerError(
+          `duplicate boundary observation at line ${index + 1}`,
+          index + 1,
+        );
+      }
+      try {
+        assertRetryLineage(records, record, recordById);
+      } catch (error) {
+        // error-policy:J2 Retry corruption is translated into the durable-ledger error boundary.
+        throw ledgerError(
+          `invalid boundary retry lineage at line ${index + 1}`,
+          index + 1,
+          error,
+        );
+      }
       records.push(record);
+      recordById.set(record.observationId, record);
       previousRecordSha256 = record.recordSha256;
     }
     return records;
   }
 
   async readAll(): Promise<ProductionBoundaryObservation[]> {
-    await this.#pending;
+    await this.#state.pending;
     return this.#readFromDisk();
   }
 
   #append(
     observation: PendingObservation,
   ): Promise<ProductionBoundaryObservation> {
-    const appendPromise = this.#pending.then(async () => {
+    const appendPromise = this.#state.pending.then(async () => {
       const records = await this.#readFromDisk();
-      assertRetryLineage(records, observation);
-      if (
-        records.some(
-          (record) => record.observationId === observation.observationId,
-        )
-      ) {
+      const recordById = new Map(
+        records.map((record) => [record.observationId, record]),
+      );
+      assertRetryLineage(records, observation, recordById);
+      if (recordById.has(observation.observationId)) {
         throw new ElizaError(
           `boundary observation ${observation.observationId} already exists`,
           {
@@ -1238,7 +1377,26 @@ export class JsonlBoundaryObservationLedger
         await mkdir(dirname(this.#filePath), { recursive: true });
         const handle = await open(this.#filePath, "a", 0o600);
         try {
-          await handle.writeFile(`${JSON.stringify(record)}\n`, "utf8");
+          const frame = `${JSON.stringify(record)}\n`;
+          const frameBytes = Buffer.byteLength(frame, "utf8");
+          const currentSize = (await handle.stat()).size;
+          if (
+            frameBytes > MAX_LEDGER_FRAME_BYTES ||
+            currentSize + frameBytes > MAX_LEDGER_BYTES
+          ) {
+            throw new ElizaError(
+              "boundary observation ledger append exceeds byte limit",
+              {
+                code: "BOUNDARY_LEDGER_TOO_LARGE",
+                context: {
+                  filePath: this.#filePath,
+                  maxFrameBytes: MAX_LEDGER_FRAME_BYTES,
+                  maxLedgerBytes: MAX_LEDGER_BYTES,
+                },
+              },
+            );
+          }
+          await handle.writeFile(frame, "utf8");
           await handle.sync();
         } finally {
           await handle.close();
@@ -1271,7 +1429,7 @@ export class JsonlBoundaryObservationLedger
     });
     // error-policy:J5 the caller observes appendPromise; this normalized tail
     // only keeps later single-writer appends from inheriting its rejection.
-    this.#pending = appendPromise.then(
+    this.#state.pending = appendPromise.then(
       () => undefined,
       () => undefined,
     );

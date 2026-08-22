@@ -210,6 +210,9 @@ effect cannot be prevented; the receipt is `stale_completion`, never success.
 Acquisition failures happen before the admitted callback and produce no attempt.
 After admission, guard failures are recorded as unknown attempts; a fence
 adapter must not defer a new rejection until after its callback resolves.
+Every schema-v3 identity is bound to a required tenant and run as well as its
+generation, target, idempotency key, and retry lineage; attempts from different
+tenants or runs can never replay one another's receipt.
 
 The ledger is evidence, never desired or provider state. Fault directives are
 injected at this consumer boundary and record timeout, retryable/permanent,
@@ -218,12 +221,16 @@ successful effects. Its public surface is read-only; only the observer holds
 the module-private append capability. Records use strict schema validation and
 a SHA-256 internal-consistency chain, and each newline-framed append is synced
 before it resolves. Malformed, locally edited, blank, or truncated frames fail
-closed rather than being returned as evidence. This unsealed local chain is not
+closed rather than being returned as evidence. Payload values, frames, and the
+whole local ledger have explicit byte/complexity ceilings and reject before an
+oversized value is hashed or appended. This unsealed local chain is not
 tamper-evident against an actor that can rewrite the complete file or remove a
 valid tail and recompute hashes; an independent signed/remote head seal is
 required for that claim.
 
-`JsonlBoundaryObservationLedger` remains a single-writer primitive. #24076 and
+`JsonlBoundaryObservationLedger` coordinates every same-process instance that
+resolves to the same file, including invocation singleflight and append order.
+It remains a cross-process single-writer primitive: #24076 and
 its draft implementation #24204 must supply an adapter for this stricter
 generation-fence contract and own reset/rollover exclusion; this module does
 not fabricate that authority or claim exactly-once behavior for an external
