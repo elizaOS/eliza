@@ -5,13 +5,16 @@
  */
 
 import {
-  decodePreparedInteractionCallback,
   type Content,
+  decodePreparedInteractionCallback,
   type InteractionBlock,
   type PreparedMessageInteraction,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { renderPreparedSlackInteraction, renderSlackInteractions } from "./interactions";
+import {
+  renderPreparedSlackInteraction,
+  renderSlackInteractions,
+} from "./interactions";
 
 const prepared = (block: InteractionBlock): PreparedMessageInteraction => ({
   block,
@@ -62,7 +65,9 @@ describe("Slack canonical interaction adapter", () => {
               : undefined,
       }),
     );
-    expect(outcomes.every((outcome) => outcome.outcome === "fallback")).toBe(true);
+    expect(outcomes.every((outcome) => outcome.outcome === "fallback")).toBe(
+      true,
+    );
     expect(outcomes[2]?.text).toContain("Reply with your answer");
     expect(outcomes[4]?.text).not.toContain("oauth");
     expect(JSON.stringify(outcomes)).not.toContain("[CHOICE:");

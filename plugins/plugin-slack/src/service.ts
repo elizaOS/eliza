@@ -26,8 +26,8 @@ import {
   type Character,
   type Content,
   checkPairingAllowed,
+  consumePreparedInteractionCallback,
   createUniqueUuid,
-  decodeCallback,
   ElizaError,
   type EventPayload,
   EventType,
@@ -38,8 +38,8 @@ import {
   type Media,
   type Memory,
   type MessageConnectorChatContext,
-  type MessageConnectorQueryContext,
   type MessageConnectorPreparedInteractionParams,
+  type MessageConnectorQueryContext,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   type MessageMetadata,
@@ -1000,44 +1000,70 @@ export class SlackService extends Service implements ISlackService {
       );
     });
 
-    app.action(/^eliza_interaction_/, async ({ action, ack, body, client }) => {
-      await ack();
-      const actionRecord = action as { value?: unknown };
-      const bodyRecord = body as {
-        user?: { id?: unknown };
-        channel?: { id?: unknown };
-        message?: { ts?: unknown; thread_ts?: unknown };
-      };
-      const decoded = decodeCallback(actionRecord.value);
-      const userId =
-        typeof bodyRecord.user?.id === "string" ? bodyRecord.user.id : "";
-      const channelId =
-        typeof bodyRecord.channel?.id === "string" ? bodyRecord.channel.id : "";
-      const messageTs =
-        typeof bodyRecord.message?.ts === "string" ? bodyRecord.message.ts : "";
-      if (!decoded || !userId || !channelId || !messageTs) {
-        this.runtime.logger.warn(
-          { src: "plugin:slack", accountId, channelId, userId },
-          "Ignoring malformed Slack interaction callback",
-        );
-        return;
-      }
-      await this.handleMessage(
-        {
-          channel: channelId,
-          user: userId,
-          text: decoded.value,
-          ts: messageTs,
-          thread_ts:
-            typeof bodyRecord.message?.thread_ts === "string"
-              ? bodyRecord.message.thread_ts
-              : undefined,
-        } as SlackMessageEventType,
-        client,
-        accountId,
-        body,
-      );
-    });
+    app.action(
+      /^eliza_prepared_interaction_/,
+      async ({ action, ack, body }) => {
+        await ack();
+        if (
+          !this.isInboundWorkspaceAuthorized(accountId, body, "interaction")
+        ) {
+          return;
+        }
+        const actionRecord = action as { value?: unknown; action_ts?: unknown };
+        const bodyRecord = body as {
+          user?: { id?: unknown };
+          channel?: { id?: unknown };
+          message?: { ts?: unknown; thread_ts?: unknown };
+          trigger_id?: unknown;
+        };
+        const userId =
+          typeof bodyRecord.user?.id === "string" ? bodyRecord.user.id : "";
+        const channelId =
+          typeof bodyRecord.channel?.id === "string"
+            ? bodyRecord.channel.id
+            : "";
+        const inboundEventId =
+          typeof actionRecord.action_ts === "string"
+            ? actionRecord.action_ts
+            : typeof bodyRecord.trigger_id === "string"
+              ? bodyRecord.trigger_id
+              : "";
+        if (!userId || !channelId || !inboundEventId) {
+          this.runtime.logger.warn(
+            { src: "plugin:slack", accountId, channelId, userId },
+            "Ignoring malformed Slack interaction callback",
+          );
+          return;
+        }
+        const threadTs =
+          typeof bodyRecord.message?.thread_ts === "string"
+            ? bodyRecord.message.thread_ts
+            : undefined;
+        const roomId = await this.getRoomId(channelId, threadTs, accountId);
+        const outcome = await consumePreparedInteractionCallback(this.runtime, {
+          providerCallbackData: actionRecord.value,
+          bindings: {
+            actorId: this.getEntityId(userId, accountId),
+            audience: { kind: "room", id: roomId },
+            agentId: this.runtime.agentId,
+            connector: { source: "slack", accountId },
+            roomId,
+          },
+          providerReceipt: {
+            source: "slack",
+            accountId,
+            inboundEventId,
+            receivedAt: new Date().toISOString(),
+          },
+        });
+        if (outcome.status === "denied") {
+          this.runtime.logger.warn(
+            { src: "plugin:slack", accountId, channelId, code: outcome.code },
+            "Slack interaction callback was denied",
+          );
+        }
+      },
+    );
 
     // Handle app mentions
     app.event("app_mention", async ({ event, client, body }) => {
@@ -2749,12 +2775,17 @@ export class SlackService extends Service implements ISlackService {
       const metadata = room?.metadata as Record<string, unknown> | undefined;
       threadTs =
         threadTs ??
-        (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
+        (typeof metadata?.threadTs === "string"
+          ? metadata.threadTs
+          : undefined);
     }
     if (!channelId) {
-      throw new ElizaError("Slack prepared interaction requires a channel target.", {
-        code: "SLACK_INTERACTION_TARGET_UNAVAILABLE",
-      });
+      throw new ElizaError(
+        "Slack prepared interaction requires a channel target.",
+        {
+          code: "SLACK_INTERACTION_TARGET_UNAVAILABLE",
+        },
+      );
     }
     const rendered = renderPreparedSlackInteraction(interaction);
     if (rendered.outcome !== "native") {

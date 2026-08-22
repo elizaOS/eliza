@@ -34,6 +34,23 @@ function makeTarget(source: string): TargetInfo {
 }
 
 describe("message and post connector registries", () => {
+	it("retains interaction profile and host-prepared delivery hooks", () => {
+		const runtime = makeRuntime();
+		const resolveInteractionProfile = vi.fn(() => ({}) as never);
+		const sendPreparedInteraction = vi.fn(async () => undefined);
+		runtime.registerMessageConnector({
+			source: "interactive",
+			resolveInteractionProfile,
+			sendPreparedInteraction,
+		});
+
+		const connector = runtime.getMessageConnectors()[0];
+		expect(connector?.resolveInteractionProfile).toBe(
+			resolveInteractionProfile,
+		);
+		expect(connector?.sendPreparedInteraction).toBe(sendPreparedInteraction);
+	});
+
 	it("registers message connectors with optional sendHandler and enumerates hook-only connectors", async () => {
 		const runtime = makeRuntime();
 		const sentMemory = {

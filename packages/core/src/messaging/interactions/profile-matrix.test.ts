@@ -5,9 +5,11 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import {
 	createFirstPartyInteractionProfile,
+	DISCORD_INTERACTION_PROFILE,
 	FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT,
 	FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS,
 	renderFirstPartyInteractionCapabilityMatrix,
@@ -36,41 +38,60 @@ async function sourceFiles(directory: string): Promise<string[]> {
 	return files;
 }
 
-async function productionRegistrationSites(): Promise<
-	Array<{ site: string; registrations: number }>
-> {
+async function productionRegistrationSites(): Promise<string[]> {
 	const pluginsRoot = path.join(repositoryRoot, "plugins");
-	const found: Array<{ site: string; registrations: number }> = [];
+	const found: string[] = [];
 	for (const entry of await fs.readdir(pluginsRoot, { withFileTypes: true })) {
 		if (!entry.isDirectory() || !entry.name.startsWith("plugin-")) continue;
 		const files = await sourceFiles(path.join(pluginsRoot, entry.name));
 		for (const file of files) {
 			const source = await fs.readFile(file, "utf8");
-			const registrations = source.match(
-				/\bregisterMessageConnector\s*\(/g,
-			)?.length;
-			if (registrations) {
-				found.push({
-					site: path.relative(pluginsRoot, file),
-					registrations,
-				});
-			}
+			const relativeSite = path.relative(
+				path.join(pluginsRoot, entry.name),
+				file,
+			);
+			const syntax = ts.createSourceFile(
+				file,
+				source,
+				ts.ScriptTarget.Latest,
+				true,
+				file.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+			);
+			const visit = (node: ts.Node): void => {
+				if (ts.isCallExpression(node)) {
+					const callee = node.expression;
+					const calleeName = ts.isPropertyAccessExpression(callee)
+						? callee.name.text
+						: ts.isIdentifier(callee)
+							? callee.text
+							: undefined;
+					if (calleeName === "registerMessageConnector") {
+						found.push(`${entry.name}:direct:${relativeSite}`);
+					}
+				}
+				if (
+					ts.isPropertyAssignment(node) &&
+					((ts.isIdentifier(node.name) &&
+						node.name.text === "messageConnector") ||
+						(ts.isStringLiteral(node.name) &&
+							node.name.text === "messageConnector"))
+				) {
+					found.push(`${entry.name}:account-provider:${relativeSite}`);
+				}
+				ts.forEachChild(node, visit);
+			};
+			visit(syntax);
 		}
 	}
-	return found.sort((a, b) => a.site.localeCompare(b.site));
+	return found.sort((a, b) => a.localeCompare(b));
 }
 
 describe("first-party interaction capability matrix", () => {
-	it("covers every production registration site and invocation", async () => {
-		const declared = [
-			...new Set(
-				FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(
-					(entry) => entry.registrationSite,
-				),
-			),
-		]
-			.sort()
-			.map((site) => ({ site, registrations: 1 }));
+	it("covers every production registration site and account-provider extension", async () => {
+		const declared = FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(
+			(entry) =>
+				`${entry.plugin}:${entry.registrationMechanism}:${entry.registrationSite}`,
+		).sort();
 		expect(await productionRegistrationSites()).toEqual(declared);
 	});
 
@@ -94,6 +115,26 @@ describe("first-party interaction capability matrix", () => {
 		}
 	});
 
+	it("registers a host-prepared send seam for every native callback connector", async () => {
+		for (const plugin of [
+			"plugin-discord",
+			"plugin-slack",
+			"plugin-telegram",
+			"plugin-whatsapp",
+		]) {
+			const files = await sourceFiles(
+				path.join(repositoryRoot, "plugins", plugin),
+			);
+			const combined = (
+				await Promise.all(files.map((file) => fs.readFile(file, "utf8")))
+			).join("\n");
+			expect(
+				combined,
+				`${plugin} must consume host-prepared delivery`,
+			).toContain("sendPreparedInteraction");
+		}
+	});
+
 	it("materializes exhaustive behavior for every block kind and source", () => {
 		for (const entry of FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT) {
 			const profile = createFirstPartyInteractionProfile({
@@ -106,6 +147,10 @@ describe("first-party interaction capability matrix", () => {
 				[...INTERACTION_BLOCK_KINDS].sort(),
 			);
 		}
+	});
+
+	it("retains provider-specific limits instead of the generic button profile", () => {
+		expect(DISCORD_INTERACTION_PROFILE.limits.links.maxUrlBytes).toBe(512);
 	});
 
 	it("fails closed when trusted account or target identity is absent", () => {

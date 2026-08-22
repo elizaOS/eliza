@@ -24,10 +24,12 @@ import {
   type MessageConnectorCreateThreadParams,
   type MessageConnectorEditParams,
   type MessageConnectorPostToThreadParams,
+  type MessageConnectorPreparedInteractionParams,
   type MessageConnectorQueryContext,
   type MessageConnectorReactionParams,
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
+  type PreparedMessageInteraction,
   Role,
   type Room,
   resolveFirstPartyInteractionProfile,
@@ -3084,6 +3086,25 @@ export class TelegramService extends Service {
             } satisfies Entity;
           },
           sendHandler,
+          sendPreparedInteraction: async (
+            handlerRuntime: IAgentRuntime,
+            params: MessageConnectorPreparedInteractionParams,
+          ) => {
+            const target =
+              normalizedAccountId &&
+              !(params.target as AccountScopedTargetInfo).accountId
+                ? ({
+                    ...params.target,
+                    accountId: normalizedAccountId,
+                  } as TargetInfo)
+                : params.target;
+            await serviceInstance.handleSendMessage(
+              handlerRuntime,
+              target,
+              { text: params.text ?? "" },
+              params.interaction,
+            );
+          },
         } as ExtendedMessageConnectorRegistration;
         runtime.registerMessageConnector(registration);
       };
@@ -3233,6 +3254,7 @@ export class TelegramService extends Service {
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
+    preparedInteraction?: PreparedMessageInteraction,
   ): Promise<void> {
     const { accountId, messageManager, chatId, threadId } =
       await this.resolveTelegramSendTarget(runtime, target);
@@ -3253,6 +3275,7 @@ export class TelegramService extends Service {
         },
         undefined,
         threadId,
+        preparedInteraction,
       );
       logger.info(
         {

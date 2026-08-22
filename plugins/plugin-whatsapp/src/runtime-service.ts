@@ -19,9 +19,10 @@
 import {
   ChannelType,
   type Content,
+  consumePreparedInteractionCallback,
   createConnectorInteractionCapabilityProfile,
   createUniqueUuid,
-  decodeCallback,
+  decodePreparedInteractionCallback,
   ElizaError,
   type IAgentRuntime,
   lifeOpsPassiveConnectorsEnabled,
@@ -53,10 +54,7 @@ import {
   type InboundClaimState,
   tryClaim,
 } from "./inbound-claim";
-import {
-  renderPreparedWhatsAppInteraction,
-  renderWhatsAppInteractions,
-} from "./interactions";
+import { renderPreparedWhatsAppInteraction, renderWhatsAppInteractions } from "./interactions";
 import {
   chunkWhatsAppText,
   isWhatsAppGroupJid,
@@ -537,8 +535,6 @@ function extractWebhookText(message: WhatsAppIncomingMessage): string {
 
   const buttonReply = message.interactive?.button_reply;
   if (buttonReply) {
-    const decoded = decodeCallback(buttonReply.id);
-    if (decoded) return decoded.value;
     if (typeof buttonReply.title === "string" && buttonReply.title.trim()) {
       return buttonReply.title.trim();
     }
@@ -546,8 +542,6 @@ function extractWebhookText(message: WhatsAppIncomingMessage): string {
 
   const listReply = message.interactive?.list_reply;
   if (listReply) {
-    const decoded = decodeCallback(listReply.id);
-    if (decoded) return decoded.value;
     if (typeof listReply.title === "string" && listReply.title.trim()) {
       return listReply.title.trim();
     }
@@ -778,7 +772,7 @@ export class WhatsAppConnectorService extends Service {
             runtime,
             service,
             params.target,
-            connectorAccountId,
+            connectorAccountId
           );
           if (!resolved) {
             throw new ElizaError("WhatsApp prepared interaction target is unavailable.", {
@@ -794,13 +788,13 @@ export class WhatsAppConnectorService extends Service {
                 context: {
                   limitations: params.interaction.delivery.limitations.join(","),
                 },
-              },
+              }
             );
           }
           await service.sendInteractiveMessage(
             resolved.accountId,
             resolved.chatId,
-            rendered.interactive,
+            rendered.interactive
           );
         },
         sendHandler: async (
@@ -1229,6 +1223,40 @@ export class WhatsAppConnectorService extends Service {
     message: WhatsAppIncomingMessage,
     accountId = this.defaultAccountId
   ): Promise<void> {
+    const providerCallbackData =
+      message.interactive?.button_reply?.id ?? message.interactive?.list_reply?.id;
+    if (decodePreparedInteractionCallback(providerCallbackData)) {
+      const normalizedSender = normalizeWhatsAppTarget(message.from) ?? message.from;
+      const roomId = this.roomIdFor(normalizedSender, accountId);
+      const outcome = await consumePreparedInteractionCallback(this.runtime, {
+        providerCallbackData,
+        bindings: {
+          actorId: this.entityIdFor(normalizedSender, accountId),
+          audience: { kind: "room", id: roomId },
+          agentId: this.runtime.agentId,
+          connector: { source: "whatsapp", accountId },
+          roomId,
+        },
+        providerReceipt: {
+          source: "whatsapp",
+          accountId,
+          inboundEventId: message.id,
+          receivedAt: new Date(toTimestampMs(message.timestamp)).toISOString(),
+        },
+      });
+      if (outcome.status === "denied") {
+        this.runtime.logger.warn(
+          {
+            src: "plugin:whatsapp",
+            agentId: this.runtime.agentId,
+            accountId,
+            code: outcome.code,
+          },
+          "WhatsApp interaction callback was denied"
+        );
+      }
+      return;
+    }
     const text = extractWebhookText(message);
     if (!text) {
       return;

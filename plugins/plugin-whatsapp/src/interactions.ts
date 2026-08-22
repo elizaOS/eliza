@@ -12,7 +12,6 @@ import {
   type PreparedMessageInteraction,
   parseInteractionBlocks,
   renderContentInteractionsAsPlainText,
-  stripDashboardOnlyMarkers,
 } from "@elizaos/core";
 import type { WhatsAppInteractiveMessage } from "./types";
 
@@ -48,7 +47,7 @@ export function renderWhatsAppInteractions(
 
 /** Render only a host-prepared interaction as Cloud API reply controls. */
 export function renderPreparedWhatsAppInteraction(
-  prepared: PreparedMessageInteraction,
+  prepared: PreparedMessageInteraction
 ): WhatsAppInteractionRender {
   const interaction = prepared.block;
   const fallback = renderContentInteractionsAsPlainText({ interactions: [interaction] }).text;
@@ -75,7 +74,7 @@ export function renderPreparedWhatsAppInteraction(
     callbackData: encodePreparedInteractionCallback(
       prepared.callbackData,
       { value: option.value },
-      200,
+      200
     ),
   }));
   if (
@@ -87,8 +86,7 @@ export function renderPreparedWhatsAppInteraction(
   }
 
   const bodyText =
-    (interaction.kind === "choice" ? interaction.prompt?.trim() : "") ||
-    "Choose an option.";
+    (interaction.kind === "choice" ? interaction.prompt?.trim() : "") || "Choose an option.";
   if (callbackButtons.length <= 3 && callbackButtons.every((button) => button.label.length <= 20)) {
     return {
       text: bodyText,

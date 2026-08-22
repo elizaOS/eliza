@@ -4,17 +4,13 @@
  * room/user records the runtime needs on ready and on first contact.
  */
 import {
-	attestDeliveryAudienceFromCanonicalRoom,
 	ChannelType,
+	consumePreparedInteractionCallback,
 	createUniqueUuid,
-	decodeCallback,
+	decodePreparedInteractionCallback,
 	type Entity,
 	type EventPayload,
 	EventType,
-	type HandlerCallback,
-	isInteractionCallback,
-	type Memory,
-	MemoryType,
 	type Room,
 	stringToUuid,
 	type UUID,
@@ -37,8 +33,6 @@ import {
 	buildDiscordEntityMetadata,
 	buildDiscordWorldMetadata,
 } from "./identity";
-import { buildDiscordReplyPayload } from "./interactions";
-import { chunkDiscordText } from "./messaging";
 import { generateInviteUrl } from "./permissions";
 import { syncDiscordClientProfile } from "./profileSync";
 import type { DiscordService } from "./service";
@@ -50,11 +44,6 @@ import {
 	type DiscordSlashCommand,
 	type DiscordSlashCommandPayload,
 } from "./types";
-import {
-	buildDiscordComponents,
-	getMessageService,
-	sendMessageInChunks,
-} from "./utils";
 
 /**
  * Subset of DiscordService fields needed by interaction handling.
@@ -245,99 +234,35 @@ export async function handleInteractionCreate(
 			"Received component interaction",
 		);
 
-		if (interaction.isButton() && isInteractionCallback(interaction.customId)) {
-			const decoded = decodeCallback(interaction.customId);
+		if (
+			interaction.isButton() &&
+			decodePreparedInteractionCallback(interaction.customId)
+		) {
 			await acknowledgeComponentInteraction(interaction);
-			if (!decoded) {
-				return;
-			}
-			const memory: Memory = {
-				id: createUniqueUuid(service.runtime, `cbq-${interaction.id}`),
-				entityId,
-				agentId: service.runtime.agentId,
-				roomId,
-				content: {
-					text: decoded.value,
-					source: "discord",
-					channelType: type,
+			const outcome = await consumePreparedInteractionCallback(
+				service.runtime,
+				{
+					providerCallbackData: interaction.customId,
+					bindings: {
+						actorId: entityId,
+						audience: { kind: "room", id: roomId },
+						agentId: service.runtime.agentId,
+						connector: { source: "discord", accountId },
+						roomId,
+					},
+					providerReceipt: {
+						source: "discord",
+						accountId,
+						inboundEventId: interaction.id,
+						receivedAt: new Date(interaction.createdTimestamp).toISOString(),
+					},
 				},
-				metadata: {
-					type: MemoryType.MESSAGE,
-					source: "discord",
-					accountId,
-				},
-				createdAt: Date.now(),
-			};
-			try {
-				await attestDeliveryAudienceFromCanonicalRoom(service.runtime, memory);
-			} catch (error) {
-				// error-policy:J4 the interaction can still use public actions,
-				// while owner-private components fail closed without evidence.
-				service.runtime.reportError(
-					"DiscordInteraction.deliveryAudience",
-					error,
-					{ roomId, messageId: memory.id },
+			);
+			if (outcome.status === "denied") {
+				service.runtime.logger.warn(
+					{ src: "plugin:discord", accountId, code: outcome.code },
+					"Discord interaction callback was denied",
 				);
-			}
-			const callback: HandlerCallback = async (content) => {
-				const render = buildDiscordReplyPayload(service.runtime, content);
-				const components =
-					render.components.length > 0
-						? buildDiscordComponents(render.components)
-						: undefined;
-				const chunks = render.text.trim() ? chunkDiscordText(render.text) : [];
-				// A user-installed app in a group DM / DM-with-others is NOT a
-				// channel member, so `channel.send` is unavailable — the button
-				// reply must ride the interaction token via followUp (the button
-				// was already deferUpdate'd above, so followUp posts a new
-				// message). Buttons attach to the LAST chunk. Fall back to
-				// channel.send only when there is no usable interaction (should
-				// not happen for a component interaction).
-				if (chunks.length === 0 && !components) {
-					return [];
-				}
-				const lastIndex = Math.max(0, chunks.length - 1);
-				try {
-					if (chunks.length === 0 && components) {
-						await interaction.followUp({ content: "​", components });
-					}
-					for (let i = 0; i < chunks.length; i++) {
-						await interaction.followUp({
-							content: chunks[i],
-							...(components && i === lastIndex ? { components } : {}),
-						});
-					}
-					return [];
-				} catch (error) {
-					// error-policy:J1 interaction delivery failed (token expired or
-					// missing) — fall back to a channel send where the bot can.
-					const channel = interaction.channel as TextChannel | null;
-					if (channel && typeof channel.send === "function") {
-						await sendMessageInChunks(
-							channel,
-							render.text,
-							"",
-							[],
-							render.components.length > 0 ? render.components : undefined,
-							service.runtime,
-						);
-					} else {
-						service.runtime.logger.warn(
-							{
-								src: "plugin:discord",
-								agentId: service.runtime.agentId,
-								customId: interaction.customId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Button-reply delivery failed and no channel send is available",
-						);
-					}
-					return [];
-				}
-			};
-			const messageService = getMessageService(service.runtime);
-			if (messageService) {
-				await messageService.handleMessage(service.runtime, memory, callback);
 			}
 			return;
 		}

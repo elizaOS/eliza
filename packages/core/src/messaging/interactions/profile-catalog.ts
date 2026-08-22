@@ -21,7 +21,7 @@ export const CONVERSATIONAL_INTERACTION_PROFILE: InteractionProfileTemplate = {
 			modes: ["conversational", "signed-hosted"],
 			maxSessionTtlMs: TTL,
 		},
-		form: { modes: ["conversational", "signed-hosted"], maxSessionTtlMs: TTL },
+		form: { modes: ["signed-hosted", "conversational"], maxSessionTtlMs: TTL },
 		followups: { modes: ["conversational"], maxSessionTtlMs: TTL },
 		task: {
 			modes: ["signed-hosted", "conversational"],
@@ -86,7 +86,7 @@ export const BUTTON_INTERACTION_PROFILE: InteractionProfileTemplate = {
 		},
 		followups: { modes: ["native", "conversational"], maxSessionTtlMs: TTL },
 		task: {
-			modes: ["native", "signed-hosted", "conversational"],
+			modes: ["signed-hosted", "conversational"],
 			maxSessionTtlMs: 24 * TTL,
 		},
 	},
@@ -118,6 +118,7 @@ export const DISCORD_INTERACTION_PROFILE: InteractionProfileTemplate = {
 			maxLabelBytes: 80,
 			maxCallbackBytes: 100,
 		},
+		links: { supported: true, maxUrlBytes: 512 },
 		text: { maxMessageBytes: 2_000 },
 		attachments: {
 			supported: true,
@@ -290,8 +291,9 @@ export type FirstPartyInteractionProfileFamily =
 
 export interface FirstPartyInteractionConnectorAuditEntry {
 	plugin: string;
-	registrationSite: string;
 	source: string;
+	registrationSite: string;
+	registrationMechanism: "direct" | "account-provider";
 	targetKind: string;
 	profileFamily: FirstPartyInteractionProfileFamily;
 	note: string;
@@ -304,88 +306,99 @@ export interface FirstPartyInteractionConnectorAuditEntry {
 export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
 	{
 		plugin: "plugin-discord",
-		registrationSite: "plugin-discord/service.ts",
 		source: "discord",
+		registrationSite: "service.ts",
+		registrationMechanism: "direct",
 		targetKind: "channel",
 		profileFamily: "discord-native",
 		note: "native action-row buttons with conversational form fallback",
 	},
 	{
 		plugin: "plugin-google-workspace",
-		registrationSite: "plugin-google-workspace/src/chat/service.ts",
 		source: "gmail",
+		registrationSite: "src/connector-account-provider.ts",
+		registrationMechanism: "account-provider",
 		targetKind: "email",
 		profileFamily: "conversational",
 		note: "email target",
 	},
 	{
 		plugin: "plugin-google-workspace",
-		registrationSite: "plugin-google-workspace/src/chat/service.ts",
 		source: "google-chat",
+		registrationSite: "src/chat/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "room",
 		profileFamily: "conversational-media",
 		note: "chat spaces, threads, and one uploaded attachment",
 	},
 	{
 		plugin: "plugin-imessage",
-		registrationSite: "plugin-imessage/src/service.ts",
 		source: "imessage",
+		registrationSite: "src/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "user",
 		profileFamily: "conversational-media",
 		note: "semantic text controls and one native attachment",
 	},
 	{
 		plugin: "plugin-instagram",
-		registrationSite: "plugin-instagram/src/service.ts",
 		source: "instagram",
+		registrationSite: "src/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "thread",
 		profileFamily: "conversational",
 		note: "existing DM threads",
 	},
 	{
 		plugin: "plugin-matrix",
-		registrationSite: "plugin-matrix/src/service.ts",
 		source: "matrix",
+		registrationSite: "src/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "room",
 		profileFamily: "conversational",
 		note: "rooms and threads",
 	},
 	{
 		plugin: "plugin-slack",
-		registrationSite: "plugin-slack/src/service.ts",
 		source: "slack",
+		registrationSite: "src/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "channel",
 		profileFamily: "slack-native",
 		note: "native Block Kit actions with conversational form fallback",
 	},
 	{
 		plugin: "plugin-telegram",
-		registrationSite: "plugin-telegram/src/service.ts",
 		source: "telegram",
+		registrationSite: "src/service.ts",
+		registrationMechanism: "direct",
 		targetKind: "room",
 		profileFamily: "telegram-native",
 		note: "native inline keyboards with conversational form fallback",
 	},
 	{
 		plugin: "plugin-wechat",
-		registrationSite: "plugin-wechat/src/index.ts",
 		source: "wechat",
+		registrationSite: "src/index.ts",
+		registrationMechanism: "direct",
 		targetKind: "room",
 		profileFamily: "conversational",
 		note: "users and groups",
 	},
 	{
 		plugin: "plugin-whatsapp",
-		registrationSite: "plugin-whatsapp/src/runtime-service.ts",
 		source: "whatsapp",
+		registrationSite: "src/runtime-service.ts",
+		registrationMechanism: "direct",
 		targetKind: "phone",
 		profileFamily: "whatsapp-native",
 		note: "native reply buttons/lists with conversational form/task fallback",
 	},
 	{
 		plugin: "plugin-x",
-		registrationSite: "plugin-x/src/services/x.service.ts",
 		source: "x",
+		registrationSite: "src/services/x.service.ts",
+		registrationMechanism: "direct",
 		targetKind: "user",
 		profileFamily: "conversational",
 		note: "direct messages only; posts are separate",
@@ -518,6 +531,15 @@ export function renderFirstPartyInteractionCapabilityMatrix(): string {
 		"",
 		...FIRST_PARTY_INTERACTION_CONNECTOR_EXCLUSIONS.map(
 			(entry) => `- ${entry.plugin}: ${entry.reason}`,
+		),
+		"",
+		"## Registration inventory",
+		"",
+		"| Connector | Plugin | Mechanism | Production site |",
+		"| --- | --- | --- | --- |",
+		...FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.map(
+			(entry) =>
+				`| ${entry.source} | ${entry.plugin} | ${entry.registrationMechanism} | ${entry.registrationSite} |`,
 		),
 	].join("\n");
 }
