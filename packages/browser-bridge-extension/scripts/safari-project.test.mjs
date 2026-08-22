@@ -13,6 +13,7 @@ import {
   patchGeneratedSafariProject,
   resolveSafariNativeConfiguration,
   safariNativeDefaults,
+  validateSafariCodeSigningAuthorities,
   validateSafariSignedBundleContracts,
 } from "./safari-project.mjs";
 
@@ -386,6 +387,7 @@ struct ResponseHarness {
   it("uses deterministic development defaults", () => {
     expect(resolveSafariNativeConfiguration({})).toMatchObject({
       release: false,
+      releaseChannel: null,
       signingTeam: null,
       signingIdentity: null,
       appGroup: safariNativeDefaults.appGroup,
@@ -412,6 +414,7 @@ struct ResponseHarness {
   it("validates both embedded profiles and both signed App Group entitlements", () => {
     const configuration = resolveSafariNativeConfiguration({
       ELIZA_SAFARI_RELEASE: "1",
+      ELIZA_SAFARI_RELEASE_CHANNEL: "app-store",
       ELIZA_SAFARI_SIGNING_TEAM: "ABCDEFGHIJ",
       ELIZA_SAFARI_SIGNING_IDENTITY: "Apple Distribution",
       ELIZA_SAFARI_APP_GROUP: safariNativeDefaults.appGroup,
@@ -429,6 +432,7 @@ struct ResponseHarness {
       ExpirationDate: "2030-01-01T00:00:00.000Z",
       Entitlements: {
         "application-identifier": `ABCDEFGHIJ.${bundleIdentifier}`,
+        "get-task-allow": false,
         "com.apple.security.application-groups": [
           safariNativeDefaults.appGroup,
         ],
@@ -448,6 +452,35 @@ struct ResponseHarness {
       bundleIdentifier: "ai.elizaos.browserbridge.app",
       now: Date.parse("2029-01-01T00:00:00.000Z"),
     };
+    const authority = (identifier, identity = "Apple Distribution") =>
+      [
+        `Identifier=${identifier}`,
+        `Authority=${identity}: Eliza (ABCDEFGHIJ)`,
+        "TeamIdentifier=ABCDEFGHIJ",
+      ].join("\n");
+    expect(() =>
+      validateSafariCodeSigningAuthorities({
+        configuration,
+        appAuthorityOutput: authority("ai.elizaos.browserbridge.app"),
+        extensionAuthorityOutput: authority(
+          "ai.elizaos.browserbridge.app.Extension",
+        ),
+        bundleIdentifier: "ai.elizaos.browserbridge.app",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      validateSafariCodeSigningAuthorities({
+        configuration,
+        appAuthorityOutput: authority(
+          "ai.elizaos.browserbridge.app",
+          "Apple Development",
+        ),
+        extensionAuthorityOutput: authority(
+          "ai.elizaos.browserbridge.app.Extension",
+        ),
+        bundleIdentifier: "ai.elizaos.browserbridge.app",
+      }),
+    ).toThrow(/distribution signing authority/);
     expect(() => validateSafariSignedBundleContracts(contract)).not.toThrow();
     expect(() =>
       validateSafariSignedBundleContracts({
@@ -464,6 +497,31 @@ struct ResponseHarness {
         appProfile: { ...contract.appProfile, Name: "Wrong Profile" },
       }),
     ).toThrow(/embedded provisioning profile/);
+    expect(() =>
+      validateSafariSignedBundleContracts({
+        ...contract,
+        appProfile: {
+          ...contract.appProfile,
+          ProvisionedDevices: ["device-1"],
+          Entitlements: {
+            ...contract.appProfile.Entitlements,
+            "get-task-allow": true,
+          },
+        },
+      }),
+    ).toThrow(/embedded provisioning profile/);
+    expect(() =>
+      resolveSafariNativeConfiguration({
+        ELIZA_SAFARI_RELEASE: "1",
+        ELIZA_SAFARI_RELEASE_CHANNEL: "app-store",
+        ELIZA_SAFARI_SIGNING_TEAM: "ABCDEFGHIJ",
+        ELIZA_SAFARI_SIGNING_IDENTITY: "Apple Development: Example",
+        ELIZA_SAFARI_APP_GROUP: safariNativeDefaults.appGroup,
+        ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER: "App Profile",
+        ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER:
+          "Extension Profile",
+      }),
+    ).toThrow(/distribution application identity/);
   });
 });
 

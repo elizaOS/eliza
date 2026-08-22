@@ -24,7 +24,7 @@ namespace ElizaBrowserBridge {
     private const uint PIPE_REJECT_REMOTE_CLIENTS = 0x00000008;
 
     public static string Contract() {
-      return "CreateNamedPipeW|PIPE_REJECT_REMOTE_CLIENTS|FIRST_INSTANCE|USER_AND_LOGON_SID_DACL";
+      return "CreateNamedPipeW|PIPE_REJECT_REMOTE_CLIENTS|FIRST_INSTANCE|CURRENT_USER_DACL";
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -61,10 +61,11 @@ namespace ElizaBrowserBridge {
             break;
           }
         }
-        if (logonSid == null) throw new InvalidOperationException("logon SID unavailable");
         string sddl = "O:" + userSid.Value + "G:" + userSid.Value +
-          "D:P(A;;GA;;;SY)(A;;GA;;;" + userSid.Value + ")" +
-          "(A;;GA;;;" + logonSid.Value + ")";
+          "D:P(A;;GA;;;SY)(A;;GA;;;" + userSid.Value + ")";
+        if (logonSid != null) {
+          sddl += "(A;;GA;;;" + logonSid.Value + ")";
+        }
         RawSecurityDescriptor descriptor = new RawSecurityDescriptor(sddl);
         byte[] descriptorBytes = new byte[descriptor.BinaryLength];
         descriptor.GetBinaryForm(descriptorBytes, 0);

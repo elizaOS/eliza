@@ -21,6 +21,7 @@ import {
 import {
   patchGeneratedSafariProject,
   resolveSafariNativeConfiguration,
+  validateSafariCodeSigningAuthorities,
   validateSafariSignedBundleContracts,
 } from "./safari-project.mjs";
 import { findFileWithExtension, run } from "./script-utils.mjs";
@@ -83,6 +84,14 @@ async function readEmbeddedProvisioningProfile(profilePath, temporaryPath) {
     },
   );
   return readPlist(temporaryPath);
+}
+
+async function readCodeSigningAuthority(bundlePath) {
+  const { stderr } = await execFileAsync("codesign", ["-dvv", bundlePath], {
+    encoding: "utf8",
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  return stderr;
 }
 
 await run("bun", [path.join(scriptDir, "build.mjs"), "safari"], {
@@ -202,6 +211,13 @@ if (nativeConfiguration.release) {
     path.join(extensionBundlePath, "Contents", "embedded.provisionprofile"),
     path.join(verificationDirectory, "extension-profile.plist"),
   );
+  validateSafariCodeSigningAuthorities({
+    configuration: nativeConfiguration,
+    appAuthorityOutput: await readCodeSigningAuthority(builtAppPath),
+    extensionAuthorityOutput:
+      await readCodeSigningAuthority(extensionBundlePath),
+    bundleIdentifier,
+  });
   validateSafariSignedBundleContracts({
     configuration: nativeConfiguration,
     appEntitlements,

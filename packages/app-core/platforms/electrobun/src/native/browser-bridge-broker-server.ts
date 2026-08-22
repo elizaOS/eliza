@@ -1,6 +1,6 @@
 /** Hosts the authenticated enrollment broker on a bounded current-user IPC listener. */
 
-import { spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -16,6 +16,7 @@ import type { BrowserBridgeEnrollmentBroker } from "./browser-bridge-enrollment-
 
 const MAX_BROKER_FRAME_BYTES = 64 * 1024;
 const CONNECTION_TIMEOUT_MS = 5_000;
+const WINDOWS_HELPER_SHUTDOWN_TIMEOUT_MS = 2_000;
 
 export interface BrowserBridgeBrokerServerHandle {
   descriptor: BrowserBridgeBrokerTransportDescriptor;
@@ -73,19 +74,61 @@ export function resolveWindowsSecurePipeHelper(
   return resolved;
 }
 
+function waitForWindowsHelperExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const onExit = () => {
+      clearTimeout(timeout);
+      resolve(true);
+    };
+    const timeout = setTimeout(() => {
+      child.removeListener("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+export async function terminateWindowsSecurePipeHelper(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs = WINDOWS_HELPER_SHUTDOWN_TIMEOUT_MS,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const gracefulExit = waitForWindowsHelperExit(child, timeoutMs);
+  child.kill();
+  if (await gracefulExit) return;
+  const forcedExit = waitForWindowsHelperExit(child, timeoutMs);
+  child.kill("SIGKILL");
+  if (!(await forcedExit)) {
+    throw new Error("Windows secure pipe helper did not exit");
+  }
+}
+
 async function startWindowsSecureBrokerServer(options: {
   descriptor: WindowsBrokerTransportDescriptor;
   broker: BrowserBridgeEnrollmentBroker;
   helperPath?: string;
+  spawnImpl?: typeof spawn;
+  startupTimeoutMs?: number;
+  shutdownTimeoutMs?: number;
 }): Promise<BrowserBridgeBrokerServerHandle> {
   const invocation = windowsSecurePipeHostInvocation(
     options.descriptor,
     options.helperPath ?? resolveWindowsSecurePipeHelper(import.meta.dir),
   );
-  const child = spawn(invocation.command, invocation.args, {
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
+  const child = (options.spawnImpl ?? spawn)(
+    invocation.command,
+    invocation.args,
+    {
+      stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+    },
+  ) as ChildProcessWithoutNullStreams;
   let pending = Buffer.alloc(0);
   child.stdout.on("data", (chunk) => {
     pending = Buffer.concat([pending, Buffer.from(chunk)]);
@@ -113,23 +156,75 @@ async function startWindowsSecureBrokerServer(options: {
       child.stdin.write(frame);
     });
   });
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("Windows secure pipe helper startup timed out")),
-      5_000,
-    );
-    child.once("error", reject);
-    child.stderr.on("data", (chunk) => {
-      if (!Buffer.from(chunk).toString("utf8").includes("READY")) return;
-      clearTimeout(timeout);
-      resolve();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let stderr = "";
+      let settled = false;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        child.removeListener("error", onError);
+        child.removeListener("exit", onExit);
+        child.stderr.removeListener("data", onStderr);
+        if (error) reject(error);
+        else resolve();
+      };
+      const onError = (error: Error) => finish(error);
+      const onExit = (code: number | null, signal: NodeJS.Signals | null) =>
+        finish(
+          new Error(
+            `Windows secure pipe helper exited before readiness (${code ?? signal ?? "unknown"})`,
+          ),
+        );
+      const onStderr = (chunk: Uint8Array) => {
+        stderr = `${stderr}${Buffer.from(chunk).toString("utf8")}`.slice(-1024);
+        if (stderr.includes("READY")) finish();
+      };
+      const timeout = setTimeout(
+        () => finish(new Error("Windows secure pipe helper startup timed out")),
+        options.startupTimeoutMs ?? 5_000,
+      );
+      child.once("error", onError);
+      child.once("exit", onExit);
+      child.stderr.on("data", onStderr);
     });
+  } catch (error) {
+    // error-policy:J2 failed helper startup is reaped before preserving the startup failure.
+    try {
+      await terminateWindowsSecurePipeHelper(child, options.shutdownTimeoutMs);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "Windows secure pipe helper startup and cleanup failed",
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+  let closing = false;
+  let unexpectedFailure: Error | null = null;
+  child.once("error", (error) => {
+    if (!closing) {
+      unexpectedFailure = new Error(
+        "Windows secure pipe helper failed after readiness",
+        { cause: error },
+      );
+    }
+  });
+  child.once("exit", (code, signal) => {
+    if (!closing) {
+      unexpectedFailure = new Error(
+        `Windows secure pipe helper exited unexpectedly (${code ?? signal ?? "unknown"})`,
+      );
+    }
   });
   return {
     descriptor: options.descriptor,
     close: async () => {
-      child.kill();
-      await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+      closing = true;
+      await terminateWindowsSecurePipeHelper(child, options.shutdownTimeoutMs);
+      if (unexpectedFailure) throw unexpectedFailure;
     },
   };
 }
@@ -155,6 +250,9 @@ export async function startBrowserBridgeBrokerServer(options: {
   descriptor: BrowserBridgeBrokerTransportDescriptor;
   broker: BrowserBridgeEnrollmentBroker;
   windowsSecurePipeHelperPath?: string;
+  windowsSpawn?: typeof spawn;
+  windowsHelperStartupTimeoutMs?: number;
+  windowsHelperShutdownTimeoutMs?: number;
 }): Promise<BrowserBridgeBrokerServerHandle> {
   const { descriptor } = options;
   if (descriptor.kind === "windows_named_pipe") {
@@ -162,6 +260,9 @@ export async function startBrowserBridgeBrokerServer(options: {
       descriptor,
       broker: options.broker,
       helperPath: options.windowsSecurePipeHelperPath,
+      spawnImpl: options.windowsSpawn,
+      startupTimeoutMs: options.windowsHelperStartupTimeoutMs,
+      shutdownTimeoutMs: options.windowsHelperShutdownTimeoutMs,
     });
   }
   assertUnixSocketPathLength(descriptor.socketPath);

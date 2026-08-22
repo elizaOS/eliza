@@ -2,6 +2,7 @@
 
 import { Session } from "electrobun/bun";
 import { resolveMainWindowPartition } from "../main-window-session";
+import { resolveStartupBundlePath } from "../startup-trace";
 import {
   CSRF_COOKIE_NAME,
   type DesktopSession,
@@ -22,7 +23,7 @@ import {
   loadOrCreateMacBrowserBridgeSharedSecret,
   resolveMacBrowserBridgeAppGroupContainer,
 } from "./browser-bridge-mac-shared-secret";
-import { resolvePackagedBrowserBridgeAppGroup } from "./browser-bridge-mac-signing";
+import { verifyRunningBrowserBridgeMacAuthority } from "./browser-bridge-mac-signing";
 import { browserBridgeCallerAllowlistFromEnv } from "./browser-bridge-native-host-entry";
 import {
   type BrowserBridgeRegistrationPlan,
@@ -33,6 +34,22 @@ import {
 
 let stopActiveBroker: (() => Promise<void>) | null = null;
 let activeApiBase: string | null = null;
+
+async function closeBrokerServers(
+  servers: readonly BrowserBridgeBrokerServerHandle[],
+): Promise<void> {
+  const results = await Promise.allSettled(
+    [...servers].reverse().map((server) => server.close()),
+  );
+  const failures = results
+    .filter(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    )
+    .map((result) => result.reason);
+  if (failures.length > 0) {
+    throw new AggregateError(failures, "browser bridge broker shutdown failed");
+  }
+}
 
 export function isBrowserBridgeLoopbackApiBase(apiBase: string): boolean {
   try {
@@ -112,7 +129,11 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
   registrationPlan?: BrowserBridgeRegistrationPlan;
   installRegistration?: (plan: BrowserBridgeRegistrationPlan) => void;
   macSafariAppGroupContainerPath?: string;
-  macSafariProvisionedAppGroup?: string;
+  macSafariAppBundlePath?: string;
+  verifyMacSafariAuthority?: (
+    moduleDir: string,
+    appBundlePath: string | null,
+  ) => string | null;
   loadMacSafariSecret?: (containerPath: string) => Buffer;
 }): Promise<boolean> {
   if (!isBrowserBridgeLoopbackApiBase(options.apiBase)) {
@@ -141,43 +162,49 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
     brokerSecret: secret,
     callerAllowlist: allowlist,
   });
+  const servers: BrowserBridgeBrokerServerHandle[] = [];
   const server = await startBrowserBridgeBrokerServer({
     descriptor: defaultBrokerTransportDescriptor({ env, brokerSecret: secret }),
     broker,
   });
-  const additionalServers: BrowserBridgeBrokerServerHandle[] = [];
-  if (
-    process.platform === "darwin" &&
-    allowlist.safariExtensionIds.length > 0
-  ) {
-    const provisionedAppGroup =
-      options.macSafariProvisionedAppGroup ??
-      resolvePackagedBrowserBridgeAppGroup(import.meta.dir);
-    // Safari sharing stays disabled until packaging proves the exact App Group profile.
-    if (provisionedAppGroup) {
-      const appGroupContainer =
-        options.macSafariAppGroupContainerPath ??
-        resolveMacBrowserBridgeAppGroupContainer();
-      const safariBroker = new BrowserBridgeEnrollmentBroker({
-        apiBase: options.apiBase,
-        ownerSession: async () =>
-          resolveDesktopOwnerSession(options.apiBase, env),
-        brokerSecret: (
-          options.loadMacSafariSecret ??
-          loadOrCreateMacBrowserBridgeSharedSecret
-        )(appGroupContainer),
-        callerAllowlist: allowlist,
-      });
-      additionalServers.push(
-        await startBrowserBridgeBrokerServer({
-          descriptor:
-            createMacAppGroupBrokerTransportDescriptor(appGroupContainer),
-          broker: safariBroker,
-        }),
-      );
-    }
-  }
+  servers.push(server);
   try {
+    if (
+      process.platform === "darwin" &&
+      allowlist.safariExtensionIds.length > 0
+    ) {
+      const provisionedAppGroup = (
+        options.verifyMacSafariAuthority ??
+        verifyRunningBrowserBridgeMacAuthority
+      )(
+        import.meta.dir,
+        options.macSafariAppBundlePath ??
+          resolveStartupBundlePath(options.executablePath ?? process.execPath),
+      );
+      // Safari sharing stays disabled until packaging proves the exact App Group profile.
+      if (provisionedAppGroup) {
+        const appGroupContainer =
+          options.macSafariAppGroupContainerPath ??
+          resolveMacBrowserBridgeAppGroupContainer();
+        const safariBroker = new BrowserBridgeEnrollmentBroker({
+          apiBase: options.apiBase,
+          ownerSession: async () =>
+            resolveDesktopOwnerSession(options.apiBase, env),
+          brokerSecret: (
+            options.loadMacSafariSecret ??
+            loadOrCreateMacBrowserBridgeSharedSecret
+          )(appGroupContainer),
+          callerAllowlist: allowlist,
+        });
+        servers.push(
+          await startBrowserBridgeBrokerServer({
+            descriptor:
+              createMacAppGroupBrokerTransportDescriptor(appGroupContainer),
+            broker: safariBroker,
+          }),
+        );
+      }
+    }
     (options.installRegistration ?? installBrowserBridgeRegistration)(
       options.registrationPlan ??
         defaultBrowserBridgeRegistrationPlan({
@@ -189,20 +216,25 @@ export async function startBrowserBridgeDesktopLifecycle(options: {
         }),
     );
   } catch (error) {
-    // error-policy:J2 partial broker startup is rolled back before preserving registration failure.
-    await Promise.all(
-      additionalServers.map((additional) => additional.close()),
-    );
-    await server.close();
+    // error-policy:J2 every acquired listener is rolled back before preserving startup failure.
+    try {
+      await closeBrokerServers(servers);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        "browser bridge startup and rollback failed",
+        { cause: error },
+      );
+    }
     throw error;
   }
   stopActiveBroker = async () => {
-    await Promise.all(
-      additionalServers.map((additional) => additional.close()),
-    );
-    await server.close();
-    stopActiveBroker = null;
-    activeApiBase = null;
+    try {
+      await closeBrokerServers(servers);
+    } finally {
+      stopActiveBroker = null;
+      activeApiBase = null;
+    }
   };
   activeApiBase = options.apiBase;
   return true;

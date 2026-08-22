@@ -197,4 +197,41 @@ describe("cross-browser extension build", () => {
     });
     expect(first.sha256).toBe(second.sha256);
   });
+
+  it("generates store metadata that describes native enrollment as the primary flow", async () => {
+    await run(
+      "bun",
+      [path.join(packageRoot, "scripts", "package-store-assets.mjs")],
+      {
+        cwd: packageRoot,
+        stdio: "pipe",
+      },
+    );
+    const artifacts = path.join(packageRoot, "dist", "artifacts");
+    const [chrome, firefox, safari, checklist] = await Promise.all([
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-chrome-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-firefox-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-safari-store-metadata.json"),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(artifacts, "browser-bridge-store-checklist.md"),
+        "utf8",
+      ),
+    ]);
+    for (const metadata of [chrome, firefox, safari, checklist]) {
+      expect(metadata).toMatch(/automatic|automatically|native enrollment/i);
+      expect(metadata).toMatch(/recovery/i);
+      expect(metadata).not.toContain(
+        "pairing JSON import is the only credential setup flow",
+      );
+    }
+  });
 });

@@ -1,5 +1,6 @@
 /** Validates the provisioning identity required for desktop and Safari App Group sharing. */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { MAC_BROWSER_BRIDGE_APP_GROUP } from "./browser-bridge-broker-transport";
@@ -10,6 +11,12 @@ export interface BrowserBridgeMacProvisioningContract {
   applicationIdentifier: string;
   appGroup: typeof MAC_BROWSER_BRIDGE_APP_GROUP;
   profileUuid: string;
+}
+
+interface MacAuthorityCommandResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
 }
 
 export function resolveAppleTeamId(
@@ -104,4 +111,104 @@ export function resolvePackagedBrowserBridgeAppGroup(
     throw new Error("browser bridge packaged provisioning metadata is invalid");
   }
   return MAC_BROWSER_BRIDGE_APP_GROUP;
+}
+
+export function verifyRunningBrowserBridgeMacAuthority(
+  moduleDir: string,
+  appBundlePath: string | null,
+  options: {
+    exists?: (candidate: string) => boolean;
+    readFile?: (candidate: string) => string;
+    run?: (command: string, args: string[]) => MacAuthorityCommandResult;
+  } = {},
+): typeof MAC_BROWSER_BRIDGE_APP_GROUP | null {
+  const exists = options.exists ?? fs.existsSync;
+  const readFile =
+    options.readFile ?? ((candidate) => fs.readFileSync(candidate, "utf8"));
+  const appGroup = resolvePackagedBrowserBridgeAppGroup(
+    moduleDir,
+    exists,
+    readFile,
+  );
+  if (!appGroup) return null;
+  if (
+    !appBundlePath ||
+    !path.isAbsolute(appBundlePath) ||
+    !appBundlePath.endsWith(".app")
+  ) {
+    throw new Error(
+      "browser bridge runtime App Group authority requires an app bundle",
+    );
+  }
+  const metadataCandidates = [
+    path.resolve(moduleDir, "..", "browser-bridge-signing.json"),
+    path.resolve(moduleDir, "..", "..", "build", "browser-bridge-signing.json"),
+  ];
+  const metadataPath = metadataCandidates.find(exists);
+  if (!metadataPath) {
+    throw new Error("browser bridge packaged provisioning metadata is missing");
+  }
+  const metadata = JSON.parse(
+    readFile(metadataPath),
+  ) as BrowserBridgeMacProvisioningContract;
+  const embeddedProfile = path.join(
+    appBundlePath,
+    "Contents",
+    "embedded.provisionprofile",
+  );
+  if (!exists(embeddedProfile)) {
+    throw new Error("browser bridge runtime provisioning profile is missing");
+  }
+  const run =
+    options.run ??
+    ((command, args) => {
+      const result = spawnSync(command, args, {
+        encoding: "utf8",
+        timeout: 5_000,
+      });
+      return {
+        status: result.status,
+        stdout: result.stdout ?? "",
+        stderr: result.stderr ?? "",
+      };
+    });
+  const verification = run("/usr/bin/codesign", [
+    "--verify",
+    "--deep",
+    "--strict",
+    appBundlePath,
+  ]);
+  const signature = run("/usr/bin/codesign", [
+    "-dvv",
+    "--entitlements",
+    ":-",
+    appBundlePath,
+  ]);
+  const profile = run("/usr/bin/security", [
+    "cms",
+    "-D",
+    "-i",
+    embeddedProfile,
+  ]);
+  const signatureText = `${signature.stdout}\n${signature.stderr}`;
+  const profileText = `${profile.stdout}\n${profile.stderr}`;
+  if (
+    verification.status !== 0 ||
+    signature.status !== 0 ||
+    profile.status !== 0 ||
+    !signatureText.includes(`Identifier=${metadata.appId}`) ||
+    !signatureText.includes(`TeamIdentifier=${metadata.teamId}`) ||
+    !signatureText.includes(metadata.applicationIdentifier) ||
+    !signatureText.includes(MAC_BROWSER_BRIDGE_APP_GROUP) ||
+    !profileText.includes(`<string>${metadata.profileUuid}</string>`) ||
+    !profileText.includes(
+      `<string>${metadata.applicationIdentifier}</string>`,
+    ) ||
+    !profileText.includes(`<string>${MAC_BROWSER_BRIDGE_APP_GROUP}</string>`)
+  ) {
+    throw new Error(
+      "browser bridge running code does not match packaged App Group authority",
+    );
+  }
+  return appGroup;
 }
