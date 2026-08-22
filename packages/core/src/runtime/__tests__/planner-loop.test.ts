@@ -779,6 +779,229 @@ describe("v5 planner loop skeleton", () => {
 		});
 	});
 
+	it("does not treat a successful inspection command as coding verification", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "file-write-1",
+								name: "FILE",
+								arguments: {
+									action: "write",
+									file_path: "config.go",
+									content: "package config",
+								},
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-grep-1",
+								name: "SHELL",
+								arguments: { command: "grep -R stringToEnvVarHookFunc ." },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply("reply-inspected", "Implemented the function."),
+					)
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-test-1",
+								name: "SHELL",
+								arguments: { command: "go test ./..." },
+							},
+						],
+					})
+					.mockResolvedValueOnce(
+						codingReply(
+							"reply-verified",
+							"Implemented and tested the function.",
+						),
+					),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "succeeded",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				tools: [
+					{ name: "FILE", description: "Operate on a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(5);
+			expect(executeToolCall).toHaveBeenCalledTimes(3);
+			expect(result.finalMessage).toBe("Implemented and tested the function.");
+			expect(
+				result.trajectory.evaluatorOutputs.filter(
+					(output) => output.decision === "CONTINUE",
+				),
+			).toHaveLength(1);
+		});
+	});
+
+	it("bounds repeated terminal replies while a coding mutation remains unverified", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			const unverifiedReply = codingReply(
+				"reply-unverified",
+				"Implemented the change, but tests did not pass.",
+			);
+			let plannerModelCalls = 0;
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "dice.html", content: "draft" },
+							},
+						],
+					})
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "shell-failed",
+								name: "SHELL",
+								arguments: { command: "test -s dice.html" },
+							},
+						],
+					})
+					// Bounded on purpose: without the deferral limit the loop spins
+					// forever, and an infinite mock hangs the runner instead of
+					// failing. The fix needs 4 calls, so this never trips while the
+					// bound holds — and trips immediately if the bound is removed.
+					.mockImplementation(async () => {
+						plannerModelCalls += 1;
+						if (plannerModelCalls > 12) {
+							throw new Error(
+								"planner loop exceeded 12 model calls: coding verification deferral is unbounded",
+							);
+						}
+						return unverifiedReply;
+					}),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi
+				.fn()
+				.mockResolvedValueOnce({ success: true, text: "wrote draft" })
+				.mockResolvedValueOnce({ success: false, text: "test failed" });
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				config: { maxTerminalOnlyContinuations: 1 },
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "SHELL", description: "Run a command." },
+					{ name: "REPLY", description: "Reply to the user." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(4);
+			expect(executeToolCall).toHaveBeenCalledTimes(2);
+			expect(result.evaluator).toMatchObject({
+				success: false,
+				decision: "FINISH",
+			});
+			expect(result.finalMessage).toContain("coding task is incomplete");
+			expect(
+				result.trajectory.evaluatorOutputs.filter(
+					(output) => output.decision === "CONTINUE",
+				),
+			).toHaveLength(1);
+			expect(runtime.logger.warn).toHaveBeenCalledWith(
+				expect.objectContaining({ codingVerificationDeferrals: 2 }),
+				expect.stringContaining("verification deferral limit"),
+			);
+		});
+	});
+
+	it("bounds repeated free-text terminals while a coding mutation remains unverified", async () => {
+		await withCodingRequiredToolDefaults(async () => {
+			let freeTextTerminalCalls = 0;
+			const runtime = {
+				useModel: vi
+					.fn()
+					.mockResolvedValueOnce({
+						text: "",
+						toolCalls: [
+							{
+								id: "write-1",
+								name: "WRITE",
+								arguments: { path: "dice.html", content: "draft" },
+							},
+						],
+					})
+					// Bounded for the same reason as the deferral test above: an
+					// infinite mock turns a lost bound into a runner hang or OOM
+					// rather than a failure naming the cause.
+					.mockImplementation(async () => {
+						freeTextTerminalCalls += 1;
+						if (freeTextTerminalCalls > 12) {
+							throw new Error(
+								"planner loop exceeded 12 model calls: free-text terminal continuation is unbounded",
+							);
+						}
+						return {
+							text: "Implemented the change, but verification is unavailable.",
+							toolCalls: [],
+						};
+					}),
+				logger: { warn: vi.fn() },
+			};
+			const executeToolCall = vi.fn(async () => ({
+				success: true,
+				text: "wrote draft",
+			}));
+
+			const result = await runPlannerLoop({
+				runtime,
+				context: codingPlannerContext,
+				codingMode: true,
+				config: { maxTerminalOnlyContinuations: 1 },
+				tools: [
+					{ name: "WRITE", description: "Write a file." },
+					{ name: "SHELL", description: "Run a command." },
+				],
+				executeToolCall,
+				evaluate: vi.fn(),
+			});
+
+			expect(runtime.useModel).toHaveBeenCalledTimes(3);
+			expect(executeToolCall).toHaveBeenCalledTimes(1);
+			expect(result.evaluator).toMatchObject({
+				success: false,
+				decision: "FINISH",
+			});
+			expect(result.finalMessage).toContain("coding task is incomplete");
+		});
+	});
+
 	it("fails honestly instead of synthesizing success after repeated calls leave a mutation unverified", async () => {
 		await withCodingRequiredToolDefaults(async () => {
 			const readCall = {
