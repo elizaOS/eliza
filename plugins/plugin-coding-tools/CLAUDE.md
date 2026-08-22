@@ -12,12 +12,12 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 - **FILE** — umbrella for `read/write/edit/grep/glob/ls`. Dispatches to per-operation handlers. Relative `file_path` values for read/write/edit resolve against the conversation's `SessionCwdService` cwd before sandbox validation. Supports `target=device` for `read/write/ls` through a `device_filesystem` bridge service (mobile). Similes: `FILE_OPERATION`, `FILE_IO`.
 - **READ / WRITE / EDIT** — strict, operation-specific schemas for direct coding loops. They delegate to the same FILE handlers and preserve its sandbox, stale-file, secret, and size checks.
-- **SHELL** — `action=run` executes a command via `/bin/bash -c`; oversized foreground results return an opaque handle whose complete redacted stdout/stderr can be paged with `read_output_artifact` only by the same agent and conversation; `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
+- **SHELL** — `action=run` executes a command via `/bin/bash -c` and returns the complete accepted redacted stdout/stderr to the planner; output above the explicit 1,000,000-character capture ceiling is rejected with no partial result. `read_output_artifact` remains available for scoped artifacts retained by earlier runtimes. `action=start_background` starts a per-conversation background process and returns a stable handle; `poll_background` reads incremental stdout/stderr by absolute stream offsets and reports `truncatedBefore`; `write_background` writes stdin; `kill_background` terminates the process group with SIGTERM then SIGKILL escalation; `list_background` lists sessions; `action=view_history`/`clear_history` read or clear per-conversation command history (backed by the in-plugin `ShellService` (`serviceType = "shell"`)). Per-call `timeout` (ms) is clamped to `[100, 600000]`, default `CODING_TOOLS_SHELL_TIMEOUT_MS` (120000). Similes: `BASH`, `EXEC`, `RUN_COMMAND`.
 - **WORKTREE** — umbrella for `enter/exit` git worktrees. On enter, registers new root in `SandboxService` and pushes to `SessionCwdService` stack. On exit, pops. Similes: `GIT_WORKTREE`.
 
 ### Providers
 
-- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects a bounded projection of the last 10 commands (size-capped stdout/stderr/exit code), cwd, allowed directory, and recent file operations into context while `ShellService` retains complete history; fires only in `terminal`/`code` contexts.
+- **SHELL_HISTORY** (`src/shell/providers/shellHistoryProvider.ts`, position `99`) — injects complete conversation-scoped command history (redacted stdout/stderr/exit code), cwd, allowed directory, and file operations into context; fires only in `terminal`/`code` contexts.
 - **AVAILABLE_CODING_TOOLS** — injects the available focused and umbrella tool names (`READ`, `WRITE`, `EDIT`, `FILE`, `SHELL`, `WORKTREE`) into agent state at position `-10`. Stable/agent-scoped cache.
 
 ### Services
@@ -123,17 +123,14 @@ canonical SHELL action above continues to use the `CODING_TOOLS_*` settings.
 | `SHELL_ALLOW_BACKGROUND` | `true` | Set to exact `false` to disable compatibility-service background/yield behavior. |
 | `SHELL_FORBIDDEN_COMMANDS` | — | Comma-separated additions to the built-in forbidden-command set. |
 
-Foreground SHELL transcripts shown to the planner are capped at 50,000
-characters. When that cap is reached, the action writes the complete redacted
-stdout and stderr plus a manifest under
-`ELIZA_STATE_DIR/coding-tools/shell-output/<handle>/`, returns the handle and
-byte/line counts, and leaves the bounded preview in the tool result. The action
-does not disclose state-root paths. `action=read_output_artifact` retrieves a
-bounded stdout or stderr page only when the opaque handle's persisted agent and
-conversation scope match the requesting turn. Artifact directories are
-owner-only (`0700`) and files are `0600`. They use
-`SHELL_JOB_TTL_MS` (30 minutes by default) and expired handles are removed
-opportunistically when the next truncated foreground result is persisted.
+Foreground SHELL results accepted by the one-million-character complete-capture
+boundary are returned in full after redaction. A larger result fails explicitly
+and exposes no partial prefix. The action never substitutes a preview, summary,
+or optional artifact handle for model-facing stdout/stderr. For compatibility,
+`action=read_output_artifact` can still retrieve bounded pages from an unexpired
+opaque artifact issued by an earlier runtime, but only when its persisted agent
+and conversation scope match the requesting turn; state-root paths remain
+private.
 
 Auto-enable keys (in agent `config.features`):
 - `config.features.codingTools` (canonical) — `true` or `{ enabled: true }`.
