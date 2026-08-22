@@ -11,7 +11,8 @@
 import { Buffer } from "node:buffer";
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { existsSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import path from "node:path";
 import { promisify } from "node:util";
 
 import { ElizaError } from "@elizaos/core";
@@ -24,7 +25,6 @@ import {
   allocatePort,
   buildAgentContainerLabelArgs,
   getContainerName,
-  getVolumePath,
   validateAgentId,
   validateAgentName,
   validateContainerName,
@@ -321,6 +321,37 @@ interface ContainerMeta {
   dockerImage: string;
 }
 
+const LOCAL_DOCKER_LLM_ENV_KEYS = [
+  "ELIZAOS_CLOUD_API_KEY",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_BASE_URL",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GOOGLE_API_KEY",
+  "XAI_API_KEY",
+  "GROQ_API_KEY",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
+] as const;
+
+/** Copies configured model-provider values without overriding sandbox-owned values. */
+export function collectLocalDockerLlmPassthrough(
+  hostEnv: NodeJS.ProcessEnv,
+  sandboxEnv: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const passthrough: Record<string, string> = {};
+  for (const key of LOCAL_DOCKER_LLM_ENV_KEYS) {
+    const value = hostEnv[key];
+    if (typeof value === "string" && value.length > 0 && !sandboxEnv[key]) {
+      passthrough[key] = value;
+    }
+  }
+  return passthrough;
+}
+
 // ---------------------------------------------------------------------------
 // Port allocator with in-memory tracking + lsof-backed liveness fallback.
 // ---------------------------------------------------------------------------
@@ -437,7 +468,9 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
 
     const bridgePort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
     const healthPort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
-    const volumePath = getVolumePath(agentId);
+    const volumePath = path.resolve(process.cwd(), ".eliza", "local-docker-agents", agentId);
+    mkdirSync(volumePath, { recursive: true, mode: 0o777 });
+    chmodSync(volumePath, 0o777);
 
     await this.ensureImagePulled(dockerImage);
 
@@ -475,27 +508,43 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     // runtime crashes the container's process on the first message.send
     // (NoModelProviderConfiguredError). Allow per-sandbox overrides via
     // environmentVars to win.
-    const hostEnv = process.env;
-    const llmPassthrough: Record<string, string> = {};
-    for (const key of [
-      "ELIZAOS_CLOUD_API_KEY",
-      "OPENROUTER_API_KEY",
-      "OPENROUTER_BASE_URL",
-      "OPENAI_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "GOOGLE_API_KEY",
-      "XAI_API_KEY",
-      "GROQ_API_KEY",
-    ]) {
-      const value = hostEnv[key];
-      if (typeof value === "string" && value.length > 0 && !rewrittenEnv[key]) {
-        llmPassthrough[key] = value;
-      }
-    }
+    const llmPassthrough = collectLocalDockerLlmPassthrough(process.env, rewrittenEnv);
+    const cerebrasApiKey = rewrittenEnv.CEREBRAS_API_KEY || llmPassthrough.CEREBRAS_API_KEY;
+    const cerebrasBaseUrl =
+      rewrittenEnv.CEREBRAS_BASE_URL || llmPassthrough.CEREBRAS_BASE_URL;
+    const cerebrasSmallModel =
+      rewrittenEnv.CEREBRAS_SMALL_MODEL ||
+      rewrittenEnv.CEREBRAS_MODEL ||
+      llmPassthrough.CEREBRAS_SMALL_MODEL ||
+      llmPassthrough.CEREBRAS_MODEL ||
+      "gemma-4-31b";
+    const cerebrasLargeModel =
+      rewrittenEnv.CEREBRAS_LARGE_MODEL ||
+      rewrittenEnv.CEREBRAS_MODEL ||
+      llmPassthrough.CEREBRAS_LARGE_MODEL ||
+      llmPassthrough.CEREBRAS_MODEL ||
+      "gemma-4-31b";
 
     const allEnv = applyLocalDockerRuntimeMode({
       ...llmPassthrough,
       ...rewrittenEnv,
+      // plugin-openai is the OpenAI-compatible transport used for Cerebras.
+      // These are aliases of the same Cerebras credential/base, not a second
+      // provider; the Cerebras model roles remain authoritative below.
+      ...(cerebrasApiKey
+        ? {
+            OPENAI_API_KEY: cerebrasApiKey,
+            OPENAI_BASE_URL: cerebrasBaseUrl || "https://api.cerebras.ai/v1",
+            OPENAI_NANO_MODEL: cerebrasSmallModel,
+            OPENAI_SMALL_MODEL: cerebrasSmallModel,
+            OPENAI_MEDIUM_MODEL: cerebrasSmallModel,
+            OPENAI_ACTION_PLANNER_MODEL: cerebrasSmallModel,
+            OPENAI_RESPONSE_HANDLER_MODEL: cerebrasSmallModel,
+            OPENAI_SHOULD_RESPOND_MODEL: cerebrasSmallModel,
+            OPENAI_LARGE_MODEL: cerebrasLargeModel,
+            OPENAI_MEGA_MODEL: cerebrasLargeModel,
+          }
+        : {}),
       AGENT_NAME: agentName,
       AGENT_ID: agentId,
       ELIZA_PORT: agentPort,
@@ -516,6 +565,9 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       SECRET_SALT:
         rewrittenEnv.SECRET_SALT ||
         nodeCrypto.createHash("sha256").update(`local-docker-secret-salt:${agentId}`).digest("hex"),
+      ELIZA_STATE_DIR: "/home/agent/.eliza",
+      ELIZA_AGENT_LOCAL_STATE: "/home/agent/.eliza",
+      PGLITE_DATA_DIR: "/home/agent/.eliza/.pgdata",
     });
 
     for (const [key, value] of Object.entries(allEnv)) {
@@ -541,6 +593,8 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       // Desktop (Mac/Windows) it's already mapped but this is harmless.
       "--add-host",
       "host.docker.internal:host-gateway",
+      "--volume",
+      `${volumePath}:/home/agent/.eliza`,
       // Host bridgePort → container's /bridge JSON-RPC port
       "-p",
       `127.0.0.1:${bridgePort}:${agentBridgePort}`,
