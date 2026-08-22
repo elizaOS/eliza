@@ -101,6 +101,31 @@ async function isCliInstalled(name: string): Promise<boolean> {
   }
 }
 
+/**
+ * Read a Chromium "Safe Storage" cookie-encryption key from the macOS Keychain
+ * through the native `@napi-rs/keyring` binding — never the `security` CLI
+ * (the CLI can target a stale default keychain and pop a misleading dialog;
+ * see `platform-secure-store-node.ts`). Chromium writes each entry with
+ * `svce=<browser> Safe Storage` and `acct=<browser name>`, which matches
+ * {@link ChromiumBrowserDef.name}, so the account is the browser name.
+ * Returns `null` on any miss (absent entry, non-darwin platform, or a denied /
+ * failed native read) so the caller can fall through to the next browser.
+ */
+async function readKeychainCredential(
+  service: string,
+  account: string,
+): Promise<string | null> {
+  if (process.platform !== "darwin") return null;
+  try {
+    const { AsyncEntry } = await import("@napi-rs/keyring");
+    const value = await new AsyncEntry(service, account).getPassword();
+    return typeof value === "string" && value.length > 0 ? value : null;
+  } catch {
+    // error-policy:J4 keychain credential unavailable or denied
+    return null;
+  }
+}
+
 async function scanCodexCredentials(
   home: string,
 ): Promise<DetectedProvider | null> {
@@ -395,7 +420,10 @@ export async function readChromiumCookies(
     if (!fs.existsSync(dbPath)) continue;
 
     // Get the decryption key from Keychain
-    const password = await readKeychainCredential(browser.keychainService);
+    const password = await readKeychainCredential(
+      browser.keychainService,
+      browser.name,
+    );
     if (!password) continue;
 
     const key = deriveChromiumCookieKey(password);
