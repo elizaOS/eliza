@@ -3,9 +3,11 @@
  *
  * `Request.formData()` materializes every part, so a post-parse size check
  * cannot bound isolate memory. This helper refuses a trustworthy over-budget
- * `content-length` without reading; otherwise it streams into one `maxBytes`
- * slab and charges each chunk before retaining it. Peak residency is that
- * slab plus the chunk in hand, regardless of transport fragmentation.
+ * `content-length` without reading; otherwise it streams into one slab sized
+ * to the body in flight — seeded from a trustworthy declared length, else
+ * grown by doubling under the `maxBytes` ceiling — and charges each chunk
+ * before retaining it. Peak residency is that slab plus the chunk in hand,
+ * regardless of transport fragmentation.
  *
  * The Worker request `signal` and an owned deadline stop a body that never
  * completes. Reader-lock ownership is finally-based: success releases
@@ -43,6 +45,12 @@ export interface MultipartBudgetReadOptions {
 
 /** Default wall-clock bound for one streamed multipart body read. */
 export const MULTIPART_BODY_READ_DEADLINE_MS = 60_000;
+
+/**
+ * Initial slab size for a body that declares no trustworthy length. Small
+ * uploads never grow past it; larger ones double up to the budget ceiling.
+ */
+export const MULTIPART_SLAB_FLOOR_BYTES = 64 * 1024;
 
 type InterruptReason = "client-aborted" | "deadline";
 
@@ -212,8 +220,17 @@ export async function readRequestWithinMultipartBudget(
     try {
       let received = 0;
       // One bounded slab, allocated only after the first in-budget chunk is
-      // charged. Hostile one-byte streams still occupy this single object.
+      // charged and sized to the body actually in flight: a trustworthy
+      // declared length up front, otherwise a small floor grown by doubling
+      // and clamped to `maxBytes`. A 4 KB avatar never reserves the ceiling,
+      // and hostile one-byte streams still occupy this single object.
       let slab: Uint8Array<ArrayBuffer> | undefined;
+      // A declared zero would leave doubling stuck, so the seed keeps a floor
+      // of one byte; nothing is allocated until a chunk is actually charged.
+      let capacity = Math.min(
+        maxBytes,
+        Math.max(1, declaredLength ?? MULTIPART_SLAB_FLOOR_BYTES),
+      );
 
       while (true) {
         const pendingRead = reader.read();
@@ -254,7 +271,17 @@ export async function readRequestWithinMultipartBudget(
             bytes: received + chunkSize,
           };
         }
-        slab ??= new Uint8Array(maxBytes);
+        if (received + chunkSize > capacity) {
+          capacity = Math.min(
+            maxBytes,
+            Math.max(capacity * 2, received + chunkSize),
+          );
+        }
+        if (!slab || slab.byteLength < capacity) {
+          const grown = new Uint8Array(capacity);
+          if (slab) grown.set(slab.subarray(0, received));
+          slab = grown;
+        }
         slab.set(value, received);
         received += chunkSize;
       }

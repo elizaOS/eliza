@@ -3,12 +3,13 @@
  *
  * The harness drives real WHATWG Requests and ReadableStreams: declared-length
  * precheck, streamed overflow, malformed content-length, one-byte
- * fragmentation, hung bodies, client abort, cancel reporting, and reader-lock
+ * fragmentation, slab growth, hung bodies, client abort, cancel reporting, and reader-lock
  * ownership. Nothing here reaches Hono, R2, or Postgres.
  */
 
 import { describe, expect, mock, test } from "bun:test";
 import {
+  MULTIPART_SLAB_FLOOR_BYTES,
   parseTrustworthyContentLength,
   readRequestWithinMultipartBudget,
 } from "./multipart-body-budget";
@@ -219,6 +220,44 @@ describe("readRequestWithinMultipartBudget", () => {
     expect(body.byteLength).toBe(BUDGET);
     expect(body.every((value) => value === 7)).toBe(true);
     expect(stream.locked).toBe(false);
+  });
+
+  test("grows past the initial slab and keeps an in-budget body intact", async () => {
+    const chunkCount = 24;
+    const chunkSize = 4096;
+    const total = chunkCount * chunkSize;
+    // No trustworthy declared length, so the slab starts at the floor and has
+    // to grow at least once before the whole body fits.
+    expect(total).toBeGreaterThan(MULTIPART_SLAB_FLOOR_BYTES);
+    const chunks = Array.from({ length: chunkCount }, (_unused, index) =>
+      new Uint8Array(chunkSize).fill(index + 1),
+    );
+    const { request, stream } = streamRequest(chunks);
+
+    const result = await readRequestWithinMultipartBudget(request, total * 4);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    const body = new Uint8Array(await result.request.arrayBuffer());
+    expect(body.byteLength).toBe(total);
+    for (let index = 0; index < chunkCount; index += 1) {
+      const slice = body.subarray(index * chunkSize, (index + 1) * chunkSize);
+      expect(slice.every((value) => value === index + 1)).toBe(true);
+    }
+    expect(stream.locked).toBe(false);
+  });
+
+  test("grows past an understated content-length seed without losing bytes", async () => {
+    const chunks = [bytes(1, 2, 3, 4), bytes(5, 6, 7, 8), bytes(9)];
+    const { request } = streamRequest(chunks, { "content-length": "2" });
+
+    const result = await readRequestWithinMultipartBudget(request, BUDGET);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected success");
+    expect(
+      Array.from(new Uint8Array(await result.request.arrayBuffer())),
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
   });
 
   test("charges a one-byte overflow before retaining the over-budget byte", async () => {
