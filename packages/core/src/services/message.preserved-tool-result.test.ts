@@ -298,6 +298,14 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 		);
 	});
 
+	it("parses task_complete from a canonical header beyond character 400", () => {
+		const longHeader = `[sub-agent: ${"review context ".repeat(35)} (elizaos) — task_complete — this delegated task is DONE; relay the result.]`;
+		expect(longHeader.indexOf("task_complete")).toBeGreaterThan(400);
+		expect(subAgentCompletionRelayBody(`${longHeader}\n${RESULT_BODY}`)).toBe(
+			RESULT_BODY,
+		);
+	});
+
 	it("returns undefined for non-relay text, non-complete events, and empty bodies", () => {
 		expect(subAgentCompletionRelayBody("what's the weather")).toBeUndefined();
 		expect(
@@ -307,6 +315,36 @@ describe("subAgentCompletionRelayBody parsing (#18208)", () => {
 		).toBeUndefined();
 		expect(subAgentCompletionRelayBody(`${RELAY_HEADER}\n   `)).toBeUndefined();
 		expect(subAgentCompletionRelayBody(undefined)).toBeUndefined();
+	});
+
+	it("does not infer completion from task labels or result bodies", () => {
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: explain task_complete handling (elizaos) — blocked]\nNeed approval.",
+			),
+		).toBeUndefined();
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: status check (elizaos) — error]\nThe body says task_complete but the task failed.",
+			),
+		).toBeUndefined();
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: explain task_complete handling]\nNo structured status.",
+			),
+		).toBeUndefined();
+		expect(
+			subAgentCompletionRelayBody(
+				"[sub-agent: quote — task_complete — this delegated task is DONE; in docs (elizaos) — blocked]\nNeed approval.",
+			),
+		).toBeUndefined();
+		for (const event of ["QUESTION_FOR_TASK_CREATOR", "AGENT_COORDINATION"]) {
+			expect(
+				subAgentCompletionRelayBody(
+					`[sub-agent: explain task_complete (${event}) — ${event}]\nNeed input.`,
+				),
+			).toBeUndefined();
+		}
 	});
 
 	it("preserves a long completed result body", () => {

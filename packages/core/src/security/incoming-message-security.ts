@@ -129,6 +129,34 @@ function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
 }
 
 /**
+ * Confirms that a connector's raw payload is either the whole rendered text or
+ * the final field of a connector-rendered envelope. Arbitrary substring
+ * containment is not a trust binding: a forged short value such as `yes`
+ * occurs inside unrelated words and can otherwise become an action input.
+ */
+function isBoundConnectorPayload(
+	renderedText: string,
+	payloadText: string,
+): boolean {
+	const rendered = renderedText.trim();
+	const payload = payloadText.trim();
+	if (!payload) return false;
+	if (rendered === payload) return true;
+	let offset = rendered.indexOf(payload);
+	while (offset >= 0) {
+		const prefix = rendered.slice(0, offset);
+		const suffix = rendered.slice(offset + payload.length);
+		const startsAtFieldBoundary = /(?::|\r?\n)\s*$/u.test(prefix);
+		const endsAtFieldBoundary =
+			suffix.length === 0 ||
+			/^\r?\n\[platform_reply_reference\](?:\r?\n|$)/u.test(suffix);
+		if (startsAtFieldBoundary && endsAtFieldBoundary) return true;
+		offset = rendered.indexOf(payload, offset + 1);
+	}
+	return false;
+}
+
+/**
  * `userPayloadText` and `externalContentWrapped` are runtime-internal stamps
  * that only this module may set: a connector that forwards client-supplied
  * `content.metadata` would otherwise let an external sender pre-stamp a
@@ -192,7 +220,8 @@ export function hardenIncomingUserMessage(message: Memory): void {
 		// it into the trusted retained stamp. A caller-supplied mismatched field
 		// must not steer resolvers to words the model never saw.
 		metadata.userPayloadText =
-			trimmedConnectorText && text.includes(trimmedConnectorText)
+			trimmedConnectorText &&
+			isBoundConnectorPayload(text, trimmedConnectorText)
 				? trimmedConnectorText
 				: text;
 		message.content.text = wrapExternalContent(text, {
@@ -240,7 +269,7 @@ function resolveRetainedCandidate(message: Memory): string {
 	if (
 		typeof connectorText === "string" &&
 		connectorText.trim().length > 0 &&
-		text.includes(connectorText.trim())
+		isBoundConnectorPayload(text, connectorText)
 	) {
 		return connectorText.trim();
 	}

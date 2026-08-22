@@ -69,6 +69,7 @@ import {
 	type ActionCatalog,
 	buildActionCatalog,
 	type LocalizedActionExampleResolver,
+	normalizeActionName,
 } from "../runtime/action-catalog";
 import {
 	actionGateFailure,
@@ -1690,17 +1691,40 @@ function trackSettledPlannerToolResult(
 export function subAgentCompletionRelayBody(
 	text: string | undefined,
 ): string | undefined {
+	const parsed = parseSubAgentTaskCompleteRelay(text);
+	if (!parsed) return undefined;
+	const { trimmed, headerEnd } = parsed;
+	const body = trimmed.slice(headerEnd + 1).trim();
+	if (!body) return undefined;
+	return toWellFormedUnicode(body);
+}
+
+/**
+ * Parses the complete bracketed status header emitted by the sub-agent router.
+ * Status matching stays inside that header and requires either the compact
+ * legacy form or the router's delimited status field; task text and result
+ * bodies are untrusted prose and cannot classify a relay as complete.
+ */
+function parseSubAgentTaskCompleteRelay(
+	text: string | undefined,
+): { trimmed: string; headerEnd: number } | undefined {
 	if (!text) return undefined;
 	const trimmed = text.trimStart();
 	if (!trimmed.startsWith("[sub-agent:")) return undefined;
 	const headerEnd = trimmed.indexOf("]");
 	if (headerEnd < 0) return undefined;
-	if (!trimmed.slice(0, headerEnd + 1).includes("task_complete")) {
-		return undefined;
+	const header = trimmed.slice(0, headerEnd + 1);
+	const inner = header.slice("[sub-agent:".length, -1).trim();
+	if (inner === "task_complete") return { trimmed, headerEnd };
+	const trailingEvent = inner.match(/\s—\s*([a-z_][a-z0-9_-]*)\s*$/iu)?.[1];
+	if (trailingEvent) {
+		return trailingEvent.toLowerCase() === "task_complete"
+			? { trimmed, headerEnd }
+			: undefined;
 	}
-	const body = trimmed.slice(headerEnd + 1).trim();
-	if (!body) return undefined;
-	return toWellFormedUnicode(body);
+	const completionDirective =
+		/\s—\s*task_complete\s*—\s*this delegated task is DONE;/u.test(inner);
+	return completionDirective ? { trimmed, headerEnd } : undefined;
 }
 
 /**
@@ -3094,11 +3118,7 @@ const CODING_SUB_AGENT_EXCLUDED_ACTIONS: ReadonlySet<string> = new Set(
 );
 
 function actionNameTokenKey(name: string): string {
-	return normalizeActionIdentifier(name)
-		.split("_")
-		.filter(Boolean)
-		.sort()
-		.join("_");
+	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
 
 function getMessageHandlerCandidateActions(
@@ -3286,7 +3306,7 @@ function buildV5PlannerActionSurface(params: {
 	// may legitimately act (answer a child, coordinate a sibling).
 	if (
 		isSubAgentCompletionArtifact(params.message) &&
-		String(params.message.content?.text ?? "").includes("task_complete")
+		parseSubAgentTaskCompleteRelay(String(params.message.content?.text ?? ""))
 	) {
 		return {
 			exposedActionNames: new Set<string>(),
