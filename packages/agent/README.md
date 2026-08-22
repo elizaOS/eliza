@@ -32,8 +32,10 @@ ordinary `TEXT_LARGE` synthesis and labels that output as research.
 core's message-interaction session authority. It serializes independent local
 processes, writes a 0600 regular file through same-filesystem fsync and atomic
 rename, fails fast on corruption and symlinks, qualifies Linux lock owners by
-boot/process generation (with a bounded portable recovery ceiling), and exposes
-explicit expiry collection. Its boundary
+boot/process generation, and generation-fences stale takeover and release with
+an atomically published transition marker. An unpublished owner has a bounded
+recovery ceiling;
+a live PID that cannot be generation-qualified fails closed. Its boundary
 is one machine and one state directory. Multi-host deployments must supply a
 transactional database implementation of `MessageInteractionSessionStore` and
 use the session replay key as the effect or outbox idempotency key.

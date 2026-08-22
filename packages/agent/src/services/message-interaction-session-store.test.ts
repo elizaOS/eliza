@@ -34,6 +34,34 @@ async function temporaryDirectory(): Promise<string> {
   return root;
 }
 
+async function lockIdentity(lockPath: string): Promise<string> {
+  const entry = await fs.lstat(lockPath);
+  return `${entry.dev}-${entry.ino}`;
+}
+
+function barrier(): {
+  entered: Promise<void>;
+  hook: () => Promise<void>;
+  release: () => void;
+} {
+  let markEntered: () => void = () => {};
+  let release: () => void = () => {};
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    entered,
+    hook: async () => {
+      markEntered();
+      await blocked;
+    },
+    release,
+  };
+}
+
 const bindings = {
   actorId: "actor-a",
   audience: { kind: "room", id: "room-a" },
@@ -297,6 +325,7 @@ describe("FileMessageInteractionSessionStore", () => {
       JSON.stringify({
         pid: 2_000_000_000,
         processIdentity: null,
+        lockIdentity: await lockIdentity(lockPath),
         token: "dead-owner",
         createdAt: now - 10_000,
         expiresAt: now - 1,
@@ -320,6 +349,7 @@ describe("FileMessageInteractionSessionStore", () => {
       JSON.stringify({
         pid: process.pid,
         processIdentity: null,
+        lockIdentity: await lockIdentity(lockPath),
         token: "live-owner",
         createdAt: now - 10_000,
         expiresAt: now - 1,
@@ -352,6 +382,7 @@ describe("FileMessageInteractionSessionStore", () => {
       JSON.stringify({
         pid: process.pid,
         processIdentity: "different-boot:different-start",
+        lockIdentity: await lockIdentity(lockPath),
         token: "reused-pid-owner",
         createdAt: now - 10_000,
         expiresAt: now - 1,
@@ -362,7 +393,7 @@ describe("FileMessageInteractionSessionStore", () => {
     expect(created.session.reference).toBe("0123456789abcdef0123456789abcdef");
   });
 
-  it("uses the absolute recovery ceiling when process generation is unavailable", async () => {
+  it("never steals from a live PID when its generation is unavailable", async () => {
     const stateDirectory = await temporaryDirectory();
     const now = Date.parse("2026-08-21T00:00:00.000Z");
     const lockPath = path.join(
@@ -375,6 +406,7 @@ describe("FileMessageInteractionSessionStore", () => {
       JSON.stringify({
         pid: process.pid,
         processIdentity: null,
+        lockIdentity: await lockIdentity(lockPath),
         token: "unqualified-owner",
         createdAt: now - 101,
         expiresAt: now - 100,
@@ -386,8 +418,13 @@ describe("FileMessageInteractionSessionStore", () => {
       clock: () => now,
       staleLockMs: 1,
       hardStaleLockMs: 100,
+      lockTimeoutMs: 10,
+      pollMs: 1,
     });
-    await expect(store.deleteExpired(now)).resolves.toBe(0);
+    await expect(store.deleteExpired(now)).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+    expect(await fs.lstat(lockPath)).toBeDefined();
   });
 
   it("uses the absolute recovery ceiling while a lock owner is unpublished", async () => {
@@ -413,6 +450,201 @@ describe("FileMessageInteractionSessionStore", () => {
 
     await fs.utimes(lockPath, new Date(now - 101), new Date(now - 101));
     await expect(store.deleteExpired(now)).resolves.toBe(0);
+  });
+
+  it("fences two delayed stale recoverers from the fresh winner generation", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    const staleIdentity = await lockIdentity(lockPath);
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        lockIdentity: staleIdentity,
+        token: "stale-generation",
+        createdAt: now - 10_000,
+        expiresAt: now - 1,
+      }),
+      { mode: 0o600 },
+    );
+
+    let staleObservers = 0;
+    let releaseObservers: () => void = () => {};
+    const bothObserved = new Promise<void>((resolve) => {
+      releaseObservers = resolve;
+    });
+    let allowRecovery: () => void = () => {};
+    const recoveryGate = new Promise<void>((resolve) => {
+      allowRecovery = resolve;
+    });
+    const winnerRelease = barrier();
+    let releaseCalls = 0;
+    const options = {
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+      lockRaceHooks: {
+        beforeStaleRetire: async () => {
+          staleObservers += 1;
+          if (staleObservers === 2) releaseObservers();
+          await recoveryGate;
+        },
+        beforeReleaseRetire: async () => {
+          releaseCalls += 1;
+          if (releaseCalls === 1) await winnerRelease.hook();
+        },
+      },
+    };
+    const first = new FileMessageInteractionSessionStore(options).deleteExpired(
+      now,
+    );
+    const second = new FileMessageInteractionSessionStore(
+      options,
+    ).deleteExpired(now);
+    await bothObserved;
+    allowRecovery();
+    await winnerRelease.entered;
+
+    const freshIdentity = await lockIdentity(lockPath);
+    expect(freshIdentity).not.toBe(staleIdentity);
+    winnerRelease.release();
+    await expect(Promise.all([first, second])).resolves.toEqual([0, 0]);
+  });
+
+  it("revalidates after an old lock disappears and a successor acquires", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    const staleIdentity = await lockIdentity(lockPath);
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        lockIdentity: staleIdentity,
+        token: "departing-generation",
+        createdAt: now - 10_000,
+        expiresAt: now - 1,
+      }),
+      { mode: 0o600 },
+    );
+    const recovererGate = barrier();
+    const recovering = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 20,
+      pollMs: 1,
+      lockRaceHooks: { beforeStaleRetire: recovererGate.hook },
+    }).deleteExpired(now);
+    await recovererGate.entered;
+
+    await fs.rm(lockPath, { recursive: true });
+    const successorRelease = barrier();
+    const successor = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: successorRelease.hook },
+    });
+    const successorTransaction = successor.deleteExpired(now);
+    await successorRelease.entered;
+    const successorIdentity = await lockIdentity(lockPath);
+
+    recovererGate.release();
+    await expect(recovering).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_TIMEOUT",
+    });
+    expect(await lockIdentity(lockPath)).toBe(successorIdentity);
+    successorRelease.release();
+    await expect(successorTransaction).resolves.toBe(0);
+  });
+
+  it("recovers a transition marker abandoned by a dead lock owner", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    await fs.mkdir(lockPath, { mode: 0o700 });
+    const identity = await lockIdentity(lockPath);
+    await fs.writeFile(
+      path.join(lockPath, "owner.json"),
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        lockIdentity: identity,
+        token: "dead-lock-owner",
+        createdAt: now - 10_000,
+        expiresAt: now - 1,
+      }),
+      { mode: 0o600 },
+    );
+    await fs.writeFile(
+      path.join(lockPath, ".transition"),
+      JSON.stringify({
+        pid: 2_000_000_000,
+        processIdentity: null,
+        token: "dead-transition-owner",
+      }),
+      { mode: 0o600 },
+    );
+
+    const store = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockTimeoutMs: 1_000,
+      pollMs: 1,
+    });
+    await expect(store.deleteExpired(now)).resolves.toBe(0);
+  });
+
+  it("a delayed release cannot detach a replacement lock generation", async () => {
+    const stateDirectory = await temporaryDirectory();
+    const now = Date.parse("2026-08-21T00:00:00.000Z");
+    const lockPath = path.join(
+      stateDirectory,
+      "message-interaction-sessions.v1.json.lock",
+    );
+    const oldRelease = barrier();
+    const oldStore = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: oldRelease.hook },
+    });
+    const oldTransaction = oldStore.deleteExpired(now);
+    await oldRelease.entered;
+    const oldIdentity = await lockIdentity(lockPath);
+    await fs.rename(lockPath, `${lockPath}.retired-test-${oldIdentity}`);
+
+    const successorRelease = barrier();
+    const successor = new FileMessageInteractionSessionStore({
+      stateDirectory,
+      clock: () => now,
+      lockRaceHooks: { beforeReleaseRetire: successorRelease.hook },
+    });
+    const successorTransaction = successor.deleteExpired(now);
+    await successorRelease.entered;
+    const successorIdentity = await lockIdentity(lockPath);
+    expect(successorIdentity).not.toBe(oldIdentity);
+
+    oldRelease.release();
+    await expect(oldTransaction).rejects.toMatchObject({
+      code: "INTERACTION_STORE_LOCK_LOST",
+    });
+    expect(await lockIdentity(lockPath)).toBe(successorIdentity);
+    successorRelease.release();
+    await expect(successorTransaction).resolves.toBe(0);
   });
 
   it("collects expired sessions through the explicit retention/GC boundary", async () => {

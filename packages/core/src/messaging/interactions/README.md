@@ -119,8 +119,10 @@ construct their own authority, store, or effect dispatcher.
 `InMemoryMessageInteractionSessionStore` is for deterministic tests and embedded
 processes. The agent host's `FileMessageInteractionSessionStore` is durable and
 cross-process safe on one machine. It uses a same-filesystem fsync-and-rename
-commit and a boot/process-generation-qualified stale-owner lock with an absolute
-recovery ceiling. Multi-host deployments must implement the
+commit and a boot/process-generation-qualified stale-owner lock whose atomic,
+shared transition marker prevents retirement from detaching a fresh successor.
+Unpublished owners have an absolute recovery ceiling; unqualified live PIDs
+fail closed. Multi-host deployments must implement the
 same store interface with a transactional database and idempotent effect/outbox
 boundary; the JSON store does not claim distributed exactly-once semantics.
 

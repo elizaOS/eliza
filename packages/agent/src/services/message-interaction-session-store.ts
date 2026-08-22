@@ -31,9 +31,21 @@ interface SessionFile {
 interface LockOwner {
   pid: number;
   processIdentity: string | null;
+  lockIdentity: string;
   token: string;
   createdAt: number;
   expiresAt: number;
+}
+
+interface LockRaceHooks {
+  beforeStaleRetire?: () => Promise<void>;
+  beforeReleaseRetire?: () => Promise<void>;
+}
+
+interface LockTransitionOwner {
+  pid: number;
+  processIdentity: string | null;
+  token: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -190,7 +202,7 @@ export interface FileMessageInteractionSessionStoreOptions {
   fileName?: string;
   lockTimeoutMs?: number;
   staleLockMs?: number;
-  /** Absolute recovery ceiling for platforms that cannot qualify a PID. */
+  /** Absolute recovery ceiling for an owner record that was never published. */
   hardStaleLockMs?: number;
   pollMs?: number;
   retentionMs?: number;
@@ -198,6 +210,8 @@ export interface FileMessageInteractionSessionStoreOptions {
   maxStoreBytes?: number;
   maxSessions?: number;
   clock?: () => number;
+  /** @internal Deterministic coordination for filesystem race tests. */
+  lockRaceHooks?: LockRaceHooks;
 }
 
 function storeError(
@@ -266,6 +280,7 @@ export class FileMessageInteractionSessionStore
   private readonly maxStoreBytes: number;
   private readonly maxSessions: number;
   private readonly clock: () => number;
+  private readonly lockRaceHooks: LockRaceHooks;
   private directoryIdentity: {
     realPath: string;
     device: number;
@@ -325,6 +340,7 @@ export class FileMessageInteractionSessionStore
       1,
     );
     this.clock = options.clock ?? Date.now;
+    this.lockRaceHooks = options.lockRaceHooks ?? {};
   }
 
   private async initialize(): Promise<void> {
@@ -434,6 +450,131 @@ export class FileMessageInteractionSessionStore
     }
   }
 
+  private lockIdentity(entry: { dev: number; ino: number }): string {
+    return `${entry.dev}-${entry.ino}`;
+  }
+
+  private async beginLockTransition(
+    lockIdentity: string,
+  ): Promise<string | null> {
+    const marker = path.join(this.lockPath, ".transition");
+    const token = newToken();
+    const candidate = path.join(this.lockPath, `.transition-${token}.tmp`);
+    try {
+      await this.writeAndSync(candidate, {
+        pid: process.pid,
+        processIdentity: await this.readProcessIdentity(process.pid),
+        token,
+      });
+      await fs.link(candidate, marker);
+    } catch (error) {
+      if (
+        isErrno(error, "ENOENT") ||
+        isErrno(error, "EEXIST") ||
+        isErrno(error, "ENOTEMPTY")
+      ) {
+        if (isErrno(error, "EEXIST")) {
+          await this.clearAbandonedTransition(lockIdentity);
+        }
+        return null;
+      }
+      throw error;
+    } finally {
+      try {
+        await fs.rm(candidate, { force: true });
+      } catch {
+        // error-policy:J6 a unique transition candidate never grants authority.
+      }
+    }
+    const current = await existsLstat(this.lockPath);
+    if (
+      !current?.isDirectory() ||
+      current.isSymbolicLink() ||
+      this.lockIdentity(current) !== lockIdentity
+    ) {
+      try {
+        await fs.rm(marker, { force: true });
+      } catch {
+        // error-policy:J6 the mismatched generation cannot be retired by us.
+      }
+      return null;
+    }
+    return marker;
+  }
+
+  private async clearAbandonedTransition(lockIdentity: string): Promise<void> {
+    const current = await existsLstat(this.lockPath);
+    if (!current || this.lockIdentity(current) !== lockIdentity) return;
+    const marker = path.join(this.lockPath, ".transition");
+    let value: Partial<LockTransitionOwner>;
+    try {
+      const raw = await fs.readFile(marker, "utf8");
+      value = JSON.parse(raw) as Partial<LockTransitionOwner>;
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return;
+      // error-policy:J3 malformed transition ownership fails closed.
+      if (error instanceof SyntaxError) return;
+      throw error;
+    }
+    if (
+      !Number.isSafeInteger(value.pid) ||
+      (value.processIdentity !== null &&
+        typeof value.processIdentity !== "string") ||
+      typeof value.token !== "string"
+    ) {
+      return;
+    }
+    const live = this.processAlive(value.pid as number);
+    const identity = live
+      ? await this.readProcessIdentity(value.pid as number)
+      : null;
+    if (
+      live &&
+      (!value.processIdentity ||
+        !identity ||
+        value.processIdentity === identity)
+    ) {
+      return;
+    }
+    const rechecked = await existsLstat(this.lockPath);
+    if (rechecked && this.lockIdentity(rechecked) === lockIdentity) {
+      await fs.rm(marker, { force: true });
+    }
+  }
+
+  /** The transition hardlink excludes release and all competing recoverers. */
+  private async retireObservedLock(
+    lockIdentity: string,
+    validate: () => Promise<boolean>,
+  ): Promise<boolean> {
+    const marker = await this.beginLockTransition(lockIdentity);
+    if (!marker) return false;
+    let valid: boolean;
+    try {
+      valid = await validate();
+    } catch (error) {
+      await fs.rm(marker, { force: true });
+      throw error;
+    }
+    if (!valid) {
+      await fs.rm(marker, { force: true });
+      return false;
+    }
+    const quarantine = `${this.lockPath}.retired-${process.pid}-${newToken()}`;
+    try {
+      await fs.rename(this.lockPath, quarantine);
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return false;
+      throw error;
+    }
+    try {
+      await fs.rm(quarantine, { recursive: true });
+    } catch {
+      // error-policy:J6 the detached generation no longer blocks the store.
+    }
+    return true;
+  }
+
   private async readLockOwner(): Promise<LockOwner | null> {
     try {
       const ownerPath = path.join(this.lockPath, "owner.json");
@@ -484,6 +625,8 @@ export class FileMessageInteractionSessionStore
         !Number.isSafeInteger(value.pid) ||
         (value.processIdentity !== null &&
           typeof value.processIdentity !== "string") ||
+        typeof value.lockIdentity !== "string" ||
+        !/^\d+-\d+$/.test(value.lockIdentity) ||
         typeof value.token !== "string" ||
         !Number.isSafeInteger(value.createdAt) ||
         !Number.isSafeInteger(value.expiresAt)
@@ -508,6 +651,42 @@ export class FileMessageInteractionSessionStore
     }
   }
 
+  private async lockIsStale(
+    lockStat: { dev: number; ino: number; mtimeMs: number },
+    now: number,
+    unpublishedMtimeMs = lockStat.mtimeMs,
+  ): Promise<boolean> {
+    const observedIdentity = this.lockIdentity(lockStat);
+    const owner = await this.readLockOwner();
+    if (!owner) {
+      // A creator publishes owner.json only after the lease is fully synced.
+      // Without an owner identity there is no safe PID-liveness decision, so
+      // incomplete or malformed locks use an absolute recovery ceiling instead
+      // of the short lease interval.
+      return unpublishedMtimeMs + this.hardStaleLockMs <= now;
+    }
+    if (owner.lockIdentity !== observedIdentity) {
+      // The owner belongs to a different directory generation. It grants no
+      // authority to remove the currently observed lock.
+      return false;
+    }
+    if (owner.expiresAt > now) return false;
+    const live = this.processAlive(owner.pid);
+    const currentIdentity = live
+      ? await this.readProcessIdentity(owner.pid)
+      : null;
+    const reusedPid = Boolean(
+      live &&
+        owner.processIdentity &&
+        currentIdentity &&
+        owner.processIdentity !== currentIdentity,
+    );
+    // If this platform cannot qualify a live PID generation, fail closed.
+    // A wall-clock ceiling would eventually steal from a paused but valid
+    // owner and reintroduce the same PID-aliasing race it is meant to solve.
+    return !live || reusedPid;
+  }
+
   private async recoverStaleLock(now: number): Promise<boolean> {
     const lockStat = await existsLstat(this.lockPath);
     if (!lockStat) return true;
@@ -517,49 +696,17 @@ export class FileMessageInteractionSessionStore
         "Interaction store lock is not a real directory.",
       );
     }
-    const owner = await this.readLockOwner();
-    let stale: boolean;
-    if (!owner) {
-      // A creator publishes owner.json only after the lease is fully synced.
-      // Without an owner identity there is no safe PID-liveness decision, so
-      // incomplete or malformed locks use the same absolute recovery ceiling
-      // as an unqualified legacy owner instead of the short lease interval.
-      stale = lockStat.mtimeMs + this.hardStaleLockMs <= now;
-    } else if (owner.expiresAt > now) {
-      stale = false;
-    } else {
-      const live = this.processAlive(owner.pid);
-      const currentIdentity = live
-        ? await this.readProcessIdentity(owner.pid)
-        : null;
-      const reusedPid = Boolean(
-        live &&
-          owner.processIdentity &&
-          currentIdentity &&
-          owner.processIdentity !== currentIdentity,
+    if (!(await this.lockIsStale(lockStat, now))) return false;
+    const observedIdentity = this.lockIdentity(lockStat);
+    await this.lockRaceHooks.beforeStaleRetire?.();
+    return this.retireObservedLock(observedIdentity, async () => {
+      const current = await existsLstat(this.lockPath);
+      return Boolean(
+        current &&
+          this.lockIdentity(current) === observedIdentity &&
+          (await this.lockIsStale(current, now, lockStat.mtimeMs)),
       );
-      const generationQualified = Boolean(
-        owner.processIdentity && currentIdentity,
-      );
-      stale =
-        !live ||
-        reusedPid ||
-        (!generationQualified && owner.createdAt + this.hardStaleLockMs <= now);
-    }
-    if (!stale) return false;
-    const quarantine = `${this.lockPath}.stale-${process.pid}-${newToken()}`;
-    try {
-      await fs.rename(this.lockPath, quarantine);
-    } catch (error) {
-      if (isErrno(error, "ENOENT")) return true;
-      throw error;
-    }
-    try {
-      await fs.rm(quarantine, { recursive: true });
-    } catch {
-      // error-policy:J6 renamed stale lock no longer blocks the authority.
-    }
-    return true;
+    });
   }
 
   private async acquireLock(): Promise<LockOwner> {
@@ -567,13 +714,22 @@ export class FileMessageInteractionSessionStore
     const startedAt = performance.now();
     while (performance.now() - startedAt <= this.lockTimeoutMs) {
       const now = this.clock();
-      let createdLock = false;
       try {
         await fs.mkdir(this.lockPath, { mode: 0o700 });
-        createdLock = true;
+      } catch (error) {
+        if (!isErrno(error, "EEXIST")) throw error;
+        await this.recoverStaleLock(now);
+        await delay(this.pollMs);
+        continue;
+      }
+
+      const created = await fs.lstat(this.lockPath);
+      const lockIdentity = this.lockIdentity(created);
+      try {
         const owner: LockOwner = {
           pid: process.pid,
           processIdentity: await this.readProcessIdentity(process.pid),
+          lockIdentity,
           token: newToken(),
           createdAt: now,
           expiresAt: now + this.staleLockMs,
@@ -589,17 +745,11 @@ export class FileMessageInteractionSessionStore
         await fs.rename(ownerTemp, path.join(this.lockPath, "owner.json"));
         return owner;
       } catch (error) {
-        if (createdLock) {
-          try {
-            await fs.rm(this.lockPath, { recursive: true });
-          } catch {
-            // error-policy:J6 failed lock construction is already fatal; cleanup
-            // must not replace its originating filesystem error.
-          }
-        }
-        if (!isErrno(error, "EEXIST")) throw error;
-        await this.recoverStaleLock(now);
-        await delay(this.pollMs);
+        // A construction failure may race a hard-ceiling recovery of the
+        // unpublished owner. Retain its identity quarantine so delayed cleanup
+        // cannot detach a successor generation.
+        await this.retireObservedLock(lockIdentity, async () => true);
+        throw error;
       }
     }
     return storeError(
@@ -609,14 +759,30 @@ export class FileMessageInteractionSessionStore
   }
 
   private async releaseLock(owner: LockOwner): Promise<void> {
-    const current = await this.readLockOwner();
-    if (!current || current.token !== owner.token) {
-      storeError(
-        "INTERACTION_STORE_LOCK_LOST",
-        "Interaction store lock ownership changed.",
-      );
+    await this.lockRaceHooks.beforeReleaseRetire?.();
+    const startedAt = performance.now();
+    while (performance.now() - startedAt <= this.lockTimeoutMs) {
+      if (
+        await this.retireObservedLock(owner.lockIdentity, async () => {
+          const current = await this.readLockOwner();
+          return Boolean(current && current.token === owner.token);
+        })
+      ) {
+        return;
+      }
+      const currentDirectory = await existsLstat(this.lockPath);
+      if (
+        !currentDirectory ||
+        this.lockIdentity(currentDirectory) !== owner.lockIdentity
+      ) {
+        break;
+      }
+      await delay(this.pollMs);
     }
-    await fs.rm(this.lockPath, { recursive: true });
+    storeError(
+      "INTERACTION_STORE_LOCK_LOST",
+      "Interaction store lock ownership changed.",
+    );
   }
 
   private async writeAndSync(filePath: string, value: unknown): Promise<void> {
