@@ -8,6 +8,22 @@ import crypto from "crypto";
 import { z } from "zod";
 
 export const BLOOIO_API_BASE = "https://api.blooio.com/v2/api";
+export const BLOOIO_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Bound every Blooio REST hop while preserving caller cancellation.
+ */
+function blooioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = BLOOIO_REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const deadline = AbortSignal.timeout(timeoutMs);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
+  });
+}
 
 export interface BlooioSendMessageRequest {
   text?: string;
@@ -151,7 +167,7 @@ export async function blooioApiRequest<T>(
     headers["Idempotency-Key"] = options.idempotencyKey;
   }
 
-  const response = await fetch(url, {
+  const response = await blooioFetch(url, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
