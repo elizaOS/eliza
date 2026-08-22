@@ -16,7 +16,6 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { animate, motionValue } from "motion/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../api/client", () => ({
@@ -31,7 +30,6 @@ vi.mock("../../api/client", () => ({
 
 import {
   ChatOverlay,
-  DESKTOP_PILL_CLOSE_TRANSITION,
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
   desktopSheetGrabberOpacity,
@@ -196,24 +194,6 @@ describe("detached desktop pill traveler handoff", () => {
     expect(desktopPillTravelerOpacity(0.75, 1)).toBe(0);
     expect(desktopPillTravelerOpacity(1, 1)).toBe(0);
     expect(desktopSheetGrabberOpacity(1, 1)).toBe(0);
-  });
-
-  it("settles a downward close monotonically without a spring rebound", async () => {
-    const progress = motionValue(0.72);
-    const samples = [progress.get()];
-    const unsubscribe = progress.on("change", (value) => samples.push(value));
-    try {
-      await animate(progress, 0, DESKTOP_PILL_CLOSE_TRANSITION).finished;
-    } finally {
-      unsubscribe();
-    }
-
-    expect(samples.at(-1)).toBe(0);
-    expect(
-      samples.every(
-        (value, index) => index === 0 || value <= samples[index - 1],
-      ),
-    ).toBe(true);
   });
 });
 

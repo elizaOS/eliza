@@ -9,18 +9,6 @@ export const clamp01 = (value: number): number =>
 
 export const PILL_MORPH_MIN_SCALE = 0.45;
 
-/**
- * A direct-manipulation close must finish in the direction of the user's pull.
- * The ordinary under-damped open spring can overshoot zero, rebound the handle
- * upward, then settle down again. A monotonic ease keeps desktop INPUT -> PILL
- * moving down through its final frame without changing the springy open.
- */
-export const DESKTOP_PILL_CLOSE_TRANSITION = {
-  type: "tween" as const,
-  duration: 0.16,
-  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
-};
-
 /** Panel scale for a pill-to-input progress value from zero to one. */
 export function pillMorphScale(progress: number): number {
   return PILL_MORPH_MIN_SCALE + (1 - PILL_MORPH_MIN_SCALE) * clamp01(progress);

@@ -140,7 +140,6 @@ import {
 import { Textarea } from "../ui/textarea";
 import {
   clamp01,
-  DESKTOP_PILL_CLOSE_TRANSITION,
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
   desktopSheetGrabberOpacity,
@@ -455,7 +454,6 @@ const FULLSCREEN_SNAP_VH = 0.9;
 const FULLSCREEN_RELEASE_HYSTERESIS_PX = 12;
 
 export {
-  DESKTOP_PILL_CLOSE_TRANSITION,
   desktopPillTravelerOffset,
   desktopPillTravelerOpacity,
   desktopSheetGrabberOpacity,
@@ -1848,14 +1846,7 @@ export function ChatOverlay({
   const animateOpenProgress = React.useCallback(
     (target: number) => {
       stopOpenProgressAnimation();
-      // Opening keeps the approved spring. Closing the detached desktop pill
-      // is a continuation of a downward direct-manipulation gesture, so it must
-      // not inherit the spring's zero overshoot and rebound upward before rest.
-      const transition =
-        desktopOverlayHost && target <= 0
-          ? DESKTOP_PILL_CLOSE_TRANSITION
-          : OPEN_SPRING;
-      const controls = animate(openProgress, target, transition);
+      const controls = animate(openProgress, target, OPEN_SPRING);
       openProgressAnimationRef.current = controls;
       // Springs converge asymptotically. Leaving their final fractional value
       // behind kept `morphExpanded` true after a completed close, so the native
@@ -1875,7 +1866,7 @@ export function ChatOverlay({
           // A new gesture/transition stopped this spring and owns the endpoint.
         });
     },
-    [desktopOverlayHost, openProgress, stopOpenProgressAnimation],
+    [openProgress, stopOpenProgressAnimation],
   );
   const clearPrefillFocusSchedule = React.useCallback(() => {
     if (
