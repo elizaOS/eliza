@@ -122,6 +122,34 @@ describe("elizacloud API client", () => {
     expect(passedSignal?.aborted).toBe(true);
   });
 
+  it("still aborts on the hop deadline when a caller signal is present", async () => {
+    const callerController = new AbortController();
+    const deadlineController = new AbortController();
+    const originalTimeout = AbortSignal.timeout;
+
+    AbortSignal.timeout = () => deadlineController.signal;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(init.signal?.reason),
+          { once: true },
+        );
+      })) as typeof fetch;
+
+    try {
+      const request = elizacloudFetch("/v1/task", {
+        signal: callerController.signal,
+      });
+      deadlineController.abort(new DOMException("deadline", "TimeoutError"));
+
+      await expect(request).rejects.toMatchObject({ name: "TimeoutError" });
+      expect(callerController.signal.aborted).toBe(false);
+    } finally {
+      AbortSignal.timeout = originalTimeout;
+    }
+  });
+
   it("attaches Bearer token in elizacloudAuthFetch when session token exists", async () => {
     mockStorage.eliza_app_session = "test-auth-token-123";
     let observedAuthHeader: string | undefined;
