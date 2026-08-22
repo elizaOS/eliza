@@ -37,7 +37,9 @@ function resolveDueTime(task: Task): number | null {
 /**
  * Each tick validates due `queue` tasks against their worker's `shouldRun`,
  * then runs `worker.execute`. Repeat tasks reschedule on their interval (with
- * failure backoff); one-shot tasks are deleted after running.
+ * failure backoff); one-shot tasks are deleted after running. A task paused via
+ * `metadata.paused` (operator or API) is skipped by every tick regardless of
+ * tags — a paused one-shot stays in the store until it is resumed.
  */
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
@@ -587,6 +589,13 @@ export class TaskService extends Service {
 		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
+				// A paused one-shot must not run and must not reach the
+				// execute-and-delete lifecycle — pauseTask() promises the row
+				// survives until resumeTask(). The repeat branch below has its
+				// own paused skip; this mirrors it for one-shots (#24277).
+				if (task.metadata?.paused === true) {
+					continue;
+				}
 				const dueMs = resolveDueTime(task);
 				if (dueMs != null && now < dueMs) continue;
 				try {

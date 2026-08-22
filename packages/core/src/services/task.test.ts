@@ -739,4 +739,68 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		expect(tasks.get("op-paused")?.metadata?.paused).toBe(true);
 		expect(execute).not.toHaveBeenCalled();
 	});
+
+	it("does not execute a paused one-shot task when it becomes due, and keeps the row", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("paused-one-shot", {
+			id: "paused-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 + 5_000,
+			metadata: { paused: true },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		// Well past the due time: the scheduler must honor the operator pause
+		// exactly as it does for repeat tasks — no execution, no delete.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(execute).not.toHaveBeenCalled();
+		const row = tasks.get("paused-one-shot");
+		expect(row).toBeDefined();
+		expect(row?.metadata?.paused).toBe(true);
+	});
+
+	it("executes a one-shot task that was never paused once it is due", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("due-one-shot", {
+			id: "due-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: T0 + 5_000,
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(execute).toHaveBeenCalledTimes(1);
+		expect(tasks.has("due-one-shot")).toBe(false);
+	});
+
+	it("resumeTask with runImmediately executes a paused one-shot exactly once", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ONE_SHOT", { name: "ONE_SHOT", execute });
+		tasks.set("resumed-one-shot", {
+			id: "resumed-one-shot" as UUID,
+			name: "ONE_SHOT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			metadata: { paused: true },
+		});
+
+		service = (await TaskService.start(runtime)) as TaskService;
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(execute).not.toHaveBeenCalled();
+
+		// Explicit operator resume: unpause + immediate manual run override.
+		await service.resumeTask("resumed-one-shot" as UUID, true);
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
 });
