@@ -653,6 +653,13 @@ export abstract class DatabaseAdapter<DB extends object = object>
 	// ── Task CRUD (batch-only) ───────────────────────────────────────────
 	abstract createTasks(tasks: Task[]): Promise<UUID[]>;
 	abstract getTasksByIds(taskIds: UUID[]): Promise<Task[]>;
+	/**
+	 * Optional-adapter compatibility default. Official adapters override this
+	 * with a storage-atomic transition; returning false fails closed.
+	 */
+	async updatePendingTask(_id: UUID, _task: Partial<Task>): Promise<boolean> {
+		return false;
+	}
 	abstract updateTasks(
 		updates: Array<{ id: UUID; task: Partial<Task> }>,
 	): Promise<void>;
