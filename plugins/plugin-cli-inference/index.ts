@@ -441,7 +441,9 @@ function getCodexSdkSession(
   return session;
 }
 
-/** Parse a strictly positive timeout or restart cadence. Exported for tests. */
+const MAX_NODE_TIMER_DELAY_MS = 2_147_483_647;
+
+/** Parse a strictly positive safe-integer lifecycle setting. Exported for tests. */
 export function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   // `Number.parseInt` stops at the first non-digit, so "300junk" parsed to 300
@@ -453,10 +455,16 @@ export function parseTimeout(value: string | undefined): number | undefined {
   return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 }
 
-/** Turn-timeout parse (#16553): like {@link parseTimeout}, but an explicit
- *  `"0"` passes through as 0 — the documented operator opt-out to an
- *  unbounded turn. The parser returns undefined for unset/invalid input; the
- *  backend-aware resolver below distinguishes those states and rejects a
+/** Parse a positive delay that Node timers can represent without clamping. */
+function parseTimerTimeout(value: string | undefined): number | undefined {
+  const parsed = parseTimeout(value);
+  return parsed !== undefined && parsed <= MAX_NODE_TIMER_DELAY_MS ? parsed : undefined;
+}
+
+/** Turn-timeout parse (#16553): positive values must fit the Node timer range,
+ *  while an explicit `"0"` passes through as the documented operator opt-out
+ *  to an unbounded turn. The parser returns undefined for unset/invalid input;
+ *  the backend-aware resolver below distinguishes those states and rejects a
  *  present-invalid value before session lookup. Exported for tests. */
 export function parseTurnTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
@@ -465,7 +473,7 @@ export function parseTurnTimeout(value: string | undefined): number | undefined 
   // silently REMOVED the turn timeout rather than falling back to the bounded
   // default. An explicit "0" is still honoured.
   if (value === "0") return 0;
-  return parseTimeout(value);
+  return parseTimerTimeout(value);
 }
 
 type TimeoutSettingKey =
@@ -546,8 +554,8 @@ function resolveColdTimeoutConfiguration(runtime: IAgentRuntime): ColdTimeoutCon
     cliTimeoutMs: resolveNumericSetting(
       runtime,
       "ELIZA_CLI_TIMEOUT_MS",
-      parseTimeout,
-      "a positive safe integer"
+      parseTimerTimeout,
+      `a positive integer no greater than ${MAX_NODE_TIMER_DELAY_MS}`
     ),
   };
 }
@@ -568,7 +576,7 @@ function resolveClaudeSdkTimeoutConfiguration(
     runtime,
     "ELIZA_CLI_SDK_TURN_TIMEOUT_MS",
     parseTurnTimeout,
-    'the exact literal "0" opt-out or a positive safe integer'
+    `the exact literal "0" opt-out or a positive integer no greater than ${MAX_NODE_TIMER_DELAY_MS}`
   );
   return {
     sdkRestartAfterTurns,

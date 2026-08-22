@@ -588,7 +588,7 @@ describe("models map gating (large-tier only)", () => {
     }
   });
 
-  it.each(["", "abc", "1.5", "9007199254740993", "0", "-1", "-0"])(
+  it.each(["", "abc", "1.5", "2147483648", "9007199254740993", "0", "-1", "-0"])(
     "rejects an explicitly invalid cold timeout %j before any spawn",
     async (invalid) => {
       const { calls, fn } = recordingSpawn({ stdout: "must not run" });
@@ -683,14 +683,14 @@ describe("models map gating (large-tier only)", () => {
       await expect(
         textLargeHandler("codex")(
           modelRuntime("codex", {
-            ELIZA_CLI_TIMEOUT_MS: 3_500,
+            ELIZA_CLI_TIMEOUT_MS: 2_147_483_647,
             ELIZA_CLI_CODEX_BIN: FAKE_CODEX,
           }),
           { prompt: "hello" }
         )
       ).resolves.toBe("from codex");
       expect(calls).toHaveLength(1);
-      expect(calls[0].opts.timeoutMs).toBe(3_500);
+      expect(calls[0].opts.timeoutMs).toBe(2_147_483_647);
     } finally {
       restoreSpawn();
     }
@@ -726,6 +726,7 @@ describe("models map gating (large-tier only)", () => {
   });
 
   it.each([
+    ["ELIZA_CLI_TIMEOUT_MS", "2147483648"],
     ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", ""],
     ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", "0"],
     ["ELIZA_CLI_SDK_RESTART_AFTER_TURNS", "-0"],
@@ -733,6 +734,7 @@ describe("models map gating (large-tier only)", () => {
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "0.5"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "-0"],
     ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "+0"],
+    ["ELIZA_CLI_SDK_TURN_TIMEOUT_MS", "2147483648"],
   ] as const)("rejects invalid warm setting %s=%j before session creation", async (key, value) => {
     let sessionCreations = 0;
     const restoreFactory = trackSessionFactoryRestore(
@@ -791,7 +793,7 @@ describe("models map gating (large-tier only)", () => {
     expect(sessionCreations).toBe(0);
   });
 
-  it("Codex SDK ignores unrelated timeout settings and propagates a valid restart", async () => {
+  it("Codex SDK accepts a counter-only restart above the Node timer ceiling", async () => {
     const createdConfigs: Array<ConstructorParameters<typeof CodexSdkSession>[0]> = [];
     trackSessionFactoryRestore(
       __setCodexSdkSessionFactoryForTests((config) => {
@@ -806,14 +808,14 @@ describe("models map gating (large-tier only)", () => {
         modelRuntime("codex-sdk", {
           ELIZA_CLI_TIMEOUT_MS: "invalid-but-unused",
           ELIZA_CLI_SDK_TURN_TIMEOUT_MS: "invalid-but-unused",
-          ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "+9",
+          ELIZA_CLI_SDK_RESTART_AFTER_TURNS: "2147483648",
         }),
         { prompt: "hello" }
       )
     ).resolves.toBe("from codex sdk");
 
     expect(createdConfigs).toHaveLength(1);
-    expect(createdConfigs[0].restartAfterTurns).toBe(9);
+    expect(createdConfigs[0].restartAfterTurns).toBe(2_147_483_648);
   });
 
   it("does not let a valid SDK turn timeout mask an invalid general timeout", async () => {
@@ -902,6 +904,7 @@ describe("models map gating (large-tier only)", () => {
     [undefined, undefined, undefined, 20, 90_000],
     ["45000", undefined, undefined, 20, 45_000],
     [undefined, "0", undefined, 20, 0],
+    [undefined, "2147483647", undefined, 20, 2_147_483_647],
     [undefined, "+45000", "7", 7, 45_000],
   ] as const)(
     "keeps warm defaults/fallbacks for general=%j turn=%j restart=%j",
@@ -1764,6 +1767,7 @@ describe("parseTurnTimeout (#16553)", () => {
 
   it("parses a positive budget and rejects junk/negatives to undefined (bounded default applies)", () => {
     expect(parseTurnTimeout("120000")).toBe(120_000);
+    expect(parseTurnTimeout("2147483647")).toBe(2_147_483_647);
     expect(parseTurnTimeout(undefined)).toBeUndefined();
     expect(parseTurnTimeout("abc")).toBeUndefined();
     expect(parseTurnTimeout("-5")).toBeUndefined();
@@ -1773,6 +1777,7 @@ describe("parseTurnTimeout (#16553)", () => {
     expect(parseTurnTimeout("0junk")).toBeUndefined();
     expect(parseTurnTimeout("0.5")).toBeUndefined();
     expect(parseTurnTimeout("120000junk")).toBeUndefined();
+    expect(parseTurnTimeout("2147483648")).toBeUndefined();
     expect(parseTurnTimeout("9007199254740993")).toBeUndefined();
   });
 
@@ -1793,6 +1798,7 @@ describe("parseTimeout", () => {
     expect(parseTimeout("120000")).toBe(120_000);
     expect(parseTimeout("+120000")).toBe(120_000);
     expect(parseTimeout(" 120000 ")).toBe(120_000);
+    expect(parseTimeout("2147483648")).toBe(2_147_483_648);
     expect(parseTimeout(undefined)).toBeUndefined();
     expect(parseTimeout("0")).toBeUndefined();
     expect(parseTimeout("-5")).toBeUndefined();
