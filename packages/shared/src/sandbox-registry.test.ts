@@ -35,12 +35,12 @@ const recorded: Recorded[] = [];
 const store = new Map<string, string>();
 let failNextFetch = false;
 let nextPipelineResponse: unknown = null;
-let nextPipelineDelay: {
+let nextWriteDelay: {
   started: () => void;
   wait: Promise<void>;
 } | null = null;
 
-function delayNextPipeline(): {
+function delayNextRegistryWrite(): {
   started: Promise<void>;
   release: () => void;
 } {
@@ -52,7 +52,7 @@ function delayNextPipeline(): {
   const wait = new Promise<void>((resolve) => {
     release = resolve;
   });
-  nextPipelineDelay = { started: markStarted, wait };
+  nextWriteDelay = { started: markStarted, wait };
   return { started, release };
 }
 
@@ -61,7 +61,7 @@ function installFetch(): void {
   store.clear();
   failNextFetch = false;
   nextPipelineResponse = null;
-  nextPipelineDelay = null;
+  nextWriteDelay = null;
   global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     if (failNextFetch) {
       failNextFetch = false;
@@ -71,13 +71,15 @@ function installFetch(): void {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
     recorded.push({ url, body });
 
+    const command = Array.isArray(body) ? body[0] : undefined;
+    if (nextWriteDelay && (url.endsWith("/pipeline") || command === "EVAL")) {
+      const delay = nextWriteDelay;
+      nextWriteDelay = null;
+      delay.started();
+      await delay.wait;
+    }
+
     if (url.endsWith("/pipeline")) {
-      const delay = nextPipelineDelay;
-      if (delay) {
-        nextPipelineDelay = null;
-        delay.started();
-        await delay.wait;
-      }
       if (nextPipelineResponse !== null) {
         return {
           ok: true,
@@ -107,9 +109,22 @@ function installFetch(): void {
       } as unknown as Response;
     }
     if (cmd[0] === "EVAL") {
-      // Simulates the registry's compare-and-delete script: EVAL, script,
-      // numkeys, key1, key2, expected1, expected2.
       const [, , , key1, key2, expected1, expected2] = cmd;
+      if (cmd.length === 8) {
+        const ttl = cmd[7];
+        const owned =
+          (store.get(key1) === expected1 && store.get(key2) === expected2) ||
+          (!store.has(key1) && !store.has(key2));
+        if (owned) {
+          store.set(key1, expected1);
+          store.set(key2, expected2);
+        }
+        expect(Number(ttl)).toBeGreaterThan(0);
+        return {
+          ok: true,
+          json: async () => ({ result: owned ? 1 : 0 }),
+        } as Response;
+      }
       if (store.get(key1) === expected1) store.delete(key1);
       if (store.get(key2) === expected2) store.delete(key2);
       return { ok: true, json: async () => ({ result: 1 }) } as Response;
@@ -222,10 +237,10 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
 
     failNextFetch = true;
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(0);
+    expect(recorded).toHaveLength(0);
 
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+    expect(recorded).toHaveLength(1);
 
     reg.stopHeartbeat();
   });
@@ -236,17 +251,17 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     await reg.register();
     recorded.length = 0;
 
-    const delayed = delayNextPipeline();
+    const delayed = delayNextRegistryWrite();
     reg.startHeartbeat(30_000);
 
     await vi.advanceTimersByTimeAsync(30_000);
     await delayed.started;
     await vi.advanceTimersByTimeAsync(90_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+    expect(recorded).toHaveLength(1);
 
     delayed.release();
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(2);
+    expect(recorded).toHaveLength(2);
 
     reg.stopHeartbeat();
   });
@@ -257,18 +272,14 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     await reg.register();
     recorded.length = 0;
 
-    const delayed = delayNextPipeline();
+    const delayed = delayNextRegistryWrite();
     reg.startHeartbeat(30_000);
     await vi.advanceTimersByTimeAsync(30_000);
     await delayed.started;
 
     const unregistering = reg.unregister();
     await Promise.resolve();
-    expect(
-      recorded.some(
-        (request) => Array.isArray(request.body) && request.body[0] === "EVAL",
-      ),
-    ).toBe(false);
+    expect(recorded).toHaveLength(1);
 
     delayed.release();
     await unregistering;
@@ -276,7 +287,7 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     expect(store.has("server:sandbox-abc:url")).toBe(false);
 
     await vi.advanceTimersByTimeAsync(90_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+    expect(recorded).toHaveLength(2);
   });
 
   it("unregister() falls back within the shutdown margin without deleting keys", async () => {
@@ -285,7 +296,7 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
     await reg.register();
     recorded.length = 0;
 
-    const delayed = delayNextPipeline();
+    const delayed = delayNextRegistryWrite();
     reg.startHeartbeat(30_000);
     await vi.advanceTimersByTimeAsync(30_000);
     await delayed.started;
@@ -311,18 +322,50 @@ describe("SandboxRegistry (Upstash REST transport)", () => {
       error: { code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT" },
     });
 
-    expect(
-      recorded.some(
-        (request) => Array.isArray(request.body) && request.body[0] === "EVAL",
-      ),
-    ).toBe(false);
+    expect(recorded).toHaveLength(1);
     expect(store.get("agent:char-123:server")).toBe("sandbox-abc");
     expect(store.get("server:sandbox-abc:url")).toBe("http://1.2.3.4:1999/api");
     await vi.advanceTimersByTimeAsync(90_000);
-    expect(recorded.filter((r) => r.url.endsWith("/pipeline"))).toHaveLength(1);
+    expect(recorded).toHaveLength(1);
 
     delayed.release();
     await vi.advanceTimersByTimeAsync(0);
+    expect(recorded).toHaveLength(2);
+  });
+
+  it("a late heartbeat cannot replace a successor instance after drain timeout", async () => {
+    vi.useFakeTimers();
+    const oldRegistry = new SandboxRegistry(baseConfig);
+    await oldRegistry.register();
+    recorded.length = 0;
+
+    const delayed = delayNextRegistryWrite();
+    oldRegistry.startHeartbeat(30_000);
+    await vi.advanceTimersByTimeAsync(30_000);
+    await delayed.started;
+
+    const unregistering = oldRegistry.unregister();
+    const outcome = unregistering.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(outcome).resolves.toMatchObject({
+      code: "SANDBOX_REGISTRY_HEARTBEAT_DRAIN_TIMEOUT",
+    });
+
+    const successor = new SandboxRegistry({
+      ...baseConfig,
+      serverName: "sandbox-successor",
+      serverUrl: "http://5.6.7.8:2999/api",
+    });
+    await successor.register();
+
+    delayed.release();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(store.get("agent:char-123:server")).toBe("sandbox-successor");
+    expect(store.get("server:sandbox-successor:url")).toBe(
+      "http://5.6.7.8:2999/api",
+    );
+    expect(store.has("server:sandbox-abc:url")).toBe(false);
   });
 
   it("stopHeartbeat() halts the timer", async () => {
@@ -522,9 +565,20 @@ async function startFakeRedis(opts?: {
           for (const k of cmd.slice(1)) if (store.delete(k)) n++;
           send(`:${n}\r\n`);
         } else if (verb === "EVAL") {
-          // Simulates the registry's compare-and-delete script: EVAL, script,
-          // numkeys, key1, key2, expected1, expected2.
           const [, , , key1, key2, expected1, expected2] = cmd;
+          if (cmd.length === 8) {
+            const owned =
+              (store.get(key1) === expected1 &&
+                store.get(key2) === expected2) ||
+              (!store.has(key1) && !store.has(key2));
+            if (owned) {
+              store.set(key1, expected1);
+              store.set(key2, expected2);
+            }
+            send(`:${owned ? 1 : 0}\r\n`);
+            cmd = tryParseCommand();
+            continue;
+          }
           if (store.get(key1) === expected1) store.delete(key1);
           if (store.get(key2) === expected2) store.delete(key2);
           send(":1\r\n");
@@ -580,6 +634,20 @@ describe("SandboxRegistry (native TCP transport)", () => {
     await reg.register();
     expect(fake.authedWith).toContainEqual(["default", "s3cret"]);
     expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-tcp");
+  });
+
+  it("refresh() does not reclaim an agent key owned by a successor", async () => {
+    fake = await startFakeRedis();
+    const reg = new SandboxRegistry(tcpConfig(fake.port));
+    await reg.register();
+    fake.store.set("agent:char-tcp:server", "sandbox-successor");
+
+    await reg.refresh();
+
+    expect(fake.store.get("agent:char-tcp:server")).toBe("sandbox-successor");
+    expect(fake.store.get("server:sandbox-tcp:url")).toBe(
+      "http://5.6.7.8:1999/api",
+    );
   });
 
   it("unregister() deletes only keys still pointing at this sandbox", async () => {
