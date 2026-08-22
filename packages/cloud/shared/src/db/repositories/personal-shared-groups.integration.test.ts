@@ -76,11 +76,16 @@ beforeAll(async () => {
     new URL("../migrations/0304_personal_shared_group_delivery_lease.sql", import.meta.url),
   ).text();
   await database.exec(leaseMigration);
+  const attemptsMigration = await Bun.file(
+    new URL("../migrations/0309_personal_shared_group_delivery_attempts.sql", import.meta.url),
+  ).text();
+  await database.exec(attemptsMigration);
 });
 
 beforeEach(async () => {
   await getPgliteClientForTests().exec(`
-    TRUNCATE personal_shared_group_delivery_receipts,
+    TRUNCATE personal_shared_group_delivery_attempts,
+      personal_shared_group_delivery_receipts,
       personal_shared_group_bindings,
       personal_shared_group_claims,
       users,
@@ -662,7 +667,7 @@ describe("personalSharedGroupsRepository", () => {
     ).resolves.toEqual({ recorded: true, inserted: 1 });
   });
 
-  test("recovers a group whose committed lease was orphaned with its lost token", async () => {
+  test("preserves an uncertain accepted send while allowing distinct future delivery and late reconciliation", async () => {
     await issue({
       codeHash: "claim-orphan-initial",
       organizationId: ORG_A,
@@ -690,9 +695,8 @@ describe("personalSharedGroupsRepository", () => {
     expect(await repository.authorizeDelivery(delivery)).toMatchObject({ authorized: true });
     expect(await repository.commitDelivery(delivery)).toBe(true);
 
-    // At this point the sending process dies before persisting any receipt.
-    // Nothing can ever present this exact leaseToken again, so no
-    // recordDeliveryReceipts call can clear the committed lease below.
+    // The provider accepted the send and the process crashed before persisting
+    // its receipt. The provider result is unknown, not a failed delivery.
 
     // Fresh deliveries stay fenced while the orphaned commit is recent — the
     // provider send may still be in flight and must not be duplicated.
@@ -708,17 +712,40 @@ describe("personalSharedGroupsRepository", () => {
     };
     expect(await repository.authorizeDelivery(fresh)).toMatchObject({ authorized: false });
 
-    // Past the recovery horizon (COMMITTED_LEASE_RECOVERY_MS = 600s) the slot
-    // frees up without knowing the token; age it 60s beyond for determinism.
+    // Past the worker horizon, atomically preserve the attempt as uncertain
+    // before releasing the live slot. Removing the new attempt row simulates
+    // a rolling-deployment commit from an old writer after migration backfill.
     await getPgliteClientForTests().exec(`
+      DELETE FROM personal_shared_group_delivery_attempts
+      WHERE binding_id = '${initial.binding.id}';
       UPDATE personal_shared_group_bindings
       SET delivery_lease_committed_at = now() - interval '660 seconds'
       WHERE id = '${initial.binding.id}';
+      UPDATE personal_shared_group_delivery_attempts
+      SET committed_at = now() - interval '660 seconds'
+      WHERE binding_id = '${initial.binding.id}';
     `);
+    expect(
+      await repository.authorizeDelivery({
+        ...delivery,
+        leaseToken: "71000000-0000-4000-8000-0000000000a3",
+      }),
+    ).toMatchObject({
+      authorized: false,
+      reason: "source_already_attempted",
+    });
     expect(await repository.authorizeDelivery(fresh)).toMatchObject({
       authorized: true,
       leaseToken: fresh.leaseToken,
     });
+    expect(await repository.listUncertainDeliveryAttempts({ limit: 10 })).toMatchObject([
+      {
+        binding_id: initial.binding.id,
+        source_message_id: delivery.sourceMessageId,
+        lease_token: delivery.leaseToken,
+        state: "uncertain",
+      },
+    ]);
     const recovered = await repository.resolveBinding({
       platform: "blooio",
       project: "eliza-app",
@@ -729,7 +756,27 @@ describe("personalSharedGroupsRepository", () => {
     // The takeover must not inherit the orphaned lease's committed marker...
     expect(recovered.delivery_lease_committed_at).toBeNull();
     expect(recovered.delivery_lease_source_id).toBe(fresh.sourceMessageId);
-    // ...and the new reservation commits and reconciles normally end-to-end.
+    // A late receipt reconciles the uncertain exact attempt without clearing
+    // the distinct future message's live reservation.
+    expect(
+      await repository.recordDeliveryReceipts({
+        ...delivery,
+        providerMessageIds: ["outgoing-late-orphan"],
+      }),
+    ).toEqual({ recorded: true, inserted: 1 });
+    expect(await repository.listUncertainDeliveryAttempts({ limit: 10 })).toEqual([]);
+    const settled = await repository.resolveBinding({
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: CONNECTOR_ID,
+      providerChatId: CHAT_ID,
+    });
+    expect(settled?.delivery_lease_source_id).toBe(fresh.sourceMessageId);
+    expect(settled?.delivery_lease_token).toBe(fresh.leaseToken);
+    expect(settled?.delivery_lease_expires_at).not.toBeNull();
+    expect(settled?.delivery_lease_committed_at).toBeNull();
+
+    // The distinct future source still commits and reconciles normally.
     expect(await repository.commitDelivery(fresh)).toBe(true);
     expect(
       await repository.recordDeliveryReceipts({
@@ -737,24 +784,33 @@ describe("personalSharedGroupsRepository", () => {
         providerMessageIds: ["outgoing-recovered"],
       }),
     ).toEqual({ recorded: true, inserted: 1 });
-    const settled = await repository.resolveBinding({
+    const fullySettled = await repository.resolveBinding({
       platform: "blooio",
       project: "eliza-app",
       connectorAccountId: CONNECTOR_ID,
       providerChatId: CHAT_ID,
     });
-    expect(settled?.delivery_lease_source_id).toBeNull();
-    expect(settled?.delivery_lease_token).toBeNull();
-    expect(settled?.delivery_lease_expires_at).toBeNull();
-    expect(settled?.delivery_lease_committed_at).toBeNull();
+    expect(fullySettled?.delivery_lease_source_id).toBeNull();
+    expect(fullySettled?.delivery_lease_token).toBeNull();
+    expect(fullySettled?.delivery_lease_expires_at).toBeNull();
+    expect(fullySettled?.delivery_lease_committed_at).toBeNull();
 
-    // The late receipt of the original orphaned send can no longer hijack or
-    // clear anything: its token was overwritten by the recovered delivery.
+    // Existing receipts predate the attempt migration. They remain a durable
+    // same-source fence even when no attempt row accompanies them.
+    await getPgliteClientForTests().exec(`
+      DELETE FROM personal_shared_group_delivery_attempts
+      WHERE binding_id = '${initial.binding.id}'
+        AND source_message_id = '${fresh.sourceMessageId}';
+    `);
     expect(
-      await repository.recordDeliveryReceipts({
-        ...delivery,
-        providerMessageIds: ["outgoing-late-orphan"],
+      await repository.authorizeDelivery({
+        ...fresh,
+        leaseToken: "71000000-0000-4000-8000-0000000000a4",
       }),
-    ).toEqual({ recorded: false, inserted: 0 });
+    ).toMatchObject({ authorized: false, reason: "source_already_attempted" });
+
+    await expect(repository.listUncertainDeliveryAttempts({ limit: 0 })).rejects.toMatchObject({
+      code: "PERSONAL_SHARED_GROUP_UNCERTAIN_REPORT_LIMIT_INVALID",
+    });
   }, 10_000);
 });
