@@ -33,7 +33,6 @@ export const CANONICAL_SECRET_KEYS = [
 	"TELEGRAM_BOT_TOKEN",
 	"SLACK_BOT_TOKEN",
 	"SLACK_APP_TOKEN",
-	"WHATSAPP_TOKEN",
 
 	// Twitter/X credentials
 	"TWITTER_USERNAME",
@@ -138,9 +137,6 @@ export const SECRET_KEY_ALIASES: Record<string, string> = {
 	ELEVENLABS_KEY: "ELEVENLABS_API_KEY",
 	ELEVEN_LABS_API_KEY: "ELEVENLABS_API_KEY",
 
-	// WhatsApp aliases
-	WHATSAPP_BOT_TOKEN: "WHATSAPP_TOKEN",
-	WHATSAPP_API_TOKEN: "WHATSAPP_TOKEN",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -194,7 +190,6 @@ export const CHANNEL_SECRETS: Record<string, string[]> = {
 	discord: ["DISCORD_BOT_TOKEN"],
 	telegram: ["TELEGRAM_BOT_TOKEN"],
 	slack: ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"],
-	whatsapp: ["WHATSAPP_TOKEN"],
 	twitter: ["TWITTER_USERNAME", "TWITTER_PASSWORD"],
 };
 

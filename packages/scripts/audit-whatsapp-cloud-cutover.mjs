@@ -22,6 +22,8 @@ const SCAN_ROOTS = [
   "packages/cloud/services/gateway-webhook",
   "packages/cloud/shared/src/lib",
   "packages/cloud/test-mocks",
+  "packages/core/src/constants",
+  "packages/core/src/validation",
   "packages/homepage/docs",
   "packages/ui/src/cloud",
   "packages/ui/src/cloud-ui",
@@ -31,7 +33,7 @@ const SCAN_ROOTS = [
 ];
 
 const FORBIDDEN = [
-  /\b(?:ELIZA_APP_)?WHATSAPP_(?:ACCESS_TOKEN|PHONE_NUMBER_ID|APP_SECRET|VERIFY_TOKEN|BUSINESS_PHONE)\b/,
+  /\b(?:ELIZA_APP_)?WHATSAPP_(?:TOKEN|BOT_TOKEN|API_TOKEN|ACCESS_TOKEN|PHONE_NUMBER_ID|APP_SECRET|VERIFY_TOKEN|BUSINESS_PHONE)\b/,
   /\/api\/(?:v1\/whatsapp|webhooks\/whatsapp|eliza-app\/(?:auth|webhook)\/whatsapp)(?:\/|\b)/,
   /\b(?:WhatsAppConnection|whatsappAutomationService|routeWhatsAppMessage)\b/,
   /\bwhatsapp-cloud-webhook\b/,

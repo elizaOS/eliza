@@ -18,6 +18,7 @@ describe("hosted WhatsApp cutover audit", () => {
   test("accepts the checked-in hard cutover", async () => {
     await expect(auditWhatsAppCloudCutover()).resolves.toMatchObject({
       retiredPaths: 10,
+      scannedRoots: 12,
     });
   });
 
