@@ -235,10 +235,11 @@ async function rm(
   args: string[],
 ): Promise<VfsBuiltinCommandResult> {
   const optionArgs = args.filter((arg) => arg.startsWith("-"));
-  const recursive = optionArgs.some(
-    (arg) => arg === "-r" || arg === "-R" || arg === "-rf" || arg === "-fr",
-  );
-  const force = optionArgs.some((arg) => arg.includes("f"));
+  const shortFlags = optionArgs
+    .map((arg) => arg.slice(1).replaceAll("-", ""))
+    .join("");
+  const recursive = shortFlags.includes("r") || shortFlags.includes("R");
+  const force = shortFlags.includes("f");
   const targets = args.filter((arg) => !arg.startsWith("-"));
   if (targets.length === 0) {
     return {
