@@ -1,6 +1,6 @@
 /**
  * Coverage for the Stage 1 available-contexts catalog: `formatAvailableContextsForPrompt`
- * rendering (compact and role-gated) and the role-scoped context list injected
+ * rendering (complete and role-gated) and the role-scoped context list injected
  * into the `runV5MessageRuntimeStage1` system prompt. Deterministic `vi`-mocked
  * runtime with a canned tool-call response; no live model.
  */
