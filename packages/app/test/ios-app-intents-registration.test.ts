@@ -623,6 +623,9 @@ describe("native assistant entry contracts", () => {
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "testTalkToElizaAppShortcutForegroundsApp",
     );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "testMessageElizaAppShortcutForegroundsApp",
+    );
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Message Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain("Talk to Eliza");
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
@@ -654,6 +657,12 @@ describe("native assistant entry contracts", () => {
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "app.wait(for: .runningForeground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "shortcuts.wait(for: .runningBackground",
+    );
+    expect(deviceExtensionSurfaceUITestsSwift).toContain(
+      "app.webViews.firstMatch.waitForExistence",
     );
     expect(deviceExtensionSurfaceUITestsSwift).toContain(
       "label.isEmpty ? nil : label",

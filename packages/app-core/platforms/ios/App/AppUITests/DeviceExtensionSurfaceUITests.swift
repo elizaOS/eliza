@@ -139,13 +139,29 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             "The Talk to Eliza action group must expose its real waveform button as a hittable control."
         )
         talkButton.tap()
-
-        let app = XCUIApplication()
-        XCTAssertTrue(
-            app.wait(for: .runningForeground, timeout: 15),
-            "Running Talk to Eliza from Apple Shortcuts must foreground the signed Eliza app."
+        try assertShortcutForegroundsRenderedApp(
+            screenshotName: "shortcuts-01-talk-app-foregrounded",
+            actionName: "Talk to Eliza"
         )
-        attachScreenshot(named: "shortcuts-01-talk-app-foregrounded")
+    }
+
+    func testMessageElizaAppShortcutForegroundsApp() throws {
+        try launchShortcutsSearchEliza()
+        let messageGroup = shortcuts.otherElements["Message Eliza"].firstMatch
+        XCTAssertTrue(
+            messageGroup.waitForExistence(timeout: 10),
+            "The installed Message Eliza App Shortcut must expose its labeled action group before invocation."
+        )
+        let messageButton = messageGroup.buttons["sparkles"].firstMatch
+        XCTAssertTrue(
+            messageButton.waitForExistence(timeout: 5) && messageButton.isHittable,
+            "The Message Eliza action group must expose its real sparkles button as a hittable control."
+        )
+        messageButton.tap()
+        try assertShortcutForegroundsRenderedApp(
+            screenshotName: "shortcuts-02-message-app-foregrounded",
+            actionName: "Message Eliza"
+        )
     }
 
     func testControlCenterGalleryListsElizaControls() throws {
@@ -268,6 +284,27 @@ final class DeviceExtensionSurfaceUITests: XCTestCase {
             clearText.tap()
         }
         search.typeText("Eliza")
+    }
+
+    private func assertShortcutForegroundsRenderedApp(
+        screenshotName: String,
+        actionName: String
+    ) throws {
+        let app = XCUIApplication()
+        XCTAssertTrue(
+            app.wait(for: .runningForeground, timeout: 15),
+            "Running \(actionName) from Apple Shortcuts must foreground the signed Eliza app."
+        )
+        XCTAssertTrue(
+            shortcuts.wait(for: .runningBackground, timeout: 10),
+            "Running \(actionName) must finish the Shortcuts-to-Eliza transition before evidence is captured."
+        )
+        XCTAssertTrue(
+            app.webViews.firstMatch.waitForExistence(timeout: 20),
+            "Running \(actionName) must expose Eliza's rendered web view, not only start its process."
+        )
+        attachAccessibilitySnapshot(of: app, named: "\(screenshotName)-ax")
+        attachScreenshot(named: screenshotName)
     }
 
     @available(iOS 18.0, *)
