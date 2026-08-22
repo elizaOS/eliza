@@ -2,14 +2,7 @@
  * Exercises Personal Shared group claims and bindings against isolated PGlite,
  * including atomic consumption, tenant-takeover resistance, and safe reclaim.
  */
-import {
-  afterAll,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  test,
-} from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -62,36 +55,23 @@ async function consume(codeHash: string, platformUserId: string) {
 }
 
 beforeAll(async () => {
-  ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import(
-    "../client"
-  ));
-  ({ personalSharedGroupsRepository: repository } = await import(
-    "./personal-shared-groups"
-  ));
+  ({ closeDatabaseConnectionsForTests, getPgliteClientForTests } = await import("../client"));
+  ({ personalSharedGroupsRepository: repository } = await import("./personal-shared-groups"));
   const database = getPgliteClientForTests();
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY);
     CREATE TABLE users (id uuid PRIMARY KEY);
   `);
   const migration = await Bun.file(
-    new URL(
-      "../migrations/0297_personal_shared_group_bindings.sql",
-      import.meta.url,
-    ),
+    new URL("../migrations/0297_personal_shared_group_bindings.sql", import.meta.url),
   ).text();
   await database.exec(migration);
   const authorityMigration = await Bun.file(
-    new URL(
-      "../migrations/0300_personal_shared_group_authority_version.sql",
-      import.meta.url,
-    ),
+    new URL("../migrations/0300_personal_shared_group_authority_version.sql", import.meta.url),
   ).text();
   await database.exec(authorityMigration);
   const leaseMigration = await Bun.file(
-    new URL(
-      "../migrations/0301_personal_shared_group_delivery_lease.sql",
-      import.meta.url,
-    ),
+    new URL("../migrations/0301_personal_shared_group_delivery_lease.sql", import.meta.url),
   ).text();
   await database.exec(leaseMigration);
 });
@@ -129,10 +109,7 @@ describe("personalSharedGroupsRepository", () => {
       consume("claim-a", "+15551110001"),
       consume("claim-a", "+15551110001"),
     ]);
-    expect(attempts.map(({ status }) => status).sort()).toEqual([
-      "already_used",
-      "bound",
-    ]);
+    expect(attempts.map(({ status }) => status).sort()).toEqual(["already_used", "bound"]);
     const result = attempts.find(({ status }) => status === "bound");
     if (result?.status !== "bound") {
       throw new Error("expected a bound claim");
@@ -156,9 +133,7 @@ describe("personalSharedGroupsRepository", () => {
       personalAgentId: "personal:owner-a",
       platformUserId: "+15551110001",
     });
-    expect((await consume("claim-owner-a", "+15551110001")).status).toBe(
-      "bound",
-    );
+    expect((await consume("claim-owner-a", "+15551110001")).status).toBe("bound");
 
     await issue({
       codeHash: "claim-owner-b",
@@ -275,9 +250,7 @@ describe("personalSharedGroupsRepository", () => {
       personalAgentId: "personal:owner-a",
       platformUserId: "+15551110001",
     });
-    await expect(
-      consume("claim-reconnect-retry", "+15551110001"),
-    ).rejects.toMatchObject({
+    await expect(consume("claim-reconnect-retry", "+15551110001")).rejects.toMatchObject({
       code: "PERSONAL_SHARED_GROUP_DELIVERY_PENDING",
     });
 
@@ -287,8 +260,7 @@ describe("personalSharedGroupsRepository", () => {
       WHERE id = '${initial.binding.id}';
     `);
     const reconnected = await consume("claim-reconnect-retry", "+15551110001");
-    if (reconnected.status !== "bound")
-      throw new Error("expected reconnect after lease expiry");
+    if (reconnected.status !== "bound") throw new Error("expected reconnect after lease expiry");
     expect(reconnected.binding).toMatchObject({
       owner_user_id: USER_A,
       authority_version: initial.binding.authority_version + 1,
@@ -373,8 +345,7 @@ describe("personalSharedGroupsRepository", () => {
       platformUserId: "+15551110002",
     });
     const takeover = await consume("claim-revoked-takeover", "+15551110002");
-    if (takeover.status !== "bound")
-      throw new Error("expected revoked-owner takeover");
+    if (takeover.status !== "bound") throw new Error("expected revoked-owner takeover");
     expect(takeover.binding).toMatchObject({
       owner_user_id: USER_B,
       personal_agent_id: "personal:owner-b",
@@ -597,9 +568,7 @@ describe("personalSharedGroupsRepository", () => {
       sourceMessageId: "incoming-restored",
       leaseToken: restoredLeaseToken,
     };
-    expect(
-      await repository.authorizeDelivery(leasedRestoredRequest),
-    ).toMatchObject({
+    expect(await repository.authorizeDelivery(leasedRestoredRequest)).toMatchObject({
       authorized: true,
     });
     expect(await repository.commitDelivery(leasedRestoredRequest)).toBe(true);
@@ -615,9 +584,7 @@ describe("personalSharedGroupsRepository", () => {
         providerMessageIds: ["outgoing-restored"],
       }),
     ).toEqual({ recorded: true, inserted: 1 });
-    expect(
-      await repository.authorizeDelivery(leasedRestoredRequest),
-    ).toMatchObject({
+    expect(await repository.authorizeDelivery(leasedRestoredRequest)).toMatchObject({
       authorized: false,
     });
   }, 10_000);
