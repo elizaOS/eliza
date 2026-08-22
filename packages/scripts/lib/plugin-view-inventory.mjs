@@ -65,23 +65,26 @@ function unwrap(expression) {
   return current;
 }
 
-function propertyName(property) {
+function propertyName(property, context, { strict = false } = {}) {
   if (!("name" in property) || !property.name) return null;
   const name = property.name;
   if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
-  if (
-    ts.isComputedPropertyName(name) &&
-    ts.isStringLiteralLike(name.expression)
-  ) {
-    return name.expression.text;
+  if (ts.isComputedPropertyName(name)) {
+    const resolved = resolveStaticExpression(name.expression, context);
+    if (ts.isStringLiteralLike(resolved.value)) return resolved.value.text;
+    if (!strict) return null;
+    throw new Error(
+      `[plugin-view-inventory] ${context.source}:${sourceLine(context.sourceFile, name)} computed property name must resolve to a string literal`,
+    );
   }
   return null;
 }
 
-function objectProperty(object, name) {
+function objectProperty(object, name, context) {
   return object.properties.find(
     (property) =>
-      ts.isPropertyAssignment(property) && propertyName(property) === name,
+      ts.isPropertyAssignment(property) &&
+      propertyName(property, context, { strict: true }) === name,
   );
 }
 
@@ -196,7 +199,8 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
       ts.isObjectLiteralExpression(returned) &&
       returned.properties.some(
         (property) =>
-          ts.isSpreadAssignment(property) || propertyName(property) === "views",
+          ts.isSpreadAssignment(property) ||
+          propertyName(property, context) === "views",
       );
     const hasExecutableStatement = statements?.some(
       (statement) =>
@@ -246,7 +250,7 @@ function resolveStaticExpression(expression, context, resolving = new Set()) {
 }
 
 function literalString(object, name, context, { required = false } = {}) {
-  const property = objectProperty(object, name);
+  const property = objectProperty(object, name, context);
   if (!property) {
     if (required) {
       throw new Error(
@@ -265,7 +269,7 @@ function literalString(object, name, context, { required = false } = {}) {
 }
 
 function literalBoolean(object, name, context) {
-  const property = objectProperty(object, name);
+  const property = objectProperty(object, name, context);
   if (!property) return null;
   const resolved = resolveStaticExpression(property.initializer, context).value;
   if (resolved.kind === ts.SyntaxKind.TrueKeyword) return true;
@@ -286,7 +290,7 @@ function resolvedArray(expression, context, label) {
 }
 
 function literalStringArray(object, name, context) {
-  const property = objectProperty(object, name);
+  const property = objectProperty(object, name, context);
   if (!property) return null;
   const resolved = resolvedArray(property.initializer, context, name);
   const values = [];
@@ -319,7 +323,7 @@ function literalStringArray(object, name, context) {
 }
 
 function literalObject(object, name, context) {
-  const property = objectProperty(object, name);
+  const property = objectProperty(object, name, context);
   if (!property) return null;
   const resolved = resolveStaticExpression(property.initializer, context);
   if (!ts.isObjectLiteralExpression(resolved.value)) {
@@ -331,7 +335,7 @@ function literalObject(object, name, context) {
 }
 
 function capabilityIds(object, context) {
-  const property = objectProperty(object, "capabilities");
+  const property = objectProperty(object, "capabilities", context);
   if (!property) return [];
   const resolved = resolvedArray(property.initializer, context, "capabilities");
   const ids = [];
@@ -392,7 +396,7 @@ function effectiveObjectPropertyNames(object, context, resolving = new Set()) {
       for (const name of spreadNames) names.add(name);
       continue;
     }
-    const name = propertyName(member);
+    const name = propertyName(member, context);
     if (name) names.add(name);
   }
   return names;
@@ -529,7 +533,7 @@ function resolvePluginViews(object, context, resolving = new Set()) {
   let result = { kind: "absent" };
 
   for (const member of object.properties) {
-    const name = propertyName(member);
+    const name = propertyName(member, context, { strict: true });
     if (name === "views") {
       if (ts.isPropertyAssignment(member)) {
         result = {

@@ -250,6 +250,43 @@ export default { name: "spread", description: "fixture", ...base } satisfies Plu
     );
   });
 
+  test("resolves statically computed Plugin.views and rejects dynamic keys", () => {
+    const staticRoot = makeRoot();
+    const staticSource = addPluginSource(
+      staticRoot,
+      "plugin-computed-key",
+      `const viewKey = "views";
+export const plugin: Plugin = {
+  name: "computed-key",
+  description: "fixture",
+  [viewKey]: [${view("computed-key")}],
+};\n`,
+    );
+    expect(discover(staticRoot, [staticSource]).views).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "computed-key",
+          owner: "@fixture/plugin-computed-key",
+        }),
+      ]),
+    );
+
+    const dynamicRoot = makeRoot();
+    const dynamicSource = addPluginSource(
+      dynamicRoot,
+      "plugin-dynamic-key",
+      `declare const viewKey: string;
+export const plugin: Plugin = {
+  name: "dynamic-key",
+  description: "fixture",
+  [viewKey]: [${view("dynamic-key")}],
+};\n`,
+    );
+    expect(() => discover(dynamicRoot, [dynamicSource])).toThrow(
+      /computed property name must resolve to a string literal/,
+    );
+  });
+
   test("inventories only the runtime plugin when a full-shaped helper is spread", () => {
     const explicitAfterRoot = makeRoot();
     const explicitAfter = addPluginSource(
