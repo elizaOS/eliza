@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+/**
+ * Verifies workbench task normalization helpers by importing the production
+ * API module while mocking only its runtime configuration dependency.
+ */
+
 import type { Task } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   asObject,
   isWorkbenchTodoTask,
@@ -12,9 +17,9 @@ import {
   readTaskMetadata,
   toWorkbenchTask,
   toWorkbenchTodo,
-} from "./workbench-helpers.ts";
+} from "../workbench-helpers.ts";
 
-vi.mock("./runtime.ts", () => ({
+vi.mock("../runtime.ts", () => ({
   readTriggerConfig: () => null,
 }));
 
@@ -52,7 +57,9 @@ describe("normalizeTimestamp", () => {
     expect(normalizeTimestamp(123)).toBe(123);
     expect(normalizeTimestamp(new Date(456))).toBe(456);
     expect(normalizeTimestamp("789")).toBe(789);
-    expect(normalizeTimestamp("2026-01-01T00:00:00Z")).toBe(Date.parse("2026-01-01T00:00:00Z"));
+    expect(normalizeTimestamp("2026-01-01T00:00:00Z")).toBe(
+      Date.parse("2026-01-01T00:00:00Z"),
+    );
   });
   it("returns undefined for garbage", () => {
     expect(normalizeTimestamp("nope")).toBeUndefined();
@@ -81,9 +88,13 @@ describe("readTaskMetadata / normalizeTaskId", () => {
 
 describe("readTaskCompleted", () => {
   it("checks metadata and nested todo metadata", () => {
-    expect(readTaskCompleted(task({ metadata: { isCompleted: true } }))).toBe(true);
+    expect(readTaskCompleted(task({ metadata: { isCompleted: true } }))).toBe(
+      true,
+    );
     expect(
-      readTaskCompleted(task({ metadata: { workbenchTodo: { isCompleted: true } } })),
+      readTaskCompleted(
+        task({ metadata: { workbenchTodo: { isCompleted: true } } }),
+      ),
     ).toBe(true);
     expect(readTaskCompleted(task())).toBe(false);
   });
@@ -121,7 +132,9 @@ describe("toWorkbenchTask", () => {
 
   it("returns null without the task tag or for todo tasks", () => {
     expect(toWorkbenchTask(task({ tags: ["other"] }))).toBeNull();
-    expect(toWorkbenchTask(task({ tags: ["workbench-task", "todo"] }))).toBeNull();
+    expect(
+      toWorkbenchTask(task({ tags: ["workbench-task", "todo"] })),
+    ).toBeNull();
   });
 });
 
