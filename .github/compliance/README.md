@@ -24,16 +24,18 @@ not been classified. It writes derived machine-readable and Mermaid/control
 ownership views under `reports/compliance/`. Reports are generated evidence and
 are not committed.
 
-Every `source-verified` fact, flow, or control must cite at least one tracked,
-regular asset descriptor and bind each asserted value to that evidence. Each
-evidence entry records its repository `path`, the exact claim values it
-`supports`, and non-empty source text in `contains`; the audit reads the current
-file and fails when any assertion is absent. Fact evidence is confined to that
-asset's descriptors, flow evidence to either endpoint's descriptors, and
-control evidence to registered descriptors. External URLs and unrelated
-tracked files are not accepted as source evidence in this bounded registry;
-deployed and third-party receipts remain protected operator evidence until a
-separately reviewed evidence-ingestion contract exists.
+Every `source-verified` fact, flow, or control must cite tracked, regular asset
+descriptors through claim-scoped receipts. Each receipt records one repository
+`path`, exactly one `claim`, and non-empty source text in `contains`; the audit
+reads the current file, checks every needle, and requires the path or needle to
+identify that same claim. The `repository-tracked` and `terraform-managed`
+lifecycle claims use typed repository/path checks instead of prose matching.
+Fact evidence is confined to that asset's descriptors, each flow endpoint claim
+must cite its own endpoint, other flow evidence may cite either endpoint, and
+control evidence is confined to registered descriptors. External URLs and
+unrelated tracked files are not accepted as source evidence in this bounded
+registry; deployed and third-party receipts remain protected operator evidence
+until a separately reviewed evidence-ingestion contract exists.
 
 Strict mode additionally fails while any `operator-review-required` hold
 remains. Those holds require deployed-environment receipts, account and region

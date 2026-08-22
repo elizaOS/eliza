@@ -48,7 +48,7 @@
           "evidence": [
             {
               "path": "packages/cloud/api/wrangler.toml",
-              "supports": ["cloudflare"],
+              "claim": "cloudflare",
               "contains": ["# eliza-cloud-api — Cloudflare Worker config"]
             }
           ]
@@ -107,7 +107,7 @@
           "evidence": [
             {
               "path": "packages/cloud/api/wrangler.toml",
-              "supports": ["repository-tracked"],
+              "claim": "repository-tracked",
               "contains": ["name = \"eliza-cloud-api\""]
             }
           ]
@@ -244,7 +244,7 @@
           "evidence": [
             {
               "path": "packages/cloud/services/agent-server/Dockerfile",
-              "supports": ["repository-tracked"],
+              "claim": "repository-tracked",
               "contains": ["# Agent Server Service"]
             }
           ]
@@ -344,17 +344,17 @@
           "evidence": [
             {
               "path": "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/providers.tf",
-              "supports": ["cloudflare"],
+              "claim": "cloudflare",
               "contains": ["provider \"cloudflare\" {"]
             },
             {
               "path": "packages/cloud/infra/cloud/terraform/gcp/01-foundation/providers.tf",
-              "supports": ["gcp"],
+              "claim": "gcp",
               "contains": ["provider \"google\" {"]
             },
             {
               "path": "packages/cloud/infra/cloud/terraform/hetzner/control-plane/providers.tf",
-              "supports": ["hetzner"],
+              "claim": "hetzner",
               "contains": ["provider \"hcloud\" {"]
             }
           ]
@@ -413,17 +413,17 @@
           "evidence": [
             {
               "path": "packages/cloud/infra/cloud/terraform/cloudflare/pages-domains/main.tf",
-              "supports": ["terraform-managed"],
+              "claim": "terraform-managed",
               "contains": ["locals {"]
             },
             {
               "path": "packages/cloud/infra/cloud/terraform/gcp/01-foundation/main.tf",
-              "supports": ["terraform-managed"],
+              "claim": "terraform-managed",
               "contains": ["resource \"google_project_service\" \"apis\" {"]
             },
             {
               "path": "packages/cloud/infra/cloud/terraform/hetzner/control-plane/main.tf",
-              "supports": ["terraform-managed"],
+              "claim": "terraform-managed",
               "contains": ["resource \"hcloud_network\" \"data_plane\" {"]
             }
           ]
@@ -561,7 +561,7 @@
           "evidence": [
             {
               "path": "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
-              "supports": ["repository-tracked"],
+              "claim": "repository-tracked",
               "contains": [
                 "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\">"
               ]
@@ -686,7 +686,7 @@
           "evidence": [
             {
               "path": "packages/app-core/platforms/ios/App/App/Info.plist",
-              "supports": ["repository-tracked"],
+              "claim": "repository-tracked",
               "contains": ["<key>CFBundleDisplayName</key>"]
             }
           ]

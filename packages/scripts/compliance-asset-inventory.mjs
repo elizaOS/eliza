@@ -126,7 +126,8 @@ function validateEvidenceReferences(
     trackedFiles,
     required = false,
     allowedSources,
-    requiredSupports = [],
+    allowedClaimSources = new Map(),
+    requiredClaims = [],
   },
 ) {
   if (!Array.isArray(value) || (required && value.length === 0)) {
@@ -138,7 +139,7 @@ function validateEvidenceReferences(
     const entry = requireObject(candidate, `${label}[${index}]`);
     requireExactKeys(
       entry,
-      ["path", "supports", "contains"],
+      ["path", "claim", "contains"],
       `${label}[${index}]`,
     );
     const reference = normalizeGitRepositoryPath(
@@ -160,10 +161,7 @@ function validateEvidenceReferences(
         `${label}[${index}].path is not an allowed asset source: ${reference}`,
       );
     }
-    const supports = requireStringArray(
-      entry.supports,
-      `${label}[${index}].supports`,
-    );
+    const claim = requireString(entry.claim, `${label}[${index}].claim`);
     const contains = requireStringArray(
       entry.contains,
       `${label}[${index}].contains`,
@@ -176,21 +174,57 @@ function validateEvidenceReferences(
         );
       }
     }
-    return { path: reference, supports, contains };
+    const claimSources = allowedClaimSources.get(claim);
+    if (claimSources && !claimSources.has(reference)) {
+      throw new Error(
+        `${label}[${index}].path does not identify asset claim ${claim}: ${reference}`,
+      );
+    }
+    if (!claimSources && claim === "repository-tracked") {
+      // The tracked-file check above is the typed proof for this lifecycle
+      // claim; descriptor prose is not expected to restate Git ownership.
+    } else if (!claimSources && claim === "terraform-managed") {
+      if (!reference.endsWith(".tf")) {
+        throw new Error(
+          `${label}[${index}] does not identify claim ${claim}: ${reference}`,
+        );
+      }
+    } else if (!claimSources) {
+      const normalizedClaim = claim.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+      if (normalizedClaim.length === 0) {
+        throw new Error(
+          `${label}[${index}].claim must contain an alphanumeric identifier`,
+        );
+      }
+      const identifiesClaim = [reference, ...contains].some((text) =>
+        text
+          .toLowerCase()
+          .replaceAll(/[^a-z0-9]/g, "")
+          .includes(normalizedClaim),
+      );
+      if (!identifiesClaim) {
+        throw new Error(
+          `${label}[${index}] source does not identify claim ${claim}: ${reference}`,
+        );
+      }
+    }
+    return { path: reference, claim, contains };
   });
   assertUniqueRepositoryIdentities(
-    references.map((entry) => entry.path),
-    `${label} contains duplicate evidence paths`,
+    references.map((entry) => JSON.stringify([entry.path, entry.claim])),
+    `${label} contains duplicate evidence receipts`,
   );
-  const supported = new Set(references.flatMap((entry) => entry.supports));
-  for (const claim of requiredSupports) {
+  const supported = new Set(references.map((entry) => entry.claim));
+  for (const claim of requiredClaims) {
     if (!supported.has(claim)) {
       throw new Error(`${label} does not support asserted value: ${claim}`);
     }
   }
   for (const claim of supported) {
-    if (!requiredSupports.includes(claim)) {
-      throw new Error(`${label} supports an unasserted value: ${claim}`);
+    if (!requiredClaims.includes(claim)) {
+      throw new Error(
+        `${label} contains a receipt for unasserted claim: ${claim}`,
+      );
     }
   }
   return references;
@@ -226,7 +260,7 @@ function validateAssertion(
       trackedFiles,
       required: status === "source-verified",
       allowedSources: sourceSet,
-      requiredSupports: status === "source-verified" ? values : [],
+      requiredClaims: status === "source-verified" ? values : [],
     },
   );
   return { status, values, evidence, hold: assertion.hold };
@@ -356,6 +390,10 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
     if (!assetIds.has(source) || !assetIds.has(destination)) {
       throw new Error(`flow ${id} references an unknown asset`);
     }
+    const sourceAsset = normalizedAssets.find((asset) => asset.id === source);
+    const destinationAsset = normalizedAssets.find(
+      (asset) => asset.id === destination,
+    );
     const dataClasses = requireStringArray(
       flow.dataClasses,
       `flow ${id}.dataClasses`,
@@ -371,10 +409,14 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
         trackedFiles,
         required: status === "source-verified",
         allowedSources: new Set([
-          ...normalizedAssets.find((asset) => asset.id === source).sources,
-          ...normalizedAssets.find((asset) => asset.id === destination).sources,
+          ...sourceAsset.sources,
+          ...destinationAsset.sources,
         ]),
-        requiredSupports:
+        allowedClaimSources: new Map([
+          [source, new Set(sourceAsset.sources)],
+          [destination, new Set(destinationAsset.sources)],
+        ]),
+        requiredClaims:
           status === "source-verified"
             ? [source, destination, ...dataClasses]
             : [],
@@ -425,7 +467,7 @@ export function validateComplianceInventory(raw, { repoRoot, discovered }) {
         trackedFiles,
         required: status === "source-verified",
         allowedSources: registeredSourceSet,
-        requiredSupports:
+        requiredClaims:
           status === "source-verified" ? [id, framework, owner] : [],
       },
     );

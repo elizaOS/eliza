@@ -29,8 +29,8 @@ function rawInventory() {
   return JSON.parse(readFileSync(INVENTORY_FILE, "utf8"));
 }
 
-function evidence(pathname: string, supports: string[], contains: string[]) {
-  return { path: pathname, supports, contains };
+function evidence(pathname: string, claim: string, contains: string[]) {
+  return { path: pathname, claim, contains };
 }
 
 describe("compliance asset inventory", () => {
@@ -176,7 +176,7 @@ describe("compliance asset inventory", () => {
 
     const factWithBogusEvidence = rawInventory();
     factWithBogusEvidence.assets[0].facts.lifecycle.evidence = [
-      evidence("package.json", ["repository-tracked"], ['"name"']),
+      evidence("package.json", "repository-tracked", ['"name"']),
     ];
     expect(() =>
       validateComplianceInventory(factWithBogusEvidence, {
@@ -185,17 +185,19 @@ describe("compliance asset inventory", () => {
       }),
     ).toThrow("is not an allowed asset source: package.json");
 
-    const unsupportedValue = rawInventory();
-    unsupportedValue.assets[0].facts.provider.values = [
+    const relabeledFact = rawInventory();
+    relabeledFact.assets[0].facts.provider.values = [
       "fabricated-provider-certification",
     ];
+    relabeledFact.assets[0].facts.provider.evidence[0].claim =
+      "fabricated-provider-certification";
     expect(() =>
-      validateComplianceInventory(unsupportedValue, {
+      validateComplianceInventory(relabeledFact, {
         repoRoot: REPO_ROOT,
         discovered,
       }),
     ).toThrow(
-      "does not support asserted value: fabricated-provider-certification",
+      "source does not identify claim fabricated-provider-certification",
     );
 
     const absentSourceAssertion = rawInventory();
@@ -236,17 +238,7 @@ describe("compliance asset inventory", () => {
     const flowWithUnscopedEvidence = rawInventory();
     flowWithUnscopedEvidence.flows[0].status = "source-verified";
     flowWithUnscopedEvidence.flows[0].evidence = [
-      evidence(
-        "package.json",
-        [
-          "android-clients",
-          "cloudflare-edge",
-          "account-data",
-          "credentials",
-          "user-content",
-        ],
-        ['"name"'],
-      ),
+      evidence("package.json", "android-clients", ['"name"']),
     ];
     delete flowWithUnscopedEvidence.flows[0].hold;
     expect(() =>
@@ -255,6 +247,34 @@ describe("compliance asset inventory", () => {
         discovered,
       }),
     ).toThrow("is not an allowed asset source: package.json");
+
+    const relabeledFlow = rawInventory();
+    relabeledFlow.flows[0].status = "source-verified";
+    relabeledFlow.flows[0].dataClasses = ["certified-health-data"];
+    relabeledFlow.flows[0].evidence = [
+      evidence(
+        "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+        "android-clients",
+        [
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+        ],
+      ),
+      evidence("packages/cloud/api/wrangler.toml", "cloudflare-edge", [
+        "# eliza-cloud-api — Cloudflare Worker config",
+      ]),
+      evidence(
+        "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml",
+        "certified-health-data",
+        ['android:name="android.permission.INTERNET"'],
+      ),
+    ];
+    delete relabeledFlow.flows[0].hold;
+    expect(() =>
+      validateComplianceInventory(relabeledFlow, {
+        repoRoot: REPO_ROOT,
+        discovered,
+      }),
+    ).toThrow("source does not identify claim certified-health-data");
   });
 
   test("requires tracked evidence for source-verified controls", () => {
@@ -274,15 +294,7 @@ describe("compliance asset inventory", () => {
     const controlWithBogusEvidence = rawInventory();
     controlWithBogusEvidence.controls[0].status = "source-verified";
     controlWithBogusEvidence.controls[0].evidence = [
-      evidence(
-        "package.json",
-        [
-          "HIPAA-164.308",
-          "HIPAA administrative safeguards",
-          "unassigned-protected-operator",
-        ],
-        ['"name"'],
-      ),
+      evidence("package.json", "HIPAA-164.308", ['"name"']),
     ];
     delete controlWithBogusEvidence.controls[0].hold;
     expect(() =>
@@ -291,6 +303,33 @@ describe("compliance asset inventory", () => {
         discovered,
       }),
     ).toThrow("is not an allowed asset source: package.json");
+
+    const relabeledControl = rawInventory();
+    relabeledControl.controls[0] = {
+      id: "cloudflare",
+      framework: "wrangler",
+      owner: "certified-compliance-operator",
+      status: "source-verified",
+      evidence: [
+        evidence("packages/cloud/api/wrangler.toml", "cloudflare", [
+          "# eliza-cloud-api — Cloudflare Worker config",
+        ]),
+        evidence("packages/cloud/api/wrangler.toml", "wrangler", [
+          "# eliza-cloud-api — Cloudflare Worker config",
+        ]),
+        evidence(
+          "packages/cloud/api/wrangler.toml",
+          "certified-compliance-operator",
+          ['name = "eliza-cloud-api"'],
+        ),
+      ],
+    };
+    expect(() =>
+      validateComplianceInventory(relabeledControl, {
+        repoRoot: REPO_ROOT,
+        discovered,
+      }),
+    ).toThrow("source does not identify claim certified-compliance-operator");
   });
 
   test("rejects protected holds on non-operator facts, flows, and controls", () => {
