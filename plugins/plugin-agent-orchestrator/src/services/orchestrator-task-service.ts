@@ -3801,9 +3801,10 @@ export class OrchestratorTaskService extends Service {
    * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
-   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
-   *    the task `validating` (never a false promotion on a verifier crash); a
-   *    passing/skipped verdict falls through.
+   *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict
+   *    reopens a retryable worker turn without consuming its corrective-attempt
+   *    budget (never a false promotion on a verifier crash); a passing/skipped
+   *    verdict falls through.
    * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
@@ -3840,12 +3841,50 @@ export class OrchestratorTaskService extends Service {
       );
     } catch (err) {
       // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
+      // failure warns and must not break the session-event write path. Recover
+      // the durable state too: logging alone used to strand the task forever in
+      // `validating`, with no retry surface and no terminal signal.
       this.log("warn", "auto goal verification failed", {
         taskId,
         sessionId,
         error: err instanceof Error ? err.message : String(err),
       });
+      this.runtime.reportError?.(
+        "OrchestratorTaskService.autoVerifyCompletion",
+        err,
+        { taskId, sessionId },
+      );
+      try {
+        await this.withTaskWriteLock(taskId, () =>
+          this.retryInconclusiveVerification({
+            taskId,
+            sessionId,
+            eventType: "auto_verify_inconclusive",
+            verifier: "auto-verifier-infrastructure",
+            summary: `Automatic verification could not run: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            correction:
+              "Automatic verification was temporarily unavailable. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+          }),
+        );
+      } catch (recoveryErr) {
+        // error-policy:J7 diagnostics/recovery must not reject the detached
+        // event handler. A second failure is reported distinctly.
+        this.log("error", "failed to recover inconclusive auto verification", {
+          taskId,
+          sessionId,
+          error:
+            recoveryErr instanceof Error
+              ? recoveryErr.message
+              : String(recoveryErr),
+        });
+        this.runtime.reportError?.(
+          "OrchestratorTaskService.autoVerifyRecovery",
+          recoveryErr,
+          { taskId, sessionId },
+        );
+      }
     } finally {
       this.autoVerifyInFlight.delete(taskId);
     }
@@ -4030,9 +4069,23 @@ export class OrchestratorTaskService extends Service {
       }
 
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior after deterministic gates:
-      // stay `validating` for a human/manual caller, with no model spend.
-      if (acceptanceCriteria.length === 0) return;
+      // With no criteria there is nothing for the model judge to decide. Once
+      // the deterministic residuals/ground-truth gates above are clear, finish
+      // explicitly instead of leaving the task permanently `validating`.
+      if (acceptanceCriteria.length === 0) {
+        await this.validateTaskLocked(taskId, {
+          passed: true,
+          summary:
+            "No acceptance criteria were specified; deterministic completion gates passed.",
+          evidence:
+            completionEvidence.trim() ||
+            rawCompletion.trim() ||
+            "Criteria-free completion passed deterministic gates.",
+          verifier: "criteria-free-completion-gate",
+        });
+        this.emitChange(taskId);
+        return;
+      }
 
       // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
@@ -4218,17 +4271,10 @@ export class OrchestratorTaskService extends Service {
       );
       if (independent) {
         if (independent.inconclusive) {
-          // A verifier crash/empty verdict is never a pass — but a silent
-          // return here parked the task in `validating` forever with no
-          // re-prompt, no escalation, and no signal to the task creator
-          // (observed live: a website-build task whose final task_complete hit
-          // "no usable CompletionEnvelope" and then sat `validating` for
-          // hours while the user asked "is it done?"). Route it through the
-          // shared re-engage/escalate path like every other non-pass verdict:
-          // under the attempts cap the worker is re-prompted to re-report
-          // with the structured envelope (making the next verify decidable);
-          // at the cap the task parks on waiting_on_user instead of ghosting.
-          await this.reEngageOrEscalate({
+          // A verifier crash/empty verdict is an infrastructure outcome, not
+          // evidence that the worker failed a criterion. Re-open a retryable
+          // turn, but preserve the worker's bounded corrective-attempt budget.
+          await this.retryInconclusiveVerification({
             taskId,
             sessionId,
             correction: [
@@ -4241,11 +4287,6 @@ export class OrchestratorTaskService extends Service {
             eventType: "independent_verify_inconclusive",
             verifier: INDEPENDENT_ACP_VERIFIER_NAME,
             summary: independent.summary,
-            missing: [
-              ...independent.unmet,
-              ...independent.failedCommands.map((c) => `command failed: ${c}`),
-            ],
-            attempt: attempts,
           });
           return;
         }
@@ -4308,6 +4349,19 @@ export class OrchestratorTaskService extends Service {
         },
       );
 
+      if (verdict.inconclusive) {
+        await this.retryInconclusiveVerification({
+          taskId,
+          sessionId,
+          eventType: "goal_verify_inconclusive",
+          verifier: LLM_GOAL_VERIFIER_NAME,
+          summary: verdict.summary,
+          correction:
+            "The goal-verification model was temporarily unavailable or returned no usable verdict. Your work was not counted as a failed attempt. Please re-report completion with the same concrete evidence so verification can retry.",
+        });
+        return;
+      }
+
       if (verdict.passed) {
         await this.validateTaskLocked(taskId, {
           passed: true,
@@ -4339,6 +4393,70 @@ export class OrchestratorTaskService extends Service {
         attempt: attempts,
       });
     }
+  }
+
+  /**
+   * Re-open a task when the verifier itself could not decide. This deliberately
+   * does not write `autoVerifyAttempts` or `attemptReflections`: those counters
+   * measure worker proof failures, not provider outages, malformed judge
+   * responses, or verifier subprocess failures.
+   */
+  private async retryInconclusiveVerification(args: {
+    taskId: string;
+    sessionId: string;
+    correction: string;
+    eventType: string;
+    verifier: string;
+    summary: string;
+  }): Promise<void> {
+    const { taskId, sessionId, correction, eventType, verifier, summary } =
+      args;
+    const doc = await this.store.getTask(taskId);
+    if (doc?.task.status !== "validating") return;
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      sessionId,
+      eventType,
+      summary,
+      data: { verifier, retryable: true },
+      timestamp: Date.now(),
+      createdAt: nowIso(),
+    });
+    try {
+      await this.store.updateSession(sessionId, {
+        status: "ready",
+        taskDelivered: false,
+        stoppedAt: undefined,
+      });
+      await this.sendToTaskAgent(
+        taskId,
+        sessionId,
+        correction,
+        "validation_failed",
+      );
+      await this.advanceTaskStatus(taskId, "validation_failed");
+    } catch (sendErr) {
+      // error-policy:J1 boundary — an inconclusive verifier plus an unavailable
+      // worker is surfaced to a human instead of remaining stuck validating.
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        sessionId,
+        eventType: "auto_verify_retry_failed",
+        summary:
+          "Verification was inconclusive and its retry could not be delivered; escalating to a human.",
+        data: {
+          verifier,
+          retryable: true,
+          error: sendErr instanceof Error ? sendErr.message : String(sendErr),
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.advanceTaskStatus(taskId, "awaiting_user");
+    }
+    this.emitChange(taskId);
   }
 
   /**

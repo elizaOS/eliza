@@ -5,7 +5,12 @@
  * coerce loosely-typed handler options into validated values. Keeps every action's
  * success/failure shape identical.
  */
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import {
+  type ActionResult,
+  type IAgentRuntime,
+  toWellFormedUnicode,
+  truncateWellFormed,
+} from "@elizaos/core";
 import {
   type ActionResultData,
   FAILURE_TEXT_PREFIX,
@@ -52,6 +57,26 @@ export function capTranscriptForChat(text: string, maxChars = 1500): string {
     .replace(/\n$/, "");
   const omitted = middle.split("\n").length;
   return `${headPart}\n… [${omitted} lines omitted — ask to see more] …\n${tailPart}`;
+}
+
+/**
+ * Keep a model-facing tool result within a character budget without splitting
+ * UTF-16 surrogate pairs. The omitted count describes the sanitized string so
+ * malformed provider or process output cannot leak invalid Unicode downstream.
+ */
+export function truncate(
+  text: string,
+  maxChars: number,
+): { text: string; truncated: boolean } {
+  const sanitized = toWellFormedUnicode(text);
+  if (sanitized.length <= maxChars) {
+    return { text: sanitized, truncated: false };
+  }
+  const prefix = truncateWellFormed(sanitized, Math.max(0, maxChars));
+  return {
+    text: `${prefix}\n… [${sanitized.length - prefix.length} more chars omitted]`,
+    truncated: true,
+  };
 }
 
 export function failureToActionResult(
