@@ -54,7 +54,6 @@ export type ApprovalAction =
 export type ApprovalChannel =
   | "telegram"
   | "discord"
-  | "signal"
   | "whatsapp"
   | "slack"
   | "imessage"
@@ -418,6 +417,14 @@ export interface ApprovalQueue {
   readonly protocolVersion: typeof APPROVAL_EXECUTION_PROTOCOL_VERSION;
   enqueue(input: ApprovalEnqueueInput): Promise<ApprovalRequest>;
   enqueueWithResult(
+    input: ApprovalEnqueueInput,
+  ): Promise<ApprovalEnqueueResult>;
+  /**
+   * Enqueue and await the owner-notification projection. Exact seed/import
+   * workflows use this seam so no background persistence can escape their
+   * receipt and compensation boundary.
+   */
+  enqueueWithResultAndNotification?(
     input: ApprovalEnqueueInput,
   ): Promise<ApprovalEnqueueResult>;
   /**

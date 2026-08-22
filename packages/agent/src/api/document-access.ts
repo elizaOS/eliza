@@ -61,7 +61,13 @@ export const DOCUMENT_SCOPE_VALUES = new Set<DocumentVisibilityScope>([
 /** Namespaced tag prefix carrying the media-format facet on knowledge records. */
 export const MEDIA_FORMAT_TAG_PREFIX = "media-format:";
 
-export type RouteActorRole = "OWNER" | "USER" | "AGENT" | "RUNTIME";
+export type RouteActorRole =
+  | "OWNER"
+  | "ADMIN"
+  | "USER"
+  | "GUEST"
+  | "AGENT"
+  | "RUNTIME";
 
 export type RouteActor = {
   entityId: UUID;
@@ -282,6 +288,8 @@ export function canReadDocumentMemory(
   const scopedEntityId = documentScopedEntityId(memory);
   if (!scopedEntityId) return false;
 
+  if (actor.role === "GUEST") return false;
+
   if (actor.role === "AGENT" || actor.role === "RUNTIME") return true;
   if (actor.role === "OWNER") {
     return filters.scopedToEntityId
@@ -297,6 +305,8 @@ export function canMutateDocumentMemory(
 ): boolean {
   const metadata = asRecord(memory.metadata);
   const scope = getDocumentVisibilityScope(metadata);
+
+  if (actor.role === "GUEST") return false;
 
   if (scope === "global" || scope === "owner-private") {
     return actorCanManageOwnerDocuments(actor);

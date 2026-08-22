@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
+	type AccessContext,
 	type Character,
 	type Memory,
 	MemoryType,
@@ -101,6 +102,33 @@ function userMessage(): Memory {
 }
 
 describe("DocumentService list semantics", () => {
+	it("excludes room documents immediately after membership revocation", async () => {
+		const { adapter, runtime, service } = await makeHarness();
+		const revocationUserId = "00000000-0000-0000-0000-00000000cafe" as UUID;
+		const revocationRoomId = "00000000-0000-0000-0000-00000000da7a" as UUID;
+		await adapter.createRoomParticipants(
+			[AGENT_ID, revocationUserId],
+			revocationRoomId,
+		);
+		const roomDocument = documentMemory(700, { roomId: revocationRoomId });
+		await seedDocuments(runtime, [roomDocument]);
+		const accessContext = {
+			requesterEntityId: revocationUserId,
+			role: "USER",
+			isOwner: false,
+		} satisfies AccessContext;
+
+		await expect(
+			service.listAllDocumentsWithAccessContext(accessContext),
+		).resolves.toMatchObject([{ id: roomDocument.id }]);
+		await adapter.deleteParticipants([
+			{ entityId: revocationUserId, roomId: revocationRoomId },
+		]);
+		await expect(
+			service.listAllDocumentsWithAccessContext(accessContext),
+		).resolves.toEqual([]);
+	});
+
 	it("adds and updates keyword-searchable documents without an embedding model", async () => {
 		const { runtime, service } = await makeHarness();
 		expect(runtime.getModel(ModelType.TEXT_EMBEDDING)).toBeUndefined();

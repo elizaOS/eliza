@@ -15,6 +15,8 @@
  * `shared` surface uses the default profile. There is NO silent degrade — if the
  * system WebView is too old for multi-profile, `createSurface` rejects, because a
  * surface that quietly shares the default store is the exact leak this closes.
+ * Android keeps a loaded profile in use after its WebView is destroyed, so
+ * retired profiles are never reused and are purged at the next process start.
  */
 package ai.eliza.plugins.browsersurface
 
@@ -24,6 +26,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Region
 import android.os.Build
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -38,6 +41,7 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.security.MessageDigest
+import java.util.UUID
 
 internal data class NativeOwnerIdentity(
     val owner: String,
@@ -83,6 +87,11 @@ internal fun supportsIsolatedStorage(multiProfileFeatureSupported: Boolean): Boo
 
 @CapacitorPlugin(name = "ElizaSurfaceManager")
 class ElizaSurfaceManagerPlugin : Plugin() {
+    private companion object {
+        const val TAG = "ElizaSurfaceManager"
+        const val PROFILE_NAMESPACE_PREFIX = "eliza-browser-"
+    }
+
     private data class HostOuterClip(
         val x: Double,
         val y: Double,
@@ -121,6 +130,23 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private val surfaces = HashMap<String, Surface>()
     private val activeOwners = ActiveOwnerRegistry()
+    private val retiredProfiles = HashSet<String>()
+    private val profileProcessNonce = UUID.randomUUID().toString()
+    private var profileSerial = 0L
+
+    override fun load() {
+        super.load()
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return
+        val store = ProfileStore.getInstance()
+        for (name in store.allProfileNames) {
+            if (!name.startsWith(PROFILE_NAMESPACE_PREFIX)) continue
+            try {
+                store.deleteProfile(name)
+            } catch (error: RuntimeException) {
+                Log.w(TAG, "Could not purge retired Browser profile $name", error)
+            }
+        }
+    }
 
     private fun density(): Float = activity.resources.displayMetrics.density
 
@@ -175,18 +201,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         .digest(value.toByteArray(Charsets.UTF_8))
         .joinToString("") { byte -> "%02x".format(byte) }
 
-    private fun profileOwnerPrefix(owner: String): String =
-        "eliza-browser-${digest(owner).take(16)}-"
+    private fun profileName(owner: String, session: String, epoch: Long, id: String): String {
+        profileSerial += 1
+        return "$PROFILE_NAMESPACE_PREFIX${digest("$profileProcessNonce\u0000$owner\u0000$session\u0000$epoch\u0000$id\u0000$profileSerial").take(48)}"
+    }
 
-    private fun profileName(owner: String, session: String, id: String): String =
-        "${profileOwnerPrefix(owner)}${digest("$session\u0000$id").take(32)}"
-
-    private fun releaseProfile(name: String) {
-        val store = ProfileStore.getInstance()
-        val deleted = store.deleteProfile(name)
-        check(deleted || store.getProfile(name) == null) {
-            "isolated Browser profile $name still exists after deletion"
-        }
+    private fun retireProfile(name: String) {
+        retiredProfiles.add(name)
     }
 
     private fun disposeSurface(surface: Surface) {
@@ -199,7 +220,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             surface.webView.destroy()
             surface.disposed = true
         }
-        surface.profileName?.let(::releaseProfile)
+        surface.profileName?.let(::retireProfile)
     }
 
     @PluginMethod
@@ -273,7 +294,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     call.reject("isolated storage requires WebView multi-profile support; system WebView is too old")
                     return@runOnUiThread
                 }
-                profileName = profileName(owner, session, id)
+                profileName = profileName(owner, session, identity.epoch, id)
                 val profile = ProfileStore.getInstance().getOrCreateProfile(profileName)
                 WebViewCompat.setProfile(webView, profile.name)
             }
@@ -303,7 +324,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 host.removeView(container)
                 webView.destroy()
                 try {
-                    profileName?.let(::releaseProfile)
+                    profileName?.let(::retireProfile)
                     call.reject("isolated process policy requires an out-of-app WebView renderer, which is unavailable on this device")
                 } catch (error: RuntimeException) {
                     call.reject("isolated renderer creation failed and its profile could not be released", error)
@@ -619,18 +640,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val surface = surfaces.getValue(id)
                     disposeSurface(surface)
                     surfaces.remove(id)
-                }
-                if (WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
-                    val keepProfiles = desiredIds.mapTo(HashSet()) { id ->
-                        profileName(owner, session, id)
-                    }
-                    val store = ProfileStore.getInstance()
-                    val prefix = profileOwnerPrefix(owner)
-                    for (name in store.allProfileNames) {
-                        if (name.startsWith(prefix) && !keepProfiles.contains(name)) {
-                            releaseProfile(name)
-                        }
-                    }
                 }
                 call.resolve()
             } catch (error: RuntimeException) {

@@ -834,6 +834,7 @@ export class XService extends Service {
         "replyTo",
         "inReplyToTweetId",
       ]);
+      const quotedPostId = readContentString(content, ["quotedPostId"]);
       const postService = new TwitterPostService(base);
       const post = await postService.createPost(
         {
@@ -844,6 +845,7 @@ export class XService extends Service {
           ),
           text,
           ...(replyToTweetId ? { inReplyTo: replyToTweetId } : {}),
+          ...(quotedPostId ? { quotedPostId } : {}),
         },
         profile,
       );

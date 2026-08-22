@@ -29,8 +29,6 @@ interface TopicSearchService {
 	getTopicsForAllRooms?(): Record<string, string[]>;
 }
 
-const RESULT_LIMIT = 10;
-
 function getTopicsService(
 	runtime: IAgentRuntime,
 ): TopicSearchService | undefined {
@@ -97,9 +95,7 @@ export const channelTopicSearchAction: Action = {
 				data: { actionName: "SEARCH_CHANNEL_TOPICS" },
 			};
 		}
-		const probedHits = svc.searchTopics(query, RESULT_LIMIT + 1);
-		const hasMore = probedHits.length > RESULT_LIMIT;
-		const hits = probedHits.slice(0, RESULT_LIMIT);
+		const hits = svc.searchTopics(query);
 		const roomCount = svc.getTopicsForAllRooms
 			? Object.keys(svc.getTopicsForAllRooms()).length
 			: null;
@@ -114,11 +110,11 @@ export const channelTopicSearchAction: Action = {
 						.map((h) => `- ${h.roomId}: ${h.matchedTopics.join(", ")}`)
 						.join(
 							"\n",
-						)}${hasMore ? `\n- More matches exist beyond the ${RESULT_LIMIT} shown.` : ""}\n\nScope: searched ${scopeText}; rooms not active or hydrated since process start were not scanned.`;
+						)}\n\nScope: searched ${scopeText}; rooms not active or hydrated since process start were not scanned.`;
 		return {
 			success: true,
 			text,
-			values: { success: true, matchCount: hits.length, hasMore },
+			values: { success: true, matchCount: hits.length, hasMore: false },
 			data: {
 				actionName: "SEARCH_CHANNEL_TOPICS",
 				query: queryLogView(query),
@@ -127,8 +123,7 @@ export const channelTopicSearchAction: Action = {
 					kind: "in_memory_lru",
 					roomCount,
 					topicsPerRoom: CHANNEL_TOPICS_LRU_CAPACITY,
-					limit: RESULT_LIMIT,
-					hasMore,
+					hasMore: false,
 				},
 			},
 		};

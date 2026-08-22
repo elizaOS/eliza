@@ -37,7 +37,7 @@ export const MODEL_GATEWAY_TOKEN_KEY = "ELIZA_MODEL_GATEWAY_TOKEN";
  * credential `AcpService.buildEnv` merge paths can carry into a child env:
  * - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `CEREBRAS_API_KEY` — on the
  *   host-env forwarding allowlist (`shouldForwardEnv`).
- * - `ELIZA_OPENCODE_API_KEY` / `ELIZA_E2E_CEREBRAS_API_KEY` — raw provider
+ * - `ELIZA_E2E_CEREBRAS_API_KEY` — raw provider
  *   keys forwarded via the broad `ELIZA_` prefix rule.
  * - `CLAUDE_CODE_OAUTH_TOKEN` — injected by multi-account selection
  *   (`selectCodingAccount` envPatch) for linked Claude subscriptions.
@@ -52,7 +52,6 @@ export const MODEL_GATEWAY_EXCLUDED_PROVIDER_KEYS = [
   "ANTHROPIC_API_KEY",
   "CODEX_API_KEY",
   "CEREBRAS_API_KEY",
-  "ELIZA_OPENCODE_API_KEY",
   "ELIZA_E2E_CEREBRAS_API_KEY",
   "CLAUDE_CODE_OAUTH_TOKEN",
 ] as const;

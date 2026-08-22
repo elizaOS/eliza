@@ -173,7 +173,13 @@ import {
 } from "@elizaos/ui/utils/cloud-agent-base";
 // biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
-import { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import {
+  type ComponentType,
+  lazy,
+  type ReactNode,
+  StrictMode,
+  Suspense,
+} from "react";
 import ReactDomClient from "react-dom/client";
 import {
   APP_BRANDING_BASE,
@@ -225,7 +231,10 @@ import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
 } from "./plugin-registrations";
-import { resolveRendererShellKind } from "./renderer-shell-scope";
+import {
+  PHONE_COMPANION_AGENT_VIEW_ID,
+  resolveRendererShellKind,
+} from "./renderer-shell-scope";
 import {
   applyRuntimeChooserOverrideFromUrl,
   removeUrlParameter,
@@ -312,6 +321,17 @@ const App = lazy(async () => {
 const AppWindowRenderer = lazyNamedComponent<{ slug: string }>(async () => {
   const mod = await import("@elizaos/ui/components/apps/AppWindowRenderer");
   return mod.AppWindowRenderer;
+});
+
+const ShellViewAgentSurface = lazyNamedComponent<{
+  viewId: string;
+  surfaceKind: "app-shell";
+  children: ReactNode;
+}>(async () => {
+  const mod = await import(
+    "@elizaos/ui/components/views/ShellViewAgentSurface"
+  );
+  return mod.ShellViewAgentSurface;
 });
 
 /** Desktop-only shell widgets — never static-import into the login entry. */
@@ -2218,7 +2238,10 @@ function handleDeepLink(url: string): undefined | Promise<boolean> {
   // the target tab never opened. (Chat-launch deep links below stay on the
   // hash — the always-mounted ChatOverlay claims the launch payload
   // from the hash directly.)
-  const navigationIntent = resolveDeepLinkNavigationIntent(path);
+  const navigationIntent = resolveDeepLinkNavigationIntent(
+    path,
+    parsed.searchParams,
+  );
   if (navigationIntent) {
     return dispatchDeepLinkNavigation(navigationIntent);
   }
@@ -2783,7 +2806,12 @@ function mountReactApp(): void {
     ) : (
       <AppProvider branding={APP_BRANDING}>
         {phoneCompanion ? (
-          <PhoneCompanionApp />
+          <ShellViewAgentSurface
+            viewId={PHONE_COMPANION_AGENT_VIEW_ID}
+            surfaceKind="app-shell"
+          >
+            <PhoneCompanionApp />
+          </ShellViewAgentSurface>
         ) : detachedShell ? (
           <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
             <DetachedShellRoot route={windowShellRoute} />

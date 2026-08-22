@@ -10,8 +10,10 @@ process.env.NODE_ENV ||= "test";
 process.env.MOCK_REDIS = "1";
 process.env.SKIP_AGENT_SANDBOX_ENSURE = "1";
 
+import { installAgentNodeOccurrenceTriggerForTests } from "../../agent-node-occurrence-test-support";
 import { closeDatabaseConnectionsForTests, dbWrite } from "../../client";
 import { agentBackupCatalogAuthorities } from "../../schemas/agent-backup-catalog";
+import { agentNodeIncarnationHistories } from "../../schemas/agent-node-incarnation-histories";
 import { agentSandboxBackups, agentSandboxes } from "../../schemas/agent-sandboxes";
 import { dockerNodes } from "../../schemas/docker-nodes";
 import { organizations } from "../../schemas/organizations";
@@ -149,6 +151,7 @@ beforeAll(async () => {
         organizations,
         users,
         userCharacters,
+        agentNodeIncarnationHistories,
         dockerNodes,
         agentSandboxes,
         agentSandboxBackups,
@@ -157,6 +160,9 @@ beforeAll(async () => {
       dbWrite as never,
     );
     await apply();
+    await installAgentNodeOccurrenceTriggerForTests((statement) =>
+      dbWrite.execute(sql.raw(statement)),
+    );
     for (const migration of [
       "../../migrations/0189_agent_sandbox_lifecycle_revision_scope.sql",
       "../../migrations/0235_agent_backup_rpo_scheduler.sql",
@@ -177,6 +183,7 @@ beforeEach(async () => {
   await dbWrite.delete(agentBackupCatalogAuthorities);
   await dbWrite.delete(agentSandboxes);
   await dbWrite.delete(dockerNodes);
+  await dbWrite.delete(agentNodeIncarnationHistories);
   await dbWrite.delete(userCharacters);
   await dbWrite.delete(users);
   await dbWrite.delete(organizations);

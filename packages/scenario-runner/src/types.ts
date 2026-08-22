@@ -273,6 +273,7 @@ export interface TurnReport {
   statusCode?: number;
   responseBody?: unknown;
   actionsCalled: CapturedAction[];
+  validation?: ScenarioTurnExecution["validation"];
   durationMs: number;
   failedAssertions: string[];
   /**

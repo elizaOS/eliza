@@ -11,7 +11,7 @@ import { entityGraphProvider } from "./providers/entity-graph.js";
 export const relationshipsPlugin: Plugin = {
   name: "relationships",
   description:
-    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH graph-CRUD action (create/read/list/log_interaction/set_identity/set_relationship/merge over the runtime EntityStore/RelationshipStore), the ENTITY_GRAPH planner-context provider, the /relationships viewer, and a drizzle pgSchema('app_relationships'). The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
+    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, the /relationships viewer, and a drizzle pgSchema('app_relationships'). Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by @elizaos/agent's KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
   dependencies: ["@elizaos/plugin-sql"],
   actions: [entityAction],
   providers: [entityGraphProvider],
