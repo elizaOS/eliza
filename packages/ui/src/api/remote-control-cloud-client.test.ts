@@ -1,4 +1,5 @@
 /** Contract validation for owner-scoped remote host and pairing responses. */
+import { ElizaError } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -213,6 +214,83 @@ describe("RemoteControlCloudClient", () => {
     await expect(client.listSessions(HOST_ID)).rejects.toThrow(
       "different host",
     );
+  });
+
+  it("drains every host revocation cleanup page before resolving", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          id: HOST_ID,
+          status: "revoked",
+          cleanup: { sessions: 100, commands: 500, more: true },
+        }),
+      )
+      .mockResolvedValueOnce(
+        response({
+          id: HOST_ID,
+          status: "revoked",
+          cleanup: { sessions: 2, commands: 7, more: false },
+        }),
+      );
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request,
+    });
+
+    await expect(client.revokeHost(HOST_ID)).resolves.toBeUndefined();
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      `https://cloud.example/api/v1/remote/hosts/${HOST_ID}/revoke`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      `https://cloud.example/api/v1/remote/hosts/${HOST_ID}/revoke`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("rejects missing cleanup progress instead of finalizing locally", async () => {
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request: vi
+        .fn()
+        .mockResolvedValue(response({ id: HOST_ID, status: "revoked" })),
+    });
+
+    const failure = await client.revokeHost(HOST_ID).catch((cause) => cause);
+    expect(failure).toBeInstanceOf(ElizaError);
+    expect(failure).toMatchObject({
+      code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+      context: { hostId: HOST_ID, reason: "malformed_response" },
+    });
+  });
+
+  it("rejects a non-progressing continuation instead of looping", async () => {
+    const request = vi.fn().mockResolvedValue(
+      response({
+        id: HOST_ID,
+        status: "revoked",
+        cleanup: { sessions: 0, commands: 0, more: true },
+      }),
+    );
+    const client = new RemoteControlCloudClient({
+      baseUrl: "https://cloud.example",
+      authToken: "token",
+      request,
+    });
+
+    const failure = await client.revokeHost(HOST_ID).catch((cause) => cause);
+    expect(failure).toBeInstanceOf(ElizaError);
+    expect(failure).toMatchObject({
+      code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+      context: { hostId: HOST_ID, reason: "non_progressing_page" },
+    });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it("rejects relay envelopes that are malformed or bound to another command", async () => {
