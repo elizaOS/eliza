@@ -78,11 +78,17 @@ const SYNTHETIC_ASSISTANT_FAILURE_KINDS = new Set([
 	"persistence_error",
 ]);
 const RECALL_REFERENTIAL_PATTERNS = [
-	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,
-	/\b(?:my|our|the)\s+(?:last|previous|prior|earlier)\b.*\b(?:question|request|message|ask|thing|calculation|math|topic)\b/i,
-	/\b(?:last|previous|prior|earlier)\s+(?:math|calculation|question|request|message)\b/i,
-	/\b(?:earlier|previously|before)\b.*\b(?:i|we|you)\s+(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
-	/\b(?:remind me|recall|remember)\b.*\b(?:what|when|which)\b.*\b(?:asked|said|told|mentioned|discussed|computed|calculated)\b/i,
+	/\bwhat\s+(?:did|was|were)\s+(?:i|we|you)\b.*\b(?:ask|say|tell|answer|repl(?:y|ied)|respond(?:ed)?|compute|calculate|mention|discuss|talk(?:ed)?\s+about)\b/i,
+	/\b(?:my|our|the)\s+(?:last|previous|prior|earlier)\b.*\b(?:question|request|message|ask|answer|reply|thing|calculation|math|topic)\b/i,
+	/\b(?:last|previous|prior|earlier)\s+(?:math|calculation|question|request|message|answer|reply)\b/i,
+	/\b(?:earlier|previously|before|back then)\b.*\b(?:i|we|you)\s+(?:asked|said|told|answered|replied|responded|mentioned|discussed|computed|calculated)\b/i,
+	/\b(?:remind me|recall|remember)\b.*\b(?:what|when|which)\b.*\b(?:asked|said|told|answered|replied|mentioned|discussed|computed|calculated)\b/i,
+	// Recap/summary asks read the same expanded window (live 2026-08-22: the
+	// 10-row default window made "catch me up" recaps shallow and left "what
+	// did you answer" unanswerable once the reply scrolled out).
+	/\b(?:summari[sz]e|recap|catch\s+me\s+up|catch\s+up\s+on)\b.*\b(?:chat|channel|room|conversation|messages?|here|talking)\b/i,
+	/\bwhat\s+(?:have|has|were?)\b.*\b(?:been\s+)?(?:talking|discussed|said|going\s+on)\b/i,
+	/\b(?:last|past)\s+\d+\s+messages\b/i,
 ];
 
 function asObjectRecord(value: unknown): Record<string, unknown> | null {
