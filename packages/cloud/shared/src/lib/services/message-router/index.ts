@@ -17,6 +17,8 @@ import {
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
 import { logger } from "../../utils/logger";
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
+
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import {
   isPhoneMessagePersistenceFailure,
@@ -26,6 +28,26 @@ import {
   PHONE_MESSAGE_ROUTING_UNAVAILABLE_CODE,
   phoneErrorDiagnostic,
 } from "../phone-error-diagnostics";
+
+export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
+const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
+
+/**
+ * Bounds the router's Twilio REST hop through the shared provider transport so
+ * a hung or unbounded Twilio response cannot pin an outbound send.
+ */
+export function messageRouterTwilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedProviderFetch(input, init, {
+    provider: "twilio",
+    timeoutMs,
+    maxResponseBytes: MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES,
+  });
+}
+
 
 function isUndefinedTableError(error: unknown): boolean {
   return isPostgresUndefinedTableError(error);
@@ -496,7 +518,7 @@ class MessageRouterService {
       }
 
       // Twilio REST API
-      const response = await fetch(
+      const response = await messageRouterTwilioFetch(
         `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
         {
           method: "POST",
