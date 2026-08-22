@@ -623,10 +623,16 @@ export class FinancesRepository {
       const identityId = toText(identity.id);
       const canonicalSourceId = toText(identity.source_id, args.source.id);
       const replacedConnectionId = toText(identity.connection_id);
+      const duplicateSourceIds = new Set<string>();
 
       // If a prior race left the same connection attached to a second logical
-      // row, remove that losing claim before moving the canonical identity.
+      // row, retain its source id so its rows can be reconciled after the
+      // canonical source exists, then remove the losing identity claim.
       for (const duplicate of identities.slice(1)) {
+        const duplicateSourceId = toText(duplicate.source_id);
+        if (duplicateSourceId && duplicateSourceId !== canonicalSourceId) {
+          duplicateSourceIds.add(duplicateSourceId);
+        }
         await executeRawSqlTx(
           tx,
           `DELETE FROM ${FINANCE_TABLES.paymentSourceIdentities}
@@ -669,7 +675,7 @@ export class FinancesRepository {
         !Array.isArray(existingPlaid)
           ? (existingPlaid as Record<string, unknown>)
           : {};
-      const canonical: LifeOpsPaymentSource = {
+      let canonical: LifeOpsPaymentSource = {
         ...args.source,
         id: canonicalSourceId,
         lastSyncedAt: existing?.lastSyncedAt ?? args.source.lastSyncedAt,
@@ -688,6 +694,59 @@ export class FinancesRepository {
         createdAt: existing?.createdAt ?? args.source.createdAt,
       };
       await executeRawSqlTx(tx, paymentSourceUpsertSql(canonical));
+      for (const duplicateSourceId of duplicateSourceIds) {
+        // Preserve unique provider history on the canonical source while
+        // dropping duplicate external ids or legacy tuples already present.
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentTransactions} losing
+            WHERE losing.agent_id = ${sqlQuote(args.source.agentId)}
+              AND losing.source_id = ${sqlQuote(duplicateSourceId)}
+              AND EXISTS (
+                SELECT 1
+                  FROM ${FINANCE_TABLES.paymentTransactions} canonical_tx
+                 WHERE canonical_tx.agent_id = losing.agent_id
+                   AND canonical_tx.source_id = ${sqlQuote(canonicalSourceId)}
+                   AND (
+                     (losing.external_id IS NOT NULL
+                       AND canonical_tx.external_id = losing.external_id)
+                     OR
+                     (losing.external_id IS NULL
+                       AND canonical_tx.external_id IS NULL
+                       AND canonical_tx.posted_at = losing.posted_at
+                       AND canonical_tx.amount_usd = losing.amount_usd
+                       AND canonical_tx.merchant_normalized = losing.merchant_normalized)
+                   )
+              )`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `UPDATE ${FINANCE_TABLES.paymentTransactions}
+              SET source_id = ${sqlQuote(canonicalSourceId)}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND source_id = ${sqlQuote(duplicateSourceId)}`,
+        );
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentSources}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND id = ${sqlQuote(duplicateSourceId)}`,
+        );
+      }
+      if (duplicateSourceIds.size > 0) {
+        const countRows = await executeRawSqlTx(
+          tx,
+          `SELECT COUNT(*) AS count
+             FROM ${FINANCE_TABLES.paymentTransactions}
+            WHERE agent_id = ${sqlQuote(args.source.agentId)}
+              AND source_id = ${sqlQuote(canonicalSourceId)}`,
+        );
+        canonical = {
+          ...canonical,
+          transactionCount: toNumber(countRows[0]?.count),
+        };
+        await executeRawSqlTx(tx, paymentSourceUpsertSql(canonical));
+      }
       await executeRawSqlTx(
         tx,
         `UPDATE ${FINANCE_TABLES.paymentSourceIdentities}
@@ -775,6 +834,63 @@ export class FinancesRepository {
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(transactionId)}`,
     );
+  }
+
+  /** Deletes every Plaid-derived row for a source and refreshes its count. */
+  async deletePaymentTransactionsForSource(
+    agentId: string,
+    sourceId: string,
+  ): Promise<number> {
+    return withTransaction(this.runtime, async (tx) => {
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}
+        RETURNING id`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSources}
+            SET transaction_count = 0
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(sourceId)}`,
+      );
+      return deleted.length;
+    });
+  }
+
+  /** Deletes Plaid-derived rows for one revoked provider account only. */
+  async deletePaymentTransactionsForPlaidAccount(
+    agentId: string,
+    sourceId: string,
+    accountId: string,
+  ): Promise<number> {
+    return withTransaction(this.runtime, async (tx) => {
+      const deleted = await executeRawSqlTx(
+        tx,
+        `DELETE FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}
+            AND metadata_json::jsonb ->> 'accountId' = ${sqlQuote(accountId)}
+        RETURNING id`,
+      );
+      const countRows = await executeRawSqlTx(
+        tx,
+        `SELECT COUNT(*) AS count
+           FROM ${FINANCE_TABLES.paymentTransactions}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND source_id = ${sqlQuote(sourceId)}`,
+      );
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSources}
+            SET transaction_count = ${sqlInteger(toNumber(countRows[0]?.count))}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(sourceId)}`,
+      );
+      return deleted.length;
+    });
   }
 
   /**

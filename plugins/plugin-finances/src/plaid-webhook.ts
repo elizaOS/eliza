@@ -42,6 +42,10 @@ export type PlaidWebhookAction =
   | "reauth"
   /** A healthy Item needs update-mode Link for a lifecycle/account change. */
   | "update"
+  /** Item-wide consent was revoked; purge derived data and offer update mode. */
+  | "permission_revoked"
+  /** One account was revoked; purge only that account and offer update mode. */
+  | "account_revoked"
   /** The Item is gone upstream — run disconnect cleanup locally. */
   | "disconnect"
   /** Informational; record and ignore. */
@@ -64,11 +68,6 @@ const UPDATE_CODES = new Set([
   "NEW_ACCOUNTS_AVAILABLE",
 ]);
 
-const DISCONNECT_CODES = new Set([
-  "USER_PERMISSION_REVOKED",
-  "USER_ACCOUNT_REVOKED",
-]);
-
 /** Maps a verified webhook onto the action the finance back-end should take. */
 export function classifyPlaidWebhook(
   payload: PlaidWebhookPayload,
@@ -78,9 +77,8 @@ export function classifyPlaidWebhook(
     return "sync";
   }
   if (payload.webhook_type === "ITEM") {
-    if (DISCONNECT_CODES.has(code)) {
-      return "disconnect";
-    }
+    if (code === "USER_PERMISSION_REVOKED") return "permission_revoked";
+    if (code === "USER_ACCOUNT_REVOKED") return "account_revoked";
     if (UPDATE_CODES.has(code)) {
       return "update";
     }

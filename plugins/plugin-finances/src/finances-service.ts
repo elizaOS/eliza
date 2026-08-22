@@ -105,11 +105,11 @@ const PLAID_RELINK_CODES = new Set([
 ]);
 const PLAID_REVOKED_ERROR_CODES = new Set([
   "USER_PERMISSION_REVOKED",
-  "USER_ACCOUNT_REVOKED",
   "INVALID_ACCESS_TOKEN",
   "ITEM_NOT_FOUND",
 ]);
 const PLAID_JWK_CACHE_TTL_MS = 10 * 60_000;
+const PLAID_SYNC_BLOCKED_UPDATE_REASONS = new Set(["USER_PERMISSION_REVOKED"]);
 const plaidJwkCache = new Map<
   string,
   {
@@ -167,6 +167,7 @@ type PlaidPaymentMetadata = Record<string, unknown> & {
   } | null;
   lastWebhook?: { code: string; receivedAt: string };
   updateReason?: string;
+  revokedAccountIds?: string[];
 };
 
 type PaypalCapability = { hasReporting: boolean; hasIdentity: boolean };
@@ -201,6 +202,13 @@ function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
   }
   if (typeof metadata.connectionId !== "string") {
     delete metadata.connectionId;
+  }
+  if (Array.isArray(metadata.revokedAccountIds)) {
+    metadata.revokedAccountIds = metadata.revokedAccountIds.filter(
+      (accountId): accountId is string => typeof accountId === "string",
+    );
+  } else {
+    delete metadata.revokedAccountIds;
   }
   return metadata;
 }
@@ -1294,6 +1302,13 @@ export class FinancesService {
       );
     }
     const cursor = plaidMetadata?.cursor ?? "";
+    const revokedAccountIds = new Set(
+      Array.isArray(plaidMetadata?.revokedAccountIds)
+        ? plaidMetadata.revokedAccountIds.filter(
+            (accountId): accountId is string => typeof accountId === "string",
+          )
+        : [],
+    );
 
     let pageCursor = cursor;
     let added: PlaidTransactionDto[] = [];
@@ -1385,8 +1400,16 @@ export class FinancesService {
           }
           fail(error.status, error.message, error.code ?? undefined);
         }
-        added.push(...delta.added);
-        modified.push(...delta.modified);
+        added.push(
+          ...delta.added.filter(
+            (transaction) => !revokedAccountIds.has(transaction.account_id),
+          ),
+        );
+        modified.push(
+          ...delta.modified.filter(
+            (transaction) => !revokedAccountIds.has(transaction.account_id),
+          ),
+        );
         removedExternalIds.push(
           ...delta.removed.map((transaction) => transaction.transaction_id),
         );
@@ -1531,8 +1554,32 @@ export class FinancesService {
       status,
       updateReason: null,
     });
-    await this.repository.upsertPaymentSource(updated);
-    return updated;
+    const updatedMetadata = readPlaidPaymentMetadata(updated.metadata.plaid);
+    if (!updatedMetadata) {
+      fail(500, "Plaid source metadata disappeared during update completion.");
+    }
+    const authoritativeAccountIds = new Set(
+      status.institution.accounts.map((account) => account.accountId),
+    );
+    const stillRevokedAccountIds = (metadata.revokedAccountIds ?? []).filter(
+      (accountId) => !authoritativeAccountIds.has(accountId),
+    );
+    if (stillRevokedAccountIds.length === 0) {
+      delete updatedMetadata.revokedAccountIds;
+    } else {
+      updatedMetadata.revokedAccountIds = stillRevokedAccountIds;
+      updatedMetadata.updateReason = "USER_ACCOUNT_REVOKED";
+    }
+    const completed = {
+      ...updated,
+      status:
+        status.error || stillRevokedAccountIds.length > 0
+          ? ("needs_attention" as const)
+          : ("active" as const),
+      metadata: { ...updated.metadata, plaid: updatedMetadata },
+    };
+    await this.repository.upsertPaymentSource(completed);
+    return completed;
   }
 
   /**
@@ -1564,7 +1611,11 @@ export class FinancesService {
       accountMask:
         args.status.institution.primaryAccountMask?.slice(0, 16) ?? null,
       status:
-        args.status.error || args.updateReason ? "needs_attention" : "active",
+        args.status.error ||
+        args.updateReason ||
+        (args.metadata.revokedAccountIds?.length ?? 0) > 0
+          ? "needs_attention"
+          : "active",
       metadata: { ...args.source.metadata, plaid },
       updatedAt: new Date().toISOString(),
     };
@@ -1737,7 +1788,11 @@ export class FinancesService {
     };
     if (action === "sync") {
       await this.repository.upsertPaymentSource(stamp(source));
-      if (source.status === "disconnected")
+      if (
+        source.status === "disconnected" ||
+        (metadata.updateReason &&
+          PLAID_SYNC_BLOCKED_UPDATE_REASONS.has(metadata.updateReason))
+      )
         return { handled: false, action, sourceId: source.id };
       await this.syncPlaidTransactions({ sourceId: source.id });
     } else if (action === "reauth") {
@@ -1767,6 +1822,90 @@ export class FinancesService {
             updateReason: payload.webhook_code,
           }),
         ),
+      );
+    } else if (action === "account_revoked") {
+      const accountId =
+        typeof payload.account_id === "string" ? payload.account_id.trim() : "";
+      if (!accountId) {
+        fail(400, "Plaid USER_ACCOUNT_REVOKED webhook is missing account_id.");
+      }
+      const deleted =
+        await this.repository.deletePaymentTransactionsForPlaidAccount(
+          this.agentId(),
+          source.id,
+          accountId,
+        );
+      const accounts = Array.isArray(metadata.accounts)
+        ? metadata.accounts.filter(
+            (account) => !isRecord(account) || account.accountId !== accountId,
+          )
+        : [];
+      const revokedAccount = Array.isArray(metadata.accounts)
+        ? metadata.accounts.find(
+            (account) => isRecord(account) && account.accountId === accountId,
+          )
+        : undefined;
+      const replacementMask = accounts.find(
+        (account) => isRecord(account) && typeof account.mask === "string",
+      );
+      const revokedMask =
+        isRecord(revokedAccount) && typeof revokedAccount.mask === "string"
+          ? revokedAccount.mask
+          : null;
+      const accountRevokedPlaid: PlaidPaymentMetadata = {
+        ...metadata,
+        accounts,
+        revokedAccountIds: Array.from(
+          new Set([...(metadata.revokedAccountIds ?? []), accountId]),
+        ),
+        updateReason: payload.webhook_code,
+      };
+      await this.repository.upsertPaymentSource(
+        stamp({
+          ...source,
+          accountMask:
+            revokedMask && source.accountMask === revokedMask
+              ? isRecord(replacementMask) &&
+                typeof replacementMask.mask === "string"
+                ? replacementMask.mask.slice(0, 16)
+                : null
+              : source.accountMask,
+          status: "needs_attention",
+          transactionCount: Math.max(0, source.transactionCount - deleted),
+          metadata: {
+            ...source.metadata,
+            plaid: accountRevokedPlaid,
+          },
+        }),
+      );
+    } else if (action === "permission_revoked") {
+      await this.repository.deletePaymentTransactionsForSource(
+        this.agentId(),
+        source.id,
+      );
+      const permissionRevokedPlaid: PlaidPaymentMetadata = {
+        connectionId: metadata.connectionId,
+        environment: metadata.environment,
+        itemError: {
+          code: payload.webhook_code,
+          message: payload.error?.error_message ?? null,
+        },
+        updateReason: payload.webhook_code,
+      };
+      await this.repository.upsertPaymentSource(
+        stamp({
+          ...source,
+          label: "Plaid connection",
+          institution: null,
+          accountMask: null,
+          status: "needs_attention",
+          lastSyncedAt: null,
+          transactionCount: 0,
+          metadata: {
+            ...source.metadata,
+            plaid: permissionRevokedPlaid,
+          },
+        }),
       );
     } else if (action === "disconnect") {
       try {

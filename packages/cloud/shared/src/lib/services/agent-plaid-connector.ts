@@ -106,6 +106,10 @@ const accountsResponseSchema = z.object({
 
 const removeResponseSchema = z.object({ request_id: z.string().min(1) });
 
+const webhookUpdateResponseSchema = z.object({
+  item: z.object({ item_id: z.string().min(1) }),
+});
+
 const webhookKeyResponseSchema = z.object({
   key: z.object({
     alg: z.literal("ES256"),
@@ -336,6 +340,20 @@ export async function removePlaidItem(args: {
 }): Promise<void> {
   const config = requireConfig(args.environment);
   await plaidPost(config, "/item/remove", { access_token: args.accessToken }, removeResponseSchema);
+}
+
+/** Updates the callback on an existing Item; Link's `webhook` field is ignored in update mode. */
+export async function updatePlaidItemWebhook(args: {
+  accessToken: string;
+  webhookUrl: string;
+}): Promise<void> {
+  const config = requireConfig();
+  await plaidPost(
+    config,
+    "/item/webhook/update",
+    { access_token: args.accessToken, webhook: args.webhookUrl },
+    webhookUpdateResponseSchema,
+  );
 }
 
 export interface PlaidTransactionDelta {

@@ -21,6 +21,7 @@ import {
   type PlaidTransactionDelta,
   removePlaidItem,
   syncPlaidTransactions,
+  updatePlaidItemWebhook,
 } from "./agent-plaid-connector";
 import { EncryptionKeyMismatchError } from "./secrets/encryption";
 
@@ -63,6 +64,7 @@ interface PlaidConnectionStore {
 interface PlaidProtocol {
   createLinkToken(args: {
     organizationId: string;
+    connectionId?: string;
     userId: string;
     accessToken?: string;
     webhookUrl?: string;
@@ -76,6 +78,7 @@ interface PlaidProtocol {
     count?: number;
   }): Promise<PlaidTransactionDelta>;
   remove(accessToken: string, environment?: PlaidEnvironment): Promise<void>;
+  updateWebhook(accessToken: string, webhookUrl: string): Promise<void>;
   environment(): PlaidEnvironment;
 }
 
@@ -96,6 +99,7 @@ const defaultProtocol: PlaidProtocol = {
   itemStatus: (accessToken) => getPlaidItemStatus({ accessToken }),
   sync: (args) => syncPlaidTransactions(args),
   remove: (accessToken, environment) => removePlaidItem({ accessToken, environment }),
+  updateWebhook: (accessToken, webhookUrl) => updatePlaidItemWebhook({ accessToken, webhookUrl }),
   environment: getPlaidEnvironment,
 };
 
@@ -113,7 +117,15 @@ export class PlaidConnectionService {
   }): Promise<{ linkToken: string; expiration: string; environment: PlaidEnvironment }> {
     const connection = await this.requireConnection(args.organizationId, args.connectionId);
     const accessToken = await this.getAccessToken(connection);
-    return this.protocol.createLinkToken({ ...args, accessToken });
+    if (args.webhookUrl) {
+      await this.protocol.updateWebhook(accessToken, args.webhookUrl);
+    }
+    return this.protocol.createLinkToken({
+      organizationId: args.organizationId,
+      connectionId: args.connectionId,
+      userId: args.userId,
+      accessToken,
+    });
   }
 
   async status(args: { organizationId: string; connectionId: string }): Promise<

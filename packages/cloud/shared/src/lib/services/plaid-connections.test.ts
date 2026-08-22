@@ -86,6 +86,7 @@ function harness(existing: VendorConnection | null = connection()) {
       hasMore: false,
     })),
     remove: mock(async () => undefined),
+    updateWebhook: mock(async () => undefined),
     environment: mock(() => "sandbox" as const),
   };
   return { store, protocol, service: new PlaidConnectionService(store, protocol) };
@@ -212,9 +213,12 @@ describe("PlaidConnectionService", () => {
       organizationId: "org-a",
       connectionId: connection().id,
       userId: "user-a",
-      webhookUrl: "https://agent.example/plaid/webhook",
       accessToken: "plaid-secret-token",
     });
+    expect(allowed.protocol.updateWebhook).toHaveBeenCalledWith(
+      "plaid-secret-token",
+      "https://agent.example/plaid/webhook",
+    );
 
     const denied = harness(null);
     await expect(
@@ -225,6 +229,24 @@ describe("PlaidConnectionService", () => {
       }),
     ).rejects.toMatchObject({ status: 404 } satisfies Partial<PlaidConnectionError>);
     expect(denied.protocol.createLinkToken).not.toHaveBeenCalled();
+    expect(denied.protocol.updateWebhook).not.toHaveBeenCalled();
+  });
+
+  test("does not mint an update token when webhook registration fails", async () => {
+    const { service, protocol } = harness();
+    protocol.updateWebhook.mockRejectedValueOnce(
+      new AgentPlaidConnectorError(503, "Plaid webhook update failed.", "API_ERROR"),
+    );
+
+    await expect(
+      service.createUpdateLinkToken({
+        organizationId: "org-a",
+        connectionId: connection().id,
+        userId: "user-a",
+        webhookUrl: "https://agent.example/plaid/webhook",
+      }),
+    ).rejects.toMatchObject({ status: 503, code: "API_ERROR" });
+    expect(protocol.createLinkToken).not.toHaveBeenCalled();
   });
 
   test("resolves signed webhook Item ids inside the authenticated organization", async () => {

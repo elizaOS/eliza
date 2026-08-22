@@ -325,6 +325,80 @@ describe("Plaid item lifecycle — real PGLite", () => {
     expect(fake.revokeCalls).toHaveLength(0);
   });
 
+  it("converges pre-existing identity and connection rows into one source", async () => {
+    const sourceA = await linkFreshSource(
+      "item-collision-a",
+      "ins_collision",
+      "acct-collision-a",
+    );
+    const sourceB = await linkFreshSource(
+      "item-collision-b",
+      "ins_collision",
+      "acct-collision-b",
+    );
+    await service.upsertPlaidTransaction({
+      sourceId: sourceA.id,
+      transaction: txn("collision-duplicate", {
+        account_id: "acct-collision-a",
+      }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceA.id,
+      transaction: txn("collision-a-only", { account_id: "acct-collision-a" }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceB.id,
+      transaction: txn("collision-duplicate", {
+        account_id: "acct-collision-b",
+      }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceB.id,
+      transaction: txn("collision-b-only", { account_id: "acct-collision-b" }),
+    });
+
+    const connectionA = (sourceA.metadata.plaid as { connectionId: string })
+      .connectionId;
+    const connectionB = (sourceB.metadata.plaid as { connectionId: string })
+      .connectionId;
+    fake.exchangeResult = {
+      ...exchange(
+        "item-collision-regrant",
+        "ins_collision",
+        "acct-collision-a",
+      ),
+      connectionId: connectionB,
+      connectionCreated: false,
+    };
+    fake.revokeCalls = [];
+
+    const converged = await service.completePlaidLink({
+      publicToken: "public-collision-regrant",
+    });
+    expect(converged.id).toBe(sourceA.id);
+    expect(converged.transactionCount).toBe(3);
+    const sources = (
+      await repository.listPaymentSources(runtime.agentId)
+    ).filter((source) => source.id === sourceA.id || source.id === sourceB.id);
+    expect(sources).toHaveLength(1);
+    const canonicalSource = sources[0];
+    if (!canonicalSource)
+      throw new Error("canonical collision source is missing");
+    expect(
+      (canonicalSource.metadata.plaid as { connectionId: string }).connectionId,
+    ).toBe(connectionB);
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: sourceA.id,
+        })
+      )
+        .map((transaction) => transaction.externalId)
+        .sort(),
+    ).toEqual(["collision-a-only", "collision-b-only", "collision-duplicate"]);
+    expect(fake.revokeCalls).toEqual([connectionA]);
+  });
+
   it("marks the source needs_attention on ITEM_LOGIN_REQUIRED and recovers via update mode", async () => {
     const source = await linkFreshSource("item-reauth", "ins_reauth");
     fake.failNextSyncWith = new PlaidManagedClientError(
@@ -541,6 +615,13 @@ describe("Plaid item lifecycle — real PGLite", () => {
             type: "depository",
             subtype: "savings",
           },
+          {
+            accountId: "item-hook-acct-3",
+            name: "Brokerage",
+            mask: "3333",
+            type: "investment",
+            subtype: "brokerage",
+          },
         ],
       },
     };
@@ -568,6 +649,7 @@ describe("Plaid item lifecycle — real PGLite", () => {
     expect(healthyPlaid?.accounts.map((account) => account.accountId)).toEqual([
       "item-hook-acct-1",
       "item-hook-acct-2",
+      "item-hook-acct-3",
     ]);
 
     await service.processPlaidWebhook({
@@ -586,25 +668,208 @@ describe("Plaid item lifecycle — real PGLite", () => {
       (afterSync.metadata.plaid as { updateReason: string }).updateReason,
     ).toBe("NEW_ACCOUNTS_AVAILABLE");
 
+    // Once the owner has completed update mode, account-scoped revocation
+    // removes only that account's data and preserves the Item for regrant.
+    await service.completePlaidUpdate({ sourceId: source.id });
+    fake.pages.set("hc1", {
+      added: [
+        txn("h-account-1", { account_id: "item-hook-acct-1" }),
+        txn("h-account-2", { account_id: "item-hook-acct-2" }),
+        txn("h-account-3", { account_id: "item-hook-acct-3" }),
+      ],
+      modified: [],
+      removed: [],
+      nextCursor: "hc2",
+      hasMore: false,
+    });
+    await service.syncPlaidTransactions({ sourceId: source.id });
+    const revokesBeforeAccountRevocation = fake.revokeCalls.length;
+    const accountRevoked = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "USER_ACCOUNT_REVOKED",
+      item_id: "item-hook",
+      account_id: "item-hook-acct-2",
+    });
+    expect(accountRevoked.action).toBe("account_revoked");
+    expect(fake.revokeCalls).toHaveLength(revokesBeforeAccountRevocation);
+    const secondAccountRevoked = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "USER_ACCOUNT_REVOKED",
+      item_id: "item-hook",
+      account_id: "item-hook-acct-3",
+    });
+    expect(secondAccountRevoked.action).toBe("account_revoked");
+    const accountRevokedSource = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(accountRevokedSource).not.toBeNull();
+    if (!accountRevokedSource)
+      throw new Error("account-revoked source is missing");
+    expect(accountRevokedSource.status).toBe("needs_attention");
+    expect(
+      (
+        accountRevokedSource.metadata.plaid as {
+          accounts: Array<{ accountId: string }>;
+          revokedAccountIds: string[];
+          updateReason: string;
+        }
+      ).accounts.map((account) => account.accountId),
+    ).toEqual(["item-hook-acct-1"]);
+    expect(
+      (
+        accountRevokedSource.metadata.plaid as {
+          revokedAccountIds: string[];
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-2", "item-hook-acct-3"]);
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: source.id,
+        })
+      ).map((transaction) => transaction.externalId),
+    ).not.toContain("h-account-2");
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: source.id,
+        })
+      ).map((transaction) => transaction.externalId),
+    ).not.toContain("h-account-3");
+
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_EXPIRATION",
+      item_id: "item-hook",
+    });
+    const afterInterveningLifecycle = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(afterInterveningLifecycle).not.toBeNull();
+    if (!afterInterveningLifecycle)
+      throw new Error("intervening lifecycle source is missing");
+    expect(
+      (
+        afterInterveningLifecycle.metadata.plaid as {
+          revokedAccountIds: string[];
+          updateReason: string;
+        }
+      ).updateReason,
+    ).toBe("PENDING_EXPIRATION");
+    expect(
+      (
+        afterInterveningLifecycle.metadata.plaid as {
+          revokedAccountIds: string[];
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-2", "item-hook-acct-3"]);
+
+    fake.pages.set("hc2", {
+      added: [
+        txn("h-account-1-after", { account_id: "item-hook-acct-1" }),
+        txn("h-account-2-replayed", { account_id: "item-hook-acct-2" }),
+        txn("h-account-3-replayed", { account_id: "item-hook-acct-3" }),
+      ],
+      modified: [],
+      removed: [],
+      nextCursor: "hc3",
+      hasMore: false,
+    });
+    const survivingAccountSync = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(survivingAccountSync.handled).toBe(true);
+    const postRevocationExternalIds = (
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      })
+    ).map((transaction) => transaction.externalId);
+    expect(postRevocationExternalIds).toContain("h-account-1-after");
+    expect(postRevocationExternalIds).not.toContain("h-account-2");
+    expect(postRevocationExternalIds).not.toContain("h-account-2-replayed");
+    expect(postRevocationExternalIds).not.toContain("h-account-3");
+    expect(postRevocationExternalIds).not.toContain("h-account-3-replayed");
+
+    const fullAccountStatus = fake.itemStatus;
+    if (!fullAccountStatus)
+      throw new Error("full account status fixture is missing");
+    fake.itemStatus = {
+      ...fullAccountStatus,
+      institution: {
+        ...fullAccountStatus.institution,
+        accounts: fullAccountStatus.institution.accounts.filter(
+          (account) => account.accountId !== "item-hook-acct-3",
+        ),
+      },
+    };
+    const partiallyRegranted = await service.completePlaidUpdate({
+      sourceId: source.id,
+    });
+    expect(partiallyRegranted.status).toBe("needs_attention");
+    expect(
+      (
+        partiallyRegranted.metadata.plaid as {
+          revokedAccountIds?: string[];
+          updateReason?: string;
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-3"]);
+    expect(
+      (partiallyRegranted.metadata.plaid as { updateReason?: string })
+        .updateReason,
+    ).toBe("USER_ACCOUNT_REVOKED");
+
+    fake.itemStatus = fullAccountStatus;
+    const fullyRegranted = await service.completePlaidUpdate({
+      sourceId: source.id,
+    });
+    expect(fullyRegranted.status).toBe("active");
+    expect(
+      (fullyRegranted.metadata.plaid as { revokedAccountIds?: string[] })
+        .revokedAccountIds,
+    ).toBeUndefined();
+
+    const revokesBeforePermissionRevocation = fake.revokeCalls.length;
     const revoked = await service.processPlaidWebhook({
       webhook_type: "ITEM",
       webhook_code: "USER_PERMISSION_REVOKED",
       item_id: "item-hook",
     });
-    expect(revoked.action).toBe("disconnect");
+    expect(revoked.action).toBe("permission_revoked");
     const dead = await repository.getPaymentSource(runtime.agentId, source.id);
-    expect(dead?.status).toBe("disconnected");
-    expect(fake.revokeCalls).toContain(
-      (source.metadata.plaid as { connectionId: string }).connectionId,
-    );
+    expect(dead?.status).toBe("needs_attention");
+    expect(dead?.institution).toBeNull();
+    expect(dead?.accountMask).toBeNull();
+    expect(dead?.transactionCount).toBe(0);
+    expect(fake.revokeCalls).toHaveLength(revokesBeforePermissionRevocation);
+    expect(
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      }),
+    ).toHaveLength(0);
 
-    // A sync webhook for a disconnected source is recorded but not synced.
+    // Revoked consent blocks sync until update mode clears the hold.
     const late = await service.processPlaidWebhook({
       webhook_type: "TRANSACTIONS",
       webhook_code: "SYNC_UPDATES_AVAILABLE",
       item_id: "item-hook",
     });
     expect(late.handled).toBe(false);
+  });
+
+  it("rejects account-revocation webhooks without the affected account id", async () => {
+    await linkFreshSource("item-account-revoke-invalid", "ins_account_revoke");
+    await expect(
+      service.processPlaidWebhook({
+        webhook_type: "ITEM",
+        webhook_code: "USER_ACCOUNT_REVOKED",
+        item_id: "item-account-revoke-invalid",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it("reconciles reversed ERROR and LOGIN_REPAIRED hints against current Item status", async () => {
