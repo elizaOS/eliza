@@ -11,10 +11,11 @@
  *   5. `process.env[KEY]` for keys flagged sensitive in any registered plugin
  *      (does not mutate process.env — only mirrors to the vault).
  *
- * Idempotent by `vault.has(key)` per-key checks — no separate marker
- * file. Re-running the bootstrap after a partial run is safe and cheap;
- * only keys not already in the vault get re-attempted. Per-key
- * failures are isolated; if every write fails the function throws.
+ * Idempotent through atomic set-if-absent plus exact protected read-back — no
+ * separate marker file. An identical protected winner is reused; an unreadable
+ * or different existing row is never overwritten, and its plaintext recovery
+ * source is retained. Per-key failures are isolated; if every persistent write
+ * fails the function throws.
  */
 
 // `@elizaos/app-core` is the host layer ABOVE `@elizaos/agent`, so importing
@@ -31,7 +32,10 @@ import {
 } from "@elizaos/agent/runtime/operations/vault-bridge";
 import { logger } from "@elizaos/core";
 import { loadRegistry } from "@elizaos/registry/first-party";
-import type { Vault } from "@elizaos/vault";
+import {
+  type Vault,
+  writeSensitiveValueIfAbsentVerified,
+} from "@elizaos/vault";
 import {
   CONNECTOR_SECRET_FIELDS,
   connectorVaultKey,
@@ -147,7 +151,9 @@ async function migrateElizaJson(
     if (!isSensitive) return;
     const vaultKey = options.vaultKey ?? key;
     try {
-      await vault.set(vaultKey, value, { sensitive: true });
+      await writeSensitiveValueIfAbsentVerified(vault, vaultKey, value, {
+        caller: "vault-bootstrap:eliza-json",
+      });
       container[key] = bridge.formatVaultRef(vaultKey);
       migrated.push(vaultKey);
       mutated = true;
@@ -247,7 +253,9 @@ async function migrateConfigEnvFile(
       sensitiveKeys.has(key) || inferSensitiveByHeuristic(key);
     if (!isSensitive) continue;
     try {
-      await vault.set(key, value, { sensitive: true });
+      await writeSensitiveValueIfAbsentVerified(vault, key, value, {
+        caller: "vault-bootstrap:config-env",
+      });
       await bridge.persistConfigEnv(key, bridge.formatVaultRef(key), {
         stateDir,
       });
@@ -281,10 +289,16 @@ async function mirrorProcessEnvSensitive(
     const isSensitive =
       sensitiveKeys.has(key) || inferSensitiveByHeuristic(key);
     if (!isSensitive) continue;
-    if (await vault.has(key)) continue;
     try {
-      await vault.set(key, rawValue, { sensitive: true });
-      migrated.push(key);
+      const inserted = await writeSensitiveValueIfAbsentVerified(
+        vault,
+        key,
+        rawValue,
+        {
+          caller: "vault-bootstrap:process-env",
+        },
+      );
+      if (inserted) migrated.push(key);
     } catch (err) {
       failed.push(key);
       logger.error(
