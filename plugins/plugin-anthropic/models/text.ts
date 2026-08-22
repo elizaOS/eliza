@@ -476,6 +476,22 @@ function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
 }
 
+function getBuiltInMaxOutputTokens(modelName: ModelName): number {
+  const name = modelName.toLowerCase();
+  if (
+    name === "claude-fable-5" ||
+    name === "claude-opus-5" ||
+    name === "claude-opus-4-8" ||
+    name === "claude-opus-4-7" ||
+    name === "claude-opus-4-6" ||
+    name === "claude-sonnet-5" ||
+    name === "claude-sonnet-4-6"
+  ) {
+    return 128_000;
+  }
+  return isOpus4Model(modelName) ? 32_000 : 64_000;
+}
+
 /**
  * Whether a model accepts the effort parameter (output_config.effort) at all.
  * Live-probed 2026-07-12: haiku-4-5 rejects both `effort` ("This model does
@@ -1054,7 +1070,7 @@ function resolveTextParams(
   // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
   // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
   const modelHardCap =
-    getMaxOutputTokensOverride(runtime, modelName) ?? (isOpus4Model(modelName) ? 32_000 : 64_000);
+    getMaxOutputTokensOverride(runtime, modelName) ?? getBuiltInMaxOutputTokens(modelName);
   const requestedMaxTokens = params.maxTokens;
   if (
     !params.omitMaxTokens &&
@@ -1181,7 +1197,7 @@ async function generateTextWithModel(
         resolved.prompt,
         modelName,
         modelType,
-        params.maxTokens,
+        resolved.maxTokens,
         systemPrompt
       );
     }
@@ -1190,7 +1206,7 @@ async function generateTextWithModel(
       resolved.prompt,
       modelName,
       modelType,
-      params.maxTokens,
+      resolved.maxTokens,
       systemPrompt
     );
     return result.text;
