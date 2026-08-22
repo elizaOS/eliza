@@ -346,8 +346,9 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 	 * skipped silently — string refs are advisory and the parent's handler
 	 * can still dispatch to them internally if the planner picks the parent.
 	 *
-	 * Inline-Action sub-actions (where `parent.subActions[i]` is an Action
-	 * object, not a string) are always expanded regardless of this map.
+	 * When provided, inline-Action sub-actions must also resolve through this
+	 * map. Runtime callers pass the already-authorized per-turn action set, so
+	 * expanding an absent inline object would disclose a rejected child.
 	 */
 	actionLookup?:
 		| ReadonlyMap<string, PlannerToolActionShape>
@@ -470,7 +471,8 @@ function resolveActionLookup(
  * alongside the parent, so relevance metadata cannot hide a callable action.
  *
  * Sub-action resolution:
- *   - Inline `Action` sub-actions on `parent.subActions` are always expanded.
+ *   - Inline `Action` sub-actions are expanded only when their exact name is
+ *     present in `actionLookup` or the authorized top-level input.
  *   - String-only sub-action references are resolved through `actionLookup`
  *     when provided; references that cannot be resolved are skipped silently
  *     (the parent's handler can still route to them).
@@ -485,6 +487,7 @@ export function buildPlannerToolsFromTieredActions(
 	actions: ReadonlyArray<PlannerToolActionShape>,
 	options: BuildPlannerToolsFromTieredActionsOptions = {},
 ): ToolDefinition[] {
+	const hasAuthoritativeActionLookup = options.actionLookup !== undefined;
 	const actionLookup = resolveActionLookup(options.actionLookup);
 
 	// Top up the lookup with anything already in `actions` so children that
@@ -521,7 +524,11 @@ export function buildPlannerToolsFromTieredActions(
 				subActionName = subAction;
 			} else if (subAction && typeof subAction === "object") {
 				subActionName = subAction.name;
-				child = subAction;
+				child = hasAuthoritativeActionLookup
+					? actionLookup.has(subActionName)
+						? actionLookup.get(subActionName)
+						: undefined
+					: subAction;
 			}
 			if (typeof subAction === "string") {
 				child = actionLookup.get(subAction);

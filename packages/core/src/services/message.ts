@@ -3170,32 +3170,6 @@ const CODING_SUB_AGENT_CONTEXTS: readonly AgentContext[] = [
 	"automation",
 ];
 
-/**
- * Exact action surface for a direct coding turn. Context overlap is too broad:
- * attachment and media actions also carry file/automation contexts, and each
- * extra tool schema enlarges the request. A large tool set + a large file
- * generation is exactly what makes weaker hosted models (Cerebras glm-4.7)
- * intermittently reject the request (server_error / 400) or narrate instead of
- * emitting FILE. Keep the surface aligned with the tools that actually do the
- * work (FILE/SHELL/WORKTREE/WEB plus terminal controls).
- */
-const CODING_DIRECT_ACTIONS: ReadonlySet<string> = new Set(
-	// Stored in normalizeActionIdentifier() form (uppercase, underscores
-	// stripped), since that is what the filter compares against.
-	[
-		"READ",
-		"WRITE",
-		"EDIT",
-		"SHELL",
-		"WORKTREE",
-		"WEBFETCH",
-		"WEBSEARCH",
-		"REPLY",
-		"STOP",
-		"IGNORE",
-	],
-);
-
 function actionNameTokenKey(name: string): string {
 	return normalizeActionName(name).split("_").filter(Boolean).sort().join("_");
 }
@@ -8901,29 +8875,15 @@ export async function runV5MessageRuntimeStage1(args: {
 		// returning zero candidates → planner got no native tools → model narrated.
 		const useFullSurface = args.codingMode === true;
 		const plannerCandidateActions = useFullSurface
-			? (args.runtime.actions ?? []).filter(
-					(action) =>
-						// Full-surface = a trusted coding turn. It must NOT receive the
-						// whole chat action catalog (MESSAGE_*/POST_*/…) — 40 tools drowns
-						// the model and it never calls FILE. Instead treat the coding
-						// contexts (code/files/terminal/automation) as active and run the
-						// normal execution gates: that admits the coding tools
-						// (FILE/SHELL/WORKTREE, which gate on a coding context) plus
-						// context-free control actions (REPLY/STOP/…) and drops the
-						// messaging/social chat actions. Role still applies (FILE=ADMIN,
-						// SHELL=OWNER; the coding sub-agent runs as OWNER). UI/orchestration
-						// parents that pass the gate but a coder never needs are dropped
-						// too (see CODING_DIRECT_ACTIONS) to keep the request
-						// small enough for weaker hosted models to handle large builds.
-						CODING_DIRECT_ACTIONS.has(normalizeActionIdentifier(action.name)) &&
-						// Static candidate-action set for a coding sub-agent — no concrete
-						// turn message here, so skip the private-action gate; the eventual
-						// execution still enforces it through the executor.
-						canActionRun(action, {
-							activeContexts: CODING_SUB_AGENT_CONTEXTS,
-							userRoles: [senderRole],
-							skipPrivateGate: true,
-						}),
+			? (args.runtime.actions ?? []).filter((action) =>
+					// The execution gates are the authority for a focused coding turn.
+					// Names may rank tools but cannot form a second fixed allowlist that
+					// silently hides newly registered coding capabilities.
+					canActionRun(action, {
+						activeContexts: CODING_SUB_AGENT_CONTEXTS,
+						userRoles: [senderRole],
+						skipPrivateGate: true,
+					}),
 				)
 			: await collectV5PlannerCandidateActions({
 					runtime: args.runtime,

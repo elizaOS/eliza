@@ -2334,7 +2334,7 @@ export type ElizaDesktopRPCSchema = {
         response: { revoked: true };
       };
       remoteTargetFinalizeHostRevoke: {
-        params: { hostId: string; cloudRevoked: true };
+        params: { hostId: string };
         response: { cleaned: true };
       };
 

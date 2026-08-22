@@ -6,7 +6,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { canonicalizeRemoteControlValue } from "@elizaos/shared/contracts/remote-control";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Database } from "../client";
 import { hashRemoteHostToken } from "../crypto/remote-host-token";
 import { dbWrite } from "../helpers";
@@ -202,19 +202,45 @@ export class RemoteHostsRepository {
     organizationId: string,
     userId: string,
   ): Promise<RevokeRemoteHostResult | undefined> {
+    return this.revokeMatching(
+      hostId,
+      and(eq(remoteHosts.organization_id, organizationId), eq(remoteHosts.user_id, userId)),
+    );
+  }
+
+  /**
+   * Lets an enrolled native host revoke only itself with its one-time bearer.
+   * The token hash remains usable for bounded cleanup continuation after the
+   * first page changes the host status to revoked.
+   */
+  async revokeAuthenticated(
+    hostId: string,
+    token: string,
+  ): Promise<RevokeRemoteHostResult | undefined> {
+    let tokenHash: string;
+    try {
+      tokenHash = await hashRemoteHostToken(token);
+    } catch {
+      // error-policy:J3 malformed bearer material is an explicit auth miss.
+      return undefined;
+    }
+    return this.revokeMatching(hostId, eq(remoteHosts.host_token_hash, tokenHash));
+  }
+
+  private async revokeMatching(
+    hostId: string,
+    ownership: SQL<unknown> | undefined,
+  ): Promise<RevokeRemoteHostResult | undefined> {
     return this.database.transaction(async (tx) => {
       const [current] = await tx
         .select()
         .from(remoteHosts)
-        .where(
-          and(
-            eq(remoteHosts.id, hostId),
-            eq(remoteHosts.organization_id, organizationId),
-            eq(remoteHosts.user_id, userId),
-          ),
-        )
+        .where(and(eq(remoteHosts.id, hostId), ownership))
         .for("update");
       if (!current) return undefined;
+
+      const organizationId = current.organization_id;
+      const userId = current.user_id;
 
       const now = await readPostLockDatabaseNow(tx);
       const alreadyRevoked = current.status === "revoked";

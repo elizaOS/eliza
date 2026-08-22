@@ -89,6 +89,12 @@ class FakeRelay implements RemoteTargetRelayTransport {
   }[] = [];
   startFailure: Error | null = null;
   completionFailure: Error | null = null;
+  readonly revocations: Array<{
+    hostId: string;
+    status: "revoked";
+    alreadyRevoked: boolean;
+    cleanup: { sessions: number; commands: number; more: boolean };
+  }> = [];
 
   async enroll(
     _input: RemoteTargetEnrollmentRequest,
@@ -128,6 +134,17 @@ class FakeRelay implements RemoteTargetRelayTransport {
       throw error;
     }
     this.completions.push(input);
+  }
+
+  async revokeHost(): Promise<{
+    hostId: string;
+    status: "revoked";
+    alreadyRevoked: boolean;
+    cleanup: { sessions: number; commands: number; more: boolean };
+  }> {
+    const page = this.revocations.shift();
+    if (!page) throw new Error("authoritative revocation unavailable");
+    return page;
   }
 }
 
@@ -755,5 +772,83 @@ describe("remote target durable runner", () => {
     await service.configureLoopback(secondConfiguration);
     expect((await service.status()).running).toBe(true);
     await service.stop();
+  });
+
+  it("requires authoritative host revocation before deleting native credentials", async () => {
+    const harness = await createHarness();
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      service.finalizeHostRevoke({ hostId: HOST_ID, cloudRevoked: true }),
+    ).rejects.toThrow("authoritative revocation unavailable");
+    await expect(harness.vault.load()).resolves.toMatchObject({
+      status: "enrolled",
+    });
+  });
+
+  it("drains authoritative revoke pages before clearing the journal and vault", async () => {
+    const harness = await createHarness();
+    await createRunner(harness, () => undefined);
+    harness.relay.revocations.push(
+      {
+        hostId: HOST_ID,
+        status: "revoked",
+        alreadyRevoked: false,
+        cleanup: { sessions: 100, commands: 500, more: true },
+      },
+      {
+        hostId: HOST_ID,
+        status: "revoked",
+        alreadyRevoked: true,
+        cleanup: { sessions: 1, commands: 0, more: false },
+      },
+    );
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      service.finalizeHostRevoke({ hostId: HOST_ID }),
+    ).resolves.toEqual({ cleaned: true });
+    await expect(harness.vault.load()).resolves.toBeNull();
+    await expect(harness.state.read()).resolves.toEqual({
+      version: 1,
+      sessions: {},
+      commands: {},
+    });
+    expect(harness.relay.revocations).toHaveLength(0);
+  });
+
+  it("rejects non-progressing revoke continuation without local cleanup", async () => {
+    const harness = await createHarness();
+    harness.relay.revocations.push({
+      hostId: HOST_ID,
+      status: "revoked",
+      alreadyRevoked: true,
+      cleanup: { sessions: 0, commands: 0, more: true },
+    });
+    const service = new RemoteTargetDesktopService(
+      harness.vault,
+      harness.state,
+      harness.relay,
+      () => NOW,
+    );
+
+    await expect(
+      service.finalizeHostRevoke({ hostId: HOST_ID }),
+    ).rejects.toMatchObject({
+      code: "REMOTE_HOST_CLEANUP_PROGRESS_INVALID",
+    });
+    await expect(harness.vault.load()).resolves.toMatchObject({
+      status: "enrolled",
+    });
   });
 });
