@@ -360,7 +360,7 @@ describe("logger", () => {
         source: "test",
       }),
     ).toContain(
-      '[CHAT:IN]  #agent:Eliza room=room-123 msg=message- source=test "hello \\"there\\""',
+      '[CHAT:IN]  #agent:Eliza room=room-123456789 msg=message-123456789 source=test "hello \\"there\\""',
     );
     expect(
       logChatOut({
@@ -372,7 +372,7 @@ describe("logger", () => {
         providers: ["test-provider"],
       }),
     ).toContain(
-      '[CHAT:OUT] #agent:Eliza room=room-123 action=reply len=4 "done" providers=test-provider',
+      '[CHAT:OUT] #agent:Eliza room=room-123456789 action=reply len=4 "done" providers=test-provider',
     );
   });
 });

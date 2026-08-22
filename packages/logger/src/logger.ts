@@ -14,8 +14,10 @@
  * because this process's ring buffer, file sinks, and WS stream have no
  * downstream scrubber. Keeps
  * an in-memory ring buffer with real-time listeners for WebSocket streaming,
- * and lazily opens optional file sinks (`output.log`, `prompts.log`,
+ * and lazily opens optional lossless file sinks (`output.log`, `prompts.log`,
  * `chat.log`, all 0600) with prompt/response/chat instrumentation helpers.
+ * File writes retain unwritten bytes across partial writes and transient sink
+ * failures, then retry them in order without truncating diagnostic content.
  * Adapts between node and a console-based browser path.
  */
 // Test hook to clear env cache in logger tests (kept internal)
@@ -788,7 +790,7 @@ function redactTrailingArgs(args: readonly unknown[]): unknown[] {
  * cwd) or LOG_FILE=/path/to/file.log.
  * Disabled by default.
  */
-let _fileLogState: "pending" | "active" | "disabled" = "pending";
+let _fileLogState: "pending" | "active" = "pending";
 let _fileLogFd: number | null = null;
 // One-shot guard so a persistent file-write failure surfaces exactly once on
 // stderr instead of being swallowed forever by the catch in writeLogEntryToFile
@@ -798,6 +800,29 @@ let _fileLogWriteErrorWarned = false;
 let _promptLogFd: number | null = null;
 let _chatLogFd: number | null = null;
 let _promptLogCounter = 0;
+let _fileLogExitHandlerRegistered = false;
+
+type FileLogSink = "output" | "prompt" | "chat";
+
+interface PendingFileWrite {
+  bytes: Uint8Array;
+  offset: number;
+}
+
+const pendingFileWrites: Record<FileLogSink, PendingFileWrite[]> = {
+  output: [],
+  prompt: [],
+  chat: [],
+};
+
+class LoggerFileWriteError extends Error {
+  readonly code = "LOGGER_FILE_WRITE_INCOMPLETE";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "LoggerFileWriteError";
+  }
+}
 
 let _fs: typeof import("node:fs") | null = null;
 function getFs(): typeof import("node:fs") | null {
@@ -846,39 +871,77 @@ function openLogFilePrivate(
   return fd;
 }
 
+function fileLoggingRequested(): boolean {
+  if (typeof process === "undefined" || !process.env || !process.versions) {
+    return false;
+  }
+  if (!process.versions.node && !process.versions.bun) return false;
+
+  const value = process.env.LOG_FILE?.trim();
+  return Boolean(value && value !== "0" && value.toLowerCase() !== "false");
+}
+
+function closeFileLogDescriptors(): void {
+  const fs = getFs();
+  for (const fd of [_fileLogFd, _promptLogFd, _chatLogFd]) {
+    if (fs && fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // error-policy:J6 best-effort fd close during retry/exit cleanup.
+      }
+    }
+  }
+  _fileLogFd = null;
+  _promptLogFd = null;
+  _chatLogFd = null;
+  _fileLogState = "pending";
+}
+
+function warnFileLogFailure(error: unknown): void {
+  if (_fileLogWriteErrorWarned) return;
+  _fileLogWriteErrorWarned = true;
+  try {
+    console.error(
+      `[logger] failed to persist file logs; unwritten bytes remain queued for retry: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  } catch {
+    // error-policy:J7 a failed console sink cannot be re-reported.
+  }
+}
+
+function registerFileLogExitHandler(): void {
+  if (_fileLogExitHandlerRegistered || typeof process === "undefined") return;
+  _fileLogExitHandlerRegistered = true;
+  process.on("exit", () => {
+    flushPendingFileWrites();
+    closeFileLogDescriptors();
+  });
+}
+
 /**
  * Lazily open the log files on the first write.
  * Returns true if the files are ready for writing.
  */
 function ensureFileLog(): boolean {
   if (_fileLogState === "active") return true;
-  if (_fileLogState === "disabled") return false;
-
-  _fileLogState = "disabled";
+  if (!fileLoggingRequested()) return false;
+  registerFileLogExitHandler();
   try {
-    if (typeof process === "undefined" || !process.env || !process.versions)
-      return false;
-    if (!process.versions.node && !process.versions.bun) return false;
-
-    const logFileEnv = process.env.LOG_FILE;
-    if (
-      !logFileEnv ||
-      logFileEnv.trim() === "" ||
-      logFileEnv.trim() === "0" ||
-      logFileEnv.trim().toLowerCase() === "false"
-    ) {
-      return false;
-    }
+    const logFileEnv = process.env.LOG_FILE?.trim();
+    if (!logFileEnv) return false;
 
     const fs = getFs();
     if (!fs) return false;
     const pathMod = require("node:path");
     const isBooleanFlag = ["true", "1", "yes", "on"].includes(
-      logFileEnv.trim().toLowerCase(),
+      logFileEnv.toLowerCase(),
     );
     const logFilePath = isBooleanFlag
       ? pathMod.join(process.cwd(), "output.log")
-      : logFileEnv.trim();
+      : logFileEnv;
     const logDir = pathMod.dirname(
       isBooleanFlag ? pathMod.join(process.cwd(), "output.log") : logFilePath,
     );
@@ -894,70 +957,93 @@ function ensureFileLog(): boolean {
     _chatLogFd = openLogFilePrivate(fs, chatLogPath);
     _fileLogState = "active";
 
-    process.on("exit", () => {
-      const fs2 = getFs();
-      if (fs2 && _fileLogFd !== null) {
-        try {
-          fs2.closeSync(_fileLogFd);
-        } catch {
-          // error-policy:J6 best-effort fd close on process exit.
-        }
-        _fileLogFd = null;
-      }
-      if (fs2 && _promptLogFd !== null) {
-        try {
-          fs2.closeSync(_promptLogFd);
-        } catch {
-          // error-policy:J6 best-effort fd close on process exit.
-        }
-        _promptLogFd = null;
-      }
-      if (fs2 && _chatLogFd !== null) {
-        try {
-          fs2.closeSync(_chatLogFd);
-        } catch {
-          // error-policy:J6 best-effort fd close on process exit.
-        }
-        _chatLogFd = null;
-      }
-    });
-
     return true;
-  } catch {
-    // error-policy:J7 ensureFileLog sets up the logger's own optional file
-    // sink; the logger cannot report a failure to initialize itself through
-    // itself, so a failed setup degrades to no file logging (returns false).
+  } catch (error) {
+    // error-policy:J7 logger setup cannot report through itself. Close every fd
+    // opened by the failed attempt, retain queued records, and retry later.
+    closeFileLogDescriptors();
+    warnFileLogFailure(error);
     return false;
   }
 }
 
-/**
- * Write a formatted log entry to the output file.
- * Skips browser environments, unset LOG_FILE, or a failed file open.
- */
-function writeLogEntryToFile(entry: LogEntry): void {
-  if (!ensureFileLog()) return;
+function sinkFileDescriptor(sink: FileLogSink): number | null {
+  if (sink === "output") return _fileLogFd;
+  if (sink === "prompt") return _promptLogFd;
+  return _chatLogFd;
+}
+
+function flushPendingFileWrites(): boolean {
+  if (Object.values(pendingFileWrites).every((queue) => queue.length === 0)) {
+    return true;
+  }
+  if (!ensureFileLog()) return false;
+
   try {
     const fs = getFs();
-    if (!fs) return;
-    const fd = _fileLogFd;
-    if (fd === null) return;
+    if (!fs) throw new LoggerFileWriteError("node:fs is unavailable");
+
+    for (const sink of ["output", "prompt", "chat"] as const) {
+      const fd = sinkFileDescriptor(sink);
+      if (fd === null) {
+        throw new LoggerFileWriteError(`${sink} sink is not open`);
+      }
+      const queue = pendingFileWrites[sink];
+      while (queue.length > 0) {
+        const pending = queue[0];
+        const remaining = pending.bytes.byteLength - pending.offset;
+        const written = fs.writeSync(
+          fd,
+          pending.bytes,
+          pending.offset,
+          remaining,
+        );
+        if (
+          !Number.isSafeInteger(written) ||
+          written <= 0 ||
+          written > remaining
+        ) {
+          throw new LoggerFileWriteError(
+            `${sink} sink reported invalid progress ${String(written)} for ${remaining} remaining bytes`,
+          );
+        }
+        pending.offset += written;
+        if (pending.offset === pending.bytes.byteLength) queue.shift();
+      }
+    }
+    _fileLogWriteErrorWarned = false;
+    return true;
+  } catch (error) {
+    // error-policy:J7 the logger retains the exact unwritten suffix and retries
+    // it before later records; the direct warning avoids recursive logging.
+    warnFileLogFailure(error);
+    return false;
+  }
+}
+
+function queueFileWrite(sink: FileLogSink, content: string): void {
+  if (!fileLoggingRequested()) return;
+  pendingFileWrites[sink].push({
+    bytes: new TextEncoder().encode(content),
+    offset: 0,
+  });
+  flushPendingFileWrites();
+}
+
+/**
+ * Write a formatted log entry to the output file.
+ * Skips browser environments and unset LOG_FILE. Transient open/write failures
+ * leave the exact unwritten bytes queued for the next write or process exit.
+ */
+function writeLogEntryToFile(entry: LogEntry): void {
+  if (!fileLoggingRequested()) return;
+  try {
     const timestamp = new Date(entry.time).toISOString();
     const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info";
     const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
-    fs.writeSync(fd, line);
+    queueFileWrite("output", line);
   } catch (error) {
-    // A persistent write failure (e.g. #16356's invalid regex, which threw on
-    // every call) must not stay invisible for the sink's whole lifetime — go
-    // straight to stderr once, bypassing the logger that is itself failing.
-    if (!_fileLogWriteErrorWarned) {
-      _fileLogWriteErrorWarned = true;
-      console.error(
-        `[logger] failed to write to the log file; further errors are suppressed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+    warnFileLogFailure(error);
   }
 }
 
@@ -992,8 +1078,6 @@ function promptSlug(
   return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`;
 }
 
-const MAX_PROMPT_LOG_CHARS = 100_000;
-
 function writeToPromptLog(
   slug: string,
   kind: "PROMPT" | "RESPONSE",
@@ -1001,10 +1085,8 @@ function writeToPromptLog(
   body: string,
   metadata?: Record<string, unknown>,
 ): void {
-  if (!ensureFileLog() || _promptLogFd === null) return;
+  if (!fileLoggingRequested()) return;
   try {
-    const fs = getFs();
-    if (!fs) return;
     const sep = "=".repeat(80);
     let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`;
     header += ` ${new Date().toISOString()}\n`;
@@ -1012,19 +1094,11 @@ function writeToPromptLog(
       header += ` ${JSON.stringify(metadata, null, 2)}\n`;
     }
     header += `${sep}\n`;
-    fs.writeSync(_promptLogFd, header);
-    if (body.length > MAX_PROMPT_LOG_CHARS) {
-      fs.writeSync(_promptLogFd, body.substring(0, MAX_PROMPT_LOG_CHARS));
-      fs.writeSync(
-        _promptLogFd,
-        `\n... [TRUNCATED - ${body.length - MAX_PROMPT_LOG_CHARS} more chars]\n`,
-      );
-    } else {
-      fs.writeSync(_promptLogFd, body);
-    }
-    fs.writeSync(_promptLogFd, `\n${sep}\n\n`);
-  } catch {
-    // Silent fail
+    queueFileWrite("prompt", `${header}${body}\n${sep}\n\n`);
+  } catch (error) {
+    // error-policy:J7 prompt instrumentation cannot report through the logger;
+    // formatting failures surface directly while queued writes remain intact.
+    warnFileLogFailure(error);
   }
 }
 
@@ -1037,7 +1111,7 @@ export function logPrompt(
   prompt: string,
   metadata?: PromptLogMetadata,
 ): string {
-  if (!ensureFileLog()) return "";
+  if (!fileLoggingRequested()) return "";
   const counter = ++_promptLogCounter;
   const agentName = metadata?.agentName ?? "unknown";
   const slug = promptSlug(counter, agentName, modelType);
@@ -1057,7 +1131,7 @@ export function logResponse(
   response: string,
   metadata?: ResponseLogMetadata,
 ): string {
-  if (!ensureFileLog()) return "";
+  if (!fileLoggingRequested()) return "";
   const slug = metadata?.promptSlug;
   if (!slug) {
     logger.warn(
@@ -1095,46 +1169,39 @@ export interface ChatOutLogParams {
   actions?: string[];
 }
 
-const CHAT_PREVIEW_IN_MAX = 200;
-const CHAT_PREVIEW_OUT_MAX = 120;
-
-function escapeChatPreview(text: string): string {
-  const safe = text.length > 10_000 ? text.slice(0, 10_000) : text;
-  const oneLine = safe.replace(/\s+/g, " ").trim();
-  return oneLine.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+function escapeChatText(text: string): string {
+  return text
+    .replace(/\\/g, "\\\\")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")
+    .replace(/\t/g, "\\t")
+    .replace(/"/g, '\\"');
 }
 
 function writeChatLine(line: string): void {
-  if (!ensureFileLog() || _chatLogFd === null) return;
+  if (!fileLoggingRequested()) return;
   try {
-    const fs = getFs();
-    if (!fs) return;
     const timestamp = new Date().toISOString();
-    fs.writeSync(_chatLogFd, `${timestamp} ${line}\n`);
-  } catch {
-    // Silent fail
+    queueFileWrite("chat", `${timestamp} ${line}\n`);
+  } catch (error) {
+    // error-policy:J7 chat instrumentation cannot report through the logger;
+    // formatting failures surface directly while queued writes remain intact.
+    warnFileLogFailure(error);
   }
 }
 
 /** Log an incoming message to chat.log. */
 export function logChatIn(params: ChatInLogParams): string {
-  const preview = escapeChatPreview(
-    params.text.length > CHAT_PREVIEW_IN_MAX
-      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
-      : params.text,
-  );
-  const roomShort = params.roomId.slice(0, 8);
-  const msgShort = params.messageId.slice(0, 8);
+  const text = escapeChatText(params.text);
   const source = params.source ?? "unknown";
-  const line = `[CHAT:IN]  #agent:${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`;
+  const line = `[CHAT:IN]  #agent:${params.agentName} room=${params.roomId} msg=${params.messageId} source=${source} "${text}"`;
   writeChatLine(line);
   return line;
 }
 
 /** Log an outgoing response to chat.log. */
 export function logChatOut(params: ChatOutLogParams): string {
-  const roomShort = params.roomId.slice(0, 8);
-  let part = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`;
+  let part = `[CHAT:OUT] #agent:${params.agentName} room=${params.roomId} action=${params.action}`;
   if (params.actions && params.actions.length > 0) {
     part += ` actions=${params.actions.join(",")}`;
   }
@@ -1142,12 +1209,7 @@ export function logChatOut(params: ChatOutLogParams): string {
     part += ` emoji=${params.emoji}`;
   }
   if (params.text !== undefined && params.text !== "") {
-    const preview = escapeChatPreview(
-      params.text.length > CHAT_PREVIEW_OUT_MAX
-        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
-        : params.text,
-    );
-    part += ` len=${params.text.length} "${preview}"`;
+    part += ` len=${params.text.length} "${escapeChatText(params.text)}"`;
   } else if (params.emoji) {
     part += " len=0";
   }
@@ -1155,12 +1217,7 @@ export function logChatOut(params: ChatOutLogParams): string {
     part += ` providers=${params.providers.join(",")}`;
   }
   if (params.reasoning !== undefined && params.reasoning !== "") {
-    const safe = escapeChatPreview(
-      params.reasoning.length > 80
-        ? `${params.reasoning.slice(0, 80)}...`
-        : params.reasoning,
-    );
-    part += ` reasoning="${safe}"`;
+    part += ` reasoning="${escapeChatText(params.reasoning)}"`;
   }
   writeChatLine(part);
   return part;
