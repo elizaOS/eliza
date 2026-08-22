@@ -84,8 +84,8 @@ describe("ElizaAgentsTable per-row view model", () => {
     cleanup();
   });
 
-  it("marks a running cloud sandbox as stoppable with standalone Web UI access", () => {
-    const vm = derive({ status: "running" });
+  it("offers authenticated Web UI pairing for a running dedicated agent without a published URL", () => {
+    const vm = derive({ status: "running", webUiUrl: null });
 
     expect(vm.displayStatus).toBe("running");
     expect(vm.runtimeKind).toBe("sandbox");
@@ -148,6 +148,7 @@ describe("ElizaAgentsTable per-row view model", () => {
               executionTier: "custom",
               dockerImage: "private-image",
               agentName: "Dedicated Eliza",
+              webUiUrl: null,
             }),
           ]}
         />

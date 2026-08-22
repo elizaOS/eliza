@@ -95,7 +95,6 @@ function renderActions() {
               agentId={PERSONAL_ID}
               executionTier="shared"
               status="running"
-              webUiUrl={null}
             />
           }
         />
@@ -156,7 +155,6 @@ describe("Dedicated activation quote", () => {
           agentId="dedicated-agent"
           executionTier="dedicated-always"
           status="running"
-          webUiUrl="https://agent.example"
         />
       </MemoryRouter>,
     );
@@ -220,8 +218,7 @@ describe("Dedicated activation quote", () => {
 
   it("repoints the live chat transport before showing the Dedicated page", async () => {
     const dedicatedAgentId = "00000000-0000-4000-8000-000000000099";
-    const dedicatedApiBase =
-      `http://127.0.0.1:18787/api/v1/eliza/agents/${dedicatedAgentId}/api`;
+    const dedicatedApiBase = `http://127.0.0.1:18787/api/v1/eliza/agents/${dedicatedAgentId}/api`;
     apiWithStatus
       .mockResolvedValueOnce({
         status: 200,
@@ -231,14 +228,16 @@ describe("Dedicated activation quote", () => {
         status: 200,
         data: { success: true, data: { dedicatedAgentId } },
       });
-    runSharedToDedicatedUpgradeHandoff.mockImplementationOnce(async (params) => {
-      await params.onSwitch(dedicatedApiBase);
-      return {
-        status: "switched-empty",
-        imported: 0,
-        sourceCleanup: "preserved-rowless",
-      };
-    });
+    runSharedToDedicatedUpgradeHandoff.mockImplementationOnce(
+      async (params) => {
+        await params.onSwitch(dedicatedApiBase);
+        return {
+          status: "switched-empty",
+          imported: 0,
+          sourceCleanup: "preserved-rowless",
+        };
+      },
+    );
     renderActions();
 
     await userEvent.click(screen.getByTestId("agent-upgrade-tier-button"));
