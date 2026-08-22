@@ -7,8 +7,8 @@
 
 import {
 	composeToolDiagnosticRedactor,
-	projectToolDiagnosticArgs,
-	projectToolDiagnosticValue,
+	projectCompleteToolArgsForModel,
+	projectCompleteToolValueForModel,
 	type ToolDiagnosticTextRedactor,
 } from "../security/tool-diagnostics";
 import type { ActionResult } from "../types/components";
@@ -77,7 +77,7 @@ export function renderActionResultsForModel(
 	let pagesIncluded = 0;
 	const redactText = options.redactText ?? composeToolDiagnosticRedactor();
 	const rendered = results.map((result, index) => {
-		const safeResult = projectToolDiagnosticValue(
+		const safeResult = projectCompleteToolValueForModel(
 			result,
 			redactText,
 		) as PlannerToolResult;
@@ -148,14 +148,17 @@ export function trajectoryStepsToMessages(
 			toolCallId,
 			toolName: step.toolCall.name,
 			input:
-				projectToolDiagnosticArgs(step.toolCall.params ?? {}, redactText) ?? {},
+				projectCompleteToolArgsForModel(
+					step.toolCall.params ?? {},
+					redactText,
+				) ?? {},
 		});
 		messages.push({
 			role: "assistant",
 			content: assistantContent,
 		});
 
-		const safeResult = projectToolDiagnosticValue(
+		const safeResult = projectCompleteToolValueForModel(
 			step.result,
 			redactText,
 		) as PlannerToolResult;

@@ -80,6 +80,35 @@ describe("trajectoryStepsToMessages", () => {
 			);
 		}
 	});
+
+	it("preserves model-bound result and argument fields beyond diagnostic depth", () => {
+		let deepResult: Record<string, unknown> = { sentinel: "DEEP_RESULT" };
+		let deepArgs: Record<string, unknown> = { sentinel: "DEEP_ARGUMENT" };
+		for (let depth = 0; depth < 24; depth++) {
+			deepResult = { child: deepResult };
+			deepArgs = { child: deepArgs };
+		}
+		const step = stepWithResult(1, "complete");
+		if (!step.toolCall) throw new Error("missing tool call");
+		step.toolCall.params = deepArgs;
+		step.result = { success: true, data: deepResult };
+
+		const messages = trajectoryStepsToMessages([step]);
+		expect(JSON.stringify(messages)).toContain("DEEP_RESULT");
+		expect(JSON.stringify(messages)).toContain("DEEP_ARGUMENT");
+		expect(JSON.stringify(messages)).not.toContain("[REDACTED]");
+	});
+
+	it("rejects cyclic model-bound data instead of masking it", () => {
+		const cyclic: Record<string, unknown> = { sentinel: "CYCLE" };
+		cyclic.self = cyclic;
+		const step = stepWithResult(1, "cycle");
+		step.result = { success: true, data: cyclic };
+
+		expect(() => trajectoryStepsToMessages([step])).toThrowError(
+			expect.objectContaining({ code: "MODEL_TOOL_DATA_CYCLE" }),
+		);
+	});
 });
 
 describe("renderActionResultsForModel", () => {

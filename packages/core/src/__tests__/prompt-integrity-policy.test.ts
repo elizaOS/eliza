@@ -77,6 +77,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/truncateToolResultText/,
 		/maxToolResultChars/,
 		/contentProjection/,
+		/projectToolDiagnosticValue/,
+		/projectToolDiagnosticArgs/,
 	],
 	"packages/core/src/services/optimized-prompt-resolver.ts": [
 		/ELIZA_PROMPT_COMPRESS/,
