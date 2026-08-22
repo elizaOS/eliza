@@ -28,7 +28,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/shared";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
@@ -92,13 +92,19 @@ function getBunRuntime(): BunRuntimeLike | null {
   return (globalThis as { Bun?: BunRuntimeLike }).Bun ?? null;
 }
 
+const PROCESS_TERMINATION_GRACE_MS = 5_000;
+
 /** The spawned steward child, normalized across the Bun and Node spawn paths. */
 type StewardProcessHandle = {
-  kill: (signal?: string) => void;
+  kill: (signal?: string) => unknown;
   pid?: number | null;
   exitCode?: number | null;
-  exited?: Promise<number>;
+  exited: Promise<number>;
 };
+
+type ProcessExitWaitResult =
+  | { exited: true }
+  | { exited: false; error?: unknown };
 
 // ---------------------------------------------------------------------------
 // StewardSidecar
@@ -117,6 +123,11 @@ export class StewardSidecar {
    * must not start the restart backoff.
    */
   private discardedProcesses = new WeakSet<StewardProcessHandle>();
+  /** One termination sequence owns a handle even when stop races failed start. */
+  private terminationPromises = new WeakMap<
+    StewardProcessHandle,
+    Promise<void>
+  >();
   private stopping = false;
   private lifecycleGeneration = 0;
   private startPromise: Promise<StewardSidecarStatus> | null = null;
@@ -159,6 +170,19 @@ export class StewardSidecar {
 
     if (this.startPromise) {
       return this.startPromise;
+    }
+
+    if (this.process) {
+      const error = new ElizaError(
+        "Cannot start Steward while the previous child has not confirmed exit",
+        {
+          code: "STEWARD_CHILD_EXIT_UNCONFIRMED",
+          context: { pid: this.process.pid ?? null },
+          severity: "fatal",
+        },
+      );
+      this.updateStatus({ state: "error", error: error.message });
+      throw error;
     }
 
     const generation = ++this.lifecycleGeneration;
@@ -224,9 +248,37 @@ export class StewardSidecar {
 
       return this.status;
     } catch (err) {
-      this.discardSpawnedProcess(spawned);
+      let cleanupError: unknown = null;
+      try {
+        await this.discardSpawnedProcess(spawned, "failed start");
+      } catch (error) {
+        // error-policy:J2 the startup boundary below preserves both the
+        // lifecycle failure and the child-cleanup failure in one typed cause.
+        cleanupError = error;
+      }
       if (!this.isLifecycleActive(generation)) {
+        if (cleanupError) {
+          // error-policy:J6 stop/supersession owns the visible lifecycle state,
+          // but a concurrent cleanup failure must still be observable.
+          logger.warn(
+            { error: cleanupError, generation },
+            "[StewardSidecar] Spawned-child cleanup failed after the start lifecycle was superseded",
+          );
+        }
         return this.status;
+      }
+      if (cleanupError) {
+        const error = new ElizaError(
+          "Steward startup failed and spawned-child cleanup did not complete",
+          {
+            code: "STEWARD_START_CLEANUP_FAILED",
+            cause: new AggregateError([err, cleanupError]),
+            context: { generation, pid: spawned?.pid ?? null },
+            severity: "fatal",
+          },
+        );
+        this.updateStatus({ state: "error", error: error.message });
+        throw error;
       }
       const error = err instanceof Error ? err.message : String(err);
       this.updateStatus({ state: "error", error, pid: null });
@@ -253,21 +305,13 @@ export class StewardSidecar {
     const processToStop = this.process;
     if (processToStop) {
       try {
-        processToStop.kill("SIGTERM");
-        const timeout = setTimeout(() => {
-          try {
-            processToStop.kill("SIGKILL");
-          } catch {
-            // already dead
-          }
-        }, 5_000);
-
-        if (processToStop.exited) {
-          await processToStop.exited;
-        }
-        clearTimeout(timeout);
-      } catch {
-        // process already dead
+        await this.terminateProcess(processToStop, "explicit stop");
+      } catch (error) {
+        // error-policy:J1 the public lifecycle boundary reports an explicit
+        // failed stop and retains the unconfirmed child for a later retry.
+        const message = error instanceof Error ? error.message : String(error);
+        this.updateStatus({ state: "error", error: message });
+        throw error;
       }
       if (this.process === processToStop) {
         this.process = null;
@@ -455,14 +499,7 @@ export class StewardSidecar {
       pipeOutput(proc.stdout, "stdout", this.config.onLog);
       pipeOutput(proc.stderr, "stderr", this.config.onLog);
 
-      proc.exited.then((code: number) => {
-        if (!this.stopping && !this.discardedProcesses.has(proc)) {
-          logger.warn(
-            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
-          );
-          void this.handleCrash(code);
-        }
-      });
+      proc.exited.then((code: number) => this.observeProcessExit(proc, code));
     } else {
       const child = childProcess.spawn("node", [entryPoint], {
         env,
@@ -504,14 +541,7 @@ export class StewardSidecar {
         });
       }
 
-      exitPromise.then((code) => {
-        if (!this.stopping && !this.discardedProcesses.has(handle)) {
-          logger.warn(
-            `[StewardSidecar] Process exited unexpectedly (code ${code})`,
-          );
-          void this.handleCrash(code);
-        }
-      });
+      exitPromise.then((code) => this.observeProcessExit(handle, code));
     }
 
     return true;
@@ -576,8 +606,40 @@ export class StewardSidecar {
           error: null,
         });
       } catch (err) {
-        this.discardSpawnedProcess(spawned);
+        let cleanupError: unknown = null;
+        try {
+          await this.discardSpawnedProcess(spawned, "failed crash restart");
+        } catch (error) {
+          // error-policy:J1 this background restart boundary publishes both
+          // failures as one visible terminal status and structured log.
+          cleanupError = error;
+        }
         if (!this.isLifecycleActive(generation)) {
+          if (cleanupError) {
+            // error-policy:J6 stop/supersession owns the visible lifecycle
+            // state, but its concurrent cleanup failure remains observable.
+            logger.warn(
+              { error: cleanupError, generation },
+              "[StewardSidecar] Spawned-child cleanup failed after the restart lifecycle was superseded",
+            );
+          }
+          return;
+        }
+        if (cleanupError) {
+          const error = new ElizaError(
+            "Steward restart failed and spawned-child cleanup did not complete",
+            {
+              code: "STEWARD_RESTART_CLEANUP_FAILED",
+              cause: new AggregateError([err, cleanupError]),
+              context: { generation, pid: spawned?.pid ?? null },
+              severity: "fatal",
+            },
+          );
+          logger.error(
+            { error },
+            "[StewardSidecar] Crash restart cleanup failed",
+          );
+          this.updateStatus({ state: "error", error: error.message });
           return;
         }
         const error = err instanceof Error ? err.message : String(err);
@@ -604,17 +666,150 @@ export class StewardSidecar {
    * `this.process`, and it is recorded as discarded so its exit is not read as
    * a crash and does not start the restart backoff.
    */
-  private discardSpawnedProcess(spawned: StewardProcessHandle | null): void {
+  private async discardSpawnedProcess(
+    spawned: StewardProcessHandle | null,
+    reason: string,
+  ): Promise<void> {
     if (!spawned || this.process !== spawned) {
       return;
     }
     this.discardedProcesses.add(spawned);
-    try {
-      spawned.kill("SIGTERM");
-    } catch {
-      // Already dead — nothing to reclaim.
+    await this.terminateProcess(spawned, reason);
+    if (this.process === spawned) {
+      this.process = null;
+    }
+  }
+
+  private observeProcessExit(
+    processHandle: StewardProcessHandle,
+    exitCode: number,
+  ): void {
+    if (this.process !== processHandle) {
+      return;
     }
     this.process = null;
+    if (!this.stopping && !this.discardedProcesses.has(processHandle)) {
+      logger.warn(
+        `[StewardSidecar] Process exited unexpectedly (code ${exitCode})`,
+      );
+      void this.handleCrash(exitCode);
+    }
+  }
+
+  private async terminateProcess(
+    processHandle: StewardProcessHandle,
+    reason: string,
+  ): Promise<void> {
+    const existing = this.terminationPromises.get(processHandle);
+    if (existing) {
+      return existing;
+    }
+
+    const termination = this.terminateProcessOnce(processHandle, reason);
+    this.terminationPromises.set(processHandle, termination);
+    try {
+      await termination;
+    } finally {
+      if (this.terminationPromises.get(processHandle) === termination) {
+        this.terminationPromises.delete(processHandle);
+      }
+    }
+  }
+
+  private async terminateProcessOnce(
+    processHandle: StewardProcessHandle,
+    reason: string,
+  ): Promise<void> {
+    const errors: unknown[] = [];
+    this.requestTerminationSignal(processHandle, "SIGTERM", reason, errors);
+
+    let exit = await this.waitForProcessExit(processHandle);
+    if (exit.exited) {
+      return;
+    }
+    if (exit.error) {
+      errors.push(exit.error);
+    }
+    errors.push(
+      new Error(
+        `Steward child did not exit within ${PROCESS_TERMINATION_GRACE_MS}ms of SIGTERM`,
+      ),
+    );
+
+    this.requestTerminationSignal(processHandle, "SIGKILL", reason, errors);
+    exit = await this.waitForProcessExit(processHandle);
+    if (exit.exited) {
+      return;
+    }
+    if (exit.error) {
+      errors.push(exit.error);
+    }
+    errors.push(
+      new Error(
+        `Steward child did not exit within ${PROCESS_TERMINATION_GRACE_MS}ms of SIGKILL`,
+      ),
+    );
+
+    throw new ElizaError(
+      "Steward child failed to confirm exit after SIGTERM and SIGKILL",
+      {
+        code: "STEWARD_CHILD_TERMINATION_FAILED",
+        cause: new AggregateError(errors),
+        context: { pid: processHandle.pid ?? null, reason },
+        severity: "fatal",
+      },
+    );
+  }
+
+  private requestTerminationSignal(
+    processHandle: StewardProcessHandle,
+    signal: "SIGTERM" | "SIGKILL",
+    reason: string,
+    errors: unknown[],
+  ): void {
+    try {
+      const delivered = processHandle.kill(signal);
+      if (delivered === false) {
+        const error = new Error(`Steward child rejected ${signal}`);
+        errors.push(error);
+        logger.warn(
+          { error, pid: processHandle.pid ?? null, reason, signal },
+          "[StewardSidecar] Child termination signal was not delivered",
+        );
+      }
+    } catch (error) {
+      // error-policy:J6 a failed signal request is recorded and the bounded
+      // termination ladder continues; an unconfirmed exit throws below.
+      errors.push(error);
+      logger.warn(
+        { error, pid: processHandle.pid ?? null, reason, signal },
+        "[StewardSidecar] Child termination signal failed",
+      );
+    }
+  }
+
+  private async waitForProcessExit(
+    processHandle: StewardProcessHandle,
+  ): Promise<ProcessExitWaitResult> {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        processHandle.exited.then(
+          (): ProcessExitWaitResult => ({ exited: true }),
+          (error: unknown): ProcessExitWaitResult => ({ exited: false, error }),
+        ),
+        new Promise<ProcessExitWaitResult>((resolve) => {
+          timeout = setTimeout(
+            () => resolve({ exited: false }),
+            PROCESS_TERMINATION_GRACE_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) {
+        clearTimeout(timeout);
+      }
+    }
   }
 
   private isLifecycleActive(generation: number): boolean {
