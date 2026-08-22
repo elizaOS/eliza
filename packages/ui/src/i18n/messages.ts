@@ -7,7 +7,7 @@ import {
   DEFAULT_UI_LANGUAGE,
   UI_LANGUAGES,
   type UiLanguage,
-} from "@elizaos/shared";
+} from "@elizaos/shared/i18n/language";
 import en from "./locales/en.json" with { type: "json" };
 
 // Canonical language codes live in @elizaos/shared (React-free, Node-safe).

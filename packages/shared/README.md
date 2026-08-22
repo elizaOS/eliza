@@ -45,6 +45,7 @@ import "@elizaos/shared/brand.css";
 | Import path | Contents |
 |---|---|
 | `@elizaos/shared` | Root barrel — all runtime-safe exports |
+| `@elizaos/shared/i18n/language` | Dependency-free UI language codes and BCP-47 normalization |
 | `@elizaos/shared/steward-session-client` | Eliza Cloud auth session helpers |
 | `@elizaos/shared/local-inference` | Model catalog, GPU profiles, inference types |
 | `@elizaos/shared/brand` | Brand tokens, external URLs |
