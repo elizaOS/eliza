@@ -212,6 +212,9 @@ type RunOptions = {
   workdir: string;
   args: string[];
   env?: Record<string, string | undefined>;
+  customCredentials?: Record<string, string | undefined>;
+  model?: string;
+  expectedAccountProviderId?: string;
   promptPreview?: string;
   promptLength?: number;
   timeoutMs?: number;
@@ -1979,11 +1982,19 @@ export class AcpService extends Service {
       const accountStrategy = resolveCodingAccountStrategy(
         this.setting("ELIZA_CODING_ACCOUNT_STRATEGY"),
       );
-      const resolvedAccount = await selectCodingAccount(agentType, {
-        sessionKey: id,
-        ...(accountStrategy ? { strategy: accountStrategy } : {}),
-        ...(spawnModel ? { model: spawnModel } : {}),
-      });
+      // A host model gateway owns the billed transport for every backend. Do
+      // not select or stamp a pooled account in that mode: its credential is
+      // intentionally excluded from the child, so attributing usage, health,
+      // or affinity to it would be false. The gateway is resolved before the
+      // pool call so selection itself cannot mutate account affinity.
+      const gatewayControlsBilling = Boolean(resolveModelGatewayConfig());
+      const resolvedAccount = gatewayControlsBilling
+        ? null
+        : await selectCodingAccount(agentType, {
+            sessionKey: id,
+            ...(accountStrategy ? { strategy: accountStrategy } : {}),
+            ...(spawnModel ? { model: spawnModel } : {}),
+          });
       const customCredentials = resolvedAccount
         ? {
             ...(opts.customCredentials ?? {}),
@@ -1999,7 +2010,7 @@ export class AcpService extends Service {
           label: resolvedAccount.meta.label,
           strategy: resolvedAccount.meta.strategy,
         });
-      } else {
+      } else if (!gatewayControlsBilling) {
         // A degraded pool must not hard-fail a spawn, but it must not degrade
         // invisibly either (#9960). Warn loudly only when accounts are connected
         // yet none are healthy — a benign empty pool stays quiet.
@@ -2134,13 +2145,10 @@ export class AcpService extends Service {
         agentType,
         workdir,
         args,
-        env: this.buildEnv(
-          sessionEnv,
-          customCredentials,
-          spawnModel,
-          agentType,
-          id,
-        ),
+        env: sessionEnv,
+        customCredentials,
+        model: spawnModel,
+        expectedAccountProviderId: resolvedAccount?.meta.providerId,
       });
 
       if (result.code !== 0) {
@@ -2400,13 +2408,12 @@ export class AcpService extends Service {
       agentType: session.agentType,
       workdir: session.workdir,
       args,
-      env: this.buildEnv(
-        promptEnv,
-        promptCredentials,
-        promptModel,
-        session.agentType,
-        sessionId,
-      ),
+      env: promptEnv,
+      customCredentials: promptCredentials,
+      model: promptModel,
+      expectedAccountProviderId: accountMetaFromSessionMetadata(
+        session.metadata,
+      )?.providerId,
       promptPreview: preview(text),
       promptLength: text.length,
       timeoutMs: opts.timeoutMs,
@@ -3174,6 +3181,7 @@ export class AcpService extends Service {
         session.agentType,
         session.id,
         opts.codexInitialAgentModeOverride,
+        accountMetaFromSessionMetadata(session.metadata)?.providerId,
       ),
       mcpServers: readConfigMcpServers(),
       onEvent: (event, protocolSessionId) => {
@@ -3267,6 +3275,8 @@ export class AcpService extends Service {
           opts.model,
           opts.session.agentType,
           opts.session.id,
+          undefined,
+          accountMetaFromSessionMetadata(opts.session.metadata)?.providerId,
         );
         const trustedExecutionPath = this.trustedSessionExecutionPath(
           opts.session,
@@ -3786,10 +3796,12 @@ export class AcpService extends Service {
         // re-added and override the selected account on the cli transport.
         env: this.buildEnv(
           opts.env,
-          undefined,
-          undefined,
+          opts.customCredentials,
+          opts.model,
           opts.agentType,
           opts.sessionId,
+          undefined,
+          opts.expectedAccountProviderId,
         ),
         stdio: ["pipe", "pipe", "pipe"],
         // Place the child in its own process group so we can SIGTERM the
@@ -4603,6 +4615,7 @@ export class AcpService extends Service {
     agentType?: AgentType,
     childSessionId?: string,
     codexInitialAgentModeOverride?: CodexAcpInitialAgentMode,
+    expectedAccountProviderId?: string,
   ): NodeJS.ProcessEnv {
     // Deny-list-filtered, allowlisted, casing-canonicalized host env (see
     // forwardableSubAgentEnv / canonicalForwardedEnvKey — Bun on Windows reports
@@ -4774,6 +4787,22 @@ export class AcpService extends Service {
             }
           : undefined,
       );
+      if (
+        expectedAccountProviderId &&
+        opencode.config?.accountProviderId !== expectedAccountProviderId
+      ) {
+        throw new ElizaError(
+          "Selected OpenCode account does not control the configured billing transport.",
+          {
+            code: "OPENCODE_ACCOUNT_TRANSPORT_MISMATCH",
+            context: {
+              selectedProviderId: expectedAccountProviderId,
+              configuredProviderId: opencode.config?.accountProviderId,
+            },
+            severity: "fatal",
+          },
+        );
+      }
       Object.assign(env, opencode.env);
       if (opencode.config) {
         if (opencode.config.accountProviderId) {

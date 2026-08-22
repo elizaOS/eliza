@@ -540,6 +540,37 @@ export function buildOpencodeSpawnConfig(
     );
   }
 
+  // A pooled account is a per-spawn billing decision, so it is authoritative
+  // over the runtime-wide Cloud preference. Without this ordering a session
+  // could be stamped as DeepSeek while OpenCode either received no config
+  // (Cloud selected without a key) or billed Eliza Cloud (Cloud key present).
+  // Gateway stays above this branch: centralized egress is a host security
+  // policy, not a billing preference a child credential may bypass.
+  if (accountRoute) {
+    const selectedAccountRoute = explicitlySelectedRoute(
+      runtime,
+      env,
+      accountRoute,
+    );
+    if (!selectedAccountRoute) {
+      throw new ElizaError(
+        "Selected OpenCode account did not resolve to a billing route.",
+        {
+          code: "OPENCODE_ACCOUNT_ROUTE_MISSING",
+          severity: "fatal",
+        },
+      );
+    }
+    return buildTypedApiRouteConfig(
+      runtime,
+      env,
+      selectedAccountRoute,
+      powerful,
+      fast,
+      accountRoute,
+    );
+  }
+
   if (llmProvider === "cloud") {
     const cloudKey = readConfigCloudKey("apiKey");
     if (!cloudKey) return null;
@@ -554,7 +585,7 @@ export function buildOpencodeSpawnConfig(
     );
   }
 
-  const explicitRoute = explicitlySelectedRoute(runtime, env, accountRoute);
+  const explicitRoute = explicitlySelectedRoute(runtime, env, undefined);
   const typedRoute = explicitRoute ?? autoDetectedRoute(runtime, env);
   if (typedRoute) {
     return buildTypedApiRouteConfig(
@@ -563,7 +594,7 @@ export function buildOpencodeSpawnConfig(
       typedRoute,
       powerful,
       fast,
-      accountRoute,
+      undefined,
     );
   }
 

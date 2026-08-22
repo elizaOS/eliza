@@ -139,6 +139,32 @@ function clearBridge() {
   delete (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL];
 }
 
+const ROUTING_ENV_KEYS = [
+  "ELIZA_CONFIG_PATH",
+  "ELIZA_MODEL_GATEWAY_URL",
+  "ELIZA_MODEL_GATEWAY_TOKEN",
+] as const;
+
+function replaceRoutingEnv(
+  values: Partial<Record<(typeof ROUTING_ENV_KEYS)[number], string>>,
+): () => void {
+  const previous = Object.fromEntries(
+    ROUTING_ENV_KEYS.map((key) => [key, process.env[key]]),
+  ) as Record<(typeof ROUTING_ENV_KEYS)[number], string | undefined>;
+  for (const key of ROUTING_ENV_KEYS) {
+    const value = values[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  return () => {
+    for (const key of ROUTING_ENV_KEYS) {
+      const value = previous[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  };
+}
+
 function runtime(settings: Record<string, string | undefined> = {}) {
   const values = {
     ELIZA_ACP_TRANSPORT: "native",
@@ -341,6 +367,163 @@ describe("multi-account coding-agent spawn", () => {
       },
     );
     await service.stop();
+  });
+
+  it.each([
+    ["without a Cloud key", undefined],
+    ["with a Cloud key", "cloud-key-must-not-be-billed"],
+  ] as const)(
+    "keeps the pooled DeepSeek account and billed transport aligned under ELIZA_LLM_PROVIDER=cloud %s",
+    async (_label, cloudKey) => {
+      const tempDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "opencode-cloud-spawn-authority-"),
+      );
+      const configPath = path.join(tempDir, "eliza.json");
+      fs.writeFileSync(
+        configPath,
+        JSON.stringify(cloudKey ? { cloud: { apiKey: cloudKey } } : {}),
+      );
+      const restoreEnv = replaceRoutingEnv({ ELIZA_CONFIG_PATH: configPath });
+      const select = installBridge({
+        opencode: {
+          providerId: "deepseek-api",
+          accountId: "deepseek-selected",
+          label: "Selected DeepSeek",
+          source: "api-key",
+          strategy: "least-used",
+          envPatch: {
+            ELIZA_OPENCODE_PROVIDER_ID: "deepseek-api",
+            DEEPSEEK_API_KEY: "deepseek-selected-key",
+          },
+        },
+      });
+      const service = new AcpService(runtime({ ELIZA_LLM_PROVIDER: "cloud" }));
+      try {
+        await service.start();
+        const result = await service.spawnSession({
+          name: "opencode-cloud-account-authority",
+          agentType: "opencode",
+          workdir: "/tmp/acp-test",
+        });
+        const env = firstNativeClient().opts.env ?? {};
+        const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+          provider?: { deepseek?: { options?: { apiKey?: string } } };
+        };
+        expect(config.provider?.deepseek?.options?.apiKey).toBe(
+          "deepseek-selected-key",
+        );
+        expect(env.OPENCODE_CONFIG_CONTENT).not.toContain(
+          "cloud-key-must-not-be-billed",
+        );
+        expect(select).toHaveBeenCalledOnce();
+        expect(
+          (result.metadata as Record<string, unknown>)?.account,
+        ).toMatchObject({
+          providerId: "deepseek-api",
+          accountId: "deepseek-selected",
+        });
+      } finally {
+        await service.stop();
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        restoreEnv();
+      }
+    },
+  );
+
+  it("bypasses pooled accounts when the host gateway owns billing", async () => {
+    const restoreEnv = replaceRoutingEnv({
+      ELIZA_CONFIG_PATH:
+        "/nonexistent/multi-account-gateway-authority/eliza.json",
+      ELIZA_MODEL_GATEWAY_URL: "https://gateway.test.invalid/v1",
+      ELIZA_MODEL_GATEWAY_TOKEN: "gateway-token-selected",
+    });
+    const select = installBridge({
+      opencode: {
+        providerId: "deepseek-api",
+        accountId: "deepseek-must-not-be-stamped",
+        label: "DeepSeek must not be selected",
+        source: "api-key",
+        strategy: "least-used",
+        envPatch: {
+          ELIZA_OPENCODE_PROVIDER_ID: "deepseek-api",
+          DEEPSEEK_API_KEY: "deepseek-raw-must-not-reach-child",
+        },
+      },
+    });
+    const service = new AcpService(runtime());
+    try {
+      await service.start();
+      const result = await service.spawnSession({
+        name: "opencode-gateway-authority",
+        agentType: "opencode",
+        workdir: "/tmp/acp-test",
+      });
+      const env = firstNativeClient().opts.env ?? {};
+      const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT ?? "{}") as {
+        provider?: {
+          "eliza-gateway"?: { options?: { apiKey?: string } };
+        };
+      };
+      expect(select).not.toHaveBeenCalled();
+      expect(
+        (result.metadata as Record<string, unknown>)?.account,
+      ).toBeUndefined();
+      expect(config.provider?.["eliza-gateway"]?.options?.apiKey).toBe(
+        "gateway-token-selected",
+      );
+      expect(JSON.stringify(env)).not.toContain(
+        "deepseek-raw-must-not-reach-child",
+      );
+    } finally {
+      await service.stop();
+      restoreEnv();
+    }
+  });
+
+  it("fails before transport if gateway authority changes after account selection", async () => {
+    const restoreEnv = replaceRoutingEnv({
+      ELIZA_CONFIG_PATH: "/nonexistent/multi-account-gateway-race/eliza.json",
+    });
+    const select = vi.fn(async () => {
+      process.env.ELIZA_MODEL_GATEWAY_URL = "https://gateway.test.invalid/v1";
+      process.env.ELIZA_MODEL_GATEWAY_TOKEN = "gateway-token-selected";
+      return {
+        providerId: "deepseek-api",
+        accountId: "deepseek-selected-before-gateway",
+        label: "Selected before gateway",
+        source: "api-key" as const,
+        strategy: "least-used",
+        envPatch: {
+          ELIZA_OPENCODE_PROVIDER_ID: "deepseek-api",
+          DEEPSEEK_API_KEY: "deepseek-must-not-be-billed",
+        },
+      };
+    });
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select,
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: vi.fn(async () => undefined),
+    };
+    const service = new AcpService(runtime());
+    try {
+      await service.start();
+      await expect(
+        service.spawnSession({
+          name: "opencode-gateway-authority-race",
+          agentType: "opencode",
+          workdir: "/tmp/acp-test",
+        }),
+      ).rejects.toMatchObject({
+        code: "OPENCODE_ACCOUNT_TRANSPORT_MISMATCH",
+      });
+      expect(select).toHaveBeenCalledOnce();
+      expect(nativeClientMock.instances).toHaveLength(0);
+    } finally {
+      await service.stop();
+      restoreEnv();
+    }
   });
 
   it("falls back to single-account behavior when no bridge is installed", async () => {

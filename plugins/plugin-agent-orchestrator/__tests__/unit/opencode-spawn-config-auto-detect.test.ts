@@ -2,6 +2,10 @@
  * Verifies buildOpencodeSpawnConfig.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -194,6 +198,51 @@ describe("buildOpencodeSpawnConfig", () => {
     expect(result?.configContent).not.toContain("stale-runtime-deepseek-key");
     expect(result?.configContent).not.toContain("stale-runtime-xai-key");
   });
+
+  it.each([
+    ["without a Cloud key", undefined],
+    ["with a Cloud key", "cloud-key-must-not-be-billed"],
+  ] as const)(
+    "keeps a selected DeepSeek account authoritative when ELIZA_LLM_PROVIDER=cloud %s",
+    (_label, cloudKey) => {
+      const configDir = mkdtempSync(
+        path.join(tmpdir(), "opencode-cloud-authority-"),
+      );
+      const configPath = path.join(configDir, "eliza.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify(cloudKey ? { cloud: { apiKey: cloudKey } } : {}),
+      );
+      process.env.ELIZA_CONFIG_PATH = configPath;
+      try {
+        const result = buildOpencodeSpawnConfig(
+          runtime({ ELIZA_LLM_PROVIDER: "cloud" }),
+          {},
+          undefined,
+          {
+            providerId: "deepseek-api",
+            credentials: {
+              DEEPSEEK_API_KEY: "selected-deepseek-key",
+            },
+          },
+        );
+        const config = JSON.parse(result?.configContent ?? "{}");
+        expect(result).toMatchObject({
+          accountProviderId: "deepseek-api",
+          providerId: "deepseek",
+          billingMode: "api-payg",
+        });
+        expect(config.provider.deepseek.options.apiKey).toBe(
+          "selected-deepseek-key",
+        );
+        expect(result?.configContent).not.toContain(
+          "cloud-key-must-not-be-billed",
+        );
+      } finally {
+        rmSync(configDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("does not guess among multiple non-Cerebras billing sources", () => {
     const result = buildOpencodeSpawnConfig(runtime(), {
@@ -403,14 +452,22 @@ describe("buildOpencodeSpawnConfig (model-gateway mode, #11536 E2)", () => {
   });
 
   it("routes through the gateway and never embeds a raw provider key", () => {
-    const result = buildOpencodeSpawnConfig(runtime(), {
-      CEREBRAS_API_KEY: "csk-raw-DO-NOT-LEAK",
-    });
+    const result = buildOpencodeSpawnConfig(
+      runtime({ ELIZA_LLM_PROVIDER: "cloud" }),
+      { CEREBRAS_API_KEY: "csk-raw-DO-NOT-LEAK" },
+      undefined,
+      {
+        providerId: "deepseek-api",
+        credentials: { DEEPSEEK_API_KEY: "deepseek-raw-DO-NOT-LEAK" },
+      },
+    );
     expect(result?.providerId).toBe("eliza-gateway");
+    expect(result?.accountProviderId).toBeUndefined();
     const config = JSON.parse(result?.configContent ?? "{}");
     expect(config.provider["eliza-gateway"].options.baseURL).toBe(GATEWAY_URL);
     expect(config.provider["eliza-gateway"].options.apiKey).toBe(GATEWAY_TOKEN);
     expect(result?.configContent).not.toContain("csk-raw-DO-NOT-LEAK");
+    expect(result?.configContent).not.toContain("deepseek-raw-DO-NOT-LEAK");
     expect(result?.configContent).not.toContain("cerebras.ai");
   });
 
