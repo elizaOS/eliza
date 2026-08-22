@@ -74,6 +74,43 @@ export function buildIosXcuitestForwardedEnvironment(env = {}) {
   return forwarded;
 }
 
+/**
+ * Resolve the signing arguments for the XCUITest build. A command-line team
+ * assignment must override the template project's historical team when a
+ * developer runs under a separate paid Apple account.
+ *
+ * @param {{platform: "sim"|"device", xcodeSigning: boolean, developmentTeam?: string|null}} input
+ * @returns {string[]}
+ */
+export function buildIosXcuitestSigningArgs({
+  platform,
+  xcodeSigning,
+  developmentTeam = null,
+}) {
+  if (platform === "sim") {
+    return [
+      "CODE_SIGNING_ALLOWED=YES",
+      "CODE_SIGN_STYLE=Manual",
+      "CODE_SIGN_IDENTITY=-",
+      "ARCHS=arm64",
+      "ONLY_ACTIVE_ARCH=YES",
+      "EXCLUDED_ARCHS=x86_64",
+    ];
+  }
+  if (!xcodeSigning) return ["CODE_SIGNING_ALLOWED=NO"];
+
+  const team = developmentTeam?.trim() ?? "";
+  if (team && !/^[A-Z0-9]{10}$/.test(team)) {
+    throw new Error(
+      "ELIZA_IOS_DEVELOPMENT_TEAM must be a 10-character Apple team identifier.",
+    );
+  }
+  return [
+    "-allowProvisioningUpdates",
+    ...(team ? [`DEVELOPMENT_TEAM=${team}`] : []),
+  ];
+}
+
 export function entitlementSourceForTarget(targetName) {
   const source = IOS_TARGET_ENTITLEMENT_PATHS[targetName];
   if (!source) {

@@ -21,6 +21,7 @@ import {
   buildCodesignVerificationPlan,
   buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
+  buildIosXcuitestSigningArgs,
   buildOnlyTestingIdentifier,
   buildPlistXml,
   buildRunnerCodesignPlan,
@@ -865,6 +866,45 @@ describe("buildIosXcuitestForwardedEnvironment", () => {
         ELIZA_SEND_PROMPT: "hello",
       }),
     ).toEqual({ TEST_RUNNER_ELIZA_SEND_PROMPT: "hello" });
+  });
+});
+
+describe("buildIosXcuitestSigningArgs", () => {
+  it("overrides the template team for an automatically signed device runner", () => {
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: true,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toEqual(["-allowProvisioningUpdates", "DEVELOPMENT_TEAM=K57Q6PJ395"]);
+  });
+
+  it("preserves ad-hoc simulator and unsigned graft-signing policies", () => {
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: false,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toEqual(["CODE_SIGNING_ALLOWED=NO"]);
+    expect(
+      buildIosXcuitestSigningArgs({
+        platform: "sim",
+        xcodeSigning: false,
+        developmentTeam: "K57Q6PJ395",
+      }),
+    ).toContain("CODE_SIGN_IDENTITY=-");
+  });
+
+  it("rejects a malformed explicit Apple team identifier", () => {
+    expect(() =>
+      buildIosXcuitestSigningArgs({
+        platform: "device",
+        xcodeSigning: true,
+        developmentTeam: "not-a-team",
+      }),
+    ).toThrow(/10-character Apple team identifier/);
   });
 });
 

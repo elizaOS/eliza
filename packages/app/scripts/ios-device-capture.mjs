@@ -50,6 +50,7 @@ import {
   buildCodesignVerificationPlan,
   buildIosXcuitestForwardedEnvironment,
   buildIosXcuitestShardPlan,
+  buildIosXcuitestSigningArgs,
   buildPlistXml,
   buildRunnerCodesignPlan,
   buildSimctlListappsArgs,
@@ -765,18 +766,11 @@ async function main() {
         // lets xcodebuild mint the ai.elizaos.app.xctrunner wildcard team
         // profile via -allowProvisioningUpdates (requires the Xcode account
         // session that minted the app profile in the first place).
-        ...(platform === "sim"
-          ? [
-              "CODE_SIGNING_ALLOWED=YES",
-              "CODE_SIGN_STYLE=Manual",
-              "CODE_SIGN_IDENTITY=-",
-              "ARCHS=arm64",
-              "ONLY_ACTIVE_ARCH=YES",
-              "EXCLUDED_ARCHS=x86_64",
-            ]
-          : args["xcode-signing"]
-            ? ["-allowProvisioningUpdates"]
-            : ["CODE_SIGNING_ALLOWED=NO"]),
+        ...buildIosXcuitestSigningArgs({
+          platform,
+          xcodeSigning: Boolean(args["xcode-signing"]),
+          developmentTeam: process.env.ELIZA_IOS_DEVELOPMENT_TEAM,
+        }),
         "build-for-testing",
       ],
       { cwd: iosProjectDir },
