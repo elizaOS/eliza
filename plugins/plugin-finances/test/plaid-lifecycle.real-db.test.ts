@@ -297,6 +297,34 @@ describe("Plaid item lifecycle — real PGLite", () => {
     expect(plaid.cursor).toBe("");
   });
 
+  it("concurrent Link completion claims one normalized source identity", async () => {
+    const result = exchange(
+      "item-concurrent",
+      "ins_concurrent",
+      "acct-concurrent",
+    );
+    fake.exchangeResult = result;
+    fake.itemConnections.set("item-concurrent", result.connectionId);
+    fake.revokeCalls = [];
+
+    const [first, second] = await Promise.all([
+      service.completePlaidLink({ publicToken: "public-concurrent" }),
+      service.completePlaidLink({ publicToken: "public-concurrent" }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    const matching = (
+      await repository.listPaymentSources(runtime.agentId)
+    ).filter(
+      (source) =>
+        source.kind === "plaid" &&
+        (source.metadata.plaid as { connectionId?: string } | undefined)
+          ?.connectionId === result.connectionId,
+    );
+    expect(matching).toHaveLength(1);
+    expect(fake.revokeCalls).toHaveLength(0);
+  });
+
   it("marks the source needs_attention on ITEM_LOGIN_REQUIRED and recovers via update mode", async () => {
     const source = await linkFreshSource("item-reauth", "ins_reauth");
     fake.failNextSyncWith = new PlaidManagedClientError(
@@ -694,6 +722,50 @@ describe("Plaid item lifecycle — real PGLite", () => {
     });
     expect(result.source.status).toBe("disconnected");
     fake.revokeResult = { revoked: true };
+  });
+
+  it("persists terminal cleanup as pending and converges on retry", async () => {
+    const source = await linkFreshSource("item-cleanup-retry", "ins_cleanup");
+    const connectionId = (source.metadata.plaid as { connectionId: string })
+      .connectionId;
+    fake.failNextSyncWith = new PlaidManagedClientError(
+      400,
+      "item not found",
+      "ITEM_NOT_FOUND",
+    );
+    fake.revokeCalls = [];
+    fake.revokeResult = new PlaidManagedClientError(
+      503,
+      "temporary Cloud cleanup failure",
+      "UPSTREAM_UNAVAILABLE",
+    );
+
+    await expect(
+      service.syncPlaidTransactions({ sourceId: source.id }),
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND" });
+    const pending = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(pending?.status).toBe("needs_attention");
+    const pendingPlaid = pending?.metadata.plaid as
+      | { cleanupPending?: { reason: string } }
+      | undefined;
+    expect(pendingPlaid?.cleanupPending).toMatchObject({
+      reason: "terminal_item_error",
+    });
+    expect(fake.revokeCalls).toEqual([connectionId]);
+
+    fake.revokeResult = { revoked: true };
+    const retried = await service.disconnectPlaidSource({
+      sourceId: source.id,
+    });
+    expect(retried.source.status).toBe("disconnected");
+    expect(
+      (retried.source.metadata.plaid as { cleanupPending?: unknown })
+        .cleanupPending,
+    ).toBeNull();
+    expect(fake.revokeCalls).toEqual([connectionId, connectionId]);
   });
 
   it("rejects sync for a non-Plaid source and a missing source", async () => {

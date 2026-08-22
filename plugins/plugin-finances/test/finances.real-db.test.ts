@@ -278,7 +278,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         return Response.json({ error: "unexpected route" }, { status: 500 });
       });
     const persistSpy = vi
-      .spyOn(service.repository, "upsertPaymentSource")
+      .spyOn(service.repository, "upsertPlaidPaymentSource")
       .mockRejectedValueOnce(new Error("local persistence unavailable"));
 
     try {
@@ -350,6 +350,8 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
       ).resolves.toEqual({
         inserted: 25,
         skipped: 0,
+        modified: 0,
+        removed: 0,
         nextCursor: "cursor-25",
       });
 
@@ -378,6 +380,7 @@ describe("FinancesService + FinancesRepository — real PGLite", () => {
         if (url.endsWith("/exchange")) {
           return Response.json({
             connectionId: "33333333-3333-4333-8333-333333333334",
+            connectionCreated: true,
             environment: "sandbox",
             institution: {
               institutionId: "ins-cycle",

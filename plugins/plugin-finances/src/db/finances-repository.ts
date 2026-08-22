@@ -47,6 +47,7 @@ import {
 const FINANCE_SCHEMA = "app_finances";
 const FINANCE_TABLES = {
   paymentSources: `${FINANCE_SCHEMA}.life_payment_sources`,
+  paymentSourceIdentities: `${FINANCE_SCHEMA}.life_payment_source_identities`,
   paymentTransactions: `${FINANCE_SCHEMA}.life_payment_transactions`,
   subscriptionAudits: `${FINANCE_SCHEMA}.life_subscription_audits`,
   subscriptionCandidates: `${FINANCE_SCHEMA}.life_subscription_candidates`,
@@ -563,6 +564,163 @@ export class FinancesRepository {
 
   async upsertPaymentSource(source: LifeOpsPaymentSource): Promise<void> {
     await executeRawSql(this.runtime, paymentSourceUpsertSql(source));
+  }
+
+  /**
+   * Claims a normalized Plaid identity and writes its source in one
+   * transaction. The identity row is the serialization point for concurrent
+   * Link callbacks; callers always receive the canonical source selected by
+   * the database rather than the speculative UUID they supplied.
+   */
+  async upsertPlaidPaymentSource(args: {
+    source: LifeOpsPaymentSource;
+    connectionId: string;
+    identityKey: string;
+  }): Promise<{
+    source: LifeOpsPaymentSource;
+    replacedConnectionId: string | null;
+  }> {
+    return withTransaction(this.runtime, async (tx) => {
+      const now = args.source.updatedAt;
+      await executeRawSqlTx(
+        tx,
+        `INSERT INTO ${FINANCE_TABLES.paymentSourceIdentities} (
+           id, agent_id, provider, identity_key, connection_id, source_id,
+           created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(crypto.randomUUID())},
+           ${sqlQuote(args.source.agentId)},
+           'plaid',
+           ${sqlQuote(args.identityKey)},
+           ${sqlQuote(args.connectionId)},
+           ${sqlQuote(args.source.id)},
+           ${sqlQuote(now)},
+           ${sqlQuote(now)}
+         )
+         ON CONFLICT DO NOTHING`,
+      );
+
+      const identities = await executeRawSqlTx(
+        tx,
+        `SELECT id, identity_key, connection_id, source_id
+           FROM ${FINANCE_TABLES.paymentSourceIdentities}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND provider = 'plaid'
+            AND (
+              identity_key = ${sqlQuote(args.identityKey)}
+              OR connection_id = ${sqlQuote(args.connectionId)}
+            )
+          ORDER BY CASE
+            WHEN identity_key = ${sqlQuote(args.identityKey)} THEN 0
+            ELSE 1
+          END
+          FOR UPDATE`,
+      );
+      const identity = identities[0];
+      if (!identity) {
+        throw new Error("Plaid source identity claim did not persist.");
+      }
+      const identityId = toText(identity.id);
+      const canonicalSourceId = toText(identity.source_id, args.source.id);
+      const replacedConnectionId = toText(identity.connection_id);
+
+      // If a prior race left the same connection attached to a second logical
+      // row, remove that losing claim before moving the canonical identity.
+      for (const duplicate of identities.slice(1)) {
+        await executeRawSqlTx(
+          tx,
+          `DELETE FROM ${FINANCE_TABLES.paymentSourceIdentities}
+            WHERE id = ${sqlQuote(toText(duplicate.id))}`,
+        );
+      }
+
+      const existingRows = await executeRawSqlTx(
+        tx,
+        `SELECT *
+           FROM ${FINANCE_TABLES.paymentSources}
+          WHERE agent_id = ${sqlQuote(args.source.agentId)}
+            AND id = ${sqlQuote(canonicalSourceId)}
+          FOR UPDATE`,
+      );
+      const existing = existingRows[0]
+        ? parsePaymentSource(existingRows[0])
+        : null;
+      const existingPlaid = existing
+        ? parseJsonRecord(existing.metadata).plaid
+        : null;
+      const existingConnectionId =
+        existingPlaid &&
+        typeof existingPlaid === "object" &&
+        !Array.isArray(existingPlaid) &&
+        typeof (existingPlaid as Record<string, unknown>).connectionId ===
+          "string"
+          ? ((existingPlaid as Record<string, unknown>).connectionId as string)
+          : null;
+      const proposedPlaid = parseJsonRecord(args.source.metadata).plaid;
+      const proposedPlaidRecord =
+        proposedPlaid &&
+        typeof proposedPlaid === "object" &&
+        !Array.isArray(proposedPlaid)
+          ? (proposedPlaid as Record<string, unknown>)
+          : {};
+      const existingPlaidRecord =
+        existingPlaid &&
+        typeof existingPlaid === "object" &&
+        !Array.isArray(existingPlaid)
+          ? (existingPlaid as Record<string, unknown>)
+          : {};
+      const canonical: LifeOpsPaymentSource = {
+        ...args.source,
+        id: canonicalSourceId,
+        lastSyncedAt: existing?.lastSyncedAt ?? args.source.lastSyncedAt,
+        transactionCount:
+          existing?.transactionCount ?? args.source.transactionCount,
+        metadata: {
+          ...args.source.metadata,
+          plaid: {
+            ...proposedPlaidRecord,
+            cursor:
+              existingConnectionId === args.connectionId
+                ? (existingPlaidRecord.cursor ?? proposedPlaidRecord.cursor)
+                : proposedPlaidRecord.cursor,
+          },
+        },
+        createdAt: existing?.createdAt ?? args.source.createdAt,
+      };
+      await executeRawSqlTx(tx, paymentSourceUpsertSql(canonical));
+      await executeRawSqlTx(
+        tx,
+        `UPDATE ${FINANCE_TABLES.paymentSourceIdentities}
+            SET identity_key = ${sqlQuote(args.identityKey)},
+                connection_id = ${sqlQuote(args.connectionId)},
+                source_id = ${sqlQuote(canonicalSourceId)},
+                updated_at = ${sqlQuote(now)}
+          WHERE id = ${sqlQuote(identityId)}`,
+      );
+      return {
+        source: canonical,
+        replacedConnectionId:
+          replacedConnectionId && replacedConnectionId !== args.connectionId
+            ? replacedConnectionId
+            : null,
+      };
+    });
+  }
+
+  async hasPlaidPaymentSourceIdentity(
+    agentId: string,
+    connectionId: string,
+  ): Promise<boolean> {
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT 1
+         FROM ${FINANCE_TABLES.paymentSourceIdentities}
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND provider = 'plaid'
+          AND connection_id = ${sqlQuote(connectionId)}
+        LIMIT 1`,
+    );
+    return rows.length > 0;
   }
 
   async listPaymentSources(agentId: string): Promise<LifeOpsPaymentSource[]> {

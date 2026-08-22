@@ -42,6 +42,8 @@ export {
 export {
   financesDbSchema,
   financesSchema,
+  type LifePaymentSourceIdentityInsert,
+  type LifePaymentSourceIdentityRow,
   type LifePaymentSourceInsert,
   type LifePaymentSourceRow,
   type LifePaymentTransactionInsert,
@@ -52,6 +54,7 @@ export {
   type LifeSubscriptionCancellationRow,
   type LifeSubscriptionCandidateInsert,
   type LifeSubscriptionCandidateRow,
+  lifePaymentSourceIdentities,
   lifePaymentSources,
   lifePaymentTransactions,
   lifeSubscriptionAudits,

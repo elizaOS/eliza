@@ -161,6 +161,10 @@ type PlaidPaymentMetadata = Record<string, unknown> & {
   cursor?: string;
   itemError?: { code: string; message: string | null } | null;
   consentExpirationTime?: string | null;
+  cleanupPending?: {
+    reason: "terminal_item_error" | "disconnect_requested";
+    requestedAt: string;
+  } | null;
   lastWebhook?: { code: string; receivedAt: string };
   updateReason?: string;
 };
@@ -199,6 +203,18 @@ function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
     delete metadata.connectionId;
   }
   return metadata;
+}
+
+function plaidLogicalIdentityKey(result: PlaidExchangeResponse): string {
+  const normalized = JSON.stringify([
+    result.institution.institutionId.trim(),
+    [
+      ...new Set(
+        result.institution.accounts.map((account) => account.accountId),
+      ),
+    ].sort(),
+  ]);
+  return crypto.createHash("sha256").update(normalized).digest("hex");
 }
 
 function hasLegacyPlaidAccessToken(
@@ -1125,7 +1141,7 @@ export class FinancesService {
           result.connectionId,
       ) ?? existingSources.find(sameAccounts);
     const existingMetadata = readPlaidPaymentMetadata(existing?.metadata.plaid);
-    const replacedConnectionId =
+    const matchedConnectionId =
       existingMetadata?.connectionId &&
       existingMetadata.connectionId !== result.connectionId
         ? existingMetadata.connectionId
@@ -1156,29 +1172,58 @@ export class FinancesService {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    let persisted: Awaited<
+      ReturnType<FinancesRepository["upsertPlaidPaymentSource"]>
+    >;
     try {
-      await this.repository.upsertPaymentSource(source);
+      persisted = await this.repository.upsertPlaidPaymentSource({
+        source,
+        connectionId: result.connectionId,
+        identityKey: plaidLogicalIdentityKey(result),
+      });
     } catch (error) {
       if (!result.connectionCreated) {
         throw error;
       }
+      let connectionClaimed = true;
       try {
-        await this.getPlaidManagedClient().revokeConnection({
-          connectionId: result.connectionId,
-        });
+        connectionClaimed = await this.repository.hasPlaidPaymentSourceIdentity(
+          this.agentId(),
+          result.connectionId,
+        );
       } catch (cleanupError) {
-        // error-policy:J6 compensating revoke is best-effort; preserve the
-        // authoritative local persistence failure without logging credentials.
+        // error-policy:J6 a database failure makes ownership ambiguous. Keep
+        // the shared Cloud connection intact rather than revoking a claim that
+        // may have committed through a concurrent callback.
         this.logFinancesWarn(
           "plaid_link_cleanup",
           cleanupError instanceof Error
             ? cleanupError.message
-            : "Plaid connection cleanup failed.",
+            : "Plaid connection ownership check failed.",
           { connectionId: result.connectionId },
         );
       }
+      if (!connectionClaimed) {
+        try {
+          await this.getPlaidManagedClient().revokeConnection({
+            connectionId: result.connectionId,
+          });
+        } catch (cleanupError) {
+          // error-policy:J6 compensating revoke is best-effort; preserve the
+          // authoritative local persistence failure without logging credentials.
+          this.logFinancesWarn(
+            "plaid_link_cleanup",
+            cleanupError instanceof Error
+              ? cleanupError.message
+              : "Plaid connection cleanup failed.",
+            { connectionId: result.connectionId },
+          );
+        }
+      }
       throw error;
     }
+    const replacedConnectionId =
+      persisted.replacedConnectionId ?? matchedConnectionId;
     if (replacedConnectionId) {
       try {
         await this.getPlaidManagedClient().revokeConnection({
@@ -1196,7 +1241,7 @@ export class FinancesService {
         );
       }
     }
-    return source;
+    return persisted.source;
   }
 
   /**
@@ -1286,36 +1331,53 @@ export class FinancesService {
           }
           if (error.code && PLAID_RELINK_CODES.has(error.code)) {
             const revoked = PLAID_REVOKED_ERROR_CODES.has(error.code);
+            let cleanupPending: PlaidPaymentMetadata["cleanupPending"] = null;
             if (revoked) {
               try {
                 await this.getPlaidManagedClient().revokeConnection({
                   connectionId,
                 });
               } catch (cleanupError) {
-                // error-policy:J6 Plaid already rejected the credential; local
-                // state remains authoritative while Cloud cleanup can retry.
-                this.logFinancesWarn(
-                  "plaid_sync_revoke_cleanup",
-                  "Plaid connection cleanup after a terminal Item error failed.",
-                  {
-                    connectionId,
-                    errorType:
-                      cleanupError instanceof Error
-                        ? cleanupError.name
-                        : "UnknownCleanupFailure",
-                  },
-                );
+                if (
+                  !(
+                    cleanupError instanceof PlaidManagedClientError &&
+                    cleanupError.code &&
+                    PLAID_REVOKED_ERROR_CODES.has(cleanupError.code)
+                  )
+                ) {
+                  // error-policy:J4 cleanup remains visibly pending and the
+                  // normal disconnect boundary retries the Cloud revocation.
+                  cleanupPending = {
+                    reason: "terminal_item_error",
+                    requestedAt: new Date().toISOString(),
+                  };
+                  this.logFinancesWarn(
+                    "plaid_sync_revoke_cleanup",
+                    "Plaid connection cleanup after a terminal Item error failed.",
+                    {
+                      connectionId,
+                      errorType:
+                        cleanupError instanceof Error
+                          ? cleanupError.name
+                          : "UnknownCleanupFailure",
+                    },
+                  );
+                }
               }
             }
             await this.repository.upsertPaymentSource({
               ...source,
-              status: revoked ? "disconnected" : "needs_attention",
+              status:
+                revoked && cleanupPending === null
+                  ? "disconnected"
+                  : "needs_attention",
               metadata: {
                 ...source.metadata,
                 plaid: {
                   ...plaidMetadata,
                   connectionId,
                   itemError: { code: error.code, message: error.message },
+                  cleanupPending,
                 },
               },
               updatedAt: new Date().toISOString(),
@@ -1536,11 +1598,26 @@ export class FinancesService {
         connectionId,
       });
     } catch (error) {
-      if (
-        !(error instanceof PlaidManagedClientError) ||
-        !error.code ||
-        !PLAID_REVOKED_ERROR_CODES.has(error.code)
-      ) {
+      const alreadyGone =
+        error instanceof PlaidManagedClientError &&
+        error.code &&
+        PLAID_REVOKED_ERROR_CODES.has(error.code);
+      if (!alreadyGone) {
+        await this.repository.upsertPaymentSource({
+          ...source,
+          status: "needs_attention",
+          metadata: {
+            ...source.metadata,
+            plaid: {
+              ...metadata,
+              cleanupPending: {
+                reason: "disconnect_requested",
+                requestedAt: new Date().toISOString(),
+              },
+            },
+          },
+          updatedAt: new Date().toISOString(),
+        });
         if (error instanceof PlaidManagedClientError) {
           fail(error.status, error.message, error.code ?? undefined);
         }
@@ -1550,7 +1627,10 @@ export class FinancesService {
     const updated: LifeOpsPaymentSource = {
       ...source,
       status: "disconnected",
-      metadata: { ...source.metadata, plaid: { ...metadata, itemError: null } },
+      metadata: {
+        ...source.metadata,
+        plaid: { ...metadata, itemError: null, cleanupPending: null },
+      },
       updatedAt: new Date().toISOString(),
     };
     await this.repository.upsertPaymentSource(updated);
