@@ -170,7 +170,6 @@ jobs:
             --filter=@elizaos/plugin-imessage \
             --filter=@elizaos/plugin-local-inference \
             --filter=@elizaos/plugin-mcp \
-            --filter=@elizaos/plugin-signal \
             --filter=@elizaos/plugin-telegram \
             --filter=@elizaos/plugin-x \
             --filter=@elizaos/plugin-whatsapp \

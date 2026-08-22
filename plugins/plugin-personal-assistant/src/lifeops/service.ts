@@ -2301,7 +2301,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
 
   // `this` satisfies LifeOpsContext. Public to avoid TS4094 on the
   // re-exported mixin class.
-  readonly signalDomain = new SignalDomain(this);
+  readonly signalDomain = new SignalDomain();
 
   lifeOpsSignalServiceConnected(): boolean {
     return this.signalDomain.lifeOpsSignalServiceConnected();

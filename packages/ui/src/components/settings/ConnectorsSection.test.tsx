@@ -43,9 +43,6 @@ vi.mock("../connectors/DiscordLocalConnectorPanel", () => ({
 vi.mock("../connectors/IMessageStatusPanel", () => ({
   IMessageStatusPanel: () => <div />,
 }));
-vi.mock("../connectors/SignalQrOverlay", () => ({
-  SignalQrOverlay: () => <div />,
-}));
 vi.mock("../connectors/TelegramAccountConnectorPanel", () => ({
   TelegramAccountConnectorPanel: () => <div />,
 }));

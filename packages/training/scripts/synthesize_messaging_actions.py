@@ -1,6 +1,6 @@
 """Synthesize ~3,400 supervised JSON tool_call records for elizaOS
-messaging-plugin actions (Discord, Twitter/X, Signal, BlueBubbles,
-iMessage, WhatsApp).
+messaging-plugin actions (Discord, Twitter/X, BlueBubbles, iMessage,
+WhatsApp).
 
 Output: data/synthesized/action_examples/messaging.jsonl
 
@@ -92,7 +92,7 @@ STYLES: list[str] = [
 # The actions-catalog.json mostly carries `parameters: null` for
 # messaging actions because the runtime extracts params via LLM. We
 # pulled the actual param shapes from the action handlers under
-# eliza/plugins/plugin-{discord,twitter,signal,bluebubbles,imessage,whatsapp}.
+# eliza/plugins/plugin-{discord,twitter,bluebubbles,imessage,whatsapp}.
 
 ParamSpec = dict[str, Any]
 
@@ -247,32 +247,6 @@ TWITTER_PARAMS: dict[str, list[ParamSpec]] = {
     ],
 }
 
-# Signal 5 connector intents mapped to canonical actions
-SIGNAL_PARAMS: dict[str, list[ParamSpec]] = {
-    "signal_contacts": [],
-    "signal_groups": [],
-    "signal_read_messages": [
-        _ps("limit", "number",
-            description="Max number of recent messages to read."),
-    ],
-    "signal_message": [
-        _ps("text", "string", required=True,
-            description="The Signal message text to send."),
-        _ps("recipient", "string",
-            description="E.164 phone (+1234567890), group ID, or 'current'."),
-    ],
-    "signal_reaction": [
-        _ps("emoji", "string", required=True,
-            description="Single emoji to react with."),
-        _ps("targetTimestamp", "number", required=True,
-            description="Timestamp of the message to react to."),
-        _ps("targetAuthor", "string", required=True,
-            description="E.164 phone of the message author."),
-        _ps("remove", "boolean",
-            description="If true, remove the reaction instead of adding."),
-    ],
-}
-
 # BlueBubbles 2 connector intents mapped to canonical actions
 BLUEBUBBLES_PARAMS: dict[str, list[ParamSpec]] = {
     "bluebubbles_reaction": [
@@ -321,7 +295,6 @@ WHATSAPP_PARAMS: dict[str, list[ParamSpec]] = {
 ALL_PARAMS: dict[str, list[ParamSpec]] = {
     **DISCORD_PARAMS,
     **TWITTER_PARAMS,
-    **SIGNAL_PARAMS,
     **BLUEBUBBLES_PARAMS,
     **IMESSAGE_PARAMS,
     **WHATSAPP_PARAMS,
@@ -368,9 +341,6 @@ EMOJIS = ["heart", "thumbsup", "thumbsdown", "haha", "exclamation",
 PHONES = [
     "+14155552671", "+12025550143", "+447911123456", "+33612345678",
     "+819012345678", "+5511987654321", "+8613912345678",
-]
-SIGNAL_GROUPS = [
-    "group.aXyz123abc", "group.qPlmNoP456", "group.ZooKeeperTeam",
 ]
 TWITTER_HANDLES = [
     "alice_in_chains", "bob_dev", "elonmusk", "satyanadella",
@@ -558,14 +528,6 @@ TRANSLATIONS: dict[str, dict[str, list[str]]] = {
         "pt": ["envia um WhatsApp pra {to}: {text}",
                "manda no WhatsApp para {to}: {text}"],
     },
-    "signal_message": {
-        "zh": ["用 Signal 发：{text}", "Signal 发送：{text}"],
-        "es": ["envía por Signal: {text}", "manda por Signal: {text}"],
-        "fr": ["envoie par Signal : {text}", "Signal : {text}"],
-        "ja": ["Signal で送って：{text}", "Signal メッセージ：{text}"],
-        "de": ["sende per Signal: {text}", "Signal-Nachricht: {text}"],
-        "pt": ["manda no Signal: {text}", "envia pelo Signal: {text}"],
-    },
     "imessage_message": {
         "zh": ["iMessage 给 {to}：{text}", "用 iMessage 发：{text}"],
         "es": ["iMessage a {to}: {text}", "envía un iMessage: {text}"],
@@ -736,7 +698,7 @@ def _sample_value(action: str, param_key: str, p: ParamSpec, idx: int,
         if action == "POST" or param_key.startswith("x_post"):
             return SAMPLE_TWEETS[idx % len(SAMPLE_TWEETS)]
         if param_key in {
-            "discord_private_message", "x_direct_message", "signal_message",
+            "discord_private_message", "x_direct_message",
             "bluebubbles_message", "imessage_message", "whatsapp_message",
         }:
             return DM_BODIES[idx % len(DM_BODIES)]
@@ -789,12 +751,6 @@ def _sample_value(action: str, param_key: str, p: ParamSpec, idx: int,
     if n == "recipient":
         if param_key == "x_direct_message":
             return TWITTER_HANDLES[idx % len(TWITTER_HANDLES)]
-        # Signal message: phone, group, or 'current'
-        bucket = idx % 4
-        if bucket == 0:
-            return "current"
-        if bucket == 1:
-            return SIGNAL_GROUPS[idx % len(SIGNAL_GROUPS)]
         return PHONES[idx % len(PHONES)]
     if n == "to":
         if param_key == "whatsapp_message":
@@ -1042,27 +998,6 @@ def _en_phrasings(action: str, param_key: str, args: dict[str, Any],
             "what unread DMs do I have on X",
         ]
 
-    # Signal
-    if param_key == "signal_contacts":
-        return ["list my Signal contacts", "show Signal contacts"]
-    if param_key == "signal_groups":
-        return ["list my Signal groups", "show Signal groups"]
-    if param_key == "signal_read_messages":
-        return [
-            f"read my latest {args.get('limit', 10)} Signal messages",
-            "show recent Signal messages",
-        ]
-    if param_key == "signal_message":
-        return [
-            f"signal {recipient}: {text}",
-            f"send Signal message to {recipient}: {text}",
-        ]
-    if param_key == "signal_reaction":
-        return [
-            f"react with {emoji} on Signal message {args.get('targetTimestamp')} from {args.get('targetAuthor')}",
-            f"add a {emoji} reaction to that Signal msg",
-        ]
-
     # BlueBubbles
     if param_key == "bluebubbles_reaction":
         return [
@@ -1280,7 +1215,6 @@ def _canonicalize_connector_args(
     source_by_plugin = {
         "plugin-discord": "discord",
         "plugin-twitter": "x",
-        "plugin-signal": "signal",
         "plugin-imessage": "imessage",
         "plugin-whatsapp": "whatsapp",
     }
@@ -1297,11 +1231,6 @@ def _canonicalize_connector_args(
         "discord_unpin_message": "pin",
         "x_read_messages": "read",
         "x_direct_message": "send",
-        "signal_contacts": "get_user",
-        "signal_groups": "list_channels",
-        "signal_read_messages": "read",
-        "signal_message": "send",
-        "signal_reaction": "react",
         "bluebubbles_reaction": "react",
         "bluebubbles_message": "send",
         "imessage_message": "send",
@@ -1438,13 +1367,6 @@ TARGET_ACTIONS_BY_PLUGIN: dict[str, list[tuple[str, str]]] = {
         ("POST", "x_search_posts"),
         ("POST", "x_post_confirmed"),
         ("POST", "x_feed_summary"),
-    ],
-    "plugin-signal": [
-        ("MESSAGE", "signal_contacts"),
-        ("MESSAGE", "signal_groups"),
-        ("MESSAGE", "signal_read_messages"),
-        ("MESSAGE", "signal_message"),
-        ("MESSAGE", "signal_reaction"),
     ],
     "plugin-imessage": [("MESSAGE", "imessage_message")],
     "plugin-whatsapp": [

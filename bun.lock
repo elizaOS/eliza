@@ -134,7 +134,6 @@
         "@elizaos/plugin-pty": "workspace:*",
         "@elizaos/plugin-registry": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
-        "@elizaos/plugin-signal": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-task-coordinator": "workspace:*",
         "@elizaos/plugin-video": "workspace:*",
@@ -2847,7 +2846,6 @@
         "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-reminders": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
-        "@elizaos/plugin-signal": "workspace:*",
         "@elizaos/plugin-telegram": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@elizaos/plugin-x": "workspace:*",
@@ -3038,12 +3036,10 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/core": "workspace:*",
-        "qrcode": "^1.5.4",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.8",
         "@types/node": "^25.0.3",
-        "@types/qrcode": "^1.5.5",
         "@typescript/native": "npm:typescript@^7.0.2",
         "bun-types": "^1.2.25",
         "typescript": "^6.0.3",
@@ -3051,11 +3047,7 @@
       },
       "peerDependencies": {
         "@elizaos/core": "workspace:*",
-        "@elizaos/signal-native": "latest",
       },
-      "optionalPeers": [
-        "@elizaos/signal-native",
-      ],
     },
     "plugins/plugin-slack": {
       "name": "@elizaos/plugin-slack",

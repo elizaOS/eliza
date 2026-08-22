@@ -3428,10 +3428,6 @@
       "source": "src/components/connectors/OwnerAgentConnectorSetupPanel.tsx"
     },
     {
-      "specifier": "@elizaos/ui/components/connectors/SignalQrOverlay",
-      "source": "src/components/connectors/SignalQrOverlay.tsx"
-    },
-    {
       "specifier": "@elizaos/ui/components/connectors/TelegramAccountConnectorPanel",
       "source": "src/components/connectors/TelegramAccountConnectorPanel.tsx"
     },

@@ -91,7 +91,6 @@
     "@elizaos/plugin-relationships",
     "@elizaos/plugin-reminders",
     "@elizaos/plugin-scheduling",
-    "@elizaos/plugin-signal",
     "@elizaos/plugin-slack",
     "@elizaos/plugin-sql",
     "@elizaos/plugin-task-coordinator",

@@ -37,7 +37,6 @@
     "src/components/connectors/DiscordLocalConnectorPanel.tsx",
     "src/components/connectors/IMessageStatusPanel.tsx",
     "src/components/connectors/OwnerAgentConnectorSetupPanel.tsx",
-    "src/components/connectors/SignalQrOverlay.tsx",
     "src/components/connectors/TelegramAccountConnectorPanel.tsx",
     "src/components/connectors/WhatsAppQrOverlay.tsx",
     "src/components/conversations/ConversationRenameDialog.tsx",
