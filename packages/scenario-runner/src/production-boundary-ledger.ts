@@ -242,13 +242,34 @@ function safeError(
   error: unknown,
   redactText: (text: string) => string,
 ): { name: string; message: string } {
-  const sanitized =
-    error instanceof Error
-      ? { name: redactText(error.name), message: redactText(error.message) }
-      : { name: "Error", message: redactText(String(error)) };
+  let rawName = "Error";
+  let rawMessage = "unavailable thrown value";
+  try {
+    if (error instanceof Error) {
+      rawName = error.name;
+      rawMessage = error.message;
+    } else {
+      rawMessage = String(error);
+    }
+  } catch {
+    // error-policy:J1 hostile thrown values must not erase an invoked attempt.
+  }
+  let name = "Error";
+  let message = "unavailable sanitized error";
+  try {
+    name = redactText(rawName) || "Error";
+  } catch {
+    // error-policy:J1 a failing custom redactor degrades to non-sensitive text.
+  }
+  try {
+    message =
+      redactText(rawMessage) || "unspecified boundary collaborator error";
+  } catch {
+    // error-policy:J1 a failing custom redactor never exposes the raw message.
+  }
   return {
-    name: sanitized.name || "Error",
-    message: sanitized.message || "unspecified boundary collaborator error",
+    name,
+    message,
   };
 }
 

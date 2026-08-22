@@ -657,6 +657,31 @@ describe("production boundary observation ledger", () => {
       result: "unknown",
     });
     expect(JSON.stringify(verified)).not.toContain("secret");
+
+    const hostileThrownValue = {
+      [Symbol.toPrimitive]() {
+        throw new Error("hostile coercion");
+      },
+    };
+    const hostile = await observeProductionBoundary({
+      ...common,
+      identity: identity({
+        idempotencyKey: "task-3:2026-08-21T12:00:00.000Z",
+      }),
+      classify: () => {
+        throw hostileThrownValue;
+      },
+      verifyReadback: () => true,
+    });
+    expect(hostile).toMatchObject({
+      boundaryCalled: true,
+      result: "unknown",
+      resultCode: "classifier_threw",
+      error: {
+        name: "Error",
+        message: "unavailable thrown value",
+      },
+    });
   });
 
   it("translates a runtime-invalid classifier return into a durable unknown attempt", async () => {
