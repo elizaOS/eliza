@@ -11,7 +11,7 @@
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+import { toWellFormedUnicode } from "@elizaos/core";
 import {
   BaseMessageAdapter,
   buildContentReference,
@@ -131,13 +131,6 @@ function pageUtf8(
     });
   }
   return { text: source.subarray(start, end).toString("utf8"), start, end, total: source.length };
-}
-
-function clip(value: string, maxLength: number): string {
-  const wellFormedValue = toWellFormedUnicode(value);
-  return wellFormedValue.length > maxLength
-    ? `${truncateWellFormed(wellFormedValue, maxLength - 3)}...`
-    : wellFormedValue;
 }
 
 function refId(messageId: string): string {
