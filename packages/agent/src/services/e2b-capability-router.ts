@@ -945,28 +945,24 @@ export class E2BRemoteCapabilityRouterService
    */
   private async getSandbox(): Promise<E2BSandboxClient> {
     if (!this.sandboxPromise) {
-      const pending: Promise<E2BSandboxClient> = this.factory
-        .create(this.routerConfig)
-        .catch((error: unknown) => {
-          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
-          if (this.sandboxPromise === pending) this.sandboxPromise = null;
-          throw error;
-        });
+      const pending = this.factory.create(this.routerConfig);
       this.sandboxPromise = pending;
+      // error-policy:J5 every caller observes this rejection by awaiting `pending`; this sidecar only evicts the failed cache entry.
+      void pending.then(undefined, () => {
+        if (this.sandboxPromise === pending) this.sandboxPromise = null;
+      });
       this.createdSandbox = !this.routerConfig.sandboxId;
     }
     const sandbox = await this.sandboxPromise;
     if (!this.preparePromise) {
-      const pendingPrepare: Promise<void> = this.prepareSandbox(sandbox).catch(
-        (error: unknown) => {
-          // error-policy:J2 clears the memoized attempt and rethrows the original create/prepare failure unchanged.
-          if (this.preparePromise === pendingPrepare) {
-            this.preparePromise = null;
-          }
-          throw error;
-        },
-      );
+      const pendingPrepare = this.prepareSandbox(sandbox);
       this.preparePromise = pendingPrepare;
+      // error-policy:J5 every caller observes this rejection by awaiting `pendingPrepare`; this sidecar only evicts the failed cache entry.
+      void pendingPrepare.then(undefined, () => {
+        if (this.preparePromise === pendingPrepare) {
+          this.preparePromise = null;
+        }
+      });
     }
     await this.preparePromise;
     return sandbox;
