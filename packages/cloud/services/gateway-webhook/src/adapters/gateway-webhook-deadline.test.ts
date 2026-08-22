@@ -4,9 +4,9 @@
 
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import {
-  BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS,
+  BLOOIO_REQUEST_TIMEOUT_MS,
   blooioAdapter,
-  blooioGatewayFetch,
+  blooioFetch,
 } from "./blooio";
 import {
   TWILIO_GATEWAY_REQUEST_TIMEOUT_MS,
@@ -171,9 +171,9 @@ describe("twilioGatewayFetch deadline", () => {
   });
 });
 
-describe("blooioGatewayFetch deadline", () => {
+describe("blooioFetch deadline", () => {
   test("owns a 30s deadline and aborts a hung fetch", async () => {
-    expect(BLOOIO_GATEWAY_REQUEST_TIMEOUT_MS).toBe(30_000);
+    expect(BLOOIO_REQUEST_TIMEOUT_MS).toBe(30_000);
 
     let capturedSignal: AbortSignal | undefined;
     globalThis.fetch = mock(async (_url, init) => {
@@ -185,7 +185,7 @@ describe("blooioGatewayFetch deadline", () => {
       });
     }) as unknown as typeof fetch;
 
-    const promise = blooioGatewayFetch(
+    const promise = blooioFetch(
       "https://api.blooio.com/v4/messages",
       { method: "POST" },
       15,
@@ -206,7 +206,7 @@ describe("blooioGatewayFetch deadline", () => {
       });
     }) as unknown as typeof fetch;
 
-    const promise = blooioGatewayFetch(
+    const promise = blooioFetch(
       "https://api.blooio.com/v4/messages",
       { method: "POST", signal: caller.signal },
       1000,
@@ -250,12 +250,51 @@ describe("blooioGatewayFetch deadline", () => {
     expect(signals.length).toBe(1);
   });
 
+  test("v4 chat read, typing, and stop-typing hops are all bounded", async () => {
+    const calls: Array<{ url: string; signal: AbortSignal | undefined }> = [];
+    globalThis.fetch = mock(async (url, init) => {
+      calls.push({
+        url: String(url),
+        signal: init?.signal as AbortSignal | undefined,
+      });
+      return new Response(null, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const config: WebhookConfig = {
+      apiKey: "blooio-key",
+      blooioWebhookSecret: "secret",
+    };
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "mid_v4",
+      chatId: "chat_abc123",
+      senderId: "usr_abc123",
+      text: "hello",
+      rawPayload: {},
+    };
+
+    await blooioAdapter.sendTypingIndicator(config, event);
+    await blooioAdapter.stopTypingIndicator?.(config, event);
+
+    expect(calls.map((call) => call.url).sort()).toEqual([
+      "https://api.blooio.com/v4/chats/chat_abc123/read",
+      "https://api.blooio.com/v4/chats/chat_abc123/typing",
+      "https://api.blooio.com/v4/chats/chat_abc123/typing",
+    ]);
+    // Every hop received the bounded transport's owned signal, so none of them
+    // can outlive the adapter deadline.
+    for (const call of calls) {
+      expect(call.signal).toBeInstanceOf(AbortSignal);
+      expect(call.signal?.aborted).toBe(false);
+    }
+  });
+
   test("rejects an oversized provider body before a caller can parse it", async () => {
     globalThis.fetch = mock(
       async () => new Response(new Uint8Array(64 * 1024 + 1)),
     ) as unknown as typeof fetch;
     await expect(
-      blooioGatewayFetch("https://api.blooio.com/v4/messages"),
+      blooioFetch("https://api.blooio.com/v4/messages"),
     ).rejects.toMatchObject({
       code: "GATEWAY_RESPONSE_TOO_LARGE",
     });
@@ -277,7 +316,7 @@ describe("blooioGatewayFetch deadline", () => {
     ) as unknown as typeof fetch;
 
     const outcome = await Promise.race([
-      blooioGatewayFetch("https://api.blooio.com/v4/messages").catch(
+      blooioFetch("https://api.blooio.com/v4/messages").catch(
         (error: unknown) => error,
       ),
       Bun.sleep(50).then(() => "hung"),
@@ -299,7 +338,7 @@ describe("blooioGatewayFetch deadline", () => {
     ) as unknown as typeof fetch;
 
     await expect(
-      blooioGatewayFetch("https://api.blooio.com/v4/messages"),
+      blooioFetch("https://api.blooio.com/v4/messages"),
     ).rejects.toMatchObject({ code: "GATEWAY_RESPONSE_TOO_LARGE" });
   });
 });

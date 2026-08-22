@@ -33,7 +33,7 @@ describe("messageRouterTwilioFetch deadline", () => {
       { method: "POST" },
       15,
     );
-    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await expect(promise).rejects.toMatchObject({ name: "TimeoutError" });
     expect(capturedSignal?.aborted).toBe(true);
   });
 
@@ -54,7 +54,7 @@ describe("messageRouterTwilioFetch deadline", () => {
       { method: "POST", signal: caller.signal },
       15,
     );
-    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+    await expect(promise).rejects.toMatchObject({ name: "TimeoutError" });
     expect(capturedSignal?.aborted).toBe(true);
   });
 
@@ -124,7 +124,7 @@ describe("messageRouterTwilioFetch deadline", () => {
     await expect(
       messageRouterTwilioFetch("https://api.twilio.com/test", undefined, 0),
     ).rejects.toMatchObject({
-      code: "INVALID_MESSAGE_ROUTER_TWILIO_TIMEOUT",
+      code: "INVALID_PROVIDER_REQUEST_BOUNDS",
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -149,7 +149,7 @@ describe("messageRouterTwilioFetch deadline", () => {
       Bun.sleep(50).then(() => "hung"),
     ]);
     expect(outcome).toMatchObject({
-      code: "MESSAGE_ROUTER_TWILIO_RESPONSE_TOO_LARGE",
+      code: "PROVIDER_RESPONSE_TOO_LARGE",
     });
   });
 });

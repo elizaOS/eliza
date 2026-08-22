@@ -17,133 +17,7 @@ import {
 import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import { agentPhoneNumbers, type PhoneMessageLog } from "../../../db/schemas/agent-phone-numbers";
 import { logger } from "../../utils/logger";
-
-export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
-const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
-
-function cancelTwilioBodyDetached(body: ReadableStream<Uint8Array> | null, reason: unknown): void {
-  if (!body) return;
-  try {
-    // error-policy:J6 The request has already failed; cancellation is detached
-    // so a hostile stream cannot replace or delay the boundary error.
-    void body.cancel(reason).catch(() => undefined);
-  } catch {
-    // error-policy:J6 A synchronous cancellation failure is teardown-only.
-  }
-}
-
-function cancelTwilioReaderDetached(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  reason: unknown,
-): void {
-  const release = (): void => {
-    try {
-      reader.releaseLock();
-    } catch {
-      // error-policy:J6 Releasing a failed response stream is teardown-only.
-    }
-  };
-  try {
-    void reader
-      .cancel(reason)
-      // error-policy:J6 The request failure is already observed by the caller.
-      .catch(() => undefined)
-      .finally(release);
-  } catch {
-    // error-policy:J6 A synchronous cancellation failure is teardown-only.
-    release();
-  }
-}
-
-export async function messageRouterTwilioFetch(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
-): Promise<Response> {
-  if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
-    throw new ElizaError("Message-router Twilio timeout must be a timer-safe positive integer", {
-      code: "INVALID_MESSAGE_ROUTER_TWILIO_TIMEOUT",
-      context: { timeoutMs },
-    });
-  }
-  if (init?.signal?.aborted) {
-    throw init.signal.reason ?? new DOMException("Twilio request cancelled", "AbortError");
-  }
-  const controller = new AbortController();
-  let rejectAbort!: (reason: unknown) => void;
-  const abortPromise = new Promise<never>((_resolve, reject) => {
-    rejectAbort = reject;
-  });
-  const abort = (reason: unknown): void => {
-    if (controller.signal.aborted) return;
-    controller.abort(reason);
-    rejectAbort(reason);
-  };
-  const onCallerAbort = (): void =>
-    abort(init?.signal?.reason ?? new DOMException("Twilio request cancelled", "AbortError"));
-  init?.signal?.addEventListener("abort", onCallerAbort, { once: true });
-  const timer = setTimeout(
-    () => abort(new DOMException("Twilio request deadline expired", "TimeoutError")),
-    timeoutMs,
-  );
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-  try {
-    const response = await Promise.race([
-      fetch(input, { ...init, signal: controller.signal }),
-      abortPromise,
-    ]);
-    const rawLength = response.headers.get("content-length");
-    if (
-      rawLength !== null &&
-      (!/^\d+$/.test(rawLength) || Number(rawLength) > MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES)
-    ) {
-      const error = new ElizaError("Twilio response exceeds the message-router byte limit", {
-        code: "MESSAGE_ROUTER_TWILIO_RESPONSE_TOO_LARGE",
-        context: { contentLength: rawLength },
-      });
-      cancelTwilioBodyDetached(response.body, error);
-      throw error;
-    }
-    if (!response.body) return response;
-    reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let receivedBytes = 0;
-    while (true) {
-      const next = await Promise.race([reader.read(), abortPromise]);
-      if (next.done) break;
-      receivedBytes += next.value.byteLength;
-      if (receivedBytes > MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES) {
-        const error = new ElizaError("Twilio response exceeds the message-router byte limit", {
-          code: "MESSAGE_ROUTER_TWILIO_RESPONSE_TOO_LARGE",
-          context: { receivedBytes },
-        });
-        cancelTwilioReaderDetached(reader, error);
-        reader = undefined;
-        throw error;
-      }
-      chunks.push(next.value);
-    }
-    const body = new Uint8Array(receivedBytes);
-    let offset = 0;
-    for (const chunk of chunks) {
-      body.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-    return new Response(body.buffer, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
-  } finally {
-    clearTimeout(timer);
-    init?.signal?.removeEventListener("abort", onCallerAbort);
-    if (controller.signal.aborted && reader) {
-      cancelTwilioReaderDetached(reader, controller.signal.reason);
-      reader = undefined;
-    }
-    reader?.releaseLock();
-  }
-}
+import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 
 import { normalizePhoneNumber } from "../../utils/phone-normalization";
 import {
@@ -154,6 +28,26 @@ import {
   PHONE_MESSAGE_ROUTING_UNAVAILABLE_CODE,
   phoneErrorDiagnostic,
 } from "../phone-error-diagnostics";
+
+export const MESSAGE_ROUTER_TWILIO_TIMEOUT_MS = 30_000;
+const MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES = 64 * 1024;
+
+/**
+ * Bounds the router's Twilio REST hop through the shared provider transport so
+ * a hung or unbounded Twilio response cannot pin an outbound send.
+ */
+export function messageRouterTwilioFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs: number = MESSAGE_ROUTER_TWILIO_TIMEOUT_MS,
+): Promise<Response> {
+  return boundedProviderFetch(input, init, {
+    provider: "twilio",
+    timeoutMs,
+    maxResponseBytes: MESSAGE_ROUTER_TWILIO_RESPONSE_MAX_BYTES,
+  });
+}
+
 
 function isUndefinedTableError(error: unknown): boolean {
   return isPostgresUndefinedTableError(error);
