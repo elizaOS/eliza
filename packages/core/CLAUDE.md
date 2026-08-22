@@ -167,6 +167,7 @@ visible.
 - Three build targets share source — Node-only imports in shared modules break the browser/edge bundles. Verify with `build:node` vs full `build`.
 - The model-output contract is `<response>` XML (with `<actions>`/`<providers>`/`<text>`); plain text is tolerated and treated as a `REPLY`.
 - Action, provider, and analytics results preserve complete model-facing records. Detailed trust evaluation returns every evidence record, follow-up suggestions return every qualifying contact, relationship analytics page through every shared message, and channel-topic search returns every matching room. Do not silently slice without a lossless page or reference contract.
+- Planner action retrieval ranks the complete authorized parent catalog, and every registered child remains callable. Candidate, context, relevance, and tier metadata may change ordering or detail but must never remove tools from the model-facing surface.
 - Stage-1 message-handler action and intent hints preserve every ordered string exactly; malformed arrays reject the envelope. PII context assembly likewise preserves repeated candidates, every ordered resolution and retrieval fragment, and exact text. Legacy cap hints are ignored, and malformed Unicode is rejected rather than repaired into different model context.
 - Device-class inference budgets reject unsupported model-output requests before
   dispatch. They may bound queue wait as a resource policy, but must never lower
