@@ -216,6 +216,8 @@ realPostgres("app and initial API-key atomicity", () => {
     ) {
       throw new Error("real PostgreSQL harness was not initialized");
     }
+    const initializedAppsService = appsService;
+    const initializedApiKeysRepository = apiKeysRepository;
 
     const suffix = randomUUID();
     const [organization] = await dbWrite
@@ -249,7 +251,7 @@ realPostgres("app and initial API-key atomicity", () => {
 
     const deleteKey = spyOn(apiKeysService, "delete");
     const creates = names.map((name, index) =>
-      appsService.create({
+      initializedAppsService.create({
         name,
         organization_id: organization.id,
         created_by_user_id: user.id,
@@ -287,7 +289,7 @@ realPostgres("app and initial API-key atomicity", () => {
       const durableKeys = (
         await Promise.all(
           names.map((name) =>
-            apiKeysRepository.findByUserAndName(user.id, `${name} - App API Key`),
+            initializedApiKeysRepository.findByUserAndName(user.id, `${name} - App API Key`),
           ),
         )
       ).flat();
