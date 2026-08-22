@@ -279,7 +279,7 @@ function knowledgeTraversalError(
 
 async function scanAllDocumentRows(
   service: DocumentsServiceLike,
-	snapshotEnd: number,
+  snapshotEnd?: number,
 ): Promise<Memory[]> {
   const rows: Memory[] = [];
   const seen = new Set<string>();
@@ -289,7 +289,7 @@ async function scanAllDocumentRows(
       tableName: "documents",
       count: DOCUMENT_SCAN_BATCH,
       offset,
-		end: snapshotEnd,
+      ...(snapshotEnd === undefined ? {} : { end: snapshotEnd }),
     });
     if (batch.length > DOCUMENT_SCAN_BATCH) {
       throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_PAGE_INVALID", {
@@ -317,9 +317,21 @@ async function scanAllDocumentRows(
 async function readStableCompleteDocumentRows(
   service: DocumentsServiceLike,
 ): Promise<Memory[]> {
-	const snapshotEnd = Date.now();
-	const first = await scanAllDocumentRows(service, snapshotEnd);
-	const second = await scanAllDocumentRows(service, snapshotEnd);
+  const first = await scanAllDocumentRows(service);
+  if (first.length === 0) return first;
+  const snapshotEnd = first.reduce((latest, memory) => {
+    if (
+      !Number.isSafeInteger(memory.createdAt) ||
+      (memory.createdAt ?? -1) < 0
+    ) {
+      throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_CURSOR_INVALID", {
+        memoryId: memory.id,
+        createdAt: memory.createdAt,
+      });
+    }
+    return Math.max(latest, memory.createdAt as number);
+  }, 0);
+  const second = await scanAllDocumentRows(service, snapshotEnd);
   let firstFingerprints: string[];
   let secondFingerprints: string[];
   try {
@@ -338,7 +350,7 @@ async function readStableCompleteDocumentRows(
     )
   ) {
     throw knowledgeTraversalError("KNOWLEDGE_TRAVERSAL_INVENTORY_CHANGED", {
-		snapshotEnd,
+      snapshotEnd,
       firstLength: first.length,
       secondLength: second.length,
     });
@@ -571,13 +583,13 @@ export const searchKnowledgeAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
-		{
-			name: "limit",
-			description:
-				"Deprecated compatibility input. Complete search results are never capped.",
-			required: false,
-			schema: { type: "number" as const },
-		},
+    {
+      name: "limit",
+      description:
+        "Deprecated compatibility input. Complete search results are never capped.",
+      required: false,
+      schema: { type: "number" as const },
+    },
   ],
 };
 

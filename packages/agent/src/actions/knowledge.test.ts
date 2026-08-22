@@ -301,6 +301,26 @@ describe("SEARCH_KNOWLEDGE", () => {
     ).toEqual([stable.id]);
   });
 
+  it("includes an already-stored document whose timestamp is ahead of the reader clock", async () => {
+    const future = doc(DOC_GLOBAL, "global");
+    future.createdAt = Date.now() + 60_000;
+    const runtime = makeRuntime({ service: makeService([future]) });
+
+    const result = await call(
+      searchKnowledgeAction,
+      runtime,
+      msg(OWNER_ENTITY, DM_ROOM),
+      { tags: ["media-format:pdf"] },
+    );
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { items: Array<{ id: UUID }> }).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([future.id]);
+  });
+
   it("free-text search composes with the help tag on fragment metadata", async () => {
     const helpFragment = doc(DOC_GLOBAL, "global", {
       documentId: DOC_GLOBAL,

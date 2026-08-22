@@ -720,6 +720,29 @@ describe("MEMORY op:search complete traversal", () => {
     ).toEqual([stableId]);
   });
 
+  it("includes an already-stored row whose timestamp is ahead of the reader clock", async () => {
+    const { runtime, rows } = makeRuntime();
+    const id = seedFact(rows, {
+      text: "future stable memory",
+      entityId: USER_ID,
+    });
+    const stored = rows.find((row) => row.memory.id === id);
+    if (stored) stored.memory.createdAt = Date.now() + 60_000;
+
+    const result = await runAction(runtime, makeMessage(), {
+      action: "search",
+      type: "facts",
+      query: "future stable",
+    });
+
+    expect(result.success).toBe(true);
+    expect(
+      (result.data as { memories: Array<{ id: UUID }> }).memories.map(
+        (memory) => memory.id,
+      ),
+    ).toEqual([id]);
+  });
+
   it("rejects content mutation between complete traversal passes", async () => {
     const { runtime, rows } = makeRuntime();
     seedFact(rows, { text: "stable memory", entityId: USER_ID });

@@ -435,16 +435,13 @@ describe("document-list capability contract", () => {
 			},
 		};
 
-		const result = queryDocumentFragmentsInMemory(
-			[parent, older, newer],
-			{
-				...params,
-				requesterRole: "OWNER",
-				documentId: parent.id,
-				limit: 10,
-				snapshotEnd: 3_000,
-			},
-		);
+		const result = queryDocumentFragmentsInMemory([parent, older, newer], {
+			...params,
+			requesterRole: "OWNER",
+			documentId: parent.id,
+			limit: 10,
+			snapshotEnd: 3_000,
+		});
 
 		expect(result.map((memory) => memory.id)).toEqual([older.id]);
 	});

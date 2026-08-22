@@ -47,8 +47,8 @@ interface MemoryParams {
   query?: string;
   memoryId?: string;
   confirm?: boolean;
-	/** @deprecated Accepted for compatibility; complete reads ignore it. */
-	limit?: number;
+  /** @deprecated Accepted for compatibility; complete reads ignore it. */
+  limit?: number;
 }
 
 interface MemoryListItem {
@@ -250,7 +250,7 @@ async function scanCompleteMemoryTable(
   runtime: IAgentRuntime,
   tableName: MemoryType,
   roomId: UUID | undefined,
-  snapshotEnd: number,
+  snapshotEnd?: number,
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seen = new Set<string>();
@@ -263,7 +263,7 @@ async function scanCompleteMemoryTable(
       roomId,
       tableName,
       limit: COMPLETE_MEMORY_PAGE_SIZE,
-      end: snapshotEnd,
+      ...(snapshotEnd === undefined ? {} : { end: snapshotEnd }),
       ...(cursor ? { cursor } : {}),
       orderBy: "createdAt",
       orderDirection: "desc",
@@ -331,19 +331,17 @@ async function readStableCompleteMemoryTable(
   tableName: MemoryType,
   roomId: UUID | undefined,
 ): Promise<Memory[]> {
-	const snapshotEnd = Date.now();
-	const first = await scanCompleteMemoryTable(
-		runtime,
-		tableName,
-		roomId,
-		snapshotEnd,
-	);
-	const second = await scanCompleteMemoryTable(
-		runtime,
-		tableName,
-		roomId,
-		snapshotEnd,
-	);
+  const first = await scanCompleteMemoryTable(runtime, tableName, roomId);
+  if (first.length === 0) return first;
+  // The scan is newest-first and validates every createdAt value, so its first
+  // row is the storage-authoritative high-water mark for the second pass.
+  const snapshotEnd = first[0].createdAt as number;
+  const second = await scanCompleteMemoryTable(
+    runtime,
+    tableName,
+    roomId,
+    snapshotEnd,
+  );
   let firstFingerprints: string[];
   let secondFingerprints: string[];
   try {
@@ -364,7 +362,7 @@ async function readStableCompleteMemoryTable(
   ) {
     throw traversalError("MEMORY_TRAVERSAL_INVENTORY_CHANGED", {
       tableName,
-		snapshotEnd,
+      snapshotEnd,
       firstLength: first.length,
       secondLength: second.length,
     });
@@ -882,13 +880,13 @@ export const memoryAction: Action = {
       required: false,
       schema: { type: "string" as const },
     },
-		{
-			name: "limit",
-			description:
-				"Deprecated compatibility input. Complete search results are never capped.",
-			required: false,
-			schema: { type: "number" as const },
-		},
+    {
+      name: "limit",
+      description:
+        "Deprecated compatibility input. Complete search results are never capped.",
+      required: false,
+      schema: { type: "number" as const },
+    },
     {
       name: "memoryId",
       description:

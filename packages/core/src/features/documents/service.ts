@@ -2101,15 +2101,26 @@ export class DocumentService extends Service {
 		params: Omit<DocumentFragmentQueryParams, "limit" | "offset">,
 	): Promise<Memory[]> {
 		const pageSize = 1_000;
-		// Fence out ordinary concurrent appends. Both passes inspect the same
-		// logical inventory; updates, deletes, or backdated writes within that
-		// inventory still reject explicitly through the fingerprint comparison.
-		const snapshotEnd = Date.now();
+		const first = await this.traverseDocumentFragmentSnapshot(params, pageSize);
+		if (first.fragments.length === 0) return first.fragments;
+		const snapshotEnd = first.fragments.reduce((latest, fragment) => {
+			if (
+				!Number.isSafeInteger(fragment.createdAt) ||
+				(fragment.createdAt ?? -1) < 0
+			) {
+				throw new ElizaError(
+					"Document fragment traversal returned an invalid creation time",
+					{
+						code: "DOCUMENT_FRAGMENT_TRAVERSAL_ROW_INVALID",
+						context: { fragmentId: fragment.id, createdAt: fragment.createdAt },
+					},
+				);
+			}
+			return Math.max(latest, fragment.createdAt as number);
+		}, 0);
+		// Use the first authoritative inventory's high-water mark rather than the
+		// reader's wall clock, which may lag stored/imported timestamps.
 		const snapshotParams = { ...params, snapshotEnd };
-		const first = await this.traverseDocumentFragmentSnapshot(
-			snapshotParams,
-			pageSize,
-		);
 		const second = await this.traverseDocumentFragmentSnapshot(
 			snapshotParams,
 			pageSize,

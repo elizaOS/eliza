@@ -145,9 +145,9 @@ function buildRuntime(opts: { hasEmbedding: boolean; fragments?: Memory[] }) {
 						| Record<string, unknown>
 						| undefined;
 					return (
-						(params.snapshotEnd === undefined ||
+						((params.snapshotEnd === undefined ||
 							(fragment.createdAt ?? 0) <= params.snapshotEnd) &&
-						metadata?.scope !== "user-private" ||
+							metadata?.scope !== "user-private") ||
 						((params.snapshotEnd === undefined ||
 							(fragment.createdAt ?? 0) <= params.snapshotEnd) &&
 							metadata.scopedToEntityId === params.requesterEntityId)
@@ -347,7 +347,8 @@ describe("DocumentService.searchDocuments", () => {
 				makeFragment(`frag-${index}`, `complete corpus match ${index}`),
 			);
 			const rt = buildRuntime({ hasEmbedding: false, fragments });
-			const originalQuery = rt.adapter.queryDocumentFragments.getMockImplementation();
+			const originalQuery =
+				rt.adapter.queryDocumentFragments.getMockImplementation();
 			let call = 0;
 			rt.adapter.queryDocumentFragments.mockImplementation(async (params) => {
 				const rows = await originalQuery?.(params);
@@ -371,6 +372,21 @@ describe("DocumentService.searchDocuments", () => {
 
 			expect(results).toHaveLength(20);
 			expect(results.map((result) => result.id)).not.toContain("frag-inserted");
+		});
+
+		it("includes an existing fragment timestamped ahead of the reader clock", async () => {
+			const future = makeFragment("frag-future", "future complete match");
+			future.createdAt = Date.now() + 60_000;
+			const rt = buildRuntime({ hasEmbedding: false, fragments: [future] });
+			const svc = buildService(rt);
+
+			const results = await svc.searchDocuments(
+				makeMessage("future complete match"),
+				undefined,
+				"keyword",
+			);
+
+			expect(results.map((result) => result.id)).toEqual([future.id]);
 		});
 
 		it("rejects a backdated insertion between complete traversal passes", async () => {
