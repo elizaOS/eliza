@@ -17,7 +17,7 @@
  * disposed disconnect listeners, the released room lease, the released
  * idempotency reservation, and re-propagation to the J1 boundary. A successful
  * turn and an early-return exit are retained as controls so the broadened
- * outer `finally` cannot regress the exits that already cleaned up.
+ * release boundary cannot regress the exits that already cleaned up.
  */
 
 import { EventEmitter } from "node:events";
@@ -34,6 +34,9 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let requestClientMessageId: string | undefined;
+let observeDisconnectListeners:
+  | ((req: http.IncomingMessage, res: http.ServerResponse) => void)
+  | undefined;
 const REQUEST_PROMPT = "release the heartbeat on the throw path";
 
 vi.mock("../chat-routes.ts", async () => {
@@ -43,17 +46,22 @@ vi.mock("../chat-routes.ts", async () => {
     );
   return {
     ...actual,
-    readChatRequestPayload: vi.fn(async () => ({
-      prompt: REQUEST_PROMPT,
-      channelType: ChannelType.DM,
-      images: undefined,
-      preferredLanguage: undefined,
-      source: "api",
-      metadata: undefined,
-      ...(requestClientMessageId
-        ? { clientMessageId: requestClientMessageId }
-        : {}),
-    })),
+    readChatRequestPayload: vi.fn(
+      async (req: http.IncomingMessage, res: http.ServerResponse) => {
+        observeDisconnectListeners?.(req, res);
+        return {
+          prompt: REQUEST_PROMPT,
+          channelType: ChannelType.DM,
+          images: undefined,
+          preferredLanguage: undefined,
+          source: "api",
+          metadata: undefined,
+          ...(requestClientMessageId
+            ? { clientMessageId: requestClientMessageId }
+            : {}),
+        };
+      },
+    ),
     persistConversationMemory: vi.fn(async (runtime, memory) => {
       await runtime.createMemory(memory, "messages");
       return memory;
@@ -126,6 +134,7 @@ const FINAL_TEXT = "released.";
 const STORE_FAILURE = "db: connection terminated unexpectedly";
 
 const TRACKED_REQ_EVENTS = ["aborted", "close", "error"] as const;
+const TRACKED_RES_EVENTS = ["close", "error"] as const;
 const TRACKED_SOCKET_EVENTS = ["close", "error"] as const;
 
 interface MockResponseRecord {
@@ -135,6 +144,12 @@ interface MockResponseRecord {
 }
 
 type MockSocket = EventEmitter & { destroyed: boolean; writable: boolean };
+type MockResponse = EventEmitter & http.ServerResponse;
+
+interface MockResponseOptions {
+  throwOnErrorFrame?: boolean;
+  throwOnEnd?: boolean;
+}
 
 function createMockSocket(): MockSocket {
   return Object.assign(new EventEmitter(), {
@@ -154,13 +169,13 @@ function createReq(socket: MockSocket): http.IncomingMessage {
   return req as http.IncomingMessage;
 }
 
-function createMockRes(): {
-  res: http.ServerResponse;
+function createMockRes(options: MockResponseOptions = {}): {
+  res: MockResponse;
   record: MockResponseRecord;
 } {
   const record: MockResponseRecord = { headers: {}, writes: [], ended: false };
   let writableEnded = false;
-  const responseFixture = {
+  const responseFixture = Object.assign(new EventEmitter(), {
     writeHead: vi.fn((status: number, headers?: Record<string, string>) => {
       record.headers.status = String(status);
       Object.assign(record.headers, headers);
@@ -170,20 +185,24 @@ function createMockRes(): {
       record.headers[name] = value;
     }),
     write: vi.fn((chunk: string | Buffer) => {
-      record.writes.push(
-        typeof chunk === "string" ? chunk : chunk.toString("utf-8"),
-      );
+      const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+      if (options.throwOnErrorFrame && text.includes('"type":"error"')) {
+        throw new Error("response write failed");
+      }
+      record.writes.push(text);
       return true;
     }),
     end: vi.fn(() => {
+      if (options.throwOnEnd) throw new Error("response end failed");
       record.ended = true;
       writableEnded = true;
     }),
     destroyed: false,
-    get writableEnded() {
-      return writableEnded;
-    },
-  } as unknown as http.ServerResponse;
+  }) as unknown as MockResponse;
+  Object.defineProperty(responseFixture, "writableEnded", {
+    configurable: true,
+    get: () => writableEnded,
+  });
   return { res: responseFixture, record };
 }
 
@@ -202,6 +221,7 @@ function countHeartbeats(writes: string[]): number {
 
 function trackedListenerCount(
   req: http.IncomingMessage,
+  res: MockResponse,
   socket: MockSocket,
 ): number {
   return (
@@ -209,11 +229,36 @@ function trackedListenerCount(
       (total, event) => total + req.listenerCount(event),
       0,
     ) +
+    TRACKED_RES_EVENTS.reduce(
+      (total, event) => total + res.listenerCount(event),
+      0,
+    ) +
     TRACKED_SOCKET_EVENTS.reduce(
       (total, event) => total + socket.listenerCount(event),
       0,
     )
   );
+}
+
+function trackedListenerCounts(
+  req: http.IncomingMessage,
+  res: MockResponse,
+  socket: MockSocket,
+): { request: number; response: number; socket: number } {
+  return {
+    request: TRACKED_REQ_EVENTS.reduce(
+      (total, event) => total + req.listenerCount(event),
+      0,
+    ),
+    response: TRACKED_RES_EVENTS.reduce(
+      (total, event) => total + res.listenerCount(event),
+      0,
+    ),
+    socket: TRACKED_SOCKET_EVENTS.reduce(
+      (total, event) => total + socket.listenerCount(event),
+      0,
+    ),
+  };
 }
 
 function createRespondingMessageService(): NonNullable<
@@ -315,15 +360,19 @@ function createState(): {
   };
 }
 
-function createCtx(state: ConversationRouteState): {
+function createCtx(
+  state: ConversationRouteState,
+  responseOptions?: MockResponseOptions,
+): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
   req: http.IncomingMessage;
+  res: MockResponse;
   socket: MockSocket;
 } {
   const socket = createMockSocket();
   const req = createReq(socket);
-  const { res, record } = createMockRes();
+  const { res, record } = createMockRes(responseOptions);
   const ctx = {
     req,
     res,
@@ -337,7 +386,7 @@ function createCtx(state: ConversationRouteState): {
       response.end();
     }),
   } as unknown as ConversationRouteContext;
-  return { ctx, record, req, socket };
+  return { ctx, record, req, res, socket };
 }
 
 describe("conversation stream heartbeat release on the throw path (#24030)", () => {
@@ -351,12 +400,23 @@ describe("conversation stream heartbeat release on the throw path (#24030)", () 
     vi.useRealTimers();
     vi.clearAllMocks();
     requestClientMessageId = undefined;
+    observeDisconnectListeners = undefined;
   });
 
   it("releases the heartbeat, the response and the listeners when durable recovery throws", async () => {
     requestClientMessageId = "heartbeat-release-throw";
     const { state, getMemoriesByIds, runtime } = createState();
-    const { ctx, record, req, socket } = createCtx(state);
+    const { ctx, record, req, res, socket } = createCtx(state);
+    let registeredListeners:
+      | ReturnType<typeof trackedListenerCounts>
+      | undefined;
+    observeDisconnectListeners = (request, response) => {
+      registeredListeners = trackedListenerCounts(
+        request,
+        response as MockResponse,
+        socket,
+      );
+    };
     getMemoriesByIds.mockRejectedValueOnce(new Error(STORE_FAILURE));
 
     await expect(handleConversationRoutes(ctx)).rejects.toThrow(STORE_FAILURE);
@@ -379,9 +439,27 @@ describe("conversation stream heartbeat release on the throw path (#24030)", () 
     expect(countHeartbeats(record.writes)).toBe(heartbeatsAtFailure);
 
     // 4. the disconnect tracker's req/res/socket listeners are disposed.
-    expect(trackedListenerCount(req, socket)).toBe(0);
+    expect(registeredListeners).toEqual({ request: 3, response: 2, socket: 2 });
+    expect(trackedListenerCount(req, res, socket)).toBe(0);
 
     // 5. the room lease is released, so the room is not wedged.
+    expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
+  });
+
+  it("preserves the turn failure when the broken response also rejects teardown", async () => {
+    requestClientMessageId = "heartbeat-release-broken-response";
+    const { state, getMemoriesByIds, runtime } = createState();
+    const { ctx, record, req, res, socket } = createCtx(state, {
+      throwOnErrorFrame: true,
+      throwOnEnd: true,
+    });
+    getMemoriesByIds.mockRejectedValueOnce(new Error(STORE_FAILURE));
+
+    await expect(handleConversationRoutes(ctx)).rejects.toThrow(STORE_FAILURE);
+
+    expect(record.ended).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(trackedListenerCount(req, res, socket)).toBe(0);
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
   });
 
@@ -408,7 +486,7 @@ describe("conversation stream heartbeat release on the throw path (#24030)", () 
 
   it("control: a successful turn still ends clean", async () => {
     const { state, runtime } = createState();
-    const { ctx, record, req, socket } = createCtx(state);
+    const { ctx, record, req, res, socket } = createCtx(state);
 
     await handleConversationRoutes(ctx);
 
@@ -417,14 +495,14 @@ describe("conversation stream heartbeat release on the throw path (#24030)", () 
     expect(frames.some((frame) => frame.type === "error")).toBe(false);
     expect(record.ended).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
-    expect(trackedListenerCount(req, socket)).toBe(0);
+    expect(trackedListenerCount(req, res, socket)).toBe(0);
     expect(runtime.roomHandlerQueue.pendingFor(ROOM_ID)).toBe(0);
   });
 
   it("control: the early return for an unavailable runtime still ends clean", async () => {
     const { state } = createState();
     (state as { runtime: AgentRuntime | null }).runtime = null;
-    const { ctx, record, req, socket } = createCtx(state);
+    const { ctx, record, req, res, socket } = createCtx(state);
 
     await handleConversationRoutes(ctx);
 
@@ -435,6 +513,6 @@ describe("conversation stream heartbeat release on the throw path (#24030)", () 
     });
     expect(record.ended).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
-    expect(trackedListenerCount(req, socket)).toBe(0);
+    expect(trackedListenerCount(req, res, socket)).toBe(0);
   });
 });

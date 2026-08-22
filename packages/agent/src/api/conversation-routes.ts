@@ -3902,6 +3902,7 @@ export async function handleConversationRoutes(
         clientMessageId ?? null,
         chatReservation,
       );
+    let streamFailed = false;
     try {
       const failStream = (message: string): true => {
         releaseTurnReservation();
@@ -4794,6 +4795,7 @@ export async function handleConversationRoutes(
         runtimeTurnLease = null;
       }
     } catch (streamError) {
+      streamFailed = true;
       // error-policy:J1 boundary translation: emit the terminal SSE `error`
       // frame owned by this streaming transport, then rethrow the original
       // failure unchanged to the outer HTTP boundary for logging.
@@ -4811,18 +4813,41 @@ export async function handleConversationRoutes(
         // courtesy to a socket that is already gone, and the rethrow below
         // still carries the real failure to the J1 boundary.
         logger.warn(
-          `[conversation-stream] terminal error frame undeliverable: ${getErrorMessage(frameError)}`,
+          {
+            err: getErrorMessage(frameError),
+            conversationId: conv.id,
+            roomId: conv.roomId,
+          },
+          "[ConversationStream] terminal error frame was undeliverable",
+        );
+      }
+      if (!reservationSettled) releaseTurnReservation();
+      clearInterval(heartbeatInterval);
+      try {
+        finishStreamResponse();
+      } catch (finishError) {
+        // error-policy:J6 best-effort teardown: a broken response may reject
+        // `end()` after the turn already failed. Preserve the turn failure for
+        // the outer J1 boundary; listener disposal ran before the end attempt.
+        logger.warn(
+          {
+            err: getErrorMessage(finishError),
+            conversationId: conv.id,
+            roomId: conv.roomId,
+          },
+          "[ConversationStream] failed to finish response after turn failure",
         );
       }
       throw streamError;
     } finally {
-      if (!reservationSettled) releaseTurnReservation();
-      // The heartbeat timer and the SSE socket are owned by this request, not
-      // by the HTTP error boundary that catches the rethrow above, so this is
-      // the only place a failed turn can release them. Both calls are
-      // idempotent: the ordinary exits already cleaned up and are unchanged.
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
+      if (!streamFailed) {
+        if (!reservationSettled) releaseTurnReservation();
+        // The heartbeat timer and the SSE socket are owned by this request,
+        // not by the HTTP error boundary. Ordinary exits already clean up;
+        // repeating either operation is safe on a healthy ServerResponse.
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+      }
     }
   }
 
