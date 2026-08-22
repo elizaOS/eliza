@@ -7,6 +7,15 @@ import {
   registerLifeOpsTaskWorker,
   resolveLifeOpsTaskIntervalMs,
 } from "./runtime.js";
+import {
+  isMissingLifeOpsRelationError,
+  rerunLifeOpsPluginMigrations,
+} from "./scheduler-task.js";
+
+const schedulerMocks = vi.hoisted(() => ({
+  ensureWorkflowRunIdempotencyKey: vi.fn(async () => undefined),
+  processScheduledWork: vi.fn(),
+}));
 
 const scheduledWorkFixture = vi.hoisted(() => ({
   now: "2026-07-01T12:00:00.000Z",
@@ -46,8 +55,15 @@ vi.mock("./scheduler-task.js", () => ({
 vi.mock("./service.js", () => ({
   LifeOpsService: class {
     async processScheduledWork() {
-      return scheduledWorkFixture;
+      return schedulerMocks.processScheduledWork();
     }
+  },
+}));
+
+vi.mock("./repository.js", () => ({
+  LifeOpsRepository: {
+    ensureWorkflowRunIdempotencyKey:
+      schedulerMocks.ensureWorkflowRunIdempotencyKey,
   },
 }));
 
@@ -86,6 +102,12 @@ describe("registerLifeOpsTaskWorker", () => {
 
 describe("executeLifeOpsSchedulerTask", () => {
   beforeEach(() => {
+    schedulerMocks.ensureWorkflowRunIdempotencyKey.mockClear();
+    schedulerMocks.processScheduledWork.mockReset();
+    schedulerMocks.processScheduledWork.mockResolvedValue(scheduledWorkFixture);
+    vi.mocked(isMissingLifeOpsRelationError).mockReset();
+    vi.mocked(isMissingLifeOpsRelationError).mockReturnValue(false);
+    vi.mocked(rerunLifeOpsPluginMigrations).mockClear();
     vi.mocked(escalateUnacknowledgedIntents).mockReset();
     vi.mocked(escalateUnacknowledgedIntents).mockResolvedValue({
       escalated: 0,
@@ -94,6 +116,12 @@ describe("executeLifeOpsSchedulerTask", () => {
 
   it("passes subsystemFailures through to the task result", async () => {
     const result = await executeLifeOpsSchedulerTask(runtime);
+    expect(
+      schedulerMocks.ensureWorkflowRunIdempotencyKey.mock
+        .invocationCallOrder[0],
+    ).toBeLessThan(
+      schedulerMocks.processScheduledWork.mock.invocationCallOrder[0],
+    );
     expect(result.subsystemFailures).toEqual([
       { subsystem: "reminders", error: "reminders down" },
     ]);
@@ -102,6 +130,26 @@ describe("executeLifeOpsSchedulerTask", () => {
     ]);
     expect(result.nextInterval).toBe(resolveLifeOpsTaskIntervalMs(AGENT_ID));
     expect(result.now).toBe(scheduledWorkFixture.now);
+  });
+
+  it("re-establishes the claim index after missing-schema recovery before retrying", async () => {
+    schedulerMocks.processScheduledWork
+      .mockRejectedValueOnce(new Error("missing relation"))
+      .mockResolvedValueOnce(scheduledWorkFixture);
+    vi.mocked(isMissingLifeOpsRelationError).mockReturnValueOnce(true);
+
+    await executeLifeOpsSchedulerTask(runtime);
+
+    expect(rerunLifeOpsPluginMigrations).toHaveBeenCalledTimes(1);
+    expect(
+      schedulerMocks.ensureWorkflowRunIdempotencyKey,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      schedulerMocks.ensureWorkflowRunIdempotencyKey.mock
+        .invocationCallOrder[1],
+    ).toBeLessThan(
+      schedulerMocks.processScheduledWork.mock.invocationCallOrder[1],
+    );
   });
 
   it("completes the tick even when intent escalation throws", async () => {

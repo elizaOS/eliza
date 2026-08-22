@@ -7,6 +7,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import type { HouseholdGrantExpiryWarningReceipt } from "./household/grant-expiry-warning.js";
+import { LifeOpsRepository } from "./repository.js";
 import {
   isMissingLifeOpsRelationError,
   LIFEOPS_TASK_NAME,
@@ -78,6 +79,7 @@ export async function executeLifeOpsSchedulerTask(
     ReturnType<LifeOpsService["processScheduledWork"]>
   >;
   try {
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     scheduledWork = await service.processScheduledWork({ now });
   } catch (error) {
     // A persisted scheduler task can fire from the task queue on restart
@@ -90,6 +92,7 @@ export async function executeLifeOpsSchedulerTask(
       "[lifeops-scheduler] LifeOps schema not ready; running plugin migrations and retrying tick",
     );
     await rerunLifeOpsPluginMigrations(runtime);
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     scheduledWork = await service.processScheduledWork({ now });
   }
 

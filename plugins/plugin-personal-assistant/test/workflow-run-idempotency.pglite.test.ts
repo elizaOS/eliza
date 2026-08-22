@@ -249,6 +249,52 @@ describe("LifeOps workflow-run idempotency storage (real PGlite)", () => {
     expect(temporaryIndexes.rows).toEqual([]);
   });
 
+  it("fails closed without the partial unique index and repairs a forged marker", async () => {
+    await pg.exec(`
+      ALTER TABLE app_lifeops.life_workflow_runs
+        ADD COLUMN idempotency_key TEXT;
+      CREATE INDEX idx_life_workflow_runs_idempotency
+        ON app_lifeops.life_workflow_runs
+          (agent_id, workflow_id, idempotency_key);
+      COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
+        IS 'elizaos:life_workflow_runs:idempotency-backfill:v1';
+    `);
+
+    await expect(
+      repository.claimWorkflowRun(
+        runningRun({ id: "unfenced", idempotencyKey: "shared-key" }),
+      ),
+    ).rejects.toThrow(/no unique|conflict|constraint/i);
+    const rowsBeforeRepair = await pg.query<{ count: number }>(`
+      SELECT COUNT(*)::int AS count
+        FROM app_lifeops.life_workflow_runs
+    `);
+    expect(rowsBeforeRepair.rows).toEqual([{ count: 0 }]);
+
+    await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
+
+    await expect(
+      repository.claimWorkflowRun(
+        runningRun({ id: "winner", idempotencyKey: "shared-key" }),
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      repository.claimWorkflowRun(
+        runningRun({ id: "loser", idempotencyKey: "shared-key" }),
+      ),
+    ).resolves.toBe(false);
+    const index = await pg.query<{ indexdef: string }>(`
+      SELECT indexdef
+        FROM pg_indexes
+       WHERE schemaname = 'app_lifeops'
+         AND indexname = 'idx_life_workflow_runs_idempotency'
+    `);
+    expect(index.rows).toHaveLength(1);
+    expect(index.rows[0]?.indexdef).toMatch(
+      /UNIQUE INDEX .*agent_id, workflow_id, idempotency_key.*WHERE \(idempotency_key IS NOT NULL\)/i,
+    );
+  });
+
   it("elects one concurrent keyed claimant, scopes keys, and CAS-finalizes only the winner", async () => {
     await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(runtime);
     const contenders = Array.from({ length: 8 }, (_, index) =>

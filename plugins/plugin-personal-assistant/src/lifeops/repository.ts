@@ -2701,20 +2701,38 @@ export class LifeOpsRepository {
     if (!(await tableExists(runtime, "app_lifeops.life_workflow_runs"))) {
       return;
     }
-    const markerQuery = `SELECT description.description
-         FROM pg_catalog.pg_description AS description
-         JOIN pg_catalog.pg_class AS index_class
-           ON index_class.oid = description.objoid
+    const buildValidIndexQuery = (requireMarker: boolean) => `SELECT EXISTS (
+       SELECT 1
+         FROM pg_catalog.pg_class AS index_class
          JOIN pg_catalog.pg_namespace AS namespace
            ON namespace.oid = index_class.relnamespace
+         JOIN pg_catalog.pg_index AS index_metadata
+           ON index_metadata.indexrelid = index_class.oid
         WHERE namespace.nspname = 'app_lifeops'
           AND index_class.relname = 'idx_life_workflow_runs_idempotency'
-          AND description.classoid = 'pg_catalog.pg_class'::regclass
-          AND description.objsubid = 0
-          AND description.description = ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}
-        LIMIT 1`;
-    const markerRows = await executeRawSql(runtime, markerQuery);
-    if (markerRows.length > 0) {
+          AND index_metadata.indisunique
+          AND index_metadata.indisvalid
+          AND index_metadata.indisready
+          AND pg_get_expr(
+                index_metadata.indpred,
+                index_metadata.indrelid
+              ) IN (
+                '(idempotency_key IS NOT NULL)',
+                'idempotency_key IS NOT NULL'
+              )
+          AND (
+            SELECT ARRAY_AGG(attribute.attname ORDER BY key.ordinality)
+              FROM UNNEST(index_metadata.indkey)
+                   WITH ORDINALITY AS key(attribute_number, ordinality)
+              JOIN pg_catalog.pg_attribute AS attribute
+                ON attribute.attrelid = index_metadata.indrelid
+               AND attribute.attnum = key.attribute_number
+             WHERE key.ordinality <= index_metadata.indnkeyatts
+          ) = ARRAY['agent_id', 'workflow_id', 'idempotency_key']::name[]
+          ${requireMarker ? `AND obj_description(index_class.oid, 'pg_class') = ${sqlQuote(WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER)}` : ""}
+      ) AS ready`;
+    const readyRows = await executeRawSql(runtime, buildValidIndexQuery(true));
+    if (readyRows[0]?.ready === true) {
       return;
     }
     await executeRawSql(
@@ -2728,7 +2746,11 @@ export class LifeOpsRepository {
         tx,
         "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
       );
-      if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+      const lockedReadyRows = await executeRawSqlTx(
+        tx,
+        buildValidIndexQuery(true),
+      );
+      if (lockedReadyRows[0]?.ready === true) {
         return;
       }
       await executeRawSqlTx(
@@ -2868,6 +2890,16 @@ export class LifeOpsRepository {
         };
       }
 
+      const structurallyValidRows = await executeRawSqlTx(
+        tx,
+        buildValidIndexQuery(false),
+      );
+      if (structurallyValidRows[0]?.ready !== true) {
+        await executeRawSqlTx(
+          tx,
+          "DROP INDEX IF EXISTS app_lifeops.idx_life_workflow_runs_idempotency",
+        );
+      }
       await executeRawSqlTx(
         tx,
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_workflow_runs_idempotency
@@ -6840,7 +6872,9 @@ export class LifeOpsRepository {
         ${sqlJson(run.result)},
         ${sqlText(run.auditRef)}
       )
-      ON CONFLICT DO NOTHING
+      ON CONFLICT (agent_id, workflow_id, idempotency_key)
+        WHERE idempotency_key IS NOT NULL
+      DO NOTHING
       RETURNING id`,
     );
     return rows.length === 1;
