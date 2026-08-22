@@ -34,7 +34,8 @@ Install-time normal permissions:
 
 - `android.permission.INTERNET`
 - `android.permission.ACCESS_NETWORK_STATE`
-- `android.permission.MODIFY_AUDIO_SETTINGS`
+- `android.permission.MODIFY_AUDIO_SETTINGS` — selects the microphone and
+  speaker route only during user-invoked voice interactions.
 - AndroidX's app-scoped `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` signature
   permission.
 

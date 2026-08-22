@@ -116,7 +116,7 @@ it("keeps canonical app-host login on the current origin", async () => {
   );
 
   expect(
-    await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+    await screen.findByRole("heading", { name: "Sign in" }),
   ).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
@@ -136,7 +136,7 @@ it("keeps canonical staging app-host login on the current origin", async () => {
   );
 
   expect(
-    await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+    await screen.findByRole("heading", { name: "Sign in" }),
   ).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),
@@ -156,7 +156,7 @@ it("normalizes a canonical app hostname before keeping login local", async () =>
   );
 
   expect(
-    await screen.findByRole("heading", { name: "Sign in to Eliza" }),
+    await screen.findByRole("heading", { name: "Sign in" }),
   ).toBeTruthy();
   expect(
     await screen.findByRole("button", { name: /Magic Link/i }),

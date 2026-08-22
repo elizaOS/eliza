@@ -102,6 +102,7 @@ const envKeys = [
   "ELIZA_APP_TWILIO_AUTH_TOKEN",
   "ELIZA_APP_TWILIO_PHONE_NUMBER",
   "ELIZA_APP_TELEGRAM_BOT_TOKEN",
+  "ELIZA_APP_BLOOIO_PHONE_NUMBER",
 ] as const;
 const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 
@@ -243,6 +244,7 @@ describe("gateway webhook handler e2e routing", () => {
       message: "My name is Ada",
       platform: "twilio",
       project: "eliza-app",
+      connectorAccountId: "+15550000000",
       phoneNumber: "+15551234567",
       messageId: `twilio:eliza-app:${event.messageId}`,
     });
@@ -257,6 +259,7 @@ describe("gateway webhook handler e2e routing", () => {
   });
 
   test("routes an unresolved Blooio iMessage to the same phone Shared path", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
     const redis = new MemoryRedis();
     const event: ChatEvent = {
       platform: "blooio",
@@ -318,11 +321,170 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "blooio",
       project: "eliza-app",
+      connectorAccountId: "+15550000001",
       phoneNumber: "+15551234567",
       messageId: "blooio:eliza-app:blooio-message-1",
       message: "hello from iMessage",
     });
     expect(replies).toEqual(["hello from personal Eliza"]);
+  });
+
+  test("preserves a Blooio group thread and records provider egress before reply classification", async () => {
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+15550000001";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "blooio",
+      messageId: "blooio-group-message-1",
+      chatId: "chat_group_123",
+      chatType: "group",
+      senderId: "+15551234567",
+      senderName: "Ada",
+      text: "following up",
+      replyToMessageId: "provider-eliza-reply-0",
+      rawPayload: {},
+    };
+    const sendReplyWithReceipt = mock(async () => ({
+      providerMessageIds: ["provider-eliza-reply-1"],
+    }));
+    const stopTypingIndicator = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "blooio",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator: mock(async () => undefined),
+      stopTypingIndicator,
+      sendReply: mock(async () => undefined),
+      sendReplyWithReceipt,
+    };
+    let turnBody: Record<string, unknown> | null = null;
+    let receiptBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        const body = (await request.json()) as Record<string, unknown>;
+        if (body.eventType === "delivery_receipt") {
+          receiptBody = body;
+          return Response.json({ success: true, data: { inserted: 1 } });
+        }
+        turnBody = body;
+        return Response.json({
+          success: true,
+          data: { reply: "group reply" },
+        });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/blooio", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => receiptBody !== null, "group provider receipt");
+    expect(turnBody).toEqual({
+      platform: "blooio",
+      chatType: "group",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      actor: {
+        platformUserId: "+15551234567",
+        displayName: "Ada",
+        role: "possessor",
+      },
+      messageId: "blooio:eliza-app:blooio-group-message-1",
+      message: "following up",
+      invocation: "reply",
+      replyToMessageId: "provider-eliza-reply-0",
+    });
+    expect(sendReplyWithReceipt).toHaveBeenCalledTimes(1);
+    expect(stopTypingIndicator).toHaveBeenCalledTimes(1);
+    expect(receiptBody).toEqual({
+      eventType: "delivery_receipt",
+      platform: "blooio",
+      project: "eliza-app",
+      connectorAccountId: "+15550000001",
+      chatId: "chat_group_123",
+      sourceMessageId: "blooio:eliza-app:blooio-group-message-1",
+      providerMessageIds: ["provider-eliza-reply-1"],
+    });
+  });
+
+  test("forwards Telegram membership removal without model or provider egress", async () => {
+    process.env.ELIZA_APP_TELEGRAM_BOT_TOKEN = "telegram-test-token";
+    const redis = new MemoryRedis();
+    const event: ChatEvent = {
+      platform: "telegram",
+      messageId: "membership-update-1",
+      chatId: "-100123456789",
+      chatType: "supergroup",
+      senderId: "123456789",
+      text: "",
+      membershipChange: "removed",
+      rawPayload: {},
+    };
+    const sendReply = mock(async () => undefined);
+    const sendTypingIndicator = mock(async () => undefined);
+    const adapter: PlatformAdapter = {
+      platform: "telegram",
+      verifyWebhook: mock(async () => true),
+      extractEvent: mock(async () => event),
+      sendTypingIndicator,
+      sendReply,
+      sendReplyWithReceipt: mock(async () => ({ providerMessageIds: [] })),
+    };
+    let membershipBody: Record<string, unknown> | null = null;
+    globalThis.fetch = mock(async (input, init) => {
+      const request = new Request(input, init);
+      if (
+        request.url.endsWith("/api/internal/eliza-app/personal-shared/messages")
+      ) {
+        membershipBody = (await request.json()) as Record<string, unknown>;
+        return Response.json({ success: true, data: { reply: "" } });
+      }
+      throw new Error(`Unexpected fetch: ${request.url}`);
+    }) as typeof fetch;
+
+    const response = await handleWebhook(
+      new Request("https://gateway.example/webhook/eliza-app/telegram", {
+        method: "POST",
+        body: "{}",
+      }),
+      adapter,
+      {
+        redis,
+        cloudBaseUrl: "https://api.elizacloud.ai",
+        getAuthHeader: () => ({ Authorization: "Bearer internal-secret" }),
+      },
+      "eliza-app",
+    );
+
+    expect(response.status).toBe(200);
+    await waitFor(() => membershipBody !== null, "membership delivery");
+    expect(membershipBody).toEqual({
+      eventType: "membership",
+      platform: "telegram",
+      project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
+      chatId: "-100123456789",
+      messageId: "telegram:eliza-app:membership-update-1",
+      membershipChange: "removed",
+    });
+    expect(sendReply).not.toHaveBeenCalled();
+    expect(sendTypingIndicator).not.toHaveBeenCalled();
   });
 
   test("refuses Telegram egress when another worker atomically claimed delivery", async () => {
@@ -530,6 +692,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
@@ -744,6 +908,8 @@ describe("gateway webhook handler e2e routing", () => {
     expect(sharedBody).toEqual({
       platform: "telegram",
       project: "eliza-app",
+      connectorAccountId:
+        "bot:a7df583dbeed5b233d355143673e458bf882856d938ab4bd0fc7adfa4be6bf3c",
       chatId: "chat-1",
       telegramUserId: "123456789",
       displayName: "Ada",
@@ -953,6 +1119,7 @@ describe("gateway webhook handler e2e routing", () => {
     expect(personalBody).toEqual({
       platform: "twilio",
       project: "eliza-app",
+      connectorAccountId: "+15550000000",
       phoneNumber: "+15551234567",
       messageId: "twilio:eliza-app:SM_linked_1",
       message: "Are you running?",

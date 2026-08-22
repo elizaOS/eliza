@@ -1,6 +1,6 @@
 /**
  * Provider that injects the agent's known contacts and relationships (the
- * "Rolodex") into context: it reads a bounded snapshot from the relationships
+ * "Rolodex") into context: it reads a complete snapshot from the relationships
  * graph service and renders each person with platforms, preferred channel,
  * aliases, last-interaction date, and fact count, plus overall totals. Absent
  * when the graph service is unavailable; empty-state when there are no contacts.

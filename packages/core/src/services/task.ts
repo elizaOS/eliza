@@ -37,7 +37,9 @@ function resolveDueTime(task: Task): number | null {
 /**
  * Each tick validates due `queue` tasks against their worker's `shouldRun`,
  * then runs `worker.execute`. Repeat tasks reschedule on their interval (with
- * failure backoff); one-shot tasks are deleted after running.
+ * failure backoff); one-shot tasks are deleted after running. A task paused via
+ * `metadata.paused` (operator or API) is skipped by every tick regardless of
+ * tags — a paused one-shot stays in the store until it is resumed.
  */
 export class TaskService extends Service {
 	private timer: NodeJS.Timeout | null = null;
@@ -587,6 +589,16 @@ export class TaskService extends Service {
 		for (const task of validation.tasks) {
 			// Non-repeat tasks: run when due (or immediately if no dueAt/scheduledAt). WHY: one-shot "run at time X" (e.g. follow-up) uses dueAt or metadata.scheduledAt.
 			if (!task.tags?.includes("repeat")) {
+				// A paused one-shot must not run and must not reach the
+				// execute-and-delete lifecycle — pauseTask() promises that ticks
+				// after the pause skip the row until resumeTask(). The repeat
+				// branch below has its own paused skip; this mirrors it for
+				// one-shots (#24277). A tick that captured this snapshot before
+				// pauseTask persisted may still run once — documented as
+				// already-selected-work semantics on pauseTask().
+				if (task.metadata?.paused === true) {
+					continue;
+				}
 				const dueMs = resolveDueTime(task);
 				if (dueMs != null && now < dueMs) continue;
 				try {
@@ -970,7 +982,18 @@ export class TaskService extends Service {
 	}
 
 	/**
-	 * Pauses a task. The scheduler will skip it until resumed.
+	 * Pauses a task. Every scheduler tick AFTER the pause is persisted skips
+	 * the task until it is resumed, and a paused task is never deleted by the
+	 * tick loop.
+	 *
+	 * Already-selected-work semantics: Task rows carry no version column, so
+	 * pause is not CAS-atomic with tick selection. A tick that captured its
+	 * Task snapshot BEFORE the pause landed may execute that one selection to
+	 * completion (including the normal one-shot delete). Everything selected
+	 * afterwards observes `metadata.paused` and skips. Callers needing
+	 * hard at-most-zero execution must gate the worker itself (e.g. check
+	 * paused inside worker.execute).
+	 *
 	 * Preserves existing metadata (updatedAt, updateInterval, etc.).
 	 */
 	async pauseTask(taskId: UUID): Promise<void> {

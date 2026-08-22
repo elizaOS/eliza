@@ -28,6 +28,7 @@ export type DocumentAddedByRole =
   | "OWNER"
   | "ADMIN"
   | "USER"
+  | "GUEST"
   | "AGENT"
   | "RUNTIME";
 
@@ -85,7 +86,31 @@ export interface DocumentsServiceLike {
     message?: Memory,
     options?: Record<string, unknown>,
   ): Promise<Memory[]>;
+  listAllDocumentsWithAccessContext?(
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getDocumentById?(documentId: UUID, message?: Memory): Promise<Memory | null>;
+  getDocumentByIdWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
+  getMutableDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory | null>;
+  setDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    directGrantEntityIds: UUID[],
+    accessContext: AccessContext,
+  ): Promise<Memory>;
+  getDocumentDirectGrantsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<UUID[]>;
+  listDocumentFragmentsWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<Memory[]>;
   getMemories(params: {
     tableName: string;
     roomId?: UUID;
@@ -102,11 +127,16 @@ export interface DocumentsServiceLike {
     documentId: UUID;
     content: string;
     message?: Memory;
+    accessContext?: AccessContext;
   }): Promise<{
     documentId: UUID;
     fragmentCount: number;
   }>;
   deleteDocument?(documentId: UUID, message?: Memory): Promise<void>;
+  deleteDocumentWithAccessContext?(
+    documentId: UUID,
+    accessContext: AccessContext,
+  ): Promise<void>;
   deleteMemory(memoryId: UUID): Promise<void>;
 }
 

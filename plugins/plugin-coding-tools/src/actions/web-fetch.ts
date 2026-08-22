@@ -98,11 +98,32 @@ export function htmlToReadableText(html: string): string {
   return body;
 }
 
+const MAX_JSON_EXTRACT_DEPTH = 16;
+const MAX_JSON_EXTRACT_PATH_LENGTH = 1024;
+const MAX_JSON_EXTRACT_SEGMENT_LENGTH = 256;
+
 function resolveJsonPath(root: unknown, path: string): unknown {
+  if (path.length === 0 || path.length > MAX_JSON_EXTRACT_PATH_LENGTH)
+    return undefined;
+  const segments = path.split(".");
+  if (segments.length === 0 || segments.length > MAX_JSON_EXTRACT_DEPTH)
+    return undefined;
   let current = root;
-  for (const segment of path.split(".")) {
+  for (const segment of segments) {
+    if (
+      segment.length === 0 ||
+      segment.length > MAX_JSON_EXTRACT_SEGMENT_LENGTH
+    )
+      return undefined;
     if (current === null || typeof current !== "object") return undefined;
-    current = (current as Record<string, unknown>)[segment];
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(current as object, segment);
+    } catch {
+      return undefined;
+    }
+    if (!descriptor || !("value" in descriptor)) return undefined;
+    current = descriptor.value;
   }
   return current;
 }

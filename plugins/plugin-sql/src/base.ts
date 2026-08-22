@@ -23,18 +23,22 @@ import {
   type ConnectorOwnerBindingRecord,
   type ConsumeOAuthFlowStateParams,
   type CreateOAuthFlowStateParams,
+  canRequesterManageDocumentDirectGrants,
   canRequesterMutateDocument,
   DatabaseAdapter,
   type DeleteConnectorAccountParams,
   DOCUMENT_LIST_QUERY_CAPABILITY_VERSION,
   type DocumentCompareAndSwapParams,
   type DocumentDeleteParams,
+  type DocumentDirectGrantUpdateParams,
   type DocumentFragmentQueryParams,
   type DocumentGetQueryParams,
   type DocumentListCursor,
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRangeReadParams,
+  type DocumentRangeReadResult,
   type DocumentRevisionReplaceParams,
   decryptedCharacter,
   documentMutationSnapshotMatches,
@@ -78,6 +82,7 @@ import {
   type TaskMetadata,
   type UpsertConnectorAccountParams,
   type UUID,
+  validateDocumentDirectGrantEntityIds,
   validateDocumentFragmentQueryParams,
   validateDocumentListQueryParams,
   validateDocumentRequesterContext,
@@ -234,6 +239,22 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
       OR ${metadata}->>'addedBy' ~* ${DOCUMENT_UUID_PATTERN}
     )
     AND (
+      NOT (${metadata} ? 'directGrantEntityIds')
+      OR (
+        jsonb_typeof(${metadata}->'directGrantEntityIds') = 'array'
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') <= 1000
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+          WHERE grant_id !~* ${DOCUMENT_UUID_PATTERN}
+        )
+        AND jsonb_array_length(${metadata}->'directGrantEntityIds') = (
+          SELECT COUNT(DISTINCT grant_id)
+          FROM jsonb_array_elements_text(${metadata}->'directGrantEntityIds') AS grant_id
+        )
+      )
+    )
+    AND (
       ${metadata}->>'scope' <> 'user-private'
       OR ${metadata}->>'scopedToEntityId' ~* ${DOCUMENT_UUID_PATTERN}
     )
@@ -245,6 +266,40 @@ function validDocumentAuthorizationMetadata(metadata: SQLWrapper): SQL {
   )`;
 }
 
+function documentDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  if (
+    params.requesterRole === "UNRESOLVED" ||
+    params.requesterRole === "GUEST" ||
+    documentRoleHasGlobalVisibility(params.requesterRole)
+  ) {
+    return sql`false`;
+  }
+  return sql`(
+    ${metadata}->>'scope' <> 'agent-private'
+    AND EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(
+        COALESCE(${metadata}->'directGrantEntityIds', '[]'::jsonb)
+      ) AS grant_id
+      WHERE grant_id = ${params.requesterEntityId}
+    )
+  )`;
+}
+
+function documentRoomOrDirectGrantCondition(
+  params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
+  roomCondition: SQL,
+  metadata: SQLWrapper = memoryTable.metadata
+): SQL {
+  return sql`(
+    ${roomCondition}
+    OR ${documentDirectGrantCondition(params, metadata)}
+  )`;
+}
+
 function documentVisibilityCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   metadata: SQLWrapper = memoryTable.metadata
@@ -253,15 +308,29 @@ function documentVisibilityCondition(
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
+  if (params.requesterRole === "UNRESOLVED") {
+    return sql`false`;
+  }
   if (params.requesterRole === "ADMIN") {
     return sql`(
       ${validAuthorizationMetadata}
-      AND ${metadata}->>'scope' IN ('global', 'user-private')
+      AND (
+        ${metadata}->>'scope' IN ('global', 'user-private')
+        OR ${documentDirectGrantCondition(params, metadata)}
+      )
+    )`;
+  }
+  if (params.requesterRole === "GUEST") {
+    return sql`(
+      ${validAuthorizationMetadata}
+      AND ${metadata}->>'scope' = 'global'
     )`;
   }
   return sql`(
     ${validAuthorizationMetadata}
     AND (
+      ${documentDirectGrantCondition(params, metadata)}
+      OR
       ${metadata}->>'scope' = 'global'
       OR (
         ${metadata}->>'scope' = 'user-private'
@@ -482,6 +551,7 @@ import type { DrizzleDatabase } from "./types";
 
 export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase> {
   readonly documentListQueryCapability = DOCUMENT_LIST_QUERY_CAPABILITY_VERSION;
+  readonly documentRangeReadCapability = 1 as const;
   protected readonly maxRetries: number = 3;
   protected readonly baseDelay: number = 1000;
   protected readonly maxDelay: number = 10000;
@@ -1760,9 +1830,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         visibleConditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(memoryTable.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(memoryTable.roomId, params.requesterRoomIds)
+              : sql`false`
+          )
         );
       }
       visibleConditions.push(documentVisibilityCondition(params));
@@ -2109,9 +2182,12 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ...(hasGlobalVisibility
         ? []
         : [
-            params.requesterRoomIds.length > 0
-              ? inArray(memoryTable.roomId, params.requesterRoomIds)
-              : sql`false`,
+            documentRoomOrDirectGrantCondition(
+              params,
+              params.requesterRoomIds.length > 0
+                ? inArray(memoryTable.roomId, params.requesterRoomIds)
+                : sql`false`
+            ),
           ]),
       documentVisibilityCondition(params),
     ];
@@ -2140,6 +2216,105 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...this.documentReadConditions(params)))
         .limit(1);
       return rows[0] ? memoryFromRow(rows[0]) : null;
+    });
+  }
+
+  async readDocumentRange(
+    params: DocumentRangeReadParams
+  ): Promise<DocumentRangeReadResult | null> {
+    validateDocumentRequesterContext(params);
+    if (
+      !Number.isSafeInteger(params.offset) ||
+      params.offset < 0 ||
+      !Number.isSafeInteger(params.limit) ||
+      params.limit < 1
+    ) {
+      throw new ElizaError(
+        "Document range read requires a non-negative offset and positive limit",
+        {
+          code: "DOCUMENT_READ_INVALID_RANGE",
+        }
+      );
+    }
+    const entityContext = documentRoleHasGlobalVisibility(params.requesterRole)
+      ? params.agentId
+      : params.requesterEntityId;
+    return this.withEntityContext(entityContext, async (tx) => {
+      const linePattern = "([^\\r\\n]*(?:\\r\\n|\\r|\\n)|[^\\r\\n]+$)";
+      const units =
+        params.unit === "line"
+          ? sql`line_units AS (
+              SELECT matched[1] AS unit_text, ordinal - 1 AS unit_index
+              FROM authorized
+              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
+                WITH ORDINALITY AS matches(matched, ordinal)
+            )`
+          : sql`raw_lines AS (
+              SELECT matched[1] AS unit_text, ordinal - 1 AS line_index
+              FROM authorized
+              CROSS JOIN LATERAL regexp_matches(source_text, ${linePattern}, 'g')
+                WITH ORDINALITY AS matches(matched, ordinal)
+            ), grouped_lines AS (
+              SELECT unit_text, line_index,
+                COALESCE(SUM(
+                  CASE WHEN btrim(regexp_replace(unit_text, E'[\\r\\n]', '', 'g')) = ''
+                    THEN 1 ELSE 0 END
+                ) OVER (
+                  ORDER BY line_index
+                  ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ), 0) AS unit_index
+              FROM raw_lines
+            ), line_units AS (
+              SELECT string_agg(unit_text, '' ORDER BY line_index) AS unit_text, unit_index
+              FROM grouped_lines
+              GROUP BY unit_index
+            )`;
+      const result = await tx.execute(sql`
+        WITH authorized AS (
+          SELECT content->>'text' AS source_text, metadata
+          FROM ${memoryTable}
+          WHERE ${and(...this.documentReadConditions(params))}
+          LIMIT 1
+        ), ${units}
+        SELECT
+          COALESCE(
+            string_agg(unit_text, '' ORDER BY unit_index)
+              FILTER (
+                WHERE unit_index >= ${params.offset}
+                  AND unit_index < ${params.offset + params.limit}
+              ),
+            ''
+          ) AS text,
+          COUNT(*)::integer AS total,
+          (SELECT COALESCE((metadata->>'documentRevision')::integer, 0) FROM authorized)
+            AS document_revision,
+          (SELECT metadata->>'revisionAttemptId' FROM authorized) AS revision_attempt_id,
+          (SELECT md5(source_text) FROM authorized) AS source_fingerprint
+        FROM line_units
+      `);
+      const row = result.rows[0] as
+        | {
+            text?: unknown;
+            total?: unknown;
+            document_revision?: unknown;
+            revision_attempt_id?: unknown;
+            source_fingerprint?: unknown;
+          }
+        | undefined;
+      if (!row || typeof row.source_fingerprint !== "string") return null;
+      const total = Number(row.total);
+      const start = params.offset;
+      return {
+        text: typeof row.text === "string" ? row.text : "",
+        start,
+        end: Math.min(start + params.limit, total),
+        total,
+        documentRevision: Number(row.document_revision ?? 0),
+        ...(typeof row.revision_attempt_id === "string"
+          ? { revisionAttemptId: row.revision_attempt_id }
+          : {}),
+        sourceFingerprint: `md5:${row.source_fingerprint}`,
+      };
     });
   }
 
@@ -2177,25 +2352,43 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       ];
       if (!hasGlobalVisibility) {
         conditions.push(
-          params.requesterRoomIds.length > 0
-            ? inArray(parent.roomId, params.requesterRoomIds)
-            : sql`false`
+          documentRoomOrDirectGrantCondition(
+            params,
+            params.requesterRoomIds.length > 0
+              ? inArray(parent.roomId, params.requesterRoomIds)
+              : sql`false`,
+            parent.metadata
+          )
         );
       }
       if (params.roomId) conditions.push(eq(parent.roomId, params.roomId));
       if (params.worldId) conditions.push(eq(parent.worldId, params.worldId));
       if (params.entityId) conditions.push(eq(parent.entityId, params.entityId));
+      if (params.documentId) conditions.push(eq(parent.id, params.documentId));
 
       const parentJoin = sql`${parent.id}::text = ${fragment.metadata}->>'documentId'`;
       if (!params.embedding) {
         const rows = await tx
-          .select({ memory: fragment })
+          .select({
+            memory: fragment,
+            sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
+          })
           .from(fragment)
           .innerJoin(parent, parentJoin)
           .where(and(...conditions))
           .orderBy(desc(fragment.createdAt), desc(fragment.id))
-          .limit(params.limit);
-        return rows.map((row) => memoryFromRow(row.memory));
+          .limit(params.limit)
+          .offset(params.offset ?? 0);
+        return rows.map((row) => {
+          const memory = memoryFromRow(row.memory);
+          return {
+            ...memory,
+            metadata: {
+              ...(memory.metadata ?? {}),
+              sourceFingerprint: `md5:${row.sourceFingerprint}`,
+            } as Memory["metadata"],
+          };
+        });
       }
 
       const activeColumn = embeddingTable[this.embeddingDimension];
@@ -2210,20 +2403,29 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           memory: fragment,
           embedding: activeColumn,
           similarity,
+          sourceFingerprint: sql<string>`md5(${parent.content}->>'text')`,
         })
         .from(embeddingTable)
         .innerJoin(fragment, eq(fragment.id, embeddingTable.memoryId))
         .innerJoin(parent, parentJoin)
         .where(and(...conditions))
         .orderBy(asc(distance), desc(fragment.createdAt), desc(fragment.id))
-        .limit(params.limit);
-      return rows.map((row) =>
-        memoryFromRow(
+        .limit(params.limit)
+        .offset(params.offset ?? 0);
+      return rows.map((row) => {
+        const memory = memoryFromRow(
           row.memory,
           row.embedding ? Array.from(row.embedding) : undefined,
           row.similarity
-        )
-      );
+        );
+        return {
+          ...memory,
+          metadata: {
+            ...(memory.metadata ?? {}),
+            sourceFingerprint: `md5:${row.sourceFingerprint}`,
+          } as Memory["metadata"],
+        };
+      });
     });
   }
 
@@ -2259,6 +2461,58 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           unique: replacement.unique ?? row.unique,
           metadata: replacement.metadata ?? {},
         })
+        .where(eq(memoryTable.id, params.documentId))
+        .returning();
+      return updated[0]
+        ? { status: "updated", document: memoryFromRow(updated[0]) }
+        : { status: "conflict" };
+    });
+  }
+
+  async updateDocumentDirectGrants(
+    params: DocumentDirectGrantUpdateParams
+  ): Promise<DocumentMutationResult> {
+    validateDocumentRequesterContext(params);
+    const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
+    return this.withEntityContext(params.agentId, async (tx) => {
+      const rows = await tx
+        .select()
+        .from(memoryTable)
+        .where(and(...this.documentStorageConditions(params)))
+        .for("update")
+        .limit(1);
+      const row = rows[0];
+      if (!row) return { status: "not_found" };
+      const existing = memoryFromRow(row);
+      if (!documentMutationSnapshotMatches(existing, params.expected)) {
+        return { status: "conflict" };
+      }
+      if (!canRequesterManageDocumentDirectGrants(existing, params)) {
+        return { status: "forbidden" };
+      }
+      if (directGrantEntityIds.length > 0) {
+        const grantees = await tx
+          .select({ id: entityTable.id })
+          .from(entityTable)
+          .where(
+            and(
+              inArray(entityTable.id, directGrantEntityIds),
+              eq(entityTable.agentId, params.agentId)
+            )
+          );
+        if (grantees.length !== directGrantEntityIds.length) {
+          return { status: "not_found" };
+        }
+      }
+      const metadata = { ...((row.metadata ?? {}) as Record<string, unknown>) };
+      if (directGrantEntityIds.length > 0) {
+        metadata.directGrantEntityIds = directGrantEntityIds;
+      } else {
+        delete metadata.directGrantEntityIds;
+      }
+      const updated = await tx
+        .update(memoryTable)
+        .set({ metadata })
         .where(eq(memoryTable.id, params.documentId))
         .returning();
       return updated[0]

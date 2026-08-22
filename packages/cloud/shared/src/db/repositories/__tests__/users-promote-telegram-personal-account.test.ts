@@ -137,6 +137,38 @@ describe("UsersRepository Telegram account promotion (real PGlite)", () => {
     expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
   });
 
+  test("makes concurrent browser login and first DM converge before promotion", async () => {
+    const telegramId = "100000208";
+    const stewardUserId = "steward-real-208";
+
+    const browserLogin = (async () => {
+      const personal = await createTelegramAccount(telegramId);
+      return await usersRepository.promoteTelegramPersonalAccountToSteward({
+        telegramId,
+        stewardUserId,
+        expectedUserId: personal.user.id,
+        expectedOrganizationId: personal.organization.id,
+      });
+    })();
+    const inboundDm = createTelegramAccount(telegramId);
+
+    const [promotion, dmAccount] = await Promise.all([browserLogin, inboundDm]);
+    expect(["promoted", "already_promoted"]).toContain(promotion.status);
+    if (promotion.status !== "promoted" && promotion.status !== "already_promoted") {
+      return;
+    }
+    expect(promotion.user.id).toBe(dmAccount.user.id);
+    expect(promotion.organization.id).toBe(dmAccount.organization.id);
+    expect(await dbWrite.select().from(users)).toHaveLength(1);
+    expect(await dbWrite.select().from(organizations)).toHaveLength(1);
+    expect(await dbWrite.select().from(userIdentities)).toHaveLength(1);
+
+    const laterDm = await createTelegramAccount(telegramId);
+    expect(laterDm.user.id).toBe(promotion.user.id);
+    expect(laterDm.organization.id).toBe(promotion.organization.id);
+    expect(laterDm.user.steward_user_id).toBe(stewardUserId);
+  });
+
   test("rejects a continuation bound to a different account without mutation", async () => {
     const telegramId = "100000203";
     const provisional = await createTelegramAccount(telegramId);
