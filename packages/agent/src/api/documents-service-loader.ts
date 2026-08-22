@@ -132,7 +132,7 @@ export function getDocumentsServiceTimeoutMs(): number {
   // timeout. Require the whole trimmed value to be decimal.
   const trimmed = envVal.trim();
   const parsed = /^\+?\d+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
+  if (Number.isNaN(parsed) || parsed <= 0) return DEFAULT_TIMEOUT_MS;
   return Math.min(parsed, MAX_TIMEOUT_MS);
 }
 
