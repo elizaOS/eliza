@@ -1401,6 +1401,32 @@ const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_MARKER =
   "elizaos:life_workflow_runs:idempotency-backfill:v1";
 const WORKFLOW_RUN_IDEMPOTENCY_BACKFILL_BATCH_SIZE = 500;
 
+const WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY = `SELECT indexdef
+  FROM pg_catalog.pg_indexes
+ WHERE schemaname = 'app_lifeops'
+   AND tablename = 'life_workflow_runs'
+   AND indexname = 'idx_life_workflow_runs_idempotency'`;
+
+function assertWorkflowRunIdempotencyIndexDefinition(
+  rows: Array<Record<string, unknown>>,
+): void {
+  const indexDefinition =
+    typeof rows[0]?.indexdef === "string" ? rows[0].indexdef : "";
+  const indexDefinitionIsExpected =
+    /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
+    /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
+    /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
+  if (!indexDefinitionIsExpected) {
+    throw new ElizaError(
+      "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index — drop or rename the conflicting index so the workflow-run claim election can be installed",
+      {
+        code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
+        context: { indexDefinition },
+      },
+    );
+  }
+}
+
 function assertValidWorkflowRunIdempotencyKey(
   idempotencyKey: string | null | undefined,
 ): void {
@@ -2715,6 +2741,12 @@ export class LifeOpsRepository {
         LIMIT 1`;
     const markerRows = await executeRawSql(runtime, markerQuery);
     if (markerRows.length > 0) {
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSql(
+          runtime,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
+      );
       return;
     }
     await executeRawSql(
@@ -2729,6 +2761,12 @@ export class LifeOpsRepository {
         "LOCK TABLE app_lifeops.life_workflow_runs IN SHARE ROW EXCLUSIVE MODE",
       );
       if ((await executeRawSqlTx(tx, markerQuery)).length > 0) {
+        assertWorkflowRunIdempotencyIndexDefinition(
+          await executeRawSqlTx(
+            tx,
+            WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+          ),
+        );
         return;
       }
       await executeRawSqlTx(
@@ -2882,31 +2920,12 @@ export class LifeOpsRepository {
       // while electing nothing. Verify the live definition before stamping;
       // the transaction rolls back on mismatch so a later boot retries after
       // the operator drops or renames the conflicting index.
-      const indexDefinitionRows = await executeRawSqlTx(
-        tx,
-        `SELECT indexdef
-           FROM pg_catalog.pg_indexes
-          WHERE schemaname = 'app_lifeops'
-            AND tablename = 'life_workflow_runs'
-            AND indexname = 'idx_life_workflow_runs_idempotency'`,
+      assertWorkflowRunIdempotencyIndexDefinition(
+        await executeRawSqlTx(
+          tx,
+          WORKFLOW_RUN_IDEMPOTENCY_INDEX_DEFINITION_QUERY,
+        ),
       );
-      const indexDefinition =
-        typeof indexDefinitionRows[0]?.indexdef === "string"
-          ? indexDefinitionRows[0].indexdef
-          : "";
-      const indexDefinitionIsExpected =
-        /\bUNIQUE INDEX\b/i.test(indexDefinition) &&
-        /\(agent_id, workflow_id, idempotency_key\)/i.test(indexDefinition) &&
-        /WHERE \(idempotency_key IS NOT NULL\)/i.test(indexDefinition);
-      if (!indexDefinitionIsExpected) {
-        throw new ElizaError(
-          "[LifeOpsRepository] idx_life_workflow_runs_idempotency exists but is not the expected partial unique index — drop or rename the conflicting index so the workflow-run claim election can be installed",
-          {
-            code: "LIFEOPS_WORKFLOW_RUN_IDEMPOTENCY_INDEX_MISMATCH",
-            context: { indexDefinition },
-          },
-        );
-      }
       await executeRawSqlTx(
         tx,
         `COMMENT ON INDEX app_lifeops.idx_life_workflow_runs_idempotency
