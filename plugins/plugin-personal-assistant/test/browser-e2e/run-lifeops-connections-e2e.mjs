@@ -73,6 +73,7 @@ const server = Bun.serve({
 
 const outputDir = await mkdtemp(join(tmpdir(), "eliza-lifeops-e2e-"));
 const baseURL = `http://127.0.0.1:${port}`;
+const holdOpen = process.env.LIFEOPS_E2E_HOLD_OPEN === "1";
 let failures = 0;
 function assert(condition, message) {
   process.stdout.write(`${condition ? "PASS" : "FAIL"} ${message}\n`);
@@ -138,6 +139,18 @@ try {
     await desktop.getByRole("alertdialog").isVisible(),
     "local projection purge requires confirmation",
   );
+  assert(
+    (await desktop.evaluate(() =>
+      document.activeElement?.textContent?.trim(),
+    )) === "Cancel",
+    "destructive confirmation receives keyboard focus",
+  );
+  await desktop.keyboard.press("Escape");
+  await desktop.getByRole("alertdialog").waitFor({ state: "detached" });
+  assert(true, "Escape cancels a destructive confirmation without an effect");
+  await desktop
+    .getByRole("button", { name: /Purge imported Google data/ })
+    .click();
   await desktop.getByRole("button", { name: "Confirm purge" }).click();
   await desktop.getByTestId("purge-receipt").waitFor();
   assert(
@@ -153,10 +166,10 @@ try {
   await desktop.getByRole("button", { name: "Confirm disconnect" }).click();
   await desktop.getByText("No Google account is connected.").waitFor();
   assert(
-    await desktop
+    !(await desktop
       .getByRole("button", { name: "Seed selected context" })
-      .isDisabled(),
-    "disconnect clears stale grant selection",
+      .isDisabled()),
+    "disconnect clears stale Google identity while preserving Apple-only seed",
   );
   await desktop.screenshot({
     path: join(outputDir, "desktop-disconnected.png"),
@@ -176,7 +189,271 @@ try {
     ),
     "reconnect reuses stable identities without duplicate counts",
   );
+  await desktop.getByRole("button", { name: "Review inbox drafts" }).click();
+  assert(
+    (await desktop.evaluate(
+      () => document.documentElement.dataset.lastNavigation,
+    )) === "/inbox",
+    "draft review stays separate from sending",
+  );
+  await desktop
+    .getByRole("button", { name: "Review calendar changes" })
+    .click();
+  assert(
+    (await desktop.evaluate(
+      () => document.documentElement.dataset.lastNavigation,
+    )) === "/calendar",
+    "calendar review stays separate from provider mutation",
+  );
   assert(pageErrors.length === 0, "desktop flow has no page errors");
+
+  const multiAccount = await browser.newPage({
+    viewport: { width: 1180, height: 850 },
+  });
+  await multiAccount.goto(`${baseURL}?scenario=multi-account`);
+  await multiAccount
+    .getByRole("combobox", { name: "Active Google account" })
+    .selectOption("connector-account:fixture-account-2");
+  await multiAccount
+    .getByRole("button", { name: "Seed selected context" })
+    .click();
+  await multiAccount.getByTestId("seed-receipt").waitFor();
+  const multiSeed = JSON.parse(
+    await multiAccount.evaluate(
+      () => document.documentElement.dataset.seedRequest ?? "null",
+    ),
+  );
+  assert(
+    multiSeed.grantId === "connector-account:fixture-account-2" &&
+      multiSeed.calendarKeys.some((key) =>
+        key.includes("fixture-second-primary"),
+      ) &&
+      multiSeed.calendarKeys.some((key) => key.includes("fixture-apple")) &&
+      !multiSeed.calendarKeys.some((key) => key.endsWith('"primary"]')),
+    "account switching excludes hidden calendars from another Google grant",
+  );
+  await multiAccount.close();
+
+  const appleOnly = await browser.newPage({
+    viewport: { width: 1024, height: 800 },
+  });
+  await appleOnly.goto(`${baseURL}?scenario=apple-only&permission=granted`);
+  await appleOnly.getByText("No Google account is connected.").waitFor();
+  assert(
+    !(await appleOnly
+      .getByRole("button", { name: "Seed selected context" })
+      .isDisabled()),
+    "Apple Calendar can seed without a fabricated Google grant",
+  );
+  await appleOnly
+    .getByRole("button", { name: "Seed selected context" })
+    .click();
+  await appleOnly.getByTestId("seed-receipt").waitFor();
+  const appleSeed = JSON.parse(
+    await appleOnly.evaluate(
+      () => document.documentElement.dataset.seedRequest ?? "null",
+    ),
+  );
+  assert(
+    appleSeed.grantId === null &&
+      appleSeed.includeGmail === false &&
+      appleSeed.calendarKeys.length === 1,
+    "Apple-only seed receipt preserves provider-neutral identity",
+  );
+  await appleOnly.screenshot({
+    path: join(outputDir, "desktop-apple-only.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await appleOnly.close();
+
+  const capabilityPage = await browser.newPage({
+    viewport: { width: 1024, height: 800 },
+  });
+  await capabilityPage.goto(`${baseURL}?scenario=capture-connect`);
+  assert(
+    await capabilityPage
+      .getByRole("checkbox", { name: /Create drafts/ })
+      .isChecked(),
+    "draft capability defaults on without implying send",
+  );
+  for (const name of [
+    /Send approved email/,
+    /Manage labels and mailbox state/,
+    /Change Google Calendar/,
+  ]) {
+    const checkbox = capabilityPage.getByRole("checkbox", { name });
+    assert(!(await checkbox.isChecked()), `${name.source} effect defaults off`);
+    await checkbox.check();
+  }
+  await capabilityPage
+    .getByRole("button", { name: /Connect another Google account/ })
+    .click();
+  const requestedCapabilities = JSON.parse(
+    await capabilityPage.evaluate(
+      () => document.documentElement.dataset.connectCapabilities ?? "[]",
+    ),
+  );
+  assert(
+    requestedCapabilities.includes("google.gmail.send") &&
+      requestedCapabilities.includes("google.gmail.manage") &&
+      requestedCapabilities.includes("google.calendar.write"),
+    "effect scopes are requested only after explicit selection",
+  );
+  await capabilityPage.close();
+
+  for (const [permission, label] of [
+    ["limited", "Write only"],
+    ["restricted", "Restricted"],
+    ["not-applicable", "Not available here"],
+  ]) {
+    const permissionPage = await browser.newPage();
+    await permissionPage.goto(`${baseURL}?permission=${permission}`);
+    assert(
+      await permissionPage.getByText(label, { exact: true }).isVisible(),
+      `Apple ${permission} permission state is explicit`,
+    );
+    await permissionPage.close();
+  }
+
+  const requestPermission = await browser.newPage();
+  await requestPermission.goto(`${baseURL}?permission=not-determined`);
+  await requestPermission
+    .getByRole("button", { name: "Request permission" })
+    .click();
+  await requestPermission.getByText("Full access", { exact: true }).waitFor();
+  assert(true, "Apple permission request refreshes to the granted state");
+  await requestPermission.close();
+
+  const faultCases = [
+    {
+      query: "failure=load",
+      expected: "Fixture connection inventory failed.",
+      act: async (page) => {
+        await page.getByRole("button", { name: "Retry", exact: true }).click();
+        await page
+          .getByRole("combobox", { name: "Active Google account" })
+          .waitFor();
+      },
+      message:
+        "initial inventory failure recovers without fabricated empty state",
+    },
+    {
+      query: "failure=seed",
+      expected: "Fixture initial sync failed during calendar import.",
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: "Seed selected context" })
+          .click();
+      },
+      message: "partial seed failure is explicit and retryable",
+    },
+    {
+      query: "failure=calendar",
+      expected: "Fixture calendar selection could not be saved.",
+      act: async (page) => {
+        await page.getByRole("checkbox", { name: /Work/ }).click();
+      },
+      message: "calendar-selection failure preserves the prior selection",
+    },
+    {
+      query: "failure=permission&permission=not-determined",
+      expected: "Fixture Calendar permission request failed.",
+      act: async (page) => {
+        await page.getByRole("button", { name: "Request permission" }).click();
+      },
+      message: "Apple permission request failure is actionable",
+    },
+    {
+      query: "failure=settings",
+      expected: "Fixture System Settings launch failed.",
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: "Open System Settings" })
+          .click();
+      },
+      message: "System Settings launch failure is actionable",
+    },
+    {
+      query: "failure=purge",
+      expected: "Fixture local purge failed; no data was removed.",
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: /Purge imported Google data/ })
+          .click();
+        await page.getByRole("button", { name: "Confirm purge" }).click();
+      },
+      message: "failed local purge never displays a success receipt",
+    },
+    {
+      query: "failure=disconnect",
+      expected: "Fixture disconnect failed; connection is unchanged.",
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: /Disconnect Google account/ })
+          .click();
+        await page.getByRole("button", { name: "Confirm disconnect" }).click();
+      },
+      message: "failed disconnect keeps the account visibly connected",
+    },
+    {
+      query: "scenario=capture-connect&failure=connect",
+      expected: "Fixture Google connect failed.",
+      act: async (page) => {
+        await page
+          .getByRole("button", { name: /Connect another Google account/ })
+          .click();
+      },
+      message: "Google connect failure restores controls and reports the cause",
+    },
+  ];
+  for (const fault of faultCases) {
+    const faultPage = await browser.newPage();
+    const faultErrors = [];
+    faultPage.on("pageerror", (error) => faultErrors.push(String(error)));
+    await faultPage.goto(`${baseURL}?${fault.query}`);
+    await faultPage
+      .getByRole("heading", { name: /Bring your inbox/ })
+      .waitFor();
+    if (fault.query === "failure=load") {
+      await faultPage.getByRole("alert").waitFor();
+    } else {
+      await fault.act(faultPage);
+      await faultPage.getByRole("alert").waitFor();
+    }
+    assert(
+      (await faultPage.getByRole("alert").textContent()).includes(
+        fault.expected,
+      ),
+      fault.message,
+    );
+    if (fault.query === "failure=load") await fault.act(faultPage);
+    if (fault.query === "failure=calendar") {
+      assert(
+        await faultPage.getByRole("checkbox", { name: /Work/ }).isChecked(),
+        "failed calendar selection remains checked",
+      );
+    }
+    if (fault.query === "failure=purge") {
+      assert(
+        (await faultPage.getByTestId("purge-receipt").count()) === 0,
+        "failed purge emits no success receipt",
+      );
+    }
+    if (fault.query === "failure=disconnect") {
+      assert(
+        await faultPage
+          .getByRole("combobox", { name: "Active Google account" })
+          .isVisible(),
+        "failed disconnect preserves connected account state",
+      );
+    }
+    assert(
+      faultErrors.length === 0,
+      `${fault.query} has no uncaught page error`,
+    );
+    await faultPage.close();
+  }
 
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -208,8 +485,15 @@ try {
   await desktop.close();
 } finally {
   await browser.close();
-  server.stop(true);
 }
 
 process.stdout.write(`Evidence: ${outputDir}\n`);
 if (failures > 0) process.exitCode = 1;
+if (holdOpen && failures === 0) {
+  process.stdout.write(`Inspection URL: ${baseURL}\n`);
+  await new Promise((resolveHold) => {
+    process.once("SIGINT", resolveHold);
+    process.once("SIGTERM", resolveHold);
+  });
+}
+server.stop(true);

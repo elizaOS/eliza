@@ -29,14 +29,14 @@ export interface LifeOpsConnectionsSnapshot {
 }
 
 export interface LifeOpsSeedRequest {
-  grantId: string;
+  grantId: string | null;
   rangeDays: LifeOpsSeedRangeDays;
   includeGmail: boolean;
   calendarKeys: string[];
 }
 
 export interface LifeOpsSeedReceipt {
-  grantId: string;
+  grantId: string | null;
   rangeDays: LifeOpsSeedRangeDays;
   gmailMessageCount: number;
   calendarEventCount: number;
