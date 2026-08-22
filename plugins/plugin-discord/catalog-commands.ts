@@ -45,6 +45,8 @@ import {
 	createUniqueUuid,
 	hasRoleAccess,
 	type IAgentRuntime,
+	toWellFormedUnicode,
+	truncateWellFormed,
 } from "@elizaos/core";
 import {
 	type ConnectorCommand,
@@ -417,12 +419,28 @@ function buildExecute(command: ConnectorCommand): SlashCommand["execute"] {
 }
 
 /** Map a catalog option onto the plugin's `SlashCommandOption` shape. */
-function mapOption(
+export function mapOption(
 	option: ConnectorCommand["options"][number],
 ): SlashCommandOption {
 	const choices =
-		option.choices.length > 0 && option.choices.length <= 25
-			? option.choices.map((value) => ({ name: value.slice(0, 100), value }))
+		option.choices.length > 0 &&
+		option.choices.length <= 25 &&
+		option.choices.every(
+			(value) =>
+				value.length > 0 &&
+				value.length <= 100 &&
+				toWellFormedUnicode(value) === value,
+		)
+			? option.choices.map((value) => {
+					const wellFormed = toWellFormedUnicode(value);
+					return {
+						name:
+							wellFormed.length > 100
+								? truncateWellFormed(wellFormed, 100)
+								: wellFormed,
+						value,
+					};
+				})
 			: undefined;
 	return {
 		name: option.name,
