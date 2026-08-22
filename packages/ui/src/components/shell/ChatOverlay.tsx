@@ -2035,6 +2035,15 @@ export function ChatOverlay({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
+  const composerRowRef = React.useRef<HTMLDivElement>(null);
+  // The detached host is intentionally taller than the painted composer so
+  // AppKit has transparent headroom for the grab lane. Positioning the white
+  // traveler with that native 64px envelope lifted it above the capsule. Keep
+  // its endpoint tied to the actual composer surface instead, including when a
+  // multiline draft makes that surface taller.
+  const desktopTravelerInputSurfaceHeight = useMotionValue(
+    CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
+  );
   // The SURFACE layer (not the transparent fieldset container): it carries the
   // live corner radius the native glass region must mirror.
   const glassSurfaceRef = React.useRef<HTMLDivElement | null>(null);
@@ -2111,6 +2120,20 @@ export function ChatOverlay({
     },
     [],
   );
+  React.useLayoutEffect(() => {
+    if (!desktopOverlayHost) return undefined;
+    const composerRow = composerRowRef.current;
+    if (!composerRow) return undefined;
+    const publish = () => {
+      const height = composerRow.offsetHeight;
+      if (height > 0) desktopTravelerInputSurfaceHeight.set(height);
+    };
+    publish();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(publish);
+    observer.observe(composerRow);
+    return () => observer.disconnect();
+  }, [desktopOverlayHost, desktopTravelerInputSurfaceHeight]);
   // The transcript's inner content wrapper — measured to size the onboarding
   // sheet to its content (grow-from-the-bottom) instead of a tall empty panel.
   const threadContentRef = React.useRef<HTMLDivElement>(null);
@@ -3623,18 +3646,20 @@ export function ChatOverlay({
     ([travelerOwns, t]: number[]) =>
       desktopSheetGrabberOpacity(travelerOwns >= 0.5, t),
   );
-  // Detached macOS uses one continuous white mark instead of two bars with a
-  // dead crossfade between them. The resting 64x12 pill travels from the
-  // wrapper's bottom edge to its top while shrinking to the composer's 48x6
-  // grabber. At the endpoint it hands off at the exact same pixels to the real
-  // SheetGrabber, which retains all open-state interaction semantics. Embedded
-  // and browser surfaces keep their established capsule/grabber treatment.
-  const desktopPillTravelerY = useTransform(openProgress, (progress) =>
-    desktopPillTravelerOffset(
-      progress,
-      CHAT_OVERLAY_INPUT_WINDOW_HEIGHT,
-      CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
-    ),
+  // Detached macOS uses one continuous visible white mark instead of two bars
+  // with a dead crossfade between them. Its INPUT endpoint is derived from the
+  // painted composer row, not the taller transparent native window envelope.
+  // The invisible inset SheetGrabber owns the forgiving INPUT hit lane; the
+  // traveler itself becomes interactive only in PILL. That preserves one
+  // visual DOM node without shrinking the usable drag target to 48x6.
+  const desktopPillTravelerY = useTransform(
+    [openProgress, desktopTravelerInputSurfaceHeight] as MotionValue<number>[],
+    ([progress, inputSurfaceHeight]: number[]) =>
+      desktopPillTravelerOffset(
+        progress,
+        inputSurfaceHeight,
+        CHAT_OVERLAY_RESTING_WINDOW_HEIGHT,
+      ),
   );
   const desktopPillTravelerScaleX = useTransform(
     openProgress,
@@ -6378,7 +6403,10 @@ export function ChatOverlay({
             opacity={
               desktopOverlayHost ? desktopGrabberOpacity : grabberOpacity
             }
-            pilled={pilled || desktopTravelerOwnsHandle}
+            // In detached INPUT this remains an invisible, broad hit lane
+            // behind the single visible traveler. Disable it only in PILL,
+            // where the traveler owns the complete visible/interactive target.
+            pilled={pilled}
           />
         ) : null}
         <motion.fieldset
@@ -7089,6 +7117,7 @@ export function ChatOverlay({
             wrapper crossfades + scales in from the pill (openProgress), so this
             row needs no separate entrance — it just sits at the panel base. */}
             <motion.div
+              ref={composerRowRef}
               data-testid="chat-composer-row"
               className={cn(
                 // items-center vertically centers a single-line composer with
@@ -7539,9 +7568,11 @@ export function ChatOverlay({
         {!firstRunOpen && desktopOverlayHost ? (
           // Keep the detached rest button OUTSIDE the panel's pill-morph
           // transform. It is the one visible traveling mark during pill ->
-          // composer: bottom 64x12 at rest, top 48x6 at the handoff. The real
-          // SheetGrabber takes over at those exact pixels once fully formed.
+          // composer: bottom 64x12 at rest, inset 48x6 at the measured composer
+          // top. The broad invisible SheetGrabber owns INPUT gestures without
+          // replacing this visual node; the traveler owns gestures in PILL.
           <motion.div
+            data-testid="chat-desktop-pill-traveler"
             className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center"
             style={{
               y: desktopPillTravelerY,
@@ -7554,7 +7585,7 @@ export function ChatOverlay({
               onOpen={pilled ? openFromPill : openFromGrabber}
               breathing={listening || responding || recording}
               pilled={pilled}
-              interactive={desktopTravelerOwnsHandle}
+              interactive={pilled}
               desktopOverlayHost
               desktopMorphScaleX={desktopPillTravelerScaleX}
               desktopMorphScaleY={desktopPillTravelerScaleY}

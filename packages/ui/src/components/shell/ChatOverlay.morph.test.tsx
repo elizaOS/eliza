@@ -174,10 +174,12 @@ describe("handle fade through the maximize over-pull (grabberBarOpacity)", () =>
 });
 
 describe("detached desktop pill traveler handoff", () => {
-  it("stays bottom-anchored at rest and lands on the 64px input top edge", () => {
-    expect(desktopPillTravelerOffset(0, 64, 12)).toBe(0);
-    expect(desktopPillTravelerOffset(0.5, 64, 12)).toBe(-26);
-    expect(desktopPillTravelerOffset(1, 64, 12)).toBe(-52);
+  it("stays bottom-anchored at rest and lands on the measured composer top edge", () => {
+    // The native input window is 64px tall, but its transparent headroom is
+    // not part of the painted 48px composer surface and must not move the mark.
+    expect(desktopPillTravelerOffset(0, 48, 12)).toBe(0);
+    expect(desktopPillTravelerOffset(0.5, 48, 12)).toBe(-18);
+    expect(desktopPillTravelerOffset(1, 48, 12)).toBe(-36);
   });
 
   it("keeps exactly one mark painted while handing off to the grabber", () => {

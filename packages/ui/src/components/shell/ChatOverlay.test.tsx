@@ -4403,42 +4403,59 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
     expect(onWindowSizeClassChange).toHaveBeenLastCalledWith("input");
   });
 
-  it("uses one continuous interactive traveler from detached input to pill", () => {
-    render(
-      <ChatOverlay
-        controller={makeSwipeController().controller}
-        desktopOverlayHost
-        initialMode="input"
-      />,
-    );
-    const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
-    const traveler = screen.getByTestId("chat-pill");
+  it("keeps one inset traveler while the input grabber owns the broad hit lane", async () => {
+    const offsetHeight = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockImplementation(function measuredComposerHeight(this: HTMLElement) {
+        return this.dataset.testid === "chat-composer-row" ? 48 : 0;
+      });
+    try {
+      render(
+        <ChatOverlay
+          controller={makeSwipeController().controller}
+          desktopOverlayHost
+          initialMode="input"
+        />,
+      );
+      const fixedGrabber = screen.getByTestId("chat-sheet-grabber");
+      const traveler = screen.getByTestId("chat-pill");
 
-    expect(fixedGrabber.style.pointerEvents).toBe("none");
-    expect(fixedGrabber.getAttribute("aria-hidden")).toBe("true");
-    expect(traveler.className).toContain("pointer-events-auto");
-    expect(traveler.getAttribute("aria-hidden")).toBeNull();
+      expect(fixedGrabber.style.pointerEvents).toBe("auto");
+      expect(fixedGrabber.getAttribute("aria-hidden")).toBeNull();
+      expect(fixedGrabber.style.opacity).toBe("0");
+      expect(traveler.className).toContain("pointer-events-none");
+      expect(traveler.getAttribute("aria-hidden")).toBe("true");
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("chat-desktop-pill-traveler").style.transform,
+        ).toContain("translateY(-36px)");
+      });
 
-    const handleDown = createEvent.pointerDown(traveler, {
-      clientY: 400,
-      screenY: 400,
-      pointerId: 93,
-    });
-    fireEvent(traveler, handleDown);
-    expect(handleDown.defaultPrevented).toBe(true);
-    fireEvent.pointerMove(traveler, {
-      clientY: 480,
-      screenY: 480,
-      pointerId: 93,
-    });
-    fireEvent.pointerUp(traveler, {
-      clientY: 480,
-      screenY: 480,
-      pointerId: 93,
-    });
+      const handleDown = createEvent.pointerDown(fixedGrabber, {
+        clientY: 400,
+        screenY: 400,
+        pointerId: 93,
+      });
+      fireEvent(fixedGrabber, handleDown);
+      expect(handleDown.defaultPrevented).toBe(true);
+      fireEvent.pointerMove(fixedGrabber, {
+        clientY: 480,
+        screenY: 480,
+        pointerId: 93,
+      });
+      fireEvent.pointerUp(fixedGrabber, {
+        clientY: 480,
+        screenY: 480,
+        pointerId: 93,
+      });
 
-    expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
-    expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("pill");
+      expect(screen.getByTestId("chat-pill")).toBe(traveler);
+      expect(traveler.className).toContain("pointer-events-auto");
+      expect(traveler.getAttribute("aria-hidden")).toBeNull();
+    } finally {
+      offsetHeight.mockRestore();
+    }
   });
 
   it("prevents selection only for handle-originated drags", () => {
@@ -4867,14 +4884,17 @@ describe("ChatOverlay single-thread (no chat swipe, #13531)", () => {
       });
       expect(screen.getByTestId("chat-sheet").dataset.detent).toBe("collapsed");
       expect(screen.getByTestId("chat-sheet").dataset.chatState).toBe("INPUT");
-      // INPUT and PILL intentionally share the same traveler now. Keeping it
-      // active at this endpoint avoids a first-pixel DOM-owner swap on the next
-      // downward drag.
-      expect(
-        screen.getByTestId("chat-pill").getAttribute("aria-hidden"),
-      ).toBeNull();
+      // INPUT and PILL intentionally share the same visible traveler. The
+      // transparent inset grabber owns this INPUT endpoint so the mark stays
+      // still while the user gets a forgiving drag target.
+      expect(screen.getByTestId("chat-pill").getAttribute("aria-hidden")).toBe(
+        "true",
+      );
       expect(screen.getByTestId("chat-pill").className).toContain(
-        "pointer-events-auto",
+        "pointer-events-none",
+      );
+      expect(screen.getByTestId("chat-sheet-grabber").style.pointerEvents).toBe(
+        "auto",
       );
       // This drag already carried the rendered transcript completely to zero,
       // so release must retire the preview and native sheet envelope instead
