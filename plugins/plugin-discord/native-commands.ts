@@ -3,6 +3,7 @@
  * button-based argument menus. Consumed by the slash-command registration path
  * when syncing commands to the Discord application.
  */
+import { toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
 import {
 	type APIApplicationCommandOption,
 	ApplicationCommandOptionType,
@@ -276,16 +277,23 @@ export function buildCommandArgMenu(params: {
 
 	const rows = chunkArray(choices.slice(0, 20), buttonsPerRow).map(
 		(rowChoices) => ({
-			buttons: rowChoices.map((choice) => ({
-				label: choice.label.slice(0, 80),
-				customId: buildCommandArgCustomId({
-					command: commandName,
-					arg: arg.name,
-					value: choice.value,
-					userId,
-				}),
-				style: ButtonStyle.Secondary,
-			})),
+			buttons: rowChoices.map((choice) => {
+				const wellFormed = toWellFormedUnicode(choice.label);
+				const label =
+					wellFormed.length > 80
+						? truncateWellFormed(wellFormed, 80)
+						: wellFormed;
+				return {
+					label,
+					customId: buildCommandArgCustomId({
+						command: commandName,
+						arg: arg.name,
+						value: choice.value,
+						userId,
+					}),
+					style: ButtonStyle.Secondary,
+				};
+			}),
 		}),
 	);
 
