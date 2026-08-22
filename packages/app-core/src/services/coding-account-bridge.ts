@@ -114,9 +114,9 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * subscriptions are preferred over direct API credentials.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * opencode authenticates through a typed direct-API route. Its candidate list
- * contains only general API/PAYG products; dedicated coding-plan endpoint keys
- * and native CLI OAuth remain separate capabilities.
+ * opencode authenticates through typed billing routes. Its candidate list
+ * includes general API/PAYG products and the explicitly supported Z.AI Coding
+ * Plan endpoint; native CLI OAuth remains a separate capability.
  * OpenCode receives only credentials whose shared capability descriptors name
  * it as their executable backend. Provider-specific endpoint/model policy is
  * applied later by the orchestrator's typed route; this bridge owns only
@@ -835,6 +835,11 @@ async function buildEnvPatch(
   switch (providerId) {
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
+    case "zai-coding":
+      return {
+        ZAI_API_KEY: accessToken,
+        ELIZA_OPENCODE_PROVIDER_ID: "zai-coding",
+      };
     default: {
       // Direct API providers (e.g. xai-api → XAI_API_KEY for OpenCode)
       // inject under their canonical env key; run-main.ts normalizes aliases
@@ -984,9 +989,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
             continue;
           }
         }
-        const source: "oauth" | "api-key" = isSubscriptionProvider(providerId)
-          ? "oauth"
-          : "api-key";
+        const source: "oauth" | "api-key" | "coding-plan-key" =
+          providerId === "zai-coding"
+            ? "coding-plan-key"
+            : isSubscriptionProvider(providerId)
+              ? "oauth"
+              : "api-key";
         logger.info(
           `[coding-account-bridge] ${agentType} → ${providerId} account "${account.label}" (${account.id}) via ${strategy}`,
         );

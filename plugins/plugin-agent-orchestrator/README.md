@@ -164,9 +164,9 @@ second credential broker, and child trajectories retain their session join key.
 | `ELIZA_KIMI_ACP_COMMAND` | `kimi acp` | Official Kimi Code subscription ACP command. Requires an explicit user-attended execution mode. |
 | `ELIZA_GROK_ACP_COMMAND` | `grok agent stdio` | Official Grok Build subscription ACP stdio command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
-| `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic OpenCode direct-API route selector: Cerebras, DeepSeek, Z.AI general API, Moonshot, xAI, or OpenRouter. |
+| `ELIZA_OPENCODE_PROVIDER` / `ELIZA_OPENCODE_PROVIDER_ID` | auto-detect only when unambiguous | Atomic OpenCode billing-route selector: Z.AI Coding Plan, Cerebras, DeepSeek, Z.AI general API, Moonshot, xAI, or OpenRouter. |
 | `ELIZA_OPENCODE_MODEL_POWERFUL` / `OPENCODE_MODEL` | provider default; required for OpenRouter | Model id; OpenRouter accepts arbitrary catalog slugs. |
-| `DEEPSEEK_API_KEY` / `ZAI_API_KEY` / `MOONSHOT_API_KEY` / `XAI_API_KEY` / `OPENROUTER_API_KEY` | unset | Direct API credentials; existing `Z_AI_API_KEY` and `KIMI_API_KEY` aliases remain accepted. These routes are PAYG, credits, or BYOK—not consumer subscriptions. |
+| `DEEPSEEK_API_KEY` / `ZAI_API_KEY` / `MOONSHOT_API_KEY` / `XAI_API_KEY` / `OPENROUTER_API_KEY` | unset | Selected provider credential; existing `Z_AI_API_KEY` and `KIMI_API_KEY` aliases remain accepted. `zai-coding` uses GLM Coding Plan subscription quota at the dedicated coding endpoint; the general API routes remain PAYG, credits, or BYOK. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `300000` (5m) | Per-prompt timeout. |
 | `ELIZA_FRAMEWORK_PREFLIGHT_TIMEOUT_MS` | `5000` (5s) | Maximum adapter-availability preflight wait. Values must be exact decimal integers from `250` through `2147483647`; missing/blank uses the default, and invalid values fail before the adapter probe starts. |

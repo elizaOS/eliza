@@ -213,8 +213,8 @@ export const CODING_PROVIDER_DESCRIPTORS = {
     "coding-plan-key",
     "subscription-coding-plan",
     true,
+    "opencode",
     null,
-    "The z.ai coding credential can serve model inference, but no supported coding-agent spawn backend consumes it.",
   ),
   "kimi-coding": descriptor(
     "kimi-coding",

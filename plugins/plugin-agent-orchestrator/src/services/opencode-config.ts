@@ -21,11 +21,15 @@ const OPENCODE_CEREBRAS_NPM = "@ai-sdk/cerebras";
 const CEREBRAS_DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_DEFAULT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
-export type OpencodeApiBillingMode = "api-payg" | "api-credits-or-byok";
+export type OpencodeApiBillingMode =
+  | "api-payg"
+  | "api-credits-or-byok"
+  | "subscription-coding-plan";
 
 export type OpencodeApiProviderId =
   | "cerebras-api"
   | "deepseek-api"
+  | "zai-coding"
   | "zai-api"
   | "moonshot-api"
   | "xai-api"
@@ -42,14 +46,15 @@ export interface OpencodeApiRoute {
   defaultModel?: string;
   authHeader: "Authorization: Bearer";
   billingMode: OpencodeApiBillingMode;
-  termsPolicy: "direct-api" | "credits-or-byok";
+  termsPolicy: "direct-api" | "credits-or-byok" | "coding-plan";
   headers?: Readonly<Record<string, string>>;
 }
 
 /**
- * Direct billing routes OpenCode can consume. Coding-plan endpoint keys are
- * intentionally absent: Kimi and Z.AI subscription quota have distinct keys,
- * endpoints, and terms, and must never be inferred from these PAYG entries.
+ * Typed billing routes OpenCode can consume. Z.AI Coding Plan is a distinct
+ * supported-tool subscription route; its endpoint and terms must never be
+ * inferred from the general PAYG entry. Kimi's saved endpoint key remains
+ * separate because Kimi coding spawns use the official CLI OAuth adapter.
  */
 export const OPENCODE_API_ROUTES = {
   "cerebras-api": {
@@ -88,6 +93,19 @@ export const OPENCODE_API_ROUTES = {
     authHeader: "Authorization: Bearer",
     billingMode: "api-payg",
     termsPolicy: "direct-api",
+  },
+  "zai-coding": {
+    accountProviderId: "zai-coding",
+    providerId: "zai-coding-plan",
+    providerLabel: "Z.AI Coding Plan",
+    keyEnv: "ZAI_API_KEY",
+    keyEnvAliases: ["Z_AI_API_KEY"],
+    baseUrlEnv: ["ZAI_CODING_BASE_URL", "Z_AI_CODING_BASE_URL"],
+    defaultBaseUrl: "https://api.z.ai/api/coding/paas/v4",
+    defaultModel: "glm-5.1",
+    authHeader: "Authorization: Bearer",
+    billingMode: "subscription-coding-plan",
+    termsPolicy: "coding-plan",
   },
   "moonshot-api": {
     accountProviderId: "moonshot-api",
@@ -305,6 +323,9 @@ function normalizeRouteId(
     zai: "zai-api",
     "z.ai": "zai-api",
     "zai-api": "zai-api",
+    "zai-coding": "zai-coding",
+    "z.ai-coding": "zai-coding",
+    "zai-coding-subscription": "zai-coding",
     moonshot: "moonshot-api",
     kimi: "moonshot-api",
     "moonshot-api": "moonshot-api",
@@ -353,8 +374,13 @@ function autoDetectedRoute(
   runtime: RuntimeLike | undefined,
   env: NodeJS.ProcessEnv | Record<string, string | undefined>,
 ): OpencodeApiProviderId | undefined {
-  const found = Object.values(OPENCODE_API_ROUTES).filter((route) =>
-    usableApiKey(firstSetting(runtime, env, routeCredentialKeys(route))),
+  const found = Object.values(OPENCODE_API_ROUTES).filter(
+    (route) =>
+      // The general and Coding Plan routes intentionally use the same Z.AI
+      // key env. Only a selected pooled account or explicit route can prove
+      // subscription intent; bare legacy env auto-detection remains PAYG.
+      route.accountProviderId !== "zai-coding" &&
+      usableApiKey(firstSetting(runtime, env, routeCredentialKeys(route))),
   );
   if (found.length === 1) return found[0]?.accountProviderId;
   // Preserve the historical Cerebras default on hosts with several general
@@ -386,7 +412,7 @@ function buildTypedApiRouteConfig(
   );
   if (!apiKey) {
     throw new ElizaError(
-      `${route.providerLabel} requires ${route.keyEnv} for direct API billing.`,
+      `${route.providerLabel} requires ${route.keyEnv} for its selected billing route.`,
       {
         code: "OPENCODE_PROVIDER_CREDENTIAL_MISSING",
         context: { providerId: route.accountProviderId, keyEnv: route.keyEnv },

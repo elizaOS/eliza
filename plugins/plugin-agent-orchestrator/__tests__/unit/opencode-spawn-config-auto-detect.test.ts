@@ -156,6 +156,37 @@ describe("buildOpencodeSpawnConfig", () => {
     });
   });
 
+  it("routes a Z.AI Coding Plan key through the dedicated subscription endpoint", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ELIZA_OPENCODE_PROVIDER_ID: "zai-coding",
+      ZAI_API_KEY: "zai-coding-plan-secret-never-log",
+    });
+    expect(result).toMatchObject({
+      accountProviderId: "zai-coding",
+      billingMode: "subscription-coding-plan",
+      termsPolicy: "coding-plan",
+      providerLabel: "Z.AI Coding Plan",
+      baseUrl: "https://api.z.ai/api/coding/paas/v4",
+      model: "zai-coding-plan/glm-5.1",
+    });
+    const config = JSON.parse(result?.configContent ?? "{}");
+    expect(config.provider["zai-coding-plan"].options).toEqual({
+      baseURL: "https://api.z.ai/api/coding/paas/v4",
+      apiKey: "zai-coding-plan-secret-never-log",
+    });
+  });
+
+  it("does not infer Coding Plan billing from a bare legacy Z.AI key", () => {
+    const result = buildOpencodeSpawnConfig(runtime(), {
+      ZAI_API_KEY: "ambiguous-zai-key",
+    });
+    expect(result).toMatchObject({
+      accountProviderId: "zai-api",
+      billingMode: "api-payg",
+      baseUrl: "https://api.z.ai/api/paas/v4",
+    });
+  });
+
   it("fails closed when OpenRouter has no explicit arbitrary model", () => {
     expect(() =>
       buildOpencodeSpawnConfig(runtime(), {

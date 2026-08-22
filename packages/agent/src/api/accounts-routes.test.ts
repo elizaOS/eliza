@@ -284,7 +284,7 @@ describe("accounts routes", () => {
       },
     });
 
-    for (const providerId of ["zai-coding", "kimi-coding", "deepseek-coding"]) {
+    for (const providerId of ["kimi-coding", "deepseek-coding"]) {
       expect(
         response.providers.find((item) => item.providerId === providerId),
       ).toMatchObject({
@@ -310,16 +310,26 @@ describe("accounts routes", () => {
         },
       });
     }
-    for (const providerId of ["zai-coding", "kimi-coding"]) {
-      expect(
-        response.providers.find((item) => item.providerId === providerId),
-      ).toMatchObject({
-        runtimeEligibility: {
-          chat: { available: true, credentialPath: "account-pool" },
-          codingAgent: { available: false, credentialPath: "none" },
+    expect(
+      response.providers.find((item) => item.providerId === "zai-coding"),
+    ).toMatchObject({
+      runtimeEligibility: {
+        chat: { available: true, credentialPath: "account-pool" },
+        codingAgent: {
+          available: true,
+          backend: "opencode",
+          credentialPath: "account-pool",
         },
-      });
-    }
+      },
+    });
+    expect(
+      response.providers.find((item) => item.providerId === "kimi-coding"),
+    ).toMatchObject({
+      runtimeEligibility: {
+        chat: { available: true, credentialPath: "account-pool" },
+        codingAgent: { available: false, credentialPath: "none" },
+      },
+    });
     for (const providerId of ["openrouter-api", "xai-api"]) {
       expect(
         response.providers.find((item) => item.providerId === providerId),

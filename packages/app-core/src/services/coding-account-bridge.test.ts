@@ -593,6 +593,26 @@ describe("coding-account-bridge", () => {
     },
   );
 
+  it("releases a Z.AI Coding Plan key only to the selected OpenCode child route", async () => {
+    writeAccount("zai-coding", "zai-plan-account", "zai-plan-secret");
+    delete process.env.ZAI_API_KEY;
+
+    const selected = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("opencode");
+
+    expect(selected).toMatchObject({
+      providerId: "zai-coding",
+      accountId: "zai-plan-account",
+      source: "coding-plan-key",
+      envPatch: {
+        ZAI_API_KEY: "zai-plan-secret",
+        ELIZA_OPENCODE_PROVIDER_ID: "zai-coding",
+      },
+    });
+    expect(process.env.ZAI_API_KEY).toBeUndefined();
+  });
+
   it.each([
     ["openrouter-api", "OPENROUTER_API_KEY", "or-key"],
     ["xai-api", "XAI_API_KEY", "xai-key"],

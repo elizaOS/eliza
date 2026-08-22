@@ -26,6 +26,7 @@ describe("coding-agent capability mapping", () => {
     expect(mappedProviders).toEqual([
       "anthropic-subscription",
       "openai-codex",
+      "zai-coding",
       "anthropic-api",
       "openai-api",
       "deepseek-api",
@@ -43,16 +44,26 @@ describe("coding-agent capability mapping", () => {
     }
   });
 
-  it.each([
-    "gemini-cli",
-    "zai-coding",
-    "kimi-coding",
-    "deepseek-coding",
-  ] as const)("keeps %s enrollment separate from spawn availability", (id) => {
-    const capability = codingAgentSpawnCapabilityForProvider(id);
-    expect(capability.available).toBe(false);
-    expect(capability.backend).toBeUndefined();
-    expect(capability.unavailableReason).toBeTruthy();
+  it.each(["gemini-cli", "kimi-coding", "deepseek-coding"] as const)(
+    "keeps %s enrollment separate from spawn availability",
+    (id) => {
+      const capability = codingAgentSpawnCapabilityForProvider(id);
+      expect(capability.available).toBe(false);
+      expect(capability.backend).toBeUndefined();
+      expect(capability.unavailableReason).toBeTruthy();
+    },
+  );
+
+  it("routes Z.AI Coding Plan through OpenCode without changing its billing identity", () => {
+    expect(codingAgentSpawnCapabilityForProvider("zai-coding")).toEqual({
+      available: true,
+      backend: "opencode",
+    });
+    expect(CODING_PROVIDER_DESCRIPTORS["zai-coding"]).toMatchObject({
+      accountKind: "subscription",
+      authMode: "coding-plan-key",
+      billingMode: "subscription-coding-plan",
+    });
   });
 
   it.each(["deepseek-api", "zai-api", "moonshot-api"] as const)(
@@ -165,14 +176,19 @@ describe("coding-agent capability mapping", () => {
         expect(descriptor.unsupportedReason).toBeTruthy();
       }
     }
-    for (const providerId of ["zai-coding", "kimi-coding"] as const) {
-      expect(CODING_PROVIDER_DESCRIPTORS[providerId]).toMatchObject({
-        authMode: "coding-plan-key",
-        billingMode: "subscription-coding-plan",
-        inferenceSupport: true,
-        spawnSupport: false,
-      });
-    }
+    expect(CODING_PROVIDER_DESCRIPTORS["zai-coding"]).toMatchObject({
+      authMode: "coding-plan-key",
+      billingMode: "subscription-coding-plan",
+      inferenceSupport: true,
+      backend: "opencode",
+      spawnSupport: true,
+    });
+    expect(CODING_PROVIDER_DESCRIPTORS["kimi-coding"]).toMatchObject({
+      authMode: "coding-plan-key",
+      billingMode: "subscription-coding-plan",
+      inferenceSupport: true,
+      spawnSupport: false,
+    });
   });
 
   it("preserves direct billing semantics for OpenRouter and xAI", () => {
@@ -231,11 +247,9 @@ describe("coding-agent capability mapping", () => {
       available: false,
       unavailableReason: expect.stringContaining("CLI OAuth"),
     });
-    expect(codingAgentSpawnCapabilityForProvider("moonshot-api")).toMatchObject(
-      {
-        available: false,
-        unavailableReason: expect.stringContaining("direct API"),
-      },
-    );
+    expect(codingAgentSpawnCapabilityForProvider("moonshot-api")).toEqual({
+      available: true,
+      backend: "opencode",
+    });
   });
 });

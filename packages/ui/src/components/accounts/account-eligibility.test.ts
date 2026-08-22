@@ -88,18 +88,25 @@ describe("resolveProviderEligibility", () => {
     }
   });
 
-  it.each(["zai-coding", "kimi-coding"] as const)(
-    "infers inference-only eligibility for %s",
-    (providerId) => {
-      expect(resolveProviderEligibility(option(providerId), undefined)).toEqual(
-        {
-          chat: true,
-          codingAgent: false,
-          source: "inferred",
-        },
-      );
-    },
-  );
+  it("infers chat and coding-agent eligibility for Z.AI Coding Plan", () => {
+    expect(resolveProviderEligibility(option("zai-coding"), undefined)).toEqual(
+      {
+        chat: true,
+        codingAgent: true,
+        source: "inferred",
+      },
+    );
+  });
+
+  it("keeps the saved Kimi endpoint key inference-only", () => {
+    expect(
+      resolveProviderEligibility(option("kimi-coding"), undefined),
+    ).toEqual({
+      chat: true,
+      codingAgent: false,
+      source: "inferred",
+    });
+  });
 
   it("fails closed when a provider descriptor is missing", () => {
     expect(

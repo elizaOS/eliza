@@ -113,7 +113,12 @@ describe("ProviderPicker", () => {
       screen.getAllByText(
         "Model inference, using a coding-plan key; agent spawn unavailable",
       ).length,
-    ).toBe(2);
+    ).toBe(1);
+    expect(
+      screen.getByText(
+        "Model inference and coding agents, using a coding-plan key",
+      ),
+    ).toBeTruthy();
     // The old "Chat \u00b7 bring your own API key" pill format must not resurface.
     expect(screen.queryByText(/\u00b7/)).toBeNull();
   });
