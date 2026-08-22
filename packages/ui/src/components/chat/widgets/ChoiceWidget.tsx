@@ -116,7 +116,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
           data-testid={`choice-${soleOption.value}`}
           // The locked (selected) state stays at full opacity: it is the
           // confirmation the user just acted on, not a faded leftover.
-          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-[14px] font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
+          className="h-auto min-h-10 w-full justify-center whitespace-normal rounded-md border border-white/30 bg-[#2c2f3a] px-4 py-2 text-sm font-semibold text-[#f0f2f7] transition-colors hover:bg-[#363a46] disabled:bg-[#2c2f3a] disabled:text-[#f0f2f7] disabled:opacity-100"
           onClick={() => handleChoose(soleOption)}
         >
           <span className="flex w-full min-w-0 items-center justify-center gap-2">
@@ -139,7 +139,7 @@ export const ChoiceWidget = memo(function ChoiceWidget({
         // Plain muted text, no pill chrome: the theme text token stays
         // readable on every surface (chat-native de-slop, supersedes the
         // #15144 pill-background fix by removing the pill).
-        <span className="text-[11px] font-medium text-muted">
+        <span className="text-xs-tight font-medium text-muted">
           {selected ? "Selected" : `${options.length} options`}
         </span>
       }

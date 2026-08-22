@@ -382,7 +382,7 @@ export function BuildBadge() {
             <span
               data-testid="build-badge-geom"
               title="Live viewport geometry (ih=innerHeight vv=visualViewport ce=docEl.clientHeight sh=screen.height rc=reclaim-var rcw=reclaim-wiring lv=100lvh dv=100dvh)"
-              className="font-mono tracking-tight text-3xs text-muted/80"
+              className="font-mono tracking-tight text-3xs text-muted"
             >
               {geom}
             </span>

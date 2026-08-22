@@ -145,6 +145,12 @@
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
   --text-xs-tight: 0.6875rem;
+  /* Between xs and sm (replaces arbitrary text-[13px]) */
+  --text-sm-tight: 0.8125rem;
+  /* Chat message body + composer (replaces the text-[14px]/text-[15px] split)
+     and the larger first-run/lead conversational size (was text-[17px]). */
+  --text-chat-body: 0.9375rem;
+  --text-chat-lead: 1.0625rem;
 
   /* Touch target minimum (Apple HIG 44px) */
   --min-touch-target: 2.75rem;
@@ -313,6 +319,9 @@
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
   --text-xs-tight: 0.6875rem;
+  --text-sm-tight: 0.8125rem;
+  --text-chat-body: 0.9375rem;
+  --text-chat-lead: 1.0625rem;
   --min-touch-target: 2.75rem;
 
   /* Plugin UI */

@@ -107,7 +107,7 @@ function ParticipantRow({
       <span className="relative inline-flex shrink-0">
         <Icon
           className={`h-3.5 w-3.5 ${
-            isSubAgent ? (live ? "text-txt" : "text-muted/50") : "text-muted"
+            isSubAgent ? (live ? "text-txt" : "text-muted") : "text-muted"
           }`}
         />
         {isSubAgent ? (

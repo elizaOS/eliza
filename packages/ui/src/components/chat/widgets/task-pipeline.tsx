@@ -152,7 +152,7 @@ export const PlanChecklist = memo(function PlanChecklist({
                   ? "text-muted line-through"
                   : isActive
                     ? "text-txt"
-                    : "text-txt/80"
+                    : "text-muted-strong"
               }`}
             >
               <Icon
@@ -190,7 +190,7 @@ export const ChecklistWidget = memo(function ChecklistWidget({
     <ChatWidgetShell
       title={resolvedTitle}
       status={
-        <span className="text-[11px] font-medium tabular-nums text-muted">
+        <span className="text-xs-tight font-medium tabular-nums text-muted">
           {done}/{entries.length}
         </span>
       }

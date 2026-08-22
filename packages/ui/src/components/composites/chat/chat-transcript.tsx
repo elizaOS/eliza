@@ -202,14 +202,11 @@ export const ChatTranscript = memo(function ChatTranscript({
             >
               <ChatBubble
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-[15px] leading-relaxed ${
+                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-chat-body ${
                   isUser ? "rounded-br-none" : "rounded-bl-none"
                 }`}
               >
-                <div
-                  className="break-words"
-                  style={{ fontFamily: "var(--font-chat)" }}
-                >
+                <div className="break-words font-chat">
                   {renderTranscriptMessageContent(
                     message,
                     renderMessageContent,
@@ -229,14 +226,11 @@ export const ChatTranscript = memo(function ChatTranscript({
             >
               <ChatBubble
                 tone={isUser ? "user" : "assistant"}
-                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-[15px] leading-relaxed ${
+                className={`max-w-[min(85%,24rem)] rounded-sm px-4 py-3 text-chat-body ${
                   isUser ? "rounded-br-none" : "rounded-bl-none"
                 }`}
               >
-                <div
-                  className="break-words"
-                  style={{ fontFamily: "var(--font-chat)" }}
-                >
+                <div className="break-words font-chat">
                   {renderTranscriptMessageContent(
                     message,
                     renderMessageContent,
