@@ -8,10 +8,6 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { stringToUuid } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
 import type {
   CapturedAction,
   ScenarioContext,
@@ -132,7 +128,7 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
       {
         name: `route-${slug}-stage1-${route.input}`,
         match: {
-          modelType: "RESPONSE_HANDLER",
+          modelType: "RESPONSE_HANDLER" as const,
           input: { pattern: currentTurnInputPattern(route.input) },
           toolNames: ["HANDLE_RESPONSE"],
         },
@@ -149,7 +145,7 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
       {
         name: `route-${slug}-planner-${route.input}`,
         match: {
-          modelType: "ACTION_PLANNER",
+          modelType: "ACTION_PLANNER" as const,
           input: { pattern: currentTurnInputPattern(route.input) },
           toolNames: plannerToolNames[route.actionName],
         },
@@ -174,9 +170,30 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
     ];
   }),
   {
+    name: "post-tool-reply-read-file",
+    match: {
+      modelType: "ACTION_PLANNER" as const,
+      input: {
+        pattern: currentTurnInputPattern(
+          "Read the deterministic coding tools note file",
+        ),
+      },
+      toolNames: [],
+    },
+    response: {
+      json: {
+        thought: "Report the complete file contents returned by FILE.",
+        messageToUser: "alpha coding-tools scenario\nbeta strict e2e",
+        completed: true,
+        finishReason: "stop",
+        toolCalls: [],
+      },
+    },
+  },
+  {
     name: "post-tool-reply-exit-worktree",
     match: {
-      modelType: "ACTION_PLANNER",
+      modelType: "ACTION_PLANNER" as const,
       input: {
         pattern: currentTurnInputPattern(
           "Exit and clean up the isolated repo worktree",
@@ -195,9 +212,18 @@ const codingToolModelFixtures: ScenarioModelFixture[] = [
     },
   },
   {
+    name: "tool-result-rescue-read-file",
+    match: {
+      modelType: "TEXT_LARGE" as const,
+      input: { includes: "alpha coding-tools scenario" },
+      toolNames: [],
+    },
+    response: { text: "alpha coding-tools scenario\nbeta strict e2e" },
+  },
+  {
     name: "tool-result-rescue-exit-worktree",
     match: {
-      modelType: "TEXT_LARGE",
+      modelType: "TEXT_LARGE" as const,
       input: { includes: "Exited and removed worktree " },
       toolNames: [],
     },
