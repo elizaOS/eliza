@@ -166,9 +166,11 @@ describe("dedicated Cloud account boundary on trusted app shells", () => {
       cloudApiBase: "http://127.0.0.1:18787",
     });
     localStorage.setItem(STEWARD_TOKEN_KEY, "local-test-api-key");
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      jsonResponse({ id: "user-local", organization_id: "org-local" }),
-    );
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        jsonResponse({ id: "user-local", organization_id: "org-local" }),
+      );
     const client = new ElizaClient(
       "http://127.0.0.1:18787/api/v1/eliza/agents/personal%3Aagent-id",
     );

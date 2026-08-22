@@ -67,7 +67,8 @@ import { STARTUP_TIMING_POLICY } from "./startup-timing-policy";
 function isCapacitorNative(): boolean {
   try {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
-      { isNativePlatform?: () => boolean } | undefined;
+      | { isNativePlatform?: () => boolean }
+      | undefined;
     return Boolean(cap?.isNativePlatform?.());
   } catch {
     return false;

@@ -147,7 +147,11 @@ type AuthStep =
   | "external-success"
   | "success";
 type EmailCheckState =
-  "pending" | "approved" | "expired" | "locked" | "invalid";
+  | "pending"
+  | "approved"
+  | "expired"
+  | "locked"
+  | "invalid";
 
 async function persistStewardToken(token: string): Promise<void> {
   await writeStoredStewardToken(token);

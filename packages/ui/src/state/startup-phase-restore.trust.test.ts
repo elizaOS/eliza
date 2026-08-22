@@ -2,13 +2,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
-  isTrustedCloudApiBaseUrl,
-  isTrustedRestoreApiBaseUrl,
-} from "./runtime-url-trust";
-import {
   dedicatedCloudAgentIdFromBase,
   isDedicatedCloudAgentBase,
 } from "../utils/cloud-agent-base";
+import {
+  isTrustedCloudApiBaseUrl,
+  isTrustedRestoreApiBaseUrl,
+} from "./runtime-url-trust";
 
 /**
  * The persisted active-server / agent-profile record is localStorage-backed and
@@ -191,8 +191,7 @@ describe("isTrustedCloudApiBaseUrl", () => {
       ),
     ).toBe(false);
     expect(isTrustedCloudApiBaseUrl(personalBase)).toBe(false);
-    const dedicatedProxy =
-      `http://127.0.0.1:18787/api/v1/eliza/agents/${AGENT}`;
+    const dedicatedProxy = `http://127.0.0.1:18787/api/v1/eliza/agents/${AGENT}`;
     expect(isTrustedCloudApiBaseUrl(dedicatedProxy, AGENT)).toBe(true);
     expect(isTrustedCloudApiBaseUrl(dedicatedProxy, OTHER_AGENT)).toBe(false);
     expect(isDedicatedCloudAgentBase(dedicatedProxy)).toBe(true);
