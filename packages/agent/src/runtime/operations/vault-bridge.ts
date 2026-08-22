@@ -70,16 +70,18 @@ export type VaultLike = Pick<Vault, "get" | "has">;
 const OPTIMIZED_PROMPT_HMAC_VAULT_KEY = "system.optimized-prompt.hmac-key";
 const OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER =
   "runtime-boot:optimized-prompt-hmac-decryption-recovery";
+const OPTIMIZED_PROMPT_HMAC_QUARANTINE_REASON =
+  "optimized-prompt integrity key failed authenticated decryption during runtime boot";
 
 type OptimizedPromptIntegrityVault = Pick<
   Vault,
-  "get" | "has" | "set" | "setIfAbsent"
+  "get" | "has" | "quarantineUnreadable" | "setIfAbsent"
 >;
 
-// `set()` is an encrypted UPSERT, not a compare-and-swap. Keep the complete
-// read/recover/write/read-back sequence single-flight for the process-wide
-// shared Vault instance so concurrent boot callers cannot return different
-// replacement keys. PGlite remains the cross-process single-writer boundary.
+// Keep the complete read/quarantine/create/read-winner sequence single-flight
+// for the process-wide shared Vault instance. The Vault transaction preserves
+// the unreadable row; `setIfAbsent()` then selects one active replacement if a
+// racing resolver has already filled the now-vacant key.
 const optimizedPromptIntegrityKeyResolutions = new WeakMap<
   object,
   Promise<string>
@@ -94,23 +96,31 @@ function isOptimizedPromptIntegrityKeyDecryptionFailure(
   );
 }
 
-async function replaceUnreadableOptimizedPromptIntegrityKey(
+async function quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(
   vault: OptimizedPromptIntegrityVault,
 ): Promise<string> {
+  await vault.quarantineUnreadable(
+    OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    OPTIMIZED_PROMPT_HMAC_QUARANTINE_REASON,
+    OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
+  );
+
   const replacement = randomBytes(32).toString("base64");
-  await vault.set(OPTIMIZED_PROMPT_HMAC_VAULT_KEY, replacement, {
-    sensitive: true,
-    // This caller is persisted in the Vault audit log as the redacted reason;
-    // no key material or underlying crypto error is logged.
-    caller: OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
-  });
-  const readBack = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
-  if (readBack !== replacement) {
+  const inserted = await vault.setIfAbsent(
+    OPTIMIZED_PROMPT_HMAC_VAULT_KEY,
+    replacement,
+    {
+      sensitive: true,
+      caller: OPTIMIZED_PROMPT_HMAC_RECOVERY_CALLER,
+    },
+  );
+  const winner = await vault.get(OPTIMIZED_PROMPT_HMAC_VAULT_KEY);
+  if (inserted && winner !== replacement) {
     throw new Error(
       "[runtime-ops:vault] optimized-prompt integrity-key recovery failed exact read-back verification",
     );
   }
-  return replacement;
+  return winner;
 }
 
 async function readOptimizedPromptIntegrityKeyOrRecover(
@@ -124,7 +134,7 @@ async function readOptimizedPromptIntegrityKeyOrRecover(
     // replacement makes old optimized-prompt artifacts fail their HMAC check;
     // the core loader rejects them and falls back to baseline prompts.
     if (!isOptimizedPromptIntegrityKeyDecryptionFailure(error)) throw error;
-    return replaceUnreadableOptimizedPromptIntegrityKey(vault);
+    return quarantineAndReplaceUnreadableOptimizedPromptIntegrityKey(vault);
   }
 }
 
@@ -150,7 +160,8 @@ async function resolveOptimizedPromptIntegrityKeyOnce(
  * Return the persistent integrity key used to authenticate optimized prompts.
  * The vault is authoritative; a key is generated once and encrypted at rest.
  * Only authenticated-decryption failure for this exact regenerable system key
- * is repaired. All user/provider keys and every other error stay fail-closed.
+ * is repaired. The opaque unreadable row is quarantined before first-writer
+ * replacement. All user/provider keys and every other error stay fail-closed.
  */
 export async function resolveOptimizedPromptIntegrityKey(
   vault: OptimizedPromptIntegrityVault,
