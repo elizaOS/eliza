@@ -4789,10 +4789,14 @@ export class OrchestratorTaskService extends Service {
     evidenceBundle?: CompletionEvidenceBundle,
   ): Promise<void> {
     if (!shouldAutoVerifyGoal()) return;
-    // Re-entrancy guard: drop a second overlapping run for the same task (the
-    // check-then-act across the model `await` would otherwise double-count).
-    if (this.autoVerifyInFlight.has(taskId)) return;
-    this.autoVerifyInFlight.add(taskId);
+    // Re-entrancy guard per LANE: a second overlapping run for the same
+    // session is dropped (the check-then-act across the model `await` would
+    // double-count), but a sibling lane of the same task must still verify —
+    // keyed per task it was dropped outright, no verdict, and its relay rode
+    // the 5-minute timeout (live 2026-08-22). The write lock serializes them.
+    const inFlightKey = `${taskId}\u0000${sessionId}`;
+    if (this.autoVerifyInFlight.has(inFlightKey)) return;
+    this.autoVerifyInFlight.add(inFlightKey);
     try {
       // Serialized against validateTask: both replace task.metadata wholesale.
       await this.withTaskWriteLock(taskId, () =>
@@ -4813,7 +4817,7 @@ export class OrchestratorTaskService extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      this.autoVerifyInFlight.delete(taskId);
+      this.autoVerifyInFlight.delete(inFlightKey);
     }
   }
 
