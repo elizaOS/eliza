@@ -68,9 +68,10 @@ function runStager(
   const env: Record<string, string> = {
     ...(process.env as Record<string, string>),
     PATH: `${stubDir}${path.delimiter}${process.env.PATH ?? ""}`,
-    ...extraEnv,
   };
   for (const name of ALL_CREDENTIALS) delete env[name];
+  delete env.ELECTROBUN_SKIP_CODESIGN;
+  Object.assign(env, extraEnv);
   for (const name of present) env[name] = CREDENTIAL_VALUES[name];
 
   try {
@@ -142,5 +143,19 @@ describe("macOS stager notarization-credential preflight", () => {
 
     expect(output).not.toContain(INCOMPLETE_CREDENTIALS);
     expect(output).toContain(PAST_PREFLIGHT);
+  });
+
+  it("does not inherit codesign opt-out from the test runner", () => {
+    const previous = process.env.ELECTROBUN_SKIP_CODESIGN;
+    process.env.ELECTROBUN_SKIP_CODESIGN = "1";
+    try {
+      const { status, output } = runStager([ALL_CREDENTIALS[0]]);
+
+      expect(status).not.toBe(0);
+      expect(output).toContain(INCOMPLETE_CREDENTIALS);
+    } finally {
+      if (previous === undefined) delete process.env.ELECTROBUN_SKIP_CODESIGN;
+      else process.env.ELECTROBUN_SKIP_CODESIGN = previous;
+    }
   });
 });
