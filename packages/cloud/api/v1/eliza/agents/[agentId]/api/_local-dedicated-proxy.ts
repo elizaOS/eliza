@@ -9,6 +9,11 @@ const CORS_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const DEDICATED_AGENT_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+async function continueToNext(next: Next): Promise<undefined> {
+  await next();
+  return undefined;
+}
+
 function runtimeApiPath(requestUrl: string, agentId: string): string | null {
   const pathname = new URL(requestUrl).pathname;
   const marker = `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/api`;
@@ -26,12 +31,14 @@ export async function proxyLocalDedicatedOrNext(
   c: Context<AppEnv>,
   next: Next,
 ): Promise<Response | undefined> {
-  if (c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN !== "https://") return next();
+  if (c.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN !== "https://") {
+    return continueToNext(next);
+  }
   const agentId = c.req.param("agentId")?.trim() ?? "";
-  if (!DEDICATED_AGENT_ID.test(agentId)) return next();
+  if (!DEDICATED_AGENT_ID.test(agentId)) return continueToNext(next);
 
   const path = runtimeApiPath(c.req.url, agentId);
-  if (path === null) return next();
+  if (path === null) return continueToNext(next);
   if (c.req.method === "OPTIONS") {
     return handleCorsOptions(CORS_METHODS, c.req.header("origin"));
   }
@@ -41,7 +48,9 @@ export async function proxyLocalDedicatedOrNext(
     agentId,
     user.organization_id,
   );
-  if (!sandbox || sandbox.execution_tier === "shared") return next();
+  if (!sandbox || sandbox.execution_tier === "shared") {
+    return continueToNext(next);
+  }
   if (sandbox.status !== "running") {
     return applyCorsHeaders(
       Response.json(
