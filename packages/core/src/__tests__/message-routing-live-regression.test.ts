@@ -733,6 +733,7 @@ describe("live routing regressions", () => {
 			"write a python script that just prints the contents of /etc/hosts",
 			"make a python script that only outputs the primes under a million",
 			"write a script that just prints hello and then fetches the weather",
+			'write a script that just prints "hello" and then fetches the weather',
 			"make a python script that just prints my ip address",
 			// #24425 review: the ENTIRE printed expression is parsed — a computed
 			// marker beyond the first 80 characters of the object still defeats

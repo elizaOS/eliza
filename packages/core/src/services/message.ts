@@ -11286,7 +11286,7 @@ function looksLikeExplicitDelegationRequest(text: string): boolean {
 }
 
 const COMPUTED_OBJECT_RE =
-	/[\/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
+	/[/\\:@]|https?:|\b(?:current|latest|live|today|now|price|prices|contents?|weather|time|date|random|primes?|fibonacci|under|between|from|of|in|at|each|every|all|list|first|last|largest|smallest|sum|count|number|result|output|value|api|file|url|env|variable|ip|address|size|length|temperature|stats?|status|usage|memory|disk|uptime|hostname|version|fetch(?:es|ed)?|read(?:s)?|calculat\w*|comput\w*)\b/iu;
 
 /** The object of "just prints X" is a constant when it is a quoted literal,
  * a bare numeric literal, or a few bare words naming nothing computed. The
@@ -11295,7 +11295,13 @@ const COMPUTED_OBJECT_RE =
 function isConstantPrintedObject(object: string): boolean {
 	const trimmed = object.trim().replace(/[.!?]+$/u, "");
 	if (!trimmed) return false;
-	if (/^(?:["'`“‘]).+/u.test(trimmed)) return true;
+	if (
+		/^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|“[^”]*”|‘[^’]*’)$/u.test(
+			trimmed,
+		)
+	) {
+		return true;
+	}
 	const head =
 		trimmed.split(/\s*(?:,|;|\band\b|\bthen\b|\bwhen\b|\bif\b)\s*/iu)[0] ?? "";
 	// "just prints 42" is a constant, not a computation.
