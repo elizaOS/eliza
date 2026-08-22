@@ -130,8 +130,14 @@ const APP_BUILD_RE =
  * superset, since every other type extends or specializes the coding checks.
  * Pure and deterministic so the static path is fully testable without a model.
  */
+// File names and paths are not intent: "/etc/nubs-deploy-settings.yaml"
+// classified a read-a-config script as a DEPLOY task (deploy criteria, two
+// lanes, live 2026-08-22). Strip path-like tokens before the keyword groups.
+const PATH_TOKEN_RE =
+  /(?:(?:\/|~\/|\.\/|[A-Za-z]:\\)[\w.\\/-]+)|\b[\w-]+\.(?:ya?ml|json|csv|tsv|txt|toml|ini|cfg|conf|xml|env|log|md|db|sqlite3?|py|js|ts|sh|html|css)\b/gi;
+
 export function detectTaskType(goal: string): OrchestratorTaskType {
-  const text = (goal ?? "").trim();
+  const text = (goal ?? "").replace(PATH_TOKEN_RE, " ").trim();
   if (text.length === 0) return "coding";
   // View creation is the most specific signal — check it first.
   if (VIEW_RE.test(text)) return "view-create";
