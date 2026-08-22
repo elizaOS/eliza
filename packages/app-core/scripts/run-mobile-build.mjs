@@ -5510,7 +5510,6 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
 // camera, location, Bluetooth, health, telephony, or shared-storage contract.
 export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "CAMERA",
-  "MODIFY_AUDIO_SETTINGS",
   "ACCESS_FINE_LOCATION",
   "ACCESS_COARSE_LOCATION",
   "BLUETOOTH_SCAN",
@@ -5731,6 +5730,11 @@ export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
   "llama-cpp-kernels.json",
 ]);
 
+export const ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES = Object.freeze([
+  "agent",
+  "runners",
+]);
+
 export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
   path.join("drawable", "eliza_ime_mic_bg.xml"),
   path.join("drawable", "eliza_voice_bar_bg.xml"),
@@ -5783,7 +5787,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
   ["@elizaos/capacitor-bun-runtime", "elizaos-capacitor-bun-runtime"],
   ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
-  ["@elizaos/capacitor-browser-surface", "elizaos-capacitor-browser-surface"],
   ["@elizaos/capacitor-camera", "elizaos-capacitor-camera"],
   ["@elizaos/capacitor-canvas", "elizaos-capacitor-canvas"],
   ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
@@ -5798,7 +5801,6 @@ export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
   ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
   ["@elizaos/capacitor-screencapture", "elizaos-capacitor-screencapture"],
-  ["@elizaos/capacitor-secure-store", "elizaos-capacitor-secure-store"],
   ["@elizaos/capacitor-swabble", "elizaos-capacitor-swabble"],
   ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
   ["@elizaos/capacitor-talkmode", "elizaos-capacitor-talkmode"],
@@ -5817,11 +5819,14 @@ export const ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES = Object.freeze([
   "@capacitor/preferences",
   "@capacitor/share",
   "@capacitor/status-bar",
+  "@elizaos/capacitor-browser-surface",
+  "@elizaos/capacitor-secure-store",
 ]);
 
 export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   "android.permission.ACCESS_NETWORK_STATE",
   "android.permission.INTERNET",
+  "android.permission.MODIFY_AUDIO_SETTINGS",
   "android.permission.RECORD_AUDIO",
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
@@ -6050,7 +6055,7 @@ export function findAndroidCloudPackagedRuntimeOffenders(entries) {
     const isAsset = /(^|\/)assets\//i.test(normalized);
     const isNativeLibrary = /(^|\/)lib\//i.test(normalized);
     return (
-      /(^|\/)assets\/agent\//i.test(normalized) ||
+      /(^|\/)assets\/(?:agent|runners)\//i.test(normalized) ||
       // A local-runtime shared library or a loadable dex under assets/ is the
       // same contraband as one packaged conventionally — cloud thin clients
       // must not ship dynamically-loadable native or DEX code at any path.
@@ -6784,11 +6789,12 @@ export function removeInactiveAndroidJavaSourceRoots(javaRoots, activeRoot) {
 
 function removeCloudNativeArtifacts() {
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  const stagedAgentAssets = path.join(assetsRoot, "agent");
-  if (fs.existsSync(stagedAgentAssets)) {
-    rmRecursive(stagedAgentAssets);
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    const target = path.join(assetsRoot, directory);
+    if (!fs.existsSync(target)) continue;
+    rmRecursive(target);
     console.log(
-      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+      `[mobile-build] Removed cloud-disallowed assets/${directory}/.`,
     );
   }
 
@@ -7080,8 +7086,10 @@ function auditAndroidCloudSource(phase, { env = process.env } = {}) {
   });
 
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
-  if (fs.existsSync(path.join(assetsRoot, "agent"))) {
-    failures.push("app/src/main/assets/agent still exists");
+  for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
+    if (fs.existsSync(path.join(assetsRoot, directory))) {
+      failures.push(`app/src/main/assets/${directory} still exists`);
+    }
   }
   walkFiles(assetsRoot, (filePath) => {
     if (isCloudBannedAsset(filePath)) {

@@ -1315,9 +1315,9 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
     expect(terminalWrite).not.toContain('"episodeLength":999');
   });
 
-  // ~20s of CPU-bound truncation/serialization on a dev machine; shared 4-core
-  // CI runners under parallel vitest batches have blown the 120s default.
-  it("bounds bridge-owned action, model, and provider capture", {
+  // This large serialization fixture can contend with parallel Vitest batches
+  // on shared runners, so retain the explicit timeout.
+  it("preserves large bridge-owned captures while normalizing cycles and depth", {
     timeout: 300_000,
   }, async () => {
     const { runtime, logger, execute } = makeRuntime();
@@ -1418,11 +1418,12 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
 
     const joinedWrites =
       trajectoryPersistenceSql(execute).join("\n---WRITE---\n");
-    expect(joinedWrites).toContain("...[truncated]");
-    expect(joinedWrites).toContain('"__truncatedItems"');
+    expect(joinedWrites).toMatch(/x{70000}/);
+    expect(joinedWrites).toContain(JSON.stringify(oversizedArray));
     expect(joinedWrites).toContain("[Circular]");
     expect(joinedWrites).toContain("[MaxDepth]");
-    expect(joinedWrites).not.toContain(oversized);
+    expect(joinedWrites).not.toContain("...[truncated]");
+    expect(joinedWrites).not.toContain('"__truncatedItems"');
   });
 
   it.each(["metadata_json", "metrics_json", "reward_components_json"] as const)(
@@ -1542,36 +1543,25 @@ describe("installDatabaseTrajectoryLogger (capture bridge)", () => {
   });
 });
 
-describe("budgeted LLM capture completeness", () => {
-  it("retains required fields without exceeding the global row budget", () => {
+describe("complete LLM capture", () => {
+  it("retains every field beyond the former global row budget", () => {
     const optionalFields = Object.fromEntries(
       Array.from({ length: 20 }, (_, index) => [
         `optional-${index}`,
         "x".repeat(70_000),
       ]),
     );
-    const normalized = normalizeLlmCallPayload([
-      {
-        stepId: "step-budget-exhausted",
-        ...optionalFields,
-        model: "zai-glm-4.7",
-        response: "r".repeat(400_000),
-        purpose: "response",
-        actionType: "llm",
-      },
-    ]);
-
-    expect(normalized?.params).toMatchObject({
+    const payload = {
+      stepId: "step-budget-exhausted",
+      ...optionalFields,
       model: "zai-glm-4.7",
+      response: "r".repeat(400_000),
       purpose: "response",
       actionType: "llm",
-    });
-    expect(normalized?.params.response).toEqual(
-      expect.stringContaining("...[truncated]"),
-    );
-    expect(
-      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
-    ).toBeLessThanOrEqual(1024 * 1024);
+    };
+    const normalized = normalizeLlmCallPayload([payload]);
+
+    expect(normalized?.params).toEqual(payload);
   });
 
   it("leaves a small response byte-identical", () => {
@@ -1589,12 +1579,7 @@ describe("budgeted LLM capture completeness", () => {
   });
 });
 
-describe("budgeted provider capture completeness", () => {
-  // The canonical producer shape (TrajectoriesService.logProviderAccess) emits
-  // `data` before the required `purpose` string, so a context-heavy provider
-  // payload exhausted the shared row budget first and `purpose` was bounded
-  // into a truncation marker. Re-validating that snapshot then discarded the
-  // whole provider access, which is the opposite of what the record is for.
+describe("complete provider capture", () => {
   const oversizedProviderData = () =>
     Object.fromEntries(
       Array.from({ length: 20 }, (_, index) => [
@@ -1603,41 +1588,33 @@ describe("budgeted provider capture completeness", () => {
       ]),
     );
 
-  it("retains required fields when data exhausts the global row budget", () => {
-    const normalized = normalizeProviderAccessPayload([
-      {
-        stepId: "step-provider-budget",
-        providerName: "KNOWLEDGE",
-        data: oversizedProviderData(),
-        purpose: "Provider KNOWLEDGE accessed for context",
-      },
-    ]);
-
-    expect(normalized?.params).toMatchObject({
+  it("retains every field beyond the former global row budget", () => {
+    const payload = {
+      stepId: "step-provider-budget",
       providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
       purpose: "Provider KNOWLEDGE accessed for context",
-    });
-    // `data` stays an object so the capture keeps its shape while degrading.
-    expect(normalized?.params.data).toBeTypeOf("object");
-    expect(
-      new TextEncoder().encode(JSON.stringify(normalized?.params)).byteLength,
-    ).toBeLessThanOrEqual(1024 * 1024);
+    };
+    const normalized = normalizeProviderAccessPayload([payload]);
+
+    expect(normalized?.params).toEqual(payload);
   });
 
   it("retains required fields through the (stepId, details) overload", () => {
+    const payload = {
+      providerName: "KNOWLEDGE",
+      data: oversizedProviderData(),
+      purpose: "Provider KNOWLEDGE accessed for context",
+    };
     const normalized = normalizeProviderAccessPayload([
       "step-provider-budget-positional",
-      {
-        providerName: "KNOWLEDGE",
-        data: oversizedProviderData(),
-        purpose: "Provider KNOWLEDGE accessed for context",
-      },
+      payload,
     ]);
 
     expect(normalized?.stepId).toBe("step-provider-budget-positional");
-    expect(normalized?.params).toMatchObject({
-      providerName: "KNOWLEDGE",
-      purpose: "Provider KNOWLEDGE accessed for context",
+    expect(normalized?.params).toEqual({
+      ...payload,
+      stepId: "step-provider-budget-positional",
     });
   });
 
@@ -1655,7 +1632,7 @@ describe("budgeted provider capture completeness", () => {
     expect(normalized?.params.purpose).toBe("action");
   });
 
-  it("retains required provider fields through logger flush and SQL serialization", async () => {
+  it("retains complete provider fields through logger flush and SQL serialization", async () => {
     const { runtime, logger, execute } = makeRuntime();
     await installDatabaseTrajectoryLogger(runtime);
     await logger.startTrajectory?.("provider-budget-persistence", {
@@ -1678,6 +1655,7 @@ describe("budgeted provider capture completeness", () => {
     expect(serialized).toContain(
       '"purpose":"Provider KNOWLEDGE accessed for context"',
     );
-    expect(serialized).toContain('"data":');
+    const lastChunk = serialized.match(/"chunk-19":"(x+)"/);
+    expect(lastChunk?.[1]).toHaveLength(70_000);
   });
 });

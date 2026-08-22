@@ -41,7 +41,21 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | `user-private` | Scoped to a specific user entity |
 | `agent-private` | OWNER, AGENT, and RUNTIME |
 
-The caller's role is resolved from the `x-eliza-entity-id` / `x-eliza-actor-entity-id` request headers and the `ELIZA_ADMIN_ENTITY_ID` runtime setting.
+The caller's role comes from the authenticated `AccessContext` supplied by the
+host route boundary. A request without that context returns `401`; request
+headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller. Roles
+remain exact at this boundary: ADMIN is not OWNER, GUEST is not USER, and an
+unresolved role is rejected. Guests may read global documents in rooms where
+they are current members, but cannot read private scopes or mutate documents.
+List, facet, search, single-document, and fragment reads are resolved by
+`DocumentService` with that authenticated context. Routes never fetch a parent
+row, scan the document tables, or rank search results and then attempt to apply
+authorization locally. List pagination and facet counts are constructed only
+from the service-authorized set; fragment counts use the authorized parent and
+fragment path.
+PATCH and DELETE resolve mutation authority through the same service. Deletes
+use the adapter's atomic snapshot operation instead of route-managed fragment
+and parent deletion.
 
 ## Configuration
 

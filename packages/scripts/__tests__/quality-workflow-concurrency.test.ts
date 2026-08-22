@@ -1,11 +1,6 @@
 /**
- * Pins the quality.yml concurrency contract: push runs on develop must
- * never cancel in progress. Rapid merge waves previously canceled every
- * quality run mid-flight, so lint/format reds on develop landed invisibly
- * until a release pin surfaced them (#18326, #18338, #18360). The shared
- * ref group bounds the queue at one running plus one pending run (#14069),
- * so completion cannot starve the runner fleet. Deterministic, reads the
- * real workflow file.
+ * Pins quality.yml to the Develop Full latest-tip cancellation contract while
+ * preserving independent manual diagnostics.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -36,7 +31,9 @@ describe("quality.yml concurrency contract", () => {
     expect(withoutDispatchGuard).not.toContain("run_id");
   });
 
-  test("never cancels an in-progress develop quality run", () => {
-    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(false);
+  test("cancels a superseded develop tip", () => {
+    expect(workflow.concurrency?.["cancel-in-progress"]).toBe(
+      `\${{ github.event_name == 'push' }}`,
+    );
   });
 });

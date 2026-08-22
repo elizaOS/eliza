@@ -1,5 +1,5 @@
 {
-  "uuid": "bbbb1111-aaaa-4000-8000-0000000200dd",
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200cd",
   "lastMigration": 33,
   "name": "lifeops-ntfy-mock",
   "endpointPrefix": "",
@@ -9,14 +9,14 @@
   "folders": [],
   "routes": [
     {
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200d8",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200c8",
       "type": "http",
       "documentation": "POST :topic",
       "method": "post",
       "endpoint": ":topic",
       "responses": [
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200d9",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c9",
           "body": "{\n  \"id\": \"OnlfgEoaMo3X\",\n  \"time\": 1746810600,\n  \"expires\": 1746897000,\n  \"event\": \"message\",\n  \"topic\": \"{{urlParam 'topic'}}\",\n  \"title\": \"Mock ntfy push\",\n  \"message\": \"delivered\"\n}",
           "latency": 0,
           "statusCode": 200,
@@ -40,7 +40,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200da",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ca",
           "body": "{\n  \"code\": 42909,\n  \"http\": 429,\n  \"error\": \"rate limit reached\"\n}",
           "latency": 0,
           "statusCode": 429,
@@ -83,7 +83,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200db",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200cb",
           "body": "{\n  \"code\": 40101,\n  \"http\": 401,\n  \"error\": \"unauthorized\"\n}",
           "latency": 0,
           "statusCode": 401,
@@ -122,7 +122,7 @@
           "callbacks": []
         },
         {
-          "uuid": "bbbb1111-aaaa-4000-8000-0000000200dc",
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200cc",
           "body": "{\n  \"error\": \"internal_server_error\"\n}",
           "latency": 0,
           "statusCode": 500,
@@ -167,7 +167,7 @@
   "rootChildren": [
     {
       "type": "route",
-      "uuid": "bbbb1111-aaaa-4000-8000-0000000200d8"
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200c8"
     }
   ],
   "proxyMode": false,

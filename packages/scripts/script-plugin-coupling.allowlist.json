@@ -49,7 +49,6 @@
     "file": "packages/scripts/e2e-coverage/manifest.ts",
     "tokens": [
       "plugins/plugin-agent-orchestrator",
-      "plugins/plugin-bluebubbles",
       "plugins/plugin-browser",
       "plugins/plugin-calendar",
       "plugins/plugin-commands",
@@ -146,7 +145,6 @@
     "file": "packages/scripts/vitest/integration.config.ts",
     "tokens": [
       "@elizaos/plugin-personal-assistant",
-      "@elizaos/plugin-signal",
       "@elizaos/plugin-sql",
       "@elizaos/plugin-whatsapp",
       "plugins/plugin-personal-assistant"

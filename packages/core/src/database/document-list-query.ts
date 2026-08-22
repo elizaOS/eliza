@@ -39,8 +39,10 @@ const DOCUMENT_LIST_ROLES = new Set([
 	"OWNER",
 	"ADMIN",
 	"USER",
+	"GUEST",
 	"AGENT",
 	"RUNTIME",
+	"UNRESOLVED",
 ]);
 const DOCUMENT_LIST_SCOPES = new Set([
 	"global",
@@ -267,6 +269,26 @@ function readUuidMetadata(
 	return isUuid(value) ? value : undefined;
 }
 
+const DOCUMENT_DIRECT_GRANT_LIMIT = 1_000;
+
+function readDirectGrantEntityIds(
+	metadata: Record<string, unknown>,
+): UUID[] | null {
+	const value = metadata.directGrantEntityIds;
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
+		return null;
+	}
+	const grants: UUID[] = [];
+	const seen = new Set<string>();
+	for (const entityId of value) {
+		if (!isUuid(entityId) || seen.has(entityId)) return null;
+		seen.add(entityId);
+		grants.push(entityId);
+	}
+	return grants;
+}
+
 function readDocumentRevision(metadata: unknown): number | null {
 	if (metadata === null || typeof metadata !== "object") return null;
 	const value = Reflect.get(metadata, "documentRevision");
@@ -300,6 +322,8 @@ export function readDocumentMutationSnapshot(
 	if (metadata.scopedToEntityId !== undefined && !scopedToEntityId) return null;
 	const addedBy = readUuidMetadata(metadata, "addedBy");
 	if (metadata.addedBy !== undefined && !addedBy) return null;
+	const directGrantEntityIds = readDirectGrantEntityIds(metadata);
+	if (!directGrantEntityIds) return null;
 	const revision = readDocumentRevision(metadata);
 	if (revision === null) return null;
 	const ingestionAttemptId = readUuidMetadata(metadata, "ingestionAttemptId");
@@ -328,6 +352,7 @@ export function readDocumentMutationSnapshot(
 			: {}),
 		...(scopedToEntityId ? { scopedToEntityId } : {}),
 		...(addedBy ? { addedBy } : {}),
+		...(directGrantEntityIds.length > 0 ? { directGrantEntityIds } : {}),
 	};
 }
 
@@ -362,6 +387,10 @@ export function validateDocumentRevisionReplacement(
 		replacementSnapshot.scope !== params.expected.scope ||
 		replacementSnapshot.roomId !== params.expected.roomId ||
 		replacementSnapshot.entityId !== params.expected.entityId ||
+		!uuidArraysEqual(
+			replacementSnapshot.directGrantEntityIds,
+			params.expected.directGrantEntityIds,
+		) ||
 		replacementSnapshot.scopedToEntityId !== params.expected.scopedToEntityId ||
 		replacementSnapshot.addedBy !== params.expected.addedBy ||
 		replacementSnapshot.ingestionAttemptId !==
@@ -412,6 +441,7 @@ export function isDocumentVisibleToRequester(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
+	if (params.requesterRole === "UNRESOLVED") return false;
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
 	if (
@@ -421,6 +451,18 @@ export function isDocumentVisibleToRequester(
 		return false;
 	}
 	if (documentRoleHasGlobalVisibility(params.requesterRole)) {
+		return true;
+	}
+	if (params.requesterRole === "GUEST") {
+		return (
+			params.requesterRoomIds.includes(snapshot.roomId) &&
+			snapshot.scope === "global"
+		);
+	}
+	if (
+		snapshot.scope !== "agent-private" &&
+		snapshot.directGrantEntityIds?.includes(params.requesterEntityId)
+	) {
 		return true;
 	}
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
@@ -435,6 +477,12 @@ export function canRequesterMutateDocument(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
+	if (
+		params.requesterRole === "UNRESOLVED" ||
+		params.requesterRole === "GUEST"
+	) {
+		return false;
+	}
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
 	if (params.requesterRole === "OWNER") return true;
@@ -459,11 +507,24 @@ export function documentMutationSnapshotMatches(
 		actual.scope === expected.scope &&
 		actual.roomId === expected.roomId &&
 		actual.entityId === expected.entityId &&
+		uuidArraysEqual(
+			actual.directGrantEntityIds,
+			expected.directGrantEntityIds,
+		) &&
 		actual.scopedToEntityId === expected.scopedToEntityId &&
 		actual.addedBy === expected.addedBy &&
 		actual.revision === expected.revision &&
 		actual.ingestionAttemptId === expected.ingestionAttemptId &&
 		actual.ingestionState === expected.ingestionState
+	);
+}
+
+function uuidArraysEqual(left?: UUID[], right?: UUID[]): boolean {
+	const normalizedLeft = left ?? [];
+	const normalizedRight = right ?? [];
+	return (
+		normalizedLeft.length === normalizedRight.length &&
+		normalizedLeft.every((value, index) => value === normalizedRight[index])
 	);
 }
 
@@ -652,6 +713,24 @@ export function validateDocumentFragmentQueryParams(
 				context: { limit: params.limit },
 			},
 		);
+	}
+	if (
+		params.offset !== undefined &&
+		(!Number.isSafeInteger(params.offset) || params.offset < 0)
+	) {
+		throw new ElizaError(
+			"Document fragment offset must be a non-negative integer",
+			{
+				code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+				context: { offset: params.offset },
+			},
+		);
+	}
+	if (params.documentId !== undefined && !isUuid(params.documentId)) {
+		throw new ElizaError("Document fragment parent id is invalid", {
+			code: "DOCUMENT_FRAGMENT_QUERY_INVALID",
+			context: { documentId: params.documentId },
+		});
 	}
 	if (params.embedding === undefined) {
 		if (params.matchThreshold !== undefined) {
@@ -892,6 +971,7 @@ export function queryDocumentFragmentsInMemory(
 			}
 			const documentId = memory.metadata?.documentId;
 			if (!isUuid(documentId)) return false;
+			if (params.documentId && documentId !== params.documentId) return false;
 			const parent = parents.get(documentId);
 			if (!parent || !isDocumentVisibleToRequester(parent, params))
 				return false;
@@ -946,7 +1026,8 @@ export function queryDocumentFragmentsInMemory(
 	} else {
 		fragments.sort(compareDocumentOrder);
 	}
-	return fragments.slice(0, params.limit);
+	const offset = params.offset ?? 0;
+	return fragments.slice(offset, offset + params.limit);
 }
 
 export function hasDocumentListQueryCapability(

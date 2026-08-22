@@ -78,12 +78,6 @@ const SAFE_ENDPOINTS: SnapshotEndpoint[] = [
 ];
 
 const DESTRUCTIVE_PULL_ENDPOINTS: SnapshotEndpoint[] = [
-  {
-    id: "signal.messages",
-    path: "/api/lifeops/connectors/signal/messages?limit=5",
-    safe: false,
-    note: "Skipped unless --include-destructive-pulls is set because signal-cli receive can consume the daemon queue.",
-  },
 ];
 
 function argValue(name: string): string | null {

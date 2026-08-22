@@ -6,9 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { DocumentListQueryParams, Memory, UUID } from "../types";
 import { MemoryType } from "../types";
 import {
+	canRequesterMutateDocument,
 	documentMutationSnapshotMatches,
 	isDocumentVisibleToRequester,
 	portableDocumentSearchTokens,
+	queryDocumentFragmentsInMemory,
 	queryDocumentsInMemory,
 	queryDocumentsWithCapability,
 	readDocumentMutationSnapshot,
@@ -202,6 +204,126 @@ describe("document-list capability contract", () => {
 		);
 	});
 
+	it("keeps direct grants independent from room membership without opening agent-private data", () => {
+		const granted = {
+			...document(30),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "owner-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const agentOnly = {
+			...document(31),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "agent-private",
+				directGrantEntityIds: [REQUESTER_ID],
+			},
+		};
+		const userParams = {
+			...params,
+			requesterRole: "USER" as const,
+			requesterRoomIds: [],
+		};
+
+		expect(isDocumentVisibleToRequester(granted, userParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(agentOnly, userParams)).toBe(false);
+		expect(
+			isDocumentVisibleToRequester(granted, {
+				...userParams,
+				requesterRole: "GUEST",
+			}),
+		).toBe(false);
+		expect(canRequesterMutateDocument(granted, userParams)).toBe(false);
+	});
+
+	it("fails closed on malformed or duplicate direct grants", () => {
+		for (const directGrantEntityIds of [
+			["not-a-uuid"],
+			[REQUESTER_ID, REQUESTER_ID],
+			"not-an-array",
+		]) {
+			const malformed = {
+				...document(32),
+				metadata: {
+					type: MemoryType.DOCUMENT,
+					scope: "global",
+					directGrantEntityIds,
+				},
+			};
+			expect(readDocumentMutationSnapshot(malformed)).toBeNull();
+			expect(isDocumentVisibleToRequester(malformed, params)).toBe(false);
+		}
+	});
+
+	it("keeps guest and unresolved document authority fail-closed", () => {
+		const global = document(3);
+		const privateDocument = {
+			...document(4),
+			metadata: {
+				type: MemoryType.DOCUMENT,
+				scope: "user-private",
+				scopedToEntityId: REQUESTER_ID,
+			},
+		};
+		const guestParams = {
+			...params,
+			requesterRole: "GUEST" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+		const unresolvedParams = {
+			...params,
+			requesterRole: "UNRESOLVED" as const,
+			requesterRoomIds: [ROOM_ID],
+		};
+
+		expect(isDocumentVisibleToRequester(global, guestParams)).toBe(true);
+		expect(isDocumentVisibleToRequester(privateDocument, guestParams)).toBe(
+			false,
+		);
+		expect(isDocumentVisibleToRequester(global, unresolvedParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, guestParams)).toBe(false);
+		expect(canRequesterMutateDocument(global, unresolvedParams)).toBe(false);
+	});
+
+	it("filters fragments by authorized parent before applying offset and limit", () => {
+		const firstParent = document(5);
+		const secondParent = document(6);
+		const fragment = (
+			index: number,
+			documentId: UUID,
+			createdAt: number,
+		): Memory => ({
+			...document(index),
+			createdAt,
+			metadata: {
+				type: MemoryType.FRAGMENT,
+				documentId,
+				documentRevision: 0,
+				position: index,
+			},
+		});
+		const firstFragments = [
+			fragment(7, firstParent.id as UUID, 3_000),
+			fragment(8, firstParent.id as UUID, 2_000),
+		];
+		const otherFragment = fragment(9, secondParent.id as UUID, 4_000);
+
+		const result = queryDocumentFragmentsInMemory(
+			[firstParent, secondParent, ...firstFragments, otherFragment],
+			{
+				...params,
+				requesterRole: "OWNER",
+				documentId: firstParent.id,
+				limit: 1,
+				offset: 1,
+			},
+		);
+
+		expect(result.map((memory) => memory.id)).toEqual([firstFragments[1]?.id]);
+	});
+
 	it("uses locale-independent tokens that preserve punctuation and Unicode", () => {
 		expect(
 			portableDocumentSearchTokens(
@@ -248,17 +370,31 @@ describe("document-list capability contract", () => {
 			...document(10),
 			metadata: {
 				...document(10).metadata,
+				directGrantEntityIds: [REQUESTER_ID],
 				ingestionAttemptId,
 				ingestionState: "pending",
 			},
 		} as Memory;
 		const snapshot = readDocumentMutationSnapshot(pending);
 		expect(snapshot).toMatchObject({
+			directGrantEntityIds: [REQUESTER_ID],
 			ingestionAttemptId,
 			ingestionState: "pending",
 		});
 		if (!snapshot) throw new Error("expected a valid ingestion snapshot");
 		expect(documentMutationSnapshotMatches(pending, snapshot)).toBe(true);
+		expect(
+			documentMutationSnapshotMatches(
+				{
+					...pending,
+					metadata: {
+						...pending.metadata,
+						directGrantEntityIds: [],
+					} as Memory["metadata"],
+				},
+				snapshot,
+			),
+		).toBe(false);
 		expect(
 			documentMutationSnapshotMatches(
 				{

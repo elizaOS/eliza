@@ -64,7 +64,6 @@ const localPackages = [
   "eliza/plugins/plugin-mcp",
   "eliza/plugins/plugin-pdf",
   "eliza/plugins/plugin-registry",
-  "eliza/plugins/plugin-signal",
   "eliza/plugins/plugin-notes",
   "eliza/plugins/plugin-native-activity-tracker",
   "eliza/plugins/plugin-sql",

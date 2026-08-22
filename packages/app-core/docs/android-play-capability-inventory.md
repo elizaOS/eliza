@@ -8,8 +8,9 @@ manifest and build-strip tests are regression guards for future builds.
 
 - Cloud chat over TLS using ordinary `INTERNET` and `ACCESS_NETWORK_STATE`.
 - User-invoked voice capture using `RECORD_AUDIO`, requested at runtime. The
-  Play voice bridge uses Android speech recognition directly and does not
-  modify global audio routing.
+  normal `MODIFY_AUDIO_SETTINGS` install-time permission lets the app select
+  the user-requested microphone and speaker route; it does not grant background
+  capture or privileged system-wide audio control.
 - Audio playback through ordinary platform media APIs with no background
   foreground service.
 - Secure app-private persistence. Android backup is disabled.
@@ -21,7 +22,7 @@ manifest and build-strip tests are regression guards for future builds.
 
 The release targets API 36, does not allow cleartext traffic, and is not
 debuggable. `RECORD_AUDIO` is the only runtime permission in the audited base
-module.
+module; `MODIFY_AUDIO_SETTINGS` is a normal install-time permission.
 
 ## Play account model
 

@@ -1,10 +1,10 @@
 # @elizaos/plugin-documents
 
-HTTP API surface for the elizaOS document store.
+HTTP API surface and reusable presentation components for the elizaOS document store.
 
 ## Purpose / role
 
-Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
+Registers a set of REST routes that expose document CRUD, bulk upload, URL ingestion, semantic search, and fragment listing against the runtime's document store. The plugin delegates all persistence and search to `DocumentsServiceLike` (resolved from `@elizaos/agent/api/documents-service-loader`). It does not register a view: the app shell's built-in Knowledge view owns the first-party document UI and consumes these routes. It also does not register owner actions; `OWNER_DOCUMENTS` is host-adapted by `@elizaos/plugin-personal-assistant`, which owns approval queue gating, scheduled-task deadline tracking, and document-request orchestration. This plugin has no providers, evaluators, or event handlers.
 
 Loading: added explicitly to the agent plugin list or via character config. It is not unconditionally enabled by default; the runtime must resolve it by name (`@elizaos/plugin-documents`).
 
@@ -31,7 +31,7 @@ Repo-wide conventions (logger-only, ESM, naming, architecture rules, git workflo
 `@elizaos/plugin-personal-assistant` and delegates to this package's document
 routes/store where appropriate.
 
-No providers, services, evaluators, or event handlers are registered.
+No views, providers, services, evaluators, or event handlers are registered.
 
 ## Layout
 
@@ -47,7 +47,6 @@ src/
   components/
     documents/
       DocumentsView.tsx          React view for documents UI
-      documents-view-bundle.ts   View bundle entry
       DocumentsView.test.tsx     Component tests
 test/
   documents-api.live.e2e.test.ts   Live API e2e tests
@@ -60,9 +59,8 @@ test/
 Scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-documents build               # build:js + build:views + build:types
+bun run --cwd plugins/plugin-documents build               # build:js + build:types
 bun run --cwd plugins/plugin-documents build:js            # tsup bundling
-bun run --cwd plugins/plugin-documents build:views         # vite build for view bundles
 bun run --cwd plugins/plugin-documents build:types         # tsc --noCheck type emit
 bun run --cwd plugins/plugin-documents clean               # rm -rf dist
 bun run --cwd plugins/plugin-documents test                # vitest run (unit tests)
@@ -79,31 +77,50 @@ The plugin itself reads no env vars directly. The `routes.ts` handler reads one 
 |-------------|--------|---------|
 | `ELIZA_ADMIN_ENTITY_ID` | `runtime.getSetting(...)` | Identifies the OWNER actor for document access-control decisions |
 
-Access control is role-based, resolved from request headers:
-- `x-eliza-entity-id` / `x-eliza-actor-entity-id` — caller's entity UUID
-- Role inferred as `OWNER`, `USER`, or `AGENT` based on header vs known agent/owner IDs
+Access control is role-based and requires the authenticated `AccessContext`
+provided by the host route boundary. Missing context returns `401`; the plugin
+never treats an absent caller as owner. Request headers alone are not an
+identity or authorization authority. Preserve the caller's exact role through
+storage authorization: ADMIN is not OWNER, GUEST is not USER, and an unresolved
+role is rejected. Guests may read only global documents in their current rooms
+and may not mutate documents.
+
+List, facet, search, parent, and fragment REST reads must call the
+access-context-aware `DocumentService` methods. Do not use
+`runtime.getMemoryById()` or `getMemories()` and apply route-local authorization
+afterward: authorization belongs in the adapter query before rows, search
+ranking, fragment bytes, counts, or pagination are constructed. Route list and
+facet filters may narrow the already-authorized set for presentation, and
+fragment counts must use the authorized parent/fragment path.
+
+PATCH and DELETE must use the access-context-aware mutation methods. The route
+may inspect the already-authorized parent for editability, but it may not scan
+or delete fragments itself; `DocumentService` owns snapshot validation and the
+adapter performs the atomic parent/revision mutation.
 
 ## How to extend
 
 **Add a new route:**
 1. Add the method + path to `DOCUMENT_ROUTES` in `src/plugin.ts`.
-2. Implement the handler branch inside `handleDocumentsRoutes()` in `src/routes.ts`. Follow the existing pattern: resolve actor, check access with `canReadDocumentMemory`/`canMutateDocumentMemory`, delegate to `documentsService`, call `json(res, ...)` or `error(res, ...)`.
+2. Implement the handler branch inside `handleDocumentsRoutes()` in `src/routes.ts`. Resolve the authenticated access context, delegate authorization to the access-context-aware `DocumentService` method, then call `json(res, ...)` or `error(res, ...)`.
 3. Every route must have a real caller (UI or agent action) per root CLAUDE.md rule 10.
 
 **Add a new presenter field:**
 Add to `PresentedDocument` in `src/document-presenter.ts` and populate it in `presentDocument()`.
 
 **Add document scope enforcement logic:**
-All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`, `canMutateDocumentMemory`, `filtersFromUploadBody`). Do not scatter access checks into the presenter or service.
+Canonical read/mutation authorization belongs in `DocumentService` and its
+adapter queries. Route helpers may validate upload scope and presentation, but
+must never become a competing read authority or post-filter raw storage rows.
 
 ## Conventions / gotchas
 
 - **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/agent/api/documents-service-loader`. If the service times out during loading, the route returns 503 with a `Retry-After: 5` header; if the service is simply absent (e.g. agent not running), it returns 503 without that header.
-- **Scope defaults.** When no scope is specified on upload, the default is `user-private` for USER role, `agent-private` for AGENT role, and `global` for OWNER/RUNTIME.
+- **Scope defaults.** When no scope is specified on upload, the default is `user-private` for USER/ADMIN, `agent-private` for AGENT, and `global` for OWNER/RUNTIME. GUEST and unresolved callers cannot upload.
 - **Bundled and character documents** are read-only: `getDocumentEditability` and `getDocumentDeleteability` enforce this in the presenter, and the PATCH/DELETE handlers check these flags before proceeding.
 - **Image upload.** Images are stored as text. If `includeImageDescriptions: true` is passed in the metadata, the handler calls `runtime.useModel(ModelType.IMAGE_DESCRIPTION, ...)` to generate a description. If the model call fails, a warning is included in the response and the stored text explicitly says that image description was unavailable.
 - **YouTube URLs.** `POST /api/documents/url` detects YouTube URLs via `isYouTubeUrl()` from `@elizaos/core` and sets `source: "youtube"` in metadata; the transcript is fetched by `fetchDocumentFromUrl()`.
-- **Fragment pagination.** Fragment listing always paginates in batches of 500 (`FRAGMENT_BATCH_SIZE`). Large documents with many fragments will issue multiple `getMemories` calls.
+- **Fragment pagination.** `DocumentService` paginates authorized fragments through the adapter's document-fragment query. Routes must not scan the raw fragment table.
 - **Max body size.** Single and bulk upload endpoints cap at 32 MB (`DOCUMENT_UPLOAD_MAX_BODY_BYTES`). Bulk is further capped at 100 documents per request.
 - **rawPath routing.** All routes are registered with `rawPath: true`, meaning the agent server dispatches them directly without prefix stripping. The path `/api/documents` is absolute.
 - **OWNER_DOCUMENTS is host-adapted.** Do not add a second action here unless the PA-hosted approval, scheduler, and document-request behavior is moved with tests that prove parity.

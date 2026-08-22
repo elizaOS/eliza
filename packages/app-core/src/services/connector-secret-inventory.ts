@@ -15,7 +15,6 @@ import { join } from "node:path";
 export const CONNECTOR_SECRET_FIELDS: Readonly<
   Record<string, readonly string[]>
 > = {
-  bluebubbles: ["password"],
   discord: ["token", "botToken"],
   discordLocal: ["clientSecret"],
   telegram: ["botToken"],

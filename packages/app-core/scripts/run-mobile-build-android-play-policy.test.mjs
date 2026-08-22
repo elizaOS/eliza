@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { assertAndroidPlayManifestPolicyEvidence } from "./lib/android-cloud-artifact-audit.mjs";
 import {
+  ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_ASSET_FILES,
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -13,6 +14,7 @@ import {
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
   ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES,
+  ANDROID_PLAY_ALLOWED_PERMISSIONS,
   androidPlayManifestEvidenceFromAapt,
   applyAndroidGeneratedBuildTargetProperties,
   createAndroidPlayManifestPolicy,
@@ -145,7 +147,6 @@ describe("Android Play manifest policy", () => {
       "BIND_NOTIFICATION_LISTENER_SERVICE",
       "CALL_PHONE",
       "CAMERA",
-      "MODIFY_AUDIO_SETTINGS",
       "POST_NOTIFICATIONS",
       "READ_SMS",
       "SYSTEM_ALERT_WINDOW",
@@ -153,6 +154,13 @@ describe("Android Play manifest policy", () => {
       expect(ANDROID_CLOUD_STRIPPED_PERMISSIONS).toContain(permission);
     }
     expect(ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES).toEqual([]);
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).toContain(
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+    );
+    expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
+      "agent",
+      "runners",
+    ]);
     expect(ANDROID_CLOUD_STRIPPED_ASSET_FILES).toContain("eliza-tasks.js");
     expect(
       findAndroidCloudPackagedRuntimeOffenders([
@@ -169,6 +177,8 @@ describe("Android Play manifest policy", () => {
       "@capacitor/preferences",
       "@capacitor/share",
       "@capacitor/status-bar",
+      "@elizaos/capacitor-browser-surface",
+      "@elizaos/capacitor-secure-store",
     ]);
     expect(ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg)).toEqual(
       expect.arrayContaining([
@@ -177,11 +187,16 @@ describe("Android Play manifest policy", () => {
         "@elizaos/capacitor-bun-runtime",
         "@elizaos/capacitor-mobile-signals",
         "@elizaos/capacitor-screencapture",
-        "@elizaos/capacitor-secure-store",
         "@elizaos/capacitor-talkmode",
         "llama-cpp-capacitor",
       ]),
     );
+    const strippedNativePackages = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(
+      ([pkg]) => pkg,
+    );
+    for (const allowedPackage of ANDROID_PLAY_ALLOWED_NATIVE_PLUGIN_PACKAGES) {
+      expect(strippedNativePackages).not.toContain(allowedPackage);
+    }
     expect(ANDROID_CLOUD_STRIPPED_RESOURCE_FILES).toEqual(
       expect.arrayContaining([
         "drawable/eliza_ime_mic_bg.xml",

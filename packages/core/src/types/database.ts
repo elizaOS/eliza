@@ -67,8 +67,10 @@ export type DocumentListRequesterRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
-	| "RUNTIME";
+	| "RUNTIME"
+	| "UNRESOLVED";
 
 /** Identity and room membership used by every document authorization query. */
 export interface DocumentRequesterContext {
@@ -106,6 +108,8 @@ export interface DocumentGetQueryParams extends DocumentRequesterContext {
  */
 export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
 	limit: number;
+	offset?: number;
+	documentId?: UUID;
 	roomId?: UUID;
 	worldId?: UUID;
 	entityId?: UUID;
@@ -121,6 +125,7 @@ export interface DocumentMutationSnapshot {
 	scope: DocumentListScope;
 	roomId: UUID;
 	entityId: UUID;
+	directGrantEntityIds?: UUID[];
 	scopedToEntityId?: UUID;
 	addedBy?: UUID;
 	revision: number;
