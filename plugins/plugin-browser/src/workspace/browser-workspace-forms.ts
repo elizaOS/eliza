@@ -14,6 +14,7 @@ import {
   assertBrowserWorkspaceUrl,
   inferBrowserWorkspaceTitle,
   normalizeBrowserWorkspaceText,
+  readBrowserWorkspaceResponseText,
 } from "./browser-workspace-helpers.js";
 import {
   createEmptyWebBrowserWorkspaceDom,
@@ -371,7 +372,10 @@ export async function submitWebBrowserWorkspaceForm(
     );
   }
 
-  const html = await response.text();
+  const html = await readBrowserWorkspaceResponseText(
+    response,
+    "form_response",
+  );
   const finalUrl = assertBrowserWorkspaceUrl(
     response.url?.trim() || requestUrl,
   );
@@ -480,7 +484,10 @@ export async function loadWebBrowserWorkspaceTabDocument(
     );
   }
 
-  const html = await response.text();
+  const html = await readBrowserWorkspaceResponseText(
+    response,
+    "navigation_response",
+  );
   const finalUrl = assertBrowserWorkspaceUrl(
     response.url?.trim() || requestUrl,
   );

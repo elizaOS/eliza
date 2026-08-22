@@ -35,6 +35,8 @@ export type BrowserWorkspaceErrorCode =
   | "unknown_element_ref"
   /** The operation exceeded its timeout. */
   | "timeout"
+  /** Semantic page content exceeded the browser workspace admission ceiling. */
+  | "content_too_large"
   /** Any other workspace command failure. */
   | "command_failed";
 

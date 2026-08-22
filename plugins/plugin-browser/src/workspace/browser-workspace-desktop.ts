@@ -5,6 +5,7 @@
 import { createBrowserWorkspaceError } from "./browser-workspace-errors.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
+  assertBrowserWorkspaceContentAdmitted,
   assertBrowserWorkspaceUserScriptAllowed,
   createBrowserWorkspaceCommandTargetError,
   DEFAULT_TIMEOUT_MS,
@@ -189,6 +190,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
   command: BrowserWorkspaceCommand,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  if (command.subaction === "network" && command.networkAction === "route") {
+    assertBrowserWorkspaceContentAdmitted(
+      command.responseBody ?? "",
+      "network_route_response",
+    );
+  }
   if (
     command.subaction === "upload" ||
     command.subaction === "realistic-upload"

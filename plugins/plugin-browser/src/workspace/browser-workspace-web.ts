@@ -32,6 +32,7 @@ import {
 } from "./browser-workspace-forms.js";
 import {
   assertBrowserWorkspaceConnectorSecretsNotExported,
+  assertBrowserWorkspaceContentAdmitted,
   assertBrowserWorkspaceJsdomScriptNotRequested,
   createBrowserWorkspaceCommandTargetError,
   createBrowserWorkspaceJsdomScriptExecutionError,
@@ -39,6 +40,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_WAIT_INTERVAL_MS,
   normalizeBrowserWorkspaceText,
+  readBrowserWorkspaceResponseText,
   resolveBrowserWorkspaceCommandElementRefs,
   resolveBrowserWorkspaceFilePath,
   sleep,
@@ -485,6 +487,10 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
               "Eliza browser workspace network route requires url pattern.",
             );
           }
+          assertBrowserWorkspaceContentAdmitted(
+            command.responseBody ?? "",
+            "network_route_response",
+          );
           runtime.networkRoutes.push({
             abort: Boolean(command.offline),
             body: command.responseBody ?? null,
@@ -697,12 +703,15 @@ export async function executeWebBrowserWorkspaceUtilityCommand(
           const leftSnapshot = createBrowserWorkspaceSnapshotRecord(
             leftUrl,
             left.url || leftUrl,
-            await left.text(),
+            await readBrowserWorkspaceResponseText(left, "diff_left_response"),
           );
           const rightSnapshot = createBrowserWorkspaceSnapshotRecord(
             rightUrl,
             right.url || rightUrl,
-            await right.text(),
+            await readBrowserWorkspaceResponseText(
+              right,
+              "diff_right_response",
+            ),
           );
           return {
             mode: "web",
@@ -966,10 +975,7 @@ export async function executeWebBrowserWorkspaceDomCommand(
             collectBrowserWorkspaceInspectElements(document),
           ),
           value: {
-            bodyText: buildBrowserWorkspaceDocumentSnapshotText(document).slice(
-              0,
-              800,
-            ),
+            bodyText: buildBrowserWorkspaceDocumentSnapshotText(document),
             title: tab.title,
             url: tab.url,
           },

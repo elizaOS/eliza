@@ -103,6 +103,8 @@ function statusFromBrowserWorkspaceErrorCode(
       return 403;
     case "timeout":
       return 504;
+    case "content_too_large":
+      return 413;
     case "command_failed":
       return 500;
   }

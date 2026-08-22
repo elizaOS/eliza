@@ -8,6 +8,7 @@ import {
   executeBrowserWorkspaceCommand,
   openBrowserWorkspaceTab,
 } from "../browser-workspace.js";
+import { BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES } from "../browser-workspace-helpers.ts";
 
 const webEnv: NodeJS.ProcessEnv = {};
 
@@ -45,6 +46,13 @@ const searchHtml = `<!doctype html>
     <h1>Search Submitted</h1>
     <p id="search-result">Form submission reached the routed POST response.</p>
   </body>
+</html>`;
+
+const longSnapshotTail = "complete-snapshot-tail";
+const longSnapshotHtml = `<!doctype html>
+<html>
+  <head><title>Complete Snapshot</title></head>
+  <body><main><p>${"browser content ".repeat(80)}${longSnapshotTail}</p></main></body>
 </html>`;
 
 describe("browser workspace web-mode real-code command flow", () => {
@@ -226,6 +234,85 @@ describe("browser workspace web-mode real-code command flow", () => {
     expect(resultText.value).toBe(
       "Form submission reached the routed POST response.",
     );
+  });
+
+  it("preserves semantic page content beyond the former fixed snapshot ceiling", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        networkAction: "route",
+        responseBody: longSnapshotHtml,
+        subaction: "network",
+        url: "https://example.test/complete-snapshot",
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "navigate",
+        url: "https://example.test/complete-snapshot",
+      },
+      webEnv,
+    );
+
+    const snapshot = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "snapshot" },
+      webEnv,
+    );
+
+    expect(snapshot.value?.bodyText).toContain(longSnapshotTail);
+    expect(snapshot.value?.bodyText?.length).toBeGreaterThan(800);
+  });
+
+  it("rejects an oversized route without replacing the previously admitted body", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    const routeUrl = "https://example.test/admission-boundary";
+    const exactBody = "a".repeat(BROWSER_WORKSPACE_CONTENT_MAX_UTF8_BYTES);
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        networkAction: "route",
+        responseBody: exactBody,
+        subaction: "network",
+        url: routeUrl,
+      },
+      webEnv,
+    );
+
+    await expect(
+      executeBrowserWorkspaceCommand(
+        {
+          id: tab.id,
+          networkAction: "route",
+          responseBody: `${exactBody}é`,
+          subaction: "network",
+          url: routeUrl,
+        },
+        webEnv,
+      ),
+    ).rejects.toMatchObject({
+      browserWorkspaceErrorCode: "content_too_large",
+      operation: "network_route_response",
+      status: 413,
+    });
+
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url: routeUrl },
+      webEnv,
+    );
+    const snapshot = await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "snapshot" },
+      webEnv,
+    );
+    expect(snapshot.value?.bodyText).toBe(exactBody);
   });
 
   it("scrolls and hovers a routed page through the command router (#18259)", async () => {
