@@ -14,6 +14,9 @@
  * (getRoom / getWorld / getEntitiesForRoom / getRelationships / useModel) and
  * imports roles.ts lazily to avoid a cycle with createUniqueUuid.
  * Nested LLM `{ match: … }` unwraps are bounded in `entity-matches.ts`.
+ * `findEntityByName` only returns a room participant or a relationship-backed
+ * entity, and only after the same component-trust filter; an EXACT_MATCH id
+ * that is merely present in the entity store is not enough.
  */
 import {
 	type EntityMatch,
@@ -90,6 +93,65 @@ export async function resolveTrustedComponentSourceIds(
 		}),
 	);
 	return trusted;
+}
+
+function isTrustedComponentSource(
+	sourceEntityId: string | undefined,
+	messageEntityId: UUID,
+	agentId: UUID,
+	trustedSourceIds: Set<string>,
+): boolean {
+	if (sourceEntityId === messageEntityId) return true;
+	if (sourceEntityId && trustedSourceIds.has(sourceEntityId)) return true;
+	if (sourceEntityId === agentId) return true;
+	return false;
+}
+
+/**
+ * Return a shallow copy whose components are restricted to the sender, the
+ * agent, or a source whose resolved role is ADMIN-or-higher. Never mutates
+ * the adapter-returned entity; those objects can be cached by callers.
+ */
+async function withTrustedComponents(
+	runtime: IAgentRuntime,
+	world: World | null,
+	entity: Entity,
+	messageEntityId: UUID,
+): Promise<Entity> {
+	if (!entity.components) {
+		return { ...entity };
+	}
+	const trustedSourceIds = await resolveTrustedComponentSourceIds(
+		runtime,
+		world,
+		entity.components,
+	);
+	return {
+		...entity,
+		components: entity.components.filter((component) =>
+			isTrustedComponentSource(
+				component.sourceEntityId,
+				messageEntityId,
+				runtime.agentId,
+				trustedSourceIds,
+			),
+		),
+	};
+}
+
+function dedupeEntitiesById(entities: Entity[]): Entity[] {
+	const seen = new Set<string>();
+	const result: Entity[] = [];
+	for (const entity of entities) {
+		if (!entity.id) {
+			result.push(entity);
+			continue;
+		}
+		if (seen.has(entity.id)) continue;
+		seen.add(entity.id);
+		result.push(entity);
+	}
+	return result;
 }
 
 interface ParsedResolution {
@@ -289,29 +351,9 @@ export async function findEntityByName(
 	const entitiesInRoom = await runtime.getEntitiesForRoom(room.id, true);
 
 	const filteredEntities = await Promise.all(
-		entitiesInRoom.map(async (entity) => {
-			if (!entity.components) return entity;
-
-			const trustedSourceIds = await resolveTrustedComponentSourceIds(
-				runtime,
-				world,
-				entity.components,
-			);
-
-			entity.components = entity.components.filter((component) => {
-				if (component.sourceEntityId === message.entityId) return true;
-				if (
-					component.sourceEntityId &&
-					trustedSourceIds.has(component.sourceEntityId)
-				) {
-					return true;
-				}
-				if (component.sourceEntityId === runtime.agentId) return true;
-				return false;
-			});
-
-			return entity;
-		}),
+		entitiesInRoom.map((entity) =>
+			withTrustedComponents(runtime, world, entity, message.entityId),
+		),
 	);
 
 	const relationships = await runtime.getRelationships({
@@ -324,14 +366,20 @@ export async function findEntityByName(
 				rel.sourceEntityId === message.entityId
 					? rel.targetEntityId
 					: rel.sourceEntityId;
-			return runtime.getEntityById(entityId);
+			const related = await runtime.getEntityById(entityId);
+			if (!related) return null;
+			return withTrustedComponents(runtime, world, related, message.entityId);
 		}),
 	);
 
-	const allEntities = [
+	const allEntities = dedupeEntitiesById([
 		...filteredEntities,
 		...relationshipEntities.filter((e): e is Entity => e !== null),
-	];
+	]);
+	const candidateById = new Map<string, Entity>();
+	for (const entity of allEntities) {
+		if (entity.id) candidateById.set(entity.id, entity);
+	}
 
 	const interactionData = await getRecentInteractions(
 		runtime,
@@ -373,27 +421,9 @@ export async function findEntityByName(
 	}
 
 	if (resolution.type === "EXACT_MATCH" && resolution.entityId) {
-		const entity = await runtime.getEntityById(resolution.entityId as UUID);
-		if (entity) {
-			if (entity.components) {
-				const trustedSourceIds = await resolveTrustedComponentSourceIds(
-					runtime,
-					world,
-					entity.components,
-				);
-				entity.components = entity.components.filter((component) => {
-					if (component.sourceEntityId === message.entityId) return true;
-					if (
-						component.sourceEntityId &&
-						trustedSourceIds.has(component.sourceEntityId)
-					) {
-						return true;
-					}
-					if (component.sourceEntityId === runtime.agentId) return true;
-					return false;
-				});
-			}
-			return entity;
+		const exact = candidateById.get(resolution.entityId);
+		if (exact) {
+			return exact;
 		}
 	}
 
@@ -419,7 +449,6 @@ export async function findEntityByName(
 		const strippedUsernames = new Set<string>();
 		const normalizedHandles = new Set<string>();
 		const strippedHandles = new Set<string>();
-		const fallbackTokens: string[] = [];
 		for (const component of entity.components ?? []) {
 			const username =
 				typeof component.data?.username === "string"
@@ -428,7 +457,6 @@ export async function findEntityByName(
 			if (username) {
 				normalizedUsernames.add(normalize(username));
 				strippedUsernames.add(stripAt(username));
-				fallbackTokens.push(normalize(username));
 			}
 
 			const handle =
@@ -436,14 +464,8 @@ export async function findEntityByName(
 					? component.data.handle
 					: undefined;
 			if (handle) {
-				const normalizedHandle = normalize(handle);
-				normalizedHandles.add(normalizedHandle);
+				normalizedHandles.add(normalize(handle));
 				strippedHandles.add(stripAt(handle));
-				fallbackTokens.push(normalizedHandle);
-				const handleNoAt = handle.replace(/^@+/, "");
-				if (handleNoAt) {
-					fallbackTokens.push(normalize(handleNoAt));
-				}
 			}
 		}
 
@@ -455,51 +477,51 @@ export async function findEntityByName(
 			strippedUsernames,
 			normalizedHandles,
 			strippedHandles,
-			fallbackTokens,
 		};
 	});
 
-	const firstMatch = matchesArray[0];
-	if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
-		const matchName = normalize(firstMatch.name);
-		const matchKey = stripAt(firstMatch.name);
-
-		const matchingEntity = indexedEntities.find((entry) => {
-			if (
+	const tokenMatches = (
+		raw: string | undefined,
+	): (typeof indexedEntities)[number] | undefined => {
+		if (!raw) return undefined;
+		const matchName = normalize(raw);
+		const matchKey = stripAt(raw);
+		if (!matchName) return undefined;
+		return indexedEntities.find(
+			(entry) =>
 				entry.strippedNames.has(matchKey) ||
 				entry.normalizedNames.has(matchName) ||
 				entry.strippedUsernames.has(matchKey) ||
 				entry.normalizedUsernames.has(matchName) ||
 				entry.strippedHandles.has(matchKey) ||
-				entry.normalizedHandles.has(matchName)
-			) {
-				return true;
-			}
-			return false;
-		})?.entity;
+				entry.normalizedHandles.has(matchName),
+		);
+	};
 
-		if (matchingEntity) {
-			if (resolution.type === "RELATIONSHIP_MATCH") {
-				const interactionInfo = interactionData.find(
-					(d) => d.entity.id === matchingEntity.id,
-				);
-				if (interactionInfo && interactionInfo.count > 0) {
-					return matchingEntity;
-				}
-			} else {
-				return matchingEntity;
-			}
-		}
+	const acceptMatch = (candidate: Entity | undefined): Entity | null => {
+		if (!candidate) return null;
+		if (resolution.type !== "RELATIONSHIP_MATCH") return candidate;
+		const interactionInfo = interactionData.find(
+			(d) => d.entity.id === candidate.id,
+		);
+		if (interactionInfo && interactionInfo.count > 0) return candidate;
+		return null;
+	};
+
+	const firstMatch = matchesArray[0];
+	if (matchesArray.length > 0 && firstMatch && firstMatch.name) {
+		const accepted = acceptMatch(tokenMatches(firstMatch.name)?.entity);
+		if (accepted) return accepted;
 	}
 
-	// Fallback: if parsing failed to produce a usable match list, try to detect
-	// usernames/handles mentioned in the raw model output.
-	const resultLower = JSON.stringify(result).toLowerCase();
-	const fallbackEntity = indexedEntities.find((entry) =>
-		entry.fallbackTokens.some((token) => resultLower.includes(token)),
-	)?.entity;
-	if (fallbackEntity) {
-		return fallbackEntity;
+	// Exact token match against remaining match names/reasons only. Never scan
+	// JSON.stringify of the model result: that treats schema keys ("matches",
+	// "unknown", "type") as handles.
+	for (const match of matchesArray) {
+		const acceptedName = acceptMatch(tokenMatches(match.name)?.entity);
+		if (acceptedName) return acceptedName;
+		const acceptedReason = acceptMatch(tokenMatches(match.reason)?.entity);
+		if (acceptedReason) return acceptedReason;
 	}
 
 	// Heuristic fallback: if the model indicates a name/username match but we
