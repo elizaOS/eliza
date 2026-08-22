@@ -240,6 +240,11 @@ export function buildAutoVerifyCorrection(
     "",
     ...closing,
     "",
+    // Integrity clause on every stage: the pressure to "prove" a criterion
+    // must never become pressure to fake it (live 2026-08-22: a missing
+    // config file was replaced by a hand-written one and "1.2.3" shipped).
+    "Integrity: never manufacture the inputs, fixtures, files, data, or endpoints the task says to read, fetch, or operate on, and never quietly change the task to something easier to satisfy a criterion. If the real input does not exist or cannot be reached from here, say so explicitly and stop — an honest blocker is the correct report; a faked pass is a failure.",
+    "",
     buildEvidenceChecklist(missing, caps),
   ];
   return lines.join("\n");
@@ -344,6 +349,7 @@ export function buildVerificationPrompt(input: GoalVerificationInput): string {
     "- If the evidence is silent on a criterion, or only describes intent / future work, that criterion FAILS.",
     "- If the evidence contains a failure marker (a non-zero exit, a failing/red test line, an error/traceback, a loopback-only URL where a public one is required) relevant to a criterion, that criterion FAILS.",
     "- Do not give the benefit of the doubt. When in doubt, mark it missing.",
+    "- A criterion satisfied by inputs the sub-agent MANUFACTURED ITSELF FAILS: if the evidence shows it created or wrote the very file, config, dataset, or endpoint the task said to READ / FETCH / USE (or rewrote the program to consume a stand-in it made), the output is fabricated — mark the output criterion missing and say so in the summary.",
     "",
     "Respond with a SINGLE JSON object and nothing else. Do not wrap it in ```. Schema:",
     '{ "passed": <true|false>, "summary": "<one sentence under 200 chars>", "missing": ["<criterion text that was NOT proven>", ...] }',
@@ -444,6 +450,36 @@ export function parseJudgeResponse(
  * Pure with respect to filesystem and network state — the only side effect
  * is one `runtime.useModel` call.
  */
+/**
+ * Verifier model call with one bounded retry when the call died to a TURN
+ * ABORT. A user's "cancel my coding tasks" aborts every in-flight turn in the
+ * room — including this background verification of an ALREADY-DELIVERED build
+ * — and the abort then burned a verify attempt and parked a working page
+ * (live 2026-08-19). The abort is transient (the aborting turn ends in
+ * seconds); one delayed retry answers it. Any other failure propagates.
+ */
+async function verifierModelCallWithAbortRetry(
+  runtime: IAgentRuntime,
+  prompt: string,
+): Promise<string> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+        prompt,
+        stopSequences: [],
+      });
+      return typeof result === "string" ? result : String(result);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (attempt === 0 && /\bTurn aborted\b/i.test(message)) {
+        await new Promise((resolve) => setTimeout(resolve, 8_000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 export async function verifyGoalCompletion(
   runtime: IAgentRuntime,
   input: GoalVerificationInput,
@@ -471,15 +507,16 @@ export async function verifyGoalCompletion(
   const startedAt = Date.now();
   let raw: string;
   try {
-    const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-      stopSequences: [],
-    });
-    raw = typeof result === "string" ? result : String(result);
+    raw = await verifierModelCallWithAbortRetry(runtime, prompt);
   } catch (err) {
     // error-policy:J1 boundary translation — a failed verifier model call
     // becomes an explicit inconclusive verdict naming the error, never a fake
-    // pass or a worker-attributed proof failure.
+    // pass or a worker-attributed proof failure. The complete error (stack,
+    // cause chain) is also durably recorded via runtime.reportError.
+    runtime.reportError?.("[goal-llm-verifier]", err, {
+      goal: input.goal,
+      criteriaCount: input.acceptanceCriteria.length,
+    });
     const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,

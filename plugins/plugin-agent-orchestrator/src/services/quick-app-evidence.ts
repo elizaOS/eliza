@@ -16,6 +16,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { logger } from "@elizaos/core";
+import { durableProjection } from "./durable-content-store.js";
 import type { WorkdirRouteUrlMapping } from "./task-agent-routing.js";
 
 const PROBE_TIMEOUT_MS = 5_000;
@@ -35,6 +37,132 @@ export function mineCandidatePaths(texts: readonly string[]): string[] {
     }
   }
   return [...out];
+}
+
+// Sanity CEILINGS, not working caps: generous enough that a real quick-app
+// session workdir is enumerated EXHAUSTIVELY (the old depth-3/64-entry caps
+// silently parked deep or many-file deliverables as "no evidence"). When a
+// pathological tree does trip a ceiling, the walk records exactly what it did
+// not traverse and reports it — never a silent cut.
+const ENUMERATE_MAX_DEPTH = 16;
+const ENUMERATE_MAX_ENTRIES = 4_096;
+/** NAMED exclusion set — a semantic filter, not a size cap. Orchestration
+ *  plumbing written into the workdir for the child (AGENTS.md/CLAUDE.md) plus
+ *  vendor/VCS internals that are never the deliverable. Deliberately NOT a
+ *  blanket dot-prefix skip: dot-path deliverables (.github/workflows/ci.yml,
+ *  .env.example, .eslintrc.json) are legitimate candidates. The rendered
+ *  FS-VERIFIED FILES header names this rule so "not listed" cannot be read as
+ *  "does not exist". */
+const ENUMERATE_SKIP = new Set([
+  "AGENTS.md",
+  "CLAUDE.md",
+  "node_modules",
+  ".git",
+  ".hg",
+  ".svn",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".cache",
+  ".turbo",
+  ".next",
+  ".nuxt",
+  ".pnpm-store",
+  ".yarn",
+  ".DS_Store",
+]);
+
+/** Full enumeration result: candidates plus the explicit continuation note
+ *  for anything a sanity ceiling kept the walk from visiting. */
+export interface WorkdirEnumeration {
+  /** Workdir-relative candidate files, sorted (deterministic). */
+  candidates: string[];
+  /** Workdir-relative paths the walk did NOT visit because a ceiling
+   *  tripped — directories not descended into (trailing `/`) and files not
+   *  recorded. Empty when the walk was exhaustive. */
+  notTraversed: string[];
+  /** True iff `notTraversed` is non-empty. */
+  truncated: boolean;
+  limits: { maxDepth: number; maxEntries: number };
+}
+
+/**
+ * Enumerate the session workdir directly as a candidate source. A worker that
+ * ends its run with an empty final reply leaves NOTHING to mine claims from,
+ * and a working build then parks with "no evidence" (live 2026-08-19: built
+ * dice-roller page reported as ghosted + parked). Enumeration only nominates
+ * candidates; collectFsObservedFiles still applies the mtime-after-start gate
+ * before anything counts as evidence. Entries are visited in sorted order so
+ * a ceiling, if ever hit, cuts deterministically — and everything not visited
+ * is recorded in `notTraversed` (the pagination-contract continuation note).
+ */
+export function enumerateWorkdirCandidatesDetailed(
+  workdir: string,
+  limits: { maxDepth?: number; maxEntries?: number } = {},
+): WorkdirEnumeration {
+  const maxDepth = limits.maxDepth ?? ENUMERATE_MAX_DEPTH;
+  const maxEntries = limits.maxEntries ?? ENUMERATE_MAX_ENTRIES;
+  const root = path.resolve(workdir);
+  const candidates: string[] = [];
+  const notTraversed: string[] = [];
+  const walk = (dir: string, depth: number): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      // error-policy:J3 an unreadable directory nominates no candidates; the
+      // claim-mining sources still apply.
+      return;
+    }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    for (const entry of entries) {
+      if (ENUMERATE_SKIP.has(entry.name)) continue;
+      const absolute = path.join(dir, entry.name);
+      const relativePath = path.relative(root, absolute);
+      if (entry.isDirectory()) {
+        if (depth + 1 > maxDepth) {
+          notTraversed.push(`${relativePath}/`);
+          continue;
+        }
+        walk(absolute, depth + 1);
+      } else if (entry.isFile()) {
+        if (candidates.length >= maxEntries) {
+          notTraversed.push(relativePath);
+          continue;
+        }
+        candidates.push(relativePath);
+      }
+    }
+  };
+  walk(root, 0);
+  return {
+    candidates: candidates.sort(),
+    notTraversed: notTraversed.sort(),
+    truncated: notTraversed.length > 0,
+    limits: { maxDepth, maxEntries },
+  };
+}
+
+/**
+ * Candidate list for callers that only need the paths. A tripped sanity
+ * ceiling is never silent: the explicit continuation note (what was NOT
+ * traversed) is logged in full detail before the bounded list is returned.
+ */
+export function enumerateWorkdirCandidates(workdir: string): string[] {
+  const enumeration = enumerateWorkdirCandidatesDetailed(workdir);
+  if (enumeration.truncated) {
+    logger.warn(
+      {
+        workdir,
+        limits: enumeration.limits,
+        candidateCount: enumeration.candidates.length,
+        notTraversedCount: enumeration.notTraversed.length,
+        notTraversed: enumeration.notTraversed,
+      },
+      "[quick-app-evidence] workdir enumeration hit a sanity ceiling — the listed paths were NOT traversed and their files were not nominated as evidence candidates",
+    );
+  }
+  return enumeration.candidates;
 }
 
 export interface FsObservedFilesInput {
@@ -231,14 +359,41 @@ export function detectCheckSurfaces(
   };
 }
 
-/** Text-asset extensions worth showing the judge verbatim. */
-const TEXT_CONTENT_RE = /\.(?:html?|css|js|svg|md|txt|json)$/i;
+/** Extensions that are binary BY CONSTRUCTION — never inlined as text. Such
+ *  assets stay named in the FS-VERIFIED FILES list, and the rendered section
+ *  header names this rule, so their absence from the contents section reads
+ *  as "not a text file", never as "does not exist". Everything else is read
+ *  and content-sniffed rather than gated on an extension allowlist (the old
+ *  seven-extension allowlist silently withheld .py/.ts/.yml/... deliverables
+ *  and content criteria on them failed as unproven narration). */
+const BINARY_CONTENT_RE =
+  /\.(?:png|jpe?g|gif|webp|avif|ico|bmp|tiff?|woff2?|ttf|otf|eot|zip|gz|tgz|bz2|xz|7z|rar|pdf|mp[34]|m4[av]|mov|avi|webm|ogg|wav|flac|exe|dll|so|dylib|class|jar|wasm|sqlite3?|db|bin)$/i;
+
+/** Per-file view budget for the judge's contents section. A file under the
+ *  budget is inlined WHOLE (the normal quick-app case); an oversized file is
+ *  persisted whole to the durable content store FIRST and its view ends with
+ *  a marker naming `GET /api/orchestrator/content/<sha256>` — content is
+ *  paged, never lost. */
+const PER_FILE_CONTENT_BUDGET_CHARS = 24_000;
+
+function projectFileContent(content: string): string {
+  try {
+    return durableProjection(content, PER_FILE_CONTENT_BUDGET_CHARS).view;
+  } catch {
+    // error-policy:J4 a durable-store write failure must not sink evidence
+    // assembly — fall back to the COMPLETE text (uncapped) rather than
+    // reintroducing a silent cut.
+    return content;
+  }
+}
 
 /**
  * Read the complete contents of fs-verified text files so content
  * criteria are judged against the real file text. Same epistemic status as
  * the stat probe: the orchestrator reads the bytes itself; worker narration
  * never enters. Unreadable files contribute no entry, never a fabricated one.
+ * Text detection is by sniff (no NUL byte in the decoded text), not by an
+ * extension allowlist; only known-binary extensions skip the read outright.
  */
 export function readFsVerifiedContents(
   workdir: string,
@@ -258,15 +413,18 @@ export function readFsVerifiedContents(
   const root = path.resolve(workdir);
   const out: Array<{ path: string; content: string }> = [];
   for (const file of relativeFiles) {
-    if (!TEXT_CONTENT_RE.test(file)) continue;
+    if (BINARY_CONTENT_RE.test(file)) continue;
     const absolute = path.resolve(root, file);
     const relative = path.relative(root, absolute);
     if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
     const content = read(absolute);
     if (content === undefined) continue;
+    // Binary sniff: a NUL byte in the utf8-decoded text means this is not a
+    // text deliverable — it stays listed (FS-VERIFIED FILES) but not inlined.
+    if (content.includes("\u0000")) continue;
     out.push({
       path: relative,
-      content,
+      content: projectFileContent(content),
     });
   }
   return out;

@@ -212,11 +212,13 @@ function compileSecretPatterns(): RegExp[] {
   for (const raw of getDefaultRedactPatterns()) {
     // Match core's redaction parser: a `/pattern/flags` literal keeps its flags
     // (forcing `g`), otherwise the raw source compiles with `gi`. We add `m` so
-    // matching works line-by-line. Compiling with only `gm` (dropping the `i`)
-    // would miss lowercase credential shapes core's source-of-truth catches
-    // (e.g. `database_password=…`, `authorization: Bearer …`), so we preserve
-    // case-insensitivity exactly as core does. A pattern that fails to compile
-    // is skipped rather than aborting the whole gate.
+    // matching works line-by-line. Compiling a bare source with only `gm`
+    // (dropping the `i`) would miss lowercase credential shapes core's
+    // source-of-truth catches (e.g. `authorization: bearer …`), while a
+    // case-sensitive `/…/g` literal (core's ENV-name pattern) must NOT gain an
+    // `i` — core made it case-sensitive on purpose. Preserving each pattern's
+    // own flags keeps the gate at exact parity with the redaction layer. A
+    // pattern that fails to compile is skipped rather than aborting the gate.
     const compiledPattern = compileRedactPattern(raw);
     if (compiledPattern) compiled.push(compiledPattern);
   }
