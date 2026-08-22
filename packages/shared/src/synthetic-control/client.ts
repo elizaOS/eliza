@@ -155,11 +155,11 @@ export class SyntheticControlClient {
           "synthetic control response",
         ),
       );
-    } catch (error) {
-      // error-policy:J1 Malformed wire replies become a typed protocol failure at the client boundary.
+    } catch {
+      // error-policy:J1 Malformed wire replies become a redacted typed failure at the client boundary.
       throw new SyntheticControlProtocolError({
         code: "COMMAND_FAILED",
-        message: `synthetic control returned malformed JSON: ${error instanceof Error ? error.message : String(error)}`,
+        message: "synthetic control returned a malformed response",
       });
     }
     if (parsed.commandId !== commandId) {
