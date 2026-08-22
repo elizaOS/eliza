@@ -1094,9 +1094,14 @@ function scanControlsForSurface(surface, files, repoRoot, cache) {
     visit(context.sourceFile);
   }
   for (const control of rawControls) {
-    if (surface.id === "chat") {
+    if (surface.id === "chat" && control.mutationRisk && !control.sensitive) {
+      control.classification = "chat-native-operation";
+      control.authorization = "authenticated-owner+chat-boundary";
+      control.idempotency = "operation-defined";
+      control.channels = { view: true, widget: true, chat: true, voice: true };
       control.mutationRisk = false;
-      control.semanticMutation = false;
+      delete control.justificationCode;
+      delete control.viewOnlyReason;
       continue;
     }
     if (!control.mutationRisk) continue;
