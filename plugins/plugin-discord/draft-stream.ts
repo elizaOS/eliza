@@ -39,7 +39,7 @@ export interface DraftStreamController {
 	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
 	/** End streaming without emitting an interruption message. */
-	discard: () => void;
+	discard: () => Promise<void>;
 	messageId: () => string | undefined;
 	isStarted: () => boolean;
 	isDone: () => boolean;
@@ -330,13 +330,24 @@ export function createDraftStreamController(
 		log("draft-stream: aborted");
 	};
 
-	const discard = (): void => {
+	const discard = async (): Promise<void> => {
 		if (done) {
 			return;
 		}
 		done = true;
 		clearThrottle();
 		pendingText = null;
+		for (const message of [...sentMessages].reverse()) {
+			try {
+				await message.delete();
+			} catch (error) {
+				// error-policy:J6 designed-abort teardown is best-effort; failure to
+				// delete an already-sent snapshot is observable in connector logs.
+				warn(
+					`draft-stream: silent discard delete failed: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
 		log("draft-stream: discarded silently");
 	};
 

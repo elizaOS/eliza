@@ -19,6 +19,10 @@ import { ChannelType } from "@elizaos/core";
 import type { Message as DiscordMessage } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+	createDraftStreamController,
+	type DraftStreamController,
+} from "../draft-stream.ts";
 import { MessageManager } from "../messages.ts";
 import type { ICompatRuntime, IDiscordService } from "../types.ts";
 
@@ -110,14 +114,20 @@ function makeHangingRuntime(settings: Record<string, string> = {}): {
 	};
 }
 
-function makeDmChannel(sends: Sent[]) {
+function makeDmChannel(sends: Sent[], deleted: string[] = []) {
 	return {
 		id: "777000000000000000",
 		type: DiscordChannelType.DM,
 		isThread: () => false,
 		send: async (options: Sent) => {
 			sends.push(options);
-			return { id: "990000000000000001", ...options };
+			return {
+				id: `99000000000000000${sends.length}`,
+				...options,
+				delete: async () => {
+					deleted.push(`99000000000000000${sends.length}`);
+				},
+			};
 		},
 		sendTyping: async () => {},
 	};
@@ -472,12 +482,14 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 
 	it("silently settles designed aborts and releases an uncommitted inbound slot", async () => {
 		const sends: Sent[] = [];
+		const deleted: string[] = [];
 		const reactionEvents: string[] = [];
-		const channel = makeDmChannel(sends);
+		const channel = makeDmChannel(sends, deleted);
 		const client = { user: { id: "888000000000000000" } };
 		const errors: unknown[][] = [];
 		const infos: unknown[][] = [];
 		let handleCalls = 0;
+		let rejectFirst!: (error: unknown) => void;
 		const runtime = {
 			agentId: AGENT_ID,
 			character: { name: "Eliza" },
@@ -499,24 +511,52 @@ describe("Discord generation timeout aborts the underlying run (dispatch path)",
 			getMemoryById: async () => null,
 			createMemory: async (memory: Memory) => memory.id,
 			messageService: {
-				handleMessage: async () => {
+				handleMessage: () => {
 					handleCalls += 1;
-					throw Object.assign(new Error("turn stopped"), {
+					const error = Object.assign(new Error("turn stopped"), {
 						code: "TURN_ABORTED",
 						reason: "runtime-stop",
 					});
+					if (handleCalls === 1) {
+						return new Promise((_resolve, reject) => {
+							rejectFirst = reject;
+						});
+					}
+					return Promise.reject(error);
 				},
 			},
 		} as unknown as ICompatRuntime;
-		const manager = new MessageManager(makeDiscordService(client), runtime);
+		let draftController: DraftStreamController | undefined;
+		const manager = new MessageManager(makeDiscordService(client), runtime, {
+			draftStreamFactory: (options) => {
+				draftController = createDraftStreamController({
+					...options,
+					throttleMs: 250,
+					minInitialChars: 1,
+				});
+				return draftController;
+			},
+		});
 		const inbound = makeInbound(channel, reactionEvents);
 
-		await manager.handleMessage(inbound);
+		const firstHandled = manager.handleMessage(inbound);
+		await vi.advanceTimersByTimeAsync(0);
+		draftController?.update("partial response that must be removed");
+		await vi.advanceTimersByTimeAsync(250);
+		expect(sends).toHaveLength(1);
+		rejectFirst(
+			Object.assign(new Error("turn stopped"), {
+				code: "TURN_ABORTED",
+				reason: "runtime-stop",
+			}),
+		);
+		await firstHandled;
 		await manager.handleMessage(inbound);
 		await vi.advanceTimersByTimeAsync(0);
 
 		expect(handleCalls).toBe(2);
-		expect(sends).toEqual([]);
+		expect(sends).toHaveLength(1);
+		expect(deleted).toEqual(["990000000000000001"]);
 		expect(errors).toEqual([]);
 		expect(infos).toEqual(
 			expect.arrayContaining([

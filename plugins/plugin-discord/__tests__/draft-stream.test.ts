@@ -22,6 +22,7 @@ interface CapturedSend {
 function makeChannel() {
 	const sends: CapturedSend[] = [];
 	const edits: CapturedSend[] = [];
+	const deletions: string[] = [];
 	const channel = {
 		send: async (options: CapturedSend) => {
 			sends.push(options);
@@ -30,6 +31,9 @@ function makeChannel() {
 				content: options.content ?? "",
 				createdTimestamp: Date.now(),
 				attachments: { size: 0 },
+				delete: async () => {
+					deletions.push(`msg-${sends.length}`);
+				},
 				edit: async (editOptions: CapturedSend) => {
 					edits.push(editOptions);
 					return { id: `msg-${sends.length}` };
@@ -37,7 +41,7 @@ function makeChannel() {
 			};
 		},
 	} as unknown as TextChannel;
-	return { channel, sends, edits };
+	return { channel, sends, edits, deletions };
 }
 
 const choiceRow: DiscordActionRow = {
@@ -70,11 +74,28 @@ describe("draft-stream finalize components (#14527)", () => {
 		await controller.start(channel);
 		controller.update("pending text");
 
-		controller.discard();
+		await controller.discard();
 		await new Promise((resolve) => setTimeout(resolve, 300));
 
 		expect(controller.isDone()).toBe(true);
 		expect(sends).toEqual([]);
+	});
+
+	it("deletes an already-flushed partial snapshot when discarded", async () => {
+		const { channel, sends, deletions } = makeChannel();
+		const controller = createDraftStreamController({
+			throttleMs: 250,
+			minInitialChars: 1,
+		});
+		await controller.start(channel);
+		controller.update("partial response");
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(sends).toHaveLength(1);
+
+		await controller.discard();
+
+		expect(deletions).toEqual(["msg-1"]);
+		expect(controller.isDone()).toBe(true);
 	});
 
 	it("attaches components to the finalized message", async () => {

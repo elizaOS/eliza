@@ -865,6 +865,7 @@ export class MessageManager {
 	private discordService: IDiscordService;
 	private accountId: string;
 	private statusReactionScope: StatusReactionScope;
+	private readonly draftStreamFactory: typeof createDraftStreamController;
 	private envelopeEnabled: boolean;
 	private draftStreamingEnabled: boolean;
 	private stalenessConfig: DiscordStalenessConfig;
@@ -881,7 +882,13 @@ export class MessageManager {
 	 * @param {ICompatRuntime} runtime - The agent runtime instance (with cross-core compat).
 	 * @throws {Error} If the Discord client is not initialized
 	 */
-	constructor(discordService: IDiscordService, runtime: ICompatRuntime) {
+	constructor(
+		discordService: IDiscordService,
+		runtime: ICompatRuntime,
+		options: {
+			draftStreamFactory?: typeof createDraftStreamController;
+		} = {},
+	) {
 		// Guard against null client - fail fast with a clear error
 		if (!discordService.client) {
 			const errorMsg =
@@ -895,6 +902,8 @@ export class MessageManager {
 
 		this.client = discordService.client;
 		this.runtime = runtime;
+		this.draftStreamFactory =
+			options.draftStreamFactory ?? createDraftStreamController;
 		this.attachmentManager = new AttachmentManager(this.runtime);
 		this.getChannelType = discordService.getChannelType;
 		this.discordService = discordService;
@@ -2097,7 +2106,7 @@ export class MessageManager {
 				this.discordService.trackStatusReaction?.(message.id, statusReactions);
 			}
 			const draftStream = this.draftStreamingEnabled
-				? createDraftStreamController({
+				? this.draftStreamFactory({
 						log: (entry) =>
 							this.runtime.logger.debug(
 								{ src: "plugin:discord", agentId: this.runtime.agentId },
@@ -2975,7 +2984,7 @@ export class MessageManager {
 				if (designedAbortReason) {
 					typingController.stop();
 					statusReactions?.setDone();
-					draftStream?.discard();
+					await draftStream?.discard();
 					if (speakerLease) {
 						await releaseSpeakerLease(
 							this.runtime,
