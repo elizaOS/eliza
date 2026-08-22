@@ -397,6 +397,34 @@ describe("getTaskAgentFrameworkState", () => {
         ?.installCommand,
     ).toBe("preflight-codex-install");
   });
+
+  it("never recommends attended-only Kimi from cold or cached inventory", async () => {
+    setEnv({ ELIZA_DEFAULT_AGENT_TYPE: "kimi" });
+    const probe: TaskAgentFrameworkProbe = {
+      checkAvailableAgents: vi.fn(async () => [
+        {
+          adapter: "Kimi Code",
+          installed: true,
+          authenticated: true,
+        },
+      ]),
+    };
+
+    const coldState = await getTaskAgentFrameworkState(runtime(), probe);
+    const cachedState = await getTaskAgentFrameworkState(runtime(), probe);
+
+    expect(probe.checkAvailableAgents).toHaveBeenCalledTimes(1);
+    for (const state of [coldState, cachedState]) {
+      expect(state.preferred.id).not.toBe("kimi");
+      expect(
+        state.frameworks.find((framework) => framework.id === "kimi"),
+      ).toMatchObject({
+        installed: true,
+        authReady: true,
+        recommended: false,
+      });
+    }
+  });
 });
 
 // Model prefs must honor a freshly-saved config-file value on the NEXT spawn:

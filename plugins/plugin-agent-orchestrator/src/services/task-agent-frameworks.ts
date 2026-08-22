@@ -903,7 +903,7 @@ async function computeTaskAgentFrameworkState(
 
   const fallback =
     candidates[0] ??
-    frameworks.find((framework) => framework.installed) ??
+    frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
     scoredCandidates.sort((left, right) => {
@@ -1119,7 +1119,7 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   });
   const fallback =
     candidates[0] ??
-    frameworks.find((framework) => framework.installed) ??
+    frameworks.find((framework) => framework.id !== "kimi") ??
     frameworks[0];
   const preferredCandidate =
     scoredCandidates.sort((left, right) => {
