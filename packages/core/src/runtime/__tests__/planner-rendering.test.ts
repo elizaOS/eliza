@@ -212,6 +212,29 @@ describe("toolMessageContent", () => {
 		).toThrow(/Non-recoverable tool result exceeds/u);
 	});
 
+	it("does not omit mixed search text when any result lacks a recoverable locator", () => {
+		expect(() =>
+			toolMessageContent(
+				{
+					success: true,
+					text: "mixed search result ".repeat(10_000),
+					promptData: {
+						results: [
+							{
+								reference: {
+									kind: "document",
+									ref: "document:recoverable",
+								},
+							},
+							{ coordinateUnavailable: true },
+						],
+					},
+				},
+				{ maxSerializedTokens: 100 },
+			),
+		).toThrow(/Non-recoverable tool result exceeds/u);
+	});
+
 	it("does not grant recoverable omission to a hostile ReadView-like shape", () => {
 		const text = "x".repeat(20_000);
 		const invalidReadView = {

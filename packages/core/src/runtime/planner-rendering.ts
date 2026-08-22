@@ -259,7 +259,8 @@ function hasRecoverableContentLocator(value: unknown): boolean {
 		const results = (value as Record<string, unknown>).results;
 		if (
 			Array.isArray(results) &&
-			results.some(
+			results.length > 0 &&
+			results.every(
 				(item) =>
 					item !== null &&
 					typeof item === "object" &&
