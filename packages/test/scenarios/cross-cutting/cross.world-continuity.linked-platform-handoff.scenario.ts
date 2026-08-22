@@ -6,7 +6,9 @@
 import type { ScenarioContext } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
 
-function verifyTopologyDiscovery(ctx: ScenarioContext): string | undefined {
+async function verifyTopologyDiscovery(
+  ctx: ScenarioContext,
+): Promise<string | undefined> {
   const discovery = ctx.actionsCalled.find((call) => {
     if (call.actionName !== "MESSAGE") return false;
     const captured = call.parameters as
@@ -31,8 +33,38 @@ function verifyTopologyDiscovery(ctx: ScenarioContext): string | undefined {
   if (new Set(Object.values(ctx.worldIds ?? {})).size !== 3) {
     return "scenario topology did not create three distinct worlds";
   }
-  if (new Set(Object.values(ctx.accountEntityIds ?? {})).size !== 1) {
-    return "linked connector accounts did not resolve to one canonical entity";
+  const accountEntityIds = Object.values(ctx.accountEntityIds ?? {});
+  if (new Set(accountEntityIds).size !== 3) {
+    return "scenario did not create three distinct connector principals";
+  }
+  const runtime = ctx.runtime as
+    | {
+        agentId: string;
+        getService(type: string): {
+          resolveCanonicalPrincipal(
+            agentId: string,
+            principalId: string,
+          ): Promise<{ canonicalPrincipalId: string }>;
+        } | null;
+      }
+    | undefined;
+  const authority = runtime?.getService("principal");
+  if (!runtime || !authority) {
+    return "principal authority was unavailable";
+  }
+  const canonicalIds = await Promise.all(
+    accountEntityIds.map(
+      async (principalId) =>
+        (
+          await authority.resolveCanonicalPrincipal(
+            runtime.agentId,
+            principalId,
+          )
+        ).canonicalPrincipalId,
+    ),
+  );
+  if (new Set(canonicalIds).size !== 1) {
+    return "connector principals did not resolve to one canonical entity";
   }
   return undefined;
 }
@@ -76,13 +108,20 @@ export default scenario({
       title: "X owner DM",
     },
   ],
-  turns: [
+  seed: [
     {
-      kind: "message",
-      name: "discord-establishes-context",
-      room: "discord-dm",
-      text: "Remember this exact handoff detail: launch code ORCHID-742 and the red prototype is in locker 19.",
+      type: "memory",
+      roomId: "discord-dm",
+      content: {
+        kind: "inbound-message",
+        platform: "discord",
+        displayName: "Canonical owner",
+        messageId: "discord-handoff-detail",
+        text: "Launch code ORCHID-742 and the red prototype is in locker 19.",
+      },
     },
+  ],
+  turns: [
     {
       kind: "message",
       name: "telegram-recalls-discord-context",
@@ -96,11 +135,12 @@ export default scenario({
       },
     },
     {
-      kind: "message",
+      kind: "action",
       name: "x-discovers-shared-worlds",
       room: "x-dm",
-      text: "Use your durable topology to list every world we share. Call MESSAGE with action list_worlds.",
-      expectedActions: ["MESSAGE"],
+      actionName: "MESSAGE",
+      text: "List every durable world shared by this verified owner and the agent.",
+      options: { parameters: { action: "list_worlds" } },
       responseIncludesAny: ["Discord", "Telegram", "X", "world"],
     },
   ],

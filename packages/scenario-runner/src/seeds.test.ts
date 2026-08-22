@@ -829,6 +829,8 @@ describe("scenario memory seeds", () => {
       const attachmentMemory = memories.find(
         (memory) => (memory.content.attachments?.length ?? 0) > 0,
       );
+      expect(attachmentMemory?.agentId).toBe(harness.runtime.agentId);
+      expect(attachmentMemory?.entityId).toBe(ownerId);
       expect(attachmentMemory?.content).toMatchObject({
         attachments: [
           {
