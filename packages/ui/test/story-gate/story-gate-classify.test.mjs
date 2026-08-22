@@ -59,10 +59,15 @@ describe("deriveNetworkFailureIssues scoping", () => {
         { status: 404, url: `${ORIGIN}/logos/openai-icon.png` },
       ],
       requestFailures: [
-        { failure: "net::ERR_BLOCKED_BY_ORB", url: "https://example.com/x.mp3" },
+        {
+          failure: "net::ERR_BLOCKED_BY_ORB",
+          url: "https://example.com/x.mp3",
+        },
       ],
     };
-    expect(deriveNetworkFailureIssues(cap, "good", ORIGIN).escalate).toBe(false);
+    expect(deriveNetworkFailureIssues(cap, "good", ORIGIN).escalate).toBe(
+      false,
+    );
   });
   it("still escalates a real same-origin bundle 404", () => {
     const cap = {

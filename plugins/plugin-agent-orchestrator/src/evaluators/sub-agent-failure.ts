@@ -115,6 +115,20 @@ export function extractFailureReason(errorOutput: string): string {
         .replace(/^\[[^\]]*\]\s*/, "")
         .trim(),
     )
+    // Never present the child's SUCCESS evidence as the failure reason: a
+    // verify-failed completion whose body leads with "Changed 1 file:
+    // README.md (verified on disk)" produced "Couldn't finish — Changed 1
+    // file… (verified on disk)" (live 2026-08-18) — an honesty inversion.
+    // Better no reason than a reason that contradicts the sentence.
+    .filter(
+      (line) =>
+        !/\(verified on disk\)|\bverified\b.*\b(?:file|url|disk)\b/i.test(
+          line,
+        ) &&
+        !/^(?:changed|created|updated|added|fixed|wrote)\b[^.!?]*\b(?:file|files|readme|\.md)\b/i.test(
+          line,
+        ),
+    )
     .find((line) => line.length > 0 && /\s/.test(line));
   if (!firstLine) return "";
   return toWellFormedUnicode(firstLine);

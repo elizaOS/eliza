@@ -369,7 +369,7 @@ export async function listSessionsWithin(
  * configured ceiling, so concurrent spawns don't stampede the model
  * provider.
  *
- * Why this exists: coding sub-agents (opencode + gpt-oss-class models on
+ * Why this exists: coding sub-agents (gpt-oss-class models on
  * Cerebras / other OpenAI-compatible providers) degrade hard under
  * concurrent load — the provider rate-limits, and the model responds by
  * silently skipping its Write/tool calls and "completing" with a text-only
@@ -404,8 +404,17 @@ export async function waitForSpawnSlot(
     let active = 0;
     try {
       const sessions = await listSessionsWithin(service);
+      // Count only sessions doing WORK. An idle kept-alive session ("ready" —
+      // its prompt completed, it is waiting for a possible follow-up) holds no
+      // model/CPU concurrency and must not consume a spawn slot: with the
+      // default limit of 2, two lingering keepAlive sessions blocked every new
+      // coding request for the full 8-minute wait (live 2026-08-17: four
+      // "ready" leftovers made every spawn stall 480s and the turns looked
+      // silent to the user).
       active = sessions.filter(
-        (s) => !TERMINAL_SESSION_STATUSES.has(String(s.status)),
+        (s) =>
+          !TERMINAL_SESSION_STATUSES.has(String(s.status)) &&
+          String(s.status) !== "ready",
       ).length;
     } catch {
       // error-policy:J4 session-state read failed → fail-open (don't block the spawn); no data fabricated
@@ -423,11 +432,118 @@ export async function waitForSpawnSlot(
   );
 }
 
+/**
+ * Observable ACP bind state published by SwarmCoordinatorService.acpBindState.
+ * Read structurally (no class import) so this module never depends on the
+ * coordinator's concrete type and test doubles without the getter pass as
+ * "nothing to gate".
+ */
+type CoordinatorBindState = {
+  status: "pending" | "bound" | "unbound";
+  reason: string | null;
+};
+
+function readCoordinatorBindState(
+  runtime: IAgentRuntime,
+): CoordinatorBindState | undefined {
+  // Serves the same string as SwarmCoordinatorService.serviceType
+  // (SWARM_COORDINATOR_SERVICE_TYPE in @elizaos/core).
+  const coordinator = runtime.getService?.("SWARM_COORDINATOR") as
+    | { acpBindState?: unknown }
+    | null
+    | undefined;
+  const bind = coordinator?.acpBindState;
+  if (bind === null || bind === undefined || typeof bind !== "object") {
+    return undefined;
+  }
+  const status = (bind as { status?: unknown }).status;
+  if (status !== "pending" && status !== "bound" && status !== "unbound") {
+    return undefined;
+  }
+  const reason = (bind as { reason?: unknown }).reason;
+  return { status, reason: typeof reason === "string" ? reason : null };
+}
+
+function spawnBindWaitMs(runtime: IAgentRuntime): number {
+  const raw =
+    (typeof runtime.getSetting === "function"
+      ? (runtime.getSetting("ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS") as
+          | string
+          | undefined)
+      : undefined) ?? process.env.ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS;
+  const parsed = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 15_000;
+}
+
+/**
+ * Gate a coding-agent spawn on the swarm coordinator's ACP event stream being
+ * bound. After a restart the coordinator can sit "ACP stream not bound
+ * (status=pending)" while TASKS_SPAWN_AGENT black-holes — the action reports
+ * ok, no session is supervised, and core's effect-receipt guard rewrites the
+ * optimistic reply into a confusing "no authoritative commit receipt" line.
+ * Callers refuse the spawn honestly on `{ ok: false }` instead.
+ *
+ * Pure read of existing observable state (SwarmCoordinatorService.acpBindState,
+ * maintained for coordinator-wiring's readiness probe): no coordinator or no
+ * observable bind state means nothing to gate (the router subscribes to
+ * AcpService directly) and the gate passes. `pending` polls every 250ms up to
+ * the timeout (ELIZA_ORCHESTRATOR_SPAWN_BIND_WAIT_MS, default 15s, unref'd
+ * timers); `unbound` fails immediately with the recorded reason.
+ */
+export async function awaitCodingSupervisionBound(
+  runtime: IAgentRuntime,
+  timeoutMs?: number,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const evaluate = ():
+    | { ok: true }
+    | { ok: false; reason: string }
+    | undefined => {
+    const bind = readCoordinatorBindState(runtime);
+    if (!bind || bind.status === "bound") return { ok: true };
+    if (bind.status === "unbound") {
+      return {
+        ok: false,
+        // Mechanical reason string, never promote to chat text.
+        reason: bind.reason ?? "ACP stream not bound (status=unbound)",
+      };
+    }
+    return undefined; // pending — keep waiting
+  };
+
+  const first = evaluate();
+  if (first) return first;
+  const waitMs = timeoutMs ?? spawnBindWaitMs(runtime);
+  const startedAt = Date.now();
+  const pollMs = 250;
+  for (;;) {
+    const remaining = waitMs - (Date.now() - startedAt);
+    if (remaining <= 0) break;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, Math.min(pollMs, remaining));
+      timer.unref?.();
+    });
+    const next = evaluate();
+    if (next) return next;
+  }
+  return {
+    ok: false,
+    // Mechanical reason string, never promote to chat text.
+    reason: `ACP stream not bound (status=pending) after ${waitMs}ms`,
+  };
+}
+
 export async function callbackText(
   callback: HandlerCallback | undefined,
   text: string,
+  options: { voiced?: boolean } = {},
 ): Promise<void> {
-  if (callback) await callback({ text });
+  if (!callback) return;
+  // Text already phrased in the agent's voice (phraseForUser) must carry the
+  // agentVoiced stamp, or the delivery boundary re-voices it with a SECOND
+  // model call — doubling ack latency, which is exactly how a spawn ack loses
+  // the delivery race against a fast child's completion relay (live
+  // 2026-08-18: "Created task agent." arrived AFTER the task's own output).
+  await callback(options.voiced ? { text, agentVoiced: true } : { text });
 }
 
 export function errorResult(error: string, text?: string): ActionResult {

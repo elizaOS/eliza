@@ -1,7 +1,7 @@
 /**
  * `AcpService` (serviceType `ACP_SUBPROCESS_SERVICE`) owns the lifecycle of
  * coding-agent subprocesses driven over the Agent Client Protocol (ACP). It
- * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex, opencode),
+ * spawns a chosen backend CLI (elizaos, pi-agent, claude, codex),
  * speaks ACP over the native transport, tracks per-session state and emits the
  * session events the SubAgentRouter and task store consume, and cancels or tears
  * sessions down on stop or process shutdown.
@@ -46,7 +46,10 @@ import {
 import { isAndroidMobile } from "@elizaos/shared";
 import { getHostExecutionBaseline } from "@elizaos/shared/host-execution-env";
 import { NativeAcpClient } from "./acp-native-transport.js";
-import { augmentTaskWithDeployGuidance } from "./app-deploy-guidance.js";
+import {
+  augmentTaskWithDeployGuidance,
+  resolveAppDeployConfig,
+} from "./app-deploy-guidance.js";
 import {
   CODEX_NO_LANDLOCK_SANDBOX_MODE_ENV,
   type CodexSandboxMode,
@@ -85,10 +88,6 @@ import {
   mintSpawnLease,
   resolveLeaseBroker,
 } from "./model-gateway-lease.js";
-import {
-  buildOpencodeAcpEnv,
-  resolveVendoredOpencodeAcpCommand,
-} from "./opencode-config.js";
 import {
   createOwnedArtifactRecord,
   ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
@@ -458,7 +457,17 @@ const path = require("node:path");
 const git = process.env.ACP_REAL_GIT || "git";
 const indexFile = process.env.ACP_GIT_INDEX_FILE;
 const baseline = process.env.ACP_GIT_BASELINE_SHA;
-if (indexFile) process.env.GIT_INDEX_FILE = indexFile;
+if (indexFile) {
+  process.env.GIT_INDEX_FILE = indexFile;
+  // Self-heal the index dir: scratch GC (or a corrective-lap reactivation)
+  // can remove ~/.acpx/git-indexes/<session>/ between turns, after which
+  // every git call exits 128 until someone recreates it — the child burned
+  // three failed steps rediscovering this by hand (live 2026-08-20,
+  // GLOSSARY corrective lap).
+  try {
+    fs.mkdirSync(path.dirname(indexFile), { recursive: true });
+  } catch {}
+}
 delete process.env.ACP_GIT_INDEX_FILE;
 delete process.env.ACP_GIT_BASELINE_SHA;
 delete process.env.ACP_REAL_GIT;
@@ -802,7 +811,7 @@ export function resolveInitialTaskPromptTimeoutMs(
 ): number | undefined {
   return explicitTimeoutMs ?? 0;
 }
-const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude"];
 // Path segment for Codex homes whose auth.json carries a selected ChatGPT
 // subscription. The marker stays in sync with
 // coding-account-bridge.ts:codexHomeDir; ordinary CODEX_HOME paths may instead
@@ -1504,6 +1513,23 @@ export class AcpService extends Service {
   // fall back to the legacy default-root predicate for backward cleanup.
   private async removeOwnedScratchWorkdir(session: SessionInfo): Promise<void> {
     if (!this.sessionOwnsIsolatedWorkdir(session)) return;
+    // A durable-task session's workspace OUTLIVES the session: verification,
+    // the residuals gate, and the corrective loop all inspect it after the
+    // post-completion stop. Reclaiming here failed the whole chain — the
+    // verifier found "no execution logs", the corrective re-send died on a
+    // missing workspace, and the user was asked whether they still wanted a
+    // result the child had already computed (live 2026-08-20, prime-numbers
+    // run). The orphan GC owns these dirs once the session record ages out.
+    if (session.metadata?.smithersDurableRun !== undefined) {
+      this.log(
+        "debug",
+        "scratch reclaim deferred to GC (durable-task session)",
+        {
+          sessionId: session.id,
+        },
+      );
+      return;
+    }
     const root = session.metadata?.[ACP_METADATA_WORKDIR_ROOT];
     if (
       typeof root === "string" &&
@@ -1632,10 +1658,11 @@ export class AcpService extends Service {
           } catch (err) {
             // error-policy:J6 best-effort GC; a locked/vanished dir is skipped so
             // the sweep continues and retries next boot.
-            this.log("warn", "scratch GC: failed to remove dir", {
-              path,
-              error: errorMessage(err),
-            });
+            this.log(
+              "warn",
+              `scratch GC: failed to remove dir ${path}: ${errorMessage(err)}`,
+              { path, error: errorMessage(err) },
+            );
           }
         }),
       );
@@ -1824,11 +1851,11 @@ export class AcpService extends Service {
 
   // The acpx transport persists session state as `<acpxSessionId>.json` under
   // <stateRoot>/sessions. The old probe checked `<acpxSessionId>.stream.ndjson`
-  // which NEVER exists for opencode/native sessions (verified: 0 such files on
-  // disk, only ses_*.json) — a permanent false-negative that made every healthy
+  // which NEVER exists for native sessions (verified: 0 such files on disk,
+  // only ses_*.json) — a permanent false-negative that made every healthy
   // session look "state lost", triggering a runaway "spawn a fresh sub-agent"
-  // respawn cascade AND spuriously throwing on the first real prompt to any
-  // opencode session. Probe the artifact the transport actually writes.
+  // respawn cascade AND spuriously throwing on the first real prompt to a
+  // session. Probe the artifact the transport actually writes.
   private acpxSessionStateFile(acpxSessionId: string): string {
     return join(this.acpxStateRoot(), "sessions", `${acpxSessionId}.json`);
   }
@@ -2048,10 +2075,25 @@ export class AcpService extends Service {
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
       // and the CLI/acpx paths host the app and report a verified URL. No-op for
       // non-app tasks; applied only to the initial task, never to follow-up sends.
+      // When the spawn's workdir already IS a served app dir (slug placement
+      // by construction), name it in the guidance so the child never picks —
+      // and never collides with — a slug of its own.
+      const deployConfig = resolveAppDeployConfig();
+      const appsDirResolved = deployConfig.customAppsDir
+        ? resolve(deployConfig.customAppsDir)
+        : undefined;
+      const workdirResolved = resolve(session.workdir);
+      const assignedAppDir =
+        appsDirResolved &&
+        workdirResolved.startsWith(appsDirResolved + sep) &&
+        !workdirResolved.slice(appsDirResolved.length + 1).includes(sep)
+          ? workdirResolved
+          : undefined;
       const initialTask =
         opts.initialTask && opts.initialTask.trim().length > 0
           ? augmentTaskWithDeployGuidance(opts.initialTask, undefined, {
               monetized: opts.monetized,
+              assignedAppDir,
             })
           : opts.initialTask;
 
@@ -2095,14 +2137,7 @@ export class AcpService extends Service {
         timeoutMs: opts.timeoutMs,
         model: spawnModel,
       });
-      args.push(
-        ...this.agentCommandArgs(agentType, [
-          "sessions",
-          "new",
-          "--name",
-          name,
-        ]),
-      );
+      args.push(agentType, "sessions", "new", "--name", name);
       const result = await this.runAcpx({
         sessionId: id,
         sessionName: name,
@@ -2351,13 +2386,12 @@ export class AcpService extends Service {
       model: promptModel,
     });
     args.push(
-      ...this.agentCommandArgs(session.agentType, [
-        "prompt",
-        "-s",
-        session.name ?? session.id,
-        "--",
-        text,
-      ]),
+      session.agentType,
+      "prompt",
+      "-s",
+      session.name ?? session.id,
+      "--",
+      text,
     );
 
     // The cli transport spawns a fresh subprocess per prompt, so re-inject the
@@ -2483,11 +2517,12 @@ export class AcpService extends Service {
       active.cancelled = true;
       this.terminateProcess(sessionId, active);
     } else {
-      const args = this.agentCommandArgs(session.agentType, [
+      const args = [
+        session.agentType,
         "cancel",
         "-s",
         session.name ?? session.id,
-      ]);
+      ];
       await this.runAcpx({
         sessionId,
         agentType: session.agentType,
@@ -2533,11 +2568,10 @@ export class AcpService extends Service {
       "json",
       "--cwd",
       session.workdir,
-      ...this.agentCommandArgs(session.agentType, [
-        "sessions",
-        "close",
-        session.name ?? session.id,
-      ]),
+      session.agentType,
+      "sessions",
+      "close",
+      session.name ?? session.id,
     ];
     try {
       await this.runAcpx({
@@ -2611,6 +2645,12 @@ export class AcpService extends Service {
     sessionId: string,
     patch: Record<string, unknown>,
   ): Promise<void> {
+    if (typeof this.store.mergeMetadata === "function") {
+      await this.store.mergeMetadata(sessionId, patch);
+      return;
+    }
+    // Racy fallback for stores without the atomic merge: a concurrent merge
+    // can clobber this patch (the admin-stop stamp was lost to exactly this).
     const session = await this.store.get(sessionId);
     if (!session) return;
     await this.store.update(sessionId, {
@@ -2624,6 +2664,56 @@ export class AcpService extends Service {
   // prompt at each one (background) so claude-agent-sdk reloads its stream
   // and picks the work back up without waiting for new user input. Mirrors
   // moltbot's recoverOrphanedSubagentSessions pattern.
+  /**
+   * Terminalize stored non-terminal NATIVE sessions from a previous process.
+   * Native ACP clients live only in process memory, so a restart orphans the
+   * row while its status stays "ready"/"busy" — and non-terminal rows hold
+   * worker slots forever (live 2026-08-19: 8/8 phantom "ready" sessions from
+   * the night's restarts blocked every spawn with a cap error). CLI-transport
+   * sessions are left alone: their acpx state survives on disk and feeds the
+   * orphan-resume and label-resume paths.
+   */
+  async sweepDeadNativeSessions(): Promise<number> {
+    let sessions: SessionInfo[];
+    try {
+      sessions = await this.store.list();
+    } catch (err) {
+      // error-policy:J7 sweep is boot hygiene; a store read failure is
+      // reported and the resume scan surfaces its own failure separately.
+      this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+        phase: "store.list",
+      });
+      return 0;
+    }
+    let swept = 0;
+    for (const session of sessions) {
+      if (!AcpService.isActiveSession(session)) continue;
+      if (sessionTransportMode(session, this.transportMode) !== "native") {
+        continue;
+      }
+      if (this.nativeClients.has(session.id)) continue;
+      try {
+        await this.store.updateStatus(
+          session.id,
+          "stopped",
+          "native session did not survive a runtime restart",
+        );
+        swept += 1;
+      } catch (err) {
+        // error-policy:J7 one unsweepable row must not abort the rest.
+        this.runtime.reportError("AcpService.sweepDeadNativeSessions", err, {
+          sessionId: session.id,
+        });
+      }
+    }
+    if (swept > 0) {
+      this.log("info", "swept dead native sessions from previous process", {
+        swept,
+      });
+    }
+    return swept;
+  }
+
   async resumeOrphanedBusySessions(): Promise<{
     resumed: number;
     skipped: number;
@@ -2902,12 +2992,6 @@ export class AcpService extends Service {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
-  }
-
-  private opencodeAgentCommand(): string | undefined {
-    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
-    if (configured) return configured;
-    return resolveVendoredOpencodeAcpCommand();
   }
 
   private codexAcpSandboxMode(): CodexSandboxMode | undefined {
@@ -3554,6 +3638,19 @@ export class AcpService extends Service {
       });
       throw err;
     }
+    // A stopped session's scratch workdir may have been reclaimed by
+    // workspace GC; spawning into a missing cwd surfaces as a bare
+    // posix_spawn ENOENT on the agent command (live 2026-08-19), which reads
+    // as a broken install. Name the real condition instead.
+    if (!existsSync(session.workdir)) {
+      const message = `session workspace no longer exists (${session.workdir}); it was likely reclaimed after completion`;
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", { message });
+      throw new ElizaError(message, {
+        code: "ACP_SESSION_WORKSPACE_RECLAIMED",
+        context: { sessionId: session.id, workdir: session.workdir },
+      });
+    }
     const promptCredentials = await this.accountCredentialsForSession(session);
     const promptEnv: Record<string, string> = {
       ...(opts.env ?? {}),
@@ -3606,11 +3703,6 @@ export class AcpService extends Service {
   private nativeAgentCommand(agentType: AgentType): string {
     const normalizedAgentType =
       normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType === "opencode") {
-      const command = this.opencodeAgentCommand();
-      if (command) return command;
-      return this.setting("ELIZA_OPENCODE_ACP_COMMAND") ?? "opencode acp";
-    }
     if (normalizedAgentType === "codex") return this.codexAgentCommand();
     const override = this.setting(
       `ELIZA_${String(normalizedAgentType)
@@ -3645,13 +3737,6 @@ export class AcpService extends Service {
     // close/closeSession failure must not abort the deletion.
     await client.closeSession(protocolSessionId).catch(() => undefined);
     await client.close().catch(() => undefined);
-  }
-
-  private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    if (agentType !== "opencode") return [agentType, ...args];
-    const command = this.opencodeAgentCommand();
-    if (!command) return [agentType, ...args];
-    return ["--agent", command, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -4032,7 +4117,7 @@ export class AcpService extends Service {
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
       // agent_thought_chunk: the model's reasoning / chain-of-thought streams
-      // in the SAME payload shape as agent_message_chunk (opencode emits it for
+      // in the SAME payload shape as agent_message_chunk (adapters emit it for
       // `reasoning` parts). Forward the text as a dedicated `reasoning` event so
       // the UI can surface it, but do NOT add it to finalText/appendOutput:
       // reasoning is not the deliverable response, and folding it into the turn
@@ -4044,8 +4129,8 @@ export class AcpService extends Service {
       ) {
         this.emitSessionEvent(sessionId, "reasoning", { text: content.text });
       }
-      // plan: opencode emits the agent's checklist/plan list as a `plan` update with
-      // entries [{content, status, priority}] (driven by its todowrite tool).
+      // plan: an adapter emits the agent's checklist/plan list as a `plan` update
+      // with entries [{content, status, priority}] (driven by its todo tooling).
       // Forward a sanitized snapshot as a `plan` event so the task's currentPlan
       // can drive the plan/checklist dock. Validated at this boundary (raw -> typed);
       // an adapter that never emits a plan simply does not enter this branch.
@@ -4474,7 +4559,7 @@ export class AcpService extends Service {
     const metadata = { ...(session.metadata ?? {}), account: meta };
     session.metadata = metadata;
     try {
-      await this.store.update(session.id, { metadata });
+      await this.updateSessionMetadata(session.id, { account: meta });
     } catch (err) {
       // error-policy:J7 the failover credential is already resolved and must
       // reach the subprocess; a failed durable re-stamp only degrades the NEXT
@@ -4556,7 +4641,6 @@ export class AcpService extends Service {
       if (agentType === "claude" && normalizedModel) {
         env.ANTHROPIC_MODEL = normalizedModel;
       }
-      if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
       // model (what POST /api/models/config writes). Config-env read, so a
@@ -4653,18 +4737,6 @@ export class AcpService extends Service {
           "debug",
           "Dropped inherited OPENAI_MODEL for codex subscription sub-agent (lets Codex use its ChatGPT-compatible default)",
         );
-      }
-    }
-    if (agentType === "opencode") {
-      const opencode = buildOpencodeAcpEnv(this.runtime, env, model);
-      Object.assign(env, opencode.env);
-      if (opencode.config) {
-        this.log("info", "OpenCode ACP provider configured", {
-          provider: opencode.config.providerLabel,
-          model: opencode.config.model,
-          smallModel: opencode.config.smallModel,
-          vendored: Boolean(opencode.vendoredShimDir),
-        });
       }
     }
     // Per-spawn git identity: pin an explicit author/committer for every agent

@@ -1,7 +1,7 @@
 /**
  * API contract for Cloud coding-container requests: the container service type
- * and the schema of coding agents a request may select (claude/codex/opencode/
- * elizaos). Shared so the Cloud API and its callers validate the same enum.
+ * and the schema of coding agents a request may select (claude/codex/elizaos).
+ * Shared so the Cloud API and its callers validate the same enum.
  */
 import z from "zod";
 
@@ -9,16 +9,11 @@ export const CLOUD_CONTAINER_SERVICE_TYPE = "CLOUD_CONTAINER";
 
 // `elizaos` = the elizaOS-owned coding sub-agent (eliza-code, runtime +
 // plugin-coding-tools + orchestrator). It resolves to the `eliza-code-acp` bin
-// in plugin-agent-orchestrator and is a drop-in for opencode on the same model.
-// Accepting it here lets a Cloud coding-container request explicitly select
-// eliza-code once the runner image ships the bin (issue #10059). The default
-// stays `claude` — the image must contain the agent before it becomes default.
-export const CloudCodingAgentSchema = z.enum([
-  "claude",
-  "codex",
-  "opencode",
-  "elizaos",
-]);
+// in plugin-agent-orchestrator. Accepting it here lets a Cloud coding-container
+// request explicitly select eliza-code once the runner image ships the bin
+// (issue #10059). The default stays `claude` — the image must contain the
+// agent before it becomes default.
+export const CloudCodingAgentSchema = z.enum(["claude", "codex", "elizaos"]);
 
 export const CloudCodingContainerStatusSchema = z.enum([
   "requested",

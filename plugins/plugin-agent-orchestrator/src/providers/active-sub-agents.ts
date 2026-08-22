@@ -5,6 +5,7 @@
  * spend-capped, or round-trip-capped session to resolve.
  */
 
+import { existsSync, readdirSync } from "node:fs";
 import {
   type IAgentRuntime,
   type Memory,
@@ -179,8 +180,18 @@ export const activeSubAgentsProvider: Provider = {
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
+    // Finished-work ground truth for follow-ups. With zero active sessions a
+    // "run it / show me" follow-up left the planner blind to where the
+    // deliverable lives — it guessed a wrong path, fell back to
+    // `find $HOME`, and timed out twice in a row (live 2026-08-20). Only the
+    // freshest few completed lanes are listed (bounded window) so historical
+    // noise still stays out of context.
+    const recentDone = recentCompletedLines(Array.isArray(all) ? all : []);
     if (routed.length === 0)
-      return emptyResult(capacity, admission, waves, inFlightTaskLines);
+      return emptyResult(capacity, admission, waves, [
+        ...inFlightTaskLines,
+        ...recentDone,
+      ]);
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -231,6 +242,7 @@ export const activeSubAgentsProvider: Provider = {
       );
     }
     lines.push(...inFlightTaskLines);
+    lines.push(...recentDone);
     const text = lines.join("\n");
 
     return {
@@ -411,6 +423,65 @@ function formatWaveLines(waves: readonly WaveStatusSnapshot[]): string[] {
     (wave) =>
       `wave ${wave.waveId}: ${wave.activeLanes}/${wave.concurrencyCap} active, ${wave.queuedLanes} queued, ${wave.terminalLanes}/${wave.totalLanes} terminal, ${wave.refillCount} refills, ${wave.salvageCount} salvages, ${wave.collisionCount} collisions`,
   );
+}
+
+const RECENT_COMPLETED_WINDOW_MS = 30 * 60_000;
+const RECENT_COMPLETED_MAX = 3;
+
+/** Compact "recently finished" lines: label, terminal status, sessionId, and
+ *  full workdir — the path ground truth a follow-up needs. Steers the planner
+ *  to SEND_TO_AGENT (whose dead-session redirect reopens the work in the same
+ *  workdir) instead of guessing paths or scanning the filesystem. */
+function recentCompletedLines(all: SessionInfo[]): string[] {
+  const now = Date.now();
+  const done = all
+    .filter(hasOrigin)
+    .filter((s) => TERMINAL_SESSION_STATUSES.has(s.status))
+    .filter((s) => {
+      const at = new Date(s.lastActivityAt ?? s.createdAt).getTime();
+      return Number.isFinite(at) && now - at < RECENT_COMPLETED_WINDOW_MS;
+    })
+    .sort(
+      (a, b) =>
+        new Date(b.lastActivityAt ?? b.createdAt).getTime() -
+        new Date(a.lastActivityAt ?? a.createdAt).getTime(),
+    )
+    .slice(0, RECENT_COMPLETED_MAX);
+  if (done.length === 0) return [];
+  return [
+    "## Recently finished sub-agent work (last 30 min)",
+    "Ground truth for follow-ups on a finished deliverable. When files are listed, they are verified on disk in the workdir. When the workdir was cleaned up, the ONLY working route is SEND_TO_AGENT { sessionId, text } — the orchestrator rebuilds and reopens the work; a SHELL path there fails. Never guess paths or search the filesystem for these files.",
+    ...done.map(
+      (s) =>
+        `- [${labelOf(s)}] sessionId=${s.id} status=${s.status} ${describeFinishedWorkdir(s.workdir)}`,
+    ),
+  ];
+}
+
+/** Scratch workdirs are garbage-collected shortly after completion, so a
+ *  listed path may already be gone — the planner then runs a doomed SHELL
+ *  against it (live 2026-08-20: python3 <gc'd workspace>/main.py errored and
+ *  the turn ended in an apology). Verify on disk and, when present, name the
+ *  few real files so a run-it follow-up needs zero guessing. */
+function describeFinishedWorkdir(workdir: string): string {
+  try {
+    if (!workdir || !existsSync(workdir)) {
+      return "workdir=(cleaned up — reopen via SEND_TO_AGENT)";
+    }
+    const files = readdirSync(workdir)
+      .filter(
+        (name) =>
+          !name.startsWith(".") && name !== "node_modules" && name !== "venv",
+      )
+      .slice(0, 4);
+    return files.length > 0
+      ? `workdir=${workdir} files=${files.join(",")}`
+      : `workdir=${workdir} (empty)`;
+  } catch {
+    // error-policy:J4 disk probe is per-line enrichment; an unreadable dir
+    // degrades to the bare path rather than dropping the session line.
+    return `workdir=${workdir}`;
+  }
 }
 
 function emptyResult(

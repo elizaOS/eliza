@@ -12,6 +12,10 @@
  * narration, so one task yields one user-facing completion rather than one per
  * lineage generation.
  */
+import { redactLoopbackUrls } from "./loopback-urls.js";
+
+export { redactLoopbackUrls } from "./loopback-urls.js";
+
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -34,6 +38,7 @@ import {
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
+import { AGENT_VOICED_METADATA } from "../voice/phrase-for-user.js";
 import type { AcpService } from "./acp-service.js";
 import { resolveAppDeployConfig } from "./app-deploy-guidance.js";
 import { registerBuiltAppsForCompletion } from "./built-apps-registry.js";
@@ -44,6 +49,7 @@ import {
   hasHealthyPooledAccount,
   reportCodingAccountFailure,
 } from "./coding-account-selection.js";
+import { shouldAutoVerifyGoal } from "./goal-llm-verifier.js";
 import {
   beginPendingHandoff,
   settlePendingHandoff,
@@ -59,6 +65,11 @@ import {
   parentAgentMarkerIndex,
 } from "./parent-agent-dispatch.js";
 import {
+  collectFsObservedFiles,
+  deriveRouteMappedUrls,
+  enumerateWorkdirCandidates,
+} from "./quick-app-evidence.js";
+import {
   applyResumePreamble,
   buildResumeContext,
   RESUME_CONTEXT_METADATA_KEY,
@@ -68,6 +79,7 @@ import {
 import {
   createRouterLoopState,
   type RouterLoopState,
+  requestVoiceKeyForMeta,
   routerLoopTransition,
 } from "./router-loop-guard.js";
 import {
@@ -101,6 +113,23 @@ type RuntimeWithSendTarget = IAgentRuntime & {
 };
 
 const ACPX_ROUTER_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
+
+/**
+ * Sources that are internal routing markers, never registered connector send
+ * handlers. A session spawned from a SYNTHETIC sub-agent turn can inherit one
+ * of these as its origin source when the tasks.ts one-level unwrap misses (the
+ * triggering synthetic memory carried no `originSource` — observed live: the
+ * app-control flow's "fix … deployment" follow-up spawn delivered its
+ * completion with source=sub_agent, the dashboard fallback handler rightly
+ * refused ambient delivery, and the user never saw the result). Delivery-time
+ * resolution through the room row (which knows its creating connector) is the
+ * catch-all for every spawn path.
+ */
+const INTERNAL_MARKER_SOURCES = new Set<string>([
+  MESSAGE_SOURCE_SUB_AGENT,
+  "sub_agent_complete",
+  "orchestrator",
+]);
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 // Display name of the ONE shared entity every router post is attributed to.
 // The name is frozen at first creation per DB (adapter-side
@@ -275,14 +304,11 @@ function extractVerifiableUrls(
 // We slice the user portion out so intent/URL detection never keys on the
 // injected route hint text (which literally contains the word "URL" and a
 // route-prefix URL).
-const USER_TASK_MARKER = "--- User Task ---";
+import { ADMIN_STOP_META_KEY } from "./admin-stop-marker.js";
+import { userTaskFromInitialTask } from "./user-task-text.js";
 
 function userTaskSlice(referenceText: string | undefined): string {
-  if (!referenceText) return "";
-  const idx = referenceText.lastIndexOf(USER_TASK_MARKER);
-  return idx >= 0
-    ? referenceText.slice(idx + USER_TASK_MARKER.length)
-    : referenceText;
+  return userTaskFromInitialTask(referenceText);
 }
 
 function shouldVerifyCompletionUrls(
@@ -548,25 +574,8 @@ function supervisorAllowedLoopbackPorts(
 // (localhost / 127.x.x.x / ::1) and strip trailing whitespace cleanly so
 // the surrounding sentence stays readable; if a line becomes only a
 // dangling colon / dash after stripping, drop the line.
-const LOOPBACK_URL_PATTERN =
-  /https?:\/\/(?:localhost|127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?::1\]?)(?::\d{1,5})?(?:\/[^\s)<>"`]*)?/gi;
-export function redactLoopbackUrls(text: string): string {
-  if (!text) return text;
-  LOOPBACK_URL_PATTERN.lastIndex = 0;
-  if (!LOOPBACK_URL_PATTERN.test(text)) return text;
-  LOOPBACK_URL_PATTERN.lastIndex = 0;
-  const stripped = text
-    .replace(LOOPBACK_URL_PATTERN, "")
-    .replace(/[ \t]+\n/g, "\n");
-  // Drop lines that became orphan punctuation after the URL was removed
-  // (e.g. "- " or "* " markdown list bullets pointing at nothing).
-  return stripped
-    .split("\n")
-    .filter((line) => !/^[-*\s]*[:>→\->]?[\s]*$/.test(line) || line === "")
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
+// redactLoopbackUrls lives in ./loopback-urls.ts (shared with the completion
+// evaluator); re-exported here for existing callers.
 
 function isTelemetryReportUrl(url: string): boolean {
   try {
@@ -668,6 +677,27 @@ export class SubAgentRouter extends Service {
   // and the fuzz test (router-loop-guard.test.ts) for the invariants — no
   // double-post, no early force-stop, no leaked session (#9960, #7967).
   private loopState: RouterLoopState = createRouterLoopState();
+
+  // Completion relays deferred until the auto-verifier's verdict (default ON;
+  // ELIZA_RELAY_AFTER_VERIFY=0 restores immediate relays). Posting the child's
+  // "all set" the moment it reported, then parking two minutes later when
+  // verification failed, whipsawed the user with contradictory messages (live
+  // 2026-08-20, dark-mode edit). Keyed by taskId; a fallback timer releases
+  // the relay if no verdict ever lands (the verify body has silent
+  // stay-validating exits), so this can delay but never swallow a completion.
+  private readonly deferredCompletionRelays = new Map<
+    string,
+    {
+      sessionId: string;
+      data: unknown;
+      turnId?: string;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  /** Sessions currently re-entering handleEvent from a deferral release —
+   *  the defer check must not re-capture them. */
+  private readonly releasingDeferredRelaySessions = new Set<string>();
 
   // Per-root-origin spawn cap. The completion-dedupe slot above only
   // suppresses duplicate POSTS; it does not stop the PLANNER from re-spawning a
@@ -787,6 +817,94 @@ export class SubAgentRouter extends Service {
     return this.loopState.roundTripCap;
   }
 
+  // ---- request-voice ledger ------------------------------------------------
+  // ONE user coding request (stable requestKey, across sessions AND respawns)
+  // gets at most one spawn ack and one user-facing terminal, with a single
+  // sanctioned provisional-result → parked supersede. The task service and
+  // coordinator consume these STRUCTURALLY via
+  // runtime.getService("ACPX_SUB_AGENT_ROUTER") + per-method typeof checks and
+  // fail open when the router is absent — the ledger can only ever REMOVE
+  // messages, never introduce a silent-drop mode of its own.
+
+  /**
+   * Claim the single spawn-ack slot for `requestKey`. True ⇒ this caller may
+   * post the ack; false ⇒ an ack already went out for this request.
+   */
+  claimRequestAck(requestKey: string, sessionId: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_ack",
+      requestKey,
+      sessionId,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "ack_granted";
+  }
+
+  /**
+   * Claim the single user-facing terminal slot for `requestKey`. `granted`
+   * false ⇒ suppress the post (`holderKind` says what already holds the
+   * voice); `superseded` true ⇒ a sanctioned correction replaced the holder
+   * (park notice over a provisional result, or a genuine result over the
+   * failure narration that invited the retry).
+   */
+  claimRequestTerminal(
+    requestKey: string,
+    sessionId: string,
+    kind: "result" | "parked" | "failure",
+    provisional: boolean,
+  ): { granted: boolean; superseded?: boolean; holderKind?: string } {
+    const t = routerLoopTransition(this.loopState, {
+      type: "claim_request_terminal",
+      requestKey,
+      sessionId,
+      kind,
+      provisional,
+    });
+    this.loopState = t.state;
+    switch (t.decision.kind) {
+      case "terminal_granted":
+        return { granted: true };
+      case "terminal_granted_supersede":
+        return { granted: true, superseded: true };
+      case "terminal_denied":
+        return { granted: false, holderKind: t.decision.holderKind };
+      default:
+        // Unreachable: the two claim events only produce the three decisions
+        // above. Fail open (post) rather than invent a new silent-drop mode.
+        return { granted: true };
+    }
+  }
+
+  /** Whether `requestKey`'s terminal slot is settled (nothing may post after it). */
+  isRequestTerminalFinalized(requestKey: string): boolean {
+    return (
+      this.loopState.requestVoice.get(requestKey)?.terminal?.finalized === true
+    );
+  }
+
+  /**
+   * A NEW spawn was admitted for `requestKey` (verify-driven or planner-driven
+   * retry, via the TASKS spawn paths). Clears a `failure` terminal held by an
+   * earlier generation so the retry regains the request's voice — without this
+   * the error narration that INVITED the retry kept the key finalized: the
+   * retry's progress and questions were muted and its genuine completion was
+   * terminal_denied (live defect). Result/parked holders and the ack slot are
+   * untouched. True ⇒ a failure terminal was cleared.
+   */
+  noteRespawnAdmitted(requestKey: string): boolean {
+    const t = routerLoopTransition(this.loopState, {
+      type: "respawn_admitted",
+      requestKey,
+    });
+    this.loopState = t.state;
+    return t.decision.kind === "voice_reset";
+  }
+
+  /** Thin re-export of the canonical request-key ladder (router-loop-guard.ts). */
+  requestKeyForMeta(meta: Record<string, unknown> | undefined): string | null {
+    return requestVoiceKeyForMeta(meta);
+  }
+
   /**
    * Is the router bound to the ACP session-event stream and therefore actually
    * going to post completions for origin-routed sessions?
@@ -897,6 +1015,10 @@ export class SubAgentRouter extends Service {
   }
 
   async stop(): Promise<void> {
+    for (const pending of this.deferredCompletionRelays.values()) {
+      clearTimeout(pending.timer);
+    }
+    this.deferredCompletionRelays.clear();
     this.stopped = true;
     if (this.bindRetryTimer) {
       clearTimeout(this.bindRetryTimer);
@@ -1058,6 +1180,71 @@ export class SubAgentRouter extends Service {
       );
       return;
     }
+    if (
+      event === "task_complete" &&
+      !this.releasingDeferredRelaySessions.has(sessionId)
+    ) {
+      const deferTaskId = await this.completionRelayDeferralTaskId(sessionId);
+      if (deferTaskId) {
+        const existing = this.deferredCompletionRelays.get(deferTaskId);
+        if (existing) clearTimeout(existing.timer);
+        const timer = setTimeout(
+          () => {
+            // Never-silent fallback: a verdict that never lands (silent
+            // stay-validating exits in the verify body) must not swallow the
+            // completion forever.
+            this.log(
+              "warn",
+              "deferred completion relay released by timeout — no verification verdict arrived",
+              { taskId: deferTaskId, sessionId },
+            );
+            this.releaseDeferredCompletionRelay(deferTaskId, "passed");
+          },
+          5 * 60 * 1000,
+        );
+        timer.unref?.();
+        this.deferredCompletionRelays.set(deferTaskId, {
+          sessionId,
+          data,
+          turnId,
+          timer,
+        });
+        this.log(
+          "info",
+          "deferring completion relay until the verification verdict",
+          { taskId: deferTaskId, sessionId },
+        );
+        return;
+      }
+    }
+    if (event === "error" || event === "stopped") {
+      // A user-initiated stop must not narrate as a task failure: the stop
+      // confirmation is the single notice, but the killed child's terminal
+      // raced the admin-stop stamp and relayed "couldn't finish X. try again."
+      // right before "Stopped N task agents." (live 2026-08-19). Fresh-read
+      // the stamp — the event-time snapshot predates it.
+      try {
+        const freshStamp = await this.acp?.getSession(sessionId);
+        const stampMeta = freshStamp?.metadata as
+          | Record<string, unknown>
+          | undefined;
+        if (typeof stampMeta?.[ADMIN_STOP_META_KEY] === "string") {
+          this.log(
+            "info",
+            "suppressing terminal relay for user-stopped session",
+            {
+              sessionId,
+              event,
+              reason: stampMeta[ADMIN_STOP_META_KEY],
+            },
+          );
+          return;
+        }
+      } catch {
+        // error-policy:J4 stamp lookup failure falls through to the normal
+        // relay; a missed suppression is noise, not data loss.
+      }
+    }
     if (event === "error" && isUnsupportedAcpMethodError(data)) {
       this.log(
         "debug",
@@ -1105,6 +1292,33 @@ export class SubAgentRouter extends Service {
         type: "task_complete_progress",
         lineageKey: respawnLineageKey(session, origin),
       }).state;
+      // A completion that is a VERIFY RE-ENGAGE response must not reach the
+      // user: each auto-verify correction prompt makes the session run another
+      // turn ending in task_complete, and relaying every one produced 4
+      // contradictory "done"/"failed"/"stuck" messages for a single request
+      // (live: tide-lines, 6 bot messages for one prompt). The task-service
+      // event bridge subscribes to AcpService independently, so verification
+      // still consumes this event; only the user-facing post is suppressed.
+      // Keyed on autoVerifyAttempts (persisted BEFORE each correction prompt),
+      // so the FIRST completion always relays regardless of subscriber order,
+      // and lookup failure fails open (relay as before).
+      // A verdict-released relay is the deferral design's ONE authorized
+      // user-facing completion — but it races the task's status write:
+      // releaseDeferredCompletionRelay fires before the store commits
+      // "done", so the churn gate still saw status=validating with
+      // attempts>=1 and suppressed the real completion. The user then got
+      // only a generic model summary with the child's answer dropped (every
+      // "ran it and here is the output" with no output, live 2026-08-21).
+      const suppressReason = this.releasingDeferredRelaySessions.has(sessionId)
+        ? null
+        : await this.verifyChurnSuppression(sessionId);
+      if (suppressReason) {
+        this.log("info", "suppressing verify-churn completion relay", {
+          sessionId,
+          reason: suppressReason,
+        });
+        return;
+      }
     }
 
     // The ACP session/prompt stopReason for a task_complete tells us whether the
@@ -1517,6 +1731,15 @@ export class SubAgentRouter extends Service {
       text = redactLoopbackUrls(verified.text);
       deadUrls = verified.dead;
       verifiedUrls = verified.verifiedUrls;
+      // The task service's evidence bundle reads `subAgentVerifiedUrls` off
+      // the session — until now only the relay Memory carried it, so the
+      // verifier never saw the URL this probe had just confirmed and demanded
+      // a non-loopback URL for a live page (2026-08-22, quotes-page parked).
+      if (verifiedUrls.length > 0) {
+        await this.patchHandoffMetadata(sessionId, {
+          subAgentVerifiedUrls: verifiedUrls,
+        });
+      }
     }
     // When the deliverable IS the printed/tool output and there is no change
     // set and no verified URL, composeNarration→stripToolTranscript has just
@@ -1530,6 +1753,58 @@ export class SubAgentRouter extends Service {
     // only the diff summary. The verifiedUrls path keeps its dedicated handling.
     if (event === "task_complete" && verifiedUrls.length === 0) {
       deliverable = extractShortToolDeliverable(data);
+      // (trimmed of trailing proof checklists below, whatever branch set it)
+      if (deliverable === undefined) {
+        const ask = userTaskFromInitialTask(
+          pickPlainString(
+            (session.metadata as Record<string, unknown> | undefined)
+              ?.initialTask,
+          ),
+        );
+        deliverable = extractAskedOutputDeliverable(data, ask);
+      }
+      if (deliverable === undefined) {
+        // Verify-lap completions bury the answer under criteria-proof fences;
+        // the answer head (before the first "- [x]" checklist) or the last
+        // `$ <cmd>` block's stdout is the user's answer. No naive short-
+        // response floor here: "short" is not "answer" — it verbatim-relayed
+        // raw agent reasoning and routing banners (unit-caught 2026-08-21).
+        const response =
+          pickPayloadString(data, "response") ??
+          pickPayloadString(data, "finalText");
+        const trimmed = response?.trim();
+        if (trimmed?.includes("- [x] ")) {
+          const proofAt = trimmed.search(/\n(?:Evidence:\s*\n)?- \[x\] /);
+          const head = proofAt > 0 ? trimmed.slice(0, proofAt).trim() : "";
+          if (
+            head &&
+            Buffer.byteLength(head, "utf8") <= 400 &&
+            !head.includes("[tool output") &&
+            !/https?:\/\//.test(head)
+          ) {
+            deliverable = head;
+          } else {
+            deliverable = lastProofBlockOutput(trimmed);
+          }
+        }
+      }
+      if (deliverable !== undefined) {
+        // Whatever branch produced it: a verify-lap deliverable may carry the
+        // criteria-proof checklist after the answer — chat gets the answer,
+        // not the ls/diff evidence (live 2026-08-21).
+        const proofAt = deliverable.search(/\n(?:Evidence:\s*\n)?- \[x\] /);
+        if (proofAt > 0) {
+          const head = deliverable.slice(0, proofAt).trim();
+          if (head) deliverable = head;
+        }
+      }
+      // Kept at warn deliberately: plugin info/debug never reaches bot.log
+      // on this deployment, and the invisible relay path cost two days of
+      // blind debugging (2026-08-21). One line per completion.
+      this.log("warn", "completion deliverable capture", {
+        sessionId,
+        deliverable: deliverable?.slice(0, 100),
+      });
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -1612,6 +1887,80 @@ export class SubAgentRouter extends Service {
         );
         rollbackRoundTrip();
         return;
+      }
+    }
+    // Request-voice terminal claim: ONE user-facing terminal per user coding
+    // request, across sessions AND respawns. Broader than the per-lineage
+    // claim above — a task-service respawn mints a new session and a new
+    // lineage, so each generation's re-engage completion passed the lineage
+    // claim and relayed (~12 messages for one request, live defect). Placed
+    // BEFORE the verified-URL handling so a denial also suppresses the OS
+    // notification and screenshot delivery downstream. requestKey null ⇒ no
+    // stable per-request id ⇒ fail open (no gating).
+    const routingKind = routingKindForEvent(event, data, capExceeded);
+    const requestKey = requestVoiceKeyForMeta(
+      session.metadata as Record<string, unknown> | undefined,
+    );
+    if (routingKind === QUESTION_FOR_TASK_CREATOR) {
+      // Questions never claim the terminal slot — but a session still asking
+      // after its request reached a FINAL terminal (parked/failed) is noise:
+      // the user was already told the request is over. A merely-provisional
+      // result does not gag questions.
+      if (requestKey && this.isRequestTerminalFinalized(requestKey)) {
+        this.log(
+          "info",
+          "suppressing sub-agent question after finalized request terminal",
+          { sessionId, event, requestKey },
+        );
+        rollbackRoundTrip();
+        return;
+      }
+    } else {
+      // Failure conditions FIRST: when capExceeded/stateLostExhausted forced a
+      // terminal narration, that narration is what posts (baseText above) even
+      // if the underlying event was a task_complete — claim it as the failure
+      // it reads as, not a supersedable provisional result.
+      const terminalKind: "result" | "failure" | null =
+        capExceeded || stateLostExhausted || event === "error"
+          ? "failure"
+          : event === "task_complete"
+            ? "result"
+            : null;
+      if (terminalKind && requestKey) {
+        // task_complete claims provisional ALWAYS: whether verification will
+        // re-engage is unknowable here (router vs task-service event-bridge
+        // subscriber order is unspecified), and provisionality is consumed
+        // only by the one sanctioned parked supersede.
+        const claim = this.claimRequestTerminal(
+          requestKey,
+          sessionId,
+          terminalKind,
+          terminalKind === "result",
+        );
+        if (!claim.granted) {
+          this.log(
+            "info",
+            "suppressing duplicate request terminal; request voice already held",
+            {
+              sessionId,
+              event,
+              requestKey,
+              terminalKind,
+              holderKind: claim.holderKind,
+            },
+          );
+          if (event === "task_complete") {
+            this.captureOriginResultForCompletion(
+              origin,
+              session,
+              text,
+              deliverable,
+              deadUrls,
+            );
+          }
+          rollbackRoundTrip();
+          return;
+        }
       }
     }
     if (event === "task_complete" && verifiedUrls.length > 0) {
@@ -1711,7 +2060,6 @@ export class SubAgentRouter extends Service {
         );
       }
     }
-    const routingKind = routingKindForEvent(event, data, capExceeded);
     const targets = swarmTargetsForRouting(origin, routingKind);
     // User-facing leg of a blocked sub-agent's question: with per-task GROUP
     // rooms on by default the task room maps to no live connector channel, so
@@ -1849,6 +2197,12 @@ export class SubAgentRouter extends Service {
             ...(origin.spawnRootMessageId
               ? { spawnRootMessageId: origin.spawnRootMessageId }
               : {}),
+            // Re-stamp the fan-out part so a respawn of this lane inherits its
+            // predecessor's request-voice key instead of minting a new one
+            // (respawn-shares-key per lane; see requestVoiceKeyForMeta).
+            ...(origin.requestVoicePart
+              ? { requestVoicePart: origin.requestVoicePart }
+              : {}),
             ...(origin.source ? { originSource: origin.source } : {}),
             ...(sessionRouteId ? { workdirRouteId: sessionRouteId } : {}),
             ...(sessionRoute ? { workdirRoute: sessionRoute } : {}),
@@ -1925,6 +2279,117 @@ export class SubAgentRouter extends Service {
    * the session. The planner-directed `[sub-agent: …]` header is stripped —
    * it is relay guidance for the task-room turn, not user prose.
    */
+  /** The taskId to defer this session's completion relay on, or null when the
+   *  relay should post immediately (deferral disabled, no durable task, no
+   *  acceptance criteria to verify, or the task already reached a terminal
+   *  state). Mirrors only the STABLE auto-verify gates; anything the verify
+   *  body decides internally is covered by the release fallback timer. */
+  private async completionRelayDeferralTaskId(
+    sessionId: string,
+  ): Promise<string | null> {
+    if (process.env.ELIZA_RELAY_AFTER_VERIFY === "0") return null;
+    if (!shouldAutoVerifyGoal()) return null;
+    const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as {
+      getTaskForSession?: (sessionId: string) => Promise<{
+        id?: string;
+        status?: string;
+        acceptanceCriteria?: string[];
+      } | null>;
+    } | null;
+    if (!tasks?.getTaskForSession) return null;
+    try {
+      const record = await tasks.getTaskForSession(sessionId);
+      if (!record?.id) return null;
+      if (
+        ["done", "parked", "failed", "cancelled", "archived"].includes(
+          String(record.status),
+        )
+      ) {
+        return null;
+      }
+      const criteria = Array.isArray(record.acceptanceCriteria)
+        ? record.acceptanceCriteria
+        : [];
+      return criteria.length > 0 ? record.id : null;
+    } catch {
+      // error-policy:J4 a lookup failure must degrade to the immediate relay,
+      // never to a swallowed completion.
+      return null;
+    }
+  }
+
+  /** Called by OrchestratorTaskService when the auto-verifier's verdict lands.
+   *  `passed` re-enters the deferred task_complete with fresh state; `failed`
+   *  drops it — the verify-retry loop or the park notice owns messaging from
+   *  here. No-op when nothing is deferred for the task. */
+  releaseDeferredCompletionRelay(
+    taskId: string,
+    verdict: "passed" | "failed",
+  ): void {
+    const pending = this.deferredCompletionRelays.get(taskId);
+    if (!pending) return;
+    this.deferredCompletionRelays.delete(taskId);
+    clearTimeout(pending.timer);
+    if (verdict !== "passed") {
+      this.log(
+        "info",
+        "dropping deferred completion relay after failed verification",
+        { taskId, sessionId: pending.sessionId },
+      );
+      return;
+    }
+    this.releasingDeferredRelaySessions.add(pending.sessionId);
+    void this.waitForOriginTurnToSettle(pending.sessionId)
+      .then(() =>
+        this.handleEvent(
+          pending.sessionId,
+          "task_complete",
+          pending.data,
+          undefined,
+          pending.turnId,
+        ),
+      )
+      .catch((err) => {
+        // error-policy:J7 the released relay is observability-critical; a
+        // failure is reported, not rethrown into the verdict writer.
+        this.log("error", "deferred completion relay release failed", {
+          taskId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      })
+      .finally(() => {
+        this.releasingDeferredRelaySessions.delete(pending.sessionId);
+      });
+  }
+
+  /** Let the origin room's in-flight planner turn finish before the released
+   *  relay posts. A follow-up absorbed into the running build produces a slow
+   *  planner turn whose reply PROMISES the work ("got it — adding the split
+   *  option now"), and the verified completion beat it by ~1s — the user read
+   *  fulfillment, then the promise, then silence (live 2026-08-20). Bounded:
+   *  a turn that never settles only delays the relay, never drops it. */
+  private async waitForOriginTurnToSettle(sessionId: string): Promise<void> {
+    const deadline = Date.now() + 60_000;
+    try {
+      const session = await this.acp?.getSession(sessionId);
+      const roomId = (session?.metadata as { roomId?: unknown } | undefined)
+        ?.roomId;
+      if (typeof roomId !== "string" || !roomId) return;
+      const registry = (
+        this.runtime as {
+          turnControllers?: { hasActiveTurn?: (roomId: string) => boolean };
+        }
+      ).turnControllers;
+      if (typeof registry?.hasActiveTurn !== "function") return;
+      while (registry.hasActiveTurn(roomId) && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    } catch {
+      // error-policy:J4 settle-wait is best-effort ordering; a probe failure
+      // releases the relay immediately rather than risking a swallowed one.
+    }
+  }
+
   private async postQuestionToOriginRoom(
     origin: OriginInfo,
     sessionId: string,
@@ -1944,16 +2409,23 @@ export class SubAgentRouter extends Service {
     const body = stripSubAgentHeaderLine(text).trim() || text.trim();
     const originReplyTarget =
       origin.parentConnectorMessageId ?? origin.parentMessageId;
+    const questionSource =
+      (await this.resolveDeliverySource(origin)) ?? origin.source;
     try {
       requireConfirmedSendHandlerDelivery(
         await sendToTarget(
-          { source: origin.source, roomId: origin.roomId },
+          { source: questionSource, roomId: origin.roomId },
           {
             text: `❓ [${origin.label}] ${body}`,
             // Same source the router stamps on its posts: the mid-task forward
             // handler skips it (echo-loop guard), so the question is never fed
             // back into the asking session as a prompt.
             source: ACPX_ROUTER_SOURCE,
+            // The body is the sub-agent's OWN model prose — rewriting it risks
+            // corrupting the question, and the core transport voice gate would
+            // also strip the `❓ [label]` marker. Stamp it as already voiced so
+            // the gate passes it through verbatim.
+            ...AGENT_VOICED_METADATA,
             ...(originReplyTarget ? { inReplyTo: originReplyTarget } : {}),
           },
         ),
@@ -1968,6 +2440,99 @@ export class SubAgentRouter extends Service {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /** Per-room memo of resolved connector sources (FIFO-bounded). */
+  private readonly roomSourceMemo = new Map<string, string>();
+
+  /**
+   * Whether this session's task_complete is verify-churn that must not relay
+   * to the user: the durable task is mid-validation with at least one
+   * re-engage already issued (`autoVerifyAttempts >= 1`), or already parked
+   * with the escalation notice sent. Returns the suppress reason, or null to
+   * relay. Every failure path returns null — an unreadable task store must
+   * never silence a genuine completion.
+   */
+  private async verifyChurnSuppression(
+    sessionId: string,
+  ): Promise<string | null> {
+    try {
+      // Resolve via the task service's per-SESSION mapping (store.findSession),
+      // not listTasks().latestSessionId: a verify-driven respawn creates a
+      // second session and moves latestSessionId to it, so the ORIGINAL
+      // session's re-engage completions resolved no task and relayed anyway
+      // (the stated live insufficiency of this gate).
+      const tasks = this.runtime.getService("ORCHESTRATOR_TASK_SERVICE") as
+        | {
+            getTaskForSession?: (sessionId: string) => Promise<{
+              status: string;
+              metadata?: Record<string, unknown>;
+            } | null>;
+          }
+        | undefined;
+      if (typeof tasks?.getTaskForSession !== "function") return null;
+      const task = await tasks.getTaskForSession(sessionId);
+      if (!task) return null;
+      const attempts = Number(task.metadata?.autoVerifyAttempts) || 0;
+      if (task.status === "validating" && attempts >= 1) {
+        return `re-engage response (attempt ${attempts}, task validating)`;
+      }
+      if (
+        task.status === "waiting_on_user" &&
+        task.metadata?.verifyEscalationNotifiedAt
+      ) {
+        return "task already parked and escalation notice delivered";
+      }
+      return null;
+    } catch (err) {
+      // error-policy:J7 churn gating is advisory; an unreadable task store must not suppress a real completion
+      this.log("debug", "verify-churn lookup failed; relaying", {
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Resolve the source a delivery should actually use. A real connector source
+   * passes through untouched; an internal marker (or a missing source) is
+   * re-resolved through the room row, which records the connector that created
+   * it — the same fallback `getTaskOriginTarget` uses. Falls back to the
+   * original value so a failed lookup degrades to the prior loud delivery
+   * failure, never a silent drop.
+   */
+  private async resolveDeliverySource(
+    origin: Pick<OriginInfo, "roomId" | "source">,
+  ): Promise<string | undefined> {
+    const source = origin.source;
+    if (source && !INTERNAL_MARKER_SOURCES.has(source)) return source;
+    const memo = this.roomSourceMemo.get(origin.roomId);
+    if (memo) return memo;
+    try {
+      const room = await this.runtime.getRoom?.(origin.roomId);
+      const roomSource =
+        typeof room?.source === "string" && room.source.trim()
+          ? room.source.trim()
+          : undefined;
+      if (roomSource && !INTERNAL_MARKER_SOURCES.has(roomSource)) {
+        this.roomSourceMemo.set(origin.roomId, roomSource);
+        while (this.roomSourceMemo.size > 1024) {
+          const oldest = this.roomSourceMemo.keys().next().value;
+          if (!oldest) break;
+          this.roomSourceMemo.delete(oldest);
+        }
+        return roomSource;
+      }
+    } catch (err) {
+      // error-policy:J7 source resolution is best-effort routing repair; a room
+      // lookup failure falls back to the original (possibly failing) source.
+      this.log("debug", "room-source resolution failed", {
+        roomId: origin.roomId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return source;
   }
 
   private buildReplyCallback(
@@ -2034,9 +2599,11 @@ export class SubAgentRouter extends Service {
             inReplyTo: originReplyTarget,
           }
         : { ...response, source: "sub_agent_complete" };
+      const deliverySource =
+        (await this.resolveDeliverySource(origin)) ?? source;
       const delivered = await sendToTarget(
         {
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
         },
         threadedResponse,
@@ -2045,7 +2612,7 @@ export class SubAgentRouter extends Service {
         // delivered list on failure (honest "0 delivered").
         this.log("warn", "sub-agent reply delivery failed", {
           sessionId,
-          source,
+          source: deliverySource,
           roomId: origin.roomId,
           targetRoomId: target.roomId,
           error: err instanceof Error ? err.message : String(err),
@@ -2448,6 +3015,33 @@ export class SubAgentRouter extends Service {
     if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
 
     const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    // A session the USER stopped is not an incomplete build to repair —
+    // retrying it resurrects cancelled work (live 2026-08-19: "cancel all ur
+    // running coding tasks" hard-stopped the child and the retry rebuilt and
+    // delivered the page anyway). The stamp races the terminal event, so the
+    // event-time snapshot is not trustworthy — read the LIVE session row
+    // (same fresh-read the swarm coordinator uses for this exact stamp).
+    let freshMeta: Record<string, unknown> = meta;
+    try {
+      const fresh = await this.acp?.getSession(session.id);
+      if (fresh?.metadata) {
+        freshMeta = fresh.metadata as Record<string, unknown>;
+      }
+    } catch {
+      // error-policy:J4 stale-snapshot fallback; the event-time metadata still
+      // gates when the live read fails.
+    }
+    if (typeof freshMeta[ADMIN_STOP_META_KEY] === "string") {
+      this.log(
+        "info",
+        "verify-retry skipped: session was stopped by the user",
+        {
+          sessionId: session.id,
+          reason: freshMeta[ADMIN_STOP_META_KEY],
+        },
+      );
+      return false;
+    }
     // One typed read of the canonical retry counter (the router's respawn
     // lineage and the durable OrchestratorTaskSession.retryCount share this
     // field), rather than a bare untyped `meta.buildVerifyRetryCount`.
@@ -2869,6 +3463,11 @@ interface OriginInfo {
   /** Stable per-request root id for the per-origin spawn cap; present on every
    * transport (connector message id, else the origin user message id). (#8875) */
   spawnRootMessageId?: string;
+  /** Fan-out part suffix for the request-voice key (`requestVoiceKeyForMeta`):
+   * minted once per lane/part on a deliberate multi-part create and inherited
+   * verbatim by every respawn of that lane, so parallel lanes own distinct
+   * voice slots while a respawn still shares its predecessor's key. */
+  requestVoicePart?: string;
   label: string;
   source?: string;
 }
@@ -2934,6 +3533,7 @@ export function readOrigin(session: SessionInfo): OriginInfo | null {
     parentMessageId: pickUuid(meta.messageId),
     parentConnectorMessageId: pickPlainString(meta.originConnectorMessageId),
     spawnRootMessageId: spawnRootIdFromMeta(meta),
+    requestVoicePart: pickPlainString(meta.requestVoicePart),
     label: pickLabel(meta) ?? session.name ?? session.id,
     source: typeof meta.source === "string" ? meta.source : undefined,
   };
@@ -3458,12 +4058,116 @@ export function extractShortToolDeliverable(data: unknown): string | undefined {
       .replace(/^\[tool output:[^\]]*\]/, "")
       .replace(/\[\/tool output\]$/, "")
       .trim();
-    if (!inner) continue;
-    return Buffer.byteLength(inner, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+    // A write confirmation names an internal workspace path and is not what
+    // the user asked for; the deliverable is an earlier run's output.
+    if (!inner || WRITE_CONFIRMATION_RE.test(inner)) continue;
+    const deliverable = shellTranscriptStdout(inner) ?? inner;
+    return Buffer.byteLength(deliverable, "utf8") >
+      MAX_VERBATIM_DELIVERABLE_BYTES
       ? undefined
-      : inner;
+      : deliverable;
   }
   return undefined;
+}
+
+const WRITE_CONFIRMATION_RE = /^Wrote \d+ bytes? to \S+$/;
+
+/** The coding tools' SHELL transcript ("$ cmd", "[exit N] (cwd=…, took=…)",
+ *  "--- stdout ---", "--- stderr ---"): for a clean run the deliverable is
+ *  the stdout section, never the command line with its internal workspace
+ *  path (live 2026-08-21: the whole transcript reached chat). A failed run
+ *  keeps the transcript so the error stays visible. */
+export function shellTranscriptStdout(block: string): string | undefined {
+  if (!/^\$ .+\n\[exit 0\] \(/.test(block)) return undefined;
+  const match = block.match(
+    /\n--- stdout ---\n([\s\S]*?)(?:\n--- stderr ---\n[\s\S]*)?$/,
+  );
+  const stdout = match?.[1]?.trim();
+  return stdout && stdout !== "(empty)" ? stdout : undefined;
+}
+
+/** "run it and show me the output" asks: the answer is whatever the child
+ *  printed, and the parent model routinely paraphrases it into a generic
+ *  status line ("dinner-picker is all set. everything passes." for a captured
+ *  "Tonight's dinner idea is: Homemade Pizza", live 2026-08-20). When the ask
+ *  requests output/results and the final response is a short plain block with
+ *  no [tool output] markers, that response IS the deliverable — relay it
+ *  verbatim. */
+const OUTPUT_ASK_RE =
+  /\b(?:show|print|display|give|tell|share)\b[\s\S]{0,40}\b(?:output|result|results)\b|\bwhat(?:'s| is) the (?:output|result)\b|\b(?:run|execute|rerun|re-run)\b[\s\S]{0,40}\b(?:it|again|once\s+more|one\s+more\s+time)\b/i;
+
+/** The verify lap tells the child to paste exact proofs, so its final
+ *  response is a long criteria dump whose LAST fenced block is typically
+ *  `$ <run command>` followed by the captured stdout — the very output the
+ *  user asked for. Pull the output lines (not the command) of the last such
+ *  block when they are chat-short; the narration otherwise re-summarized the
+ *  run into "here is the output" with no output (live 2026-08-21). */
+export function lastProofBlockOutput(response: string): string | undefined {
+  const blocks = response.match(/```(?:bash|sh|shell)?\n([\s\S]*?)```/g);
+  if (!blocks?.length) return undefined;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const inner = blocks[i]
+      .replace(/^```(?:bash|sh|shell)?\n/, "")
+      .replace(/```$/, "");
+    const lines = inner.split("\n");
+    if (!lines.some((line) => line.startsWith("$ "))) continue;
+    const output = lines
+      .filter((line) => !line.startsWith("$ "))
+      .join("\n")
+      .trim();
+    if (!output || output.includes("...")) continue;
+    if (Buffer.byteLength(output, "utf8") > 400) continue;
+    return output;
+  }
+  return undefined;
+}
+
+export function extractAskedOutputDeliverable(
+  data: unknown,
+  userAsk: string,
+): string | undefined {
+  if (!OUTPUT_ASK_RE.test(userAsk)) return undefined;
+  const response =
+    pickPayloadString(data, "response") ?? pickPayloadString(data, "finalText");
+  const trimmed = response?.trim();
+  if (!trimmed) return undefined;
+  return Buffer.byteLength(trimmed, "utf8") > MAX_VERBATIM_DELIVERABLE_BYTES
+    ? undefined
+    : trimmed;
+}
+
+/**
+ * Direct observation fallback for workers that end with an empty final reply:
+ * name what is actually in the session workdir (post-start mtimes only) and
+ * its route-mapped public URL. Beats relaying "no captured output" for a
+ * build that exists on disk (live 2026-08-19: built dice-roller page relayed
+ * as ghosted and then parked for lack of evidence).
+ */
+function observeWorkdirDeliverable(session: SessionInfo): string[] {
+  const observed = collectFsObservedFiles({
+    workdir: session.workdir,
+    candidatePaths: enumerateWorkdirCandidates(session.workdir),
+    sessionStartedAt: new Date(session.createdAt).getTime(),
+  });
+  if (observed.length === 0) return [];
+  const meta = session.metadata as Record<string, unknown> | undefined;
+  const routeMeta =
+    meta && typeof meta.workdirRoute === "object" && meta.workdirRoute !== null
+      ? (meta.workdirRoute as Record<string, unknown>)
+      : undefined;
+  const urlMappings = Array.isArray(routeMeta?.urlMappings)
+    ? (routeMeta.urlMappings as { urlPrefix: string; localPath: string }[])
+    : undefined;
+  const directoryUrls = deriveRouteMappedUrls(observed, urlMappings).filter(
+    (url) => url.endsWith("/"),
+  );
+  const names = observed
+    .map((file) => file.split("/").pop())
+    .filter((name): name is string => typeof name === "string");
+  return [
+    `Files written (verified on disk): ${names.slice(0, 8).join(", ")}`,
+    ...directoryUrls.slice(0, 1),
+  ];
 }
 
 function composeNarration(
@@ -3573,10 +4277,14 @@ function composeNarration(
     ].filter((line) => typeof line === "string" && line.trim().length > 0);
     return `${header}\n${lines.join("\n")}`;
   }
-  // Genuinely no captured output — keep the explicit note. The workdir stays
-  // out of the narration entirely (internal path; session metadata carries it).
+  // Genuinely no captured output: observe the workdir directly before
+  // conceding. The workdir PATH stays out of the narration (internal); only
+  // bare file names and the operator-configured public URL may surface.
   if (response === undefined) {
-    return `${header}\nsub-agent reports task complete (no captured output).`;
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : `${header}\nsub-agent reports task complete (no captured output).`;
   }
   // A verification-retry attempt (re-dispatched by retryIncompleteBuild) that
   // produced no change set: never narrate its raw step prose. On weak coding
@@ -3586,15 +4294,56 @@ function composeNarration(
   // (loopback dropped, verified downstream); a genuine failure is covered by
   // the separate build-incomplete report.
   if (readSessionRetryCount(session.metadata) > 0) {
+    // Only the operator's own deploy host is a deliverable address here — the
+    // child's prose also mentions asset CDNs (live 2026-08-19: the retry
+    // relay posted raw fonts.googleapis.com links as "the result").
+    const deployBase = resolveAppDeployConfig().customBaseUrl;
     const urls = collectVerifiableUrlCandidates(response).filter(
-      (url) => !isLoopbackUrl(url),
+      (url) =>
+        !isLoopbackUrl(url) &&
+        (deployBase
+          ? url.startsWith(deployBase.replace(/\/+$/, ""))
+          : // No configured deploy host: an artifact-shaped /apps/<slug>/ URL
+            // is still a deliverable address; only plain third-party links
+            // (asset CDNs) stay dropped. `false` here silently swallowed the
+            // retry's fresh deliverable URL on hosts without the custom
+            // deploy config.
+            Boolean(appRoutePathPrefix(url))),
     );
-    return urls.length > 0 ? `${header}\n${urls.join("\n")}` : header;
+    if (urls.length > 0) return `${header}\n${urls.join("\n")}`;
+    // A recovered retry with no claimed URL still delivered something the
+    // user was told had FAILED — observe the workdir so the recovery is
+    // announced instead of silent (live 2026-08-19: "kanban board failed"
+    // followed by a working app and no follow-up message).
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : header;
   }
   // Non-retry completion: keep the (transcript-stripped, banner-stripped) prose
   // so legitimate results ("PR opened: …", a question) still reach the user.
   const cleaned = stripToolTranscript(response);
-  if (!cleaned) return header;
+  if (!cleaned) {
+    const observedLines = observeWorkdirDeliverable(session);
+    return observedLines.length > 0
+      ? `${header}\n${observedLines.join("\n")}`
+      : header;
+  }
+  // A child that ends on an incidental failed check narrates the whole task
+  // as failed while the deliverable sits finished on disk (live 2026-08-19:
+  // self-imposed eslint/tsc on a static page). Direct observation outranks
+  // the child's verdict — append what actually exists so the relay reads as
+  // "reported a failure, but these files are on disk", not a bare failure.
+  if (
+    /\b(?:fail(?:ed|ure)?|crash(?:ed)?|could\s*n[o']t|unable\s+to)\b/i.test(
+      cleaned,
+    )
+  ) {
+    const observedLines = observeWorkdirDeliverable(session);
+    if (observedLines.length > 0) {
+      return `${header}\n${stripRoutingKindBanner(cleaned)}\n${observedLines.join("\n")}`;
+    }
+  }
   return `${header}\n${stripRoutingKindBanner(cleaned)}`;
 }
 
@@ -3692,6 +4441,56 @@ function routingKindFromPayloadBanner(data: unknown): string | undefined {
  * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
  * their intended form.
  */
+/** Authenticated liveness recheck for github.com URLs that probed non-2xx:
+ *  a PRIVATE repo's web URL 404s for anonymous GETs, and the completion
+ *  verifier then branded a real, just-opened PR "dead" and relabeled the
+ *  success a failure (live 2026-08-18: "Couldn't finish … → HTTP 404" one
+ *  minute after the PR link was delivered). The recheck translates the web
+ *  URL to its api.github.com resource and probes THAT with the configured
+ *  token — the token never leaves api.github.com and nothing is sent for
+ *  non-github hosts. Returns true only on a 2xx API answer. */
+async function githubAuthenticatedRecheck(
+  url: string,
+  runtime: IAgentRuntime | undefined,
+): Promise<boolean> {
+  if (!runtime) return false;
+  const m = url.match(
+    /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(pull|issues|commit|tree|blob)\/([^/?#]+))?(?:[/?#]|$)/,
+  );
+  if (!m) return false;
+  const token = runtime.getSetting?.("GITHUB_TOKEN");
+  if (typeof token !== "string" || !token.trim()) return false;
+  const [, owner, repo, kind, ref] = m;
+  const resource =
+    kind === "pull"
+      ? `repos/${owner}/${repo}/pulls/${ref}`
+      : kind === "issues"
+        ? `repos/${owner}/${repo}/issues/${ref}`
+        : kind === "commit"
+          ? `repos/${owner}/${repo}/commits/${ref}`
+          : `repos/${owner}/${repo}`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(`https://api.github.com/${resource}`, {
+        headers: {
+          Authorization: `token ${token.trim()}`,
+          "User-Agent": "eliza-orchestrator",
+        },
+        signal: controller.signal,
+      });
+      return res.status >= 200 && res.status < 300;
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // error-policy:J3 recheck is a liveness upgrade only; failure keeps the
+    // anonymous probe's explicit dead status.
+    return false;
+  }
+}
+
 export async function annotateUnverifiedUrls(
   text: string,
   log?: (message: string) => void,
@@ -3779,6 +4578,12 @@ export async function annotateUnverifiedUrls(
             status: `HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status})`,
             servedLive: false,
           };
+        }
+        if (await githubAuthenticatedRecheck(url, runtime)) {
+          log?.(
+            `[verify] probe ${url} → HTTP ${res.status} anonymously, but the authenticated GitHub API recheck is live (private repo) @ ${new Date().toISOString()}`,
+          );
+          return { status: null, servedLive: true };
         }
         log?.(
           `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
@@ -4105,7 +4910,24 @@ function mappedLocalTarget(
     parsed.pathname.slice(prefixPath.length),
   );
   if (!relativePath) return undefined;
-  const localRoot = path.resolve(workdir, mapping.localPath);
+  let localRoot = path.resolve(workdir, mapping.localPath);
+  if (!fs.existsSync(localRoot)) {
+    // Slug-dir sessions live INSIDE the mapped tree (the route stamp carries
+    // the session's own directory), so resolving localPath against the
+    // session workdir doubles the path — …/name-picker-wheel-2/data/apps/… —
+    // and URL verification reported a live page as missing (2026-08-19).
+    // Anchor at the enclosing mapped tree instead.
+    const normalizedLocal = mapping.localPath
+      .replace(/^\.?\//, "")
+      .replace(/\/+$/, "");
+    const marker = `${path.sep}${normalizedLocal.split("/").join(path.sep)}${path.sep}`;
+    const index = `${workdir}${path.sep}`.indexOf(marker);
+    if (index >= 0) {
+      localRoot = path.resolve(
+        `${workdir.slice(0, index)}${marker}`.replace(/[\\/]+$/, ""),
+      );
+    }
+  }
   const target = path.resolve(localRoot, relativePath);
   if (target !== localRoot && !target.startsWith(`${localRoot}${path.sep}`)) {
     return undefined;

@@ -50,6 +50,8 @@ function runtimeWithTaskService(
       serviceType === "ORCHESTRATOR_TASK_SERVICE" ? { createTask } : acp,
     ),
     hasService: vi.fn(() => true),
+    agentId: "agent1",
+    getSetting: vi.fn(() => undefined),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     getRoom: vi.fn(async () => ({ id: "room1" })),
     reportError: vi.fn(),
@@ -89,8 +91,13 @@ describe("TASKS hardened-envelope unwrap", () => {
     // With no planner title, the derived title comes from the payload too.
     expect(stored.title).toBe(PAYLOAD);
 
+    // The widget block rides on result.text for the app UI; the visible
+    // callback is the short early ack. Neither may leak the envelope.
+    expect(String(result?.text ?? "")).toContain(`[TASK:${THREAD_ID}]`);
+    expect(String(result?.text ?? "")).not.toContain(
+      "EXTERNAL_UNTRUSTED_CONTENT",
+    );
     const emitted = emittedText(cb);
-    expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
     expect(emitted).not.toContain("EXTERNAL_UNTRUSTED_CONTENT");
     expect(emitted).not.toContain("SECURITY NOTICE");
   });
@@ -122,8 +129,8 @@ describe("TASKS hardened-envelope unwrap", () => {
     expect(stored.title).not.toContain("\n");
     expect(stored.title.length).toBeLessThanOrEqual(121);
     expect(stored.title).toContain("first line of a blob");
+    expect(String(result?.text ?? "")).toContain(`[TASK:${THREAD_ID}]`);
     const emitted = emittedText(cb);
-    expect(emitted).toContain(`[TASK:${THREAD_ID}]`);
     expect(emitted).not.toContain("x".repeat(200));
   });
 

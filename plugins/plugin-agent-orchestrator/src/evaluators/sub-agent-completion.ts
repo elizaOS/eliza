@@ -27,6 +27,7 @@ import {
   type ResponseHandlerEvaluator,
   SIMPLE_CONTEXT_ID,
 } from "@elizaos/core";
+import { redactLoopbackUrls } from "../services/loopback-urls.js";
 
 const SUB_AGENT_SOURCE = MESSAGE_SOURCE_SUB_AGENT;
 const EMPTY_COMPLETION_PLACEHOLDER =
@@ -660,6 +661,21 @@ function respondIfNeeded(messageHandler: MessageHandlerResult) {
     : { processMessage: "RESPOND" as const };
 }
 
+/** The relay body when it is orchestrator-composed OBSERVATION (workdir
+ *  file verification and/or the served URL), bounded for chat. Undefined for
+ *  worker-authored prose — that still goes through normal routing. */
+function orchestratorObservedBody(completionText: string): string | undefined {
+  const trimmed = completionText.trimStart();
+  if (!trimmed.startsWith("[sub-agent:")) return undefined;
+  const headerEnd = trimmed.indexOf("]");
+  if (headerEnd < 0) return undefined;
+  const body = trimmed.slice(headerEnd + 1).trim();
+  if (!body?.includes("Files written (verified on disk)")) {
+    return undefined;
+  }
+  return body.length > 800 ? `${body.slice(0, 799)}…` : body;
+}
+
 export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
   name: "agent-orchestrator.sub-agent-completion",
   description:
@@ -680,6 +696,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       return true;
     }
     if (deliverableFromMetadata(message) !== undefined) return true;
+    if (orchestratorObservedBody(completionText) !== undefined) return true;
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
     if (hasCleanFinalProseAfterToolOutput(completionText)) return true;
@@ -741,8 +758,15 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const verificationCaveat = completionHasVerificationFailure(completionText)
       ? "Note: some resources referenced by the build failed verification — parts of the page may be broken."
       : undefined;
-    const withVerificationCaveat = (reply: string): string =>
-      verificationCaveat ? `${reply}\n\n${verificationCaveat}` : reply;
+    // Delivery funnel for every relay branch below: whatever authored the
+    // body, a loopback verification URL never reaches chat (live 2026-08-22:
+    // "serving correctly at `http://127.0.0.1:6900/apps/snake-game-2/`").
+    const withVerificationCaveat = (reply: string): string => {
+      const scrubbed = redactLoopbackUrls(reply);
+      return verificationCaveat
+        ? `${scrubbed}\n\n${verificationCaveat}`
+        : scrubbed;
+    };
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
@@ -760,6 +784,29 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         ),
         debug: [
           "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
+        ],
+      };
+    }
+    // Orchestrator-OBSERVED completion body (the router's direct workdir
+    // observation — "Files written (verified on disk): …" plus the served
+    // URL): these lines are verified fact, composed for delivery. Letting the
+    // planner re-phrase them produced a confident fabrication ("your
+    // static-noise app is live and the tv static effect is working" for a
+    // water-tracker build, live 2026-08-19). Relay verbatim.
+    const observedBody = orchestratorObservedBody(completionText);
+    if (observedBody !== undefined) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: false,
+        setContexts: [SIMPLE_CONTEXT_ID],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        reply: frameReplyWithVerification(
+          withVerificationCaveat(observedBody),
+          verification,
+        ),
+        debug: [
+          "completion body carries orchestrator-observed facts; relaying verbatim instead of re-phrasing",
         ],
       };
     }

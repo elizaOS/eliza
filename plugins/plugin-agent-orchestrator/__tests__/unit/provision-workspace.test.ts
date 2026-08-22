@@ -31,7 +31,7 @@ function workspaceServiceMock(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TASKS:provision_workspace", () => {
-  it("rejects a send subaction on the promoted provision tool", async () => {
+  it("routes an explicit send subaction on the promoted provision tool to the send op, never provision", async () => {
     const provision = promoteSubactionsToActions(provisionWorkspaceAction).find(
       (action) => action.name === "TASKS_PROVISION_WORKSPACE",
     );
@@ -53,10 +53,18 @@ describe("TASKS:provision_workspace", () => {
       callback(),
     );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Call TASKS_SEND"),
-    });
+    // The explicit discriminator names the op the model actually wants; the
+    // virtual executes the parent-declared `send` instead of the corrective
+    // refusal that stranded live turns (the named replacement tool was not on
+    // the turn's surface to retry). Send then fails against this
+    // workspace-only mock — the load-bearing pin is that provision never ran.
+    expect(result?.success).toBe(false);
+    const receipts = (
+      result as {
+        effectReceipts?: Array<{ operation?: string }>;
+      }
+    )?.effectReceipts;
+    expect(receipts?.[0]?.operation).toBe("agent-orchestrator.tasks.send");
     expect(service.provisionWorkspace).not.toHaveBeenCalled();
   });
 

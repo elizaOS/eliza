@@ -130,6 +130,31 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
   },
 ];
 
+/** Matches a `find <dir>` whose target is a root-scale directory (/, /home,
+ *  $HOME, ~) with no -maxdepth bound anywhere in the command. Conservative:
+ *  deeper paths (even large ones) are allowed — only the guaranteed-timeout
+ *  class is rejected. */
+export function unboundedRootFindTarget(command: string): string | undefined {
+  if (/-maxdepth\b/.test(command)) return undefined;
+  const m = command.match(
+    /\bfind\s+(?:-[A-Za-z]\S*\s+)*("([^"]+)"|'([^']+)'|(\S+))/,
+  );
+  if (!m) return undefined;
+  const target = (m[2] ?? m[3] ?? m[4] ?? "").replace(/\/+$/, "");
+  const home = process.env.HOME?.replace(/\/+$/, "");
+  const rootScale = new Set(
+    [
+      "/",
+      "/home",
+      "~",
+      "$HOME",
+      home,
+      home ? `~${home.split("/").pop()}` : undefined,
+    ].filter((v): v is string => typeof v === "string" && v.length > 0),
+  );
+  return rootScale.has(target) || target === "" ? target || "/" : undefined;
+}
+
 export type CommandPlatform = "windows" | "macos" | "linux";
 
 /**
@@ -256,8 +281,6 @@ const SOURCE_SEARCH_EXCLUDES = [
   "!**/coverage/**",
   "!**/.next/**",
 ] as const;
-const VENDORED_OPENCODE_SOURCE_ROOT =
-  "plugins/plugin-agent-orchestrator/vendor/opencode";
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -549,17 +572,6 @@ function broadRecursiveGrepPattern(command: string): string | undefined {
   return pattern?.trim() || undefined;
 }
 
-function sourceInspectionRoot(messageText: string): string {
-  const normalized = messageText.toLowerCase();
-  if (
-    /\bopencode\b/.test(normalized) &&
-    /\b(?:vendored|vendor|source)\b/.test(normalized)
-  ) {
-    return VENDORED_OPENCODE_SOURCE_ROOT;
-  }
-  return ".";
-}
-
 function usesBroadSourceDirectoryWalk(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ");
   return (
@@ -704,19 +716,18 @@ export function resolveSourceInspectionCommand(args: {
     return { command: args.command, rewritten: false };
   }
   const platform = args.platform ?? resolveCommandPlatform();
-  const root = sourceInspectionRoot(args.messageText);
   const pattern = broadRecursiveGrepPattern(args.command);
   if (!pattern) {
     if (!usesBroadSourceDirectoryWalk(args.command)) {
       return { command: args.command, rewritten: false };
     }
     return {
-      command: boundedSourceListCommand(root, platform),
+      command: boundedSourceListCommand(".", platform),
       rewritten: true,
     };
   }
   return {
-    command: boundedSourceSearchCommand(pattern, root, platform),
+    command: boundedSourceSearchCommand(pattern, ".", platform),
     rewritten: true,
   };
 }
@@ -1500,6 +1511,19 @@ export const shellAction: Action = {
       coreLogger.debug(
         `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
       );
+    }
+    // An unbounded `find` over a root-scale directory cannot finish inside the
+    // exec timeout on a dev box (node_modules forests) — the model's fallback
+    // pattern `ls <guess> || find $HOME -name x` burned the full 120s twice in
+    // a row and turned "run the script" into a timeout apology (live
+    // 2026-08-20). Fail fast with a correctable message instead of hanging;
+    // the planner retries bounded within the same turn.
+    const unboundedRootFind = unboundedRootFindTarget(command);
+    if (unboundedRootFind) {
+      return failureToActionResult({
+        reason: "invalid_param",
+        message: `find over ${unboundedRootFind} without -maxdepth cannot finish before the timeout. Search a specific directory, add -maxdepth, or locate the file from task context instead.`,
+      });
     }
     const cwdParam = readStringParam(options, "cwd");
 

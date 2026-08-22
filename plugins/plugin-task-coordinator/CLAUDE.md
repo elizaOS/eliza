@@ -41,7 +41,7 @@ The `orchestrator` view declares typed capability descriptors. Capability IDs: `
 Calls `registerTaskCoordinatorSlots` from `@elizaos/ui` with:
 
 - `CodingAgentControlChip` — header chip showing active session count; stop-all button.
-- `CodingAgentSettingsSection` — agent settings panel (per-framework tabs: elizaOS, Pi Agent, OpenCode, Claude, Codex; auth, model, approval-preset config).
+- `CodingAgentSettingsSection` — agent settings panel (per-framework tabs: elizaOS, Pi Agent, Claude, Codex; auth, model, approval-preset config).
 - `CodingAgentTasksPanel` — main task-thread list + PTY console view.
 - `PtyConsoleBase` — PTY output streamer; subscribes to `pty-output` WS events.
 
@@ -130,7 +130,6 @@ This plugin reads no env vars directly. Coding-agent framework selection and per
 | pi-agent | `ENV_PREFIX["pi-agent"]` | `ELIZA_PI_AGENT` |
 | claude | `ENV_PREFIX.claude` | `ELIZA_CLAUDE` |
 | codex | `ENV_PREFIX.codex` | `ELIZA_CODEX` |
-| opencode | `ENV_PREFIX.opencode` | `ELIZA_OPENCODE` |
 
 These prefixes are used to build preference keys sent to the agent prefs API; they are not read from `process.env` at runtime in this plugin.
 

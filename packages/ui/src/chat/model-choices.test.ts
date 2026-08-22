@@ -179,9 +179,6 @@ describe("resolveModelChoices", () => {
       "claude-opus-4-8",
     ]);
     // Free-form backends have no catalog to complete from.
-    expect(
-      resolveModelChoices(CATALOG, ctx(2, ["coding", "opencode"])),
-    ).toEqual([]);
     expect(resolveModelChoices(CATALOG, ctx(2, ["coding", "elizaos"]))).toEqual(
       [],
     );

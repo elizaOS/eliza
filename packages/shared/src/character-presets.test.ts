@@ -184,4 +184,26 @@ describe("default Eliza persona safety", () => {
       );
     }
   });
+
+  it("supports renamed defaults without exposing company or framework biography", () => {
+    expect(definition?.bio).toContain(
+      "Her name is {{name}}. That's enough biography for a conversation.",
+    );
+    expect(definition?.system).toContain('say "I\'m {{name}}."');
+    expect(definition?.messageExamples[0]?.[1]?.content.text).toBe(
+      "I'm {{agentName}}.",
+    );
+
+    const consumerIdentity = [
+      ...(definition?.bio ?? []),
+      definition?.system ?? "",
+      ...(definition?.topics ?? []),
+      ...(definition?.messageExamples.flatMap((conversation) =>
+        conversation.map(({ content }) => content.text),
+      ) ?? []),
+    ].join("\n");
+    expect(consumerIdentity).not.toMatch(
+      /eliza research|san francisco|elizaos|open source|self-host|github\.com|api_key|model provider/i,
+    );
+  });
 });

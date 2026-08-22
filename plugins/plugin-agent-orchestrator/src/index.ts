@@ -8,6 +8,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
+import { randomUUID } from "node:crypto";
 import type {
   Character,
   IAgentRuntime,
@@ -26,6 +27,7 @@ import {
   promoteSubactionsToActions,
   requireConfirmedSendHandlerDelivery,
   toWellFormedUnicode,
+  truncateWellFormed,
 } from "@elizaos/core";
 
 // Register coding-agent HTTP routes with the runtime route registry.
@@ -68,6 +70,8 @@ import {
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
+import { durableCancelRoutingEvaluator } from "./evaluators/durable-cancel-routing.js";
+import { finishedWorkFollowUpRoutingEvaluator } from "./evaluators/finished-work-followup-routing.js";
 import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { subAgentFailureResponseEvaluator } from "./evaluators/sub-agent-failure.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
@@ -98,9 +102,14 @@ import {
   type AcpToolCall,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
+import { userTaskFromInitialTask } from "./services/user-task-text.js";
 import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
+import {
+  AGENT_VOICED_METADATA,
+  phraseForUser,
+} from "./voice/phrase-for-user.js";
 import { AGENT_ORCHESTRATOR_WIDGET_DECLARATIONS } from "./widget-manifest.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -172,14 +181,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / elizaos — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested. IMPORTANT: if `# Active sub-agent sessions` shows a live sub-agent already working on the SAME workdir (or the same logical area of the same workdir), prefer `TASKS_SEND_TO_AGENT` to continue that session instead of spawning a parallel agent in the same workspace. Parallel agents in one workdir race on files and waste tokens — only spawn when the existing session is on a different workdir, is terminal (stopped/errored), or the new task is unrelated to the in-flight work.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate ACP coding sub-agent claude|codex|opencode; multi-step; prefer TASKS_SEND if active session exists on same workdir",
+                "delegate ACP coding sub-agent claude|codex|elizaos; multi-step; prefer TASKS_SEND if active session exists on same workdir",
             },
           },
         }),
@@ -235,7 +244,12 @@ export function createAgentOrchestratorPlugin(): Plugin {
     providers: orchestratorProviders,
     routes: codeExecutionAllowed ? (codingAgentRoutePlugin.routes ?? []) : [],
     responseHandlerEvaluators: codeExecutionAllowed
-      ? [subAgentCompletionResponseEvaluator, subAgentFailureResponseEvaluator]
+      ? [
+          subAgentCompletionResponseEvaluator,
+          subAgentFailureResponseEvaluator,
+          durableCancelRoutingEvaluator,
+          finishedWorkFollowUpRoutingEvaluator,
+        ]
       : [],
     // Eager-start the orchestrator's services. They're declared in `services:`
     // above and registered by elizaOS, but service registration is lazy — the
@@ -298,6 +312,15 @@ export function createAgentOrchestratorPlugin(): Plugin {
       // Forward mid-task user messages to the live sub-agent for this roomId.
       // Bind is on (source, roomId) — no Discord-thread dependency, so plain
       // SMS/WhatsApp follow-ups work too.
+      // Runtime-scoped handle so the TASKS send action can QUEUE for a busy
+      // session instead of erroring: the bare "ACP session is already busy"
+      // failure sent the planner escalating to a stop of the running build
+      // (live 2026-08-20, bmi-calculator follow-up).
+      (
+        runtime as IAgentRuntime & {
+          __orchestratorSubAgentInbox?: SubAgentInbox;
+        }
+      ).__orchestratorSubAgentInbox = subAgentInbox;
       activeSessionForwardHandler = createActiveSessionForwardHandler(
         runtime,
         subAgentInbox,
@@ -390,12 +413,101 @@ export function createAgentOrchestratorPlugin(): Plugin {
                     TERMINAL_SESSION_STATUSES.has(session.status)
                   ) {
                     flushPending.delete(sessionId);
-                    subAgentInbox.clear(sessionId);
+                    // A terminal session's queued follow-up is USER INTENT,
+                    // not disposable state: app-build sessions stop the
+                    // moment they complete, so clearing here silently dropped
+                    // every follow-up queued mid-build ("add streak counts"
+                    // vanished, live 2026-08-20). Redirect it to a successor
+                    // create carrying the predecessor task + the follow-up.
+                    const orphaned = subAgentInbox.drain(sessionId);
+                    if (orphaned && session) {
+                      const meta = (session.metadata ?? {}) as Record<
+                        string,
+                        unknown
+                      >;
+                      const predecessorTask = userTaskFromInitialTask(
+                        typeof meta.initialTask === "string"
+                          ? meta.initialTask
+                          : "",
+                      );
+                      const roomId = meta.roomId;
+                      if (predecessorTask && typeof roomId === "string") {
+                        runtime.logger?.info?.(
+                          {
+                            src: "@elizaos/plugin-agent-orchestrator",
+                            sessionId,
+                          },
+                          "redirecting orphaned queued follow-up to a successor create",
+                        );
+                        const syntheticMemory = {
+                          id: randomUUID(),
+                          entityId:
+                            typeof meta.userId === "string"
+                              ? meta.userId
+                              : runtime.agentId,
+                          agentId: runtime.agentId,
+                          roomId,
+                          ...(typeof meta.worldId === "string"
+                            ? { worldId: meta.worldId }
+                            : {}),
+                          content: {
+                            text: orphaned,
+                            ...(typeof meta.source === "string"
+                              ? { source: meta.source }
+                              : {}),
+                          },
+                          createdAt: Date.now(),
+                        } as unknown as Memory;
+                        void tasksAction
+                          .handler(
+                            runtime,
+                            syntheticMemory,
+                            undefined,
+                            {
+                              parameters: {
+                                action: "create",
+                                task: `${predecessorTask}\n\nFollow-up from the user (fold into the SAME deliverable): ${orphaned}`,
+                              },
+                            },
+                            undefined,
+                          )
+                          .catch((err) => {
+                            runtime.logger?.warn?.(
+                              {
+                                src: "@elizaos/plugin-agent-orchestrator",
+                                sessionId,
+                                err:
+                                  err instanceof Error
+                                    ? err.message
+                                    : String(err),
+                              },
+                              "orphaned follow-up successor create failed",
+                            );
+                          });
+                      }
+                    }
                     return;
                   }
                   // Still mid-turn (busy / tool_running / running / blocked /
                   // authenticating) — wait for it to return to `ready`.
-                  if (isSessionBusy(session.status)) {
+                  // A live smithers durable run counts as mid-turn for its
+                  // WHOLE lifetime: between executor steps the session reads
+                  // `ready` for a moment, and a flush prompt fired into that
+                  // gap raced the executor's next step and killed the
+                  // workflow ("status failed" ~10s after a queued follow-up,
+                  // live 2026-08-20 meme-caption run). After the run ends the
+                  // terminal-session branch above redirects the queue to a
+                  // successor create.
+                  const flushRunState = (
+                    (session.metadata ?? {}) as {
+                      smithersDurableRun?: { state?: string };
+                    }
+                  ).smithersDurableRun?.state;
+                  if (
+                    isSessionBusy(session.status) ||
+                    flushRunState === "running" ||
+                    flushRunState === "pending"
+                  ) {
                     if (tries < MAX_FLUSH_POLLS) {
                       scheduleFlush(sessionId, tries + 1);
                     } else {
@@ -441,14 +553,19 @@ export function createAgentOrchestratorPlugin(): Plugin {
             });
           }
           // error-policy:J7 best-effort orphan-session recovery at boot; a failure
-          // warns and does not abort the init chain.
-          void acp?.resumeOrphanedBusySessions?.().catch((err: unknown) =>
+          // warns and does not abort the init chain. Sweep dead native rows
+          // FIRST so restart phantoms free their worker slots before the
+          // resume scan (and the first spawn) read the cap.
+          void (async () => {
+            await acp?.sweepDeadNativeSessions?.();
+            await acp?.resumeOrphanedBusySessions?.();
+          })().catch((err: unknown) =>
             runtime.logger?.warn?.(
               {
                 src: "@elizaos/plugin-agent-orchestrator",
                 err: err instanceof Error ? err.message : String(err),
               },
-              "resumeOrphanedBusySessions failed",
+              "boot session sweep/resume failed",
             ),
           );
         })();
@@ -753,25 +870,22 @@ export function sanitizePlannerText(text: string): string {
 // In "ack" mode the orchestrator posts ONE short line when it kicks off a coding
 // sub-agent. A single hardcoded literal ("working on it now.") read identically
 // robotic on every spawn, was always English regardless of the user's language,
-// and never matched the agent's character voice. Instead, the small text model
-// writes the line: it speaks in the configured character's own voice (no
-// hardcoded personality, no scraping `style.chat`) and in the user's language
-// (no i18n table), and natural sampling removes the verbatim repeat. This is the
-// same approach the LLM progress heartbeat already uses to write its status line
-// in the narration's language. The pure helpers below build the prompts and
-// sanitize the output (unit-tested); the single `useModel` call in the progress
-// hook is the only impure part, and it falls back to SPAWN_ACK_FALLBACK so the
-// ack can never become silence.
+// and never matched the agent's character voice. The line is model-written via
+// the shared `phraseForUser` helper (src/voice/phrase-for-user.ts) — the single
+// home of the character-voice prompt, so this surface cannot drift from the
+// other phrased posts. Any failure falls back to SPAWN_ACK_FALLBACK so the ack
+// can never become silence.
 
 // Minimal degraded fallback, used ONLY when the model call fails or returns
 // nothing usable — never the primary path. Kept short and neutral on purpose.
 export const SPAWN_ACK_FALLBACK = "On it.";
 
 // Longest acknowledgement we keep. An ack is a one-liner; anything longer is the
-// model over-answering, so it gets clipped.
+// model over-answering, so it falls back.
+const SPAWN_ACK_MAX_CHARS = 120;
 const SPAWN_ACK_TIMEOUT_MS = 750;
 
-function withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
+function _withSpawnAckTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), SPAWN_ACK_TIMEOUT_MS);
@@ -794,7 +908,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
   const name = (character.name ?? "").trim() || "the assistant";
   const voiceParts: string[] = [];
   const bio = (character.bio ?? []).map((b) => b.trim()).filter(Boolean);
-  if (bio.length > 0) voiceParts.push(bio.join(" "));
+  if (bio.length > 0) voiceParts.push(bio.slice(0, 3).join(" "));
   const traits = [
     ...(character.adjectives ?? []),
     ...(character.style?.chat ?? []),
@@ -803,7 +917,7 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
     .map((t) => t.trim())
     .filter(Boolean);
   if (traits.length > 0) {
-    voiceParts.push(`Voice: ${[...new Set(traits)].join(", ")}.`);
+    voiceParts.push(`Voice: ${[...new Set(traits)].slice(0, 8).join(", ")}.`);
   }
   return [
     `You are ${name}.`,
@@ -825,13 +939,18 @@ export function buildSpawnAckSystemPrompt(character: Character): string {
 export function buildSpawnAckUserPrompt(task: string): string {
   const trimmed = task.trim();
   const what = trimmed.length > 0 ? trimmed : "the task they just gave you";
-  return `The task you're starting:\n${toWellFormedUnicode(what)}\n\nYour one-line acknowledgement:`;
+  const wellFormed = toWellFormedUnicode(what);
+  const clipped =
+    wellFormed.length > 400
+      ? `${truncateWellFormed(wellFormed, 397)}…`
+      : wellFormed;
+  return `The task you're starting:\n${clipped}\n\nYour one-line acknowledgement:`;
 }
 
 /**
  * Clean a model-produced ack into a single plain line: first non-empty line,
- * surrounding quotes / emoji / list markers stripped and whitespace collapsed.
- * Returns "" when nothing usable remains (the caller then falls
+ * surrounding quotes / emoji / list markers stripped, whitespace collapsed,
+ * length capped. Returns "" when nothing usable remains (the caller then falls
  * back to SPAWN_ACK_FALLBACK). Pure + deterministic.
  */
 export function sanitizeSpawnAck(raw: string): string {
@@ -869,7 +988,10 @@ export function sanitizeSpawnAck(raw: string): string {
   }
   cleaned = cleaned.replace(/\s{2,}/g, " ").trim();
   if (!cleaned) return "";
-  return toWellFormedUnicode(cleaned);
+  const wellFormed = toWellFormedUnicode(cleaned);
+  return wellFormed.length > SPAWN_ACK_MAX_CHARS
+    ? `${truncateWellFormed(wellFormed, SPAWN_ACK_MAX_CHARS - 1).trimEnd()}…`
+    : wellFormed;
 }
 
 function stripToolTranscripts(raw: string): string {
@@ -903,7 +1025,16 @@ function stripToolTranscripts(raw: string): string {
 
 export function extractCompletionSummary(raw: string): string {
   if (!raw.trim()) return "done";
-  return toWellFormedUnicode(raw.trim());
+  const lines = stripToolTranscripts(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
+  const last = lines[lines.length - 1] ?? "";
+  if (!last) return "done";
+  const wellFormed = toWellFormedUnicode(last);
+  return wellFormed.length > 300
+    ? `${truncateWellFormed(wellFormed, 297).trimEnd()}…`
+    : wellFormed;
 }
 
 /**
@@ -979,8 +1110,17 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
           : undefined;
   const pattern = typeof input.pattern === "string" ? input.pattern : undefined;
   const url = typeof input.url === "string" ? input.url : undefined;
-  const shortPath = (p: string): string => p;
-  const trimCmd = (c: string): string => toWellFormedUnicode(c);
+  const shortPath = (p: string): string => {
+    // Trim long absolute paths to the last 2 segments.
+    const parts = p.split("/").filter(Boolean);
+    return parts.length > 2 ? `…/${parts.slice(-2).join("/")}` : p;
+  };
+  const trimCmd = (c: string): string => {
+    const wellFormed = toWellFormedUnicode(c);
+    return wellFormed.length > 80
+      ? `${truncateWellFormed(wellFormed, 77)}...`
+      : wellFormed;
+  };
   // Heuristic: pick a noun based on title/kind, then attach the most
   // informative arg.
   const noun = (() => {
@@ -1018,7 +1158,33 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
  * all plugin.init() complete). The fire-and-forget chain in init() schedules
  * us for after that promise settles.
  */
-function registerProgressHook(runtime: IAgentRuntime): () => void {
+/**
+ * Structural view of the sub-agent router's request-voice ledger. Resolved
+ * lazily via `runtime.getService` and typeof-guarded per method: every gate
+ * that consults it fails OPEN to today's behavior when the router is absent,
+ * disabled, or predates the ledger API — the ledger can only ever REMOVE
+ * messages, never introduce a new silent-drop mode.
+ */
+type RequestVoiceLedgerRouter = {
+  requestKeyForMeta?: (
+    meta: Record<string, unknown>,
+  ) => string | null | undefined;
+  claimRequestAck?: (key: string, sessionId: string) => unknown;
+  isRequestTerminalFinalized?: (key: string) => boolean;
+};
+
+/** Only an EXPLICIT denial suppresses; unknown shapes fail open (post). */
+function ackClaimDenied(result: unknown): boolean {
+  if (result === false || result === "denied") return true;
+  if (isRecord(result)) {
+    return result.granted === false && result.superseded !== true;
+  }
+  return false;
+}
+
+// Exported for unit tests (spawn-ack.test.ts drives the real hook against a
+// fake runtime/ACP); not part of the plugin's public API contract.
+export function registerProgressHook(runtime: IAgentRuntime): () => void {
   const acp = runtime.getService<AcpService>(AcpService.serviceType);
   runtime.logger?.debug?.(
     { src: "@elizaos/plugin-agent-orchestrator" },
@@ -1181,6 +1347,25 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // lookback reliably attributes the reply to this spawn without catching an
   // unrelated earlier chat reply.
   const PLANNER_ACK_LOOKBACK_MS = 8000;
+  // Lazily resolve the router's request-voice ledger per use — the router can
+  // register after this hook, and a stale null capture would disable the
+  // request-level gates for the process lifetime.
+  const getVoiceRouter = (): RequestVoiceLedgerRouter | null =>
+    (runtime.getService(
+      SubAgentRouter.serviceType,
+    ) as RequestVoiceLedgerRouter | null) ?? null;
+  // sessionId → request voice key, filled in the session-event hook where the
+  // session metadata is available, so emitProgress (which only receives the
+  // sessionId) can consult the router's terminal-finalized ledger. Bounded
+  // like the other per-session maps.
+  const sessionRequestKeys = new Map<string, string>();
+  const recordSessionRequestKey = (sessionId: string, key: string): void => {
+    sessionRequestKeys.set(sessionId, key);
+    if (sessionRequestKeys.size > 512) {
+      const oldest = sessionRequestKeys.keys().next().value;
+      if (oldest !== undefined) sessionRequestKeys.delete(oldest);
+    }
+  };
 
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
@@ -1363,7 +1548,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         if (prevSummary && norm(prevSummary) === norm(trimmedSummary)) return;
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
         const wellFormedSummary = toWellFormedUnicode(trimmedSummary);
-        const text = `⏳ [${label}] ${wellFormedSummary}`;
+        const text = `⏳ [${label}] ${wellFormedSummary.length > 200 ? `${truncateWellFormed(wellFormedSummary, 197)}...` : wellFormedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
         await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
@@ -1384,12 +1569,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     lastHeartbeatSummary.delete(sessionId);
   };
 
-  // Generate the one-line "ack"-mode spawn acknowledgement via the small text
-  // model — in the character's own voice and the user's language (see
-  // buildSpawnAckSystemPrompt). The task text (the language signal) is read from
-  // the session's `initialTask` metadata, falling back to the label. Best-effort:
-  // any failure (no model registered, a throw, empty output) collapses to a short
-  // literal, so the ack is never silence and never blocks the spawn.
+  // Generate the one-line "ack"-mode spawn acknowledgement via the shared
+  // phrasing helper — in the character's own voice and the user's language (the
+  // task text is the language signal). The task is read from the session's
+  // `initialTask` metadata, falling back to the label. Best-effort: any failure
+  // (no model registered, a throw, timeout, validation miss) collapses to
+  // SPAWN_ACK_FALLBACK, so the ack is never silence and never blocks the spawn.
   const generateSpawnAck = async (
     sessionId: string,
     label: string,
@@ -1403,21 +1588,17 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         typeof meta.initialTask === "string" && meta.initialTask.trim()
           ? meta.initialTask
           : label;
-      return await withSpawnAckTimeout(
-        runtime
-          .useModel(ModelType.TEXT_SMALL, {
-            system: buildSpawnAckSystemPrompt(runtime.character),
-            prompt: buildSpawnAckUserPrompt(task),
-            maxTokens: 32,
-            temperature: 0.7,
-          })
-          .then(
-            (raw) =>
-              sanitizeSpawnAck(typeof raw === "string" ? raw : "") ||
-              SPAWN_ACK_FALLBACK,
-          ),
+      const clippedTask = task.length > 400 ? `${task.slice(0, 397)}…` : task;
+      const { text } = await phraseForUser(
+        runtime,
+        {
+          intent: "confirm",
+          facts: { task: clippedTask, started: true },
+        },
         SPAWN_ACK_FALLBACK,
+        { timeoutMs: SPAWN_ACK_TIMEOUT_MS, maxChars: SPAWN_ACK_MAX_CHARS },
       );
+      return text;
     } catch {
       // error-policy:J4 ack generation failure degrades to the neutral literal;
       // a cosmetic UX line, never data.
@@ -1436,11 +1617,28 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // subsequent turns. Cross-platform: the flag rides on the persisted Memory
   // regardless of which connector surface delivered the post (thread,
   // edit-in-place, or fresh send).
+  // Also stamped as agent-voiced: every text routed through here is either
+  // model-written already (heartbeat summary, spawn ack, phrased first post /
+  // completion / failure) or the sub-agent's own model prose (💬 narration), so
+  // the core transport voice gate must not re-phrase it — a rewrite would strip
+  // the 🚀/💬/⏳/✅/❌ `[label]` markers that the edit-dedupe and thread routing
+  // key off. Edits and thread posts bypass that gate anyway; the stamp keeps
+  // the fresh-send path consistent with them.
   function transientContent(
     text: string,
     source: "sub_agent_progress" | "sub_agent_complete",
-  ): { text: string; source: string; metadata: { transient: true } } {
-    return { text, source, metadata: { transient: true } };
+  ): {
+    text: string;
+    source: string;
+    agentVoiced: true;
+    metadata: { transient: true };
+  } {
+    return {
+      text,
+      source,
+      ...AGENT_VOICED_METADATA,
+      metadata: { transient: true },
+    };
   }
 
   function hasCap(source: string, capability: string): boolean {
@@ -1558,6 +1756,22 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     rawText: string,
     label?: string,
   ): Promise<void> {
+    // Terminal-finalized mute: once the user request this session serves has
+    // reached its finalized terminal (parked or failed), a session grinding on
+    // must not keep posting. emitProgress is the single funnel for the
+    // heartbeat, the narration flush, the ⚠️ error post, and the ⏸️ blocked
+    // post — this one check silences all four. Fail-open when the router or
+    // its ledger method is absent.
+    const requestKey = sessionRequestKeys.get(sessionId);
+    if (requestKey) {
+      const voiceRouter = getVoiceRouter();
+      if (
+        typeof voiceRouter?.isRequestTerminalFinalized === "function" &&
+        voiceRouter.isRequestTerminalFinalized(requestKey) === true
+      ) {
+        return;
+      }
+    }
     if (progressPolicy.mode === "silent") return;
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
@@ -1682,10 +1896,37 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         await emitProgress(sessionId, target, rawText, sessionLabel);
         return;
       }
-      // The "ack"-mode spawn line is generated by the model AFTER the
-      // synchronous claim below (so the claim stays atomic), so leave it empty
-      // here and fill it once this event has exclusively claimed the first post.
+      // The "ack"-mode spawn line and the threaded 🚀 first-post prose are
+      // generated by the model AFTER the synchronous claim below (so the claim
+      // stays atomic); leave placeholders here and fill them once this event
+      // has exclusively claimed the first post.
+      // A create that already posted its out-of-band ack stamps the session
+      // at spawn; every emit path (including the delayed-timer one, which
+      // bypasses the event-time branch) must honor it or the ack duplicates
+      // ~15s later (live 2026-08-19, four placements of this suppression).
+      if (!state && acp && progressPolicy.mode === "ack") {
+        try {
+          const liveSession = await acp.getSession(sessionId);
+          if (
+            (
+              liveSession?.metadata as
+                | { requestAckPosted?: boolean }
+                | undefined
+            )?.requestAckPosted === true
+          ) {
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+            return;
+          }
+        } catch {
+          // error-policy:J4 metadata lookup failure degrades to acking.
+        }
+      }
       const isAckFirstPost = !state && progressPolicy.mode === "ack";
+      const isThreadedFirstPost = !state && progressPolicy.mode === "threaded";
       let initialText = state
         ? displayText
         : progressPolicy.mode === "threaded"
@@ -1743,6 +1984,44 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       // stays synchronous and the model latency sits outside the claim window.
       if (isAckFirstPost) {
         initialText = await generateSpawnAck(sessionId, sessionLabel);
+        if (terminalSessions.has(sessionId)) {
+          firstPostInFlight.delete(sessionId);
+          return;
+        }
+      } else if (isThreadedFirstPost) {
+        // Threaded 🚀 first post: the site composes the `🚀 [label]` marker
+        // (the marker never goes through the model — thread naming and the
+        // per-label main-message cache depend on it verbatim); only the short
+        // status prose is model-phrased. Runs AFTER the synchronous claim
+        // above, with the canned "running" as the factual fallback.
+        // `acp` is narrowed by the registration guard, but emitProgress is a
+        // hoisted function declaration so the narrowing does not flow in —
+        // guard again locally (structurally identical at runtime).
+        const session = acp
+          ? await acp.getSession(sessionId).catch(() => null)
+          : null;
+        const sessionMeta = (session?.metadata ?? {}) as Record<
+          string,
+          unknown
+        >;
+        const agentType =
+          typeof sessionMeta.agentType === "string" && sessionMeta.agentType
+            ? sessionMeta.agentType
+            : "sub-agent";
+        // The label deliberately stays OUT of the facts: the marker prefix
+        // already carries it verbatim, and the per-agentType memo (which
+        // serves cached text without re-validating facts) must never replay a
+        // line that embeds another session's label.
+        const { text: firstProse } = await phraseForUser(
+          runtime,
+          {
+            intent: "notify",
+            facts: { started: true, workingInBackground: true },
+          },
+          "running",
+          { cacheKey: `first:${agentType}` },
+        );
+        initialText = `🚀 [${sessionLabel}] ${firstProse}`;
         if (terminalSessions.has(sessionId)) {
           firstPostInFlight.delete(sessionId);
           return;
@@ -1899,18 +2178,33 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             target.roomId as `${string}-${string}-${string}-${string}-${string}`,
         })
       : target;
-    const completionText =
-      progressPolicy.mode === "threaded"
-        ? `✅ [${state.label}] ${summary}`
-        : `Completed ${state.label}: ${summary}`;
     // "ack"/"silent" mode: the completion-evaluator synthesis IS the final
     // user-facing message ("your site is live at <url>"). Posting or editing a
     // second completion message here would compete with that synthesis, so
-    // suppress the completion post entirely in those modes and let the ✅
-    // reaction on the untouched ACK be the only extra completion signal.
+    // suppress the completion post entirely in those modes (and add no model
+    // call) and let the ✅ reaction on the untouched ACK be the only extra
+    // completion signal.
     const suppressCompletionPost =
       progressPolicy.mode === "ack" || progressPolicy.mode === "silent";
     if (!suppressCompletionPost) {
+      // Model-phrase the completion frame. The edit path below BYPASSES the
+      // core transport voice gate (editMessageOnTarget never re-phrases), so
+      // this is the only chance for the line to be in the agent's voice. The
+      // threaded ✅ marker is composed by the site, never by the model; the
+      // canned framing stays as the factual fallback. The summary itself is
+      // already the sub-agent's captured result — it rides in as a fact.
+      const threaded = progressPolicy.mode === "threaded";
+      const { text: completionBody } = await phraseForUser(
+        runtime,
+        {
+          intent: "notify",
+          facts: { label: state.label, completed: true, summary },
+        },
+        threaded ? summary : `Completed ${state.label}: ${summary}`,
+      );
+      const completionText = threaded
+        ? `✅ [${state.label}] ${completionBody}`
+        : completionBody;
       if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
         try {
           await runtime.editMessageOnTarget(
@@ -1962,18 +2256,31 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       return;
     }
     // No reaction support and no edit: post a terminal failure message so
-    // the user knows the sub-agent ended on a non-success state.
+    // the user knows the sub-agent ended on a non-success state. Whether this
+    // posts at all is decided by the guards above (reaction short-circuit,
+    // mode suppression) — phrasing changes only the wording, never the count.
     const suppressFailurePost =
       progressPolicy.mode === "ack" || progressPolicy.mode === "silent";
     if (!state.canEdit && !suppressFailurePost) {
       try {
+        // Model-phrased failure line; the ❌ marker is composed by the site
+        // and the canned literal stays as the factual fallback. mustNotClaim
+        // keeps a hallucinating model from turning a failure into a success.
+        const threaded = progressPolicy.mode === "threaded";
+        const { text: failureBody } = await phraseForUser(
+          runtime,
+          {
+            intent: "fail",
+            facts: { label: state.label, outcome: "failed" },
+            mustNotClaim: ["the task succeeded", "the work completed"],
+          },
+          threaded ? "failed" : `Failed ${state.label}.`,
+        );
         requireConfirmedSendHandlerDelivery(
           await runtime.sendMessageToTarget(
             sendTarget,
             transientContent(
-              progressPolicy.mode === "threaded"
-                ? `❌ [${state.label}] failed`
-                : `Failed ${state.label}.`,
+              threaded ? `❌ [${state.label}] ${failureBody}` : failureBody,
               "sub_agent_complete",
             ),
           ),
@@ -2003,8 +2310,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     // like a clean sentence.
     const trimmed = buf.trim().replace(/[\s:;,\-—–]+$/, "");
     if (!trimmed) return;
+    // Cap at 800 chars. Sub-agents sometimes dump multi-paragraph results
+    // through narration chunks (full inventory tables, verification
+    // explanations, etc.). Posting those raw produces a wall of text that
+    // duplicates the final summary the response evaluator builds. A 800-char
+    // window fits short tables and a few bullet points; longer dumps get
+    // truncated and the canonical version lands via the summary.
     const wellFormed = toWellFormedUnicode(trimmed);
-    const text = `💬 [${label}] ${wellFormed}`;
+    const text = `💬 [${label}] ${wellFormed.length > 800 ? `${truncateWellFormed(wellFormed, 793)}…[+]` : wellFormed}`;
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());
@@ -2047,6 +2360,25 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           typeof meta.label === "string" && meta.label.trim().length > 0
             ? meta.label
             : `sub-agent ${sessionId.slice(0, 8)}`;
+        // Resolve the request voice key for this session (router canon:
+        // spawnRootMessageId ?? originConnectorMessageId ?? messageId ??
+        // task:<taskId>) and record it so emitProgress can consult the
+        // terminal-finalized ledger. Structural + fail-open: no router or no
+        // method simply leaves the request-level gates inert.
+        const voiceRouter = getVoiceRouter();
+        let requestVoiceKey: string | undefined;
+        if (typeof voiceRouter?.requestKeyForMeta === "function") {
+          try {
+            requestVoiceKey = voiceRouter.requestKeyForMeta(meta) ?? undefined;
+          } catch {
+            // error-policy:J4 ledger key resolution failure degrades to the
+            // per-session guards (today's behavior); never blocks the event.
+            requestVoiceKey = undefined;
+          }
+        }
+        if (requestVoiceKey) {
+          recordSessionRequestKey(sessionId, requestVoiceKey);
+        }
         const isTerminalEvent =
           evName === "stopped" ||
           evName === "error" ||
@@ -2058,11 +2390,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // "ack" mode: post the single clean spawn ACK on the FIRST event of any
         // kind, not just narration. The ack used to ride on the first
         // message-buffer flush, which only fires after a narration silence gap
-        // (MESSAGE_SILENCE_FLUSH_MS). Fast sub-agents (opencode/gpt-oss stream
+        // (MESSAGE_SILENCE_FLUSH_MS). Fast sub-agents (gpt-oss-class models stream
         // continuously and reach task_complete before any flush) therefore
         // posted NO ack — only the final synthesis. Posting here, gated on the
         // first non-terminal event, makes "ack + separate synthesis" reliable
-        // on every backend (codex/opencode/claude). emitProgress ignores the
+        // on every backend (codex/claude/elizaos). emitProgress ignores the
         // empty rawText for the ack first-post and the firstPostInFlight +
         // mainMessageId guards keep it to exactly one ack.
         // A verification-retry re-dispatch (buildVerifyRetryCount > 0, set by
@@ -2105,7 +2437,55 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             createdAtMs,
             PLANNER_ACK_LOOKBACK_MS,
           );
-          if (plannerAlreadyAcked) {
+          // Request-level ack gate: one ack per USER REQUEST, not per session.
+          // A task-service respawn / state-lost failover successor carries the
+          // same request key on a fresh sessionId — the per-session guards
+          // never see it and the 60s room window has long expired, so each
+          // successor posted another spawn ack. Claim the request's ack slot
+          // on the router ledger; denial means this request already acked.
+          // Fail-open: no router / no method / claim throw → allowed.
+          const claimRequestAck = (): boolean => {
+            if (
+              !requestVoiceKey ||
+              typeof voiceRouter?.claimRequestAck !== "function"
+            ) {
+              return true;
+            }
+            try {
+              return !ackClaimDenied(
+                voiceRouter.claimRequestAck(requestVoiceKey, sessionId),
+              );
+            } catch {
+              // error-policy:J4 ledger claim failure degrades to acking
+              // (today's behavior) — the dedupe is lost, never the ack.
+              return true;
+            }
+          };
+          const requestAckAlreadyPosted =
+            (session?.metadata as { requestAckPosted?: boolean } | undefined)
+              ?.requestAckPosted === true;
+          if (requestAckAlreadyPosted) {
+            // The create posted its own out-of-band ack before this session's
+            // events flowed — stamped at spawn, so no ledger race (2026-08-19).
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+            claimRequestAck();
+          } else if (plannerAlreadyAcked) {
+            ackedSessions.add(sessionId);
+            if (ackedSessions.size > 512) {
+              const oldest = ackedSessions.values().next().value;
+              if (oldest !== undefined) ackedSessions.delete(oldest);
+            }
+            // The planner's own reply IS this request's ack — claim the slot
+            // so respawn successors of a planner-acked spawn stay silent too.
+            claimRequestAck();
+          } else if (!claimRequestAck()) {
+            // A sibling/predecessor session already acked this request.
+            // Mirror the planner-acked branch: mark the session acked so
+            // trailing events and the heartbeat stay off the first-post path.
             ackedSessions.add(sessionId);
             if (ackedSessions.size > 512) {
               const oldest = ackedSessions.values().next().value;
@@ -2164,7 +2544,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           progressBySession.delete(sessionId);
           firstPostInFlight.delete(sessionId);
           emitFailedSessions.delete(sessionId);
-          // Do NOT clear ackedSessions here. Sub-agents (notably opencode /
+          // Do NOT clear ackedSessions here. Sub-agents (notably gpt-oss-class models /
           // gpt-oss) emit trailing `message` events AFTER `task_complete`;
           // clearing the marker let those late events re-enter the spawn-ack
           // path and post a SECOND "🚀 On it…" right before the synthesis.
@@ -2240,6 +2620,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // Skip terminal events — evaluator owns those.
         if (evName === "task_complete") return;
         let text: string | undefined;
+        // Set by the "error" case when the ⚠️ line should be model-phrased
+        // after the dedupe claim below (claim-before-phrase ordering).
+        let errorClassToPhrase: string | undefined;
         switch (evName) {
           case "tool_running":
             // Text-only feed: tool invocations are implicit from the
@@ -2284,8 +2667,22 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
               "rate_limit",
             ]);
             if (!failureKind || !USER_ACTION_KINDS.has(failureKind)) return;
+            // The raw connector/CLI error string is machine text — it goes to
+            // the logs only, never into chat. The user-facing line is
+            // model-phrased below (after the dedupe claim); this canned line
+            // is the factual fallback shape.
             const msg = (data as { message?: string })?.message ?? "error";
-            text = `⚠️ [${label}] ${msg}`;
+            runtime.logger?.warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                sessionId: sessionId.slice(0, 8),
+                failureKind,
+                message: msg,
+              },
+              "sub-agent error needs user action",
+            );
+            errorClassToPhrase = failureKind;
+            text = `⚠️ [${label}] hit a problem — details are in the logs.`;
             break;
           }
           case "blocked":
@@ -2312,6 +2709,29 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const last = lastPostByKey.get(dedupeKey);
         if (last && now - last < dedupeWindow) return;
         lastPostByKey.set(dedupeKey, now);
+        if (errorClassToPhrase) {
+          // Model-phrase the user-action error line AFTER the dedupe claim so
+          // model latency cannot double the post. The ⚠️ marker is composed by
+          // the site; the fallback carries no raw error text (that went to the
+          // logs above).
+          // Label stays out of the facts: the ⚠️ marker carries it, and the
+          // per-class memo (served without fact re-validation) must never
+          // replay a line embedding another session's label.
+          const { text: errorProse } = await phraseForUser(
+            runtime,
+            {
+              intent: "fail",
+              facts: {
+                problem: errorClassToPhrase.replace(/_/g, " "),
+                needsUserAction: true,
+                detailsInLogs: true,
+              },
+            },
+            "hit a problem — details are in the logs.",
+            { cacheKey: `acp-error:${errorClassToPhrase}` },
+          );
+          text = `⚠️ [${label}] ${errorProse}`;
+        }
         runtime.logger?.debug?.(
           {
             src: "@elizaos/plugin-agent-orchestrator",
@@ -2361,6 +2781,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     threadCacheByKey.clear();
     mainMessageCacheByKey.clear();
     lastPostByKey.clear();
+    sessionRequestKeys.clear();
     if (restoreSend) {
       try {
         restoreSend();

@@ -22,11 +22,6 @@ const DENY_ENV_PATTERNS = [
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
   /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT|GH_PAT)$/i,
-  // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
-  // AFTER this filter runs). A caller- or host-supplied value would let the
-  // spawner inject arbitrary provider config into the child, so it is denied at
-  // both intake paths.
-  /^OPENCODE_CONFIG_CONTENT$/i,
 ];
 
 /**
@@ -44,7 +39,7 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
  * Matched case-insensitively (see `shouldForwardEnv`): the repo runtime is Bun,
  * and Bun on Windows reports these with native casing — `Path`, not `PATH` —
  * so a case-sensitive check would forward NONE of them, leaving the child with
- * no search path (the opencode shim then fails with "'bun' is not recognized").
+ * no search path (a spawned CLI then fails with "'bun' is not recognized").
  * Includes the Windows essentials cmd.exe + Bun + the agent's config/cache
  * resolution rely on, alongside the POSIX names.
  */
@@ -107,12 +102,9 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   "ANTHROPIC_SMALL_MODEL",
   "ANTHROPIC_MEDIUM_MODEL",
   "ANTHROPIC_LARGE_MODEL",
-  "OPENCODE_MODEL",
   // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
   // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
   "CLAUDE_CODE_EFFORT_LEVEL",
-  "OPENCODE_DISABLE_AUTOUPDATE",
-  "OPENCODE_DISABLE_TERMINAL_TITLE",
   "CODEX_HOME",
   // Container-registry PUSH credential for app-image builds (docker login
   // ghcr.io before the deploy contract's docker push). Narrow by design:

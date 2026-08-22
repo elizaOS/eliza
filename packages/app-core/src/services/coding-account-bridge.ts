@@ -2,7 +2,7 @@
  * Coding-agent account-selector bridge.
  *
  * The orchestrator plugin (`@elizaos/plugin-agent-orchestrator`) spawns Claude
- * Code / Codex / OpenCode sub-agents but depends only on `@elizaos/core` — it
+ * Code / Codex sub-agents but depends only on `@elizaos/core` — it
  * cannot import the `AccountPool` or the credential store. So, exactly like the
  * Anthropic and subscription-selector bridges in `account-pool.ts`, we publish a
  * narrow contract on a `globalThis` symbol that the plugin reads at spawn time.
@@ -113,19 +113,15 @@ function getEnvCodingStrategy(): Strategy | undefined {
  * API equivalent (subscriptions are the primary use case here).
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * opencode authenticates through its configured backend; the only backend it
- * resolves from a pooled key is Cerebras (`CEREBRAS_API_KEY`, see
- * buildOpencodeSpawnConfig), so opencode pool-rotates across `cerebras-api`
- * accounts and no-ops otherwise. z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * z.ai / Kimi / GLM have no first-party coding CLI — their accounts serve the
+ * main runtime's API-key routing — so they are deliberately absent
+ * (advertising them would offer an unspawnable path).
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
   claude: ["anthropic-subscription", "anthropic-api"],
   codex: ["openai-codex", "openai-api"],
-  opencode: ["cerebras-api"],
 };
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
@@ -832,7 +828,7 @@ async function buildEnvPatch(
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     default: {
-      // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
+      // Direct API providers (e.g. anthropic-api → ANTHROPIC_API_KEY)
       // inject under their canonical env key; run-main.ts normalizes aliases
       // (Z_AI_API_KEY → ZAI_API_KEY, KIMI_API_KEY → MOONSHOT_API_KEY).
       const envKey =

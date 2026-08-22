@@ -98,7 +98,7 @@ export function CockpitRoute() {
         // the record — the sub-agent actually starts via addOrchestratorAgent.
         // Thread the picked mode (framework / providerSource / model) so the
         // chosen mode runs. NOT a follow-up message: that path silently spawns
-        // the default opencode framework and discards the pick. The optional
+        // the default framework and discards the pick. The optional
         // repo/workdir target (from the form) is threaded here exactly as the
         // chat TASKS action does — the orchestrator route already accepts both
         // and resolves the spawn workdir/repo from them; omitted ⇒ scratch dir.

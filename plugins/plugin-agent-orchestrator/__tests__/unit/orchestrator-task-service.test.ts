@@ -1676,6 +1676,12 @@ describe("OrchestratorTaskService — event bridge session status", () => {
 
   it("rejects malformed live change-set metadata and mirrors a real workspace diff", async () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), "ots-changeset-"));
+    // Subject under test is the event bridge's change-set mirroring; the
+    // fixture's uncommitted diff is the mirrored artifact, not a residual.
+    // With the gate on, the (now-reachable) residuals pass demotes the task
+    // before settleStatus can observe "validating".
+    const prevResidualsGate = process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
+    process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "0";
     try {
       execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
       execFileSync("git", ["config", "user.email", "test@example.com"], {
@@ -1728,6 +1734,12 @@ describe("OrchestratorTaskService — event bridge session status", () => {
       expect(typeof changeSet?.capturedAt).toBe("number");
       expect(changeSet?.diff).toContain("export const n = 2");
     } finally {
+      if (prevResidualsGate === undefined) {
+        delete process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
+      } else {
+        process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = prevResidualsGate;
+      }
+
       fs.rmSync(repo, { recursive: true, force: true });
     }
   });

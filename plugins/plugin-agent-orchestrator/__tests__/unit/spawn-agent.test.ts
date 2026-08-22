@@ -23,7 +23,10 @@ const TASK_ROOM = "11111111-2222-3333-4444-555555555555";
 const WORKTREE_ROOM = "22222222-3333-4444-5555-666666666666";
 
 describe("TASKS:spawn_agent", () => {
-  it("rejects a list_agents alias on the promoted spawn tool before spawning", async () => {
+  it("executes a declared list_agents alias on the promoted spawn tool instead of spawning or stranding", async () => {
+    // New virtual-pin contract: an explicit DECLARED discriminator runs the
+    // requested operation — the old corrective refusal stranded turns whose
+    // surface lacked the named replacement tool.
     const spawn = promoteSubactionsToActions(spawnAgentAction).find(
       (action) => action.name === "TASKS_SPAWN_AGENT",
     );
@@ -38,10 +41,7 @@ describe("TASKS:spawn_agent", () => {
       callback(),
     );
 
-    expect(result).toMatchObject({
-      success: false,
-      text: expect.stringContaining("Call TASKS_LIST_AGENTS"),
-    });
+    expect((result as { success?: boolean }).success).toBe(true);
     expect(svc.spawnSession).not.toHaveBeenCalled();
   });
 
@@ -119,7 +119,12 @@ describe("TASKS:spawn_agent", () => {
     );
     expect(result?.success).toBe(true);
     expect(result?.text).toContain("result is not available yet");
-    expect(cb).not.toHaveBeenCalled();
+    // The spawn posts ONE short model-phrased ack (owner directive
+    // 2026-08-19: dev-speak spawn banners replaced with "on it"-class lines).
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(
+      String((cb.mock.calls[0]?.[0] as { text?: string })?.text ?? ""),
+    ).not.toContain("Spawned coding sub-agent");
     expect(result?.continueChain).toBe(false);
     expect(result?.data).toMatchObject({
       sessionId: "abcdef123456",
@@ -608,8 +613,13 @@ describe("TASKS:spawn_agent durable restart owner", () => {
       callback(),
     );
     expect(result?.success).toBe(true);
+    // The durable goal carries the resolved-route contract (swarm/room hints
+    // wrapped around the user task), so assert containment, not equality.
     expect(tasks.createTask).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "coding", goal: "fix bug" }),
+      expect.objectContaining({
+        kind: "coding",
+        goal: expect.stringContaining("fix bug"),
+      }),
     );
     expect(tasks.attachSession).toHaveBeenCalledWith(
       "durable-task-1",
@@ -640,6 +650,24 @@ describe("TASKS:spawn_agent durable restart owner", () => {
     });
   });
 
+  it("persists the spawnRootMessageId into the durable task metadata", async () => {
+    const svc = serviceMock();
+    const tasks = taskServiceMock();
+    await spawnAgentAction.handler(
+      durableRuntime(svc, tasks),
+      memory({ task: "fix bug", agentType: "codex", workdir: process.cwd() }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    // No connector id on the memory → the root id falls back to message.id.
+    expect(tasks.createTask).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ spawnRootMessageId: "msg1" }),
+      }),
+    );
+  });
+
   it("degrades loudly but keeps the spawn when persistence fails", async () => {
     const svc = serviceMock();
     const tasks = {
@@ -662,5 +690,142 @@ describe("TASKS:spawn_agent durable restart owner", () => {
     });
     expect(runtime.reportError).toHaveBeenCalled();
     expect(tasks.attachSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("TASKS:spawn_agent supervision bind gate", () => {
+  const runtimeWithBindState = (svc: unknown, bindState: unknown) => {
+    const runtime = runtimeWith(svc);
+    (runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+      (type: string) =>
+        type === "SWARM_COORDINATOR" ? { acpBindState: bindState } : svc,
+    );
+    return runtime;
+  };
+
+  it("refuses the spawn with NO spawnSession call when the ACP stream is unbound", async () => {
+    const svc = serviceMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWithBindState(svc, {
+        status: "unbound",
+        reason: "ACP service failed to start",
+        attempts: 3,
+      }),
+      memory({ task: "fix bug", agentType: "codex" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("CODING_SUPERVISION_UNAVAILABLE");
+    expect(result?.text).toContain("nothing is running");
+    expect(result?.continueChain).toBe(false);
+    expect(svc.spawnSession).not.toHaveBeenCalled();
+  });
+
+  it("spawns normally when the ACP stream is bound", async () => {
+    const svc = serviceMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWithBindState(svc, {
+        status: "bound",
+        reason: null,
+        attempts: 1,
+      }),
+      memory({ task: "fix bug", agentType: "codex" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(svc.spawnSession).toHaveBeenCalled();
+  });
+});
+
+describe("TASKS:spawn_agent post-spawn liveness receipt", () => {
+  it("fails loudly when the spawned session has no live record", async () => {
+    const svc = serviceMock({ getSession: vi.fn(() => undefined) });
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "fix bug", agentType: "codex" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("CODING_SESSION_DID_NOT_START");
+    expect(result?.text).toContain("nothing is running");
+    expect(result?.continueChain).toBe(false);
+  });
+
+  it("fails loudly when the spawned session is terminal at birth", async () => {
+    const svc = serviceMock();
+    (svc.getSession as ReturnType<typeof vi.fn>).mockImplementation(
+      (id: string) =>
+        id === "abcdef123456"
+          ? { ...svc.listSessions()[0], status: "stopped" }
+          : undefined,
+    );
+    const result = await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({ task: "fix bug", agentType: "codex" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("CODING_SESSION_DID_NOT_START");
+  });
+});
+
+describe("TASKS:spawn_agent respawn-ack claim", () => {
+  const routerMock = () => ({
+    spawnCountForOrigin: vi.fn(() => 0),
+    noteSpawnForOrigin: vi.fn(),
+    bestResultFor: vi.fn(() => undefined),
+    claimRequestAck: vi.fn(),
+  });
+
+  const runtimeWithRouter = (svc: unknown, router: unknown) => {
+    const runtime = runtimeWith(svc);
+    (runtime.getService as ReturnType<typeof vi.fn>).mockImplementation(
+      (type: string) => (type === "ACPX_SUB_AGENT_ROUTER" ? router : svc),
+    );
+    return runtime;
+  };
+
+  it("claims the request ack for a router-stamped synthetic respawn", async () => {
+    const svc = serviceMock();
+    const router = routerMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWithRouter(svc, router),
+      memory({
+        task: "continue the failed build",
+        agentType: "codex",
+        source: "sub_agent",
+        metadata: { subAgent: true, spawnRootMessageId: "root-1" },
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(router.claimRequestAck).toHaveBeenCalledWith(
+      "root-1",
+      "abcdef123456",
+    );
+  });
+
+  it("does not claim the ack for a fresh user spawn", async () => {
+    const svc = serviceMock();
+    const router = routerMock();
+    const result = await spawnAgentAction.handler(
+      runtimeWithRouter(svc, router),
+      memory({ task: "fix bug", agentType: "codex" }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(router.claimRequestAck).not.toHaveBeenCalled();
   });
 });

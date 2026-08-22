@@ -8,7 +8,41 @@ import { extractShortToolDeliverable } from "../services/sub-agent-router";
 const wrap = (body: string, title = "bash") =>
   `[tool output: ${title}]\n${body}\n[/tool output]`;
 
+const WS = "/home/milady/.eliza/workspaces/task-7ac0bbf3";
+const shellRun = (stdout: string, exit = 0) =>
+  wrap(
+    `$ python3 ${WS}/random_planet.py\n[exit ${exit}] (cwd=${WS}, took=36ms)\n--- stdout ---\n${stdout}`,
+    `$ python3 ${WS}/random_planet.py`,
+  );
+
 describe("extractShortToolDeliverable", () => {
+  // The eliza-code child mirrors its SHELL transcript as the tool output
+  // (live 2026-08-21: the command line with the internal workspace path
+  // reached chat instead of "Saturn").
+  it("relays the stdout section of a clean SHELL transcript, not the command line", () => {
+    expect(
+      extractShortToolDeliverable({
+        response: `${wrap(`Wrote 135 bytes to ${WS}/random_planet.py`, "FILE write")}\n${shellRun("Saturn")}Created it.\n\nSaturn`,
+      }),
+    ).toBe("Saturn");
+  });
+
+  it("keeps a failed SHELL transcript whole so the error stays visible", () => {
+    const out = extractShortToolDeliverable({
+      response: shellRun("Traceback: boom", 1),
+    });
+    expect(out).toContain("[exit 1]");
+    expect(out).toContain("Traceback: boom");
+  });
+
+  it("skips a trailing write confirmation and uses the earlier run output", () => {
+    expect(
+      extractShortToolDeliverable({
+        response: `${shellRun("Mars")}\n${wrap(`Wrote 12 bytes to ${WS}/notes.txt`, "FILE write")}`,
+      }),
+    ).toBe("Mars");
+  });
+
   it("recovers the inner body of a single short tool-output block from response", () => {
     expect(
       extractShortToolDeliverable({ response: `prose\n${wrap("2026-06-02")}` }),

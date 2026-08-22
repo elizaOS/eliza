@@ -2,7 +2,7 @@
 
 ## What A Spawned Worker Gets
 
-The agent orchestrator creates a PTY session for coding workers such as Claude, Codex, Gemini, Aider, shell/OpenCode-compatible sessions, and future agent runtimes. Each worker gets:
+The agent orchestrator creates a PTY session for coding workers such as Claude, Codex, Gemini, Aider, shell sessions, and future agent runtimes. Each worker gets:
 
 - a concrete working directory; all file edits and commands should happen there
 - an injected memory file appropriate to the adapter, such as `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, or `.aider.conventions.md`

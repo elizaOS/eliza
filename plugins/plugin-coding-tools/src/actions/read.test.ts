@@ -138,6 +138,21 @@ describe("READ", () => {
     expect(data?.truncated).toBe(true);
   });
 
+  it("treats a model-filled zero limit as the configured default", async () => {
+    const file = path.join(env.tmpDir, "zero-limit.txt");
+    await fs.writeFile(file, "line one\nline two\nline three", "utf8");
+
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 0, limit: 0 },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("\tline one");
+    expect(result.text).toContain("\tline two");
+    expect(result.text).toContain("\tline three");
+    expect(result.data).toMatchObject({ lines: 3, truncated: false });
+  });
+
   it("records the read in FileStateService", async () => {
     const file = path.join(env.tmpDir, "track.txt");
     await fs.writeFile(file, "hello", "utf8");

@@ -61,7 +61,7 @@ const rooms: OrchestratorRoomRosterOverview = {
           kind: "sub_agent",
           id: "s3",
           label: "Mara",
-          framework: "opencode",
+          framework: "codex",
           status: "stopped",
           active: false,
           accountProviderId: "cerebras-api",
