@@ -1210,7 +1210,7 @@ describe("handleRemoteCapabilityRoutes", () => {
 
     expect(error).toHaveBeenCalledWith(
       ctx.res,
-      "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
+      "provider must be one of direct, home-machine, mobile-companion, or desktop-companion.",
       400,
     );
     expect(connectEndpointProvider).not.toHaveBeenCalled();

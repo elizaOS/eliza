@@ -1,28 +1,22 @@
 /**
- * Unit tests for E2BRemoteCapabilityRouterService: runner-config resolution from
- * runtime settings across the e2b / eliza-cloud / home providers (and the
+ * Unit tests for RemoteCodingCapabilityRouterService: runner-config resolution from
+ * runtime settings across the eliza-cloud / home providers (and the
  * disabled vercel / cloudflare / rivet ones), plus fs/pty/git routing,
  * host↔sandbox path mapping, and cloud coding-container provisioning. Uses fake
  * sandbox factories and fetch-mocked remote-runner / cloud HTTP servers.
  */
-import nodePath from "node:path";
-import {
-  CapabilityError,
-  E2B_SANDBOX_FACTORY_SERVICE_TYPE,
-  type IAgentRuntime,
-  type UUID,
-} from "@elizaos/core";
+import { CapabilityError, type IAgentRuntime, type UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ELIZA_CLOUD_API_BASE_URL,
-  E2BRemoteCapabilityRouterService,
-  type E2BRemoteRunnerConfig,
-  type E2BSandboxClient,
-  type E2BSandboxFactory,
-  resolveE2BRemoteRunnerConfig,
+  RemoteCodingCapabilityRouterService,
+  type RemoteCodingRunnerConfig,
+  type RemoteRunnerClient,
+  type RemoteRunnerFactory,
+  resolveRemoteCodingRunnerConfig,
   type SandboxCommandResult,
   type SandboxEntryInfo,
-} from "./e2b-capability-router.ts";
+} from "./remote-coding-runner.ts";
 
 class FakeFiles {
   readonly listCalls: string[] = [];
@@ -81,7 +75,7 @@ class FakeCommands {
   }
 }
 
-class FakeSandbox implements E2BSandboxClient {
+class FakeSandbox implements RemoteRunnerClient {
   readonly sandboxId = "sbx_test";
   readonly files: FakeFiles;
   readonly commands = new FakeCommands();
@@ -92,12 +86,12 @@ class FakeSandbox implements E2BSandboxClient {
   }
 }
 
-class FakeFactory implements E2BSandboxFactory {
-  readonly configs: E2BRemoteRunnerConfig[] = [];
+class FakeFactory implements RemoteRunnerFactory {
+  readonly configs: RemoteCodingRunnerConfig[] = [];
 
   constructor(readonly sandbox = new FakeSandbox()) {}
 
-  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: RemoteCodingRunnerConfig): Promise<RemoteRunnerClient> {
     this.configs.push(config);
     return this.sandbox;
   }
@@ -158,7 +152,7 @@ function makeRuntime(
 ): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    character: { name: "E2B Test" },
+    character: { name: "Remote Runner Test" },
     getSetting: (key: string) => settings[key],
     getService: ((type: string) => services[type] ?? null) as never,
   };
@@ -246,10 +240,9 @@ function healthThenProcessFetch(
   );
 }
 
-function remoteCommandTimeoutConfig(): E2BRemoteRunnerConfig {
+function remoteCommandTimeoutConfig(): RemoteCodingRunnerConfig {
   return makeConfig({
     provider: "home",
-    apiKey: undefined,
     remoteHttpBaseUrl: "https://remote-runner.test",
     remoteHttpToken: "token",
     timeoutMs: 50,
@@ -464,12 +457,12 @@ function jsonResponse(statusCode: number, payload: unknown): Response {
 }
 
 function makeConfig(
-  overrides: Partial<E2BRemoteRunnerConfig> = {},
-): E2BRemoteRunnerConfig {
+  overrides: Partial<RemoteCodingRunnerConfig> = {},
+): RemoteCodingRunnerConfig {
   return {
     enabled: true,
-    provider: "e2b",
-    apiKey: "test-key",
+    provider: "home",
+    remoteHttpBaseUrl: "http://home.local:2468",
     agentRunners: [],
     workdir: "/workspace",
     hostWorkspaceRoot: "/repo",
@@ -504,29 +497,9 @@ function entry(
   };
 }
 
-describe("E2BRemoteCapabilityRouterService", () => {
-  it("resolves explicit E2B remote runner settings", () => {
-    const config = resolveE2BRemoteRunnerConfig(
-      makeRuntime({
-        ELIZA_CODING_REMOTE_RUNNER: "e2b",
-        E2B_API_KEY: "key",
-        ELIZA_E2B_WORKDIR: "/work",
-        ELIZA_E2B_HOST_WORKSPACE_ROOT: "/repo",
-      }),
-    );
-
-    expect(config.enabled).toBe(true);
-    expect(config.provider).toBe("e2b");
-    expect(config.apiKey).toBe("key");
-    expect(config.workdir).toBe("/work");
-    // hostWorkspaceRoot is a LOCAL host path (path.resolve'd in production),
-    // unlike workdir which is the remote Linux sandbox path. On Windows
-    // path.resolve("/repo") → "C:\\repo", so compare against the resolved form.
-    expect(config.hostWorkspaceRoot).toBe(nodePath.resolve("/repo"));
-  });
-
+describe("RemoteCodingCapabilityRouterService", () => {
   it("resolves Eliza Cloud runner settings", () => {
-    const config = resolveE2BRemoteRunnerConfig(
+    const config = resolveRemoteCodingRunnerConfig(
       makeRuntime({
         ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
         ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
@@ -544,7 +517,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("resolves Eliza Cloud API-backed provisioning settings", () => {
-    const config = resolveE2BRemoteRunnerConfig(
+    const config = resolveRemoteCodingRunnerConfig(
       makeRuntime({
         ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
         ELIZACLOUD_API_KEY: "cloud-key",
@@ -563,17 +536,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
   });
 
-  it("uses provider-specific default workspaces", () => {
+  it("uses the remote-runner default workspace", () => {
     expect(
-      resolveE2BRemoteRunnerConfig(
-        makeRuntime({
-          ELIZA_CODING_REMOTE_RUNNER: "e2b",
-          E2B_API_KEY: "key",
-        }),
-      ).workdir,
-    ).toBe("/home/user");
-    expect(
-      resolveE2BRemoteRunnerConfig(
+      resolveRemoteCodingRunnerConfig(
         makeRuntime({
           ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
           ELIZACLOUD_API_KEY: "cloud-key",
@@ -581,7 +546,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       ).workdir,
     ).toBe("/workspace");
     expect(
-      resolveE2BRemoteRunnerConfig(
+      resolveRemoteCodingRunnerConfig(
         makeRuntime({
           ELIZA_CODING_REMOTE_RUNNER: "home",
           ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
@@ -591,7 +556,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("resolves home runner settings", () => {
-    const config = resolveE2BRemoteRunnerConfig(
+    const config = resolveRemoteCodingRunnerConfig(
       makeRuntime({
         ELIZA_CODING_REMOTE_RUNNER: "home",
         ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
@@ -613,7 +578,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
   it("rejects runner timeout settings that overflow the JavaScript timer range", () => {
     expect(() =>
-      resolveE2BRemoteRunnerConfig(
+      resolveRemoteCodingRunnerConfig(
         makeRuntime({
           ELIZA_CODING_REMOTE_RUNNER: "home",
           ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
@@ -626,7 +591,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   it("keeps Vercel, Cloudflare, and Rivet as disabled direct providers", () => {
     for (const provider of ["vercel", "cloudflare", "rivet"]) {
       expect(() =>
-        resolveE2BRemoteRunnerConfig(
+        resolveRemoteCodingRunnerConfig(
           makeRuntime({ ELIZA_CODING_REMOTE_RUNNER: provider }),
         ),
       ).toThrow(`${provider} runner is disabled`);
@@ -634,7 +599,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("accepts an explicit cloud runner list", () => {
-    const config = resolveE2BRemoteRunnerConfig(
+    const config = resolveRemoteCodingRunnerConfig(
       makeRuntime({
         ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
         ELIZA_SANDBOX_AGENT_RUNNERS: "claude,codex",
@@ -650,7 +615,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     // ceiling passes the shape check and is rejected on range.
     for (const value of ["0", "01", "+1", "1.0", "1e3"]) {
       expect(() =>
-        resolveE2BRemoteRunnerConfig(
+        resolveRemoteCodingRunnerConfig(
           makeRuntime({
             ELIZA_CODING_REMOTE_RUNNER: "home",
             ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
@@ -663,7 +628,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     }
 
     expect(() =>
-      resolveE2BRemoteRunnerConfig(
+      resolveRemoteCodingRunnerConfig(
         makeRuntime({
           ELIZA_CODING_REMOTE_RUNNER: "home",
           ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
@@ -676,9 +641,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("reports structured unavailable when credentials are missing", async () => {
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
-      makeConfig({ apiKey: undefined, accessToken: undefined }),
+      makeConfig({ remoteHttpBaseUrl: undefined }),
       new FakeFactory(),
     );
 
@@ -690,9 +655,9 @@ describe("E2BRemoteCapabilityRouterService", () => {
     });
   });
 
-  it("runs commands in the E2B remote runner and maps host workspace paths", async () => {
+  it("runs commands in the remote runner and maps host workspace paths", async () => {
     const sandbox = new FakeSandbox();
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -715,13 +680,13 @@ describe("E2BRemoteCapabilityRouterService", () => {
     });
   });
 
-  it("retries sandbox creation after a transient failure instead of caching the rejection", async () => {
+  it("retries runner creation after a transient failure instead of caching the rejection", async () => {
     const sandbox = new FakeSandbox([
       entry("/workspace/README.md", "README.md", FILE_ENTRY),
     ]);
     let attempts = 0;
     const transientError = new Error("transient sandbox provisioning failure");
-    const factory: E2BSandboxFactory = {
+    const factory: RemoteRunnerFactory = {
       create: async () => {
         attempts += 1;
         if (attempts === 1) {
@@ -730,7 +695,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         return sandbox;
       },
     };
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       factory,
@@ -762,7 +727,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       }
       return result;
     });
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       factory,
@@ -784,12 +749,12 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(sandbox.files.listCalls).toHaveLength(4);
   });
 
-  it("creates the sandbox once across many successful operations", async () => {
+  it("creates the runner once across many successful operations", async () => {
     const sandbox = new FakeSandbox([
       entry("/workspace/README.md", "README.md", FILE_ENTRY),
     ]);
     const factory = new FakeFactory(sandbox);
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       factory,
@@ -802,13 +767,13 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(factory.configs).toHaveLength(1);
   });
 
-  it("lists E2B remote runner files with hidden and ignore filtering", async () => {
+  it("lists remote runner files with hidden and ignore filtering", async () => {
     const sandbox = new FakeSandbox([
       entry("/workspace/src", "src", DIR_ENTRY),
       entry("/workspace/.env", ".env", FILE_ENTRY),
       entry("/workspace/build.log", "build.log", FILE_ENTRY),
     ]);
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -827,7 +792,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
 
   it("routes git helpers through sandbox command execution", async () => {
     const sandbox = new FakeSandbox();
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -846,11 +811,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("advertises cloud runner provider and agent runner metadata", async () => {
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig({
         provider: "home",
-        apiKey: undefined,
         remoteHttpBaseUrl: "http://home.local:2468",
         remoteAccessUrl:
           "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
@@ -875,7 +839,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     Number.MAX_SAFE_INTEGER + 1,
   ])("rejects an invalid fs.readText maxBytes value: %s", async (maxBytes) => {
     const factory = new FakeFactory();
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       factory,
@@ -893,7 +857,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("rejects a file above maxBytes without returning partial text", async () => {
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(new FakeSandbox([], "éclair")),
@@ -921,11 +885,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     async (provider) => {
       const server = await startRemoteRunnerHttpServer();
       try {
-        const service = new E2BRemoteCapabilityRouterService(
+        const service = new RemoteCodingCapabilityRouterService(
           makeRuntime(),
           makeConfig({
             provider,
-            apiKey: undefined,
             remoteHttpBaseUrl: server.baseUrl,
             remoteHttpToken: "token",
             agentRunners: ["codex", "claude-code"],
@@ -1011,11 +974,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
           requestTimeoutMs: 20,
         }),
@@ -1053,11 +1015,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1083,11 +1044,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1113,11 +1073,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1153,11 +1112,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1178,11 +1136,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
   ])(
     "rejects an unsafe remote runner base URL without echoing it: %s",
     async (url) => {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: url,
         }),
       );
@@ -1209,11 +1166,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1244,11 +1200,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "home",
-          apiKey: undefined,
           remoteHttpBaseUrl: "https://remote-runner.test",
         }),
       );
@@ -1285,11 +1240,11 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "eliza-cloud",
-          apiKey: undefined,
+          remoteHttpBaseUrl: undefined,
           cloudApiBaseUrl: "https://api.eliza.app/api/v1",
           cloudApiToken: "cloud-key",
           timeoutMs: 20,
@@ -1321,11 +1276,11 @@ describe("E2BRemoteCapabilityRouterService", () => {
     );
     replaceGlobalFetch(fetchMock);
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "eliza-cloud",
-          apiKey: undefined,
+          remoteHttpBaseUrl: undefined,
           cloudApiBaseUrl: "https://api.eliza.app/api/v1",
           cloudApiToken: "cloud-key",
         }),
@@ -1344,11 +1299,11 @@ describe("E2BRemoteCapabilityRouterService", () => {
   it("provisions an Eliza Cloud coding container before using the remote runner HTTP contract", async () => {
     const server = startElizaCloudProvisioningServer();
     try {
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "eliza-cloud",
-          apiKey: undefined,
+          remoteHttpBaseUrl: undefined,
           cloudApiBaseUrl: server.baseUrl,
           cloudApiToken: "cloud-key",
           agentRunners: ["codex", "claude-code"],
@@ -1406,7 +1361,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   });
 
   it("rejects host paths outside the mapped workspace", async () => {
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(),
@@ -1417,41 +1372,10 @@ describe("E2BRemoteCapabilityRouterService", () => {
     ).rejects.toBeInstanceOf(CapabilityError);
   });
 
-  it("routes the e2b provider to the sandbox factory service registered by the plugin", async () => {
-    const factory = new FakeFactory();
-    const service = new E2BRemoteCapabilityRouterService(
-      makeRuntime({}, { [E2B_SANDBOX_FACTORY_SERVICE_TYPE]: factory }),
-      makeConfig({ provider: "e2b" }),
-    );
-
-    const result = await service.pty.runCommand({
-      command: "echo",
-      args: ["hi"],
-    });
-
-    expect(result.exitCode).toBe(0);
-    expect(factory.configs).toHaveLength(1);
-    expect(factory.configs[0]?.provider).toBe("e2b");
-  });
-
-  it("reports e2b unavailable when the sandbox factory plugin is not registered", async () => {
-    const service = new E2BRemoteCapabilityRouterService(
-      makeRuntime(),
-      makeConfig({ provider: "e2b" }),
-    );
-
-    await expect(
-      service.pty.runCommand({ command: "echo", args: ["hi"] }),
-    ).rejects.toMatchObject({
-      code: "CAPABILITY_UNAVAILABLE",
-      capability: "fs",
-      method: "sandbox.create",
-    });
-  });
   it("returns timedOut from pty.runCommand when /v1/processes/run hangs before headers", async () => {
     const originalFetch = globalThis.fetch;
     replaceGlobalFetch(healthThenProcessFetch(hungFetch));
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       remoteCommandTimeoutConfig(),
     );
@@ -1472,7 +1396,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   it("uses an explicit command timeout instead of the configured runner default", async () => {
     const originalFetch = globalThis.fetch;
     replaceGlobalFetch(healthThenProcessFetch(hungFetch));
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig({
         provider: "home",
@@ -1503,7 +1427,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   it("uses the configured request timeout when command options provide no timeout", async () => {
     const originalFetch = globalThis.fetch;
     replaceGlobalFetch(healthThenProcessFetch(hungFetch));
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig({
         provider: "home",
@@ -1514,8 +1438,8 @@ describe("E2BRemoteCapabilityRouterService", () => {
       }),
     );
     const sandbox = await (
-      service as unknown as { getSandbox(): Promise<E2BSandboxClient> }
-    ).getSandbox();
+      service as unknown as { getRunner(): Promise<RemoteRunnerClient> }
+    ).getRunner();
     const started = Date.now();
     try {
       await expect(sandbox.commands.run("sleep 30")).rejects.toMatchObject({
@@ -1540,7 +1464,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         }),
       ),
     );
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       remoteCommandTimeoutConfig(),
     );
@@ -1560,7 +1484,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
   it("reports the timeout selected before command options are mutated", async () => {
     const originalFetch = globalThis.fetch;
     replaceGlobalFetch(healthThenProcessFetch(hungFetch));
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       makeConfig({
         provider: "home",
@@ -1571,8 +1495,8 @@ describe("E2BRemoteCapabilityRouterService", () => {
       }),
     );
     const sandbox = await (
-      service as unknown as { getSandbox(): Promise<E2BSandboxClient> }
-    ).getSandbox();
+      service as unknown as { getRunner(): Promise<RemoteRunnerClient> }
+    ).getRunner();
     const options = { requestTimeoutMs: 50 };
     try {
       const command = sandbox.commands.run("sleep 30", options);
@@ -1597,7 +1521,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
           return jsonResponse(200, { exitCode: 0, stdout: "", stderr: "" });
         }),
       );
-      const service = new E2BRemoteCapabilityRouterService(
+      const service = new RemoteCodingCapabilityRouterService(
         makeRuntime(),
         remoteCommandTimeoutConfig(),
       );
@@ -1622,7 +1546,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
     replaceGlobalFetch(
       healthThenProcessFetch(partialBodyFetch('{"exitCode":0,"stdout":"')),
     );
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       remoteCommandTimeoutConfig(),
     );
@@ -1647,7 +1571,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
         throw bunAbortError();
       }),
     );
-    const service = new E2BRemoteCapabilityRouterService(
+    const service = new RemoteCodingCapabilityRouterService(
       makeRuntime(),
       remoteCommandTimeoutConfig(),
     );

@@ -5168,7 +5168,6 @@
   "capabilities.cloud.bioAria": "Bio ng sandbox ng cloud ng kakayahan",
   "capabilities.endpoint.providerLabel": "Provider ng capability endpoint",
   "capabilities.provider.direct": "Direktang endpoint",
-  "capabilities.provider.e2b": "Sandbox ng E2B",
   "capabilities.provider.homeMachine": "Home machine",
   "capabilities.provider.mobileCompanion": "Kasamang mobile",
   "capabilities.provider.desktopCompanion": "Kasamang desktop",

@@ -1,5 +1,5 @@
 /**
- * Integration test binding E2BRemoteCapabilityRouterService to the real
+ * Integration test binding RemoteCodingCapabilityRouterService to the real
  * coding-remote-runner HTTP handler (cloud/services/coding-remote-runner):
  * global fetch is redirected to the in-process handler backed by a real temp
  * workspace, so commands and file reads exercise the actual remote-runner
@@ -15,7 +15,7 @@ import {
   ensureWorkspace,
   loadConfig,
 } from "../../../cloud/services/coding-remote-runner/src/index.ts";
-import { E2BRemoteCapabilityRouterService } from "./e2b-capability-router.ts";
+import { RemoteCodingCapabilityRouterService } from "./remote-coding-runner.ts";
 
 const REMOTE_RUNNER_URL = "https://coding-remote-runner.test";
 const REMOTE_RUNNER_TOKEN = "sat-token";
@@ -77,10 +77,10 @@ async function installCodingRemoteRunnerFetch(): Promise<void> {
   replaceGlobalFetch(fetchMock);
 }
 
-describe("E2B remote runner router with the Coding remote runner HTTP runner", () => {
+describe("remote coding router with the Coding remote runner HTTP runner", () => {
   it("runs coding commands through the remote runner workspace instead of the caller host", async () => {
     await installCodingRemoteRunnerFetch();
-    const service = new E2BRemoteCapabilityRouterService(makeRuntime(), {
+    const service = new RemoteCodingCapabilityRouterService(makeRuntime(), {
       enabled: true,
       provider: "home",
       remoteHttpBaseUrl: REMOTE_RUNNER_URL,
@@ -148,7 +148,7 @@ describe("configured request timeout propagation (#23005 review findings)", () =
 
   function makeService(requestTimeoutMs: number, healthOk: boolean) {
     replaceGlobalFetch(hangingFetch(healthOk));
-    return new E2BRemoteCapabilityRouterService(makeRuntime(), {
+    return new RemoteCodingCapabilityRouterService(makeRuntime(), {
       enabled: true,
       provider: "home",
       remoteHttpBaseUrl: REMOTE_RUNNER_URL,

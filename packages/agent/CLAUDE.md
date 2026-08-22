@@ -72,7 +72,7 @@ src/
   diagnostics/            integration-observability.ts
   shared/                 workspace-resolution.ts (resolveDefaultAgentWorkspaceDir)
 scripts/                  build/package helpers, deterministic Vitest batching, mobile bundling, live sandbox smoke, and the hardware-free TEE policy harness
-docs/                     capability-router-remote-plugins.md, e2b-capability-routing.md, tee-agent-implementation-plan.md
+  docs/                     capability-router-remote-plugins.md, remote-coding-runner.md, tee-agent-implementation-plan.md
 ```
 
 ## Key exports / surface

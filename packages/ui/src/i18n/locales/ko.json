@@ -5175,7 +5175,6 @@
   "capabilities.cloud.bioAria": "기능 Cloud 샌드박스 소개",
   "capabilities.endpoint.providerLabel": "기능 엔드포인트 제공자",
   "capabilities.provider.direct": "직접 엔드포인트",
-  "capabilities.provider.e2b": "E2B 샌드박스",
   "capabilities.provider.homeMachine": "홈 기기",
   "capabilities.provider.mobileCompanion": "모바일 컴패니언",
   "capabilities.provider.desktopCompanion": "데스크톱 컴패니언",

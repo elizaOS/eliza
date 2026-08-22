@@ -5175,7 +5175,6 @@
   "capabilities.cloud.bioAria": "能力 Cloud 沙箱简介",
   "capabilities.endpoint.providerLabel": "能力端点提供商",
   "capabilities.provider.direct": "直接端点",
-  "capabilities.provider.e2b": "E2B 沙箱",
   "capabilities.provider.homeMachine": "主机",
   "capabilities.provider.mobileCompanion": "移动伴侣",
   "capabilities.provider.desktopCompanion": "桌面伴侣",

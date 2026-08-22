@@ -5787,7 +5787,6 @@
   "capabilities.connectionModeLabel": "Connection",
   "capabilities.endpoint.providerLabel": "Capability endpoint provider",
   "capabilities.provider.direct": "Direct endpoint",
-  "capabilities.provider.e2b": "E2B sandbox",
   "capabilities.provider.homeMachine": "Home machine",
   "capabilities.provider.mobileCompanion": "Mobile companion",
   "capabilities.provider.desktopCompanion": "Desktop companion",

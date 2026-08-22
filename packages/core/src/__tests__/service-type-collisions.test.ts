@@ -60,10 +60,10 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		"capability-router",
 		{
 			reason:
-				"Runtime capability routing keeps local, remote, and E2B implementations in one capability-router discovery slot while the strategy-table migration is in progress.",
+				"Runtime capability routing keeps local and remote implementations in one capability-router discovery slot while the strategy-table migration is in progress.",
 			classes: new Set([
 				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
-				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-coding-runner.ts:RemoteCodingCapabilityRouterService",
 				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
 			]),
 		},
@@ -83,10 +83,10 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		"capability-router",
 		{
 			reason:
-				"Capability routing is mid-migration: the core canonical service and the legacy agent remote/E2B routers share the slot until callers finish moving to RuntimeCapabilityService.",
+				"Capability routing is mid-migration: the core canonical service and the legacy agent remote router share the slot until callers finish moving to RuntimeCapabilityService.",
 			classes: new Set([
 				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
-				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-coding-runner.ts:RemoteCodingCapabilityRouterService",
 				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
 			]),
 		},
@@ -98,7 +98,7 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 				"RuntimeCapabilityService is the canonical slot while existing HTTP and sandbox router services remain constructible during the router-strategy migration.",
 			classes: new Set([
 				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
-				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-coding-runner.ts:RemoteCodingCapabilityRouterService",
 				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
 			]),
 		},
