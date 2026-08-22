@@ -260,6 +260,7 @@ describe("remote target native boundaries", () => {
     const pending = await vault.prepare({
       ownerId: "owner-1",
       displayName: "Linux target",
+      platform: "linux",
       now: 2_000_000_000_000,
     });
     if (pending.status !== "pending") throw new Error("expected pending");
