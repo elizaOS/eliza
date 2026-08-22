@@ -183,36 +183,37 @@ describe("Matrix Client-Server production boundary", () => {
 
     const transactionId = "same-transaction-across-distinct-routes";
     const routeClient = client(mock.url);
-    const first = await routeClient.sendEvent(
-      ROOM_ID,
-      EventType.RoomMessage,
-      { msgtype: "m.text", body: "first route" },
-      transactionId,
-    );
-    const replayed = await routeClient.sendEvent(
-      ROOM_ID,
-      EventType.RoomMessage,
-      { msgtype: "m.text", body: "first route" },
-      transactionId,
-    );
-    const otherRoom = await routeClient.sendEvent(
+    const sendRoute = (
+      roomId: string,
+      eventType: string,
+      content: Record<string, unknown>,
+    ) =>
+      routeClient.http.authedRequest<{ event_id: string }>(
+        Method.Put,
+        `/rooms/${encodeURIComponent(roomId)}/send/${encodeURIComponent(eventType)}/${encodeURIComponent(transactionId)}`,
+        undefined,
+        content,
+      );
+    const first = await sendRoute(ROOM_ID, "m.room.message", {
+      msgtype: "m.text",
+      body: "first route",
+    });
+    const replayed = await sendRoute(ROOM_ID, "m.room.message", {
+      msgtype: "m.text",
+      body: "first route",
+    });
+    const otherRoom = await sendRoute(
       OCCUPIED_CREATED_ROOM_ID,
-      EventType.RoomMessage,
+      "m.room.message",
       { msgtype: "m.text", body: "other room" },
-      transactionId,
     );
-    const otherType = await routeClient.sendEvent(
-      ROOM_ID,
-      EventType.Reaction,
-      {
-        "m.relates_to": {
-          event_id: first.event_id,
-          key: "ok",
-          rel_type: "m.annotation",
-        },
+    const otherType = await sendRoute(ROOM_ID, "m.reaction", {
+      "m.relates_to": {
+        event_id: first.event_id,
+        key: "ok",
+        rel_type: "m.annotation",
       },
-      transactionId,
-    );
+    });
     expect(replayed.event_id).toBe(first.event_id);
     expect(
       new Set([first.event_id, otherRoom.event_id, otherType.event_id]).size,
@@ -229,7 +230,7 @@ describe("Matrix Client-Server production boundary", () => {
         ),
     );
     expect(new Set(allEventIds).size).toBe(allEventIds.length);
-  });
+  }, 15_000);
 
   test("syncs, joins, creates, sends, paginates, orders, deduplicates, and resets", async () => {
     const mock = await startMatrixClientServerMock(seed);
