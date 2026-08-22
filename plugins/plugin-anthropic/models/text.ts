@@ -7,8 +7,8 @@
  * `resolveTextParams` normalizes the request before it reaches the AI SDK:
  * builds the canonical system prompt, applies prompt-cache breakpoints, forces
  * `temperature=1` for opus-4 / temperature-locked models, drops `topP` when
- * both topP and temperature are set (the API rejects both), and caps
- * `maxTokens`. Streaming vs non-streaming is chosen per request; tool-using and
+ * both topP and temperature are set (the API rejects both), and rejects
+ * unsupported explicit `maxTokens` before dispatch. Streaming vs non-streaming is chosen per request; tool-using and
  * `ELIZA_ANTHROPIC_DISABLE_STREAM` requests take the non-streaming path to avoid
  * `AI_NoOutputGeneratedError` on tool_use-only responses. `responseSchema`
  * requests build a native AI SDK `output` object and return parsed JSON.
@@ -29,6 +29,7 @@ import {
   buildCanonicalSystemPrompt,
   deepToWellFormedUnicode,
   dropDuplicateLeadingSystemMessage,
+  ElizaError,
   logger,
   ModelType,
   resolveEffectiveSystemPrompt,
@@ -1047,22 +1048,40 @@ function resolveTextParams(
     temperature = 1;
   }
 
-  const defaultMaxTokens = modelName.includes("-3-") ? 4096 : 8192;
-  // Cap output tokens at the model's hard limit. Opus 4.x = 32k, Sonnet 4.x = 64k.
-  // Callers (eliza runtime) sometimes pass the prompt context window (128k+) as
-  // maxTokens, which the API rejects with "Invalid request data".
+  // Anthropic requires max_tokens. Use the model's real output limit only when
+  // the caller omitted a budget; an explicit request must be preserved exactly
+  // or rejected before dispatch, never silently reduced to partial output.
   // ANTHROPIC_MAX_OUTPUT_TOKENS overrides the heuristic (bare number or
   // per-model `id:tokens` pairs) so unknown ids get the right ceiling.
   const modelHardCap =
     getMaxOutputTokensOverride(runtime, modelName) ?? (isOpus4Model(modelName) ? 32_000 : 64_000);
-  // Anthropic's Messages API REQUIRES max_tokens — an opt-out caller (direct-
-  // channel Stage-1) can't drop it, so send the model's hard cap. The reply is
-  // then bounded only by the model's real max (never an arbitrary 8192), and the
-  // value never 400s because it equals the documented limit. Other callers keep
-  // the existing default, Math.min-capped.
-  const maxTokens = params.omitMaxTokens
-    ? modelHardCap
-    : Math.min(params.maxTokens ?? defaultMaxTokens, modelHardCap);
+  const requestedMaxTokens = params.maxTokens;
+  if (
+    !params.omitMaxTokens &&
+    requestedMaxTokens !== undefined &&
+    (!Number.isSafeInteger(requestedMaxTokens) || requestedMaxTokens <= 0)
+  ) {
+    throw new ElizaError("Anthropic maxTokens must be a positive safe integer", {
+      code: "ANTHROPIC_OUTPUT_BUDGET_INVALID",
+      context: { modelName, requestedMaxTokens },
+    });
+  }
+  if (
+    !params.omitMaxTokens &&
+    requestedMaxTokens !== undefined &&
+    requestedMaxTokens > modelHardCap
+  ) {
+    throw new ElizaError("Anthropic model cannot satisfy the requested output budget", {
+      code: "ANTHROPIC_OUTPUT_BUDGET_UNSUPPORTED",
+      context: {
+        modelName,
+        requestedMaxTokens,
+        supportedMaxTokens: modelHardCap,
+      },
+    });
+  }
+  const maxTokens =
+    params.omitMaxTokens || requestedMaxTokens === undefined ? modelHardCap : requestedMaxTokens;
 
   const rawProviderOptions = params.providerOptions;
   const rawAnthropicOptions = rawProviderOptions?.anthropic;
