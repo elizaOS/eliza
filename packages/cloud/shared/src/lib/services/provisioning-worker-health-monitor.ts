@@ -39,18 +39,37 @@ function boundedAlertText(value: string, maxChars: number): string {
 }
 
 function boundedAlertDetails(details: Record<string, unknown>): Record<string, unknown> {
-  const seen = new WeakSet<object>();
   let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(details, (_key, value: unknown) => {
+    // PATH-LOCAL cycle guard, not visit-global: mark on descent, clear on
+    // exit — a repeated sibling reference (honest DAG, e.g. one shared config
+    // object under two keys) still renders in full, while a true back-edge is
+    // cut. Mirrors the pattern prompt-flatten.ts documents.
+    const inPath = new WeakSet<object>();
+    const walk = (value: unknown): unknown => {
       if (typeof value === "bigint") return value.toString();
-      if (typeof value === "string") return boundedAlertText(value, ALERT_MESSAGE_MAX_CHARS);
+      if (typeof value === "string") {
+        return boundedAlertText(value, ALERT_MESSAGE_MAX_CHARS);
+      }
       if (typeof value === "object" && value !== null) {
-        if (seen.has(value)) return "[circular]";
-        seen.add(value);
+        if (inPath.has(value)) return "[circular]";
+        inPath.add(value);
+        let out: unknown;
+        if (Array.isArray(value)) {
+          out = value.map(walk);
+        } else {
+          const record: Record<string, unknown> = {};
+          for (const [key, child] of Object.entries(value)) {
+            record[key] = walk(child);
+          }
+          out = record;
+        }
+        inPath.delete(value);
+        return out;
       }
       return value;
-    });
+    };
+    serialized = JSON.stringify(walk(details));
   } catch {
     // error-policy:J3 untrusted diagnostic details become an explicit invalid
     // marker instead of preventing every configured alert channel from firing.
