@@ -76,10 +76,30 @@ const summarizeOutcomesByTypeSince = mock(
 );
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
+  hydrateAgentSandboxBackup: async () => {
+    throw new Error("hydrateAgentSandboxBackup is outside this test path");
+  },
+  PRE_DELETE_BACKUP_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
+  prepareAgentBackupInsertData: async () => {
+    throw new Error("prepareAgentBackupInsertData is outside this test path");
+  },
   agentSandboxesRepository: { summarizeDedicatedFleet },
 }));
 
 mock.module("@/db/repositories/jobs", () => ({
+  cutoverResumeWindowAllows: () => {
+    throw new Error("cutoverResumeWindowAllows is outside this test path");
+  },
+  hydrateJob: async () => {
+    throw new Error("hydrateJob is outside this test path");
+  },
+  msWindowTimestampMatch: () => {
+    throw new Error("msWindowTimestampMatch is outside this test path");
+  },
+  prepareJobInsertData: async () => {
+    throw new Error("prepareJobInsertData is outside this test path");
+  },
+  StaleJobExecutionError: class StaleJobExecutionError extends Error {},
   jobsRepository: { summarizeOutcomesByTypeSince },
 }));
 

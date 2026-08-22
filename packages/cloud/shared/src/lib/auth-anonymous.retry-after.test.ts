@@ -26,7 +26,8 @@ mock.module("./services/anonymous-sessions", () => ({
     refundMessageSlot,
   },
 }));
-mock.module("../db/helpers", () => ({ dbRead: {} }));
+const db = {};
+mock.module("../db/helpers", () => ({ dbRead: db, dbWrite: db }));
 mock.module("../db/schemas/user-identities", () => ({ userIdentities: {} }));
 mock.module("./services/users", () => ({ usersService: {} }));
 mock.module("./utils/logger", () => ({

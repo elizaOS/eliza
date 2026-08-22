@@ -138,6 +138,8 @@ mock.module("@/lib/services/email", () => ({
 }));
 
 mock.module("@/lib/services/provisioning-jobs", () => ({
+  CONTAINER_BACKED_TARGET_REJECTION_REASON:
+    "agent_job_target_not_container_backed",
   readAdminCanaryImageJobData: (job: { data: unknown }) => job.data,
   provisioningJobService: {
     enqueueAgentSuspendOnce: mock(async () => ({

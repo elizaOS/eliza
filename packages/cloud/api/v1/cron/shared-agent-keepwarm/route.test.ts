@@ -17,6 +17,13 @@ mock.module("@/db/repositories/shared-runtime-history", () => ({
 }));
 
 mock.module("@/db/repositories/agent-sandboxes", () => ({
+  hydrateAgentSandboxBackup: async () => {
+    throw new Error("hydrateAgentSandboxBackup is outside this test path");
+  },
+  PRE_DELETE_BACKUP_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
+  prepareAgentBackupInsertData: async () => {
+    throw new Error("prepareAgentBackupInsertData is outside this test path");
+  },
   agentSandboxesRepository: { findById },
 }));
 

@@ -64,10 +64,6 @@
     "count": 1
   },
   {
-    "finding": "[missing-export] packages/cloud/api/__tests__/stripe-event-waifu.test.ts mock \"@/db/helpers\" is missing bound export(s): dbWrite, writeTransaction",
-    "count": 1
-  },
-  {
     "finding": "[missing-export] packages/cloud/api/__tests__/stripe-queue-route.test.ts mock \"@/lib/queue/redis-queue\" is missing bound export(s): drain, queueLength",
     "count": 1
   },
@@ -125,10 +121,6 @@
   },
   {
     "finding": "[missing-export] packages/cloud/api/v1/credits/checkout/route.json.test.ts mock \"@/db/helpers\" is missing bound export(s): dbWrite, writeTransaction",
-    "count": 1
-  },
-  {
-    "finding": "[missing-export] packages/cloud/api/v1/cron/shared-agent-keepwarm/route.test.ts mock \"@/db/repositories/agent-sandboxes\" is missing bound export(s): PRE_DELETE_BACKUP_RETENTION_MS, prepareAgentBackupInsertData",
     "count": 1
   },
   {
