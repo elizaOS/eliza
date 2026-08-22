@@ -6776,7 +6776,7 @@
   "cloud.privacyPanel.downloadDescription": "Agrupe suas conversas, agentes e dados de conector em um arquivo portátil (direito de exportação LGPD / CCPA).",
   "cloud.privacyPanel.export": "Exportar",
   "cloud.privacyPanel.deleteTitle": "Excluir minha conta",
-  "cloud.privacyPanel.deleteDescription": "Agenda uma exclusão suave de 30 dias. Você pode entrar novamente durante o período para cancelar. Após 30 dias, todos os dados são purgados.",
+  "cloud.privacyPanel.deleteDescription": "Consulte o status de exclusão fornecido pelo servidor. Quando a exclusão automática não estiver disponível, use o canal de suporte exibido; nenhuma solicitação é agendada sem um recibo real.",
   "cloud.privacyPanel.deleteAccount": "Excluir conta…",
   "cloud.privacyPanel.dialogTitle": "Excluir sua conta?",
   "cloud.privacyPanel.dialogIntro": "Manteremos seus dados por 30 dias caso você mude de ideia. Para confirmar, digite",

@@ -27,6 +27,26 @@ export class AccountDeletionRequestsRepository {
     return request;
   }
 
+  async findOpenByUserAndOrganization(
+    userId: string,
+    organizationId: string,
+    readFromPrimary = false,
+  ): Promise<AccountDeletionRequest | undefined> {
+    const database = readFromPrimary ? dbWrite : dbRead;
+    const [request] = await database
+      .select()
+      .from(accountDeletionRequests)
+      .where(
+        and(
+          eq(accountDeletionRequests.user_id, userId),
+          eq(accountDeletionRequests.organization_id, organizationId),
+          isNull(accountDeletionRequests.completed_at),
+        ),
+      )
+      .limit(1);
+    return request;
+  }
+
   async findById(id: string): Promise<AccountDeletionRequest | undefined> {
     const [request] = await dbRead
       .select()

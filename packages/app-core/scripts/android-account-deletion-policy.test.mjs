@@ -63,8 +63,11 @@ describe("Android Play account-deletion contract", () => {
     expect(resourcePurge).toContain("purgeOrganizationObjectStorage");
     expect(users).toContain("deletePersonalOrganizationAtomically");
     expect(appCleanup).toContain("requireContainerTeardownCompletion");
-    expect(publicPage).toContain("within 30 days");
+    expect(publicPage).toContain("server-owned availability");
     expect(publicPage).toContain("support@eliza.cloud");
+    expect(publicPage).not.toContain("useSearchParams");
+    expect(publicPage).not.toContain("requested=");
+    expect(publicPage).not.toContain("Access is disabled immediately");
     expect(publicPage).not.toContain("sign back in");
     expect(read("cloud/shared/src/lib/cron/cloudflare-cron.ts")).toContain(
       '"/api/cron/process-account-deletions"',

@@ -31,6 +31,35 @@ export interface AccountDeletionRequestDto {
   completedAt: string | null;
 }
 
+export type AccountDeletionAvailabilityStatus =
+  | "available"
+  | "transfer_required"
+  | "lifecycle_unavailable"
+  | "existing_receipt";
+
+export interface AccountDeletionSupportPath {
+  email: string;
+  href: string;
+}
+
+export type AccountDeletionAvailabilityDto =
+  | { status: "available"; request: null; support: null }
+  | {
+      status: "transfer_required" | "lifecycle_unavailable";
+      request: null;
+      support: AccountDeletionSupportPath;
+    }
+  | {
+      status: "existing_receipt";
+      request: AccountDeletionRequestDto;
+      support: null;
+    };
+
+const ACCOUNT_DELETION_SUPPORT: AccountDeletionSupportPath = {
+  email: "support@eliza.cloud",
+  href: "mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request",
+};
+
 export function toAccountDeletionRequestDto(
   request: AccountDeletionRequest,
 ): AccountDeletionRequestDto {
@@ -44,8 +73,56 @@ export function toAccountDeletionRequestDto(
   };
 }
 
-export async function getOpenAccountDeletionRequest(userId: string) {
-  return await accountDeletionRequestsRepository.findOpenByUserId(userId);
+/**
+ * Projects the authenticated account's current deletion-admission state without
+ * reserving lifecycle work or changing account authority.
+ */
+export async function getAccountDeletionAvailability(input: {
+  userId: string;
+  organizationId: string;
+}): Promise<AccountDeletionAvailabilityDto> {
+  const existing = await accountDeletionRequestsRepository.findOpenByUserAndOrganization(
+    input.userId,
+    input.organizationId,
+    true,
+  );
+  if (existing) {
+    return {
+      status: "existing_receipt",
+      request: toAccountDeletionRequestDto(existing),
+      support: null,
+    };
+  }
+
+  const members = await usersRepository.listByOrganizationForWrite(input.organizationId);
+  const current = members.find(
+    (member) => member.id === input.userId && member.organization_id === input.organizationId,
+  );
+  if (!current || !current.is_active || current.deleted_at || current.is_anonymous) {
+    return {
+      status: "lifecycle_unavailable",
+      request: null,
+      support: ACCOUNT_DELETION_SUPPORT,
+    };
+  }
+
+  if (
+    members.some((member) => member.id !== input.userId && member.is_active && !member.deleted_at)
+  ) {
+    return {
+      status: "transfer_required",
+      request: null,
+      support: ACCOUNT_DELETION_SUPPORT,
+    };
+  }
+
+  // The durable lifecycle reservation tracked by #23098 does not exist yet, so
+  // no account can truthfully be advertised as available for admission.
+  return {
+    status: "lifecycle_unavailable",
+    request: null,
+    support: ACCOUNT_DELETION_SUPPORT,
+  };
 }
 
 export async function requestAccountDeletion(input: {

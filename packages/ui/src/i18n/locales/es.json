@@ -6787,7 +6787,7 @@
   "cloud.privacyPanel.downloadDescription": "Empaqueta tus conversaciones, agentes y datos de conectores en un archivo portable (derecho a exportar RGPD / CCPA).",
   "cloud.privacyPanel.export": "Exportar",
   "cloud.privacyPanel.deleteTitle": "Eliminar mi cuenta",
-  "cloud.privacyPanel.deleteDescription": "Programa una eliminación suave de 30 días. Puedes volver a iniciar sesión durante ese período para cancelar. Después de 30 días, todos los datos se purgan.",
+  "cloud.privacyPanel.deleteDescription": "Consulta el estado de eliminación proporcionado por el servidor. Si la eliminación automática no está disponible, utiliza la vía de soporte mostrada; no se programa ninguna solicitud sin un recibo real.",
   "cloud.privacyPanel.deleteAccount": "Eliminar cuenta…",
   "cloud.privacyPanel.dialogTitle": "¿Eliminar tu cuenta?",
   "cloud.privacyPanel.dialogIntro": "Conservaremos tus datos durante 30 días por si cambias de idea. Para confirmar, escribe",

@@ -6776,7 +6776,7 @@
   "cloud.privacyPanel.downloadDescription": "대화, 에이전트 및 커넥터 데이터를 이식 가능한 아카이브로 묶습니다 (GDPR / CCPA 내보내기 권리).",
   "cloud.privacyPanel.export": "내보내기",
   "cloud.privacyPanel.deleteTitle": "내 계정 삭제",
-  "cloud.privacyPanel.deleteDescription": "30일 소프트 삭제를 예약합니다. 기간 내에 다시 로그인하여 취소할 수 있습니다. 30일 후에는 모든 데이터가 삭제됩니다.",
+  "cloud.privacyPanel.deleteDescription": "서버가 제공하는 현재 삭제 상태를 확인합니다. 자동 삭제를 사용할 수 없는 경우 표시된 지원 경로를 이용하세요. 실제 접수증이 표시되지 않으면 삭제 요청이 예약되지 않습니다.",
   "cloud.privacyPanel.deleteAccount": "계정 삭제…",
   "cloud.privacyPanel.dialogTitle": "계정을 삭제하시겠습니까?",
   "cloud.privacyPanel.dialogIntro": "마음이 바뀔 경우를 위해 30일 동안 데이터를 보관합니다. 확인하려면 다음을 입력하세요:",

@@ -35,6 +35,15 @@ const consentMock = vi.hoisted(() => ({
   setTrajectoryLoggingEnabled: vi.fn(),
   setVisionEnabled: vi.fn(),
 }));
+const deletionMock = vi.hoisted(() => ({
+  getAccountDeletionAvailability: vi.fn(async () => ({
+    status: "available" as const,
+    request: null,
+    support: null,
+  })),
+  submitAccountDeletion: vi.fn(),
+  endLocalSessionAfterDeletion: vi.fn(),
+}));
 
 vi.mock("../data/audit-client", () => ({
   emitAuditEvent: vi.fn(),
@@ -42,8 +51,7 @@ vi.mock("../data/audit-client", () => ({
 
 vi.mock("../data/consent-store", () => consentMock);
 vi.mock("../data/account-deletion-client", () => ({
-  submitAccountDeletion: vi.fn(),
-  endLocalSessionAfterDeletion: vi.fn(),
+  ...deletionMock,
 }));
 
 import { PrivacyPanel } from "./privacy-panel";
@@ -53,8 +61,9 @@ afterEach(() => {
 });
 
 describe("PrivacyPanel", () => {
-  it("routes vision and trajectory toggles through SettingsSwitchRow", () => {
+  it("routes vision and trajectory toggles through SettingsSwitchRow", async () => {
     render(<PrivacyPanel />);
+    await screen.findByTestId("delete-account-trigger");
     const vision = screen.getByTestId("vision-toggle");
     const trajectory = screen.getByTestId("trajectory-toggle");
     expect(vision.getAttribute("role")).toBe("switch");
@@ -68,12 +77,15 @@ describe("PrivacyPanel", () => {
     expect(consentMock.setVisionEnabled).toHaveBeenCalledWith(true);
   });
 
-  it("routes DSR export and delete through labelled SettingsRows", () => {
+  it("routes DSR export and available deletion through labelled SettingsRows", async () => {
     render(<PrivacyPanel />);
     expect(screen.getByText("Download my data")).toBeTruthy();
-    const del = screen.getByTestId(
+    expect(
+      screen.getByText(/Checking account deletion availability/i),
+    ).toBeTruthy();
+    const del = (await screen.findByTestId(
       "delete-account-trigger",
-    ) as HTMLButtonElement;
+    )) as HTMLButtonElement;
     expect(del.disabled).toBe(false);
     expect(del.textContent).toContain("Delete account");
     expect(screen.getByText("Export unavailable")).toBeTruthy();

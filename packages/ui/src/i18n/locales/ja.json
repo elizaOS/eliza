@@ -6776,7 +6776,7 @@
   "cloud.privacyPanel.downloadDescription": "会話、エージェント、コネクターデータを携帯可能なアーカイブにまとめます（GDPR / CCPA エクスポート権）。",
   "cloud.privacyPanel.export": "エクスポート",
   "cloud.privacyPanel.deleteTitle": "アカウントを削除",
-  "cloud.privacyPanel.deleteDescription": "30 日間のソフトデリートをスケジュールします。期間中に再度サインインすることでキャンセルできます。30 日後にすべてのデータが消去されます。",
+  "cloud.privacyPanel.deleteDescription": "サーバーが提供する現在の削除ステータスを確認します。自動削除を利用できない場合は、表示されるサポート窓口を利用してください。実際の受付票が表示されない限り、削除は予約されません。",
   "cloud.privacyPanel.deleteAccount": "アカウントを削除…",
   "cloud.privacyPanel.dialogTitle": "アカウントを削除しますか？",
   "cloud.privacyPanel.dialogIntro": "30 日間はデータを保持します（気が変わった場合に備えて）。確認するには次を入力してください:",

@@ -6769,7 +6769,7 @@
   "cloud.privacyPanel.downloadDescription": "Đóng gói cuộc trò chuyện, agent và dữ liệu connector thành tệp lưu trữ di động (quyền xuất theo GDPR / CCPA).",
   "cloud.privacyPanel.export": "Xuất",
   "cloud.privacyPanel.deleteTitle": "Xóa tài khoản của tôi",
-  "cloud.privacyPanel.deleteDescription": "Lên lịch xóa mềm 30 ngày. Bạn có thể đăng nhập lại trong thời gian này để hủy. Sau 30 ngày, tất cả dữ liệu bị xóa vĩnh viễn.",
+  "cloud.privacyPanel.deleteDescription": "Kiểm tra trạng thái xóa hiện tại do máy chủ cung cấp. Khi chưa thể xóa tự động, hãy dùng kênh hỗ trợ được hiển thị; yêu cầu chỉ được lên lịch khi có biên nhận thực.",
   "cloud.privacyPanel.deleteAccount": "Xóa tài khoản…",
   "cloud.privacyPanel.dialogTitle": "Xóa tài khoản của bạn?",
   "cloud.privacyPanel.dialogIntro": "Chúng tôi sẽ giữ dữ liệu 30 ngày phòng trường hợp bạn đổi ý. Để xác nhận, hãy nhập",

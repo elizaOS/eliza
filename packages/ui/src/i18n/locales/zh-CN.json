@@ -6776,7 +6776,7 @@
   "cloud.privacyPanel.downloadDescription": "将您的对话、智能体和连接器数据打包为可携带存档（GDPR / CCPA 数据导出权）。",
   "cloud.privacyPanel.export": "导出",
   "cloud.privacyPanel.deleteTitle": "删除我的账号",
-  "cloud.privacyPanel.deleteDescription": "计划 30 天软删除。在此期间您可以重新登录取消。30 天后，所有数据将被清除。",
+  "cloud.privacyPanel.deleteDescription": "查看服务器提供的当前删除状态。无法使用自动删除时，请使用页面显示的支持渠道；只有显示真实回执后，删除请求才算已安排。",
   "cloud.privacyPanel.deleteAccount": "删除账号…",
   "cloud.privacyPanel.dialogTitle": "删除您的账号？",
   "cloud.privacyPanel.dialogIntro": "我们将保留您的数据 30 天，以防您改变主意。请输入",

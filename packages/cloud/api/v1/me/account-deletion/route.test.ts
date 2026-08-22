@@ -24,6 +24,14 @@ const requestAccountDeletion = mock(async () => ({
   identity_deactivated_at: new Date("2026-08-19T00:00:00Z"),
   completed_at: null,
 }));
+const getAccountDeletionAvailability = mock(async () => ({
+  status: "lifecycle_unavailable",
+  request: null,
+  support: {
+    email: "support@eliza.cloud",
+    href: "mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request",
+  },
+}));
 
 mock.module("@/lib/auth/workers-hono-auth", () => ({ requireUserWithOrg }));
 mock.module("@/lib/auth/browser-origin-policy", () => ({
@@ -35,7 +43,7 @@ mock.module("@/lib/middleware/rate-limit-hono-cloudflare", () => ({
 }));
 mock.module("@/lib/services/account-deletion", () => ({
   AccountDeletionConflictError,
-  getOpenAccountDeletionRequest: mock(async () => undefined),
+  getAccountDeletionAvailability,
   requestAccountDeletion,
   toAccountDeletionRequestDto: (request: Record<string, unknown>) => ({
     requestId: request.id,
@@ -49,7 +57,36 @@ mock.module("@/lib/utils/logger", () => ({
 
 const { default: app } = await import("./route");
 
-beforeEach(() => requestAccountDeletion.mockClear());
+beforeEach(() => {
+  requestAccountDeletion.mockClear();
+  getAccountDeletionAvailability.mockClear();
+});
+
+describe("GET /api/v1/me/account-deletion", () => {
+  test("returns the authenticated tenant-scoped availability projection", async () => {
+    const response = await app.request(
+      "/",
+      { method: "GET" },
+      { NODE_ENV: "test" },
+    );
+
+    expect(response.status).toBe(200);
+    expect(getAccountDeletionAvailability).toHaveBeenCalledWith({
+      userId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+    });
+    const body: unknown = await response.json();
+    expect(body).toEqual({
+      status: "lifecycle_unavailable",
+      request: null,
+      support: {
+        email: "support@eliza.cloud",
+        href: "mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request",
+      },
+    });
+    expect(requestAccountDeletion).not.toHaveBeenCalled();
+  });
+});
 
 describe("POST /api/v1/me/account-deletion", () => {
   test("requires an explicit DELETE confirmation", async () => {

@@ -6769,7 +6769,7 @@
   "cloud.privacyPanel.downloadDescription": "I-bundle ang iyong mga pag-uusap, mga agent, at connector data sa isang portable na archive (GDPR / CCPA right-to-export).",
   "cloud.privacyPanel.export": "I-export",
   "cloud.privacyPanel.deleteTitle": "Burahin ang aking account",
-  "cloud.privacyPanel.deleteDescription": "Nag-iiskedyul ng 30-araw na soft-delete. Maaari kang mag-sign in muli sa panahon ng window para kanselahin. Pagkatapos ng 30 araw, lahat ng data ay mabubura.",
+  "cloud.privacyPanel.deleteDescription": "Tingnan ang kasalukuyang deletion status mula sa server. Kapag hindi available ang awtomatikong deletion, gamitin ang ipinapakitang support path; walang request na naka-iskedyul hangga't walang tunay na resibo.",
   "cloud.privacyPanel.deleteAccount": "Burahin ang account…",
   "cloud.privacyPanel.dialogTitle": "Burahin ang iyong account?",
   "cloud.privacyPanel.dialogIntro": "Iingatan namin ang iyong data sa loob ng 30 araw kung magbabago ang iyong isip. Para kumpirmahin, i-type ang",

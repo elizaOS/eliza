@@ -66,7 +66,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       title: t("cloud.privacy.s7Title", { defaultValue: "7. Data Retention" }),
       body: t("cloud.privacy.s7Body", {
         defaultValue:
-          "We retain personal information only as long as needed to provide the service or meet legal, tax, fraud-prevention, and security obligations. Verified account-deletion requests disable access immediately and schedule associated account data for deletion within 30 days; narrowly required records are deleted or anonymized when their retention obligation ends.",
+          "We retain personal information only as long as needed to provide the service or meet legal, tax, fraud-prevention, and security obligations. The authenticated account-deletion page reports whether automated deletion is currently available and displays a support path when it is not. A deletion is scheduled only when the service issues a receipt; narrowly required records are deleted or anonymized when their retention obligation ends.",
       }),
     },
     {
@@ -75,7 +75,7 @@ function buildSections(t: TFn): Array<{ title: string; body: string }> {
       }),
       body: t("cloud.privacy.s8Body", {
         defaultValue:
-          "Depending on your location, you may have rights to access, correct, delete, object to processing, request portability, or withdraw consent for certain personal information. You can request account deletion in Account & Security settings or at https://eliza.app/account-deletion.",
+          "Depending on your location, you may have rights to access, correct, delete, object to processing, request portability, or withdraw consent for certain personal information. Check account-deletion availability in Account & Security settings or at https://eliza.app/account-deletion; when automated deletion is unavailable, contact support@eliza.cloud.",
       }),
     },
     {

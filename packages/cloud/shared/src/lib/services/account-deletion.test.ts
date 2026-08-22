@@ -24,13 +24,21 @@ const requestRepo = {
     ...data,
   })),
   findOpenByUserId: mock(async () => undefined),
+  findOpenByUserAndOrganization: mock(async () => undefined),
   claimDue: mock(async () => []),
   recoverStaleProcessing: mock(async () => 0),
   markActionRequired: mock(async () => true),
   recordPurgeFailure: mock(async () => undefined),
 };
 const listByOrganization = mock(async () => [
-  { id: "user-1", role: "owner", is_active: true, is_anonymous: false },
+  {
+    id: "user-1",
+    organization_id: "org-1",
+    role: "owner",
+    is_active: true,
+    is_anonymous: false,
+    deleted_at: null,
+  },
 ]);
 const findByIdForWrite = mock(async () => ({ id: "user-1" }));
 const deactivateSteward = mock(async () => ({ userId: "steward-1" }));
@@ -55,6 +63,7 @@ mock.module("../../db/repositories/api-keys", () => ({
 }));
 mock.module("../../db/repositories/users", () => ({
   usersRepository: {
+    listByOrganization,
     listByOrganizationForWrite: listByOrganization,
     findByIdForWrite,
   },
@@ -80,18 +89,31 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { AccountDeletionConflictError, processDueAccountDeletions, requestAccountDeletion } =
-  await import("./account-deletion");
+const {
+  AccountDeletionConflictError,
+  getAccountDeletionAvailability,
+  processDueAccountDeletions,
+  requestAccountDeletion,
+} = await import("./account-deletion");
 
 beforeEach(() => {
   requestRepo.update.mockClear();
+  requestRepo.findOpenByUserAndOrganization.mockClear();
+  requestRepo.findOpenByUserAndOrganization.mockResolvedValue(undefined);
   requestRepo.claimDue.mockClear();
   requestRepo.recoverStaleProcessing.mockClear();
   requestRepo.markActionRequired.mockClear();
   requestRepo.markActionRequired.mockResolvedValue(true);
   listByOrganization.mockClear();
   listByOrganization.mockResolvedValue([
-    { id: "user-1", role: "owner", is_active: true, is_anonymous: false },
+    {
+      id: "user-1",
+      organization_id: "org-1",
+      role: "owner",
+      is_active: true,
+      is_anonymous: false,
+      deleted_at: null,
+    },
   ]);
   deactivateSteward.mockClear();
   deleteSteward.mockClear();
@@ -106,6 +128,81 @@ beforeEach(() => {
 });
 
 describe("account deletion lifecycle", () => {
+  test("projects the personal-account lifecycle fence without mutating account state", async () => {
+    await expect(
+      getAccountDeletionAvailability({ userId: "user-1", organizationId: "org-1" }),
+    ).resolves.toEqual({
+      status: "lifecycle_unavailable",
+      request: null,
+      support: {
+        email: "support@eliza.cloud",
+        href: "mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request",
+      },
+    });
+    expect(requestRepo.findOpenByUserAndOrganization).toHaveBeenCalledWith("user-1", "org-1", true);
+    expect(requestRepo.createIdempotent).not.toHaveBeenCalled();
+    expect(deactivateSteward).not.toHaveBeenCalled();
+    expect(updateUser).not.toHaveBeenCalled();
+    expect(updateOrg).not.toHaveBeenCalled();
+  });
+
+  test("projects transfer-required for active shared membership", async () => {
+    listByOrganization.mockResolvedValueOnce([
+      {
+        id: "user-1",
+        organization_id: "org-1",
+        role: "member",
+        is_active: true,
+        is_anonymous: false,
+        deleted_at: null,
+      },
+      {
+        id: "user-2",
+        organization_id: "org-1",
+        role: "owner",
+        is_active: true,
+        is_anonymous: false,
+        deleted_at: null,
+      },
+    ]);
+
+    const projection = await getAccountDeletionAvailability({
+      userId: "user-1",
+      organizationId: "org-1",
+    });
+
+    expect(projection.status).toBe("transfer_required");
+    expect(projection.request).toBeNull();
+    expect(projection.support?.href).toStartWith("mailto:");
+  });
+
+  test("returns only a real tenant-scoped open receipt", async () => {
+    requestRepo.findOpenByUserAndOrganization.mockResolvedValueOnce({
+      id: "request-1",
+      status: "scheduled",
+      requested_at: new Date("2026-08-19T00:00:00Z"),
+      execute_after: new Date("2026-09-18T00:00:00Z"),
+      identity_deactivated_at: null,
+      completed_at: null,
+    });
+
+    await expect(
+      getAccountDeletionAvailability({ userId: "user-1", organizationId: "org-1" }),
+    ).resolves.toEqual({
+      status: "existing_receipt",
+      request: {
+        requestId: "request-1",
+        status: "scheduled",
+        requestedAt: "2026-08-19T00:00:00.000Z",
+        scheduledDeletionAt: "2026-09-18T00:00:00.000Z",
+        identityDeactivated: false,
+        completedAt: null,
+      },
+      support: null,
+    });
+    expect(listByOrganization).not.toHaveBeenCalled();
+  });
+
   test("rejects a new personal deletion before deactivation when no reservation exists", async () => {
     const rejection = requestAccountDeletion({
       userId: "user-1",

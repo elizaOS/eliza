@@ -4,7 +4,9 @@
  *   - trajectory logging toggle (local consent store)
  *
  * Account deletion is backed by the Worker and Steward lifecycle coordinator.
- * Data export remains visible but unavailable until its export job ships.
+ * Its server-owned availability projection is rendered without claiming that
+ * the currently fenced lifecycle can schedule destructive work. Data export
+ * remains visible but unavailable until its export job ships.
  */
 
 import { Camera, Download, ScrollText, Trash2 } from "lucide-react";
@@ -122,7 +124,7 @@ export function PrivacyPanel() {
           })}
           description={t("cloud.privacyPanel.deleteDescription", {
             defaultValue:
-              "Disables access immediately and schedules your Steward identity and associated Eliza Cloud data for deletion within 30 days. Records required for legal, tax, fraud, or security purposes may be retained only as necessary.",
+              "Check the current server-owned deletion status. When automated deletion is unavailable, use the displayed support path; no request is scheduled unless a real receipt is shown.",
           })}
           control={<AccountDeletionDialog />}
         />
