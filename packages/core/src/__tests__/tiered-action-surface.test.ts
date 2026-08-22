@@ -816,6 +816,56 @@ describe("v5 tiered action surface", () => {
 		);
 	});
 
+	it("does not disclose an unauthorized inline child through tools or prompt metadata", async () => {
+		const allowedChild = makeAction({
+			name: "SAFE_CHILD",
+			description: "Allowed child description.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+		});
+		const deniedChild = makeAction({
+			name: "PRIVATE_CHILD",
+			description: "Private child description must never reach the model.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			roleGate: { minRole: "OWNER" },
+		});
+		const parent = makeAction({
+			name: "PARENT",
+			description: "Parent action.",
+			contexts: ["general" as AgentContext],
+			contextGate: { anyOf: ["general"] },
+			subActions: [allowedChild, deniedChild],
+		});
+		const runtime = makeRuntime({
+			actions: [parent, allowedChild, deniedChild],
+			responses: [
+				stage1Response({ contexts: ["general"] }),
+				plannerToolResponse("SAFE_CHILD"),
+				finishEvaluatorResponse("Allowed child completed."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("use the safe child"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const modelContext = [
+			availableActionsSection(runtime),
+			plannerUserContent(runtime),
+		].join("\n");
+		expect(plannerToolNames(runtime)).toContain("SAFE_CHILD");
+		expect(plannerToolNames(runtime)).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).toContain("SAFE_CHILD");
+		expect(modelContext).not.toContain("PRIVATE_CHILD");
+		expect(modelContext).not.toContain(
+			"Private child description must never reach the model.",
+		);
+	});
+
 	it("lets a Tier B parent invoke its sub-planner and execute child actions", async () => {
 		let createEventCalls = 0;
 		const createEvent = makeAction({

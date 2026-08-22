@@ -293,8 +293,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			contexts: ["files"],
 			handler: async () => ({ success: true }),
 		});
+		const buildGraphAction = makeMockAction({
+			name: "INSPECT_BUILD_GRAPH",
+			contexts: ["code"],
+			handler: async () => ({ success: true }),
+		});
 		const runtime = makeRuntime({
-			actions: [fileAction, mediaAction],
+			actions: [fileAction, mediaAction, buildGraphAction],
 			owner: true,
 			responses: [
 				{
@@ -358,6 +363,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		// The action passes the ordinary coding-context/role gates, so a fixed
 		// legacy name allowlist must not silently remove it from the model surface.
 		expect(plannerTools).toContain("GENERATE_MEDIA");
+		expect(plannerTools).toContain("INSPECT_BUILD_GRAPH");
 		const firstPlannerMessages = (
 			getCalls(runtime)[0]?.params as
 				| {

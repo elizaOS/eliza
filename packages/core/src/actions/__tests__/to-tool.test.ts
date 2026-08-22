@@ -335,6 +335,35 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
+	it("does not expand inline children absent from an authorized lookup", () => {
+		const allowed = makeTieredAction({
+			name: "ALLOWED_CHILD",
+			description: "Allowed child.",
+		});
+		const denied = makeTieredAction({
+			name: "DENIED_CHILD",
+			description: "Private child schema.",
+		});
+		const parent = makeTieredAction({
+			name: "PARENT",
+			description: "Parent action.",
+			subActions: [allowed, denied],
+		});
+		const onUnresolved = vi.fn();
+
+		const tools = buildPlannerToolsFromTieredActions([parent, allowed], {
+			actionLookup: new Map([["ALLOWED_CHILD", allowed]]),
+			onUnresolvedSubAction: onUnresolved,
+		});
+
+		expect(tools.map((tool) => tool.name)).toEqual(["PARENT", "ALLOWED_CHILD"]);
+		expect(JSON.stringify(tools)).not.toContain("Private child schema");
+		expect(onUnresolved).toHaveBeenCalledWith({
+			parentName: "PARENT",
+			subActionName: "DENIED_CHILD",
+		});
+	});
+
 	it("expands children when legacy tierAParents is omitted", () => {
 		const playMusic = makeTieredAction({
 			name: "PLAY_MUSIC",
