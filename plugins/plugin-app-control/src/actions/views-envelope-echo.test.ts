@@ -43,6 +43,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		getUserMessageText: actual.getUserMessageText,
 		hardenIncomingUserMessage: actual.hardenIncomingUserMessage,
 		unwrapUserMessageText: actual.unwrapUserMessageText,
+		userReferenceLogView: actual.userReferenceLogView,
 		wrapExternalContent: actual.wrapExternalContent,
 	};
 });
