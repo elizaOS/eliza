@@ -7,9 +7,10 @@
  * `SANDBOX_REGISTRY_REDIS_URL`, which gates connector inbound routing (#8621),
  * and `SECRETS_MASTER_KEY`, which unwraps Worker-written encrypted agent env
  * vars (#15385) — with **skip-empty-before-delete** semantics: an empty secret
- * value must `continue` (leaving any existing value intact) and must never reach
- * the `sed -i "/^KEY=/d"` delete. Without that ordering, a momentarily-unset
- * GitHub secret would silently blank the live key on the next deploy.
+ * value must `continue` (leaving any existing value intact) before the key is
+ * added to the atomic replacement plan. Without that ordering, a
+ * momentarily-unset GitHub secret would silently blank the live key on the next
+ * deploy.
  *
  * Runtime env parsing of `SANDBOX_REGISTRY_REDIS_URL` is covered by
  * `@elizaos/shared`'s `sandbox-registry.test.ts`; this test covers the workflow
@@ -36,15 +37,24 @@ describe("deploy-eliza-provisioning-worker reconcile loop", () => {
     expect(workflow).toContain("HEADSCALE_API_KEY=$HEADSCALE_API_KEY");
   });
 
-  it("skips empty values before deleting the key (never blanks a live secret)", () => {
-    // The guard `[ -n "$val" ] || continue` MUST appear before the
-    // `sed -i "/^${key}=/d"` delete, so an empty secret short-circuits the loop
-    // body instead of deleting (blanking) the existing key.
+  it("skips empty values before planning replacement (never blanks a live secret)", () => {
+    // append_environment_setting writes the key into ENV_REPLACEMENTS; the
+    // serializer later removes every named key before adding its assignment.
+    // The non-empty guard must therefore short-circuit before append, and the
+    // complete plan must be applied only afterward under the reconcile command.
     const guardIdx = workflow.indexOf('[ -n "$val" ] || continue');
-    const deleteCommand = 'sed -i "/^$' + '{key}=/d"';
-    const deleteIdx = workflow.indexOf(deleteCommand);
+    const appendIdx = workflow.indexOf(
+      'append_environment_setting \\\n                "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS" "$key" "$val"',
+      guardIdx,
+    );
+    const reconcileIdx = workflow.indexOf(
+      '"$NODE_BIN" "$ENV_SERIALIZER" reconcile \\\n              "$ENV_FILE" "$ENV_REPLACEMENTS" "$ENV_ASSIGNMENTS"',
+      appendIdx,
+    );
     expect(guardIdx).toBeGreaterThan(-1);
-    expect(deleteIdx).toBeGreaterThan(-1);
-    expect(guardIdx).toBeLessThan(deleteIdx);
+    expect(appendIdx).toBeGreaterThan(-1);
+    expect(reconcileIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(appendIdx);
+    expect(appendIdx).toBeLessThan(reconcileIdx);
   });
 });
