@@ -429,6 +429,34 @@ describe("ApprovalService", () => {
     expect(arg.groupKey).toBe(`approval:${enqueued.id}`);
   });
 
+  it("returns the complete matching approval set when no list limit is requested", async () => {
+    const runtime = createApprovalTableRuntime("agent-complete-list");
+    const queue = (await ApprovalService.start(runtime)).getQueue();
+    const created = [];
+    for (let index = 0; index < 25; index += 1) {
+      created.push(
+        await queue.enqueue(
+          messageInput({
+            reason: `approval-${index + 1}`,
+            idempotencyKey: `approval-complete-${index + 1}`,
+          }),
+        ),
+      );
+    }
+
+    const pending = await queue.list({
+      subjectUserId: "owner-123",
+      state: "pending",
+      action: null,
+      limit: null,
+    });
+
+    expect(pending).toHaveLength(created.length);
+    expect(new Set(pending.map((request) => request.id))).toEqual(
+      new Set(created.map((request) => request.id)),
+    );
+  });
+
   it("reconciles the exact notification projection on idempotent awaited reuse", async () => {
     const notifier = createNotifierSpy();
     const runtime = createApprovalTableRuntime("agent-notif-reuse", notifier);

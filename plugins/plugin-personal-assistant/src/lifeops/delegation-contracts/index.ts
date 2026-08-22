@@ -204,7 +204,7 @@ export function renderDelegationContractsProviderText(
 ): string {
   const active = contracts.filter((contract) => contract.status === "active");
   if (active.length === 0) return "";
-  const lines = active.slice(0, 5).map((contract) => {
+  const lines = active.map((contract) => {
     const scope =
       contract.scope.kind === "thread"
         ? `${contract.scope.channel} thread ${contract.scope.threadId}`
@@ -215,9 +215,6 @@ export function renderDelegationContractsProviderText(
     const tripwireText = tripwires.length > 0 ? tripwires : "no tripwire";
     return `- ${contract.contractId}: ${contract.objective}; scope=${scope}; autonomy=${contract.autonomyLevel}; escalate on ${tripwireText}; expires ${contract.expiresAt}`;
   });
-  if (active.length > 5) {
-    lines.push(`(+${active.length - 5} more active delegation contracts)`);
-  }
   return ["Active delegation contracts:", ...lines].join("\n");
 }
 

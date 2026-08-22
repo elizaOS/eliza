@@ -2,8 +2,8 @@
  * `workThreads` provider — surfaces active LifeOps work threads for the current
  * room and owner. Threads whose source ref is the current channel are marked
  * mutable so the planner may steer them via `lifeops_thread_control`;
- * cross-channel threads render as read-only summaries. Owner-gated, capped at
- * `MAX_THREADS`, current-room threads sorted ahead of the rest.
+ * cross-channel threads render as read-only summaries. Owner-gated, with
+ * current-room threads sorted ahead of the rest.
  */
 
 import { hasOwnerAccess } from "@elizaos/agent";
@@ -25,8 +25,6 @@ const EMPTY: ProviderResult = {
   data: { workThreads: [] },
 };
 
-const MAX_THREADS = 8;
-
 function threadMutability(thread: WorkThread, roomId: string | null): string {
   const refs = [thread.primarySourceRef, ...thread.sourceRefs];
   const currentRoomRef = roomId
@@ -41,14 +39,14 @@ function threadMutability(thread: WorkThread, roomId: string | null): string {
   return "read-only-cross-channel";
 }
 
-function renderWorkThreadsText(
+export function renderWorkThreadsText(
   threads: WorkThread[],
   roomId: string | null,
 ): string {
   if (threads.length === 0) {
     return "";
   }
-  const lines = threads.slice(0, MAX_THREADS).map((thread) => {
+  const lines = threads.map((thread) => {
     const source = thread.primarySourceRef;
     const channel =
       source.channelName ??
@@ -60,9 +58,6 @@ function renderWorkThreadsText(
       : "";
     return `- ${thread.id} [${thread.status}; ${threadMutability(thread, roomId)}; ${source.connector}/${channel}]: ${thread.title} - ${thread.summary}${plan}`;
   });
-  if (threads.length > MAX_THREADS) {
-    lines.push(`(+${threads.length - MAX_THREADS} more)`);
-  }
   return [
     "Active LifeOps work threads:",
     "Use lifeops_thread_control only for lifecycle/routing. Cross-channel entries are read-only unless current-channel mutability is shown.",
@@ -99,7 +94,6 @@ export const workThreadsProvider: Provider = {
       ? await store.list({
           statuses: ["active", "waiting", "paused"],
           roomId,
-          limit: MAX_THREADS,
         })
       : [];
     const ownerThreads = ownerEntityId
@@ -107,7 +101,6 @@ export const workThreadsProvider: Provider = {
           statuses: ["active", "waiting", "paused"],
           ownerEntityId,
           includeCrossChannel: true,
-          limit: MAX_THREADS,
         })
       : [];
     const byId = new Map<string, WorkThread>();
@@ -117,17 +110,15 @@ export const workThreadsProvider: Provider = {
     const currentRoomThreadIds = new Set(
       currentRoomThreads.map((thread) => thread.id),
     );
-    const threads = [...byId.values()]
-      .sort((a, b) => {
-        const currentRoomDelta =
-          Number(currentRoomThreadIds.has(b.id)) -
-          Number(currentRoomThreadIds.has(a.id));
-        if (currentRoomDelta !== 0) {
-          return currentRoomDelta;
-        }
-        return Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt);
-      })
-      .slice(0, MAX_THREADS);
+    const threads = [...byId.values()].sort((a, b) => {
+      const currentRoomDelta =
+        Number(currentRoomThreadIds.has(b.id)) -
+        Number(currentRoomThreadIds.has(a.id));
+      if (currentRoomDelta !== 0) {
+        return currentRoomDelta;
+      }
+      return Date.parse(b.lastActivityAt) - Date.parse(a.lastActivityAt);
+    });
     if (threads.length === 0) {
       return EMPTY;
     }

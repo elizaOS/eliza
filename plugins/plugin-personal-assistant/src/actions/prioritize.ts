@@ -115,7 +115,6 @@ export interface PrioritizeLoaders {
   ) => Promise<readonly PrioritizeRankableItem[]>;
 }
 
-const MAX_PRIORITIZE_SOURCE_ITEMS = 50;
 const TODOS_SERVICE_TYPE = "todos";
 
 type PrioritizeTodoStatus = "pending" | "in_progress";
@@ -277,10 +276,8 @@ async function loadTodosFromRuntime({
       agentId,
       status: ["pending", "in_progress"],
       includeCompleted: false,
-      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
     });
     return todos
-      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
       .map(mapTodoToRankable)
       .filter((item): item is PrioritizeRankableItem => item !== null);
   } catch (error) {
@@ -302,9 +299,8 @@ async function loadThreadsFromRuntime({
     const threads = await createWorkThreadStore(runtime).list({
       statuses: ["active", "waiting", "paused"],
       ownerEntityId,
-      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
     });
-    return threads.slice(0, MAX_PRIORITIZE_SOURCE_ITEMS).map((thread) => ({
+    return threads.map((thread) => ({
       id: thread.id,
       title: thread.title,
       summary: thread.currentPlanSummary ?? thread.summary,
@@ -367,28 +363,26 @@ async function loadDecisionsFromRuntime({
       subjectUserId,
       state: "pending",
       action: null,
-      limit: MAX_PRIORITIZE_SOURCE_ITEMS,
+      limit: null,
     });
-    return requests
-      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
-      .map((request): PrioritizeRankableItem => {
-        const approval = request as ApprovalRequestLike;
-        return {
-          id: approval.id,
-          title: approvalPayloadTitle(approval),
-          summary: approval.reason,
-          dueAt: approval.expiresAt.toISOString(),
-          metadata: metadata([
-            ["source", "approval_queue"],
-            ["action", approval.action],
-            ["channel", approval.channel],
-            ["state", approval.state],
-            ["requestedBy", approval.requestedBy],
-            ["createdAt", approval.createdAt.toISOString()],
-            ["expiresAt", approval.expiresAt.toISOString()],
-          ]),
-        };
-      });
+    return requests.map((request): PrioritizeRankableItem => {
+      const approval = request as ApprovalRequestLike;
+      return {
+        id: approval.id,
+        title: approvalPayloadTitle(approval),
+        summary: approval.reason,
+        dueAt: approval.expiresAt.toISOString(),
+        metadata: metadata([
+          ["source", "approval_queue"],
+          ["action", approval.action],
+          ["channel", approval.channel],
+          ["state", approval.state],
+          ["requestedBy", approval.requestedBy],
+          ["createdAt", approval.createdAt.toISOString()],
+          ["expiresAt", approval.expiresAt.toISOString()],
+        ]),
+      };
+    });
   } catch (error) {
     logger.warn(
       `[PRIORITIZE] rank_decisions load failed: ${errorDetail(error)}`,
@@ -437,9 +431,7 @@ async function loadCommitmentsFromLedgerAudit({
     const audit = buildCommitmentRegretAudit(records, {
       nowIso: new Date().toISOString(),
     });
-    return audit.items
-      .slice(0, MAX_PRIORITIZE_SOURCE_ITEMS)
-      .map(mapRegretAuditItemToRankable);
+    return audit.items.map(mapRegretAuditItemToRankable);
   } catch (error) {
     // error-policy:J4 same degrade contract as the sibling loaders — one
     // broken ranking source returns designed-empty instead of killing the

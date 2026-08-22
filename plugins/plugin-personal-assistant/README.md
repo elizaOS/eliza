@@ -283,6 +283,7 @@ internals; it consumes the plugin's public exports only. See
    `completed`.
 7. Snooze resets the escalation ladder.
 8. Global pause skips tasks with `respectsGlobalPause: true`.
+9. Planner-facing owner inventories are complete: fixed-count slices must not silently hide approvals, delegation contracts, work threads, todos, or commitments.
 
 ## Where to look next
 

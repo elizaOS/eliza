@@ -300,7 +300,7 @@ export function buildResolveRequestChoice(
     kind: "choice",
     id: `approval-resolve-${Date.now().toString(36)}`,
     scope: "approval-resolve",
-    options: pending.slice(0, 5).map((request) => ({
+    options: pending.map((request) => ({
       value: `${intent} ${request.id}`,
       label: truncateReason(request.reason),
     })),
@@ -2119,7 +2119,7 @@ async function resolveApprovalRequest(
     subjectUserId,
     state: "pending",
     action: null,
-    limit: 20,
+    limit: null,
   });
   const selfPending =
     subjectUserId === SELF_ENTITY_ID
@@ -2129,7 +2129,7 @@ async function resolveApprovalRequest(
             subjectUserId: SELF_ENTITY_ID,
             state: "pending",
             action: "execute_workflow",
-            limit: 20,
+            limit: null,
           })
         ).filter((request) => {
           const household = readHouseholdProposalApprovalTarget(request);
