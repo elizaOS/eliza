@@ -720,11 +720,12 @@ describe("E2BRemoteCapabilityRouterService", () => {
       entry("/workspace/README.md", "README.md", FILE_ENTRY),
     ]);
     let attempts = 0;
+    const transientError = new Error("transient sandbox provisioning failure");
     const factory: E2BSandboxFactory = {
       create: async () => {
         attempts += 1;
         if (attempts === 1) {
-          throw new Error("transient sandbox provisioning failure");
+          throw transientError;
         }
         return sandbox;
       },
@@ -735,9 +736,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       factory,
     );
 
-    await expect(service.fs.list({})).rejects.toThrow(
-      "transient sandbox provisioning failure",
-    );
+    await expect(service.fs.list({})).rejects.toBe(transientError);
 
     const result = await service.fs.list({});
     expect(result.entries.map((item) => item.name)).toEqual(["README.md"]);
@@ -751,13 +750,14 @@ describe("E2BRemoteCapabilityRouterService", () => {
     const factory = new FakeFactory(sandbox);
     const runCommand = sandbox.commands.run.bind(sandbox.commands);
     let preparationAttempts = 0;
+    const transientError = new Error("transient workspace preparation failure");
     vi.spyOn(sandbox.commands, "run").mockImplementation(async (cmd, opts) => {
       const result = await runCommand(cmd, opts);
       if (cmd.startsWith("mkdir ")) {
         preparationAttempts += 1;
         if (preparationAttempts === 1) {
           // Model a lost response after mkdir has already mutated the workspace.
-          throw new Error("transient workspace preparation failure");
+          throw transientError;
         }
       }
       return result;
@@ -768,9 +768,7 @@ describe("E2BRemoteCapabilityRouterService", () => {
       factory,
     );
 
-    await expect(service.fs.list({})).rejects.toThrow(
-      "transient workspace preparation failure",
-    );
+    await expect(service.fs.list({})).rejects.toBe(transientError);
     expect(factory.configs).toHaveLength(1);
     expect(preparationAttempts).toBe(1);
     expect(sandbox.files.listCalls).toHaveLength(0);
