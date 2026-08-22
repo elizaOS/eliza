@@ -7,14 +7,17 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { constants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { canonicalJsonString } from "@elizaos/shared/canonical-json";
 import type {
   SyntheticControlSession,
   SyntheticManifest,
 } from "@elizaos/shared/synthetic-control";
 import {
+  assertScenarioStabilityBoundedJson,
   parseScenarioStabilityAttemptExecution,
   SCENARIO_STABILITY_MAX_ATTEMPT_JSON_BYTES,
   type ScenarioStabilityAttemptExecution,
@@ -67,6 +70,121 @@ interface AttemptBoundary {
   processGroupId: number | null;
 }
 
+interface DirectoryIdentity {
+  path: string;
+  dev: number;
+  ino: number;
+}
+
+async function ensureIsolatedDirectory(
+  directory: string,
+  authorityRoot: string,
+): Promise<DirectoryIdentity[]> {
+  if (!path.isAbsolute(directory) || path.resolve(directory) !== directory) {
+    throw new Error(
+      "stability output directory must be an absolute canonical path",
+    );
+  }
+  const relative = path.relative(authorityRoot, directory);
+  if (
+    relative === ".." ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  ) {
+    throw new Error(
+      "stability output directory must remain inside the adapter cwd",
+    );
+  }
+  const rootStat = await fs.lstat(authorityRoot);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+    throw new Error("stability adapter cwd must be a real directory");
+  }
+  const segments = relative.split(path.sep).filter(Boolean);
+  let current = authorityRoot;
+  const identities: DirectoryIdentity[] = [
+    { path: authorityRoot, dev: rootStat.dev, ino: rootStat.ino },
+  ];
+  for (const segment of segments) {
+    current = path.join(current, segment);
+    try {
+      await fs.mkdir(current, { mode: 0o700 });
+    } catch (error) {
+      // error-policy:J3 EEXIST is admitted only after the path is proven to be a real directory below.
+      if (
+        !(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === "EEXIST"
+        )
+      )
+        throw error;
+    }
+    const stat = await fs.lstat(current);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(
+        `stability output path traverses a non-directory or symlink: ${current}`,
+      );
+    }
+    identities.push({ path: current, dev: stat.dev, ino: stat.ino });
+  }
+  return identities;
+}
+
+async function verifyDirectoryIdentities(
+  identities: readonly DirectoryIdentity[],
+): Promise<void> {
+  for (const identity of identities) {
+    const stat = await fs.lstat(identity.path);
+    if (
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      stat.dev !== identity.dev ||
+      stat.ino !== identity.ino
+    ) {
+      throw new Error(
+        `stability output directory identity changed: ${identity.path}`,
+      );
+    }
+  }
+}
+
+async function authorityInitialStateHash(
+  session: SyntheticControlSession,
+): Promise<string> {
+  const raw = await session.execute({ type: "snapshot" });
+  assertScenarioStabilityBoundedJson(raw, "synthetic initial snapshot");
+  const snapshot = structuredClone(raw) as unknown;
+  if (snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)) {
+    const record = snapshot as Record<string, unknown>;
+    // This top-level field is the fixture authority's documented control
+    // envelope, not domain state. Preserve the field while normalizing its value.
+    if (Object.hasOwn(record, "generation")) {
+      if (record.generation !== session.generation) {
+        throw new Error(
+          "synthetic snapshot generation does not match the leased session",
+        );
+      }
+      record.generation = "$synthetic-control-generation";
+    }
+  }
+  return canonicalSha256(snapshot, "synthetic initial snapshot");
+}
+
+function canonicalSha256(value: unknown, source: string): string {
+  assertScenarioStabilityBoundedJson(value, source);
+  const canonical = canonicalJsonString(value, {
+    maxDepth: 32,
+    maxNodes: 100_000,
+    maxOutputChars: SCENARIO_STABILITY_MAX_ATTEMPT_JSON_BYTES,
+    sparseArrayHoles: "null",
+    onUnbounded: () => {
+      throw new Error(`${source} exceeds canonical JSON limits`);
+    },
+  });
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
 function isLoopbackUrl(raw: string): boolean {
   const url = new URL(raw);
   return (
@@ -75,7 +193,9 @@ function isLoopbackUrl(raw: string): boolean {
       url.hostname === "[::1]" ||
       url.hostname.startsWith("127.")) &&
     !url.username &&
-    !url.password
+    !url.password &&
+    !url.search &&
+    !url.hash
   );
 }
 
@@ -111,7 +231,11 @@ function validateOptions(
       "strict stability subprocess isolation requires POSIX process groups",
     );
   }
-  if (!path.isAbsolute(options.command) || !path.isAbsolute(options.cwd)) {
+  if (
+    !path.isAbsolute(options.command) ||
+    !path.isAbsolute(options.cwd) ||
+    path.resolve(options.cwd) !== options.cwd
+  ) {
     throw new Error("stability subprocess command and cwd must be absolute");
   }
   validateEnvironment(options.env ?? {}, "stability subprocess env");
@@ -162,6 +286,59 @@ function appendBounded(
   return total;
 }
 
+function sanitizedStderr(
+  options: ScenarioStabilitySubprocessAdapterOptions,
+  chunks: readonly Buffer[],
+): Buffer {
+  let text = new TextDecoder().decode(Buffer.concat(chunks));
+  const secrets = [
+    options.syntheticControl.controlToken,
+    ...(options.modelMode.kind === "real-llm"
+      ? [options.modelMode.credentialValue]
+      : []),
+  ];
+  for (const secret of secrets) {
+    if (secret.length > 0) text = text.replaceAll(secret, "[REDACTED_SECRET]");
+  }
+  text = Array.from(text, (character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return (code < 32 && character !== "\n" && character !== "\t") ||
+      code === 127
+      ? "?"
+      : character;
+  }).join("");
+  return Buffer.from(text, "utf8");
+}
+
+async function persistStderrArtifact(
+  outputDir: string,
+  identities: readonly DirectoryIdentity[],
+  bytes: Buffer,
+): Promise<{ path: string; sha256: string; bytes: number }> {
+  await verifyDirectoryIdentities(identities);
+  const artifactPath = path.join(outputDir, "subprocess.stderr.log");
+  const handle = await fs.open(
+    artifactPath,
+    constants.O_CREAT |
+      constants.O_EXCL |
+      constants.O_NOFOLLOW |
+      constants.O_WRONLY,
+    0o600,
+  );
+  try {
+    await handle.writeFile(bytes);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await verifyDirectoryIdentities(identities);
+  return {
+    path: artifactPath,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.byteLength,
+  };
+}
+
 function signalProcessGroup(
   processGroupId: number | null,
   signal: NodeJS.Signals,
@@ -209,6 +386,7 @@ function childEnvironment(
   options: ScenarioStabilitySubprocessAdapterOptions,
   input: Parameters<ScenarioStabilityExecutionAdapter["execute"]>[0],
   session: SyntheticControlSession,
+  initialStateHash: string,
 ): NodeJS.ProcessEnv {
   const mode = options.modelMode;
   return {
@@ -238,6 +416,7 @@ function childEnvironment(
     ELIZA_SYNTHETIC_NAMESPACE: session.manifest.namespace,
     ELIZA_SYNTHETIC_MANIFEST_ID: session.manifest.manifestId,
     ELIZA_SYNTHETIC_GENERATION: String(session.generation),
+    ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH: initialStateHash,
     ELIZA_STABILITY_ATTEMPT_ID: input.attemptId,
     ELIZA_STABILITY_OUTPUT_DIR: input.outputDir,
     ELIZA_STABILITY_SCENARIO_ID: input.target.scenarioId,
@@ -269,7 +448,10 @@ export class ScenarioStabilitySubprocessAdapter
       );
     }
     if (input.signal.aborted) throw input.signal.reason;
-    await fs.mkdir(input.outputDir, { recursive: true });
+    const outputIdentities = await ensureIsolatedDirectory(
+      input.outputDir,
+      this.options.cwd,
+    );
     const session = await this.#openSession({
       controlUrl: this.options.syntheticControl.controlUrl,
       controlToken: this.options.syntheticControl.controlToken,
@@ -283,6 +465,7 @@ export class ScenarioStabilitySubprocessAdapter
       processGroupId: null,
     };
     this.#boundaries.set(input.attemptId, boundary);
+    const initialStateHash = await authorityInitialStateHash(session);
     const child = spawn(
       this.options.command,
       this.options.args({
@@ -295,7 +478,7 @@ export class ScenarioStabilitySubprocessAdapter
         detached: true,
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
-        env: childEnvironment(this.options, input, session),
+        env: childEnvironment(this.options, input, session, initialStateHash),
       },
     );
     boundary.child = child;
@@ -353,14 +536,25 @@ export class ScenarioStabilitySubprocessAdapter
     try {
       exitCode = await new Promise<number | null>((resolve, reject) => {
         child.once("error", reject);
-        child.once("exit", resolve);
+        child.once("close", resolve);
       });
     } finally {
       input.signal.removeEventListener("abort", abort);
     }
+    const stderrArtifact = await persistStderrArtifact(
+      input.outputDir,
+      outputIdentities,
+      sanitizedStderr(this.options, stderr),
+    );
     if (outputFailure) throw outputFailure;
     if (exitCode !== 0) {
-      throw new Error("stability subprocess exited unsuccessfully");
+      const excerpt = new TextDecoder()
+        .decode(await fs.readFile(stderrArtifact.path))
+        .trim()
+        .slice(0, 4_000);
+      throw new Error(
+        `stability subprocess exited unsuccessfully${excerpt ? `: ${excerpt}` : ""}`,
+      );
     }
     let parsed: unknown;
     try {
@@ -372,25 +566,58 @@ export class ScenarioStabilitySubprocessAdapter
       throw new Error("stability subprocess returned invalid JSON", { cause });
     }
     const execution = parseScenarioStabilityAttemptExecution(parsed);
+    if (execution.initialStateHash !== initialStateHash) {
+      throw new Error(
+        "subprocess initial state hash does not match synthetic authority snapshot",
+      );
+    }
     if (this.options.modelMode.kind === "deterministic-mock") {
       const expected = this.options.modelMode.fixtureManifestFingerprint;
-      const attested = execution.evidence.providerReceipts.some((value) => {
-        if (!value || typeof value !== "object" || Array.isArray(value)) {
+      const authoritative = execution.evidence.providerReceipts.filter(
+        (value) =>
+          value &&
+          typeof value === "object" &&
+          !Array.isArray(value) &&
+          (value as Record<string, unknown>).fixtureMode === "strict-fixtures",
+      );
+      const record = authoritative[0] as Record<string, unknown> | undefined;
+      if (
+        authoritative.length !== 1 ||
+        !record ||
+        record.fixtureManifestFingerprint !== expected ||
+        record.unmatchedCalls !== 0 ||
+        record.ambiguousCalls !== 0 ||
+        record.unusedRequiredFixtures !== 0 ||
+        record.overconsumedFixtures !== 0
+      ) {
+        throw new Error(
+          "deterministic subprocess must provide exactly one exact zero-diagnostic fixture receipt",
+        );
+      }
+    } else {
+      const receipts = execution.evidence.providerReceipts.filter((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value))
           return false;
-        }
-        const record = value as Record<string, unknown>;
         return (
-          record.fixtureMode === "strict-fixtures" &&
-          record.fixtureManifestFingerprint === expected &&
-          record.unmatchedCalls === 0 &&
-          record.ambiguousCalls === 0 &&
-          record.unusedRequiredFixtures === 0 &&
-          record.overconsumedFixtures === 0
+          (value as Record<string, unknown>).receiptType ===
+          "eliza.stability.real-llm.v1"
         );
       });
-      if (!attested) {
+      const receipt = receipts[0] as Record<string, unknown> | undefined;
+      if (
+        receipts.length !== 1 ||
+        !receipt ||
+        receipt.provider !== input.target.model.provider ||
+        receipt.model !== input.target.model.model ||
+        receipt.liveModelInvoked !== true ||
+        receipt.namespace !== session.manifest.namespace ||
+        receipt.manifestId !== session.manifest.manifestId ||
+        receipt.generation !== session.generation ||
+        receipt.unexpectedRealServiceCalls !== 0 ||
+        receipt.unexpectedNetworkCalls !== 0
+      ) {
         throw new Error(
-          "deterministic subprocess did not attest exact zero-diagnostic fixture consumption",
+          "real-LLM subprocess did not provide one exact mock-world invocation receipt",
         );
       }
     }
@@ -400,11 +627,16 @@ export class ScenarioStabilitySubprocessAdapter
       namespace: session.manifest.namespace,
       manifestId: session.manifest.manifestId,
       generation: session.generation,
-      manifestFingerprint: createHash("sha256")
-        .update(JSON.stringify(session.manifest))
-        .digest("hex"),
+      manifestFingerprint: canonicalSha256(
+        session.manifest,
+        "synthetic manifest",
+      ),
       modelMode: this.options.modelMode.kind,
       mockServicesRequired: true,
+      authorityInitialStateHash: initialStateHash,
+      stderrArtifact: stderrArtifact.path,
+      stderrSha256: stderrArtifact.sha256,
+      stderrBytes: stderrArtifact.bytes,
     };
     return parseScenarioStabilityAttemptExecution({
       ...execution,

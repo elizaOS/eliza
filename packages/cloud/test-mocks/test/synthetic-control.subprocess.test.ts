@@ -140,7 +140,7 @@ describe("synthetic control subprocess protocol", () => {
     temporaryDirectories.push(outputRoot);
     const fixtureFingerprint = "f".repeat(64);
     const childScript = `
-      const hash = "a".repeat(64);
+      const hash = process.env.ELIZA_STABILITY_AUTHORITY_INITIAL_STATE_HASH;
       process.stdout.write(JSON.stringify({
         passed: true,
         initialStateHash: hash,
@@ -218,7 +218,7 @@ describe("synthetic control subprocess protocol", () => {
           passedAttempts: 3,
           tier: "3/3",
           strictPassed: true,
-          baselineInitialStateHash: "a".repeat(64),
+          baselineInitialStateHash: expect.stringMatching(/^[a-f0-9]{64}$/),
         },
       ],
       focusList: [],
