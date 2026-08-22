@@ -46,7 +46,7 @@ describe("decideReleaseAdmission", () => {
     });
   });
 
-  it("keeps an ordinary staging dispatch under latest-wins admission", () => {
+  it("preserves ordinary manual staging admission", () => {
     expect(
       decideReleaseAdmission({
         ...staging,
@@ -55,8 +55,8 @@ describe("decideReleaseAdmission", () => {
         runId: "199",
       }),
     ).toEqual({
-      shouldDeploy: false,
-      reason: "superseded-staging-run",
+      shouldDeploy: true,
+      reason: "non-supersedable-release",
     });
   });
 
