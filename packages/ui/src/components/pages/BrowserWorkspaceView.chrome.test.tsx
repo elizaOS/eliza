@@ -70,6 +70,9 @@ vi.mock("../../api", async (importOriginal) => {
       openBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
+      showBrowserWorkspaceTab: vi
+        .fn()
+        .mockRejectedValue(new Error("no api in test")),
       navigateBrowserWorkspaceTab: vi
         .fn()
         .mockRejectedValue(new Error("no api in test")),
@@ -152,6 +155,9 @@ beforeEach(() => {
     tabs: [],
   });
   vi.mocked(client.openBrowserWorkspaceTab).mockRejectedValue(
+    new Error("no api in test"),
+  );
+  vi.mocked(client.showBrowserWorkspaceTab).mockRejectedValue(
     new Error("no api in test"),
   );
   vi.mocked(client.navigateBrowserWorkspaceTab).mockRejectedValue(
@@ -241,6 +247,53 @@ describe("BrowserWorkspaceView fullscreen chrome (Notes/Calendar parity)", () =>
         expect(client.openBrowserWorkspaceTab).toHaveBeenCalledWith(
           expect.objectContaining({ url: previewUrl }),
         ),
+      );
+    } finally {
+      window.history.replaceState({}, "", "/");
+    }
+  });
+
+  it("reloads an existing app preview when the same browse route is requested again", async () => {
+    const previewPath = "/api/apps/local/nubs-color-pebble/";
+    const previewUrl = `${window.location.origin}${previewPath}`;
+    const previewTab = {
+      ...GOOGLE_WORKSPACE.tabs[0],
+      id: "tab-preview",
+      title: "Nubs Color Pebble",
+      url: previewUrl,
+    };
+    const previewWorkspace = { mode: "web" as const, tabs: [previewTab] };
+    vi.mocked(client.getBrowserWorkspace).mockResolvedValue(previewWorkspace);
+    vi.mocked(client.showBrowserWorkspaceTab).mockResolvedValue({
+      tab: previewTab,
+    });
+    window.history.replaceState(
+      {},
+      "",
+      `/browser?browse=${encodeURIComponent(previewPath)}`,
+    );
+
+    try {
+      render(<BrowserWorkspaceView />);
+      await waitFor(() =>
+        expect(client.showBrowserWorkspaceTab).toHaveBeenCalledTimes(1),
+      );
+      const firstFrame = screen.getByTitle("Nubs Color Pebble");
+
+      act(() => {
+        window.history.pushState(
+          {},
+          "",
+          `/browser?browse=${encodeURIComponent(previewPath)}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
+
+      await waitFor(() =>
+        expect(client.showBrowserWorkspaceTab).toHaveBeenCalledTimes(2),
+      );
+      await waitFor(() =>
+        expect(screen.getByTitle("Nubs Color Pebble")).not.toBe(firstFrame),
       );
     } finally {
       window.history.replaceState({}, "", "/");

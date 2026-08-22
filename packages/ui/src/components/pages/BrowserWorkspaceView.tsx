@@ -583,6 +583,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
+  const [tabReloadVersions, setTabReloadVersions] = useState<
+    Record<string, number>
+  >({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
   // The folded-tab switcher overlay (#13596). The browser folds every tab into
   // this one switcher instead of a permanent sidebar strip, so this is the only
@@ -1820,6 +1823,35 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     lifecycle: BROWSER_SURFACE_MANIFEST.lifecycle,
   });
 
+  const reloadBrowserWorkspaceTab = useCallback(
+    async (tab: BrowserWorkspaceTab) => {
+      if (browserTabRenderPath === "native-mobile-webview") {
+        nativeTabSurfaces.reloadSurface(tab.id);
+        return;
+      }
+      if (workspace.mode === "web") {
+        // A repeated /browser?browse=<same app URL> is an explicit refresh
+        // request, not merely a request to focus the existing tab. Remount the
+        // sandboxed iframe so a rebuilt app and its hashed assets load without
+        // creating a duplicate Browser tab.
+        setTabReloadVersions((current) => ({
+          ...current,
+          [tab.id]: (current[tab.id] ?? 0) + 1,
+        }));
+        return;
+      }
+      if (workspace.mode === "desktop") {
+        const tag = electrobunWebviewRefs.current.get(tab.id);
+        if (tag) {
+          tag.reload();
+          return;
+        }
+      }
+      await client.navigateBrowserWorkspaceTab(tab.id, tab.url);
+    },
+    [browserTabRenderPath, nativeTabSurfaces, workspace.mode],
+  );
+
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
       tabId: string;
@@ -2346,12 +2378,13 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     );
     if (existing) {
       void runBrowserWorkspaceAction(
-        `show:${existing.id}`,
+        `refresh:${existing.id}`,
         async () => {
           await activateBrowserWorkspaceTab(existing.id);
+          await reloadBrowserWorkspaceTab(existing);
         },
         t("browserworkspace.OpenInitialBrowseFailed", {
-          defaultValue: "Failed to activate the requested browser tab.",
+          defaultValue: "Failed to refresh the requested browser tab.",
         }),
       );
       return;
@@ -2371,6 +2404,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
     browseRequest,
     loading,
     openNewBrowserWorkspaceTab,
+    reloadBrowserWorkspaceTab,
     runBrowserWorkspaceAction,
     t,
     workspace.tabs,
@@ -2378,35 +2412,8 @@ export function BrowserWorkspaceView(): React.JSX.Element {
 
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
-    if (browserTabRenderPath === "native-mobile-webview") {
-      nativeTabSurfaces.reloadSurface(selectedTab.id);
-      return;
-    }
-    if (workspace.mode === "web") {
-      const iframe = iframeRefs.current.get(selectedTab.id);
-      if (iframe) {
-        beginBrowserWalletFrameNavigation(selectedTab.id, selectedTab.url);
-        armBrowserWorkspaceIframeFocusReturn(iframe, {
-          navigationUrl: selectedTab.url,
-        });
-        iframe.src = selectedTab.url;
-      }
-      return;
-    }
-    if (workspace.mode === "desktop") {
-      const tag = electrobunWebviewRefs.current.get(selectedTab.id);
-      tag?.reload();
-      return;
-    }
-    await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
-  }, [
-    armBrowserWorkspaceIframeFocusReturn,
-    beginBrowserWalletFrameNavigation,
-    browserTabRenderPath,
-    nativeTabSurfaces,
-    selectedTab,
-    workspace.mode,
-  ]);
+    await reloadBrowserWorkspaceTab(selectedTab);
+  }, [reloadBrowserWorkspaceTab, selectedTab]);
 
   const installBrowserBridgeExtension = useCallback(async () => {
     await runBrowserWorkspaceAction(
@@ -3135,7 +3142,7 @@ export function BrowserWorkspaceView(): React.JSX.Element {
           }
           return (
             <iframe
-              key={tab.id}
+              key={`${tab.id}:${tabReloadVersions[tab.id] ?? 0}`}
               ref={(iframe) => registerBrowserWorkspaceIframe(tab.id, iframe)}
               title={getBrowserWorkspaceTabLabel(tab, t)}
               src={tab.url}
