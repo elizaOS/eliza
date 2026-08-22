@@ -18,7 +18,6 @@ import { formatAppCandidates, resolveInstalledApp } from "../resolve.js";
 import {
 	appLaunchViewClientId,
 	type BrowserViewNavigationResult,
-	browserViewPathForLaunchUrl,
 	isRealtimeVoiceAppLaunch,
 	openLaunchUrlInBrowserView,
 } from "../services/browser-view-navigation.js";

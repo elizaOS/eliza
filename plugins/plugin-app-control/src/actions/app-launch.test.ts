@@ -41,13 +41,21 @@ function client(): AppControlClient {
 }
 
 const message = {
-	content: { text: "open nubs color pebble" },
+	content: {
+		text: "open nubs color pebble",
+		metadata: { viewClientId: "chat-client-1" },
+	},
 } as Memory;
 
 describe("APP launch Browser handoff", () => {
 	it("opens the launch URL in Browser and keeps the run id internal", async () => {
 		const callback = vi.fn<HandlerCallback>();
-		const openBrowserView = vi.fn(async () => true);
+		const openBrowserView = vi.fn(async () => ({
+			path: "/browser?browse=app",
+			status: "delivered" as const,
+			completedActionDelivered: true,
+			completedActionHandoffId: "handoff-1",
+		}));
 
 		const result = await runLaunch({
 			client: client(),
@@ -58,6 +66,7 @@ describe("APP launch Browser handoff", () => {
 
 		expect(openBrowserView).toHaveBeenCalledWith(
 			"/api/apps/local/nubs-color-pebble/",
+			{ originatingClientId: "chat-client-1", realtimeVoice: false },
 		);
 		expect(result.text).toBe('{"effect":"app_launch","status":"completed"}');
 		expect(result.transcriptVisibility).toBe("internal");
@@ -71,6 +80,7 @@ describe("APP launch Browser handoff", () => {
 			appName: "nubs-color-pebble",
 			displayName: "Nubs Color Pebble",
 			openedInBrowser: true,
+			browserNavigationStatus: "delivered",
 			link: {
 				label: "Open Nubs Color Pebble",
 				href: "/api/apps/local/nubs-color-pebble/",
@@ -79,6 +89,9 @@ describe("APP launch Browser handoff", () => {
 		expect(result.values).toMatchObject({
 			openedInBrowser: true,
 			runId: "internal-run-id",
+			viewId: "browser",
+			viewPath: "/browser?browse=app",
+			completedActionHandoffId: "handoff-1",
 		});
 		expect(callback).not.toHaveBeenCalled();
 	});
@@ -87,7 +100,12 @@ describe("APP launch Browser handoff", () => {
 		const result = await runLaunch({
 			client: client(),
 			message,
-			openBrowserView: vi.fn(async () => false),
+			openBrowserView: vi.fn(async () => ({
+				path: "/browser?browse=app",
+				status: "unavailable" as const,
+				completedActionDelivered: false,
+				errorCode: "RENDERER_UNAVAILABLE" as const,
+			})),
 		});
 
 		expect(result.modelReplyRequired).toBe(true);
@@ -96,6 +114,8 @@ describe("APP launch Browser handoff", () => {
 			operation: "launch_app",
 			outcome: "success",
 			openedInBrowser: false,
+			browserNavigationStatus: "unavailable",
+			browserNavigationError: "RENDERER_UNAVAILABLE",
 			link: {
 				label: "Open Nubs Color Pebble",
 				href: "/api/apps/local/nubs-color-pebble/",
