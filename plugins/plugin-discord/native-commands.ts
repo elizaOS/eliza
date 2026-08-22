@@ -241,9 +241,9 @@ export function buildCommandArgCustomId(params: {
 	userId: string;
 }): string {
 	for (const [field, value] of Object.entries(params)) {
-		if (toWellFormedUnicode(value) !== value) {
+		if (value.length === 0 || toWellFormedUnicode(value) !== value) {
 			throw new ElizaError(
-				"Discord command button identifiers require valid Unicode inputs",
+				"Discord command button identifiers require non-empty valid Unicode inputs",
 				{
 					code: "DISCORD_COMMAND_CUSTOM_ID_INPUT_INVALID",
 					context: { field },

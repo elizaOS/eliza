@@ -197,20 +197,35 @@ describe("Discord command projection Unicode safety", () => {
 	});
 
 	it("accepts a command button custom ID at the exact protocol boundary", () => {
-		const fixedLength = buildCommandArgCustomId({
+		const oneValueLength = buildCommandArgCustomId({
 			command: "mode",
 			arg: "level",
-			value: "",
+			value: "v",
 			userId: "user-123",
 		}).length;
 		const customId = buildCommandArgCustomId({
 			command: "mode",
 			arg: "level",
-			value: "v".repeat(100 - fixedLength),
+			value: "v".repeat(100 - oneValueLength + 1),
 			userId: "user-123",
 		});
 
 		expect(customId).toHaveLength(100);
+	});
+
+	it("rejects an empty command button value that cannot round-trip", () => {
+		expect(() =>
+			buildCommandArgCustomId({
+				command: "mode",
+				arg: "level",
+				value: "",
+				userId: "user-123",
+			}),
+		).toThrowError(
+			expect.objectContaining({
+				code: "DISCORD_COMMAND_CUSTOM_ID_INPUT_INVALID",
+			}),
+		);
 	});
 
 	it("rejects a percent-encoded command button custom ID above the limit", () => {
