@@ -193,9 +193,11 @@ function timeoutSignal(
   timeoutMs?: number,
   signal?: AbortSignal,
 ): AbortSignal | undefined {
-  if (signal) return signal;
-  if (!timeoutMs) return undefined;
-  return AbortSignal.timeout(timeoutMs);
+  if (!timeoutMs) return signal;
+  if (!signal) return AbortSignal.timeout(timeoutMs);
+  // Compose both so a caller-owned signal cannot silently discard the
+  // per-request deadline (and vice versa): whichever fires first aborts.
+  return AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]);
 }
 
 export class CloudApiError extends Error {

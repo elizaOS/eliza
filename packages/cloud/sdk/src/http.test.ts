@@ -320,3 +320,85 @@ describe("ElizaCloudHttpClient errors", () => {
     });
   });
 });
+
+describe("ElizaCloudHttpClient abort and deadline composition", () => {
+  function capturingFetch(calls: Array<{ init: RequestInit }>): typeof fetch {
+    return asFetch(async (_input, init = {}) => {
+      calls.push({ init });
+      return Response.json({ success: true });
+    });
+  }
+
+  it("combines a caller signal with timeoutMs so the per-request deadline still fires", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: capturingFetch(calls),
+    });
+    const controller = new AbortController();
+
+    await client.requestRaw("GET", "/api/slow", {
+      timeoutMs: 5,
+      signal: controller.signal,
+    });
+
+    const passedSignal = calls[0].init.signal;
+    // The deadline must not silently vanish when a caller signal is present.
+    expect(passedSignal).toBeDefined();
+    expect(passedSignal).not.toBe(controller.signal);
+    const deadlineSignal = passedSignal as AbortSignal;
+    const waitUntilAborted = async (): Promise<boolean> => {
+      const startedAt = Date.now();
+      while (!deadlineSignal.aborted && Date.now() - startedAt < 2_000) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+      return deadlineSignal.aborted;
+    };
+    await expect(waitUntilAborted()).resolves.toBe(true);
+  });
+
+  it("aborts the combined signal when the caller's own signal fires first", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: capturingFetch(calls),
+    });
+    const controller = new AbortController();
+
+    await client.requestRaw("GET", "/api/slow", {
+      timeoutMs: 60_000,
+      signal: controller.signal,
+    });
+
+    const passedSignal = calls[0].init.signal as AbortSignal;
+    controller.abort();
+    expect(passedSignal.aborted).toBe(true);
+  });
+
+  it("passes a bare caller signal through unchanged", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: capturingFetch(calls),
+    });
+    const controller = new AbortController();
+
+    await client.requestRaw("GET", "/api/x", { signal: controller.signal });
+
+    expect(calls[0].init.signal).toBe(controller.signal);
+  });
+
+  it("derives a deadline-only signal when only timeoutMs is given", async () => {
+    const calls: Array<{ init: RequestInit }> = [];
+    const client = new ElizaCloudHttpClient({
+      baseUrl: "https://cloud.test",
+      fetchImpl: capturingFetch(calls),
+    });
+
+    await client.requestRaw("GET", "/api/x", { timeoutMs: 60_000 });
+
+    const passedSignal = calls[0].init.signal;
+    expect(passedSignal).toBeInstanceOf(AbortSignal);
+    expect((passedSignal as AbortSignal).aborted).toBe(false);
+  });
+});
