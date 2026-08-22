@@ -24,7 +24,7 @@ function holdHandlers() {
 }
 
 describe("HomePill", () => {
-  it("renders an accessible button with only a compact white visual handle", () => {
+  it("paints the complete accessible resting target for exact native hit bounds", () => {
     render(<HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />);
     const btn = screen.getByRole("button", { name: /open eliza/i });
     expect(btn).toBeTruthy();
@@ -33,8 +33,9 @@ describe("HomePill", () => {
     expect(mark.className).toContain("w-12");
     expect(mark.className).toContain("shadow-[0_0_0_1px_rgba(0,0,0,0.12)]");
     expect(btn.textContent).toBe("");
-    expect(btn.style.backgroundColor).toBe("");
-    expect(btn.className).toContain("h-8");
+    expect(btn.className).toContain("bg-[#181a20]/95");
+    expect(btn.className).toContain("h-11");
+    expect(btn.className).not.toContain("mb-2");
   });
 
   it("calls onOpen when clicked from idle", () => {
@@ -319,7 +320,7 @@ describe("HomePill", () => {
     expect(btn.getAttribute("data-phase")).toBe("needs-auth");
     expect(btn.hasAttribute("aria-pressed")).toBe(false);
     const mark = screen.getByTestId("shell-home-pill-mark");
-    expect(btn.className).toContain("h-8");
+    expect(btn.className).toContain("h-11");
     expect(btn.className).toContain("w-16");
     expect(mark.className).toContain("h-2.5");
     expect(mark.className).toContain("w-12");
