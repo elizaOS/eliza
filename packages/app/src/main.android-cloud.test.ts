@@ -31,7 +31,7 @@ describe("Android Cloud renderer entry", () => {
     expect(source).toContain("ANDROID_CLOUD_CONVERSATION_ID_KEY");
     expect(source).toContain("closeExternal={() => Browser.close()}");
     expect(source).toContain('parsed.protocol !== "elizaos:"');
-    expect(source).not.toMatch(/active-server|apiBase|127\.0\.0\.1|localhost/);
+    expect(source).not.toMatch(/active-server|127\.0\.0\.1|localhost/);
   });
 
   it("keeps the bearer in Android Keystore-backed storage", () => {
@@ -41,10 +41,29 @@ describe("Android Cloud renderer entry", () => {
     );
     expect(source).toContain('"ElizaSecureCredentials"');
     expect(source).toContain('"ElizaPlayVoice"');
+    expect(source).toContain('"ElizaPlaySettings"');
     expect(source).not.toContain("@elizaos/capacitor-talkmode");
     expect(source).toContain("credentialStore: androidSecureCredentialStore");
     expect(persistedKeys).not.toContain("STEWARD_TOKEN_KEY");
     expect(source).toContain("Preferences.remove({ key: STEWARD_TOKEN_KEY })");
     expect(source).toContain("localStorage.removeItem(STEWARD_TOKEN_KEY)");
+  });
+
+  it("wires account deletion only to canonical Cloud HTTPS transport", () => {
+    expect(source).toContain("androidCloudAccountLifecycle");
+    expect(source).toContain("CapacitorHttp.request");
+    expect(source).toContain(
+      'data: { confirmation: "DELETE", consequencesAcknowledged: true }',
+    );
+    expect(source).toContain('data: { confirmation: "KEEP" }');
+    expect(source).toContain("statusAccessEstablished !== true");
+    expect(source).toContain("disableRedirects: true");
+    expect(source).toContain("readonly status: number | null = null");
+    expect(source).toContain("error.status === 401 || error.status === 404");
+    expect(source).toContain("error.status !== 401");
+    expect(source).toMatch(
+      /url: `\$\{androidCloudClient\.apiBase\}\$\{path\}`/,
+    );
+    expect(source).not.toMatch(/http:\/\//);
   });
 });

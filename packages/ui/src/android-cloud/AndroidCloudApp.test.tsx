@@ -17,9 +17,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ANDROID_CLOUD_COMPOSE_EVENT,
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
+  type AndroidCloudAccountLifecycleAdapter,
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "./AndroidCloudApp";
+import type { AccountDeletionRequestDto } from "./account-deletion-contract";
 import { AndroidCloudClient } from "./android-cloud-client";
 
 const session = {
@@ -42,6 +44,54 @@ function createVoice(): AndroidCloudVoiceAdapter {
     requestAndStart: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
     speak: vi.fn(async () => undefined),
+  };
+}
+
+function deletionRequest(): AccountDeletionRequestDto {
+  return {
+    requestId: "receipt_android_opaque_1",
+    phase: "recovery_window" as const,
+    requestedAt: "2026-08-22T00:00:00.000Z",
+    recoveryEndsAt: "2026-08-29T00:00:00.000Z",
+    scheduledDeletionAt: "2026-08-29T00:00:00.000Z",
+    completedAt: null,
+    identityDeactivated: true,
+    canCancel: true,
+    canExport: true,
+    nextPollAfterMs: null,
+    progress: null,
+    export: {
+      status: "not_requested" as const,
+      downloadUrl: null,
+      expiresAt: null,
+    },
+    actionRequiredCode: null,
+  };
+}
+
+function createLifecycle(
+  status = null as ReturnType<typeof deletionRequest> | null,
+): AndroidCloudAccountLifecycleAdapter {
+  return {
+    getStatus: vi.fn(async () => status),
+    requestDeletion: vi.fn(async () => deletionRequest()),
+    cancelDeletion: vi.fn(
+      async (): Promise<AccountDeletionRequestDto> => ({
+        ...deletionRequest(),
+        phase: "cancelled",
+        canCancel: false,
+      }),
+    ),
+    requestExport: vi.fn(
+      async (): Promise<AccountDeletionRequestDto> => ({
+        ...deletionRequest(),
+        export: {
+          status: "preparing",
+          downloadUrl: null,
+          expiresAt: null,
+        },
+      }),
+    ),
   };
 }
 
@@ -85,6 +135,60 @@ describe("AndroidCloudApp", () => {
       ).toBe("Shared safely"),
     );
     expect(client.createConversation).not.toHaveBeenCalled();
+  });
+
+  it("moves New chat and Settings into the swipe launcher", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(session);
+    render(
+      <AndroidCloudApp
+        accountLifecycle={createLifecycle()}
+        client={client}
+        voice={createVoice()}
+      />,
+    );
+    await screen.findByText("Ada");
+
+    expect(screen.queryByRole("button", { name: "New chat" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    fireEvent.touchStart(screen.getByRole("main"), {
+      changedTouches: [{ clientX: 320 }],
+    });
+    fireEvent.touchEnd(screen.getByRole("main"), {
+      changedTouches: [{ clientX: 120 }],
+    });
+
+    expect(
+      screen.getByRole("navigation", { name: "Eliza launcher" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Delete account & data" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByText("Checking deletion status…")).toBeNull(),
+    );
+  });
+
+  it("restores a scoped deletion status after the ordinary session is gone", async () => {
+    const client = createClient();
+    vi.spyOn(client, "restoreSession").mockResolvedValue(null);
+    const lifecycle = createLifecycle(deletionRequest());
+    render(
+      <AndroidCloudApp
+        accountLifecycle={lifecycle}
+        client={client}
+        voice={createVoice()}
+      />,
+    );
+
+    expect(await screen.findByText("Deletion requested")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    expect(lifecycle.getStatus).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("receipt_android_opaque_1")).toBeTruthy();
   });
 
   it("creates one server conversation and renders a successful text reply", async () => {

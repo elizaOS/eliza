@@ -8,16 +8,23 @@
  */
 import { App as CapacitorApp } from "@capacitor/app";
 import { Browser } from "@capacitor/browser";
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import { StatusBar, Style } from "@capacitor/status-bar";
 import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 import {
   ANDROID_CLOUD_CONVERSATION_ID_KEY,
+  type AndroidCloudAccountLifecycleAdapter,
   AndroidCloudApp,
   type AndroidCloudVoiceAdapter,
 } from "@elizaos/ui/android-cloud/AndroidCloudApp";
+import {
+  type AccountDeletionEnvelope,
+  type AccountDeletionRequestDto,
+  parseAccountDeletionEnvelope,
+  parseAccountDeletionRequest,
+} from "@elizaos/ui/android-cloud/account-deletion-contract";
 import {
   AndroidCloudClient,
   type AndroidCloudCredentialStore,
@@ -82,6 +89,162 @@ const androidSecureCredentialStore: AndroidCloudCredentialStore = {
 const androidCloudClient = new AndroidCloudClient({
   credentialStore: androidSecureCredentialStore,
 });
+
+class AndroidCloudLifecycleError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly status: number | null = null,
+  ) {
+    super(message);
+    this.name = "AndroidCloudLifecycleError";
+  }
+}
+
+function responseRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // error-policy:J3 A non-JSON response is translated below.
+    }
+  }
+  return {};
+}
+
+async function lifecycleRequest(
+  path: string,
+  options: {
+    method?: "GET" | "POST";
+    authenticated?: boolean;
+    data?: Record<string, unknown>;
+  } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "x-eliza-csrf": "1",
+  };
+  if (options.data !== undefined) headers["Content-Type"] = "application/json";
+  if (options.authenticated) {
+    const token = await androidCloudClient.readToken();
+    if (!token) {
+      throw new AndroidCloudLifecycleError(
+        "Sign in again before changing account deletion settings.",
+        "RECENT_AUTH_REQUIRED",
+      );
+    }
+    headers.Authorization = `Bearer ${token}`;
+  }
+  const response = await CapacitorHttp.request({
+    url: `${androidCloudClient.apiBase}${path}`,
+    method: options.method ?? "GET",
+    headers,
+    data: options.data,
+    // Bearer-carrying lifecycle requests must never replay authority across a
+    // redirect. A 3xx is a deployment error and stays visible to the caller.
+    disableRedirects: true,
+  });
+  const body = responseRecord(response.data);
+  if (response.status < 200 || response.status >= 300) {
+    const message =
+      (typeof body.error === "string" && body.error) ||
+      (typeof body.message === "string" && body.message) ||
+      `Account deletion request failed (${response.status}).`;
+    const code =
+      typeof body.code === "string" && body.code
+        ? body.code
+        : `HTTP_${response.status}`;
+    throw new AndroidCloudLifecycleError(message, code, response.status);
+  }
+  return { status: response.status, body };
+}
+
+async function readPublicLifecycleStatus(): Promise<AccountDeletionRequestDto | null> {
+  try {
+    const response = await lifecycleRequest("/api/v1/account-deletion/status");
+    return parseAccountDeletionEnvelope(response.body);
+  } catch (error) {
+    if (
+      error instanceof AndroidCloudLifecycleError &&
+      (error.status === 401 || error.status === 404)
+    ) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter = {
+  async getStatus() {
+    const token = await androidCloudClient.readToken();
+    if (token) {
+      try {
+        const response = await lifecycleRequest("/api/v1/me/account-deletion", {
+          authenticated: true,
+        });
+        return parseAccountDeletionEnvelope(response.body);
+      } catch (error) {
+        if (
+          !(error instanceof AndroidCloudLifecycleError) ||
+          error.status !== 401
+        ) {
+          throw error;
+        }
+      }
+    }
+    return await readPublicLifecycleStatus();
+  },
+  async requestDeletion() {
+    const response = await lifecycleRequest("/api/v1/me/account-deletion", {
+      method: "POST",
+      authenticated: true,
+      data: { confirmation: "DELETE", consequencesAcknowledged: true },
+    });
+    const envelope: AccountDeletionEnvelope = {
+      request: response.body.request,
+      statusAccessEstablished: response.body.statusAccessEstablished,
+    };
+    if (envelope.statusAccessEstablished !== true) {
+      throw new AndroidCloudLifecycleError(
+        "Deletion was not scheduled because recovery access could not be established. Your session remains active.",
+        "STATUS_ACCESS_REQUIRED",
+      );
+    }
+    try {
+      return parseAccountDeletionRequest(envelope.request);
+    } catch (error) {
+      // error-policy:J1 Reservation succeeded; recover through its scoped
+      // status session rather than stranding the disabled account.
+      const recovered = await readPublicLifecycleStatus();
+      if (recovered) return recovered;
+      throw error;
+    }
+  },
+  async cancelDeletion() {
+    const response = await lifecycleRequest("/api/v1/account-deletion/cancel", {
+      method: "POST",
+      data: { confirmation: "KEEP" },
+    });
+    return parseAccountDeletionRequest(response.body.request);
+  },
+  async requestExport() {
+    const response = await lifecycleRequest("/api/v1/account-deletion/export", {
+      method: "POST",
+      data: {},
+    });
+    return parseAccountDeletionRequest(response.body.request);
+  },
+};
 
 function logOptionalPluginFailure(plugin: string, error: unknown): void {
   console.warn(
@@ -286,6 +449,12 @@ interface PlayVoicePlugin {
 
 const PlayVoice = registerPlugin<PlayVoicePlugin>("ElizaPlayVoice");
 
+interface PlaySettingsPlugin {
+  openAppSettings(): Promise<void>;
+}
+
+const PlaySettings = registerPlugin<PlaySettingsPlugin>("ElizaPlaySettings");
+
 const androidCloudVoice: AndroidCloudVoiceAdapter = {
   async requestAndStart(onFinalTranscript) {
     await activeTranscriptListener?.remove();
@@ -355,9 +524,11 @@ export async function bootAndroidCloudApp(): Promise<void> {
     <React.StrictMode>
       <ErrorBoundary>
         <AndroidCloudApp
+          accountLifecycle={androidCloudAccountLifecycle}
           client={androidCloudClient}
           closeExternal={() => Browser.close()}
           openExternal={openExternal}
+          openAppSettings={() => PlaySettings.openAppSettings()}
           voice={androidCloudVoice}
         />
       </ErrorBoundary>

@@ -2,9 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  type AndroidCloudAccountLifecycleAdapter,
+  AndroidCloudSettings,
+} from "./AndroidCloudSettings";
+import type { AccountDeletionRequestDto } from "./account-deletion-contract";
+import {
   AndroidCloudClient,
   type AndroidCloudSession,
 } from "./android-cloud-client";
+
+export type { AndroidCloudAccountLifecycleAdapter } from "./AndroidCloudSettings";
 
 export const ANDROID_CLOUD_CONVERSATION_ID_KEY =
   "eliza:android-cloud:conversation-id:v1";
@@ -24,6 +31,8 @@ export interface AndroidCloudAppProps {
   openExternal?: (url: string) => Promise<void> | void;
   closeExternal?: () => Promise<void> | void;
   voice?: AndroidCloudVoiceAdapter;
+  accountLifecycle?: AndroidCloudAccountLifecycleAdapter;
+  openAppSettings?: () => Promise<void> | void;
 }
 
 export interface AndroidCloudVoiceAdapter {
@@ -57,6 +66,8 @@ export function AndroidCloudApp({
   openExternal = defaultExternalOpen,
   closeExternal,
   voice,
+  accountLifecycle,
+  openAppSettings,
 }: AndroidCloudAppProps): React.JSX.Element {
   const client = useMemo(
     () => clientOverride ?? new AndroidCloudClient(),
@@ -64,9 +75,13 @@ export function AndroidCloudApp({
   );
   const [session, setSession] = useState<AndroidCloudSession | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"loading" | "signed-out" | "ready">(
-    "loading",
-  );
+  const [phase, setPhase] = useState<
+    "loading" | "signed-out" | "ready" | "deletion-status"
+  >("loading");
+  const [screen, setScreen] = useState<"chat" | "settings">("chat");
+  const [launcherOpen, setLauncherOpen] = useState(false);
+  const [deletionRequest, setDeletionRequest] =
+    useState<AccountDeletionRequestDto | null>(null);
   const [messages, setMessages] = useState<AndroidCloudMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
@@ -74,6 +89,7 @@ export function AndroidCloudApp({
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loginAttemptRef = useRef(0);
+  const touchStartXRef = useRef<number | null>(null);
 
   const restore = useCallback(async () => {
     setError(null);
@@ -106,7 +122,20 @@ export function AndroidCloudApp({
         setConversationId(null);
         setMessages([]);
       }
-      setPhase(restored ? "ready" : "signed-out");
+      if (restored) {
+        setDeletionRequest(null);
+        setPhase("ready");
+      } else if (accountLifecycle) {
+        const status = await accountLifecycle.getStatus();
+        if (status) {
+          setDeletionRequest(status);
+          setPhase("deletion-status");
+        } else {
+          setPhase("signed-out");
+        }
+      } else {
+        setPhase("signed-out");
+      }
     } catch (restoreError) {
       // error-policy:J4 session verification failure becomes an explicit
       // signed-out error state with a retry affordance.
@@ -114,7 +143,7 @@ export function AndroidCloudApp({
       setPhase("signed-out");
       setError(errorMessage(restoreError));
     }
-  }, [client]);
+  }, [accountLifecycle, client]);
 
   useEffect(() => {
     void restore();
@@ -181,6 +210,8 @@ export function AndroidCloudApp({
       setSession(null);
       setConversationId(null);
       setMessages([]);
+      setScreen("chat");
+      setLauncherOpen(false);
       setPhase("signed-out");
     } catch (signOutError) {
       // error-policy:J4 failed logout remains visible without fabricating a
@@ -190,6 +221,37 @@ export function AndroidCloudApp({
       setBusy(false);
     }
   }, [client]);
+
+  const onDeletionReserved = useCallback(
+    async (request: AccountDeletionRequestDto) => {
+      await client.signOut();
+      localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
+      setSession(null);
+      setConversationId(null);
+      setMessages([]);
+      setDeletionRequest(request);
+      setLauncherOpen(false);
+      setPhase("deletion-status");
+    },
+    [client],
+  );
+
+  const newChat = useCallback(() => {
+    localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
+    setConversationId(null);
+    setMessages([]);
+    setScreen("chat");
+    setLauncherOpen(false);
+  }, []);
+
+  const finishSwipe = useCallback((clientX: number) => {
+    const start = touchStartXRef.current;
+    touchStartXRef.current = null;
+    if (start === null) return;
+    const delta = clientX - start;
+    if (delta < -56) setLauncherOpen(true);
+    if (delta > 56) setLauncherOpen(false);
+  }, []);
 
   const send = useCallback(async () => {
     const text = draft.trim();
@@ -347,34 +409,60 @@ export function AndroidCloudApp({
     );
   }
 
+  if (phase === "deletion-status") {
+    return (
+      <AndroidCloudSettings
+        lifecycle={accountLifecycle}
+        initialRequest={deletionRequest}
+        backLabel="Back to sign in"
+        onBack={() => setPhase("signed-out")}
+        onSignOut={() => setPhase("signed-out")}
+        onDeletionReserved={onDeletionReserved}
+        openExternal={openExternal}
+        openAppSettings={openAppSettings}
+      />
+    );
+  }
+
+  if (screen === "settings") {
+    return (
+      <AndroidCloudSettings
+        displayName={session?.identity.displayName}
+        lifecycle={accountLifecycle}
+        onBack={() => setScreen("chat")}
+        onSignOut={signOut}
+        onDeletionReserved={onDeletionReserved}
+        openExternal={openExternal}
+        openAppSettings={openAppSettings}
+      />
+    );
+  }
+
   return (
-    <main className="flex min-h-dvh flex-col bg-bg text-txt">
+    <main
+      className="relative flex min-h-dvh flex-col overflow-hidden bg-bg text-txt"
+      onTouchStart={(event) => {
+        touchStartXRef.current = event.changedTouches[0]?.clientX ?? null;
+      }}
+      onTouchEnd={(event) => {
+        const end = event.changedTouches[0]?.clientX;
+        if (typeof end === "number") finishSwipe(end);
+      }}
+    >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
+        <button
+          type="button"
+          className="rounded-xl border border-border px-3 py-2"
+          aria-label="Open launcher"
+          onClick={() => setLauncherOpen(true)}
+        >
+          Menu
+        </button>
+        <div className="text-center">
           <h1 className="font-semibold">Eliza</h1>
           <p className="text-xs text-muted">{session?.identity.displayName}</p>
         </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.removeItem(ANDROID_CLOUD_CONVERSATION_ID_KEY);
-              setConversationId(null);
-              setMessages([]);
-            }}
-            className="text-sm text-muted"
-          >
-            New chat
-          </button>
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void signOut()}
-            className="text-sm text-muted disabled:opacity-50"
-          >
-            Sign out
-          </button>
-        </div>
+        <span className="w-[4.5rem]" aria-hidden="true" />
       </header>
       <ol
         aria-live="polite"
@@ -454,6 +542,53 @@ export function AndroidCloudApp({
           </button>
         )}
       </form>
+      {launcherOpen ? (
+        <div className="absolute inset-0 z-40 flex bg-black/70">
+          <button
+            type="button"
+            className="flex-1"
+            aria-label="Close launcher"
+            onClick={() => setLauncherOpen(false)}
+          />
+          <nav
+            className="flex w-[min(82vw,22rem)] flex-col gap-2 border-l border-border bg-card p-5 pt-[max(1.25rem,env(safe-area-inset-top))]"
+            aria-label="Eliza launcher"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Eliza</h2>
+              <button
+                type="button"
+                className="rounded-xl border border-border px-3 py-2"
+                onClick={() => setLauncherOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <button
+              type="button"
+              className="rounded-xl bg-accent px-4 py-3 text-left font-semibold text-accent-foreground"
+              onClick={newChat}
+            >
+              New chat
+            </button>
+            <button
+              type="button"
+              className="rounded-xl border border-border px-4 py-3 text-left font-semibold"
+              onClick={() => {
+                setScreen("settings");
+                setLauncherOpen(false);
+              }}
+            >
+              Settings
+            </button>
+            <p className="mt-auto text-xs leading-relaxed text-muted">
+              Play-safe Android includes chat, voice, account controls, and
+              standard platform permissions. Additional views appear only when
+              they meet the same Play policy boundary.
+            </p>
+          </nav>
+        </div>
+      ) : null}
     </main>
   );
 }
