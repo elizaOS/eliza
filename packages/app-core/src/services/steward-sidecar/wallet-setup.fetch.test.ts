@@ -1,6 +1,17 @@
-// Pins the bounded Steward sidecar contract: every API hop fails closed at
-// the hop timeout, composing a caller signal with the deadline (either wins).
-import { describe, expect, test, vi } from "vitest";
+/**
+ * Pins the bounded Steward sidecar contract: every API hop fails closed at the
+ * hop timeout, composing a caller signal with the deadline so either one
+ * aborts the request. The harness stubs `globalThis.fetch` with a hung or
+ * immediate responder and restores the original between tests; the module
+ * under test is the real `stewardFetch`.
+ */
+import { afterEach, describe, expect, test, vi } from "vitest";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 describe("stewardFetch — bounded Steward hops fail closed and compose caller signals", () => {
   test("aborts a hung Steward hop at the configured timeout", async () => {
@@ -13,7 +24,7 @@ describe("stewardFetch — bounded Steward hops fail closed and compose caller s
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { stewardFetch } = await import("./wallet-setup");
     const start = Date.now();
@@ -33,7 +44,7 @@ describe("stewardFetch — bounded Steward hops fail closed and compose caller s
             );
           });
         }),
-    ) as typeof fetch;
+    ) as unknown as typeof fetch;
 
     const { stewardFetch } = await import("./wallet-setup");
     const controller = new AbortController();
@@ -57,10 +68,10 @@ describe("stewardFetch — bounded Steward hops fail closed and compose caller s
       .fn()
       .mockImplementation(
         async (_input: RequestInfo | URL, init?: RequestInit) => {
-          seen = init?.signal;
+          seen = init?.signal ?? undefined;
           return new Response("{}", { status: 200 });
         },
-      ) as typeof fetch;
+      ) as unknown as typeof fetch;
 
     const { stewardFetch } = await import("./wallet-setup");
     const controller = new AbortController();

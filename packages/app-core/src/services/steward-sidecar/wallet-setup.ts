@@ -7,6 +7,19 @@ import * as path from "node:path";
 import { ElizaError, logger } from "@elizaos/core";
 import { fingerprintRandomToken, generateApiKey } from "./helpers";
 
+import type {
+  StewardCredentialCheckpoint,
+  StewardCredentials,
+  StewardSidecarStatus,
+} from "./types";
+import {
+  CREDENTIALS_FILE,
+  DEFAULT_AGENT_ID,
+  DEFAULT_AGENT_NAME,
+  DEFAULT_TENANT_ID,
+  DEFAULT_TENANT_NAME,
+} from "./types";
+
 const STEWARD_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
@@ -27,19 +40,6 @@ export function stewardFetch(
       : timeoutSignal,
   });
 }
-
-import type {
-  StewardCredentialCheckpoint,
-  StewardCredentials,
-  StewardSidecarStatus,
-} from "./types";
-import {
-  CREDENTIALS_FILE,
-  DEFAULT_AGENT_ID,
-  DEFAULT_AGENT_NAME,
-  DEFAULT_TENANT_ID,
-  DEFAULT_TENANT_NAME,
-} from "./types";
 
 /**
  * Ensure wallet is set up: verify existing wallet or perform first-launch setup.
