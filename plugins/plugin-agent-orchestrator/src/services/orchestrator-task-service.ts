@@ -3951,7 +3951,6 @@ export class OrchestratorTaskService extends Service {
       });
       if (suppressed) return;
       const label = doc.task.title.trim() || "the coding task";
-      const fabricatedInput = details.verifier === "fabricated-input-ledger";
       const deploy = resolveAppDeployConfig();
       const workdir = doc.sessions.at(-1)?.workdir;
       const url =
@@ -4077,6 +4076,7 @@ export class OrchestratorTaskService extends Service {
       const missing = details.missing
         .filter((item) => item.trim().length > 0)
         .slice(0, 3);
+      const fabricatedInput = details.verifier === "fabricated-input-ledger";
       const { text } = await phraseForUser(
         this.runtime,
         {
