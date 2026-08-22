@@ -41,7 +41,11 @@ const downloadSocialMediaBytes = mock(
   ): Promise<Buffer> => Buffer.from("PNGBYTES"),
 );
 
-mock.module("../media-download", () => ({ downloadSocialMediaBytes }));
+mock.module("../media-download", () => ({
+  assertSocialMediaBytesWithinBudget: realMediaDownload.assertSocialMediaBytesWithinBudget,
+  decodeSocialMediaBase64: realMediaDownload.decodeSocialMediaBase64,
+  downloadSocialMediaBytes,
+}));
 
 mock.module("../rate-limit", () => ({
   withRetry: async (fn: () => Promise<Response>, parser: (r: Response) => Promise<unknown>) => {

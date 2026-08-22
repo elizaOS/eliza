@@ -101,6 +101,7 @@ mock.module("@/lib/services/shared-runtime/agent-tier", () => ({
 }));
 mock.module("@/lib/api/cloud-worker-errors", () => ({
   ApiError: class ApiError extends Error {},
+  ForbiddenError: class ForbiddenError extends Error {},
   NotFoundError: class NotFoundError extends Error {},
   ValidationError: (message: string) => {
     const error = new Error(message);
