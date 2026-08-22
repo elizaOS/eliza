@@ -467,17 +467,6 @@ export function normalizeTrajectoryMetadata(
   };
 }
 
-export function truncateField(value: string, _limit = 500): string {
-  return assertWellFormedTrajectoryText(value, "field");
-}
-
-export function truncateRecord(
-  obj: Record<string, unknown>,
-  _limit = 500,
-): Record<string, unknown> {
-  return obj;
-}
-
 // ---------------------------------------------------------------------------
 // Script capture helpers
 // ---------------------------------------------------------------------------

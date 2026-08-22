@@ -24,6 +24,7 @@ const removedCompactionModules = [
 ];
 
 const removedPromptCapCloneTests = [
+	"packages/agent/src/runtime/trajectory-internals.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/actions/role.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/evaluators/trajectory-evaluator-utils.surrogate.test.ts",
 	"packages/core/src/features/advanced-capabilities/experience/evaluators/experience-items.surrogate.test.ts",
@@ -272,6 +273,8 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/actionCompactionEnabled/,
 	],
 	"packages/agent/src/runtime/trajectory-internals.ts": [
+		/truncateField/,
+		/truncateRecord/,
 		/\[\^\\n\]\{1,1024\}/,
 		/\[\^"\]\{1,1024\}/,
 		/\[\^"\]\{20,200\}/,
