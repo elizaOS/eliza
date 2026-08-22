@@ -3,7 +3,7 @@
  * and process-private principal authorization (Requirement 8).
  *
  * Verifies that:
- * - Missing AccessContext returns OWNER (trunk-authorized owner boundary).
+ * - Missing AccessContext fails closed without minting a route actor.
  * - AccessContext with requesterEntityId resolves to the correct RouteActor.
  * - OWNER/ADMIN roles map to OWNER; USER/GUEST map to USER.
  * - Missing requesterEntityId returns null.
@@ -18,19 +18,12 @@ const OWNER_ID = "00000000-0000-0000-0000-000000000002" as UUID;
 const USER_ID = "00000000-0000-0000-0000-000000000003" as UUID;
 
 describe("resolveRouteActor process-private principal authorization", () => {
-  it("returns OWNER for trunk-authorized owner boundary (no AccessContext)", () => {
-    const actor = resolveRouteActor(AGENT_ID, OWNER_ID);
-    expect(actor).not.toBeNull();
-    expect(actor?.role).toBe("OWNER");
-    expect(actor?.entityId).toBe(OWNER_ID);
-  });
-
-  it("returns OWNER with agentId fallback when ownerEntityId is absent", () => {
-    const actor = resolveRouteActor(AGENT_ID);
-    expect(actor).not.toBeNull();
-    expect(actor?.role).toBe("OWNER");
-    expect(actor?.entityId).toBe(AGENT_ID);
-  });
+  it.each([OWNER_ID, undefined])(
+    "fails closed without AccessContext when ownerEntityId is %s",
+    (ownerEntityId) => {
+      expect(resolveRouteActor(AGENT_ID, ownerEntityId)).toBeNull();
+    },
+  );
 
   it("grants OWNER permissions for OWNER AccessContext role", () => {
     const actor = resolveRouteActor(AGENT_ID, OWNER_ID, {

@@ -208,17 +208,7 @@ export function resolveRouteActor(
   ownerEntityId?: UUID,
   accessContext?: AccessContext,
 ): RouteActor | null {
-  // No accessContext means trunk-authorized owner boundary — preserve existing
-  // unfiltered behavior by returning OWNER.
-  if (!accessContext) {
-    return {
-      entityId: ownerEntityId ?? agentId,
-      role: "OWNER",
-      ownerEntityId,
-    };
-  }
-
-  if (!accessContext.requesterEntityId) return null;
+  if (!accessContext?.requesterEntityId) return null;
 
   // Delegate the RoleName -> RouteActorRole mapping to core rather than
   // restating it. The local version collapsed everything that was not
@@ -752,6 +742,23 @@ export async function handleDocumentsRoutes(
 
   if (!pathname.startsWith("/api/documents")) return false;
 
+  if (!runtime?.agentId) {
+    error(res, "Agent runtime is not available", 503);
+    return true;
+  }
+  const agentId = runtime.agentId as UUID;
+  const ownerEntityId = getOwnerEntityId(runtime);
+  const routeActor = resolveRouteActor(
+    agentId,
+    ownerEntityId,
+    ctx.accessContext,
+  );
+
+  if (!routeActor) {
+    error(res, "Authentication required", 401);
+    return true;
+  }
+
   const { service: documentsService, reason } =
     await getDocumentsService(runtime);
   if (!documentsService) {
@@ -769,23 +776,6 @@ export async function handleDocumentsRoutes(
         503,
       );
     }
-    return true;
-  }
-
-  if (!runtime?.agentId) {
-    error(res, "Agent runtime is not available", 503);
-    return true;
-  }
-  const agentId = runtime.agentId as UUID;
-  const ownerEntityId = getOwnerEntityId(runtime);
-  const routeActor = resolveRouteActor(
-    agentId,
-    ownerEntityId,
-    ctx.accessContext,
-  );
-
-  if (!routeActor) {
-    error(res, "Authentication required", 401);
     return true;
   }
   // Preserve the runtime guard across the nested async location resolver.

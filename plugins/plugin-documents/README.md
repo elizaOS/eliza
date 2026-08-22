@@ -41,7 +41,9 @@ Documents are stored as memories in the runtime's `documents` table and chunked 
 | `user-private` | Scoped to a specific user entity |
 | `agent-private` | OWNER, AGENT, and RUNTIME |
 
-The caller's role is resolved from the `x-eliza-entity-id` / `x-eliza-actor-entity-id` request headers and the `ELIZA_ADMIN_ENTITY_ID` runtime setting.
+The caller's role comes from the authenticated `AccessContext` supplied by the
+host route boundary. A request without that context returns `401`; request
+headers and `ELIZA_ADMIN_ENTITY_ID` never create an authenticated caller.
 
 ## Configuration
 
