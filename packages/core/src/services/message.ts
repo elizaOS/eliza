@@ -3385,6 +3385,9 @@ function buildV5PlannerActionSurface(params: {
 	const authorizedActionNames = new Set(
 		params.actions.map((action) => normalizeActionIdentifier(action.name)),
 	);
+	const authorizedActionIdentities = new Set(
+		params.actions.map((action) => action.name.trim()),
+	);
 	// A parent may retain inline metadata for every registered child even when
 	// this turn's action gate rejected one of those children. Build retrieval and
 	// tier metadata from the authorized view so a denied child's name,
@@ -3393,7 +3396,7 @@ function buildV5PlannerActionSurface(params: {
 		...action,
 		subActions: action.subActions?.filter((child) => {
 			const childName = typeof child === "string" ? child : child.name;
-			return authorizedActionNames.has(normalizeActionIdentifier(childName));
+			return authorizedActionIdentities.has(childName.trim());
 		}),
 	}));
 	const catalog = getCachedActionCatalog(
