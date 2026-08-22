@@ -86,6 +86,8 @@ interface DoorDashHumanIntervention {
   readonly appDeepLink: string;
   readonly handoffId?: string;
   readonly handoffState?: string;
+  readonly providerBlocked: boolean;
+  readonly nativeAppDeepLink?: string;
 }
 
 function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
@@ -107,10 +109,29 @@ function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
     // error-policy:J3 untrusted MCP handoff output is never rendered as a link.
     return null;
   }
+  let nativeAppDeepLink: string | undefined;
+  if (
+    value.providerBlocked === true &&
+    typeof value.nativeLoginUrl === "string"
+  ) {
+    try {
+      const native = new URL(value.nativeLoginUrl);
+      if (
+        native.protocol === "https:" &&
+        native.hostname === "www.doordash.com"
+      ) {
+        nativeAppDeepLink = `elizaos://browser?browse=${encodeURIComponent(native.href)}`;
+      }
+    } catch {
+      // error-policy:J3 untrusted native fallback URLs are omitted.
+    }
+  }
   return {
     liveViewUrl,
     appBrowserPath: `/browser?browse=${encodeURIComponent(liveViewUrl)}`,
     appDeepLink: `elizaos://browser?browse=${encodeURIComponent(liveViewUrl)}`,
+    providerBlocked: value.providerBlocked === true,
+    ...(nativeAppDeepLink ? { nativeAppDeepLink } : {}),
     ...(typeof value.handoffId === "string"
       ? { handoffId: value.handoffId }
       : {}),
@@ -121,6 +142,14 @@ function humanIntervention(value: unknown): DoorDashHumanIntervention | null {
 }
 
 function humanInterventionText(handoff: DoorDashHumanIntervention): string {
+  if (handoff.providerBlocked && handoff.nativeAppDeepLink) {
+    return [
+      "DoorDash rejected Cloudflare Browser Run's browser or network, so this is not a CAPTCHA you can solve in Live View.",
+      `Open DoorDash directly in Eliza's built-in browser: ${handoff.nativeAppDeepLink}`,
+      `Cloudflare Live View is still available for inspection: ${handoff.liveViewUrl}`,
+      "Sign in there, then ask me to continue. I will not place an order without a separate explicit confirmation.",
+    ].join("\n");
+  }
   return [
     "DoorDash needs you to complete sign-in or a security check.",
     `Open the secure browser in Eliza: ${handoff.appDeepLink}`,
@@ -465,6 +494,10 @@ async function execute(
                 liveViewUrl: handoff.liveViewUrl,
                 appBrowserPath: handoff.appBrowserPath,
                 appDeepLink: handoff.appDeepLink,
+                providerBlocked: handoff.providerBlocked,
+                ...(handoff.nativeAppDeepLink
+                  ? { nativeAppDeepLink: handoff.nativeAppDeepLink }
+                  : {}),
                 ...(handoff.handoffId ? { handoffId: handoff.handoffId } : {}),
                 ...(handoff.handoffState
                   ? { handoffState: handoff.handoffState }

@@ -152,6 +152,52 @@ describe("DoorDash checkout safety", () => {
     expect(result.userFacingText).toContain("select Done");
   });
 
+  it("routes a Cloudflare provider block to DoorDash in Eliza's built-in browser", async () => {
+    const liveViewUrl = "https://live.browser.run/session?token=secret";
+    const mcp: DoorDashMcpService = {
+      getServers: () => [
+        {
+          name: "doordash",
+          status: "connected",
+          tools: [{ name: "doordash_auth_check" }],
+        },
+      ],
+      callTool: async () => ({
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              success: true,
+              authRequired: true,
+              humanInterventionRequired: true,
+              providerBlocked: true,
+              loginUrl: liveViewUrl,
+              nativeLoginUrl: "https://www.doordash.com/consumer/login",
+            }),
+          },
+        ],
+      }),
+    };
+    const runtime = {
+      getService: (name: string) => (name === "mcp" ? mcp : null),
+    } as unknown as IAgentRuntime;
+
+    const result = await doorDashAction.handler?.(
+      runtime,
+      { content: { text: "connect DoorDash", source: "imessage" } } as Memory,
+      undefined,
+      { parameters: { action: "status" } },
+    );
+
+    expect(result.values).toMatchObject({
+      providerBlocked: true,
+      nativeAppDeepLink:
+        "elizaos://browser?browse=https%3A%2F%2Fwww.doordash.com%2Fconsumer%2Flogin",
+    });
+    expect(result.userFacingText).toContain("not a CAPTCHA");
+    expect(result.userFacingText).toContain("built-in browser");
+  });
+
   it("rejects a human handoff outside Cloudflare Live View", async () => {
     const mcp: DoorDashMcpService = {
       getServers: () => [

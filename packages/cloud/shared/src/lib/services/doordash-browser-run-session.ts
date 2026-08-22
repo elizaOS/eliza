@@ -10,3 +10,8 @@ export function doorDashPersistentConnectOptions(
 ): PersistentBrowserConnectOptions {
   return { sessionId, persistent: true };
 }
+
+export function isDoorDashBrowserRunProviderBlock(title: string, body: string): boolean {
+  const visibleText = `${title}\n${body}`.toLowerCase();
+  return visibleText.includes("incompatible browser extension or network configuration");
+}

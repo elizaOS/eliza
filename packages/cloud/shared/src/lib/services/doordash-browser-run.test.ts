@@ -1,7 +1,10 @@
 /** Verifies persistent Cloudflare sessions and exact checkout binding safeguards. */
 
 import { describe, expect, test } from "bun:test";
-import { doorDashPersistentConnectOptions } from "./doordash-browser-run-session";
+import {
+  doorDashPersistentConnectOptions,
+  isDoorDashBrowserRunProviderBlock,
+} from "./doordash-browser-run-session";
 import {
   assertManagedCheckoutBinding,
   managedCheckoutBindingDigest,
@@ -71,5 +74,17 @@ describe("managed DoorDash Browser Run lifecycle", () => {
       persistent: true,
       sessionId: "session-1",
     });
+  });
+
+  test("distinguishes DoorDash's unsolvable provider block from a user CAPTCHA", () => {
+    expect(
+      isDoorDashBrowserRunProviderBlock(
+        "Just a moment...",
+        "Incompatible browser extension or network configuration",
+      ),
+    ).toBe(true);
+    expect(
+      isDoorDashBrowserRunProviderBlock("Just a moment...", "Verify you are human to continue"),
+    ).toBe(false);
   });
 });

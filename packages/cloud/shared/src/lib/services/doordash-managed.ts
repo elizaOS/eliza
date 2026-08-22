@@ -383,6 +383,8 @@ export async function callManagedDoorDashTool(
   }
   if (name === "doordash_auth_check" && result.loggedIn !== true) {
     const securityVerificationRequired = result.securityVerificationRequired === true;
+    const providerBlocked = result.providerBlocked === true;
+    const nativeLoginUrl = "https://www.doordash.com/consumer/login";
     return {
       ...result,
       success: true,
@@ -390,11 +392,14 @@ export async function callManagedDoorDashTool(
       humanInterventionRequired: true,
       humanInterventionKind: "cloudflare-browser-run",
       loginUrl: session.interactiveLiveViewUrl,
-      appBrowserPath: `/browser?browse=${encodeURIComponent(session.interactiveLiveViewUrl)}`,
-      appDeepLink: `elizaos://browser?browse=${encodeURIComponent(session.interactiveLiveViewUrl)}`,
-      instructions: securityVerificationRequired
-        ? "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), complete DoorDash's security verification and sign in, then ask the agent to check DoorDash status again."
-        : "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), sign in to DoorDash, then ask the agent to check DoorDash status again.",
+      nativeLoginUrl,
+      appBrowserPath: `/browser?browse=${encodeURIComponent(providerBlocked ? nativeLoginUrl : session.interactiveLiveViewUrl)}`,
+      appDeepLink: `elizaos://browser?browse=${encodeURIComponent(providerBlocked ? nativeLoginUrl : session.interactiveLiveViewUrl)}`,
+      instructions: providerBlocked
+        ? "DoorDash rejected Cloudflare Browser Run's browser or network. Open appBrowserPath in Eliza's built-in Browser to sign in directly; Cloudflare Live View remains available only for inspection. Then ask the agent to check DoorDash status again."
+        : securityVerificationRequired
+          ? "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), complete DoorDash's security verification and sign in, then ask the agent to check DoorDash status again."
+          : "Open appBrowserPath in the Eliza Browser tab (or loginUrl directly), sign in to DoorDash, then ask the agent to check DoorDash status again.",
     };
   }
   return { success: true, ...result };

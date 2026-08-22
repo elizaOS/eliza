@@ -7,7 +7,10 @@
 import type { Browser, BrowserWorker, Page } from "@cloudflare/playwright";
 import { getCloudBinding } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { doorDashPersistentConnectOptions } from "./doordash-browser-run-session";
+import {
+  doorDashPersistentConnectOptions,
+  isDoorDashBrowserRunProviderBlock,
+} from "./doordash-browser-run-session";
 import { assertManagedCheckoutBinding } from "./doordash-checkout-binding";
 
 const BASE_URL = "https://www.doordash.com";
@@ -192,6 +195,13 @@ async function hasDoorDashSecurityChallenge(page: Page): Promise<boolean> {
   );
 }
 
+async function hasDoorDashProviderBlock(page: Page): Promise<boolean> {
+  return isDoorDashBrowserRunProviderBlock(
+    await page.title().catch(() => ""),
+    await bodyText(page),
+  );
+}
+
 function money(text: string, label: string): number | null {
   const match = text.match(new RegExp(`${label}[:\\s]*\\$(\\d+(?:\\.\\d{1,2})?)`, "i"));
   return match ? Number(match[1]) : null;
@@ -205,6 +215,15 @@ async function runDoorDashOperation(
   if (op === "doordash_auth_check") {
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2_000);
+    if (await hasDoorDashProviderBlock(page)) {
+      return {
+        loggedIn: false,
+        providerBlocked: true,
+        securityVerificationRequired: false,
+        ...(await ensureHumanHandoff(page)),
+        url: page.url(),
+      };
+    }
     if (await hasDoorDashSecurityChallenge(page)) {
       return {
         loggedIn: false,

@@ -181,6 +181,30 @@ describe("managed DoorDash", () => {
     expect(result.instructions).toContain("complete DoorDash's security verification");
   });
 
+  test("routes an unsolvable Browser Run provider block to Eliza's native browser", async () => {
+    executionOutputs = [
+      {
+        loggedIn: false,
+        providerBlocked: true,
+        humanInterventionRequired: true,
+        handoffId: "handoff-1",
+        handoffState: "active",
+        url: "https://www.doordash.com/",
+      },
+    ];
+    const result = await callManagedDoorDashTool(
+      "doordash_auth_check",
+      conversationArgs(),
+      auth("user-1"),
+    );
+    expect(result).toMatchObject({
+      providerBlocked: true,
+      nativeLoginUrl: "https://www.doordash.com/consumer/login",
+      appBrowserPath: "/browser?browse=https%3A%2F%2Fwww.doordash.com%2Fconsumer%2Flogin",
+    });
+    expect(result.instructions).toContain("built-in Browser");
+  });
+
   test("keeps same-organization users in distinct hosted sessions", async () => {
     executionOutputs = [
       { loggedIn: true, url: "https://www.doordash.com/" },
