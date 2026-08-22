@@ -8,6 +8,7 @@
  */
 export const GOOGLE_CAPABILITIES = [
   "gmail.read",
+  "gmail.compose",
   "gmail.send",
   "gmail.manage",
   "calendar.read",
@@ -28,6 +29,7 @@ export type GoogleCapabilityGroup = (typeof GOOGLE_CAPABILITY_GROUPS)[number];
 export const GOOGLE_OAUTH_SCOPES = {
   gmail: {
     read: "https://www.googleapis.com/auth/gmail.readonly",
+    compose: "https://www.googleapis.com/auth/gmail.compose",
     send: "https://www.googleapis.com/auth/gmail.send",
     manage: "https://www.googleapis.com/auth/gmail.modify",
     settings: "https://www.googleapis.com/auth/gmail.settings.basic",
@@ -65,6 +67,7 @@ export interface GoogleCapabilityMetadata {
 
 export const GOOGLE_CAPABILITY_SCOPES = {
   "gmail.read": [GOOGLE_OAUTH_SCOPES.gmail.read],
+  "gmail.compose": [GOOGLE_OAUTH_SCOPES.gmail.compose],
   "gmail.send": [GOOGLE_OAUTH_SCOPES.gmail.send],
   "gmail.manage": [GOOGLE_OAUTH_SCOPES.gmail.manage, GOOGLE_OAUTH_SCOPES.gmail.settings],
   "calendar.read": [GOOGLE_OAUTH_SCOPES.calendar.read],
@@ -83,6 +86,10 @@ const GOOGLE_CAPABILITY_DETAILS: Record<
   "gmail.read": {
     label: "Read Gmail",
     description: "Search and read Gmail message metadata and message bodies.",
+  },
+  "gmail.compose": {
+    label: "Draft Gmail",
+    description: "Create and update Gmail drafts without sending them.",
   },
   "gmail.send": {
     label: "Send Gmail",

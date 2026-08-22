@@ -1,0 +1,282 @@
+/**
+ * Exercises LifeOps Gmail seeding, incremental cursor advancement, expired
+ * cursor recovery, and effect confirmation over deterministic provider and
+ * repository doubles. No account, network, or mailbox is touched.
+ */
+
+import { describe, expect, it, vi } from "vitest";
+import { GmailDomain } from "./gmail-service.js";
+
+const grant = {
+  id: "connector-account:account-1",
+  provider: "google",
+  side: "owner",
+  connectorAccountId: "account-1",
+  identityEmail: "owner@example.com",
+  capabilities: [
+    "google.gmail.triage",
+    "google.gmail.compose",
+    "google.gmail.manage",
+  ],
+};
+
+function providerMessage(id: string) {
+  return {
+    externalId: id,
+    threadId: `thread-${id}`,
+    subject: `Subject ${id}`,
+    from: "Sender <sender@example.com>",
+    fromEmail: "sender@example.com",
+    replyTo: null,
+    to: ["owner@example.com"],
+    cc: [],
+    snippet: "Preview",
+    receivedAt: "2026-08-22T07:00:00.000Z",
+    isUnread: true,
+    isImportant: false,
+    likelyReplyNeeded: true,
+    triageScore: 70,
+    triageReason: "Unread inbox message.",
+    labels: ["INBOX", "UNREAD"],
+    htmlLink: null,
+    metadata: {},
+  };
+}
+
+function harness(args: {
+  previousState?: Record<string, unknown> | null;
+  listHistory?: ReturnType<typeof vi.fn>;
+  historyId?: string;
+}) {
+  const upsertGmailMessage = vi.fn(async () => undefined);
+  const deleteGmailMessages = vi.fn(async () => undefined);
+  const upsertGmailSyncState = vi.fn(async () => undefined);
+  const google = {
+    getGmailHistoryId: vi.fn(async () => args.historyId ?? "100"),
+    listGmailHistoryPage:
+      args.listHistory ??
+      vi.fn(async () => ({
+        changes: [],
+        nextPageToken: null,
+        historyId: "101",
+      })),
+    getGmailMessage: vi.fn(async ({ messageId }: { messageId: string }) =>
+      providerMessage(messageId),
+    ),
+    getMessage: vi.fn(async ({ messageId }: { messageId: string }) => ({
+      id: messageId,
+      threadId: `thread-${messageId}`,
+      subject: "Re: Review",
+      from: { email: "sender@example.com", name: "Sender" },
+      to: [{ email: "owner@example.com" }],
+      receivedAt: "2026-08-22T07:00:00.000Z",
+      labelIds: ["INBOX"],
+      headers: {
+        "Message-Id": "<provider-message@example.com>",
+        References: "<earlier-message@example.com>",
+      },
+    })),
+    createGmailDraft: vi.fn(async () => ({
+      draftId: "draft-1",
+      messageId: "draft-message-1",
+      threadId: "thread-message-1",
+      labelIds: ["DRAFT"],
+    })),
+    modifyGmailMessages: vi.fn(
+      async ({ messageIds }: { messageIds: string[] }) => ({
+        operation: "trash",
+        requestedMessageIds: messageIds,
+        succeededMessageIds: [messageIds[0]],
+        failures: [{ messageId: messageIds[1], code: 429, retryable: true }],
+      }),
+    ),
+    searchGmailMessages: vi.fn(async () => [providerMessage("seeded")]),
+  };
+  const repository = {
+    getGmailSyncState: vi.fn(async () => args.previousState ?? null),
+    getGmailMessage: vi.fn(async () => null),
+    upsertGmailMessage,
+    deleteGmailMessages,
+    upsertGmailSyncState,
+  };
+  const domain = new GmailDomain(
+    {
+      runtime: {
+        getService: (name: string) => (name === "google" ? google : null),
+      },
+      agentId: () => "agent-1",
+      repository,
+      recordConnectorAudit: vi.fn(async () => undefined),
+    } as never,
+    {
+      requireGoogleGmailGrant: vi.fn(async () => grant),
+      requireGoogleGmailSendGrant: vi.fn(async () => grant),
+    } as never,
+  );
+  return { domain, google, repository };
+}
+
+describe("LifeOps Gmail sync cursors", () => {
+  it("captures a provider history cursor before the bounded initial seed", async () => {
+    const { domain, google, repository } = harness({});
+
+    const feed = await domain.getGmailTriage(new URL("http://127.0.0.1/"));
+
+    expect(feed.messages).toHaveLength(1);
+    expect(google.getGmailHistoryId).toHaveBeenCalledBefore(
+      google.searchGmailMessages,
+    );
+    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+      expect.objectContaining({ historyId: "100", cursorStatus: "seeded" }),
+    );
+  });
+
+  it("applies history tombstones and advances the cursor only after provider changes", async () => {
+    const listHistory = vi
+      .fn()
+      .mockResolvedValueOnce({
+        historyId: "104",
+        nextPageToken: "page-2",
+        changes: [
+          {
+            historyId: "104",
+            messagesAdded: [
+              { messageId: "new", threadId: "thread-new", labelIds: [] },
+            ],
+            messagesDeleted: [],
+            labelsAdded: [],
+            labelsRemoved: [],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        historyId: "105",
+        nextPageToken: null,
+        changes: [
+          {
+            historyId: "105",
+            messagesAdded: [],
+            messagesDeleted: [
+              { messageId: "gone", threadId: "thread-gone", labelIds: [] },
+            ],
+            labelsAdded: [],
+            labelsRemoved: [],
+          },
+        ],
+      });
+    const { domain, repository } = harness({
+      previousState: { historyId: "100" },
+      listHistory,
+    });
+
+    await domain.getGmailTriage(new URL("http://127.0.0.1/"));
+
+    expect(listHistory).toHaveBeenNthCalledWith(2, {
+      accountId: "account-1",
+      startHistoryId: "100",
+      pageToken: "page-2",
+    });
+    expect(repository.deleteGmailMessages).toHaveBeenCalledWith(
+      "agent-1",
+      "google",
+      ["agent-1:google:owner:gmail:gone"],
+      "owner",
+      grant.id,
+    );
+    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyId: "105",
+        cursorStatus: "incremental",
+      }),
+    );
+  });
+
+  it("falls back to a bounded seed and records why when the cursor expires", async () => {
+    const listHistory = vi.fn(async () => {
+      throw { code: "GOOGLE_GMAIL_HISTORY_CURSOR_EXPIRED" };
+    });
+    const { domain, repository } = harness({
+      previousState: { historyId: "expired" },
+      listHistory,
+      historyId: "200",
+    });
+
+    await domain.getGmailTriage(new URL("http://127.0.0.1/"));
+
+    expect(repository.upsertGmailSyncState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyId: "200",
+        cursorStatus: "resynced",
+        fullResyncReason: "history_cursor_expired",
+      }),
+    );
+  });
+});
+
+describe("LifeOps Gmail effect confirmation", () => {
+  it("rejects a non-destructive execute request without immediate confirmation", async () => {
+    const { domain } = harness({});
+
+    await expect(
+      domain.manageGmailMessages(new URL("http://127.0.0.1/"), {
+        operation: "mark_read",
+        messageIds: ["message-1"],
+        executionMode: "execute",
+      }),
+    ).rejects.toThrow(/explicit confirmation immediately before execution/i);
+  });
+
+  it("returns an honest partial receipt and only updates succeeded messages", async () => {
+    const { domain, repository } = harness({});
+
+    const result = await domain.manageGmailMessages(
+      new URL("http://127.0.0.1/"),
+      {
+        operation: "trash",
+        messageIds: ["message-1", "message-2"],
+        executionMode: "execute",
+        confirmAction: true,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "partial",
+      affectedCount: 1,
+      providerReceipt: {
+        succeededMessageIds: ["message-1"],
+        failures: [{ messageId: "message-2", code: 429, retryable: true }],
+      },
+    });
+    expect(repository.upsertGmailMessage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("LifeOps Gmail provider draft", () => {
+  it("persists an unsent reply draft and exposes the provider receipt", async () => {
+    const { domain, google } = harness({});
+
+    const draft = await domain.createGmailReplyDraft(
+      new URL("http://127.0.0.1/"),
+      {
+        messageId: "message-1",
+        persistToProvider: true,
+      },
+    );
+
+    expect(draft).toMatchObject({
+      providerDraftId: "draft-1",
+      providerDraftMessageId: "draft-message-1",
+      persistence: "gmail_draft",
+      requiresConfirmation: true,
+    });
+    expect(google.createGmailDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "account-1",
+        threadId: "thread-message-1",
+        inReplyTo: "<provider-message@example.com>",
+        references: "<earlier-message@example.com>",
+      }),
+    );
+  });
+});

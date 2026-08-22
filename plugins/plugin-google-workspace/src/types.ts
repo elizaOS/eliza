@@ -129,6 +129,19 @@ export type GoogleGmailBulkOperation =
   | "apply_label"
   | "remove_label";
 
+export interface GoogleGmailMutationFailure {
+  messageId: string;
+  code: number | null;
+  retryable: boolean;
+}
+
+export interface GoogleGmailMutationReceipt {
+  operation: GoogleGmailBulkOperation;
+  requestedMessageIds: string[];
+  succeededMessageIds: string[];
+  failures: GoogleGmailMutationFailure[];
+}
+
 export interface GoogleGmailMessageSummary {
   externalId: string;
   threadId: string;
@@ -173,6 +186,30 @@ export interface GoogleGmailSendResult {
   messageId: string | null;
   threadId: string | null;
   labelIds: string[];
+}
+
+export interface GoogleGmailDraftResult extends GoogleGmailSendResult {
+  draftId: string;
+}
+
+export interface GoogleGmailHistoryMessageRef {
+  messageId: string;
+  threadId: string | null;
+  labelIds: string[];
+}
+
+export interface GoogleGmailHistoryChange {
+  historyId: string;
+  messagesAdded: GoogleGmailHistoryMessageRef[];
+  messagesDeleted: GoogleGmailHistoryMessageRef[];
+  labelsAdded: Array<GoogleGmailHistoryMessageRef & { changedLabelIds: string[] }>;
+  labelsRemoved: Array<GoogleGmailHistoryMessageRef & { changedLabelIds: string[] }>;
+}
+
+export interface GoogleGmailHistoryPage {
+  changes: GoogleGmailHistoryChange[];
+  nextPageToken: string | null;
+  historyId: string;
 }
 
 export interface GoogleGmailSubscriptionMessageHeaders {
@@ -783,6 +820,14 @@ export interface GoogleMeetGenerateReportInput extends GoogleAccountRef {
 }
 
 export interface IGoogleGmailService extends Service {
+  getGmailHistoryId(params: GoogleAccountRef): Promise<string>;
+  listGmailHistoryPage(
+    params: GoogleAccountRef & {
+      startHistoryId: string;
+      pageToken?: string;
+      maxResults?: number;
+    }
+  ): Promise<GoogleGmailHistoryPage>;
   searchMessages(
     params: GoogleAccountRef & { query: string; limit?: number }
   ): Promise<GoogleMessageSummary[]>;
@@ -821,7 +866,7 @@ export interface IGoogleGmailService extends Service {
       operation: GoogleGmailBulkOperation;
       labelIds?: readonly string[];
     }
-  ): Promise<void>;
+  ): Promise<GoogleGmailMutationReceipt>;
   sendGmailReply(
     params: GoogleAccountRef & {
       to: string[];
@@ -841,6 +886,18 @@ export interface IGoogleGmailService extends Service {
       bodyText: string;
     }
   ): Promise<GoogleGmailSendResult>;
+  createGmailDraft(
+    params: GoogleAccountRef & {
+      to: string[];
+      cc?: string[];
+      bcc?: string[];
+      subject: string;
+      bodyText: string;
+      threadId?: string;
+      inReplyTo?: string | null;
+      references?: string | null;
+    }
+  ): Promise<GoogleGmailDraftResult>;
   getGmailSubscriptionHeaders(
     params: GoogleAccountRef & { query?: string; maxMessages?: number }
   ): Promise<GoogleGmailSubscriptionMessageHeaders[]>;

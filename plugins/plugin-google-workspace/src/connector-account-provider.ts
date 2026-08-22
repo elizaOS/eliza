@@ -67,6 +67,7 @@ interface GoogleTokenResponse {
 
 interface GoogleIdentity {
   sub?: string;
+  nonce?: string;
   email?: string;
   email_verified?: boolean;
   name?: string;
@@ -93,6 +94,10 @@ function isGoogleCalendarWatchRevocationService(
 
 function createCodeVerifier(): string {
   return randomBytes(64).toString("base64url");
+}
+
+function createOidcNonce(): string {
+  return randomBytes(32).toString("base64url");
 }
 
 function createCodeChallenge(codeVerifier: string): string {
@@ -515,6 +520,7 @@ export function createGoogleConnectorAccountProvider(
       const oauthScopes = scopesForGoogleCapabilities(capabilities);
       const codeVerifier = createCodeVerifier();
       const codeChallenge = createCodeChallenge(codeVerifier);
+      const oidcNonce = createOidcNonce();
 
       const params = new URLSearchParams({
         client_id: config.clientId,
@@ -522,6 +528,7 @@ export function createGoogleConnectorAccountProvider(
         response_type: "code",
         scope: oauthScopes.join(" "),
         state: request.flow.state,
+        nonce: oidcNonce,
         access_type: "offline",
         prompt: "consent",
         code_challenge: codeChallenge,
@@ -541,6 +548,7 @@ export function createGoogleConnectorAccountProvider(
           requestedCapabilities: capabilities,
           requestedScopes: oauthScopes,
           redirectUri,
+          oidcNonce,
         },
       };
     },
@@ -606,6 +614,18 @@ export function createGoogleConnectorAccountProvider(
       const purposes = purposesForCapabilities(grantedCapabilities);
 
       let identity = parseIdTokenClaims(tokens.id_token);
+      const expectedOidcNonce = nonEmptyString(
+        (request.flow.metadata as Record<string, unknown> | undefined)?.oidcNonce
+      );
+      if (expectedOidcNonce && identity.nonce !== expectedOidcNonce) {
+        throw new ElizaError(
+          "Google OAuth identity nonce did not match the authorization request.",
+          {
+            code: "GOOGLE_OAUTH_NONCE_MISMATCH",
+            severity: "fatal",
+          }
+        );
+      }
       if (!identity.email) {
         identity = { ...identity, ...(await fetchGoogleUserInfo(tokens.access_token)) };
       }

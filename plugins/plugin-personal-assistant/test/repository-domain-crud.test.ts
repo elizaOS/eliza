@@ -962,6 +962,9 @@ describe("LifeOpsRepository domain CRUD", () => {
       mailbox: "INBOX",
       grantId: "gmail-grant",
       maxResults: 25,
+      historyId: "history-105",
+      cursorStatus: "incremental",
+      fullResyncReason: null,
       syncedAt: LATER,
     });
     await repository.upsertGmailSyncState(gmailSync);
@@ -973,7 +976,12 @@ describe("LifeOpsRepository domain CRUD", () => {
         "owner",
         "gmail-grant",
       ),
-    ).toMatchObject({ maxResults: 25 });
+    ).toMatchObject({
+      maxResults: 25,
+      historyId: "history-105",
+      cursorStatus: "incremental",
+      fullResyncReason: null,
+    });
 
     const spamReviewItem = {
       id: crypto.randomUUID(),

@@ -124,6 +124,12 @@ export const CONNECTOR_ACCOUNT_CATALOG: readonly ConnectorAccountCatalogEntry[] 
           description: "Search and read Gmail messages.",
         },
         {
+          id: "gmail.compose",
+          group: "Gmail",
+          label: "Draft Gmail",
+          description: "Create and update Gmail drafts without sending them.",
+        },
+        {
           id: "gmail.send",
           group: "Gmail",
           label: "Send Gmail",
