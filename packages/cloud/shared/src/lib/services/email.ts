@@ -79,32 +79,22 @@ export class EmailService {
     this.fromEmail =
       process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM || "noreply@eliza.app";
 
-    const hasSmtpConfig =
-      Boolean(process.env.SMTP_HOST) ||
-      Boolean(process.env.SMTP_PASSWORD) ||
-      typeof process.env.SMTP_PORT === "string";
-
-    if (hasSmtpConfig) {
-      if (process.env.SMTP_HOST && process.env.SMTP_PASSWORD) {
-        logger.info("[EmailService] Using SMTP configuration");
-        const port = resolveSmtpPort(process.env.SMTP_PORT);
-        this.smtpTransporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST,
-          port,
-          secure: false,
-          auth: {
-            user: process.env.SMTP_USERNAME || "apikey",
-            pass: process.env.SMTP_PASSWORD,
-          },
-        });
-        this.useSmtp = true;
-        this.initialized = true;
-        logger.info("[EmailService] Initialized with SMTP");
-        return;
-      }
-      if (typeof process.env.SMTP_PORT === "string") {
-        resolveSmtpPort(process.env.SMTP_PORT);
-      }
+    if (process.env.SMTP_HOST && process.env.SMTP_PASSWORD) {
+      logger.info("[EmailService] Using SMTP configuration");
+      const port = resolveSmtpPort(process.env.SMTP_PORT);
+      this.smtpTransporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USERNAME || "apikey",
+          pass: process.env.SMTP_PASSWORD,
+        },
+      });
+      this.useSmtp = true;
+      this.initialized = true;
+      logger.info("[EmailService] Initialized with SMTP");
+      return;
     }
 
     const apiKey = process.env.SENDGRID_API_KEY;

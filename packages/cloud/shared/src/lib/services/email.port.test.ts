@@ -6,6 +6,7 @@
  * Reverting production validation (e.g., fallback to 587) makes this suite red.
  */
 
+import sgMail from "@sendgrid/mail";
 import nodemailer from "nodemailer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EmailService, resolveSmtpPort, SmtpPortConfigError } from "./email";
@@ -166,6 +167,33 @@ describe("EmailService SMTP_PORT integration drives production resolver", () => 
     expect(() => (svc as unknown as { initialize: () => void }).initialize()).toThrow(
       SmtpPortConfigError,
     );
+  });
+
+  it("initializes SendGrid when SMTP host and password are absent even if SMTP_PORT is empty", async () => {
+    delete process.env.SMTP_HOST;
+    delete process.env.SMTP_PASSWORD;
+    process.env.SMTP_PORT = "";
+    process.env.SENDGRID_API_KEY = "SG.test-api-key";
+
+    const createSpy = vi.spyOn(nodemailer, "createTransport");
+    vi.spyOn(sgMail, "setApiKey").mockImplementation(() => {});
+    const sendSpy = vi
+      .spyOn(sgMail, "send")
+      .mockResolvedValue([{ statusCode: 202 }, {}] as unknown as Awaited<
+        ReturnType<typeof sgMail.send>
+      >);
+
+    const svc = new EmailService();
+    await expect(
+      svc.send({
+        to: "recipient@example.com",
+        subject: "Test Subject",
+        text: "Test body content",
+      }),
+    ).resolves.toBe(true);
+
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(sendSpy).toHaveBeenCalledTimes(1);
   });
 
   it("throws for decimal, exponent, signed, and leading-zero forms via EmailService", () => {
