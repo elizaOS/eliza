@@ -375,7 +375,8 @@ function getCodexSdkSession(
   return session;
 }
 
-function parseTimeout(value: string | undefined): number | undefined {
+/** Parse a strictly positive timeout or restart cadence. Exported for tests. */
+export function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   // `Number.parseInt` stops at the first non-digit, so "300junk" parsed to 300
   // and was taken as a deliberate setting. Require the whole trimmed value to
