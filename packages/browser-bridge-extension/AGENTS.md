@@ -152,7 +152,8 @@ Safari packaging replaces the converter echo handler with
 `safari/native/SafariWebExtensionHandler.swift`. Unsigned development packages
 use deterministic App Group and broker-socket defaults. A development-signed package supplies
 `ELIZA_SAFARI_SIGNING_TEAM` and `ELIZA_SAFARI_SIGNING_IDENTITY` together. A
-distribution package sets `ELIZA_SAFARI_RELEASE=1` and must explicitly supply
+distribution package sets `ELIZA_SAFARI_RELEASE=1`,
+`ELIZA_SAFARI_RELEASE_CHANNEL=app-store`, and must explicitly supply
 both signing values, `ELIZA_SAFARI_APP_GROUP`,
 `ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER`, and
 `ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`. The App Group must be

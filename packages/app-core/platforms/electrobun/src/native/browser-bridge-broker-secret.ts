@@ -175,10 +175,29 @@ export function loadBrowserBridgeBrokerSecret(
       "browser bridge broker secret is not owned by the current user",
     );
   }
-  const secret = fs.readFileSync(secretPath);
-  if (secret.byteLength !== 32)
-    throw new Error("browser bridge broker secret has invalid length");
-  return secret;
+  const descriptor = fs.openSync(
+    secretPath,
+    fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0),
+  );
+  try {
+    const openedStat = fs.fstatSync(descriptor);
+    const currentStat = fs.lstatSync(secretPath);
+    if (
+      !openedStat.isFile() ||
+      openedStat.dev !== stat.dev ||
+      openedStat.ino !== stat.ino ||
+      currentStat.dev !== openedStat.dev ||
+      currentStat.ino !== openedStat.ino
+    ) {
+      throw new Error("browser bridge broker secret changed while opening");
+    }
+    const secret = fs.readFileSync(descriptor);
+    if (secret.byteLength !== 32)
+      throw new Error("browser bridge broker secret has invalid length");
+    return secret;
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 
 export function loadOrCreateBrowserBridgeBrokerSecret(

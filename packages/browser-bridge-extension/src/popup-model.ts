@@ -13,7 +13,10 @@ export type PopupStatusKind =
   | "syncing"
   | "error";
 
-export type PopupContextualAction = "sync" | "grant_website_access";
+export type PopupContextualAction =
+  | "sync"
+  | "grant_website_access"
+  | "show_recovery";
 
 export interface PopupStatusModel {
   kind: PopupStatusKind;
@@ -51,6 +54,12 @@ export function derivePopupStatusModel(args: {
   }
 
   if (!hasConfig) {
+    if (state.connectionIssue === "recovery_required") {
+      return model("error", "Reconnect this browser in Eliza", {
+        kind: "show_recovery",
+        label: "Reconnect",
+      });
+    }
     const connectionLabel =
       state.connectionIssue === "app_not_authenticated"
         ? "Sign in to Eliza"

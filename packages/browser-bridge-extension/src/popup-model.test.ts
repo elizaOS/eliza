@@ -123,6 +123,21 @@ describe("derivePopupStatusModel", () => {
     });
   });
 
+  it("routes revoked or invalid credentials to recovery instead of an ineffective retry", () => {
+    expect(
+      derive(
+        baseState({
+          connectionIssue: "recovery_required",
+          lastError: "pairing token revoked: raw native detail",
+        }),
+      ),
+    ).toMatchObject({
+      kind: "error",
+      label: "Reconnect this browser in Eliza",
+      action: { kind: "show_recovery", label: "Reconnect" },
+    });
+  });
+
   it("shows website access only when all-sites mode needs it", () => {
     const state = baseState({
       config,

@@ -20,7 +20,7 @@ private enum NativeEnrollmentConstants {
     static let sharedSecretName = "s"
 }
 
-private enum NativeEnrollmentError: Error {
+enum NativeEnrollmentError: Error {
     case unsupportedProtocol
     case invalidRequest
     case appNotAuthenticated
@@ -41,12 +41,9 @@ private enum NativeEnrollmentError: Error {
     }
 
     var retryable: Bool {
-        switch self {
-        case .unsupportedProtocol, .invalidRequest:
-            return false
-        case .appNotAuthenticated, .appNotRunning, .brokerUnavailable:
-            return true
-        }
+        code == "app_not_running" ||
+            code == "app_not_authenticated" ||
+            code == "broker_unavailable"
     }
 }
 

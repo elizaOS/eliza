@@ -9,6 +9,7 @@ import {
   resolveAppleTeamId,
   resolvePackagedBrowserBridgeAppGroup,
   validateBrowserBridgeMacProvisioningProfile,
+  verifyRunningBrowserBridgeMacAuthority,
 } from "./browser-bridge-mac-signing";
 
 const profile = {
@@ -86,6 +87,66 @@ describe("browser bridge macOS signing identity", () => {
           }),
       ),
     ).toBe("group.ai.elizaos.browserbridge");
+  });
+
+  it("binds runtime activation to the live signed bundle and embedded profile", () => {
+    const metadata = JSON.stringify({
+      teamId: "ABCDEFGHIJ",
+      appId: "ai.elizaos.app",
+      applicationIdentifier: "ABCDEFGHIJ.ai.elizaos.app",
+      appGroup: "group.ai.elizaos.browserbridge",
+      profileUuid: "11111111-2222-3333-4444-555555555555",
+    });
+    const exists = (candidate: string) =>
+      candidate === "/app/bun/browser-bridge-signing.json" ||
+      candidate ===
+        "/Applications/Eliza.app/Contents/embedded.provisionprofile";
+    const run = (_command: string, args: string[]) => {
+      if (args[0] === "--verify") return { status: 0, stdout: "", stderr: "" };
+      if (args[0] === "cms") {
+        return {
+          status: 0,
+          stdout:
+            "<string>11111111-2222-3333-4444-555555555555</string>" +
+            "<string>ABCDEFGHIJ.ai.elizaos.app</string>" +
+            "<string>group.ai.elizaos.browserbridge</string>",
+          stderr: "",
+        };
+      }
+      return {
+        status: 0,
+        stdout:
+          "Identifier=ai.elizaos.app\nTeamIdentifier=ABCDEFGHIJ\n" +
+          "ABCDEFGHIJ.ai.elizaos.app\ngroup.ai.elizaos.browserbridge",
+        stderr: "",
+      };
+    };
+    expect(
+      verifyRunningBrowserBridgeMacAuthority(
+        "/app/bun/native",
+        "/Applications/Eliza.app",
+        { exists, readFile: () => metadata, run },
+      ),
+    ).toBe("group.ai.elizaos.browserbridge");
+    expect(() =>
+      verifyRunningBrowserBridgeMacAuthority(
+        "/app/bun/native",
+        "/Applications/Eliza.app",
+        {
+          exists,
+          readFile: () => metadata,
+          run: (command, args) => {
+            const result = run(command, args);
+            return args[0] === "-dvv"
+              ? {
+                  ...result,
+                  stdout: result.stdout.replace("ABCDEFGHIJ", "KLMNOPQRST"),
+                }
+              : result;
+          },
+        },
+      ),
+    ).toThrow("does not match");
   });
 
   it("embeds the validated profile at the macOS bundle authority path", () => {

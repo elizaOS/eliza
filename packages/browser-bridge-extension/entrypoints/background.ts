@@ -944,10 +944,11 @@ async function runSyncAttempt({
       ? finalError
       : null;
     const nativeEnrollmentFailure = finalError instanceof NativeEnrollmentError;
-    const connectionIssue =
-      finalError instanceof NativeEnrollmentError &&
-      (finalError.code === "app_not_running" ||
-        finalError.code === "app_not_authenticated")
+    const connectionIssue = isPairingInvalid
+      ? "recovery_required"
+      : finalError instanceof NativeEnrollmentError &&
+          (finalError.code === "app_not_running" ||
+            finalError.code === "app_not_authenticated")
         ? finalError.code
         : null;
     await setState({

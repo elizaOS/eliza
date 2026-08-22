@@ -142,7 +142,7 @@ the handler never logs native request or response content.
 Unsigned local builds use deterministic App Group and socket names.
 Development-signed builds set `ELIZA_SAFARI_SIGNING_TEAM` and
 `ELIZA_SAFARI_SIGNING_IDENTITY` together. Release packaging must additionally set
-`ELIZA_SAFARI_RELEASE=1`, `ELIZA_SAFARI_APP_GROUP`,
+`ELIZA_SAFARI_RELEASE=1`, `ELIZA_SAFARI_RELEASE_CHANNEL=app-store`, `ELIZA_SAFARI_APP_GROUP`,
 `ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER`, and
 `ELIZA_SAFARI_EXTENSION_PROVISIONING_PROFILE_SPECIFIER`; missing or malformed
 release signing inputs fail before conversion. Both provisioning profiles must

@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   loadBrowserBridgeBrokerSecret,
   loadOrCreateBrowserBridgeBrokerSecret,
@@ -93,6 +93,31 @@ describe("browser bridge broker secret", () => {
         () => Buffer.alloc(32, 1),
       ),
     ).toThrow("traverses a symlink");
+  });
+
+  it("rejects a secret replaced between validation and descriptor open", () => {
+    const stateDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "browser-secret-race-"),
+    );
+    roots.push(stateDir);
+    const env = { ELIZA_STATE_DIR: stateDir };
+    loadOrCreateBrowserBridgeBrokerSecret(env, () => Buffer.alloc(32, 1));
+    const secretPath = resolveBrowserBridgeBrokerSecretPath(env);
+    const originalPath = `${secretPath}.original`;
+    const open = fs.openSync.bind(fs);
+    let replaced = false;
+    const openSpy = vi.spyOn(fs, "openSync").mockImplementation((...args) => {
+      if (args[0] === secretPath && !replaced) {
+        replaced = true;
+        fs.renameSync(secretPath, originalPath);
+        fs.writeFileSync(secretPath, Buffer.alloc(32, 2), { mode: 0o600 });
+      }
+      return open(...args);
+    });
+    expect(() => loadBrowserBridgeBrokerSecret(env)).toThrow(
+      "changed while opening",
+    );
+    openSpy.mockRestore();
   });
 
   it("routes Windows secrets through the DPAPI helper without POSIX mode checks", () => {

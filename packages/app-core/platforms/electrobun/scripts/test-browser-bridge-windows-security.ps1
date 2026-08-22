@@ -30,8 +30,9 @@ function Invoke-SecurePipeRoundTrip {
   if (-not $process.Start()) { throw "secure pipe helper did not start" }
   $client = $null
   try {
-    if ($process.StandardError.ReadLine() -ne "READY") {
-      throw "secure pipe helper did not become ready"
+    $readyLine = $process.StandardError.ReadLine()
+    if ($readyLine -ne "READY") {
+      throw "secure pipe helper did not become ready: $readyLine"
     }
     $client = New-Object System.IO.Pipes.NamedPipeClientStream(
       ".",

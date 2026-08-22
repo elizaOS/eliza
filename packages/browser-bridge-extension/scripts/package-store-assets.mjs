@@ -79,7 +79,7 @@ const chromeSubmission = {
   shortDescription:
     "Connect your real browser to your Eliza agent so it can read the page you are on and carry out owner-approved actions.",
   description:
-    "Agent Browser Bridge pairs your personal Chrome profile with an Eliza agent. It keeps the current page available to the agent and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Pairing credentials are created only from authenticated Eliza Browser settings and imported into the extension.",
+    "Agent Browser Bridge securely enrolls your Chrome profile through the authenticated native Eliza app. It keeps the current page available to the agent and can execute owner-approved browser actions such as opening tabs, navigating, clicking, typing, and reading page content. Pairing JSON import remains available only as an explicit recovery path.",
   packageFileName: chromePackageFile,
   version: metadata.chromeVersion,
   versionName: metadata.chromeVersionName,
@@ -122,7 +122,7 @@ const chromeSubmission = {
     },
   ],
   reviewerNotes: [
-    "Pairing credentials must be created from authenticated Eliza Browser settings and imported as pairing JSON.",
+    "With the signed Eliza desktop app running and authenticated, the extension enrolls automatically through the browser native-messaging channel; pairing JSON import is a recovery-only fallback.",
     "Browser control is disabled by default unless the user enables it in agent settings.",
     "The retired zero-config auto-pair endpoint returns 410 and never mints credentials from loopback reachability or an extension Origin.",
   ],
@@ -144,13 +144,14 @@ const safariSubmission = {
   storeListingUrl: storeUrls.safariAppStoreUrl,
   capabilities: [
     "Safari Web Extension",
-    "Authenticated pairing JSON import for local or cloud agent apps",
+    "Automatic enrollment through the authenticated containing Eliza app",
+    "Authenticated pairing JSON import as an explicit recovery path",
     "Optional browser control for owner-approved sessions",
   ],
   reviewerNotes: [
     "The app bundle is generated from the same extension source as Chrome and is intended for App Store signing/export downstream.",
     "Privacy policy URL is required before submission if it is still null in this artifact.",
-    "Reviewers should create a pairing in authenticated Eliza Browser settings and import its JSON in the Safari extension popup.",
+    "Reviewers should launch and authenticate the signed Eliza containing app; the Safari extension then enrolls automatically through the App Group broker. Pairing JSON import is available only for recovery.",
   ],
 };
 
@@ -170,7 +171,7 @@ const firefoxSubmission = {
   dataCollectionPermissions: { required: ["none"] },
   reviewerNotes: [
     "The package declares a stable Gecko extension ID and supports Firefox 142 or later.",
-    "Pairing credentials must be created in authenticated Eliza Browser settings and imported in this Firefox profile.",
+    "With the authenticated Eliza desktop app running, Firefox enrolls automatically through native messaging. Pairing JSON import is retained only as a recovery path.",
     "The package passes web-ext lint in self-hosted mode with no errors, warnings, or notices.",
   ],
 };
@@ -210,7 +211,8 @@ const checklistLines = [
   "",
   "## Notes",
   "",
-  "- Authenticated pairing JSON import is the only credential setup flow; zero-config auto-pair is disabled.",
+  "- Authenticated native enrollment through the signed Eliza desktop app is the primary credential setup flow; pairing JSON import is recovery-only.",
+  "- The retired unauthenticated HTTP loopback auto-pair endpoint remains disabled and cannot mint credentials.",
   "- Re-sign the Safari app bundle and export through App Store Connect before submission.",
   "- Review the JSON metadata files in this artifacts directory for permission text and reviewer notes.",
   "",

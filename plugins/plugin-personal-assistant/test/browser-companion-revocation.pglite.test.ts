@@ -62,9 +62,10 @@ function browserDomain(ownerEntityId: string): BrowserDomain {
 async function pair(
   ownerEntityId: string,
   profileId: string,
+  browser: "chrome" | "firefox" | "safari" = "chrome",
 ): Promise<BrowserBridgeCompanionPairingResponse> {
   return await browserDomain(ownerEntityId).createBrowserCompanionPairing({
-    browser: "chrome",
+    browser,
     profileId,
     profileLabel: profileId,
     extensionVersion: "1.2.3",
@@ -84,7 +85,7 @@ afterAll(async () => {
 });
 
 describe("browser companion revocation persistence", () => {
-  it("enforces native TTL, survives restart, isolates profiles, and requires owner reset", async () => {
+  it("enforces native TTL, survives restart, blocks reinstall identities, and requires owner reset", async () => {
     const ownerEntityId = "owner-revocation-a";
     const beforePairMs = Date.now();
     const initial = await pair(ownerEntityId, "profile-revoked");
@@ -115,10 +116,19 @@ describe("browser companion revocation persistence", () => {
       status: 409,
       code: "revoked",
     });
-    await expect(pair(ownerEntityId, "profile-independent")).resolves.toEqual(
+    await expect(
+      pair(ownerEntityId, "profile-after-reinstall"),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "revoked",
+    });
+    await expect(
+      pair(ownerEntityId, "profile-independent", "firefox"),
+    ).resolves.toEqual(
       expect.objectContaining({
         companion: expect.objectContaining({
           profileId: "profile-independent",
+          browser: "firefox",
         }),
       }),
     );
@@ -142,5 +152,72 @@ describe("browser companion revocation persistence", () => {
         }),
       }),
     );
+    await expect(
+      pair(ownerEntityId, "profile-after-reinstall"),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        companion: expect.objectContaining({
+          profileId: "profile-after-reinstall",
+        }),
+      }),
+    );
+  });
+
+  it("serializes pending-token promotion with revocation so revoke wins", async () => {
+    const ownerEntityId = "owner-revocation-promotion-race";
+    const active = await pair(ownerEntityId, "profile-promotion-race");
+    const pending = await pair(ownerEntityId, "profile-promotion-race");
+
+    await Promise.allSettled([
+      browserDomain(ownerEntityId).requireBrowserCompanion(
+        pending.companion.id,
+        pending.pairingToken,
+      ),
+      browserDomain(ownerEntityId).revokeBrowserCompanion(active.companion.id),
+    ]);
+
+    repository = new LifeOpsRepository(runtime);
+    await expect(
+      browserDomain(ownerEntityId).requireBrowserCompanion(
+        active.companion.id,
+        active.pairingToken,
+      ),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "browser_bridge_companion_token_revoked",
+    });
+    await expect(
+      browserDomain(ownerEntityId).requireBrowserCompanion(
+        pending.companion.id,
+        pending.pairingToken,
+      ),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "browser_bridge_companion_token_revoked",
+    });
+  });
+
+  it("serializes pairing with revocation without resurrecting credentials", async () => {
+    const ownerEntityId = "owner-revocation-pair-race";
+    const active = await pair(ownerEntityId, "profile-pair-race");
+
+    await Promise.allSettled([
+      pair(ownerEntityId, "profile-pair-race"),
+      browserDomain(ownerEntityId).revokeBrowserCompanion(active.companion.id),
+    ]);
+
+    repository = new LifeOpsRepository(runtime);
+    await expect(
+      pair(ownerEntityId, "new-install-profile-pair-race"),
+    ).rejects.toMatchObject({ status: 409, code: "revoked" });
+    await expect(
+      browserDomain(ownerEntityId).requireBrowserCompanion(
+        active.companion.id,
+        active.pairingToken,
+      ),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "browser_bridge_companion_token_revoked",
+    });
   });
 });

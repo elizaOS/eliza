@@ -123,5 +123,40 @@ describe("browser bridge broker transport contracts", () => {
     expect(
       Buffer.byteLength(descriptor.socketPath, "utf8"),
     ).toBeLessThanOrEqual(103);
+    expect(descriptor.directoryPolicy).toBe("apple_app_group");
+  });
+
+  it("does not chmod an Apple-managed App Group container", () => {
+    const container = fs.mkdtempSync(
+      path.join(os.tmpdir(), "browser-app-group-"),
+    );
+    tempRoots.push(container);
+    const chmod = vi.spyOn(fs, "chmodSync");
+    prepareUnixBrokerSocketDirectory(
+      createMacAppGroupBrokerTransportDescriptor(
+        container,
+        process.getuid?.() ?? 501,
+      ),
+    );
+    expect(chmod).not.toHaveBeenCalledWith(container, expect.anything());
+    chmod.mockRestore();
+  });
+
+  it("rejects a socket path with a symlinked parent", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "browser-socket-link-"));
+    const target = fs.mkdtempSync(
+      path.join(os.tmpdir(), "browser-socket-target-"),
+    );
+    tempRoots.push(root, target);
+    const linked = path.join(root, "linked");
+    fs.symlinkSync(target, linked);
+    expect(() =>
+      prepareUnixBrokerSocketDirectory(
+        createMacAppGroupBrokerTransportDescriptor(
+          linked,
+          process.getuid?.() ?? 501,
+        ),
+      ),
+    ).toThrow("traverses a symlink");
   });
 });

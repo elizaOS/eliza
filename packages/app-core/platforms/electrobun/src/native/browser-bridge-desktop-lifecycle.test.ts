@@ -39,7 +39,7 @@ describe("browser bridge desktop lifecycle", () => {
         registrationPlan: { platform: process.platform, manifests: [] },
         installRegistration,
         macSafariAppGroupContainerPath: stateDir,
-        macSafariProvisionedAppGroup: "group.ai.elizaos.browserbridge",
+        verifyMacSafariAuthority: () => "group.ai.elizaos.browserbridge",
         loadMacSafariSecret: () => Buffer.alloc(32, 7),
       }),
     ).resolves.toBe(true);
@@ -68,6 +68,38 @@ describe("browser bridge desktop lifecycle", () => {
       }),
     ).resolves.toBe(false);
   });
+
+  it.skipIf(process.platform !== "darwin")(
+    "rolls back the primary listener when Safari secret setup fails",
+    async () => {
+      const stateDir = fs.mkdtempSync(
+        path.join(os.tmpdir(), "browser-lifecycle-rollback-"),
+      );
+      roots.push(stateDir);
+      const env = {
+        ELIZA_STATE_DIR: stateDir,
+        ELIZA_BROWSER_BRIDGE_CHROME_EXTENSION_IDS:
+          "abcdefghijklmnopabcdefghijklmnop",
+      };
+      await expect(
+        startBrowserBridgeDesktopLifecycle({
+          apiBase: "http://127.0.0.1:31337",
+          env,
+          registrationPlan: { platform: process.platform, manifests: [] },
+          macSafariAppGroupContainerPath: stateDir,
+          verifyMacSafariAuthority: () => "group.ai.elizaos.browserbridge",
+          loadMacSafariSecret: () => {
+            throw new Error("injected Safari secret failure");
+          },
+        }),
+      ).rejects.toThrow("injected Safari secret failure");
+      const descriptor = createUnixBrokerTransportDescriptor(
+        env,
+        process.getuid?.() ?? 501,
+      );
+      expect(fs.existsSync(descriptor.socketPath)).toBe(false);
+    },
+  );
 
   it("recovers authenticated owner authority from the persistent renderer cookie jar", () => {
     const cookies = [

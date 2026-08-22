@@ -28,6 +28,7 @@ function transportReturning(value: unknown): BrowserBridgeBrokerTransport {
       directoryMode: 0o700,
       socketMode: 0o600,
       expectedUid: 501,
+      directoryPolicy: "managed",
     },
     request: vi.fn(async (bytes: Uint8Array) => {
       const envelope = JSON.parse(

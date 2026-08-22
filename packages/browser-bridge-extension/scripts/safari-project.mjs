@@ -48,6 +48,7 @@ export function resolveSafariNativeConfiguration(env = process.env) {
   const socketName =
     requiredTrimmed(env.ELIZA_SAFARI_BROKER_SOCKET_NAME) ?? DEFAULT_SOCKET_NAME;
   const release = parseReleaseFlag(env.ELIZA_SAFARI_RELEASE);
+  const releaseChannel = requiredTrimmed(env.ELIZA_SAFARI_RELEASE_CHANNEL);
 
   if (Boolean(signingTeam) !== Boolean(signingIdentity)) {
     throw new Error(
@@ -85,6 +86,7 @@ export function resolveSafariNativeConfiguration(env = process.env) {
     const missing = [
       ["ELIZA_SAFARI_SIGNING_TEAM", signingTeam],
       ["ELIZA_SAFARI_SIGNING_IDENTITY", signingIdentity],
+      ["ELIZA_SAFARI_RELEASE_CHANNEL", releaseChannel],
       ["ELIZA_SAFARI_APP_GROUP", requiredTrimmed(env.ELIZA_SAFARI_APP_GROUP)],
       [
         "ELIZA_SAFARI_APP_PROVISIONING_PROFILE_SPECIFIER",
@@ -102,10 +104,25 @@ export function resolveSafariNativeConfiguration(env = process.env) {
         `Safari release packaging requires explicit signed configuration: ${missing.join(", ")}.`,
       );
     }
+    if (releaseChannel !== "app-store") {
+      throw new Error(
+        "ELIZA_SAFARI_RELEASE_CHANNEL must be app-store for distributable Safari releases.",
+      );
+    }
+    if (
+      !/^(Apple Distribution|3rd Party Mac Developer Application)(?::|$)/.test(
+        signingIdentity,
+      )
+    ) {
+      throw new Error(
+        "ELIZA_SAFARI_SIGNING_IDENTITY must name an Apple distribution application identity.",
+      );
+    }
   }
 
   return {
     release,
+    releaseChannel,
     signingTeam,
     signingIdentity,
     appProvisioningProfile,
@@ -130,6 +147,9 @@ function assertProvisionedCodeItem({
   const profileGroups =
     profileEntitlements?.["com.apple.security.application-groups"];
   const expiresAt = Date.parse(String(profile.ExpirationDate ?? ""));
+  const getTaskAllow = profileEntitlements?.["get-task-allow"];
+  const provisionedDevices = profile.ProvisionedDevices;
+  const provisionsAllDevices = profile.ProvisionsAllDevices;
   if (
     entitlements["com.apple.application-identifier"] !==
       expectedApplicationIdentifier &&
@@ -153,6 +173,9 @@ function assertProvisionedCodeItem({
     (profile.Name !== profileSpecifier && profile.UUID !== profileSpecifier) ||
     profileEntitlements?.["application-identifier"] !==
       expectedApplicationIdentifier ||
+    getTaskAllow !== false ||
+    Array.isArray(provisionedDevices) ||
+    provisionsAllDevices === true ||
     !Array.isArray(profileGroups) ||
     !profileGroups.includes(configuration.appGroup) ||
     !Number.isFinite(expiresAt) ||
@@ -201,6 +224,42 @@ export function validateSafariSignedBundleContracts({
     configuration,
     now,
   });
+}
+
+export function validateSafariCodeSigningAuthorities({
+  configuration,
+  appAuthorityOutput,
+  extensionAuthorityOutput,
+  bundleIdentifier,
+}) {
+  for (const [label, output, identifier] of [
+    ["Safari containing app", appAuthorityOutput, bundleIdentifier],
+    [
+      "Safari extension",
+      extensionAuthorityOutput,
+      `${bundleIdentifier}.Extension`,
+    ],
+  ]) {
+    const lines = String(output).split(/\r?\n/);
+    const authorities = lines
+      .filter((line) => line.startsWith("Authority="))
+      .map((line) => line.slice("Authority=".length));
+    if (
+      !configuration.release ||
+      !configuration.signingTeam ||
+      !authorities.some((authority) =>
+        /^(Apple Distribution|3rd Party Mac Developer Application)(?::|$)/.test(
+          authority,
+        ),
+      ) ||
+      !lines.includes(`TeamIdentifier=${configuration.signingTeam}`) ||
+      !lines.includes(`Identifier=${identifier}`)
+    ) {
+      throw new Error(
+        `${label} does not have the required distribution signing authority.`,
+      );
+    }
+  }
 }
 
 function escapeXml(value) {

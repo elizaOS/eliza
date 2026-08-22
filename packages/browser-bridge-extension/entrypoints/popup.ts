@@ -147,6 +147,12 @@ async function refresh(refs: PopupRefs): Promise<void> {
 async function runContextualAction(refs: PopupRefs): Promise<void> {
   const action = currentAction;
   if (!action) return;
+  if (action === "show_recovery") {
+    refs.details.open = true;
+    refs.recovery.open = true;
+    refs.pairingJson.focus();
+    return;
+  }
   refs.primaryAction.disabled = true;
   refs.statusTitle.dataset.kind = "syncing";
   refs.statusTitle.textContent =
