@@ -348,6 +348,29 @@ describe("buildPlannerToolsFromTieredActions", () => {
 		expect(tiered.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
 	});
 
+	it("expands only inline children in the authorized action lookup", () => {
+		const allowedChild = makeTieredAction({
+			name: "PLAY_MUSIC",
+			description: "Allowed child.",
+		});
+		const deniedChild = makeTieredAction({
+			name: "DELETE_PRIVATE_PLAYLIST",
+			description: "Private child that must not reach the model.",
+		});
+		const parent = makeTieredAction({
+			name: "MUSIC",
+			description: "Music parent.",
+			subActions: [allowedChild, deniedChild],
+		});
+
+		const tools = buildPlannerToolsFromTieredActions([parent], {
+			actionLookup: new Map([[allowedChild.name, allowedChild]]),
+		});
+
+		expect(tools.map((tool) => tool.name)).toEqual(["MUSIC", "PLAY_MUSIC"]);
+		expect(JSON.stringify(tools)).not.toContain("Private child");
+	});
+
 	it("rejects sub-action names that are not strict native tool names", () => {
 		const badChild = makeTieredAction({
 			name: "lowercaseChild",
