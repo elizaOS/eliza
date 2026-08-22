@@ -6,10 +6,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  atomicallyPromoteRefs,
   buildEffectPlans,
   createLedgerPayload,
   decideEffectReconciliation,
   decidePromotion,
+  dispatchEffect,
+  listEffectDeployments,
+  reconcileEffect,
+  selectRediscoveredRun,
   sha256,
   simulateReconciliation,
   validateRegistry,
@@ -256,6 +261,139 @@ describe("source and durable ledger contracts", () => {
       ]),
     ).toThrow("conflicting input digest");
   });
+
+  test("paginates beyond 100 ledger rows without silently dropping proof", async () => {
+    const plan = plans().plans[0];
+    const rows = Array.from({ length: 101 }, (_, index) => ({
+      id: index + 1,
+      payload: payload(plan, index === 100 ? SOURCE_SHA : PRIOR_SHA),
+    }));
+    const api = {
+      request: async (_method: string, endpoint: string) => {
+        if (endpoint.startsWith("/deployments?")) {
+          const page = Number(
+            new URL(`https://example.test${endpoint}`).searchParams.get("page"),
+          );
+          return page === 1 ? rows.slice(0, 100) : rows.slice(100);
+        }
+        return [
+          { state: "success", log_url: "https://example.test/actions/runs/1" },
+        ];
+      },
+    };
+    expect(await listEffectDeployments(api, plan)).toHaveLength(101);
+  });
+
+  test("rediscovery binds a crashed dispatch to exact workflow, SHA, and digest", () => {
+    const plan = plans().plans[0];
+    const matching = {
+      id: 99,
+      display_title: `Cloud ${SOURCE_SHA} ${plan.inputDigest}`,
+      event: "workflow_dispatch",
+      head_sha: SOURCE_SHA,
+      path: `.github/workflows/${plan.workflow}`,
+    };
+    expect(selectRediscoveredRun(plan, SOURCE_SHA, [matching])).toBe(matching);
+    expect(
+      selectRediscoveredRun(plan, SOURCE_SHA, [
+        { ...matching, id: 1, head_sha: PRIOR_SHA },
+      ]),
+    ).toBeNull();
+    expect(() =>
+      selectRediscoveredRun(plan, SOURCE_SHA, [
+        matching,
+        { ...matching, id: 100 },
+      ]),
+    ).toThrow("multiple downstream runs");
+  });
+
+  test("resumes a crash after dispatch without redelivering the effect", async () => {
+    const plan = plans().plans[0];
+    const row = payload(plan);
+    const calls: Array<{ method: string; endpoint: string; body?: unknown }> =
+      [];
+    const run = {
+      id: 99,
+      conclusion: "success",
+      display_title: `Cloud ${SOURCE_SHA} ${plan.inputDigest}`,
+      event: "workflow_dispatch",
+      head_sha: SOURCE_SHA,
+      path: `.github/workflows/${plan.workflow}`,
+      status: "completed",
+    };
+    const api = {
+      request: async (method: string, endpoint: string, body?: unknown) => {
+        calls.push({ method, endpoint, body });
+        if (endpoint.startsWith("/deployments?")) {
+          return endpoint.includes("page=1") ? [{ id: 7, payload: row }] : [];
+        }
+        if (endpoint === "/deployments/7/statuses?per_page=1") return [];
+        if (endpoint.includes(`/actions/workflows/${plan.workflow}/runs?`)) {
+          return { workflow_runs: [run] };
+        }
+        if (endpoint === "/actions/runs/99") return run;
+        if (endpoint === "/deployments/7/statuses") return {};
+        throw new Error(`unexpected request ${method} ${endpoint}`);
+      },
+    };
+    await reconcileEffect(api, plan, {
+      ledgerVersion: "fixture-v1",
+      repository: "owner/repo",
+      serverUrl: "https://github.com",
+      sourceRunId: "42",
+      sourceSha: SOURCE_SHA,
+    });
+    expect(
+      calls.filter(({ endpoint }) => endpoint.endsWith("/dispatches")),
+    ).toHaveLength(0);
+  });
+
+  test("fails closed when a crashed dispatch cannot be rediscovered", async () => {
+    const plan = plans().plans[0];
+    const row = payload(plan);
+    const calls: Array<{ method: string; endpoint: string }> = [];
+    const api = {
+      request: async (method: string, endpoint: string) => {
+        calls.push({ method, endpoint });
+        if (endpoint.startsWith("/deployments?"))
+          return [{ id: 7, payload: row }];
+        if (endpoint === "/deployments/7/statuses?per_page=1") return [];
+        if (endpoint.includes(`/actions/workflows/${plan.workflow}/runs?`)) {
+          return { workflow_runs: [] };
+        }
+        throw new Error(`unexpected request ${method} ${endpoint}`);
+      },
+    };
+    await expect(
+      reconcileEffect(api, plan, {
+        ledgerVersion: "fixture-v1",
+        repository: "owner/repo",
+        serverUrl: "https://github.com",
+        sourceRunId: "42",
+        sourceSha: SOURCE_SHA,
+      }),
+    ).rejects.toThrow("refusing ambiguous redelivery");
+    expect(
+      calls.filter(({ endpoint }) => endpoint.endsWith("/dispatches")),
+    ).toHaveLength(0);
+  });
+
+  test("dispatch requests content-addressed run details", async () => {
+    const plan = plans().plans[0];
+    let body: Record<string, unknown> | undefined;
+    const api = {
+      request: async (
+        _method: string,
+        _endpoint: string,
+        value: Record<string, unknown>,
+      ) => {
+        body = value;
+        return { workflow_run_id: 123 };
+      },
+    };
+    expect(await dispatchEffect(api, plan, SOURCE_SHA)).toBe(123);
+    expect(body).toMatchObject({ ref: "develop", return_run_details: true });
+  });
 });
 
 describe("develop-green-only promotion", () => {
@@ -294,6 +432,70 @@ describe("develop-green-only promotion", () => {
         }),
       ).toThrow("cannot fast-forward");
     }
+  });
+
+  test("atomically fences develop and main at the mutation boundary", async () => {
+    let variables: Record<string, unknown> | undefined;
+    const api = {
+      graphql: async (_query: string, value: Record<string, unknown>) => {
+        variables = value;
+        return { updateRefs: { clientMutationId: "ok" } };
+      },
+    };
+    await atomicallyPromoteRefs(api, {
+      repositoryId: "R_fixture",
+      sourceBranch: "develop",
+      sourceSha: SOURCE_SHA,
+      targetBranch: "main",
+      targetSha: MAIN_SHA,
+    });
+    expect(variables).toMatchObject({
+      input: {
+        repositoryId: "R_fixture",
+        refUpdates: [
+          {
+            name: "refs/heads/develop",
+            beforeOid: SOURCE_SHA,
+            afterOid: SOURCE_SHA,
+          },
+          {
+            name: "refs/heads/main",
+            beforeOid: MAIN_SHA,
+            afterOid: SOURCE_SHA,
+          },
+        ],
+      },
+    });
+  });
+
+  test("an advanced develop ref rejects the whole promotion mutation", async () => {
+    let mainMoved = false;
+    const api = {
+      graphql: async (
+        _query: string,
+        variables: {
+          input: {
+            refUpdates: Array<{ afterOid: string; beforeOid: string }>;
+          };
+        },
+      ) => {
+        const [develop, main] = variables.input.refUpdates;
+        if (develop.beforeOid !== PRIOR_SHA) {
+          throw new Error("develop beforeOid mismatch");
+        }
+        mainMoved = main.afterOid === SOURCE_SHA;
+      },
+    };
+    await expect(
+      atomicallyPromoteRefs(api, {
+        repositoryId: "R_fixture",
+        sourceBranch: "develop",
+        sourceSha: SOURCE_SHA,
+        targetBranch: "main",
+        targetSha: MAIN_SHA,
+      }),
+    ).rejects.toThrow("beforeOid mismatch");
+    expect(mainMoved).toBe(false);
   });
 
   test("dry reconciliation stops stale sources and exposes partial resume", () => {
@@ -376,6 +578,23 @@ describe("checked-in workflow authority", () => {
     expect(developFull).toContain("needs.complete.result == 'success'");
     expect(developFull).toContain("X-GitHub-Api-Version: 2026-03-10");
     expect(developFull).toContain(".workflow_run_id");
+    expect(developFull).toContain("-F return_run_details=true");
+    expect(developFull).toContain('-f "ref=$SOURCE_SHA"');
     expect(developFull).not.toContain("pull_request:");
+    expect(readWorkflow("develop-reconcile.yml")).toContain(
+      '[[ "$GITHUB_SHA" == "$SOURCE_SHA" ]]',
+    );
+  });
+
+  test("untrusted dispatch inputs enter shells only through environment variables", () => {
+    const reconcile = Bun.YAML.parse(readWorkflow("develop-reconcile.yml")) as {
+      jobs: { reconcile: { steps: Array<{ run?: string }> } };
+    };
+    const scripts = reconcile.jobs.reconcile.steps
+      .map((step) => step.run ?? "")
+      .join("\n");
+    expect(scripts).not.toContain("${{ inputs.");
+    expect(scripts).toContain('"$SOURCE_SHA"');
+    expect(scripts).toContain('"$SOURCE_RUN_ID"');
   });
 });

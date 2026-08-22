@@ -47,6 +47,10 @@ jobs:
             echo "::error::source_run_id must be a positive integer"
             exit 1
           }
+          [[ "$GITHUB_SHA" == "$SOURCE_SHA" ]] || {
+            echo "::error::reconcile workflow head must equal source_sha"
+            exit 1
+          }
 
       - name: Checkout exact verified source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -63,25 +67,20 @@ jobs:
       - name: Wait for exact Develop Full success
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: >-
-          node packages/scripts/develop-effect-ledger.mjs await-source
-          --source-sha "${{ inputs.source_sha }}"
-          --source-run-id "${{ inputs.source_run_id }}"
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node packages/scripts/develop-effect-ledger.mjs await-source --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID"
 
       - name: Download exact validation manifest
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh run download "${{ inputs.source_run_id }}"
-          --name "develop-full-manifest-${{ inputs.source_sha }}"
-          --dir .develop-evidence
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: gh run download "$SOURCE_RUN_ID" --name "develop-full-manifest-$SOURCE_SHA" --dir .develop-evidence
 
       - name: Reconcile effects and fast-forward main
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: >-
-          node packages/scripts/develop-effect-ledger.mjs reconcile
-          --source-sha "${{ inputs.source_sha }}"
-          --source-run-id "${{ inputs.source_run_id }}"
-          --expected .develop-evidence/expected.json
-          --observed .develop-evidence/observed.json
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: node packages/scripts/develop-effect-ledger.mjs reconcile --source-sha "$SOURCE_SHA" --source-run-id "$SOURCE_RUN_ID" --expected .develop-evidence/expected.json --observed .develop-evidence/observed.json

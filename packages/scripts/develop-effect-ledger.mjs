@@ -21,6 +21,8 @@ const DEFAULT_REPO_ROOT = path.resolve(
 const DEFAULT_REGISTRY = ".github/develop-effects.json";
 const API_VERSION = "2026-03-10";
 const LEDGER_SCHEMA_VERSION = 1;
+const PAGE_SIZE = 100;
+const MAX_LEDGER_PAGES = 10;
 const PAYLOAD_KEYS = [
   "effect",
   "inputDigest",
@@ -381,6 +383,27 @@ class GitHubApi {
     }
     return text ? JSON.parse(text) : null;
   }
+
+  async graphql(query, variables) {
+    const response = await fetch(`${this.apiUrl}/graphql`, {
+      method: "POST",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${this.token}`,
+        "Content-Type": "application/json",
+        "X-GitHub-Api-Version": API_VERSION,
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const text = await response.text();
+    const result = text ? JSON.parse(text) : null;
+    if (!response.ok || result?.errors?.length) {
+      throw new Error(
+        `GitHub GraphQL failed (${response.status}): ${text.slice(0, 500)}`,
+      );
+    }
+    return result?.data;
+  }
 }
 
 function sleep(milliseconds) {
@@ -405,11 +428,23 @@ function deploymentState(deployment, statuses) {
   };
 }
 
-async function listEffectDeployments(api, plan) {
-  const deployments = await api.request(
-    "GET",
-    `/deployments?environment=${encodeURIComponent(plan.environment)}&per_page=100`,
-  );
+export async function listEffectDeployments(api, plan) {
+  const deployments = [];
+  for (let page = 1; page <= MAX_LEDGER_PAGES; page += 1) {
+    const batch = await api.request(
+      "GET",
+      `/deployments?environment=${encodeURIComponent(plan.environment)}&per_page=${PAGE_SIZE}&page=${page}`,
+    );
+    if (!Array.isArray(batch))
+      throw new Error(`${plan.id}: invalid ledger page`);
+    deployments.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+    if (page === MAX_LEDGER_PAGES) {
+      throw new Error(
+        `${plan.id}: ledger exceeds ${MAX_LEDGER_PAGES * PAGE_SIZE} rows`,
+      );
+    }
+  }
   const candidates = [];
   for (const deployment of deployments) {
     const payload = verifyLedgerPayload(deployment.payload);
@@ -457,7 +492,7 @@ function runIdFromStatus(status) {
   return match ? Number(match[1]) : null;
 }
 
-async function dispatchEffect(api, plan, sourceSha) {
+export async function dispatchEffect(api, plan, sourceSha) {
   const response = await api.request(
     "POST",
     `/actions/workflows/${encodeURIComponent(plan.workflow)}/dispatches`,
@@ -468,6 +503,7 @@ async function dispatchEffect(api, plan, sourceSha) {
         [plan.shaInput]: sourceSha,
       },
       ref: "develop",
+      return_run_details: true,
     },
   );
   const runId = Number(response?.workflow_run_id);
@@ -475,6 +511,44 @@ async function dispatchEffect(api, plan, sourceSha) {
     throw new Error(`${plan.id}: dispatch returned no workflow run id`);
   }
   return runId;
+}
+
+export function selectRediscoveredRun(plan, sourceSha, runs) {
+  const matches = runs.filter(
+    (run) =>
+      run.event === "workflow_dispatch" &&
+      run.head_sha === sourceSha &&
+      String(run.path).endsWith(`/${plan.workflow}`) &&
+      String(run.display_title).includes(sourceSha) &&
+      String(run.display_title).includes(plan.inputDigest),
+  );
+  if (matches.length > 1) {
+    throw new Error(
+      `${plan.id}: multiple downstream runs match the durable ledger`,
+    );
+  }
+  return matches[0] ?? null;
+}
+
+async function rediscoverEffectRun(api, plan, sourceSha) {
+  const runs = [];
+  for (let page = 1; page <= MAX_LEDGER_PAGES; page += 1) {
+    const response = await api.request(
+      "GET",
+      `/actions/workflows/${encodeURIComponent(plan.workflow)}/runs?event=workflow_dispatch&head_sha=${encodeURIComponent(sourceSha)}&per_page=${PAGE_SIZE}&page=${page}`,
+    );
+    if (!Array.isArray(response?.workflow_runs)) {
+      throw new Error(`${plan.id}: invalid downstream run page`);
+    }
+    runs.push(...response.workflow_runs);
+    if (response.workflow_runs.length < PAGE_SIZE) break;
+    if (page === MAX_LEDGER_PAGES) {
+      throw new Error(
+        `${plan.id}: downstream run search exceeded ${MAX_LEDGER_PAGES * PAGE_SIZE} rows`,
+      );
+    }
+  }
+  return selectRediscoveredRun(plan, sourceSha, runs);
 }
 
 async function waitForEffectRun(api, plan, sourceSha, runId) {
@@ -492,7 +566,7 @@ async function waitForEffectRun(api, plan, sourceSha, runId) {
   throw new Error(`${plan.id}: downstream run timed out`);
 }
 
-async function reconcileEffect(api, plan, context) {
+export async function reconcileEffect(api, plan, context) {
   const deployments = await listEffectDeployments(api, plan);
   const decision = decideEffectReconciliation(
     plan,
@@ -524,11 +598,25 @@ async function reconcileEffect(api, plan, context) {
       ? decision.deployment
       : await createDeployment(api, plan, payload);
   let runId = runIdFromStatus(deployment.status);
-  if (
-    !runId ||
-    deployment.state === "failure" ||
-    deployment.state === "error"
-  ) {
+  if (!runId && decision.action === "resume") {
+    const rediscovered = await rediscoverEffectRun(
+      api,
+      plan,
+      context.sourceSha,
+    );
+    runId = rediscovered?.id ?? null;
+    if (!runId) {
+      throw new Error(
+        `${plan.id}: interrupted dispatch has no rediscoverable run; refusing ambiguous redelivery`,
+      );
+    }
+  }
+  if (!runId && ["failure", "error"].includes(deployment.state)) {
+    throw new Error(
+      `${plan.id}: failed effect has no rediscoverable run; refusing redelivery`,
+    );
+  }
+  if (!runId) {
     await setDeploymentStatus(
       api,
       deployment.id,
@@ -564,6 +652,39 @@ async function reconcileEffect(api, plan, context) {
     logUrl,
   );
   return { ...deployment, payload, state: "success" };
+}
+
+export async function atomicallyPromoteRefs(
+  api,
+  { repositoryId, sourceBranch, sourceSha, targetBranch, targetSha },
+) {
+  assertFullSha(sourceSha, "atomic promotion source SHA");
+  assertFullSha(targetSha, "atomic promotion target SHA");
+  return api.graphql(
+    `mutation AtomicDevelopPromotion($input: UpdateRefsInput!) {
+      updateRefs(input: $input) { clientMutationId }
+    }`,
+    {
+      input: {
+        clientMutationId: `develop-promotion-${sourceSha}`,
+        repositoryId,
+        refUpdates: [
+          {
+            afterOid: sourceSha,
+            beforeOid: sourceSha,
+            force: false,
+            name: `refs/heads/${sourceBranch}`,
+          },
+          {
+            afterOid: sourceSha,
+            beforeOid: targetSha,
+            force: false,
+            name: `refs/heads/${targetBranch}`,
+          },
+        ],
+      },
+    },
+  );
 }
 
 async function getRefSha(api, branch) {
@@ -629,21 +750,17 @@ async function reconcilePromotion(api, promotion, context, effectDeployments) {
     `${context.serverUrl}/${context.repository}/actions/runs/${context.reconcileRunId}`,
   );
   if (decision.action === "fast-forward") {
-    const stillCurrent = await getRefSha(api, promotion.sourceBranch);
-    if (stillCurrent !== context.sourceSha) {
-      await setDeploymentStatus(
-        api,
-        deployment.id,
-        "failure",
-        "Develop advanced before promotion",
-      );
-      return { action: "stale" };
+    const repository = await api.request("GET", "");
+    if (typeof repository?.node_id !== "string" || !repository.node_id) {
+      throw new Error("repository node id is unavailable for atomic promotion");
     }
-    await api.request(
-      "PATCH",
-      `/git/refs/heads/${encodeURIComponent(promotion.targetBranch)}`,
-      { force: false, sha: context.sourceSha },
-    );
+    await atomicallyPromoteRefs(api, {
+      repositoryId: repository.node_id,
+      sourceBranch: promotion.sourceBranch,
+      sourceSha: context.sourceSha,
+      targetBranch: promotion.targetBranch,
+      targetSha: mainSha,
+    });
   }
   const [finalMain, finalDevelop] = await Promise.all([
     getRefSha(api, promotion.targetBranch),
@@ -673,6 +790,9 @@ async function reconcileCommand(args) {
   const sourceSha = requireString(args, "source-sha");
   const sourceRunId = requireString(args, "source-run-id");
   assertFullSha(sourceSha, "source SHA");
+  if (environment("GITHUB_SHA") !== sourceSha) {
+    throw new Error("reconcile workflow head SHA does not match source SHA");
+  }
   const expected = readJson(path.resolve(requireString(args, "expected")));
   const observed = readJson(path.resolve(requireString(args, "observed")));
   if (expected.headSha !== sourceSha || observed.headSha !== sourceSha) {
