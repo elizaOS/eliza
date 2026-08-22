@@ -51,14 +51,13 @@ export interface DirectApiProbeResult {
   status: number;
   error?: string;
   latencyMs: number;
-  /** Bounded provider catalog sample; credential material is never included. */
+  /** Complete provider catalog within the response-size safety bound. */
   modelIds?: string[];
-  /** True when the provider response exceeded a catalog safety bound. */
+  /** True when the provider response exceeded the byte safety bound. */
   modelCatalogTruncated?: boolean;
 }
 
 const MAX_MODEL_CATALOG_BYTES = 1_048_576;
-const MAX_DISCOVERED_MODELS = 100;
 
 async function readBoundedResponseText(
   response: Response,
@@ -112,11 +111,10 @@ function parseBoundedModelIds(text: string): {
     const normalized = id.trim();
     if (!normalized || normalized.length > 256) continue;
     unique.add(normalized);
-    if (unique.size === MAX_DISCOVERED_MODELS) break;
   }
   return {
     ...(unique.size > 0 ? { modelIds: [...unique] } : {}),
-    truncated: data.length > MAX_DISCOVERED_MODELS,
+    truncated: false,
   };
 }
 
