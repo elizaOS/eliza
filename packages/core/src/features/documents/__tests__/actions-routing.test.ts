@@ -115,6 +115,9 @@ function makeRuntime(service: ReturnType<typeof makeService>): {
 		getRoomsForParticipants: vi.fn(async () => {
 			throw new Error("room lookup is unavailable");
 		}),
+		getCurrentRoomMemberships: vi.fn(async () => {
+			throw new Error("room membership evidence is unavailable");
+		}),
 		reportError: vi.fn(),
 		useModel,
 	} as unknown as IAgentRuntime;
@@ -481,7 +484,7 @@ describe("documentAction.handler structured routing", () => {
 			roomId: ROOM_ID,
 			worldId: WORLD_ID,
 		});
-		expect(runtime.getRoomsForParticipants).not.toHaveBeenCalled();
+		expect(runtime.getCurrentRoomMemberships).not.toHaveBeenCalled();
 		expect(res?.data).toMatchObject({ subaction: "write" });
 	});
 

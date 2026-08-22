@@ -64,6 +64,9 @@ function makeRuntime(role: "USER" | "OWNER"): IAgentRuntime {
 		getRoomsForParticipants: vi.fn(async () => {
 			throw new Error("room lookup is unavailable");
 		}),
+		getCurrentRoomMemberships: vi.fn(async () => {
+			throw new Error("room membership evidence is unavailable");
+		}),
 		reportError: vi.fn(),
 		useModel: vi.fn(async () => {
 			throw new Error("useModel must not run on the planner-trust path");

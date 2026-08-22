@@ -10,6 +10,12 @@ parent document and all fragments of its new revision must become visible
 together. Replacement fragment IDs must be fresh and cannot reuse IDs from the
 committed generation.
 
+Room membership is also fail-closed: participant records are associations, not
+grants. Callers must write generation-fenced evidence, and only a fresh positive
+observation is returned as a current room entitlement. Document operations
+rebind every supplied room id to that stored current evidence before applying
+visibility, so a forged `requesterRoomIds` array grants nothing.
+
 ## Installation
 
 ```bash

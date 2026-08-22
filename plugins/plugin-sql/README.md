@@ -129,6 +129,14 @@ and is joined to current requester membership. Validated
 `directGrantEntityIds` provide read-only access independent of room membership,
 but never expose `agent-private` documents or grant mutation authority.
 
+Participant presence is not an entitlement. Connectors replace typed room
+membership evidence with an atomic generation fence. Only a fresh positive
+observation (or the runtime's own structural membership) is returned as current;
+leave, stale, indeterminate, unsupported, unavailable, and missing evidence deny
+room-derived access without deleting reconciliation history. Every document
+read and mutation intersects supplied room ids with current evidence inside the
+same SQL transaction, so callers cannot manufacture room authority.
+
 Message-search DDL is also guarded on production Postgres. The generated column and GIN indexes are still installed automatically for development/test and embedded PGlite. For production Postgres, schedule the table rewrite/index creation and run with `ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true` once the deployment window is approved.
 
 ## Connection Management

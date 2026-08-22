@@ -106,5 +106,53 @@ describe("Participant Integration Tests", () => {
       const isParticipant = await adapter.isRoomParticipant(nonExistentRoomId, nonExistentEntityId);
       expect(isParticipant).toBe(false);
     });
+
+    it("requires fresh generation-fenced evidence for room entitlement", async () => {
+      await adapter.addParticipant(testEntityId, testRoomId);
+      expect(await adapter.getCurrentRoomMemberships(testEntityId)).toEqual([]);
+
+      const observedAt = Date.now();
+      const first = {
+        entityId: testEntityId,
+        roomId: testRoomId,
+        source: "transport:discord",
+        state: "member" as const,
+        observedAt,
+        expiresAt: observedAt + 60_000,
+        cursor: "discord-member-v1",
+        generation: 1,
+      };
+      await expect(
+        adapter.updateRoomMembershipEvidence({
+          evidence: first,
+          expectedGeneration: null,
+        })
+      ).resolves.toMatchObject({ status: "updated" });
+      expect(await adapter.getCurrentRoomMemberships(testEntityId)).toEqual([first]);
+
+      const unavailable = {
+        ...first,
+        state: "unavailable" as const,
+        cursor: "discord-unavailable-v2",
+        generation: 2,
+      };
+      await expect(
+        adapter.updateRoomMembershipEvidence({
+          evidence: unavailable,
+          expectedGeneration: 1,
+        })
+      ).resolves.toMatchObject({ status: "updated" });
+      expect(await adapter.getCurrentRoomMemberships(testEntityId)).toEqual([]);
+
+      await expect(
+        adapter.updateRoomMembershipEvidence({
+          evidence: { ...first, generation: 2 },
+          expectedGeneration: 1,
+        })
+      ).resolves.toMatchObject({
+        status: "conflict",
+        current: { state: "unavailable", generation: 2 },
+      });
+    });
   });
 });

@@ -32,12 +32,15 @@ import {
   type DocumentListQueryParams,
   type DocumentListQueryResult,
   type DocumentMutationResult,
+  type DocumentRequesterContext,
   type DocumentRevisionReplaceParams,
   documentMutationSnapshotMatches,
+  documentRoleHasGlobalVisibility,
   ElizaError,
   type EntitiesForRoomsResult,
   type Entity,
   type IDatabaseAdapter,
+  isCurrentRoomMembershipEvidence,
   isDocumentVisibleToRequester,
   type JsonValue,
   type Log,
@@ -64,12 +67,17 @@ import {
   queryDocumentsInMemory,
   type Relationship,
   type Room,
+  type RoomMembershipEvidence,
+  type RoomMembershipEvidenceUpdate,
+  type RoomMembershipEvidenceUpdateResult,
   rankMessageSearch,
   type Task,
   type UUID,
   validateDocumentDirectGrantEntityIds,
   validateDocumentRevisionReplacement,
   validateQueryEntitiesPagination,
+  validateRoomMembershipEvidenceSuccessor,
+  validateRoomMembershipEvidenceUpdate,
   type World,
   withinCreatedAtWindow,
 } from "@elizaos/core";
@@ -87,6 +95,7 @@ interface StoredParticipant {
   roomId: string;
   userState?: ParticipantUserState;
   metadata?: Record<string, unknown>;
+  membershipEvidence?: RoomMembershipEvidence;
 }
 
 interface StoredMemory {
@@ -370,7 +379,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   private embeddingDimension = 384;
   private ready = false;
   private readonly agentId: UUID;
-  private documentMutationTail: Promise<void> = Promise.resolve();
+  private authorizationOperationTail: Promise<void> = Promise.resolve();
 
   constructor(storage: IStorage, agentId: UUID) {
     super();
@@ -773,41 +782,54 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   // ── Memory CRUD ───────────────────────────────────────────────────────
 
   async queryDocuments(params: DocumentListQueryParams): Promise<DocumentListQueryResult> {
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (memory) =>
-        storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
-    );
-    return queryDocumentsInMemory(memories.map(toMemory), params);
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          storedMemoryTableName(memory) === "documents" ||
+          storedMemoryTableName(memory) === "document_fragments"
+      );
+      return queryDocumentsInMemory(memories.map(toMemory), params);
+    });
   }
 
   async getDocument(params: DocumentGetQueryParams): Promise<Memory | null> {
-    const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
-    if (
-      !stored ||
-      storedMemoryTableName(stored) !== "documents" ||
-      stored.agentId !== params.agentId
-    ) {
-      return null;
-    }
-    const memory = toMemory(stored);
-    return isDocumentVisibleToRequester(memory, params) ? memory : null;
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
+      if (
+        !stored ||
+        storedMemoryTableName(stored) !== "documents" ||
+        stored.agentId !== params.agentId
+      ) {
+        return null;
+      }
+      const memory = toMemory(stored);
+      return isDocumentVisibleToRequester(memory, params) ? memory : null;
+    });
   }
 
   async queryDocumentFragments(params: DocumentFragmentQueryParams): Promise<Memory[]> {
-    const memories = await this.storage.getWhere<StoredMemory>(
-      COLLECTIONS.MEMORIES,
-      (memory) =>
-        storedMemoryTableName(memory) === "documents" ||
-        storedMemoryTableName(memory) === "document_fragments"
-    );
-    return queryDocumentFragmentsInMemory(memories.map(toMemory), params, this.embeddingDimension);
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
+      const memories = await this.storage.getWhere<StoredMemory>(
+        COLLECTIONS.MEMORIES,
+        (memory) =>
+          storedMemoryTableName(memory) === "documents" ||
+          storedMemoryTableName(memory) === "document_fragments"
+      );
+      return queryDocumentFragmentsInMemory(
+        memories.map(toMemory),
+        params,
+        this.embeddingDimension
+      );
+    });
   }
 
-  private withDocumentMutationLock<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.documentMutationTail.then(operation, operation);
-    this.documentMutationTail = run.then(
+  private withAuthorizationOperationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.authorizationOperationTail.then(operation, operation);
+    this.authorizationOperationTail = run.then(
       () => undefined,
       () => undefined
     );
@@ -817,7 +839,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async compareAndSwapDocument(
     params: DocumentCompareAndSwapParams
   ): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -849,7 +872,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentDirectGrantUpdateParams
   ): Promise<DocumentMutationResult> {
     const directGrantEntityIds = validateDocumentDirectGrantEntityIds(params.directGrantEntityIds);
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -891,7 +915,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     params: DocumentRevisionReplaceParams
   ): Promise<DocumentMutationResult> {
     validateDocumentRevisionReplacement(params);
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -982,7 +1007,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async deleteDocumentWithSnapshot(params: DocumentDeleteParams): Promise<DocumentMutationResult> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
+      params = await this.bindCurrentDocumentRooms(params);
       const stored = await this.storage.get<StoredMemory>(COLLECTIONS.MEMORIES, params.documentId);
       if (
         !stored ||
@@ -1015,6 +1041,20 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       await Promise.all(fragmentIds.map((id) => this.vectorIndex.remove(id)));
       return { status: "deleted", document: existing };
     });
+  }
+
+  private async bindCurrentDocumentRooms<T extends DocumentRequesterContext>(
+    params: T
+  ): Promise<T> {
+    if (documentRoleHasGlobalVisibility(params.requesterRole)) return params;
+    const requested = new Set(params.requesterRoomIds);
+    const evidence = await this.getCurrentRoomMemberships(params.requesterEntityId);
+    return {
+      ...params,
+      requesterRoomIds: evidence
+        .map(({ roomId }) => roomId)
+        .filter((roomId) => requested.has(roomId)),
+    };
   }
 
   async getMemories(params: {
@@ -1221,7 +1261,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
     entityId?: UUID;
     accessContext?: AccessContext;
   }): Promise<Memory[]> {
-    return this.withDocumentMutationLock(async () => {
+    return this.withAuthorizationOperationLock(async () => {
       const threshold = params.match_threshold ?? 0.5;
       const limit = params.count ?? params.limit ?? 10;
 
@@ -1637,6 +1677,47 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
       ids.push(id);
     }
     return ids;
+  }
+
+  async updateRoomMembershipEvidence(
+    update: RoomMembershipEvidenceUpdate
+  ): Promise<RoomMembershipEvidenceUpdateResult> {
+    validateRoomMembershipEvidenceUpdate(update);
+    const operation = async (): Promise<RoomMembershipEvidenceUpdateResult> => {
+      const { entityId, roomId } = update.evidence;
+      const matches = await this.storage.getWhere<StoredParticipant>(
+        COLLECTIONS.PARTICIPANTS,
+        (participant) => participant.entityId === entityId && participant.roomId === roomId
+      );
+      const participant = matches[0];
+      if (!participant) return { status: "not_found", current: null };
+      const current = participant.membershipEvidence ?? null;
+      if ((current?.generation ?? null) !== update.expectedGeneration) {
+        return { status: "conflict", current };
+      }
+      validateRoomMembershipEvidenceSuccessor(current, update.evidence);
+      const evidence = structuredClone(update.evidence);
+      await this.storage.set(COLLECTIONS.PARTICIPANTS, participant.id, {
+        ...participant,
+        membershipEvidence: evidence,
+      });
+      return { status: "updated", evidence: structuredClone(evidence) };
+    };
+    return this.withAuthorizationOperationLock(operation);
+  }
+
+  async getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]> {
+    const participants = await this.storage.getWhere<StoredParticipant>(
+      COLLECTIONS.PARTICIPANTS,
+      (participant) => participant.entityId === entityId
+    );
+    const now = Date.now();
+    return participants.flatMap((participant) => {
+      const evidence = participant.membershipEvidence;
+      return evidence && isCurrentRoomMembershipEvidence(evidence, now)
+        ? [structuredClone(evidence)]
+        : [];
+    });
   }
 
   async deleteParticipants(

@@ -56,6 +56,9 @@ import type {
 	PatchOp,
 	Relationship,
 	Room,
+	RoomMembershipEvidence,
+	RoomMembershipEvidenceUpdate,
+	RoomMembershipEvidenceUpdateResult,
 	SetConnectorAccountCredentialRefParams,
 	Task,
 	UpdateOAuthFlowStateParams,
@@ -526,6 +529,14 @@ export abstract class DatabaseAdapter<DB extends object = object>
 		entityIds: UUID[],
 		roomId: UUID,
 	): Promise<UUID[]>;
+
+	abstract updateRoomMembershipEvidence(
+		update: RoomMembershipEvidenceUpdate,
+	): Promise<RoomMembershipEvidenceUpdateResult>;
+
+	abstract getCurrentRoomMemberships(
+		entityId: UUID,
+	): Promise<RoomMembershipEvidence[]>;
 
 	// ── Participant mutations (batch-only) ───────────────────────────────
 	/** WHY boolean: Callers need success/failure for error handling/UX; see IDatabaseAdapter in types/database.ts. */

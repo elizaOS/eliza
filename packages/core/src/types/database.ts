@@ -408,6 +408,43 @@ export interface PatchOp {
 /** Participant room state for batch get/update (getParticipantUserStates, updateParticipantUserStates). */
 export type ParticipantUserState = "FOLLOWED" | "MUTED" | null;
 
+/** Transport-observed membership states; only a fresh `member` grants access. */
+export type RoomMembershipEvidenceState =
+	| "member"
+	| "nonmember"
+	| "indeterminate"
+	| "unsupported"
+	| "unavailable";
+
+/**
+ * Authoritative observation for one entity/room association.
+ *
+ * `generation` is a storage-fenced monotonic revision. Transport membership
+ * must expire; only the runtime's own structural memberships may be timeless.
+ */
+export interface RoomMembershipEvidence {
+	entityId: UUID;
+	roomId: UUID;
+	source: string;
+	state: RoomMembershipEvidenceState;
+	observedAt: number;
+	expiresAt?: number;
+	cursor?: string;
+	generation: number;
+}
+
+/** CAS request used by connectors to replace one membership observation. */
+export interface RoomMembershipEvidenceUpdate {
+	evidence: RoomMembershipEvidence;
+	expectedGeneration: number | null;
+}
+
+/** Result of an atomic membership-evidence replacement. */
+export type RoomMembershipEvidenceUpdateResult =
+	| { status: "updated"; evidence: RoomMembershipEvidence }
+	| { status: "conflict"; current: RoomMembershipEvidence | null }
+	| { status: "not_found"; current: null };
+
 /** Fields that can be updated on a participant (Participant + DB-only roomState/metadata). */
 export type ParticipantUpdateFields = Partial<Participant> & {
 	roomState?: ParticipantUserState;
@@ -1515,6 +1552,14 @@ export interface IDatabaseAdapter<DB extends object = object> {
 	 * @returns Array of created participant record IDs
 	 */
 	createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]>;
+
+	/** Replace transport membership evidence only when its generation is current. */
+	updateRoomMembershipEvidence(
+		update: RoomMembershipEvidenceUpdate,
+	): Promise<RoomMembershipEvidenceUpdateResult>;
+
+	/** Return only fresh, positively observed room memberships for an entity. */
+	getCurrentRoomMemberships(entityId: UUID): Promise<RoomMembershipEvidence[]>;
 
 	// ── Participant CRUD (batch-only for mutations) ─────────────────────
 	// WHY batch-only: createRoomParticipants accepts an array of entity IDs
