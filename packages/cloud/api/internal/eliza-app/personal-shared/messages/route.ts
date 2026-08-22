@@ -14,6 +14,13 @@ import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
 import { sha256Hex } from "@/lib/oidc/crypto";
 import { findActivePersonalDedicatedTarget } from "@/lib/services/agent-tier-upgrade-target";
 import { elizaAppUserService } from "@/lib/services/eliza-app";
+import { isAllowedBlooioMediaUrl } from "@/lib/services/eliza-app/blooio-media-allowlist";
+import {
+  describeInboundImageMedia,
+  InboundMediaDescriptionError,
+  InboundMediaVisionDisabledError,
+  MAX_INBOUND_MEDIA_IMAGES,
+} from "@/lib/services/eliza-app/describe-inbound-media";
 import { runOnboardingChat } from "@/lib/services/eliza-app/onboarding-chat";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { preparePersonalDedicatedDelivery } from "@/lib/services/personal-dedicated-delivery";
@@ -49,6 +56,7 @@ type DeliveryStage =
   | "worker_context"
   | "account_resolution"
   | "voice_transcription"
+  | "media_description"
   | "account_claim"
   | "dedicated_runtime"
   | "shared_runtime";
@@ -170,17 +178,26 @@ const sharedMessageSchema = z.union([
     messageId: z.string().trim().min(1).max(160),
     message: z.string().trim().min(1).max(4000),
   }),
-  z.object({
-    platform: z.enum(["twilio", "blooio"]),
-    project: projectSchema,
-    connectorAccountId: connectorAccountIdSchema,
-    phoneNumber: z
-      .string()
-      .trim()
-      .regex(/^\+[1-9]\d{6,14}$/),
-    messageId: z.string().trim().min(1).max(160),
-    message: z.string().trim().min(1).max(4000),
-  }),
+  z
+    .object({
+      platform: z.enum(["twilio", "blooio"]),
+      project: projectSchema,
+      connectorAccountId: connectorAccountIdSchema,
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+[1-9]\d{6,14}$/),
+      messageId: z.string().trim().min(1).max(160),
+      message: z.string().trim().min(1).max(4000),
+      mediaUrls: z
+        .array(z.string().url().refine(isAllowedBlooioMediaUrl))
+        .min(1)
+        .max(MAX_INBOUND_MEDIA_IMAGES)
+        .optional(),
+    })
+    .refine(
+      (input) => input.platform === "blooio" || input.mediaUrls === undefined,
+    ),
   z.object({
     platform: z.literal("blooio"),
     chatType: z.literal("group"),
@@ -760,6 +777,56 @@ app.post("/", async (c) => {
           userId: account.userId,
         },
       );
+    }
+    if (
+      parsed.data.platform === "blooio" &&
+      !isGroupMessage(parsed.data) &&
+      parsed.data.mediaUrls
+    ) {
+      stage = "media_description";
+      // Unmetered pooled-key spend (same posture as the Whisper voice path
+      // above, but reachable by any inbound sender): production enablement of
+      // ELIZA_APP_INBOUND_MEDIA_VISION requires a per-sender/per-connector
+      // rate limit or billing-meter gate here first — see the PR rollout plan.
+      try {
+        const description = await describeInboundImageMedia(
+          c.env,
+          parsed.data.mediaUrls,
+        );
+        deliveryMessage = `${deliveryMessage}\n\n[Attached image description]\n${description}`;
+        logger.info(
+          "[personal-shared-messaging] Blooio inbound media described",
+          {
+            mediaCount: parsed.data.mediaUrls.length,
+            userId: account.userId,
+          },
+        );
+      } catch (error) {
+        if (error instanceof InboundMediaVisionDisabledError) {
+          // Disabled is the fleet default, not a fault; the turn keeps the
+          // raw media-URL text the adapter synthesized.
+          logger.debug(
+            "[personal-shared-messaging] inbound media vision disabled",
+            { mediaCount: parsed.data.mediaUrls.length },
+          );
+        } else if (error instanceof InboundMediaDescriptionError) {
+          // error-policy:J4 enrichment is additive: an expected fetch/vision
+          // failure degrades to the current media-URL text instead of
+          // dropping the user's turn. Reported here because the turn still
+          // returns success to the connector.
+          logger.error(
+            "[personal-shared-messaging] inbound media description failed",
+            {
+              reason: error.reason,
+              mediaCount: parsed.data.mediaUrls.length,
+              userId: account.userId,
+              error: error.message,
+            },
+          );
+        } else {
+          throw error;
+        }
+      }
     }
     if (deliveryMessage && groupActorLabel) {
       deliveryMessage = `${groupActorLabel}: ${deliveryMessage}`;

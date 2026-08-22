@@ -41,6 +41,10 @@ const TELEGRAM_EGRESS_STARTED = "egress_started";
 const TELEGRAM_DELIVERED = "delivered";
 const TELEGRAM_TYPING_REFRESH_MS = 4_000;
 const PERSONAL_SHARED_VOICE_TIMEOUT_MS = 90_000;
+// Inbound Blooio image turns may spend the cloud stage fetching media and
+// running a vision description before the model turn; the plain 30s ceiling
+// would abort those turns mid-flight and re-run them.
+const PERSONAL_SHARED_MEDIA_TIMEOUT_MS = 90_000;
 const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -918,10 +922,19 @@ async function sendPersonalSharedReply(
       "connector cannot resolve the supplied voice note",
     );
   }
-  // Voice turns can spend most of the 120-second processing lease in STT + the
-  // model. Only a stale-auth retry is safe inline; provider/transport failures
-  // reopen the webhook for Telegram's durable retry instead of overlapping it.
-  const maxAttempts = voiceNote ? 2 : PERSONAL_SHARED_ATTEMPTS;
+  // Media turns mirror voice: the cloud route may spend fetch + vision + the
+  // model turn, so a re-POST can overlap a still-running route execution and
+  // re-run the unbilled vision call. Group Blooio events carry mediaUrls too
+  // but are never forwarded as media (no vision runs), so they keep the plain
+  // text-turn retry/timeout posture.
+  const isMediaTurn =
+    adapter.platform === "blooio" && !isGroup && !!event.mediaUrls?.length;
+  // Voice and media turns can spend most of the 120-second processing lease in
+  // STT/vision + the model. Only a stale-auth retry is safe inline; provider/
+  // transport failures reopen the webhook for the platform's durable retry
+  // instead of overlapping it.
+  const isLongTurn = Boolean(voiceNote) || isMediaTurn;
+  const maxAttempts = isLongTurn ? 2 : PERSONAL_SHARED_ATTEMPTS;
   const postMessage = (authHeader: Record<string, string>) =>
     fetch(`${cloudBaseUrl}/api/internal/eliza-app/personal-shared/messages`, {
       method: "POST",
@@ -985,10 +998,19 @@ async function sendPersonalSharedReply(
                   phoneNumber: event.senderId,
                   messageId: `${adapter.platform}:${project}:${event.messageId}`,
                   message: event.text,
+                  // Only Blooio media URLs are provider-hosted and fetchable
+                  // by the cloud vision path; other platforms keep text-only.
+                  ...(isMediaTurn && event.mediaUrls?.length
+                    ? { mediaUrls: event.mediaUrls }
+                    : {}),
                 },
       ),
       signal: AbortSignal.timeout(
-        voiceNote ? PERSONAL_SHARED_VOICE_TIMEOUT_MS : 30_000,
+        voiceNote
+          ? PERSONAL_SHARED_VOICE_TIMEOUT_MS
+          : isMediaTurn
+            ? PERSONAL_SHARED_MEDIA_TIMEOUT_MS
+            : 30_000,
       ),
     });
 
@@ -1002,8 +1024,8 @@ async function sendPersonalSharedReply(
       refreshAuth: async () => {
         authHeader = await reauth();
       },
-      retryStatuses: !voiceNote,
-      retryTransport: !voiceNote,
+      retryStatuses: !isLongTurn,
+      retryTransport: !isLongTurn,
       retryDelayCapMs: PERSONAL_SHARED_RETRY_DELAY_CAP_MS,
       observe: (observation) => {
         const response = observation.response;
