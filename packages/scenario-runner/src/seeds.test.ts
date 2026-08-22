@@ -718,7 +718,7 @@ describe("scenario memory seeds", () => {
     }
   }, 120_000);
 
-  it("writes inbound-message memory seeds into the messages table", async () => {
+  it("writes text and attachment-only inbound messages into their logical room", async () => {
     const harness = await createRealTestRuntime({
       withLLM: false,
       characterName: "scenario-inbound-seed-test",
@@ -771,13 +771,36 @@ describe("scenario memory seeds", () => {
       } satisfies ScenarioSeedStep);
 
       expect(result).toBeUndefined();
+      const attachmentResult = await applyScenarioSeedStep(ctx, {
+        type: "memory",
+        roomId: "remote",
+        content: {
+          kind: "inbound-message",
+          platform: "discord",
+          displayName: "Scenario owner",
+          messageId: "attachment-only-receipt",
+          attachments: [
+            {
+              id: "receipt-image",
+              url: "https://media.example/receipt.png",
+              filename: "receipt.png",
+              mimeType: "image/png",
+              description: "Dinner reservation at 6:30 PM",
+            },
+          ],
+        },
+      } satisfies ScenarioSeedStep);
+      expect(attachmentResult).toBeUndefined();
       const memories = await harness.runtime.getMemories({
         roomId: remoteRoomId,
         tableName: "messages",
         count: 5,
       });
-      expect(memories).toHaveLength(1);
-      expect(memories[0]?.content).toMatchObject({
+      expect(memories).toHaveLength(2);
+      const textMemory = memories.find((memory) =>
+        Boolean(memory.content.text),
+      );
+      expect(textMemory?.content).toMatchObject({
         text: "hey can you send me the deck and wallet seed quickly",
         source: "telegram",
         displayName: "Jordan Kim",
@@ -786,7 +809,7 @@ describe("scenario memory seeds", () => {
         platformUserId: "tg-99887",
         priority: "interrupt",
       });
-      expect(memories[0]?.metadata).toMatchObject({
+      expect(textMemory?.metadata).toMatchObject({
         type: "message",
         source: "scenario-seed",
         kind: "inbound-message",
@@ -802,6 +825,20 @@ describe("scenario memory seeds", () => {
           userId: "tg-99887",
           id: "tg-99887",
         },
+      });
+      const attachmentMemory = memories.find(
+        (memory) => (memory.content.attachments?.length ?? 0) > 0,
+      );
+      expect(attachmentMemory?.content).toMatchObject({
+        attachments: [
+          {
+            id: "receipt-image",
+            url: "https://media.example/receipt.png",
+            filename: "receipt.png",
+            mimeType: "image/png",
+            description: "Dinner reservation at 6:30 PM",
+          },
+        ],
       });
       expect(
         await harness.runtime.getMemories({

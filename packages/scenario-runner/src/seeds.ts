@@ -6,7 +6,7 @@
  * stores so scenarios start from a known, deterministic world. Consumed by the
  * executor between setup and the first turn.
  */
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import { createMessageMemory, MemoryType, stringToUuid } from "@elizaos/core";
 import type {
   ScenarioContext,
@@ -522,6 +522,7 @@ type InboundMessageMemorySeed = MemoryContactSeed & {
   occurredAt?: unknown;
   threadId?: unknown;
   url?: unknown;
+  attachments?: unknown;
 };
 
 type ConnectorStatusLike = {
@@ -2084,8 +2085,10 @@ async function seedInboundMessageMemory(
   seed: InboundMessageMemorySeed,
 ): Promise<string | undefined> {
   const text = readNonEmptyString(seed.text);
-  if (!text) {
-    return "inbound-message memory seed requires non-empty text";
+  const attachments = parseInboundMessageAttachments(seed.attachments);
+  if (typeof attachments === "string") return attachments;
+  if (!text && attachments.length === 0) {
+    return "inbound-message memory seed requires non-empty text or attachments";
   }
   const runtime = requireRuntime(ctx);
   const roomId = readNonEmptyString(ctx.primaryRoomId);
@@ -2121,7 +2124,8 @@ async function seedInboundMessageMemory(
     entityId: senderEntityId,
     roomId: roomId as UUID,
     content: {
-      text,
+      text: text ?? "",
+      ...(attachments.length > 0 ? { attachments } : {}),
       source,
       ...(url ? { url } : {}),
       ...(handle ? { username: handle } : {}),
@@ -2161,6 +2165,47 @@ async function seedInboundMessageMemory(
   };
   await runtime.createMemory(memory, "messages");
   return undefined;
+}
+
+function parseInboundMessageAttachments(value: unknown): Media[] | string {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length === 0) {
+    return "inbound-message attachments must be a non-empty array";
+  }
+  const attachments: Media[] = [];
+  for (const [index, raw] of value.entries()) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return `inbound-message attachment ${index} must be an object`;
+    }
+    const record = raw as Record<string, unknown>;
+    const id = readNonEmptyString(record.id);
+    const url = readNonEmptyString(record.url);
+    if (!id || !url) {
+      return `inbound-message attachment ${index} requires non-empty id and url`;
+    }
+    const attachment: Media = { id, url };
+    for (const key of [
+      "title",
+      "source",
+      "description",
+      "text",
+      "mimeType",
+      "filename",
+      "checksum",
+      "thumbnailUrl",
+    ] as const) {
+      const field = readNonEmptyString(record[key]);
+      if (field) attachment[key] = field;
+    }
+    for (const key of ["size", "width", "height", "duration"] as const) {
+      const field = record[key];
+      if (typeof field === "number" && Number.isFinite(field) && field >= 0) {
+        attachment[key] = field;
+      }
+    }
+    attachments.push(attachment);
+  }
+  return attachments;
 }
 
 async function seedContact(
