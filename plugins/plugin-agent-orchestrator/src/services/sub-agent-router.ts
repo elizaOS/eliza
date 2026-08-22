@@ -1172,7 +1172,7 @@ export class SubAgentRouter extends Service {
     if (!session) return;
     if (this.verifyRetryHandedOffSessions.has(sessionId)) {
       this.log(
-        "debug",
+        "warn",
         "suppressing original session event after verify retry handoff",
         {
           sessionId,
@@ -1323,7 +1323,7 @@ export class SubAgentRouter extends Service {
         ? null
         : await this.verifyChurnSuppression(sessionId);
       if (suppressReason) {
-        this.log("info", "suppressing verify-churn completion relay", {
+        this.log("warn", "suppressing verify-churn completion relay", {
           sessionId,
           reason: suppressReason,
         });
@@ -1890,7 +1890,7 @@ export class SubAgentRouter extends Service {
       this.loopState = claim.state;
       if (claim.decision.kind === "already_claimed") {
         this.log(
-          "debug",
+          "warn",
           "suppressing duplicate sub-agent task_complete for lineage; another session already claimed this task",
           {
             sessionId,
@@ -1959,7 +1959,7 @@ export class SubAgentRouter extends Service {
         );
         if (!claim.granted) {
           this.log(
-            "info",
+            "warn",
             "suppressing duplicate request terminal; request voice already held",
             {
               sessionId,
@@ -2129,6 +2129,13 @@ export class SubAgentRouter extends Service {
     // source and selected swarm room. If the connector isn't registered, fall through to
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
+    if (event === "task_complete") {
+      this.log("warn", "completion relay injecting", {
+        sessionId,
+        targets: targets.length,
+        requestKey: requestKey ?? null,
+      });
+    }
     for (const target of targets) {
       const sessionMeta = session.metadata as
         | Record<string, unknown>
