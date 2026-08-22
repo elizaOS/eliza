@@ -3,7 +3,12 @@
  * persistence contract. HTTP routes supply an authorized conversation and
  * translate the service's status-bearing not-found error at their boundary.
  */
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import type { ConversationMeta } from "../api/server-types.ts";
 
 type DeletableRuntime = AgentRuntime & {
@@ -40,6 +45,16 @@ export async function deleteConversationMemories(
     return memoryIds.length;
   }
 
+  if (memoryIds.length > 1) {
+    throw Object.assign(
+      new ElizaError(
+        "Atomic conversation message deletion is not supported by this adapter",
+        { code: "CONVERSATION_BULK_DELETE_UNAVAILABLE" },
+      ),
+      { status: 501 },
+    );
+  }
+
   for (const memoryId of memoryIds) {
     if (typeof deletable.deleteMemory === "function") {
       await deletable.deleteMemory(memoryId);
@@ -57,6 +72,74 @@ export async function deleteConversationMemories(
     }
   }
   return memoryIds.length;
+}
+
+const CONVERSATION_SCAN_PAGE_SIZE = 500;
+
+function memoryCursor(memory: Memory): { createdAt: number; id: UUID } {
+  if (
+    typeof memory.id !== "string" ||
+    memory.id.length === 0 ||
+    !Number.isFinite(memory.createdAt)
+  ) {
+    throw new ElizaError("Conversation traversal returned an unpageable row", {
+      code: "CONVERSATION_TRAVERSAL_INVALID_ROW",
+    });
+  }
+  return { createdAt: memory.createdAt as number, id: memory.id };
+}
+
+function cursorFollows(
+  next: { createdAt: number; id: UUID },
+  previous: { createdAt: number; id: UUID },
+): boolean {
+  return (
+    next.createdAt > previous.createdAt ||
+    (next.createdAt === previous.createdAt && next.id > previous.id)
+  );
+}
+
+async function getCompleteConversationMemories(
+  runtime: AgentRuntime,
+  roomId: UUID,
+): Promise<Memory[]> {
+  const complete: Memory[] = [];
+  let cursor: { createdAt: number; id: UUID } | undefined;
+
+  while (true) {
+    const page = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      limit: CONVERSATION_SCAN_PAGE_SIZE,
+      orderBy: "createdAt",
+      orderDirection: "asc",
+      ...(cursor ? { cursor } : {}),
+    });
+    if (page.length > CONVERSATION_SCAN_PAGE_SIZE) {
+      throw new ElizaError(
+        "Conversation traversal exceeded its requested page",
+        {
+          code: "CONVERSATION_TRAVERSAL_INVALID_PAGE",
+          context: {
+            requested: CONVERSATION_SCAN_PAGE_SIZE,
+            received: page.length,
+          },
+        },
+      );
+    }
+    for (const memory of page) {
+      const next = memoryCursor(memory);
+      if (cursor && !cursorFollows(next, cursor)) {
+        throw new ElizaError("Conversation traversal did not advance", {
+          code: "CONVERSATION_TRAVERSAL_UNSTABLE",
+          context: { previousId: cursor.id, nextId: next.id },
+        });
+      }
+      complete.push(memory);
+      cursor = next;
+    }
+    if (page.length < CONVERSATION_SCAN_PAGE_SIZE) return complete;
+  }
 }
 
 export async function deleteConversationMessage(
@@ -86,13 +169,9 @@ export async function truncateConversationMessages(
   messageId: string,
   options?: { inclusive?: boolean },
 ): Promise<{ deletedCount: number }> {
-  const memories = await runtime.getMemories({
-    roomId: conversation.roomId,
-    tableName: "messages",
-    limit: 1_000,
-  });
-  memories.sort(
-    (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+  const memories = await getCompleteConversationMemories(
+    runtime,
+    conversation.roomId,
   );
   const targetIndex = memories.findIndex((memory) => memory.id === messageId);
   if (targetIndex < 0) throw conversationMessageNotFound();
