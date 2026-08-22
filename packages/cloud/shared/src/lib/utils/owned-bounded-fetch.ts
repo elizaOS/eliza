@@ -1,10 +1,19 @@
 /**
  * Owns one REST hop through transport, bounded response buffering, and cleanup.
+ *
+ * Buffering retains only the bytes that actually arrive: chunks accumulate in a
+ * list and are joined once into an exactly sized slab, so the byte ceiling caps
+ * a hostile response without being pre-reserved by every ordinary one.
  */
 
 import { ElizaError } from "@elizaos/core/errors";
 
 const MAX_TIMER_MS = 2_147_483_647;
+// The largest legitimate shared-utils reply is a Cloudflare paged listing
+// (`/zones/<id>/dns_records?per_page=200`), on the order of a hundred kilobytes;
+// Twilio, Blooio, and Twitter hops return single-resource JSON. Four MiB is the
+// headroom ceiling for those endpoints, and a caller with a genuinely larger
+// endpoint raises its own `maxResponseBytes` rather than widening this default.
 export const DEFAULT_REST_RESPONSE_MAX_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_REST_RESPONSE_MAX_CHUNKS = 8_192;
 
@@ -132,7 +141,9 @@ export async function ownedBoundedFetch(
     if (!response.body) return response;
 
     reader = response.body.getReader();
-    const retained = new Uint8Array(maxResponseBytes);
+    // Retain only what actually arrived: a 2 KiB JSON reply must not reserve
+    // the whole byte ceiling inside a memory-capped Worker isolate.
+    const retainedChunks: Uint8Array[] = [];
     let receivedBytes = 0;
     let chunks = 0;
     while (true) {
@@ -163,7 +174,7 @@ export async function ownedBoundedFetch(
         reader = undefined;
         throw error;
       }
-      retained.set(next.value, receivedBytes - next.value.byteLength);
+      retainedChunks.push(next.value);
     }
 
     releaseNoThrow(reader);
@@ -173,7 +184,13 @@ export async function ownedBoundedFetch(
     // transport framing that describes the encoded network representation.
     headers.delete("content-encoding");
     headers.set("content-length", String(receivedBytes));
-    return new Response(retained.slice(0, receivedBytes), {
+    const retained = new Uint8Array(receivedBytes);
+    let offset = 0;
+    for (const chunk of retainedChunks) {
+      retained.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return new Response(retained, {
       headers,
       status: response.status,
       statusText: response.statusText,
