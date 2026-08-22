@@ -318,10 +318,14 @@ export class NotificationService extends Service {
 	private async reconcilePersistFailure(
 		previous: AgentNotification[],
 	): Promise<void> {
-		const stored = await this.runtime.getCache<AgentNotification[]>(this.cacheKey);
+		const stored = await this.runtime.getCache<AgentNotification[]>(
+			this.cacheKey,
+		);
 		this.notifications = Array.isArray(stored)
 			? stored
-					.filter((entry) => entry && typeof entry.id === "string" && entry.title)
+					.filter(
+						(entry) => entry && typeof entry.id === "string" && entry.title,
+					)
 					.slice(-MAX_NOTIFICATIONS)
 			: previous;
 	}
@@ -411,24 +415,24 @@ export class NotificationService extends Service {
 			this.notifications = this.notifications.slice(-MAX_NOTIFICATIONS);
 		}
 
+		try {
+			await this.persist();
+		} catch (error) {
 			try {
-				await this.persist();
-			} catch (error) {
-				try {
-					await this.reconcilePersistFailure(previousNotifications);
-				} catch (reconcileError) {
-					// error-policy:J2 preserve both the write ambiguity and failed
-					// authoritative reconciliation for the receipt-owning caller.
-					throw new AggregateError(
-						[error, reconcileError],
-						"notification persistence and reconciliation failed",
-					);
-				}
-				throw error;
+				await this.reconcilePersistFailure(previousNotifications);
+			} catch (reconcileError) {
+				// error-policy:J2 preserve both the write ambiguity and failed
+				// authoritative reconciliation for the receipt-owning caller.
+				throw new AggregateError(
+					[error, reconcileError],
+					"notification persistence and reconciliation failed",
+				);
 			}
-			// Durable inbox state is authoritative. Fan out only after persistence so
-			// a failed write cannot expose a ghost success to live clients.
-			this.broadcast(notification);
+			throw error;
+		}
+		// Durable inbox state is authoritative. Fan out only after persistence so
+		// a failed write cannot expose a ghost success to live clients.
+		this.broadcast(notification);
 		logger.debug(
 			{
 				src: "service:notification",

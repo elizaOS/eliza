@@ -6,6 +6,14 @@
  */
 import { createHash } from "node:crypto";
 import {
+  type ApprovalAction,
+  type ApprovalChannel,
+  type ApprovalPayload,
+  type ApprovalQueue,
+  type ApprovalRequest,
+  resolveApprovalService,
+} from "@elizaos/agent";
+import {
   type AgentNotification,
   ChannelType,
   ElizaError,
@@ -17,14 +25,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  type ApprovalAction,
-  type ApprovalChannel,
-  type ApprovalPayload,
-  type ApprovalQueue,
-  type ApprovalRequest,
-  resolveApprovalService,
-} from "@elizaos/agent";
 import {
   getScheduledTaskRunner,
   type ScheduledTask,
@@ -420,7 +420,10 @@ function assertJsonValue(
     if (Array.isArray(value)) {
       assertDenseArrayShape(value, path);
       if (value.length > MANIFEST_MAX_CONTAINER_WIDTH) {
-        fail(path, `exceeds the ${MANIFEST_MAX_CONTAINER_WIDTH}-item array budget`);
+        fail(
+          path,
+          `exceeds the ${MANIFEST_MAX_CONTAINER_WIDTH}-item array budget`,
+        );
       }
       for (let index = 0; index < value.length; index += 1) {
         const descriptor = Object.getOwnPropertyDescriptor(
@@ -560,14 +563,12 @@ function optionalNullableSafeInteger(
   path: string,
 ): number | null | undefined {
   if (value === undefined || value === null) return value;
-  if (!Number.isSafeInteger(value)) fail(path, "must be a safe integer or null");
+  if (!Number.isSafeInteger(value))
+    fail(path, "must be a safe integer or null");
   return value as number;
 }
 
-function jsonRecord(
-  value: unknown,
-  path: string,
-): Record<string, JsonValue> {
+function jsonRecord(value: unknown, path: string): Record<string, JsonValue> {
   if (!isRecord(value)) fail(path, "must be a JSON object");
   assertJsonValue(value, path);
   return value as Record<string, JsonValue>;
@@ -913,7 +914,10 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
         }
       }
       if (!Number.isSafeInteger(entry.expiresAt)) {
-        fail(`${path}.expiresAt`, "must be a safe integer epoch-millisecond value");
+        fail(
+          `${path}.expiresAt`,
+          "must be a safe integer epoch-millisecond value",
+        );
       }
       return {
         id: requiredString(entry.id, `${path}.id`),
@@ -1064,12 +1068,11 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
         );
       }
     }
-    task.contextRequest?.includeEntities?.entityIds.forEach(
-      (id, entityIndex) =>
-        requireEntity(
-          id,
-          `manifest.schedules[${index}].task.contextRequest.includeEntities.entityIds[${entityIndex}]`,
-        ),
+    task.contextRequest?.includeEntities?.entityIds.forEach((id, entityIndex) =>
+      requireEntity(
+        id,
+        `manifest.schedules[${index}].task.contextRequest.includeEntities.entityIds[${entityIndex}]`,
+      ),
     );
     task.contextRequest?.includeRelationships?.relationshipIds?.forEach(
       (id, relationshipIndex) => {
@@ -1094,7 +1097,10 @@ export function parseProductionManifest(input: unknown): ProductionManifestV1 {
   providerState.forEach((entry, index) => {
     const expanded = entry.key.replaceAll("{{namespace}}", namespace);
     if (expandedProviderKeys.has(expanded)) {
-      fail(`manifest.providerState[${index}].key`, "duplicates an expanded key");
+      fail(
+        `manifest.providerState[${index}].key`,
+        "duplicates an expanded key",
+      );
     }
     expandedProviderKeys.add(expanded);
   });
@@ -1160,17 +1166,29 @@ function canonicalDifferencePaths(
     if (left.length !== right.length) differences.push(`${path}.length`);
     const length = Math.min(left.length, right.length);
     for (let index = 0; index < length; index += 1) {
-      canonicalDifferencePaths(left[index], right[index], `${path}[${index}]`, differences);
+      canonicalDifferencePaths(
+        left[index],
+        right[index],
+        `${path}[${index}]`,
+        differences,
+      );
     }
     return differences;
   }
   if (isRecord(left) && isRecord(right)) {
-    const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+    const keys = [
+      ...new Set([...Object.keys(left), ...Object.keys(right)]),
+    ].sort();
     for (const key of keys) {
       if (!Object.hasOwn(left, key) || !Object.hasOwn(right, key)) {
         differences.push(`${path}.${key}`);
       } else {
-        canonicalDifferencePaths(left[key], right[key], `${path}.${key}`, differences);
+        canonicalDifferencePaths(
+          left[key],
+          right[key],
+          `${path}.${key}`,
+          differences,
+        );
       }
     }
     return differences;
@@ -1250,6 +1268,7 @@ export function parseProductionManifestReceipt(
   input: unknown,
 ): ProductionManifestReceipt {
   if (!isRecord(input)) fail("receipt", "must be an object");
+  assertJsonValue(input, "receipt");
   assertExactKeys(
     input,
     [
@@ -1300,7 +1319,10 @@ export function parseProductionManifestReceipt(
   }
   memoryTableNames.forEach((tableName, index) => {
     if (!MEMORY_TABLE_PATTERN.test(tableName)) {
-      fail(`receipt.memoryTableNames[${index}]`, "is not a safe memory table name");
+      fail(
+        `receipt.memoryTableNames[${index}]`,
+        "is not a safe memory table name",
+      );
     }
   });
   const relationshipIds = uuidArray(
@@ -1308,7 +1330,10 @@ export function parseProductionManifestReceipt(
     "receipt.relationshipIds",
   );
   const taskIds = uuidArray(input.taskIds, "receipt.taskIds");
-  const scheduleIds = uniqueStringArray(input.scheduleIds, "receipt.scheduleIds");
+  const scheduleIds = uniqueStringArray(
+    input.scheduleIds,
+    "receipt.scheduleIds",
+  );
   const notificationIds = uuidArray(
     input.notificationIds,
     "receipt.notificationIds",
@@ -1526,54 +1551,6 @@ function materializeScheduledTask(
   return { ...task, trigger, subject, contextRequest };
 }
 
-function materializeScheduleTask(
-  task: ScheduledTaskInput,
-  entityIds: ReadonlyMap<string, UUID>,
-  relationshipIds: ReadonlyMap<string, UUID>,
-  scheduleIds: ReadonlyMap<string, string>,
-): ScheduledTaskInput {
-  const trigger =
-    task.trigger.kind === "after_task"
-      ? {
-          ...task.trigger,
-          taskId: scheduleIds.get(task.trigger.taskId) as string,
-        }
-      : task.trigger;
-  const subject = task.subject
-    ? task.subject.kind === "entity"
-      ? { ...task.subject, id: entityIds.get(task.subject.id) as UUID }
-      : task.subject.kind === "relationship"
-        ? {
-            ...task.subject,
-            id: relationshipIds.get(task.subject.id) as UUID,
-          }
-        : task.subject
-    : undefined;
-  const contextRequest = task.contextRequest
-    ? {
-        ...task.contextRequest,
-        includeEntities: task.contextRequest.includeEntities
-          ? {
-              ...task.contextRequest.includeEntities,
-              entityIds: task.contextRequest.includeEntities.entityIds.map(
-                (id) => entityIds.get(id) as UUID,
-              ),
-            }
-          : undefined,
-        includeRelationships: task.contextRequest.includeRelationships
-          ? {
-              ...task.contextRequest.includeRelationships,
-              relationshipIds:
-                task.contextRequest.includeRelationships.relationshipIds?.map(
-                  (id) => relationshipIds.get(id) as UUID,
-                ),
-            }
-          : undefined,
-      }
-    : undefined;
-  return { ...task, trigger, subject, contextRequest };
-}
-
 async function assertTargetsAbsent(
   runtime: IAgentRuntime,
   receipt: ProductionManifestReceipt,
@@ -1722,7 +1699,11 @@ export async function applyProductionManifest(
   }
   const applyNow = Date.now();
   for (const [index, entry] of (manifest.notifications ?? []).entries()) {
-    if (entry.expiresAt !== null && entry.expiresAt !== undefined && entry.expiresAt <= applyNow) {
+    if (
+      entry.expiresAt !== null &&
+      entry.expiresAt !== undefined &&
+      entry.expiresAt <= applyNow
+    ) {
       fail(
         `manifest.notifications[${index}].expiresAt`,
         "must be later than the captured apply time",
@@ -1802,8 +1783,7 @@ export async function applyProductionManifest(
     );
     if (
       existingSchedules.some(
-        (task) =>
-          task.idempotencyKey && requestedKeys.has(task.idempotencyKey),
+        (task) => task.idempotencyKey && requestedKeys.has(task.idempotencyKey),
       )
     ) {
       throw new ProductionManifestApplyError(
@@ -1949,9 +1929,8 @@ export async function applyProductionManifest(
         },
       },
     }));
-    receipt.relationshipIds = await runtime.createRelationships(
-      relationshipWrites,
-    );
+    receipt.relationshipIds =
+      await runtime.createRelationships(relationshipWrites);
     if (receipt.relationshipIds.length !== relationshipWrites.length) {
       throw new Error(
         "relationship write did not return one production ID per requested pair",
@@ -1972,9 +1951,7 @@ export async function applyProductionManifest(
       (entry) => (entry as NonNullable<typeof entry>).id,
     );
     if (
-      readbackIds.some(
-        (id, index) => id !== receipt.relationshipIds[index],
-      )
+      readbackIds.some((id, index) => id !== receipt.relationshipIds[index])
     ) {
       throw new Error(
         "relationship write IDs did not match authoritative pair readback",
@@ -2008,8 +1985,9 @@ export async function applyProductionManifest(
     );
     const scheduleIds = new Map<string, string>();
     for (const entry of manifest.schedules ?? []) {
-      if (!scheduledRunner) throw new Error("scheduled runner was not resolved");
-      const materializedTask = materializeScheduleTask(
+      if (!scheduledRunner)
+        throw new Error("scheduled runner was not resolved");
+      const materializedTask = materializeScheduledTask(
         entry.task,
         entityIds,
         relationshipIds,
@@ -2038,7 +2016,9 @@ export async function applyProductionManifest(
       }
       const subjectUserId = entityIds.get(entry.subjectEntityId);
       if (!subjectUserId) {
-        throw new Error(`validated entity ${entry.subjectEntityId} was not resolved`);
+        throw new Error(
+          `validated entity ${entry.subjectEntityId} was not resolved`,
+        );
       }
       const payload: ApprovalPayload = {
         action: "execute_workflow",
@@ -2075,7 +2055,8 @@ export async function applyProductionManifest(
       receipt.notificationIds.push(approvalNotification.id);
     }
     for (const entry of manifest.notifications ?? []) {
-      if (!notifications) throw new Error("notification service was not resolved");
+      if (!notifications)
+        throw new Error("notification service was not resolved");
       if (
         entry.expiresAt !== null &&
         entry.expiresAt !== undefined &&
@@ -2106,9 +2087,11 @@ export async function applyProductionManifest(
     }
     for (const [index, entry] of (manifest.providerState ?? []).entries()) {
       const key = receipt.providerStateKeys[index];
-      if (!key) throw new Error(`provider state ${entry.id} key was not resolved`);
+      if (!key)
+        throw new Error(`provider state ${entry.id} key was not resolved`);
       const written = await runtime.setCache(key, entry.value);
-      if (!written) throw new Error(`provider state ${entry.id} was not persisted`);
+      if (!written)
+        throw new Error(`provider state ${entry.id} was not persisted`);
     }
     await runtime.updateWorld({
       ...world,
@@ -2188,7 +2171,10 @@ function logicalIdFromScenarioMarker(
     : null;
 }
 
-function approvalLogicalId(request: ApprovalRequest, namespace: string): string | null {
+function approvalLogicalId(
+  request: ApprovalRequest,
+  namespace: string,
+): string | null {
   const prefix = `scenario-manifest:${namespace}:`;
   return request.requestedBy.startsWith(prefix)
     ? request.requestedBy.slice(prefix.length)
@@ -2255,11 +2241,11 @@ export async function readProductionManifestSnapshot(
     rooms.length !== receipt.roomIds.length ||
     memories.length !== receipt.memoryIds.length ||
     relationships.length !== receipt.relationshipIds.length ||
-    tasks.length !== receipt.taskIds.length
-    || schedules.length !== receipt.scheduleIds.length
-    || notifications.length !== receipt.notificationIds.length
-    || approvals.length !== receipt.approvalRecords.length
-    || providerStateRows.some((entry) => entry === undefined)
+    tasks.length !== receipt.taskIds.length ||
+    schedules.length !== receipt.scheduleIds.length ||
+    notifications.length !== receipt.notificationIds.length ||
+    approvals.length !== receipt.approvalRecords.length ||
+    providerStateRows.some((entry) => entry === undefined)
   ) {
     const counts = {
       worlds: `${worlds.length}/1`,
@@ -2381,12 +2367,12 @@ export async function readProductionManifestSnapshot(
       .map((entry) => {
         const index = receipt.memoryIds.indexOf(entry.id as UUID);
         return {
-        id: entry.id as UUID,
-        roomId: entry.roomId as UUID,
-        entityId: entry.entityId as UUID,
-        text: entry.content.text as string,
-        tableName: receipt.memoryTableNames[index] as string,
-        metadata: metadataWithoutScenarioMarker(entry.metadata),
+          id: entry.id as UUID,
+          roomId: entry.roomId as UUID,
+          entityId: entry.entityId as UUID,
+          text: entry.content.text as string,
+          tableName: receipt.memoryTableNames[index] as string,
+          metadata: metadataWithoutScenarioMarker(entry.metadata),
         };
       })
       .sort((a, b) => a.id.localeCompare(b.id)),
@@ -2574,8 +2560,7 @@ export async function readProductionManifestSnapshot(
                 `scenario-manifest:${receipt.namespace}:`,
                 "",
               ) ?? null),
-          data:
-            data && Object.keys(data).length > 0 ? stableValue(data) : null,
+          data: data && Object.keys(data).length > 0 ? stableValue(data) : null,
           expiresAt: entry.expiresAt ?? null,
         };
       })
@@ -2661,33 +2646,30 @@ async function readResidueEvidence(
     notificationRows,
     approvalRows,
     providerStateRows,
-  ] =
-    await Promise.all([
-      runtime.getWorldsByIds([receipt.worldId]),
-      runtime.getEntitiesByIds(receipt.entityIds),
-      runtime.getRoomsByIds(receipt.roomIds),
-      runtime.getMemoriesByIds(receipt.memoryIds),
-      runtime.getRelationshipsByIds(receipt.relationshipIds),
-      runtime.getTasksByIds(receipt.taskIds),
-      receipt.scheduleIds.length > 0
-        ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
-        : Promise.resolve([] as ScheduledTask[]),
-      receipt.notificationIds.length > 0
-        ? Promise.resolve(notificationService(runtime).listIncludingExpired())
-        : Promise.resolve([] as AgentNotification[]),
-      receipt.approvalRecords.length > 0
-        ? Promise.all(
-            receipt.approvalRecords.map((record) =>
-              approvalQueue(runtime).byId(record.id, record.subjectUserId),
-            ),
-          )
-        : Promise.resolve([] as Array<ApprovalRequest | null>),
-      Promise.all(
-        receipt.providerStateKeys.map((key) =>
-          runtime.getCache<JsonValue>(key),
-        ),
-      ),
-    ]);
+  ] = await Promise.all([
+    runtime.getWorldsByIds([receipt.worldId]),
+    runtime.getEntitiesByIds(receipt.entityIds),
+    runtime.getRoomsByIds(receipt.roomIds),
+    runtime.getMemoriesByIds(receipt.memoryIds),
+    runtime.getRelationshipsByIds(receipt.relationshipIds),
+    runtime.getTasksByIds(receipt.taskIds),
+    receipt.scheduleIds.length > 0
+      ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
+      : Promise.resolve([] as ScheduledTask[]),
+    receipt.notificationIds.length > 0
+      ? Promise.resolve(notificationService(runtime).listIncludingExpired())
+      : Promise.resolve([] as AgentNotification[]),
+    receipt.approvalRecords.length > 0
+      ? Promise.all(
+          receipt.approvalRecords.map((record) =>
+            approvalQueue(runtime).byId(record.id, record.subjectUserId),
+          ),
+        )
+      : Promise.resolve([] as Array<ApprovalRequest | null>),
+    Promise.all(
+      receipt.providerStateKeys.map((key) => runtime.getCache<JsonValue>(key)),
+    ),
+  ]);
   return {
     worlds: worlds.map((entry) => entry.id),
     entities: entities.map((entry) => entry.id as UUID),
@@ -2850,33 +2832,30 @@ async function assertReceiptTargetsOwned(
     notifications,
     approvals,
     providerState,
-  ] =
-    await Promise.all([
-      runtime.getWorldsByIds([receipt.worldId]),
-      runtime.getEntitiesByIds(receipt.entityIds),
-      runtime.getRoomsByIds(receipt.roomIds),
-      runtime.getMemoriesByIds(receipt.memoryIds),
-      runtime.getRelationshipsByIds(receipt.relationshipIds),
-      runtime.getTasksByIds(receipt.taskIds),
-      receipt.scheduleIds.length > 0
-        ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
-        : Promise.resolve([] as ScheduledTask[]),
-      receipt.notificationIds.length > 0
-        ? Promise.resolve(notificationService(runtime).listIncludingExpired())
-        : Promise.resolve([] as AgentNotification[]),
-      receipt.approvalRecords.length > 0
-        ? Promise.all(
-            receipt.approvalRecords.map((record) =>
-              approvalQueue(runtime).byId(record.id, record.subjectUserId),
-            ),
-          )
-        : Promise.resolve([] as Array<ApprovalRequest | null>),
-      Promise.all(
-        receipt.providerStateKeys.map((key) =>
-          runtime.getCache<JsonValue>(key),
-        ),
-      ),
-    ]);
+  ] = await Promise.all([
+    runtime.getWorldsByIds([receipt.worldId]),
+    runtime.getEntitiesByIds(receipt.entityIds),
+    runtime.getRoomsByIds(receipt.roomIds),
+    runtime.getMemoriesByIds(receipt.memoryIds),
+    runtime.getRelationshipsByIds(receipt.relationshipIds),
+    runtime.getTasksByIds(receipt.taskIds),
+    receipt.scheduleIds.length > 0
+      ? getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list({})
+      : Promise.resolve([] as ScheduledTask[]),
+    receipt.notificationIds.length > 0
+      ? Promise.resolve(notificationService(runtime).listIncludingExpired())
+      : Promise.resolve([] as AgentNotification[]),
+    receipt.approvalRecords.length > 0
+      ? Promise.all(
+          receipt.approvalRecords.map((record) =>
+            approvalQueue(runtime).byId(record.id, record.subjectUserId),
+          ),
+        )
+      : Promise.resolve([] as Array<ApprovalRequest | null>),
+    Promise.all(
+      receipt.providerStateKeys.map((key) => runtime.getCache<JsonValue>(key)),
+    ),
+  ]);
   const worldOwned = worlds.every(
     (world) =>
       world.agentId === runtime.agentId &&
@@ -2895,22 +2874,20 @@ async function assertReceiptTargetsOwned(
       room.worldId === receipt.worldId &&
       hasNamespaceMarker(room.metadata, receipt.namespace),
   );
-  const memoriesOwned = memories.every(
-    (memory) => {
-      const index = receipt.memoryIds.indexOf(memory.id as UUID);
-      const marker = isRecord(memory.metadata)
-        ? memory.metadata.scenarioManifest
-        : undefined;
-      return (
-        index >= 0 &&
-        memory.agentId === runtime.agentId &&
-        memory.worldId === receipt.worldId &&
-        hasNamespaceMarker(memory.metadata, receipt.namespace) &&
-        isRecord(marker) &&
-        marker.tableName === receipt.memoryTableNames[index]
-      );
-    },
-  );
+  const memoriesOwned = memories.every((memory) => {
+    const index = receipt.memoryIds.indexOf(memory.id as UUID);
+    const marker = isRecord(memory.metadata)
+      ? memory.metadata.scenarioManifest
+      : undefined;
+    return (
+      index >= 0 &&
+      memory.agentId === runtime.agentId &&
+      memory.worldId === receipt.worldId &&
+      hasNamespaceMarker(memory.metadata, receipt.namespace) &&
+      isRecord(marker) &&
+      marker.tableName === receipt.memoryTableNames[index]
+    );
+  });
   const relationshipsOwned = relationships.every(
     (relationship) =>
       relationship.agentId === runtime.agentId &&
@@ -2926,10 +2903,9 @@ async function assertReceiptTargetsOwned(
     .filter((entry) => receipt.scheduleIds.includes(entry.taskId))
     .every(
       (task) =>
-      task.idempotencyKey?.startsWith(
-        `scenario-manifest:${receipt.namespace}:schedule:`,
-      ) === true &&
-        hasNamespaceMarker(task.metadata, receipt.namespace),
+        task.idempotencyKey?.startsWith(
+          `scenario-manifest:${receipt.namespace}:schedule:`,
+        ) === true && hasNamespaceMarker(task.metadata, receipt.namespace),
     );
   const approvalById = new Map(
     approvals
@@ -2957,13 +2933,15 @@ async function assertReceiptTargetsOwned(
   const notificationsOwned = [...notificationById.values()]
     .filter((notification) => receipt.notificationIds.includes(notification.id))
     .every((notification) => {
-    if (logicalIdFromScenarioMarker(notification.data, receipt.namespace)) {
-      return notification.agentId === runtime.agentId;
-    }
-    const approvalRecord = receipt.approvalRecords.find(
-      (record) => notification.groupKey === `approval:${record.id}`,
-    );
-    return approvalRecord !== undefined && approvalById.has(approvalRecord.id);
+      if (logicalIdFromScenarioMarker(notification.data, receipt.namespace)) {
+        return notification.agentId === runtime.agentId;
+      }
+      const approvalRecord = receipt.approvalRecords.find(
+        (record) => notification.groupKey === `approval:${record.id}`,
+      );
+      return (
+        approvalRecord !== undefined && approvalById.has(approvalRecord.id)
+      );
     });
   const providerStateOwned =
     providerState.length === receipt.providerStateKeys.length;
@@ -2973,11 +2951,11 @@ async function assertReceiptTargetsOwned(
     !roomsOwned ||
     !memoriesOwned ||
     !relationshipsOwned ||
-    !tasksOwned
-    || !schedulesOwned
-    || !notificationsOwned
-    || !approvalsOwned
-    || !providerStateOwned
+    !tasksOwned ||
+    !schedulesOwned ||
+    !notificationsOwned ||
+    !approvalsOwned ||
+    !providerStateOwned
   ) {
     throw new ProductionManifestApplyError(
       "[production-manifest] reset receipt references records outside its owned namespace",
