@@ -318,12 +318,44 @@ describe("MessageContent sensitive requests", () => {
     const input = screen.getByLabelText("OPENAI_API_KEY") as HTMLInputElement;
     expect(input.type).toBe("password");
     expect(screen.getByRole("button", { name: "Save secret" })).toBeTruthy();
-    // Trust-signage copy lives only on the OAuth panel where the user is
-    // navigating to a third-party origin. For a password field, the
-    // `type="password"` input is the signal — chatty reassurance copy was
-    // intentionally removed.
     expect(screen.getByTestId("sensitive-request").textContent).not.toContain(
       "will not be sent",
+    );
+    // The card states its security contract in fixed copy: a masked-input
+    // explainer in the header and a storage note under the submit button. Both
+    // must be visible before the user types a value.
+    expect(screen.getByTestId("sensitive-request").textContent).toContain(
+      "Masked input. It never lands in the transcript.",
+    );
+    expect(
+      screen.getByTestId("sensitive-request-security-note").textContent,
+    ).toContain("never posted to chat");
+  });
+
+  it("labels the submit button 'Save securely' when the form omits submitLabel", () => {
+    const request = pendingOwnerInlineSecretRequest();
+    if (request?.form) request.form.submitLabel = undefined;
+    render(
+      <MessageContent message={baseMessage({ secretRequest: request })} />,
+    );
+
+    expect(screen.getByRole("button", { name: "Save securely" })).toBeTruthy();
+  });
+
+  it("describes the tunnel delivery (send-once, not stored) on tunneled requests", () => {
+    render(
+      <MessageContent
+        message={baseMessage({ secretRequest: pendingTunnelSecretRequest() })}
+      />,
+    );
+
+    expect(
+      screen.getByTestId("sensitive-request-security-note").textContent,
+    ).toContain("Sent once to the waiting session");
+    // The header explainer describes long-term storage semantics, which do not
+    // apply to a one-shot tunnel delivery — it must not render here.
+    expect(screen.getByTestId("sensitive-request").textContent).not.toContain(
+      "Masked input. It never lands in the transcript.",
     );
   });
 

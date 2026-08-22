@@ -16,6 +16,7 @@
 
 import { stripUnclaimedInteractionMarkup } from "@elizaos/core";
 import { isRetryableChatFailureKind } from "@elizaos/shared/contracts";
+import { Check, ShieldCheck } from "lucide-react";
 import {
   type FormEvent,
   memo,
@@ -34,6 +35,7 @@ import type { UiSpec } from "../../config/ui-spec";
 import { dispatchConnectRequest } from "../../events";
 import { normalizeRemoteAgentUrl } from "../../first-run/adopt-remote-first-run";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { cn } from "../../lib/utils";
 import { isDesktopPlatform, isNative } from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -949,6 +951,8 @@ export function SensitiveRequestBlock({
 
   const tunnel = request.delivery?.tunnel;
   const requestLabel = sensitiveRequestTitleLabel(request.key);
+  const isSaved =
+    status === "saved" || status === "submitted" || status === "fulfilled";
 
   const handleSubmit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -1035,14 +1039,25 @@ export function SensitiveRequestBlock({
   return (
     <div
       data-testid="sensitive-request"
-      className="my-2 py-1.5 text-sm space-y-3"
+      className="my-2 rounded-sm border border-border/50 bg-card/40 px-3 py-2.5 text-sm space-y-3"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 break-words font-medium">{requestLabel}</div>
+        <div className="min-w-0">
+          <div className="break-words font-medium">{requestLabel}</div>
+          {canCollectSecret && !tunnel && !isRemoteConnect && (
+            <div className="mt-0.5 text-xs text-muted">
+              Masked input. It never lands in the transcript.
+            </div>
+          )}
+        </div>
         <div
           data-testid="sensitive-request-status"
-          className="shrink-0 text-xs text-muted"
+          className={cn(
+            "flex shrink-0 items-center gap-1 text-xs",
+            isSaved ? "text-ok" : "text-muted",
+          )}
         >
+          {isSaved && <Check className="h-3.5 w-3.5" aria-hidden />}
           {sensitiveRequestStatusLabel(status)}
         </div>
       </div>
@@ -1151,8 +1166,22 @@ export function SensitiveRequestBlock({
             disabled={saving || !canSubmit}
             data-testid="sensitive-request-submit"
           >
-            {saving ? "Saving..." : (request.form?.submitLabel ?? "Save")}
+            {saving
+              ? "Saving..."
+              : (request.form?.submitLabel ??
+                (isRemoteConnect ? "Connect" : "Save securely"))}
           </Button>
+          {!isRemoteConnect && (
+            <div
+              className="flex items-center gap-1.5 text-xs text-muted"
+              data-testid="sensitive-request-security-note"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              {tunnel
+                ? "Sent once to the waiting session — never stored, never posted to chat."
+                : "Stored encrypted in the agent's secret store — never posted to chat."}
+            </div>
+          )}
         </form>
       )}
       {canStartOAuth && request.form?.kind === "oauth" && (
@@ -1305,7 +1334,8 @@ function OAuthRequestPanel({
       >
         {authorizing ? "Authorizing..." : label}
       </Button>
-      <div className="text-xs text-muted">
+      <div className="flex items-center gap-1.5 text-xs text-muted">
+        <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
         Authorization happens on the provider's secure page. The token is stored
         securely and is never shown in chat.
       </div>
