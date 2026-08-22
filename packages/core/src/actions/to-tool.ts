@@ -289,9 +289,9 @@ export type PlannerToolActionShape = Pick<
 function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	assertNativeToolName(action.name);
 	const baseDescription =
+		action.description ??
 		action.descriptionCompressed ??
-		action.compressedDescription ??
-		action.description;
+		action.compressedDescription;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -317,7 +317,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
  *
  * Tool description is composed from (in order):
  *   - the action's `routingHint` (if present, on its own line)
- *   - `descriptionCompressed ?? description`
+ *   - the complete `description` (legacy compressed text is fallback-only)
  *
  * The order of `actions` is preserved in the output (callers control
  * tool ordering by ordering the input). Names are validated against
@@ -584,9 +584,9 @@ export function actionToTool(action: Action): PlannerToolDefinition {
 		function: {
 			name: action.name,
 			description:
+				action.description ??
 				action.descriptionCompressed ??
-				action.compressedDescription ??
-				action.description,
+				action.compressedDescription,
 			parameters: actionToJsonSchema(action),
 			strict: action.toolSchemaStrict ?? true,
 		},
