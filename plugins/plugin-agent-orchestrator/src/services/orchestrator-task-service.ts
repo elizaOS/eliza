@@ -1114,6 +1114,9 @@ function activeSessionNames(
     .filter((label): label is string => label.length > 0);
 }
 
+const TERMINAL_OR_INTERRUPTED_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
+  new Set(["interrupted", "done", "failed", "archived"]);
+
 export class OrchestratorTaskService extends Service {
   static serviceType = "ORCHESTRATOR_TASK_SERVICE";
 
@@ -6673,6 +6676,31 @@ export class OrchestratorTaskService extends Service {
       await this.store.updateSession(sessionId, { status: "send_failed" });
       throw err;
     }
+    return true;
+  }
+
+  /** Operator/user stop of the whole task: the wave launches no further lane,
+   * respawns and verify laps stop, and the task reads `interrupted` instead of
+   * lingering active. Sessions are stopped by the caller (interrupt path);
+   * this records the task-level decision. Live 2026-08-22: "actually stop,
+   * cancel that build" hard-stopped the running lane, then the remaining
+   * three phase lanes launched and ran to verification anyway. */
+  async interruptTask(taskId: string, reason: string): Promise<boolean> {
+    const doc = await this.store.getTask(taskId);
+    if (!doc || TERMINAL_OR_INTERRUPTED_TASK_STATUSES.has(doc.task.status)) {
+      return false;
+    }
+    await this.advanceTaskStatus(taskId, "interrupted");
+    await this.store.addEvent({
+      id: randomUUID(),
+      taskId,
+      eventType: "task_interrupted",
+      summary: `Task interrupted (${reason}); no further lanes or verification laps run.`,
+      data: { reason },
+      timestamp: Date.now(),
+      createdAt: new Date().toISOString(),
+    });
+    this.emitChange(taskId);
     return true;
   }
 

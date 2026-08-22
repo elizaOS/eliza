@@ -28,6 +28,7 @@ import {
   ChannelType,
   logger as coreLogger,
   ElizaError,
+  getStreamingContext,
   looksLikeBareLinkShare,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
@@ -2226,6 +2227,11 @@ async function runLanePlan(
   const pending = new Map(
     plan.lanes.map((lane, index) => [lane.id, { lane, index }]),
   );
+  // The user's stop aborts this turn, but this loop is what launches the
+  // NEXT lane: without watching the signal a phased build kept spawning
+  // lanes after the cancel (live 2026-08-22, tetris). Captured at entry —
+  // the async-local context is the action's own turn.
+  const turnSignal = getStreamingContext()?.abortSignal;
   // Per-lane request-voice part: a multi-lane fan-out from ONE user message
   // must give each lane its own terminal slot (the first lane's completion
   // must not gag the others). Minted ONCE here and inherited verbatim by
@@ -2324,6 +2330,12 @@ async function runLanePlan(
 
   while (pending.size > 0 || active.size > 0) {
     let launched = false;
+    if (turnSignal?.aborted && pending.size > 0) {
+      logger(runtime).warn(
+        `[TASKS:create] turn aborted; dropping ${pending.size} unlaunched lane(s)`,
+      );
+      pending.clear();
+    }
     for (const [id, entry] of [...pending]) {
       if (active.size >= plan.maxParallel) break;
       const readiness = laneReadiness(entry.lane, completed, failed);

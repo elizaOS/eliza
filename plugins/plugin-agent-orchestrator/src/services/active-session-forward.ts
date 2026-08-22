@@ -19,6 +19,7 @@ import {
   markSessionAdministrativelyStopped,
 } from "./admin-stop-marker.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
+import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import type {
   OrchestratorTaskRecord,
   OrchestratorTaskStatus,
@@ -383,6 +384,32 @@ export function createActiveSessionForwardHandler(
             // build run to completion and post its result after the user's
             // cancel (live 2026-08-19). An unconfirmed interrupt escalates to
             // a hard stop — that is what the user asked for.
+            // The task OWNS the lane plan, respawns, and verify laps: stop
+            // it first, or the remaining lanes of a phased build launch right
+            // after this session dies (live 2026-08-22, tetris: 3 more lanes
+            // ran to verification after "stopping the build now").
+            const taskService = runtime.getService?.(
+              OrchestratorTaskService.serviceType,
+            ) as OrchestratorTaskService | null | undefined;
+            if (taskService) {
+              try {
+                const owner = await taskService.getTaskForSession(active.id);
+                if (owner) {
+                  await taskService.interruptTask(owner.id, "user_interrupt");
+                }
+              } catch (err) {
+                // error-policy:J6 best-effort; the session stop below still
+                // ends the in-flight work.
+                runtime.logger?.warn?.(
+                  {
+                    src: SRC,
+                    sessionId: active.id,
+                    err: err instanceof Error ? err.message : String(err),
+                  },
+                  "interrupt could not mark the owning task interrupted",
+                );
+              }
+            }
             try {
               await acp.cancelSession?.(active.id);
             } catch (err) {
