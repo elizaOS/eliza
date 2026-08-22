@@ -106,5 +106,20 @@ describe("validateCompactionContentManifest", () => {
 				],
 			}),
 		).toThrow(/modified file reference revision mismatch/u);
+		expect(() =>
+			validateCompactionContentManifest({
+				...baseManifest,
+				modifiedFiles: [
+					{
+						reference: { kind: "file", ref: "opaque-file", revision: "r1" },
+						revision: "r1",
+					},
+					{
+						reference: { kind: "file", ref: "opaque-file", revision: "r2" },
+						revision: "r2",
+					},
+				],
+			}),
+		).toThrow(/modified files contain conflicting revisions/u);
 	});
 });

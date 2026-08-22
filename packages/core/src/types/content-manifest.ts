@@ -208,6 +208,7 @@ export function validateCompactionContentManifest(
 	if (input.modifiedFiles.length > COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES) {
 		throw new TypeError("content manifest has too many modified files");
 	}
+	const seenModifiedFiles = new Map<string, string | undefined>();
 	const modifiedFiles = input.modifiedFiles.map((raw, index) => {
 		const item = record(raw, `modifiedFiles[${index}]`);
 		exactKeys(item, MODIFIED_FILE_KEYS, `modifiedFiles[${index}]`);
@@ -226,6 +227,15 @@ export function validateCompactionContentManifest(
 		) {
 			throw new TypeError("modified file reference revision mismatch");
 		}
+		const key = `${reference.kind}\u0000${reference.ref}`;
+		if (seenModifiedFiles.has(key)) {
+			const priorRevision = seenModifiedFiles.get(key);
+			if (priorRevision !== revision) {
+				throw new TypeError("modified files contain conflicting revisions");
+			}
+			throw new TypeError("modified files contain a duplicate reference");
+		}
+		seenModifiedFiles.set(key, revision);
 		return { reference, ...(revision ? { revision } : {}) };
 	});
 	if (!Array.isArray(input.pendingProcesses)) {
