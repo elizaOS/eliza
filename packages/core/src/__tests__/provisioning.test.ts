@@ -79,6 +79,33 @@ describe("ensureEmbeddingDimension (core/provisioning.ts daemon-composition prob
 		expect(ensureDim).not.toHaveBeenCalled();
 	});
 
+	it("skips when EMBEDDING_DIMENSION contains trailing non-digit characters (prefix-parse)", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536abc",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
+
+	it("skips when EMBEDDING_DIMENSION is a non-integer float", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: "1536.9",
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
+
+	it("skips when EMBEDDING_DIMENSION exceeds maximum allowed dimension 16384", async () => {
+		const { runtime, ensureDim } = makeRuntime({
+			hasModel: true,
+			embeddingDimension: 20000,
+		});
+		await ensureEmbeddingDimension(runtime);
+		expect(ensureDim).not.toHaveBeenCalled();
+	});
+
 	it("skips when EMBEDDING_DIMENSION is <= 0", async () => {
 		const { runtime, ensureDim } = makeRuntime({
 			hasModel: true,

@@ -201,16 +201,27 @@ export async function ensureEmbeddingDimension(
 	// and "no facts available" results. Accept both spellings. On conflict, PLURAL
 	// wins: the DB column must match the embedder's real output dimension, and the
 	// embedder reads the plural key — so it is the source of truth. Warn loudly.
-	const parseDim = (value: unknown): number =>
-		typeof value === "number"
-			? value
-			: typeof value === "string"
-				? parseInt(value, 10)
-				: NaN;
+	const MAX_EMBEDDING_DIMENSION = 16_384;
+	const parseDim = (value: unknown): number => {
+		if (typeof value === "number") {
+			return Number.isSafeInteger(value) ? value : NaN;
+		}
+		if (typeof value === "string") {
+			const trimmed = value.trim();
+			return /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : NaN;
+		}
+		return NaN;
+	};
 	const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"));
 	const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"));
-	const singularValid = Number.isFinite(singular) && singular > 0;
-	const pluralValid = Number.isFinite(plural) && plural > 0;
+	const singularValid =
+		Number.isSafeInteger(singular) &&
+		singular > 0 &&
+		singular <= MAX_EMBEDDING_DIMENSION;
+	const pluralValid =
+		Number.isSafeInteger(plural) &&
+		plural > 0 &&
+		plural <= MAX_EMBEDDING_DIMENSION;
 	if (singularValid && pluralValid && singular !== plural) {
 		logger.warn(
 			{ src: "provisioning", agentId: runtime.agentId, singular, plural },
@@ -222,8 +233,12 @@ export async function ensureEmbeddingDimension(
 	}
 	// Plural wins on conflict (embedder's actual output dimension); otherwise use
 	// whichever single key is valid.
-	const dimension = pluralValid ? plural : singular;
-	if (!Number.isFinite(dimension) || dimension <= 0) {
+	const dimension = pluralValid ? plural : singularValid ? singular : NaN;
+	if (
+		!Number.isSafeInteger(dimension) ||
+		dimension <= 0 ||
+		dimension > MAX_EMBEDDING_DIMENSION
+	) {
 		logger.debug(
 			{ src: "provisioning", agentId: runtime.agentId },
 			"EMBEDDING_DIMENSION / EMBEDDING_DIMENSIONS not set or invalid, skipping (set it in character settings to avoid LLM detection)",
