@@ -86,8 +86,11 @@ export interface RuntimeDependencyRule {
     mockOwner?: string;
     mockSource?: string;
     mockContract?: {
-      kind: "external-protocol";
-      markers: string[];
+      kind: "mockoon-http";
+      operations: Array<{
+        method: string;
+        path: string;
+      }>;
     };
     missingMockReason?: string;
   }>;
@@ -536,14 +539,26 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
         `${service.id} must declare both mockOwner and mockSource`,
       );
     }
+    if (hasMock && service.mockContract?.kind !== "mockoon-http") {
+      throw new Error(
+        `${service.id} requires a parsed Mockoon HTTP operation contract`,
+      );
+    }
+    const operations = service.mockContract?.operations ?? [];
+    const operationKeys = operations.map(
+      (operation) =>
+        `${operation.method.trim().toUpperCase()} ${operation.path
+          .trim()
+          .replace(/^\/+/, "")}`,
+    );
     if (
       hasMock &&
-      (service.mockContract?.kind !== "external-protocol" ||
-        !service.mockContract.markers?.length ||
-        service.mockContract.markers.some((marker) => !marker.trim()))
+      (operations.length === 0 ||
+        operationKeys.some((operation) => !/^[A-Z]+ \S+$/.test(operation)) ||
+        new Set(operationKeys).size !== operationKeys.length)
     ) {
       throw new Error(
-        `${service.id} requires protocol-specific external fixture contract metadata`,
+        `${service.id} requires unique canonical HTTP operations`,
       );
     }
     if (hasMock && service.missingMockReason) {
@@ -569,11 +584,52 @@ function validateDependencyRule(rule: RuntimeDependencyRule): void {
           `${service.id} mockSource is missing or escapes the repository`,
         );
       }
-      const sourceText = readFileSync(source, "utf8");
-      for (const marker of service.mockContract?.markers ?? []) {
-        if (!sourceText.includes(marker)) {
+      let fixture: unknown;
+      try {
+        fixture = JSON.parse(readFileSync(source, "utf8"));
+      } catch (cause) {
+        throw new Error(`${service.id} mockSource is not valid JSON`, {
+          cause,
+        });
+      }
+      const routes =
+        fixture &&
+        typeof fixture === "object" &&
+        Array.isArray((fixture as { routes?: unknown }).routes)
+          ? (fixture as { routes: unknown[] }).routes
+          : null;
+      if (!routes) {
+        throw new Error(`${service.id} mockSource has no Mockoon routes`);
+      }
+      const registeredOperations = new Set(
+        routes.flatMap((route) => {
+          if (!route || typeof route !== "object") return [];
+          const candidate = route as {
+            type?: unknown;
+            method?: unknown;
+            endpoint?: unknown;
+            responses?: unknown;
+          };
+          if (
+            candidate.type !== "http" ||
+            typeof candidate.method !== "string" ||
+            typeof candidate.endpoint !== "string" ||
+            !Array.isArray(candidate.responses) ||
+            candidate.responses.length === 0
+          ) {
+            return [];
+          }
+          return [
+            `${candidate.method.trim().toUpperCase()} ${candidate.endpoint
+              .trim()
+              .replace(/^\/+/, "")}`,
+          ];
+        }),
+      );
+      for (const operation of operationKeys) {
+        if (!registeredOperations.has(operation)) {
           throw new Error(
-            `${service.id} mockSource does not satisfy external protocol marker ${marker}`,
+            `${service.id} mockSource does not register HTTP operation ${operation}`,
           );
         }
       }

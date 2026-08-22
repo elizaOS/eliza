@@ -60,20 +60,20 @@ scheduled workers, queues, views, and native bridges. External-service rules
 select explicit kinds, exact canonical ids, or implementation source prefixes;
 remaining surfaces fail closed as unresolved unless an explicit matching rule
 proves a local or external boundary. No unlisted package or newly added surface
-falls through to an automatic local-only default, and unresolved Cloud routes remain visible rather than inheriting
-every dependency used anywhere in Cloud API.
-Package imports such as
-React, Zod, SDKs, parsers, and database
-drivers remain visible under `packageDependencies`, but never imply an external
-service or mock. A service rule names its protocol and either a repository-local
-mock source plus owner or a concrete missing-mock reason. Mock ownership also
-requires external-protocol contract metadata whose markers must exist in the
-fixture; file existence alone never establishes protocol fidelity. Empty
-fixtures and the internal Payments API therefore cannot claim an unrelated
-external protocol such as Stripe. Mock/reset evidence remains row-specific and
-is not inferred from catalog ownership. The catalog records closed draft PR #23185
-only as a design reference for a richer provider conformance catalog; it does
-not treat that unmerged work as present evidence or a required stack. The
+falls through to an automatic local-only default, and unresolved Cloud routes
+remain visible rather than inheriting every dependency used anywhere in Cloud
+API. Package imports such as React, Zod, SDKs, parsers, and database drivers
+remain visible under `packageDependencies`, but never imply an external service
+or mock. A service rule names its protocol and either a repository-local mock
+source plus owner or a concrete missing-mock reason. Mock ownership also
+requires exact HTTP method/path operations that are parsed from registered
+Mockoon routes with configured responses; file existence or marker text never
+establishes protocol fidelity. Partial REST fixtures therefore cannot claim
+unowned WebSocket, webhook, OAuth, mutation, or external PostgreSQL boundaries.
+Mock/reset evidence remains row-specific and is not inferred from catalog
+ownership. The catalog records closed draft PR #23185 only as a design reference
+for a richer provider conformance catalog; it does not treat that unmerged work
+as present evidence or a required stack. The
 current-develop migration has 51 selected rules across 43 packages and zero
 package-wide local fallbacks. Every unmatched surface remains unresolved.
 No rule uses a package-wide `all` selector. Calendar's selected operational

@@ -34,12 +34,7 @@
         {
           "id": "postgresql",
           "protocol": "PostgreSQL persistence protocol",
-          "mockOwner": "cloud-e2e-pglite",
-          "mockSource": "packages/cloud/e2e/src/fixtures/stack.ts",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["PGlite", "DATABASE_URL"]
-          }
+          "missingMockReason": "PGlite is an in-process adapter, not a separately controlled external PostgreSQL protocol service with resettable operations."
         },
         {
           "id": "stripe-api",
@@ -61,15 +56,7 @@
         {
           "id": "container-control-plane",
           "protocol": "Container lifecycle HTTP control protocol",
-          "mockOwner": "control-plane",
-          "mockSource": "packages/cloud/test-mocks/mockoon/control-plane-static.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": [
-              "elizaos Control Plane — static reads",
-              "api/v1/admin/warm-pool"
-            ]
-          }
+          "missingMockReason": "The static-read fixture does not own the mutation and lifecycle operations exposed by the control-plane service boundary."
         }
       ]
     },
@@ -80,12 +67,7 @@
         {
           "id": "discord-api",
           "protocol": "Discord REST, Gateway, and interaction webhook protocols",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/discord.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Discord REST", "api/v10/channels/:channel_id/messages"]
-          }
+          "missingMockReason": "The HTTP fixture returns the live Discord Gateway URL and does not own a controlled Gateway WebSocket session or event stream."
         },
         {
           "id": "kubernetes-api",
@@ -101,22 +83,12 @@
         {
           "id": "whatsapp-api",
           "protocol": "WhatsApp Cloud Graph API and webhook protocol",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/whatsapp.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["WhatsApp", ":version/:phoneId/messages"]
-          }
+          "missingMockReason": "The fixture owns outbound message POSTs only and does not register the inbound webhook boundary used by the gateway service."
         },
         {
           "id": "twilio-api",
           "protocol": "Twilio Messages REST and webhook protocol",
-          "mockOwner": "twilio",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/twilio.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Twilio", "2010-04-01/Accounts/:sid/Messages.json"]
-          }
+          "missingMockReason": "The fixture owns outbound REST calls only and does not register the inbound Twilio webhook boundary used by the gateway service."
         },
         {
           "id": "blooio-api",
@@ -156,8 +128,8 @@
           "mockOwner": "anthropic",
           "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Anthropic Messages API", "v1/messages"]
+            "kind": "mockoon-http",
+            "operations": [{ "method": "POST", "path": "v1/messages" }]
           }
         }
       ]
@@ -172,8 +144,8 @@
           "mockOwner": "anthropic",
           "mockSource": "packages/scenario-runner/test/mocks/environments/anthropic.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Anthropic Messages API", "v1/messages"]
+            "kind": "mockoon-http",
+            "operations": [{ "method": "POST", "path": "v1/messages" }]
           }
         }
       ]
@@ -222,10 +194,25 @@
           "mockOwner": "google-workspace",
           "mockSource": "packages/scenario-runner/test/mocks/mockoon/calendar.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": [
-              "lifeops-calendar-mock",
-              "calendar/v3/users/me/calendarList"
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "GET", "path": "calendar/v3/users/me/calendarList" },
+              {
+                "method": "GET",
+                "path": "calendar/v3/calendars/:calendarId/events"
+              },
+              {
+                "method": "POST",
+                "path": "calendar/v3/calendars/:calendarId/events"
+              },
+              {
+                "method": "PATCH",
+                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
+              },
+              {
+                "method": "DELETE",
+                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
+              }
             ]
           }
         },
@@ -259,10 +246,25 @@
           "mockOwner": "google-workspace",
           "mockSource": "packages/scenario-runner/test/mocks/mockoon/calendar.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": [
-              "lifeops-calendar-mock",
-              "calendar/v3/users/me/calendarList"
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "GET", "path": "calendar/v3/users/me/calendarList" },
+              {
+                "method": "GET",
+                "path": "calendar/v3/calendars/:calendarId/events"
+              },
+              {
+                "method": "POST",
+                "path": "calendar/v3/calendars/:calendarId/events"
+              },
+              {
+                "method": "PATCH",
+                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
+              },
+              {
+                "method": "DELETE",
+                "path": "calendar/v3/calendars/:calendarId/events/:eventId"
+              }
             ]
           }
         }
@@ -394,8 +396,20 @@
           "mockOwner": "google-workspace",
           "mockSource": "packages/scenario-runner/test/mocks/environments/google.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Google APIs", "token"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "POST", "path": "token" },
+              { "method": "GET", "path": "gmail/v1/users/me/messages" },
+              { "method": "POST", "path": "gmail/v1/users/me/messages/send" },
+              {
+                "method": "GET",
+                "path": "calendar/v3/calendars/:calId/events"
+              },
+              {
+                "method": "POST",
+                "path": "calendar/v3/calendars/:calId/events"
+              }
+            ]
           }
         }
       ]
@@ -432,8 +446,8 @@
           "mockOwner": "linear",
           "mockSource": "packages/scenario-runner/test/mocks/environments/linear.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Linear GraphQL", "graphql"]
+            "kind": "mockoon-http",
+            "operations": [{ "method": "POST", "path": "graphql" }]
           }
         }
       ]
@@ -481,8 +495,13 @@
           "mockOwner": "notion",
           "mockSource": "packages/scenario-runner/test/mocks/mockoon/notion.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["lifeops-notion-mock", "v1/search"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "POST", "path": "v1/search" },
+              { "method": "POST", "path": "v1/pages" },
+              { "method": "PATCH", "path": "v1/blocks/:blockId/children" },
+              { "method": "GET", "path": "v1/databases/:databaseId" }
+            ]
           }
         }
       ]
@@ -497,8 +516,12 @@
           "mockOwner": "openai",
           "mockSource": "packages/scenario-runner/test/mocks/environments/openai.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["OpenAI API", "v1/chat/completions"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "POST", "path": "v1/chat/completions" },
+              { "method": "POST", "path": "v1/embeddings" },
+              { "method": "POST", "path": "v1/images/generations" }
+            ]
           }
         }
       ]
@@ -524,8 +547,12 @@
           "mockOwner": "messaging-webhook-family",
           "mockSource": "packages/scenario-runner/test/mocks/environments/slack.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Slack Web API", "api/chat.postMessage"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "POST", "path": "api/chat.postMessage" },
+              { "method": "POST", "path": "events" },
+              { "method": "POST", "path": "api/auth.test" }
+            ]
           }
         }
       ]
@@ -537,12 +564,7 @@
         {
           "id": "spotify-api",
           "protocol": "Spotify OAuth and Web API",
-          "mockOwner": "spotify",
-          "mockSource": "packages/scenario-runner/test/mocks/mockoon/spotify.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["lifeops-spotify-mock", "v1/me"]
-          }
+          "missingMockReason": "The fixture owns profile and currently-playing reads only, not the OAuth and playback mutation operations exposed by the action boundary."
         }
       ]
     },
@@ -567,8 +589,13 @@
           "mockOwner": "messaging-webhook-family",
           "mockSource": "packages/scenario-runner/test/mocks/environments/telegram.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["Telegram Bot API", "bot:token/getMe"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "GET", "path": "bot:token/getMe" },
+              { "method": "GET", "path": "bot:token/getUpdates" },
+              { "method": "POST", "path": "bot:token/sendMessage" },
+              { "method": "POST", "path": "bot:token/setWebhook" }
+            ]
           }
         }
       ]
@@ -654,12 +681,7 @@
         {
           "id": "whatsapp-api",
           "protocol": "WhatsApp Cloud API, webhook, and Baileys transport protocols",
-          "mockOwner": "messaging-webhook-family",
-          "mockSource": "packages/scenario-runner/test/mocks/environments/whatsapp.json",
-          "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["WhatsApp", ":version/:phoneId/messages"]
-          }
+          "missingMockReason": "The available HTTP fixture owns outbound message POSTs only and does not register the inbound webhook or Baileys transport used by these surfaces."
         }
       ]
     },
@@ -673,8 +695,16 @@
           "mockOwner": "x-twitter",
           "mockSource": "packages/scenario-runner/test/mocks/environments/x-twitter.json",
           "mockContract": {
-            "kind": "external-protocol",
-            "markers": ["X (Twitter)", "2/tweets"]
+            "kind": "mockoon-http",
+            "operations": [
+              { "method": "POST", "path": "2/tweets" },
+              {
+                "method": "POST",
+                "path": "2/dm_conversations/with/:id/messages"
+              },
+              { "method": "GET", "path": "2/dm_events" },
+              { "method": "GET", "path": "2/users/:id/mentions" }
+            ]
           }
         }
       ]

@@ -342,8 +342,8 @@ describe("runtime surface dependency catalog", () => {
             mockOwner: "example",
             mockSource: "packages/does-not-exist/mock.json",
             mockContract: {
-              kind: "external-protocol" as const,
-              markers: ["Example HTTP API"],
+              kind: "mockoon-http" as const,
+              operations: [{ method: "POST", path: "v1/example" }],
             },
           },
         ],
@@ -375,8 +375,8 @@ describe("runtime surface dependency catalog", () => {
             mockSource:
               "packages/scenario-runner/test/mocks/environments/payments.json",
             mockContract: {
-              kind: "external-protocol" as const,
-              markers: ["Stripe Checkout"],
+              kind: "mockoon-http" as const,
+              operations: [{ method: "POST", path: "v1/checkout/sessions" }],
             },
           },
         ],
@@ -387,7 +387,7 @@ describe("runtime surface dependency catalog", () => {
         [{ packageName: "@elizaos/example", kind: "route" }],
         invalid,
       ),
-    ).toThrow(/does not satisfy external protocol marker/);
+    ).toThrow(/does not register HTTP operation POST v1\/checkout\/sessions/);
   });
 
   test("the committed catalog is versioned and records its closed design reference", () => {
