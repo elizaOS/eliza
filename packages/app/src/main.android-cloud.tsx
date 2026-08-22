@@ -111,6 +111,8 @@ const deletionStatusCredentialStore = secureCredentialStore(
 const deletionRecoveryCredentialStore = secureCredentialStore(
   DELETION_RECOVERY_CREDENTIAL_KEY,
 );
+let volatileDeletionStatusCredential: string | null = null;
+let volatileDeletionRecoveryCredential: string | null = null;
 
 const androidCloudClient = new AndroidCloudClient({
   credentialStore: androidSecureCredentialStore,
@@ -200,7 +202,15 @@ async function lifecycleRequest(
 }
 
 async function readPublicLifecycleStatus(): Promise<AccountDeletionRequestDto | null> {
-  const statusCredential = await deletionStatusCredentialStore.read();
+  let statusCredential: string | null;
+  try {
+    statusCredential =
+      (await deletionStatusCredentialStore.read()) ??
+      volatileDeletionStatusCredential;
+  } catch (error) {
+    if (!volatileDeletionStatusCredential) throw error;
+    statusCredential = volatileDeletionStatusCredential;
+  }
   if (!statusCredential) return null;
   try {
     const response = await lifecycleRequest("/api/public/account-deletion", {
@@ -216,6 +226,8 @@ async function readPublicLifecycleStatus(): Promise<AccountDeletionRequestDto | 
         deletionStatusCredentialStore.clear(),
         deletionRecoveryCredentialStore.clear(),
       ]);
+      volatileDeletionStatusCredential = null;
+      volatileDeletionRecoveryCredential = null;
       return null;
     }
     throw error;
@@ -226,6 +238,8 @@ async function persistDeletionCapabilities(input: {
   statusCredential: string;
   recoveryCredential: string;
 }): Promise<void> {
+  volatileDeletionStatusCredential = input.statusCredential;
+  volatileDeletionRecoveryCredential = input.recoveryCredential;
   try {
     await deletionStatusCredentialStore.write(input.statusCredential);
     await deletionRecoveryCredentialStore.write(input.recoveryCredential);
@@ -299,7 +313,11 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
         await persistDeletionCapabilities(accepted);
       } catch (storageError) {
         try {
-          await cancelWithRecoveryCredential(accepted.recoveryCredential);
+          const canceling = await cancelWithRecoveryCredential(
+            accepted.recoveryCredential,
+          );
+          volatileDeletionRecoveryCredential = null;
+          return canceling;
         } catch (rollbackError) {
           throw new AndroidCloudLifecycleError(
             `Deletion receipt ${accepted.request.requestId} was reserved, but this device could not preserve recovery access or verify automatic cancellation. Keep the app open and contact support.`,
@@ -308,17 +326,19 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
             { cause: new AggregateError([storageError, rollbackError]) },
           );
         }
-        throw new AndroidCloudLifecycleError(
-          "Deletion was safely cancelled because this device could not preserve recovery access. Your session remains active.",
-          "RECOVERY_STORAGE_UNAVAILABLE",
-          null,
-          { cause: storageError },
-        );
       }
       return accepted.request;
     },
     async cancelDeletion() {
-      const recoveryCredential = await deletionRecoveryCredentialStore.read();
+      let recoveryCredential: string | null;
+      try {
+        recoveryCredential =
+          (await deletionRecoveryCredentialStore.read()) ??
+          volatileDeletionRecoveryCredential;
+      } catch (error) {
+        if (!volatileDeletionRecoveryCredential) throw error;
+        recoveryCredential = volatileDeletionRecoveryCredential;
+      }
       if (!recoveryCredential) {
         throw new AndroidCloudLifecycleError(
           "Recovery access is unavailable on this device.",
@@ -326,13 +346,29 @@ export const androidCloudAccountLifecycle: AndroidCloudAccountLifecycleAdapter =
         );
       }
       const request = await cancelWithRecoveryCredential(recoveryCredential);
-      if (request.status === "canceled") {
-        await deletionRecoveryCredentialStore.clear();
+      if (request.status === "canceling" || request.status === "canceled") {
+        volatileDeletionRecoveryCredential = null;
+        try {
+          await deletionRecoveryCredentialStore.clear();
+        } catch (error) {
+          // The server invalidates recovery authority when cancellation begins.
+          // A stale, now-useless ciphertext must not make Android claim that the
+          // server-owned cancellation failed.
+          logOptionalPluginFailure("deletion recovery cleanup", error);
+        }
       }
       return request;
     },
     async downloadExport() {
-      const recoveryCredential = await deletionRecoveryCredentialStore.read();
+      let recoveryCredential: string | null;
+      try {
+        recoveryCredential =
+          (await deletionRecoveryCredentialStore.read()) ??
+          volatileDeletionRecoveryCredential;
+      } catch (error) {
+        if (!volatileDeletionRecoveryCredential) throw error;
+        recoveryCredential = volatileDeletionRecoveryCredential;
+      }
       if (!recoveryCredential) {
         throw new AndroidCloudLifecycleError(
           "Recovery access is unavailable on this device.",

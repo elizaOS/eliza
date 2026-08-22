@@ -5,11 +5,13 @@ deletion lifecycle. Cloud reservation, provider reconciliation, irreversible
 erasure, and the generic public deletion page remain outside this lane.
 
 The authoritative contract inspected read-only is the account-deletion owner's
-current clean candidate `398b2e79d2681109c3425cc9f21b7262ef882010`.
-The four wire-contract blobs (shared lifecycle types, authenticated route,
-public status/cancel route, and public export route) are byte-identical to the
-earlier `496d77baefc5ef57cfe6a900be572c374883382b` checkpoint. No backend or
-public-page file from either commit is copied or modified here.
+stable provisioning-fence checkpoint
+`e6f002fd2eaeecdbee031ba75d63ba32844a3afe`. Later committed descendants
+observed through `3cf64cf3f554178cc7585ef64a04f6b55d709b43` do not change the
+shared lifecycle type, service mapping, authenticated route, public
+status/cancel route, or public export route. Concurrent uncommitted backend
+work is excluded from this compatibility claim. No backend or public-page file
+is copied or modified here.
 
 ## Stable server boundary
 
@@ -26,8 +28,11 @@ Initial acceptance returns
 opaque capabilities, stores them in separate Android Keystore-backed
 namespaces, reads both back, and only then reports reservation success. If
 secure persistence fails, it uses the still-in-memory recovery capability to
-attempt immediate cancellation and reports the exact outcome instead of
-pretending the account remains unchanged.
+attempt immediate cancellation, retains only the read-only status capability
+in volatile process memory when needed, and reports the exact server state
+instead of pretending the account remains unchanged. Android treats
+`canceling` as fenced and nonterminal; it never reports restored access until
+the server returns terminal `canceled` with `accessState: active`.
 
 The public status capability is read-only. The separate recovery capability is
 required for cancellation and export and is never placed in a URL, query
@@ -38,8 +43,9 @@ request uses the canonical paired Eliza API/app origins and disables redirects.
 
 The runtime parser accepts only the owner's `AccountDeletionStatusDto` shape:
 
-- status: `reserved`, `recovery`, `scheduled`, `processing`, `completed`,
-  `canceled`, or `action_required`;
+- status: `reserved`, `recovery`, `canceling`, `scheduled`, `processing`,
+  `completed`, `canceled`, or `action_required`;
+- server-owned access state: `fenced`, `active`, or `erased`;
 - recovery, scheduling, irreversible, and completion timestamps;
 - server-owned `canCancel` and `nextAction` values;
 - optional export state: `pending`, `building`, `ready`, `expired`, `deleted`,
@@ -48,7 +54,11 @@ The runtime parser accepts only the owner's `AccountDeletionStatusDto` shape:
 The former draft `phase`, `canExport`, `nextPollAfterMs`, progress, download URL,
 HttpOnly-cookie, `KEEP`, and `statusAccessEstablished` assumptions are rejected.
 Android polls nonterminal status on a bounded five-second UI timer; the server
-remains authoritative.
+remains authoritative. It requires the exact status/access/cancellation/action
+combinations emitted by the owner checkpoint. In particular, `canceling` is
+`fenced` with `wait_for_reconciliation`; only terminal `canceled` is `active`
+with `none`. Restored access still requires a fresh sign-in because existing
+sessions and API keys remain revoked.
 
 ## Export implementation
 
@@ -67,8 +77,9 @@ projection therefore generates a narrow `ElizaPlayExport` plugin that:
 
 ## Remaining integration gate
 
-Candidate `398b2e79` is the current owner handoff, but Android authenticated and
-physical acceptance must wait until that exact contract (or a reviewed
-compatible descendant) is available in an isolated Cloud environment. Never
-infer deletion or export success from a redirect, query parameter, local value,
-receipt ID, or successful request alone.
+Checkpoint `e6f002fd2e` is the stable owner handoff; committed descendants
+through observed `3cf64cf3f5` are wire- and service-mapping-compatible by exact
+blob/diff comparison. Android authenticated and physical acceptance still
+requires this contract in an isolated Cloud environment. Never infer deletion,
+cancellation completion, restored access, or export success from a redirect,
+query parameter, local value, receipt ID, or successful request alone.

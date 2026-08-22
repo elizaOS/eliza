@@ -43,7 +43,7 @@ describe("Android Play account-deletion contract", () => {
     const settings = read("ui/src/android-cloud/AndroidCloudSettings.tsx");
     const seam = read("ui/src/android-cloud/ACCOUNT_DELETION_CONTRACT_SEAM.md");
 
-    expect(seam).toContain("398b2e79d2681109c3425cc9f21b7262ef882010");
+    expect(seam).toContain("e6f002fd2eaeecdbee031ba75d63ba32844a3afe");
     expect(entry).toContain('"/api/v1/me/account-deletion"');
     expect(entry).toContain('"/api/public/account-deletion"');
     expect(entry).toContain('"X-Account-Deletion-Status"');
@@ -53,8 +53,13 @@ describe("Android Play account-deletion contract", () => {
     expect(entry).not.toContain("statusAccessEstablished");
     expect(parser).toContain("statusCredential: string;");
     expect(parser).toContain("recoveryCredential: string;");
+    expect(parser).toContain('| "canceling"');
+    expect(parser).toContain("accessState: AccountDeletionAccessState;");
     expect(parser).toContain("nextAction: AccountDeletionNextAction;");
+    expect(parser).toContain('nextAction: "wait_for_reconciliation"');
     expect(settings).toContain("Type CANCEL DELETION");
+    expect(settings).toContain("Restoring account access");
+    expect(settings).toContain("Existing sessions and API keys remain revoked");
     expect(settings).toContain("Save data export");
   });
 });

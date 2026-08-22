@@ -18,6 +18,7 @@ function lifecycleRequest(overrides: Record<string, unknown> = {}) {
     irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
+    accessState: "fenced",
     canCancel: true,
     nextAction: "download_export_or_cancel",
     export: {
@@ -31,7 +32,7 @@ function lifecycleRequest(overrides: Record<string, unknown> = {}) {
 }
 
 describe("Android account-deletion lifecycle contract", () => {
-  it("parses the exact identifier-minimal DTO from owner candidate 398b2e79", () => {
+  it("parses the exact identifier-minimal DTO from owner checkpoint e6f002fd2e", () => {
     expect(
       parseAccountDeletionEnvelope({ request: lifecycleRequest() }),
     ).toMatchObject({
@@ -44,7 +45,10 @@ describe("Android account-deletion lifecycle contract", () => {
   it("parses two independent one-time capabilities only on acceptance", () => {
     expect(
       parseAccountDeletionAccepted({
-        request: lifecycleRequest({ status: "reserved" }),
+        request: lifecycleRequest({
+          status: "reserved",
+          nextAction: "wait_for_export",
+        }),
         statusCredential: STATUS_CAPABILITY,
         recoveryCredential: RECOVERY_CAPABILITY,
       }),
@@ -60,6 +64,70 @@ describe("Android account-deletion lifecycle contract", () => {
         recoveryCredential: STATUS_CAPABILITY,
       }),
     ).toThrow(/independent/);
+  });
+
+  it("distinguishes fenced cancellation cleanup from restored terminal cancellation", () => {
+    expect(
+      parseAccountDeletionRequest(
+        lifecycleRequest({
+          status: "canceling",
+          canCancel: false,
+          nextAction: "wait_for_reconciliation",
+        }),
+      ),
+    ).toMatchObject({
+      status: "canceling",
+      accessState: "fenced",
+      nextAction: "wait_for_reconciliation",
+    });
+    expect(
+      parseAccountDeletionRequest(
+        lifecycleRequest({
+          status: "canceled",
+          identityDeactivated: false,
+          accessState: "active",
+          canCancel: false,
+          nextAction: "none",
+        }),
+      ),
+    ).toMatchObject({
+      status: "canceled",
+      accessState: "active",
+      nextAction: "none",
+    });
+  });
+
+  it("fails closed on inconsistent access, cancellation, and next-action state", () => {
+    expect(() =>
+      parseAccountDeletionRequest(
+        lifecycleRequest({
+          status: "canceled",
+          canCancel: false,
+          nextAction: "none",
+        }),
+      ),
+    ).toThrow(/inconsistent lifecycle state/);
+    expect(() =>
+      parseAccountDeletionRequest(
+        lifecycleRequest({ status: "canceling", canCancel: false }),
+      ),
+    ).toThrow(/inconsistent lifecycle state/);
+  });
+
+  it("accepts the server-owned provider-attention state without internal errors", () => {
+    expect(
+      parseAccountDeletionRequest(
+        lifecycleRequest({
+          status: "action_required",
+          canCancel: false,
+          nextAction: "contact_support",
+        }),
+      ),
+    ).toMatchObject({
+      status: "action_required",
+      accessState: "fenced",
+      nextAction: "contact_support",
+    });
   });
 
   it("fails closed on the superseded draft and legacy response shapes", () => {

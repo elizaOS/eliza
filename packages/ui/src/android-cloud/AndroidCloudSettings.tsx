@@ -62,6 +62,12 @@ function statusCopy(request: AccountDeletionRequestDto): {
         description:
           "Ordinary access is disabled. You can export your data or cancel until the recovery window ends.",
       };
+    case "canceling":
+      return {
+        title: "Restoring account access",
+        description:
+          "Cancellation is being reconciled. Account access stays fenced until Eliza restores your identity and removes the recovery export. You will need to sign in again when cleanup finishes.",
+      };
     case "scheduled":
       return {
         title: "Deletion scheduled",
@@ -90,7 +96,7 @@ function statusCopy(request: AccountDeletionRequestDto): {
       return {
         title: "Deletion cancelled",
         description:
-          "The request was cancelled inside the recovery window. Sign in again to continue using Eliza.",
+          "Account access is restored. Existing sessions and API keys remain revoked, so sign in again to continue using Eliza.",
       };
   }
 }
@@ -305,9 +311,16 @@ export function AndroidCloudSettings({
 
   useEffect(() => {
     if (!request) return;
-    if (request.status === "completed" || request.status === "canceled") return;
-    const timer = window.setTimeout(() => void refresh(), 5_000);
-    return () => window.clearTimeout(timer);
+    if (request.nextAction === "none") return;
+    let active = true;
+    let timer = window.setTimeout(async function poll() {
+      await refresh();
+      if (active) timer = window.setTimeout(poll, 5_000);
+    }, 5_000);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
   }, [refresh, request]);
 
   const submitDeletion = async () => {
@@ -352,6 +365,14 @@ export function AndroidCloudSettings({
       </header>
 
       <div className="space-y-5">
+        {request && error ? (
+          <p
+            className="rounded-xl border border-status-danger/40 p-3 text-sm text-status-danger"
+            role="alert"
+          >
+            {error} Eliza will retry without changing the server-owned state.
+          </p>
+        ) : null}
         {request ? (
           <DeletionStatus
             request={request}

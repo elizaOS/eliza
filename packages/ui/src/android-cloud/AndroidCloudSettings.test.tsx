@@ -29,6 +29,7 @@ function request(
     irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
+    accessState: "fenced",
     canCancel: true,
     nextAction: "download_export_or_cancel",
     export: {
@@ -48,7 +49,13 @@ function lifecycle(
     getStatus: vi.fn(async () => null),
     requestDeletion: vi.fn(async () => request()),
     cancelDeletion: vi.fn(async () =>
-      request({ status: "canceled", canCancel: false }),
+      request({
+        status: "canceled",
+        identityDeactivated: false,
+        accessState: "active",
+        canCancel: false,
+        nextAction: "none",
+      }),
     ),
     downloadExport: vi.fn(async () => true),
     ...overrides,
@@ -208,6 +215,96 @@ describe("AndroidCloudSettings", () => {
       expect(adapter.cancelDeletion).toHaveBeenCalledTimes(1),
     );
     expect(await screen.findByText("Deletion cancelled")).toBeTruthy();
+    expect(
+      screen.getByText(/Existing sessions and API keys remain revoked/),
+    ).toBeTruthy();
+  });
+
+  it("keeps polling while cancellation cleanup is fenced", async () => {
+    vi.useFakeTimers();
+    try {
+      const restored = request({
+        status: "canceled",
+        identityDeactivated: false,
+        accessState: "active",
+        canCancel: false,
+        nextAction: "none",
+      });
+      const adapter = lifecycle({ getStatus: vi.fn(async () => restored) });
+      render(
+        <AndroidCloudSettings
+          initialRequest={request({
+            status: "canceling",
+            accessState: "fenced",
+            canCancel: false,
+            nextAction: "wait_for_reconciliation",
+          })}
+          lifecycle={adapter}
+          onBack={vi.fn()}
+          onDeletionReserved={vi.fn()}
+          onSignOut={vi.fn()}
+          openExternal={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText("Restoring account access")).toBeTruthy();
+      expect(screen.getByText(/Account access stays fenced/)).toBeTruthy();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(adapter.getStatus).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("Deletion cancelled")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a status outage and retries the nonterminal reconciliation", async () => {
+    vi.useFakeTimers();
+    try {
+      const restored = request({
+        status: "canceled",
+        identityDeactivated: false,
+        accessState: "active",
+        canCancel: false,
+        nextAction: "none",
+      });
+      const getStatus = vi
+        .fn<AndroidCloudAccountLifecycleAdapter["getStatus"]>()
+        .mockRejectedValueOnce(new Error("Status temporarily unavailable"))
+        .mockResolvedValueOnce(restored);
+      render(
+        <AndroidCloudSettings
+          initialRequest={request({
+            status: "canceling",
+            accessState: "fenced",
+            canCancel: false,
+            nextAction: "wait_for_reconciliation",
+          })}
+          lifecycle={lifecycle({ getStatus })}
+          onBack={vi.fn()}
+          onDeletionReserved={vi.fn()}
+          onSignOut={vi.fn()}
+          openExternal={vi.fn()}
+        />,
+      );
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(screen.getByRole("alert").textContent).toContain(
+        "Status temporarily unavailable",
+      );
+      expect(screen.getByText("Restoring account access")).toBeTruthy();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(getStatus).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Deletion cancelled")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("saves a ready export through the native document flow", async () => {

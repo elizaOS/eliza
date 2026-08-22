@@ -60,6 +60,9 @@ describe("Android Cloud renderer entry", () => {
     expect(source).toContain('"X-Account-Deletion-Recovery"');
     expect(source).toContain("parseAccountDeletionAccepted");
     expect(source).toContain("persistDeletionCapabilities");
+    expect(source).toContain("volatileDeletionStatusCredential");
+    expect(source).toContain("volatileDeletionRecoveryCredential");
+    expect(source).toContain('request.status === "canceling"');
     expect(source).toContain("PlayExport.saveExport");
     expect(source).toContain("appOrigin: androidCloudClient.appBase");
     expect(source).not.toContain("statusAccessEstablished");

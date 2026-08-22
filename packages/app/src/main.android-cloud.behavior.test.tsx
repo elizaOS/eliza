@@ -110,6 +110,8 @@ const STATUS_CAPABILITY = "s".repeat(43);
 const RECOVERY_CAPABILITY = "r".repeat(43);
 
 function deletionRequest(status = "reserved") {
+  const terminalCanceled = status === "canceled";
+  const terminalCompleted = status === "completed";
   return {
     requestId: "receipt-opaque-1",
     status,
@@ -118,10 +120,21 @@ function deletionRequest(status = "reserved") {
     scheduledDeletionAt: "2026-09-21T00:00:00.000Z",
     irreversibleAt: null,
     completedAt: null,
-    identityDeactivated: true,
+    identityDeactivated: !terminalCanceled,
+    accessState: terminalCompleted
+      ? "erased"
+      : terminalCanceled
+        ? "active"
+        : "fenced",
     canCancel: status === "reserved" || status === "recovery",
     nextAction:
-      status === "reserved" ? "wait_for_export" : "download_export_or_cancel",
+      status === "reserved"
+        ? "wait_for_export"
+        : status === "recovery"
+          ? "download_export_or_cancel"
+          : status === "completed" || status === "canceled"
+            ? "none"
+            : "wait_for_reconciliation",
     export: {
       status: "building",
       readyAt: null,
@@ -301,7 +314,7 @@ describe("Android Cloud renderer behavior", () => {
       })
       .mockResolvedValueOnce({
         status: 200,
-        data: { request: deletionRequest("canceled") },
+        data: { request: deletionRequest("canceling") },
       });
 
     await expect(
@@ -319,7 +332,11 @@ describe("Android Cloud renderer behavior", () => {
 
     await expect(
       entry.androidCloudAccountLifecycle.cancelDeletion(),
-    ).resolves.toMatchObject({ status: "canceled" });
+    ).resolves.toMatchObject({
+      status: "canceling",
+      accessState: "fenced",
+      nextAction: "wait_for_reconciliation",
+    });
     expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
@@ -360,18 +377,46 @@ describe("Android Cloud renderer behavior", () => {
       })
       .mockResolvedValueOnce({
         status: 200,
-        data: { request: deletionRequest("canceled") },
+        data: { request: deletionRequest("canceling") },
       });
 
     await expect(
       entry.androidCloudAccountLifecycle.requestDeletion(),
-    ).rejects.toThrow("Deletion was safely cancelled");
+    ).resolves.toMatchObject({
+      status: "canceling",
+      accessState: "fenced",
+    });
     expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         method: "DELETE",
         headers: expect.objectContaining({
           "X-Account-Deletion-Recovery": RECOVERY_CAPABILITY,
+        }),
+      }),
+    );
+    expect(playEntry.secureClear).toHaveBeenCalledWith({
+      key: "accountDeletionRecovery",
+    });
+
+    playEntry.httpRequest
+      .mockResolvedValueOnce({ status: 401, data: { error: "signed out" } })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { request: deletionRequest("canceled") },
+      });
+    await expect(
+      entry.androidCloudAccountLifecycle.getStatus(),
+    ).resolves.toMatchObject({
+      status: "canceled",
+      accessState: "active",
+      nextAction: "none",
+    });
+    expect(playEntry.httpRequest).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "X-Account-Deletion-Status": STATUS_CAPABILITY,
         }),
       }),
     );

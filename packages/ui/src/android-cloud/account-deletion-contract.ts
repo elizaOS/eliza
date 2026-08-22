@@ -1,11 +1,12 @@
 /**
  * Android-owned runtime parser for the identifier-minimal wire contract in
- * account-deletion owner candidate 398b2e79d2681109c3425cc9f21b7262ef882010.
+ * account-deletion owner checkpoint e6f002fd2e.
  */
 
 export type AccountDeletionStatus =
   | "reserved"
   | "recovery"
+  | "canceling"
   | "scheduled"
   | "processing"
   | "completed"
@@ -27,6 +28,8 @@ export type AccountDeletionNextAction =
   | "contact_support"
   | "none";
 
+export type AccountDeletionAccessState = "fenced" | "active" | "erased";
+
 export interface AccountDeletionExportDto {
   status: AccountDeletionExportStatus;
   readyAt: string | null;
@@ -44,6 +47,7 @@ export interface AccountDeletionRequestDto {
   irreversibleAt: string | null;
   completedAt: string | null;
   identityDeactivated: boolean;
+  accessState: AccountDeletionAccessState;
   canCancel: boolean;
   nextAction: AccountDeletionNextAction;
   export: AccountDeletionExportDto | null;
@@ -58,11 +62,18 @@ export interface AccountDeletionAcceptedDto {
 const STATUSES = new Set<AccountDeletionStatus>([
   "reserved",
   "recovery",
+  "canceling",
   "scheduled",
   "processing",
   "completed",
   "canceled",
   "action_required",
+]);
+
+const ACCESS_STATES = new Set<AccountDeletionAccessState>([
+  "fenced",
+  "active",
+  "erased",
 ]);
 
 const EXPORT_STATUSES = new Set<AccountDeletionExportStatus>([
@@ -84,6 +95,58 @@ const NEXT_ACTIONS = new Set<AccountDeletionNextAction>([
 
 const CAPABILITY_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+
+const STATUS_CONTRACT: Readonly<
+  Record<
+    AccountDeletionStatus,
+    {
+      accessState: AccountDeletionAccessState;
+      canCancel: boolean;
+      nextAction: AccountDeletionNextAction;
+    }
+  >
+> = {
+  reserved: {
+    accessState: "fenced",
+    canCancel: true,
+    nextAction: "wait_for_export",
+  },
+  recovery: {
+    accessState: "fenced",
+    canCancel: true,
+    nextAction: "download_export_or_cancel",
+  },
+  canceling: {
+    accessState: "fenced",
+    canCancel: false,
+    nextAction: "wait_for_reconciliation",
+  },
+  scheduled: {
+    accessState: "fenced",
+    canCancel: false,
+    nextAction: "wait_for_reconciliation",
+  },
+  processing: {
+    accessState: "fenced",
+    canCancel: false,
+    nextAction: "wait_for_reconciliation",
+  },
+  action_required: {
+    accessState: "fenced",
+    canCancel: false,
+    nextAction: "contact_support",
+  },
+  completed: {
+    accessState: "erased",
+    canCancel: false,
+    nextAction: "none",
+  },
+  canceled: {
+    accessState: "active",
+    canCancel: false,
+    nextAction: "none",
+  },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -126,12 +189,13 @@ export function parseAccountDeletionRequest(
     !isRecord(value) ||
     !STATUSES.has(value.status as AccountDeletionStatus) ||
     typeof value.identityDeactivated !== "boolean" ||
+    !ACCESS_STATES.has(value.accessState as AccountDeletionAccessState) ||
     typeof value.canCancel !== "boolean" ||
     !NEXT_ACTIONS.has(value.nextAction as AccountDeletionNextAction)
   ) {
     throw new Error("Account deletion response was malformed");
   }
-  return {
+  const parsed: AccountDeletionRequestDto = {
     requestId: requiredString(value.requestId, "requestId"),
     status: value.status as AccountDeletionStatus,
     requestedAt: requiredString(value.requestedAt, "requestedAt"),
@@ -146,10 +210,22 @@ export function parseAccountDeletionRequest(
     irreversibleAt: nullableString(value.irreversibleAt, "irreversibleAt"),
     completedAt: nullableString(value.completedAt, "completedAt"),
     identityDeactivated: value.identityDeactivated,
+    accessState: value.accessState as AccountDeletionAccessState,
     canCancel: value.canCancel,
     nextAction: value.nextAction as AccountDeletionNextAction,
     export: parseExport(value.export),
   };
+  const expected = STATUS_CONTRACT[parsed.status];
+  if (
+    parsed.accessState !== expected.accessState ||
+    parsed.canCancel !== expected.canCancel ||
+    parsed.nextAction !== expected.nextAction
+  ) {
+    throw new Error(
+      "Account deletion response has inconsistent lifecycle state",
+    );
+  }
+  return parsed;
 }
 
 export function parseAccountDeletionEnvelope(

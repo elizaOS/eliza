@@ -57,6 +57,7 @@ function deletionRequest(): AccountDeletionRequestDto {
     irreversibleAt: null,
     completedAt: null,
     identityDeactivated: true,
+    accessState: "fenced",
     canCancel: true,
     nextAction: "download_export_or_cancel",
     export: {
@@ -78,7 +79,10 @@ function createLifecycle(
       async (): Promise<AccountDeletionRequestDto> => ({
         ...deletionRequest(),
         status: "canceled",
+        identityDeactivated: false,
+        accessState: "active",
         canCancel: false,
+        nextAction: "none",
       }),
     ),
     downloadExport: vi.fn(async () => true),
