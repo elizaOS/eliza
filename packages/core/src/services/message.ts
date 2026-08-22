@@ -4330,11 +4330,18 @@ export function evaluatePlannedReplyEgress(args: {
 	reply: string;
 	actionResults: readonly ActionResult[];
 	actions: readonly Action[];
+	/** The turn relays a sub-agent's verified completion: that message is the
+	 *  effect receipt, so a completed-side-effect claim ("the page is ready")
+	 *  is grounded without an action of this turn. Without it a verified,
+	 *  live page shipped as "I couldn't verify that the requested change was
+	 *  completed" (2026-08-22). */
+	completionRelay?: boolean;
 }): PlannedReplyEgressDecision {
 	const reply = args.reply.trim();
 	if (!reply) return { verdict: "allow" };
 	if (replyClaimsCompletedSideEffect(reply)) {
 		if (
+			args.completionRelay === true ||
 			plannedReplyHasClaimGroundingReceipt({
 				kind: "completed_side_effect",
 				reply,
@@ -9174,6 +9181,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply,
 				actionResults: [],
 				actions: args.runtime.actions,
+				completionRelay: isSubAgentCompletionArtifact(args.message),
 			});
 			if (directReplyEgressDecision.verdict === "reject") {
 				reply = directReplyEgressDecision.fallbackReply;
@@ -9235,6 +9243,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				reply: earlyReplyText,
 				actionResults: [],
 				actions: args.runtime.actions,
+				completionRelay: isSubAgentCompletionArtifact(args.message),
 			});
 			if (earlyReplyEgressDecision.verdict === "reject") {
 				// Planning is still in progress, so an ungrounded completion claim
@@ -10181,6 +10190,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			reply: String(plannerResult.finalMessage ?? ""),
 			actionResults: egressActionResults,
 			actions: args.runtime.actions,
+			completionRelay: isSubAgentCompletionArtifact(args.message),
 		});
 		// A reply an action callback already delivered this turn (verbatim or as
 		// a strict superset) is a planner echo: the suppression below drops it, so
@@ -10368,6 +10378,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			reply: effectiveReplyText,
 			actionResults,
 			actions: args.runtime.actions,
+			completionRelay: isSubAgentCompletionArtifact(args.message),
 		});
 		if (finalReplyEgressDecision.verdict === "reject") {
 			effectiveReplyText = finalReplyEgressDecision.fallbackReply;
