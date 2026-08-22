@@ -4,16 +4,14 @@
  * disposal, and the real Slack and PagerDuty request shapes.
  */
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { alertFetch, PayoutAlertsService } from "./payout-alerts";
+import { type AlertTransport, alertFetch, PayoutAlertsService } from "./payout-alerts";
 
-const realFetch = globalThis.fetch;
 const slackWebhookEnv = "REDEMPTION_ALERT_SLACK_WEBHOOK";
 const pagerDutyKeyEnv = "REDEMPTION_ALERT_PAGERDUTY_KEY";
 const previousSlackWebhook = process.env[slackWebhookEnv];
 const previousPagerDutyKey = process.env[pagerDutyKeyEnv];
 
 afterEach(() => {
-  globalThis.fetch = realFetch;
   if (previousSlackWebhook === undefined) delete process.env[slackWebhookEnv];
   else process.env[slackWebhookEnv] = previousSlackWebhook;
   if (previousPagerDutyKey === undefined) delete process.env[pagerDutyKeyEnv];
@@ -22,47 +20,55 @@ afterEach(() => {
 
 describe("alertFetch", () => {
   test("aborts a hung alert hop at the configured timeout", async () => {
-    globalThis.fetch = mock(
+    const transport = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted.", "AbortError"));
           });
         }),
-    ) as typeof fetch;
+    ) as AlertTransport;
 
     await expect(
-      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25),
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, 25, transport),
     ).rejects.toThrow(/aborted/i);
   });
 
   test("keeps the deadline when a caller supplies a non-firing signal", async () => {
-    globalThis.fetch = mock(
+    const transport = mock(
       (_input: RequestInfo | URL, init?: RequestInit) =>
         new Promise<Response>((_resolve, reject) => {
           init?.signal?.addEventListener("abort", () => {
             reject(new DOMException("The operation was aborted.", "AbortError"));
           });
         }),
-    ) as typeof fetch;
+    ) as AlertTransport;
 
     const controller = new AbortController();
     await expect(
-      alertFetch("https://events.pagerduty.com/v2/enqueue", { signal: controller.signal }, 25),
+      alertFetch(
+        "https://events.pagerduty.com/v2/enqueue",
+        { signal: controller.signal },
+        25,
+        transport,
+      ),
     ).rejects.toThrow(/aborted/i);
   });
 
   test("propagates caller cancellation through the composed signal", async () => {
     let receivedSignal: AbortSignal | undefined;
-    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    const transport = mock(async (_input: string, init?: RequestInit) => {
       receivedSignal = init?.signal;
       return new Response(null, { status: 204 });
-    }) as typeof fetch;
+    }) as AlertTransport;
 
     const controller = new AbortController();
-    await alertFetch("https://events.pagerduty.com/v2/enqueue", {
-      signal: controller.signal,
-    });
+    await alertFetch(
+      "https://events.pagerduty.com/v2/enqueue",
+      { signal: controller.signal },
+      undefined,
+      transport,
+    );
     controller.abort();
 
     expect(receivedSignal).not.toBe(controller.signal);
@@ -71,21 +77,56 @@ describe("alertFetch", () => {
 
   test("rejects unapproved endpoints and oversized bodies before fetch", async () => {
     const fetchMock = mock(async () => new Response(null, { status: 204 }));
-    globalThis.fetch = fetchMock as typeof fetch;
+    const transport = fetchMock as AlertTransport;
 
     await expect(
-      alertFetch("http://169.254.169.254/latest/meta-data", { method: "POST" }),
+      alertFetch(
+        "http://169.254.169.254/latest/meta-data",
+        { method: "POST" },
+        undefined,
+        transport,
+      ),
     ).rejects.toThrow(/approved Slack or PagerDuty URL/);
     await expect(
-      alertFetch("https://hooks.slack.com.evil.example/services/T/B/secret", { method: "POST" }),
+      alertFetch(
+        "https://hooks.slack.com.evil.example/services/T/B/secret",
+        { method: "POST" },
+        undefined,
+        transport,
+      ),
     ).rejects.toThrow(/approved Slack or PagerDuty URL/);
     await expect(
-      alertFetch("https://hooks.slack.com/services/T/B/secret", {
-        method: "POST",
-        body: "x".repeat(64 * 1024 + 1),
-      }),
+      alertFetch(
+        "https://hooks.slack.com/services/T/B/secret",
+        {
+          method: "POST",
+          body: "x".repeat(64 * 1024 + 1),
+        },
+        undefined,
+        transport,
+      ),
     ).rejects.toThrow(/64 KiB/);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects redirects and releases their response body", async () => {
+    let cancelled = 0;
+    const transport = mock(
+      async () =>
+        new Response(
+          new ReadableStream({
+            cancel() {
+              cancelled += 1;
+            },
+          }),
+          { status: 302, headers: { location: "https://example.com/capture" } },
+        ),
+    ) as AlertTransport;
+
+    await expect(
+      alertFetch("https://events.pagerduty.com/v2/enqueue", undefined, undefined, transport),
+    ).rejects.toThrow(/redirected with status 302/);
+    expect(cancelled).toBe(1);
   });
 
   test("contains transport failures so alert diagnostics cannot stop payouts", async () => {
@@ -94,10 +135,9 @@ describe("alertFetch", () => {
     const fetchMock = mock(async () => {
       throw new Error("transport unavailable");
     });
-    globalThis.fetch = fetchMock as typeof fetch;
 
     await expect(
-      new PayoutAlertsService().sendAlert({
+      new PayoutAlertsService(fetchMock as AlertTransport).sendAlert({
         severity: "critical",
         title: "Emergency Pause",
         message: "Payouts paused",
@@ -111,8 +151,8 @@ describe("alertFetch", () => {
     process.env[pagerDutyKeyEnv] = "pager-key";
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     let cancelledResponses = 0;
-    globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
-      requests.push({ url: input.toString(), init });
+    const transport = mock(async (input: string, init?: RequestInit) => {
+      requests.push({ url: input, init });
       return new Response(
         new ReadableStream({
           cancel() {
@@ -121,9 +161,9 @@ describe("alertFetch", () => {
         }),
         { status: 202 },
       );
-    }) as typeof fetch;
+    }) as AlertTransport;
 
-    await new PayoutAlertsService().sendAlert({
+    await new PayoutAlertsService(transport).sendAlert({
       severity: "critical",
       title: "Velocity Limit",
       message: "Payouts paused",
@@ -135,7 +175,7 @@ describe("alertFetch", () => {
       "https://hooks.slack.com/services/T/B/secret",
       "https://events.pagerduty.com/v2/enqueue",
     ]);
-    expect(requests.every(({ init }) => init?.redirect === "error")).toBe(true);
+    expect(requests.every(({ init }) => init?.redirect === "manual")).toBe(true);
     expect(requests.every(({ init }) => init?.signal instanceof AbortSignal)).toBe(true);
     expect(JSON.parse(String(requests[0]?.init?.body))).toMatchObject({
       text: expect.stringContaining("Velocity Limit"),

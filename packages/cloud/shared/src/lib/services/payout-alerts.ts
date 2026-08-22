@@ -5,11 +5,15 @@
  */
 
 import { MONITORING } from "../config/redemption-security";
+import { safeFetch } from "../security/safe-fetch";
 import { logger } from "../utils/logger";
 
 const ALERT_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_ALERT_REQUEST_BODY_BYTES = 64 * 1024;
 const PAGERDUTY_EVENTS_URL = "https://events.pagerduty.com/v2/enqueue";
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+export type AlertTransport = (url: string, init?: RequestInit) => Promise<Response>;
 
 function assertAllowedAlertEndpoint(input: string | URL): URL {
   const url = new URL(input.toString());
@@ -43,6 +47,7 @@ export async function alertFetch(
   input: string | URL,
   init: RequestInit = {},
   timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
+  transport: AlertTransport = safeFetch,
 ): Promise<Response> {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0) {
     throw new RangeError("Payout alert timeout must be a positive integer");
@@ -60,11 +65,16 @@ export async function alertFetch(
   }
 
   const deadline = AbortSignal.timeout(timeoutMs);
-  return await fetch(url, {
+  const response = await transport(url.toString(), {
     ...init,
-    redirect: "error",
+    redirect: "manual",
     signal: init.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
+  if (REDIRECT_STATUSES.has(response.status)) {
+    await releaseAlertResponse(response, "redirect");
+    throw new Error(`Payout alert endpoint redirected with status ${response.status}`);
+  }
+  return response;
 }
 
 async function releaseAlertResponse(response: Response, channel: string): Promise<void> {
@@ -127,7 +137,7 @@ export class PayoutAlertsService {
   private slackWebhookUrl: string | undefined;
   private pagerDutyKey: string | undefined;
 
-  constructor() {
+  constructor(private readonly transport: AlertTransport = safeFetch) {
     this.slackWebhookUrl = process.env[MONITORING.SLACK_WEBHOOK_ENV];
     this.pagerDutyKey = process.env[MONITORING.PAGERDUTY_KEY_ENV];
 
@@ -192,11 +202,16 @@ export class PayoutAlertsService {
 
     let response: Response | undefined;
     try {
-      response = await alertFetch(this.slackWebhookUrl!, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(slackPayload),
-      });
+      response = await alertFetch(
+        this.slackWebhookUrl!,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(slackPayload),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        this.transport,
+      );
 
       if (!response.ok) {
         logger.error("[PayoutAlerts] Slack webhook failed", {
@@ -237,11 +252,16 @@ export class PayoutAlertsService {
 
     let response: Response | undefined;
     try {
-      response = await alertFetch(PAGERDUTY_EVENTS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pagerDutyPayload),
-      });
+      response = await alertFetch(
+        PAGERDUTY_EVENTS_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pagerDutyPayload),
+        },
+        ALERT_REQUEST_TIMEOUT_MS,
+        this.transport,
+      );
 
       if (!response.ok) {
         logger.error("[PayoutAlerts] PagerDuty alert failed", {
