@@ -249,7 +249,12 @@ export function requestVoiceKeyForMeta(
   meta: Record<string, unknown> | undefined,
 ): string | null {
   if (!meta) return null;
+  // A follow-up delivered into the live session re-keys its voice: the
+  // completion answering "also give it a dark mode toggle" is THAT message's
+  // terminal, not a duplicate of the original build's (live 2026-08-22: the
+  // dark-mode completion was terminal_denied and never posted).
   const direct =
+    pickKeyString(meta.followUpOriginMessageId) ??
     pickKeyString(meta.spawnRootMessageId) ??
     pickKeyString(meta.originConnectorMessageId);
   const messageId = pickKeyString(meta.messageId);

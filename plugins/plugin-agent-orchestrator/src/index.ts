@@ -8,6 +8,7 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
+import { activateFollowUpOrigin } from "./services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import type {
   Character,
@@ -550,6 +551,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
                   const queued = subAgentInbox.drain(sessionId);
                   if (!queued) return;
                   try {
+                    // The queued follow-up's origin becomes the session's
+                    // voice key so its completion posts (follow-up-origin.ts).
+                    if (svc) await activateFollowUpOrigin(svc, sessionId);
                     await svc?.sendPrompt(sessionId, queued);
                   } catch (err) {
                     // error-policy:J7 inbox-flush loop must survive a transient

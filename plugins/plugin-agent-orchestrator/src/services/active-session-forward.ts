@@ -15,6 +15,11 @@ import {
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import {
+  activateFollowUpOrigin,
+  notePendingFollowUpOrigin,
+  originMessageIdFor,
+} from "./follow-up-origin.js";
+import {
   ADMIN_STOP_META_KEY,
   markSessionAdministrativelyStopped,
 } from "./admin-stop-marker.js";
@@ -251,6 +256,7 @@ export function createActiveSessionForwardHandler(
           : "";
       if (!text) return;
       if (typeof acp.sendPrompt !== "function") return;
+      const followUpOriginId = originMessageIdFor(message);
       // ACL: forwarding user text mid-flight is functionally identical to the
       // TASKS_SEND_TO_AGENT action — without this any user with channel write
       // access could inject prompts into another user's sub-agent.
@@ -340,9 +346,13 @@ export function createActiveSessionForwardHandler(
         // text is never silently dropped — the flush listener retries it.
         const deliverNow = async (payload: string) => {
           try {
+            // The delivered follow-up's completion claims ITS OWN voice slot
+            // (see follow-up-origin.ts).
+            await activateFollowUpOrigin(acp, active.id, followUpOriginId);
             await acp.sendPrompt(active.id, payload);
           } catch (err) {
             // error-policy:J4 sendPrompt failed → requeue for flush-listener retry; user text never dropped
+            await notePendingFollowUpOrigin(acp, active.id, followUpOriginId);
             subAgentInbox.enqueue(active.id, payload);
             runtime.logger?.warn?.(
               {
@@ -470,6 +480,7 @@ export function createActiveSessionForwardHandler(
             // deliver / queue. Mid-turn → queue for the flush listener;
             // otherwise flush + deliver immediately.
             if (busy) {
+              await notePendingFollowUpOrigin(acp, active.id, followUpOriginId);
               subAgentInbox.enqueue(active.id, text);
               continue;
             }

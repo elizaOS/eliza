@@ -9,6 +9,12 @@ import {
   FOLLOW_UP_SHAPE_RE,
   NEW_DELIVERABLE_RE,
 } from "../services/ask-shapes.js";
+import {
+  activateFollowUpOrigin,
+  notePendingFollowUpOrigin,
+  readFollowUpOrigin,
+  restoreFollowUpOrigin,
+} from "../services/follow-up-origin.js";
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import {
@@ -4345,6 +4351,11 @@ Context: a NEW standalone deliverable. Build it fresh in this workspace.`
         };
       }
       if (smithersActive && queueInbox) {
+        await notePendingFollowUpOrigin(
+          service,
+          target.session.id,
+          sendOriginId || undefined,
+        );
         queueInbox.enqueue(target.session.id, textInput);
         return {
           success: true,
@@ -4358,6 +4369,17 @@ Context: a NEW standalone deliverable. Build it fresh in this workspace.`
         };
       }
       let prompt: PromptResult | undefined;
+      // The follow-up's completion must claim ITS OWN voice slot, not the
+      // original build's (see follow-up-origin.ts).
+      const previousFollowUpOrigin = await readFollowUpOrigin(
+        service,
+        target.session.id,
+      );
+      await activateFollowUpOrigin(
+        service,
+        target.session.id,
+        sendOriginId || undefined,
+      );
       try {
         prompt = await service.sendToSession(target.session.id, textInput);
       } catch (error) {
@@ -4374,6 +4396,14 @@ Context: a NEW standalone deliverable. Build it fresh in this workspace.`
           }
         ).__orchestratorSubAgentInbox;
         if (isSessionBusyError(error) && inbox) {
+          // The in-flight turn keeps its key; the queued follow-up's origin
+          // is promoted when the flush delivers it.
+          await restoreFollowUpOrigin(
+            service,
+            target.session.id,
+            previousFollowUpOrigin,
+            sendOriginId || undefined,
+          );
           inbox.enqueue(target.session.id, textInput);
           return {
             success: true,
