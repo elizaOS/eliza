@@ -18,7 +18,7 @@ const u = () => {
   return `bbbb1111-aaaa-4000-8000-${hex}`;
 };
 
-const FAULT_RULES = (label, fault) => [
+const FAULT_RULES = (_label, fault) => [
   {
     target: "header",
     modifier: "X-Mockoon-Fault",
@@ -1226,98 +1226,6 @@ const appleReminders = envelope({
   ],
 });
 
-// ---------- bluebubbles --------------------------------------------------
-
-const bluebubbles = envelope({
-  name: "lifeops-bluebubbles-mock",
-  port: 18811,
-  routes: [
-    route(
-      "get",
-      "api/v1/chat",
-      {
-        status: 200,
-        message: "Success",
-        data: [
-          {
-            guid: "iMessage;-;+14155551234",
-            chatIdentifier: PEOPLE[0].phone,
-            isArchived: false,
-            isFiltered: false,
-            displayName: PEOPLE[0].name,
-            participants: [
-              {
-                address: PEOPLE[0].phone,
-                contact: { displayName: PEOPLE[0].name },
-              },
-            ],
-            lastMessage: {
-              text: "got it, see you Thursday",
-              dateCreated: 1746810400000,
-            },
-          },
-          {
-            guid: "iMessage;-;+12025553456",
-            chatIdentifier: PEOPLE[1].phone,
-            displayName: PEOPLE[1].name,
-            participants: [
-              {
-                address: PEOPLE[1].phone,
-                contact: { displayName: PEOPLE[1].name },
-              },
-            ],
-            lastMessage: { text: "thanks!", dateCreated: 1746810000000 },
-          },
-        ],
-      },
-      "default",
-    ),
-    route(
-      "get",
-      "api/v1/chat/:guid/message",
-      {
-        status: 200,
-        data: [
-          {
-            guid: "msg_aaa1",
-            text: "hey are you free thursday?",
-            isFromMe: false,
-            dateCreated: 1746810000000,
-          },
-          {
-            guid: "msg_aaa2",
-            text: "yeah, what time?",
-            isFromMe: true,
-            dateCreated: 1746810060000,
-          },
-          {
-            guid: "msg_aaa3",
-            text: "9:30 work?",
-            isFromMe: false,
-            dateCreated: 1746810120000,
-          },
-        ],
-      },
-      "default",
-    ),
-    route(
-      "post",
-      "api/v1/message/text",
-      {
-        status: 200,
-        message: "Message sent!",
-        data: {
-          guid: "msg_outbound_zzz1",
-          text: "Mock outbound iMessage",
-          isFromMe: true,
-          dateCreated: 1746810500000,
-        },
-      },
-      "default",
-    ),
-  ],
-});
-
 // ---------- ntfy ---------------------------------------------------------
 
 const ntfy = envelope({
@@ -1690,7 +1598,6 @@ const ENVS = {
   "twilio.json": twilio,
   "plaid.json": plaid,
   "apple-reminders.json": appleReminders,
-  "bluebubbles.json": bluebubbles,
   "ntfy.json": ntfy,
   "duffel.json": duffel,
   "anthropic.json": anthropic,

@@ -6,7 +6,6 @@
  */
 
 import { getBootConfig } from "../../config/boot-config";
-import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { ConnectorAccountSetupScope } from "./ConnectorAccountSetupScope";
 import {
   connectorSetupRegistry,
@@ -59,7 +58,6 @@ function ConnectorAccountManagementPanel({
 
 export function ConnectorSetupPanel({
   pluginId,
-  modeId,
 }: {
   pluginId: string;
   modeId?: string;
@@ -108,8 +106,6 @@ export function ConnectorSetupPanel({
       );
     case "discord-local":
       return <DiscordLocalConnectorPanel />;
-    case "bluebubbles":
-      return <BlueBubblesStatusPanel modeId={modeId} />;
     case "imessage":
       return <IMessageStatusPanel />;
     default:

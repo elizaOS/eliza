@@ -242,24 +242,6 @@ export const TelegramAccountConnectorSchema = z
   })
   .strict();
 
-export const BlueBubblesConnectorConfigSchema = z
-  .object({
-    enabled: z.boolean().optional(),
-    serverUrl: z.string().url().optional(),
-    password: z.string().optional(),
-    webhookPath: z.string().optional(),
-    autoStartCommand: z.string().optional(),
-    autoStartArgs: z.array(z.string()).optional(),
-    autoStartCwd: z.string().optional(),
-    autoStartWaitMs: z.number().int().nonnegative().optional(),
-    dmPolicy: DmPolicySchema.optional(),
-    groupPolicy: GroupPolicySchema.optional(),
-    allowFrom: z.array(z.string()).optional(),
-    groupAllowFrom: z.array(z.string()).optional(),
-    sendReadReceipts: z.boolean().optional(),
-  })
-  .strict();
-
 export const DiscordDmSchema = z
   .object({
     enabled: z.boolean().optional(),
