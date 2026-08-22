@@ -63,15 +63,20 @@ function createManager() {
 
 async function captureReactionCallback() {
   const emitEvent = vi.fn();
-  const reply = vi.fn(async (text: string) => ({
-    message_id: 100,
-    date: 1_700_000_000,
+  let messageId = 99;
+  const sendMessage = vi.fn(async (chatId: number | string, text: string) => ({
+    message_id: ++messageId,
+    date: 1_700_000_000 + messageId,
     text,
-    chat: { id: 123, type: "private" },
+    chat: { id: chatId, type: "private" },
   }));
   const manager = new MessageManager(
     {} as never,
-    { agentId: "agent-1", emitEvent } as unknown as IAgentRuntime,
+    {
+      agentId: "agent-1",
+      emitEvent,
+      getSetting: () => undefined,
+    } as unknown as IAgentRuntime,
   );
 
   await manager.handleReaction({
@@ -86,7 +91,10 @@ async function captureReactionCallback() {
         new_reaction: [{ type: "emoji", emoji: "👍" }],
       },
     },
-    reply,
+    telegram: {
+      sendChatAction: vi.fn(async () => undefined),
+      sendMessage,
+    },
   } as never);
 
   expect(emitEvent).toHaveBeenCalledTimes(2);
@@ -97,7 +105,7 @@ async function captureReactionCallback() {
   if (!payload?.callback) {
     throw new Error("expected the reaction event to expose its reply callback");
   }
-  return { callback: payload.callback, reply };
+  return { callback: payload.callback, sendMessage };
 }
 
 describe("MessageManager long message splitting", () => {
@@ -177,7 +185,7 @@ describe("MessageManager long message splitting", () => {
     expect(sentMessages.map((message) => message.text).join("")).toBe(text);
   });
 
-  it("prefers newline boundaries when they fit within Telegram's limit", async () => {
+  it("preserves newline boundaries across Telegram chunks", async () => {
     const { manager, sendMessage } = createManager();
     const firstLine = "x".repeat(4094);
     const text = `${firstLine}\ny\nz`;
@@ -195,8 +203,9 @@ describe("MessageManager long message splitting", () => {
 
     expect(sendMessage.mock.calls.map((call) => call[1])).toEqual([
       `${firstLine}\ny`,
-      "z",
+      "\nz",
     ]);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
   });
 });
 
@@ -539,16 +548,16 @@ describe("MessageManager malformed payload handling", () => {
     ["lone high surrogate", `before\ud800after`, "before�after"],
     ["lone low surrogate", `before\udc00after`, "before�after"],
     ["exact 4096-unit text", `${"a".repeat(4094)}🦊`, `${"a".repeat(4094)}🦊`],
-    ["4097-unit text", "a".repeat(4097), "a".repeat(4096)],
+    ["4097-unit text", "a".repeat(4097), "a".repeat(4097)],
     [
       "astral character crossing the cap",
       `${"a".repeat(4095)}🦊tail`,
-      "a".repeat(4095),
+      `${"a".repeat(4095)}🦊tail`,
     ],
   ])(
     "keeps the reaction callback wire reply and returned memory aligned for %s",
     async (_label, input, expected) => {
-      const { callback, reply } = await captureReactionCallback();
+      const { callback, sendMessage } = await captureReactionCallback();
 
       const memories = await callback({
         text: input,
@@ -556,23 +565,21 @@ describe("MessageManager malformed payload handling", () => {
         data: { marker: "preserved" },
       });
 
-      expect(reply).toHaveBeenCalledTimes(1);
-      const wireText = reply.mock.calls[0]?.[0];
-      // This observes the production callback argument, so restoring the raw
-      // `ctx.reply(content.text)` path breaks the malformed/over-limit cases.
-      expect(wireText).toBe(expected);
-      expect(wireText?.length).toBeLessThanOrEqual(4096);
-      expect(wireText?.isWellFormed()).toBe(true);
+      const wireChunks = sendMessage.mock.calls.map((call) => call[1]);
+      expect(wireChunks.join("")).toBe(expected);
+      expect(wireChunks.every((chunk) => chunk.length <= 4096)).toBe(true);
+      expect(wireChunks.every((chunk) => chunk.isWellFormed())).toBe(true);
 
-      expect(memories).toHaveLength(1);
-      const memoryContent = memories[0]?.content;
-      expect(memoryContent?.text).toBe(wireText);
-      expect(memoryContent?.text?.length).toBeLessThanOrEqual(4096);
-      expect(memoryContent?.text?.isWellFormed()).toBe(true);
-      expect(memoryContent?.action).toBe("REPLY");
-      expect(memoryContent?.data).toEqual({ marker: "preserved" });
-      expect(memoryContent?.inReplyTo).toBeDefined();
-      expect(memoryContent?.metadata).toEqual({ accountId: "default" });
+      expect(memories).toHaveLength(wireChunks.length);
+      expect(memories.map((item) => item.content.text).join("")).toBe(expected);
+      for (const memory of memories) {
+        expect(memory.content.text?.length).toBeLessThanOrEqual(4096);
+        expect(memory.content.text?.isWellFormed()).toBe(true);
+        expect(memory.content.action).toBe("REPLY");
+        expect(memory.content.data).toEqual({ marker: "preserved" });
+        expect(memory.content.inReplyTo).toBeDefined();
+        expect(memory.content.metadata).toEqual({ accountId: "default" });
+      }
     },
   );
 
