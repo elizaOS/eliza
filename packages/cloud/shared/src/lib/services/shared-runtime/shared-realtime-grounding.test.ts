@@ -196,6 +196,42 @@ describe("Shared realtime receipts and Telegram-safe replies", () => {
     ).toBe(false);
   });
 
+  test("rejects qualitative contradictions and unsupported predicates", () => {
+    if (grounding.kind !== "web_search") throw new Error("fixture grounding must be available");
+    const executiveGrounding: SharedRuntimePublicGrounding = {
+      ...grounding,
+      sourceUrls: ["https://company.example/leadership"],
+      sources: [
+        {
+          url: "https://company.example/leadership",
+          text: "Alice Example is the current CEO of Example Corp.",
+        },
+      ],
+    };
+    if (executiveGrounding.kind !== "web_search") {
+      throw new Error("fixture grounding must be available");
+    }
+
+    expect(
+      validateSharedRealtimeReply(
+        "Alice Example is the current CEO of Example Corp. [[SOURCE_URL:https://company.example/leadership]]",
+        executiveGrounding,
+      ),
+    ).toBe(true);
+    expect(
+      validateSharedRealtimeReply(
+        "Alice Example is not the current CEO of Example Corp. [[SOURCE_URL:https://company.example/leadership]]",
+        executiveGrounding,
+      ),
+    ).toBe(false);
+    expect(
+      validateSharedRealtimeReply(
+        "Alice Example resigned as CEO of Example Corp. [[SOURCE_URL:https://company.example/leadership]]",
+        executiveGrounding,
+      ),
+    ).toBe(false);
+  });
+
   test("adds concise source, provider, and checked time for Telegram", () => {
     const reply = finalizeSharedRealtimeReply(
       "Bitcoin is 77,357.93 USD. [[SOURCE_URL:https://coin.example/bitcoin]]",
