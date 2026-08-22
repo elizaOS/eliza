@@ -3656,13 +3656,13 @@ function resolveShellFailuresSubsumedBy(
 	unresolvedByOperation: Map<string, PlannerStep>,
 ): void {
 	const call = step.toolCall;
-	if (!call || call.name.toUpperCase() !== "SHELL") return;
+	if (call?.name.toUpperCase() !== "SHELL") return;
 	const command = shellCommandParam(call);
 	if (!command) return;
 	const cwd = shellCwdParam(call);
 	for (const [key, failed] of [...unresolvedByOperation.entries()]) {
 		const failedCall = failed.toolCall;
-		if (!failedCall || failedCall.name.toUpperCase() !== "SHELL") continue;
+		if (failedCall?.name.toUpperCase() !== "SHELL") continue;
 		const failedCommand = shellCommandParam(failedCall);
 		if (!failedCommand || shellCwdParam(failedCall) !== cwd) continue;
 		if (containsCommandVerbatim(command, failedCommand)) {
@@ -3687,23 +3687,13 @@ function shellCwdParam(call: PlannerToolCall): string {
  *  those letters inside a longer word. */
 function containsCommandVerbatim(haystack: string, needle: string): boolean {
 	if (haystack === needle) return true;
-	const BOUNDARY = new Set([" ", "\t", "\n", ";", "&", "|", "(", ")"]);
-	let from = 0;
-	for (;;) {
-		const at = haystack.indexOf(needle, from);
-		if (at === -1) return false;
-		const before = at === 0 ? undefined : haystack[at - 1];
-		const afterIndex = at + needle.length;
-		const after =
-			afterIndex >= haystack.length ? undefined : haystack[afterIndex];
-		if (
-			(before === undefined || BOUNDARY.has(before)) &&
-			(after === undefined || BOUNDARY.has(after))
-		) {
-			return true;
-		}
-		from = at + 1;
-	}
+	// A corrective prefix is evidence only when the failed command is the final
+	// shell list element. Mere token-boundary containment is unsafe: a successful
+	// `echo <failed command>` or quoted diagnostic would otherwise launder the
+	// failure without re-executing it.
+	if (!haystack.endsWith(needle)) return false;
+	const prefix = haystack.slice(0, -needle.length).trimEnd();
+	return prefix.endsWith("&&") || prefix.endsWith("||") || prefix.endsWith(";");
 }
 
 /**

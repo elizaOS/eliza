@@ -311,53 +311,6 @@ function buildVirtualHandler(parent: Action, subaction: string): Handler {
 					value.trim() !== "" &&
 					normalizeSubaction(value) !== normalizeSubaction(subaction)
 				) {
-					// The explicit discriminator names the operation the model
-					// actually wants; the virtual's pin only records which promoted
-					// NAME the planner picked — often forced by which virtuals the
-					// turn's tool surface happened to carry. When the requested
-					// value is one the parent itself declares, execute it: the
-					// corrective refusal stranded live turns because the named
-					// replacement tool was not on the surface to retry (planner
-					// called TASKS_SPAWN_AGENT with subaction=create, was told to
-					// call TASKS_CREATE, could not, and the request died). This is
-					// not silent rerouting — the parent runs the exact operation
-					// the call spelled out. An UNDECLARED value keeps the refusal:
-					// executing an unknown op on a guess would be the real hazard.
-					const declaredParent = parent.parameters?.find((p) => p.name === key);
-					const parentEnum = (
-						declaredParent?.schema as { enum?: unknown } | undefined
-					)?.enum;
-					const parentDeclaresValue =
-						Array.isArray(parentEnum) &&
-						parentEnum.some(
-							(v) =>
-								typeof v === "string" &&
-								normalizeSubaction(v) === normalizeSubaction(value),
-						);
-					if (parentDeclaresValue) {
-						runtime.logger?.info?.(
-							{
-								src: "promote-subactions",
-								pinned: subaction,
-								requested: value,
-								parent: parent.name,
-							},
-							"Virtual pin overridden by explicit declared discriminator; executing the requested operation",
-						);
-						const rerouted = mergeOptionsWithSubaction(
-							parent,
-							options,
-							value.trim(),
-						);
-						return parentHandler(
-							runtime,
-							message,
-							state,
-							rerouted,
-							callback,
-							responses,
-						);
-					}
 					const wanted = `${toUpperSnake(parent.name)}_${toUpperSnake(value.trim())}`;
 					const text = `This tool is pinned to ${subaction}; '${key}: ${value}' contradicts it. Call ${wanted} (or ${toUpperSnake(parent.name)} with ${key}=${value}) instead.`;
 					return {

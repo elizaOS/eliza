@@ -160,6 +160,15 @@ export function tierActionResults(
 	);
 	if (narrowSet.size > 0) {
 		const canonicalOwnersByCandidate = new Map<string, Set<string>>();
+		const tokenSetOwnersByCandidate = new Map<string, Set<string>>();
+		for (const parent of input.catalog.parents) {
+			for (const child of parent.childNormalizedNames) {
+				const key = actionNameTokenSetKey(child);
+				const owners = tokenSetOwnersByCandidate.get(key) ?? new Set<string>();
+				owners.add(parent.normalizedName);
+				tokenSetOwnersByCandidate.set(key, owners);
+			}
+		}
 		for (const candidate of narrowSet) {
 			const owners = new Set<string>();
 			for (const parent of input.catalog.parents) {
@@ -197,6 +206,7 @@ export function tierActionResults(
 					return true;
 				}
 				const candidateTokens = actionNameTokenSetKey(candidate);
+				const tokenSetOwners = tokenSetOwnersByCandidate.get(candidateTokens);
 				for (const child of catalogParent.childNormalizedNames) {
 					if (candidate === child) {
 						return true;
@@ -206,7 +216,11 @@ export function tierActionResults(
 					// cancel surface narrowed to nothing and the planner
 					// honestly reported the tools unavailable). Same tokens,
 					// any order — still that child.
-					if (candidateTokens === actionNameTokenSetKey(child)) {
+					if (
+						tokenSetOwners?.size === 1 &&
+						tokenSetOwners.has(catalogParent.normalizedName) &&
+						candidateTokens === actionNameTokenSetKey(child)
+					) {
 						return true;
 					}
 				}

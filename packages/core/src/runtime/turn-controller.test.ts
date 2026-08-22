@@ -27,6 +27,8 @@ describe("TurnControllerRegistry", () => {
 			if (signal.aborted) throw signal.reason;
 			return "sibling-survived";
 		});
+		const siblingOutcome =
+			expect(sibling).rejects.toBeInstanceOf(TurnAbortedError);
 		await siblingStarted.promise;
 
 		const caller = registry.runWith("room-1", async (signal) => {
@@ -35,7 +37,7 @@ describe("TurnControllerRegistry", () => {
 			return { aborted, selfAborted: signal.aborted };
 		});
 
-		await expect(sibling).rejects.toBeInstanceOf(TurnAbortedError);
+		await siblingOutcome;
 		await expect(caller).resolves.toEqual({
 			aborted: true,
 			selfAborted: false,
@@ -66,12 +68,13 @@ describe("TurnControllerRegistry", () => {
 				return i;
 			}),
 		);
+		const outcomes = turns.map((turn) =>
+			expect(turn).rejects.toBeInstanceOf(TurnAbortedError),
+		);
 		await Promise.all(started.map((g) => g.promise));
 
 		expect(registry.abortTurn("room-1", "http-stop")).toBe(true);
-		for (const turn of turns) {
-			await expect(turn).rejects.toBeInstanceOf(TurnAbortedError);
-		}
+		await Promise.all(outcomes);
 		expect(registry.hasActiveTurn("room-1")).toBe(false);
 	});
 });

@@ -185,7 +185,16 @@ export function hardenIncomingUserMessage(message: Memory): void {
 	}
 
 	if (shouldTreatSourceAsUntrusted(source)) {
-		metadata.userPayloadText = text;
+		const connectorText = message.content.currentMessageText;
+		const trimmedConnectorText =
+			typeof connectorText === "string" ? connectorText.trim() : "";
+		// Bind the connector's raw payload to the rendered text before promoting
+		// it into the trusted retained stamp. A caller-supplied mismatched field
+		// must not steer resolvers to words the model never saw.
+		metadata.userPayloadText =
+			trimmedConnectorText && text.includes(trimmedConnectorText)
+				? trimmedConnectorText
+				: text;
 		message.content.text = wrapExternalContent(text, {
 			source: resolveExternalSource(source),
 			includeWarning: true,
@@ -202,33 +211,38 @@ export function scrubIncomingMessageTextForStorage(text: string): string {
 }
 
 /**
- * Shared resolution: the connector's `content.currentMessageText` when present
- * (the raw human message — connectors render `content.text` with a context
- * header such as "[Discord #general | server] @user (ts):" before it reaches
- * this boundary, so the retained copy of `text` still carries that header and
- * every consumer that echoed or titled from it shipped the header, live
- * 2026-08-21); otherwise the retained `metadata.userPayloadText` stamp (the
- * trusted copy taken before wrapping); otherwise, ONLY when the
+ * Shared resolution: the retained `metadata.userPayloadText` stamp (the
+ * trusted copy taken before wrapping). The inbound hook may promote a
+ * connector's raw `content.currentMessageText` into that stamp only after
+ * binding it to the rendered text; connector-only callers get the same bound
+ * fallback before the hook runs. Otherwise, ONLY when the
  * `externalContentWrapped` stamp attests the envelope came from this module, a
  * marker parse of `content.text` (legacy messages persisted before the
  * retained field existed); otherwise the raw text. Unstamped marker-shaped
  * text is never parsed — the stamp is the authenticity proof, and extracting a
  * "payload" from an unauthenticated envelope would let injected marker text
  * place attacker-chosen words (e.g. a "yes" for a destructive confirm) where
- * consumers read the user's words. The same precedence as core's
- * `getUserMessageText`.
+ * consumers read the user's words.
  */
 function resolveRetainedCandidate(message: Memory): string {
 	const text =
 		typeof message.content?.text === "string" ? message.content.text : "";
-	const connectorText = message.content?.currentMessageText;
-	if (typeof connectorText === "string" && connectorText.trim().length > 0) {
-		return connectorText.trim();
-	}
 	const metadata = readMessageMetadata(message);
 	const retained = metadata.userPayloadText;
 	if (typeof retained === "string" && retained.trim().length > 0) {
 		return retained.trim();
+	}
+	// Connector-only callers can resolve a message before the inbound hook has
+	// stamped metadata. Accept their raw field only when it occurs in the
+	// rendered text; an arbitrary currentMessageText cannot override a different
+	// visible payload (for example, forged "yes" beside a destructive request).
+	const connectorText = message.content?.currentMessageText;
+	if (
+		typeof connectorText === "string" &&
+		connectorText.trim().length > 0 &&
+		text.includes(connectorText.trim())
+	) {
+		return connectorText.trim();
 	}
 	if (metadata.externalContentWrapped === true) {
 		return (extractWrappedExternalContent(text) ?? text).trim();

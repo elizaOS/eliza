@@ -567,6 +567,67 @@ describe("planner-loop failed-operation correlation", () => {
 		expect(result.finalMessage).not.toContain("All done");
 	});
 
+	it("does not resolve a failed SHELL command merely echoed by a successful command", async () => {
+		const failedCommand = "pnpm test";
+		const shellFailure = "Tests failed.";
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-fail", "SHELL", {
+						command: failedCommand,
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce(
+					plannerToolCall("shell-echo", "SHELL", {
+						command: `echo ${failedCommand}`,
+						cwd: "/workspace/repo",
+					}),
+				)
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{ id: "reply", name: "REPLY", arguments: { text: "All done." } },
+					],
+				}),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					error: "test-failure",
+					text: shellFailure,
+					userFacingText: shellFailure,
+				})
+				.mockResolvedValueOnce({
+					success: true,
+					text: failedCommand,
+					userFacingText: failedCommand,
+				}),
+			evaluate: vi
+				.fn()
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Inspect the failed command.",
+				})
+				.mockResolvedValueOnce({
+					success: false,
+					decision: "CONTINUE",
+					thought: "Invalid evaluator envelope.",
+					protocolFailure: true,
+				}),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(shellFailure);
+		expect(result.finalMessage).not.toContain("All done");
+	});
+
 	it("keeps a failed VIEWS operation authoritative over an unrelated evaluator FINISH", async () => {
 		const runtime = {
 			useModel: vi

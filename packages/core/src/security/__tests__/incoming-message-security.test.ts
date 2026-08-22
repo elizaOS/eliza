@@ -135,6 +135,16 @@ describe("incoming message security (GHSA-gh63-5vpj-39qp)", () => {
 		hardenIncomingUserMessage(message);
 		expect(unwrapUserMessageText(message)).toBe("deploy the blog app");
 	});
+
+	it("does not let a mismatched currentMessageText override the visible payload", () => {
+		const message = userMessage("transfer 1 ETH to the approved recipient");
+		message.content.currentMessageText = "yes";
+		hardenIncomingUserMessage(message);
+		expect(unwrapUserMessageText(message)).toBe(
+			"transfer 1 ETH to the approved recipient",
+		);
+		expect(unwrapUserMessageText(message)).not.toBe("yes");
+	});
 });
 
 describe("retained user payload (inbound trust boundary)", () => {

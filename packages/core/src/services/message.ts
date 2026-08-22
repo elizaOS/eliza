@@ -9455,47 +9455,11 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const invokePlannerLoop = (
 			loopContext: typeof plannerContextAfterEarlyReply,
-		) => {
-			// Multi-intent turns list Stage 1's declared legs as an explicit
-			// context instruction. Small planner models complete leg one and
-			// finish ("delete and recreate my reminder" deleted, never
-			// recreated — live 2026-08-18, twice); naming every declared leg in
-			// the context makes an early FINISH a visible contract break for
-			// the planner AND the evaluator instead of a judgment call.
-			const declaredIntents = messageHandler.plan.intents ?? [];
-			// The model can compress a multi-step ask into ONE declared intent
-			// ("redo reminder" for "delete it, make a fresh one, then show me
-			// the list" — live 2026-08-18), disarming the unserved-intents
-			// evaluator guard. Decompose the user's own text deterministically:
-			// imperative clauses joined by then/and/commas each count as a leg,
-			// and the larger of the two counts drives the contract.
-			const userClauses = decomposeImperativeClauses(
-				typeof args.message.content?.text === "string"
-					? args.message.content.text
-					: "",
-			);
-			const effectiveIntents =
-				userClauses.length > declaredIntents.length
-					? userClauses
-					: declaredIntents;
-			const contextWithIntents =
-				effectiveIntents.length >= 2
-					? appendContextEvent(loopContext, {
-							id: "stage1-declared-intents",
-							type: "instruction",
-							source: "message-service",
-							createdAt: Date.now(),
-							content: [
-								"stage1_declared_intents:",
-								...effectiveIntents.map((intent) => `- ${intent}`),
-								"Serve EVERY declared intent above before finishing, or state plainly in the final reply which ones were not done and why. Finishing after only the first is a broken promise.",
-							].join("\n"),
-						})
-					: loopContext;
-			return timeInferenceSpan("message:planner", () =>
+		) =>
+			timeInferenceSpan("message:planner", () =>
 				runPlannerLoop({
 					runtime: plannerRuntime,
-					context: contextWithIntents,
+					context: loopContext,
 					config: args.plannerLoopConfig,
 					tools: plannerTools.length > 0 ? plannerTools : undefined,
 					requireNonTerminalToolCall,
@@ -9622,7 +9586,6 @@ export async function runV5MessageRuntimeStage1(args: {
 						),
 				}),
 			);
-		};
 
 		let plannerResult: Awaited<ReturnType<typeof invokePlannerLoop>>;
 		try {
@@ -11052,28 +11015,6 @@ function hasNearbyTerms(
 			return true;
 		}),
 	);
-}
-
-/** Split a request into imperative clauses ("delete the old one, make a
- *  fresh daily one at 8am, then show me the list" → 3). Only clauses that
- *  carry a mutation/read verb count, so filler fragments and vocatives do
- *  not inflate the multi-step contract. */
-const IMPERATIVE_CLAUSE_VERB_RE =
-	/\b(?:delete|remove|cancel|clear|make|create|add|set|update|change|fix|redo|recreate|show|list|send|write|build|run|check|open|start|stop|rename|move|schedule|remind)\b/i;
-
-function decomposeImperativeClauses(text: string): string[] {
-	const stripped = text
-		.replace(/<@!?\d+>/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-	if (!stripped) return [];
-	return stripped
-		.split(/(?:[,;]|\.\s|\bthen\b|\band then\b|\bafter that\b)+/i)
-		.map((clause) => clause.trim())
-		.filter(
-			(clause) => clause.length >= 8 && IMPERATIVE_CLAUSE_VERB_RE.test(clause),
-		)
-		.slice(0, 6);
 }
 
 function looksLikeCodingWorkRequest(text: string): boolean {

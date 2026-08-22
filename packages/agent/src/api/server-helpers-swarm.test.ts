@@ -135,109 +135,18 @@ describe("handleSwarmSynthesis", () => {
     expect(routed).toEqual(["verification failed: launch check did not pass"]);
   });
 
-  it("falls back to a lifecycle line for a stopped Claude task with no verdict (model failure keeps the deterministic shape)", async () => {
+  it("falls back to a lifecycle line for a stopped Claude task with no verdict", async () => {
     const workdir = await seedClaudeTranscript(
       "Let me grep the registry cache next.",
     );
     const routed: string[] = [];
 
-    // The stop line is model-phrased via the local phraseLifecycleLine mirror;
-    // a rejecting model must degrade to the deterministic fallback literal.
-    const failingModelRuntime = {
-      getService() {
-        return null;
-      },
-      character: { name: "TestBot" },
-      useModel: async () => {
-        throw new Error("model down");
-      },
-    } as never;
-
     await handleSwarmSynthesis(
-      { runtime: failingModelRuntime },
+      { runtime },
       {
         tasks: [
           {
             sessionId: "pty-stopped-2",
-            label: "app",
-            agentType: "claude",
-            originalTask: "make an app showcasing eliza",
-            status: "stopped",
-            completionSummary: "",
-            workdir,
-          },
-        ],
-        total: 1,
-        completed: 0,
-        stopped: 1,
-        errored: 0,
-      },
-      async (text) => {
-        routed.push(text);
-      },
-    );
-
-    expect(routed).toEqual(["app — stopped before completion."]);
-  });
-
-  it("relays the model-phrased stop line when the model output carries the task name and no machinery vocabulary", async () => {
-    const workdir = await seedClaudeTranscript("irrelevant narration");
-    const routed: string[] = [];
-    const phrased =
-      "Heads up — app stopped partway through, so there's nothing finished to show yet.";
-    const phrasingRuntime = {
-      getService() {
-        return null;
-      },
-      character: { name: "TestBot" },
-      useModel: async () => phrased,
-    } as never;
-
-    await handleSwarmSynthesis(
-      { runtime: phrasingRuntime },
-      {
-        tasks: [
-          {
-            sessionId: "pty-stopped-3",
-            label: "app",
-            agentType: "claude",
-            originalTask: "make an app showcasing eliza",
-            status: "stopped",
-            completionSummary: "",
-            workdir,
-          },
-        ],
-        total: 1,
-        completed: 0,
-        stopped: 1,
-        errored: 0,
-      },
-      async (text) => {
-        routed.push(text);
-      },
-    );
-
-    expect(routed).toEqual([phrased]);
-  });
-
-  it("rejects phrased stop lines that drop the task name, keeping the deterministic fallback", async () => {
-    const workdir = await seedClaudeTranscript("irrelevant narration");
-    const routed: string[] = [];
-    const runtimeDroppingAsk = {
-      getService() {
-        return null;
-      },
-      character: { name: "TestBot" },
-      // No "app" in the output → mustInclude violation → fallback.
-      useModel: async () => "The task stopped partway through.",
-    } as never;
-
-    await handleSwarmSynthesis(
-      { runtime: runtimeDroppingAsk },
-      {
-        tasks: [
-          {
-            sessionId: "pty-stopped-4",
             label: "app",
             agentType: "claude",
             originalTask: "make an app showcasing eliza",
@@ -264,20 +173,9 @@ describe("handleSwarmSynthesis", () => {
     const kickoff =
       '--- Swarm Coordination ---\nNamed coding sub-agent in a task swarm. Keep working until the task is finished or genuinely blocked.\n\nBuild sweeptune.\nWhen done print: APP_CREATE_DONE {"appName":"sweeptune","files":["src/App.tsx"]}';
     const routed: string[] = [];
-    // Model stubbed to fail: the kickoff-prompt guard must still yield the
-    // deterministic lifecycle fallback, never the raw prompt text.
-    const kickoffRuntime = {
-      getService() {
-        return null;
-      },
-      character: { name: "TestBot" },
-      useModel: async () => {
-        throw new Error("model down");
-      },
-    } as never;
 
     await handleSwarmSynthesis(
-      { runtime: kickoffRuntime },
+      { runtime },
       {
         tasks: [
           {
