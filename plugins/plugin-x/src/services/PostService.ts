@@ -35,6 +35,30 @@ export class TwitterPostService implements IPostService {
         );
       }
       try {
+        if (options.quotedPostId && options.inReplyTo) {
+          throw new ElizaError(
+            "An X post cannot be both a reply and a quote through one connector request",
+            {
+              code: "X_POST_TARGET_CONFLICT",
+              context: {
+                hasReplyTarget: true,
+                hasQuoteTarget: true,
+              },
+              severity: "fatal",
+            },
+          );
+        }
+        if ((options.media?.length ?? 0) > 4) {
+          throw new ElizaError(
+            "X posts accept at most four media attachments",
+            {
+              code: "X_POST_MEDIA_COUNT_INVALID",
+              context: { mediaCount: options.media?.length },
+              severity: "fatal",
+            },
+          );
+        }
+
         // Handle media uploads if needed
         const mediaIds: string[] = [];
 
@@ -78,6 +102,7 @@ export class TwitterPostService implements IPostService {
           ? await this.client.twitterClient.sendQuoteTweet(
               options.text,
               options.quotedPostId,
+              ...(mediaIds.length > 0 ? [{ mediaIds }] : []),
             )
           : mediaIds.length > 0
             ? await this.client.twitterClient.sendTweet(

@@ -171,6 +171,79 @@ describe("TwitterPostService", () => {
     });
   });
 
+  it("attaches uploaded media to the quote request", async () => {
+    const uploadMedia = vi.fn(async () => "media-1");
+    const sendQuoteTweet = vi.fn(async () => ({ data: { id: "quote-media" } }));
+    const current = new TwitterPostService({
+      ...withSession(CURRENT_PROFILE, {}),
+      twitterClient: { uploadMedia, sendQuoteTweet },
+    } as unknown as ClientBase);
+    const data = Buffer.from("image");
+
+    await current.createPost({
+      agentId: AGENT_ID,
+      roomId: ROOM_ID,
+      text: "illustrated context",
+      quotedPostId: "source-post-2",
+      media: [{ data, type: "image/png" }],
+    });
+
+    expect(uploadMedia).toHaveBeenCalledWith(data, { mimeType: "image/png" });
+    expect(sendQuoteTweet).toHaveBeenCalledWith(
+      "illustrated context",
+      "source-post-2",
+      { mediaIds: ["media-1"] },
+    );
+  });
+
+  it("rejects ambiguous reply and quote targets before external mutation", async () => {
+    const uploadMedia = vi.fn();
+    const sendTweet = vi.fn();
+    const sendQuoteTweet = vi.fn();
+    const current = new TwitterPostService({
+      ...withSession(CURRENT_PROFILE, {}),
+      twitterClient: { uploadMedia, sendTweet, sendQuoteTweet },
+    } as unknown as ClientBase);
+
+    await expect(
+      current.createPost({
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        text: "ambiguous",
+        inReplyTo: "reply-target",
+        quotedPostId: "quote-target",
+        media: [{ data: Buffer.from("image"), type: "image/png" }],
+      }),
+    ).rejects.toMatchObject({ code: "X_POST_TARGET_CONFLICT" });
+    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(sendTweet).not.toHaveBeenCalled();
+    expect(sendQuoteTweet).not.toHaveBeenCalled();
+  });
+
+  it("rejects excessive quote media before uploading any attachment", async () => {
+    const uploadMedia = vi.fn();
+    const sendQuoteTweet = vi.fn();
+    const current = new TwitterPostService({
+      ...withSession(CURRENT_PROFILE, {}),
+      twitterClient: { uploadMedia, sendQuoteTweet },
+    } as unknown as ClientBase);
+
+    await expect(
+      current.createPost({
+        agentId: AGENT_ID,
+        roomId: ROOM_ID,
+        text: "too many attachments",
+        quotedPostId: "quote-target",
+        media: Array.from({ length: 5 }, () => ({
+          data: Buffer.from("image"),
+          type: "image/png",
+        })),
+      }),
+    ).rejects.toMatchObject({ code: "X_POST_MEDIA_COUNT_INVALID" });
+    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(sendQuoteTweet).not.toHaveBeenCalled();
+  });
+
   it("surfaces an accepted post without a receipt as non-retriable and indeterminate", async () => {
     const sendTweet = vi.fn(async () => ({ data: { id: "   " } }));
     const current = new TwitterPostService({
