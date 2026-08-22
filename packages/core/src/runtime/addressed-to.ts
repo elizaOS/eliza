@@ -123,29 +123,21 @@ interface ResolveTargetsArgs {
 }
 
 /**
- * Detects that the inbound message is explicitly directed at ANOTHER known
- * participant — not this agent — so the agent is merely overhearing. Used to
- * skip the simple→requiresTool promotion so the agent does not fabricate a tool
- * task from a turn it was not asked to act on (#9874 item 1).
+ * True only when a turn is verifiably directed at a resolvable OTHER room
+ * participant. Three invariants bound the answer, because a positive here
+ * converts the turn into deliberate silence:
  *
- * Uniform, NOT bot-specific: it fires identically whether the other participant
- * is a human or a bot. Bot-ness is surfaced to the model as CONTEXT instead (the
- * conversation transcript tags `fromBot` senders as "Name (bot)"), so how to
- * treat overheard bot crosstalk is the model's call with full context — there is
- * no runtime type-branch on bot-ness here.
+ *  - addressed to US (by name, id, or platform alias) never gates;
+ *  - a tag that resolves to the message's own AUTHOR never gates (a message
+ *    cannot be addressed to its own speaker — that is a Stage-1 extraction
+ *    error);
+ *  - corroboration: the gate may only silence on evidence it can verify
+ *    itself — the message text must actually address the tagged participant
+ *    by one of their names. An uncorroborated model tag never gates.
  *
- * Returns true only when ALL hold:
- *  - the message carries explicit `addressedTo` targets,
- *  - this agent is NOT among them (by literal name/id/username OR a resolved room
- *    alias),
- *  - at least one addressee RESOLVES to a real room participant other than us.
- *
- * Fails SAFE (returns false) whenever it cannot positively confirm that a
- * different real participant was addressed: empty `addressedTo`, a turn
- * addressed to us, or an addressee that resolves to no real room entity (a bare
- * unrecognized name) all return false — the agent keeps acting on requests meant
- * for it, and DMs / undirected asks (which carry no other-participant addressee)
- * are never gated.
+ * Fails SAFE (returns false) whenever it cannot positively confirm all of the
+ * above: empty `addressedTo`, unresolvable bare names, DMs and undirected
+ * asks all return false and the agent keeps acting on requests meant for it.
  */
 export async function messageAddressedToOtherParticipant(
 	args: ApplyAddressedToArgs,
@@ -190,11 +182,39 @@ export async function messageAddressedToOtherParticipant(
 		return false;
 	}
 
-	// Suppress only on a positively-resolved OTHER participant (every remaining
-	// target is non-self here). An addressee that resolves to no real entity (a
-	// bare unrecognized name) does not gate — the agent keeps acting, and the
-	// (bot) transcript tag lets the model handle any residual overheard crosstalk.
-	return targets.length > 0;
+	// A message cannot be addressed to its own author: a tag that resolves to
+	// the SPEAKER is a Stage-1 extraction error, never an other-participant
+	// address (live 2026-08-22: "hello?" / "did u see what i said?" were tagged
+	// with the asker's own name and silently suppressed).
+	const speakerId = message.entityId;
+	const others = speakerId ? targets.filter((id) => id !== speakerId) : targets;
+	if (others.length === 0) {
+		return false;
+	}
+
+	// Corroboration invariant: a deterministic gate may only SILENCE a turn on
+	// evidence it can verify itself. The Stage-1 tag picks WHO, but suppression
+	// additionally requires the message text to actually address that
+	// participant by one of their names ("Hey Eliza …" corroborates a tag of
+	// Eliza). An uncorroborated tag — the model hallucinating an addressee the
+	// text never names (live 2026-08-22: "nubilio whats the setting …" tagged
+	// as addressed to shaw) — must never convert a turn into silence.
+	const participants = await runtime.getEntitiesForRoom(message.roomId);
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	const othersSet = new Set(others);
+	const corroborated = participants.some((participant) => {
+		if (!participant.id || !othersSet.has(participant.id)) return false;
+		return (participant.names ?? []).some((name) => {
+			const candidate = normalize(name ?? "");
+			if (candidate.length < 2) return false;
+			return new RegExp(
+				`(^|[^\\p{L}\\p{N}])@?${candidate.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=$|[^\\p{L}\\p{N}])`,
+				"iu",
+			).test(text);
+		});
+	});
+	return corroborated;
 }
 
 export async function resolveAddressedTargets(
@@ -268,4 +288,70 @@ function dedupeTags(tags: readonly string[]): string[] {
 		result.push(tag);
 	}
 	return result;
+}
+
+/**
+ * Structural vocative detection: true when the message TEXT opens by
+ * addressing another room participant by name — "hey eliza", "eliza, can you
+ * …", "gm sol" — and that participant is not us. This needs no Stage-1 tag:
+ * a leading vocative is evidence the gate can verify itself, so an
+ * interjection-prone model that leaves `addressedTo` empty (live 2026-08-22:
+ * "hey eliza" → tags []; the agent answered "hey. you alright?") no longer
+ * fails open. Deliberately narrow: only a name in the vocative position at
+ * the very start (optionally after a greeting word) counts — "i was talking
+ * to eliza" or "can you ping eliza for me" never match, because a mid-text
+ * name is a mention, not an address.
+ */
+export async function messageVocativelyAddressesOtherParticipant(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+}): Promise<boolean> {
+	const { runtime, message } = args;
+	const text =
+		typeof message.content?.text === "string" ? message.content.text : "";
+	if (!text.trim()) return false;
+
+	const normalize = (value: string) =>
+		value.trim().toLowerCase().replace(/^@/, "");
+	const self = new Set<string>();
+	if (runtime.agentId) self.add(runtime.agentId.toLowerCase());
+	for (const name of [runtime.character?.name, runtime.character?.username]) {
+		const candidate = name?.trim();
+		if (!candidate) continue;
+		self.add(normalize(candidate));
+		for (const token of candidate.split(/\s+/u)) {
+			if (token.length >= 4) self.add(normalize(token));
+		}
+	}
+
+	const participants = await runtime.getEntitiesForRoom(message.roomId);
+	const speakerId = message.entityId;
+	const lead = text.slice(0, 80);
+	for (const participant of participants) {
+		if (!participant.id) continue;
+		if (participant.id === runtime.agentId) continue;
+		if (speakerId && participant.id === speakerId) continue;
+		for (const rawName of participant.names ?? []) {
+			const name = normalize(rawName ?? "");
+			if (name.length < 2 || self.has(name)) continue;
+			const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+			const vocative = new RegExp(
+				`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${escaped}(?=$|[^\\p{L}\\p{N}])`,
+				"iu",
+			);
+			if (vocative.test(lead)) {
+				// A leading vocative of OUR name elsewhere in the same lead keeps
+				// the turn ours ("nubilio, ask eliza …" opens with us, not them).
+				const oursFirst = [...self].some((own) => {
+					const ownEscaped = own.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+					return new RegExp(
+						`^\\s*(?:hey|hi|yo|sup|hello|gm|gn|ok|okay)?\\s*[,–—-]?\\s*@?${ownEscaped}(?=$|[^\\p{L}\\p{N}])`,
+						"iu",
+					).test(lead);
+				});
+				if (!oursFirst) return true;
+			}
+		}
+	}
+	return false;
 }
