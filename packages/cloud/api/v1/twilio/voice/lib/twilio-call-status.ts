@@ -12,6 +12,7 @@ export const TWILIO_CALL_STATUSES = [
   "no-answer",
   "canceled",
   "hangup-requested",
+  "submission-unknown",
   "provider-error",
 ] as const;
 
