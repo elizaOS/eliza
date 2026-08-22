@@ -40,4 +40,16 @@ describe("physical iPhone remote pairing harness", () => {
     expect(documentQuery).toBeGreaterThan(nativeQuery);
     expect(selection).toBeGreaterThan(documentQuery);
   });
+
+  it("requires the scoped Local Network alert to disappear before routing", () => {
+    expect(appHarness).toContain(
+      'let allow = springboard.alerts.buttons["Allow"]',
+    );
+    expect(appHarness).toContain(
+      "the Local Network permission sheet did not dismiss after Allow",
+    );
+    expect(appHarness).not.toContain(
+      'let allow = springboard.buttons["Allow"]',
+    );
+  });
 });

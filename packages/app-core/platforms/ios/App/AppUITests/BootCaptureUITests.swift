@@ -1037,14 +1037,14 @@ final class BootCaptureUITests: XCTestCase {
         // that system sheet leaves an empty WKWebView and loses the pairing
         // route, so clear only that exact Apple prompt and wait for the real
         // renderer before delivering the URL.
-        _ = grantLocalNetworkPermissionIfPresent(app, timeout: 15)
+        _ = try grantLocalNetworkPermissionIfPresent(app, timeout: 15)
         try waitForInteractiveRenderer(app, timeout: 30)
         app.open(deepLink)
         XCTAssertTrue(
             app.wait(for: .runningForeground, timeout: 20),
             "the app did not return foreground after opening the remote-agent deep link"
         )
-        _ = grantLocalNetworkPermissionIfPresent(app, timeout: 10)
+        _ = try grantLocalNetworkPermissionIfPresent(app, timeout: 10)
         try confirmRemoteServerTrustPromptIfNeeded(app, timeout: 15)
 
         if hasAuthenticatedChatComposer(app) {
@@ -1167,29 +1167,40 @@ final class BootCaptureUITests: XCTestCase {
     private func grantLocalNetworkPermissionIfPresent(
         _ app: XCUIApplication,
         timeout: TimeInterval
-    ) -> Bool {
+    ) throws -> Bool {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let localNetworkCopy = springboard.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS[c] 'local networks'")
         ).firstMatch
+        let allow = springboard.alerts.buttons["Allow"]
         let deadline = Date().addingTimeInterval(timeout)
+        var tapAttempts = 0
+        var nextTapAt = Date.distantPast
         while Date() < deadline {
             if localNetworkCopy.exists {
-                let allow = springboard.buttons["Allow"]
-                if allow.exists, allow.isHittable {
-                    attachScreenshot(named: "pairing-001-local-network-permission")
-                    allow.tap()
-                    let dismissDeadline = Date().addingTimeInterval(10)
-                    while Date() < dismissDeadline, localNetworkCopy.exists {
-                        Thread.sleep(forTimeInterval: 0.25)
+                if allow.exists, allow.isHittable, tapAttempts < 3,
+                   Date() >= nextTapAt
+                {
+                    if tapAttempts == 0 {
+                        attachScreenshot(named: "pairing-001-local-network-permission")
                     }
-                    return true
+                    allow.tap()
+                    tapAttempts += 1
+                    nextTapAt = Date().addingTimeInterval(0.75)
                 }
+            } else if tapAttempts > 0 {
+                return true
             }
             if appHasAccessibleRendererContent(app) {
                 return false
             }
             Thread.sleep(forTimeInterval: 0.25)
+        }
+        if localNetworkCopy.exists || tapAttempts > 0 {
+            attachScreenshot(named: "pairing-002-local-network-permission-stuck")
+            throw StrictGateFailure(
+                message: "the Local Network permission sheet did not dismiss after Allow"
+            )
         }
         return false
     }
