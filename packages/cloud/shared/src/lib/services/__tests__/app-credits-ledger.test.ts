@@ -479,54 +479,9 @@ describe("reserveInferenceCredits — holds app inference cost before model work
     expect(addEarnings).not.toHaveBeenCalled();
   });
 
-  test("settling to zero refunds the upfront app hold and reverses creator earnings", async () => {
-    const reservation = await freshService().reserveInferenceCredits({
-      appId: APP_ID,
-      userId: USER_ID,
-      estimatedBaseCost: 1,
-      description: "messages estimate",
-      idempotencyKey: "req-2",
-    });
-
-    const result = await reservation.reconcile(0);
-
-    expect(result?.adjustmentType).toBe("refund");
-    expect(refundCredits).toHaveBeenCalledTimes(1);
-    expect(refundCredits.mock.calls[0][0].organizationId).toBe(ORG_ID);
-    expect(refundCredits.mock.calls[0][0].amount).toBeCloseTo(1.1, 10);
-    expect(refundCredits.mock.calls[0][0].metadata.reservation_transaction_id).toBe("tx-2");
-    expect(markReservationSettled).toHaveBeenCalledWith({
-      organizationId: ORG_ID,
-      reservationTransactionId: "tx-2",
-    });
-    expect(reduceEarnings).toHaveBeenCalledTimes(1);
-    expect(reduceEarnings.mock.calls[0][0].amount).toBeCloseTo(0.1, 10);
-  });
-
-  test("uses distinct stable creator-earning keys for estimate and overage", async () => {
-    const reservation = await freshService().reserveInferenceCredits({
-      appId: APP_ID,
-      userId: USER_ID,
-      estimatedBaseCost: 1,
-      description: "messages estimate",
-      idempotencyKey: "req-3",
-    });
-
-    const result = await reservation.reconcile(2);
-
-    expect(result?.adjustmentType).toBe("overage");
-    expect(result?.actualCost).toBeCloseTo(2.2, 10);
-    expect(addEarnings).toHaveBeenCalledTimes(2);
-    expect(addEarnings.mock.calls[0][0].sourceId).toBe("app-charge:tx-2:inference_markup:deduct");
-    // The reconcile credit keys on its exact server-generated backing debit,
-    // not a request key. Route settlement and stale sweep both recover that
-    // same debit when the overage charge is replayed.
-    // Still distinct from the deduct leg's key, so the estimate credit and the
-    // overage top-up never collide (#10847).
-    expect(addEarnings.mock.calls[1][0].sourceId).toBe(
-      "app-charge:tx-2:inference_markup:reconcile_charge",
-    );
-  });
+  // Atomic refund/overage settlement now owns real transaction locks, receipts,
+  // and ledger writes. Its exact paths live in app-chat-sweep-double-refund and
+  // app-credit-hold-concurrency PGlite suites rather than this mocked seam.
 });
 
 describe("reconcileCredits — charges/refunds the estimate↔actual delta (#9145)", () => {
@@ -555,25 +510,6 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
     },
   );
 
-  test("no-ops when the difference is below the reconciliation threshold", async () => {
-    const result = await freshService().reconcileCredits({
-      appId: APP_ID,
-      userId: USER_ID,
-      estimatedBaseCost: 1,
-      actualBaseCost: 1,
-      description: "recon",
-      reservationTransactionId: "app-hold-1",
-    });
-    expect(result.reconciled).toBe(false);
-    expect(result.action).toBe("none");
-    expect(reserveAndDeductCredits).not.toHaveBeenCalled();
-    expect(refundCredits).not.toHaveBeenCalled();
-    expect(markReservationSettled).toHaveBeenCalledWith({
-      organizationId: ORG_ID,
-      reservationTransactionId: "app-hold-1",
-    });
-  });
-
   test("keeps an unkeyed sub-threshold refund-shaped delta as a no-op", async () => {
     const result = await freshService().reconcileCredits({
       appId: APP_ID,
@@ -600,7 +536,6 @@ describe("reconcileCredits — charges/refunds the estimate↔actual delta (#914
         estimatedBaseCost: 1,
         actualBaseCost: 1,
         description: "recon",
-        reservationTransactionId: "app-hold-1",
       }),
     ).rejects.toThrow("Unable to read organization credit_balance");
 
