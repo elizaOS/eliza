@@ -80,20 +80,25 @@ describe("post-delivery task tracker", () => {
 
 	it("cancels cooperative work and quarantines uncooperative work", async () => {
 		const runtime = runtimeStub();
+		const privateAbortReason = "private abort reason must not escape";
 		let cooperativeAborted = false;
 		let releaseUncooperative!: () => void;
-		trackPostDeliveryTask(runtime, "cooperative", async (signal) => {
-			await new Promise<void>((_resolve, reject) => {
-				signal.addEventListener(
-					"abort",
-					() => {
-						cooperativeAborted = true;
-						reject(signal.reason);
-					},
-					{ once: true },
-				);
-			});
-		});
+		const cooperative = trackPostDeliveryTask(
+			runtime,
+			"cooperative",
+			async (signal) => {
+				await new Promise<void>((_resolve, reject) => {
+					signal.addEventListener(
+						"abort",
+						() => {
+							cooperativeAborted = true;
+							reject(signal.reason);
+						},
+						{ once: true },
+					);
+				});
+			},
+		);
 		const uncooperative = trackPostDeliveryTask(
 			runtime,
 			"uncooperative",
@@ -108,13 +113,29 @@ describe("post-delivery task tracker", () => {
 			signal: controller.signal,
 		});
 		await Promise.resolve();
-		controller.abort(new Error("test deadline"));
+		controller.abort(new Error(privateAbortReason));
 
-		await expect(draining).rejects.toMatchObject({
+		let drainError: unknown;
+		try {
+			await draining;
+		} catch (error) {
+			drainError = error;
+		}
+		expect(drainError).toMatchObject({
 			code: "POST_DELIVERY_DRAIN_CANCELLED",
+			context: { reason: "post-delivery drain was cancelled" },
 		});
 		expect(cooperativeAborted).toBe(true);
-		expect(postDeliveryTaskQuarantineReason(runtime)).toBe("test deadline");
+		await cooperative;
+		expect(postDeliveryTaskQuarantineReason(runtime)).toBe(
+			"post-delivery drain was cancelled",
+		);
+		expect(String(drainError)).not.toContain(privateAbortReason);
+		expect(
+			runtime.reportError.mock.calls.some((call) =>
+				call.some((value) => String(value).includes(privateAbortReason)),
+			),
+		).toBe(false);
 		expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
 		await expect(drainPostDeliveryTasks(runtime)).rejects.toMatchObject({
 			code: "POST_DELIVERY_DRAIN_CANCELLED",

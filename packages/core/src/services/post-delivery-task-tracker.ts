@@ -41,6 +41,7 @@ const pendingByRuntimeRoom = new WeakMap<
 	Map<string, Set<TrackedPostDeliveryTask>>
 >();
 const quarantineByRuntime = new WeakMap<object, PostDeliveryTaskQuarantine>();
+const POST_DELIVERY_QUARANTINE_REASON = "post-delivery drain was cancelled";
 
 function pendingSet(runtime: TrackableRuntime): Set<TrackedPostDeliveryTask> {
 	const identity = runtime as object;
@@ -220,19 +221,13 @@ export async function drainPostDeliveryTasks(
  */
 export function quarantinePostDeliveryTasks(
 	runtime: TrackableRuntime,
-	reason: unknown,
+	_reason: unknown,
 ): ElizaError {
 	const identity = runtime as object;
-	const requestedDetail =
-		reason instanceof Error
-			? reason.message.trim()
-			: typeof reason === "string"
-				? reason.trim()
-				: "";
 	const quarantine =
 		quarantineByRuntime.get(identity) ??
 		({
-			reason: requestedDetail || "post-delivery drain was cancelled",
+			reason: POST_DELIVERY_QUARANTINE_REASON,
 		} satisfies PostDeliveryTaskQuarantine);
 	quarantineByRuntime.set(identity, quarantine);
 	const pending = pendingByRuntime.get(identity);

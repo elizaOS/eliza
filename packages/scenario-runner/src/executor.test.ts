@@ -135,6 +135,7 @@ describe("scenario executor wait turns", () => {
     let releaseBlockedProvider!: () => void;
     let blockedProviderTask!: Promise<void>;
     const scenarioAbort = new AbortController();
+    const privateAbortReason = "private scenario abort reason must not escape";
     const startedAt = Date.now();
     const first = await runScenario(
       {
@@ -160,7 +161,7 @@ describe("scenario executor wait turns", () => {
                   }),
                 { kind: "diagnostic" },
               );
-              scenarioAbort.abort(new Error());
+              scenarioAbort.abort(new Error(privateAbortReason));
             },
           },
         ],
@@ -188,6 +189,7 @@ describe("scenario executor wait turns", () => {
     expect(first.modelFixtureDiagnostics?.scope?.scenarioId).toBe(
       "strict-never-settling-model-task",
     );
+    expect(JSON.stringify(first)).not.toContain(privateAbortReason);
     expect(pendingPostDeliveryTaskCount(runtime)).toBe(1);
 
     let secondScenarioExecuted = false;
@@ -227,6 +229,7 @@ describe("scenario executor wait turns", () => {
     expect(registry.diagnostics().scope?.scenarioId).toBe(
       "strict-never-settling-model-task",
     );
+    expect(JSON.stringify(second)).not.toContain(privateAbortReason);
     releaseBlockedProvider();
     await blockedProviderTask;
     expect(pendingPostDeliveryTaskCount(runtime)).toBe(0);
@@ -320,6 +323,7 @@ describe("scenario executor wait turns", () => {
           durationMs: 0,
           assertTurn() {
             executed = true;
+            return undefined;
           },
         },
       ],
