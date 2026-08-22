@@ -184,7 +184,7 @@ describe("scenario model fixture migration", () => {
       strictOrModelFree: deterministic.length - legacy.length,
       legacy: legacy.length,
       total: deterministic.length,
-    }).toEqual({ strictOrModelFree: 56, legacy: 63, total: 119 });
+    }).toEqual({ strictOrModelFree: 57, legacy: 63, total: 120 });
   }, 120_000);
 
   it("recognizes authored properties while ignoring comments and setup strings", () => {
