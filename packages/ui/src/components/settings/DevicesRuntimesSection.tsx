@@ -214,10 +214,7 @@ function DesktopTargetPanel({
             role="alert"
             className="mt-3 flex items-start gap-1.5 text-xs text-txt-strong"
           >
-            <CircleAlert
-              className="mt-0.5 h-3.5 w-3.5 shrink-0"
-              aria-hidden
-            />
+            <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             Remote target needs attention ({target.lastErrorCode}). Retry or
             inspect desktop logs.
           </p>
