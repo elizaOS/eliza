@@ -191,6 +191,20 @@ export class FollowUpService extends Service {
 		return upcomingFollowUps;
 	}
 
+	/**
+	 * Marks a follow-up completed and retires it from the scheduler: the row
+	 * loses its "queue" tag so no subsequent tick polls or selects it, and the
+	 * completion record (status, completedAt, notes) is preserved.
+	 *
+	 * Already-selected-work semantics: Task rows carry no version column, so
+	 * completion is not CAS-atomic with tick selection. A tick that captured
+	 * the queued Task snapshot BEFORE this update persisted may fire that one
+	 * selection to completion (including the normal one-shot delete of the
+	 * row). Every selection afterwards observes either the dropped "queue" tag
+	 * or the completed-status worker gate and skips. If the racing execution
+	 * deletes the row first, a later completeFollowUp call throws "Task not
+	 * found" — the follow-up already fired.
+	 */
 	async completeFollowUp(taskId: UUID, notes?: string): Promise<void> {
 		try {
 			const task = await this.runtime.getTask(taskId);

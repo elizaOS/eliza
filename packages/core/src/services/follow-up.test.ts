@@ -52,8 +52,13 @@ function makeRuntime() {
 			memories.push(memory);
 		},
 		emitEvent: async () => undefined,
-		getTasks: async (_params: { tags?: string[]; agentIds?: UUID[] }) =>
-			Array.from(tasks.values()),
+		// Honors the requested-tags contract of the real adapters: only tasks
+		// carrying EVERY requested tag are returned, so the tests below prove
+		// that a completed row actually leaves the scheduler's polling set.
+		getTasks: async (params: { tags?: string[]; agentIds?: UUID[] }) =>
+			Array.from(tasks.values()).filter((task) =>
+				(params.tags ?? []).every((tag) => task.tags?.includes(tag)),
+		),
 		getTask: async (id: UUID) => tasks.get(id) ?? null,
 		getTasksByName: async (name: string) =>
 			Array.from(tasks.values()).filter((t) => t.name === name),
@@ -158,6 +163,63 @@ describe("FollowUpService completion lifecycle", () => {
 		expect(memories).toHaveLength(0);
 		const row = tasks.get("legacy-completed");
 		expect(row?.metadata?.status).toBe("completed");
+
+		await followUps.stop();
+	});
+
+	it("fires at most one already-selected execution when completeFollowUp lands mid-tick", async () => {
+		const { runtime, tasks, memories } = makeRuntime();
+		const followUps = (await FollowUpService.start(runtime)) as FollowUpService;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		const task = await followUps.scheduleFollowUp(
+			ENTITY_ID,
+			new Date(T0 + 5_000),
+			"completion race window",
+		);
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		// Gate the next scheduler getTasks so completion can land while the
+		// tick holds a queued, pre-completion snapshot — the production
+		// interleaving the already-selected-work semantics describe.
+		let releaseTick: ((snapshot: Task[]) => void) | null = null;
+		const tickSnapshot = new Promise<Task[]>((resolve) => {
+			releaseTick = resolve;
+		});
+		let firstCall = true;
+		(runtime as unknown as { getTasks: unknown }).getTasks = async (
+			params: { tags?: string[] },
+		) => {
+			if (!firstCall) {
+				return Array.from(tasks.values()).filter((candidate) =>
+					(params.tags ?? []).every((tag) =>
+						candidate.tags?.includes(tag),
+					),
+				);
+			}
+			firstCall = false;
+			return await tickSnapshot;
+		};
+
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		// Stale snapshot captured BEFORE completion persists.
+		const stale = Array.from(tasks.values());
+		await followUps.completeFollowUp(task.id as UUID, "handled early");
+		const stored = tasks.get(task.id as string);
+		expect(stored?.tags?.includes("queue")).toBe(false);
+		expect(stored?.metadata?.status).toBe("completed");
+
+		releaseTick?.(stale);
+		await vi.advanceTimersByTimeAsync(2_000);
+		// The already-selected execution completes its lifecycle exactly once…
+		expect(memories).toHaveLength(1);
+		// …including the normal one-shot delete (documented semantics).
+		expect(tasks.has(task.id as string)).toBe(false);
+
+		// Every subsequent poll observes the retired state: no further fires.
+		await vi.advanceTimersByTimeAsync(30_000);
+		expect(memories).toHaveLength(1);
 
 		await followUps.stop();
 	});
