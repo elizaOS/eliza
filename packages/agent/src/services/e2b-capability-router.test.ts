@@ -744,6 +744,48 @@ describe("E2BRemoteCapabilityRouterService", () => {
     expect(attempts).toBe(2);
   });
 
+  it("retries preparation on the same sandbox after a transient workspace failure", async () => {
+    const sandbox = new FakeSandbox([
+      entry("/workspace/README.md", "README.md", FILE_ENTRY),
+    ]);
+    const factory = new FakeFactory(sandbox);
+    const runCommand = sandbox.commands.run.bind(sandbox.commands);
+    let preparationAttempts = 0;
+    vi.spyOn(sandbox.commands, "run").mockImplementation(async (cmd, opts) => {
+      const result = await runCommand(cmd, opts);
+      if (cmd.startsWith("mkdir ")) {
+        preparationAttempts += 1;
+        if (preparationAttempts === 1) {
+          // Model a lost response after mkdir has already mutated the workspace.
+          throw new Error("transient workspace preparation failure");
+        }
+      }
+      return result;
+    });
+    const service = new E2BRemoteCapabilityRouterService(
+      makeRuntime(),
+      makeConfig(),
+      factory,
+    );
+
+    await expect(service.fs.list({})).rejects.toThrow(
+      "transient workspace preparation failure",
+    );
+    expect(factory.configs).toHaveLength(1);
+    expect(preparationAttempts).toBe(1);
+    expect(sandbox.files.listCalls).toHaveLength(0);
+
+    const retried = await service.fs.list({});
+    expect(retried.entries.map((item) => item.name)).toEqual(["README.md"]);
+
+    await service.fs.list({});
+    await Promise.all([service.fs.list({}), service.fs.list({})]);
+
+    expect(factory.configs).toHaveLength(1);
+    expect(preparationAttempts).toBe(2);
+    expect(sandbox.files.listCalls).toHaveLength(4);
+  });
+
   it("creates the sandbox once across many successful operations", async () => {
     const sandbox = new FakeSandbox([
       entry("/workspace/README.md", "README.md", FILE_ENTRY),
