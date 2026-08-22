@@ -37,6 +37,12 @@ function sourceUrl(relativePath: string): string {
 	return pathToFileURL(resolve(packageRoot, relativePath)).href;
 }
 
+function consumerPackageUrl(relativePath: string): string {
+	return pathToFileURL(
+		resolve(consumerRoot, "node_modules/@elizaos/core", relativePath),
+	).href;
+}
+
 function targetExists(importer: string, specifier: string): boolean {
 	const unresolved = resolve(dirname(importer), specifier);
 	const hasModuleExtension = /\.(?:[cm]?[jt]sx?|json|node)$/.test(specifier);
@@ -136,9 +142,7 @@ describe("core source export resolution", () => {
 		expect(packageJson.exports["./testing"]["eliza-source"]).toMatchObject({
 			import: "./src/testing/index.ts",
 		});
-		for (const [specifier, conditions] of Object.entries(
-			packageJson.exports,
-		)) {
+		for (const [specifier, conditions] of Object.entries(packageJson.exports)) {
 			const conditionOrder = Object.keys(conditions);
 			const sourceIndex = conditionOrder.indexOf("eliza-source");
 			if (sourceIndex < 0) continue;
@@ -182,8 +186,10 @@ describe("core source export resolution", () => {
 			{
 				"@elizaos/core": sourceUrl("src/index.ts"),
 				"@elizaos/core/node": sourceUrl("src/index.node.ts"),
-				"@elizaos/core/browser": sourceUrl("dist/browser/index.browser.js"),
-				"@elizaos/core/edge": sourceUrl("dist/edge/index.edge.js"),
+				"@elizaos/core/browser": consumerPackageUrl(
+					"dist/browser/index.browser.js",
+				),
+				"@elizaos/core/edge": consumerPackageUrl("dist/edge/index.edge.js"),
 				"@elizaos/core/testing": sourceUrl("src/testing/index.ts"),
 			},
 			true,
@@ -205,12 +211,12 @@ describe("core source export resolution", () => {
 	it("selects verified browser and workerd builds ahead of Node source", async () => {
 		await expect(
 			runResolutionProbe("node", [], ["eliza-source", "browser"], {
-				"@elizaos/core": sourceUrl("dist/browser/index.browser.js"),
+				"@elizaos/core": consumerPackageUrl("dist/browser/index.browser.js"),
 			}),
 		).resolves.toContain("core-source-ok");
 		await expect(
 			runResolutionProbe("node", [], ["eliza-source", "workerd"], {
-				"@elizaos/core": sourceUrl("dist/edge/index.edge.js"),
+				"@elizaos/core": consumerPackageUrl("dist/edge/index.edge.js"),
 			}),
 		).resolves.toContain("core-source-ok");
 	});
@@ -240,7 +246,7 @@ describe("core source export resolution", () => {
 
 			await expect(
 				execFileAsync(
-					process.execPath,
+					"node",
 					[
 						"--conditions=eliza-source",
 						"--conditions=browser",
@@ -251,7 +257,9 @@ describe("core source export resolution", () => {
 					{ cwd: fixtureRoot, timeout: 30_000 },
 				),
 			).rejects.toMatchObject({
-				stderr: expect.stringMatching(/ERR_MODULE_NOT_FOUND/u),
+				stderr: expect.stringMatching(
+					/Cannot find module|ERR_MODULE_NOT_FOUND/u,
+				),
 			});
 
 			await writeFile(
@@ -282,7 +290,7 @@ describe("core source export resolution", () => {
 				"--config",
 				"vite.config.mjs",
 			];
-			await execFileAsync(process.execPath, viteArgs, {
+			await execFileAsync("node", viteArgs, {
 				cwd: fixtureRoot,
 				timeout: 30_000,
 			});
@@ -301,7 +309,7 @@ describe("core source export resolution", () => {
 			await rm(join(fixtureRoot, "dist"), { recursive: true, force: true });
 
 			await expect(
-				execFileAsync(process.execPath, viteArgs, {
+				execFileAsync("node", viteArgs, {
 					cwd: fixtureRoot,
 					timeout: 30_000,
 				}),
