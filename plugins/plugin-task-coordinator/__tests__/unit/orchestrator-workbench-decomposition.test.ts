@@ -91,13 +91,15 @@ describe("OrchestratorWorkbench module boundaries", () => {
     expect(operator).toContain('agentId="operator-retry-session"');
   });
 
-  it("does not grant Task Coordinator generic DOM activation", () => {
+  it("keeps the Task Coordinator agent-surface grant and gates authority per control", () => {
     const index = source("index.ts");
     const declaration = index.slice(
       index.indexOf('id: "task-coordinator"'),
       index.indexOf('id: "orchestrator"'),
     );
-    expect(declaration).not.toContain("agent-surface");
+    expect(declaration).toContain(
+      'surface: { capabilities: ["agent-surface"] }',
+    );
     expect(source("components/TaskCoordinatorSpatialView.tsx")).toContain(
       'authority: "human"',
     );
