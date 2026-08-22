@@ -717,15 +717,33 @@ describe("live routing regressions", () => {
 		for (const text of [
 			"write a python script that just prints nubs",
 			"make me a bash script that only says hello",
+			"write a script that just prints 42",
+			'write a script that just prints "hello world"',
 		]) {
 			expect(
 				inferDirectCurrentRequestCandidateActions(actions, text),
 			).not.toContain("TASKS");
 		}
-		// A computed deliverable still gets built and run.
+		// A computed deliverable still gets built and run — the WHOLE printed
+		// object is scanned, so a path, a computed noun, or a computed
+		// continuation after "and"/"then" defeats the constant-snippet scope.
 		for (const text of [
 			"write me a python script that picks a random card from a deck and prints it",
 			"write a python script that prints the current bitcoin price",
+			"write a script that just prints the current bitcoin price",
+			"write a python script that just prints the contents of /etc/hosts",
+			"make a python script that only outputs the primes under a million",
+			"write a script that just prints hello and then fetches the weather",
+			'write a script that just prints "hello" and then fetches the weather',
+			"write a script that just prints hello\nand then fetches the weather",
+			'write a simple script that just prints "hello"\nand then fetches the weather',
+			"make a python script that just prints my ip address",
+			// #24425 review: the ENTIRE printed expression is parsed — a computed
+			// marker beyond the first 80 characters of the object still defeats
+			// the constant-snippet scope (the former 80-char capture missed it).
+			"write a script that just prints hi and hi and hi and hi and hi and " +
+				"hi and hi and hi and hi and hi and hi and then fetches the " +
+				"current bitcoin price",
 		]) {
 			expect(inferDirectCurrentRequestCandidateActions(actions, text)).toEqual([
 				"TASKS",

@@ -95,7 +95,7 @@ describe("buildCapabilityRouterConnectPayload", () => {
         },
       ),
     ).toThrow(
-      "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
+      "provider must be one of direct, home-machine, mobile-companion, or desktop-companion.",
     );
   });
 

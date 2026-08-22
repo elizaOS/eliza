@@ -334,7 +334,7 @@ test("landing leads with iMessage and keeps secondary channels available", async
 
   await expect(
     page.getByRole("heading", {
-      name: /four hours of your time back every week/i,
+      name: /eliza is everywhere you are/i,
     }),
   ).toBeVisible({ timeout: 20_000 });
   await expect(

@@ -520,17 +520,12 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 				const budget = resolveBackgroundInferenceBudget(
 					inferenceRamClassFromEnv() ?? "standard",
 				);
-				const clamped = applyBackgroundInferenceBudget(
+				const budgetedArgs = applyBackgroundInferenceBudget(
 					{ prompt: engineArgs.prompt, maxTokens: engineArgs.maxTokens },
 					budget,
 				);
-				if (clamped.clamped.length > 0) {
-					logger.info(
-						`[local-inference] background generate clamped to the device-class budget: ${clamped.clamped.join(", ")} (#11914)`,
-					);
-				}
-				engineArgs.prompt = clamped.prompt;
-				engineArgs.maxTokens = clamped.maxTokens;
+				engineArgs.prompt = budgetedArgs.prompt;
+				engineArgs.maxTokens = budgetedArgs.maxTokens;
 				lockWaitMs = budget.lockWaitMs;
 			}
 			return getInferencePriorityGate().runExclusive(

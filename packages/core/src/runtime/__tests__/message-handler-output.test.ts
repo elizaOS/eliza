@@ -1,7 +1,7 @@
 /**
  * Covers Stage-1 response parsing: the replyText field evaluator (structural-
  * punctuation and leaked tool-call-markup stripping), parseMessageHandlerOutput's
- * candidate-action hint trim/dedupe/cap, and alignment of HANDLE_RESPONSE_SCHEMA
+ * complete candidate-action and intent arrays, and alignment of HANDLE_RESPONSE_SCHEMA
  * with the composed field-registry schema. Deterministic — parses fixed JSON
  * envelopes, no model.
  */
@@ -58,45 +58,29 @@ describe("message handler retrieval hint output", () => {
 		).toBe("To call a tool, the model emits <tool_call> followed by the name.");
 	});
 
-	it("parses, trims, dedupes, and caps canonical action hint arrays", () => {
+	it("preserves every canonical action hint and intent exactly in order", () => {
+		const actionHints = [
+			" send_email ",
+			"SEND_EMAIL",
+			...Array.from({ length: 13 }, (_, index) => `action_${index}`),
+		];
+		const intents = [
+			" plan_trip ",
+			"PLAN_TRIP",
+			...Array.from({ length: 9 }, (_, index) => `intent_${index}`),
+		];
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
 				replyText: "",
 				contexts: ["tasks"],
-				candidateActionNames: [
-					" send_email ",
-					"SEND_EMAIL",
-					"calendar_create_event",
-					"search_documents",
-					"play_music",
-					"create_task",
-					"update_task",
-					"phone_call",
-					"browser_search",
-					"book_travel",
-					"health_steps",
-					"message_contact",
-					"settings_update",
-					"extra_after_cap",
-				],
+				candidateActionNames: actionHints,
+				intents,
 			}),
 		);
 
-		expect(parsed?.plan.candidateActions).toEqual([
-			"send_email",
-			"calendar_create_event",
-			"search_documents",
-			"play_music",
-			"create_task",
-			"update_task",
-			"phone_call",
-			"browser_search",
-			"book_travel",
-			"health_steps",
-			"message_contact",
-			"settings_update",
-		]);
+		expect(parsed?.plan.candidateActions).toEqual(actionHints);
+		expect(parsed?.plan.intents).toEqual(intents);
 	});
 
 	it("keeps missing hint arrays backward-compatible", () => {
@@ -111,7 +95,7 @@ describe("message handler retrieval hint output", () => {
 		expect(parsed?.plan).toEqual({ contexts: ["calendar"], reply: "" });
 	});
 
-	it("ignores non-array canonical retrieval hint garbage", () => {
+	it("rejects malformed canonical retrieval hint values", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
@@ -121,7 +105,7 @@ describe("message handler retrieval hint output", () => {
 			}),
 		);
 
-		expect(parsed?.plan.candidateActions).toBeUndefined();
+		expect(parsed).toBeNull();
 	});
 
 	it("exposes the canonical field-registry fields in the default schema", () => {

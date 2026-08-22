@@ -772,6 +772,57 @@ describe("MessageManager malformed payload handling", () => {
     expect(runtime.setCache).not.toHaveBeenCalled();
   });
 
+  it("uses a bound slash-command entity id instead of looking identity up again", async () => {
+    const boundEntityId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    const getEntityById = vi.fn(async () => {
+      throw new Error("identity store must not be consulted for a bound actor");
+    });
+    const cache = new Map<string, unknown>();
+    const ensureConnection = vi.fn(async () => undefined);
+    const createMemory = vi.fn(async () => undefined);
+    const runtime = {
+      agentId: "agent-1",
+      ensureConnection,
+      createMemory,
+      getEntityById,
+      getCache: vi.fn(async (key: string) => cache.get(key)),
+      setCache: vi.fn(async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      }),
+      getSetting: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const manager = new MessageManager({ telegram: {} } as never, runtime);
+
+    await manager.handleMessage(
+      {
+        from: {
+          id: 42,
+          first_name: "Ada",
+          username: "ada",
+          is_bot: false,
+        },
+        chat: { id: 123, type: "private", first_name: "Ada" },
+        message: {
+          message_id: 99,
+          date: 1_700_000_000,
+          text: "/stop",
+          chat: { id: 123, type: "private", first_name: "Ada" },
+        },
+      } as never,
+      { entityId: boundEntityId },
+    );
+
+    expect(getEntityById).not.toHaveBeenCalled();
+    expect(ensureConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: boundEntityId }),
+    );
+    expect(createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({ entityId: boundEntityId }),
+      "messages",
+    );
+  });
+
   it("fails observably when passive inbound persistence fails", async () => {
     const createMemory = vi.fn(async () => {
       throw new Error("database unavailable");

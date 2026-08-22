@@ -20,7 +20,26 @@ const apiOrigin = "https://api-staging.eliza.app";
 const buildId = "a".repeat(64);
 const indexHtmlSha256 = "b".repeat(64);
 
-function wranglerRecord(overrides: Record<string, unknown> = {}): string {
+function wranglerRecord(
+  overrides: Record<string, unknown> = {},
+  sessionOverrides: Record<string, unknown> = {},
+): string {
+  const session = {
+    type: "wrangler-session",
+    version: 1,
+    wrangler_version: "4.100.0",
+    command_line_args: [
+      "pages",
+      "deploy",
+      "--project-name=eliza-app",
+      "--branch=develop",
+      `--commit-hash=${sourceSha}`,
+      "--commit-dirty=false",
+    ],
+    log_file_path: "/tmp/wrangler.log",
+    timestamp: "2026-08-21T19:59:59.999Z",
+    ...sessionOverrides,
+  };
   const summary = {
     type: "pages-deploy",
     version: 1,
@@ -42,7 +61,7 @@ function wranglerRecord(overrides: Record<string, unknown> = {}): string {
     timestamp: "2026-08-21T20:00:00.001Z",
     ...overrides,
   };
-  return `${JSON.stringify(summary)}\n${JSON.stringify(detailed)}\n`;
+  return `${JSON.stringify(session)}\n${JSON.stringify(summary)}\n${JSON.stringify(detailed)}\n`;
 }
 
 function authority() {
@@ -148,7 +167,7 @@ function continuity() {
 }
 
 describe("Pages deployment authority", () => {
-  test("closes exactly the two Wrangler v1 records and hashes the UUID", () => {
+  test("closes the exact Wrangler session and deployment records without publishing local metadata", () => {
     const parsed = authority();
     expect(parsed).toEqual({
       schema: PAGES_AUTHORITY_SCHEMA,
@@ -164,6 +183,8 @@ describe("Pages deployment authority", () => {
         "eb251bd0455144d0f3c6642e81b5ad148ffbc82522239e94028b9154159222fc",
     });
     expect(JSON.stringify(parsed)).not.toContain(deploymentId);
+    expect(JSON.stringify(parsed)).not.toContain("command_line_args");
+    expect(JSON.stringify(parsed)).not.toContain("/tmp/wrangler.log");
   });
 
   test("rejects extra records, unexpected fields, and cross-record drift", () => {
@@ -178,7 +199,7 @@ describe("Pages deployment authority", () => {
         runId: "1",
         runAttempt: "1",
       }),
-    ).toThrow("exactly two");
+    ).toThrow("exactly three");
     expect(() =>
       parseWranglerPagesDeploymentOutput(
         wranglerRecord({ deployment_id: "other" }),
@@ -206,6 +227,90 @@ describe("Pages deployment authority", () => {
         runAttempt: "1",
       }),
     ).toThrow("exact closed schema");
+  });
+
+  test("rejects missing or malformed Wrangler session records", () => {
+    const withoutSession = wranglerRecord().split("\n").slice(1).join("\n");
+    expect(() =>
+      parseWranglerPagesDeploymentOutput(withoutSession, {
+        expectedProject: "eliza-app",
+        expectedCommit: sourceSha,
+        expectedBranch: "develop",
+        expectedAlias: aliasUrl,
+        expectedEnvironment: "preview",
+        expectedProductionBranch: "main",
+        runId: "1",
+        runAttempt: "1",
+      }),
+    ).toThrow("exactly three");
+
+    for (const sessionOverrides of [
+      { wrangler_version: "4.99.0" },
+      { command_line_args: ["deploy"] },
+      { unexpected: true },
+    ]) {
+      expect(() =>
+        parseWranglerPagesDeploymentOutput(
+          wranglerRecord({}, sessionOverrides),
+          {
+            expectedProject: "eliza-app",
+            expectedCommit: sourceSha,
+            expectedBranch: "develop",
+            expectedAlias: aliasUrl,
+            expectedEnvironment: "preview",
+            expectedProductionBranch: "main",
+            runId: "1",
+            runAttempt: "1",
+          },
+        ),
+      ).toThrow();
+    }
+  });
+
+  test("binds the Wrangler command exactly to the attested release", () => {
+    const validArgs = [
+      "pages",
+      "deploy",
+      "--project-name=eliza-app",
+      "--branch=develop",
+      `--commit-hash=${sourceSha}`,
+      "--commit-dirty=false",
+    ];
+    const mutations = [
+      validArgs.map((argument) =>
+        argument.startsWith("--commit-hash=")
+          ? `--commit-hash=${"c".repeat(40)}`
+          : argument,
+      ),
+      validArgs.map((argument) =>
+        argument === "--project-name=eliza-app"
+          ? "--project-name=other-app"
+          : argument,
+      ),
+      validArgs.map((argument) =>
+        argument === "--branch=develop" ? "--branch=main" : argument,
+      ),
+      validArgs.slice(0, -1),
+      [...validArgs, "--skip-caching"],
+    ];
+
+    for (const commandLineArgs of mutations) {
+      expect(() =>
+        parseWranglerPagesDeploymentOutput(
+          wranglerRecord({}, { command_line_args: commandLineArgs }),
+          {
+            expectedProject: "eliza-app",
+            expectedCommit: sourceSha,
+            expectedBranch: "develop",
+            expectedAlias: aliasUrl,
+            expectedEnvironment: "preview",
+            expectedProductionBranch: "main",
+            runId: "1",
+            runAttempt: "1",
+          },
+        ),
+      ).toThrow("command_line_args do not match the release");
+    }
   });
 
   test("requires exact commit, alias, environment, and production branch", () => {

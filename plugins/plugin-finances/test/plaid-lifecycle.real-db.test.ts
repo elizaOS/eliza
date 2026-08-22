@@ -1,0 +1,1048 @@
+/**
+ * Real-DB integration tests for the Plaid item lifecycle: link, duplicate-item
+ * relink, cursor sync (pagination, modified, removed, replay), item errors and
+ * reauth, webhook processing, and idempotent disconnect cleanup.
+ *
+ * The harness boots a REAL PGLite-backed AgentRuntime (nothing about SQL or
+ * row parsing is faked) and swaps only the network edge: a protocol-faithful
+ * in-memory PlaidManagedClient whose /transactions/sync is keyed by cursor, so
+ * duplicate and out-of-order webhook-triggered syncs replay exactly the pages
+ * the real API would serve. No network, no credentials.
+ */
+
+import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ElizaCloudManagedClientConfig,
+  type PlaidExchangeResponse,
+  type PlaidItemStatusResponse,
+  type PlaidLinkTokenResponse,
+  PlaidManagedClient,
+  PlaidManagedClientError,
+  type PlaidSyncResponse,
+  type PlaidTransactionDto,
+} from "@elizaos/plugin-elizacloud/cloud/managed-payment-clients";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  createRealTestRuntime,
+  type RealTestRuntimeResult,
+} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+import { FinancesRepository } from "../src/db/finances-repository.ts";
+import { FinancesService } from "../src/finances-service.ts";
+import financesPlugin from "../src/plugin.ts";
+
+process.env.ELIZA_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
+
+function txn(
+  id: string,
+  overrides: Partial<PlaidTransactionDto> = {},
+): PlaidTransactionDto {
+  return {
+    transaction_id: id,
+    account_id: "acct-1",
+    amount: 12.5,
+    iso_currency_code: "USD",
+    unofficial_currency_code: null,
+    date: "2026-08-01",
+    authorized_date: null,
+    name: `Merchant ${id}`,
+    merchant_name: null,
+    pending: false,
+    category: null,
+    personal_finance_category: { primary: "FOOD", detailed: "FOOD_FAST" },
+    ...overrides,
+  };
+}
+
+const STUB_CONFIG: ElizaCloudManagedClientConfig = {
+  configured: true,
+  apiKey: "test-key",
+  apiBaseUrl: "http://cloud.invalid/api",
+  siteUrl: "http://cloud.invalid",
+};
+
+/**
+ * Protocol-faithful fake: sync responses are keyed by request cursor (replays
+ * return the same page), and scripted failures throw the same
+ * PlaidManagedClientError shape the real cloud bridge produces.
+ */
+class FakePlaidClient extends PlaidManagedClient {
+  pages = new Map<string, PlaidSyncResponse>();
+  failNextSyncWith: PlaidManagedClientError | null = null;
+  itemStatus: PlaidItemStatusResponse | null = null;
+  revokeCalls: string[] = [];
+  revokeResult: { revoked: true } | PlaidManagedClientError = { revoked: true };
+  lastLinkTokenArgs: { connectionId?: string; webhookUrl?: string } | null =
+    null;
+  exchangeResult: PlaidExchangeResponse | null = null;
+  itemConnections = new Map<string, string>();
+
+  constructor() {
+    super(() => STUB_CONFIG);
+  }
+
+  override async createLinkToken(
+    args: { connectionId?: string; webhookUrl?: string } = {},
+  ): Promise<PlaidLinkTokenResponse> {
+    this.lastLinkTokenArgs = args;
+    return {
+      linkToken: args.connectionId ? "link-update-1" : "link-new-1",
+      expiration: new Date(Date.now() + 600_000).toISOString(),
+      environment: "sandbox",
+    };
+  }
+
+  override async exchangePublicToken(_args: {
+    publicToken: string;
+  }): Promise<PlaidExchangeResponse> {
+    if (!this.exchangeResult) {
+      throw new Error("exchangeResult not scripted");
+    }
+    return this.exchangeResult;
+  }
+
+  override async syncTransactions(args: {
+    connectionId: string;
+    cursor?: string;
+    count?: number;
+  }): Promise<PlaidSyncResponse> {
+    if (this.failNextSyncWith) {
+      const failure = this.failNextSyncWith;
+      this.failNextSyncWith = null;
+      throw failure;
+    }
+    const page = this.pages.get(args.cursor ?? "");
+    if (!page) {
+      throw new PlaidManagedClientError(
+        400,
+        "the provided cursor is not valid",
+        "INVALID_FIELD",
+      );
+    }
+    return page;
+  }
+
+  override async getItemStatus(_args: {
+    connectionId: string;
+  }): Promise<PlaidItemStatusResponse> {
+    if (!this.itemStatus) {
+      throw new Error("itemStatus not scripted");
+    }
+    return this.itemStatus;
+  }
+
+  override async resolveItemConnection(args: {
+    itemId: string;
+  }): Promise<{ connectionId: string }> {
+    const connectionId = this.itemConnections.get(args.itemId);
+    if (!connectionId) {
+      throw new PlaidManagedClientError(404, "Plaid connection not found.");
+    }
+    return { connectionId };
+  }
+
+  override async revokeConnection(args: {
+    connectionId: string;
+  }): Promise<{ revoked: true }> {
+    this.revokeCalls.push(args.connectionId);
+    if (this.revokeResult instanceof PlaidManagedClientError) {
+      throw this.revokeResult;
+    }
+    return this.revokeResult;
+  }
+}
+
+function exchange(
+  itemId: string,
+  institutionId = "ins_1",
+  accountId = `${itemId}-acct-1`,
+): PlaidExchangeResponse {
+  const connectionId = crypto.randomUUID();
+  return {
+    connectionId,
+    connectionCreated: true,
+    environment: "sandbox",
+    institution: {
+      institutionId,
+      institutionName: "First Test Bank",
+      primaryAccountMask: "4321",
+      accounts: [
+        {
+          accountId,
+          name: "Checking",
+          mask: "4321",
+          type: "depository",
+          subtype: "checking",
+        },
+      ],
+    },
+  };
+}
+
+describe("Plaid item lifecycle — real PGLite", () => {
+  let runtime: AgentRuntime;
+  let testResult: RealTestRuntimeResult;
+  let service: FinancesService;
+  let repository: FinancesRepository;
+  let fake: FakePlaidClient;
+
+  beforeAll(async () => {
+    testResult = await createRealTestRuntime({
+      characterName: "plaid-lifecycle-tests",
+      plugins: [financesPlugin],
+    });
+    runtime = testResult.runtime;
+    service = new FinancesService(runtime);
+    repository = new FinancesRepository(runtime);
+    fake = new FakePlaidClient();
+    service.plaidManagedClientCache = fake;
+  }, 180_000);
+
+  afterAll(async () => {
+    await testResult?.cleanup();
+  });
+
+  async function linkFreshSource(
+    itemId: string,
+    institutionId?: string,
+    accountId?: string,
+  ) {
+    const result = exchange(itemId, institutionId, accountId);
+    const priorConnectionId = fake.itemConnections.get(itemId);
+    if (priorConnectionId) {
+      result.connectionId = priorConnectionId;
+      result.connectionCreated = false;
+    }
+    fake.itemConnections.set(itemId, result.connectionId);
+    fake.exchangeResult = result;
+    return service.completePlaidLink({ publicToken: `public-${itemId}` });
+  }
+
+  it("links, syncs across pages, and applies modified + removed deltas idempotently", async () => {
+    const source = await linkFreshSource("item-sync");
+    expect(source.status).toBe("active");
+
+    fake.pages.set("", {
+      added: [txn("t1"), txn("t2", { amount: -40 })],
+      modified: [],
+      removed: [],
+      nextCursor: "c1",
+      hasMore: true,
+    });
+    fake.pages.set("c1", {
+      added: [txn("t3", { amount: 33.3, name: "Grocer Three" })],
+      modified: [txn("t1", { amount: 99.99, name: "Merchant t1 adjusted" })],
+      removed: [{ transaction_id: "t2" }],
+      nextCursor: "c2",
+      hasMore: false,
+    });
+
+    const first = await service.syncPlaidTransactions({ sourceId: source.id });
+    expect(first).toMatchObject({
+      inserted: 2,
+      modified: 1,
+      removed: 1,
+      nextCursor: "c2",
+    });
+
+    const rows = await repository.listPaymentTransactions(runtime.agentId, {
+      sourceId: source.id,
+    });
+    expect(rows).toHaveLength(2);
+    const t1 = rows.find((row) => row.externalId === "t1");
+    expect(t1?.amountUsd).toBe(99.99);
+    expect(rows.find((row) => row.externalId === "t2")).toBeUndefined();
+
+    // Duplicate / out-of-order webhook replays the sync from the persisted
+    // cursor: the fake serves the terminal empty page and nothing changes.
+    fake.pages.set("c2", {
+      added: [],
+      modified: [],
+      removed: [{ transaction_id: "t2" }],
+      nextCursor: "c2",
+      hasMore: false,
+    });
+    const replay = await service.syncPlaidTransactions({ sourceId: source.id });
+    expect(replay).toMatchObject({ inserted: 0, modified: 0, removed: 0 });
+    expect(
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      }),
+    ).toHaveLength(2);
+  });
+
+  it("re-linking the same item updates the source in place and keeps the cursor", async () => {
+    const before = await repository.listPaymentSources(runtime.agentId);
+    const relinked = await linkFreshSource("item-sync");
+    const after = await repository.listPaymentSources(runtime.agentId);
+    expect(after.length).toBe(before.length);
+    const plaid = relinked.metadata.plaid as { cursor: string };
+    expect(plaid.cursor).toBe("c2");
+  });
+
+  it("reconsent minting a new item_id for the same accounts does not double-list", async () => {
+    const before = await repository.listPaymentSources(runtime.agentId);
+    const relinked = await linkFreshSource(
+      "item-sync-v2",
+      "ins_1",
+      "item-sync-acct-1",
+    );
+    const after = await repository.listPaymentSources(runtime.agentId);
+    expect(after.length).toBe(before.length);
+    const plaid = relinked.metadata.plaid as {
+      cursor: string;
+      connectionId: string;
+    };
+    expect(plaid.connectionId).toBe(fake.itemConnections.get("item-sync-v2"));
+    // New Item → cursor resets; existing transactions are retained.
+    expect(plaid.cursor).toBe("");
+  });
+
+  it("concurrent Link completion claims one normalized source identity", async () => {
+    const result = exchange(
+      "item-concurrent",
+      "ins_concurrent",
+      "acct-concurrent",
+    );
+    fake.exchangeResult = result;
+    fake.itemConnections.set("item-concurrent", result.connectionId);
+    fake.revokeCalls = [];
+
+    const [first, second] = await Promise.all([
+      service.completePlaidLink({ publicToken: "public-concurrent" }),
+      service.completePlaidLink({ publicToken: "public-concurrent" }),
+    ]);
+
+    expect(second.id).toBe(first.id);
+    const matching = (
+      await repository.listPaymentSources(runtime.agentId)
+    ).filter(
+      (source) =>
+        source.kind === "plaid" &&
+        (source.metadata.plaid as { connectionId?: string } | undefined)
+          ?.connectionId === result.connectionId,
+    );
+    expect(matching).toHaveLength(1);
+    expect(fake.revokeCalls).toHaveLength(0);
+  });
+
+  it("converges pre-existing identity and connection rows into one source", async () => {
+    const sourceA = await linkFreshSource(
+      "item-collision-a",
+      "ins_collision",
+      "acct-collision-a",
+    );
+    const sourceB = await linkFreshSource(
+      "item-collision-b",
+      "ins_collision",
+      "acct-collision-b",
+    );
+    await service.upsertPlaidTransaction({
+      sourceId: sourceA.id,
+      transaction: txn("collision-duplicate", {
+        account_id: "acct-collision-a",
+      }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceA.id,
+      transaction: txn("collision-a-only", { account_id: "acct-collision-a" }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceB.id,
+      transaction: txn("collision-duplicate", {
+        account_id: "acct-collision-b",
+      }),
+    });
+    await service.upsertPlaidTransaction({
+      sourceId: sourceB.id,
+      transaction: txn("collision-b-only", { account_id: "acct-collision-b" }),
+    });
+
+    const connectionA = (sourceA.metadata.plaid as { connectionId: string })
+      .connectionId;
+    const connectionB = (sourceB.metadata.plaid as { connectionId: string })
+      .connectionId;
+    fake.exchangeResult = {
+      ...exchange(
+        "item-collision-regrant",
+        "ins_collision",
+        "acct-collision-a",
+      ),
+      connectionId: connectionB,
+      connectionCreated: false,
+    };
+    fake.revokeCalls = [];
+
+    const converged = await service.completePlaidLink({
+      publicToken: "public-collision-regrant",
+    });
+    expect(converged.id).toBe(sourceA.id);
+    expect(converged.transactionCount).toBe(3);
+    const sources = (
+      await repository.listPaymentSources(runtime.agentId)
+    ).filter((source) => source.id === sourceA.id || source.id === sourceB.id);
+    expect(sources).toHaveLength(1);
+    const canonicalSource = sources[0];
+    if (!canonicalSource)
+      throw new Error("canonical collision source is missing");
+    expect(
+      (canonicalSource.metadata.plaid as { connectionId: string }).connectionId,
+    ).toBe(connectionB);
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: sourceA.id,
+        })
+      )
+        .map((transaction) => transaction.externalId)
+        .sort(),
+    ).toEqual(["collision-a-only", "collision-b-only", "collision-duplicate"]);
+    expect(fake.revokeCalls).toEqual([connectionA]);
+  });
+
+  it("marks the source needs_attention on ITEM_LOGIN_REQUIRED and recovers via update mode", async () => {
+    const source = await linkFreshSource("item-reauth", "ins_reauth");
+    fake.failNextSyncWith = new PlaidManagedClientError(
+      400,
+      "the login details of this item have changed",
+      "ITEM_LOGIN_REQUIRED",
+    );
+    await expect(
+      service.syncPlaidTransactions({ sourceId: source.id }),
+    ).rejects.toMatchObject({ status: 400, code: "ITEM_LOGIN_REQUIRED" });
+
+    const flagged = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(flagged?.status).toBe("needs_attention");
+    const flaggedPlaid = flagged?.metadata.plaid as {
+      itemError: { code: string };
+    };
+    expect(flaggedPlaid.itemError.code).toBe("ITEM_LOGIN_REQUIRED");
+
+    // Update-mode Link token is created against the opaque Cloud connection.
+    const token = await service.createPlaidUpdateLinkToken({
+      sourceId: source.id,
+    });
+    expect(token.linkToken).toBe("link-update-1");
+    expect(fake.lastLinkTokenArgs?.connectionId).toBe(
+      (source.metadata.plaid as { connectionId: string }).connectionId,
+    );
+
+    // After Link update mode succeeds, item health is clean → active again.
+    fake.itemStatus = {
+      connectionId: (source.metadata.plaid as { connectionId: string })
+        .connectionId,
+      itemId: "item-reauth",
+      institutionId: "ins_reauth",
+      error: null,
+      consentExpirationTime: "2026-11-01T00:00:00Z",
+      institution: {
+        institutionId: "ins_reauth_updated",
+        institutionName: "Renamed Test Bank",
+        primaryAccountMask: "9876",
+        accounts: [
+          {
+            accountId: "reauth-savings",
+            name: "Savings",
+            mask: "9876",
+            type: "depository",
+            subtype: "savings",
+          },
+        ],
+      },
+    };
+    const recovered = await service.completePlaidUpdate({
+      sourceId: source.id,
+    });
+    expect(recovered.status).toBe("active");
+    expect(recovered.institution).toBe("Renamed Test Bank");
+    expect(recovered.accountMask).toBe("9876");
+    const plaid = recovered.metadata.plaid as {
+      itemError: unknown;
+      consentExpirationTime: string;
+      institutionId: string;
+      accounts: Array<{ accountId: string }>;
+      updateReason?: string;
+    };
+    expect(plaid.itemError).toBeNull();
+    expect(plaid.consentExpirationTime).toBe("2026-11-01T00:00:00Z");
+    expect(plaid.institutionId).toBe("ins_reauth_updated");
+    expect(plaid.accounts).toEqual([
+      expect.objectContaining({ accountId: "reauth-savings" }),
+    ]);
+    expect(plaid.updateReason).toBeUndefined();
+  });
+
+  it("propagates rate limiting without corrupting the cursor", async () => {
+    const source = await linkFreshSource("item-rate", "ins_rate");
+    fake.pages.set("", {
+      added: [txn("r1")],
+      modified: [],
+      removed: [],
+      nextCursor: "rc1",
+      hasMore: false,
+    });
+    await service.syncPlaidTransactions({ sourceId: source.id });
+
+    fake.failNextSyncWith = new PlaidManagedClientError(
+      429,
+      "rate limit exceeded",
+      "TRANSACTIONS_SYNC_LIMIT",
+    );
+    await expect(
+      service.syncPlaidTransactions({ sourceId: source.id }),
+    ).rejects.toMatchObject({ status: 429 });
+
+    // Not a reauth code: the source stays active and the cursor is intact.
+    const after = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(after?.status).toBe("active");
+    const afterPlaid = after?.metadata.plaid as { cursor: string };
+    expect(afterPlaid.cursor).toBe("rc1");
+  });
+
+  it("processes verified webhooks: sync hints, reauth, revocation — duplicates safe", async () => {
+    const source = await linkFreshSource("item-hook", "ins_hook");
+    fake.pages.set("", {
+      added: [txn("h1")],
+      modified: [],
+      removed: [],
+      nextCursor: "hc1",
+      hasMore: false,
+    });
+    fake.pages.set("hc1", {
+      added: [],
+      modified: [],
+      removed: [],
+      nextCursor: "hc1",
+      hasMore: false,
+    });
+
+    const first = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(first).toMatchObject({ handled: true, action: "sync" });
+    // Duplicate delivery replays harmlessly from the stored cursor.
+    const dup = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(dup.handled).toBe(true);
+    expect(
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      }),
+    ).toHaveLength(1);
+
+    fake.itemStatus = {
+      connectionId: (source.metadata.plaid as { connectionId: string })
+        .connectionId,
+      itemId: "item-hook",
+      institutionId: "ins_hook",
+      error: null,
+      consentExpirationTime: null,
+      institution: {
+        institutionId: "ins_hook",
+        institutionName: "First Test Bank",
+        primaryAccountMask: "4321",
+        accounts: [
+          {
+            accountId: "item-hook-acct-1",
+            name: "Checking",
+            mask: "4321",
+            type: "depository",
+            subtype: "checking",
+          },
+        ],
+      },
+    };
+
+    const reauth = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_EXPIRATION",
+      item_id: "item-hook",
+    });
+    expect(reauth.action).toBe("update");
+    expect(
+      (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
+    ).toBe("needs_attention");
+
+    const repaired = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "LOGIN_REPAIRED",
+      item_id: "item-hook",
+    });
+    expect(repaired.action).toBe("reauth");
+    expect(
+      (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
+    ).toBe("active");
+
+    const revokesBeforePendingDisconnect = fake.revokeCalls.length;
+    const pendingDisconnect = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_DISCONNECT",
+      item_id: "item-hook",
+    });
+    expect(pendingDisconnect.action).toBe("update");
+    expect(
+      (await repository.getPaymentSource(runtime.agentId, source.id))?.status,
+    ).toBe("needs_attention");
+    expect(fake.revokeCalls).toHaveLength(revokesBeforePendingDisconnect);
+    await expect(
+      service.createPlaidUpdateLinkToken({ sourceId: source.id }),
+    ).resolves.toMatchObject({ linkToken: "link-update-1" });
+
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "LOGIN_REPAIRED",
+      item_id: "item-hook",
+    });
+    const currentStatus = fake.itemStatus;
+    if (!currentStatus) throw new Error("item status fixture is missing");
+    fake.itemStatus = {
+      ...currentStatus,
+      institution: {
+        ...currentStatus.institution,
+        accounts: [
+          ...currentStatus.institution.accounts,
+          {
+            accountId: "item-hook-acct-2",
+            name: "Savings",
+            mask: "2222",
+            type: "depository",
+            subtype: "savings",
+          },
+          {
+            accountId: "item-hook-acct-3",
+            name: "Brokerage",
+            mask: "3333",
+            type: "investment",
+            subtype: "brokerage",
+          },
+        ],
+      },
+    };
+    const newAccounts = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "NEW_ACCOUNTS_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(newAccounts.action).toBe("update");
+    const healthy = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(healthy).not.toBeNull();
+    expect(healthy?.status).toBe("needs_attention");
+    const healthyPlaid = healthy?.metadata.plaid as
+      | {
+          itemError: unknown;
+          updateReason: string;
+          accounts: Array<{ accountId: string }>;
+        }
+      | undefined;
+    expect(healthyPlaid?.itemError).toBeNull();
+    expect(healthyPlaid?.updateReason).toBe("NEW_ACCOUNTS_AVAILABLE");
+    expect(healthyPlaid?.accounts.map((account) => account.accountId)).toEqual([
+      "item-hook-acct-1",
+      "item-hook-acct-2",
+      "item-hook-acct-3",
+    ]);
+
+    await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    const afterSync = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(afterSync).not.toBeNull();
+    if (!afterSync) throw new Error("synced source is missing");
+    expect(afterSync.status).toBe("needs_attention");
+    expect(
+      (afterSync.metadata.plaid as { updateReason: string }).updateReason,
+    ).toBe("NEW_ACCOUNTS_AVAILABLE");
+
+    // Once the owner has completed update mode, account-scoped revocation
+    // removes only that account's data and preserves the Item for regrant.
+    await service.completePlaidUpdate({ sourceId: source.id });
+    fake.pages.set("hc1", {
+      added: [
+        txn("h-account-1", { account_id: "item-hook-acct-1" }),
+        txn("h-account-2", { account_id: "item-hook-acct-2" }),
+        txn("h-account-3", { account_id: "item-hook-acct-3" }),
+      ],
+      modified: [],
+      removed: [],
+      nextCursor: "hc2",
+      hasMore: false,
+    });
+    await service.syncPlaidTransactions({ sourceId: source.id });
+    const revokesBeforeAccountRevocation = fake.revokeCalls.length;
+    const accountRevoked = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "USER_ACCOUNT_REVOKED",
+      item_id: "item-hook",
+      account_id: "item-hook-acct-2",
+    });
+    expect(accountRevoked.action).toBe("account_revoked");
+    expect(fake.revokeCalls).toHaveLength(revokesBeforeAccountRevocation);
+    const secondAccountRevoked = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "USER_ACCOUNT_REVOKED",
+      item_id: "item-hook",
+      account_id: "item-hook-acct-3",
+    });
+    expect(secondAccountRevoked.action).toBe("account_revoked");
+    const accountRevokedSource = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(accountRevokedSource).not.toBeNull();
+    if (!accountRevokedSource)
+      throw new Error("account-revoked source is missing");
+    expect(accountRevokedSource.status).toBe("needs_attention");
+    expect(
+      (
+        accountRevokedSource.metadata.plaid as {
+          accounts: Array<{ accountId: string }>;
+          revokedAccountIds: string[];
+          updateReason: string;
+        }
+      ).accounts.map((account) => account.accountId),
+    ).toEqual(["item-hook-acct-1"]);
+    expect(
+      (
+        accountRevokedSource.metadata.plaid as {
+          revokedAccountIds: string[];
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-2", "item-hook-acct-3"]);
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: source.id,
+        })
+      ).map((transaction) => transaction.externalId),
+    ).not.toContain("h-account-2");
+    expect(
+      (
+        await repository.listPaymentTransactions(runtime.agentId, {
+          sourceId: source.id,
+        })
+      ).map((transaction) => transaction.externalId),
+    ).not.toContain("h-account-3");
+
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "PENDING_EXPIRATION",
+      item_id: "item-hook",
+    });
+    const afterInterveningLifecycle = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(afterInterveningLifecycle).not.toBeNull();
+    if (!afterInterveningLifecycle)
+      throw new Error("intervening lifecycle source is missing");
+    expect(
+      (
+        afterInterveningLifecycle.metadata.plaid as {
+          revokedAccountIds: string[];
+          updateReason: string;
+        }
+      ).updateReason,
+    ).toBe("PENDING_EXPIRATION");
+    expect(
+      (
+        afterInterveningLifecycle.metadata.plaid as {
+          revokedAccountIds: string[];
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-2", "item-hook-acct-3"]);
+
+    fake.pages.set("hc2", {
+      added: [
+        txn("h-account-1-after", { account_id: "item-hook-acct-1" }),
+        txn("h-account-2-replayed", { account_id: "item-hook-acct-2" }),
+        txn("h-account-3-replayed", { account_id: "item-hook-acct-3" }),
+      ],
+      modified: [],
+      removed: [],
+      nextCursor: "hc3",
+      hasMore: false,
+    });
+    const survivingAccountSync = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(survivingAccountSync.handled).toBe(true);
+    const postRevocationExternalIds = (
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      })
+    ).map((transaction) => transaction.externalId);
+    expect(postRevocationExternalIds).toContain("h-account-1-after");
+    expect(postRevocationExternalIds).not.toContain("h-account-2");
+    expect(postRevocationExternalIds).not.toContain("h-account-2-replayed");
+    expect(postRevocationExternalIds).not.toContain("h-account-3");
+    expect(postRevocationExternalIds).not.toContain("h-account-3-replayed");
+
+    const fullAccountStatus = fake.itemStatus;
+    if (!fullAccountStatus)
+      throw new Error("full account status fixture is missing");
+    fake.itemStatus = {
+      ...fullAccountStatus,
+      institution: {
+        ...fullAccountStatus.institution,
+        accounts: fullAccountStatus.institution.accounts.filter(
+          (account) => account.accountId !== "item-hook-acct-3",
+        ),
+      },
+    };
+    const partiallyRegranted = await service.completePlaidUpdate({
+      sourceId: source.id,
+    });
+    expect(partiallyRegranted.status).toBe("needs_attention");
+    expect(
+      (
+        partiallyRegranted.metadata.plaid as {
+          revokedAccountIds?: string[];
+          updateReason?: string;
+        }
+      ).revokedAccountIds,
+    ).toEqual(["item-hook-acct-3"]);
+    expect(
+      (partiallyRegranted.metadata.plaid as { updateReason?: string })
+        .updateReason,
+    ).toBe("USER_ACCOUNT_REVOKED");
+
+    fake.itemStatus = fullAccountStatus;
+    const fullyRegranted = await service.completePlaidUpdate({
+      sourceId: source.id,
+    });
+    expect(fullyRegranted.status).toBe("active");
+    expect(
+      (fullyRegranted.metadata.plaid as { revokedAccountIds?: string[] })
+        .revokedAccountIds,
+    ).toBeUndefined();
+
+    const revokesBeforePermissionRevocation = fake.revokeCalls.length;
+    const revoked = await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "USER_PERMISSION_REVOKED",
+      item_id: "item-hook",
+    });
+    expect(revoked.action).toBe("permission_revoked");
+    const dead = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(dead?.status).toBe("needs_attention");
+    expect(dead?.institution).toBeNull();
+    expect(dead?.accountMask).toBeNull();
+    expect(dead?.transactionCount).toBe(0);
+    expect(fake.revokeCalls).toHaveLength(revokesBeforePermissionRevocation);
+    expect(
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      }),
+    ).toHaveLength(0);
+
+    // Revoked consent blocks sync until update mode clears the hold.
+    const late = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-hook",
+    });
+    expect(late.handled).toBe(false);
+  });
+
+  it("rejects account-revocation webhooks without the affected account id", async () => {
+    await linkFreshSource("item-account-revoke-invalid", "ins_account_revoke");
+    await expect(
+      service.processPlaidWebhook({
+        webhook_type: "ITEM",
+        webhook_code: "USER_ACCOUNT_REVOKED",
+        item_id: "item-account-revoke-invalid",
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("reconciles reversed ERROR and LOGIN_REPAIRED hints against current Item status", async () => {
+    const source = await linkFreshSource("item-out-of-order", "ins_order");
+    const connectionId = (source.metadata.plaid as { connectionId: string })
+      .connectionId;
+    const institution = {
+      institutionId: "ins_order",
+      institutionName: "Order Test Bank",
+      primaryAccountMask: "1010",
+      accounts: [
+        {
+          accountId: "order-acct-1",
+          name: "Checking",
+          mask: "1010",
+          type: "depository",
+          subtype: "checking",
+        },
+      ],
+    };
+
+    // A delayed ERROR must not re-corrupt a provider Item that is already healthy.
+    fake.itemStatus = {
+      connectionId,
+      itemId: "item-out-of-order",
+      institutionId: "ins_order",
+      error: null,
+      consentExpirationTime: null,
+      institution,
+    };
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "ERROR",
+      item_id: "item-out-of-order",
+      error: { error_code: "ITEM_LOGIN_REQUIRED" },
+    });
+    let stored = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(stored).not.toBeNull();
+    if (!stored) throw new Error("reconciled source is missing");
+    expect(stored.status).toBe("active");
+    expect(
+      (stored.metadata.plaid as { itemError: unknown }).itemError,
+    ).toBeNull();
+
+    // A delayed LOGIN_REPAIRED must not clear a newer provider-side error.
+    const healthyStatus = fake.itemStatus;
+    if (!healthyStatus) throw new Error("item status fixture is missing");
+    fake.itemStatus = {
+      ...healthyStatus,
+      error: { code: "ITEM_LOGIN_REQUIRED", message: "login required" },
+    };
+    await service.processPlaidWebhook({
+      webhook_type: "ITEM",
+      webhook_code: "LOGIN_REPAIRED",
+      item_id: "item-out-of-order",
+    });
+    stored = await repository.getPaymentSource(runtime.agentId, source.id);
+    expect(stored).not.toBeNull();
+    if (!stored) throw new Error("reconciled source is missing");
+    expect(stored.status).toBe("needs_attention");
+    expect(
+      (stored.metadata.plaid as { itemError: { code: string } }).itemError.code,
+    ).toBe("ITEM_LOGIN_REQUIRED");
+  });
+
+  it("reports unknown items as unhandled rather than erroring", async () => {
+    const result = await service.processPlaidWebhook({
+      webhook_type: "TRANSACTIONS",
+      webhook_code: "SYNC_UPDATES_AVAILABLE",
+      item_id: "item-never-linked",
+    });
+    expect(result).toMatchObject({ handled: false, sourceId: null });
+  });
+
+  it("disconnect removes the item upstream once and is idempotent locally", async () => {
+    const source = await linkFreshSource("item-bye", "ins_bye");
+    fake.pages.set("", {
+      added: [txn("b1")],
+      modified: [],
+      removed: [],
+      nextCursor: "bc1",
+      hasMore: false,
+    });
+    await service.syncPlaidTransactions({ sourceId: source.id });
+
+    fake.revokeCalls = [];
+    const first = await service.disconnectPlaidSource({ sourceId: source.id });
+    expect(first.alreadyDisconnected).toBe(false);
+    expect(first.source.status).toBe("disconnected");
+    expect(fake.revokeCalls).toEqual([
+      (source.metadata.plaid as { connectionId: string }).connectionId,
+    ]);
+
+    const second = await service.disconnectPlaidSource({ sourceId: source.id });
+    expect(second.alreadyDisconnected).toBe(true);
+    expect(fake.revokeCalls).toHaveLength(1);
+
+    // History is retained after disconnect.
+    expect(
+      await repository.listPaymentTransactions(runtime.agentId, {
+        sourceId: source.id,
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("disconnect converges when the item is already gone upstream", async () => {
+    const source = await linkFreshSource("item-gone", "ins_gone");
+    fake.revokeResult = new PlaidManagedClientError(
+      400,
+      "item not found",
+      "ITEM_NOT_FOUND",
+    );
+    const result = await service.disconnectPlaidSource({
+      sourceId: source.id,
+    });
+    expect(result.source.status).toBe("disconnected");
+    fake.revokeResult = { revoked: true };
+  });
+
+  it("persists terminal cleanup as pending and converges on retry", async () => {
+    const source = await linkFreshSource("item-cleanup-retry", "ins_cleanup");
+    const connectionId = (source.metadata.plaid as { connectionId: string })
+      .connectionId;
+    fake.failNextSyncWith = new PlaidManagedClientError(
+      400,
+      "item not found",
+      "ITEM_NOT_FOUND",
+    );
+    fake.revokeCalls = [];
+    fake.revokeResult = new PlaidManagedClientError(
+      503,
+      "temporary Cloud cleanup failure",
+      "UPSTREAM_UNAVAILABLE",
+    );
+
+    await expect(
+      service.syncPlaidTransactions({ sourceId: source.id }),
+    ).rejects.toMatchObject({ code: "ITEM_NOT_FOUND" });
+    const pending = await repository.getPaymentSource(
+      runtime.agentId,
+      source.id,
+    );
+    expect(pending?.status).toBe("needs_attention");
+    const pendingPlaid = pending?.metadata.plaid as
+      | { cleanupPending?: { reason: string } }
+      | undefined;
+    expect(pendingPlaid?.cleanupPending).toMatchObject({
+      reason: "terminal_item_error",
+    });
+    expect(fake.revokeCalls).toEqual([connectionId]);
+
+    fake.revokeResult = { revoked: true };
+    const retried = await service.disconnectPlaidSource({
+      sourceId: source.id,
+    });
+    expect(retried.source.status).toBe("disconnected");
+    expect(
+      (retried.source.metadata.plaid as { cleanupPending?: unknown })
+        .cleanupPending,
+    ).toBeNull();
+    expect(fake.revokeCalls).toEqual([connectionId, connectionId]);
+  });
+
+  it("rejects sync for a non-Plaid source and a missing source", async () => {
+    const manual = await service.addPaymentSource({
+      kind: "manual",
+      label: "Cash",
+    });
+    await expect(
+      service.syncPlaidTransactions({ sourceId: manual.id }),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      service.syncPlaidTransactions({ sourceId: crypto.randomUUID() }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+});

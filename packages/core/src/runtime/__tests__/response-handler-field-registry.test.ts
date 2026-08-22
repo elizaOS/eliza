@@ -302,7 +302,7 @@ describe("ResponseHandlerFieldRegistry", () => {
 			expect(result.skippedFieldNames).toEqual(["asyncOff"]);
 		});
 
-		it("renders descriptionCompressed on compact and description otherwise", async () => {
+		it("always renders the complete description (compact tier retired by #24134)", async () => {
 			const reg = new ResponseHandlerFieldRegistry();
 			reg.register(
 				makeEvaluator({
@@ -318,19 +318,18 @@ describe("ResponseHandlerFieldRegistry", () => {
 				}),
 			);
 
-			const compact = await reg.composePromptSlices(ctx, { compact: true });
-			expect(compact.rendered).toContain("short docs");
-			expect(compact.rendered).not.toContain("long-form field docs");
-			// No compressed form registered — falls back to the full description.
-			expect(compact.rendered).toContain("full-only docs");
-
+			// The compact prompt tier was retired (#24134): every composition
+			// carries each evaluator's COMPLETE description; a registered
+			// compressed hint never substitutes in model-facing context.
 			const full = await reg.composePromptSlices(ctx);
 			expect(full.rendered).toContain("long-form field docs");
+			expect(full.rendered).toContain("full-only docs");
 			expect(full.rendered).not.toContain("short docs");
 		});
 
-		it("compact does not change the composed schema or its signature", async () => {
+		it("a registered compressed hint does not change the composed schema or its signature", async () => {
 			const reg = new ResponseHandlerFieldRegistry();
+			const plain = new ResponseHandlerFieldRegistry();
 			reg.register(
 				makeEvaluator({
 					name: "field",
@@ -338,10 +337,9 @@ describe("ResponseHandlerFieldRegistry", () => {
 					descriptionCompressed: "short",
 				}),
 			);
-			expect(reg.composeSchema({ compact: true })).toEqual(reg.composeSchema());
-			expect(reg.composeSchemaSignature({ compact: true })).toBe(
-				reg.composeSchemaSignature(),
-			);
+			plain.register(makeEvaluator({ name: "field", description: "docs" }));
+			expect(reg.composeSchema()).toEqual(plain.composeSchema());
+			expect(reg.composeSchemaSignature()).toBe(plain.composeSchemaSignature());
 		});
 
 		it("renders only a selected field subset", async () => {

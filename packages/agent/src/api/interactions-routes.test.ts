@@ -178,6 +178,81 @@ describe("parseComposerBody", () => {
         }),
       ),
     ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "chat_overlay",
+          draftLength: 4.75,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "chat_overlay",
+          draftLength: Number.MAX_SAFE_INTEGER + 1,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_paused",
+          surface: "chat_overlay",
+          draftLength: 4,
+          idleForMs: 2000.5,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      parseComposerBody(
+        JSON.stringify({
+          activity: "typing_started",
+          surface: "chat_overlay",
+          draftLength: 4,
+          idleForMs: "2000",
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps exact output for four valid integer report shapes", () => {
+    const reports = [
+      {
+        activity: "typing_started",
+        surface: "chat_overlay",
+        draftLength: 0,
+        occurredAt: "2026-06-01T12:00:00.000Z",
+      },
+      {
+        activity: "typing_paused",
+        surface: "chat_overlay",
+        draftLength: 100_000,
+        idleForMs: 0,
+        occurredAt: "2026-06-01T12:00:01.000Z",
+      },
+      {
+        activity: "typing_paused",
+        surface: "chat_overlay",
+        draftLength: 5,
+        idleForMs: Number.MAX_SAFE_INTEGER,
+        occurredAt: "2026-06-01T12:00:02.000Z",
+      },
+      {
+        activity: "draft_abandoned",
+        surface: "chat_overlay",
+        draftLength: 0,
+        idleForMs: 10,
+        reason: "cleared",
+        occurredAt: "2026-06-01T12:00:03.000Z",
+      },
+    ];
+
+    for (const report of reports) {
+      expect(parseComposerBody(JSON.stringify(report))).toEqual(report);
+    }
   });
 });
 
@@ -362,6 +437,49 @@ describe("handleInteractionsRoutes — composer lifecycle (#14679)", () => {
     await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
     expect(composerCalls(emitEvent)).toHaveLength(0);
     expect(error).toHaveBeenCalledWith(ctx.res, expect.any(String), 400);
+  });
+
+  it("rejects fractional, unsafe, and invalid optional numeric fields", async () => {
+    const invalidReports = [
+      {
+        activity: "typing_started",
+        surface: "chat_overlay",
+        draftLength: 5.75,
+      },
+      {
+        activity: "typing_started",
+        surface: "chat_overlay",
+        draftLength: Number.MAX_SAFE_INTEGER + 1,
+      },
+      {
+        activity: "typing_paused",
+        surface: "chat_overlay",
+        draftLength: 5,
+        idleForMs: 2000.25,
+      },
+      {
+        activity: "typing_started",
+        surface: "chat_overlay",
+        draftLength: 5,
+        idleForMs: "2000",
+      },
+    ];
+
+    for (const body of invalidReports) {
+      const { ctx, emitEvent, json, error } = makeCtx(
+        body,
+        "POST",
+        "/api/interactions/composer",
+      );
+      await expect(handleInteractionsRoutes(ctx)).resolves.toBe(true);
+      expect(composerCalls(emitEvent)).toHaveLength(0);
+      expect(json).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(
+        ctx.res,
+        "Invalid composer interaction body",
+        400,
+      );
+    }
   });
 
   it("surfaces composer emit failures without failing the route", async () => {

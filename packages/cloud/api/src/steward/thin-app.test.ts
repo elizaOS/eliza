@@ -14,6 +14,7 @@ import {
 } from "./embedded";
 import {
   isThinStewardEmailAuthPath,
+  isThinStewardPasskeyLoginOptionsPath,
   isThinStewardPath,
   isThinStewardPublicPath,
 } from "./public-paths";
@@ -105,13 +106,19 @@ describe("isThinStewardPublicPath", () => {
 });
 
 describe("isThinStewardEmailAuthPath", () => {
-  test("matches only the three Magic Link email legs", () => {
+  test("matches only the five email pre-auth legs", () => {
     expect(isThinStewardEmailAuthPath("/steward/auth/email/send")).toBe(true);
     expect(isThinStewardEmailAuthPath("/steward/auth/email/send/")).toBe(true);
     expect(isThinStewardEmailAuthPath("/steward/auth/email/code/verify")).toBe(
       true,
     );
     expect(isThinStewardEmailAuthPath("/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/otp/send")).toBe(
+      true,
+    );
+    expect(isThinStewardEmailAuthPath("/steward/auth/email/otp/verify")).toBe(
+      true,
+    );
     expect(isThinStewardEmailAuthPath("/steward/auth/providers")).toBe(false);
     expect(isThinStewardEmailAuthPath("/steward/auth/email/verify")).toBe(
       false,
@@ -128,6 +135,36 @@ describe("isThinStewardEmailAuthPath", () => {
   });
 });
 
+describe("isThinStewardPasskeyLoginOptionsPath", () => {
+  test("matches only the pre-WebAuthn login-options request", () => {
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/login/options",
+      ),
+    ).toBe(true);
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/login/options/",
+      ),
+    ).toBe(true);
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/login/verify",
+      ),
+    ).toBe(false);
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/register/options",
+      ),
+    ).toBe(false);
+    expect(
+      isThinStewardPasskeyLoginOptionsPath(
+        "/steward/auth/passkey/register/verify",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("isThinStewardPath", () => {
   test("GET/HEAD only for public reads", () => {
     expect(isThinStewardPath("GET", "/steward/auth/providers")).toBe(true);
@@ -135,12 +172,30 @@ describe("isThinStewardPath", () => {
     expect(isThinStewardPath("GET", "/steward/auth/email/send")).toBe(false);
   });
 
-  test("POST only for the Magic Link email legs", () => {
+  test("POST only for the exact pre-auth email and passkey-bootstrap legs", () => {
     expect(isThinStewardPath("POST", "/steward/auth/email/send")).toBe(true);
     expect(isThinStewardPath("POST", "/steward/auth/email/code/verify")).toBe(
       true,
     );
     expect(isThinStewardPath("POST", "/steward/auth/email/status")).toBe(true);
+    expect(isThinStewardPath("POST", "/steward/auth/email/otp/send")).toBe(
+      true,
+    );
+    expect(isThinStewardPath("POST", "/steward/auth/email/otp/verify")).toBe(
+      true,
+    );
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/login/options"),
+    ).toBe(true);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/login/verify"),
+    ).toBe(false);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/register/options"),
+    ).toBe(false);
+    expect(
+      isThinStewardPath("POST", "/steward/auth/passkey/register/verify"),
+    ).toBe(false);
     expect(isThinStewardPath("POST", "/steward/auth/providers")).toBe(false);
     expect(isThinStewardPath("POST", "/steward/vault/keys")).toBe(false);
     expect(isThinStewardPath("PUT", "/steward/auth/email/send")).toBe(false);
@@ -150,6 +205,18 @@ describe("isThinStewardPath", () => {
   test("OPTIONS eligible for both path families", () => {
     expect(isThinStewardPath("OPTIONS", "/steward/auth/providers")).toBe(true);
     expect(isThinStewardPath("OPTIONS", "/steward/auth/email/send")).toBe(true);
+    expect(isThinStewardPath("OPTIONS", "/steward/auth/email/otp/send")).toBe(
+      true,
+    );
+    expect(isThinStewardPath("OPTIONS", "/steward/auth/email/otp/verify")).toBe(
+      true,
+    );
+    expect(
+      isThinStewardPath("OPTIONS", "/steward/auth/passkey/login/options"),
+    ).toBe(true);
+    expect(
+      isThinStewardPath("OPTIONS", "/steward/auth/passkey/register/options"),
+    ).toBe(false);
     expect(isThinStewardPath("OPTIONS", "/steward/vault/keys")).toBe(false);
   });
 });

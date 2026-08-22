@@ -998,6 +998,14 @@ describe("stripDashboardOnlyMarkers", () => {
 		);
 	});
 
+	it("removes CONNECTOR card markers so non-dashboard channels never leak them", () => {
+		const input =
+			"Adding Gmail now.\n\n[CONNECTOR:@elizaos/plugin-google-workspace]\n\nTap the card to sign in.";
+		expect(stripDashboardOnlyMarkers(input)).toBe(
+			"Adding Gmail now.\n\nTap the card to sign in.",
+		);
+	});
+
 	it("leaves ordinary prose and interaction grammar untouched", () => {
 		const untouched =
 			"[FOLLOWUPS]\nnavigate:/apps/reminders=Open reminders\n[/FOLLOWUPS]\nPlain text with [brackets] that are not markers.";

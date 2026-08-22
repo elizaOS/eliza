@@ -4,6 +4,7 @@
  */
 import { useId, useState } from "react";
 
+import { useAgentElement } from "../../agent-surface/useAgentElement";
 import type { CodingAgentCreateTaskInput } from "../../api/client-types-cloud";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
@@ -75,6 +76,36 @@ export function CockpitNewSessionForm({
   const [workdir, setWorkdir] = useState("");
   const repoListId = useId();
 
+  const { ref: goalRef, agentProps: goalAgentProps } =
+    useAgentElement<HTMLTextAreaElement>({
+      id: "cockpit-new-session-goal",
+      role: "textarea",
+      label: "Coding session goal",
+      group: "cockpit-new-session",
+      description: "Describe the coding work the agent should complete",
+      getValue: () => goal,
+      onFill: setGoal,
+    });
+  const { ref: repoRef, agentProps: repoAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "cockpit-new-session-repo",
+      role: "text-input",
+      label: "Coding session repository",
+      group: "cockpit-new-session",
+      description: "Set the repository or leave blank for a scratch workspace",
+      getValue: () => repo,
+      onFill: setRepo,
+    });
+  const { ref: workdirRef, agentProps: workdirAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "cockpit-new-session-workdir",
+      role: "text-input",
+      label: "Coding session working directory",
+      group: "cockpit-new-session",
+      description: "Set a directory within the selected repository",
+      getValue: () => workdir,
+      onFill: setWorkdir,
+    });
   const hasWorkdirWithoutRepo =
     workdir.trim().length > 0 && repo.trim().length === 0;
   const canSubmit = goal.trim().length > 0 && !hasWorkdirWithoutRepo && !busy;
@@ -86,6 +117,16 @@ export function CockpitNewSessionForm({
       normalizeCockpitSpawnTarget({ repo, workdir }),
     );
   };
+  const { ref: startRef, agentProps: startAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "cockpit-new-session-start",
+      role: "button",
+      label: "Start coding agent",
+      group: "cockpit-new-session",
+      description: "Create the task and spawn the selected coding agent",
+      status: busy ? "starting" : canSubmit ? "ready" : "disabled",
+      onActivate: canSubmit ? submit : undefined,
+    });
 
   const hasKnownRepos = knownRepos.length > 0;
 
@@ -103,12 +144,14 @@ export function CockpitNewSessionForm({
           What should the agent do?
         </span>
         <Textarea
+          ref={goalRef}
           id="cockpit-goal-input"
           data-testid="cockpit-goal-input"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
           placeholder="e.g. Fix the failing auth tests in this repo and open a PR"
           rows={3}
+          {...goalAgentProps}
           // Cmd/Ctrl+Enter submits (the composer convention).
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -124,6 +167,7 @@ export function CockpitNewSessionForm({
           Repo <span className="font-normal text-muted">(optional)</span>
         </span>
         <Input
+          ref={repoRef}
           id="cockpit-repo-input"
           data-testid="cockpit-repo-input"
           value={repo}
@@ -134,6 +178,7 @@ export function CockpitNewSessionForm({
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
+          {...repoAgentProps}
         />
         {hasKnownRepos ? (
           <datalist id={repoListId} data-testid="cockpit-repo-suggestions">
@@ -155,6 +200,7 @@ export function CockpitNewSessionForm({
           <span className="font-normal text-muted">(optional)</span>
         </span>
         <Input
+          ref={workdirRef}
           id="cockpit-workdir-input"
           data-testid="cockpit-workdir-input"
           value={workdir}
@@ -169,6 +215,7 @@ export function CockpitNewSessionForm({
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
+          {...workdirAgentProps}
         />
         {hasWorkdirWithoutRepo ? (
           <span
@@ -193,10 +240,12 @@ export function CockpitNewSessionForm({
       </div>
 
       <Button
+        ref={startRef}
         type="submit"
         data-testid="cockpit-start-button"
         disabled={!canSubmit}
         className="w-full"
+        {...startAgentProps}
       >
         {busy ? "Starting…" : "Start agent"}
       </Button>

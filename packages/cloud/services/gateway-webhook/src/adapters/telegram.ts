@@ -25,6 +25,22 @@ export {
   TelegramApiResponseError,
 };
 
+const TELEGRAM_GROUP_LINK_COMMAND =
+  /^(?:\/eliza_link(?:@([a-z0-9_]{5,32}))?|eliza\s+link)\s+[2-9A-HJ-NP-Z]{8}$/i;
+
+function telegramGroupLinkTarget(
+  text: string,
+  botUsername: string,
+): "not-link" | "this-bot" | "other-bot" {
+  const match = text.trim().match(TELEGRAM_GROUP_LINK_COMMAND);
+  if (!match) return "not-link";
+  const target = match[1];
+  if (!target) return "this-bot";
+  return botUsername && target.toLowerCase() === botUsername.toLowerCase()
+    ? "this-bot"
+    : "other-bot";
+}
+
 function asTelegramEvent(event: ChatEvent): TelegramConnectorEvent {
   if (event.platform !== "telegram") {
     throw new TypeError("Telegram adapter received a non-Telegram event");
@@ -90,6 +106,8 @@ export const telegramAdapter: PlatformAdapter = {
     try {
       botUsername = await resolveTelegramBotUsername(config ?? {});
     } catch (error) {
+      // error-policy:J4 unresolved bot identity is a visible fail-closed
+      // unavailable state: group mentions remain silent instead of guessing.
       logger.warn(
         "Telegram bot identity lookup failed; group mentions will remain silent",
         {
@@ -103,7 +121,14 @@ export const telegramAdapter: PlatformAdapter = {
       // may enter the model. Telegram privacy mode may still hide them.
       allowAmbient: true,
     });
-    if (event && /^\/eliza_link(?:@[a-z0-9_]{5,32})?\s+/i.test(event.text)) {
+    if (!event) return null;
+    const linkTarget = telegramGroupLinkTarget(event.text, botUsername);
+    // Telegram may deliver commands addressed to another bot when this bot is
+    // an administrator. Do not forward those commands as ambient text: the
+    // trusted Cloud route also recognizes the command grammar and would
+    // otherwise emit a control reply despite the foreign @username suffix.
+    if (linkTarget === "other-bot") return null;
+    if (linkTarget === "this-bot") {
       try {
         event.groupActorRole = await resolveTelegramGroupActorRole(
           config ?? {},
@@ -111,6 +136,8 @@ export const telegramAdapter: PlatformAdapter = {
           event.senderId,
         );
       } catch (error) {
+        // error-policy:J4 provider membership failure is preserved as the
+        // explicit unknown authority state; linking cannot proceed from it.
         logger.warn(
           "Telegram group authority lookup failed; link remains fail-closed",
           { error: error instanceof Error ? error.name : "OtherError" },

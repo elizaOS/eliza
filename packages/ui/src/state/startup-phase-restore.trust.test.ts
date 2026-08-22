@@ -17,6 +17,7 @@ describe("isTrustedRestoreApiBaseUrl", () => {
   it("trusts loopback and local-agent hosts", () => {
     expect(isTrustedRestoreApiBaseUrl("http://localhost:31337")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://127.0.0.1:31337")).toBe(true);
+    expect(isTrustedRestoreApiBaseUrl("http://127.0.0.2:31337")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://[::1]:2138")).toBe(true);
     expect(isTrustedRestoreApiBaseUrl("http://0.0.0.0")).toBe(true);
   });

@@ -19,6 +19,7 @@ import {
   getCodingAgentSelectorBridge,
   logger,
 } from "@elizaos/core";
+import { CODING_AGENT_BACKEND_PROVIDERS } from "@elizaos/shared";
 
 // The bridge symbol + contract are single-sourced in `@elizaos/core`; re-export
 // the shared types under this plugin's public surface. `CodingAccountSelection`
@@ -47,10 +48,14 @@ export interface ResolvedCodingAccount {
 /**
  * Agent types that authenticate per pooled account. claude and codex are
  * first-party CLIs. elizaos/pi-agent authenticate through their own backend,
- * and z.ai/Kimi/GLM have no first-party coding CLI. Keep this in
- * sync with the app-core bridge's AGENT_PROVIDER_CANDIDATES.
+ * and z.ai/Kimi/GLM have no wired coding-account transport. Derivation from the
+ * shared descriptor keeps this gate aligned with the app-core bridge.
  */
-const MULTI_ACCOUNT_AGENT_TYPES = new Set(["claude", "codex"]);
+const MULTI_ACCOUNT_AGENT_TYPES = new Set(
+  Object.entries(CODING_AGENT_BACKEND_PROVIDERS)
+    .filter(([, providers]) => providers.length > 0)
+    .map(([backend]) => backend),
+);
 
 export function isMultiAccountAgentType(agentType: string): boolean {
   return MULTI_ACCOUNT_AGENT_TYPES.has(agentType.toLowerCase());

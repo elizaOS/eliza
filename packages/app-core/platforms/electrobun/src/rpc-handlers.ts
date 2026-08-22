@@ -83,6 +83,7 @@ import {
 } from "./inbox-rpc";
 import { isKioskShellMode } from "./kiosk-mode";
 import { LaunchOrchestrator } from "./launch";
+import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import { requireActiveLocalAgentDispatcher } from "./local-agent-dispatcher-registry";
 import { createLocalAgentRequestHandler } from "./local-agent-request";
 import { logger } from "./logger";
@@ -124,12 +125,36 @@ import {
   readNativeTranscriptViewModel,
 } from "./native-transcript-host";
 import {
+  desktopAcknowledgeRemoteCommandEnqueue,
+  desktopClearRemoteSessionState,
+  desktopCreateRemoteCommand,
+  desktopGetOrCreateControllerIdentity,
+  desktopOpenRemoteCommandResult,
+  desktopOpenRemoteCommandStartReceipt,
+} from "./remote-controller-rpc";
+import {
+  configureDesktopRemoteTarget,
+  desktopRemoteTargetActivate,
+  desktopRemoteTargetEnroll,
+  desktopRemoteTargetFinalizeHostRevoke,
+  desktopRemoteTargetGetIdentity,
+  desktopRemoteTargetRevoke,
+  desktopRemoteTargetStart,
+  desktopRemoteTargetStatus,
+  desktopRemoteTargetStop,
+} from "./remote-target-rpc";
+import {
   buildDynamicViewRpcHandlers,
   buildNotificationRpcHandlers,
   buildWindowRpcHandlers,
 } from "./rpc-handler-slices";
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
+import {
+  deleteRuntimeCredentialRecord,
+  desktopDeleteRuntimeCredential,
+  desktopStoreRuntimeCredential,
+} from "./runtime-credential-rpc";
 import {
   buildRuntimePermissionUnavailableState,
   fetchRuntimePermissionState,
@@ -153,6 +178,13 @@ import {
   updateTradePermissionModeViaHttp,
 } from "./settings-mutations-rpc";
 import type { ShellControllerEndpoint } from "./shell-sync-relay";
+import {
+  desktopGetSshRuntimeStatus,
+  desktopInspectSshHost,
+  desktopSshRuntimeRequest,
+  desktopStartSshRuntime,
+  desktopStopSshRuntime,
+} from "./ssh-runtime-rpc";
 import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
@@ -337,6 +369,32 @@ function requireShellControllerEndpoint(
     );
   }
   return endpoint;
+}
+
+async function configureRemoteTargetForCurrentLoopback(): Promise<void> {
+  const { base, token } = apiBaseOwner.getCurrent();
+  if (!base || !token.trim()) {
+    throw new Error(
+      "The local Eliza runtime is not ready. Start it before enabling the Linux relay.",
+    );
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(base);
+  } catch {
+    throw new Error("The local Eliza runtime address is invalid.");
+  }
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    !["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+      parsed.hostname.toLowerCase(),
+    )
+  ) {
+    throw new Error(
+      "The Linux relay can connect only to this computer's loopback runtime.",
+    );
+  }
+  await configureDesktopRemoteTarget({ apiBase: base, apiToken: token });
 }
 
 export function buildBunRpcHandlers({
@@ -1358,6 +1416,46 @@ export function buildBunRpcHandlers({
       ),
     secureStoreStatus: async () =>
       describeNodePlatformSecureStore(rendererSecureStore),
+    runtimeCredentialStore: async (params) =>
+      desktopStoreRuntimeCredential(params),
+    runtimeCredentialDelete: async (params) =>
+      desktopDeleteRuntimeCredential(params),
+    runtimeCredentialDeleteRecord: async (params) => {
+      await deleteRuntimeCredentialRecord(params.runtimeId);
+      return { deleted: true };
+    },
+    sshRuntimeInspectHost: async (params) => desktopInspectSshHost(params),
+    sshRuntimeStart: async (params) => desktopStartSshRuntime(params),
+    sshRuntimeStop: async (params) => desktopStopSshRuntime(params),
+    sshRuntimeStatus: async (params) => desktopGetSshRuntimeStatus(params),
+    sshRuntimeRequest: async (params) => desktopSshRuntimeRequest(params),
+    remoteControllerGetOrCreateIdentity: async (params) =>
+      desktopGetOrCreateControllerIdentity(params),
+    remoteControllerCreateCommand: async (params) =>
+      desktopCreateRemoteCommand(params),
+    remoteControllerOpenResult: async (params) =>
+      desktopOpenRemoteCommandResult(params),
+    remoteControllerOpenStartReceipt: async (params) =>
+      desktopOpenRemoteCommandStartReceipt(params),
+    remoteControllerClearSessionState: async (params) =>
+      desktopClearRemoteSessionState(params),
+    remoteControllerAcknowledgeEnqueue: async (params) =>
+      desktopAcknowledgeRemoteCommandEnqueue(params),
+    remoteTargetEnroll: async (params) => desktopRemoteTargetEnroll(params),
+    remoteTargetGetIdentity: async () => desktopRemoteTargetGetIdentity(),
+    remoteTargetActivate: async (params) => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetActivate(params);
+    },
+    remoteTargetStart: async () => {
+      await configureRemoteTargetForCurrentLoopback();
+      return desktopRemoteTargetStart();
+    },
+    remoteTargetStop: async () => desktopRemoteTargetStop(),
+    remoteTargetStatus: async () => desktopRemoteTargetStatus(),
+    remoteTargetRevoke: async (params) => desktopRemoteTargetRevoke(params),
+    remoteTargetFinalizeHostRevoke: async (params) =>
+      desktopRemoteTargetFinalizeHostRevoke(params),
 
     // ---- GPU Window ----
     gpuWindowCreate: async (

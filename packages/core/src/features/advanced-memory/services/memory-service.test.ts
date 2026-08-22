@@ -53,6 +53,30 @@ describe("MemoryService extraction checkpoints", () => {
 		).resolves.toBe(7);
 		expect(getCache).toHaveBeenCalledTimes(1);
 	});
+
+	it("does not let an older cache read replace a concurrent checkpoint write", async () => {
+		let resolveCacheRead: ((value: number) => void) | undefined;
+		const getCache = vi.fn<IAgentRuntime["getCache"]>(
+			() =>
+				new Promise<number>((resolve) => {
+					resolveCacheRead = resolve;
+				}),
+		);
+		const setCache = vi.fn<IAgentRuntime["setCache"]>(async () => true);
+		const service = new MemoryService(
+			createMockRuntime({ getCache, setCache }),
+		);
+
+		const pendingRead = service.getLastExtractionCheckpoint(ENTITY_ID, ROOM_ID);
+		await service.setLastExtractionCheckpoint(ENTITY_ID, ROOM_ID, 42);
+		resolveCacheRead?.(7);
+
+		await expect(pendingRead).resolves.toBe(42);
+		await expect(
+			service.getLastExtractionCheckpoint(ENTITY_ID, ROOM_ID),
+		).resolves.toBe(42);
+		expect(getCache).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("MemoryService extraction interval configuration", () => {

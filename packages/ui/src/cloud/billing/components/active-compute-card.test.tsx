@@ -67,6 +67,10 @@ function computeResource(
     name: "API container",
     status: "running",
     billingStatus: "active",
+    billingInterval: "day",
+    lastBilledAt: "2026-08-21T09:00:00.000Z",
+    nextBillingAt: "2026-08-22T09:00:00.000Z",
+    estimatedNextBillingAt: "2026-08-21T11:00:00.000Z",
     ratePerHour: available(exact("0.123456", "usd_per_hour")),
     estimatedRecurringComputeCostPerDay: available(
       exact("2.962944", "usd_per_day"),
@@ -110,6 +114,25 @@ function ready(
 }
 
 afterEach(() => cleanup());
+
+function resourceCard(name: string): HTMLElement {
+  const card = screen.getByText(name, { exact: true }).closest("li");
+  if (!(card instanceof HTMLElement)) {
+    throw new Error(`Resource card not found for ${name}`);
+  }
+  return card;
+}
+
+function expectDefinitionValue(
+  card: HTMLElement,
+  label: string,
+  value: string,
+): void {
+  const term = within(card).getByText(label, { exact: true, selector: "dt" });
+  const definition = term.nextElementSibling;
+  expect(definition?.tagName).toBe("DD");
+  expect(definition?.textContent).toBe(value);
+}
 
 describe("ActiveComputeCardView", () => {
   it("renders a stable loading skeleton without inventing empty or zero", () => {
@@ -303,6 +326,68 @@ describe("ActiveComputeCardView", () => {
 
     expect(screen.getByText("$99.123456")).toBeTruthy();
     expect(screen.queryByText("$3.00")).toBeNull();
+  });
+
+  it("shows server-owned billing period and cursors without client inference", () => {
+    const container = computeResource({
+      billingInterval: "hour",
+      lastBilledAt: null,
+      nextBillingAt: "2026-08-22T09:10:11.000Z",
+      estimatedNextBillingAt: null,
+    });
+    const sandbox = computeResource({
+      resourceType: "agent_sandbox",
+      resourceId: "sandbox-one",
+      name: "Research sandbox",
+      billingInterval: "day",
+      lastBilledAt: "2026-08-20T08:07:06.000Z",
+      nextBillingAt: null,
+      estimatedNextBillingAt: "2026-08-23T12:34:56.000Z",
+    });
+    render(
+      <ActiveComputeCardView
+        state={ready(snapshot({ resources: available([container, sandbox]) }))}
+        onRetry={vi.fn()}
+      />,
+    );
+
+    const containerCard = resourceCard("API container");
+    expect(
+      within(containerCard).getByText("Container · container-1234567890", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expectDefinitionValue(containerCard, "Billing period", "Hourly");
+    expectDefinitionValue(containerCard, "Last billed", "Not reported");
+    expectDefinitionValue(
+      containerCard,
+      "Next billing",
+      "2026-08-22 09:10:11 UTC",
+    );
+    expectDefinitionValue(
+      containerCard,
+      "Estimated next billing",
+      "Not estimated",
+    );
+
+    const sandboxCard = resourceCard("Research sandbox");
+    expect(
+      within(sandboxCard).getByText("Agent sandbox · sandbox-one", {
+        exact: true,
+      }),
+    ).toBeTruthy();
+    expectDefinitionValue(sandboxCard, "Billing period", "Daily");
+    expectDefinitionValue(
+      sandboxCard,
+      "Last billed",
+      "2026-08-20 08:07:06 UTC",
+    );
+    expectDefinitionValue(sandboxCard, "Next billing", "Not scheduled");
+    expectDefinitionValue(
+      sandboxCard,
+      "Estimated next billing",
+      "2026-08-23 12:34:56 UTC",
+    );
   });
 
   it("preserves a long exact value and reflows resources without a table", () => {

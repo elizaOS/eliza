@@ -2441,7 +2441,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			'"candidateActions":["TASKS_SPAWN_AGENT"]',
 		);
 		expect(plannerUserContent).toContain(
-			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+			'"tierAParents":["FILE","TASKS_SPAWN_AGENT"]',
 		);
 	});
 
@@ -4036,9 +4036,11 @@ describe("runV5MessageRuntimeStage1", () => {
 	it("keeps the planner prompt byte-identical on an addressed group turn (no ambient policy, no terminal conversion)", async () => {
 		// Addressed branch pin (same pattern as the memory-surface branch
 		// tests): a platform mention makes the turn addressed, so the
-		// ambient-turn policy must not render and a planner IGNORE keeps
-		// today's planned-reply "none" outcome instead of the ambient terminal
-		// conversion.
+		// ambient-turn policy must not render and the ambient silent-terminal
+		// conversion must not fire. The addressed turn-delivery floor
+		// (#23223) still answers: a toolless planner IGNORE recovers with the
+		// honest zero-action fallback — never silence, and never a fabricated
+		// "I ran the steps … they failed" report for steps that never ran.
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "Addressed follow-up; see if the planner has anything.",
@@ -4071,8 +4073,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(plannerContent).not.toContain("ambient_turn_policy");
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent).toBeNull();
-			expect(result.result.mode).toBe("none");
+			const text = result.result.responseContent?.text ?? "";
+			expect(text).toBe(
+				"I don't have a useful answer to that right now — ask again and I will retry.",
+			);
+			// Effect honesty: nothing ran this turn, so no failure narrative.
+			expect(text).not.toMatch(/ran the steps|failed/i);
 		}
 	});
 
@@ -4723,6 +4729,50 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("keeps strict grounding on a shape-only task_complete relay", async () => {
+		// Relay shape (header + subAgent metadata) is routing, not proof: a
+		// child can claim task_complete without having applied anything, so an
+		// unbound relay's "applied" claim buffers exactly like any other
+		// ungrounded claim (#24425 review: task-complete metadata is not proof
+		// that an effect occurred).
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "Relay the claimed build to the user.",
+				contexts: ["simple"],
+				replyText: "The dice roller app is built and deployed.",
+				extra: { requiresTool: true, replyEffectStatus: "applied" },
+			}),
+			JSON.stringify({
+				thought: "No receipt proved the claimed build.",
+				toolCalls: [],
+				messageToUser: "I couldn't verify that build completed.",
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text:
+					"[sub-agent: dice roller build (opencode) — task_complete]\n" +
+					"Done. The dice roller app is built and deployed.",
+				source: "sub_agent",
+				metadata: { subAgent: true },
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I couldn't verify that build completed.",
+			);
+		}
+	});
+
 	it("does not let a rejected early completion claim hide the later receipt-grounded confirmation", async () => {
 		const canonicalText = "Done — the pickup reminder is scheduled.";
 		const observedAt = "2026-07-27T18:00:00.000Z";
@@ -5135,6 +5185,36 @@ describe("runV5MessageRuntimeStage1", () => {
 		// Pure decision seam: the exact source precedence, ack suppression,
 		// failure-aware wording, and the async-handoff silence gate.
 		describe("resolveZeroDeliveryRecovery", () => {
+			it("never fabricates a failed-steps report on a toolless turn", () => {
+				// Effect honesty: with no action results at all, the fallback must
+				// not claim "I ran the steps … they failed".
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.source).toBe("fallbackText");
+				expect(decision.text).toBe(
+					"I don't have a useful answer to that right now — ask again and I will retry.",
+				);
+				expect(decision.text).not.toMatch(/ran the steps|failed/i);
+			});
+
+			it("keeps the failed-steps fallback when failed steps actually ran", () => {
+				const decision = resolveZeroDeliveryRecovery({
+					plannedText: "",
+					actionResults: [{ success: false }],
+					stageOneAck: "",
+					earlyReplySent: false,
+				});
+				expect(decision.recover).toBe(true);
+				expect(decision.text).toContain(
+					"I ran the steps for that but they failed",
+				);
+			});
+
 			it("prefers surviving planner text over everything else", () => {
 				const decision = resolveZeroDeliveryRecovery({
 					plannedText: "The check passed on retry.",
@@ -5769,7 +5849,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-	it("does not re-add generic inferred actions after an evaluator clears the candidate route", async () => {
+	it("keeps the complete authorized catalog after an evaluator changes ranking hints", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
 				thought: "The generic router guessed shell.",
@@ -5845,7 +5925,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		};
 		const toolNames = plannerParams.tools?.map((tool) => tool.name) ?? [];
 		expect(toolNames).toContain("CHECK_RUNTIME");
-		expect(toolNames).not.toContain("SHELL");
+		expect(toolNames).toContain("SHELL");
 		expect(
 			plannerParams.messages
 				?.map((entry) => String(entry.content ?? ""))

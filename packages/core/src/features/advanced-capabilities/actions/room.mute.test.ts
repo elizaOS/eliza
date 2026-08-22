@@ -128,6 +128,93 @@ describe("ROOM action — timed mute persistence (durationMinutes)", () => {
 		);
 	});
 
+	it("rejects a sub-minute duration instead of muting permanently", async () => {
+		// 0.5 floored to 0, and a falsy duration is how this action encodes an
+		// untimed mute — so "mute for 30 seconds" became a permanent mute.
+		const { runtime, states, rooms } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel for 30 seconds"),
+			state,
+			opts({ action: "mute", durationMinutes: 0.5 }),
+		);
+		expect(result.success).toBe(false);
+		expect((result.data as Record<string, unknown>).error).toBe(
+			"ROOM_DURATION_INVALID",
+		);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
+		expect(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso).toBeUndefined();
+	});
+
+	it("rejects a sub-minute duration supplied as a string", async () => {
+		const { runtime, states } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel briefly"),
+			state,
+			opts({ action: "mute", durationMinutes: "0.5" }),
+		);
+		expect(result.success).toBe(false);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
+	});
+
+	it("treats an explicit null duration as an untimed mute", async () => {
+		const { runtime, states, rooms } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel"),
+			state,
+			opts({ action: "mute", durationMinutes: null }),
+		);
+		expect(result.success).toBe(true);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBe("MUTED");
+		expect(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso).toBeUndefined();
+	});
+
+	it("rejects an out-of-range duration before mutating room state", async () => {
+		const { runtime, states, rooms } = makeRuntime({
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("mute this channel for the maximum duration"),
+			state,
+			opts({ action: "mute", durationMinutes: Number.MAX_SAFE_INTEGER }),
+		);
+		expect(result.success).toBe(false);
+		expect((result.data as Record<string, unknown>).error).toBe(
+			"ROOM_DURATION_INVALID",
+		);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeUndefined();
+		expect(rooms.get(ROOM_ID)?.metadata?.agentMuteUntilIso).toBeUndefined();
+	});
+
+	it("ignores durationMinutes for operations where the field is not applicable", async () => {
+		const { runtime, states } = makeRuntime({
+			states: { [`${ROOM_ID}:${AGENT_ID}`]: "MUTED" },
+			rooms: [room(ROOM_ID)],
+			worlds: [world()],
+		});
+		const result = await roomOpAction.handler(
+			runtime,
+			msg("unmute this channel"),
+			state,
+			opts({ action: "unmute", durationMinutes: 0.5 }),
+		);
+		expect(result.success).toBe(true);
+		expect(states.get(`${ROOM_ID}:${AGENT_ID}`)).toBeNull();
+	});
+
 	it("an untimed mute clears a stale expiry; unmute clears state and expiry", async () => {
 		const stale = new Date(Date.now() + 5 * 60_000).toISOString();
 		const { runtime, states, rooms } = makeRuntime({

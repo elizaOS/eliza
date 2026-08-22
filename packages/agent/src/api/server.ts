@@ -94,7 +94,10 @@ import {
 import { parseClampedInteger } from "@elizaos/shared/utils/number-parsing";
 import { type WebSocket, WebSocketServer } from "ws";
 import { installPlugin as installPluginDirect } from "../services/plugin-installer.ts";
-import { writeAgentBackupJsonResponse } from "./backup-json-response.ts";
+import {
+  AgentBackupClientDisconnectedError,
+  writeAgentBackupJsonResponse,
+} from "./backup-json-response.ts";
 import { handleAgentBackupV2SnapshotRequest } from "./backup-v2-stream-response.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
@@ -1954,6 +1957,20 @@ async function handleRequest(
       await writeAgentBackupJsonResponse(res, snapshot);
     } catch (err) {
       const message = formatError(err);
+      if (
+        err instanceof AgentBackupClientDisconnectedError ||
+        message === "Agent backup response stream failed"
+      ) {
+        // The download transport died mid-stream (client abort or socket
+        // error). The response is already committed and the socket is gone;
+        // treat it like the v2 capture boundary's 499/ephemeral path rather
+        // than logging a server fault.
+        logger.warn(
+          { err: message },
+          "[agent-backup] Snapshot download aborted",
+        );
+        return;
+      }
       if (message === PGLITE_SNAPSHOT_UNAVAILABLE_TRANSIENT) {
         // Transient teardown race (PGlite closing) — 503 so the caller retries
         // or defers instead of tripping the fail-closed restart gate on a 500

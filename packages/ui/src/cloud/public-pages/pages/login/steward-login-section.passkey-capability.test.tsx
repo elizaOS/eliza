@@ -234,6 +234,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     // brand-new email is typed and hijacks signup. Passkey sign-in stays
     // available only through the explicit Passkey button (email-scoped).
     expect(input.getAttribute("autocomplete")).toBe("email");
+    expect(input.getAttribute("autocomplete")).not.toContain("webauthn");
     expect(screen.getByRole("button", { name: /Passkey/i })).toBeTruthy();
     expect(
       screen.queryByText("New here? Passkey sets up your account in seconds."),
@@ -324,12 +325,13 @@ describe("StewardLoginSection passkey capability gating", () => {
     );
   });
 
-  it("starts Magic Link only after the user chooses that recovery action", async () => {
+  it("routes a no-passkey 404 directly into email-verified enrollment", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError("No passkey registered", 404),
+      new StewardApiError("Passkey sign-in is unavailable for this email", 404),
     );
+    stewardAuthSpies.sendEmailOtp.mockResolvedValue(undefined);
 
     renderSection();
 
@@ -337,24 +339,27 @@ describe("StewardLoginSection passkey capability gating", () => {
     fireEvent.change(input, { target: { value: "person@example.com" } });
     fireEvent.click(screen.getByRole("button", { name: /Passkey/i }));
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Use Magic Link" }),
+    expect(await screen.findByText("Set up your passkey")).toBeTruthy();
+    expect(stewardAuthSpies.signInWithPasskey).toHaveBeenCalledWith(
+      "person@example.com",
+      { fallbackToRegistration: false },
     );
-
-    await waitFor(() =>
-      expect(emailLoginSpies.start).toHaveBeenCalledWith(
-        { baseUrl: "https://api.example.test", tenantId: "elizacloud" },
-        "person@example.com",
-      ),
+    expect(stewardAuthSpies.sendEmailOtp).toHaveBeenCalledWith(
+      "person@example.com",
     );
-    expect(stewardAuthSpies.sendEmailOtp).not.toHaveBeenCalled();
+    expect(screen.queryByText("Passkey not completed")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use Magic Link" })).toBeNull();
+    expect(emailLoginSpies.start).not.toHaveBeenCalled();
   });
 
-  it("keeps a complete email focused after 404 passkey recovery", async () => {
+  it("keeps a complete email focused after cancelled-passkey recovery", async () => {
     capabilityRef.usable = true;
     capabilityRef.reason = "available";
     stewardAuthSpies.signInWithPasskey.mockRejectedValue(
-      new StewardApiError("No passkey registered", 404),
+      new StewardApiError(
+        "WebAuthn authentication cancelled or failed: NotAllowedError",
+        0,
+      ),
     );
 
     const user = userEvent.setup();

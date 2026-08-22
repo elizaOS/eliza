@@ -45,7 +45,6 @@ export type RemoteCapabilityEndpointProviderId =
   | "dstack"
   | "dstack-cloud"
   | "cvm-direct"
-  | "e2b"
   | "home-machine"
   | "mobile-companion"
   | "desktop-companion"

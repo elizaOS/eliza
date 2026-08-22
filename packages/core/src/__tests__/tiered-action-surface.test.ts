@@ -665,7 +665,7 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).not.toContain("SEND_EMAIL");
 	});
 
-	it("caps a hot parent's sub-action flood to the turn-relevant children", async () => {
+	it("keeps every registered child of a hot parent callable (#24699)", async () => {
 		// One hot tier-A parent must not expose its whole namespace (observed
 		// live: all 24 MESSAGE_* children on a two-intent turn). The per-parent
 		// child narrow keeps the Stage-1 candidate plus the best query-token
@@ -726,17 +726,25 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).toContain("MESSAGE");
 		expect(toolNames).toContain("MESSAGE_REVIEW_QUEUE");
 		expect(toolNames).toContain("MESSAGE_SEND_REPLY");
-		// Lean when not: the namespace is capped, not fully expanded.
+		// No narrowing: every registered child stays callable. Relevance may
+		// reorder the surface, but a child the planner never sees is a
+		// capability the agent silently cannot use (#24699).
 		const childTools = toolNames.filter((name) =>
 			String(name).startsWith("MESSAGE_"),
 		);
-		expect(childTools.length).toBeLessThanOrEqual(8);
-		expect(toolNames).not.toContain("MESSAGE_OP_9");
-		// Prompt footprint drops with the tool surface: the narrowed-out child
-		// no longer appears in the rendered action section either.
+		expect(childTools.sort()).toEqual(
+			[
+				"MESSAGE_REVIEW_QUEUE",
+				"MESSAGE_SEND_REPLY",
+				...bulkOps.map((action) => action.name),
+			].sort(),
+		);
+		// The rendered action section mirrors the tool surface, so a child that
+		// is callable must also be described — otherwise the planner can invoke
+		// something the prompt never told it about.
 		const prompt = availableActionsSection(runtime);
 		expect(prompt).toContain("MESSAGE_REVIEW_QUEUE");
-		expect(prompt).not.toContain("MESSAGE_OP_9");
+		expect(prompt).toContain("MESSAGE_OP_9");
 	});
 
 	it("omits planner tools that execution would reject for the selected context", async () => {

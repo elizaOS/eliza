@@ -65,7 +65,10 @@ import {
   resolveStateDir,
   setCodingAgentSelectorBridge,
 } from "@elizaos/core";
-import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
+import {
+  CODING_AGENT_BACKEND_PROVIDERS,
+  type LinkedAccountProviderId,
+} from "@elizaos/shared";
 import {
   type AccountPool,
   configuredAccountStrategyForProvider,
@@ -109,19 +112,19 @@ function getEnvCodingStrategy(): Strategy | undefined {
 
 /**
  * Ordered provider candidates per coding-agent type. The first provider with an
- * eligible account wins; a subscription provider is preferred over its direct
- * API equivalent (subscriptions are the primary use case here).
+ * eligible account wins. The shared descriptor only maps credential transports
+ * that the bridge can actually materialize for the selected executable.
  *
  * claude (claude-agent-acp) and codex (codex-acp) are first-party CLIs.
- * z.ai / Kimi / GLM have no first-party coding
- * CLI — their accounts serve the main runtime's API-key routing — so they are
- * deliberately absent (advertising them would offer an unspawnable path).
+ * Kimi and Grok native adapters authenticate through provider-owned CLI state,
+ * not pooled API credentials, so they remain deliberately absent here. The
+ * same is true for z.ai / GLM backends without a bridge-owned spawn route.
  */
 const AGENT_PROVIDER_CANDIDATES: Readonly<
   Record<string, readonly LinkedAccountProviderId[]>
 > = {
-  claude: ["anthropic-subscription", "anthropic-api"],
-  codex: ["openai-codex", "openai-api"],
+  claude: CODING_AGENT_BACKEND_PROVIDERS.claude,
+  codex: CODING_AGENT_BACKEND_PROVIDERS.codex,
 };
 
 function candidatesFor(agentType: string): readonly LinkedAccountProviderId[] {
