@@ -89,6 +89,29 @@ async function rejectionCode(
   throw new Error("expected synthetic control command to reject");
 }
 
+function exposedErrorRepresentations(error: Error): string[] {
+  const serializedCauseChain: unknown[] = [];
+  let cause: unknown = error;
+  while (cause instanceof Error) {
+    serializedCauseChain.push({
+      name: cause.name,
+      message: cause.message,
+      stack: cause.stack,
+    });
+    cause = cause.cause;
+  }
+  if (cause !== undefined) serializedCauseChain.push(cause);
+  return [
+    error.message,
+    error.stack ?? "",
+    String(error),
+    JSON.stringify(error),
+    JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    JSON.stringify(serializedCauseChain),
+    Bun.inspect(error),
+  ];
+}
+
 afterEach(async () => {
   await Promise.all(
     children.splice(0).map(async (child) => {
@@ -214,6 +237,52 @@ describe("synthetic control subprocess protocol", () => {
         message: "control request is invalid",
       },
     });
+
+    const responseSecrets = [
+      "provider_api_key=malformed-response-secret-9371",
+      "authorization=Bearer malformed-response-token-4628",
+    ];
+    const malformedClient = new SyntheticControlClient({
+      baseUrl: "http://127.0.0.1",
+      namespace: "boundary-test",
+      token: TOKEN,
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            version: 1,
+            namespace: "boundary-test",
+            commandId: "malformed-secret-response",
+            ok: true,
+            generation: 7,
+            data: {},
+            [responseSecrets[0]]: true,
+            [responseSecrets[1]]: true,
+          }),
+          { headers: { "content-type": "application/json" } },
+        ),
+    });
+    let malformedError: Error | null = null;
+    try {
+      await malformedClient.command(
+        { type: "health" },
+        { commandId: "malformed-secret-response" },
+      );
+    } catch (error) {
+      // error-policy:J1 The regression captures the public client error for exhaustive redaction assertions.
+      if (error instanceof Error) malformedError = error;
+      else throw error;
+    }
+    expect(malformedError).toBeInstanceOf(SyntheticControlProtocolError);
+    expect(malformedError?.cause).toBeUndefined();
+    expect(malformedError?.message).toBe(
+      "synthetic control returned a malformed response",
+    );
+    for (const exposed of exposedErrorRepresentations(
+      malformedError as SyntheticControlProtocolError,
+    )) {
+      for (const secret of responseSecrets)
+        expect(exposed).not.toContain(secret);
+    }
   });
 
   test("binds one bearer token to one namespace before authority execution", async () => {
