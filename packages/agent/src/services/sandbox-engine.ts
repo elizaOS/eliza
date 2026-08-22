@@ -2,7 +2,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { arch, platform } from "node:os";
-import { logger, sanitizeSpawnEnv } from "@elizaos/core";
+import { ElizaError, logger, sanitizeSpawnEnv } from "@elizaos/core";
 import {
   applyHostExecutionBaseline,
   resolveHostExecutable,
@@ -614,7 +614,7 @@ export class AppleContainerEngine implements ISandboxEngine {
   async runContainer(opts: ContainerRunOptions): Promise<string> {
     // Apple Container uses `container run` with different syntax than Docker.
     // It doesn't have a `-d` detach flag — instead, we spawn it as a background
-    // process with stdin piped so it doesn't block.
+    // process with inherited output so the caller observes the container logs.
     const args = ["run", "--name", opts.name];
 
     // Apple Container: --mount for readonly, -v for read-write
@@ -632,23 +632,34 @@ export class AppleContainerEngine implements ISandboxEngine {
         return;
       }
       const proc = spawn(binary, args, {
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["ignore", "inherit", "inherit"],
         detached: true,
         env: hostEngineEnv(),
       });
 
-      // Collect initial output for error detection
-      let stderr = "";
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
+      let startupSettled = false;
+      const rejectImmediateExit = (exitCode: number | null) => {
+        if (startupSettled) return;
+        startupSettled = true;
+        reject(
+          new ElizaError("Apple Container exited before startup completed", {
+            code: "SANDBOX_APPLE_CONTAINER_START_EXITED",
+            context: {
+              containerName: opts.name,
+              engine: "apple-container",
+              exitCode,
+            },
+          }),
+        );
+      };
 
       // Give it a moment to start, then check if it's still running
       const checkTimer = setTimeout(() => {
         if (proc.exitCode !== null) {
-          reject(new Error(`Apple Container exited immediately: ${stderr}`));
+          rejectImmediateExit(proc.exitCode);
         } else {
           // Container is running in background
+          startupSettled = true;
           proc.unref(); // Allow Node process to exit independently
           resolve(opts.name);
         }
@@ -656,16 +667,23 @@ export class AppleContainerEngine implements ISandboxEngine {
 
       proc.on("error", (err) => {
         clearTimeout(checkTimer);
-        reject(new Error(`Apple Container spawn failed: ${err.message}`));
+        if (startupSettled) return;
+        startupSettled = true;
+        reject(
+          new ElizaError("Apple Container process could not be spawned", {
+            code: "SANDBOX_APPLE_CONTAINER_SPAWN_FAILED",
+            cause: err,
+            context: {
+              containerName: opts.name,
+              engine: "apple-container",
+            },
+          }),
+        );
       });
 
       proc.on("exit", (code) => {
-        if (code !== null && code !== 0) {
-          clearTimeout(checkTimer);
-          reject(
-            new Error(`Apple Container exited with code ${code}: ${stderr}`),
-          );
-        }
+        clearTimeout(checkTimer);
+        rejectImmediateExit(code);
       });
     });
   }

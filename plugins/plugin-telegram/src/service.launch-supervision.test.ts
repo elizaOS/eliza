@@ -4,14 +4,15 @@
  * resolves only when polling stops, so awaiting it for completion strands every
  * post-launch step (dedup registration, `setMyCommands`, shutdown handlers).
  * These tests drive a controllable fake Telegraf bot (its `launch(config,
- * onLaunch)` deferred is resolved/rejected by the test) to prove: the connect
- * signal settles the returned promise so the caller proceeds; a post-connect
- * poll failure self-heals with bounded, backed-off relaunches; and a newer
- * runtime taking over the token cancels the loser's relaunch. Runtime, timers,
- * and `@elizaos/core` (logger/Service) are mocked.
+ * onLaunch)` deferred is resolved/rejected by the test) to prove: initial
+ * startup waits for a stoppable polling object; readiness timers are bounded
+ * and cancelled on launch failure; a post-connect poll failure self-heals with
+ * backed-off relaunches; and token takeover cancels the loser's relaunch.
+ * Runtime, timers, and `@elizaos/core` (logger/Service) are mocked.
  */
 import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getTelegramPollerClaim } from "./poller-lock";
 import { TelegramService } from "./service";
 
 const CONFLICT = "409: Conflict: terminated by other getUpdates request";
@@ -63,6 +64,13 @@ function makeService() {
   return { service, runtime };
 }
 
+async function exposeStoppablePoller(bot: unknown): Promise<void> {
+  (bot as { polling?: { stop: ReturnType<typeof vi.fn> } }).polling = {
+    stop: vi.fn(),
+  };
+  await vi.advanceTimersByTimeAsync(10);
+}
+
 // Flush the microtask that runs the launch promise's rejection handler before
 // its backoff `setTimeout` is scheduled.
 async function flushMicrotasks(): Promise<void> {
@@ -79,7 +87,7 @@ describe("TelegramService.launchPollerSupervised", () => {
     vi.useRealTimers();
   });
 
-  it("resolves on the connect signal (unblocking the post-launch path) with drop-pending polling", async () => {
+  it("waits for a stoppable poller after the connect signal", async () => {
     const { bot, calls } = makeBot();
     const { service } = makeService();
 
@@ -93,7 +101,56 @@ describe("TelegramService.launchPollerSupervised", () => {
     });
 
     calls[0].onLaunch();
+    await exposeStoppablePoller(bot);
     await expect(launched).resolves.toBeUndefined();
+  });
+
+  it("cancels the readiness timer when launch fails before polling exists", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    const failure = new Error("deleteWebhook failed");
+
+    const launched = callLaunch(service, bot, "tok-fail", "acct");
+    const rejected = expect(launched).rejects.toBe(failure);
+    calls[0].onLaunch();
+    calls[0].reject(failure);
+    await flushMicrotasks();
+
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("warns but keeps the original launch fenced beyond 30 seconds", async () => {
+    const { bot, calls } = makeBot();
+    const { service } = makeService();
+    const loggerWarn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    const launched = callLaunch(service, bot, "tok-timeout", "acct");
+    let outcome: "pending" | "resolved" | "rejected" = "pending";
+    const observed = launched.then(
+      () => {
+        outcome = "resolved";
+      },
+      () => {
+        outcome = "rejected";
+      },
+    );
+    calls[0].onLaunch();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(outcome).toBe("pending");
+    expect(bot.launch).toHaveBeenCalledTimes(1);
+    expect(getTelegramPollerClaim("tok-timeout")?.bot).toBe(bot);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ pollerReadyWarningMs: 30_000 }),
+      expect.stringContaining("waiting for a stoppable poller"),
+    );
+
+    await exposeStoppablePoller(bot);
+    await observed;
+    expect(outcome).toBe("resolved");
+    expect(bot.launch).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("self-heals a post-connect poll failure with a bounded, backed-off relaunch and then gives up", async () => {
@@ -103,6 +160,7 @@ describe("TelegramService.launchPollerSupervised", () => {
 
     const launched = callLaunch(service, bot, "tok-heal", "acct");
     calls[0].onLaunch();
+    await exposeStoppablePoller(bot);
     await launched;
 
     // Persistent conflict on every attempt: backoff doubles (2^n s) capped at
@@ -145,6 +203,7 @@ describe("TelegramService.launchPollerSupervised", () => {
       "acct",
     );
     first.calls[0].onLaunch();
+    await exposeStoppablePoller(first.bot);
     await firstLaunched;
 
     await expect(

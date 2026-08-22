@@ -3902,103 +3902,103 @@ export async function handleConversationRoutes(
         clientMessageId ?? null,
         chatReservation,
       );
-    const failStream = (message: string): true => {
-      releaseTurnReservation();
-      writeSse(res, { type: "error", message });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    };
+    try {
+      const failStream = (message: string): true => {
+        releaseTurnReservation();
+        writeSse(res, { type: "error", message });
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      };
 
-    // Runtime readiness is a lifecycle/API boundary. A chat request must fail
-    // immediately when capability is absent instead of occupying an SSE socket
-    // behind a hidden boot timer.
-    if (!runtime) {
-      return failStream("Agent is not running");
-    }
+      // Runtime readiness is a lifecycle/API boundary. A chat request must fail
+      // immediately when capability is absent instead of occupying an SSE socket
+      // behind a hidden boot timer.
+      if (!runtime) {
+        return failStream("Agent is not running");
+      }
 
-    const caller = resolveConversationCaller(
-      req,
-      state,
-      trustedApiPrincipal,
-      runtime,
-    );
-    const userId = caller.entityId;
-    chatIdempotencyScope = buildConversationChatIdempotencyScope(
-      runtime,
-      conv.roomId,
-      caller.entityId,
-    );
-    const chatFingerprint = buildConversationChatFingerprint({
-      prompt,
-      images,
-      source,
-      channelType,
-      preferredLanguage,
-      metadata: chatMetadata,
-    });
-    const settleTurnReservationInMemory = (
-      outcome: ChatMessageIdOutcome,
-    ): void => {
-      setChatMessageIdOutcome(
+      const caller = resolveConversationCaller(
+        req,
+        state,
+        trustedApiPrincipal,
+        runtime,
+      );
+      const userId = caller.entityId;
+      chatIdempotencyScope = buildConversationChatIdempotencyScope(
+        runtime,
+        conv.roomId,
+        caller.entityId,
+      );
+      const chatFingerprint = buildConversationChatFingerprint({
+        prompt,
+        images,
+        source,
+        channelType,
+        preferredLanguage,
+        metadata: chatMetadata,
+      });
+      const settleTurnReservationInMemory = (
+        outcome: ChatMessageIdOutcome,
+      ): void => {
+        setChatMessageIdOutcome(
+          chatIdempotencyScope,
+          clientMessageId ?? null,
+          outcome,
+          chatReservation,
+        );
+        reservationSettled = true;
+      };
+      const settleTurnReservation = async (
+        outcome: ChatMessageIdOutcome,
+      ): Promise<void> => {
+        if (clientMessageId) {
+          if (!runtimeTurnLease) {
+            throw new ElizaError("Chat outcome has no live room ownership", {
+              code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
+              context: { roomId: conv.roomId, clientMessageId },
+            });
+          }
+          await persistDurableConversationChatOutcome(
+            runtime,
+            conv.roomId,
+            chatIdempotencyScope,
+            clientMessageId,
+            chatFingerprint,
+            outcome,
+            runtimeTurnLease,
+          );
+        }
+        settleTurnReservationInMemory(outcome);
+      };
+      const idempotencyAdmission = await awaitConversationChatAdmission(
         chatIdempotencyScope,
         clientMessageId ?? null,
-        outcome,
-        chatReservation,
+        chatFingerprint,
+        disconnectTracker.signal,
       );
-      reservationSettled = true;
-    };
-    const settleTurnReservation = async (
-      outcome: ChatMessageIdOutcome,
-    ): Promise<void> => {
-      if (clientMessageId) {
-        if (!runtimeTurnLease) {
-          throw new ElizaError("Chat outcome has no live room ownership", {
-            code: "CHAT_IDEMPOTENCY_LEASE_MISSING",
-            context: { roomId: conv.roomId, clientMessageId },
-          });
-        }
-        await persistDurableConversationChatOutcome(
-          runtime,
-          conv.roomId,
-          chatIdempotencyScope,
-          clientMessageId,
-          chatFingerprint,
-          outcome,
-          runtimeTurnLease,
-        );
+      if (idempotencyAdmission.kind === "aborted") {
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
       }
-      settleTurnReservationInMemory(outcome);
-    };
-    const idempotencyAdmission = await awaitConversationChatAdmission(
-      chatIdempotencyScope,
-      clientMessageId ?? null,
-      chatFingerprint,
-      disconnectTracker.signal,
-    );
-    if (idempotencyAdmission.kind === "aborted") {
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "settled") {
-      writeConversationDoneSse(res, idempotencyAdmission.outcome);
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    if (idempotencyAdmission.kind === "conflict") {
-      writeSse(res, {
-        type: "error",
-        message: idempotencyAdmission.error.message,
-        code: idempotencyAdmission.error.code,
-      });
-      clearInterval(heartbeatInterval);
-      finishStreamResponse();
-      return true;
-    }
-    chatReservation = idempotencyAdmission.reservation;
-    try {
+      if (idempotencyAdmission.kind === "settled") {
+        writeConversationDoneSse(res, idempotencyAdmission.outcome);
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      }
+      if (idempotencyAdmission.kind === "conflict") {
+        writeSse(res, {
+          type: "error",
+          message: idempotencyAdmission.error.message,
+          code: idempotencyAdmission.error.code,
+        });
+        clearInterval(heartbeatInterval);
+        finishStreamResponse();
+        return true;
+      }
+      chatReservation = idempotencyAdmission.reservation;
       writeChatStatusSse(res, { kind: "thinking" });
       try {
         runtimeTurnLease = await runtime.roomHandlerQueue.acquire(
@@ -4793,8 +4793,36 @@ export async function handleConversationRoutes(
         await runtimeTurnLease.release();
         runtimeTurnLease = null;
       }
+    } catch (streamError) {
+      // error-policy:J2 context-adding rethrow: the terminal SSE `error` frame
+      // is emitted here, then the original failure is rethrown unchanged to the
+      // J1 HTTP boundary.
+      // Everything past `initSse` reports failure as a structured SSE `error`
+      // event; a throw out of turn setup must not become the one silent exit.
+      try {
+        if (!disconnectTracker.isAborted() && !res.writableEnded) {
+          writeSse(res, {
+            type: "error",
+            message: getErrorMessage(streamError),
+          });
+        }
+      } catch (frameError) {
+        // error-policy:J6 best-effort teardown: the terminal frame is a
+        // courtesy to a socket that is already gone, and the rethrow below
+        // still carries the real failure to the J1 boundary.
+        logger.warn(
+          `[conversation-stream] terminal error frame undeliverable: ${getErrorMessage(frameError)}`,
+        );
+      }
+      throw streamError;
     } finally {
       if (!reservationSettled) releaseTurnReservation();
+      // The heartbeat timer and the SSE socket are owned by this request, not
+      // by the HTTP error boundary that catches the rethrow above, so this is
+      // the only place a failed turn can release them. Both calls are
+      // idempotent: the ordinary exits already cleaned up and are unchanged.
+      clearInterval(heartbeatInterval);
+      finishStreamResponse();
     }
   }
 

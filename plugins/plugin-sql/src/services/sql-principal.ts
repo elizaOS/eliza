@@ -21,10 +21,10 @@ import {
   type IdentityMergePlan,
   type IdentityPersonLinkAttestation,
   type IdentityPersonLinkVerification,
-  IdentityResolutionService,
   type JsonObject,
   type MergeJournal,
   type OwnerBindingEvaluation,
+  PrincipalService,
   type ProposeIdentityMergeRequest,
   type Service,
   type SplitIdentityRequest,
@@ -278,11 +278,11 @@ function follow(
   return { canonical: current, ids };
 }
 
-export class SqlIdentityResolutionService extends IdentityResolutionService {
-  static override readonly serviceType = IdentityResolutionService.serviceType;
+export class SqlPrincipalService extends PrincipalService {
+  static override readonly serviceType = PrincipalService.serviceType;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
-    const service = new SqlIdentityResolutionService(runtime);
+    const service = new SqlPrincipalService(runtime);
     if (!service.db) {
       fail(
         "IDENTITY_SQL_ADAPTER_REQUIRED",
@@ -434,7 +434,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   }
 
   async evaluateOwnerBinding(
-    request: Parameters<IdentityResolutionService["evaluateOwnerBinding"]>[0]
+    request: Parameters<PrincipalService["evaluateOwnerBinding"]>[0]
   ): Promise<OwnerBindingEvaluation> {
     this.assertAgent(request.agentId);
     const instanceSetting = this.runtime.getSetting("ELIZA_INSTANCE_ID");
@@ -941,7 +941,7 @@ export class SqlIdentityResolutionService extends IdentityResolutionService {
   }
 
   async confirmMerge(
-    request: Parameters<IdentityResolutionService["confirmMerge"]>[0]
+    request: Parameters<PrincipalService["confirmMerge"]>[0]
   ): Promise<IdentityMergeConfirmation> {
     this.assertAgent(request.agentId);
     return this.db.transaction(async (tx) => {

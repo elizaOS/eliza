@@ -6,7 +6,11 @@
  * provider against it. No hardware, no vi.mock, no network egress.
  */
 import type { AddressInfo } from "node:net";
-import { ElizaError, type IAgentRuntime } from "@elizaos/core";
+import {
+  ElizaError,
+  type IAgentRuntime,
+  validateActionParams,
+} from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { type WebSocket as DeviceSocket, WebSocketServer } from "ws";
 import { getCompanionStatusAction, setCompanionMoodAction } from "./actions";
@@ -320,7 +324,7 @@ describe("commands (UC1/UC2)", () => {
       stub.runtime,
       NO_MESSAGE,
       undefined,
-      { mood: "angry" },
+      { parameters: { mood: "angry" } },
     );
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("invalid mood");
@@ -364,6 +368,64 @@ describe("commands (UC1/UC2)", () => {
     );
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("mood");
+  });
+
+  it("SET_COMPANION_MOOD rejects missing, non-string, and blank planner payloads", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    for (const parameters of [
+      {},
+      { mood: { name: "curious" } },
+      { mood: "   " },
+    ]) {
+      const validation = validateActionParams(
+        setCompanionMoodAction,
+        parameters,
+      );
+      expect(validation.valid).toBe(false);
+      expect(validation.errors).not.toHaveLength(0);
+      const result = await setCompanionMoodAction.handler(
+        stub.runtime,
+        NO_MESSAGE,
+        undefined,
+        { parameters },
+      );
+      expect(result?.success).toBe(false);
+      expect(result?.text).toContain("requires a `mood` parameter");
+    }
+    expect(
+      device.received.filter((frame) => frame.type === "SET_MOOD"),
+    ).toHaveLength(0);
+  });
+
+  it("SET_COMPANION_MOOD accepts the canonical planner parameter envelope", async () => {
+    const device = await startMockDevice();
+    const { service, stub } = await startService(device.url);
+    await until(() => service.isReady());
+
+    expect(setCompanionMoodAction.parameters).toEqual([
+      expect.objectContaining({
+        name: "mood",
+        required: true,
+        schema: expect.objectContaining({
+          type: "string",
+          minLength: 1,
+          pattern: "\\S",
+        }),
+      }),
+    ]);
+    const result = await setCompanionMoodAction.handler(
+      stub.runtime,
+      NO_MESSAGE,
+      undefined,
+      { parameters: { mood: " curious " } },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: { mood: "curious" },
+    });
   });
 });
 

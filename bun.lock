@@ -1039,6 +1039,7 @@
         "@elizaos/plugin-cli-inference": "workspace:*",
         "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-commands": "workspace:*",
+        "@elizaos/plugin-companion": "workspace:*",
         "@elizaos/plugin-github": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
         "@elizaos/plugin-local-inference": "workspace:*",
