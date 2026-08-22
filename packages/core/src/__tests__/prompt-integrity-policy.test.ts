@@ -87,6 +87,10 @@ const guardedSources: Record<string, readonly RegExp[]> = {
 		/sorted\s*\.slice\(0,\s*8\)/,
 		/room\.id\.slice\(0,\s*8\)/,
 	],
+	"packages/core/src/features/advanced-capabilities/actions/post.ts": [
+		/truncateWellFormed/,
+		/text\s*=\s*text\.slice\(/,
+	],
 	"packages/core/src/runtime/trajectory-recorder.ts": [
 		/resolveTrajectoryFieldCapBytes/,
 		/applyTrajectoryFieldCap/,
