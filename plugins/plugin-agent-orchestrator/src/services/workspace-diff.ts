@@ -18,7 +18,38 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 const GIT_TIMEOUT_MS = 10_000;
-const GIT_MAX_BUFFER = 8 * 1024 * 1024;
+// Generous read ceiling: a real coding-session diff essentially never reaches
+// it, and when one does the cut is DETECTED and reported honestly (the
+// prompt-integrity invariant forbids a silent clamp near a model path). The
+// env var is a test seam so the truncation detection is provable with small
+// buffers; it is read per call, never cached.
+const GIT_MAX_BUFFER_DEFAULT = 64 * 1024 * 1024;
+
+function gitMaxBuffer(): number {
+  const raw = process.env.WORKSPACE_DIFF_GIT_MAX_BUFFER;
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? parsed
+    : GIT_MAX_BUFFER_DEFAULT;
+}
+
+/**
+ * True when a spawnSync result's stdout was cut by the process layer: Node
+ * kills the child and flags ENOBUFS when `maxBuffer` overflows, and a
+ * buffer-sized read is treated as a short read too (the cut can land exactly
+ * on the boundary). Exported for the truncation-honesty regression tests.
+ */
+export function spawnOutputWasTruncated(
+  error: unknown,
+  stdoutBytes: number,
+  maxBuffer: number,
+): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "ENOBUFS" || code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+    return true;
+  }
+  return stdoutBytes >= maxBuffer;
+}
 
 // The canonical git empty-tree object hash. On an unborn HEAD (a fresh repo
 // with zero commits), `git diff HEAD` throws because HEAD resolves to nothing;
@@ -65,23 +96,43 @@ export interface WorkspaceArtifactVerification {
   missingFiles: string[];
 }
 
-async function git(
+/** One git read plus the honest truncation verdict for it. When `truncated`
+ *  is true, `stdout` is a PREFIX of the real output — callers must propagate
+ *  that fact instead of presenting the prefix as complete. */
+interface GitCapture {
+  stdout?: string;
+  truncated: boolean;
+}
+
+async function gitCapture(
   workdir: string,
   args: string[],
-): Promise<string | undefined> {
+): Promise<GitCapture> {
+  const maxBuffer = gitMaxBuffer();
   const direct = spawnSync("git", args, {
     cwd: workdir,
     timeout: GIT_TIMEOUT_MS,
-    maxBuffer: GIT_MAX_BUFFER,
+    maxBuffer,
     windowsHide: true,
   });
   const directStdout = outputToString(direct.stdout);
-  if (directStdout && directStdout.length > 0) return directStdout;
+  const directTruncated = spawnOutputWasTruncated(
+    direct.error,
+    Buffer.byteLength(directStdout ?? "", "utf8"),
+    maxBuffer,
+  );
+  if (directStdout && directStdout.length > 0) {
+    return { stdout: directStdout, truncated: directTruncated };
+  }
 
   // Bun's test runner can report a successful git process with an empty stdout
   // pipe. In that environment only, ask the shell to redirect stdout itself.
-  if (direct.status !== 0 && !process.versions.bun) return undefined;
-  if (!process.versions.bun) return directStdout;
+  if (direct.status !== 0 && !process.versions.bun) {
+    return { stdout: undefined, truncated: directTruncated };
+  }
+  if (!process.versions.bun) {
+    return { stdout: directStdout, truncated: directTruncated };
+  }
 
   const outDir = mkdtempSync(join(tmpdir(), "workspace-diff-git-"));
   const outPath = join(outDir, "stdout");
@@ -93,7 +144,7 @@ async function git(
       cwd: workdir,
       env: { ...process.env, WORKSPACE_DIFF_GIT_STDOUT: outPath },
       timeout: GIT_TIMEOUT_MS,
-      maxBuffer: GIT_MAX_BUFFER,
+      maxBuffer,
       stdio: ["ignore", "ignore", "pipe"],
       windowsHide: true,
     },
@@ -102,14 +153,35 @@ async function git(
   // `git diff --no-index` exits 1 when files differ — that's the success case
   // for us and the diff is on stdout. Everything else (not a repo, git missing,
   // detached state) is best-effort: change capture must never disturb the
-  // session lifecycle.
+  // session lifecycle. The file redirect receives the full stream (no
+  // maxBuffer applies to it), so this path never truncates.
   try {
     const stdout = readFileSync(outPath, "utf8");
-    if (result.status === 0 || stdout.length > 0) return stdout;
-    return undefined;
+    if (result.status === 0 || stdout.length > 0) {
+      return { stdout, truncated: false };
+    }
+    return { stdout: undefined, truncated: false };
   } finally {
     rmSync(outDir, { recursive: true, force: true });
   }
+}
+
+async function git(
+  workdir: string,
+  args: string[],
+): Promise<string | undefined> {
+  return (await gitCapture(workdir, args)).stdout;
+}
+
+/** Drop the partial final line of a KNOWN-truncated capture (a complete git
+ *  listing/diff always ends with a newline) so a cut never surfaces a garbage
+ *  half-path. No-op for complete output. */
+function completeLines(
+  out: string | undefined,
+  truncated: boolean,
+): string | undefined {
+  if (!out || !truncated || out.endsWith("\n")) return out;
+  return out.slice(0, out.lastIndexOf("\n") + 1);
 }
 
 async function isWorkTree(workdir: string): Promise<boolean> {
@@ -189,21 +261,35 @@ function parseNameStatus(out: string | undefined): string[] {
   return files;
 }
 
+/** Parsed `git ls-files` listing plus the honest cut verdict for it. */
+export interface LsFilesListing {
+  files: string[];
+  /** True when the listing did not end where git ended it: the partial final
+   *  line of a maxBuffer-cut read was dropped, and everything after the cut
+   *  is absent. Callers MUST surface this — a cut listing presented as
+   *  complete silently hides files the agent actually created. */
+  truncated: boolean;
+}
+
 /**
  * Parse `git ls-files --others` output (one path per line) into a path list.
  * A complete listing always ends with a newline; when the output was cut at
  * maxBuffer (ENOBUFS on a huge untracked tree) the tail is a truncated
- * garbage path — drop the partial final line rather than surface junk.
+ * garbage path — drop the partial final line rather than surface junk, and
+ * REPORT the cut so the caller can mark the change set truncated instead of
+ * persisting the partial listing as if complete.
  */
-export function parseLsFiles(out: string | undefined): string[] {
-  if (!out) return [];
-  const complete = out.endsWith("\n")
-    ? out
-    : out.slice(0, out.lastIndexOf("\n") + 1);
-  return complete
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+export function parseLsFiles(out: string | undefined): LsFilesListing {
+  if (!out) return { files: [], truncated: false };
+  const truncated = !out.endsWith("\n");
+  const complete = truncated ? out.slice(0, out.lastIndexOf("\n") + 1) : out;
+  return {
+    files: complete
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0),
+    truncated,
+  };
 }
 
 // Dependency/build directories a fresh scaffold populates BEFORE any
@@ -272,18 +358,28 @@ function toWorkdirRelative(workdir: string, file: string): string {
   return normalized;
 }
 
-/** Unified diff for one file: real git diff if tracked, else new-file diff. */
+/** Unified diff for one file: real git diff if tracked, else new-file diff.
+ *  Carries the read-buffer truncation verdict so the change set can report
+ *  a cut diff honestly instead of stamping it complete. */
 async function fileDiff(
   workdir: string,
   base: string,
   file: string,
-): Promise<string> {
-  const tracked = (await git(workdir, ["diff", base, "--", file]))?.trim();
-  if (tracked) return tracked;
-  const created = (
-    await git(workdir, ["diff", "--no-index", "--", "/dev/null", file])
-  )?.trim();
-  return created ?? "";
+): Promise<{ text: string; truncated: boolean }> {
+  const tracked = await gitCapture(workdir, ["diff", base, "--", file]);
+  const trackedText = tracked.stdout?.trim();
+  if (trackedText) return { text: trackedText, truncated: tracked.truncated };
+  const created = await gitCapture(workdir, [
+    "diff",
+    "--no-index",
+    "--",
+    "/dev/null",
+    file,
+  ]);
+  return {
+    text: created.stdout?.trim() ?? "",
+    truncated: tracked.truncated || created.truncated,
+  };
 }
 
 /**
@@ -338,8 +434,20 @@ export async function captureChangeSet(
   const dirtyAtSpawn = new Set(
     baselineDirty.filter((file) => !agentWrittenSet.has(file)),
   );
+  // Honest truncation accounting: every git read below can be cut by the
+  // process read buffer, and a cut MUST surface as `truncated: true` on the
+  // change set — the prompt-integrity invariant forbids persisting a partial
+  // capture stamped complete (it flows to the judge, the provider, and the
+  // completion evidence as "the real change set").
+  let captureTruncated = false;
+  const nameStatusCapture = await gitCapture(workdir, [
+    "diff",
+    "--name-status",
+    base,
+  ]);
+  captureTruncated ||= nameStatusCapture.truncated;
   const tracked = parseNameStatus(
-    await git(workdir, ["diff", "--name-status", base]),
+    completeLines(nameStatusCapture.stdout, nameStatusCapture.truncated),
   ).filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
 
@@ -349,11 +457,19 @@ export async function captureChangeSet(
   // so a freshly scaffolded, never-added file would otherwise be invisible
   // (issue #11578 FIX C). Scoped to unborn HEAD to preserve the born-HEAD
   // clutter invariant above.
-  const untracked = unbornHead
-    ? parseLsFiles(
-        await git(workdir, ["ls-files", "--others", "--exclude-standard"]),
-      ).filter((file) => !dirtyAtSpawn.has(file) && !isVendorScoopPath(file))
-    : [];
+  let untracked: string[] = [];
+  if (unbornHead) {
+    const lsCapture = await gitCapture(workdir, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+    ]);
+    const listing = parseLsFiles(lsCapture.stdout);
+    captureTruncated ||= lsCapture.truncated || listing.truncated;
+    untracked = listing.files.filter(
+      (file) => !dirtyAtSpawn.has(file) && !isVendorScoopPath(file),
+    );
+  }
 
   // Agent-written paths FIRST: explicit edit/write tool calls are the
   // highest-signal entries. Set dedupe keeps first-occurrence order.
@@ -366,9 +482,15 @@ export async function captureChangeSet(
   // This avoids counting files that were already dirty at spawn and excluded
   // from `changedFiles`. Falls back to a file count for gitignored/untracked
   // tool-written files.
-  const shortstat = (
-    await git(workdir, ["diff", "--shortstat", base, "--", ...changedFiles])
-  )?.trim();
+  const shortstatCapture = await gitCapture(workdir, [
+    "diff",
+    "--shortstat",
+    base,
+    "--",
+    ...changedFiles,
+  ]);
+  captureTruncated ||= shortstatCapture.truncated;
+  const shortstat = shortstatCapture.stdout?.trim();
   const diffStat =
     shortstat && shortstat.length > 0
       ? shortstat
@@ -377,14 +499,19 @@ export async function captureChangeSet(
   let diff = "";
   for (const file of changedFiles) {
     const fd = await fileDiff(workdir, base, file);
-    if (fd) diff = diff ? `${diff}\n${fd}` : fd;
+    captureTruncated ||= fd.truncated;
+    if (fd.text) diff = diff ? `${diff}\n${fd.text}` : fd.text;
   }
 
   return {
     changedFiles,
     diffStat,
     diff,
-    truncated: false,
+    // Honest verdict: true iff any contributing git read was cut. Consumers
+    // (renderChangeSetBody, the CODING_SESSION_CHANGES provider, the PR gate)
+    // disclose the cut and carry a durable continuation instead of
+    // re-presenting the partial capture as complete.
+    truncated: captureTruncated,
     capturedAt: Date.now(),
   };
 }
@@ -450,9 +577,14 @@ function captureToolPathOnlyChangeSet(
 export interface PrGateChangeSet {
   changedFiles: string[];
   diff: string;
-  /** True when the diff text was truncated at the gate budget. */
+  /** True when the diff text was cut by the git read buffer. The secret-scan
+   *  gate (`reviewDiff`) fails CLOSED on this flag with a typed
+   *  `truncated-diff` BLOCK finding — a partial scan can never pass as a
+   *  clean one (prompt-integrity: typed pre-dispatch rejection, not a silent
+   *  clamp). */
   truncated: boolean;
-  /** True when the changed-file list was truncated at the gate budget. */
+  /** True when the changed-file list was cut by the git read buffer; the gate
+   *  blocks with a typed `truncated-files` finding. */
   filesTruncated: boolean;
 }
 
@@ -466,23 +598,44 @@ export async function capturePrGateChangeSet(
 
   // Prefer the branch-since-fork diff (base...HEAD). If the symmetric range
   // can't resolve (no common ancestor), fall back to the direct base..HEAD diff.
-  const nameStatus =
-    (await git(workdir, ["diff", "--name-status", `${base}...HEAD`])) ??
-    (await git(workdir, ["diff", "--name-status", base, "HEAD"]));
+  const nameStatusThreeDot = await gitCapture(workdir, [
+    "diff",
+    "--name-status",
+    `${base}...HEAD`,
+  ]);
+  const nameStatusFallback =
+    nameStatusThreeDot.stdout === undefined
+      ? await gitCapture(workdir, ["diff", "--name-status", base, "HEAD"])
+      : undefined;
+  const nameStatus = nameStatusThreeDot.stdout ?? nameStatusFallback?.stdout;
   if (nameStatus === undefined) return undefined;
+  const filesTruncated =
+    nameStatusThreeDot.stdout !== undefined
+      ? nameStatusThreeDot.truncated
+      : (nameStatusFallback?.truncated ?? false);
 
-  const allChangedFiles = parseNameStatus(nameStatus);
-  const changedFiles = allChangedFiles;
+  const changedFiles = parseNameStatus(
+    completeLines(nameStatus, filesTruncated),
+  );
 
-  const diffRaw =
-    (await git(workdir, ["diff", `${base}...HEAD`])) ??
-    (await git(workdir, ["diff", base, "HEAD"])) ??
-    "";
+  const diffThreeDot = await gitCapture(workdir, ["diff", `${base}...HEAD`]);
+  const diffFallback =
+    diffThreeDot.stdout === undefined
+      ? await gitCapture(workdir, ["diff", base, "HEAD"])
+      : undefined;
+  const diffRaw = diffThreeDot.stdout ?? diffFallback?.stdout ?? "";
+  const truncated =
+    diffThreeDot.stdout !== undefined
+      ? diffThreeDot.truncated
+      : (diffFallback?.truncated ?? false);
+  // HONEST flags, never decorative: a buffer-cut read reports truncated and
+  // reviewDiff then fails closed (typed `truncated-diff`/`truncated-files`
+  // BLOCK findings) instead of passing a secret scan on unproven completeness.
   return {
     changedFiles,
     diff: diffRaw,
-    truncated: false,
-    filesTruncated: false,
+    truncated,
+    filesTruncated,
   };
 }
 
