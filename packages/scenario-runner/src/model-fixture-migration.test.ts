@@ -8,7 +8,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 78;
+const MAX_LEGACY_PR_DETERMINISTIC_SCENARIOS = 74;
 
 type ScenarioSourceClassification = {
   deterministic: boolean;
@@ -81,7 +81,7 @@ function isStaticallyModelFree(
     return (
       kind !== null &&
       ts.isStringLiteralLike(kind) &&
-      (kind.text === "action" || kind.text === "api")
+      (kind.text === "action" || kind.text === "api" || kind.text === "wait")
     );
   });
   if (!onlyDirectTurns) return false;
@@ -184,7 +184,7 @@ describe("scenario model fixture migration", () => {
       strictOrModelFree: deterministic.length - legacy.length,
       legacy: legacy.length,
       total: deterministic.length,
-    }).toEqual({ strictOrModelFree: 42, legacy: 78, total: 120 });
+    }).toEqual({ strictOrModelFree: 46, legacy: 74, total: 120 });
   }, 120_000);
 
   it("recognizes authored properties while ignoring comments and setup strings", () => {
@@ -240,5 +240,18 @@ describe("scenario model fixture migration", () => {
         });
       `),
     ).toEqual({ deterministic: true, declared: false });
+
+    expect(
+      classifyScenarioSource(`
+        export default scenario({
+          lane: "pr-deterministic",
+          modelFixtures: { mode: "model-free", reason: "direct action plus wait" },
+          turns: [
+            { kind: "action", name: "act" },
+            { kind: "wait", name: "settle", durationMs: 1 },
+          ],
+        });
+      `),
+    ).toEqual({ deterministic: true, declared: true });
   });
 });

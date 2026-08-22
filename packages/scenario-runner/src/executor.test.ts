@@ -124,6 +124,121 @@ describe("scenario executor wait turns", () => {
     expect(report.status).toBe("failed");
     expect(report.error).toContain("requires non-negative durationMs");
   });
+
+  it("waits for a bounded state predicate instead of a fixed sleep", async () => {
+    let checks = 0;
+    const report = await runScenario(
+      {
+        id: "state-wait-turn",
+        title: "State wait turn",
+        domain: "executor",
+        turns: [
+          {
+            kind: "wait",
+            name: "state settles",
+            timeoutMs: 1_000,
+            pollIntervalMs: 1,
+            until: async (ctx) => {
+              expect(ctx.runtime).toBeDefined();
+              checks += 1;
+              return checks === 3;
+            },
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(checks).toBe(3);
+    expect(report.turns[0]?.responseText).toBe(
+      '{"success":true,"condition":"satisfied"}',
+    );
+  });
+
+  it("fails a state predicate at its explicit bound without orphan polling", async () => {
+    let checks = 0;
+    const report = await runScenario(
+      {
+        id: "state-wait-timeout",
+        title: "State wait timeout",
+        domain: "executor",
+        turns: [
+          {
+            kind: "wait",
+            name: "state never settles",
+            timeoutMs: 20,
+            pollIntervalMs: 1,
+            until: () => {
+              checks += 1;
+              return false;
+            },
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    const checksAtFailure = checks;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("waitUntil(state never settles) timed out");
+    expect(checks).toBe(checksAtFailure);
+  });
+});
+
+describe("scenario finalization", () => {
+  it("runs cleanup invariants even when scenario work throws", async () => {
+    let finalizations = 0;
+    const report = await runScenario(
+      {
+        id: "failed-work-finalizes",
+        title: "Failed work finalizes",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "unknown action aborts scenario work",
+            actionName: "DOES_NOT_EXIST",
+          },
+        ],
+        cleanup: [
+          {
+            type: "custom",
+            name: "exact provider ledger",
+            apply: () => {
+              finalizations += 1;
+              return "provider ledger consumed 0/1";
+            },
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.error).toContain("unknown action");
+    expect(finalizations).toBe(1);
+    expect(report.failedAssertions).toContainEqual({
+      label: "cleanup",
+      detail: "cleanup exact provider ledger: provider ledger consumed 0/1",
+    });
+  });
 });
 
 describe("provider-qualified execution boundary", () => {
@@ -674,6 +789,97 @@ describe("scenario executor action turns", () => {
     expect(report.status).toBe("failed");
     expect(report.error).toContain("failed validation");
     expect(runtime.actions[0].handler).not.toHaveBeenCalled();
+  });
+
+  it("records validation rejection without synthesizing an action call", async () => {
+    const handler = vi.fn(async () => ({ success: true }));
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => false),
+        handler,
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "expected-invalid-action",
+        title: "Expected invalid action",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "invalid",
+            actionName: "VIEWS",
+            expectedValidation: "rejected",
+          },
+        ],
+        finalChecks: [],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("passed");
+    expect(handler).not.toHaveBeenCalled();
+    expect(report.actionsCalled).toEqual([]);
+    expect(report.turns[0]).toEqual(
+      expect.objectContaining({
+        actionsCalled: [],
+        validation: {
+          actionName: "VIEWS",
+          accepted: false,
+          expected: "rejected",
+        },
+      }),
+    );
+  });
+
+  it("does not let rejected validation satisfy actionCalled", async () => {
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => false),
+        handler: vi.fn(async () => ({ success: true })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "rejection-is-not-action-call",
+        title: "Rejection is not an action call",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "invalid",
+            actionName: "VIEWS",
+            expectedValidation: "rejected",
+          },
+        ],
+        finalChecks: [
+          { type: "actionCalled", actionName: "VIEWS", minCount: 1 },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.actionsCalled).toEqual([]);
+    expect(report.finalChecks).toContainEqual(
+      expect.objectContaining({ type: "actionCalled", status: "failed" }),
+    );
   });
 
   it("reports expected and actual response text for responseIncludesAny failures", async () => {
