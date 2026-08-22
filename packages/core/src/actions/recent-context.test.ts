@@ -17,7 +17,7 @@ describe("recentConversationTextsFromState", () => {
 		} as never;
 
 		const result = recentConversationTextsFromState(state);
-		expect(result).toEqual(["repeat this", "repeat this"]);
+		expect(result).toEqual(["User: repeat this\nUser: repeat this"]);
 	});
 
 	it("preserves identical wording across mixed sources (#24858)", () => {
@@ -51,11 +51,13 @@ describe("recentConversationTextsFromState", () => {
 		expect(recentConversationTextsFromState(undefined)).toEqual([]);
 	});
 
-	it("strips speaker prefixes and drops empty lines", () => {
+	it("preserves speaker prefixes, whitespace, and line boundaries", () => {
 		const state = {
-			values: { recentMessages: "Alice: Hello\n\nBob: World" },
+			values: { recentMessages: "  Alice: Hello\n\nBob: World  " },
 		} as never;
-		expect(recentConversationTextsFromState(state)).toEqual(["Hello", "World"]);
+		expect(recentConversationTextsFromState(state)).toEqual([
+			"  Alice: Hello\n\nBob: World  ",
+		]);
 	});
 
 	it("preserves identical turns across durable storage and canonical provider state", async () => {
@@ -89,6 +91,10 @@ describe("recentConversationTextsFromState", () => {
 			state,
 		});
 
-		expect(result).toEqual(["repeat this", "repeat this", "repeat this"]);
+		expect(result).toEqual([
+			"User: repeat this",
+			"User: repeat this",
+			"User: repeat this",
+		]);
 	});
 });
