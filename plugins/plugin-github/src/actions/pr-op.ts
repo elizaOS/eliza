@@ -211,9 +211,10 @@ async function runReview(
   });
   if (decision.status === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;
-    await callback?.({ text });
     return {
-      success: true,
+      success: false,
+      requiresConfirmation: true,
+      preview,
       text,
       data: { requiresConfirmation: true, preview, awaitingUserInput: true },
     };

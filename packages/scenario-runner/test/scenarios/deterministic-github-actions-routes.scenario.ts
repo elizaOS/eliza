@@ -5,14 +5,11 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
-import {
-  type RuntimeWithScenarioModelFixtures,
-  registerStrictActionRouteFixtures,
-} from "@elizaos/core/testing";
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import type {
   CapturedAction,
   ScenarioContext,
+  ScenarioModelFixture,
   ScenarioTurnExecution,
 } from "@elizaos/scenario-runner/schema";
 import { scenario } from "@elizaos/scenario-runner/schema";
@@ -33,18 +30,17 @@ const ISSUE_CREATE_PREVIEW =
 
 type JsonRecord = Record<string, unknown>;
 
-type RuntimeWithGithubScenario = IAgentRuntime &
-  RuntimeWithScenarioModelFixtures & {
-    getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
-    plugins?: Plugin[];
-    registerPlugin?: (plugin: Plugin) => Promise<void>;
-    routes?: Array<{
-      type?: string;
-      path: string;
-      handler?: unknown;
-      __scenarioGithubRoute?: boolean;
-    }>;
-  };
+type RuntimeWithGithubScenario = IAgentRuntime & {
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  plugins?: Plugin[];
+  registerPlugin?: (plugin: Plugin) => Promise<void>;
+  routes?: Array<{
+    type?: string;
+    path: string;
+    handler?: unknown;
+    __scenarioGithubRoute?: boolean;
+  }>;
+};
 
 type GithubLedgerEntry = {
   method: string;
@@ -261,7 +257,6 @@ async function seedGithub(ctx: ScenarioContext): Promise<string | undefined> {
     const service = await ensureGithubPlugin(runtime);
     service.setClientForTesting("agent", fakeOctokit() as never);
     service.setClientForTesting("user", fakeOctokit() as never);
-    registerGithubStrictFixtures(runtime);
     return undefined;
   } catch (err) {
     return err instanceof Error ? err.message : String(err);
@@ -394,37 +389,171 @@ const strictGithubRoutes = [
   },
 ];
 
-function matchesGithubIssueCreatePreviewEvaluation(value: string): boolean {
-  return (
-    value.includes(
-      "message:user:\ncreate deterministic GitHub issue preview",
-    ) &&
-    value.includes("event:message_handler:") &&
-    value.includes(
-      "Stage 1 router marked this current turn as requiring a tool",
-    )
-  );
+const commonGithubPlannerTools = [
+  "GITHUB",
+  "GITHUB_PR_LIST",
+  "GITHUB_ISSUE_CREATE",
+  "GITHUB_ISSUE_ASSIGN",
+  "GITHUB_ISSUE_CLOSE",
+  "GITHUB_ISSUE_REOPEN",
+  "GITHUB_ISSUE_COMMENT",
+  "GITHUB_ISSUE_LABEL",
+  "GITHUB_NOTIFICATION_TRIAGE",
+  "REPLY",
+  "IGNORE",
+  "STOP",
+] as const;
+
+function escapePattern(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function registerGithubStrictFixtures(
-  runtime: RuntimeWithGithubScenario,
-): void {
-  registerStrictActionRouteFixtures(runtime, strictGithubRoutes);
-  runtime.scenarioModelFixtures?.register({
-    name: "route-github-issue-create-preview-evaluator",
+function currentTurnPattern(input: string): string {
+  return `${escapePattern(input)}(?![\\s\\S]*message:user:\\n)`;
+}
+
+function evaluatorTurnPattern(input: string): string {
+  return `Latest message:\\n${escapePattern(input)}\\n\\nAgent response messages:`;
+}
+
+function githubPlannerTools(actionName: string): readonly string[] {
+  if (actionName === "GITHUB") {
+    return [
+      ...commonGithubPlannerTools.slice(0, 2),
+      "GITHUB_PR_REVIEW",
+      ...commonGithubPlannerTools.slice(2),
+    ];
+  }
+  if (actionName === "GITHUB_PR_REVIEW") {
+    return ["GITHUB", "GITHUB_PR_REVIEW", ...commonGithubPlannerTools.slice(2)];
+  }
+  return commonGithubPlannerTools;
+}
+
+function actionSlug(actionName: string): string {
+  return actionName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+}
+
+const githubRouteModelFixtures: ScenarioModelFixture[] =
+  strictGithubRoutes.flatMap((route) => {
+    const slug = actionSlug(route.actionName);
+    return [
+      {
+        name: `route-${slug}-stage1-${route.input}`,
+        match: {
+          modelType: "RESPONSE_HANDLER" as const,
+          input: { pattern: currentTurnPattern(route.input) },
+          toolNames: ["HANDLE_RESPONSE"],
+        },
+        response: {
+          json: {
+            contexts: route.contextIds,
+            intents: [route.input.toLowerCase()],
+            replyText: route.messageToUser,
+            threadOps: [],
+            candidateActionNames: [route.actionName],
+          },
+        },
+      },
+      {
+        name: `route-${slug}-planner-${route.input}`,
+        match: {
+          modelType: "ACTION_PLANNER" as const,
+          input: { pattern: currentTurnPattern(route.input) },
+          toolNames: githubPlannerTools(route.actionName),
+        },
+        response: {
+          json: {
+            text: "",
+            thought: `Call ${route.actionName} for ${route.input}.`,
+            messageToUser: route.messageToUser,
+            completed: true,
+            finishReason: "tool-calls",
+            toolCalls: [
+              {
+                id: `call-${slug}`,
+                name: route.actionName,
+                type: "function",
+                arguments: route.args,
+              },
+            ],
+          },
+        },
+      },
+    ];
+  });
+
+const emptyEvaluatorOutput = {
+  factMemory: { ops: [] },
+  preferences: { ops: [] },
+  relationships: { relationships: [] },
+  identities: { identities: [] },
+  ftu_goal_discovery: { goalFound: false, goal: "", confidence: 0 },
+};
+
+const evaluatorTurns = strictGithubRoutes.map((route, index) => ({
+  input: route.input,
+  completed: index !== 0,
+  includeExperience:
+    route.actionName === "GITHUB_ISSUE_CREATE" && index === 0
+      ? true
+      : route.actionName === "GITHUB_ISSUE_REOPEN" ||
+        route.actionName === "GITHUB",
+  includeSkillProposal: index !== 0,
+}));
+
+const githubEvaluatorModelFixtures: ScenarioModelFixture[] = evaluatorTurns.map(
+  (turn) => ({
+    name: `post-turn-github-${actionSlug(turn.input)}`,
     match: {
-      modelType: ModelType.RESPONSE_HANDLER,
-      input: matchesGithubIssueCreatePreviewEvaluation,
+      modelType: "TEXT_SMALL",
+      input: { pattern: evaluatorTurnPattern(turn.input) },
+      toolNames: [],
     },
     response: {
+      json: {
+        ...emptyEvaluatorOutput,
+        success: {
+          completed: turn.completed,
+          reason: turn.completed
+            ? "The requested GitHub operation completed through the action result."
+            : "The GitHub mutation is awaiting explicit user confirmation.",
+        },
+        ...(turn.includeExperience
+          ? { experiencePatterns: { experiences: [] } }
+          : {}),
+        ...(turn.includeSkillProposal
+          ? {
+              skillProposal: {
+                extract: false,
+                reason:
+                  "This one-off GitHub operation is not a reusable skill.",
+              },
+            }
+          : {}),
+      },
+    },
+  }),
+);
+
+const githubIssuePreviewEvaluationFixture: ScenarioModelFixture = {
+  name: "route-github-issue-create-preview-evaluator",
+  match: {
+    modelType: "RESPONSE_HANDLER",
+    input: {
+      pattern: currentTurnPattern("create deterministic GitHub issue preview"),
+    },
+    toolNames: [],
+  },
+  response: {
+    json: {
       success: false,
       decision: "FINISH",
       thought: "The issue-create action produced a confirmation preview.",
       messageToUser: ISSUE_CREATE_PREVIEW,
     },
-    times: 1,
-  });
-}
+  },
+};
 
 function expectGithubPreview(
   execution: ScenarioTurnExecution,
@@ -660,6 +789,29 @@ function expectGithubPrReview(
     : `expected PR review response ${JSON.stringify(responseText)}, saw ${JSON.stringify(execution.responseText)}`;
 }
 
+function expectGithubPrReviewConfirmation(
+  execution: ScenarioTurnExecution,
+): string | undefined {
+  const action = firstAction(execution, "GITHUB_PR_REVIEW");
+  if (typeof action === "string") return action;
+  const preview = `About to approve PR ${REPO}#17 with body: "${REVIEW_BODY}" as user.`;
+  const prompt = `${preview} Reply yes to confirm or no to cancel.`;
+  if (action.result?.success !== false) {
+    return `expected pending review success=false, saw ${stableStringify(action.result)}`;
+  }
+  for (const [path, expected] of Object.entries({
+    "raw.requiresConfirmation": true,
+    "raw.preview": preview,
+    "raw.data.awaitingUserInput": true,
+  })) {
+    const failure = expectEqual(readPath(action.result, path), expected, path);
+    if (failure) return failure;
+  }
+  return execution.responseText === prompt
+    ? undefined
+    : `expected one complete review confirmation ${JSON.stringify(prompt)}, saw ${JSON.stringify(execution.responseText)}`;
+}
+
 function expectGithubNotificationTriage(
   execution: ScenarioTurnExecution,
 ): string | undefined {
@@ -818,6 +970,14 @@ async function finalGithubCheck(): Promise<string | undefined> {
 export default scenario({
   id: "deterministic-github-actions-routes",
   lane: "pr-deterministic",
+  modelFixtures: {
+    mode: "fixtures",
+    fixtures: [
+      ...githubRouteModelFixtures,
+      githubIssuePreviewEvaluationFixture,
+      ...githubEvaluatorModelFixtures,
+    ],
+  },
   title: "Deterministic GitHub action and route coverage",
   domain: "scenario-runner",
   tags: ["pr", "deterministic", "zero-cost", "github", "routes"],
@@ -969,6 +1129,7 @@ export default scenario({
           body: REVIEW_BODY,
         }),
       },
+      assertTurn: expectGithubPrReviewConfirmation,
     },
     {
       kind: "message",
