@@ -27,7 +27,7 @@ import {
 } from "../services/goal-llm-verifier.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
-import { type AttemptReflection } from "../services/orchestrator-task-types.js";
+import type { AttemptReflection } from "../services/orchestrator-task-types.js";
 
 describe("shouldAutoVerifyGoal", () => {
   const prev = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
@@ -348,7 +348,7 @@ describe("auto goal verification on task_complete", () => {
     expect(fake.service.sendToSession).not.toHaveBeenCalled();
   });
 
-  it("does nothing extra for a task with no acceptance criteria", async () => {
+  it("completes a criteria-free task after deterministic gates pass", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(store, []);
@@ -368,10 +368,17 @@ describe("auto goal verification on task_complete", () => {
     fake.emit(sessionId, "task_complete", { response: "done" });
     await until(async () => {
       const task = await store.getTask(taskId);
-      return task?.task.status === "validating";
+      return task?.task.status === "done";
     });
     const doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("validating");
+    expect(doc?.task.status).toBe("done");
+    expect(
+      doc?.events.some(
+        (event) =>
+          event.eventType === "validation_passed" &&
+          event.data?.verifier === "criteria-free-completion-gate",
+      ),
+    ).toBe(true);
     expect(useModel).not.toHaveBeenCalled();
     expect(fake.service.sendToSession).not.toHaveBeenCalled();
   });
@@ -911,7 +918,7 @@ describe("independent read-only verifier (#8898)", () => {
     expect(useModel).not.toHaveBeenCalled();
   });
 
-  it("an inconclusive verifier verdict keeps the task validating (no false promotion)", async () => {
+  it("an inconclusive verifier verdict is retryable without consuming a worker attempt", async () => {
     const fake = makeVerifierAcp(() => INCONCLUSIVE_VERIFIER_ENVELOPE);
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedCodeChangeTask(store, [
@@ -949,6 +956,8 @@ describe("independent read-only verifier (#8898)", () => {
     // promotion) — so the task returns to `active`, not `done`.
     expect(doc?.task.status).toBe("active");
     expect(doc?.task.status).not.toBe("done");
+    expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
+    expect(doc?.task.metadata.attemptReflections).toBeUndefined();
     expect(useModel).not.toHaveBeenCalled();
     // #20794: the worker is an `eliza-code` session, which never emits a
     // CompletionEnvelope — the correction must demand producible evidence,
@@ -997,8 +1006,8 @@ describe("independent read-only verifier (#8898)", () => {
  * Reflexion persistence (#8899): drive the REAL `autoVerifyCompletion` append
  * path (orchestrator-task-service.ts) so each failed verdict writes a
  * `{attempt, missing, summary}` post-mortem into `metadata.attemptReflections`,
- * the buffer retains every reflection (prompt-integrity: no rolling window), and
- * malformed persisted entries are sanitized by `readAttemptReflections`. The
+ * prior post-mortems remain complete, and malformed persisted entries are
+ * sanitized by `readAttemptReflections`. The
  * shipped render leaf is already covered by goal-prompt.test.ts; this exercises
  * the stateful loop end to end with no hand-injected reflection array.
  */
@@ -1091,10 +1100,10 @@ describe("attempt reflection persistence (#8899)", () => {
     });
   });
 
-  it("retains every reflection — the buffer is uncapped model context", async () => {
+  it("retains every prior reflection when appending a new one", async () => {
     const seeded: AttemptReflection[] = Array.from(
       { length: 5 },
-      (_unused, index) => ({
+      (_, index) => ({
         attempt: index + 1,
         summary: `reflection-${index + 1}`,
         missing: ["tests pass"],
@@ -1113,8 +1122,6 @@ describe("attempt reflection persistence (#8899)", () => {
     });
     await vi.waitFor(async () => {
       const reflections = await reflectionsOf(store, taskId);
-      // Prompt-integrity contract: no rolling window on reasoning history —
-      // every prior post-mortem stays available to the next respawn.
       expect(reflections).toHaveLength(6);
       expect(reflections.map((r) => r.summary)).toEqual([
         "reflection-1",
@@ -1294,7 +1301,7 @@ describe("deterministic completion-residuals gate", () => {
     );
   });
 
-  it("a criteria-free CLEAN workspace keeps the prior behavior: parks validating, no model spend", async () => {
+  it("a criteria-free CLEAN workspace completes without model spend", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(store, []);
@@ -1304,19 +1311,108 @@ describe("deterministic completion-residuals gate", () => {
 
     fake.emit(sessionId, "task_complete", { response: "done" });
     await until(
-      async () =>
-        (await store.getTask(taskId))?.task.metadata.completionResiduals !==
-        undefined,
+      async () => (await store.getTask(taskId))?.task.status === "done",
     );
 
     const doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("validating");
+    expect(doc?.task.status).toBe("done");
     expect(useModel).not.toHaveBeenCalled();
     expect(fake.service.sendToSession).not.toHaveBeenCalled();
     const snapshot = doc?.task.metadata.completionResiduals as
       | { status: string }
       | undefined;
     expect(snapshot?.status).toBe("clean");
+  });
+
+  it("a verifier-model outage reopens retryably without consuming a worker attempt", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const useModel = vi.fn(async () => {
+      throw new Error("provider temporarily unavailable");
+    });
+    const runtime = {
+      character: { name: "Tester" },
+      databaseAdapter: undefined,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      getSetting: () => undefined,
+      useModel,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? fake.service : undefined,
+    };
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done with evidence" });
+    await until(
+      async () =>
+        (await store.getTask(taskId))?.events.some(
+          (event) => event.eventType === "goal_verify_inconclusive",
+        ) === true,
+    );
+
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
+    expect(doc?.task.metadata.attemptReflections).toBeUndefined();
+    expect(
+      doc?.events.find(
+        (event) => event.eventType === "goal_verify_inconclusive",
+      )?.data,
+    ).toMatchObject({ retryable: true, verifier: "llm-goal-verifier" });
+    expect(fake.sent.at(-1)?.text).toContain("not counted as a failed attempt");
+  });
+
+  it("an unexpected auto-verifier exception cannot leave the task validating", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    let failSettingRead = true;
+    const reportError = vi.fn();
+    const runtime = {
+      character: { name: "Tester" },
+      databaseAdapter: undefined,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      getSetting: (key: string) => {
+        if (
+          failSettingRead &&
+          key === "ELIZA_ORCHESTRATOR_GROUND_TRUTH_EVIDENCE"
+        ) {
+          failSettingRead = false;
+          throw new Error("settings backend offline");
+        }
+        return undefined;
+      },
+      useModel: vi.fn(async () =>
+        JSON.stringify({ passed: true, summary: "not reached", missing: [] }),
+      ),
+      reportError,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? fake.service : undefined,
+    };
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done with evidence" });
+    await until(
+      async () =>
+        (await store.getTask(taskId))?.events.some(
+          (event) => event.eventType === "auto_verify_inconclusive",
+        ) === true,
+    );
+
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
+    expect(reportError).toHaveBeenCalledWith(
+      "OrchestratorTaskService.autoVerifyCompletion",
+      expect.any(Error),
+      { taskId, sessionId },
+    );
   });
 
   it("a MISSING workspace on a repo-bound task is unverifiable: stays validating WITHOUT burning an attempt (fail closed, F5a)", async () => {

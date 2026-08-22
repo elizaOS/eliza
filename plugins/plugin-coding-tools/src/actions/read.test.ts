@@ -135,7 +135,6 @@ describe("READ", () => {
         file_path: file,
         offset: firstView.slice.nextOffset,
         limit: 2,
-        expectedRevision: firstView.reference.revision,
       },
     });
     expect(`${first.text}${second.text}`).toBe("alpha\r\nbeta\ngamma\r\n");
@@ -468,6 +467,78 @@ describe("READ", () => {
     }
   });
 
+  it("streams a bounded line page from a file larger than the page budget", async () => {
+    const env2 = await setupEnv("read-big-line-window", {
+      extraSettings: { CODING_TOOLS_MAX_FILE_SIZE_BYTES: 64 },
+    });
+    try {
+      const file = path.join(env2.tmpDir, "big-lines.txt");
+      const lines = Array.from({ length: 100 }, (_, index) => `line-${index}`);
+      await fs.writeFile(file, lines.join("\n"), "utf8");
+      const first = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        { parameters: { file_path: file, unit: "line", limit: 1 } },
+      );
+      const revision = (
+        (first.data as Record<string, unknown>).readView as {
+          reference: { revision: string };
+        }
+      ).reference.revision;
+
+      const result = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        {
+          parameters: {
+            file_path: file,
+            unit: "line",
+            offset: 40,
+            limit: 3,
+            expectedRevision: revision,
+          },
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.text).toBe("line-40\nline-41\nline-42\n");
+      const data = result.data as Record<string, unknown>;
+      expect(
+        (data.readView as { slice: { range: unknown } }).slice.range,
+      ).toMatchObject({ unit: "line", start: 40, end: 43 });
+      expect(
+        (data.diagnostics as { bytesReturned: number }).bytesReturned,
+      ).toBe(Buffer.byteLength(result.text ?? ""));
+      expect(env2.fileState.get("test-room", file)).toBeDefined();
+    } finally {
+      await env2.cleanup();
+    }
+  });
+
+  it("rejects a requested line page whose selected content exceeds the byte cap", async () => {
+    const env2 = await setupEnv("read-big-line-window-cap", {
+      extraSettings: { CODING_TOOLS_MAX_FILE_SIZE_BYTES: 32 },
+    });
+    try {
+      const file = path.join(env2.tmpDir, "huge-line-page.txt");
+      await fs.writeFile(file, `${"x".repeat(128)}\ntail`, "utf8");
+      const result = await readFileHandler(
+        env2.runtime,
+        env2.message,
+        undefined,
+        { parameters: { file_path: file, unit: "line", limit: 1 } },
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("line window exceeds 32 bytes");
+      expect(result.text).toContain("retry with unit=byte");
+    } finally {
+      await env2.cleanup();
+    }
+  });
+
   it("round-trips Unicode byte pages and rejects stale continuations", async () => {
     const file = path.join(env.tmpDir, "unicode.txt");
     await fs.writeFile(file, "ab😀cdéfg", "utf8");
@@ -644,14 +715,46 @@ describe("READ", () => {
     expect(result.text).toContain("UTF-8 character boundary");
   });
 
-  it("requires revision identity for every nonzero continuation", async () => {
+  it("requires an initial read before a nonzero continuation", async () => {
     const file = path.join(env.tmpDir, "revision-required.txt");
     await fs.writeFile(file, "alpha\nbeta\n", "utf8");
     const result = await readFileHandler(env.runtime, env.message, undefined, {
       parameters: { file_path: file, offset: 1, limit: 1 },
     });
     expect(result.success).toBe(false);
-    expect(result.text).toContain("expectedRevision is required");
+    expect(result.text).toContain("read from offset 0");
+  });
+
+  it("rejects an automatic continuation when the file changed after the initial read", async () => {
+    const file = path.join(env.tmpDir, "automatic-revision-stale.txt");
+    await fs.writeFile(file, "alpha\nbeta\ngamma\n", "utf8");
+    const first = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, limit: 1 },
+    });
+    expect(first.success).toBe(true);
+
+    await fs.appendFile(file, "delta\n", "utf8");
+    const result = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 1, limit: 1 },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("expected revision");
+
+    const refreshed = await readFileHandler(
+      env.runtime,
+      env.message,
+      undefined,
+      { parameters: { file_path: file, offset: 0, limit: 1 } },
+    );
+    expect(refreshed.success).toBe(true);
+    expect(refreshed.text).toBe("alpha\n");
+
+    const resumed = await readFileHandler(env.runtime, env.message, undefined, {
+      parameters: { file_path: file, offset: 1, limit: 1 },
+    });
+    expect(resumed.success).toBe(true);
+    expect(resumed.text).toBe("beta\n");
   });
 
   it("rejects binary files containing NUL bytes", async () => {

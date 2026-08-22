@@ -208,6 +208,30 @@ describe("MessageManager long message splitting", () => {
     ]);
     expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
   });
+
+  it("cuts before the last newline in the window instead of mid-paragraph", async () => {
+    const { manager, sendMessage } = createManager();
+    const first = "a".repeat(3000);
+    const second = "b".repeat(3000);
+    const text = `${first}\n${second}`;
+
+    await manager.sendMessageInChunks(
+      {
+        chat: { id: 123 },
+        telegram: {
+          sendChatAction: vi.fn(async () => undefined),
+          sendMessage,
+        },
+      } as never,
+      { text },
+    );
+
+    expect(sendMessage.mock.calls.map((call) => call[1])).toEqual([
+      first,
+      `\n${second}`,
+    ]);
+    expect(sendMessage.mock.calls.map((call) => call[1]).join("")).toBe(text);
+  });
 });
 
 describe("MessageManager malformed payload handling", () => {
@@ -1205,8 +1229,8 @@ describe("MessageManager.sendMessage transport failure", () => {
 
 describe("MessageManager reaction reply transport failure", () => {
   it("does not report an empty successful turn when ctx.reply fails", async () => {
-    const { callback, reply } = await captureReactionCallback();
-    reply.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
+    const { callback, sendMessage } = await captureReactionCallback();
+    sendMessage.mockRejectedValueOnce(new Error("Forbidden: bot was blocked"));
 
     await expect(
       callback({ text: "thanks for the reaction" }),

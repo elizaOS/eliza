@@ -40,7 +40,6 @@ import {
   ModelType,
   type RecordedStage,
   toWellFormedUnicode,
-  truncateWellFormed,
 } from "@elizaos/core";
 import type { EvidenceCapabilities } from "./producible-evidence.js";
 
@@ -297,6 +296,10 @@ export interface GoalVerificationResult {
   missing: string[];
   /** Raw model response text, kept for the audit log and for tests. */
   rawResponse: string;
+  /** True when verification itself could not produce a verdict. Callers must
+   *  retry/escalate infrastructure without charging the worker's correction
+   *  budget. */
+  inconclusive: boolean;
 }
 
 const EMPTY_CRITERIA_SUMMARY =
@@ -360,6 +363,7 @@ interface ParsedJudgeResponse {
   passed: boolean;
   summary: string;
   missing: string[];
+  inconclusive: boolean;
 }
 
 function findFirstJsonObject(raw: string): string | null {
@@ -388,6 +392,7 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   let parsed: unknown;
@@ -400,6 +405,7 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   if (parsed === null || typeof parsed !== "object") {
@@ -407,17 +413,24 @@ export function parseJudgeResponse(
       passed: false,
       summary: MALFORMED_RESPONSE_SUMMARY,
       missing: [...acceptanceCriteria],
+      inconclusive: true,
     };
   }
   const record = parsed as Record<string, unknown>;
   const passedRaw = record.passed;
   const summaryRaw = record.summary;
   const missingRaw = record.missing;
-  const missing = Array.isArray(missingRaw)
-    ? missingRaw
-        .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-        .filter((entry) => entry.length > 0)
-    : [];
+  if (typeof passedRaw !== "boolean" || !Array.isArray(missingRaw)) {
+    return {
+      passed: false,
+      summary: MALFORMED_RESPONSE_SUMMARY,
+      missing: [...acceptanceCriteria],
+      inconclusive: true,
+    };
+  }
+  const missing = missingRaw
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+    .filter((entry) => entry.length > 0);
   // Enforce the schema invariant: missing non-empty ⇒ passed false.
   const passed = passedRaw === true && missing.length === 0;
   const summary =
@@ -426,7 +439,7 @@ export function parseJudgeResponse(
       : passed
         ? "All acceptance criteria confirmed by verifier."
         : "Verifier did not confirm every acceptance criterion.";
-  return { passed, summary, missing };
+  return { passed, summary, missing, inconclusive: false };
 }
 
 /**
@@ -478,6 +491,7 @@ export async function verifyGoalCompletion(
       summary: EMPTY_CRITERIA_SUMMARY,
       missing: [],
       rawResponse: "",
+      inconclusive: false,
     };
   }
   if (input.completionEvidence.trim().length === 0) {
@@ -486,6 +500,7 @@ export async function verifyGoalCompletion(
       summary: EMPTY_EVIDENCE_SUMMARY,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
+      inconclusive: false,
     };
   }
   const prompt = buildVerificationPrompt(input);
@@ -495,30 +510,20 @@ export async function verifyGoalCompletion(
     raw = await verifierModelCallWithAbortRetry(runtime, prompt);
   } catch (err) {
     // error-policy:J1 boundary translation — a failed verifier model call
-    // becomes a structured fail verdict naming the error, never a fake pass.
-    // The COMPLETE error (message, stack, cause chain) is durably recorded
-    // FIRST via runtime.reportError (structured log + ERROR_REPORTED event +
-    // recent-errors ring); the bounded summary below is a named PREVIEW of
-    // that record — it rides validation events and attemptReflections, so it
-    // keeps the field's one-sentence contract, but it is never the only copy
-    // of the error.
+    // becomes an explicit inconclusive verdict naming the error, never a fake
+    // pass or a worker-attributed proof failure. The complete error (stack,
+    // cause chain) is also durably recorded via runtime.reportError.
     runtime.reportError?.("[goal-llm-verifier]", err, {
       goal: input.goal,
       criteriaCount: input.acceptanceCriteria.length,
     });
-    const detail = toWellFormedUnicode(
-      err instanceof Error ? err.message : String(err),
-    );
-    const preview = truncateWellFormed(detail, 200);
-    const previewMarker =
-      preview.length < detail.length
-        ? " [error preview — complete detail in the reported-error log]"
-        : "";
+    const detail = err instanceof Error ? err.message : String(err);
     return {
       passed: false,
-      summary: `Verifier model call failed: ${preview}${previewMarker}`,
+      summary: `Verifier model call failed: ${toWellFormedUnicode(detail)}`,
       missing: [...input.acceptanceCriteria],
       rawResponse: "",
+      inconclusive: true,
     };
   }
   // Record the grill model boundary (prompt + verdict) so the scenario
