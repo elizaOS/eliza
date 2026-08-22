@@ -570,6 +570,10 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 	/** When true, TaskService does not start a timer; host drives via runDueTasks(). WHY: no long-lived process in serverless. */
 	serverless?: boolean;
 	initPromise: Promise<void>;
+	/** Current terminal lifecycle phase for cancellable deferred startup. */
+	getLifecycleState(): "initializing" | "running" | "stopping" | "stopped";
+	/** Aborts synchronously when terminal runtime shutdown is first requested. */
+	getStopSignal(): AbortSignal;
 	messageService: IMessageService | null;
 	providers: Provider[];
 	actions: Action[];

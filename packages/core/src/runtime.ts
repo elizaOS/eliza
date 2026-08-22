@@ -1420,6 +1420,8 @@ export class AgentRuntime implements IAgentRuntime {
 	private stopped = false;
 	/** Set permanently at the first stop request, before any drain can yield. */
 	private stopRequested = false;
+	/** Typed cancellation boundary for deferred plugin/service startup. */
+	private readonly stopController = new AbortController();
 	/** The active stop attempt; concurrent callers await the same teardown. */
 	private stopPromise: Promise<void> | null = null;
 
@@ -2605,6 +2607,9 @@ export class AgentRuntime implements IAgentRuntime {
 		this.stopPromise = stopAttempt;
 		if (!this.stopRequested) {
 			this.stopRequested = true;
+			this.stopController.abort(
+				new DOMException("Runtime stop requested", "AbortError"),
+			);
 			// Freeze connector/service ingress before the first shutdown await. Without
 			// this phase, a gateway delivery can begin a new turn while the runtime is
 			// already waiting for its room-owner drain, behind the eventual service-stop
@@ -5855,6 +5860,16 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
 		return this.serviceRegistrationStatus.get(key) || "unknown";
+	}
+
+	getLifecycleState(): "initializing" | "running" | "stopping" | "stopped" {
+		if (this.stopped) return "stopped";
+		if (this.stopRequested) return "stopping";
+		return this.initResolver ? "initializing" : "running";
+	}
+
+	getStopSignal(): AbortSignal {
+		return this.stopController.signal;
 	}
 
 	/**

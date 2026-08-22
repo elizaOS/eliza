@@ -204,7 +204,10 @@ describe("AgentRuntime.stop", () => {
 
 	it("makes reentrant and concurrent stop callers await one teardown", async () => {
 		const runtime = new AgentRuntime({ logLevel: "fatal" });
+		expect(runtime.getLifecycleState()).toBe("initializing");
+		expect(runtime.getStopSignal().aborted).toBe(false);
 		await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+		expect(runtime.getLifecycleState()).toBe("running");
 		const stopStarted = createDeferred<void>();
 		const finishStop = createDeferred<void>();
 		let stopCalls = 0;
@@ -232,6 +235,8 @@ describe("AgentRuntime.stop", () => {
 		await runtime.registerService(DeferredStopService);
 		await runtime.getServiceLoadPromise(DeferredStopService.serviceType);
 		const first = runtime.stop();
+		expect(runtime.getLifecycleState()).toBe("stopping");
+		expect(runtime.getStopSignal().aborted).toBe(true);
 		await stopStarted.promise;
 		expect(reentrantStop).not.toBeNull();
 		let secondSettled = false;
@@ -245,6 +250,7 @@ describe("AgentRuntime.stop", () => {
 		await Promise.all([first, second, reentrantStop]);
 		expect(stopCalls).toBe(1);
 		expect(secondSettled).toBe(true);
+		expect(runtime.getLifecycleState()).toBe("stopped");
 	});
 
 	it("fails fast without stopping resources beneath a noncooperative room owner", async () => {
