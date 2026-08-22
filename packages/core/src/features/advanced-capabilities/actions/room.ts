@@ -195,14 +195,15 @@ function normalizePlatform(value: unknown): string | undefined {
 /**
  * Parse a caller-supplied mute duration.
  *
- * Returns `undefined` when nothing was supplied (an untimed mute is intended)
- * and `null` when a value was supplied but is not a usable duration. The two
- * cases must stay distinct: flooring a sub-minute value to `0` made it falsy,
- * and a falsy duration is how this action encodes "mute with no expiry" — so a
- * request to mute for 30 seconds silently became a permanent mute.
+ * Returns `undefined` when the field is absent or explicitly `null` (an untimed
+ * mute is intended) and `null` when some other value was supplied that is not a
+ * usable duration. The two cases must stay distinct: flooring a sub-minute
+ * value to `0` made it falsy, and a falsy duration is how this action encodes
+ * "mute with no expiry" — so a request to mute for 30 seconds silently became a
+ * permanent mute.
  */
 function normalizeDurationMinutes(value: unknown): number | undefined | null {
-	if (value === undefined) return undefined;
+	if (value === undefined || value === null) return undefined;
 	const parsed = typeof value === "string" ? Number(value) : value;
 	if (
 		typeof parsed !== "number" ||
