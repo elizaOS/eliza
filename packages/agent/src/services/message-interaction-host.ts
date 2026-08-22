@@ -250,6 +250,9 @@ export class MessageInteractionHostService
     return {
       block: structuredClone(request.block),
       delivery,
+      ...(delivery.mode === "signed-hosted"
+        ? { hostedUrl: request.negotiationContext?.signedHostedUrl }
+        : {}),
       callbackData: created.callbackData,
       expiresAt: created.session.expiresAt,
       profileId: created.session.profileId,
@@ -299,9 +302,26 @@ export class MessageInteractionHostService
           code: "MESSAGE_INTERACTION_NOT_FOUND",
         });
       }
+      const retained = prior.bindings;
+      if (
+        request.bindings.actorId !== retained.actorId ||
+        request.bindings.audience.kind !== retained.audience.kind ||
+        request.bindings.audience.id !== retained.audience.id ||
+        request.bindings.agentId !== retained.agentId ||
+        request.bindings.connector.source !== retained.connector.source ||
+        request.bindings.connector.accountId !== retained.connector.accountId ||
+        request.bindings.roomId !== retained.roomId
+      ) {
+        throw new ElizaError(
+          "Authenticated provider bindings do not match the retained session.",
+          { code: "MESSAGE_INTERACTION_BINDING_MISMATCH" },
+        );
+      }
       const consumed = await this.authority.consume({
         callbackData: request.callbackData,
-        bindings: request.bindings,
+        // The original outbound message binding is host-retained state. Provider
+        // callbacks authenticate the actor/room/account but cannot reconstruct it.
+        bindings: retained,
         replayKey: inboundEventId,
         response: request.response,
         executor: {
