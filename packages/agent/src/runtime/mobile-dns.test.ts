@@ -86,6 +86,6 @@ describe("mobile DNS fetch decode budget", () => {
       for await (const _chunk of decoded) {
         // Drain the production stream so decoder errors reach the consumer.
       }
-    }).toThrow();
+    }).rejects.toThrow();
   });
 });
