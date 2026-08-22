@@ -662,7 +662,7 @@ function respondIfNeeded(messageHandler: MessageHandlerResult) {
 }
 
 /** The relay body when it is orchestrator-composed OBSERVATION (workdir
- *  file verification and/or the served URL), bounded for chat. Undefined for
+ *  file verification and/or the served URL). Undefined for
  *  worker-authored prose — that still goes through normal routing. */
 function orchestratorObservedBody(completionText: string): string | undefined {
   const trimmed = completionText.trimStart();
@@ -673,7 +673,7 @@ function orchestratorObservedBody(completionText: string): string | undefined {
   if (!body?.includes("Files written (verified on disk)")) {
     return undefined;
   }
-  return body.length > 800 ? `${body.slice(0, 799)}…` : body;
+  return body;
 }
 
 export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {

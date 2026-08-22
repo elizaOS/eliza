@@ -3770,26 +3770,29 @@ export class OrchestratorTaskService extends Service {
           .replace(/\s+/g, " ")
           .trim();
       const rawTitle = doc.task.title || doc.task.goal || workspace.branch;
-      const title =
+      const canonicalPrTitle =
         scrubChatEnvelope(rawTitle)
           .replace(
             /[\s,.]*(?:and\s+)?(?:then\s+)?(?:open|put\s+up|submit|raise|file)\s+(?:a\s+|the\s+)?(?:pr|pull[- ]?request)\b.*$/iu,
             "",
           )
-          .trim()
-          .slice(0, 120) || workspace.branch;
-      const bodySummary = scrubChatEnvelope(
-        doc.task.goal?.slice(0, 800) ?? rawTitle,
-      );
+          .trim() || workspace.branch;
+      // GitHub enforces a bounded title field. Preserve the canonical value in
+      // task metadata and derive the provider payload explicitly.
+      const providerPrTitle = canonicalPrTitle.slice(0, 120);
+      const canonicalPrBody = scrubChatEnvelope(doc.task.goal ?? rawTitle);
       const pr = await workspaceService.createPR(workspaceId, {
-        title,
-        body: `${bodySummary}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
+        title: providerPrTitle,
+        body: `${canonicalPrBody}\n\n🤖 Automated submit by the coding orchestrator on task completion.`,
       });
       await this.store.updateTask(taskId, {
         metadata: {
           ...(((await this.store.getTask(taskId))?.task.metadata ??
             {}) as Record<string, unknown>),
           autoSubmittedPrUrl: pr.url,
+          canonicalPrTitle,
+          providerPrTitle,
+          canonicalPrBody,
           // Canonical PR fields: the verifier's evidence, the ground-truth
           // check, and the chat task widget all read `prUrl` — the submit
           // writing only its own key left the judge insisting "no pull

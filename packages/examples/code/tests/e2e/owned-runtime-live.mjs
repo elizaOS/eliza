@@ -308,23 +308,20 @@ function projectEvent(event, data) {
         status: tool.status,
         rawInput: tool.rawInput,
         locations: tool.locations,
-        output:
-          typeof tool.output === "string"
-            ? tool.output.slice(0, 4000)
-            : tool.output,
+        output: tool.output,
       }),
     };
   }
   if (event === "message" || event === "reasoning") {
     return {
       event,
-      text: sanitizeString(String(data.text || "")).slice(0, 4000),
+      text: sanitizeString(String(data.text || "")),
     };
   }
   if (event === "task_complete") {
     return {
       event,
-      response: sanitizeString(String(data.response || "")).slice(0, 8000),
+      response: sanitizeString(String(data.response || "")),
       durationMs: data.durationMs,
       stopReason: data.stopReason,
     };

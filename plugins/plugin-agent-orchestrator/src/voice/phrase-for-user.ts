@@ -301,9 +301,9 @@ export async function phraseForUser(
                 ? "model-error"
                 : "timeout"
               : "validation-reject",
-          ...(callError ? { error: callError.slice(0, 200) } : {}),
-          raw: typeof raw === "string" ? raw.slice(0, 200) : String(raw),
-          rejected: text.slice(0, 120),
+          ...(callError ? { error: callError } : {}),
+          raw: typeof raw === "string" ? raw : String(raw),
+          rejected: text,
           intent: req.intent,
         },
         "[phrase-for-user] fell back to canned text",
