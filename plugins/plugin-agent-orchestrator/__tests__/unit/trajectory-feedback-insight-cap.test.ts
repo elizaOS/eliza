@@ -129,6 +129,78 @@ describe("queryPastExperience complete traversal", () => {
     ]);
   });
 
+  it("preserves whitespace and long reasoning exactly", async () => {
+    const exactMetadata = "  metadata insight  ";
+    const longReasoning = `${"reasoning ".repeat(40)}  `;
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "metadata",
+            source: "orchestrator",
+            startTime: 2,
+            llmCallCount: 0,
+            createdAt: new Date(2).toISOString(),
+            metadata: { insights: [exactMetadata] },
+          },
+          {
+            id: "legacy",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 1,
+            createdAt: new Date(1).toISOString(),
+          },
+        ],
+        total: 2,
+      }),
+      getTrajectoryDetail: async (id: string) =>
+        id === "legacy"
+          ? {
+              trajectoryId: id,
+              steps: [
+                {
+                  llmCalls: [
+                    {
+                      purpose: "coordination",
+                      response: JSON.stringify({ reasoning: longReasoning }),
+                    },
+                  ],
+                },
+              ],
+            }
+          : null,
+    });
+
+    const result = await queryPastExperience(runtime);
+    expect(result.map((entry) => entry.insight)).toEqual([
+      exactMetadata,
+      longReasoning,
+    ]);
+  });
+
+  it("rejects malformed stored insight text explicitly", async () => {
+    const runtime = makeRuntime({
+      listTrajectories: async () => ({
+        trajectories: [
+          {
+            id: "malformed",
+            source: "orchestrator",
+            startTime: 1,
+            llmCallCount: 0,
+            createdAt: new Date(1).toISOString(),
+            metadata: { insights: ["bad\ud800insight"] },
+          },
+        ],
+        total: 1,
+      }),
+      getTrajectoryDetail: async () => null,
+    });
+
+    await expect(queryPastExperience(runtime)).rejects.toMatchObject({
+      code: "TRAJECTORY_EXPERIENCE_MALFORMED_UNICODE",
+    });
+  });
+
   it("traverses every storage page without treating page size as a content cap", async () => {
     const summaries = Array.from({ length: 501 }, (_, index) => ({
       id: `trajectory-${index}`,

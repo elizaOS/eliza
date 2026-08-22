@@ -177,7 +177,9 @@ Connector health monitoring (`api/connector-health.ts`): the interval is validat
 - **Trajectory metadata is append-complete.** Persist every extracted insight and
   observation in source order, including duplicates. Page sizes may bound a
   storage call, but recency windows and item caps must never rewrite trajectory,
-  training, or later model context.
+  training, or later model context. Preserve each record's exact text regardless
+  of length or surrounding whitespace; reject malformed Unicode rather than
+  repairing the recorded request or response.
 
 ## Package completion evidence
 

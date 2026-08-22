@@ -140,6 +140,32 @@ function hasListMethod(obj: object): boolean {
   );
 }
 
+function assertWellFormedExperienceText(value: string, field: string): string {
+  if (value.toWellFormed() !== value) {
+    throw new ElizaError("Trajectory experience contains malformed Unicode", {
+      code: "TRAJECTORY_EXPERIENCE_MALFORMED_UNICODE",
+      context: { field },
+    });
+  }
+  return value;
+}
+
+function readMetadataInsights(value: unknown, trajectoryId: string): string[] {
+  if (value === undefined) return [];
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
+    throw new ElizaError("Stored trajectory insights are malformed", {
+      code: "TRAJECTORY_EXPERIENCE_METADATA_INVALID",
+      context: { trajectoryId },
+    });
+  }
+  return value.map((entry, index) =>
+    assertWellFormedExperienceText(entry, `${trajectoryId}.insights[${index}]`),
+  );
+}
+
 // ─── Experience Extraction ───
 
 /**
@@ -153,7 +179,7 @@ function extractInsights(response: string, purpose: string): string[] {
   const decisionPattern = /DECISION:\s*(.+?)(?:\n|$)/gi;
   let match = decisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    insights.push(match[1]);
     match = decisionPattern.exec(response);
   }
 
@@ -161,7 +187,7 @@ function extractInsights(response: string, purpose: string): string[] {
   const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
   match = keyDecisionPattern.exec(response);
   while (match !== null) {
-    insights.push(match[1].trim());
+    insights.push(match[1]);
     match = keyDecisionPattern.exec(response);
   }
 
@@ -170,10 +196,10 @@ function extractInsights(response: string, purpose: string): string[] {
     (purpose === "turn-complete" || purpose === "coordination") &&
     insights.length === 0
   ) {
-    const reasoningPattern = /"reasoning"\s*:\s*"([^"]{20,200})"/;
+    const reasoningPattern = /"reasoning"\s*:\s*"([^"]+)"/;
     const reasoningMatch = response.match(reasoningPattern);
-    if (reasoningMatch) {
-      insights.push(reasoningMatch[1].trim());
+    if (reasoningMatch && reasoningMatch[1].length >= 20) {
+      insights.push(reasoningMatch[1]);
     }
   }
 
@@ -275,12 +301,10 @@ export async function queryPastExperience(
             insights?: unknown;
           }
         | undefined;
-      const metadataInsights = Array.isArray(metadata?.insights)
-        ? metadata.insights.filter(
-            (value): value is string =>
-              typeof value === "string" && value.trim().length > 0,
-          )
-        : [];
+      const metadataInsights = readMetadataInsights(
+        metadata?.insights,
+        summary.id,
+      );
       const decisionType = metadata?.orchestrator?.decisionType ?? "unknown";
       const taskLabel = metadata?.orchestrator?.taskLabel ?? "";
       const trajectoryRepo = metadata?.orchestrator?.repo;
@@ -323,7 +347,10 @@ export async function queryPastExperience(
           if (!call.response) continue;
 
           const insights = extractInsights(
-            call.response,
+            assertWellFormedExperienceText(
+              call.response,
+              `${summary.id}.llmCall.response`,
+            ),
             call.purpose ?? decisionType,
           );
 
@@ -345,6 +372,7 @@ export async function queryPastExperience(
     elizaLogger.error(
       `[trajectory-feedback] Failed to query past experience: ${err}`,
     );
+    if (err instanceof ElizaError) throw err;
     throw new ElizaError("Failed to load complete trajectory experience", {
       code: "TRAJECTORY_EXPERIENCE_LOAD_FAILED",
       cause: err,

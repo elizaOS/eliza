@@ -371,7 +371,8 @@ README → "GitHub credentials".
   retain every eligible skill, and trajectory feedback must traverse every
   storage page while preserving source order and duplicates. Legacy `max`,
   recency, and relevance options are compatibility-only and must not discard
-  spawn- or model-facing context.
+  spawn- or model-facing context. Insight text remains exact regardless of
+  length or surrounding whitespace, and malformed metadata fails explicitly.
 - **Smithers task path.** By default (`ELIZA_ORCHESTRATOR_SMITHERS` not `0`), task
   execution goes through the smithers runner (`smithers-task-runner.ts`), which
   drives a structured provision→turn→submit loop. `TASKS:create` persists the

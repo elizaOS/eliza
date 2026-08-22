@@ -7,7 +7,9 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import {
   appendCompleteTrajectoryTextRecords,
+  capScriptForPersistence,
   computeBySource,
+  extractInsightsFromResponse,
   flushObservationBuffer,
   pushChatExchange,
 } from "./trajectory-internals";
@@ -50,6 +52,32 @@ describe("trajectory observability", () => {
       appendCompleteTrajectoryTextRecords(["valid", 3], ["next"], "insights"),
     ).toThrowError(
       expect.objectContaining({ code: "TRAJECTORY_TEXT_METADATA_INVALID" }),
+    );
+  });
+
+  it("preserves long and whitespace-significant extracted trajectory text", () => {
+    const decision = `${"x".repeat(1_500)}  `;
+    const reasoning = `${"reasoning ".repeat(40)}  `;
+
+    expect(
+      extractInsightsFromResponse(`DECISION: ${decision}\n`, "coordination"),
+    ).toEqual([decision]);
+    expect(
+      extractInsightsFromResponse(
+        JSON.stringify({ reasoning }),
+        "coordination",
+      ),
+    ).toEqual([reasoning]);
+  });
+
+  it("rejects malformed Unicode instead of repairing recorded context", () => {
+    expect(() => capScriptForPersistence("bad\ud800script")).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_MALFORMED_UNICODE" }),
+    );
+    expect(() =>
+      appendCompleteTrajectoryTextRecords([], ["bad\ud800insight"], "insights"),
+    ).toThrowError(
+      expect.objectContaining({ code: "TRAJECTORY_TEXT_MALFORMED_UNICODE" }),
     );
   });
 
