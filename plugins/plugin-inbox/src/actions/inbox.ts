@@ -2,7 +2,7 @@
  * `INBOX` umbrella action — cross-channel inbox.
  *
  * The agent's `MESSAGE` umbrella triages per-channel inboxes; INBOX fans out to
- * every connected platform (Gmail, Slack, Discord, Telegram, Signal, iMessage,
+ * every connected platform (Gmail, Slack, Discord, Telegram, iMessage,
  * WhatsApp) and produces a single merged feed for "show me my inbox" style
  * intents.
  *
@@ -85,7 +85,6 @@ const PLATFORMS = [
   "slack",
   "discord",
   "telegram",
-  "signal",
   "imessage",
   "whatsapp",
 ] as const;
@@ -190,7 +189,6 @@ const PLATFORM_TO_MESSAGE_SOURCE: Partial<
   gmail: "gmail",
   discord: "discord",
   telegram: "telegram",
-  signal: "signal",
   imessage: "imessage",
   whatsapp: "whatsapp",
 };
@@ -268,7 +266,6 @@ const defaultFetchers: InboxFetchers = {
   slack: noopFetcher,
   discord: createDefaultPlatformFetcher("discord"),
   telegram: createDefaultPlatformFetcher("telegram"),
-  signal: createDefaultPlatformFetcher("signal"),
   imessage: createDefaultPlatformFetcher("imessage"),
   whatsapp: createDefaultPlatformFetcher("whatsapp"),
 };
@@ -504,7 +501,6 @@ const MESSAGE_SOURCES = new Set<MessageSource>([
   "telegram",
   "twitter",
   "imessage",
-  "signal",
   "whatsapp",
   "browser_bridge",
 ]);
@@ -954,9 +950,9 @@ export const inboxAction: Action & {
     "surface:internal",
   ],
   description:
-    "Inbox: Gmail, Slack, Discord, Telegram, Signal, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage (AI-classify new messages into urgent / needs_reply / notify / info / ignore, then return the prioritized queue), reply, snooze, archive, approve.",
+    "Inbox: Gmail, Slack, Discord, Telegram, iMessage, WhatsApp. Merge recency feed and operate the persisted triage queue. Subactions: list, search, summarize, triage (AI-classify new messages into urgent / needs_reply / notify / info / ignore, then return the prioritized queue), reply, snooze, archive, approve.",
   descriptionCompressed:
-    "INBOX list|search|summarize|triage(classify urgent/needs_reply/noise)|reply|snooze|archive|approve gmail|slack|discord|telegram|signal|imessage|whatsapp",
+    "INBOX list|search|summarize|triage(classify urgent/needs_reply/noise)|reply|snooze|archive|approve gmail|slack|discord|telegram|imessage|whatsapp",
   routingHint:
     'cross-channel inbox ("show inbox", "all messages", "search every channel", "summarize inboxes") -> INBOX; "triage my inbox" / "what needs my attention" -> INBOX triage; per-channel -> MESSAGE',
   contexts: ["inbox", "messaging", "cross-channel"],
@@ -973,7 +969,7 @@ export const inboxAction: Action & {
     {
       name: "platforms",
       description:
-        "Optional platform filter: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default all.",
+        "Optional platform filter: gmail | slack | discord | telegram | imessage | whatsapp. Default all.",
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {

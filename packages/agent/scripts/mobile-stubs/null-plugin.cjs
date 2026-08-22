@@ -55,9 +55,6 @@ function makeStubProxy() {
     "applyWhatsAppQrOverride",
     "handleWhatsAppRoute",
     "WHATSAPP_MAX_PAIRING_SESSIONS",
-    // plugin-signal surface (same routing pattern)
-    "applySignalQrOverride",
-    "handleSignalRoute",
     // plugin-discord-local (api server)
     "handleDiscordLocalRoute",
     // plugin-computeruse (api server route handler)

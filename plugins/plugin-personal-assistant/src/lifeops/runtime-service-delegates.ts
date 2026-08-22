@@ -1,6 +1,6 @@
 /**
  * Delegation seam from LifeOps domains to connector-plugin runtime services:
- * resolves the runtime service for each connector (iMessage, WhatsApp, Signal,
+ * resolves the runtime service for each connector (iMessage, WhatsApp,
  * Telegram, X) and forwards read/send calls, so LifeOps holds no
  * connector transport of its own and never depends on connector internals.
  */
@@ -822,22 +822,6 @@ export function searchTelegramMessagesWithRuntimeService(args: {
   });
 }
 
-export function searchSignalMessagesWithRuntimeService(args: {
-  runtime: IAgentRuntime;
-  grant?: ConnectorGrantAccountRef | null;
-  accountId?: string | null;
-  query: string;
-  channelId?: string;
-  roomId?: string;
-  limit?: number;
-}): Promise<RuntimeServiceDelegationResult<Memory[]>> {
-  return searchMessagesWithRuntimeService({
-    ...args,
-    serviceType: "signal",
-    source: "signal",
-  });
-}
-
 export async function sendTelegramMessageWithRuntimeService(args: {
   runtime: IAgentRuntime;
   grant?: ConnectorGrantAccountRef | null;
@@ -876,77 +860,6 @@ export async function sendTelegramMessageWithRuntimeService(args: {
       "Telegram runtime service handleSendMessage failed.",
       error,
     );
-  }
-}
-
-type SignalRuntimeServiceLike = ConnectorMessageRuntimeServiceLike & {
-  getRecentMessages?: (
-    limit?: number,
-    accountId?: string,
-  ) => Promise<unknown[]>;
-  sendMessage?: (
-    recipient: string,
-    text: string,
-    options?: { accountId?: string; record?: boolean },
-  ) => Promise<{ timestamp?: number }>;
-};
-
-export async function readSignalRecentWithRuntimeService(args: {
-  runtime: IAgentRuntime;
-  grant?: ConnectorGrantAccountRef | null;
-  accountId?: string | null;
-  limit?: number;
-}): Promise<RuntimeServiceDelegationResult<unknown[]>> {
-  const service = getRuntimeService<SignalRuntimeServiceLike>(args.runtime, [
-    "signal",
-  ]);
-  if (typeof service?.getRecentMessages !== "function") {
-    return unavailable(
-      "Signal runtime service getRecentMessages is not registered.",
-    );
-  }
-  const accountId = resolveRuntimeConnectorAccountId(args);
-  try {
-    return {
-      status: "handled",
-      accountId,
-      value: await service.getRecentMessages(args.limit, accountId),
-    };
-  } catch (error) {
-    return unavailable(
-      "Signal runtime service getRecentMessages failed.",
-      error,
-    );
-  }
-}
-
-export async function sendSignalMessageWithRuntimeService(args: {
-  runtime: IAgentRuntime;
-  grant?: ConnectorGrantAccountRef | null;
-  accountId?: string | null;
-  recipient: string;
-  text: string;
-}): Promise<RuntimeServiceDelegationResult<{ timestamp: number }>> {
-  const service = getRuntimeService<SignalRuntimeServiceLike>(args.runtime, [
-    "signal",
-  ]);
-  if (typeof service?.sendMessage !== "function") {
-    return unavailable("Signal runtime service sendMessage is not registered.");
-  }
-  const accountId = resolveRuntimeConnectorAccountId(args);
-  try {
-    const result = await service.sendMessage(args.recipient, args.text, {
-      accountId,
-    });
-    const timestamp = result.timestamp;
-    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) {
-      return unavailable(
-        "Signal runtime service sendMessage returned invalid data.",
-      );
-    }
-    return { status: "handled", accountId, value: { timestamp } };
-  } catch (error) {
-    return unavailable("Signal runtime service sendMessage failed.", error);
   }
 }
 

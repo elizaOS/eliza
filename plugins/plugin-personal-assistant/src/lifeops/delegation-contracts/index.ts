@@ -24,7 +24,6 @@ export type DelegationChannel =
   | "discord"
   | "slack"
   | "imessage"
-  | "signal"
   | "telegram"
   | "whatsapp"
   | "x_dm";

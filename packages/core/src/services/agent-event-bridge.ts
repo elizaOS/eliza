@@ -300,7 +300,7 @@ function isBotMessage(metadata: Record<string, unknown>): boolean {
  * Channel types that are machine or self-directed surfaces rather than a human
  * conversation. `Content.channelType` is optional and several shipped
  * connectors never stamp it (Slack carries the type on the Room and a
- * platform-specific `metadata.chatType`; Signal stamps none at all), so an
+ * platform-specific `metadata.chatType`; custom connectors may stamp none), so an
  * absent channel type must not disqualify a message. A passive classification
  * in the connector-source registry is the trust anchor; channel type only vetoes.
  */

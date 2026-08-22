@@ -70,25 +70,47 @@ public class ElizaSecureStorePlugin: CAPPlugin, CAPBridgedPlugin {
             add.merge(attributes) { _, replacement in replacement }
             status = SecItemAdd(add as CFDictionary, nil)
         }
-        if status == errSecSuccess {
-            call.resolve(["ok": true])
-        } else {
+        guard status == errSecSuccess else {
             call.resolve(statusResult(status))
+            return
         }
+
+        var verificationQuery = query
+        verificationQuery[kSecReturnData as String] = kCFBooleanTrue
+        verificationQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+        var storedItem: CFTypeRef?
+        let verificationStatus = SecItemCopyMatching(verificationQuery as CFDictionary, &storedItem)
+        guard verificationStatus == errSecSuccess else {
+            call.resolve(statusResult(verificationStatus))
+            return
+        }
+        guard let storedData = storedItem as? Data, storedData == valueData else {
+            call.resolve(errorResult("native_error", "Apple Keychain write could not be verified."))
+            return
+        }
+        call.resolve(["ok": true])
     }
 
     @objc func remove(_ call: CAPPluginCall) {
         guard let key = validatedKey(call) else { return }
         let status = SecItemDelete(baseQuery(key) as CFDictionary)
-        if status == errSecSuccess {
-            call.resolve(["ok": true, "deleted": true])
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            call.resolve(statusResult(status))
             return
         }
-        if status == errSecItemNotFound {
-            call.resolve(["ok": true, "deleted": false])
+
+        var verificationQuery = baseQuery(key)
+        verificationQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+        let verificationStatus = SecItemCopyMatching(verificationQuery as CFDictionary, nil)
+        if verificationStatus == errSecItemNotFound {
+            call.resolve(["ok": true, "deleted": status == errSecSuccess])
             return
         }
-        call.resolve(statusResult(status))
+        if verificationStatus == errSecSuccess {
+            call.resolve(errorResult("native_error", "Apple Keychain deletion could not be verified."))
+            return
+        }
+        call.resolve(statusResult(verificationStatus))
     }
 
     @objc func status(_ call: CAPPluginCall) {

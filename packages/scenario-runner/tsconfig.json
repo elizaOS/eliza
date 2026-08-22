@@ -78,7 +78,6 @@
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-todos": ["../../plugins/plugin-todos/src/index.ts"],

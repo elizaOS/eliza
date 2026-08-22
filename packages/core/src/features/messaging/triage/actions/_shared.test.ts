@@ -60,8 +60,8 @@ describe("parseTriageParams", () => {
 
 describe("parseListInboxParams", () => {
 	it("parses the same shape as triage params", () => {
-		const out = parseListInboxParams(opts({ source: "signal", limit: 20 }));
-		expect(out.sources).toEqual(["signal"]);
+		const out = parseListInboxParams(opts({ source: "whatsapp", limit: 20 }));
+		expect(out.sources).toEqual(["whatsapp"]);
 		expect(out.limit).toBe(20);
 	});
 });

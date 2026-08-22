@@ -74,7 +74,7 @@ export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
 
 export type TradePermissionMode = SharedTradePermissionMode;
 
-export type SignalPairingStatus =
+export type WhatsAppPairingStatus =
   | "idle"
   | "initializing"
   | "waiting_for_qr"
@@ -82,8 +82,6 @@ export type SignalPairingStatus =
   | "disconnected"
   | "timeout"
   | "error";
-
-export type WhatsAppPairingStatus = SignalPairingStatus;
 
 export interface DatabaseConfigResponse {
   config: {

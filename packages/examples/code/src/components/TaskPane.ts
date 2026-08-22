@@ -18,7 +18,6 @@ const SUB_AGENT_TYPES: SubAgentType[] = [
   "eliza",
   "claude-code",
   "codex",
-  "opencode",
   "elizaos-native",
 ];
 

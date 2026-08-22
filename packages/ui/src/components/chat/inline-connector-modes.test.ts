@@ -43,18 +43,6 @@ describe("connectorWidgetModes", () => {
     );
   });
 
-  it("returns a single local mode for Signal (QR pair) with no cloud dependency", () => {
-    const online = connectorWidgetModes("signal", {
-      elizaCloudConnected: true,
-    });
-    const offline = connectorWidgetModes("signal", {
-      elizaCloudConnected: false,
-    });
-    expect(online).toHaveLength(1);
-    expect(online).toEqual(offline);
-    expect(online[0]?.kind).toBe("local");
-  });
-
   it("returns [] for a plugin with no declared modes (plain env form)", () => {
     expect(
       connectorWidgetModes("some-unknown-plugin", {
@@ -73,8 +61,10 @@ describe("defaultConnectorWidgetModeId", () => {
   });
 
   it("falls back to the first offered mode when none is ranked", () => {
-    const modes = connectorWidgetModes("signal", { elizaCloudConnected: true });
-    expect(defaultConnectorWidgetModeId("signal", modes)).toBe(modes[0]?.id);
+    const modes = connectorWidgetModes("imessage", {
+      elizaCloudConnected: true,
+    });
+    expect(defaultConnectorWidgetModeId("imessage", modes)).toBe(modes[0]?.id);
   });
 
   it("returns null for an empty mode list", () => {

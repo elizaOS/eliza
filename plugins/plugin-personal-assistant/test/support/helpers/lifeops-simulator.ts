@@ -465,7 +465,7 @@ async function seedRelationships(service: LifeOpsService): Promise<number> {
       primaryHandle: person.email,
       email: person.email,
       phone: person.phone,
-      notes: `LifeOps simulator contact; also present on Telegram @${person.telegramUsername}, Discord ${person.discordUsername}, Signal ${person.signalNumber}, WhatsApp ${person.whatsappNumber}.`,
+      notes: `LifeOps simulator contact; also present on Telegram @${person.telegramUsername}, Discord ${person.discordUsername}, and WhatsApp ${person.whatsappNumber}.`,
       tags: ["lifeops-simulator", "mock-contact"],
       relationshipType: "contact",
       lastContactedAt: new Date(

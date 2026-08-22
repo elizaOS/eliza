@@ -120,7 +120,6 @@ const DEFAULT_INBOX_SOURCE_FILTER = [
   "whatsapp",
   "wechat",
   "slack",
-  "signal",
   "sms",
 ] as const;
 

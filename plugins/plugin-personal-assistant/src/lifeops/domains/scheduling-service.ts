@@ -37,7 +37,6 @@ const SCHEDULING_DISPATCH_CHANNELS = [
   "email",
   "telegram",
   "discord",
-  "signal",
   "whatsapp",
   "imessage",
   "sms",
