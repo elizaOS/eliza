@@ -377,8 +377,11 @@ function getCodexSdkSession(
 
 function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
-  const n = Number.parseInt(value, 10);
-  return Number.isFinite(n) && n > 0 ? n : undefined;
+  const s = value.trim();
+  if (!/^\d+$/.test(s)) return undefined;
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n <= 0) return undefined;
+  return n;
 }
 
 /** Turn-timeout parse (#16553): like {@link parseTimeout}, but an explicit
@@ -387,8 +390,10 @@ function parseTimeout(value: string | undefined): number | undefined {
  *  bounded default applies. Exported for tests. */
 export function parseTurnTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
-  const n = Number.parseInt(value, 10);
-  if (!Number.isFinite(n) || n < 0) return undefined;
+  const s = value.trim();
+  if (!/^\d+$/.test(s)) return undefined;
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n < 0) return undefined;
   return n;
 }
 

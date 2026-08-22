@@ -94,7 +94,8 @@ function _parseFrontmatter(content: string): HookFrontmatter {
 				} else if (value === "false") {
 					(result as Record<string, unknown>)[key] = false;
 				} else if (/^\d+$/.test(value)) {
-					(result as Record<string, unknown>)[key] = parseInt(value, 10);
+					const n = Number(value);
+					(result as Record<string, unknown>)[key] = Number.isSafeInteger(n) ? n : value;
 				} else {
 					(result as Record<string, unknown>)[key] = value.replace(
 						/^["']|["']$/g,

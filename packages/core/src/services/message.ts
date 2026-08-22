@@ -6704,10 +6704,15 @@ export function getStage1RetryReason(
 function readStage1EmptyRetryLimit(runtime: IAgentRuntime): number {
 	const raw = runtime.getSetting?.("ELIZA_RESPONSE_HANDLER_EMPTY_RETRIES");
 	if (raw === undefined || raw === null || raw === "") return 2;
-	const parsed =
-		typeof raw === "number" ? raw : Number.parseInt(String(raw).trim(), 10);
-	if (!Number.isFinite(parsed)) return 2;
-	return Math.max(0, Math.min(5, Math.trunc(parsed)));
+	if (typeof raw === "number") {
+		if (!Number.isSafeInteger(raw)) return 2;
+		return Math.max(0, Math.min(5, Math.trunc(raw)));
+	}
+	const s = String(raw).trim();
+	if (!/^\d+$/.test(s)) return 2;
+	const parsed = Number(s);
+	if (!Number.isSafeInteger(parsed)) return 2;
+	return Math.max(0, Math.min(5, parsed));
 }
 
 function shouldUseStage1PlannerFallback(
