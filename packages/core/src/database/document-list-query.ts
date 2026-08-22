@@ -39,8 +39,10 @@ const DOCUMENT_LIST_ROLES = new Set([
 	"OWNER",
 	"ADMIN",
 	"USER",
+	"GUEST",
 	"AGENT",
 	"RUNTIME",
+	"UNRESOLVED",
 ]);
 const DOCUMENT_LIST_SCOPES = new Set([
 	"global",
@@ -412,6 +414,7 @@ export function isDocumentVisibleToRequester(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
+	if (params.requesterRole === "UNRESOLVED") return false;
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
 	if (
@@ -425,6 +428,7 @@ export function isDocumentVisibleToRequester(
 	}
 	if (!params.requesterRoomIds.includes(snapshot.roomId)) return false;
 	if (snapshot.scope === "global") return true;
+	if (params.requesterRole === "GUEST") return false;
 	if (snapshot.scope !== "user-private") return false;
 	if (params.requesterRole === "ADMIN") return true;
 	return snapshot.scopedToEntityId === params.requesterEntityId;
@@ -435,6 +439,12 @@ export function canRequesterMutateDocument(
 	memory: Memory,
 	params: DocumentRequesterContext,
 ): boolean {
+	if (
+		params.requesterRole === "UNRESOLVED" ||
+		params.requesterRole === "GUEST"
+	) {
+		return false;
+	}
 	const snapshot = readDocumentMutationSnapshot(memory);
 	if (!snapshot) return false;
 	if (params.requesterRole === "OWNER") return true;

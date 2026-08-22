@@ -34,26 +34,26 @@ describe("actorFromAccessContext", () => {
 		).toEqual({ entityId: AGENT, role: "AGENT" });
 	});
 
-	it("maps OWNER, ADMIN, and isOwner to the OWNER tier", () => {
+	it("preserves OWNER and explicit owner binding without elevating ADMIN", () => {
 		expect(actorFromAccessContext(ctx({ role: "OWNER" }), AGENT).role).toBe(
 			"OWNER",
 		);
 		expect(actorFromAccessContext(ctx({ role: "ADMIN" }), AGENT).role).toBe(
-			"OWNER",
+			"ADMIN",
 		);
 		expect(actorFromAccessContext(ctx({ isOwner: true }), AGENT).role).toBe(
 			"OWNER",
 		);
 	});
 
-	it("maps USER, GUEST, and an unresolved role to the least-privileged USER tier", () => {
+	it("preserves USER and GUEST while leaving a missing role unresolved", () => {
 		expect(actorFromAccessContext(ctx({ role: "USER" }), AGENT).role).toBe(
 			"USER",
 		);
 		expect(actorFromAccessContext(ctx({ role: "GUEST" }), AGENT).role).toBe(
-			"USER",
+			"GUEST",
 		);
-		expect(actorFromAccessContext(ctx({}), AGENT).role).toBe("USER"); // no world resolved → fails closed
+		expect(actorFromAccessContext(ctx({}), AGENT).role).toBe("UNRESOLVED");
 	});
 });
 
@@ -72,6 +72,19 @@ describe("canReadScope", () => {
 			for (const role of roles) {
 				expect(canReadScope(scope, undefined, actor(role))).toBe(true);
 			}
+		}
+	});
+
+	it("denies every scope when authority is unresolved", () => {
+		for (const scope of [
+			"global",
+			"shared",
+			"room",
+			"owner-private",
+			"user-private",
+			"agent-private",
+		] as MemoryScope[]) {
+			expect(canReadScope(scope, SELF, actor("UNRESOLVED"))).toBe(false);
 		}
 	});
 
@@ -99,6 +112,10 @@ describe("canReadScope", () => {
 			it(`${scope}: a USER reads only their own`, () => {
 				expect(canReadScope(scope, SELF, actor("USER", SELF))).toBe(true);
 				expect(canReadScope(scope, OTHER, actor("USER", SELF))).toBe(false);
+			});
+
+			it(`${scope}: a GUEST cannot acquire a private document tier`, () => {
+				expect(canReadScope(scope, SELF, actor("GUEST", SELF))).toBe(false);
 			});
 
 			it(`${scope}: AGENT and RUNTIME read any`, () => {

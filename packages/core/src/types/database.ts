@@ -67,8 +67,10 @@ export type DocumentListRequesterRole =
 	| "OWNER"
 	| "ADMIN"
 	| "USER"
+	| "GUEST"
 	| "AGENT"
-	| "RUNTIME";
+	| "RUNTIME"
+	| "UNRESOLVED";
 
 /** Identity and room membership used by every document authorization query. */
 export interface DocumentRequesterContext {

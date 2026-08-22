@@ -218,15 +218,10 @@ export function resolveRouteActor(
   // never be satisfied and the agent lost access to its own agent-private
   // documents. actorFromAccessContext is the single definition of that mapping.
   const scopeActor = actorFromAccessContext(accessContext, agentId);
-  // actorFromAccessContext only ever yields OWNER/USER/AGENT, but its static
-  // ActorRole type is wider (full RoleName). Narrow explicitly and fail closed
-  // to USER for anything outside the route-actor role set.
-  const role: RouteActorRole =
-    scopeActor.role === "OWNER" ||
-    scopeActor.role === "AGENT" ||
-    scopeActor.role === "RUNTIME"
-      ? scopeActor.role
-      : "USER";
+  // Preserve every explicit role. An unresolved role is not a lower role and
+  // cannot be translated into authorization, so reject it.
+  if (scopeActor.role === "UNRESOLVED") return null;
+  const role: RouteActorRole = scopeActor.role;
   return {
     entityId: scopeActor.entityId,
     role,
@@ -326,6 +321,12 @@ function filtersFromUploadBody(
   },
   actor: RouteActor,
 ): { scope: DocumentVisibilityScope; scopedToEntityId?: UUID; error?: string } {
+  if (actor.role === "GUEST") {
+    return {
+      scope: "user-private",
+      error: "Guests cannot upload documents.",
+    };
+  }
   const metadata = asRecord(body.metadata);
   const scope =
     parseDocumentScope(body.scope) ??

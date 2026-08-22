@@ -82,7 +82,10 @@ The plugin itself reads no env vars directly. The `routes.ts` handler reads one 
 Access control is role-based and requires the authenticated `AccessContext`
 provided by the host route boundary. Missing context returns `401`; the plugin
 never treats an absent caller as owner. Request headers alone are not an
-identity or authorization authority.
+identity or authorization authority. Preserve the caller's exact role through
+storage authorization: ADMIN is not OWNER, GUEST is not USER, and an unresolved
+role is rejected. Guests may read only global documents in their current rooms
+and may not mutate documents.
 
 ## How to extend
 
@@ -100,7 +103,7 @@ All scope/permission decisions live in `src/routes.ts` (`canReadDocumentMemory`,
 ## Conventions / gotchas
 
 - **No service ownership.** This plugin does not define `DocumentsServiceLike` — it imports it from `@elizaos/agent/api/documents-service-loader`. If the service times out during loading, the route returns 503 with a `Retry-After: 5` header; if the service is simply absent (e.g. agent not running), it returns 503 without that header.
-- **Scope defaults.** When no scope is specified on upload, the default is `user-private` for USER role, `agent-private` for AGENT role, and `global` for OWNER/RUNTIME.
+- **Scope defaults.** When no scope is specified on upload, the default is `user-private` for USER/ADMIN, `agent-private` for AGENT, and `global` for OWNER/RUNTIME. GUEST and unresolved callers cannot upload.
 - **Bundled and character documents** are read-only: `getDocumentEditability` and `getDocumentDeleteability` enforce this in the presenter, and the PATCH/DELETE handlers check these flags before proceeding.
 - **Image upload.** Images are stored as text. If `includeImageDescriptions: true` is passed in the metadata, the handler calls `runtime.useModel(ModelType.IMAGE_DESCRIPTION, ...)` to generate a description. If the model call fails, a warning is included in the response and the stored text explicitly says that image description was unavailable.
 - **YouTube URLs.** `POST /api/documents/url` detects YouTube URLs via `isYouTubeUrl()` from `@elizaos/core` and sets `source: "youtube"` in metadata; the transcript is fetched by `fetchDocumentFromUrl()`.

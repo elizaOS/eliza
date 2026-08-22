@@ -388,7 +388,14 @@ async function getAddedByRole(
 	runtime: IAgentRuntime,
 	message: Memory,
 ): Promise<DocumentAddedByRole> {
-	return (await resolveDocumentRequesterRole(runtime, message)).role;
+	const role = (await resolveDocumentRequesterRole(runtime, message)).role;
+	if (role === "UNRESOLVED") {
+		throw new ElizaError("Document writer role is unresolved", {
+			code: "DOCUMENT_WRITER_ROLE_UNRESOLVED",
+			context: { entityId: message.entityId },
+		});
+	}
+	return role;
 }
 
 async function ensureWriteAccess(
@@ -397,6 +404,11 @@ async function ensureWriteAccess(
 	scope: DocumentVisibilityScope,
 	scopedToEntityId?: UUID,
 ): Promise<string | null> {
+	const requesterRole = (await resolveDocumentRequesterRole(runtime, message))
+		.role;
+	if (requesterRole === "UNRESOLVED" || requesterRole === "GUEST") {
+		return "A verified user identity is required to write documents.";
+	}
 	if (scope === "global" || scope === "owner-private") {
 		return (await hasRoleAccess(runtime, message, "OWNER"))
 			? null
