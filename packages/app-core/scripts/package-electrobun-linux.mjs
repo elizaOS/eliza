@@ -140,34 +140,22 @@ function latestBuildDir() {
   return candidates[0];
 }
 
-function findExecutable(root) {
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const fullPath = path.join(root, entry.name);
-    if (!entry.isFile()) continue;
-    const mode = statSync(fullPath).mode;
-    if ((mode & 0o111) !== 0 && !/\.(so|dylib|dll)$/i.test(entry.name)) {
-      return fullPath;
-    }
+export function findElectrobunLauncher(root) {
+  const directLauncher = path.join(root, "bin", "launcher");
+  const nestedLaunchers = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(root, entry.name, "bin", "launcher"))
+    .sort();
+  const launcher = [directLauncher, ...nestedLaunchers].find(
+    (candidate) =>
+      existsSync(candidate) && (statSync(candidate).mode & 0o111) !== 0,
+  );
+  if (!launcher) {
+    throw new Error(
+      `Could not find executable Electrobun bin/launcher under ${root}`,
+    );
   }
-
-  const queue = [root];
-  const ignored = new Set(["node_modules", "Resources", "locales"]);
-  while (queue.length > 0) {
-    const dir = queue.shift();
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (ignored.has(entry.name)) continue;
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        queue.push(fullPath);
-        continue;
-      }
-      const mode = statSync(fullPath).mode;
-      if ((mode & 0o111) !== 0 && !/\.(so|dylib|dll)$/i.test(entry.name)) {
-        return fullPath;
-      }
-    }
-  }
-  throw new Error(`Could not find executable under ${root}`);
+  return launcher;
 }
 
 function writeDesktopFile(dest, execName = namespace) {
@@ -218,7 +206,7 @@ export async function stagePackageRoot(buildDir, destRoot) {
     dereference: true,
   });
 
-  const executable = findExecutable(path.join(destRoot, optDir));
+  const executable = findElectrobunLauncher(path.join(destRoot, optDir));
   const relativeExecutable = path.relative(
     path.join(destRoot, optDir),
     executable,
